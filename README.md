@@ -1,6 +1,6 @@
-# Framework24 Core Layer
+# Framework24 Core
 
-This is a AWS Lambda Layer that contains the core functionality for Framework24.  It is shared across all Framework24 projects.
+
 
 ## Build Layer
 

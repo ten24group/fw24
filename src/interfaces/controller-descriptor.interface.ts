@@ -1,5 +1,4 @@
-import { Route } from "../interfaces/route.interface";
-//import { Route } from "fw24-core";
+import { Route } from "./route.interface";
 
 interface ControllerDescriptor {
     controllerClass: any; // The controller class itself
