@@ -1,0 +1,37 @@
+{
+    "name": "@ten24group/fw24",
+    "version": "1.0.0",
+    "main": "./dist/package/fw24.js",
+    "types": "./dist/package/fw24.d.ts",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ten24group/fw24.git"
+    },
+    "publishConfig": {
+        "registry": "https://npm.pkg.github.com/ten24group"
+    },
+    "scripts": {
+        "build": "tsc",
+        "watch": "tsc -w",
+        "layer:build": "esbuild --bundle --platform=node --sourcemap ./src/fw24.ts --outdir=dist/layer/nodejs/node_modules",
+        "layer:deploy": "npm run layer:build && cdk deploy",
+        "test": "jest",
+        "cdk": "cdk",
+        "release": "standard-version && git push --follow-tags && npm publish"
+    },
+    "devDependencies": {
+        "@types/aws-lambda": "^8.10.125",
+        "@types/node": "^20.8.7",
+        "aws-cdk": "^2.102.0",
+        "esbuild": "^0.19.5",
+        "standard-version": "^9.5.0",
+        "ts-node": "^10.9.1",
+        "typescript": "^5.2.2"
+    },
+    "dependencies": {
+        "@aws-cdk/aws-amplify-alpha": "^2.131.0-alpha.0",
+        "aws-cdk-lib": "^2.102.0",
+        "constructs": "^10.3.0",
+        "source-map-support": "^0.5.21"
+    }
+}
