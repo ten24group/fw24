@@ -2,26 +2,29 @@
 
 
 
-## Build Layer
+## Build Layer & Deploy
 
 Use esbuild to compile the JavaScript files for the Layer, deploy the Layer with CDK
 
 ```shell
-npm run layer:deploy -- --profile=<YOUR PROFILE>
+npm run release:layer -- --profile=<YOUR PROFILE>
 ```
 
-## Build Package
-
-Use `tsc` to create the files for the package when using `npm install`
-
-```shell
-npm run fw24:build
-```
+## Use Framework24
 
 Install the package using:
 
 ```shell
 npm i @ten24group/fw24
+```
+
+
+## Build Package for development
+
+Use `tsc` to create the files for the package when using `npm install`
+
+```shell
+npm run build:fw24
 ```
 
 
