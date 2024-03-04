@@ -15,13 +15,13 @@ npm run layer:deploy -- --profile=<YOUR PROFILE>
 Use `tsc` to create the files for the package when using `npm install`
 
 ```shell
-npm build
+npm run fw24:build
 ```
 
 Install the package using:
 
 ```shell
-npm i git+ssh://git@github.com:ten24group/fw24-core
+npm i @ten24group/fw24
 ```
 
 
