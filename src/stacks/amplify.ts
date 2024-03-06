@@ -35,7 +35,7 @@ export class Amplify {
                 oauthToken: SecretValue.secretsManager(this.config.secretKeyName),
             })
         });
-  
+
         amplifyApp.addBranch(this.config.githubBranch);
     }
 
