@@ -1,5 +1,5 @@
 import { SecretValue } from "aws-cdk-lib";
-import { App, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha'
+import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha'
 import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
 
 import { IApplicationConfig } from "../interfaces/config.interface";
@@ -36,6 +36,7 @@ export class Amplify {
             })
         });
 
+        amplifyApp.addCustomRule(CustomRule.SINGLE_PAGE_APPLICATION_REDIRECT);
         amplifyApp.addBranch(this.config.githubBranch);
     }
 
