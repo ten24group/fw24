@@ -5,5 +5,6 @@ export * from "./decorators/controller.decorator";
 export * from "./decorators/method.decorator";
 export * from "./core/api-gateway-controller.class";
 export * from "./application.class";
-export * from "./stacks/api-gateway.stack";
-export * from "./stacks/amplify.stack";
+export * from "./stacks/apigateway";
+export * from "./stacks/amplify";
+export * from "./stacks/dynamodb";
