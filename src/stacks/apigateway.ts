@@ -26,7 +26,7 @@ export class APIGateway {
         this.appConfig = appConfig;
 
         if (!this.appConfig.controllers || this.appConfig.controllers.length === 0) {
-            throw new Error("No controllers defined");
+            this.appConfig.controllers = "./controllers";
         }
 
         const paramsApi: Mutable<RestApiProps> = this.config.apiOptions || {};
