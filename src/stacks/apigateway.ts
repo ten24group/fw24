@@ -4,10 +4,10 @@ import { Architecture, LayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
 import { readdirSync } from "fs";
 import { resolve, join } from "path";
 
-import { IAPIGatewayConfig } from "../interfaces/api-gateway.config.interface";
-import { IApplicationConfig } from "../interfaces/config.interface";
-import ControllerDescriptor from "../interfaces/controller-descriptor.interface";
-import Mutable from "../types/mutable.type";
+import { IAPIGatewayConfig } from "../interfaces/api-gateway";
+import { IApplicationConfig } from "../interfaces/config";
+import ControllerDescriptor from "../interfaces/controller-descriptor";
+import Mutable from "../types/mutable";
 import { Duration, Stack } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 

@@ -1,6 +1,6 @@
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 
-import { IApplicationConfig } from "../interfaces/config.interface";
+import { IApplicationConfig } from "../interfaces/config";
 
 export interface IDynamoConfig {
     table: IDynamoTableConfig;

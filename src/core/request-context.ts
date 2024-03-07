@@ -1,4 +1,4 @@
-import { Request } from '../interfaces/request.interface';
+import { Request } from '../interfaces/request';
 import { APIGatewayEvent, Context } from "aws-lambda";
 
 export class RequestContext implements Request {

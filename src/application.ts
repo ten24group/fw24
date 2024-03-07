@@ -1,5 +1,5 @@
 import { App, Stack } from "aws-cdk-lib";
-import { IApplicationConfig } from "./interfaces/config.interface";
+import { IApplicationConfig } from "./interfaces/config";
 
 export class Application {
     app: App;

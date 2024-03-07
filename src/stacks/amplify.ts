@@ -2,8 +2,8 @@ import { SecretValue } from "aws-cdk-lib";
 import { App, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha'
 import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
 
-import { IApplicationConfig } from "../interfaces/config.interface";
-import { IAmplifyConfig } from "../interfaces/amplify.config.interface";
+import { IApplicationConfig } from "../interfaces/config";
+import { IAmplifyConfig } from "../interfaces/amplify";
 
 export class Amplify {
 
