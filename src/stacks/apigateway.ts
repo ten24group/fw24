@@ -8,7 +8,7 @@ import { IAPIGatewayConfig } from "../interfaces/api-gateway.config.interface";
 import { IApplicationConfig } from "../interfaces/config.interface";
 import ControllerDescriptor from "../interfaces/controller-descriptor.interface";
 import Mutable from "../types/mutable.type";
-import { Duration, Stack } from "aws-cdk-lib";
+import { Duration, Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 
 export class APIGateway {
@@ -106,6 +106,11 @@ export class APIGateway {
 
         const controllerIntegration = new LambdaIntegration(controllerFunction);
         const controllerResource = this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
+        // output the api endpoint
+        new CfnOutput(this.mainStack, `Endpoint${controllerName}`, {
+            value: this.api.url + controllerResource.path.slice(1),
+            description: "API Gateway Endpoint for " + controllerName,
+        });
         console.log(`Registering routes for controller ${controllerName}`, controllerInfo.routes);
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             console.log(`Registering route ${route.httpMethod} ${route.path}`);

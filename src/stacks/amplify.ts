@@ -1,4 +1,4 @@
-import { SecretValue } from "aws-cdk-lib";
+import { SecretValue, CfnOutput } from "aws-cdk-lib";
 import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha'
 import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
 
@@ -38,6 +38,10 @@ export class Amplify {
 
         amplifyApp.addCustomRule(CustomRule.SINGLE_PAGE_APPLICATION_REDIRECT);
         amplifyApp.addBranch(this.config.githubBranch);
+
+        new CfnOutput(mainStack, `AmplifyAppURL-${appConfig.name}`, {
+            value: `https://${this.config.githubBranch}.${amplifyApp.appId}.amplifyapp.com`
+        });
     }
 
 }
