@@ -26,7 +26,7 @@ export class Amplify {
         const mainStack = Reflect.get(globalThis, "mainStack");
 
         const amplifyApp = new App(mainStack, `${appConfig.name}-amplify`, {
-            appName: `${appConfig.name}-amplify-app`,
+            appName: `${this.config.appName}`,
             buildSpec: BuildSpec.fromObject(this.config.buildSpec),
             sourceCodeProvider: new GitHubSourceCodeProvider({
                 owner: this.config.githubOwner,

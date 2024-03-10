@@ -1,4 +1,5 @@
 export interface IAmplifyConfig {
+    appName: string;
     githubOwner: string;
     githubRepo: string;
     githubBranch: string;
