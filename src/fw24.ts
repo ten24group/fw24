@@ -8,3 +8,9 @@ export * from "./application";
 export * from "./stacks/apigateway";
 export * from "./stacks/amplify";
 export * from "./stacks/dynamodb";
+
+export * as Auditor from './audit';
+export * as Validator from './validation' ;
+export * as Logger from './logging'
+export * as EventDispatcher from './event';
+export * from './entity';

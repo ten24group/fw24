@@ -4,11 +4,11 @@ import { Architecture, LayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
 import { readdirSync } from "fs";
 import { resolve, join } from "path";
 
-import { IAPIGatewayConfig } from "../interfaces/api-gateway";
+import { IAPIGatewayConfig } from "../interfaces/apigateway";
 import { IApplicationConfig } from "../interfaces/config";
 import ControllerDescriptor from "../interfaces/controller-descriptor";
 import Mutable from "../types/mutable";
-import { Duration, Stack } from "aws-cdk-lib";
+import { Duration, Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { Helper } from "../core/helper";
 
@@ -21,15 +21,15 @@ export class APIGateway {
     constructor(private config: IAPIGatewayConfig) {
         console.log("APIGateway", config);
         Helper.hydrateConfig(config,'APIGATEWAY');
+
+        if (!this.config.controllers || this.config.controllers.length === 0) {
+            this.config.controllers = "./controllers";
+        }
     }
 
     public construct(appConfig: IApplicationConfig) {
         console.log("APIGateway construct", appConfig);
         this.appConfig = appConfig;
-
-        if (!this.appConfig.controllers || this.appConfig.controllers.length === 0) {
-            this.appConfig.controllers = "./controllers";
-        }
 
         const paramsApi: Mutable<RestApiProps> = this.config.apiOptions || {};
 
@@ -91,7 +91,7 @@ export class APIGateway {
             // lambda IAM role
             bundling: {
                 sourceMap: true,
-                externalModules: ["aws-sdk", "fw24-core"], // review fw24-core
+                externalModules: ["aws-sdk", "fw24"], // review fw24-core
             },
         });
 
@@ -109,6 +109,11 @@ export class APIGateway {
 
         const controllerIntegration = new LambdaIntegration(controllerFunction);
         const controllerResource = this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
+        // output the api endpoint
+        new CfnOutput(this.mainStack, `Endpoint${controllerName}`, {
+            value: this.api.url + controllerResource.path.slice(1),
+            description: "API Gateway Endpoint for " + controllerName,
+        });
         console.log(`Registering routes for controller ${controllerName}`, controllerInfo.routes);
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             console.log(`Registering route ${route.httpMethod} ${route.path}`);
@@ -137,7 +142,7 @@ export class APIGateway {
 
     private async registerControllers() {
         console.log("Registering controllers...");
-        const controllersConfig = this.appConfig?.controllers || [];
+        const controllersConfig = this.config.controllers || [];
         console.log("Controllers config: ", controllersConfig);
 
         if (typeof controllersConfig === "string") {

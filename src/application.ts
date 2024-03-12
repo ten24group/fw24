@@ -6,7 +6,7 @@ export class Application {
     app: App;
     mainStack: Stack;
 
-    constructor(private config: IApplicationConfig) {
+    constructor(private config: IApplicationConfig = {}) {
         console.log("Initializing fw24 infrastructure...");
         // Hydrate the config object with environment variables
         Helper.hydrateConfig(config);

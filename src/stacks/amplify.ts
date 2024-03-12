@@ -1,5 +1,5 @@
-import { SecretValue } from "aws-cdk-lib";
-import { App, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha'
+import { SecretValue, CfnOutput } from "aws-cdk-lib";
+import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha'
 import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
 
 import { IApplicationConfig } from "../interfaces/config";
@@ -26,7 +26,7 @@ export class Amplify {
         const mainStack = Reflect.get(globalThis, "mainStack");
 
         const amplifyApp = new App(mainStack, `${appConfig.name}-amplify`, {
-            appName: `${appConfig.name}-amplify-app`,
+            appName: `${this.config.appName}`,
             buildSpec: BuildSpec.fromObject(this.config.buildSpec),
             sourceCodeProvider: new GitHubSourceCodeProvider({
                 owner: this.config.githubOwner,
@@ -35,8 +35,13 @@ export class Amplify {
                 oauthToken: SecretValue.secretsManager(this.config.secretKeyName),
             })
         });
-  
+
+        amplifyApp.addCustomRule(CustomRule.SINGLE_PAGE_APPLICATION_REDIRECT);
         amplifyApp.addBranch(this.config.githubBranch);
+
+        new CfnOutput(mainStack, `AmplifyAppURL-${appConfig.name}`, {
+            value: `https://${this.config.githubBranch}.${amplifyApp.appId}.amplifyapp.com`
+        });
     }
 
 }
