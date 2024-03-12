@@ -10,6 +10,7 @@ import ControllerDescriptor from "../interfaces/controller-descriptor";
 import Mutable from "../types/mutable";
 import { Duration, Stack } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
+import { Helper } from "../core/helper";
 
 export class APIGateway {
     methods: Map<string, Integration> = new Map();
@@ -19,6 +20,7 @@ export class APIGateway {
 
     constructor(private config: IAPIGatewayConfig) {
         console.log("APIGateway", config);
+        Helper.hydrateConfig(config,'APIGATEWAY');
     }
 
     public construct(appConfig: IApplicationConfig) {
@@ -81,14 +83,15 @@ export class APIGateway {
         const controllerFunction = new NodejsFunction(this.mainStack, controllerName + "-controller", {
             entry: controllerInfo.filePath + "/" + controllerInfo.fileName,
             handler: "handler",
-            runtime: Runtime.NODEJS_18_X,
-            architecture: Architecture.ARM_64,
+            runtime: Runtime.NODEJS_18_X, // define from controller decorator
+            architecture: Architecture.ARM_64, // define from controller decorator
             layers: [LayerVersion.fromLayerVersionArn(this.mainStack, controllerName + "-Fw24CoreLayer", this.getLayerARN())],
-            timeout: Duration.seconds(5),
-            memorySize: 128,
+            timeout: Duration.seconds(5), // define from controller decorator
+            memorySize: 128, // define from controller decorator
+            // lambda IAM role
             bundling: {
                 sourceMap: true,
-                externalModules: ["aws-sdk", "fw24-core"],
+                externalModules: ["aws-sdk", "fw24-core"], // review fw24-core
             },
         });
 

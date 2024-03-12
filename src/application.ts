@@ -1,5 +1,6 @@
 import { App, Stack } from "aws-cdk-lib";
 import { IApplicationConfig } from "./interfaces/config";
+import { Helper } from "./core/helper";
 
 export class Application {
     app: App;
@@ -7,6 +8,8 @@ export class Application {
 
     constructor(private config: IApplicationConfig) {
         console.log("Initializing fw24 infrastructure...");
+        // Hydrate the config object with environment variables
+        Helper.hydrateConfig(config);
         // Create a new CDK App instance
         this.app = new App();
         // Create a new CDK Stack instance for the main stack
