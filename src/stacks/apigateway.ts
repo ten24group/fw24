@@ -22,18 +22,21 @@ export class APIGateway {
     }
 
     public construct(appConfig: IApplicationConfig) {
-        console.log("APIGateway construct", appConfig);
+        console.log("APIGateway construct", appConfig, this.config);
         this.appConfig = appConfig;
 
         if (!this.appConfig.controllers || this.appConfig.controllers.length === 0) {
             throw new Error("No controllers defined");
         }
 
+        this.config.cors = this.config.cors || this.appConfig.cors;
+
         const paramsApi: Mutable<RestApiProps> = this.config.apiOptions || {};
 
         // Enable CORS if defined
         if (this.config.cors) {
-            console.log("Enabling CORS...");
+            console.log("Enabling CORS... this.config.cors: ", this.config.cors);
+            
             paramsApi.defaultCorsPreflightOptions = {
                 allowHeaders: [
                     "Content-Type",
@@ -50,7 +53,7 @@ export class APIGateway {
             };
         }
 
-        console.log("Creating API Gateway...");
+        console.log("Creating API Gateway... paramsApi: ", paramsApi);
 
         this.mainStack = Reflect.get(globalThis, "mainStack");
         this.api = new RestApi(this.mainStack, appConfig.name + "-api", paramsApi);
