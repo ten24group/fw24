@@ -92,7 +92,11 @@ export class CognitoStack {
             // read file from policyFilePath
             const policyfile: string = fs.readFileSync(this.config.policyFilePath, 'utf8');
             authenticatedRole.role.addToPolicy(
-                new iam.PolicyStatement(JSON.parse(policyfile))
+                new iam.PolicyStatement({
+                    effect: JSON.parse(policyfile).Effect,
+                    actions: JSON.parse(policyfile).Action,
+                    resources: JSON.parse(policyfile).Resource,
+                })
             );
         }
 
