@@ -3,4 +3,5 @@ export interface IApplicationConfig {
     coreVersion?: number;
     region?: string;
     account?: string;
+    defaultAuthorizationType?: any;
 }

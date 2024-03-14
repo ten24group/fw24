@@ -1,5 +1,17 @@
+
 export interface IControllerConfig {
 	tableName?: string;
+	authorizers?: IAuthorizerConfig[];
+	env?: ILambdaEnvConfig[];
+}
+export interface IAuthorizerConfig {
+	type: string;
+	secureMethods?: string[];
+	default?: boolean;
+}
+export interface ILambdaEnvConfig {
+	name: string;
+	path: string;
 }
 
 export function Controller(controllerName: string, controllerConfig?: IControllerConfig) {
