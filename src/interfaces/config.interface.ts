@@ -12,4 +12,5 @@ export interface IApplicationConfig {
     account?: string;
     apiOptions?: RestApiProps;
     use?: any[];
+    defaultAuthorizationType?: any;
 }

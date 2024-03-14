@@ -120,11 +120,11 @@ export class APIGateway {
         });
         console.log(`Registering routes for controller ${controllerName}`, controllerInfo.routes);
         // setup authorizer struct
-        var defaultAuthorizer: any = AuthorizationType.NONE;
+        var defaultAuthorizationType: any = this.appConfig?.defaultAuthorizationType || AuthorizationType.NONE;
         var routeAuthorizers: any = {};
         controllerConfig?.authorizers.forEach( ( authorizer: IAuthorizerConfig ) => {
             if (authorizer.default) {
-                defaultAuthorizer = authorizer.type; 
+                defaultAuthorizationType = authorizer.type; 
             }
             authorizer?.secureMethods?.forEach( ( route: string ) => {
                 routeAuthorizers[route] = authorizer.type;
@@ -150,14 +150,14 @@ export class APIGateway {
                 requestParameters[`method.request.path.${param}`] = true;
             }
 
-            var authorizationType = defaultAuthorizer;
+            var authorizationType = defaultAuthorizationType;
             var authorizer = undefined;
 
             // check if authorizer is defined
             if (routeAuthorizers?.[route.functionName] != undefined) {
                 authorizationType = routeAuthorizers[route.functionName];
             } else {
-                authorizationType = defaultAuthorizer;
+                authorizationType = defaultAuthorizationType;
             }
             if ( authorizationType === AuthorizationType.COGNITO) {
                 authorizer = Reflect.get(globalThis, "userPoolAuthorizer");
