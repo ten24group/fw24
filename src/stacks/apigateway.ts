@@ -4,12 +4,13 @@ import { Architecture, LayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
 import { readdirSync } from "fs";
 import { resolve, join } from "path";
 
-import { IAPIGatewayConfig } from "../interfaces/api-gateway.config.interface";
-import { IApplicationConfig } from "../interfaces/config.interface";
-import ControllerDescriptor from "../interfaces/controller-descriptor.interface";
-import Mutable from "../types/mutable.type";
+import { IAPIGatewayConfig } from "../interfaces/apigateway";
+import { IApplicationConfig } from "../interfaces/config";
+import ControllerDescriptor from "../interfaces/controller-descriptor";
+import Mutable from "../types/mutable";
 import { Duration, Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
+import { Helper } from "../core/helper";
 
 export class APIGateway {
     methods: Map<string, Integration> = new Map();
@@ -19,15 +20,16 @@ export class APIGateway {
 
     constructor(private config: IAPIGatewayConfig) {
         console.log("APIGateway", config);
+        Helper.hydrateConfig(config,'APIGATEWAY');
+
+        if (!this.config.controllers || this.config.controllers.length === 0) {
+            this.config.controllers = "./controllers";
+        }
     }
 
     public construct(appConfig: IApplicationConfig) {
         console.log("APIGateway construct", appConfig);
         this.appConfig = appConfig;
-
-        if (!this.appConfig.controllers || this.appConfig.controllers.length === 0) {
-            throw new Error("No controllers defined");
-        }
 
         const paramsApi: Mutable<RestApiProps> = this.config.apiOptions || {};
 
@@ -81,14 +83,15 @@ export class APIGateway {
         const controllerFunction = new NodejsFunction(this.mainStack, controllerName + "-controller", {
             entry: controllerInfo.filePath + "/" + controllerInfo.fileName,
             handler: "handler",
-            runtime: Runtime.NODEJS_18_X,
-            architecture: Architecture.ARM_64,
+            runtime: Runtime.NODEJS_18_X, // define from controller decorator
+            architecture: Architecture.ARM_64, // define from controller decorator
             layers: [LayerVersion.fromLayerVersionArn(this.mainStack, controllerName + "-Fw24CoreLayer", this.getLayerARN())],
-            timeout: Duration.seconds(5),
-            memorySize: 128,
+            timeout: Duration.seconds(5), // define from controller decorator
+            memorySize: 128, // define from controller decorator
+            // lambda IAM role
             bundling: {
                 sourceMap: true,
-                externalModules: ["aws-sdk", "fw24-core"],
+                externalModules: ["aws-sdk", "fw24"], // review fw24-core
             },
         });
 
@@ -139,7 +142,7 @@ export class APIGateway {
 
     private async registerControllers() {
         console.log("Registering controllers...");
-        const controllersConfig = this.appConfig?.controllers || [];
+        const controllersConfig = this.config.controllers || [];
         console.log("Controllers config: ", controllersConfig);
 
         if (typeof controllersConfig === "string") {
