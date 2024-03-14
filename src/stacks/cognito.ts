@@ -2,7 +2,7 @@ import * as awsCognito from "aws-cdk-lib/aws-cognito";
 import * as iam from "aws-cdk-lib/aws-iam";
 import { Duration } from "aws-cdk-lib";
 import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
-import { IApplicationConfig } from "../interfaces/config.interface";
+import { IApplicationConfig } from "../interfaces/config";
 import { CognitoAuthRole } from "../constructs/CognitoAuthRole";
 import * as fs from "fs";
 

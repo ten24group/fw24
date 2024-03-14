@@ -1,4 +1,4 @@
-import { Route } from "./route.interface";
+import { Route } from "./route";
 
 interface ControllerDescriptor {
     controllerClass: any; // The controller class itself
