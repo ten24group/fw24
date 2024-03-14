@@ -1,5 +1,4 @@
 import { Cors, IResource, Integration, LambdaIntegration, RestApi, RestApiProps, AuthorizationType } from "aws-cdk-lib/aws-apigateway";
-import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Architecture, LayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
 import { readdirSync } from "fs";
 import { resolve, join } from "path";
@@ -11,6 +10,7 @@ import Mutable from "../types/mutable.type";
 import { Duration, Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { IAuthorizerConfig, ILambdaEnvConfig } from "../fw24";
+import { LambdaFunction } from "../constructs/lambda-function";
 
 export class APIGateway {
     methods: Map<string, Integration> = new Map();
@@ -78,24 +78,19 @@ export class APIGateway {
         console.log(`Registering controller ${controllerName} from ${controllerInfo.filePath}/${controllerInfo.fileName}`);
 
         // create lambda function for the controller
-        const controllerFunction = new NodejsFunction(this.mainStack, controllerName + "-controller", {
+        const controllerLambda = new LambdaFunction(this.mainStack, controllerName + "-controller", {
             entry: controllerInfo.filePath + "/" + controllerInfo.fileName,
-            handler: "handler",
-            runtime: Runtime.NODEJS_18_X,
-            architecture: Architecture.ARM_64,
             layers: [LayerVersion.fromLayerVersionArn(this.mainStack, controllerName + "-Fw24CoreLayer", this.getLayerARN())],
-            timeout: Duration.seconds(5),
-            memorySize: 128,
             bundling: {
                 sourceMap: true,
-                externalModules: ["aws-sdk", "fw24-core"],
+                externalModules: ["aws-sdk", "fw24"],
             },
         });
 
         // add environment variables from controller config
         controllerConfig?.env.forEach( ( lambdaEnv: ILambdaEnvConfig ) => {
             if (lambdaEnv.path === "globalThis") {
-                controllerFunction.addEnvironment(lambdaEnv.name, Reflect.get(globalThis, lambdaEnv.name));
+                controllerLambda.fn.addEnvironment(lambdaEnv.name, Reflect.get(globalThis, lambdaEnv.name));
             }
         });
 
@@ -105,13 +100,13 @@ export class APIGateway {
             const diRegisteredTableName = `${controllerConfig.tableName}_table`;
             const tableInstance: TableV2 = Reflect.get(globalThis, diRegisteredTableName);
 
-            controllerFunction.addEnvironment(diRegisteredTableName.toUpperCase(), tableInstance.tableName);
-            console.log("🚀 ~ APIGateway ~ registerController ~ controllerFunction.env:", controllerFunction.env);
+            controllerLambda.fn.addEnvironment(diRegisteredTableName.toUpperCase(), tableInstance.tableName);
+            console.log("🚀 ~ APIGateway ~ registerController ~ controllerFunction.env:", controllerLambda.fn.env);
 
-            tableInstance.grantReadWriteData(controllerFunction);
+            tableInstance.grantReadWriteData(controllerLambda.fn);
         }
 
-        const controllerIntegration = new LambdaIntegration(controllerFunction);
+        const controllerIntegration = new LambdaIntegration(controllerLambda.fn);
         const controllerResource = this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
         // output the api endpoint
         new CfnOutput(this.mainStack, `Endpoint${controllerName}`, {
