@@ -1,5 +1,5 @@
 import { Construct } from "constructs";
-import { Function, Runtime, Architecture, LayerVersion } from "aws-cdk-lib/aws-lambda";
+import { Function, Runtime, Architecture } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Duration } from "aws-cdk-lib";
 

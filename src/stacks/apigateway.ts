@@ -1,5 +1,5 @@
 import { Cors, IResource, Integration, LambdaIntegration, RestApi, RestApiProps, AuthorizationType } from "aws-cdk-lib/aws-apigateway";
-import { Architecture, LayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
+import { LayerVersion } from "aws-cdk-lib/aws-lambda";
 import { readdirSync } from "fs";
 import { resolve, join } from "path";
 
@@ -7,7 +7,7 @@ import { IAPIGatewayConfig } from "../interfaces/api-gateway.config.interface";
 import { IApplicationConfig } from "../interfaces/config.interface";
 import ControllerDescriptor from "../interfaces/controller-descriptor.interface";
 import Mutable from "../types/mutable.type";
-import { Duration, Stack, CfnOutput } from "aws-cdk-lib";
+import { Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { IAuthorizerConfig, ILambdaEnvConfig } from "../fw24";
 import { LambdaFunction } from "../constructs/lambda-function";
