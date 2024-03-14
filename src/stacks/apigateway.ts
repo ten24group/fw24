@@ -1,4 +1,4 @@
-import { Cors, IResource, Integration, LambdaIntegration, RestApi, RestApiProps } from "aws-cdk-lib/aws-apigateway";
+import { Cors, IResource, Integration, LambdaIntegration, RestApi, RestApiProps, AuthorizationType } from "aws-cdk-lib/aws-apigateway";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Architecture, LayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
 import { readdirSync } from "fs";
@@ -10,6 +10,7 @@ import ControllerDescriptor from "../interfaces/controller-descriptor.interface"
 import Mutable from "../types/mutable.type";
 import { Duration, Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
+import { IAuthorizerConfig, ILambdaEnvConfig } from "../fw24";
 
 export class APIGateway {
     methods: Map<string, Integration> = new Map();
@@ -54,7 +55,6 @@ export class APIGateway {
 
         this.mainStack = Reflect.get(globalThis, "mainStack");
         this.api = new RestApi(this.mainStack, appConfig.name + "-api", paramsApi);
-
         Reflect.set(globalThis, "api", this.api);
 
         this.registerControllers();
@@ -92,6 +92,13 @@ export class APIGateway {
             },
         });
 
+        // add environment variables from controller config
+        controllerConfig?.env.forEach( ( lambdaEnv: ILambdaEnvConfig ) => {
+            if (lambdaEnv.path === "globalThis") {
+                controllerFunction.addEnvironment(lambdaEnv.name, Reflect.get(globalThis, lambdaEnv.name));
+            }
+        });
+
         if (controllerConfig?.tableName) {
             console.log("🚀 ~ APIGateway ~ registerController ~ if:", controllerConfig);
 
@@ -112,6 +119,18 @@ export class APIGateway {
             description: "API Gateway Endpoint for " + controllerName,
         });
         console.log(`Registering routes for controller ${controllerName}`, controllerInfo.routes);
+        // setup authorizer struct
+        var defaultAuthorizationType: any = this.appConfig?.defaultAuthorizationType || AuthorizationType.NONE;
+        var routeAuthorizers: any = {};
+        controllerConfig?.authorizers.forEach( ( authorizer: IAuthorizerConfig ) => {
+            if (authorizer.default) {
+                defaultAuthorizationType = authorizer.type; 
+            }
+            authorizer?.secureMethods?.forEach( ( route: string ) => {
+                routeAuthorizers[route] = authorizer.type;
+            })     
+        });
+
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             console.log(`Registering route ${route.httpMethod} ${route.path}`);
             let currentResource: IResource = controllerResource;
@@ -131,10 +150,29 @@ export class APIGateway {
                 requestParameters[`method.request.path.${param}`] = true;
             }
 
+            var authorizationType = defaultAuthorizationType;
+            var authorizer = undefined;
+
+            // check if authorizer is defined
+            if (routeAuthorizers?.[route.functionName] != undefined) {
+                authorizationType = routeAuthorizers[route.functionName];
+            } else {
+                authorizationType = defaultAuthorizationType;
+            }
+            if ( authorizationType === AuthorizationType.COGNITO) {
+                authorizer = Reflect.get(globalThis, "userPoolAuthorizer");
+            }
+        
+            console.log(`APIGateway ~ registerController ~ add authorizer ${authorizationType} for ${route.functionName}`);
             currentResource.addMethod(route.httpMethod, controllerIntegration, {
                 requestParameters: requestParameters,
+                authorizationType: authorizationType,
+                authorizer: authorizer,
             });
+
         }
+
+
     }
 
     private async registerControllers() {
