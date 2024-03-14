@@ -156,13 +156,13 @@ export class APIGateway {
             // check if authorizer is defined
             if (routeAuthorizers?.[route.functionName] != undefined) {
                 authorizationType = routeAuthorizers[route.functionName];
-                if ( routeAuthorizers[route.functionName] === AuthorizationType.COGNITO) {
-                    authorizer = Reflect.get(globalThis, "userPoolAuthorizer");
-                }
             } else {
                 authorizationType = defaultAuthorizer;
             }
-            
+            if ( authorizationType === AuthorizationType.COGNITO) {
+                authorizer = Reflect.get(globalThis, "userPoolAuthorizer");
+            }
+        
             console.log(`APIGateway ~ registerController ~ add authorizer ${authorizationType} for ${route.functionName}`);
             currentResource.addMethod(route.httpMethod, controllerIntegration, {
                 requestParameters: requestParameters,

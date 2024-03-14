@@ -2,11 +2,13 @@ import * as awsCognito from "aws-cdk-lib/aws-cognito";
 import * as iam from "aws-cdk-lib/aws-iam";
 import { Duration } from "aws-cdk-lib";
 import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
-
 import { IApplicationConfig } from "../interfaces/config.interface";
+import { CognitoAuthRole } from "../constructs/CognitoAuthRole";
+import * as fs from "fs";
 
 export interface ICognitoConfig {
-    userPool: ICognitoUserPoolConfig
+    userPool: ICognitoUserPoolConfig,
+    policyFilePath?: string;
 }
 
 export interface ICognitoUserPoolConfig {
@@ -65,6 +67,13 @@ export class CognitoStack {
         });
         this.userPoolClient = userPoolClient;
 
+        // cognito autorizer
+        this.userPoolAuthorizer = new CognitoUserPoolsAuthorizer(mainStack, `${appConfig?.name}-Authorizer`, {
+            cognitoUserPools: [userPool],
+            identitySource: 'method.request.header.Authorization',
+        });
+
+        // Identity pool based authentication
         const identityPool = new awsCognito.CfnIdentityPool(mainStack, `${appConfig?.name}-${this.getTenantId()}-identityPool`, {
             allowUnauthenticatedIdentities: true,
             cognitoIdentityProviders: [{
@@ -73,52 +82,19 @@ export class CognitoStack {
             }],
         });
 
-        // IAM role for unauthenticated users
-        this.role = new iam.Role(mainStack, `${appConfig?.name}-cognitoAuthenticatedRole`, {
-            assumedBy: new iam.FederatedPrincipal(
-              "cognito-identity.amazonaws.com",
-              {
-                StringEquals: {
-                  "cognito-identity.amazonaws.com:aud": identityPool.ref,
-                },
-                "ForAnyValue:StringLike": {
-                  "cognito-identity.amazonaws.com:amr": "authenticated",
-                },
-              },
-              "sts:AssumeRoleWithWebIdentity"
-            ),
-          });
-          this.role.addToPolicy(
-            new iam.PolicyStatement({
-              effect: iam.Effect.ALLOW,
-              actions: [
-                "mobileanalytics:PutEvents",
-                "cognito-sync:*",
-                "cognito-identity:*",
-              ],
-              resources: ["*"],
-            })
-          );
-          this.role.addToPolicy(
-            new iam.PolicyStatement({
-              effect: iam.Effect.ALLOW,
-              actions: [
-                "execute-api:Invoke"
-              ],
-              resources: ["*"],
-            })
-          );
-        new awsCognito.CfnIdentityPoolRoleAttachment(mainStack, `${appConfig?.name}-IPRA`, {
-            identityPoolId: identityPool.ref,
-            roles: {
-                authenticated: this.role.roleArn,
-            },
+        // IAM role for authenticated users
+        const authenticatedRole = new CognitoAuthRole(mainStack, "CognitoAuthRole", {
+            identityPool,
         });
 
-        this.userPoolAuthorizer = new CognitoUserPoolsAuthorizer(mainStack, `${appConfig?.name}-Authorizer`, {
-            cognitoUserPools: [userPool],
-            identitySource: 'method.request.header.Authorization',
-        });
+        // apply the policy to the role
+        if (this.config.policyFilePath) {
+            // read file from policyFilePath
+            const policyfile: string = fs.readFileSync(this.config.policyFilePath, 'utf8');
+            authenticatedRole.role.addToPolicy(
+                new iam.PolicyStatement(JSON.parse(policyfile))
+            );
+        }
 
         Reflect.set(globalThis, "userPoolID", userPool.userPoolId);
         Reflect.set(globalThis, "userPoolClientID", userPoolClient.userPoolClientId)
