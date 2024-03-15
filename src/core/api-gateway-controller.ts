@@ -54,10 +54,10 @@ abstract class APIGatewayController {
       // If the response is an instance of ResponseContext, use its status code and body
       if (controllerResponse instanceof ResponseContext) {
         console.log("Response:", JSON.stringify(controllerResponse, null, 2));
-        return {
+        return this.handleResponse({
           statusCode: controllerResponse.statusCode || 500,
           body: controllerResponse.body,
-        };
+        });
       }
     } catch (err) {
       // If an error occurs, log it and handle with the Exception method
@@ -67,10 +67,10 @@ abstract class APIGatewayController {
 
     console.log("Default Response:", JSON.stringify(responseContext, null, 2));
     // Return the finalized API Gateway response
-    return {
+    return this.handleResponse({
       statusCode: responseContext.statusCode,
       body: requestContext.body,
-    };
+    });
   }
 
   /**
@@ -108,10 +108,10 @@ abstract class APIGatewayController {
    * @returns The response object with a 404 status code.
    */
   private handleNotFound(_req: Request): APIGatewayProxyResult {
-    return {
+    return this.handleResponse({
       statusCode: 404,
       body: JSON.stringify({ error: "Not Found" }),
-    };
+    });
   }
 
   /**
@@ -121,10 +121,29 @@ abstract class APIGatewayController {
    * @returns The response object with a 500 status code.
    */
   private handleException(_req: Request, err: Error): APIGatewayProxyResult {
-    return {
+    return this.handleResponse({
       statusCode: 500,
       body: JSON.stringify({ error: err.message }),
-    };
+    });
+  }
+
+  private handleResponse(res: APIGatewayProxyResult): APIGatewayProxyResult {
+    res.headers = res.headers || {};
+
+    /**
+     * 
+     * From : https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html
+     * 
+     * To enable CORS for the Lambda proxy integration, 
+     * you must add Access-Control-Allow-Origin:domain-name to the output headers. 
+     * domain-name can be * for any domain name.
+     * 
+     */
+    
+    // TODO: control the header using some config
+    res.headers["Access-Control-Allow-Origin"] = res.headers["Access-Control-Allow-Origin"] ||  "*";
+
+    return res;
   }
 
   /**
