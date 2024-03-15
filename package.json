@@ -1,6 +1,6 @@
 {
     "name": "@ten24group/fw24",
-    "version": "0.0.1",
+    "version": "0.0.4",
     "main": "./dist/package/fw24.js",
     "types": "./dist/package/fw24.d.ts",
     "repository": {
@@ -29,6 +29,7 @@
     },
     "dependencies": {
         "@aws-cdk/aws-amplify-alpha": "^2.131.0-alpha.0",
+        "@aws-cdk/aws-cognito-identitypool-alpha": "^2.132.0-alpha.0",
         "aws-cdk-lib": "^2.102.0",
         "constructs": "^10.3.0",
         "source-map-support": "^0.5.21"

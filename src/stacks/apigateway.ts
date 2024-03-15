@@ -1,15 +1,17 @@
-import { Cors, IResource, Integration, LambdaIntegration, RestApi, RestApiProps } from "aws-cdk-lib/aws-apigateway";
+import { Cors, IResource, Integration, LambdaIntegration, RestApi, RestApiProps, AuthorizationType } from "aws-cdk-lib/aws-apigateway";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Architecture, LayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
 import { readdirSync } from "fs";
 import { resolve, join } from "path";
 
-import { IAPIGatewayConfig } from "../interfaces/api-gateway.config.interface";
-import { IApplicationConfig } from "../interfaces/config.interface";
-import ControllerDescriptor from "../interfaces/controller-descriptor.interface";
-import Mutable from "../types/mutable.type";
-import { Duration, Stack } from "aws-cdk-lib";
+import { IAPIGatewayConfig } from "../interfaces/apigateway";
+import { IApplicationConfig } from "../interfaces/config";
+import ControllerDescriptor from "../interfaces/controller-descriptor";
+import Mutable from "../types/mutable";
+import { Duration, Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
+import { Helper } from "../core/helper";
+import { IAuthorizerConfig, ILambdaEnvConfig } from "../fw24";
 
 export class APIGateway {
     methods: Map<string, Integration> = new Map();
@@ -19,17 +21,20 @@ export class APIGateway {
 
     constructor(private config: IAPIGatewayConfig) {
         console.log("APIGateway", config);
+        Helper.hydrateConfig(config,'APIGATEWAY');
+
+        if (!this.config.controllers || this.config.controllers.length === 0) {
+            this.config.controllers = "./controllers";
+        }
     }
 
     public construct(appConfig: IApplicationConfig) {
         console.log("APIGateway construct", appConfig, this.config);
         this.appConfig = appConfig;
 
-        if (!this.appConfig.controllers || this.appConfig.controllers.length === 0) {
+        if (!this.config.controllers || this.config.controllers.length === 0) {
             throw new Error("No controllers defined");
         }
-
-        this.config.cors = this.config.cors || this.appConfig.cors;
 
         const paramsApi: Mutable<RestApiProps> = this.config.apiOptions || {};
 
@@ -57,7 +62,6 @@ export class APIGateway {
 
         this.mainStack = Reflect.get(globalThis, "mainStack");
         this.api = new RestApi(this.mainStack, appConfig.name + "-api", paramsApi);
-
         Reflect.set(globalThis, "api", this.api);
 
         this.registerControllers();
@@ -84,15 +88,23 @@ export class APIGateway {
         const controllerFunction = new NodejsFunction(this.mainStack, controllerName + "-controller", {
             entry: controllerInfo.filePath + "/" + controllerInfo.fileName,
             handler: "handler",
-            runtime: Runtime.NODEJS_18_X,
-            architecture: Architecture.ARM_64,
+            runtime: Runtime.NODEJS_18_X, // define from controller decorator
+            architecture: Architecture.ARM_64, // define from controller decorator
             layers: [LayerVersion.fromLayerVersionArn(this.mainStack, controllerName + "-Fw24CoreLayer", this.getLayerARN())],
-            timeout: Duration.seconds(5),
-            memorySize: 128,
+            timeout: Duration.seconds(5), // define from controller decorator
+            memorySize: 128, // define from controller decorator
+            // lambda IAM role
             bundling: {
                 sourceMap: true,
-                externalModules: ["aws-sdk", "fw24-core"],
+                externalModules: ["aws-sdk", "fw24"], // review fw24-core
             },
+        });
+
+        // add environment variables from controller config
+        controllerConfig?.env.forEach( ( lambdaEnv: ILambdaEnvConfig ) => {
+            if (lambdaEnv.path === "globalThis") {
+                controllerFunction.addEnvironment(lambdaEnv.name, Reflect.get(globalThis, lambdaEnv.name));
+            }
         });
 
         if (controllerConfig?.tableName) {
@@ -109,7 +121,24 @@ export class APIGateway {
 
         const controllerIntegration = new LambdaIntegration(controllerFunction);
         const controllerResource = this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
+        // output the api endpoint
+        new CfnOutput(this.mainStack, `Endpoint${controllerName}`, {
+            value: this.api.url + controllerResource.path.slice(1),
+            description: "API Gateway Endpoint for " + controllerName,
+        });
         console.log(`Registering routes for controller ${controllerName}`, controllerInfo.routes);
+        // setup authorizer struct
+        var defaultAuthorizationType: any = this.appConfig?.defaultAuthorizationType || AuthorizationType.NONE;
+        var routeAuthorizers: any = {};
+        controllerConfig?.authorizers.forEach( ( authorizer: IAuthorizerConfig ) => {
+            if (authorizer.default) {
+                defaultAuthorizationType = authorizer.type; 
+            }
+            authorizer?.secureMethods?.forEach( ( route: string ) => {
+                routeAuthorizers[route] = authorizer.type;
+            })     
+        });
+
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             console.log(`Registering route ${route.httpMethod} ${route.path}`);
             let currentResource: IResource = controllerResource;
@@ -129,15 +158,34 @@ export class APIGateway {
                 requestParameters[`method.request.path.${param}`] = true;
             }
 
+            var authorizationType = defaultAuthorizationType;
+            var authorizer = undefined;
+
+            // check if authorizer is defined
+            if (routeAuthorizers?.[route.functionName] != undefined) {
+                authorizationType = routeAuthorizers[route.functionName];
+            } else {
+                authorizationType = defaultAuthorizationType;
+            }
+            if ( authorizationType === AuthorizationType.COGNITO) {
+                authorizer = Reflect.get(globalThis, "userPoolAuthorizer");
+            }
+        
+            console.log(`APIGateway ~ registerController ~ add authorizer ${authorizationType} for ${route.functionName}`);
             currentResource.addMethod(route.httpMethod, controllerIntegration, {
                 requestParameters: requestParameters,
+                authorizationType: authorizationType,
+                authorizer: authorizer,
             });
+
         }
+
+
     }
 
     private async registerControllers() {
         console.log("Registering controllers...");
-        const controllersConfig = this.appConfig?.controllers || [];
+        const controllersConfig = this.config.controllers || [];
         console.log("Controllers config: ", controllersConfig);
 
         if (typeof controllersConfig === "string") {

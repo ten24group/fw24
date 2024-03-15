@@ -1,9 +1,9 @@
 import { APIGatewayEvent, Context, APIGatewayProxyResult } from "aws-lambda";
-import { Route } from "../interfaces/route.interface";
-import { Request } from "../interfaces/request.interface";
-import { Response } from "../interfaces/response.interface";
-import { RequestContext } from "./request-context.class";
-import { ResponseContext } from "./response-context.class";
+import { Route } from "../interfaces/route";
+import { Request } from "../interfaces/request";
+import { Response } from "../interfaces/response";
+import { RequestContext } from "./request-context";
+import { ResponseContext } from "./response-context";
 
 /**
  * Base controller class for handling API Gateway events.
