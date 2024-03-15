@@ -172,12 +172,31 @@ export class APIGateway {
             }
         
             console.log(`APIGateway ~ registerController ~ add authorizer ${authorizationType} for ${route.functionName}`);
+
+            // TODO: link the api input schema
+            // const modell = this.api.addModel('test', {
+            //     schema: {
+            //         type: JsonSchemaType.OBJECT,
+            //         properties: {
+            //             userId: {
+            //                 type: JsonSchemaType.STRING
+            //             },
+            //             name: {
+            //                 type: JsonSchemaType.STRING
+            //             }
+            //         },
+            //         required: ['userId']
+            //     }
+            // });
+
             currentResource.addMethod(route.httpMethod, controllerIntegration, {
                 requestParameters: requestParameters,
                 authorizationType: authorizationType,
                 authorizer: authorizer,
+                // requestModels: {
+                //     'application/json': modell
+                // }
             });
-
         }
 
 
