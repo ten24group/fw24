@@ -11,6 +11,7 @@ import { Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { IAuthorizerConfig, ILambdaEnvConfig } from "../fw24";
 import { LambdaFunction } from "../constructs/lambda-function";
+import { Fw24 } from "../core/fw24";
 
 export class APIGateway {
     methods: Map<string, Integration> = new Map();
@@ -22,9 +23,9 @@ export class APIGateway {
         console.log("APIGateway", config);
     }
 
-    public construct(appConfig: IApplicationConfig) {
-        console.log("APIGateway construct", appConfig);
-        this.appConfig = appConfig;
+    public construct(fw24: Fw24) {
+        console.log("APIGateway construct");
+        this.appConfig = fw24.getConfig();
 
         if (!this.appConfig.controllers || this.appConfig.controllers.length === 0) {
             throw new Error("No controllers defined");
@@ -53,10 +54,10 @@ export class APIGateway {
 
         console.log("Creating API Gateway...");
 
-        this.mainStack = Reflect.get(globalThis, "mainStack");
-        this.api = new RestApi(this.mainStack, appConfig.name + "-api", paramsApi);
-        Reflect.set(globalThis, "api", this.api);
-
+        this.mainStack = fw24.getStack("main");
+        this.api = new RestApi(this.mainStack,  `${fw24.appName}-api`, paramsApi);
+   
+        fw24.addStack("api", this.api);
         this.registerControllers();
     }
 
@@ -66,9 +67,6 @@ export class APIGateway {
         return this.config.cors || [];
     }
 
-    private getLayerARN(): string {
-        return `arn:aws:lambda:${this.appConfig?.region}:${this.mainStack.account}:layer:Fw24CoreLayer:${this.appConfig?.coreVersion}`;
-    }
 
     private registerController(controllerInfo: ControllerDescriptor) {
         controllerInfo.controllerInstance = new controllerInfo.controllerClass();
@@ -79,12 +77,7 @@ export class APIGateway {
 
         // create lambda function for the controller
         const controllerLambda = new LambdaFunction(this.mainStack, controllerName + "-controller", {
-            entry: controllerInfo.filePath + "/" + controllerInfo.fileName,
-            layers: [LayerVersion.fromLayerVersionArn(this.mainStack, controllerName + "-Fw24CoreLayer", this.getLayerARN())],
-            bundling: {
-                sourceMap: true,
-                externalModules: ["aws-sdk", "fw24"],
-            },
+            entry: controllerInfo.filePath + "/" + controllerInfo.fileName
         });
 
         // add environment variables from controller config

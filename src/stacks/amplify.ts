@@ -2,13 +2,13 @@ import { SecretValue, CfnOutput } from "aws-cdk-lib";
 import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha'
 import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
 
-import { IApplicationConfig } from "../interfaces/config.interface";
 import { IAmplifyConfig } from "../interfaces/amplify.config.interface";
+import { Fw24 } from "../core/fw24";
 
 export class Amplify {
 
-    constructor(private config: IAmplifyConfig){
-        console.log('Amplify stack constructor', config);
+    constructor(private stackConfig: IAmplifyConfig){
+        console.log('Amplify stack constructor', stackConfig);
         /*
         https://docs.aws.amazon.com/secretsmanager/latest/userguide/create_secret.html
 
@@ -20,26 +20,29 @@ export class Amplify {
         */
     }
 
-    public construct(appConfig: IApplicationConfig){
-        console.log('Amplify construct appConfig, config', appConfig, this.config);
+    public construct(fw24: Fw24){
+        console.log('Amplify construct for:', this.stackConfig.appName);
 
-        const mainStack = Reflect.get(globalThis, "mainStack");
+        const mainStack = fw24.getStack('main');
+        const stackPrefix = `${fw24.appName}-${this.stackConfig.appName}`;
 
-        const amplifyApp = new App(mainStack, `${appConfig.name}-amplify`, {
-            appName: `${this.config.appName}`,
-            buildSpec: BuildSpec.fromObject(this.config.buildSpec),
+        const amplifyApp = new App(mainStack, `${stackPrefix}-amplify`, {
+            appName: `${this.stackConfig.appName}`,
+            buildSpec: BuildSpec.fromObject(this.stackConfig.buildSpec),
             sourceCodeProvider: new GitHubSourceCodeProvider({
-                owner: this.config.githubOwner,
-                repository: this.config.githubRepo,
+                owner: this.stackConfig.githubOwner,
+                repository: this.stackConfig.githubRepo,
                 // make sure to store the secret value as **plain-text**
-                oauthToken: SecretValue.secretsManager(this.config.secretKeyName),
+                oauthToken: SecretValue.secretsManager(this.stackConfig.secretKeyName),
             })
         });
 
         amplifyApp.addCustomRule(CustomRule.SINGLE_PAGE_APPLICATION_REDIRECT);
-        amplifyApp.addBranch(this.config.githubBranch);
+        amplifyApp.addBranch(this.stackConfig.githubBranch);
 
-        new CfnOutput(mainStack, `AmplifyAppURL-${appConfig.name}`, {
+        fw24.addStack('amplify', amplifyApp);
+
+        new CfnOutput(mainStack, `${stackPrefix}-amplify-url`, {
             value: `https://${this.config.githubBranch}.${amplifyApp.appId}.amplifyapp.com`
         });
     }

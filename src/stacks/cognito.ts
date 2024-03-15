@@ -7,6 +7,7 @@ import { IApplicationConfig } from "../interfaces/config.interface";
 import { CognitoAuthRole } from "../constructs/cognito-auth-role";
 import { LambdaFunction } from "../constructs/lambda-function";
 import { ICognitoConfig } from "../interfaces/cognito.config.interface";
+import { Fw24 } from "../core/fw24";
 
 export class CognitoStack {
     userPool!: UserPool;
@@ -18,12 +19,13 @@ export class CognitoStack {
         console.log("Cognito Stack constructor", config);
     }
 
-    public construct(appConfig: IApplicationConfig) {
-        console.log("Cognito construct", appConfig);
+    public construct(fw24: Fw24) {
+        console.log("Cognito construct");
         const userPoolConfig = this.config.userPool;
 
         const mainStack = Reflect.get(globalThis, "mainStack");
-        const namePrefix = `${appConfig?.name}-${this.getTenantId()}`
+        const namePrefix = `${fw24.appName}-${this.getTenantId()}`
+
 
         // TODO: Add ability to create multiple user pools
         // TODO: Add ability to create multi-teant user pools
@@ -61,7 +63,7 @@ export class CognitoStack {
         this.userPoolClient = userPoolClient;
 
         // cognito autorizer 
-        this.userPoolAuthorizer = new CognitoUserPoolsAuthorizer(mainStack, `${appConfig?.name}-Authorizer`, { // do we need to add tenantId to the name??
+        this.userPoolAuthorizer = new CognitoUserPoolsAuthorizer(mainStack, `${namePrefix}-Authorizer`, { // do we need to add tenantId to the name??
             cognitoUserPools: [userPool],
             identitySource: 'method.request.header.Authorization',
         });
