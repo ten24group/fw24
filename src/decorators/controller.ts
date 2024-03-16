@@ -6,7 +6,7 @@ export interface IControllerConfig {
 }
 export interface IAuthorizerConfig {
 	type: string;
-	secureMethods?: string[];
+	methods?: string[];
 	default?: boolean;
 }
 export interface ILambdaEnvConfig {
