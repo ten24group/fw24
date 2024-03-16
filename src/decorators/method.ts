@@ -1,4 +1,4 @@
-import { Route } from "../interfaces/route.interface";
+import { Route } from "../interfaces/route";
 
 // function InjectParams(
 //   target: any,

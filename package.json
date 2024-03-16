@@ -11,11 +11,11 @@
         "registry": "https://npm.pkg.github.com/ten24group"
     },
     "scripts": {
-        "build:fw24": "tsc",
-        "build:layer": "esbuild --bundle --platform=node --sourcemap ./src/layer/fw24.ts --outdir=dist/layer/nodejs/node_modules",
-        "release:fw24": "npm run build:fw24 && standard-version && git push --follow-tags && npm publish",
-        "release:layer": "npm run build:layer && cdk deploy",
-        "watch:fw24": "tsc -w"
+        "fw24:watch": "tsc -w",
+        "fw24:build": "tsc",
+        "fw24:release": "npm run fw24:build && standard-version && git push --follow-tags && npm publish",
+        "layer:build": "esbuild --bundle --platform=node --sourcemap ./src/layer/fw24.ts --outdir=dist/layer/nodejs/node_modules",
+        "layer:release": "npm run layer:build && cdk deploy"
     },
     "devDependencies": {
         "@types/aws-lambda": "^8.10.125",
@@ -29,6 +29,7 @@
     },
     "dependencies": {
         "@aws-cdk/aws-amplify-alpha": "^2.131.0-alpha.0",
+        "@aws-cdk/aws-cognito-identitypool-alpha": "^2.132.0-alpha.0",
         "aws-cdk-lib": "^2.102.0",
         "constructs": "^10.3.0",
         "source-map-support": "^0.5.21"
