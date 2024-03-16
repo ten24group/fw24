@@ -24,7 +24,7 @@ export class APIGateway {
         Helper.hydrateConfig(config,'APIGATEWAY');
 
         if (!this.config.controllers || this.config.controllers.length === 0) {
-            this.config.controllers = "./controllers";
+            this.config.controllers = "./src/controllers";
         }
     }
 
@@ -101,7 +101,7 @@ export class APIGateway {
         });
 
         // add environment variables from controller config
-        controllerConfig?.env.forEach( ( lambdaEnv: ILambdaEnvConfig ) => {
+        controllerConfig?.env?.forEach( ( lambdaEnv: ILambdaEnvConfig ) => {
             if (lambdaEnv.path === "globalThis") {
                 controllerFunction.addEnvironment(lambdaEnv.name, Reflect.get(globalThis, lambdaEnv.name));
             }
@@ -130,7 +130,7 @@ export class APIGateway {
         // setup authorizer struct
         var defaultAuthorizationType: any = this.appConfig?.defaultAuthorizationType || AuthorizationType.NONE;
         var routeAuthorizers: any = {};
-        controllerConfig?.authorizers.forEach( ( authorizer: IAuthorizerConfig ) => {
+        controllerConfig?.authorizers?.forEach( ( authorizer: IAuthorizerConfig ) => {
             if (authorizer.default) {
                 defaultAuthorizationType = authorizer.type; 
             }
