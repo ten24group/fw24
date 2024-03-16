@@ -134,7 +134,7 @@ export class APIGateway {
             if (authorizer.default) {
                 defaultAuthorizationType = authorizer.type; 
             }
-            authorizer?.secureMethods?.forEach( ( route: string ) => {
+            authorizer?.methods?.forEach( ( route: string ) => {
                 routeAuthorizers[route] = authorizer.type;
             })     
         });
