@@ -6,7 +6,7 @@ import { Queue } from "aws-cdk-lib/aws-sqs";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Architecture, LayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
 import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
-
+import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 
 import QueueDescriptor from "../interfaces/queue-descriptor";
 import { IApplicationConfig } from "../interfaces/config";
@@ -88,6 +88,20 @@ export class SQS {
                 queueFunction.addEnvironment(lambdaEnv.name, Reflect.get(globalThis, lambdaEnv.name));
             }
         });
+
+        // add dynanoDB support
+        if (queueConfig?.tableName) {
+            console.log("🚀 ~ Queue ~ registerQueue ~ if:", queueConfig);
+
+            const diRegisteredTableName = `${queueConfig.tableName}_table`;
+            const tableInstance: TableV2 = Reflect.get(globalThis, diRegisteredTableName);
+
+            queueFunction.addEnvironment(diRegisteredTableName.toUpperCase(), tableInstance.tableName);
+            console.log("🚀 ~ Queue ~ registerQueue ~ queueFunction.env:", queueFunction.env);
+
+            tableInstance.grantReadWriteData(queueFunction);
+        }
+
 
         // add event source for the queue
         queueFunction.addEventSource(new SqsEventSource(queue));

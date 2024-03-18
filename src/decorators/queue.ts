@@ -1,5 +1,6 @@
 
 export interface IQueueConfig {
+	tableName?: string;
 	env?: IQLambdaEnvConfig[];
 }
 export interface IQLambdaEnvConfig {
