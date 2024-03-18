@@ -13,7 +13,6 @@ interface LambdaFunctionProps {
   layerArn?: string;
   layers?: ILayerVersion[];
   bundling?: BundlingOptions;
-  
 }
 
 export class LambdaFunction extends Construct {
