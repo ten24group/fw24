@@ -3,27 +3,30 @@ import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { Duration } from "aws-cdk-lib";
 import { readFileSync } from "fs";
-import { IApplicationConfig } from "../interfaces/config.interface";
 import { CognitoAuthRole } from "../constructs/cognito-auth-role";
 import { LambdaFunction } from "../constructs/lambda-function";
 import { ICognitoConfig } from "../interfaces/cognito.config.interface";
+import { Fw24 } from "../core/fw24";
+import { IStack } from "../interfaces/stack";
 
-export class CognitoStack {
+export class CognitoStack implements IStack {
     userPool!: UserPool;
     userPoolClient!: UserPoolClient;
     userPoolAuthorizer!: CognitoUserPoolsAuthorizer;
     //role!: Role;
 
+    // default contructor to initialize the stack configuration
     constructor(private config: ICognitoConfig) {
         console.log("Cognito Stack constructor", config);
     }
 
-    public construct(appConfig: IApplicationConfig) {
-        console.log("Cognito construct", appConfig);
-        const userPoolConfig = this.config.userPool;
+    // construct method to create the stack
+    public construct(fw24: Fw24) {
+        console.log("Cognito construct");
 
-        const mainStack = Reflect.get(globalThis, "mainStack");
-        const namePrefix = `${appConfig?.name}-${this.getTenantId()}`
+        const userPoolConfig = this.config.userPool;
+        const mainStack = fw24.getStack("main");
+        const namePrefix = `${fw24.appName}-${this.getTenantId()}`
 
         // TODO: Add ability to create multiple user pools
         // TODO: Add ability to create multi-teant user pools
@@ -61,7 +64,7 @@ export class CognitoStack {
         this.userPoolClient = userPoolClient;
 
         // cognito autorizer 
-        this.userPoolAuthorizer = new CognitoUserPoolsAuthorizer(mainStack, `${appConfig?.name}-Authorizer`, { // do we need to add tenantId to the name??
+        this.userPoolAuthorizer = new CognitoUserPoolsAuthorizer(mainStack, `${namePrefix}-Authorizer`, {
             cognitoUserPools: [userPool],
             identitySource: 'method.request.header.Authorization',
         });
@@ -76,7 +79,7 @@ export class CognitoStack {
         });
 
         // IAM role for authenticated users
-        const authenticatedRole = new CognitoAuthRole(mainStack, "CognitoAuthRole", { // do we need to add tenantId to the name??
+        const authenticatedRole = new CognitoAuthRole(mainStack, "CognitoAuthRole", {
             identityPool,
         });
 
@@ -98,15 +101,17 @@ export class CognitoStack {
                 // Will it be one lambda per tenant?
                 const lambdaTrigger = new LambdaFunction(mainStack, `${namePrefix}-${trigger.trigger}-lambdaFunction`, {
                     entry: trigger.lambdaFunctionPath,
-                    // do we need the layer?
+                    layerArn: fw24.getLayerARN(),
                 });
                 userPool.addTrigger(trigger.trigger, lambdaTrigger.fn);
             }
         }
 
-        Reflect.set(globalThis, "userPoolID", userPool.userPoolId);
-        Reflect.set(globalThis, "userPoolClientID", userPoolClient.userPoolClientId)
-        Reflect.set(globalThis, "userPoolAuthorizer", this.userPoolAuthorizer)
+        // Reflect.set(globalThis, "userPoolID", userPool.userPoolId);
+        // Reflect.set(globalThis, "userPoolClientID", userPoolClient.userPoolClientId);
+        // Reflect.set(globalThis, "userPoolAuthorizer", this.userPoolAuthorizer);
+
+        fw24.setAuthorizer(this.userPoolAuthorizer);
     }
 
     private getTenantId() {
