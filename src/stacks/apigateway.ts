@@ -3,6 +3,7 @@ import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Architecture, LayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
 import { readdirSync } from "fs";
 import { resolve, join } from "path";
+import { Queue } from "aws-cdk-lib/aws-sqs";
 
 import { IAPIGatewayConfig } from "../interfaces/apigateway";
 import { IApplicationConfig } from "../interfaces/config";
@@ -18,6 +19,7 @@ export class APIGateway {
     appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;
     api!: RestApi;
+    mailQueue!: any;
 
     constructor(private config: IAPIGatewayConfig) {
         console.log("APIGateway", config);
@@ -62,6 +64,14 @@ export class APIGateway {
 
         this.mainStack = Reflect.get(globalThis, "mainStack");
         this.api = new RestApi(this.mainStack, appConfig.name + "-api", paramsApi);
+        // if mailqueue is defined, add it to the lambda function
+        const mailQueneName = this.appConfig?.mailQueueName
+        if (mailQueneName) {
+            const queueArn = `arn:aws:sqs:${this.appConfig?.region}:${this.mainStack.account}:${mailQueneName}`
+            this.mailQueue = Queue.fromQueueArn(this.mainStack, `${mailQueneName}-instance`, queueArn);
+        }
+
+
         Reflect.set(globalThis, "api", this.api);
 
         this.registerControllers();
@@ -119,6 +129,13 @@ export class APIGateway {
             tableInstance.grantReadWriteData(controllerFunction);
         }
 
+        // if mailqueue is defined, add it to the lambda function
+        const mailQueneName = this.appConfig?.mailQueueName
+        if (mailQueneName) {
+            this.mailQueue.grantSendMessages(controllerFunction);
+            controllerFunction.addEnvironment(`MailQueueUrl`, this.mailQueue.queueUrl);
+        }
+        
         const controllerIntegration = new LambdaIntegration(controllerFunction);
         const controllerResource = this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
         // output the api endpoint
