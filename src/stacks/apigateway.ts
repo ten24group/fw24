@@ -1,6 +1,7 @@
 import { Cors, IResource, Integration, LambdaIntegration, RestApi, RestApiProps, AuthorizationType } from "aws-cdk-lib/aws-apigateway";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Architecture, LayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
+import { Queue } from "aws-cdk-lib/aws-sqs";
 import { readdirSync } from "fs";
 import { resolve, join } from "path";
 
@@ -11,7 +12,7 @@ import Mutable from "../types/mutable";
 import { Duration, Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { Helper } from "../core/helper";
-import { IAuthorizerConfig, ILambdaEnvConfig } from "../fw24";
+import { IAuthorizerConfig, ILambdaEnvConfig, IControllerSQSConfig } from "../fw24";
 
 export class APIGateway {
     methods: Map<string, Integration> = new Map();
@@ -104,6 +105,16 @@ export class APIGateway {
         controllerConfig?.env?.forEach( ( lambdaEnv: ILambdaEnvConfig ) => {
             if (lambdaEnv.path === "globalThis") {
                 controllerFunction.addEnvironment(lambdaEnv.name, Reflect.get(globalThis, lambdaEnv.name));
+            }
+        });
+
+        // add queue permissions
+        controllerConfig?.queue?.forEach( ( queue: IControllerSQSConfig ) => {
+            if (queue.path === "globalThis") {
+                const queueArn = `arn:aws:sqs:${this.appConfig?.region}:${this.mainStack.account}:${queue.name}`
+                const queueInstance = Queue.fromQueueArn(this.mainStack, queue.name, queueArn);
+                queueInstance.grantSendMessages(controllerFunction);
+                controllerFunction.addEnvironment(`${queue.name}_queueUrl`, queueInstance.queueUrl);
             }
         });
 

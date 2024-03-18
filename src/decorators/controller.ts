@@ -3,6 +3,7 @@ export interface IControllerConfig {
 	tableName?: string;
 	authorizers?: IAuthorizerConfig[];
 	env?: ILambdaEnvConfig[];
+	queue?: IControllerSQSConfig[];
 }
 export interface IAuthorizerConfig {
 	type: string;
@@ -10,6 +11,10 @@ export interface IAuthorizerConfig {
 	default?: boolean;
 }
 export interface ILambdaEnvConfig {
+	name: string;
+	path: string;
+}
+export interface IControllerSQSConfig {
 	name: string;
 	path: string;
 }
