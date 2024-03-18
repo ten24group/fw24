@@ -1,12 +1,12 @@
 import { App, Stack } from "aws-cdk-lib";
 import { Fw24 } from "./core/fw24";
-import { IApplicationConfig } from "./interfaces/config.interface";
+import { IApplicationConfig } from "./interfaces/config";
 
 
 export class Application {
     private _fw24: Fw24;
 
-    constructor(private config: IApplicationConfig) {
+    constructor(config: IApplicationConfig = {}) {
         console.log("Initializing fw24 infrastructure...");
 
         // initialize the Fw24 object

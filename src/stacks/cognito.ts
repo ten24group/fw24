@@ -3,7 +3,6 @@ import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { Duration } from "aws-cdk-lib";
 import { readFileSync } from "fs";
-import { IApplicationConfig } from "../interfaces/config.interface";
 import { CognitoAuthRole } from "../constructs/cognito-auth-role";
 import { LambdaFunction } from "../constructs/lambda-function";
 import { ICognitoConfig } from "../interfaces/cognito.config.interface";

@@ -1,4 +1,4 @@
-import { Request } from '../interfaces/request.interface';
+import { Request } from '../interfaces/request';
 import { APIGatewayEvent, Context } from "aws-lambda";
 
 export class RequestContext implements Request {
@@ -31,8 +31,11 @@ export class RequestContext implements Request {
         this.httpMethod = event.httpMethod;
 
         if (event.body) {
+            
+            const contentType = event.headers['Content-Type'] || event.headers['content-type']; // some clients sent it all small-cases; will require a better solution
+
             // application/x-www-form-urlencoded
-            if (event.headers['Content-Type'] === 'application/x-www-form-urlencoded') {
+            if (contentType === 'application/x-www-form-urlencoded') {
                 this.body = {};
                 event.body.split('&').forEach((param) => {
                     const [key, value] = param.split('=');
@@ -40,15 +43,16 @@ export class RequestContext implements Request {
                 });
             }
             //application/json
-            else if (event.headers['Content-Type'] === 'application/json') {
+            else if (contentType === 'application/json') {
                 try{
                     this.body = JSON.parse(event.body);
                 }catch(e){
+                    console.error("Error in parsing the event body...", event.body);
                     this.body = event.body;
                 }
             }
             //multipart/form-data
-            else if (event.headers['Content-Type'] === 'multipart/form-data') {
+            else if (contentType === 'multipart/form-data') {
                 // TODO: parse multipart/form-data
                 this.body = event.body;
             }else{

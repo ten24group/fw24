@@ -2,7 +2,7 @@ import { SecretValue, CfnOutput } from "aws-cdk-lib";
 import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha'
 import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
 
-import { IAmplifyConfig } from "../interfaces/amplify.config.interface";
+import { IAmplifyConfig } from "../interfaces/amplify";
 import { Fw24 } from "../core/fw24";
 
 export class Amplify {
