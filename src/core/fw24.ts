@@ -1,10 +1,15 @@
+import { IAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2';
+import { AuthorizationType } from "../types/autorization-type";
 import { IApplicationConfig } from '../interfaces/config';
+import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { Helper } from './helper';
 
 export class Fw24 {
     public appName: string = "fw24";
     private stacks: any = {};
-    private authorizer: any
+    private environment: any = {};
+    private cognitoAuthorizer!: IAuthorizer;
+    private dynamoTables: { [key: string]: TableV2 } = {};
 
     constructor(private config: IApplicationConfig) {
         // Hydrate the config object with environment variables
@@ -33,11 +38,41 @@ export class Fw24 {
         return `arn:aws:lambda:${this.config.region}:${this.stacks['main'].account}:layer:Fw24CoreLayer:${this.config.coreVersion}`;
     }
 
-    public setAuthorizer(authorizer: any) {
-        this.authorizer = authorizer;
+    public setCognitoAuthorizer(authorizer: IAuthorizer) {
+        this.cognitoAuthorizer = authorizer;
     }
 
-    public getAuthorizer() {
-        return this.authorizer;
+    public getCognitoAuthorizer(): IAuthorizer {
+        return this.cognitoAuthorizer;
+    }
+
+    public getAuthorizer(authorizationType: AuthorizationType): IAuthorizer | undefined {
+        if(authorizationType === AuthorizationType.COGNITO) {
+            return this.getCognitoAuthorizer();
+        }
+        
+        return undefined;
+    }
+
+    public set(name: string, value: any, prefix: string = '') {
+        if(prefix.length > 0) {
+            prefix = `${prefix}_`;
+        }
+        this.environment[`${prefix}${name}`] = value;
+    }
+
+    public get(name: string, prefix: string = ''): any {
+        if(prefix.length > 0) {
+            prefix = `${prefix}_`;
+        }
+        return this.environment[`${prefix}${name}`];
+    }
+
+    public addDynamoTable(name: string, table: TableV2) {
+        this.dynamoTables[name] = table;
+    }
+
+    public getDynamoTable(name: string): TableV2{
+        return this.dynamoTables[name];
     }
 }

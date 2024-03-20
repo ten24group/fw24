@@ -5,14 +5,17 @@ import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-
 import { IAmplifyConfig } from "../interfaces/amplify";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
+import { Helper } from "../core/helper";
 
 export class Amplify implements IStack{
-
     // default contructor to initialize the stack configuration
     constructor(private stackConfig: IAmplifyConfig){
         console.log('Amplify stack constructor', stackConfig);
+        // hydrate the config object with environment variables ex: AMPLIFY_GITHUB_OWNER
+        Helper.hydrateConfig(stackConfig, 'AMPLIFY');
+        // hydrate the config object with environment variables ex: AMPLIFY_ADMIN_GITHUB_REPO
+        Helper.hydrateConfig(stackConfig, `AMPLIFY_${this.stackConfig.appName.toUpperCase()}`);
     }
-
     // construct method to create the stack
     public construct(fw24: Fw24){
         console.log('Amplify construct for:', this.stackConfig.appName);
@@ -39,7 +42,7 @@ export class Amplify implements IStack{
         fw24.addStack('amplify', amplifyApp);
         // add the amplify url to the main stack outputs
         new CfnOutput(mainStack, `${stackPrefix}-amplify-url`, {
-            value: `https://${this.config.githubBranch}.${amplifyApp.appId}.amplifyapp.com`
+            value: `https://${this.stackConfig.githubBranch}.${amplifyApp.appId}.amplifyapp.com`
         });
     }
 }

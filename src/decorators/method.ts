@@ -1,4 +1,5 @@
 import { Route } from "../interfaces/route";
+import { AuthorizationType } from "../types/autorization-type";
 
 // function InjectParams(
 //   target: any,
@@ -37,6 +38,7 @@ function createRouteDecorator(method: string) {
         httpMethod: method,
         functionName: methodToDecorate.name || methodToDecorate,
         parameters: parameters,
+        authorizationType: Reflect.get(target, "authorizer") || AuthorizationType.NONE,
       };
       Reflect.set(target, "routes", routes);
       //InjectParams(target, methodToDecorate, descriptor);
@@ -49,3 +51,17 @@ export const Put = createRouteDecorator("PUT");
 export const Delete = createRouteDecorator("DELETE");
 export const Patch = createRouteDecorator("PATCH");
 export const Options = createRouteDecorator("OPTIONS");
+
+
+export function Authorizer(authorizationType: AuthorizationType) {
+  return function (target: any, methodToDecorate: any) {
+    const routes: Record<string, Route> = Reflect.get(target, "routes") || {};
+    const route = Object.values(routes).find(
+      (route) => route.functionName === methodToDecorate
+    );
+    if (!route) {
+      throw new Error("Route not found");
+    }
+    route.authorizationType = authorizationType;
+  };
+}

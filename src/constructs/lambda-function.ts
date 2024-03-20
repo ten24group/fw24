@@ -1,7 +1,8 @@
 import { Construct } from "constructs";
+import { Duration } from "aws-cdk-lib";
+import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { Function, Runtime, Architecture, ILayerVersion, LayerVersion } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction, NodejsFunctionProps, BundlingOptions } from "aws-cdk-lib/aws-lambda-nodejs";
-import { Duration } from "aws-cdk-lib";
 
 interface LambdaFunctionProps {
   entry: string;
@@ -13,6 +14,8 @@ interface LambdaFunctionProps {
   layerArn?: string;
   layers?: ILayerVersion[];
   bundling?: BundlingOptions;
+  policies?: any[];
+  env?: any;
 }
 
 export class LambdaFunction extends Construct {
@@ -36,11 +39,18 @@ export class LambdaFunction extends Construct {
         sourceMap: true,
         externalModules: ["aws-sdk", "fw24"],
       };
-      delete props.layerArn;
     }
 
     this.fn = new NodejsFunction(this, id, { ...defaultProps, ...props });
 
-    //this.fn.addToPolicy();
+
+    // Attach policies to the function
+    if(props.policies){
+      props.policies.forEach(policy => {
+        this.fn.addToRolePolicy(
+          new PolicyStatement(policy)
+        );
+      });
+    }
   }
 }
