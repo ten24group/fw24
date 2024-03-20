@@ -14,6 +14,8 @@ abstract class SQSController {
 
   abstract initialize(event: SQSEvent, context: Context): Promise<void>;
 
+  abstract process(event: any, context: any): void;
+
   /**
    * Lambda handler for the queue.
    * Handles incoming SQS events.
@@ -22,11 +24,13 @@ abstract class SQSController {
    * @returns The SQS response object.
    */
   async LambdaHandler(event: SQSEvent, context: Context): Promise<void> {
-    console.log("Received event:", JSON.stringify(event, null, 2));
+    console.log("SQS-LambdaHandler Received event:", JSON.stringify(event, null, 2));
 
     // hook for the application to initialize it's state, Dependencies, config etc
     await this.initialize(event, context);
     // Execute the associated route function
+
+    this.process(event, context);
 }
 
 /**
