@@ -1,17 +1,13 @@
+import { AuthorizationType } from "../types/autorization-type";
 
 export interface IControllerConfig {
 	tableName?: string;
-	authorizers?: IAuthorizerConfig[];
+	authorizationType?: AuthorizationType;
 	env?: ILambdaEnvConfig[];
-}
-export interface IAuthorizerConfig {
-	type: string;
-	methods?: string[];
-	default?: boolean;
 }
 export interface ILambdaEnvConfig {
 	name: string;
-	path: string;
+	prefix?: string;
 }
 
 export function Controller(controllerName: string, controllerConfig?: IControllerConfig) {
@@ -19,8 +15,16 @@ export function Controller(controllerName: string, controllerConfig?: IControlle
 		return class extends target {
 			constructor(...args: any[]) {
 				super(...args);
+				// set the controller name
 				Reflect.set(this, 'controllerName', controllerName);
-				Reflect.set(this, 'controllerConfig', controllerConfig);
+
+				// initialize the default controller config
+				const defaultConfig: IControllerConfig = {
+					authorizationType: AuthorizationType.NONE,
+					env: []
+				};
+				// set the controller config
+				Reflect.set(this, 'controllerConfig', { ...defaultConfig, ...controllerConfig });
 			}
 		};
 	};

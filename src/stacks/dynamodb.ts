@@ -1,34 +1,36 @@
-import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import { TablePropsV2, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 
-import { IApplicationConfig } from "../interfaces/config";
+import { IStack } from "../interfaces/stack";
+import { Fw24 } from "../core/fw24";
 
 export interface IDynamoConfig {
-    table: IDynamoTableConfig;
+    table: {
+        name: string;
+        props: TablePropsV2;
+    }
 }
 
-export interface IDynamoTableConfig {
-    name: string;
-    props: dynamodb.TablePropsV2;
-}
+export class DynamoStack implements IStack {
 
-export class DynamoStack {
+    // default contructor to initialize the stack configuration
     constructor(private config: IDynamoConfig) {
         console.log("DynamoDBTable");
     }
 
-    public construct(appConfig: IApplicationConfig) {
-        console.log("DynamoDB construct", appConfig);
+    // construct method to create the stack
+    public construct(fw24: Fw24) {
+        console.log("DynamoDB construct");
 
-        const mainStack = Reflect.get(globalThis, "mainStack");
+        const mainStack = fw24.getStack("main");
         const appQualifiedTableName = `${this.config.table.name}_table`;
 
         console.log("🚀 ~ DynamoStack ~ construct ~ appQualifiedTableName:", appQualifiedTableName);
         // new dynamodb.Table(mainStack, this.config.table.name, {});
 
         // See https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_dynamodb-readme.html
-        const tableInstance = new dynamodb.TableV2(mainStack, appQualifiedTableName, this.config.table.props);
+        const tableInstance = new TableV2(mainStack, appQualifiedTableName, this.config.table.props);
 
         // Register the table instance as a global container
-        Reflect.set(globalThis, appQualifiedTableName, tableInstance);
+        fw24.addDynamoTable(this.config.table.name, tableInstance);
     }
 }

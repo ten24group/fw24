@@ -1,5 +1,4 @@
-import { Cors, IResource, Integration, LambdaIntegration, RestApi, RestApiProps, AuthorizationType } from "aws-cdk-lib/aws-apigateway";
-import { LayerVersion } from "aws-cdk-lib/aws-lambda";
+import { Cors, IResource, Integration, LambdaIntegration, RestApi, RestApiProps } from "aws-cdk-lib/aws-apigateway";
 import { readdirSync } from "fs";
 import { resolve, join } from "path";
 
@@ -10,35 +9,34 @@ import Mutable from "../types/mutable";
 import { Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { Helper } from "../core/helper";
-import { IAuthorizerConfig, ILambdaEnvConfig } from "../fw24";
+import { IControllerConfig } from "../fw24";
 import { LambdaFunction } from "../constructs/lambda-function";
 import { Fw24 } from "../core/fw24";
+import { IStack } from "../interfaces/stack";
 
-export class APIGateway {
+export class APIGateway implements IStack {
     methods: Map<string, Integration> = new Map();
     appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;
     api!: RestApi;
+    fw24!: Fw24;
 
+    // default contructor to initialize the stack configuration
     constructor(private config: IAPIGatewayConfig) {
         console.log("APIGateway", config);
+        // hydrate the config object with environment variables ex: APIGATEWAY_CONTROLLERS
         Helper.hydrateConfig(config,'APIGATEWAY');
-
-        if (!this.config.controllers || this.config.controllers.length === 0) {
-            this.config.controllers = "./src/controllers";
-        }
     }
 
+    // construct method to create the stack
     public construct(fw24: Fw24) {
         console.log("APIGateway construct");
+        // make the fw24 instance available to the class
+        this.fw24 = fw24;
+        // make the appConfig available to the class
         this.appConfig = fw24.getConfig();
-
-        if (!this.config.controllers || this.config.controllers.length === 0) {
-            throw new Error("No controllers defined");
-        }
-
+        // set the default api options
         const paramsApi: Mutable<RestApiProps> = this.config.apiOptions || {};
-
         // Enable CORS if defined
         if (this.config.cors) {
             console.log("Enabling CORS... this.config.cors: ", this.config.cors);
@@ -58,73 +56,111 @@ export class APIGateway {
                 allowOrigins: this.getCors(),
             };
         }
-
         console.log("Creating API Gateway... paramsApi: ", paramsApi);
-
+        // get the main stack from the framework
         this.mainStack = fw24.getStack("main");
+        // create the api gateway
         this.api = new RestApi(this.mainStack,  `${fw24.appName}-api`, paramsApi);
-   
+        // add the api to the framework
         fw24.addStack("api", this.api);
+        // register the controllers
         this.registerControllers();
     }
 
+    // get the cors configuration
     private getCors(): string[] {
         if (this.config.cors === true) return Cors.ALL_ORIGINS;
         if (typeof this.config.cors === "string") return [this.config.cors];
         return this.config.cors || [];
     }
 
+    // register the controllers
+    private async registerControllers() {
+        console.log("Registering controllers...");
+        // get the controllers config, default to ./src/controllers
+        const controllersConfig = this.config.controllers || "./src/controllers";
+        console.log("Controllers config: ", controllersConfig);
+        // Resolve the absolute path
+        const controllersDirectory = resolve(controllersConfig);
+        // Get all the files in the controllers directory
+        const controllerFiles = readdirSync(controllersDirectory);
+        // Filter the files to only include TypeScript files
+        const controllerPaths = controllerFiles.filter((file) => file.endsWith(".ts"));
 
+        for (const controllerPath of controllerPaths) {
+            try {
+                // Dynamically import the controller file
+                const module = await import(join(controllersDirectory, controllerPath));
+
+                // Find and instantiate controller classes
+                const controllerClasses = Object.values(module).filter(
+                    (exportedItem) => typeof exportedItem === "function" && exportedItem.name !== "handler"
+                );
+
+                for (const controllerClass of controllerClasses) {
+                    const controllerInfo: ControllerDescriptor = {
+                        controllerClass,
+                        fileName: controllerPath,
+                        filePath: controllersDirectory,
+                    };
+                    this.registerController(controllerInfo);
+                }
+            } catch (err) {
+                console.error("Error registering controller:", controllerPath, err);
+            }
+        } 
+    }
+
+    private getEnvironmentVariables(controllerConfig: IControllerConfig): any {
+        const env: any = {};
+        for (const envConfig of controllerConfig.env || []) {
+            const value = this.fw24.get(envConfig.name, envConfig.prefix || '');
+            if (value) {
+                env[envConfig.name] = value;
+            }
+        }
+        return env;
+    }
+
+    // register a single controller
     private registerController(controllerInfo: ControllerDescriptor) {
+        // TODO: cleanup this part
         controllerInfo.controllerInstance = new controllerInfo.controllerClass();
         const controllerName = controllerInfo.controllerInstance.controllerName;
         const controllerConfig = controllerInfo.controllerInstance?.controllerConfig;
         controllerInfo.routes = controllerInfo.controllerInstance.routes;
+
         console.log(`Registering controller ${controllerName} from ${controllerInfo.filePath}/${controllerInfo.fileName}`);
+
+        // create the api resource for the controller if it doesn't exist
+        const controllerResource = this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
+
+        console.log(`Registering routes for controller ${controllerName}`, controllerInfo.routes);
 
         // create lambda function for the controller
         const controllerLambda = new LambdaFunction(this.mainStack, controllerName + "-controller", {
-            entry: controllerInfo.filePath + "/" + controllerInfo.fileName
+            entry: controllerInfo.filePath + "/" + controllerInfo.fileName,
+            layerArn: this.fw24.getLayerARN(),
+            env: this.getEnvironmentVariables(controllerConfig),
         });
 
-        // add environment variables from controller config
-        controllerConfig?.env?.forEach( ( lambdaEnv: ILambdaEnvConfig ) => {
-            if (lambdaEnv.path === "globalThis") {
-                controllerLambda.fn.addEnvironment(lambdaEnv.name, Reflect.get(globalThis, lambdaEnv.name));
-            }
-        });
 
+        // belongs here? TBD
         if (controllerConfig?.tableName) {
             console.log("🚀 ~ APIGateway ~ registerController ~ if:", controllerConfig);
 
             const diRegisteredTableName = `${controllerConfig.tableName}_table`;
-            const tableInstance: TableV2 = Reflect.get(globalThis, diRegisteredTableName);
+            const tableInstance: TableV2 = this.fw24.getDynamoTable(controllerConfig.tableName);
 
             controllerLambda.fn.addEnvironment(diRegisteredTableName.toUpperCase(), tableInstance.tableName);
             console.log("🚀 ~ APIGateway ~ registerController ~ controllerFunction.env:", controllerLambda.fn.env);
 
             tableInstance.grantReadWriteData(controllerLambda.fn);
         }
-
+    
+        // create the lambda integration
         const controllerIntegration = new LambdaIntegration(controllerLambda.fn);
-        const controllerResource = this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
-        // output the api endpoint
-        new CfnOutput(this.mainStack, `Endpoint${controllerName}`, {
-            value: this.api.url + controllerResource.path.slice(1),
-            description: "API Gateway Endpoint for " + controllerName,
-        });
-        console.log(`Registering routes for controller ${controllerName}`, controllerInfo.routes);
-        // setup authorizer struct
-        var defaultAuthorizationType: any = this.appConfig?.defaultAuthorizationType || AuthorizationType.NONE;
-        var routeAuthorizers: any = {};
-        controllerConfig?.authorizers?.forEach( ( authorizer: IAuthorizerConfig ) => {
-            if (authorizer.default) {
-                defaultAuthorizationType = authorizer.type; 
-            }
-            authorizer?.methods?.forEach( ( route: string ) => {
-                routeAuthorizers[route] = authorizer.type;
-            })     
-        });
+      
 
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             console.log(`Registering route ${route.httpMethod} ${route.path}`);
@@ -144,93 +180,22 @@ export class APIGateway {
             for (const param of route.parameters) {
                 requestParameters[`method.request.path.${param}`] = true;
             }
-
-            var authorizationType = defaultAuthorizationType;
-            var authorizer = undefined;
-
-            // check if authorizer is defined
-            if (routeAuthorizers?.[route.functionName] != undefined) {
-                authorizationType = routeAuthorizers[route.functionName];
-            } else {
-                authorizationType = defaultAuthorizationType;
-            }
-            if ( authorizationType === AuthorizationType.COGNITO) {
-                authorizer = Reflect.get(globalThis, "userPoolAuthorizer");
-            }
         
-            console.log(`APIGateway ~ registerController ~ add authorizer ${authorizationType} for ${route.functionName}`);
+            console.log(`APIGateway ~ registerController ~ add authorizer ${route.authorizationType} for ${route.functionName}`);
 
-            // TODO: link the api input schema
-            // const modell = this.api.addModel('test', {
-            //     schema: {
-            //         type: JsonSchemaType.OBJECT,
-            //         properties: {
-            //             userId: {
-            //                 type: JsonSchemaType.STRING
-            //             },
-            //             name: {
-            //                 type: JsonSchemaType.STRING
-            //             }
-            //         },
-            //         required: ['userId']
-            //     }
-            // });
-
-            currentResource.addMethod(route.httpMethod, controllerIntegration, {
+            const methodOptions = {
                 requestParameters: requestParameters,
-                authorizationType: authorizationType,
-                authorizer: authorizer,
-                // requestModels: {
-                //     'application/json': modell
-                // }
-            });
+                authorizationType: route.authorizationType,
+                authorizer: this.fw24.getAuthorizer(route.authorizationType),
+            }
+
+            currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);
         }
 
-
-    }
-
-    private async registerControllers() {
-        console.log("Registering controllers...");
-        const controllersConfig = this.config.controllers || [];
-        console.log("Controllers config: ", controllersConfig);
-
-        if (typeof controllersConfig === "string") {
-            // Resolve the absolute path
-            const controllersDirectory = resolve(controllersConfig);
-            // Get all the files in the controllers directory
-            const controllerFiles = readdirSync(controllersDirectory);
-            // Filter the files to only include TypeScript files
-            const controllerPaths = controllerFiles.filter((file) => file.endsWith(".ts"));
-
-            for (const controllerPath of controllerPaths) {
-                try {
-                    // Dynamically import the controller file
-                    const module = await import(join(controllersDirectory, controllerPath));
-
-                    // Find and instantiate controller classes
-                    for (const exportedItem of Object.values(module)) {
-                        if (typeof exportedItem === "function" && exportedItem.name !== "handler") {
-                            const controllerInfo: ControllerDescriptor = {
-                                controllerClass: exportedItem,
-                                fileName: controllerPath,
-                                filePath: controllersDirectory,
-                            };
-                            this.registerController(controllerInfo);
-                            break;
-                        }
-                    }
-                } catch (err) {
-                    console.error(err);
-                }
-            }
-        } else if (Array.isArray(controllersConfig)) {
-            for (const controller of controllersConfig) {
-                try {
-                    this.registerController(controller);
-                } catch (err) {
-                    console.error(err);
-                }
-            }
-        }
+        // output the api endpoint
+        new CfnOutput(this.mainStack, `Endpoint${controllerName}`, {
+            value: this.api.url + controllerResource.path.slice(1),
+            description: "API Gateway Endpoint for " + controllerName,
+        });
     }
 }

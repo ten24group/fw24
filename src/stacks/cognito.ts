@@ -26,7 +26,11 @@ export class CognitoStack implements IStack {
 
         const userPoolConfig = this.config.userPool;
         const mainStack = fw24.getStack("main");
-        const namePrefix = `${fw24.appName}-${this.getTenantId()}`
+        var namePrefix = `${fw24.appName}`;
+
+        if(fw24.get("tenantId")){
+            namePrefix = `${namePrefix}-${fw24.get("tenantId")}`
+        }
 
         // TODO: Add ability to create multiple user pools
         // TODO: Add ability to create multi-teant user pools
@@ -98,7 +102,6 @@ export class CognitoStack implements IStack {
         // create triggers
         if (this.config.triggers) {
             for (const trigger of this.config.triggers) {
-                // Will it be one lambda per tenant?
                 const lambdaTrigger = new LambdaFunction(mainStack, `${namePrefix}-${trigger.trigger}-lambdaFunction`, {
                     entry: trigger.lambdaFunctionPath,
                     layerArn: fw24.getLayerARN(),
@@ -107,14 +110,8 @@ export class CognitoStack implements IStack {
             }
         }
 
-        // Reflect.set(globalThis, "userPoolID", userPool.userPoolId);
-        // Reflect.set(globalThis, "userPoolClientID", userPoolClient.userPoolClientId);
-        // Reflect.set(globalThis, "userPoolAuthorizer", this.userPoolAuthorizer);
-
-        fw24.setAuthorizer(this.userPoolAuthorizer);
-    }
-
-    private getTenantId() {
-        return Reflect.get(globalThis, "tenantId");
+        fw24.set("userPoolID", userPool.userPoolId);
+        fw24.set("userPoolClientID", userPoolClient.userPoolClientId);
+        fw24.setCognitoAuthorizer(this.userPoolAuthorizer);
     }
 }
