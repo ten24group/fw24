@@ -1,5 +1,6 @@
-import { Entity, EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem } from "electrodb";
+import { Entity, EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem } from "electrodb";
 import { BaseEntityService } from "./base-service";
+import { Narrow } from "../utils/types";
 
 /**
  *  ElectroDB entity  examples
@@ -12,6 +13,33 @@ import { BaseEntityService } from "./base-service";
  * - https://github.com/ikushlianski/family-car-booking-backend/blob/main/services/core/booking/booking.repository.ts
  * 
  */
+
+// todo: move to base entity
+export type DefaultEntityOperations = {
+    'get': "",
+    'list': ""
+    'create': "",
+    'update': "",
+    'delete': "",
+};
+
+export type DefaultEntityOpsInputSchema<Sch extends Schema<any, any, any>> = {
+    get: EntityIdentifiersTypeFromSchema<Sch>,
+    create: CreateEntityItemTypeFromSchema<Sch>,
+    update: UpdateEntityItemTypeFromSchema<Sch>,
+    delete: EntityIdentifiersTypeFromSchema<Sch>,
+    list: {},
+}
+
+/**
+ * Extend this type for additional operations's input-schema types 
+ * 
+ */
+export type TEntityOpsInputSchemas<Sch extends Schema<any, any, any>, Opp extends DefaultEntityOperations = DefaultEntityOperations> = {
+    readonly [opName in keyof Opp] ?: opName extends keyof DefaultEntityOpsInputSchema<Sch> 
+        ? DefaultEntityOpsInputSchema<Sch>[opName] 
+        : {}
+}
 
 export type CreateEntityOptions<S extends Schema<any, any, any>> = {
     schema: S,
@@ -38,6 +66,9 @@ export function createElectroDBEntity<S extends Schema<any, any, any>>(options: 
 export type EntityTypeFromSchema<TSchema> = TSchema extends Schema<infer A, infer F, infer C> 
     ? Entity<A, F, C, TSchema> 
     : never;
+
+
+export type EntityRecordTypeFromSchema<Sch extends Schema<any, any, any>> = Narrow<EntityItem<EntityTypeFromSchema<Sch>>>;
 
 // Entity service
 export type EntityServiceTypeFromSchema<TSchema extends Schema<any, any, any>> = BaseEntityService<TSchema>;

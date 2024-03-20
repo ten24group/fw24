@@ -1,6 +1,7 @@
 import { EntityConfiguration, Schema } from "electrodb";
-import { CreateEntityItemTypeFromSchema, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
+import { CreateEntityItemTypeFromSchema, DefaultEntityOperations, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, TEntityOpsInputSchemas, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, updateEntity } from "./crud-service";
+import { EntityValidations, TMapOfValidationConditions } from "../validation";
 
 export abstract class BaseEntityService<S extends Schema<any, any, any>>{
 
@@ -16,6 +17,8 @@ export abstract class BaseEntityService<S extends Schema<any, any, any>>{
     public getEntityName(): S['model']['entity'] { return this.schema.model.entity; }
     
     public getEntitySchema(): S { return this.schema;}
+
+    abstract getEntityValidations(): EntityValidations<any, any, any, any>;
 
     public getRepository(){
 
@@ -52,7 +55,6 @@ export abstract class BaseEntityService<S extends Schema<any, any, any>>{
      * 
      */
     abstract getFilterAttributes(): any;
-    abstract getValidationRules( options: { opContext: 'update' | 'delete' | 'process' } ): any;
     abstract getPermissionRules( options: { opContext: 'update' | 'delete' | 'process' } ): any;
 
     public async get( identifiers: EntityIdentifiersTypeFromSchema<S> ) {
