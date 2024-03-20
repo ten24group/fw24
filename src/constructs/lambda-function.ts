@@ -15,7 +15,7 @@ interface LambdaFunctionProps {
   layers?: ILayerVersion[];
   bundling?: BundlingOptions;
   policies?: any[];
-  env?: any;
+  env?: { [key: string]: string };
 }
 
 export class LambdaFunction extends Construct {
@@ -43,6 +43,12 @@ export class LambdaFunction extends Construct {
 
     this.fn = new NodejsFunction(this, id, { ...defaultProps, ...props });
 
+    // Set environment variables
+    if(props.env){
+      for (const [key, value] of Object.entries(props.env)) {
+        this.fn.addEnvironment(key, value);
+      }
+    }
 
     // Attach policies to the function
     if(props.policies){
@@ -52,5 +58,6 @@ export class LambdaFunction extends Construct {
         );
       });
     }
+    
   }
 }
