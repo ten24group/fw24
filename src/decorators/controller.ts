@@ -3,6 +3,7 @@ export interface IControllerConfig {
 	tableName?: string;
 	authorizers?: IAuthorizerConfig[];
 	env?: ILambdaEnvConfig[];
+	buckets?: IControllerS3Config[];
 }
 export interface IAuthorizerConfig {
 	type: string;
@@ -12,6 +13,10 @@ export interface IAuthorizerConfig {
 export interface ILambdaEnvConfig {
 	name: string;
 	path: string;
+}
+
+export interface IControllerS3Config {
+	name: string;
 }
 
 export function Controller(controllerName: string, controllerConfig?: IControllerConfig) {

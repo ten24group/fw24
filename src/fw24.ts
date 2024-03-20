@@ -9,6 +9,7 @@ export * from "./stacks/apigateway";
 export * from "./stacks/amplify";
 export * from "./stacks/dynamodb";
 export * from "./stacks/cognito";
+export * from "./stacks/s3";
 
 export * as Auditor from './audit';
 export * as Validator from './validation' ;
