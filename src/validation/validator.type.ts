@@ -5,7 +5,7 @@ import { DefaultEntityOperations, EntityRecordTypeFromSchema, TEntityOpsInputSch
 
 export interface IValidatorResponse {
     pass: boolean;
-    errors?: Error[] 
+    errors?: Error[] | string[] 
 }
 
 export type ValidatorOptions<

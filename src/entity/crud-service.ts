@@ -82,7 +82,7 @@ export async function getEntity<S extends Schema<any, any, any>>( options: GetEn
     // authorize the actor
     const authorization = await authorizer.authorize({entityName, crudType, identifiers, actor, tenant});
     if(!authorization.pass){
-        throw new Error("Authorization failed: " + { cause: authorization });
+        throw new Error("Authorization failed for get: " + { cause: authorization });
     }
 
     // validate
@@ -94,7 +94,7 @@ export async function getEntity<S extends Schema<any, any, any>>( options: GetEn
     });
 
     if(!validation.pass){
-        throw new Error("Validation failed: " + { cause: validation });
+        throw new Error("Validation failed for get: " + JSON.stringify({ cause: validation }));
     }
 
     const entity = await entityService.getRepository().get(identifiers).go();
@@ -145,13 +145,13 @@ export async function createEntity<S extends Schema<any, any, any>>(options : Cr
     });
 
     if(!validation.pass){
-        throw new Error("Validation failed: " + { cause: validation });
+        throw new Error("Validation failed for create: " + JSON.stringify({ cause: validation }));
     }
 
     // authorize the actor 
     const authorization = await authorizer.authorize({ entityName, crudType, data, actor, tenant });
     if(!authorization.pass){
-        throw new Error("Authorization failed: " + { cause: authorization });
+        throw new Error("Authorization failed for create: " + { cause: authorization });
     }
 
     const entity = await entityService.getRepository().create(data).go();
@@ -255,7 +255,7 @@ export async function updateEntity<S extends Schema<any, any, any>>(options : Up
     });
 
     if(!validation.pass){
-        throw new Error("Validation failed: " + { cause: validation });
+        throw new Error("Validation failed for update: " + JSON.stringify({ cause: validation }));
     }
 
     const identifiers = entityService.extractEntityIdentifiers(id);
@@ -263,7 +263,7 @@ export async function updateEntity<S extends Schema<any, any, any>>(options : Up
     // authorize the actor 
     const authorization = await authorizer.authorize({ entityName, crudType, identifiers, data, actor, tenant });
     if(!authorization.pass){
-        throw new Error("Authorization failed: " + { cause: authorization });
+        throw new Error("Authorization failed for update: " + { cause: authorization });
     }
 
     const entity = await entityService.getRepository().patch(identifiers).set(data).go();
@@ -311,7 +311,7 @@ export async function deleteEntity<S extends Schema<any, any, any>>( options: De
     // authorize the actor
     const authorization = await authorizer.authorize({entityName, crudType, identifiers, actor, tenant});
     if(!authorization.pass){
-        throw new Error("Authorization failed: " + { cause: authorization });
+        throw new Error("Authorization failed for delete: " + { cause: authorization });
     }
 
     // validate
@@ -323,7 +323,7 @@ export async function deleteEntity<S extends Schema<any, any, any>>( options: De
     });
 
     if(!validation.pass){
-        throw new Error("Validation failed: " + { cause: validation });
+        throw new Error("Validation failed for delete: " + JSON.stringify({ cause: validation }));
     }
 
     const entity = await entityService.getRepository().delete(identifiers).go();

@@ -276,7 +276,7 @@ describe('Validator', () => {
       });
       expect(result.pass).toBe(false);
       expect(result.errors).toHaveLength(1);
-      expect(result.errors?.[0].message).toContain('actor.role');
+      expect(result.errors?.[0]).toContain('actor.role');
     });
 
     it('should validate input rules', async () => {
@@ -313,7 +313,7 @@ describe('Validator', () => {
       });
       expect(result.pass).toBe(false);
       expect(result.errors).toHaveLength(1);
-      expect(result.errors?.[0].message).toContain('input.email');
+      expect(result.errors?.[0]).toContain('input.email');
     });
   });
 

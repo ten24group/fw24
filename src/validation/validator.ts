@@ -8,6 +8,22 @@ import { DeepWritable } from '../utils/types';
 import { Actor, EntityValidations, InputType, RecordType, TConditionalValidationRule, TEntityOpValidations, TEntityValidationCondition, TMapOfValidationConditions, Validations } from "./validator.type";
 import { DefaultEntityOperations, TEntityOpsInputSchemas } from "../entity";
 
+if (!('toJSON' in Error.prototype)){
+    Object.defineProperty(Error.prototype, 'toJSON', {
+        value: function () {
+            var alt: any = {};
+    
+            Object.getOwnPropertyNames(this).forEach(function (key) {
+                //@ts-ignore
+                alt[key] = this[key];
+            }, this);
+    
+            return alt;
+        },
+        configurable: true,
+        writable: true
+    });
+}
 
 export function extractOpValidationFromEntityValidations<
   EntityRecordSchema extends Schema<any, any, any>, 
@@ -111,7 +127,7 @@ export class Validator implements IValidator {
         }
 
         const opsValidationRules = extractOpValidationFromEntityValidations(operationName, entityValidations);
-        console.log("🚀 ~ Validator.validate ~ rules, input, actor, record:", { opsValidationRules, input, actor, record});
+        console.log("🚀 ~ Validator.validate ~ rules, input, actor, record:", JSON.stringify({ opsValidationRules, input, actor, record}));
         
         const { opValidations: {inputRules, actorRules, recordRules}, conditions } = opsValidationRules;
         
@@ -136,7 +152,7 @@ export class Validator implements IValidator {
                 pass = pass && res.pass;
                 if(res.errors?.length){
                     // errors.push(new Error(`Validation failed for actor.${key}`, { cause: res.errors+''}));
-                    errors.push(new Error(`Validation failed for actor.${key} ${ {cause: res.errors} }`));
+                    errors.push(new Error(`Validation failed for actor.${key} ::: ${ JSON.stringify({cause: res.errors}) }`));
                 }
             }
         }
@@ -158,7 +174,7 @@ export class Validator implements IValidator {
 
                 pass = pass && res.pass;
                 if(res.errors?.length){
-                    errors.push(new Error(`Validation failed for input.${key}, ${{ cause: res.errors}}` ));
+                    errors.push(new Error(`Validation failed for input.${key} ::: ${ JSON.stringify({ cause: res.errors}) }` ));
                 }
             }
         }
@@ -180,16 +196,22 @@ export class Validator implements IValidator {
 
                 pass = pass && res.pass;
                 if(res.errors?.length){
-                    errors.push(new Error(`Validation failed for record.${key}, ${{ cause: res.errors}}`));
+                    errors.push(new Error(`Validation failed for record.${key} ::: ${ JSON.stringify({ cause: res.errors}) }`));
                 }
             }
         }
 
-        console.log("🚀 ~ Validator.validate ~ result:", { pass, errors});
+        console.log("🚀 ~ Validator.validate ~ result:", JSON.stringify({ pass, errors}));
+
+        const formattedErrors:string[] = [];
+
+        for(const err of errors){
+            formattedErrors.push(`${err.name}:  ${err.message}`);
+        }
 
         return Promise.resolve({
             pass,
-            errors,
+            errors: formattedErrors,
         });
     }
 
@@ -214,7 +236,7 @@ export class Validator implements IValidator {
         }
     ){
 
-        console.log( "🚀 ~ Validator: validateRulesWithCriteria ~ arguments:", options );
+        console.log( "🚀 ~ Validator: validateRulesWithCriteria ~ arguments:", JSON.stringify(options) );
         
         const {rules, allConditions, inputVal, input, record, actor} = options;
 
@@ -272,7 +294,7 @@ export class Validator implements IValidator {
         }
     ): Promise<IValidatorResponse> {
 
-        console.log( "🚀 ~ Validator: validateRuleWithCriteria ~ arguments:", options );
+        console.log( "🚀 ~ Validator: validateRuleWithCriteria ~ arguments:", JSON.stringify(options) );
         
         const {rule, allConditions, inputVal, input, record, actor} = options;
         
@@ -456,13 +478,12 @@ export class Validator implements IValidator {
                 
                 if(typeof result == 'boolean'){
                     pass = pass && result;
+                    if(!result){
+                        errors.push( new Error(`Validation '${key}' failed`) );
+                    }
                 } else {
                     pass = false;
                     errors.push(result);
-                }
-
-                if(!pass){
-                    errors.push( new Error(`Validation '${key}' failed`) );
                 }
             }
         }
@@ -474,6 +495,10 @@ export class Validator implements IValidator {
             errors,
         };
 
+    }
+
+    isNumeric(num: any){
+        return !isNaN(num)
     }
 
     /**
@@ -502,7 +527,7 @@ export class Validator implements IValidator {
         if(datatype) {
 
             if(datatype == 'number'){
-                return /\D/.test(val);
+                return this.isNumeric(val);
             }
 
             if(datatype == 'email'){
@@ -512,7 +537,7 @@ export class Validator implements IValidator {
 
             // TODO: | 'ipv4' | 'ipv6' | 'uri' | 'url' | 'uuid' | 'json' | 'date' | 'date-time'
 
-            return typeof val !== datatype;
+            return typeof val === datatype;
         }
         if(unique && val && val.length > 1) {
             return true;
