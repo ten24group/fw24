@@ -1,24 +1,13 @@
-export * as Validator from './';
+import { IValidator } from './validator.type';
+import {Validator} from './validator';
 
-export interface IValidatorResponse {
-    pass: boolean;
-    errors?: {[key:string]: any} 
-}
+export * from './validator';
+export * from './validator.type'
 
-export interface IValidator {
-    validate (options: any): Promise<IValidatorResponse>;
-}
+export * as Validator from "./";
 
 export const Dummy: IValidator = {
     validate: () => { return Promise.resolve({pass:true}) },
 };
 
-
-export const Default: IValidator = {
-
-    validate: async (options: any) => {
-        console.log("Called default validator.validate()", options);
-
-        return {pass: true};
-    }
-};
+export const Default = new Validator();
