@@ -15,6 +15,7 @@ export * from "./stacks/dynamodb";
 export * from "./stacks/cognito";
 export * from "./stacks/sqs";
 export * from "./stacks/ses";
+export * from "./stacks/s3";
 
 export * as Auditor from './audit';
 export * as Validator from './validation' ;

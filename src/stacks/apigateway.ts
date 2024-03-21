@@ -4,7 +4,6 @@ import { Architecture, LayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { readdirSync } from "fs";
 import { resolve, join } from "path";
-import { Queue } from "aws-cdk-lib/aws-sqs";
 
 import { IAPIGatewayConfig } from "../interfaces/apigateway";
 import { IApplicationConfig } from "../interfaces/config";
@@ -13,7 +12,9 @@ import Mutable from "../types/mutable";
 import { Duration, Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { Helper } from "../core/helper";
-import { IAuthorizerConfig, ILambdaEnvConfig, IControllerSQSConfig } from "../fw24";
+import { IAuthorizerConfig, ILambdaEnvConfig, IControllerSQSConfig, IControllerS3Config } from "../fw24";
+import { Bucket } from "aws-cdk-lib/aws-s3";
+
 
 export class APIGateway {
     methods: Map<string, Integration> = new Map();
@@ -88,6 +89,11 @@ export class APIGateway {
         return `arn:aws:lambda:${this.appConfig?.region}:${this.mainStack.account}:layer:Fw24CoreLayer:${this.appConfig?.coreVersion}`;
     }
 
+    // move to fw24 context
+    public getUniqueName(name: string) {
+        return `${name}-${this.appConfig?.name}-${this.appConfig?.env}-${this.mainStack.account}`;
+    }
+    
     private registerController(controllerInfo: ControllerDescriptor) {
         controllerInfo.controllerInstance = new controllerInfo.controllerClass();
         const controllerName = controllerInfo.controllerInstance.controllerName;
@@ -126,6 +132,15 @@ export class APIGateway {
                 queueInstance.grantSendMessages(controllerFunction);
                 controllerFunction.addEnvironment(`${queue.name}_queueUrl`, queueInstance.queueUrl);
             }
+        });
+
+        // add bucket permissions
+        controllerConfig?.buckets?.forEach( ( bucket: IControllerS3Config ) => {
+            const bucketFullName = this.getUniqueName(bucket.name);
+            const bucketInstance: any = Bucket.fromBucketName(this.mainStack, bucket.name+controllerName+'-bucket', bucketFullName);
+            bucketInstance.grantReadWrite(controllerFunction);
+            // add environment variable for the bucket name
+            controllerFunction.addEnvironment(`bucket_${bucket.name}`, bucketFullName);
         });
 
         if (controllerConfig?.tableName) {

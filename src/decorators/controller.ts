@@ -4,6 +4,7 @@ export interface IControllerConfig {
 	authorizers?: IAuthorizerConfig[];
 	env?: ILambdaEnvConfig[];
 	queue?: IControllerSQSConfig[];
+	buckets?: IControllerS3Config[];
 }
 export interface IAuthorizerConfig {
 	type: string;
@@ -17,6 +18,10 @@ export interface ILambdaEnvConfig {
 export interface IControllerSQSConfig {
 	name: string;
 	path: string;
+}
+
+export interface IControllerS3Config {
+	name: string;
 }
 
 export function Controller(controllerName: string, controllerConfig?: IControllerConfig) {
