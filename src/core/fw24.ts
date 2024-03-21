@@ -46,7 +46,7 @@ export class Fw24 {
     }
 
     public getAuthorizer(authorizationType: string): IAuthorizer | undefined {
-        if(authorizationType === "COGNITO") {
+        if(authorizationType === "COGNITO_USER_POOLS") {
             return this.getCognitoAuthorizer();
         }
         

@@ -8,7 +8,7 @@ export interface ILambdaEnvConfig {
 	prefix?: string;
 }
 
-export function Controller(controllerName: string, controllerConfig?: IControllerConfig) {
+export function Controller(controllerName: string, controllerConfig: IControllerConfig = {}) {
 	return function <T extends { new (...args: any[]): {} }>(target: T) {
 		return class extends target {
 			constructor(...args: any[]) {
@@ -21,8 +21,9 @@ export function Controller(controllerName: string, controllerConfig?: IControlle
 					authorizer: 'NONE',
 					env: []
 				};
+				
 				// set the controller config
-				Reflect.set(this, 'controllerConfig', { ...defaultConfig, ...controllerConfig });
+				Reflect.set(this, 'controllerConfig', { ...defaultConfig, ...controllerConfig});
 			}
 		};
 	};

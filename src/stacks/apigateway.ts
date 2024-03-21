@@ -93,22 +93,21 @@ export class APIGateway implements IStack {
                 const module = await import(join(controllersDirectory, controllerPath));
 
                 // Find and instantiate controller classes
-                const controllerClasses = Object.values(module).filter(
-                    (exportedItem) => typeof exportedItem === "function" && exportedItem.name !== "handler"
-                );
-
-                for (const controllerClass of controllerClasses) {
-                    const controllerInfo: ControllerDescriptor = {
-                        controllerClass,
-                        fileName: controllerPath,
-                        filePath: controllersDirectory,
-                    };
-                    this.registerController(controllerInfo);
+                for (const exportedItem of Object.values(module)) {
+                    if (typeof exportedItem === "function" && exportedItem.name !== "handler") {
+                        const controllerInfo: ControllerDescriptor = {
+                            controllerClass: exportedItem,
+                            fileName: controllerPath,
+                            filePath: controllersDirectory,
+                        };
+                        this.registerController(controllerInfo);
+                        break;
+                    }
                 }
             } catch (err) {
-                console.error("Error registering controller:", controllerPath, err);
+                console.error(err);
             }
-        } 
+        }
     }
 
     private getEnvironmentVariables(controllerConfig: IControllerConfig): any {
