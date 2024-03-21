@@ -1,4 +1,4 @@
-import { Cors, IResource, Integration, LambdaIntegration, RestApi, RestApiProps } from "aws-cdk-lib/aws-apigateway";
+import { AuthorizationType, Cors, IResource, Integration, LambdaIntegration, MethodOptions, RestApi, RestApiProps } from "aws-cdk-lib/aws-apigateway";
 import { readdirSync } from "fs";
 import { resolve, join } from "path";
 
@@ -181,12 +181,12 @@ export class APIGateway implements IStack {
                 requestParameters[`method.request.path.${param}`] = true;
             }
         
-            console.log(`APIGateway ~ registerController ~ add authorizer ${route.authorizationType} for ${route.functionName}`);
+            console.log(`APIGateway ~ registerController ~ add authorizer ${route.authorizer} for ${route.functionName}`);
 
-            const methodOptions = {
+            const methodOptions: MethodOptions = {
                 requestParameters: requestParameters,
-                authorizationType: route.authorizationType,
-                authorizer: this.fw24.getAuthorizer(route.authorizationType),
+                authorizationType: route.authorizer as AuthorizationType,
+                authorizer: this.fw24.getAuthorizer(route.authorizer),
             }
 
             currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);

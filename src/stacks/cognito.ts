@@ -5,7 +5,7 @@ import { Duration } from "aws-cdk-lib";
 import { readFileSync } from "fs";
 import { CognitoAuthRole } from "../constructs/cognito-auth-role";
 import { LambdaFunction } from "../constructs/lambda-function";
-import { ICognitoConfig } from "../interfaces/cognito.config.interface";
+import { ICognitoConfig } from "../interfaces/cognito";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
 

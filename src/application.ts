@@ -1,6 +1,7 @@
 import { App, Stack } from "aws-cdk-lib";
 import { Fw24 } from "./core/fw24";
 import { IApplicationConfig } from "./interfaces/config";
+import { IStack } from "./interfaces/stack";
 
 
 export class Application {
@@ -20,7 +21,7 @@ export class Application {
         this._fw24.addStack("main", mainStack);
     }
 
-    public use(stack: any): Application {
+    public use(stack: IStack): Application {
         stack.construct(this._fw24);
         return this;
     }

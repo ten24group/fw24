@@ -1,8 +1,6 @@
-import { AuthorizationType } from "../types/autorization-type";
-
 export interface IControllerConfig {
 	tableName?: string;
-	authorizationType?: AuthorizationType;
+	authorizer?: string;
 	env?: ILambdaEnvConfig[];
 }
 export interface ILambdaEnvConfig {
@@ -20,7 +18,7 @@ export function Controller(controllerName: string, controllerConfig?: IControlle
 
 				// initialize the default controller config
 				const defaultConfig: IControllerConfig = {
-					authorizationType: AuthorizationType.NONE,
+					authorizer: 'NONE',
 					env: []
 				};
 				// set the controller config

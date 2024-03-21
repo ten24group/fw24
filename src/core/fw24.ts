@@ -1,5 +1,4 @@
 import { IAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2';
-import { AuthorizationType } from "../types/autorization-type";
 import { IApplicationConfig } from '../interfaces/config';
 import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { Helper } from './helper';
@@ -46,8 +45,8 @@ export class Fw24 {
         return this.cognitoAuthorizer;
     }
 
-    public getAuthorizer(authorizationType: AuthorizationType): IAuthorizer | undefined {
-        if(authorizationType === AuthorizationType.COGNITO) {
+    public getAuthorizer(authorizationType: string): IAuthorizer | undefined {
+        if(authorizationType === "COGNITO") {
             return this.getCognitoAuthorizer();
         }
         
