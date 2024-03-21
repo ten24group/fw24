@@ -10,6 +10,7 @@ export abstract class BaseEntityService<S extends Schema<any, any, any>>{
         protected readonly schema: S,
         protected readonly entityConfigurations: EntityConfiguration,
     ){
+        console.log("BaseEntityService Constructor: args", JSON.stringify(arguments));
         return this;
     }
 

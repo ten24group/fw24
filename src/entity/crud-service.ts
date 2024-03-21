@@ -135,7 +135,35 @@ export async function createEntity<S extends Schema<any, any, any>>(options : Cr
         throw new Error("Authorization failed: " + { cause: authorization });
     }
 
-    const entity = await entityService.getRepository().create(data).go();
+    logger.debug(`Found entityService:`, !!entityService);
+
+    const repository = entityService.getRepository();
+
+    logger.debug(`Found entityService:repository`, !!repository);
+    logger.debug(`Found entityService:repository:schema`, repository.schema);
+    logger.debug(`Found entityService:repository:table-name`, repository.getTableName());
+
+    let entity;
+    try{
+        logger.debug("Calling repository.create data: ", data);
+        logger.debug("Calling repository.create params: ", repository.create(data).params() );
+        logger.debug("Calling repository.create scan: ", repository.scan.params() );
+
+        // entity = await repository.create(data).go()
+        await repository.scan.go()
+        .then( res => {
+            logger.debug("Calling repository.create then res: ", res);
+            return res;
+        }).catch(e => {
+            logger.debug("Calling repository.create catch e: ", e);
+        }).finally(()=>{
+            logger.debug("Calling repository.create finally");
+        })
+
+    } catch(e){
+        
+        logger.error("Exception while trying to create the record e: ", e);
+    }
 
     // post events
     await eventDispatcher?.dispatch({ event: 'afterCreate', context: {...arguments, entity} });
@@ -144,7 +172,7 @@ export async function createEntity<S extends Schema<any, any, any>>(options : Cr
     auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
 
     // return entity;
-    logger.debug(`Completed EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data, entity.data);
+    // logger.debug(`Completed EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data, entity?.data);
 
     return entity;
 }
