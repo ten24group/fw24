@@ -16,15 +16,15 @@ export class CognitoStack implements IStack {
     //role!: Role;
 
     // default contructor to initialize the stack configuration
-    constructor(private config: ICognitoConfig) {
-        console.log("Cognito Stack constructor", config);
+    constructor(private stackConfig: ICognitoConfig) {
+        console.log("Cognito Stack constructor", stackConfig);
     }
 
     // construct method to create the stack
     public construct(fw24: Fw24) {
         console.log("Cognito construct");
 
-        const userPoolConfig = this.config.userPool;
+        const userPoolConfig = this.stackConfig.userPool;
         const mainStack = fw24.getStack("main");
         var namePrefix = `${fw24.appName}`;
 
@@ -88,9 +88,9 @@ export class CognitoStack implements IStack {
         });
 
         // apply the policy to the role
-        if (this.config.policyFilePath) {
+        if (this.stackConfig.policyFilePath) {
             // read file from policyFilePath
-            const policyfile: string = readFileSync(this.config.policyFilePath, 'utf8');
+            const policyfile: string = readFileSync(this.stackConfig.policyFilePath, 'utf8');
             authenticatedRole.role.addToPolicy(
                 new PolicyStatement({
                     effect: JSON.parse(policyfile).Effect,
@@ -100,8 +100,8 @@ export class CognitoStack implements IStack {
             );
         }
         // create triggers
-        if (this.config.triggers) {
-            for (const trigger of this.config.triggers) {
+        if (this.stackConfig.triggers) {
+            for (const trigger of this.stackConfig.triggers) {
                 const lambdaTrigger = new LambdaFunction(mainStack, `${namePrefix}-${trigger.trigger}-lambdaFunction`, {
                     entry: trigger.lambdaFunctionPath,
                     layerArn: fw24.getLayerARN(),

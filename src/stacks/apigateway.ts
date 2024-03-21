@@ -1,11 +1,16 @@
-import { AuthorizationType, Cors, IResource, Integration, LambdaIntegration, MethodOptions, RestApi, RestApiProps } from "aws-cdk-lib/aws-apigateway";
-import { readdirSync } from "fs";
-import { resolve, join } from "path";
+import { 
+    AuthorizationType, 
+    Cors, 
+    IResource, 
+    Integration, 
+    LambdaIntegration, 
+    MethodOptions, 
+    RestApi, 
+    RestApiProps 
+} from "aws-cdk-lib/aws-apigateway";
 
 import { IAPIGatewayConfig } from "../interfaces/apigateway";
 import { IApplicationConfig } from "../interfaces/config";
-import ControllerDescriptor from "../interfaces/controller-descriptor";
-import Mutable from "../types/mutable";
 import { Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { Helper } from "../core/helper";
@@ -13,6 +18,9 @@ import { IControllerConfig } from "../fw24";
 import { LambdaFunction } from "../constructs/lambda-function";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
+
+import Mutable from "../types/mutable";
+import HandlerDescriptor from "../interfaces/handler-descriptor";
 
 export class APIGateway implements IStack {
     methods: Map<string, Integration> = new Map();
@@ -22,10 +30,9 @@ export class APIGateway implements IStack {
     fw24!: Fw24;
 
     // default contructor to initialize the stack configuration
-    constructor(private config: IAPIGatewayConfig) {
-        console.log("APIGateway", config);
+    constructor(private stackConfig: IAPIGatewayConfig) {
         // hydrate the config object with environment variables ex: APIGATEWAY_CONTROLLERS
-        Helper.hydrateConfig(config,'APIGATEWAY');
+        Helper.hydrateConfig(stackConfig,'APIGATEWAY');
     }
 
     // construct method to create the stack
@@ -36,11 +43,10 @@ export class APIGateway implements IStack {
         // make the appConfig available to the class
         this.appConfig = fw24.getConfig();
         // set the default api options
-        const paramsApi: Mutable<RestApiProps> = this.config.apiOptions || {};
+        const paramsApi: Mutable<RestApiProps> = this.stackConfig.apiOptions || {};
         // Enable CORS if defined
-        if (this.config.cors) {
-            console.log("Enabling CORS... this.config.cors: ", this.config.cors);
-            
+        if (this.stackConfig.cors) {
+            console.log("Enabling CORS... this.config.cors: ", this.stackConfig.cors);
             paramsApi.defaultCorsPreflightOptions = {
                 allowHeaders: [
                     "Content-Type",
@@ -56,60 +62,29 @@ export class APIGateway implements IStack {
                 allowOrigins: this.getCors(),
             };
         }
-        console.log("Creating API Gateway... paramsApi: ", paramsApi);
+        console.log("Creating API Gateway... ");
         // get the main stack from the framework
         this.mainStack = fw24.getStack("main");
         // create the api gateway
         this.api = new RestApi(this.mainStack,  `${fw24.appName}-api`, paramsApi);
         // add the api to the framework
         fw24.addStack("api", this.api);
+        // sets the default controllers directory if not defined
+        if(this.stackConfig.controllersDirectory === undefined || this.stackConfig.controllersDirectory === ""){
+            this.stackConfig.controllersDirectory = "./src/controllers";
+        }
         // register the controllers
-        this.registerControllers();
+        Helper.registerHandlers(this.stackConfig.controllersDirectory, this.registerController);
     }
 
     // get the cors configuration
     private getCors(): string[] {
-        if (this.config.cors === true) return Cors.ALL_ORIGINS;
-        if (typeof this.config.cors === "string") return [this.config.cors];
-        return this.config.cors || [];
+        if (this.stackConfig.cors === true) return Cors.ALL_ORIGINS;
+        if (typeof this.stackConfig.cors === "string") return [this.stackConfig.cors];
+        return this.stackConfig.cors || [];
     }
 
-    // register the controllers
-    private async registerControllers() {
-        console.log("Registering controllers...");
-        // get the controllers config, default to ./src/controllers
-        const controllersConfig = this.config.controllers || "./src/controllers";
-        console.log("Controllers config: ", controllersConfig);
-        // Resolve the absolute path
-        const controllersDirectory = resolve(controllersConfig);
-        // Get all the files in the controllers directory
-        const controllerFiles = readdirSync(controllersDirectory);
-        // Filter the files to only include TypeScript files
-        const controllerPaths = controllerFiles.filter((file) => file.endsWith(".ts"));
-
-        for (const controllerPath of controllerPaths) {
-            try {
-                // Dynamically import the controller file
-                const module = await import(join(controllersDirectory, controllerPath));
-
-                // Find and instantiate controller classes
-                for (const exportedItem of Object.values(module)) {
-                    if (typeof exportedItem === "function" && exportedItem.name !== "handler") {
-                        const controllerInfo: ControllerDescriptor = {
-                            controllerClass: exportedItem,
-                            fileName: controllerPath,
-                            filePath: controllersDirectory,
-                        };
-                        this.registerController(controllerInfo);
-                        break;
-                    }
-                }
-            } catch (err) {
-                console.error(err);
-            }
-        }
-    }
-
+    // get the environment variables for the controller
     private getEnvironmentVariables(controllerConfig: IControllerConfig): any {
         const env: any = {};
         for (const envConfig of controllerConfig.env || []) {
@@ -122,12 +97,12 @@ export class APIGateway implements IStack {
     }
 
     // register a single controller
-    private registerController(controllerInfo: ControllerDescriptor) {
+    private registerController(controllerInfo: HandlerDescriptor) {
         // TODO: cleanup this part
-        controllerInfo.controllerInstance = new controllerInfo.controllerClass();
-        const controllerName = controllerInfo.controllerInstance.controllerName;
-        const controllerConfig = controllerInfo.controllerInstance?.controllerConfig;
-        controllerInfo.routes = controllerInfo.controllerInstance.routes;
+        controllerInfo.handlerInstance = new controllerInfo.handlerClass();
+        const controllerName = controllerInfo.handlerInstance.controllerName;
+        const controllerConfig = controllerInfo.handlerInstance?.controllerConfig;
+        controllerInfo.routes = controllerInfo.handlerInstance.routes;
 
         console.log(`Registering controller ${controllerName} from ${controllerInfo.filePath}/${controllerInfo.fileName}`);
 
@@ -141,26 +116,21 @@ export class APIGateway implements IStack {
             entry: controllerInfo.filePath + "/" + controllerInfo.fileName,
             layerArn: this.fw24.getLayerARN(),
             env: this.getEnvironmentVariables(controllerConfig),
-        });
+        }).fn;
 
-
-        // belongs here? TBD
+        // logic for adding dynamodb table access to the controller
         if (controllerConfig?.tableName) {
-            console.log("🚀 ~ APIGateway ~ registerController ~ if:", controllerConfig);
-
-            const diRegisteredTableName = `${controllerConfig.tableName}_table`;
+            // get the dynamodb table based on the controller config
             const tableInstance: TableV2 = this.fw24.getDynamoTable(controllerConfig.tableName);
-
-            controllerLambda.fn.addEnvironment(diRegisteredTableName.toUpperCase(), tableInstance.tableName);
-            console.log("🚀 ~ APIGateway ~ registerController ~ controllerFunction.env:", controllerLambda.fn.env);
-
-            tableInstance.grantReadWriteData(controllerLambda.fn);
+            // add the table name to the lambda environment
+            controllerLambda.addEnvironment(`${controllerConfig.tableName.toUpperCase()}_TABLE`, tableInstance.tableName);
+            // grant the lambda function read write access to the table
+            tableInstance.grantReadWriteData(controllerLambda);
         }
     
         // create the lambda integration
-        const controllerIntegration = new LambdaIntegration(controllerLambda.fn);
+        const controllerIntegration = new LambdaIntegration(controllerLambda);
       
-
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             console.log(`Registering route ${route.httpMethod} ${route.path}`);
             let currentResource: IResource = controllerResource;

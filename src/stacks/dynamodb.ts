@@ -13,7 +13,7 @@ export interface IDynamoConfig {
 export class DynamoStack implements IStack {
 
     // default contructor to initialize the stack configuration
-    constructor(private config: IDynamoConfig) {
+    constructor(private stackConfig: IDynamoConfig) {
         console.log("DynamoDBTable");
     }
 
@@ -22,15 +22,15 @@ export class DynamoStack implements IStack {
         console.log("DynamoDB construct");
 
         const mainStack = fw24.getStack("main");
-        const appQualifiedTableName = `${this.config.table.name}_table`;
+        const appQualifiedTableName = `${this.stackConfig.table.name}_table`;
 
         console.log("🚀 ~ DynamoStack ~ construct ~ appQualifiedTableName:", appQualifiedTableName);
         // new dynamodb.Table(mainStack, this.config.table.name, {});
 
         // See https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_dynamodb-readme.html
-        const tableInstance = new TableV2(mainStack, appQualifiedTableName, this.config.table.props);
+        const tableInstance = new TableV2(mainStack, appQualifiedTableName, this.stackConfig.table.props);
 
         // Register the table instance as a global container
-        fw24.addDynamoTable(this.config.table.name, tableInstance);
+        fw24.addDynamoTable(this.stackConfig.table.name, tableInstance);
     }
 }
