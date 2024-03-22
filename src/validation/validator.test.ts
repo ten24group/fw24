@@ -1,10 +1,10 @@
-import { EntityItem, Schema, createSchema } from "electrodb";
-import { Narrow, OmitNever } from "../utils/types";
+import { Schema, createSchema } from "electrodb";
+import { Narrow, OmitNever } from "../utils";
 import { EntityOpsValidations, EntityValidations, InputApplicableConditionsMap, TConditionalValidationRule, TMapOfValidationConditions } from "./validator.type";
 
 import { describe, expect, it } from '@jest/globals';
 import { randomUUID } from "node:crypto";
-import { CreateEntityItemTypeFromSchema, DefaultEntityOperations, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema, TEntityOpsInputSchemas, UpdateEntityItemTypeFromSchema } from "../entity";
+import { DefaultEntityOperations, TEntityOpsInputSchemas } from "../entity";
 import { Validator, extractOpValidationFromEntityValidations } from "./validator";
 
 
@@ -91,12 +91,8 @@ export namespace User {
       },
     } as const);
 
-  export type TUserRecordSchema = ReturnType<typeof createUserSchema>
+  export type TUserSchema = ReturnType<typeof createUserSchema>
 
-  export type TUserItem = EntityItem<EntityTypeFromSchema<TUserRecordSchema>>;
-  export type TUserIdentifiers = EntityIdentifiersTypeFromSchema<TUserRecordSchema>;
-  export type TCreateUserItem = CreateEntityItemTypeFromSchema<TUserRecordSchema>;
-  export type TUpdateUserItem = UpdateEntityItemTypeFromSchema<TUserRecordSchema>;
 }
 
 
@@ -112,7 +108,7 @@ const UserValidationConditions =  {
     }},
 } as const;
 
-const UserOppValidations: EntityOpsValidations<User.TUserRecordSchema, typeof UserValidationConditions, DefaultEntityOperations2> = {
+const UserOppValidations: EntityOpsValidations<User.TUserSchema, typeof UserValidationConditions, DefaultEntityOperations2> = {
   conditions: UserValidationConditions,  
   delete: {
     actorRules: {
@@ -148,13 +144,13 @@ const UserOppValidations: EntityOpsValidations<User.TUserRecordSchema, typeof Us
 
 
 export type DefaultEntityOperations2 = {
-    'get': "",
-    'list': ""
-    'create': "",
-    'update': "",
-    'delete': "",
-    'xxx': "",
-    'yyy': ""
+    get: "get",
+    list: "list",
+    create: "create",
+    update: "update",
+    delete: "delete",
+    xxx: "xxx",
+    yyy: "yyy"
 };
 
 type PropertyApplicableEntityOperations<
@@ -166,23 +162,23 @@ type PropertyApplicableEntityOperations<
   [OppName in keyof OpsInpSch]: Prop extends keyof Narrow<OpsInpSch[OppName]> ? '' : never;
 }
 
-type yy1 = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserRecordSchema, DefaultEntityOperations>['create']>, typeof UserValidationConditions>>
-type yy  = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserRecordSchema, DefaultEntityOperations>>, typeof UserValidationConditions>>
-type cxx = Narrow<TEntityOpsInputSchemas<User.TUserRecordSchema, DefaultEntityOperations2>>;
+type yy1 = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema, DefaultEntityOperations>['create']>, typeof UserValidationConditions>>
+type yy  = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema, DefaultEntityOperations>>, typeof UserValidationConditions>>
+type cxx = Narrow<TEntityOpsInputSchemas<User.TUserSchema, DefaultEntityOperations2>>;
 type cc = keyof OmitNever<PropertyApplicableEntityOperations<
     'userId', 
-    User.TUserRecordSchema, 
+    User.TUserSchema, 
     DefaultEntityOperations, 
-    Narrow<TEntityOpsInputSchemas<User.TUserRecordSchema, DefaultEntityOperations>>
+    Narrow<TEntityOpsInputSchemas<User.TUserSchema, DefaultEntityOperations>>
 >>;
 
 type xpx = cc extends keyof DefaultEntityOperations2 ? 'ccc' : '';
 
-type rty = keyof OmitNever<PropertyApplicableEntityOperations<'email', User.TUserRecordSchema, DefaultEntityOperations, Narrow<TEntityOpsInputSchemas<User.TUserRecordSchema, DefaultEntityOperations2>>>> extends keyof Narrow<TEntityOpsInputSchemas<User.TUserRecordSchema, DefaultEntityOperations2>> 
-    ? OmitNever<PropertyApplicableEntityOperations<'email', User.TUserRecordSchema, DefaultEntityOperations, Narrow<TEntityOpsInputSchemas<User.TUserRecordSchema, DefaultEntityOperations2>>>> 
+type rty = keyof OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, DefaultEntityOperations, Narrow<TEntityOpsInputSchemas<User.TUserSchema, DefaultEntityOperations2>>>> extends keyof Narrow<TEntityOpsInputSchemas<User.TUserSchema, DefaultEntityOperations2>> 
+    ? OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, DefaultEntityOperations, Narrow<TEntityOpsInputSchemas<User.TUserSchema, DefaultEntityOperations2>>>> 
     : never
 
-const UserValidations: EntityValidations<User.TUserRecordSchema, typeof UserValidationConditions, DefaultEntityOperations2> = {
+const UserValidations: EntityValidations<User.TUserSchema, typeof UserValidationConditions, DefaultEntityOperations2> = {
     conditions: UserValidationConditions,
     actorRules: {
         tenantId: [{
@@ -190,10 +186,10 @@ const UserValidations: EntityValidations<User.TUserRecordSchema, typeof UserVali
             operations: [
               '*',
               'create',
-              ['delete', [['inputIsNitin', 'inputIsNitin'], 'all'] ],
               'update',
               ['update', ['recordIsNotNew', 'tenantIsXYZ']],
-              ['update', [['recordIsNotNew', 'inputIsNitin'], 'any']]
+              ['update', [['recordIsNotNew', 'inputIsNitin'], 'any']],
+              ['delete', [['inputIsNitin', 'tenantIsXYZ'], 'all'] ]
             ],
         }],
     },
