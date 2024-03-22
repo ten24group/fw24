@@ -60,6 +60,8 @@ export function extractOpValidationFromEntityValidations<
 			
 				for(const thisOp of operations ?? ['*']){
 					if (Array.isArray(thisOp) && thisOp[0] === operationName ) {
+                        const [thisOpName, conditions] = thisOp;
+
 						/**
 						 * 
 						 * ['update', ['recordIsNotNew', 'tenantIsXYZ']],
@@ -67,12 +69,9 @@ export function extractOpValidationFromEntityValidations<
 						 * 
 						 */
 						let thisRuleValidations: any = {
-							...restOfTheValidations
+							...restOfTheValidations,
+                            conditions,
 						};
-
-						if(thisOp.length == 2){
-							thisRuleValidations['conditions'] = thisOp[1];
-						}
 
 						formattedPropertyRules.push(thisRuleValidations);
 					} else if( thisOp === '*' || thisOp === operationName){
@@ -298,7 +297,7 @@ export class Validator implements IValidator {
         
         const {rule, allConditions, inputVal, input, record, actor} = options;
         
-        const { conditions, ...partialValidation } = rule;
+        const { conditions: ruleConditions, ...partialValidation } = rule;
         /**
          * 
          * Conditions ==> ['actorIs123', 'ppp', 'qqq'] | [ ['actorIs123', 'ppp', 'qqq'], 'all' ]
@@ -306,22 +305,21 @@ export class Validator implements IValidator {
          * 
          */
 
-        const conditionsOrConditionsTuple: string[] = conditions as string[];
+        // const conditionsOrConditionsTuple: string[] = conditions as string[];
         
         let formattedConditions: {applicable: string, conditionNames: string[]} = {
             applicable: 'all',
             conditionNames: [],
         };
 
-        if(
-            conditionsOrConditionsTuple?.length == 2 
-            && Array.isArray(conditionsOrConditionsTuple[0])
-            && ['all', 'any', 'none'].includes(conditionsOrConditionsTuple[1]) 
-        ){
-            formattedConditions.conditionNames = conditionsOrConditionsTuple[0];
-            formattedConditions.applicable = conditionsOrConditionsTuple[1];
-        } else if (conditionsOrConditionsTuple) {
-            formattedConditions.conditionNames = conditionsOrConditionsTuple;
+        if(Array.isArray(ruleConditions)){
+            if(ruleConditions.length == 2){
+                const [conditions, applicability] = ruleConditions;
+                formattedConditions.applicable = applicability as string,
+                formattedConditions.conditionNames = conditions as string[];
+            } else {
+                formattedConditions.conditionNames = ruleConditions as string[];
+            }
         }
 
         // record and actor are only required to test the criteria, and probably should be handled in  a separate function
@@ -540,7 +538,7 @@ export class Validator implements IValidator {
             return typeof val === datatype;
         }
         if(unique && val && val.length > 1) {
-            return true;
+            return true; // TODO: 
         }
         if(eq && val && val !== eq) {
             return false;

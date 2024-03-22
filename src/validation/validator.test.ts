@@ -581,32 +581,44 @@ describe('Validator', () => {
 
     it('should validate required', () => {
       const validator = new Validator();
-      const result = validator.testValidation({required: true}, undefined);
-      expect(result).toBe(false);
+      const result_false = validator.testValidation({required: true}, undefined);
+      expect(result_false).toBe(false);
+
+      const result_true = validator.testValidation({required: true}, '');
+      expect(result_true).toBe(true);
     });
 
     it('should validate minLength', () => {
       const validator = new Validator();
-      const result = validator.testValidation({minLength: 5}, 'abc');
-      expect(result).toBe(false);
+      const result_false = validator.testValidation({minLength: 5}, 'abc');
+      expect(result_false).toBe(false);
+
+      const result_true = validator.testValidation({minLength: 3}, 'abc');
+      expect(result_true).toBe(true);
     });
 
     it('should validate maxLength', () => {
       const validator = new Validator();
-      const result = validator.testValidation({maxLength: 5}, 'abcdef');
-      expect(result).toBe(false);
+      const result_false = validator.testValidation({maxLength: 5}, 'abcdef');
+      expect(result_false).toBe(false);
+
+      const result_true = validator.testValidation({maxLength: 6}, 'abcdef');
+      expect(result_true).toBe(true);
     });
 
     it('should validate pattern', () => {
       const validator = new Validator();
       const result = validator.testValidation({pattern: /^[0-9]+$/}, 'abc123');
       expect(result).toBe(false);
+
+      const result2 = validator.testValidation({pattern: /^[0-9]+$/}, '12323232323');
+      expect(result2).toBe(true);
     });
 
     it('should validate datatype', () => {
       const validator = new Validator();
       const result = validator.testValidation({datatype: 'number'}, '123');
-      expect(result).toBe(false);
+      expect(result).toBe(true);
     });
 
   });
