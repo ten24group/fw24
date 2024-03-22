@@ -1,6 +1,6 @@
 import { Stack, CfnOutput } from "aws-cdk-lib";
 import { RemovalPolicy } from 'aws-cdk-lib';
-import { Bucket } from 'aws-cdk-lib/aws-s3';
+import { Bucket, BlockPublicAccess } from 'aws-cdk-lib/aws-s3';
 import { LambdaDestination, SqsDestination } from 'aws-cdk-lib/aws-s3-notifications';
 import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
@@ -46,23 +46,20 @@ export class S3Stack {
         const bucketName = this.getUniqueName(bucketConfig.bucketName);
         var bucketParams: any = {
             bucketName: bucketName,
-            //publicReadAccess: bucketConfig.publicReadAccess || false,
             removalPolicy: bucketConfig.removalPolicy || RemovalPolicy.DESTROY,
             autoDeleteObjects: bucketConfig.autoDeleteObjects || true,
         };
-        // if(bucketConfig.publicReadAccess === true){
-        //     bucketParams.objectOwnership = ObjectOwnership.OBJECT_WRITER,
-        //     bucketParams.accessControl = BucketAccessControl.PUBLIC_READ,
-        //     bucketParams.blockPublicAcces = {
-        //         blockPublicAcls: false,
-        //         blockPublicPolicy: false,
-        //         ignorePublicAcls: false,
-        //         restrictPublicBuckets: false,
-        //     }
-        // }
+        if(bucketConfig.publicReadAccess === true){
+            bucketParams.blockPublicAccess = new BlockPublicAccess({
+                blockPublicAcls: false,
+                blockPublicPolicy: false,
+                ignorePublicAcls: false,
+                restrictPublicBuckets: false,
+            });
+        }
 
         const bucket = new Bucket(this.mainStack, bucketConfig.bucketName + '-bucket', bucketParams);
-
+        
         if(bucketConfig.publicReadAccess === true){
             bucket.grantPublicAccess();
         }
