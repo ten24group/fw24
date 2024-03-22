@@ -107,6 +107,7 @@ export class SQS {
         queueFunction.addEventSource(new SqsEventSource(queue));
         queue.grantConsumeMessages(queueFunction);
 
+        Reflect.set(globalThis, queueName + "-queue", queue);
         // output the api endpoint
         new CfnOutput(this.mainStack, `SQS-${queueName}`, {
             value: queue.queueUrl,

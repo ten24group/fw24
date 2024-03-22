@@ -11,6 +11,7 @@ import { resolve } from "path";
 import { IApplicationConfig } from "../interfaces/config";
 import { Helper } from "../core/helper";
 import { IS3Config } from "../interfaces/s3";
+import { Effect, PolicyStatement, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 
 export class S3Stack {
     appConfig: IApplicationConfig | undefined;
@@ -99,13 +100,29 @@ export class S3Stack {
 
                 if(trigger.destination === 'queue' && trigger.queueName) {
                     // add event notification to the bucket for each event
-                    const queueArn = `arn:aws:sqs:${this.appConfig?.region}:${this.mainStack.account}:${trigger.queueName}`
-                    const queueInstance = Queue.fromQueueArn(this.mainStack, trigger.queueName, queueArn);
+                    // const queueArn = `arn:aws:sqs:${this.appConfig?.region}:${this.mainStack.account}:${trigger.queueName}`
+                    // const queueInstance = Queue.fromQueueArn(this.mainStack, trigger.queueName, queueArn);
+                    const queueInstance: Queue = Reflect.get(globalThis, trigger.queueName+"-queue");
                     console.log(":::Creating queue for the trigger event: ", queueInstance);
-                    if(queueInstance !== null){
+
+                    if(queueInstance !== undefined){                        
+                        queueInstance.addToResourcePolicy(
+                            new PolicyStatement({
+                                effect: Effect.ALLOW,
+                                actions: ["sqs:SendMessage"],
+                                resources: [queueInstance.queueArn],
+                                principals: [new ServicePrincipal("s3.amazonaws.com")],
+                                conditions: {
+                                    ArnLike: {
+                                        "aws:SourceArn": bucket.bucketArn
+                                    }
+                                }
+                            })
+                        );
+    
                         trigger.events.forEach(bucketEvent => {
                             console.log(SqsDestination,bucketEvent);
-                            //bucket.addEventNotification(bucketEvent, new SqsDestination(queueInstance));
+                            bucket.addEventNotification(bucketEvent, new SqsDestination(queueInstance));
                         });
                     }
                 }
