@@ -72,8 +72,8 @@ export class SESStack {
 
     private createLambdaFunction() {
         // create lambda function to process the queue
-        // fix the path
-        const functionPath = join(__dirname, "../../../src/functions/mail-processor.ts");
+        const functionPath = join(__dirname,"../functions/mail-processor.js");
+        console.log("Function path: ", functionPath);
         const lambda = new NodejsFunction(this.mainStack, `${this.appConfig?.name}-email-processor`, {
             entry: functionPath,
             handler: 'handler',
