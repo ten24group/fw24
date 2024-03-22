@@ -14,9 +14,10 @@ export * from "./stacks/amplify";
 export * from "./stacks/dynamodb";
 export * from "./stacks/cognito";
 export * from "./stacks/sqs";
+export * from './entity';
+export * from './utils';
 
 export * as Auditor from './audit';
 export * as Validator from './validation' ;
 export * as Logger from './logging'
 export * as EventDispatcher from './event';
-export * from './entity';
