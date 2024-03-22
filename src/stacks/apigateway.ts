@@ -112,7 +112,7 @@ export class APIGateway {
         controllerConfig?.queue?.forEach( ( queue: IControllerSQSConfig ) => {
             if (queue.path === "globalThis") {
                 const queueArn = `arn:aws:sqs:${this.appConfig?.region}:${this.mainStack.account}:${queue.name}`
-                const queueInstance = Queue.fromQueueArn(this.mainStack, queue.name, queueArn);
+                const queueInstance = Queue.fromQueueArn(this.mainStack, queue.name+controllerName+'-queue', queueArn);
                 queueInstance.grantSendMessages(controllerFunction);
                 controllerFunction.addEnvironment(`${queue.name}_queueUrl`, queueInstance.queueUrl);
             }
