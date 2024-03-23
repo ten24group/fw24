@@ -1,11 +1,9 @@
+import { ILambdaEnvConfig } from "../interfaces/lambda-env";
+
 export interface IControllerConfig {
 	tableName?: string;
 	authorizer?: string;
 	env?: ILambdaEnvConfig[];
-}
-export interface ILambdaEnvConfig {
-	name: string;
-	prefix?: string;
 }
 
 export function Controller(controllerName: string, controllerConfig: IControllerConfig = {}) {

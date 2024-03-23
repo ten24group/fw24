@@ -13,7 +13,6 @@ export class CognitoStack implements IStack {
     userPool!: UserPool;
     userPoolClient!: UserPoolClient;
     userPoolAuthorizer!: CognitoUserPoolsAuthorizer;
-    //role!: Role;
 
     // default contructor to initialize the stack configuration
     constructor(private stackConfig: ICognitoConfig) {

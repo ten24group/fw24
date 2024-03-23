@@ -21,8 +21,8 @@ export class Application {
         this._fw24.addStack("main", mainStack);
     }
 
-    public use(stack: IStack): Application {
-        stack.construct(this._fw24);
+    public async use(stack: IStack): Application {
+        await stack.construct(this._fw24);
         return this;
     }
 }
