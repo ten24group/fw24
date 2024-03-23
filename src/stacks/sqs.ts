@@ -4,16 +4,21 @@ import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 
 import { LambdaFunction } from "../constructs/lambda-function";
-import { IApplicationConfig } from "../interfaces/config";
 import { Helper } from "../core/helper";
-import { ISQSConfig } from "../interfaces/sqs";
 import { IStack } from "../interfaces/stack";
 import { Fw24 } from "../core/fw24";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 
+import { QueueProps } from "aws-cdk-lib/aws-sqs";
+import { ILambdaEnvConfig } from "../interfaces/lambda-env";
+
+export interface ISQSConfig {
+    queuesDirectory?: string;
+    queueOptions?: QueueProps;
+    env?: ILambdaEnvConfig[];
+}
 
 export class SQS implements IStack {
-    appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;
     fw24!: Fw24;
 
@@ -26,8 +31,6 @@ export class SQS implements IStack {
     // construct method to create the stack
     public construct(fw24: Fw24) {
         console.log("SQS construct");
-        // make the appConfig available to the class
-        this.appConfig = fw24.getConfig();
         // make the main stack available to the class
         this.mainStack = fw24.getStack("main");
         // make the fw24 instance available to the class

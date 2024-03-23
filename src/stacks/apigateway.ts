@@ -2,15 +2,12 @@ import {
     AuthorizationType, 
     Cors, 
     IResource, 
-    Integration, 
     LambdaIntegration, 
     MethodOptions, 
     RestApi, 
     RestApiProps 
 } from "aws-cdk-lib/aws-apigateway";
 
-import { IAPIGatewayConfig } from "../interfaces/apigateway";
-import { IApplicationConfig } from "../interfaces/config";
 import { Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { Helper } from "../core/helper";
@@ -22,9 +19,13 @@ import { IStack } from "../interfaces/stack";
 import Mutable from "../types/mutable";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 
+export interface IAPIGatewayConfig {
+    cors?: boolean | string | string[];
+    apiOptions?: RestApiProps;
+    controllersDirectory?: string;
+}
+
 export class APIGateway implements IStack {
-    methods: Map<string, Integration> = new Map();
-    appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;
     api!: RestApi;
     fw24!: Fw24;
@@ -40,8 +41,6 @@ export class APIGateway implements IStack {
         console.log("APIGateway construct");
         // make the fw24 instance available to the class
         this.fw24 = fw24;
-        // make the appConfig available to the class
-        this.appConfig = fw24.getConfig();
         // set the default api options
         const paramsApi: Mutable<RestApiProps> = this.stackConfig.apiOptions || {};
         // Enable CORS if defined

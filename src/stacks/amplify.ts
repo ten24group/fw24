@@ -2,10 +2,18 @@ import { SecretValue, CfnOutput } from "aws-cdk-lib";
 import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
 import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha';
 
-import { IAmplifyConfig } from "../interfaces/amplify";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
 import { Helper } from "../core/helper";
+
+export interface IAmplifyConfig {
+    appName: string;
+    githubOwner: string;
+    githubRepo: string;
+    githubBranch: string;
+    secretKeyName: string;
+    buildSpec: any; // BuildSpec.fromObject
+}
 
 export class Amplify implements IStack{
     // default contructor to initialize the stack configuration

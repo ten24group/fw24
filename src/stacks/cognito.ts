@@ -1,19 +1,34 @@
-import { UserPool, UserPoolClient, VerificationEmailStyle, CfnIdentityPool } from "aws-cdk-lib/aws-cognito";
+import { 
+    UserPool, 
+    UserPoolClient, 
+    VerificationEmailStyle, 
+    CfnIdentityPool, 
+    UserPoolProps, 
+    UserPoolOperation 
+} from "aws-cdk-lib/aws-cognito";
+
 import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { Duration } from "aws-cdk-lib";
 import { readFileSync } from "fs";
 import { CognitoAuthRole } from "../constructs/cognito-auth-role";
 import { LambdaFunction } from "../constructs/lambda-function";
-import { ICognitoConfig } from "../interfaces/cognito";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
 
-export class CognitoStack implements IStack {
-    userPool!: UserPool;
-    userPoolClient!: UserPoolClient;
-    userPoolAuthorizer!: CognitoUserPoolsAuthorizer;
 
+export interface ICognitoConfig {
+    userPool: {
+        props: UserPoolProps;
+    };
+    policyFilePath?: string;
+    triggers?: {
+        trigger: UserPoolOperation;
+        lambdaFunctionPath: string;
+    }[];
+}
+
+export class CognitoStack implements IStack {
     // default contructor to initialize the stack configuration
     constructor(private stackConfig: ICognitoConfig) {
         console.log("Cognito Stack constructor", stackConfig);
@@ -55,8 +70,6 @@ export class CognitoStack implements IStack {
             }
         });
 
-        this.userPool = userPool;
-
         const userPoolClient = new UserPoolClient(mainStack, `${namePrefix}-userPoolclient`, {
             userPool,
             generateSecret: false,
@@ -64,10 +77,9 @@ export class CognitoStack implements IStack {
                 userPassword: true,
             },
         });
-        this.userPoolClient = userPoolClient;
 
         // cognito autorizer 
-        this.userPoolAuthorizer = new CognitoUserPoolsAuthorizer(mainStack, `${namePrefix}-Authorizer`, {
+        const userPoolAuthorizer = new CognitoUserPoolsAuthorizer(mainStack, `${namePrefix}-Authorizer`, {
             cognitoUserPools: [userPool],
             identitySource: 'method.request.header.Authorization',
         });
@@ -111,6 +123,6 @@ export class CognitoStack implements IStack {
 
         fw24.set("userPoolID", userPool.userPoolId);
         fw24.set("userPoolClientID", userPoolClient.userPoolClientId);
-        fw24.setCognitoAuthorizer(this.userPoolAuthorizer);
+        fw24.setCognitoAuthorizer(userPoolAuthorizer);
     }
 }
