@@ -44,7 +44,7 @@ export class SESStack implements IStack{
             queueName: `${this.appConfig?.name}-mail-queue`,
             visibilityTimeout: Duration.seconds(30),
             receiveMessageWaitTime: Duration.seconds(10),
-            entry: join(__dirname,"../functions/mail-processor.js"),
+            entry: join(__dirname,"../core/mail-processor.js"),
             policies: [{
                 actions: ["ses:SendEmail", "SES:SendRawEmail"],
                 resources: ["*"],
