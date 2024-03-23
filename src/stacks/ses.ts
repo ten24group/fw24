@@ -50,6 +50,9 @@ export class SESStack implements IStack{
                 resources: ["*"],
                 effect: Effect.ALLOW,
             }],
+            batchSize: 1,
+            maxBatchingWindow: Duration.seconds(5),
+            reportBatchItemFailures: true,
         }).queue;
 
         new CfnOutput(this.mainStack, "mail-queue-url", {
