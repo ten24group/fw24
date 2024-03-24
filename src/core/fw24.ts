@@ -7,7 +7,7 @@ export class Fw24 {
     public appName: string = "fw24";
     private stacks: any = {};
     private environment: any = {};
-    private cognitoAuthorizer!: IAuthorizer;
+    private cognitoAuthorizer: IAuthorizer | undefined;
     private dynamoTables: { [key: string]: TableV2 } = {};
 
     constructor(private config: IApplicationConfig) {
@@ -37,11 +37,25 @@ export class Fw24 {
         return `arn:aws:lambda:${this.config.region}:${this.stacks['main'].account}:layer:Fw24CoreLayer:${this.config.coreVersion}`;
     }
 
+    public getUniqueName(name: string) {
+        if(this.stacks['main'] === undefined) {
+            throw new Error('Main stack not found');
+        }
+        return `${name}-${this.config.name}-${this.config.env}-${this.stacks['main'].account}`;
+    }
+
+    public getQueueArn(name: string): string {
+        if(this.stacks['main'] === undefined) {
+            throw new Error('Main stack not found');
+        }
+        return `arn:aws:sqs:${this.config.region}:${this.stacks['main'].account}:${name}`;
+    }
+
     public setCognitoAuthorizer(authorizer: IAuthorizer) {
         this.cognitoAuthorizer = authorizer;
     }
 
-    public getCognitoAuthorizer(): IAuthorizer {
+    public getCognitoAuthorizer(): IAuthorizer | undefined {
         return this.cognitoAuthorizer;
     }
 
