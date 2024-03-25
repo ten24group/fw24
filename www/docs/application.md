@@ -2,7 +2,7 @@
 sidebar_position: 2
 ---
 
-# Appliation
+# Application
 
 This class represents an AWS CDK application. It allows the user to create a new CDK App instance and a main CDK Stack instance.
 
