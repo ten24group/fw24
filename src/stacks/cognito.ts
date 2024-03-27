@@ -123,6 +123,6 @@ export class CognitoStack implements IStack {
 
         fw24.set("userPoolID", userPool.userPoolId);
         fw24.set("userPoolClientID", userPoolClient.userPoolClientId);
-        fw24.setCognitoAuthorizer(userPoolAuthorizer);
+        fw24.setCognitoAuthorizer(this.stackConfig.userPool.props.userPoolName || 'default', userPoolAuthorizer, true);
     }
 }
