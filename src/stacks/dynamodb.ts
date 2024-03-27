@@ -10,7 +10,7 @@ export interface IDynamoConfig {
     }
 }
 
-export class DynamoStack implements IStack {
+export class DynamoDBStack implements IStack {
 
     // default contructor to initialize the stack configuration
     constructor(private stackConfig: IDynamoConfig) {

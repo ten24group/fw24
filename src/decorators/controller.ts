@@ -2,7 +2,17 @@ import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 
 export interface IControllerConfig {
 	tableName?: string;
-	authorizer?: string;
+	authorizer?: { 
+		name: string;
+		type: string;
+	} | string;
+	buckets?: [
+		{ 
+			name: string;
+			access?: string; // read, write, readwrite | default is readwrite
+		}
+		
+	];
 	env?: ILambdaEnvConfig[];
 }
 

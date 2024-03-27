@@ -7,13 +7,14 @@ export class Fw24 {
     public appName: string = "fw24";
     private stacks: any = {};
     private environment: any = {};
-    private cognitoAuthorizer: IAuthorizer | undefined;
+    private defaultCognitoAuthorizer: IAuthorizer | undefined;
+    private cognitoAuthorizers: { [key: string]: IAuthorizer } = {};
     private dynamoTables: { [key: string]: TableV2 } = {};
 
     constructor(private config: IApplicationConfig) {
         // Hydrate the config object with environment variables
         Helper.hydrateConfig(config);
-
+        // Set the app name
         this.appName = config.name!;
     }
 
@@ -41,7 +42,7 @@ export class Fw24 {
         if(this.stacks['main'] === undefined) {
             throw new Error('Main stack not found');
         }
-        return `${name}-${this.config.name}-${this.config.env}-${this.stacks['main'].account}`;
+        return `${name}-${this.config.name}-${this.config.stage}-${this.stacks['main'].account}`;
     }
 
     public getQueueArn(name: string): string {
@@ -51,19 +52,31 @@ export class Fw24 {
         return `arn:aws:sqs:${this.config.region}:${this.stacks['main'].account}:${name}`;
     }
 
-    public setCognitoAuthorizer(authorizer: IAuthorizer) {
-        this.cognitoAuthorizer = authorizer;
-    }
-
-    public getCognitoAuthorizer(): IAuthorizer | undefined {
-        return this.cognitoAuthorizer;
-    }
-
-    public getAuthorizer(authorizationType: string): IAuthorizer | undefined {
-        if(authorizationType === "COGNITO_USER_POOLS") {
-            return this.getCognitoAuthorizer();
+    public setCognitoAuthorizer(name: string, authorizer: IAuthorizer, defaultAuthorizer: boolean = false) {
+        this.cognitoAuthorizers[name] = authorizer;
+        // If this authorizer is the default, set it as the default authorizer
+        if(defaultAuthorizer) {
+            this.defaultCognitoAuthorizer = authorizer;
         }
-        
+    }
+
+    public getCognitoAuthorizer(name?: string): IAuthorizer | undefined {
+        // If no name is provided and no default authorizer is set, throw an error
+        if(name === undefined && this.defaultCognitoAuthorizer === undefined) {
+            throw new Error('Default Cognito Authorizer not set');
+        }
+        // If no name is provided, return the default authorizer
+        if(name === undefined) {
+            return this.defaultCognitoAuthorizer;
+        }
+        // If a name is provided, return the authorizer with that name
+        return this.cognitoAuthorizers[name];
+    }
+
+    public getAuthorizer(authorizationType: string, name?: string): IAuthorizer | undefined {
+        if(authorizationType === "COGNITO_USER_POOLS") {
+            return this.getCognitoAuthorizer(name);
+        }
         return undefined;
     }
 

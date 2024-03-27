@@ -15,7 +15,7 @@ export interface IAmplifyConfig {
     buildSpec: any; // BuildSpec.fromObject
 }
 
-export class Amplify implements IStack{
+export class AmplifyStack implements IStack{
     // default contructor to initialize the stack configuration
     constructor(private stackConfig: IAmplifyConfig){
         console.log('Amplify stack constructor', stackConfig);

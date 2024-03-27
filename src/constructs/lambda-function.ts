@@ -16,6 +16,7 @@ interface LambdaFunctionProps {
   bundling?: BundlingOptions;
   policies?: any[];
   env?: { [key: string]: string };
+  buckets? : [{ name: string, access?: string }];
 }
 
 export class LambdaFunction extends Construct {

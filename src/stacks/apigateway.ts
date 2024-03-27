@@ -10,6 +10,7 @@ import {
 
 import { Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
+import { Bucket } from "aws-cdk-lib/aws-s3";
 import { Helper } from "../core/helper";
 import { IControllerConfig } from "../fw24";
 import { LambdaFunction } from "../constructs/lambda-function";
@@ -115,6 +116,7 @@ export class APIGateway implements IStack {
             entry: controllerInfo.filePath + "/" + controllerInfo.fileName,
             layerArn: this.fw24.getLayerARN(),
             env: this.getEnvironmentVariables(controllerConfig),
+            buckets: controllerConfig?.buckets,
         }).fn;
 
         // logic for adding dynamodb table access to the controller
@@ -126,9 +128,35 @@ export class APIGateway implements IStack {
             // grant the lambda function read write access to the table
             tableInstance.grantReadWriteData(controllerLambda);
         }
+
+        // logic for adding s3 bucket access to the controller
+        controllerConfig?.buckets?.forEach( ( bucket: any ) => {
+            const bucketFullName = this.fw24.getUniqueName(bucket.name);
+            const bucketInstance: any = Bucket.fromBucketName(this.mainStack, bucket.name+controllerName+'-bucket', bucketFullName);
+            // grant the lambda function access to the bucket
+            switch (bucket.access) {
+                case 'read':
+                    bucketInstance.grantRead(controllerLambda);
+                    break;
+                case 'write':
+                    bucketInstance.grantWrite(controllerLambda);
+                    break;
+                default:
+                    bucketInstance.grantReadWrite(controllerLambda);
+                    break;
+            }
+            // add environment variable for the bucket name
+            controllerLambda.addEnvironment(`bucket_${bucket.name}`, bucketFullName);
+        });
     
         // create the lambda integration
         const controllerIntegration = new LambdaIntegration(controllerLambda);
+
+        // in case of multiple authorizers in a single application, get the authorizer name
+        let authorizerName = undefined;
+        if(typeof controllerConfig?.authorizer === 'object') {
+            authorizerName = controllerConfig.authorizer.name;
+        }
       
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             console.log(`Registering route ${route.httpMethod} ${route.path}`);
@@ -154,7 +182,7 @@ export class APIGateway implements IStack {
             const methodOptions: MethodOptions = {
                 requestParameters: requestParameters,
                 authorizationType: route.authorizer as AuthorizationType,
-                authorizer: this.fw24.getAuthorizer(route.authorizer),
+                authorizer: this.fw24.getAuthorizer(route.authorizer, authorizerName),
             }
 
             currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);

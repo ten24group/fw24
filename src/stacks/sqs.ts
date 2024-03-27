@@ -18,7 +18,7 @@ export interface ISQSConfig {
     env?: ILambdaEnvConfig[];
 }
 
-export class SQS implements IStack {
+export class SQSStack implements IStack {
     mainStack!: Stack;
     fw24!: Fw24;
 

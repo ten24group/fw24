@@ -4,4 +4,5 @@ export interface IApplicationConfig {
     region?: string;
     account?: string;
     defaultAuthorizationType?: any;
+    stage?: string; // local, dev, prod
 }
