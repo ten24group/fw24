@@ -102,6 +102,7 @@ export class CognitoStack {
 
         Reflect.set(globalThis, "userPoolID", userPool.userPoolId);
         Reflect.set(globalThis, "userPoolClientID", userPoolClient.userPoolClientId)
+        Reflect.set(globalThis, "identityPoolID", identityPool.ref);
         Reflect.set(globalThis, "userPoolAuthorizer", this.userPoolAuthorizer)
 
     }
