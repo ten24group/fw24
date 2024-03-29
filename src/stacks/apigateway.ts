@@ -9,16 +9,14 @@ import {
 } from "aws-cdk-lib/aws-apigateway";
 
 import { Stack, CfnOutput } from "aws-cdk-lib";
-import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
-import { Bucket } from "aws-cdk-lib/aws-s3";
 import { Helper } from "../core/helper";
 import { IControllerConfig } from "../fw24";
 import { LambdaFunction } from "../constructs/lambda-function";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
-
 import Mutable from "../types/mutable";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 
 export interface IAPIGatewayConfig {
     cors?: boolean | string | string[];
@@ -29,7 +27,7 @@ export interface IAPIGatewayConfig {
 export class APIGateway implements IStack {
     mainStack!: Stack;
     api!: RestApi;
-    fw24!: Fw24;
+    fw24: Fw24 = Fw24.getInstance();
 
     // default contructor to initialize the stack configuration
     constructor(private stackConfig: IAPIGatewayConfig) {
@@ -38,10 +36,8 @@ export class APIGateway implements IStack {
     }
 
     // construct method to create the stack
-    public construct(fw24: Fw24) {
+    public construct() {
         console.log("APIGateway construct");
-        // make the fw24 instance available to the class
-        this.fw24 = fw24;
         // set the default api options
         const paramsApi: Mutable<RestApiProps> = this.stackConfig.apiOptions || {};
         // Enable CORS if defined
@@ -64,11 +60,11 @@ export class APIGateway implements IStack {
         }
         console.log("Creating API Gateway... ");
         // get the main stack from the framework
-        this.mainStack = fw24.getStack("main");
+        this.mainStack = this.fw24.getStack("main");
         // create the api gateway
-        this.api = new RestApi(this.mainStack,  `${fw24.appName}-api`, paramsApi);
+        this.api = new RestApi(this.mainStack,  `${this.fw24.appName}-api`, paramsApi);
         // add the api to the framework
-        fw24.addStack("api", this.api);
+        this.fw24.addStack("api", this.api);
         // sets the default controllers directory if not defined
         if(this.stackConfig.controllersDirectory === undefined || this.stackConfig.controllersDirectory === ""){
             this.stackConfig.controllersDirectory = "./src/controllers";
@@ -115,39 +111,11 @@ export class APIGateway implements IStack {
         const controllerLambda = new LambdaFunction(this.mainStack, controllerName + "-controller", {
             entry: controllerInfo.filePath + "/" + controllerInfo.fileName,
             layerArn: this.fw24.getLayerARN(),
-            env: this.getEnvironmentVariables(controllerConfig),
+            environmentVariables: this.getEnvironmentVariables(controllerConfig),
             buckets: controllerConfig?.buckets,
-        }).fn;
+            tableName: controllerConfig?.tableName,
+        }) as NodejsFunction;
 
-        // logic for adding dynamodb table access to the controller
-        if (controllerConfig?.tableName) {
-            // get the dynamodb table based on the controller config
-            const tableInstance: TableV2 = this.fw24.getDynamoTable(controllerConfig.tableName);
-            // add the table name to the lambda environment
-            controllerLambda.addEnvironment(`${controllerConfig.tableName.toUpperCase()}_TABLE`, tableInstance.tableName);
-            // grant the lambda function read write access to the table
-            tableInstance.grantReadWriteData(controllerLambda);
-        }
-
-        // logic for adding s3 bucket access to the controller
-        controllerConfig?.buckets?.forEach( ( bucket: any ) => {
-            const bucketFullName = this.fw24.getUniqueName(bucket.name);
-            const bucketInstance: any = Bucket.fromBucketName(this.mainStack, bucket.name+controllerName+'-bucket', bucketFullName);
-            // grant the lambda function access to the bucket
-            switch (bucket.access) {
-                case 'read':
-                    bucketInstance.grantRead(controllerLambda);
-                    break;
-                case 'write':
-                    bucketInstance.grantWrite(controllerLambda);
-                    break;
-                default:
-                    bucketInstance.grantReadWrite(controllerLambda);
-                    break;
-            }
-            // add environment variable for the bucket name
-            controllerLambda.addEnvironment(`bucket_${bucket.name}`, bucketFullName);
-        });
     
         // create the lambda integration
         const controllerIntegration = new LambdaIntegration(controllerLambda);

@@ -2,6 +2,7 @@ import { Stack, CfnOutput } from "aws-cdk-lib";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 
 import { LambdaFunction } from "../constructs/lambda-function";
 import { Helper } from "../core/helper";
@@ -20,7 +21,7 @@ export interface ISQSConfig {
 
 export class SQSStack implements IStack {
     mainStack!: Stack;
-    fw24!: Fw24;
+    fw24: Fw24 = Fw24.getInstance();
 
     // default contructor to initialize the stack configuration
     constructor(private stackConfig: ISQSConfig) {
@@ -29,12 +30,11 @@ export class SQSStack implements IStack {
     }
 
     // construct method to create the stack
-    public construct(fw24: Fw24) {
+    public construct() {
         console.log("SQS construct");
         // make the main stack available to the class
-        this.mainStack = fw24.getStack("main");
+        this.mainStack = this.fw24.getStack("main");
         // make the fw24 instance available to the class
-        this.fw24 = fw24;
         // sets the default queuess directory if not defined
         if(this.stackConfig.queuesDirectory === undefined || this.stackConfig.queuesDirectory === ""){
             this.stackConfig.queuesDirectory = "./src/queues";
@@ -71,8 +71,8 @@ export class SQSStack implements IStack {
         const queueLambda = new LambdaFunction(this.mainStack, queueName + "-controller", {
             entry: queueInfo.filePath + "/" + queueInfo.fileName,
             layerArn: this.fw24.getLayerARN(),
-            env: this.getEnvironmentVariables(queueConfig),
-        }).fn;
+            environmentVariables: this.getEnvironmentVariables(queueConfig),
+        }) as NodejsFunction;
 
          // logic for adding dynamodb table access to the controller
         if (queueConfig?.tableName) {

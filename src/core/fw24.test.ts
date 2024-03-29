@@ -8,7 +8,9 @@ describe('Fw24', () => {
             name: "fw24",
             env: "dev",
         };
-        const fw24 = new Fw24(config);
+        const fw24 = Fw24.getInstance();
+        fw24.setConfig(config);
+
         fw24.addStack("main", { account: "123456789012" });
 
         const uniqueName = fw24.getUniqueName("myBucket");
@@ -20,7 +22,8 @@ describe('Fw24', () => {
             name: "fw24",
             env: "dev",
         };
-        const fw24 = new Fw24(config);
+        const fw24 = Fw24.getInstance();
+        fw24.setConfig(config);
         fw24.addStack("main", { account: "123456789012" });
         const stack = fw24.getStack("main");
         expect(stack.account).toBe("123456789012");
@@ -33,7 +36,8 @@ describe('Fw24', () => {
             region: "us-east-1",
             coreVersion: 1
         };
-        const fw24 = new Fw24(config);
+        const fw24 = Fw24.getInstance();
+        fw24.setConfig(config);
         fw24.addStack("main", { account: "123456789012" });
 
         const layerARN = fw24.getLayerARN();
@@ -47,7 +51,8 @@ describe('Fw24', () => {
             region: "us-east-1",
             coreVersion: 1
         };
-        const fw24 = new Fw24(config);
+        const fw24 = Fw24.getInstance();
+        fw24.setConfig(config);
         fw24.addStack("main", { account: "123456789012" });
 
         const queueArn = fw24.getQueueArn("myQueue");
@@ -59,7 +64,8 @@ describe('Fw24', () => {
             name: "fw24",
             env: "dev",
         };
-        const fw24 = new Fw24(config);
+        const fw24 = Fw24.getInstance();
+        fw24.setConfig(config);
         fw24.set("myVar", "myVal");
         expect(fw24.get("myVar")).toBe("myVal");
     });
@@ -69,7 +75,8 @@ describe('Fw24', () => {
             name: "fw24",
             env: "dev",
         };
-        const fw24 = new Fw24(config);
+        const fw24 = Fw24.getInstance();
+        fw24.setConfig(config);
         fw24.set("myVar", "myVal", "APP");
         expect(fw24.get("myVar", "APP")).toBe("myVal");
     });
@@ -79,7 +86,8 @@ describe('Fw24', () => {
             name: "fw24",
             env: "dev",
         };
-        const fw24 = new Fw24(config);
+        const fw24 = Fw24.getInstance();
+        fw24.setConfig(config);
         expect(fw24.getAuthorizer("UNKNOWN")).toBeUndefined();
     });
 

@@ -5,15 +5,28 @@ import { Helper } from './helper';
 
 export class Fw24 {
     public appName: string = "fw24";
+    private config: IApplicationConfig = {};
     private stacks: any = {};
     private environment: any = {};
     private defaultCognitoAuthorizer: IAuthorizer | undefined;
     private cognitoAuthorizers: { [key: string]: IAuthorizer } = {};
     private dynamoTables: { [key: string]: TableV2 } = {};
+    private static instance: Fw24;
 
-    constructor(private config: IApplicationConfig) {
+    private constructor() {}
+
+    public static getInstance(): Fw24 {
+        if (!Fw24.instance) {
+            Fw24.instance = new Fw24();
+        }
+
+        return Fw24.instance;
+    }
+
+    public setConfig(config: IApplicationConfig) {
+        this.config = config;
         // Hydrate the config object with environment variables
-        Helper.hydrateConfig(config);
+        Helper.hydrateConfig(this.config);
         // Set the app name
         this.appName = config.name!;
     }
@@ -42,7 +55,7 @@ export class Fw24 {
         if(this.stacks['main'] === undefined) {
             throw new Error('Main stack not found');
         }
-        return `${name}-${this.config.name}-${this.config.stage}-${this.stacks['main'].account}`;
+        return `${name}-${this.config.name}-${this.config.environment}-${this.stacks['main'].account}`;
     }
 
     public getQueueArn(name: string): string {

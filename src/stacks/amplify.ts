@@ -25,8 +25,9 @@ export class AmplifyStack implements IStack{
         Helper.hydrateConfig(stackConfig, `AMPLIFY_${this.stackConfig.appName.toUpperCase()}`);
     }
     // construct method to create the stack
-    public construct(fw24: Fw24){
+    public construct(){
         console.log('Amplify construct for:', this.stackConfig.appName);
+        const fw24 = Fw24.getInstance();
         // get the main stack from the framework
         const mainStack = fw24.getStack('main');
         // create the stack prefix

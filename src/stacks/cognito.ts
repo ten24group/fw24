@@ -6,7 +6,7 @@ import {
     UserPoolProps, 
     UserPoolOperation 
 } from "aws-cdk-lib/aws-cognito";
-
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { Duration } from "aws-cdk-lib";
@@ -35,9 +35,10 @@ export class CognitoStack implements IStack {
     }
 
     // construct method to create the stack
-    public construct(fw24: Fw24) {
+    public construct() {
         console.log("Cognito construct");
 
+        const fw24 = Fw24.getInstance();
         const userPoolConfig = this.stackConfig.userPool;
         const mainStack = fw24.getStack("main");
         var namePrefix = `${fw24.appName}`;
@@ -116,8 +117,8 @@ export class CognitoStack implements IStack {
                 const lambdaTrigger = new LambdaFunction(mainStack, `${namePrefix}-${trigger.trigger}-lambdaFunction`, {
                     entry: trigger.lambdaFunctionPath,
                     layerArn: fw24.getLayerARN(),
-                });
-                userPool.addTrigger(trigger.trigger, lambdaTrigger.fn);
+                }) as NodejsFunction;
+                userPool.addTrigger(trigger.trigger, lambdaTrigger);
             }
         }
 

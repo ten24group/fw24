@@ -1,6 +1,6 @@
 import { Duration, CfnOutput } from "aws-cdk-lib";
 import { EmailIdentity, Identity } from "aws-cdk-lib/aws-ses";
-
+import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Effect } from "aws-cdk-lib/aws-iam";
 import { join } from "path";
 
@@ -23,8 +23,10 @@ export class SESStack implements IStack{
     }
 
     // construct method to create the stack
-    public construct(fw24: Fw24) {
+    public construct() {
         console.log("SES construct");
+
+        const fw24 = Fw24.getInstance();
         // make the main stack available to the class
         const mainStack = fw24.getStack("main");
        
@@ -49,7 +51,7 @@ export class SESStack implements IStack{
             batchSize: 1,
             maxBatchingWindow: Duration.seconds(5),
             reportBatchItemFailures: true,
-        }).queue;
+        }) as Queue;
         
         // print queue url
         new CfnOutput(mainStack, "mail-queue-url", {

@@ -10,6 +10,7 @@ import { LambdaFunction } from "../constructs/lambda-function";
 import { IApplicationConfig } from "../interfaces/config";
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 
 export interface IS3Config {
     bucketName: string;
@@ -30,7 +31,7 @@ export interface IS3TriggerConfig {
 export class S3Stack {
     appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;
-    fw24!: Fw24;
+    fw24: Fw24 = Fw24.getInstance();
 
     // default contructor to initialize the stack configuration
     constructor(private stackConfig: IS3Config[]) {
@@ -39,14 +40,14 @@ export class S3Stack {
     }
 
     // construct method to create the stack
-    public construct(fw24: Fw24) {
+    public construct() {
         console.log("s3 construct");
         // make the main stack available to the class
-        this.appConfig = fw24.getConfig();
+        this.appConfig = this.fw24.getConfig();
         // get the main stack from the framework
-        this.mainStack = fw24.getStack("main");
+        this.mainStack = this.fw24.getStack("main");
         // make the fw24 instance available to the class
-        this.fw24 = fw24;
+        this.fw24 = this.fw24;
         // create the buckets
         this.stackConfig.forEach( ( bucketConfig: IS3Config ) => {
             this.createBucket(bucketConfig);
@@ -94,7 +95,7 @@ export class S3Stack {
                     const functionId = bucketConfig.bucketName + "-" + trigger.destination + "-" + trigger.events.toString();
                     const lambda = new LambdaFunction(this.mainStack, functionId, {
                         entry: functionPath
-                    }).fn;
+                    }) as NodejsFunction;
 
                     // grant the lambda function permissions to the bucket
                     bucket.grantRead(lambda);

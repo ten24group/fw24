@@ -18,9 +18,10 @@ export class DynamoDBStack implements IStack {
     }
 
     // construct method to create the stack
-    public construct(fw24: Fw24) {
+    public construct() {
         console.log("DynamoDB construct");
-
+        
+        const fw24 = Fw24.getInstance();
         const mainStack = fw24.getStack("main");
         const appQualifiedTableName = `${this.stackConfig.table.name}_table`;
 

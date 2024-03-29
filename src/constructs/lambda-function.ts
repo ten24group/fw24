@@ -1,8 +1,11 @@
 import { Construct } from "constructs";
 import { Duration } from "aws-cdk-lib";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
-import { Function, Runtime, Architecture, ILayerVersion, LayerVersion } from "aws-cdk-lib/aws-lambda";
+import { Runtime, Architecture, ILayerVersion, LayerVersion } from "aws-cdk-lib/aws-lambda";
+import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { NodejsFunction, NodejsFunctionProps, BundlingOptions } from "aws-cdk-lib/aws-lambda-nodejs";
+import { Fw24 } from "../core/fw24";
+import { Bucket } from "aws-cdk-lib/aws-s3";
 
 interface LambdaFunctionProps {
   entry: string;
@@ -15,15 +18,16 @@ interface LambdaFunctionProps {
   layers?: ILayerVersion[];
   bundling?: BundlingOptions;
   policies?: any[];
-  env?: { [key: string]: string };
+  environmentVariables?: { [key: string]: string };
+  tableName?: string;
   buckets? : [{ name: string, access?: string }];
 }
 
 export class LambdaFunction extends Construct {
-  readonly fn: Function;
-
   constructor(scope: Construct, id: string, props: LambdaFunctionProps) {
     super(scope, id);
+
+    const fw24 = Fw24.getInstance();
 
     let defaultProps: NodejsFunctionProps = {
       runtime: Runtime.NODEJS_18_X,
@@ -42,23 +46,54 @@ export class LambdaFunction extends Construct {
       };
     }
 
-    this.fn = new NodejsFunction(this, id, { ...defaultProps, ...props });
+    const fn = new NodejsFunction(this, id, { ...defaultProps, ...props });
 
     // Set environment variables
-    if(props.env){
-      for (const [key, value] of Object.entries(props.env)) {
-        this.fn.addEnvironment(key, value);
+    if(props.environmentVariables){
+      for (const [key, value] of Object.entries(props.environmentVariables)) {
+        fn.addEnvironment(key, value);
       }
     }
 
     // Attach policies to the function
     if(props.policies){
       props.policies.forEach(policy => {
-        this.fn.addToRolePolicy(
+        fn.addToRolePolicy(
           new PolicyStatement(policy)
         );
       });
     }
-    
+
+     // logic for adding dynamodb table access to the controller
+     if (props.tableName) {
+        // get the dynamodb table based on the controller config
+        const tableInstance: TableV2 = fw24.getDynamoTable(props.tableName);
+        // add the table name to the lambda environment
+        fn.addEnvironment(`${props.tableName.toUpperCase()}_TABLE`, tableInstance.tableName);
+        // grant the lambda function read write access to the table
+        tableInstance.grantReadWriteData(fn);
+    }
+
+     // logic for adding s3 bucket access to the controller
+    props.buckets?.forEach( ( bucket: any ) => {
+      const bucketFullName = fw24.getUniqueName(bucket.name);
+      const bucketInstance: any = Bucket.fromBucketName(this, bucket.name+id+'-bucket', bucketFullName);
+      // grant the lambda function access to the bucket
+      switch (bucket.access) {
+          case 'read':
+              bucketInstance.grantRead(fn);
+              break;
+          case 'write':
+              bucketInstance.grantWrite(fn);
+              break;
+          default:
+              bucketInstance.grantReadWrite(fn);
+              break;
+      }
+      // add environment variable for the bucket name
+      fn.addEnvironment(`bucket_${bucket.name}`, bucketFullName);
+    });
+
+    return fn;
   }
 }

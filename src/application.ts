@@ -5,24 +5,24 @@ import { IStack } from "./interfaces/stack";
 
 
 export class Application {
-    private _fw24: Fw24;
 
     constructor(config: IApplicationConfig = {}) {
         console.log("Initializing fw24 infrastructure...");
 
-        // initialize the Fw24 object
-        this._fw24 = new Fw24(config);
+        const fw24 = Fw24.getInstance();
+        // set the config
+        fw24.setConfig(config);
 
         // initialize the main stack
         const app = new App();
         const mainStack = new Stack(app, config.name + "-stack")
 
         // store the main stack in the framework scope
-        this._fw24.addStack("main", mainStack);
+        fw24.addStack("main", mainStack);
     }
 
     public use(stack: IStack): Application {
-        stack.construct(this._fw24);
+        stack.construct();
         return this;
     }
 }
