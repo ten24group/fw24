@@ -1,18 +1,18 @@
 import { Construct } from "constructs";
-import * as iam from "aws-cdk-lib/aws-iam";
-import { CfnIdentityPoolRoleAttachment } from "aws-cdk-lib/aws-cognito";
+import { PolicyStatement, Role, FederatedPrincipal } from "aws-cdk-lib/aws-iam";
+import { readFileSync } from "fs";
 
 export class CognitoAuthRole extends Construct {
-    role: iam.Role;
+    role: Role;
 
     constructor(scope: Construct, id: string, props: any) {
 
         super(scope, id);
 
-        const { identityPool } = props;
+        const { identityPool, policyFilePaths } = props;
 
-        this.role = new iam.Role(this, "CognitoAuthRole", {
-            assumedBy: new iam.FederatedPrincipal("cognito-identity.amazonaws.com", {
+        this.role = new Role(this, "CognitoAuthRole", {
+            assumedBy: new FederatedPrincipal("cognito-identity.amazonaws.com", {
                 "StringEquals": {
                     "cognito-identity.amazonaws.com:aud": identityPool.ref
                 },
@@ -21,24 +21,21 @@ export class CognitoAuthRole extends Construct {
                 }
             }, "sts:AssumeRoleWithWebIdentity"),
         });
-        this.role.addToPolicy( 
-            new iam.PolicyStatement({
-                effect: iam.Effect.ALLOW,
-                actions: [
-                    "mobileanalytics:PutEvents",
-                    "cognito-sync:*",
-                    "cognito-identity:*",
-                ],
-                resources: ["*"],
-            })
-        );
-        new CfnIdentityPoolRoleAttachment(
-            this,
-            "IdentityPoolRoleAttachment",
-            {
-              identityPoolId: identityPool.ref,
-              roles: { authenticated: this.role.roleArn },
+
+        if(policyFilePaths !== undefined) {
+            // apply the policy to the role
+            for (const policyFilePath of policyFilePaths) {
+                // read file from policyFilePath
+                const policyfile: string = readFileSync(policyFilePath, 'utf8');
+                this.role.addToPolicy(
+                    new PolicyStatement({
+                        effect: JSON.parse(policyfile).Effect,
+                        actions: JSON.parse(policyfile).Action,
+                        resources: JSON.parse(policyfile).Resource,
+                    })
+                );
             }
-        );
+        }
+
     }
 }   

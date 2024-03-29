@@ -1,26 +1,30 @@
-import * as awsCognito from "aws-cdk-lib/aws-cognito";
-import * as iam from "aws-cdk-lib/aws-iam";
-import { Duration } from "aws-cdk-lib";
+import { UserPool, UserPoolClient, CfnIdentityPool, CfnUserPoolGroup, UserPoolProps, UserPoolOperation, CfnIdentityPoolRoleAttachment, VerificationEmailStyle} from "aws-cdk-lib/aws-cognito";
+import { Role } from "aws-cdk-lib/aws-iam";
+import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
 import { IApplicationConfig } from "../interfaces/config";
 import { CognitoAuthRole } from "../constructs/CognitoAuthRole";
-import * as fs from "fs";
 
 export interface ICognitoConfig {
     userPool: ICognitoUserPoolConfig,
-    policyFilePath?: string;
+    policyFilePaths?: string[];
+    groups?: {
+        name: string;
+        precedence?: number;
+        policyFilePaths: string[];
+    }[]
 }
 
 export interface ICognitoUserPoolConfig {
-    props: awsCognito.UserPoolProps;
+    props: UserPoolProps;
 }
 
 export class CognitoStack {
     
-    userPool!: awsCognito.UserPool;
-    userPoolClient!: awsCognito.UserPoolClient;
+    userPool!: UserPool;
+    userPoolClient!: UserPoolClient;
     userPoolAuthorizer!: CognitoUserPoolsAuthorizer;
-    role!: iam.Role;
+    role!: Role;
 
     constructor(private config: ICognitoConfig) {
         console.log("Cognito Stack constructor", config);
@@ -31,14 +35,15 @@ export class CognitoStack {
         const userPoolConfig = this.config.userPool;
 
         const mainStack = Reflect.get(globalThis, "mainStack");
+        const userPoolName = userPoolConfig.props.userPoolName || '';
 
         // TODO: Add ability to create multiple user pools
         // TODO: Add ability to create multi-teant user pools
-        const userPool = new awsCognito.UserPool(mainStack, `${appConfig?.name}-${this.getTenantId()}-userPool`, {
+        const userPool = new UserPool(mainStack, `${appConfig?.name}-${this.getTenantId()}-${userPoolName}userPool`, {
             selfSignUpEnabled: userPoolConfig.props.selfSignUpEnabled,
             accountRecovery: userPoolConfig.props.accountRecovery,
             userVerification: {
-              emailStyle: awsCognito.VerificationEmailStyle.CODE,
+              emailStyle: VerificationEmailStyle.CODE,
             },
             autoVerify: {
                 email: true,
@@ -53,12 +58,13 @@ export class CognitoStack {
                 requireDigits: true,
                 requireSymbols: true,
                 tempPasswordValidity: Duration.days(3),
-            }
+            },
+            removalPolicy: userPoolConfig.props.removalPolicy || RemovalPolicy.RETAIN,
         });
 
         this.userPool = userPool;
         
-        const userPoolClient = new awsCognito.UserPoolClient(mainStack, `${appConfig?.name}-${this.getTenantId()}-userPoolclient`, { 
+        const userPoolClient = new UserPoolClient(mainStack, `${appConfig?.name}-${this.getTenantId()}-userPoolclient`, { 
             userPool,
             generateSecret: false,
             authFlows: {
@@ -74,7 +80,7 @@ export class CognitoStack {
         });
 
         // Identity pool based authentication
-        const identityPool = new awsCognito.CfnIdentityPool(mainStack, `${appConfig?.name}-${this.getTenantId()}-identityPool`, {
+        const identityPool = new CfnIdentityPool(mainStack, `${appConfig?.name}-${this.getTenantId()}-identityPool`, {
             allowUnauthenticatedIdentities: true,
             cognitoIdentityProviders: [{
                 clientId: userPoolClient.userPoolClientId,
@@ -82,32 +88,61 @@ export class CognitoStack {
             }],
         });
 
-        // IAM role for authenticated users
-        const authenticatedRole = new CognitoAuthRole(mainStack, "CognitoAuthRole", {
-            identityPool,
-        });
-
-        // apply the policy to the role
-        if (this.config.policyFilePath) {
-            // read file from policyFilePath
-            const policyfile: string = fs.readFileSync(this.config.policyFilePath, 'utf8');
-            authenticatedRole.role.addToPolicy(
-                new iam.PolicyStatement({
-                    effect: JSON.parse(policyfile).Effect,
-                    actions: JSON.parse(policyfile).Action,
-                    resources: JSON.parse(policyfile).Resource,
-                })
-            );
+        // configure identity pool role attachment
+        const identityProvider = userPool.userPoolProviderName + ':' + userPoolClient.userPoolClientId;
+        const roleAttachment: any = {
+            identityPoolId: identityPool.ref,
         }
 
+        const namePrefix = `${appConfig?.name}-${this.getTenantId()}`;
+        // create user pool groups
+        if (this.config.groups) {
+            for (const group of this.config.groups) {
+                // create a role for the group
+                const policyFilePaths = group.policyFilePaths;
+                const role = new CognitoAuthRole(mainStack, `${namePrefix}-${group.name}-CognitoAuthRole`, {
+                    identityPool,
+                    policyFilePaths,
+                }).role;
+
+                new CfnUserPoolGroup(mainStack, `${namePrefix}-${group.name}-group`, {
+                    groupName: group.name,
+                    userPoolId: userPool.userPoolId,
+                    roleArn: role.roleArn,
+                    precedence: group.precedence || 0,
+                });
+            }
+            // configure role mapping
+            roleAttachment.roleMappings = {
+                "userpool": {
+                    type: "Token",
+                    ambiguousRoleResolution: "Deny",
+                    identityProvider: identityProvider,
+                }
+            }
+        }
+
+        // IAM role for authenticated users if no groups are defined
+        const policyFilePaths = this.config.policyFilePaths;
+        const authenticatedRole = new CognitoAuthRole(mainStack, `${namePrefix}-CognitoAuthRole`, {
+            identityPool,
+            policyFilePaths
+        }).role;
+
+        roleAttachment.roles = {};
+        roleAttachment.roles.authenticated = authenticatedRole.roleArn;
+
+        new CfnIdentityPoolRoleAttachment(mainStack, `${namePrefix}-IdentityPoolRoleAttachment`, roleAttachment);
+
         Reflect.set(globalThis, "userPoolID", userPool.userPoolId);
-        Reflect.set(globalThis, "userPoolClientID", userPoolClient.userPoolClientId)
+        Reflect.set(globalThis, "userPoolClientID", userPoolClient.userPoolClientId);
+        Reflect.set(globalThis, "identityPoolID", identityPool.ref);
         Reflect.set(globalThis, "userPoolAuthorizer", this.userPoolAuthorizer)
 
     }
 
     public addCognitoTrigger(lambdaFunction: any){
-        this.userPool.addTrigger(awsCognito.UserPoolOperation.POST_CONFIRMATION, lambdaFunction);
+        this.userPool.addTrigger(UserPoolOperation.POST_CONFIRMATION, lambdaFunction);
     }
 
     private getTenantId() {
