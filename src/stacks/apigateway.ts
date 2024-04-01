@@ -30,7 +30,6 @@ export class APIGateway implements IStack {
     fw24: Fw24 = Fw24.getInstance();
     // array of type of stacks that this stack is dependent on
     dependencies: string[] = ['SESStack', 'DynamoDBStack', 'CognitoStack'];
-
     mainStack!: Stack;
     api!: RestApi;
 
@@ -70,6 +69,7 @@ export class APIGateway implements IStack {
         this.api = new RestApi(this.mainStack,  `${this.fw24.appName}-api`, paramsApi);
         // add the api to the framework
         this.fw24.addStack("api", this.api);
+
         // sets the default controllers directory if not defined
         if(this.stackConfig.controllersDirectory === undefined || this.stackConfig.controllersDirectory === ""){
             this.stackConfig.controllersDirectory = "./src/controllers";

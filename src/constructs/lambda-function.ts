@@ -6,6 +6,8 @@ import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { NodejsFunction, NodejsFunctionProps, BundlingOptions } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Fw24 } from "../core/fw24";
 import { Bucket } from "aws-cdk-lib/aws-s3";
+import { SESStack } from "../stacks/ses";
+import { Queue } from "aws-cdk-lib/aws-sqs/lib/queue";
 
 export interface LambdaFunctionProps {
   entry: string;
@@ -21,6 +23,7 @@ export interface LambdaFunctionProps {
   environmentVariables?: { [key: string]: string };
   tableName?: string;
   buckets? : [{ name: string, access?: string }];
+  allowSendEmail?: boolean;
 }
 
 export class LambdaFunction extends Construct {
@@ -62,6 +65,11 @@ export class LambdaFunction extends Construct {
           new PolicyStatement(policy)
         );
       });
+    }
+
+    if(props.allowSendEmail && fw24.emailProvider instanceof SESStack){
+      let emailQueue = fw24.getQueueByName('emailQueue');
+      emailQueue.grantSendMessages(fn);
     }
 
      // logic for adding dynamodb table access to the controller

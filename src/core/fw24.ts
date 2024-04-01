@@ -2,11 +2,12 @@ import { IAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2';
 import { IApplicationConfig } from '../interfaces/config';
 import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { Helper } from './helper';
+import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
 
 export class Fw24 {
     public appName: string = "fw24";
     private config: IApplicationConfig = {};
-    private emailProvider: any;
+    public emailProvider: any;
     private stacks: any = {};
     private environment: any = {};
     private defaultCognitoAuthorizer: IAuthorizer | undefined;
@@ -64,6 +65,11 @@ export class Fw24 {
             throw new Error('Main stack not found');
         }
         return `arn:aws:sqs:${this.config.region}:${this.stacks['main'].account}:${name}`;
+    }
+
+    public getQueueByName(name: string): IQueue {
+        const queueArn = this.getQueueArn(name);
+        return Queue.fromQueueArn(this.stacks['main'], name, queueArn);
     }
 
     public setCognitoAuthorizer(name: string, authorizer: IAuthorizer, defaultAuthorizer: boolean = false) {
