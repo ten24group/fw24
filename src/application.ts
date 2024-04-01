@@ -59,7 +59,11 @@ export class Application {
         if (stack.dependencies.length > 0) {
             for (const dependency of stack.dependencies) {
                 if (!this.stacks.has(dependency)) {
-                    console.log(`Stack ${stack.constructor.name} depends on ${dependency} which is not defined`);
+                    //console.log(`Stack ${stack.constructor.name} depends on ${dependency} which is not in use in this infrasctructure.`);
+                    continue;
+                }
+                if (!processedStacks.has(dependency)) {
+                    console.log(`Stack ${stack.constructor.name} depends on ${dependency} which is not processed yet.`);
                     return;
                 }
             }
