@@ -1,11 +1,13 @@
-import { EntityConfiguration, Schema } from "electrodb";
-import { CreateEntityItemTypeFromSchema, DefaultEntityOperations, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, TEntityOpsInputSchemas, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
+import { Attribute, EntityConfiguration, Schema } from "electrodb";
+import { CreateEntityItemTypeFromSchema, DefaultEntityOperations, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, updateEntity } from "./crud-service";
-import { EntityValidations, TMapOfValidationConditions } from "../validation";
+import { EntityValidations, TValidationRuleForType } from "../validation";
+import { Writable, toHumanReadableName } from "../utils";
 
-export abstract class BaseEntityService<S extends Schema<any, any, any>>{
+export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
     protected entityRepository ?: EntityRepositoryTypeFromSchema<S>;
+    protected entityOpsDefaultIoSchema ?: ReturnType<typeof makeOpsDefaultIOSchema<S>>;
 
     constructor(
         protected readonly schema: S,
@@ -17,6 +19,13 @@ export abstract class BaseEntityService<S extends Schema<any, any, any>>{
     public getEntityName(): S['model']['entity'] { return this.schema.model.entity; }
     
     public getEntitySchema(): S { return this.schema;}
+
+    public getOpsDefaultIOSchema() {
+        if(!this.entityOpsDefaultIoSchema){
+            this.entityOpsDefaultIoSchema  = makeOpsDefaultIOSchema<S>(this.getEntitySchema());
+        }
+        return this.entityOpsDefaultIoSchema;
+    }
 
     abstract getEntityValidations(): EntityValidations<any, any, any, any>;
 
@@ -112,5 +121,131 @@ export abstract class BaseEntityService<S extends Schema<any, any, any>>{
 
         return deletedEntity;
     }
+}
+
+
+export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAttribute): Partial<EntityAttribute> & { 
+    id: string,
+    name: string,
+} {
+    return {
+        id: attId,
+        type: att.type,
+        name: att.name || toHumanReadableName( attId ),
+        fieldType: att.fieldType,
+        required: att.required,
+        readOnly: att.readOnly,
+        isIdentifier: att.isIdentifier,
+        validations: att.validations ||  att.required ? ['required'] : [],
+    };
+}
+
+export type TIOSchemaAttribute = ReturnType<typeof entityAttributeToIOSchemaAttribute>;
+export type TIOSchemaAttributesMap<S extends EntitySchema<any, any, any>> = Map<keyof S['attributes'], TIOSchemaAttribute>;
+
+export function makeOpsDefaultIOSchema<
+    S extends EntitySchema<any, any, any, Ops>,
+    Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
+>( schema: S) {
+	
+	const inputSchemaAttributes = {
+		create: new Map() as TIOSchemaAttributesMap<S> ,
+		update: new Map() as TIOSchemaAttributesMap<S> ,
+	};
+
+	const outputSchemaAttributes = new Map() as TIOSchemaAttributesMap<S> ;
+
+	// create and update
+	for(const attName in schema.attributes){
+        
+		const att = schema.attributes[attName];
+
+		if(!att.hidden){
+			outputSchemaAttributes.set(attName, {
+                ...entityAttributeToIOSchemaAttribute(attName, att), 
+			});
+		}
+		
+		// TODO: loop in validations
+		if(!att.default && !att.hidden){
+			inputSchemaAttributes['create']?.set(attName, {
+                ...entityAttributeToIOSchemaAttribute(attName, att),
+			});
+        }
+
+		if(!att.readOnly && !att.default && !att.hidden){
+            inputSchemaAttributes['update']?.set(attName, {
+                ...entityAttributeToIOSchemaAttribute(attName, att),
+			});
+		}
+	}
+
+	const accessPatterns = new Map< keyof S['indexes'], TIOSchemaAttributesMap<S> >();
+
+    for(const indexName in schema.indexes){
+
+		const indexAttributes: TIOSchemaAttributesMap<S> = new Map();
+
+		for(const idxPkAtt of schema.indexes[indexName].pk.composite){
+			const att = schema.attributes[idxPkAtt];
+			indexAttributes.set(idxPkAtt, {
+                ...entityAttributeToIOSchemaAttribute(idxPkAtt, {...att, required: true })
+			});
+        }
+		for(const idxSkAtt of schema.indexes[indexName].sk?.composite ?? []){
+			const att = schema.attributes[idxSkAtt];
+            indexAttributes.set(idxSkAtt, {
+                ...entityAttributeToIOSchemaAttribute(idxSkAtt, {...att, required: true })
+			});
+		}
+
+		accessPatterns.set(indexName, indexAttributes);
+	}
+
+	// if there's an index named `primary`, use that, else fallback to first index
+	// accessPatternAttributes['get'] = accessPatterns.get('primary') ?? accessPatterns.entries().next().value;
+	// accessPatternAttributes['delete'] = accessPatterns.get('primary') ?? accessPatterns.entries().next().value;
+
+
+	// for(const ap of accessPatterns.keys()){
+	// 	accessPatternAttributes[`get_${ap}`] = accessPatterns.get(ap);
+	// 	accessPatternAttributes[`delete_${ap}`] = accessPatterns.get(ap);
+	// }
+
+	// const inputSchemaAttributes: any = {};	
+	// inputSchemaAttributes['create'] = {
+	// 	'identifiers': accessPatternAttributes['get'],
+	// 	'data': inputSchemaAttributes['create'],
+	// }
+	// inputSchemaAttributes['update'] = {
+	// 	'identifiers': accessPatternAttributes['get'],
+	// 	'data': inputSchemaAttributes['update'],
+	// }
+
+	const defaultAccessPattern = accessPatterns.get('primary') ?? accessPatterns.entries().next().value as TIOSchemaAttributesMap<S>;
+
+	return {
+		get: {
+			// TODO: add schema for the rest fo the secondary access-patterns
+			by: defaultAccessPattern,
+			output: outputSchemaAttributes, // default for the detail page
+		},
+		delete: {
+			by: defaultAccessPattern
+		},
+		create: {
+			input: inputSchemaAttributes['create'],
+			output: outputSchemaAttributes,
+		},
+		update: {
+			by: defaultAccessPattern,
+			input: inputSchemaAttributes['update'],
+			output: outputSchemaAttributes,
+		},
+		list: {
+			// TODO pagination and filtering input-schema
+			output: outputSchemaAttributes,
+		},
+	};
 }
 
