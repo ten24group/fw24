@@ -119,9 +119,9 @@ export class APIGateway implements IStack {
             environmentVariables: this.getEnvironmentVariables(controllerConfig),
             buckets: controllerConfig?.buckets,
             tableName: controllerConfig?.tableName,
+            allowSendEmail: true
         }) as NodejsFunction;
 
-    
         // create the lambda integration
         const controllerIntegration = new LambdaIntegration(controllerLambda);
 
