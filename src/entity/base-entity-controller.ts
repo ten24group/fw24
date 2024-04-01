@@ -2,7 +2,7 @@ import { Schema } from 'electrodb';
 import { APIGatewayController } from '../core/api-gateway-controller';
 import { Request } from '../interfaces/request';
 import { Response } from '../interfaces/response';
-import { Get } from '../decorators/method';
+import { Get, Patch, Post } from '../decorators/method';
 import { BaseEntityService } from './base-service';
 import { defaultMetaContainer } from './entity-metadata-container';
 import { EntitySchema } from './base-entity';
@@ -37,10 +37,10 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
     }
 
 	// Simple string response
-	@Get('/create')
+	@Post('/create')
 	async create(req: Request, res: Response) {
 
-		const data = req.queryStringParameters; 
+		const data = req.body; 
 
 		const createdEntity = await this.getEntityService().create(data);
 
@@ -57,12 +57,12 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 		return res.json({ __entity__: entity,  __req__: req });
 	}
 
-	@Get('/update/{id}')
+	@Patch('/update/{id}')
 	async update(req: Request, res: Response) {
         // prepare the identifiers
         const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
 
-		const data = req.queryStringParameters; 
+		const data = req.body; 
 
 		const updatedEntity = await this.getEntityService().update(identifiers, data);
 
