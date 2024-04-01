@@ -29,6 +29,9 @@ export interface ICognitoConfig {
 }
 
 export class CognitoStack implements IStack {
+    fw24: Fw24 = Fw24.getInstance();
+    dependencies: string[] = [];
+    
     // default contructor to initialize the stack configuration
     constructor(private stackConfig: ICognitoConfig) {
         console.log("Cognito Stack constructor", stackConfig);

@@ -20,8 +20,9 @@ export interface ISQSConfig {
 }
 
 export class SQSStack implements IStack {
-    mainStack!: Stack;
     fw24: Fw24 = Fw24.getInstance();
+    dependencies: string[] = [];
+    mainStack!: Stack;
 
     // default contructor to initialize the stack configuration
     constructor(private stackConfig: ISQSConfig) {

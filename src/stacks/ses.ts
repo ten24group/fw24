@@ -16,8 +16,9 @@ export interface ISESConfig {
     templatesDirectory?: string;
 }
 
-export class SESStack implements IStack{
+export class SESStack implements IStack {
     fw24: Fw24 = Fw24.getInstance();
+    dependencies: string[] = [];
     mainStack!: Stack;
 
     // default contructor to initialize the stack configuration

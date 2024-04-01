@@ -11,7 +11,6 @@ export interface IControllerConfig {
 			name: string;
 			access?: string; // read, write, readwrite | default is readwrite
 		}
-		
 	];
 	env?: ILambdaEnvConfig[];
 }

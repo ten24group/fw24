@@ -29,9 +29,10 @@ export interface IS3TriggerConfig {
 }
 
 export class S3Stack {
+    fw24: Fw24 = Fw24.getInstance();
+    dependencies: string[] = ['SQSStrack'];
     appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;
-    fw24: Fw24 = Fw24.getInstance();
 
     // default contructor to initialize the stack configuration
     constructor(private stackConfig: IS3Config[]) {

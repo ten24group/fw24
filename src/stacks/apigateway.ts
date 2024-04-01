@@ -10,13 +10,15 @@ import {
 
 import { Stack, CfnOutput } from "aws-cdk-lib";
 import { Helper } from "../core/helper";
-import { IControllerConfig } from "../fw24";
+import { DynamoDBStack, IControllerConfig } from "../fw24";
 import { LambdaFunction } from "../constructs/lambda-function";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
 import Mutable from "../types/mutable";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import { Queue } from "aws-cdk-lib/aws-sqs";
+import { SESStack } from "./ses";
 
 export interface IAPIGatewayConfig {
     cors?: boolean | string | string[];
@@ -25,9 +27,12 @@ export interface IAPIGatewayConfig {
 }
 
 export class APIGateway implements IStack {
+    fw24: Fw24 = Fw24.getInstance();
+    // array of type of stacks that this stack is dependent on
+    dependencies: string[] = ['SESStack', 'DynamoDBStack', 'CognitoStack'];
+
     mainStack!: Stack;
     api!: RestApi;
-    fw24: Fw24 = Fw24.getInstance();
 
     // default contructor to initialize the stack configuration
     constructor(private stackConfig: IAPIGatewayConfig) {

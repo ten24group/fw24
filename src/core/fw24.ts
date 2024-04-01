@@ -6,6 +6,7 @@ import { Helper } from './helper';
 export class Fw24 {
     public appName: string = "fw24";
     private config: IApplicationConfig = {};
+    private emailProvider: any;
     private stacks: any = {};
     private environment: any = {};
     private defaultCognitoAuthorizer: IAuthorizer | undefined;
