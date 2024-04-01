@@ -1,6 +1,6 @@
 import { Schema } from "electrodb";
 import { Narrow, OmitNever, ValueOf } from '../utils/types';
-import { DefaultEntityOperations, EntityRecordTypeFromSchema, TEntityOpsInputSchemas } from "../entity";
+import { TDefaultEntityOperations, EntityRecordTypeFromSchema, EntitySchema, TEntityOpsInputSchemas } from "../entity";
 
 
 export interface IValidatorResponse {
@@ -10,13 +10,13 @@ export interface IValidatorResponse {
 
 export type ValidatorOptions<
     OpName extends keyof OpsInpSch,
-    EntitySchema extends Schema<any, any, any>, 
+    Sch extends EntitySchema<any, any, any, Ops>, 
     ConditionsMap extends TMapOfValidationConditions<any, any>, 
-    Ops extends DefaultEntityOperations = DefaultEntityOperations,
-    OpsInpSch extends TEntityOpsInputSchemas<EntitySchema, Ops> = TEntityOpsInputSchemas<EntitySchema, Ops>,
+    Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
+    OpsInpSch extends TEntityOpsInputSchemas<Sch, Ops> = TEntityOpsInputSchemas<Sch, Ops>,
 > = {
     readonly operationName: OpName,
-    readonly entityValidations?: EntityValidations<EntitySchema, ConditionsMap, Ops, OpsInpSch>
+    readonly entityValidations?: EntityValidations<Sch, ConditionsMap, Ops, OpsInpSch>
     readonly input?: InputType,
     readonly actor?: Actor,
     readonly record?: RecordType, 
@@ -25,11 +25,11 @@ export type ValidatorOptions<
 export interface IValidator {
     validate<
         OpName extends keyof OpsInpSch,
-        EntitySchema extends Schema<any, any, any>, 
+        Sch extends EntitySchema<any, any, any, Ops>, 
         ConditionsMap extends TMapOfValidationConditions<any, any>, 
-        Ops extends DefaultEntityOperations = DefaultEntityOperations,
-        OpsInpSch extends TEntityOpsInputSchemas<EntitySchema, Ops> = TEntityOpsInputSchemas<EntitySchema, Ops>,
-    >(options: ValidatorOptions<OpName, EntitySchema, ConditionsMap, Ops, OpsInpSch> ): Promise<IValidatorResponse>;
+        Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
+        OpsInpSch extends TEntityOpsInputSchemas<Sch, Ops> = TEntityOpsInputSchemas<Sch, Ops>,
+    >(options: ValidatorOptions<OpName, Sch, ConditionsMap, Ops, OpsInpSch> ): Promise<IValidatorResponse>;
 }
 
 
@@ -88,9 +88,9 @@ export type TValidationRuleForType<T extends unknown> = {
 
 export type TValidationRuleForOperations<
     T extends unknown, 
-    EntitySchema extends Schema<any, any, any>,
+    Sch extends EntitySchema<any, any, any>,
     ConditionsMap extends TMapOfValidationConditions<any, any>,
-    OpsInpSch extends TEntityOpsInputSchemas<EntitySchema, DefaultEntityOperations> = TEntityOpsInputSchemas<EntitySchema, DefaultEntityOperations>,
+    OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > = {
 
     readonly operations ?: Narrow<Array< '*' | ValueOf<{
@@ -133,9 +133,9 @@ export type TValidationRuleForOperations<
  */
 export type TValidationRuleForOperationsAndInput<
     T extends unknown, 
-    EntitySchema extends Schema<any, any, any>,
+    Sch extends EntitySchema<any, any, any>,
     ConditionsMap extends TMapOfValidationConditions<any, any>,
-    OpsInpSch extends Partial<TEntityOpsInputSchemas<EntitySchema, DefaultEntityOperations>> = TEntityOpsInputSchemas<EntitySchema, DefaultEntityOperations>,
+    OpsInpSch extends Partial<TEntityOpsInputSchemas<Sch>> = TEntityOpsInputSchemas<Sch>,
 > = {
     readonly operations ?: Narrow<Array< '*' | ValueOf<{
         readonly [OppName in keyof OpsInpSch]: OppName | [ 
@@ -191,56 +191,56 @@ export type TEntityOpValidations<I extends InputType, R extends RecordType, C ex
 }
 
 export type EntityOpsValidations<
-    EntitySchema extends Schema<any, any, any>,
+    Sch extends EntitySchema<any, any, any, Ops>,
     ConditionsMap extends TMapOfValidationConditions<any, any>,
-    Ops extends DefaultEntityOperations = DefaultEntityOperations,
-    OpsInpSch extends TEntityOpsInputSchemas<EntitySchema, Ops> = TEntityOpsInputSchemas<EntitySchema, Ops>,
+    Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
+    OpsInpSch extends TEntityOpsInputSchemas<Sch, Ops> = TEntityOpsInputSchemas<Sch, Ops>,
 > = Narrow<{
     readonly [oppName in keyof OpsInpSch] ?: TEntityOpValidations<
         Narrow<OpsInpSch[oppName]>, // operation input schema
-        EntityRecordTypeFromSchema<EntitySchema>, // entity record type
+        EntityRecordTypeFromSchema<Sch>, // entity record type
         // filter out the conditions that require any additional prop which isn't provided in the input
         OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[oppName]>, ConditionsMap>>
     >
 } & {
-    readonly conditions?: TMapOfValidationConditions<any, EntityRecordTypeFromSchema<EntitySchema>>
+    readonly conditions?: TMapOfValidationConditions<any, EntityRecordTypeFromSchema<Sch>>
 }>
 
 export type EntityValidations< 
-    EntitySchema extends Schema<any, any, any>, 
+    Sch extends EntitySchema<any, any, any, Ops>, 
     ConditionsMap extends TMapOfValidationConditions<any, any>, 
-    OPs extends DefaultEntityOperations = DefaultEntityOperations,
-    OpsInpSch extends TEntityOpsInputSchemas<EntitySchema, OPs> = TEntityOpsInputSchemas<EntitySchema, OPs>,
+    Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
+    OpsInpSch extends TEntityOpsInputSchemas<Sch, Ops> = TEntityOpsInputSchemas<Sch, Ops>,
 > = {
     readonly actorRules ?: {
         [ActorKey in keyof Actor] ?: Narrow<
             TValidationRuleForOperations<
                 Actor[ActorKey], 
-                EntitySchema, 
+                Sch, 
                 ConditionsMap, 
                 OpsInpSch
             >
         >[];
     },
     readonly recordRules ?: {
-        [RecordKey in keyof EntityRecordTypeFromSchema<EntitySchema>] ?: Narrow<
+        [RecordKey in keyof EntityRecordTypeFromSchema<Sch>] ?: Narrow<
             TValidationRuleForOperations<
-                EntityRecordTypeFromSchema<EntitySchema>[RecordKey], 
-                EntitySchema, 
+                EntityRecordTypeFromSchema<Sch>[RecordKey], 
+                Sch, 
                 ConditionsMap, 
                 OpsInpSch
             >
         >[];
     },
     readonly inputRules?: {
-        [Prop in keyof EntityRecordTypeFromSchema<EntitySchema>] ?: Array<
+        [Prop in keyof EntityRecordTypeFromSchema<Sch>] ?: Array<
             TValidationRuleForOperationsAndInput<
                 Prop, 
-                EntitySchema,
+                Sch,
                 ConditionsMap,
                 OmitNever<{
                     // only operations that have the prop in their input schema
-                    [OppName in keyof OpsInpSch]: Prop extends keyof Narrow<OpsInpSch[OppName]> ? OpsInpSch[OppName] : never;
+                    [OppName in keyof OpsInpSch]: Prop extends keyof Narrow<OpsInpSch[OppName]> ? OpsInpSch[OppName] : undefined;
                 }>
             >
         >

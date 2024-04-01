@@ -5,8 +5,9 @@ import { Response } from '../interfaces/response';
 import { Get } from '../decorators/method';
 import { BaseEntityService } from './base-service';
 import { defaultMetaContainer } from './entity-metadata-container';
+import { EntitySchema } from './base-entity';
 
-export abstract class BaseEntityController<Sch extends Schema<any, any, any>> extends APIGatewayController {
+export abstract class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIGatewayController {
 
     private entityName: any;
     

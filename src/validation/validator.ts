@@ -6,7 +6,7 @@ import { Schema } from "electrodb";
 import { IValidator, IValidatorResponse, ValidatorOptions } from "./validator.type";
 import { DeepWritable } from '../utils/types';
 import { Actor, EntityValidations, InputType, RecordType, TConditionalValidationRule, TEntityOpValidations, TEntityValidationCondition, TMapOfValidationConditions, Validations } from "./validator.type";
-import { DefaultEntityOperations, TEntityOpsInputSchemas } from "../entity";
+import { TDefaultEntityOperations, EntitySchema, TEntityOpsInputSchemas } from "../entity";
 
 if (!('toJSON' in Error.prototype)){
     Object.defineProperty(Error.prototype, 'toJSON', {
@@ -26,13 +26,13 @@ if (!('toJSON' in Error.prototype)){
 }
 
 export function extractOpValidationFromEntityValidations<
-  EntityRecordSchema extends Schema<any, any, any>, 
+  Sch extends EntitySchema<any, any, any, Ops>, 
   ConditionsMap extends TMapOfValidationConditions<any, any>,
-  Ops extends DefaultEntityOperations = DefaultEntityOperations,
-  OpsInpSch extends TEntityOpsInputSchemas<EntityRecordSchema, Ops> = TEntityOpsInputSchemas<EntityRecordSchema, Ops>,
+  Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
+  OpsInpSch extends TEntityOpsInputSchemas<Sch, Ops> = TEntityOpsInputSchemas<Sch, Ops>,
 >( 
   operationName: keyof OpsInpSch, 
-  entityValidations: EntityValidations<EntityRecordSchema, ConditionsMap, Ops, OpsInpSch>
+  entityValidations: EntityValidations<Sch, ConditionsMap, Ops, OpsInpSch>
 ){
 
 	const validations: DeepWritable<TEntityOpValidations<any, any, ConditionsMap>> = {
@@ -82,7 +82,7 @@ export function extractOpValidationFromEntityValidations<
 				if(formattedPropertyRules.length){
 					validations[validationGroupKey]![propertyName] = formattedPropertyRules;
 				} else {
-					console.warn("no rules found for propertyName", { rule, propertyName, groupValidationRules });
+					console.log("No applicable rules found for op: prop: group: from-rule:", [operationName, propertyName, validationGroupKey, rule]);
 				}
 			}
 		}
@@ -108,12 +108,12 @@ export class Validator implements IValidator {
     */
     async validate<
         OpName extends keyof OpsInpSch,
-        EntityRecordSchema extends Schema<any, any, any>, 
+        Sch extends EntitySchema<any, any, any, Ops>, 
         ConditionsMap extends TMapOfValidationConditions<any, any>, 
-        Ops extends DefaultEntityOperations = DefaultEntityOperations,
-        OpsInpSch extends TEntityOpsInputSchemas<EntityRecordSchema, Ops> = TEntityOpsInputSchemas<EntityRecordSchema, Ops>,
+        Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
+        OpsInpSch extends TEntityOpsInputSchemas<Sch, Ops> = TEntityOpsInputSchemas<Sch, Ops>,
     >(
-        options: ValidatorOptions<OpName, EntityRecordSchema, ConditionsMap, Ops, OpsInpSch>
+        options: ValidatorOptions<OpName, Sch, ConditionsMap, Ops, OpsInpSch>
     ): Promise<IValidatorResponse> {
         
         const { entityValidations, operationName, input, actor, record } = options;

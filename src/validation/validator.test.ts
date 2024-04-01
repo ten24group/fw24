@@ -1,18 +1,20 @@
-import { Schema, createSchema } from "electrodb";
+import { Schema} from "electrodb";
 import { Narrow, OmitNever } from "../utils";
 import { EntityOpsValidations, EntityValidations, InputApplicableConditionsMap, TConditionalValidationRule, TMapOfValidationConditions } from "./validator.type";
 
 import { describe, expect, it } from '@jest/globals';
 import { randomUUID } from "node:crypto";
-import { DefaultEntityOperations, TEntityOpsInputSchemas } from "../entity";
+import { TDefaultEntityOperations, DefaultEntityOperations, TEntityOpsInputSchemas, createEntitySchema, EntitySchema } from "../entity";
 import { Validator, extractOpValidationFromEntityValidations } from "./validator";
 
 
 export namespace User {
-    export const createUserSchema = () => createSchema({
+    export const createUserSchema = () => createEntitySchema({
       model: {
         version: '1',
         entity: 'user',
+        entityNamePlural: 'Users',
+        entityOperations: DefaultEntityOperations,
         service: 'users', // electro DB service name [logical group of entities]
       },
       attributes: {
@@ -93,6 +95,99 @@ export namespace User {
 
   export type TUserSchema = ReturnType<typeof createUserSchema>
 
+  export const createUserSchema2 = () => createEntitySchema({
+      model: {
+        version: '1',
+        entity: 'user',
+        entityNamePlural: 'Users',
+        entityOperations: {
+            get: "get",
+            list: "list",
+            create: "create",
+            update: "update",
+            delete: "delete",
+            xxx: "xxx",
+            yyy: "yyy"
+        },
+        service: 'users', // electro DB service name [logical group of entities]
+      },
+      attributes: {
+        userId: {
+          type: 'string',
+          required: true,
+          readOnly: true,
+          default: () => randomUUID()
+        },
+        tenantId: {
+          type: 'string',
+          required: true,
+          readOnly: true,
+          default: () => 'xxx-yyy-zzz' // TODO: have some global logic drive this value
+        },
+        firstName: {
+          type: 'string',
+          required: true,
+        },
+        lastName: {
+          type: 'string',
+        },
+        email: {
+          type: 'string',
+          required: true,
+        },
+        password: {
+          type: 'string',
+          required: true,
+        },
+        createdAt: {
+          // will be set once at the time of create
+          type: "string",
+          readOnly: true,
+          required: true,
+          default: () => Date.now().toString(),
+          set: () => Date.now().toString(),
+        },
+        updatedAt:{
+          type: "string",
+          watch: "*", // will be set every time any prop is updated
+          required: true,
+          readOnly: true,
+          default: () => Date.now().toString(),
+          set: () => Date.now().toString(),
+        },
+        deletedAt:{
+          type: "string",
+          readOnly: false
+        },
+      },
+      indexes: {
+        primary: {
+          pk: {
+            field: 'pk',
+            template: "t_${tenantId}#u_${userId}",
+            composite: ['tenantId', 'userId'],
+          },
+          sk: {
+            field: 'sk',
+            composite: [],
+          },
+        },
+        byEmail: {
+          index: 'gsi1',
+          pk: {
+            field: 'gsi1pk',
+            template: "t_${tenantId}#u_${email}",
+            composite: ['tenantId', 'email'],
+          },
+          sk: {
+            field: 'gsi1sk',
+            composite: [],
+          },
+        },
+      },
+  } as const);
+
+  export type TUserSchema2 = ReturnType<typeof createUserSchema2>;
 }
 
 
@@ -108,7 +203,7 @@ const UserValidationConditions =  {
     }},
 } as const;
 
-const UserOppValidations: EntityOpsValidations<User.TUserSchema, typeof UserValidationConditions, DefaultEntityOperations2> = {
+const UserOppValidations: EntityOpsValidations<User.TUserSchema2, typeof UserValidationConditions, DefaultEntityOperations2> = {
   conditions: UserValidationConditions,  
   delete: {
     actorRules: {
@@ -140,6 +235,7 @@ const UserOppValidations: EntityOpsValidations<User.TUserSchema, typeof UserVali
           userId: [{ neq: '' }]
       }
   },
+  xxx: {}
 }
 
 
@@ -155,30 +251,30 @@ export type DefaultEntityOperations2 = {
 
 type PropertyApplicableEntityOperations<
   Prop extends unknown, 
-  EntityRecordSchema extends Schema<any, any, any>, 
-  OPs extends DefaultEntityOperations = DefaultEntityOperations,
-  OpsInpSch extends TEntityOpsInputSchemas<EntityRecordSchema, OPs> = TEntityOpsInputSchemas<EntityRecordSchema, OPs>,
+  Sch extends EntitySchema<any, any, any, OPs>, 
+  OPs extends TDefaultEntityOperations = TDefaultEntityOperations,
+  OpsInpSch extends TEntityOpsInputSchemas<Sch, OPs> = TEntityOpsInputSchemas<Sch, OPs>,
 > = {
   [OppName in keyof OpsInpSch]: Prop extends keyof Narrow<OpsInpSch[OppName]> ? '' : never;
 }
 
-type yy1 = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema, DefaultEntityOperations>['create']>, typeof UserValidationConditions>>
-type yy  = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema, DefaultEntityOperations>>, typeof UserValidationConditions>>
-type cxx = Narrow<TEntityOpsInputSchemas<User.TUserSchema, DefaultEntityOperations2>>;
+type yy1 = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema, TDefaultEntityOperations>['create']>, typeof UserValidationConditions>>
+type yy  = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema, TDefaultEntityOperations>>, typeof UserValidationConditions>>
+type cxx = Narrow<TEntityOpsInputSchemas<User.TUserSchema2, DefaultEntityOperations2>>;
 type cc = keyof OmitNever<PropertyApplicableEntityOperations<
     'userId', 
     User.TUserSchema, 
-    DefaultEntityOperations, 
-    Narrow<TEntityOpsInputSchemas<User.TUserSchema, DefaultEntityOperations>>
+    TDefaultEntityOperations, 
+    Narrow<TEntityOpsInputSchemas<User.TUserSchema, TDefaultEntityOperations>>
 >>;
 
 type xpx = cc extends keyof DefaultEntityOperations2 ? 'ccc' : '';
 
-type rty = keyof OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, DefaultEntityOperations, Narrow<TEntityOpsInputSchemas<User.TUserSchema, DefaultEntityOperations2>>>> extends keyof Narrow<TEntityOpsInputSchemas<User.TUserSchema, DefaultEntityOperations2>> 
-    ? OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, DefaultEntityOperations, Narrow<TEntityOpsInputSchemas<User.TUserSchema, DefaultEntityOperations2>>>> 
+type rty = keyof OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, TDefaultEntityOperations, Narrow<TEntityOpsInputSchemas<User.TUserSchema2, DefaultEntityOperations2>>>> extends keyof Narrow<TEntityOpsInputSchemas<User.TUserSchema2, DefaultEntityOperations2>> 
+    ? OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, TDefaultEntityOperations, Narrow<TEntityOpsInputSchemas<User.TUserSchema2, DefaultEntityOperations2>>>> 
     : never
 
-const UserValidations: EntityValidations<User.TUserSchema, typeof UserValidationConditions, DefaultEntityOperations2> = {
+const UserValidations: EntityValidations<User.TUserSchema2, typeof UserValidationConditions, DefaultEntityOperations2> = {
     conditions: UserValidationConditions,
     actorRules: {
         tenantId: [{
@@ -187,6 +283,7 @@ const UserValidations: EntityValidations<User.TUserSchema, typeof UserValidation
               '*',
               'create',
               'update',
+              'xxx',
               ['update', ['recordIsNotNew', 'tenantIsXYZ']],
               ['update', [['recordIsNotNew', 'inputIsNitin'], 'any']],
               ['delete', [['inputIsNitin', 'tenantIsXYZ'], 'all'] ]
@@ -403,7 +500,7 @@ describe('Validator', () => {
         }
       };
 
-      const result = extractOpValidationFromEntityValidations('read' as keyof DefaultEntityOperations, entityValidations);
+      const result = extractOpValidationFromEntityValidations('read' as keyof TDefaultEntityOperations, entityValidations);
 
       expect(result).toEqual({
         conditions: undefined,
