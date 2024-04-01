@@ -1,11 +1,11 @@
 import { SQSHandler, SQSEvent } from 'aws-lambda';
-import { SESClient, SendEmailCommand, SendEmailCommandInput } from '@aws-sdk/client-ses';
+import { SESv2Client, SendEmailCommand, SendEmailCommandInput } from '@aws-sdk/client-sesv2';
 
 export const handler: SQSHandler = async (event: SQSEvent) => {
     console.log('Received event:', event);
 
     // Initialize SES client
-    const sesClient = new SESClient({ region: 'us-east-1' });
+    const sesClient = new SESv2Client();
 
     for (const record of event.Records) {
         console.log('Processing message with ID:', record.messageId);
@@ -15,17 +15,39 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
 
         // Construct email parameters
         const mailParams: SendEmailCommandInput = {
+            FromEmailAddress: body.FromEmailAddress,
             Destination: {
                 ToAddresses: [body.ToEmailAddress],
             },
-            Message: {
-                Body: {
-                    Text: { Data: body.Message },
-                },
-                Subject: { Data: body.Subject },
-            },
-            Source: body.FromEmailAddress,
+            Content: {}
         };
+
+         // If a template name is provided, use it
+         if (body.TemplateName) {
+            mailParams.Content = {};
+            mailParams.Content.Template = {
+                TemplateName: body.TemplateName, //change to get full template name from fw24
+                TemplateData: JSON.stringify(body)
+            } 
+        }
+        // if body and subject are provided, use them
+        else if (body.Message && body.Subject) {
+            mailParams.Content = {};
+            mailParams.Content.Simple = {
+                Body: { Text: { Data: body.Message } },
+                Subject: { Data: body.Subject },
+            }
+        } else {
+            console.error('Invalid message format. Either provide TemplateName or Message and Subject. Skipping message:', body);
+            continue;
+        }
+
+
+        // if reply to address is provided, use it
+        if (body.ReplyToEmailAddress) {
+            mailParams.ReplyToAddresses = [body.ReplyToEmailAddress];
+        }
+
 
         console.log('Sending email with parameters:', mailParams);
 
@@ -47,6 +69,8 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
 interface EmailMessage {
     FromEmailAddress: string;
     ToEmailAddress: string;
-    Subject: string;
-    Message: string;
+    Subject?: string;
+    Message?: string;
+    TemplateName?: string;
+    ReplyToEmailAddress?: string;
 }

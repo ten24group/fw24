@@ -7,7 +7,7 @@ import { NodejsFunction, NodejsFunctionProps, BundlingOptions } from "aws-cdk-li
 import { Fw24 } from "../core/fw24";
 import { Bucket } from "aws-cdk-lib/aws-s3";
 
-interface LambdaFunctionProps {
+export interface LambdaFunctionProps {
   entry: string;
   runtime?: Runtime;
   handler?: string;
