@@ -25,6 +25,8 @@ export class SESStack implements IStack {
     constructor(private stackConfig: ISESConfig) {
         console.log("SES");
         Helper.hydrateConfig(stackConfig,'SES');
+
+        this.fw24.emailProvider = this;
     }
 
     // construct method to create the stack
