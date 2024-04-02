@@ -12,7 +12,7 @@ import Mutable from "../types/mutable";
 import { Duration, Stack, CfnOutput } from "aws-cdk-lib";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { Helper } from "../core/helper";
-import { IAuthorizerConfig, ILambdaEnvConfig, IControllerSQSConfig, IControllerS3Config } from "../fw24";
+import { IAuthorizerConfig, ILambdaEnvConfig, IControllerSQSConfig, IControllerS3Config, IControllerSNSConfig } from "../fw24";
 import { Bucket } from "aws-cdk-lib/aws-s3";
 import { Topic } from "aws-cdk-lib/aws-sns";
 
@@ -164,10 +164,11 @@ export class APIGateway {
         }
 
         // add sns topic permission
-        controllerConfig?.sns?.forEach( ( topicName: string ) => {
-            const topicArn = `arn:aws:sns:${this.appConfig?.region}:${this.mainStack.account}:${topicName}`;
-            const topicInstance = Topic.fromTopicArn(this.mainStack, topicName, topicArn);
+        controllerConfig?.topics?.forEach( ( topic: IControllerSNSConfig ) => {
+            const topicArn = `arn:aws:sns:${this.appConfig?.region}:${this.mainStack.account}:${topic.name}`;
+            const topicInstance = Topic.fromTopicArn(this.mainStack, topic.name+controllerName+'-topic', topicArn);
             topicInstance.grantPublish(controllerFunction);
+            controllerFunction.addEnvironment(`${topic.name}_topicArn`, topicInstance.topicArn);
         });
         
         const controllerIntegration = new LambdaIntegration(controllerFunction);

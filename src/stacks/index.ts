@@ -5,3 +5,4 @@ export * from './cognito';
 export * from './sqs';
 export * from './ses';
 export * from './s3';
+export * from './sns';

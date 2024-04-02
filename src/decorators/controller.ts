@@ -5,6 +5,7 @@ export interface IControllerConfig {
 	env?: ILambdaEnvConfig[];
 	queue?: IControllerSQSConfig[];
 	buckets?: IControllerS3Config[];
+	topics?: IControllerSNSConfig[];
 }
 export interface IAuthorizerConfig {
 	type: string;
@@ -21,6 +22,10 @@ export interface IControllerSQSConfig {
 }
 
 export interface IControllerS3Config {
+	name: string;
+}
+
+export interface IControllerSNSConfig {
 	name: string;
 }
 

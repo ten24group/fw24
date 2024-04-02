@@ -9,7 +9,7 @@ export interface ISNSConfig {
     topicName: string;
 }
 
-export class S3Stack {
+export class SNSStack {
     appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;
 

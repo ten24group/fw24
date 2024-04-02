@@ -2,10 +2,15 @@
 export interface IQueueConfig {
 	tableName?: string;
 	env?: IQLambdaEnvConfig[];
+	topics?: IQueueSNSConfig[];
 }
 export interface IQLambdaEnvConfig {
 	name: string;
 	path: string;
+}
+
+export interface IQueueSNSConfig {
+	name: string;
 }
 
 export function Queue(queueName: string, queueConfig?: IQueueConfig) {

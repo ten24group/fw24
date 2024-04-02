@@ -13,10 +13,9 @@ import { IApplicationConfig } from "../interfaces/config";
 import { Helper } from "../core/helper";
 import { ISQSConfig } from "../interfaces/sqs";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
-import { IQLambdaEnvConfig } from "../fw24";
+import { IQLambdaEnvConfig, IControllerSNSConfig } from "../fw24";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { SqsSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
-
 
 export class SQS {
     //public queueURL!: Queue.QueueUrl;
@@ -110,9 +109,9 @@ export class SQS {
         queue.grantConsumeMessages(queueFunction);
 
         // subscribe the queue to SNS topic
-        queueConfig?.sns?.forEach( ( topicName: string ) => {
-            const topicArn = `arn:aws:sns:${this.appConfig?.region}:${this.mainStack.account}:${topicName}`;
-            const topicInstance = Topic.fromTopicArn(this.mainStack, topicName, topicArn);
+        queueConfig?.topics?.forEach( ( topic: IControllerSNSConfig) => {
+            const topicArn = `arn:aws:sns:${this.appConfig?.region}:${this.mainStack.account}:${topic.name}`;
+            const topicInstance = Topic.fromTopicArn(this.mainStack, topic.name+queueName+'-topic', topicArn);
             // TODO: add ability to filter messages
             topicInstance.addSubscription(new SqsSubscription(queue));
         });
