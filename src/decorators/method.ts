@@ -50,17 +50,3 @@ export const Put = createRouteDecorator("PUT");
 export const Delete = createRouteDecorator("DELETE");
 export const Patch = createRouteDecorator("PATCH");
 export const Options = createRouteDecorator("OPTIONS");
-
-
-export const Authorizer = (authorizationType: string) => {
-  return function (target: any, methodToDecorate: any) {
-    const routes: Record<string, Route> = Reflect.get(target, "routes") || {};
-    const route = Object.values(routes).find(
-      (route) => route.functionName === methodToDecorate
-    );
-    if (!route) {
-      throw new Error("Route not found, try to add the decorator above the @Get, @Post, @Put, @Delete or @Patch decorator.");
-    }
-    route.authorizer = authorizationType;
-  };
-}

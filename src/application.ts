@@ -26,11 +26,19 @@ export class Application {
         return this;
     }
 
+    public useModule(module: any): Application {
+        for( const stack of module.getStacks()){
+            this.registerStack(stack);
+        }
+        return this;
+    }
+
     public run() {
         console.log("Running fw24 infrastructure...");
 
         this.processStacks();
     }
+    
 
     private registerStack(stack: IStack, name?: string) {
         const stackName = name || stack.constructor.name;
