@@ -34,7 +34,7 @@ export class QueueLambda extends Construct {
       receiveMessageWaitTime: props.receiveMessageWaitTime,
     });
 
-    const queueFunction = new LambdaFunction(this, id, { ...props.lambdaFunctionProps }) as NodejsFunction;
+    const queueFunction = new LambdaFunction(this, `${id}-lambda`, { ...props.lambdaFunctionProps }) as NodejsFunction;
 
     // add event source to lambda function
     queueFunction.addEventSource(new SqsEventSource(queue, {
