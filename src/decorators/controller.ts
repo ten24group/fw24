@@ -12,6 +12,18 @@ export interface IControllerConfig {
 			access?: string; // read, write, readwrite | default is readwrite
 		}
 	];
+	topics? : [
+		{
+			name: string;
+			actions: string[]; // publish, subscribe, unsubscribe
+		}
+	];
+	queues?: [
+		{
+			name: string;
+			actions: string[]; // send, receive, delete
+		}
+	];
 	env?: ILambdaEnvConfig[];
 }
 

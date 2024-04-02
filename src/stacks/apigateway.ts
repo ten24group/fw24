@@ -10,15 +10,13 @@ import {
 
 import { Stack, CfnOutput } from "aws-cdk-lib";
 import { Helper } from "../core/helper";
-import { DynamoDBStack, IControllerConfig } from "../fw24";
+import { IControllerConfig } from "../fw24";
 import { LambdaFunction } from "../constructs/lambda-function";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
 import Mutable from "../types/mutable";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-import { Queue } from "aws-cdk-lib/aws-sqs";
-import { SESStack } from "./ses";
 
 export interface IAPIGatewayConfig {
     cors?: boolean | string | string[];
@@ -29,7 +27,7 @@ export interface IAPIGatewayConfig {
 export class APIGateway implements IStack {
     fw24: Fw24 = Fw24.getInstance();
     // array of type of stacks that this stack is dependent on
-    dependencies: string[] = ['SESStack', 'DynamoDBStack', 'CognitoStack'];
+    dependencies: string[] = ['SESStack', 'DynamoDBStack', 'CognitoStack', 'SQSStack', 'SNSStack'];
     mainStack!: Stack;
     api!: RestApi;
 
@@ -118,6 +116,8 @@ export class APIGateway implements IStack {
             layerArn: this.fw24.getLayerARN(),
             environmentVariables: this.getEnvironmentVariables(controllerConfig),
             buckets: controllerConfig?.buckets,
+            queues: controllerConfig?.queues,
+            topics: controllerConfig?.topics,
             tableName: controllerConfig?.tableName,
             allowSendEmail: true
         }) as NodejsFunction;

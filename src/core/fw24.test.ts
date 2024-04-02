@@ -55,7 +55,7 @@ describe('Fw24', () => {
         fw24.setConfig(config);
         fw24.addStack("main", { account: "123456789012" });
 
-        const queueArn = fw24.getQueueArn("myQueue");
+        const queueArn = fw24.getArn("sqs","myQueue");
         expect(queueArn).toBe("arn:aws:sqs:us-east-1:123456789012:myQueue");
     });
 

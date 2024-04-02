@@ -60,15 +60,15 @@ export class Fw24 {
         return `${name}-${this.config.name}-${this.config.environment}-${this.stacks['main'].account}`;
     }
 
-    public getQueueArn(name: string): string {
+    public getArn(type:string, name: string): string {
         if(this.stacks['main'] === undefined) {
             throw new Error('Main stack not found');
         }
-        return `arn:aws:sqs:${this.config.region}:${this.stacks['main'].account}:${name}`;
+        return `arn:aws:${type}:${this.config.region}:${this.stacks['main'].account}:${name}`;
     }
 
     public getQueueByName(name: string): IQueue {
-        const queueArn = this.getQueueArn(name);
+        const queueArn = this.getArn('sqs',name);
         return Queue.fromQueueArn(this.stacks['main'], name, queueArn);
     }
 

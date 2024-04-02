@@ -12,7 +12,7 @@ export interface IDynamoConfig {
 
 export class DynamoDBStack implements IStack {
     fw24: Fw24 = Fw24.getInstance();
-    dependency: string[] = [];
+    dependencies: string[] = [];
 
     // default contructor to initialize the stack configuration
     constructor(private stackConfig: IDynamoConfig) {

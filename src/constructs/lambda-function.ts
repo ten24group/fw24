@@ -8,6 +8,7 @@ import { Fw24 } from "../core/fw24";
 import { Bucket } from "aws-cdk-lib/aws-s3";
 import { SESStack } from "../stacks/ses";
 import { Queue } from "aws-cdk-lib/aws-sqs/lib/queue";
+import { Topic } from "aws-cdk-lib/aws-sns";
 
 export interface LambdaFunctionProps {
   entry: string;
@@ -23,6 +24,8 @@ export interface LambdaFunctionProps {
   environmentVariables?: { [key: string]: string };
   tableName?: string;
   buckets? : [{ name: string, access?: string }];
+  queues?: [{ name: string, actions: string[] }];
+  topics?: [{ name: string, actions: string[] }];
   allowSendEmail?: boolean;
 }
 
@@ -102,6 +105,23 @@ export class LambdaFunction extends Construct {
       }
       // add environment variable for the bucket name
       fn.addEnvironment(`bucket_${bucket.name}`, bucketFullName);
+    });
+
+    props.queues?.forEach( ( queue: any ) => {
+      const queueArn = fw24.getArn('sqs', queue.name);
+
+      const queueInstance = Queue.fromQueueArn(this, queue.name+id+'-queue', queueArn);
+      queueInstance.grantSendMessages(fn);
+      fn.addEnvironment(`${queue.name}_queueUrl`, queueInstance.queueUrl);
+    });
+
+    // add sns topic permission
+    props.topics?.forEach( ( topic: any ) => {
+      const topicArn = fw24.getArn('sns', topic.name);
+
+      const topicInstance = Topic.fromTopicArn(this, topic.name+id+'-topic', topicArn);
+      topicInstance.grantPublish(fn);
+      fn.addEnvironment(`${topic.name}_topicArn`, topicInstance.topicArn);
     });
 
     return fn;
