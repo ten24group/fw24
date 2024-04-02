@@ -1,7 +1,6 @@
 import { Construct } from "constructs";
 import { Duration } from "aws-cdk-lib";
-import { Runtime, Architecture, ILayerVersion } from "aws-cdk-lib/aws-lambda";
-import { BundlingOptions, NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
 import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
@@ -9,8 +8,8 @@ import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 interface QueueLambdaFunctionProps {
   // queue properties
   queueName: string;
-  visibilityTimeout: Duration;
-  receiveMessageWaitTime: Duration;
+  visibilityTimeout?: Duration;
+  receiveMessageWaitTime?: Duration;
 
   //SQS event source properties
   sqsEventSourceProps?: {
@@ -30,8 +29,8 @@ export class QueueLambda extends Construct {
 
     const queue = new Queue(this, id, {
       queueName: props.queueName,
-      visibilityTimeout: props.visibilityTimeout,
-      receiveMessageWaitTime: props.receiveMessageWaitTime,
+      visibilityTimeout: props.visibilityTimeout || Duration.seconds(30),
+      receiveMessageWaitTime: props.receiveMessageWaitTime || Duration.seconds(20),
     });
 
     const queueFunction = new LambdaFunction(this, `${id}-lambda`, { ...props.lambdaFunctionProps }) as NodejsFunction;

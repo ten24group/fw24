@@ -12,6 +12,7 @@ import HandlerDescriptor from "../interfaces/handler-descriptor";
 
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
+import { QueueLambda } from "../constructs/queue-lambda";
 
 export interface ISQSConfig {
     queuesDirectory?: string;
@@ -63,31 +64,15 @@ export class SQSStack implements IStack {
 
         console.log(`:::Registering queue ${queueName} from ${queueInfo.filePath}/${queueInfo.fileName}`);
 
-        // create the queue
-        const queue = new Queue(this.mainStack, queueName + "-queue", {
+        const queue = new QueueLambda(this.mainStack, queueName + "-queue", {
             queueName: queueName,
-        });
-
-        // create lambda function for the controller
-        const queueLambda = new LambdaFunction(this.mainStack, queueName + "-controller", {
-            entry: queueInfo.filePath + "/" + queueInfo.fileName,
-            layerArn: this.fw24.getLayerARN(),
-            environmentVariables: this.getEnvironmentVariables(queueConfig),
-        }) as NodejsFunction;
-
-         // logic for adding dynamodb table access to the controller
-        if (queueConfig?.tableName) {
-            // get the dynamodb table based on the controller config
-            const tableInstance: TableV2 = this.fw24.getDynamoTable(queueConfig.tableName);
-            // add the table name to the lambda environment
-            queueLambda.addEnvironment(`${queueConfig.tableName.toUpperCase()}_TABLE`, tableInstance.tableName);
-            // grant the lambda function read write access to the table
-            tableInstance.grantReadWriteData(queueLambda);
-        }
-
-        // add event source for the queue
-        queueLambda.addEventSource(new SqsEventSource(queue));
-        queue.grantConsumeMessages(queueLambda);
+            lambdaFunctionProps: {
+                entry: queueInfo.filePath + "/" + queueInfo.fileName,
+                layerArn: this.fw24.getLayerARN(),
+                environmentVariables: this.getEnvironmentVariables(queueConfig),
+                tableName: queueConfig?.tableName,
+            }
+        }) as Queue;
 
         // output the api endpoint
         new CfnOutput(this.mainStack, `SQS-${queueName}`, {
