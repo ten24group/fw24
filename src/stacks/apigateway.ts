@@ -14,6 +14,7 @@ import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { Helper } from "../core/helper";
 import { IAuthorizerConfig, ILambdaEnvConfig, IControllerSQSConfig, IControllerS3Config } from "../fw24";
 import { Bucket } from "aws-cdk-lib/aws-s3";
+import { Topic } from "aws-cdk-lib/aws-sns";
 
 
 export class APIGateway {
@@ -161,6 +162,13 @@ export class APIGateway {
             this.mailQueue.grantSendMessages(controllerFunction);
             controllerFunction.addEnvironment(`MailQueueUrl`, this.mailQueue.queueUrl);
         }
+
+        // add sns topic permission
+        controllerConfig?.sns?.forEach( ( topicName: string ) => {
+            const topicArn = `arn:aws:sns:${this.appConfig?.region}:${this.mainStack.account}:${topicName}`;
+            const topicInstance = Topic.fromTopicArn(this.mainStack, topicName, topicArn);
+            topicInstance.grantPublish(controllerFunction);
+        });
         
         const controllerIntegration = new LambdaIntegration(controllerFunction);
         const controllerResource = this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
