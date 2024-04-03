@@ -50,25 +50,23 @@ export const DefaultEntityOperations = {
 
 export type TDefaultEntityOperations = typeof DefaultEntityOperations;
 
-export type DefaultEntityOpsInputSchema<Sch extends EntitySchema<any, any, any>> = {
-    get: EntityIdentifiersTypeFromSchema<Sch>,
-    create: CreateEntityItemTypeFromSchema<Sch>,
-    update: UpdateEntityItemTypeFromSchema<Sch>,
-    delete: EntityIdentifiersTypeFromSchema<Sch>,
-    list: {},
-}
-
 /**
  * Extend this type for additional operations's input-schema types 
  * 
  */
 export type TEntityOpsInputSchemas<
-Sch extends EntitySchema<any, any, any, Ops>,
-Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
+Sch extends EntitySchema<any, any, any>,
 > = {
-    readonly [opName in keyof Ops] : opName extends keyof DefaultEntityOpsInputSchema<Sch> 
-        ? DefaultEntityOpsInputSchema<Sch>[opName] 
-        : {}
+    readonly [opName in keyof Sch['model']['entityOperations']] 
+        : opName extends 'get' 
+            ? EntityIdentifiersTypeFromSchema<Sch>
+            : opName extends 'create' 
+                ? CreateEntityItemTypeFromSchema<Sch>
+                : opName extends 'update' 
+                    ? UpdateEntityItemTypeFromSchema<Sch>
+                    : opName extends 'delete' 
+                        ? EntityIdentifiersTypeFromSchema<Sch>
+                        : {}
 }
 
 export type CreateEntityOptions<S extends EntitySchema<any, any, any>> = {

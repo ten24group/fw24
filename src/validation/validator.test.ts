@@ -1,10 +1,9 @@
-import { Schema} from "electrodb";
 import { Narrow, OmitNever } from "../utils";
-import { EntityOpsValidations, EntityValidations, InputApplicableConditionsMap, TConditionalValidationRule, TMapOfValidationConditions } from "./validator.type";
+import { EntityOpsValidations, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TConditionalValidationRule, TMapOfValidationConditions } from "./validator.type";
 
 import { describe, expect, it } from '@jest/globals';
 import { randomUUID } from "node:crypto";
-import { TDefaultEntityOperations, DefaultEntityOperations, TEntityOpsInputSchemas, createEntitySchema, EntitySchema } from "../entity";
+import { DefaultEntityOperations, TDefaultEntityOperations, TEntityOpsInputSchemas, createEntitySchema } from "../entity";
 import { Validator, extractOpValidationFromEntityValidations } from "./validator";
 
 
@@ -203,7 +202,7 @@ const UserValidationConditions =  {
     }},
 } as const;
 
-const UserOppValidations: EntityOpsValidations<User.TUserSchema2, typeof UserValidationConditions, DefaultEntityOperations2> = {
+const UserOppValidations: EntityOpsValidations<User.TUserSchema2, typeof UserValidationConditions> = {
   conditions: UserValidationConditions,  
   delete: {
     actorRules: {
@@ -239,42 +238,33 @@ const UserOppValidations: EntityOpsValidations<User.TUserSchema2, typeof UserVal
 }
 
 
-export type DefaultEntityOperations2 = {
-    get: "get",
-    list: "list",
-    create: "create",
-    update: "update",
-    delete: "delete",
-    xxx: "xxx",
-    yyy: "yyy"
-};
 
-type PropertyApplicableEntityOperations<
-  Prop extends unknown, 
-  Sch extends EntitySchema<any, any, any, OPs>, 
-  OPs extends TDefaultEntityOperations = TDefaultEntityOperations,
-  OpsInpSch extends TEntityOpsInputSchemas<Sch, OPs> = TEntityOpsInputSchemas<Sch, OPs>,
-> = {
-  [OppName in keyof OpsInpSch]: Prop extends keyof Narrow<OpsInpSch[OppName]> ? '' : never;
-}
-
-type yy1 = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema, TDefaultEntityOperations>['create']>, typeof UserValidationConditions>>
-type yy  = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema, TDefaultEntityOperations>>, typeof UserValidationConditions>>
-type cxx = Narrow<TEntityOpsInputSchemas<User.TUserSchema2, DefaultEntityOperations2>>;
+type yy1 = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema>['create']>, typeof UserValidationConditions>>
+type yy  = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema>>, typeof UserValidationConditions>>
+type cxx = Narrow<TEntityOpsInputSchemas<User.TUserSchema2>>;
 type cc = keyof OmitNever<PropertyApplicableEntityOperations<
     'userId', 
     User.TUserSchema, 
-    TDefaultEntityOperations, 
-    Narrow<TEntityOpsInputSchemas<User.TUserSchema, TDefaultEntityOperations>>
+    Narrow<TEntityOpsInputSchemas<User.TUserSchema2>>
 >>;
 
-type xpx = cc extends keyof DefaultEntityOperations2 ? 'ccc' : '';
+type xpx = cc extends keyof User.TUserSchema2['model']['entityOperations'] ? 'ccc' : '';
 
-type rty = keyof OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, TDefaultEntityOperations, Narrow<TEntityOpsInputSchemas<User.TUserSchema2, DefaultEntityOperations2>>>> extends keyof Narrow<TEntityOpsInputSchemas<User.TUserSchema2, DefaultEntityOperations2>> 
-    ? OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, TDefaultEntityOperations, Narrow<TEntityOpsInputSchemas<User.TUserSchema2, DefaultEntityOperations2>>>> 
-    : never
+interface ppp extends TEntityOpsInputSchemas<User.TUserSchema2>{
+  xxx: {
+    'a': {},
+    b: {}
+  }
+}
 
-const UserValidations: EntityValidations<User.TUserSchema2, typeof UserValidationConditions, DefaultEntityOperations2> = {
+type t2 = ppp['xxx'];
+
+type rty = 
+  keyof OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, TEntityOpsInputSchemas<User.TUserSchema2>>> extends 
+  keyof TEntityOpsInputSchemas<User.TUserSchema2>
+  ? keyof OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, TEntityOpsInputSchemas<User.TUserSchema2>>> : never
+
+const UserValidations: EntityValidations<User.TUserSchema2, typeof UserValidationConditions> = {
     conditions: UserValidationConditions,
     actorRules: {
         tenantId: [{
