@@ -29,10 +29,10 @@ export function extractOpValidationFromEntityValidations<
   Sch extends EntitySchema<any, any, any, Ops>, 
   ConditionsMap extends TMapOfValidationConditions<any, any>,
   Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
-  OpsInpSch extends TEntityOpsInputSchemas<Sch, Ops> = TEntityOpsInputSchemas<Sch, Ops>,
+  OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 >( 
   operationName: keyof OpsInpSch, 
-  entityValidations: EntityValidations<Sch, ConditionsMap, Ops, OpsInpSch>
+  entityValidations: EntityValidations<Sch, ConditionsMap, OpsInpSch>
 ){
 
 	const validations: DeepWritable<TEntityOpValidations<any, any, ConditionsMap>> = {
@@ -53,7 +53,7 @@ export function extractOpValidationFromEntityValidations<
 			
 			const formattedPropertyRules = [];
 			
-			for(const rule of propertyRules){
+			for(const rule of propertyRules as Array<any>){
 				if(!rule){ continue;}
 
 				const{operations, ...restOfTheValidations} = rule;
@@ -111,9 +111,9 @@ export class Validator implements IValidator {
         Sch extends EntitySchema<any, any, any, Ops>, 
         ConditionsMap extends TMapOfValidationConditions<any, any>, 
         Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
-        OpsInpSch extends TEntityOpsInputSchemas<Sch, Ops> = TEntityOpsInputSchemas<Sch, Ops>,
+        OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
     >(
-        options: ValidatorOptions<OpName, Sch, ConditionsMap, Ops, OpsInpSch>
+        options: ValidatorOptions<OpName, Sch, ConditionsMap, OpsInpSch>
     ): Promise<IValidatorResponse> {
         
         const { entityValidations, operationName, input, actor, record } = options;

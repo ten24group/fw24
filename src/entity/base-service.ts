@@ -27,7 +27,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return this.entityOpsDefaultIoSchema;
     }
 
-    abstract getEntityValidations(): EntityValidations<any, any, any, any>;
+    abstract getEntityValidations(): EntityValidations<any, any, any>;
 
     public getRepository(){
 

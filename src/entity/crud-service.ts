@@ -49,9 +49,8 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
 
 
 export interface GetEntityArgs<
-    Sch extends EntitySchema<any, any, any, Ops>,
-    Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
-    OpsSchema extends TEntityOpsInputSchemas<Sch, Ops> = TEntityOpsInputSchemas<Sch, Ops>,
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > extends BaseEntityCrudArgs<Sch> {
     id: OpsSchema['get'];
 }
@@ -114,9 +113,8 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
 }
 
 export interface CreateEntityArgs<
-    Sch extends EntitySchema<any, any, any, Ops>,
-    Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
-    OpsSchema extends TEntityOpsInputSchemas<Sch, Ops> = TEntityOpsInputSchemas<Sch, Ops>,
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > extends BaseEntityCrudArgs<Sch> {
     data: OpsSchema['create'];
 }
@@ -181,9 +179,8 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
 }
 
 export interface ListEntityArgs<
-    Sch extends EntitySchema<any, any, any, Ops>,
-    Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
-    OpsSchema extends TEntityOpsInputSchemas<Sch, Ops> = TEntityOpsInputSchemas<Sch, Ops>,
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > extends BaseEntityCrudArgs<Sch> {
     filters: OpsSchema['list']; // TODO: filters and pagination
 }
@@ -233,9 +230,8 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
 }
 
 export interface UpdateEntityArgs<
-    Sch extends EntitySchema<any, any, any, Ops>,
-    Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
-    OpsSchema extends TEntityOpsInputSchemas<Sch, Ops> = TEntityOpsInputSchemas<Sch, Ops>,
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > extends BaseEntityCrudArgs<Sch> {
     id: OpsSchema['get'],
     data: OpsSchema['update'],
@@ -306,9 +302,8 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
 }
 
 export interface DeleteEntityArgs<
-    Sch extends EntitySchema<any, any, any, Ops>,
-    Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
-    OpsSchema extends TEntityOpsInputSchemas<Sch, Ops> = TEntityOpsInputSchemas<Sch, Ops>,
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > extends BaseEntityCrudArgs<Sch> {
     id: OpsSchema['delete'];
 }
