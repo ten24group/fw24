@@ -17,7 +17,7 @@
         "strictNullChecks": true,
         "noImplicitThis": true,
         "alwaysStrict": true,
-        "noUnusedParameters": true,
+        "noUnusedParameters": false,
         "noImplicitReturns": true,
         "noFallthroughCasesInSwitch": true,
         "inlineSourceMap": true,
@@ -35,7 +35,8 @@
         ]
     },
     "include": [
-        "src/"
+        "src/",
+        "modules/"
     ],
     "exclude": [
         "node_modules",

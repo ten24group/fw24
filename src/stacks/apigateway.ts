@@ -1,8 +1,9 @@
+import { IFw24Module } from '../core/module';
 import { Cors, IResource, Integration, LambdaIntegration, RestApi, RestApiProps, AuthorizationType } from "aws-cdk-lib/aws-apigateway";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Architecture, LayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
 import { readdirSync } from "fs";
-import { resolve, join } from "path";
+import { resolve, join, relative } from "path";
 
 import { IAPIGatewayConfig } from "../interfaces/apigateway";
 import { IApplicationConfig } from "../interfaces/config";
@@ -18,6 +19,7 @@ export class APIGateway {
     appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;
     api!: RestApi;
+    appModules ?: Map<string, IFw24Module>;
 
     constructor(private config: IAPIGatewayConfig) {
         console.log("APIGateway", config);
@@ -63,6 +65,8 @@ export class APIGateway {
         this.mainStack = Reflect.get(globalThis, "mainStack");
         this.api = new RestApi(this.mainStack, appConfig.name + "-api", paramsApi);
         Reflect.set(globalThis, "api", this.api);
+
+        this.appModules = Reflect.get(globalThis, "appModules")
 
         this.registerControllers();
     }
@@ -202,14 +206,9 @@ export class APIGateway {
 
     }
 
-    private async registerControllers() {
-        console.log("Registering controllers...");
-        const controllersConfig = this.config.controllers || [];
-        console.log("Controllers config: ", controllersConfig);
-
-        if (typeof controllersConfig === "string") {
-            // Resolve the absolute path
-            const controllersDirectory = resolve(controllersConfig);
+    private async registerControllersFromDirectory(controllersDir:string){
+        // Resolve the absolute path
+            const controllersDirectory = resolve(controllersDir);
             // Get all the files in the controllers directory
             const controllerFiles = readdirSync(controllersDirectory);
             // Filter the files to only include TypeScript files
@@ -236,6 +235,38 @@ export class APIGateway {
                     console.error(err);
                 }
             }
+    }
+
+    private async registerControllers() {
+        console.log("Registering controllers...");
+        const controllersConfig = this.config.controllers || [];
+        console.log("Controllers config: ", controllersConfig);
+
+        if(this.appModules){
+            console.log("found app modules, trying to load controllers: ", this.appModules);
+
+            for( const mod of this.appModules){
+                const module = mod[1];
+
+                const basePath = module.getBasePath();
+                console.log(" load controllers from module base-path: ", basePath);
+
+                // relative path from the place where the script is getting executed i.e index.ts in app-root
+                const relativePath = relative('./', basePath); 
+                const controllersPath = resolve(relativePath, './controllers/');
+
+
+                console.log(" load controllers from module relative-path:, controllers-path:", controllersPath, controllersPath);
+
+                this.registerControllersFromDirectory(controllersPath);
+
+            }
+        }
+
+        if (typeof controllersConfig === "string") {
+
+            this.registerControllersFromDirectory(controllersConfig)
+            
         } else if (Array.isArray(controllersConfig)) {
             for (const controller of controllersConfig) {
                 try {
