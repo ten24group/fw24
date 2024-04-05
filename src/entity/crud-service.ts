@@ -1,6 +1,6 @@
 import { Schema } from "electrodb";
 import { Authorizer } from "../authorize";
-import { CreateEntityItemTypeFromSchema, DefaultEntityOperations, EntityIdentifiersTypeFromSchema, EntityServiceTypeFromSchema, UpdateEntityItemTypeFromSchema } from "./base-entity";
+import { DefaultEntityOperations, EntityServiceTypeFromSchema, TEntityOpsInputSchemas } from "./base-entity";
 import { defaultMetaContainer } from ".";
 import { Validator } from "../validation";
 import { Logger } from "../logging";
@@ -48,8 +48,12 @@ export interface BaseEntityCrudArgs<S extends Schema<any, any, any>> {
 }
 
 
-export interface GetEntityArgs<S extends Schema<any, any, any>> extends BaseEntityCrudArgs<S> {
-    id: EntityIdentifiersTypeFromSchema<S>;
+export interface GetEntityArgs<
+    Sch extends Schema<any, any, any>,
+    Opp extends DefaultEntityOperations = DefaultEntityOperations,
+    OpsSchema extends TEntityOpsInputSchemas<Sch, Opp> = TEntityOpsInputSchemas<Sch, Opp>,
+> extends BaseEntityCrudArgs<Sch> {
+    id: OpsSchema['get'];
 }
 
 export async function getEntity<S extends Schema<any, any, any>>( options: GetEntityArgs<S>){
@@ -109,8 +113,12 @@ export async function getEntity<S extends Schema<any, any, any>>( options: GetEn
     return entity;
 }
 
-export interface CreateEntityArgs<S extends Schema<any, any, any>> extends BaseEntityCrudArgs<S> {
-    data: CreateEntityItemTypeFromSchema<S>
+export interface CreateEntityArgs<
+    Sch extends Schema<any, any, any>,
+    Opp extends DefaultEntityOperations = DefaultEntityOperations,
+    OpsSchema extends TEntityOpsInputSchemas<Sch, Opp> = TEntityOpsInputSchemas<Sch, Opp>,
+> extends BaseEntityCrudArgs<Sch> {
+    data: OpsSchema['create'];
 }
 export async function createEntity<S extends Schema<any, any, any>>(options : CreateEntityArgs<S>) {
     const { 
@@ -133,6 +141,10 @@ export async function createEntity<S extends Schema<any, any, any>>(options : Cr
 
     logger.debug(`Called EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data);
     
+    if(!data){
+        throw new Error("No data provided for create operation");
+    }
+
     // pre events
     await eventDispatcher?.dispatch({ event: 'beforeCreate', context: arguments });
 
@@ -168,12 +180,15 @@ export async function createEntity<S extends Schema<any, any, any>>(options : Cr
     return entity;
 }
 
-export interface ListEntityArgs<S extends Schema<any, any, any>> extends BaseEntityCrudArgs<S> {
-    filters: EntityIdentifiersTypeFromSchema<S>;
+export interface ListEntityArgs<
+    Sch extends Schema<any, any, any>,
+    Opp extends DefaultEntityOperations = DefaultEntityOperations,
+    OpsSchema extends TEntityOpsInputSchemas<Sch, Opp> = TEntityOpsInputSchemas<Sch, Opp>,
+> extends BaseEntityCrudArgs<Sch> {
+    filters: OpsSchema['list']; // TODO: filters and pagination
 }
 /**
  * 
- * TODO; Filters, Paging etc
  * @param options 
  * 
  * @returns 
@@ -217,10 +232,16 @@ export async function listEntity<S extends Schema<any, any, any>>( options: List
     return entities;
 }
 
-export interface UpdateEntityArgs<S extends Schema<any, any, any>> extends BaseEntityCrudArgs<S> {
-    id: EntityIdentifiersTypeFromSchema<S>,
-    data: UpdateEntityItemTypeFromSchema<S>
+export interface UpdateEntityArgs<
+    Sch extends Schema<any, any, any>,
+    Opp extends DefaultEntityOperations = DefaultEntityOperations,
+    OpsSchema extends TEntityOpsInputSchemas<Sch, Opp> = TEntityOpsInputSchemas<Sch, Opp>,
+> extends BaseEntityCrudArgs<Sch> {
+    id: OpsSchema['get'],
+    data: OpsSchema['update'],
+    conditions?: any // TODO
 }
+
 export async function updateEntity<S extends Schema<any, any, any>>(options : UpdateEntityArgs<S>) {
     const { 
         id,
@@ -243,6 +264,10 @@ export async function updateEntity<S extends Schema<any, any, any>>(options : Up
 
     logger.debug(`Called EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, data);
     
+    if(!data){
+        throw new Error("No data provided for update operation");
+    }
+
     // pre events
     await eventDispatcher?.dispatch({ event: 'beforeUpdate', context: arguments });
 
@@ -280,9 +305,14 @@ export async function updateEntity<S extends Schema<any, any, any>>(options : Up
     return entity;
 }
 
-export interface DeleteEntityArgs<S extends Schema<any, any, any>> extends BaseEntityCrudArgs<S> {
-    id: EntityIdentifiersTypeFromSchema<S>;
+export interface DeleteEntityArgs<
+    Sch extends Schema<any, any, any>,
+    Opp extends DefaultEntityOperations = DefaultEntityOperations,
+    OpsSchema extends TEntityOpsInputSchemas<Sch, Opp> = TEntityOpsInputSchemas<Sch, Opp>,
+> extends BaseEntityCrudArgs<Sch> {
+    id: OpsSchema['delete'];
 }
+
 export async function deleteEntity<S extends Schema<any, any, any>>( options: DeleteEntityArgs<S>){
 
     const { 

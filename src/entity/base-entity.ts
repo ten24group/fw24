@@ -16,11 +16,11 @@ import { Narrow } from "../utils/types";
 
 // todo: move to base entity
 export type DefaultEntityOperations = {
-    'get': "",
-    'list': ""
-    'create': "",
-    'update': "",
-    'delete': "",
+    get: "get",
+    list: "list",
+    create: "create",
+    update: "update",
+    delete: "delete",
 };
 
 export type DefaultEntityOpsInputSchema<Sch extends Schema<any, any, any>> = {
@@ -36,7 +36,7 @@ export type DefaultEntityOpsInputSchema<Sch extends Schema<any, any, any>> = {
  * 
  */
 export type TEntityOpsInputSchemas<Sch extends Schema<any, any, any>, Opp extends DefaultEntityOperations = DefaultEntityOperations> = {
-    readonly [opName in keyof Opp] ?: opName extends keyof DefaultEntityOpsInputSchema<Sch> 
+    readonly [opName in keyof Opp] : opName extends keyof DefaultEntityOpsInputSchema<Sch> 
         ? DefaultEntityOpsInputSchema<Sch>[opName] 
         : {}
 }
