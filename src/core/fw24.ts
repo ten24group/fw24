@@ -15,6 +15,8 @@ export class Fw24 {
     private dynamoTables: { [key: string]: TableV2 } = {};
     private static instance: Fw24;
 
+    private queues = new Map<string, IQueue>();
+
     private constructor() {}
 
     public static getInstance(): Fw24 {
@@ -68,8 +70,14 @@ export class Fw24 {
     }
 
     public getQueueByName(name: string): IQueue {
-        const queueArn = this.getArn('sqs',name);
-        return Queue.fromQueueArn(this.stacks['main'], name, queueArn);
+
+        if( !this.queues.has(name) ){
+            const queueArn = this.getArn('sqs', name);
+            const queue = Queue.fromQueueArn(this.stacks['main'], name, queueArn);
+            this.queues.set(name, queue);            
+        }
+
+        return this.queues.get(name)!;
     }
 
     public setCognitoAuthorizer(name: string, authorizer: IAuthorizer, defaultAuthorizer: boolean = false) {

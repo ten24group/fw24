@@ -7,7 +7,7 @@ import { NodejsFunction, NodejsFunctionProps, BundlingOptions } from "aws-cdk-li
 import { Fw24 } from "../core/fw24";
 import { Bucket } from "aws-cdk-lib/aws-s3";
 import { SESStack } from "../stacks/ses";
-import { Queue } from "aws-cdk-lib/aws-sqs/lib/queue";
+import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Topic } from "aws-cdk-lib/aws-sns";
 
 export interface LambdaFunctionProps {

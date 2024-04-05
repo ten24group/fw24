@@ -2,10 +2,12 @@ import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 
 export interface IControllerConfig {
 	tableName?: string;
-	authorizer?: { 
-		name: string;
+	authorizer?: Array<{ 
+		name?: string;
 		type: string;
-	} | string;
+		methods ?: string[];
+		default?: boolean
+	}> | string;
 	buckets?: [
 		{ 
 			name: string;

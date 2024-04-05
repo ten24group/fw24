@@ -2,8 +2,8 @@ import { Stack, Duration, CfnOutput } from "aws-cdk-lib";
 import { EmailIdentity, Identity, CfnTemplate } from "aws-cdk-lib/aws-ses";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Effect } from "aws-cdk-lib/aws-iam";
-import { readdirSync, readFileSync } from "fs";
-import { resolve, join } from "path";
+import { readdirSync, readFileSync, existsSync } from "fs";
+import { resolve, join, } from "path";
 
 import { Helper } from "../core/helper";
 import { IStack } from "../interfaces/stack";
@@ -21,7 +21,7 @@ export class SESStack implements IStack {
     dependencies: string[] = [];
     mainStack!: Stack;
 
-    // default contructor to initialize the stack configuration
+    // default constructor to initialize the stack configuration
     constructor(private stackConfig: ISESConfig) {
         console.log("SES");
         Helper.hydrateConfig(stackConfig,'SES');
@@ -80,7 +80,7 @@ export class SESStack implements IStack {
         // Resolve the absolute path
         const templateDirectory = resolve(path);
         // Get all the files in the template directory
-        const templateFiles = readdirSync(templateDirectory);
+        const templateFiles =  existsSync(templateDirectory) ? readdirSync(templateDirectory) : [];
         // Filter the files to only include html files
         const templatePaths = templateFiles.filter((file) => file.endsWith(".html"));
         // Register the templates
