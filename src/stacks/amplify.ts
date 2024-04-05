@@ -19,7 +19,7 @@ export class AmplifyStack implements IStack{
     fw24: Fw24 = Fw24.getInstance();
     dependencies: string[] = [];
 
-    // default contructor to initialize the stack configuration
+    // default constructor to initialize the stack configuration
     constructor(private stackConfig: IAmplifyConfig){
         console.log('Amplify stack constructor', stackConfig);
         // hydrate the config object with environment variables ex: AMPLIFY_GITHUB_OWNER

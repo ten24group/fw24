@@ -25,7 +25,7 @@ export class SQSStack implements IStack {
     dependencies: string[] = [];
     mainStack!: Stack;
 
-    // default contructor to initialize the stack configuration
+    // default constructor to initialize the stack configuration
     constructor(private stackConfig: ISQSConfig) {
         console.log("SQS");
         Helper.hydrateConfig(stackConfig,'SQS');
@@ -56,11 +56,12 @@ export class SQSStack implements IStack {
         return env;
     }
 
-    private registerQueue(queueInfo: HandlerDescriptor) {
+    private registerQueue = (queueInfo: HandlerDescriptor) => {
         queueInfo.handlerInstance = new queueInfo.handlerClass();
         console.log(":::Queue instance: ", queueInfo.handlerInstance);
+        
         const queueName = queueInfo.handlerInstance.queueName;
-        const queueConfig = queueInfo.handlerInstance?.queueConfig;
+        const queueConfig = queueInfo.handlerInstance.queueConfig || {};
 
         console.log(`:::Registering queue ${queueName} from ${queueInfo.filePath}/${queueInfo.fileName}`);
 

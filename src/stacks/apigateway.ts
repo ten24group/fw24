@@ -31,7 +31,7 @@ export class APIGateway implements IStack {
     mainStack!: Stack;
     api!: RestApi;
 
-    // default contructor to initialize the stack configuration
+    // default constructor to initialize the stack configuration
     constructor(private stackConfig: IAPIGatewayConfig) {
         // hydrate the config object with environment variables ex: APIGATEWAY_CONTROLLERS
         Helper.hydrateConfig(stackConfig,'APIGATEWAY');
@@ -96,7 +96,7 @@ export class APIGateway implements IStack {
     }
 
     // register a single controller
-    private registerController(controllerInfo: HandlerDescriptor) {
+    private registerController = (controllerInfo: HandlerDescriptor) => {
         // TODO: cleanup this part
         controllerInfo.handlerInstance = new controllerInfo.handlerClass();
         const controllerName = controllerInfo.handlerInstance.controllerName;
