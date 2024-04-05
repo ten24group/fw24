@@ -1,8 +1,11 @@
 export interface IQueueConfig {
-	tableName?: string;
 	env?: {
         name: string;
-    }
+    },
+	tableName?: string,
+	topics?: [
+        { name: string, actions: string[]}
+    ]
 }
 
 export function Queue(queueName: string, queueConfig?: IQueueConfig) {

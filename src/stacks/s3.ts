@@ -34,7 +34,7 @@ export class S3Stack {
     appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;
 
-    // default contructor to initialize the stack configuration
+    // default constructor to initialize the stack configuration
     constructor(private stackConfig: IS3Config[]) {
         console.log("s3");
         Helper.hydrateConfig(stackConfig,'S3');
