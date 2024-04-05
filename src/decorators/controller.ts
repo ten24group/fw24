@@ -8,25 +8,19 @@ export interface IControllerConfig {
 		methods ?: string[];
 		default?: boolean
 	}> | string;
-	buckets?: [
-		{ 
-			name: string;
-			access?: string; // read, write, readwrite | default is readwrite
-		}
-	];
-	topics? : [
-		{
-			name: string;
-			actions: string[]; // publish, subscribe, unsubscribe
-		}
-	];
-	queues?: [
-		{
-			name: string;
-			actions: string[]; // send, receive, delete
-		}
-	];
-	env?: ILambdaEnvConfig[];
+	buckets?: Array<{ 
+		name: string;
+		access?: string; // read, write, readwrite | default is readwrite
+	}>;
+	topics? : Array<{
+		name: string;
+		actions: string[]; // publish, subscribe, unsubscribe
+	}>;
+	queues?: Array<{
+		name: string;
+		actions: string[]; // send, receive, delete
+	}>;
+	env?: Array<ILambdaEnvConfig>;
 }
 
 export function Controller(controllerName: string, controllerConfig: IControllerConfig = {}) {

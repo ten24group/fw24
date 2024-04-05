@@ -3,9 +3,7 @@ export interface IQueueConfig {
         name: string;
     },
 	tableName?: string,
-	topics?: [
-        { name: string, actions: string[]}
-    ]
+	topics?: Array<{ name: string, actions: string[]}>
 }
 
 export function Queue(queueName: string, queueConfig?: IQueueConfig) {
