@@ -3,6 +3,7 @@ import { IApplicationConfig } from '../interfaces/config';
 import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { Helper } from './helper';
 import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
+import { ITopic, Topic } from 'aws-cdk-lib/aws-sns';
 import { IFw24Module } from './module';
 
 export class Fw24 {
@@ -17,6 +18,7 @@ export class Fw24 {
     private static instance: Fw24;
 
     private queues = new Map<string, IQueue>();
+    private topics = new Map<string, ITopic>();
     private modules = new Map<string, IFw24Module>();
 
     private constructor() {}
@@ -88,8 +90,10 @@ export class Fw24 {
     public getQueueByName(name: string): IQueue {
 
         if( !this.queues.has(name) ){
-            const queueArn = this.getArn('sqs', name);
-            const queue = Queue.fromQueueArn(this.stacks['main'], name, queueArn);
+            // get full queue name
+            const queueName = this.get(name, 'queueName_');
+            const queueArn = this.getArn('sqs', queueName);
+            const queue = Queue.fromQueueArn(this.stacks['main'], queueName, queueArn);
             this.queues.set(name, queue);            
         }
 
