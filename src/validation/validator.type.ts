@@ -135,7 +135,7 @@ export type TValidationRuleForOperationsAndInput<
     T extends unknown, 
     EntitySchema extends Schema<any, any, any>,
     ConditionsMap extends TMapOfValidationConditions<any, any>,
-    OpsInpSch extends TEntityOpsInputSchemas<EntitySchema, DefaultEntityOperations> = TEntityOpsInputSchemas<EntitySchema, DefaultEntityOperations>,
+    OpsInpSch extends Partial<TEntityOpsInputSchemas<EntitySchema, DefaultEntityOperations>> = TEntityOpsInputSchemas<EntitySchema, DefaultEntityOperations>,
 > = {
     readonly operations ?: Narrow<Array< '*' | ValueOf<{
         readonly [OppName in keyof OpsInpSch]: OppName | [ 
