@@ -111,7 +111,7 @@ export class S3Stack {
                 if(trigger.destination === 'queue' && trigger.queueName) {
                     // add event notification to the bucket for each event
                     const queueInstance = this.fw24.getQueueByName(trigger.queueName);
-                    console.log(":::Creating queue for the trigger event: ", queueInstance);
+                    console.log(":::Creating queue for the trigger event: ", queueInstance.queueArn);
                     if(queueInstance !== null){
                         trigger.events.forEach(bucketEvent => {
                             console.log(SqsDestination,bucketEvent);

@@ -8,7 +8,8 @@ export interface IFw24Module{
     getName(): string;
     getBasePath(): string;
     getStacks(): Map<string, IStack>;
-    getControllersRelativePath(): string;
+    getControllersDirectory(): string;
+    getServicesDirectory(): string;
 }
 
 export abstract class AbstractFw24Module implements IFw24Module {
@@ -22,7 +23,11 @@ export abstract class AbstractFw24Module implements IFw24Module {
 
     abstract getBasePath(): string;
 
-    getControllersRelativePath(): string {
+    getControllersDirectory(): string {
         return path.join("./controllers/");
+    }
+
+    getServicesDirectory(): string {
+        return path.join("./services/");
     }
 }

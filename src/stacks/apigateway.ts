@@ -123,7 +123,7 @@ export class APIGateway implements IStack {
         // create the api resource for the controller if it doesn't exist
         const controllerResource = this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
 
-        console.log(`Registering routes for controller ${controllerName}`, controllerInfo.routes);
+        // console.log(`Registering routes for controller ${controllerName}`, controllerInfo.routes);
 
         // create lambda function for the controller
         const controllerLambda = new LambdaFunction(this.mainStack, controllerName + "-controller", {

@@ -21,7 +21,7 @@ export class Helper {
 
         // relative path from the place where the script is getting executed i.e index.ts in app-root
         const relativePath = relative('./', basePath); 
-        const controllersPath = resolve(relativePath, module.getControllersRelativePath());
+        const controllersPath = resolve(relativePath, module.getControllersDirectory());
 
         // TODO: support for controller path prefix [ e.g. module-name/controller-path ]
 
