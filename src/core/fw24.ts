@@ -3,6 +3,7 @@ import { IApplicationConfig } from '../interfaces/config';
 import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { Helper } from './helper';
 import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
+import { IFw24Module } from './module';
 
 export class Fw24 {
     public appName: string = "fw24";
@@ -16,6 +17,7 @@ export class Fw24 {
     private static instance: Fw24;
 
     private queues = new Map<string, IQueue>();
+    private modules = new Map<string, IFw24Module>();
 
     private constructor() {}
 
@@ -47,6 +49,20 @@ export class Fw24 {
     public getStack(name: string): any {
         return this.stacks[name];
     }
+
+    public addModule(name: string, module: IFw24Module) {
+        this.modules.set(name, module);
+    }
+
+    public getModules() {
+        return this.modules
+    }
+
+    public hasModules() {
+        console.log(this.modules);            
+        return this.modules.size > 0;
+    }
+
 
     public getLayerARN(): string {
         if(this.stacks['main'] === undefined) {

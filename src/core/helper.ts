@@ -1,6 +1,7 @@
 import { readdirSync } from "fs";
-import { resolve, join } from "path";
+import { resolve, join, relative } from "path";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
+import { IFw24Module } from "./module";
 
 export class Helper {
     static hydrateConfig<T>(config: T, prefix = "APP") {
@@ -14,6 +15,20 @@ export class Helper {
             });
     }
 
+    static registerControllersFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
+        const basePath = module.getBasePath();
+        console.log("registerControllersFromModule::: base-path: ", basePath);
+
+        // relative path from the place where the script is getting executed i.e index.ts in app-root
+        const relativePath = relative('./', basePath); 
+        const controllersPath = resolve(relativePath, module.getControllersRelativePath());
+
+        // TODO: support for controller path prefix [ e.g. module-name/controller-path ]
+
+        console.log("registerControllersFromModule::: module-controllers-path:", controllersPath);
+
+        Helper.registerHandlers(controllersPath, handlerRegistrar);
+    }
 
     static async registerHandlers(path: string, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void) {
         console.log("Registering Lambda Handlers from: ", path);
