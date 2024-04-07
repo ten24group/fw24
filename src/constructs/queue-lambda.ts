@@ -28,7 +28,6 @@ export class QueueLambda extends Construct {
     super(scope, id);
 
     const queue = new Queue(this, id, {
-      queueName: props.queueName,
       visibilityTimeout: props.visibilityTimeout || Duration.seconds(30),
       receiveMessageWaitTime: props.receiveMessageWaitTime || Duration.seconds(20),
     });
