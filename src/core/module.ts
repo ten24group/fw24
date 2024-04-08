@@ -1,6 +1,6 @@
 import {join as pathJoin } from "path";
 
-import { IStack } from "../../interfaces/stack";
+import { IStack } from "../interfaces/stack";
 
 export interface IModuleConfig{}
 
