@@ -22,7 +22,7 @@ export interface ISQSConfig {
 
 export class SQSStack implements IStack {
     fw24: Fw24 = Fw24.getInstance();
-    dependencies: string[] = [];
+    dependencies: string[] = ['DynamoDBStack'];
     mainStack!: Stack;
 
     // default constructor to initialize the stack configuration
@@ -32,7 +32,7 @@ export class SQSStack implements IStack {
     }
 
     // construct method to create the stack
-    public construct() {
+    public async construct() {
         console.log("SQS construct");
         // make the main stack available to the class
         this.mainStack = this.fw24.getStack("main");
@@ -42,7 +42,7 @@ export class SQSStack implements IStack {
             this.stackConfig.queuesDirectory = "./src/queues";
         }
         // register the queues
-        Helper.registerHandlers(this.stackConfig.queuesDirectory, this.registerQueue);
+        await Helper.registerHandlers(this.stackConfig.queuesDirectory, this.registerQueue);
     }
 
     private getEnvironmentVariables(queueConfig: ISQSConfig): any {
@@ -67,6 +67,7 @@ export class SQSStack implements IStack {
 
         const queue = new QueueLambda(this.mainStack, queueName + "-queue", {
             queueName: queueName,
+            topics: queueConfig?.topics,
             lambdaFunctionProps: {
                 entry: queueInfo.filePath + "/" + queueInfo.fileName,
                 layerArn: this.fw24.getLayerARN(),

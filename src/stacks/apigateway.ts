@@ -18,6 +18,8 @@ import Mutable from "../types/mutable";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 
+import { resolve, relative } from "path";
+
 export interface IAPIGatewayConfig {
     cors?: boolean | string | string[];
     apiOptions?: RestApiProps;
@@ -72,8 +74,21 @@ export class APIGateway implements IStack {
         if(this.stackConfig.controllersDirectory === undefined || this.stackConfig.controllersDirectory === ""){
             this.stackConfig.controllersDirectory = "./src/controllers";
         }
+        
         // register the controllers
         Helper.registerHandlers(this.stackConfig.controllersDirectory, this.registerController);
+
+        if(this.fw24.hasModules()){
+            const modules = this.fw24.getModules();
+            console.log(" API-gateway stack: construct: app has modules ", modules);
+            for(const [, module] of modules){
+                const basePath = module.getBasePath();
+                console.log(" load controllers from module base-path: ", basePath);
+                Helper.registerControllersFromModule(module, this.registerController);
+            }
+        } else {
+            console.log(" API-gateway stack: construct: app has NO modules ");
+        }
     }
 
     // get the cors configuration
@@ -108,7 +123,7 @@ export class APIGateway implements IStack {
         // create the api resource for the controller if it doesn't exist
         const controllerResource = this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
 
-        console.log(`Registering routes for controller ${controllerName}`, controllerInfo.routes);
+        // console.log(`Registering routes for controller ${controllerName}`, controllerInfo.routes);
 
         // create lambda function for the controller
         const controllerLambda = new LambdaFunction(this.mainStack, controllerName + "-controller", {

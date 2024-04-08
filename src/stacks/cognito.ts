@@ -51,7 +51,7 @@ export class CognitoStack implements IStack {
         }
 
         // TODO: Add ability to create multiple user pools
-        // TODO: Add ability to create multi-teant user pools
+        // TODO: Add ability to create multi-tenant user pools
         const userPool = new UserPool(mainStack, `${namePrefix}-userPool`, {
             selfSignUpEnabled: userPoolConfig.props.selfSignUpEnabled,
             accountRecovery: userPoolConfig.props.accountRecovery,
@@ -82,7 +82,7 @@ export class CognitoStack implements IStack {
             },
         });
 
-        // cognito autorizer 
+        // cognito authorizer 
         const userPoolAuthorizer = new CognitoUserPoolsAuthorizer(mainStack, `${namePrefix}-Authorizer`, {
             cognitoUserPools: [userPool],
             identitySource: 'method.request.header.Authorization',

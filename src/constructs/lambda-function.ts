@@ -72,6 +72,7 @@ export class LambdaFunction extends Construct {
 
     // If we are using SES, then we need to add the email queue url to the environment
     if(props.allowSendEmail && fw24.emailProvider instanceof SESStack){
+      console.log(":GET emailQueue Name from fw24 scope : ", fw24.get('emailQueue', 'queueName_'));
       let emailQueue = fw24.getQueueByName('emailQueue');
       emailQueue.grantSendMessages(fn);
       fn.addEnvironment('EMAIL_QUEUE_URL', emailQueue.queueUrl);
@@ -108,8 +109,8 @@ export class LambdaFunction extends Construct {
     });
 
     props.queues?.forEach( ( queue: any ) => {
-      const queueArn = fw24.getArn('sqs', queue.name);
-
+      console.log(":GET Queue Name from fw24 scope : ", queue.name, " :", fw24.get(queue.name, 'queueName_'));
+      const queueArn = fw24.getArn('sqs', fw24.get(queue.name, 'queueName_'));
       const queueInstance = Queue.fromQueueArn(this, queue.name+id+'-queue', queueArn);
       queueInstance.grantSendMessages(fn);
       fn.addEnvironment(`${queue.name}_queueUrl`, queueInstance.queueUrl);
@@ -117,8 +118,7 @@ export class LambdaFunction extends Construct {
 
     // add sns topic permission
     props.topics?.forEach( ( topic: any ) => {
-      const topicArn = fw24.getArn('sns', topic.name);
-
+      const topicArn = fw24.getArn('sns', fw24.get(topic.name, 'topicName_'));
       const topicInstance = Topic.fromTopicArn(this, topic.name+id+'-topic', topicArn);
       topicInstance.grantPublish(fn);
       fn.addEnvironment(`${topic.name}_topicArn`, topicInstance.topicArn);

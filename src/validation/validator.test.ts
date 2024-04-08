@@ -1,18 +1,19 @@
-import { EntityItem, Schema, createSchema } from "electrodb";
-import { Narrow, OmitNever } from "../utils/types";
-import { EntityOpsValidations, EntityValidations, InputApplicableConditionsMap, TConditionalValidationRule, TMapOfValidationConditions } from "./validator.type";
+import { Narrow, OmitNever } from "../utils";
+import { EntityOpsValidations, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TConditionalValidationRule, TMapOfValidationConditions } from "./validator.type";
 
 import { describe, expect, it } from '@jest/globals';
 import { randomUUID } from "node:crypto";
-import { CreateEntityItemTypeFromSchema, DefaultEntityOperations, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema, TEntityOpsInputSchemas, UpdateEntityItemTypeFromSchema } from "../entity";
+import { DefaultEntityOperations, TDefaultEntityOperations, TEntityOpsInputSchemas, createEntitySchema } from "../entity";
 import { Validator, extractOpValidationFromEntityValidations } from "./validator";
 
 
 export namespace User {
-    export const createUserSchema = () => createSchema({
+    export const createUserSchema = () => createEntitySchema({
       model: {
         version: '1',
         entity: 'user',
+        entityNamePlural: 'Users',
+        entityOperations: DefaultEntityOperations,
         service: 'users', // electro DB service name [logical group of entities]
       },
       attributes: {
@@ -91,12 +92,101 @@ export namespace User {
       },
     } as const);
 
-  export type TUserRecordSchema = ReturnType<typeof createUserSchema>
+  export type TUserSchema = ReturnType<typeof createUserSchema>
 
-  export type TUserItem = EntityItem<EntityTypeFromSchema<TUserRecordSchema>>;
-  export type TUserIdentifiers = EntityIdentifiersTypeFromSchema<TUserRecordSchema>;
-  export type TCreateUserItem = CreateEntityItemTypeFromSchema<TUserRecordSchema>;
-  export type TUpdateUserItem = UpdateEntityItemTypeFromSchema<TUserRecordSchema>;
+  export const createUserSchema2 = () => createEntitySchema({
+      model: {
+        version: '1',
+        entity: 'user',
+        entityNamePlural: 'Users',
+        entityOperations: {
+            get: "get",
+            list: "list",
+            create: "create",
+            update: "update",
+            delete: "delete",
+            xxx: "xxx",
+            yyy: "yyy"
+        },
+        service: 'users', // electro DB service name [logical group of entities]
+      },
+      attributes: {
+        userId: {
+          type: 'string',
+          required: true,
+          readOnly: true,
+          default: () => randomUUID()
+        },
+        tenantId: {
+          type: 'string',
+          required: true,
+          readOnly: true,
+          default: () => 'xxx-yyy-zzz' // TODO: have some global logic drive this value
+        },
+        firstName: {
+          type: 'string',
+          required: true,
+        },
+        lastName: {
+          type: 'string',
+        },
+        email: {
+          type: 'string',
+          required: true,
+        },
+        password: {
+          type: 'string',
+          required: true,
+        },
+        createdAt: {
+          // will be set once at the time of create
+          type: "string",
+          readOnly: true,
+          required: true,
+          default: () => Date.now().toString(),
+          set: () => Date.now().toString(),
+        },
+        updatedAt:{
+          type: "string",
+          watch: "*", // will be set every time any prop is updated
+          required: true,
+          readOnly: true,
+          default: () => Date.now().toString(),
+          set: () => Date.now().toString(),
+        },
+        deletedAt:{
+          type: "string",
+          readOnly: false
+        },
+      },
+      indexes: {
+        primary: {
+          pk: {
+            field: 'pk',
+            template: "t_${tenantId}#u_${userId}",
+            composite: ['tenantId', 'userId'],
+          },
+          sk: {
+            field: 'sk',
+            composite: [],
+          },
+        },
+        byEmail: {
+          index: 'gsi1',
+          pk: {
+            field: 'gsi1pk',
+            template: "t_${tenantId}#u_${email}",
+            composite: ['tenantId', 'email'],
+          },
+          sk: {
+            field: 'gsi1sk',
+            composite: [],
+          },
+        },
+      },
+  } as const);
+
+  export type TUserSchema2 = ReturnType<typeof createUserSchema2>;
 }
 
 
@@ -112,7 +202,7 @@ const UserValidationConditions =  {
     }},
 } as const;
 
-const UserOppValidations: EntityOpsValidations<User.TUserRecordSchema, typeof UserValidationConditions, DefaultEntityOperations2> = {
+const UserOppValidations: EntityOpsValidations<User.TUserSchema2, typeof UserValidationConditions> = {
   conditions: UserValidationConditions,  
   delete: {
     actorRules: {
@@ -144,45 +234,37 @@ const UserOppValidations: EntityOpsValidations<User.TUserRecordSchema, typeof Us
           userId: [{ neq: '' }]
       }
   },
+  xxx: {}
 }
 
 
-export type DefaultEntityOperations2 = {
-    'get': "",
-    'list': ""
-    'create': "",
-    'update': "",
-    'delete': "",
-    'xxx': "",
-    'yyy': ""
-};
 
-type PropertyApplicableEntityOperations<
-  Prop extends unknown, 
-  EntityRecordSchema extends Schema<any, any, any>, 
-  OPs extends DefaultEntityOperations = DefaultEntityOperations,
-  OpsInpSch extends TEntityOpsInputSchemas<EntityRecordSchema, OPs> = TEntityOpsInputSchemas<EntityRecordSchema, OPs>,
-> = {
-  [OppName in keyof OpsInpSch]: Prop extends keyof Narrow<OpsInpSch[OppName]> ? '' : never;
-}
-
-type yy1 = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserRecordSchema, DefaultEntityOperations>['create']>, typeof UserValidationConditions>>
-type yy  = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserRecordSchema, DefaultEntityOperations>>, typeof UserValidationConditions>>
-type cxx = Narrow<TEntityOpsInputSchemas<User.TUserRecordSchema, DefaultEntityOperations2>>;
+type yy1 = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema>['create']>, typeof UserValidationConditions>>
+type yy  = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema>>, typeof UserValidationConditions>>
+type cxx = Narrow<TEntityOpsInputSchemas<User.TUserSchema2>>;
 type cc = keyof OmitNever<PropertyApplicableEntityOperations<
     'userId', 
-    User.TUserRecordSchema, 
-    DefaultEntityOperations, 
-    Narrow<TEntityOpsInputSchemas<User.TUserRecordSchema, DefaultEntityOperations>>
+    User.TUserSchema, 
+    Narrow<TEntityOpsInputSchemas<User.TUserSchema2>>
 >>;
 
-type xpx = cc extends keyof DefaultEntityOperations2 ? 'ccc' : '';
+type xpx = cc extends keyof User.TUserSchema2['model']['entityOperations'] ? 'ccc' : '';
 
-type rty = keyof OmitNever<PropertyApplicableEntityOperations<'email', User.TUserRecordSchema, DefaultEntityOperations, Narrow<TEntityOpsInputSchemas<User.TUserRecordSchema, DefaultEntityOperations2>>>> extends keyof Narrow<TEntityOpsInputSchemas<User.TUserRecordSchema, DefaultEntityOperations2>> 
-    ? OmitNever<PropertyApplicableEntityOperations<'email', User.TUserRecordSchema, DefaultEntityOperations, Narrow<TEntityOpsInputSchemas<User.TUserRecordSchema, DefaultEntityOperations2>>>> 
-    : never
+interface ppp extends TEntityOpsInputSchemas<User.TUserSchema2>{
+  xxx: {
+    'a': {},
+    b: {}
+  }
+}
 
-const UserValidations: EntityValidations<User.TUserRecordSchema, typeof UserValidationConditions, DefaultEntityOperations2> = {
+type t2 = ppp['xxx'];
+
+type rty = 
+  keyof OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, TEntityOpsInputSchemas<User.TUserSchema2>>> extends 
+  keyof TEntityOpsInputSchemas<User.TUserSchema2>
+  ? keyof OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, TEntityOpsInputSchemas<User.TUserSchema2>>> : never
+
+const UserValidations: EntityValidations<User.TUserSchema2, typeof UserValidationConditions> = {
     conditions: UserValidationConditions,
     actorRules: {
         tenantId: [{
@@ -190,10 +272,11 @@ const UserValidations: EntityValidations<User.TUserRecordSchema, typeof UserVali
             operations: [
               '*',
               'create',
-              ['delete', [['inputIsNitin', 'inputIsNitin'], 'all'] ],
               'update',
+              'xxx',
               ['update', ['recordIsNotNew', 'tenantIsXYZ']],
-              ['update', [['recordIsNotNew', 'inputIsNitin'], 'any']]
+              ['update', [['recordIsNotNew', 'inputIsNitin'], 'any']],
+              ['delete', [['inputIsNitin', 'tenantIsXYZ'], 'all'] ]
             ],
         }],
     },
@@ -407,7 +490,7 @@ describe('Validator', () => {
         }
       };
 
-      const result = extractOpValidationFromEntityValidations('read' as keyof DefaultEntityOperations, entityValidations);
+      const result = extractOpValidationFromEntityValidations('read' as keyof TDefaultEntityOperations, entityValidations);
 
       expect(result).toEqual({
         conditions: undefined,
@@ -585,32 +668,44 @@ describe('Validator', () => {
 
     it('should validate required', () => {
       const validator = new Validator();
-      const result = validator.testValidation({required: true}, undefined);
-      expect(result).toBe(false);
+      const result_false = validator.testValidation({required: true}, undefined);
+      expect(result_false).toBe(false);
+
+      const result_true = validator.testValidation({required: true}, '');
+      expect(result_true).toBe(true);
     });
 
     it('should validate minLength', () => {
       const validator = new Validator();
-      const result = validator.testValidation({minLength: 5}, 'abc');
-      expect(result).toBe(false);
+      const result_false = validator.testValidation({minLength: 5}, 'abc');
+      expect(result_false).toBe(false);
+
+      const result_true = validator.testValidation({minLength: 3}, 'abc');
+      expect(result_true).toBe(true);
     });
 
     it('should validate maxLength', () => {
       const validator = new Validator();
-      const result = validator.testValidation({maxLength: 5}, 'abcdef');
-      expect(result).toBe(false);
+      const result_false = validator.testValidation({maxLength: 5}, 'abcdef');
+      expect(result_false).toBe(false);
+
+      const result_true = validator.testValidation({maxLength: 6}, 'abcdef');
+      expect(result_true).toBe(true);
     });
 
     it('should validate pattern', () => {
       const validator = new Validator();
       const result = validator.testValidation({pattern: /^[0-9]+$/}, 'abc123');
       expect(result).toBe(false);
+
+      const result2 = validator.testValidation({pattern: /^[0-9]+$/}, '12323232323');
+      expect(result2).toBe(true);
     });
 
     it('should validate datatype', () => {
       const validator = new Validator();
       const result = validator.testValidation({datatype: 'number'}, '123');
-      expect(result).toBe(false);
+      expect(result).toBe(true);
     });
 
   });

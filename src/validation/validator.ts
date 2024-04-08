@@ -6,7 +6,7 @@ import { Schema } from "electrodb";
 import { IValidator, IValidatorResponse, ValidatorOptions } from "./validator.type";
 import { DeepWritable } from '../utils/types';
 import { Actor, EntityValidations, InputType, RecordType, TConditionalValidationRule, TEntityOpValidations, TEntityValidationCondition, TMapOfValidationConditions, Validations } from "./validator.type";
-import { DefaultEntityOperations, TEntityOpsInputSchemas } from "../entity";
+import { TDefaultEntityOperations, EntitySchema, TEntityOpsInputSchemas } from "../entity";
 
 if (!('toJSON' in Error.prototype)){
     Object.defineProperty(Error.prototype, 'toJSON', {
@@ -26,13 +26,13 @@ if (!('toJSON' in Error.prototype)){
 }
 
 export function extractOpValidationFromEntityValidations<
-  EntityRecordSchema extends Schema<any, any, any>, 
+  Sch extends EntitySchema<any, any, any, Ops>, 
   ConditionsMap extends TMapOfValidationConditions<any, any>,
-  Ops extends DefaultEntityOperations = DefaultEntityOperations,
-  OpsInpSch extends TEntityOpsInputSchemas<EntityRecordSchema, Ops> = TEntityOpsInputSchemas<EntityRecordSchema, Ops>,
+  Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
+  OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 >( 
   operationName: keyof OpsInpSch, 
-  entityValidations: EntityValidations<EntityRecordSchema, ConditionsMap, Ops, OpsInpSch>
+  entityValidations: EntityValidations<Sch, ConditionsMap, OpsInpSch>
 ){
 
 	const validations: DeepWritable<TEntityOpValidations<any, any, ConditionsMap>> = {
@@ -53,13 +53,15 @@ export function extractOpValidationFromEntityValidations<
 			
 			const formattedPropertyRules = [];
 			
-			for(const rule of propertyRules){
+			for(const rule of propertyRules as Array<any>){
 				if(!rule){ continue;}
 
 				const{operations, ...restOfTheValidations} = rule;
 			
 				for(const thisOp of operations ?? ['*']){
 					if (Array.isArray(thisOp) && thisOp[0] === operationName ) {
+                        const [thisOpName, conditions] = thisOp;
+
 						/**
 						 * 
 						 * ['update', ['recordIsNotNew', 'tenantIsXYZ']],
@@ -67,12 +69,9 @@ export function extractOpValidationFromEntityValidations<
 						 * 
 						 */
 						let thisRuleValidations: any = {
-							...restOfTheValidations
+							...restOfTheValidations,
+                            conditions,
 						};
-
-						if(thisOp.length == 2){
-							thisRuleValidations['conditions'] = thisOp[1];
-						}
 
 						formattedPropertyRules.push(thisRuleValidations);
 					} else if( thisOp === '*' || thisOp === operationName){
@@ -83,7 +82,7 @@ export function extractOpValidationFromEntityValidations<
 				if(formattedPropertyRules.length){
 					validations[validationGroupKey]![propertyName] = formattedPropertyRules;
 				} else {
-					console.warn("no rules found for propertyName", { rule, propertyName, groupValidationRules });
+					console.log("No applicable rules found for op: prop: group: from-rule:", [operationName, propertyName, validationGroupKey, rule]);
 				}
 			}
 		}
@@ -109,12 +108,12 @@ export class Validator implements IValidator {
     */
     async validate<
         OpName extends keyof OpsInpSch,
-        EntityRecordSchema extends Schema<any, any, any>, 
+        Sch extends EntitySchema<any, any, any, Ops>, 
         ConditionsMap extends TMapOfValidationConditions<any, any>, 
-        Ops extends DefaultEntityOperations = DefaultEntityOperations,
-        OpsInpSch extends TEntityOpsInputSchemas<EntityRecordSchema, Ops> = TEntityOpsInputSchemas<EntityRecordSchema, Ops>,
+        Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
+        OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
     >(
-        options: ValidatorOptions<OpName, EntityRecordSchema, ConditionsMap, Ops, OpsInpSch>
+        options: ValidatorOptions<OpName, Sch, ConditionsMap, OpsInpSch>
     ): Promise<IValidatorResponse> {
         
         const { entityValidations, operationName, input, actor, record } = options;
@@ -298,7 +297,7 @@ export class Validator implements IValidator {
         
         const {rule, allConditions, inputVal, input, record, actor} = options;
         
-        const { conditions, ...partialValidation } = rule;
+        const { conditions: ruleConditions, ...partialValidation } = rule;
         /**
          * 
          * Conditions ==> ['actorIs123', 'ppp', 'qqq'] | [ ['actorIs123', 'ppp', 'qqq'], 'all' ]
@@ -306,22 +305,21 @@ export class Validator implements IValidator {
          * 
          */
 
-        const conditionsOrConditionsTuple: string[] = conditions as string[];
+        // const conditionsOrConditionsTuple: string[] = conditions as string[];
         
         let formattedConditions: {applicable: string, conditionNames: string[]} = {
             applicable: 'all',
             conditionNames: [],
         };
 
-        if(
-            conditionsOrConditionsTuple?.length == 2 
-            && Array.isArray(conditionsOrConditionsTuple[0])
-            && ['all', 'any', 'none'].includes(conditionsOrConditionsTuple[1]) 
-        ){
-            formattedConditions.conditionNames = conditionsOrConditionsTuple[0];
-            formattedConditions.applicable = conditionsOrConditionsTuple[1];
-        } else if (conditionsOrConditionsTuple) {
-            formattedConditions.conditionNames = conditionsOrConditionsTuple;
+        if(Array.isArray(ruleConditions)){
+            if(ruleConditions.length == 2){
+                const [conditions, applicability] = ruleConditions;
+                formattedConditions.applicable = applicability as string,
+                formattedConditions.conditionNames = conditions as string[];
+            } else {
+                formattedConditions.conditionNames = ruleConditions as string[];
+            }
         }
 
         // record and actor are only required to test the criteria, and probably should be handled in  a separate function
@@ -540,7 +538,7 @@ export class Validator implements IValidator {
             return typeof val === datatype;
         }
         if(unique && val && val.length > 1) {
-            return true;
+            return true; // TODO: 
         }
         if(eq && val && val !== eq) {
             return false;
