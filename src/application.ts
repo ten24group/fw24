@@ -79,7 +79,7 @@ export class Application {
         }
     }
 
-    private processStacks(executionTimes: number = 0, processedStacks: Set<string> = new Set()) {
+    private async processStacks(executionTimes: number = 0, processedStacks: Set<string> = new Set(), processingStacks: Set<string> = new Set()) {
         console.log("Processing stacks...");
 
         if (executionTimes > 20) {
@@ -87,14 +87,17 @@ export class Application {
         }
 
         for (const [stackName, stack] of this.stacks) {
-            console.warn(`processStacks: loop: ${executionTimes}, stackName: ${stackName}, found: ${processedStacks.has(stackName)}`);
-            if (!processedStacks.has(stackName)) {
-                this.processStack(stack, executionTimes, processedStacks);
+            console.warn(`processStacks: loop: ${executionTimes}, stackName: ${stackName}, processed: ${processedStacks.has(stackName)}, processing: ${processingStacks.has(stackName)}`);
+            if (!processedStacks.has(stackName) && !processingStacks.has(stackName)) {
+                processingStacks.add(stackName);
+                console.log(`Processing stack ${stackName} : processing: ${processingStacks.has(stackName)}`);
+                await this.processStack(stack, executionTimes, processedStacks, processingStacks);
+                processingStacks.delete(stackName);
             }
         }
     }
 
-    private processStack(stack: IStack, executionTimes: number, processedStacks: Set<string>) {
+    private async processStack(stack: IStack, executionTimes: number, processedStacks: Set<string>, processingStacks: Set<string>) {
         if (stack.dependencies.length > 0) {
             for (const dependency of stack.dependencies) {
                 if (!this.stacks.has(dependency)) {
@@ -103,13 +106,14 @@ export class Application {
                 }
                 if (!processedStacks.has(dependency)) {
                     console.log(`Stack ${stack.constructor.name} depends on ${dependency} which is not processed yet.`);
+                    processingStacks.delete(stack.constructor.name);
                     return;
                 }
             }
         }
 
         // Construct the stack
-        stack.construct();
+        await stack.construct();
 
         // Mark the stack as processed
         processedStacks.add(stack.constructor.name);
@@ -118,6 +122,6 @@ export class Application {
         this.stacks.delete(stack.constructor.name);
 
         // Process dependent stacks
-        this.processStacks(executionTimes + 1, processedStacks);
+        this.processStacks(executionTimes + 1, processedStacks, processingStacks);
     }
 }

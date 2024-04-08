@@ -72,6 +72,7 @@ export class LambdaFunction extends Construct {
 
     // If we are using SES, then we need to add the email queue url to the environment
     if(props.allowSendEmail && fw24.emailProvider instanceof SESStack){
+      console.log(":GET emailQueue Name from fw24 scope : ", fw24.get('emailQueue', 'queueName_'));
       let emailQueue = fw24.getQueueByName('emailQueue');
       emailQueue.grantSendMessages(fn);
       fn.addEnvironment('EMAIL_QUEUE_URL', emailQueue.queueUrl);

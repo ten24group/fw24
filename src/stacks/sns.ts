@@ -28,8 +28,9 @@ export class SNSStack implements IStack {
             console.log("Creating topic: ", snsConfig.topicName);
 
             const topic = new Topic(mainStack, snsConfig.topicName + '-topic', {
-                topicName: this.fw24.getUniqueName(snsConfig.topicName)
             });
+
+            this.fw24.set(snsConfig.topicName, topic.topicName, "topicName_");
 
             new CfnOutput(mainStack, snsConfig.topicName + 'Output', {
                 value: topic.topicName,
