@@ -29,8 +29,50 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      * OUT  ==> { tenantId: xxx, email: xxx@yyy.com, some-partition-key: xx-yy-zz }
      *
      *  */ 
-    abstract extractEntityIdentifiers(options: any ): EntityIdentifiersTypeFromSchema<S>;
+    extractEntityIdentifiers( 
+        input: any, 
+        context: { tenantId: string, forAccessPattern ?: string } = {
+            tenantId: 'xxx-yyy-zzz'
+        } 
+    ): EntityIdentifiersTypeFromSchema<S>{
+        const identifiers: any = {};
 
+        if(!input || typeof input !== 'object') {
+            throw new Error('Input is required and must be an object');
+        }
+
+        // TODO: tenant logic
+        identifiers['tenantId'] = input.tenantId || context.tenantId;
+
+        const accessPatterns = makeEntityAccessPatternsSchema(this.getEntitySchema());
+
+        const identifierAttributes = new Set<{name: string, required: boolean}>();
+        for(const [accessPatternName, accessPatternAttributes] of accessPatterns){
+            if(!context.forAccessPattern || accessPatternName == context.forAccessPattern){
+                for( const [, att] of accessPatternAttributes){
+                    identifierAttributes.add({
+                        name: att.id,
+                        required: att.required == true
+                    });
+                }
+            }
+        }
+
+        const primaryAttName = this.getEntityPrimaryIdPropertyName();        
+        for(const {name: attName, required} of identifierAttributes){
+            if( input.hasOwnProperty(attName) ){
+                identifiers[attName] = input[attName];
+            } else if( attName == primaryAttName && input.hasOwnProperty('id') ){
+                identifiers[attName] = input.id;
+            } else if(required) {
+                console.warn(`required attribute: ${attName} for access-pattern: ${context.forAccessPattern ?? '--primary--'} is not found in input:`, input);
+            }
+        }
+
+        console.log('Extracting identifiers from identifiers:', identifiers);
+
+        return identifiers as EntityIdentifiersTypeFromSchema<S>;
+    };
 
     public getEntityName(): S['model']['entity'] { return this.schema.model.entity; }
     
@@ -39,6 +81,19 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     public getEntityValidations(): EntityValidations<any, any, any>{
         return {};
     };
+
+    public getEntityPrimaryIdPropertyName() {
+        const schema = this.getEntitySchema();
+
+        for(const attName in schema.attributes) {
+            const att = schema.attributes[attName];
+            if(att.isIdentifier) {
+                return attName;
+            }
+        }
+
+        return undefined;
+    }
 
     public getOpsDefaultIOSchema() {
         if(!this.entityOpsDefaultIoSchema){
@@ -116,7 +171,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     }
 }
 
-
 export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAttribute): Partial<EntityAttribute> & { 
     id: string,
     name: string,
@@ -136,6 +190,37 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
 export type TIOSchemaAttribute = ReturnType<typeof entityAttributeToIOSchemaAttribute>;
 export type TIOSchemaAttributesMap<S extends EntitySchema<any, any, any>> = Map<keyof S['attributes'], TIOSchemaAttribute>;
 
+export function makeEntityAccessPatternsSchema<S extends EntitySchema<any, any, any>>(schema: S) {
+    const accessPatterns = new Map< keyof S['indexes'], TIOSchemaAttributesMap<S> >();
+
+    for(const indexName in schema.indexes){
+		const indexAttributes: TIOSchemaAttributesMap<S> = new Map();
+
+		for(const idxPkAtt of schema.indexes[indexName].pk.composite){
+			const att = schema.attributes[idxPkAtt];
+			indexAttributes.set(idxPkAtt, {
+                ...entityAttributeToIOSchemaAttribute(idxPkAtt, {...att, required: true })
+			});
+        }
+
+		for(const idxSkAtt of schema.indexes[indexName].sk?.composite ?? []){
+			const att = schema.attributes[idxSkAtt];
+            indexAttributes.set(idxSkAtt, {
+                ...entityAttributeToIOSchemaAttribute(idxSkAtt, {...att, required: true })
+			});
+		}
+
+		accessPatterns.set(indexName, indexAttributes);
+	}
+
+    // make sure there's a primary access pattern;
+    if(!accessPatterns.has('primary')){
+        accessPatterns.set('primary', accessPatterns.values().next().value);
+    }
+
+    return accessPatterns;
+}
+
 export function makeOpsDefaultIOSchema<
     S extends EntitySchema<any, any, any, Ops>,
     Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
@@ -150,7 +235,6 @@ export function makeOpsDefaultIOSchema<
 
 	// create and update
 	for(const attName in schema.attributes){
-        
 		const att = schema.attributes[attName];
 
 		if(!att.hidden){
@@ -173,28 +257,8 @@ export function makeOpsDefaultIOSchema<
 		}
 	}
 
-	const accessPatterns = new Map< keyof S['indexes'], TIOSchemaAttributesMap<S> >();
-
-    for(const indexName in schema.indexes){
-
-		const indexAttributes: TIOSchemaAttributesMap<S> = new Map();
-
-		for(const idxPkAtt of schema.indexes[indexName].pk.composite){
-			const att = schema.attributes[idxPkAtt];
-			indexAttributes.set(idxPkAtt, {
-                ...entityAttributeToIOSchemaAttribute(idxPkAtt, {...att, required: true })
-			});
-        }
-		for(const idxSkAtt of schema.indexes[indexName].sk?.composite ?? []){
-			const att = schema.attributes[idxSkAtt];
-            indexAttributes.set(idxSkAtt, {
-                ...entityAttributeToIOSchemaAttribute(idxSkAtt, {...att, required: true })
-			});
-		}
-
-		accessPatterns.set(indexName, indexAttributes);
-	}
-
+	const accessPatterns = makeEntityAccessPatternsSchema(schema);
+    
 	// if there's an index named `primary`, use that, else fallback to first index
 	// accessPatternAttributes['get'] = accessPatterns.get('primary') ?? accessPatterns.entries().next().value;
 	// accessPatternAttributes['delete'] = accessPatterns.get('primary') ?? accessPatterns.entries().next().value;
@@ -215,7 +279,7 @@ export function makeOpsDefaultIOSchema<
 	// 	'data': inputSchemaAttributes['update'],
 	// }
 
-	const defaultAccessPattern = accessPatterns.get('primary') ?? accessPatterns.entries().next().value as TIOSchemaAttributesMap<S>;
+	const defaultAccessPattern = accessPatterns.get('primary');
 
 	return {
 		get: {

@@ -60,7 +60,7 @@ export class EntityUIConfigGen{
                 properties: entityDefaultOpsSchema.list.output
             });
 
-            console.log(`Created entityCrudConfig for entity: ${entityName}.`, {createConfig, updateConfig, listConfig, viewConfig})
+            // console.log(`Created entityCrudConfig for entity: ${entityName}.`, {createConfig, updateConfig, listConfig, viewConfig})
 
             entityConfigs[`list-${entityName.toLowerCase()}`] = listConfig;
             entityConfigs[`create-${entityName.toLowerCase()}`] = createConfig;
@@ -74,7 +74,7 @@ export class EntityUIConfigGen{
                 menuIndex: menuIndex++
             });
 
-            console.log(`Created menuConfig for entity: ${entityName}.`, {menuConfig})
+            // console.log(`Created menuConfig for entity: ${entityName}.`, {menuConfig})
 
             menuConfigs.push(menuConfig);
         });
