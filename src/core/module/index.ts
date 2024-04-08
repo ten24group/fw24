@@ -1,4 +1,4 @@
-import * as path from "path";
+import {join as pathJoin } from "path";
 
 import { IStack } from "../../interfaces/stack";
 
@@ -24,10 +24,10 @@ export abstract class AbstractFw24Module implements IFw24Module {
     abstract getBasePath(): string;
 
     getControllersDirectory(): string {
-        return path.join("./controllers/");
+        return pathJoin("./controllers/");
     }
 
     getServicesDirectory(): string {
-        return path.join("./services/");
+        return pathJoin("./services/");
     }
 }

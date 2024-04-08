@@ -1,8 +1,8 @@
-import { Attribute, EntityConfiguration, Schema } from "electrodb";
-import { CreateEntityItemTypeFromSchema, DefaultEntityOperations, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
+import { EntityConfiguration } from "electrodb";
+import { toHumanReadableName } from "../utils";
+import { EntityValidations } from "../validation";
+import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, updateEntity } from "./crud-service";
-import { EntityValidations, TValidationRuleForType } from "../validation";
-import { Writable, toHumanReadableName } from "../utils";
 
 export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
@@ -14,32 +14,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         protected readonly entityConfigurations: EntityConfiguration,
     ){
         return this;
-    }
-
-    public getEntityName(): S['model']['entity'] { return this.schema.model.entity; }
-    
-    public getEntitySchema(): S { return this.schema;}
-
-    public getOpsDefaultIOSchema() {
-        if(!this.entityOpsDefaultIoSchema){
-            this.entityOpsDefaultIoSchema  = makeOpsDefaultIOSchema<S>(this.getEntitySchema());
-        }
-        return this.entityOpsDefaultIoSchema;
-    }
-
-    abstract getEntityValidations(): EntityValidations<any, any, any>;
-
-    public getRepository(){
-
-        if(!this.entityRepository){
-            const {entity} = createElectroDBEntity({ 
-                schema: this.getEntitySchema(), 
-                entityConfigurations: this.entityConfigurations 
-            });
-            this.entityRepository = entity as EntityRepositoryTypeFromSchema<S>;
-        }
-
-        return this.entityRepository!;
     }
 
 
@@ -57,14 +31,33 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      *  */ 
     abstract extractEntityIdentifiers(options: any ): EntityIdentifiersTypeFromSchema<S>;
 
-    /**
-     * 
-     * helper function to return all the attributes that can be used to find an entity 
-     * [i.e. combo of primary-key attributes and secondary-key attributes for all indexes]
-     * 
-     */
-    abstract getFilterAttributes(): any;
-    abstract getPermissionRules( options: { opContext: 'update' | 'delete' | 'process' } ): any;
+
+    public getEntityName(): S['model']['entity'] { return this.schema.model.entity; }
+    
+    public getEntitySchema(): S { return this.schema;}
+
+    public getEntityValidations(): EntityValidations<any, any, any>{
+        return {};
+    };
+
+    public getOpsDefaultIOSchema() {
+        if(!this.entityOpsDefaultIoSchema){
+            this.entityOpsDefaultIoSchema  = makeOpsDefaultIOSchema<S>(this.getEntitySchema());
+        }
+        return this.entityOpsDefaultIoSchema;
+    }
+
+    public getRepository(){
+        if(!this.entityRepository){
+            const {entity} = createElectroDBEntity({ 
+                schema: this.getEntitySchema(), 
+                entityConfigurations: this.entityConfigurations 
+            });
+            this.entityRepository = entity as EntityRepositoryTypeFromSchema<S>;
+        }
+
+        return this.entityRepository!;
+    }
 
     public async get( identifiers: EntityIdentifiersTypeFromSchema<S> ) {
         console.log(`Called BaseEntityService<E ~ get ~ entityName: ${this.getEntityName()} ~ id:`, identifiers);

@@ -3,7 +3,7 @@ import { Fw24 } from "./core/fw24";
 import { IApplicationConfig } from "./interfaces/config";
 import { IStack } from "./interfaces/stack";
 import { IFw24Module } from "./core/module";
-import { UIConfigGen } from "./uiconfig/entity-ui-config.gen";
+import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
 
 
 
@@ -56,7 +56,7 @@ export class Application {
 
         // TODO: make it configurable
         if(true){
-            const uiConfigGen = new UIConfigGen();
+            const uiConfigGen = new EntityUIConfigGen();
             uiConfigGen.run();
         }
 

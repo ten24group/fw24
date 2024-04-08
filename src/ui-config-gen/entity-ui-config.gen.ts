@@ -5,12 +5,15 @@ import MakeViewEntityConfig from './templates/view-entity';
 import MakeEntityMenuConfig from './templates/entity-menu';
 import { BaseEntityService, EntitySchema } from '../entity';
 
-import * as fs from "fs";
-import * as path from "path";
+import {existsSync, mkdirSync, writeFileSync, readdirSync} from "fs";
+import {
+    resolve as pathResolve, 
+    join as pathJoin
+} from "path";
+
 import { Fw24 } from '../core/fw24';
 
-export class UIConfigGen{
-
+export class EntityUIConfigGen{
 
     async run(){
         this.process();
@@ -20,31 +23,9 @@ export class UIConfigGen{
         const menuConfigs: any[] = [];
         const entityConfigs: any = {}; 
 
-        const fw24 = Fw24.getInstance();
+        const serviceDirectories = this.prepareServicesDirectories();
 
-        const serviceDirectories = [path.resolve('./src/services/')];
-
-        if(fw24.hasModules()){
-            console.log(`Ui-config-gen::: Process::: app has modules: `, fw24.getModules().keys());
-            for(const [, module] of fw24.getModules()){
-                const moduleServicesPath = path.join(module.getBasePath(), module.getServicesDirectory());
-                console.log(`Ui-config-gen::: Process::: moduleServicesPath: `, moduleServicesPath);
-                console.log(`Ui-config-gen::: Process::: res-moduleServicesPath: `, path.resolve(moduleServicesPath) );
-                serviceDirectories.push(path.resolve(moduleServicesPath));
-            }
-        }
-
-        const services = new Map<string, BaseEntityService<any>>();
-        
-        for( const dir of serviceDirectories){
-            console.log(`Ui-config-gen::: Process::: loading services from DIR: `, dir);
-            const dirServices = await this.scanAndLoadServices(dir);
-            for(const [entityName, service] of dirServices){
-                console.log(`Ui-config-gen::: Process::: loaded services from entity: `, entityName);
-                services.set(entityName, service);
-            }
-        }
-
+        const services = await this.scanAndLoadServices(serviceDirectories);
 
         console.log(`Ui-config-gen::: Process::: all-services: `, services);
 
@@ -101,42 +82,52 @@ export class UIConfigGen{
         await this.writeToFiles(menuConfigs, entityConfigs);
     }
 
-    async writeToFiles(menuConfig: any[], entitiesConfig: any[]){
-        console.log("Called writeToFiles:::::: ");
-        const genDirectoryPath = path.resolve('./gen/');
-        if (!fs.existsSync(genDirectoryPath)){
-            console.log("Gen DIR does not exists, creating: ", genDirectoryPath);
-            fs.mkdirSync(genDirectoryPath);
+    prepareServicesDirectories(){
+        const fw24 = Fw24.getInstance();
+        
+        const serviceDirectories = [pathResolve('./src/services/')];
+
+        if(fw24.hasModules()){
+            console.log(`Ui-config-gen::: Process::: app has modules: `, fw24.getModules().keys());
+            for(const [, module] of fw24.getModules()){
+                const moduleServicesPath = pathJoin(module.getBasePath(), module.getServicesDirectory());
+                console.log(`Ui-config-gen::: Process::: moduleServicesPath: `, moduleServicesPath);
+                console.log(`Ui-config-gen::: Process::: res-moduleServicesPath: `, pathResolve(moduleServicesPath) );
+                serviceDirectories.push(pathResolve(moduleServicesPath));
+            }
         }
-    
-        const configDirectoryPath = path.resolve(path.join(genDirectoryPath, 'config'));
-        if (!fs.existsSync(configDirectoryPath)){
-            console.log("COnfig DIR does not exists, creating: ", configDirectoryPath);
-            fs.mkdirSync(configDirectoryPath);
+
+        return serviceDirectories;
+    }
+
+    async scanAndLoadServices(serviceDirectories: Array<string>){
+        const services = new Map<string, BaseEntityService<any>>();
+        
+        for( const dir of serviceDirectories){
+            console.log(`Ui-config-gen::: Process::: loading services from DIR: `, dir);
+            const dirServices = await this.scanAndLoadServicesFromDirectory(dir);
+            for(const [entityName, service] of dirServices){
+                console.log(`Ui-config-gen::: Process::: loaded services from entity: `, entityName);
+                services.set(entityName, service);
+            }
         }
-    
-        const menuConfigFilePath = path.join(configDirectoryPath, 'menu.json');
-        console.log("writing menu config.. into: ", menuConfigFilePath);
-        fs.writeFileSync(menuConfigFilePath, JSON.stringify(menuConfig, null, 2));
-    
-        const entitiesConfigFilePath = path.join(configDirectoryPath, 'entities.json');
-        console.log("writing entities config.. into: ", entitiesConfigFilePath);
-        fs.writeFileSync(entitiesConfigFilePath, JSON.stringify(entitiesConfig, null, 2));
+
+        return services;
     }
     
-    async scanAndLoadServices(servicesDir: string) {
+    async scanAndLoadServicesFromDirectory(servicesDir: string) {
     
         const loadedServices = new Map<string, BaseEntityService<EntitySchema<string, string, string>> > ;
         
-        if(!fs.existsSync(servicesDir)){
+        if(!existsSync(servicesDir)){
             console.log(`scanAndLoadServices:: servicesDir does not exists: ${servicesDir}`);
             return loadedServices;
         }   
 
         // Resolve the absolute path
-        // const servicesDirectory = path.resolve(path.join(__dirname, '..', 'src', 'services'));
+        // const servicesDirectory = pathResolve(pathJoin(__dirname, '..', 'src', 'services'));
         // Get all the files in the controllers directory
-        const serviceFiles = fs.readdirSync(servicesDir);
+        const serviceFiles = readdirSync(servicesDir);
         // Filter the files to only include TypeScript files
         const servicePaths = serviceFiles.filter((file) => file.endsWith(".ts"));
     
@@ -145,7 +136,7 @@ export class UIConfigGen{
     
             try {
                 // Dynamically import the service file
-                const module = await import(path.join(servicesDir, servicePath));
+                const module = await import(pathJoin(servicesDir, servicePath));
                 // Find and instantiate service classes
                 for (const exportedItem of Object.values(module)) {
                     // find the factory function
@@ -164,6 +155,30 @@ export class UIConfigGen{
         }
     
         return loadedServices;
+    }
+
+
+    async writeToFiles(menuConfig: any[], entitiesConfig: any[]){
+        console.log("Called writeToFiles:::::: ");
+        const genDirectoryPath = pathResolve('./gen/');
+        if (!existsSync(genDirectoryPath)){
+            console.log("Gen DIR does not exists, creating: ", genDirectoryPath);
+            mkdirSync(genDirectoryPath);
+        }
+    
+        const configDirectoryPath = pathResolve(pathJoin(genDirectoryPath, 'config'));
+        if (!existsSync(configDirectoryPath)){
+            console.log("COnfig DIR does not exists, creating: ", configDirectoryPath);
+            mkdirSync(configDirectoryPath);
+        }
+    
+        const menuConfigFilePath = pathJoin(configDirectoryPath, 'menu.json');
+        console.log("writing menu config.. into: ", menuConfigFilePath);
+        writeFileSync(menuConfigFilePath, JSON.stringify(menuConfig, null, 2));
+    
+        const entitiesConfigFilePath = pathJoin(configDirectoryPath, 'entities.json');
+        console.log("writing entities config.. into: ", entitiesConfigFilePath);
+        writeFileSync(entitiesConfigFilePath, JSON.stringify(entitiesConfig, null, 2));
     }
 }
 
