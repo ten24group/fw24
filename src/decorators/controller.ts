@@ -5,8 +5,7 @@ export interface IControllerConfig {
 	authorizer?: Array<{ 
 		name?: string;
 		type: string;
-		methods ?: string[];
-		default?: boolean
+		default?: boolean;
 	}> | string;
 	buckets?: Array<{ 
 		name: string;
