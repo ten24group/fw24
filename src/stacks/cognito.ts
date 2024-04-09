@@ -37,6 +37,7 @@ export interface ICognitoConfig {
 export class CognitoStack implements IStack {
     fw24: Fw24 = Fw24.getInstance();
     dependencies: string[] = [];
+    userPool!: UserPool;
     
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: ICognitoConfig) {
@@ -58,7 +59,7 @@ export class CognitoStack implements IStack {
         const userPoolName = userPoolConfig.props.userPoolName || 'default';
 
         // TODO: Add ability to create multi-tenant user pools
-        const userPool = new UserPool(mainStack, `${namePrefix}-${userPoolName}userPool`, {
+        this.userPool = new UserPool(mainStack, `${namePrefix}-${userPoolName}userPool`, {
             selfSignUpEnabled: userPoolConfig.props.selfSignUpEnabled,
             accountRecovery: userPoolConfig.props.accountRecovery,
             userVerification: {
@@ -82,7 +83,7 @@ export class CognitoStack implements IStack {
         });
 
         const userPoolClient = new UserPoolClient(mainStack, `${namePrefix}-userPoolclient`, {
-            userPool,
+            userPool: this.userPool,
             generateSecret: false,
             authFlows: {
                 userPassword: true,
@@ -91,7 +92,7 @@ export class CognitoStack implements IStack {
 
         // cognito authorizer 
         const userPoolAuthorizer = new CognitoUserPoolsAuthorizer(mainStack, `${namePrefix}-Authorizer`, {
-            cognitoUserPools: [userPool],
+            cognitoUserPools: [this.userPool],
             identitySource: 'method.request.header.Authorization',
         });
 
@@ -100,12 +101,12 @@ export class CognitoStack implements IStack {
             allowUnauthenticatedIdentities: true,
             cognitoIdentityProviders: [{
                 clientId: userPoolClient.userPoolClientId,
-                providerName: userPool.userPoolProviderName,
+                providerName: this.userPool.userPoolProviderName,
             }],
         });
 
         // configure identity pool role attachment
-        const identityProvider = userPool.userPoolProviderName + ':' + userPoolClient.userPoolClientId;
+        const identityProvider = this.userPool.userPoolProviderName + ':' + userPoolClient.userPoolClientId;
         const roleAttachment: any = {
             identityPoolId: identityPool.ref,
         }
@@ -122,7 +123,7 @@ export class CognitoStack implements IStack {
 
                 new CfnUserPoolGroup(mainStack, `${namePrefix}-${group.name}-group`, {
                     groupName: group.name,
-                    userPoolId: userPool.userPoolId,
+                    userPoolId: this.userPool.userPoolId,
                     roleArn: role.roleArn,
                     precedence: group.precedence || 0,
                 });
@@ -148,6 +149,7 @@ export class CognitoStack implements IStack {
         roleAttachment.roles.authenticated = authenticatedRole.roleArn;
 
         new CfnIdentityPoolRoleAttachment(mainStack, `${namePrefix}-IdentityPoolRoleAttachment`, roleAttachment);
+
         // create triggers
         if (this.stackConfig.triggers) {
             for (const trigger of this.stackConfig.triggers) {
@@ -155,13 +157,17 @@ export class CognitoStack implements IStack {
                     entry: trigger.lambdaFunctionPath,
                     layerArn: this.fw24.getLayerARN(),
                 }) as NodejsFunction;
-                userPool.addTrigger(trigger.trigger, lambdaTrigger);
+                this.userPool.addTrigger(trigger.trigger, lambdaTrigger);
             }
         }
 
-        this.fw24.set("userPoolID", userPool.userPoolId);
+        this.fw24.set("userPoolID", this.userPool.userPoolId);
         this.fw24.set("userPoolClientID", userPoolClient.userPoolClientId);
         this.fw24.set("identityPoolID", identityPool.ref);
         this.fw24.setCognitoAuthorizer(userPoolName, userPoolAuthorizer, true);
+    }
+
+    public addCognitoTrigger(lambdaFunction: any){
+        this.userPool.addTrigger(UserPoolOperation.POST_CONFIRMATION, lambdaFunction);
     }
 }
