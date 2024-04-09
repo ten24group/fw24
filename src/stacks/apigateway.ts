@@ -217,7 +217,7 @@ export class APIGateway implements IStack {
         return {
             requestParameters,
             authorizationType: routeAuthorizerType as AuthorizationType,
-            authorizer: this.fw24.getAuthorizer(routeAuthorizerType, controllerAuthorizerName),
+            authorizer: this.fw24.getAuthorizer(routeAuthorizerType, routeAuthorizerName),
         };
     }
 
