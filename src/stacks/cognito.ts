@@ -46,6 +46,9 @@ export class CognitoStack implements IStack {
         const mainStack = fw24.getStack("main");
         var namePrefix = `${fw24.appName}`;
 
+        if(this.stackConfig.userPool.props.userPoolName) {
+            namePrefix = `${namePrefix}-${this.stackConfig.userPool.props.userPoolName}`;
+        }
         if(fw24.get("tenantId")){
             namePrefix = `${namePrefix}-${fw24.get("tenantId")}`
         }
@@ -73,7 +76,7 @@ export class CognitoStack implements IStack {
                 tempPasswordValidity: Duration.days(3),
             }
         });
-
+        console.warn("User Pool ID: ", userPool.userPoolId);
         const userPoolClient = new UserPoolClient(mainStack, `${namePrefix}-userPoolclient`, {
             userPool,
             generateSecret: false,
@@ -98,7 +101,7 @@ export class CognitoStack implements IStack {
         });
 
         // IAM role for authenticated users
-        const authenticatedRole = new CognitoAuthRole(mainStack, "CognitoAuthRole", {
+        const authenticatedRole = new CognitoAuthRole(mainStack, `${namePrefix}-CognitoAuthRole`, {
             identityPool,
         });
 
@@ -125,8 +128,12 @@ export class CognitoStack implements IStack {
             }
         }
 
-        fw24.set("userPoolID", userPool.userPoolId);
-        fw24.set("userPoolClientID", userPoolClient.userPoolClientId);
+        let prefix = 'default_';
+        if(this.stackConfig.userPool.props.userPoolName) {
+            prefix = this.stackConfig.userPool.props.userPoolName + '_';
+        }
+        fw24.set("userPoolID", userPool.userPoolId, prefix);
+        fw24.set("userPoolClientID", userPoolClient.userPoolClientId, prefix);
         fw24.setCognitoAuthorizer(this.stackConfig.userPool.props.userPoolName || 'default', userPoolAuthorizer, true);
     }
 }
