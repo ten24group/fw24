@@ -4,7 +4,7 @@ import { CognitoStack } from '../../stacks/cognito';
 
 export interface IAuthModuleConfig extends IModuleConfig {
     selfSignUpEnabled?: boolean;
-    policyFilePath?: string;
+    policyFilePaths?: string[];
 }
 
 export class AuthModule extends AbstractFw24Module {
@@ -22,7 +22,7 @@ export class AuthModule extends AbstractFw24Module {
                     userPoolName: 'authmodule'
                 }
             },
-            policyFilePath: config.policyFilePath,
+            policyFilePaths: config.policyFilePaths,
         });
 
         this.stacks.set('auth-cognito', cognito );

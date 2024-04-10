@@ -53,7 +53,7 @@ export class SESStack implements IStack {
             lambdaFunctionProps: {
                 entry: join(__dirname,"../core/mail-processor.js"),
                 policies: [{
-                    actions: ["ses:SendEmail", "SES:SendRawEmail", "SES:SendTemplatedEmail"],
+                    actions: ["ses:SendEmail", "SES:SendRawEmail", "SES:SendTemplatedEmail", "SES:SendBulkTemplatedEmail", "SES:TestRenderEmailTemplate"],
                     resources: ["*"],
                     effect: Effect.ALLOW,
                 }],

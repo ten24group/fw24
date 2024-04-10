@@ -1,6 +1,6 @@
 import { Entity, EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, createSchema, Attribute } from "electrodb";
 import { BaseEntityService } from "./base-service";
-import { Narrow } from "../utils/types";
+import { Narrow, Writable } from "../utils/types";
 
 /**
  *  ElectroDB entity  examples
@@ -112,10 +112,10 @@ export type EntityRecordTypeFromSchema<Sch extends EntitySchema<any, any, any>> 
 export type EntityServiceTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = BaseEntityService<TSchema>;
 
 // Entity identifiers
-export type EntityIdentifiersTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = EntityIdentifiers<EntityTypeFromSchema<TSchema>>;
+export type EntityIdentifiersTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<EntityIdentifiers<EntityTypeFromSchema<TSchema>>>;
 
 // Create entity
-export type CreateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = CreateEntityItem<EntityTypeFromSchema<TSchema>>;
+export type CreateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<CreateEntityItem<EntityTypeFromSchema<TSchema>>>;
 
 // Update entity
-export type UpdateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any> > = UpdateEntityItem<EntityTypeFromSchema<TSchema>>;
+export type UpdateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any> > = Writable<UpdateEntityItem<EntityTypeFromSchema<TSchema>>>;

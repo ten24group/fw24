@@ -1,7 +1,15 @@
 import { SQSHandler, SQSEvent } from 'aws-lambda';
-import { SESv2Client, SendEmailCommand, SendEmailCommandInput } from '@aws-sdk/client-sesv2';
+import { SESv2Client, SendEmailCommand, SendEmailCommandInput, TestRenderEmailTemplateCommand } from '@aws-sdk/client-sesv2';
 import { DefaultLogger } from '../logging';
 
+export interface IEmailMessage {
+    FromEmailAddress: string;
+    ToEmailAddress: string;
+    Subject?: string;
+    Message?: string;
+    TemplateName?: string;
+    ReplyToEmailAddress?: string;
+}
 
 export const handler: SQSHandler = async (event: SQSEvent) => {
     DefaultLogger.debug(' SQSHandler Handler Received event:', event);
@@ -13,40 +21,52 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
         DefaultLogger.debug(' SQSHandler Processing message with ID:', record.messageId);
 
         // Parse message body
-        const body = JSON.parse(record.body) as EmailMessage;
+        const { emailMessage, templateData } = JSON.parse(record.body) as {emailMessage: IEmailMessage, templateData: any};
+
+        // check if request is for testing template
+        if (templateData && templateData['testRenderEmailTemplate']) {
+            const command = new TestRenderEmailTemplateCommand({
+                TemplateName: emailMessage.TemplateName,
+                TemplateData: JSON.stringify({...emailMessage, ...templateData}),
+            });
+            
+            const response = await sesClient.send(command);
+            console.log('Test render response:', response);
+            continue;
+        }
 
         // Construct email parameters
         const mailParams: SendEmailCommandInput = {
-            FromEmailAddress: body.FromEmailAddress,
+            FromEmailAddress: emailMessage.FromEmailAddress,
             Destination: {
-                ToAddresses: [body.ToEmailAddress],
+                ToAddresses: [emailMessage.ToEmailAddress],
             },
             Content: {}
         };
 
          // If a template name is provided, use it
-         if (body.TemplateName) {
+         if (emailMessage.TemplateName) {
             mailParams.Content = {};
             mailParams.Content.Template = {
-                TemplateName: body.TemplateName, //change to get full template name from fw24
-                TemplateData: JSON.stringify(body)
+                TemplateName: emailMessage.TemplateName, //change to get full template name from fw24
+                TemplateData: JSON.stringify({...emailMessage, ...templateData})
             } 
         }
         // if body and subject are provided, use them
-        else if (body.Message && body.Subject) {
+        else if (emailMessage.Message && emailMessage.Subject) {
             mailParams.Content = {};
             mailParams.Content.Simple = {
-                Body: { Text: { Data: body.Message } },
-                Subject: { Data: body.Subject },
+                Body: { Text: { Data: emailMessage.Message } },
+                Subject: { Data: emailMessage.Subject },
             }
         } else {
-            DefaultLogger.error('SQSHandler: Invalid message format. Either provide TemplateName or Message and Subject. Skipping message:', body);
+            DefaultLogger.error('SQSHandler: Invalid message format. Either provide TemplateName or Message and Subject. Skipping message:', emailMessage);
             continue;
         }
 
         // if reply to address is provided, use it
-        if (body.ReplyToEmailAddress) {
-            mailParams.ReplyToAddresses = [body.ReplyToEmailAddress];
+        if (emailMessage.ReplyToEmailAddress) {
+            mailParams.ReplyToAddresses = [emailMessage.ReplyToEmailAddress];
         }
 
         DefaultLogger.debug(' SQSHandler Sending email with parameters:', mailParams);
@@ -65,12 +85,3 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
 
     return Promise.resolve();
 };
-
-interface EmailMessage {
-    FromEmailAddress: string;
-    ToEmailAddress: string;
-    Subject?: string;
-    Message?: string;
-    TemplateName?: string;
-    ReplyToEmailAddress?: string;
-}
