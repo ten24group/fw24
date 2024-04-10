@@ -90,14 +90,14 @@ export class APIGateway implements IStack {
 
         if(this.fw24.hasModules()){
             const modules = this.fw24.getModules();
-            this.logger.debug(" API-gateway stack: construct: app has modules ", modules);
+            this.logger.info(" API-gateway stack: construct: app has modules ", Array.from(modules.entries()));
             for(const [, module] of modules){
                 const basePath = module.getBasePath();
-                this.logger.debug(" load controllers from module base-path: ", basePath);
+                this.logger.info(" load controllers from module base-path: " + basePath);
                 Helper.registerControllersFromModule(module, this.registerController);
             }
         } else {
-            this.logger.debug(" API-gateway stack: construct: app has NO modules ");
+            this.logger.info(" API-gateway stack: construct: app has NO modules ");
         }
     }
 
@@ -128,7 +128,7 @@ export class APIGateway implements IStack {
         const controllerConfig = controllerInfo.handlerInstance?.controllerConfig;
         controllerInfo.routes = controllerInfo.handlerInstance.routes;
 
-        this.logger.debug(`Registering controller ${controllerName} from ${controllerInfo.filePath}/${controllerInfo.fileName}`);
+        this.logger.info(`Registering controller ${controllerName} from ${controllerInfo.filePath}/${controllerInfo.fileName}`);
 
         // create the api resource for the controller if it doesn't exist
         const controllerResource = this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
@@ -153,11 +153,13 @@ export class APIGateway implements IStack {
         // in case of multiple authorizers in a single application, get the authorizer name
         let authorizerName = undefined;
         if(typeof controllerConfig?.authorizer === 'object') {
+            // default's the the App's default-authorizer
             authorizerName = controllerConfig.authorizer.name;
+            // TODO: add support to define authorizer name at the route level
         }
       
         for (const route of Object.values(controllerInfo.routes ?? {})) {
-            this.logger.debug(`Registering route ${route.httpMethod} ${route.path}`);
+            this.logger.info(`Registering route ${route.httpMethod} ${route.path}`, route);
             let currentResource: IResource = controllerResource;
             for (const pathPart of route.path.split("/")) {
                 if (pathPart === "") {
@@ -174,14 +176,14 @@ export class APIGateway implements IStack {
             for (const param of route.parameters) {
                 requestParameters[`method.request.path.${param}`] = true;
             }
-        
-            this.logger.debug(`APIGateway ~ registerController ~ add authorizer ${route.authorizer} for ${route.functionName}`);
-
+            
             const methodOptions: MethodOptions = {
                 requestParameters: requestParameters,
                 authorizationType: route.authorizer as AuthorizationType,
                 authorizer: this.fw24.getAuthorizer(route.authorizer, authorizerName),
             }
+            
+            this.logger.info(`APIGateway ~ registerController ~ add authorizer ${route.authorizer} for ${route.functionName}, authorizerName: ${authorizerName}`);
 
             currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);
         }

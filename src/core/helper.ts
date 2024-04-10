@@ -25,7 +25,7 @@ export class Helper {
     static registerControllersFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
         const basePath = module.getBasePath();
 
-        Helper.logger.debug("registerControllersFromModule::: base-path: ", basePath);
+        Helper.logger.info("registerControllersFromModule::: base-path: " + basePath);
 
         // relative path from the place where the script is getting executed i.e index.ts in app-root
         const relativePath = relative('./', basePath); 
@@ -33,7 +33,7 @@ export class Helper {
 
         // TODO: support for controller path prefix [ e.g. module-name/controller-path ]
 
-        Helper.logger.debug("registerControllersFromModule::: module-controllers-path:", controllersPath);
+        Helper.logger.info("registerControllersFromModule::: module-controllers-path: " + controllersPath);
 
         Helper.registerHandlers(controllersPath, handlerRegistrar);
     }
@@ -47,10 +47,18 @@ export class Helper {
         const allDirFiles = readdirSync(sourceDirectory);
         // Filter the files to only include TypeScript files
         const sourceFilePaths = allDirFiles.filter((file) => 
-            file.endsWith(".ts") 
-            && !file.endsWith("d.ts") 
-            && !file.endsWith("test.ts") 
-            && !file.endsWith("spec.ts")
+            ( 
+                file.endsWith(".ts")
+                && !file.endsWith("d.ts") 
+                && !file.endsWith("test.ts") 
+                && !file.endsWith("spec.ts")
+            )
+             ||
+            ( 
+                file.endsWith(".js")
+                && !file.endsWith("test.js") 
+                && !file.endsWith("spec.js")
+            )
         );
 
         return sourceFilePaths;
@@ -58,7 +66,7 @@ export class Helper {
 
     static async registerHandlers(path: string, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void) {
         
-        Helper.logger.debug("Registering Lambda Handlers from: ", path);
+        Helper.logger.info("Registering Lambda Handlers from: "+ path);
         
         // Resolve the absolute path
         const handlerDirectory = resolve(path);
@@ -67,6 +75,7 @@ export class Helper {
 
         // Register the handlers
         for (const handlerPath of handlerPaths) {
+            Helper.logger.info("Registering Lambda Handlers from handlerPath: "+ handlerPath);
             try {
                 // Dynamically import the controller file
                 const module = await import(join(handlerDirectory, handlerPath));
@@ -79,12 +88,17 @@ export class Helper {
                             fileName: handlerPath,
                             filePath: handlerDirectory,
                         };
+
+                        Helper.logger.info("Registering Lambda Handlers registering currentHandler: ", {handlerPath, handlerDirectory});
+
                         handlerRegistrar(currentHandler);
                         break;
+                    } else {
+                        Helper.logger.info("Registering Lambda Handlers ignored exportedItem: ", {exportedItem});
                     }
                 }
             } catch (err) {
-                Helper.logger.error("Error registering handler: ", handlerDirectory, handlerPath, err);
+                Helper.logger.error("Error registering handler: ", {handlerDirectory, handlerPath, err});
             }
         }
     }
