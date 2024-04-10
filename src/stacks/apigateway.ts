@@ -109,15 +109,15 @@ export class APIGateway implements IStack {
         const controllerLambda = this.createLambdaFunction(controllerName, filePath, fileName, controllerConfig);
         const controllerIntegration = new LambdaIntegration(controllerLambda);
 
-        const { controllerAuthorizerName, controllerAuthorizerType } = this.extractControllerAuthorizer(controllerConfig);
+        const { defaultAuthorizerName, defaultAuthorizerType } = this.extractDefaultAuthorizer(controllerConfig);
 
-        console.log(`APIGateway ~ registerController ~ Default Authorizer: ${controllerAuthorizerName} - ${controllerAuthorizerType}`);
+        console.log(`APIGateway ~ registerController ~ Default Authorizer: ${defaultAuthorizerName} - ${defaultAuthorizerType}`);
       
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             console.log(`Registering route ${route.httpMethod} ${route.path}`);
             const currentResource = this.getOrCreateRouteResource(controllerResource, route.path);
 
-            const methodOptions = this.createMethodOptions(route, controllerAuthorizerType, controllerAuthorizerName);
+            const methodOptions = this.createMethodOptions(route, defaultAuthorizerType, defaultAuthorizerName);
             currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);
         }
 
@@ -165,19 +165,23 @@ export class APIGateway implements IStack {
         }) as NodejsFunction;
     }
 
-    private extractControllerAuthorizer = (controllerConfig: any): { controllerAuthorizerName: string, controllerAuthorizerType: string } => {
-        let controllerAuthorizerName;
-        let controllerAuthorizerType;
+    private extractDefaultAuthorizer = (controllerConfig: any): { defaultAuthorizerName: string, defaultAuthorizerType: string } => {
+        let defaultAuthorizerName;
+        let defaultAuthorizerType;
     
         if (Array.isArray(controllerConfig?.authorizer)) {
             const defaultAuthorizer = controllerConfig.authorizer.find((auth: any) => auth.default) || controllerConfig.authorizer[0];
-            controllerAuthorizerName = defaultAuthorizer.name;
-            controllerAuthorizerType = defaultAuthorizer.type;
+            defaultAuthorizerName = defaultAuthorizer.name;
+            defaultAuthorizerType = defaultAuthorizer.type;
         } else {
-            controllerAuthorizerType = controllerConfig.authorizer;
+            defaultAuthorizerType = controllerConfig.authorizer;
+        }
+
+        if(!defaultAuthorizerType && this.fw24.getConfig().defaultAuthorizationType) {
+            defaultAuthorizerType = this.fw24.getConfig().defaultAuthorizationType;
         }
     
-        return { controllerAuthorizerName, controllerAuthorizerType };
+        return { defaultAuthorizerName, defaultAuthorizerType };
     }
 
     private getOrCreateRouteResource = (parentResource: IResource, path: string): IResource => {
@@ -198,18 +202,18 @@ export class APIGateway implements IStack {
         return currentResource;
     }
 
-    private createMethodOptions = (route: any, controllerAuthorizerType: string, controllerAuthorizerName: string | undefined): MethodOptions => {
+    private createMethodOptions = (route: any, defaultAuthorizerType: string, defaultAuthorizerName: string | undefined): MethodOptions => {
         const requestParameters: { [key: string]: boolean } = {};
         for (const param of route.parameters) {
             requestParameters[`method.request.path.${param}`] = true;
         }
     
-        let routeAuthorizerName = controllerAuthorizerName
-        let routeAuthorizerType = controllerAuthorizerType;
-    
+        let routeAuthorizerType = defaultAuthorizerType;
+        let routeAuthorizerName = defaultAuthorizerName
+        
         if (route.authorizer && typeof route.authorizer === 'object') {
-            routeAuthorizerName = route.authorizer.name;
             routeAuthorizerType = route.authorizer.type;
+            routeAuthorizerName = route.authorizer.name;
         } else if (typeof route.authorizer === 'string') {
             routeAuthorizerType = route.authorizer;
         }
