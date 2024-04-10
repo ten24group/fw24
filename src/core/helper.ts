@@ -2,8 +2,14 @@ import { readdirSync } from "fs";
 import { resolve, join, relative } from "path";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { IFw24Module } from "./module";
+import { createLogger, Duration as LogDuration, InOut as LogInOut } from "../fw24";
+
+
 
 export class Helper {
+    
+    static logger = createLogger('Helper');
+
     static hydrateConfig<T>(config: T, prefix = "APP") {
         Object.keys(process.env)
             .filter(key => key.startsWith(prefix))
@@ -15,9 +21,11 @@ export class Helper {
             });
     }
 
+    @LogDuration()
     static registerControllersFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
         const basePath = module.getBasePath();
-        console.log("registerControllersFromModule::: base-path: ", basePath);
+
+        Helper.logger.debug("registerControllersFromModule::: base-path: ", basePath);
 
         // relative path from the place where the script is getting executed i.e index.ts in app-root
         const relativePath = relative('./', basePath); 
@@ -25,19 +33,39 @@ export class Helper {
 
         // TODO: support for controller path prefix [ e.g. module-name/controller-path ]
 
-        console.log("registerControllersFromModule::: module-controllers-path:", controllersPath);
+        Helper.logger.debug("registerControllersFromModule::: module-controllers-path:", controllersPath);
 
         Helper.registerHandlers(controllersPath, handlerRegistrar);
     }
 
+    @LogDuration()
+    @LogInOut()
+    static scanTSSourceFilesFrom(path: string){
+        Helper.logger.debug("Scanning TS source files from path: ", path);
+        // Resolve the absolute path
+        const sourceDirectory = resolve(path);
+        // Get all the files in the handler directory
+        const allDirFiles = readdirSync(sourceDirectory);
+        // Filter the files to only include TypeScript files
+        const sourceFilePaths = allDirFiles.filter((file) => 
+            file.endsWith(".ts") 
+            && !file.endsWith("d.ts") 
+            && !file.endsWith("test.ts") 
+            && !file.endsWith("spec.ts")
+        );
+
+        return sourceFilePaths;
+    }
+
     static async registerHandlers(path: string, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void) {
-        console.log("Registering Lambda Handlers from: ", path);
+        
+        Helper.logger.debug("Registering Lambda Handlers from: ", path);
+        
         // Resolve the absolute path
         const handlerDirectory = resolve(path);
-        // Get all the files in the handler directory
-        const handlerFiles = readdirSync(handlerDirectory);
         // Filter the files to only include TypeScript files
-        const handlerPaths = handlerFiles.filter((file) => file.endsWith(".ts"));
+        const handlerPaths = Helper.scanTSSourceFilesFrom(path);
+
         // Register the handlers
         for (const handlerPath of handlerPaths) {
             try {
@@ -57,7 +85,7 @@ export class Helper {
                     }
                 }
             } catch (err) {
-                console.error("Error registering handler: ", handlerDirectory, handlerPath, err);
+                Helper.logger.error("Error registering handler: ", handlerDirectory, handlerPath, err);
             }
         }
     }

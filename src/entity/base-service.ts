@@ -3,8 +3,11 @@ import { toHumanReadableName } from "../utils";
 import { EntityValidations } from "../validation";
 import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, updateEntity } from "./crud-service";
+import { createLogger } from "../fw24";
 
 export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
+
+    logger = createLogger('BaseEntityService');
 
     protected entityRepository ?: EntityRepositoryTypeFromSchema<S>;
     protected entityOpsDefaultIoSchema ?: ReturnType<typeof makeOpsDefaultIOSchema<S>>;
@@ -65,11 +68,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             } else if( attName == primaryAttName && input.hasOwnProperty('id') ){
                 identifiers[attName] = input.id;
             } else if(required) {
-                console.warn(`required attribute: ${attName} for access-pattern: ${context.forAccessPattern ?? '--primary--'} is not found in input:`, input);
+                this.logger.warn(`required attribute: ${attName} for access-pattern: ${context.forAccessPattern ?? '--primary--'} is not found in input:`, input);
             }
         }
 
-        console.log('Extracting identifiers from identifiers:', identifiers);
+        this.logger.debug('Extracting identifiers from identifiers:', identifiers);
 
         return identifiers as EntityIdentifiersTypeFromSchema<S>;
     };
@@ -115,7 +118,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     }
 
     public async get( identifiers: EntityIdentifiersTypeFromSchema<S> ) {
-        console.log(`Called BaseEntityService<E ~ get ~ entityName: ${this.getEntityName()} ~ id:`, identifiers);
+        this.logger.debug(`Called ~ get ~ entityName: ${this.getEntityName()} ~ id:`, identifiers);
 
         const entity =  await getEntity<S>({
             id: identifiers, 
@@ -126,7 +129,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     }
     
     public async create(data: CreateEntityItemTypeFromSchema<S>) {
-        console.log(`Called BaseEntityService<E ~ create ~ entityName: ${this.getEntityName()} ~ data:`, data);
+        this.logger.debug(`Called ~ create ~ entityName: ${this.getEntityName()} ~ data:`, data);
 
         const entity =  await createEntity<S>({
             data: data, 
@@ -137,7 +140,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     }
 
     public async list(data: EntityIdentifiersTypeFromSchema<S>) {
-        console.log(`Called BaseEntityService<E ~ list ~ entityName: ${this.getEntityName()} ~ data:`, data);
+        this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ data:`, data);
 
         const entities =  await listEntity<S>({
             filters: data,
@@ -148,7 +151,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     }
 
     public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>) {
-        console.log(`Called BaseEntityService<E ~ update ~ entityName: ${this.getEntityName()} ~ identifiers:, data:`, identifiers, data);
+        this.logger.debug(`Called ~ update ~ entityName: ${this.getEntityName()} ~ identifiers:, data:`, identifiers, data);
 
         const updatedEntity =  await updateEntity<S>({
             id: identifiers,
@@ -160,7 +163,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     }
 
     public async delete(identifiers: EntityIdentifiersTypeFromSchema<S>) {
-        console.log(`Called BaseEntityService<E ~ delete ~ entityName: ${this.getEntityName()} ~ identifiers:`, identifiers);
+        this.logger.debug(`Called ~ delete ~ entityName: ${this.getEntityName()} ~ identifiers:`, identifiers);
         
         const deletedEntity =  await deleteEntity<S>({
             id: identifiers,

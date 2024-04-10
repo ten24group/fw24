@@ -5,6 +5,7 @@ import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
 import { Helper } from "../core/helper";
+import { createLogger } from "../fw24";
 
 export interface IAmplifyConfig {
     appName: string;
@@ -16,20 +17,22 @@ export interface IAmplifyConfig {
 }
 
 export class AmplifyStack implements IStack{
+    logger = createLogger('AmplifyStack');
+
     fw24: Fw24 = Fw24.getInstance();
     dependencies: string[] = [];
 
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: IAmplifyConfig){
-        console.log('Amplify stack constructor', stackConfig);
+        this.logger.debug('constructor:', stackConfig);
         // hydrate the config object with environment variables ex: AMPLIFY_GITHUB_OWNER
         Helper.hydrateConfig(stackConfig, 'AMPLIFY');
         // hydrate the config object with environment variables ex: AMPLIFY_ADMIN_GITHUB_REPO
         Helper.hydrateConfig(stackConfig, `AMPLIFY_${this.stackConfig.appName.toUpperCase()}`);
     }
     // construct method to create the stack
-    public construct(){
-        console.log('Amplify construct for:', this.stackConfig.appName);
+    public async construct(){
+        this.logger.debug(' construct for:', this.stackConfig.appName);
         const fw24 = Fw24.getInstance();
         // get the main stack from the framework
         const mainStack = fw24.getStack('main');

@@ -7,6 +7,7 @@ import { IValidator, IValidatorResponse, ValidatorOptions } from "./validator.ty
 import { DeepWritable } from '../utils/types';
 import { Actor, EntityValidations, InputType, RecordType, TConditionalValidationRule, TEntityOpValidations, TEntityValidationCondition, TMapOfValidationConditions, Validations } from "./validator.type";
 import { TDefaultEntityOperations, EntitySchema, TEntityOpsInputSchemas } from "../entity";
+import { createLogger } from "../logging";
 
 if (!('toJSON' in Error.prototype)){
     Object.defineProperty(Error.prototype, 'toJSON', {
@@ -24,6 +25,8 @@ if (!('toJSON' in Error.prototype)){
         writable: true
     });
 }
+
+const logger = createLogger('Validator');
 
 export function extractOpValidationFromEntityValidations<
   Sch extends EntitySchema<any, any, any, Ops>, 
@@ -82,7 +85,7 @@ export function extractOpValidationFromEntityValidations<
 				if(formattedPropertyRules.length){
 					validations[validationGroupKey]![propertyName] = formattedPropertyRules;
 				} else {
-					console.log("No applicable rules found for op: prop: group: from-rule:", [operationName, propertyName, validationGroupKey, rule]);
+					logger.debug("No applicable rules found for op: prop: group: from-rule:", [operationName, propertyName, validationGroupKey, rule]);
 				}
 			}
 		}
@@ -126,7 +129,7 @@ export class Validator implements IValidator {
         }
 
         const opsValidationRules = extractOpValidationFromEntityValidations(operationName, entityValidations);
-        console.log("🚀 ~ Validator.validate ~ rules, input, actor, record:", JSON.stringify({ opsValidationRules, input, actor, record}));
+        logger.debug("🚀 ~ Validator.validate ~ rules, input, actor, record:", JSON.stringify({ opsValidationRules, input, actor, record}));
         
         const { opValidations: {inputRules, actorRules, recordRules}, conditions } = opsValidationRules;
         
@@ -200,7 +203,7 @@ export class Validator implements IValidator {
             }
         }
 
-        console.log("🚀 ~ Validator.validate ~ result:", JSON.stringify({ pass, errors}));
+        logger.debug("🚀 ~ Validator.validate ~ result:", JSON.stringify({ pass, errors}));
 
         const formattedErrors:string[] = [];
 
@@ -235,7 +238,7 @@ export class Validator implements IValidator {
         }
     ){
 
-        console.log( "🚀 ~ Validator: validateRulesWithCriteria ~ arguments:", JSON.stringify(options) );
+        logger.debug( "🚀 ~ Validator: validateRulesWithCriteria ~ arguments:", JSON.stringify(options) );
         
         const {rules, allConditions, inputVal, input, record, actor} = options;
 
@@ -293,7 +296,7 @@ export class Validator implements IValidator {
         }
     ): Promise<IValidatorResponse> {
 
-        console.log( "🚀 ~ Validator: validateRuleWithCriteria ~ arguments:", JSON.stringify(options) );
+        logger.debug( "🚀 ~ Validator: validateRuleWithCriteria ~ arguments:", JSON.stringify(options) );
         
         const {rule, allConditions, inputVal, input, record, actor} = options;
         
@@ -378,16 +381,16 @@ export class Validator implements IValidator {
         const errors = [];
 
 
-        console.log("🚀 ~ Validator: validateRuleWithCriteria ~ criteriaPassed:", criteriaPassed);
+        logger.debug("🚀 ~ Validator: validateRuleWithCriteria ~ criteriaPassed:", criteriaPassed);
         if(criteriaPassed){
             let validation = this.testAllValidationsWithErrors(partialValidation, inputVal);
-            console.log("🚀 ~ Validator: validateRuleWithCriteria ~ validation-result:", validation);
+            logger.debug("🚀 ~ Validator: validateRuleWithCriteria ~ validation-result:", validation);
 
             validationPassed = validationPassed && validation.pass;
             errors.push(...validation.errors);  
         }
 
-        console.log("🚀 ~ Validator: validateRuleWithCriteria ~ result:", { validationPassed, errors});
+        logger.debug("🚀 ~ Validator: validateRuleWithCriteria ~ result:", { validationPassed, errors});
 
         return Promise.resolve({ 
             pass: validationPassed,
@@ -460,7 +463,7 @@ export class Validator implements IValidator {
      * and any errors encountered.
     */
     testAllValidationsWithErrors(partialValidation: Validations, val: any) {
-        console.log("🚀 ~ Validator ~ testAllValidationsWithErrors ~ arguments:", {partialValidation, val});
+        logger.debug("🚀 ~ Validator ~ testAllValidationsWithErrors ~ arguments:", {partialValidation, val});
         let pass = true;
         const errors: Array<any> = [];
         
@@ -472,7 +475,7 @@ export class Validator implements IValidator {
                 
                 const result = this.testValidation(validationRule, val );
 
-                console.log("🚀 ~ Validator ~ testAllValidationsWithErrors ~ testValidation result: ", {validationRule, result});
+                logger.debug("🚀 ~ Validator ~ testAllValidationsWithErrors ~ testValidation result: ", {validationRule, result});
                 
                 if(typeof result == 'boolean'){
                     pass = pass && result;
@@ -486,7 +489,7 @@ export class Validator implements IValidator {
             }
         }
 
-        console.log("🚀 ~ Validator ~ testAllValidationsWithErrors ~ results:", {pass, errors});
+        logger.debug("🚀 ~ Validator ~ testAllValidationsWithErrors ~ results:", {pass, errors});
 
         return {
             pass,
@@ -507,7 +510,7 @@ export class Validator implements IValidator {
      * @returns True if the value passes all validations, false otherwise. Can also return validation error objects.
     */
     testValidation(partialValidation: Validations, val: any){
-        console.log("🚀 ~ Validator ~ testValidation ~ partialValidation:, val: ", partialValidation, val);
+        logger.debug("🚀 ~ Validator ~ testValidation ~ partialValidation:, val: ", partialValidation, val);
         const{ required, minLength, maxLength, pattern, datatype, unique, eq, neq, gt, gte, lt, lte } = partialValidation;
 
         if(required && val === undefined) {

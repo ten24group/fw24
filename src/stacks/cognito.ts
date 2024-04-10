@@ -9,12 +9,13 @@ import {
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
-import { Duration } from "aws-cdk-lib";
 import { readFileSync } from "fs";
 import { CognitoAuthRole } from "../constructs/cognito-auth-role";
 import { LambdaFunction } from "../constructs/lambda-function";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
+import { createLogger, Duration as LogDuration } from "../logging";
+import { Duration } from "aws-cdk-lib";
 
 
 export interface ICognitoConfig {
@@ -29,17 +30,20 @@ export interface ICognitoConfig {
 }
 
 export class CognitoStack implements IStack {
+    logger = createLogger('CognitoStack');
+
     fw24: Fw24 = Fw24.getInstance();
     dependencies: string[] = [];
     
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: ICognitoConfig) {
-        console.log("Cognito Stack constructor", stackConfig);
+        this.logger.debug("constructor: ", stackConfig);
     }
 
     // construct method to create the stack
-    public construct() {
-        console.log("Cognito construct");
+    @LogDuration()
+    public async construct() {
+        this.logger.debug("construct");
 
         const fw24 = Fw24.getInstance();
         const userPoolConfig = this.stackConfig.userPool;
@@ -76,7 +80,7 @@ export class CognitoStack implements IStack {
                 tempPasswordValidity: Duration.days(3),
             }
         });
-        console.warn("User Pool ID: ", userPool.userPoolId);
+        this.logger.warn("User Pool ID: ", userPool.userPoolId);
         const userPoolClient = new UserPoolClient(mainStack, `${namePrefix}-userPoolclient`, {
             userPool,
             generateSecret: false,
@@ -135,5 +139,6 @@ export class CognitoStack implements IStack {
         fw24.set("userPoolID", userPool.userPoolId, prefix);
         fw24.set("userPoolClientID", userPoolClient.userPoolClientId, prefix);
         fw24.setCognitoAuthorizer(this.stackConfig.userPool.props.userPoolName || 'default', userPoolAuthorizer, true);
+        
     }
 }

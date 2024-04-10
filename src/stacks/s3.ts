@@ -11,6 +11,8 @@ import { IApplicationConfig } from "../interfaces/config";
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import { IStack } from "../interfaces/stack";
+import { Duration, createLogger } from "../fw24";
 
 export interface IS3Config {
     bucketName: string;
@@ -28,7 +30,9 @@ export interface IS3TriggerConfig {
     queueName?: string;
 }
 
-export class S3Stack {
+export class S3Stack implements IStack {
+    logger = createLogger('S3Stack');
+
     fw24: Fw24 = Fw24.getInstance();
     dependencies: string[] = ['SQSStack'];
     appConfig: IApplicationConfig | undefined;
@@ -36,13 +40,13 @@ export class S3Stack {
 
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: IS3Config[]) {
-        console.log("s3");
+        this.logger.debug("constructor: ");
         Helper.hydrateConfig(stackConfig,'S3');
     }
 
     // construct method to create the stack
-    public construct() {
-        console.log("s3 construct");
+    public async construct() {
+        this.logger.debug("construct: ");
         // make the main stack available to the class
         this.appConfig = this.fw24.getConfig();
         // get the main stack from the framework
@@ -55,8 +59,9 @@ export class S3Stack {
         });
     }
 
+    @Duration()
     private createBucket(bucketConfig: IS3Config) {
-        console.log("Creating bucket: ", bucketConfig.bucketName);
+        this.logger.debug("Creating bucket: ", bucketConfig.bucketName);
         const bucketName = this.fw24.getUniqueName(bucketConfig.bucketName);
         var bucketParams: any = {
             bucketName: bucketName,
@@ -92,7 +97,7 @@ export class S3Stack {
 
                     // create lambda function for the trigger event
                     const functionPath = resolve(trigger.handler);
-                    console.log("Creating lambda function for the trigger event: ", functionPath);
+                    this.logger.debug("Creating lambda function for the trigger event: ", functionPath);
                     const functionId = bucketConfig.bucketName + "-" + trigger.destination + "-" + trigger.events.toString();
                     const lambda = new LambdaFunction(this.mainStack, functionId, {
                         entry: functionPath
@@ -115,10 +120,10 @@ export class S3Stack {
                     // const queueArn = this.fw24.getArn('sqs', this.fw24.get(trigger.queueName, 'queueName_'));
                     // const queueInstance = Queue.fromQueueArn(this.mainStack, queueId+'-queue', queueArn);
                     const queueInstance = this.fw24.get(trigger.queueName, 'queue_');
-                    console.log(":::Creating queue for the trigger event: ", queueInstance.queueArn);
+                    this.logger.debug(":::Creating queue for the trigger event: ", queueInstance.queueArn);
                     if(queueInstance !== null){
                         trigger.events.forEach(bucketEvent => {
-                            console.log(SqsDestination,bucketEvent);
+                            this.logger.debug(SqsDestination,bucketEvent);
                             bucket.addEventNotification(bucketEvent, new SqsDestination(queueInstance));
                         });
                     }

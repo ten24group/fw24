@@ -13,6 +13,7 @@ import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { QueueLambda } from "../constructs/queue-lambda";
+import { Duration, createLogger } from "../fw24";
 
 export interface ISQSConfig {
     queuesDirectory?: string;
@@ -21,23 +22,26 @@ export interface ISQSConfig {
 }
 
 export class SQSStack implements IStack {
+    logger = createLogger('SQSStack');
+
     fw24: Fw24 = Fw24.getInstance();
     dependencies: string[] = ['DynamoDBStack'];
     mainStack!: Stack;
 
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: ISQSConfig) {
-        console.log("SQS");
+        this.logger.debug("constructor", stackConfig);
         Helper.hydrateConfig(stackConfig,'SQS');
     }
 
     // construct method to create the stack
+    @Duration()
     public async construct() {
-        console.log("SQS construct");
+        this.logger.debug("construct");
         // make the main stack available to the class
         this.mainStack = this.fw24.getStack("main");
         // make the fw24 instance available to the class
-        // sets the default queuess directory if not defined
+        // sets the default queues directory if not defined
         if(this.stackConfig.queuesDirectory === undefined || this.stackConfig.queuesDirectory === ""){
             this.stackConfig.queuesDirectory = "./src/queues";
         }
@@ -58,12 +62,12 @@ export class SQSStack implements IStack {
 
     private registerQueue = (queueInfo: HandlerDescriptor) => {
         queueInfo.handlerInstance = new queueInfo.handlerClass();
-        console.log(":::Queue instance: ", queueInfo.handlerInstance);
+        this.logger.debug(":::Queue instance: ", queueInfo.handlerInstance);
         
         const queueName = queueInfo.handlerInstance.queueName;
         const queueConfig = queueInfo.handlerInstance.queueConfig || {};
 
-        console.log(`:::Registering queue ${queueName} from ${queueInfo.filePath}/${queueInfo.fileName}`);
+        this.logger.info(`:::Registering queue ${queueName} from ${queueInfo.filePath}/${queueInfo.fileName}`);
 
         const queue = new QueueLambda(this.mainStack, queueName + "-queue", {
             queueName: queueName,

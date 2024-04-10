@@ -9,6 +9,7 @@ import { Helper } from "../core/helper";
 import { IStack } from "../interfaces/stack";
 import { Fw24 } from "../core/fw24";
 import { QueueLambda } from "../constructs/queue-lambda";
+import { createLogger, Duration as LogDuration } from "../logging";
 
 export interface ISESConfig {
     domain: string;
@@ -17,21 +18,24 @@ export interface ISESConfig {
 }
 
 export class SESStack implements IStack {
+    logger = createLogger('SESStack');
+
     fw24: Fw24 = Fw24.getInstance();
     dependencies: string[] = [];
     mainStack!: Stack;
 
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: ISESConfig) {
-        console.log("SES");
+        this.logger.debug("constructor: stackConfig", stackConfig);
+        
         Helper.hydrateConfig(stackConfig,'SES');
-
         this.fw24.emailProvider = this;
     }
 
     // construct method to create the stack
-    public construct() {
-        console.log("SES construct");
+    @LogDuration()
+    public async construct() {
+        this.logger.debug("construct:");
 
         // make the main stack available to the class
         this.mainStack = this.fw24.getStack("main");
@@ -41,7 +45,6 @@ export class SESStack implements IStack {
             identity: Identity.domain(this.stackConfig.domain)
         });
         
-
         // create main queue
         const queue = new QueueLambda(this.mainStack, `${this.fw24.appName}-mail-queue`, {
             queueName: `emailQueue`,
@@ -109,7 +112,8 @@ export class SESStack implements IStack {
                     template["textPart"] = textTemplateContent;
                 }
 
-                console.log("Registering template: ", templateName);
+                this.logger.debug("registerTemplates: textTemplatePath: ", textTemplatePath);
+
                 // register the template
                 const templateIdentifier = `${this.fw24.appName}-${templateName}-ses-template`;
                 const sesTemplate = new CfnTemplate(this.mainStack, templateIdentifier, {
@@ -118,7 +122,7 @@ export class SESStack implements IStack {
                 this.fw24.set(templateName, sesTemplate.getAtt('TemplateName'), "templateName_");
 
             } catch (err) {
-                console.error("Error registering template: ", templateDirectory, templatePath, err);
+                this.logger.error("registerTemplates: Error registering template err: ", err);
             }
         }
     }

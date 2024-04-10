@@ -4,6 +4,7 @@ import { Topic } from 'aws-cdk-lib/aws-sns';
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
+import { Duration, createLogger } from "../fw24";
 
 
 export interface ISNSConfig {
@@ -11,21 +12,24 @@ export interface ISNSConfig {
 }
 
 export class SNSStack implements IStack {
+    logger = createLogger('SNSStack');
+
     fw24: Fw24 = Fw24.getInstance();
     dependencies: string[] = [];
 
     constructor(private config: ISNSConfig[]) {
-        console.log("sns", config);
+        this.logger.debug("constructor: ", config);
         Helper.hydrateConfig(config,'sns');
     }
 
-    public construct() {
-        console.log("sns construct");
+    @Duration()
+    public async construct() {
+        this.logger.debug("construct: ");
 
         const mainStack = this.fw24.getStack('main');
 
         this.config.forEach( ( snsConfig: ISNSConfig ) => {
-            console.log("Creating topic: ", snsConfig.topicName);
+            this.logger.debug("Creating topic: ", snsConfig.topicName);
 
             const topic = new Topic(mainStack, snsConfig.topicName + '-topic', {
             });

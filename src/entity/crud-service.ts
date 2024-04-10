@@ -2,10 +2,10 @@ import { Schema } from "electrodb";
 import { Authorizer } from "../authorize";
 import { TDefaultEntityOperations, EntitySchema, EntityServiceTypeFromSchema, TEntityOpsInputSchemas } from "./base-entity";
 import { defaultMetaContainer } from ".";
-import { Validator } from "../validation";
-import { Logger } from "../logging";
+import { DefaultValidator, IValidator } from "../validation";
 import { Auditor } from "../audit";
 import { EventDispatcher } from "../event";
+import { ILogger, createLogger } from "../fw24";
 
 /**
  * 
@@ -33,12 +33,11 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     entityService?: EntityServiceTypeFromSchema<S>;
 
     crudType?: keyof TDefaultEntityOperations;
-    logLevel?: 'debug' | 'info' | 'warn' | 'error';
     actor?: any; // todo: define actor context: [ User+Tenant OR System on behalf of some User+Tenant] trying to perform the operation
     tenant?: any; // todo: define tenant context
 
-    logger?: Logger.ILogger;
-    validator?: Validator.IValidator;        // todo: define validator signature
+    logger?: ILogger;
+    validator?: IValidator;        // todo: define validator signature
     authorizer?: Authorizer.IAuthorizer;        // todo: define authorizer signature
     auditLogger?: Auditor.IAuditor;       // todo: define audit logger signature
     eventDispatcher?: EventDispatcher.IEventDispatcher;  // todo define event dispatcher signature
@@ -66,8 +65,8 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
         tenant,
         
         crudType = 'get',
-        logger = Logger.Default,
-        validator = Validator.Default,
+        logger = createLogger('CRUD-service:getEntity'),
+        validator = DefaultValidator,
         authorizer = Authorizer.Default,
         auditLogger = Auditor.Default,
         eventDispatcher = EventDispatcher.Default,
@@ -129,8 +128,8 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
         tenant,
         
         crudType = 'create',
-        logger = Logger.Default,
-        validator = Validator.Default,
+        logger = createLogger('CRUD-service:createEntity'),
+        validator = DefaultValidator,
         authorizer = Authorizer.Default,
         auditLogger = Auditor.Default,
         eventDispatcher = EventDispatcher.Default,
@@ -200,7 +199,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
         tenant,
 
         crudType = 'list',
-        logger = Logger.Default,
+        logger = createLogger('CRUD-service:listEntity'),
         authorizer = Authorizer.Default,
         auditLogger = Auditor.Default,
         eventDispatcher = EventDispatcher.Default,
@@ -250,8 +249,8 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         tenant,
 
         crudType = 'update',
-        logger = Logger.Default,
-        validator = Validator.Default,
+        logger = createLogger('CRUD-service:updateEntity'),
+        validator = DefaultValidator,
         authorizer = Authorizer.Default,
         auditLogger = Auditor.Default,
         eventDispatcher = EventDispatcher.Default,
@@ -319,8 +318,8 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>( optio
         tenant,
 
         crudType = 'delete',
-        logger = Logger.Default,
-        validator = Validator.Default,
+        logger = createLogger('CRUD-service:deleteEntity'),
+        validator = DefaultValidator,
         authorizer = Authorizer.Default,
         auditLogger = Auditor.Default,
         eventDispatcher = EventDispatcher.Default,

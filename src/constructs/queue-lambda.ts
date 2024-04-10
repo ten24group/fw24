@@ -7,6 +7,7 @@ import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { SqsSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import { Fw24 } from "../core/fw24";
+import { DefaultLogger, createLogger } from "../fw24";
 
 interface QueueLambdaFunctionProps {
   // queue properties
@@ -41,7 +42,7 @@ export class QueueLambda extends Construct {
     });
 
     fw24.set(props.queueName, queue.queueName, "queueName_");
-    console.log("Queue Name set in fw24 scope : ", props.queueName, " :", fw24.get(props.queueName, 'queueName_'));
+    DefaultLogger.debug("::QueueLambda:: Queue Name set in fw24 scope : ", props.queueName, " :", fw24.get(props.queueName, 'queueName_'));
 
     fw24.set(props.queueName, queue, "queue_");
 

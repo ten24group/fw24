@@ -1,7 +1,9 @@
+import { DefaultLogger, createLogger } from '../fw24';
 import { Request } from '../interfaces/request';
 import { APIGatewayEvent, Context } from "aws-lambda";
 
 export class RequestContext implements Request {
+
 
     public event: APIGatewayEvent;
     public context: Context;
@@ -47,7 +49,7 @@ export class RequestContext implements Request {
                 try{
                     this.body = JSON.parse(event.body);
                 }catch(e){
-                    console.error("Error in parsing the event body...", event.body);
+                    DefaultLogger.error("::RequestContext:: Error in parsing the event body...", event.body);
                     this.body = event.body;
                 }
             }

@@ -4,16 +4,19 @@ import { IApplicationConfig } from "./interfaces/config";
 import { IStack } from "./interfaces/stack";
 import { IFw24Module } from "./core/module";
 import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
+import { Duration as LogDuration, createLogger } from "./fw24";
 
 
 
 export class Application {
+    logger = createLogger('Application');
+
     private readonly fw24: Fw24;
     private readonly stacks: Map<string, IStack>;
     private readonly modules: Map<string, IFw24Module>; 
 
     constructor(config: IApplicationConfig = {}) {
-        console.log("Initializing fw24 infrastructure...");
+        this.logger.info("Initializing fw24 infrastructure...");
 
         this.fw24 = Fw24.getInstance();
         this.fw24.setConfig(config);
@@ -33,7 +36,7 @@ export class Application {
     }
 
     public useModule(module: IFw24Module): Application{
-        console.log("Called UseModule with module: ", { moduleName: module.getName(), module});
+        this.logger.debug("Called UseModule with module: ", { moduleName: module.getName(), module});
         
         if (this.modules.has(module.getName())) {
             throw new Error(`Stack with name ${module.getName()} is already registered.`);
@@ -48,8 +51,9 @@ export class Application {
         return this;
     }
 
+    @LogDuration()
     public run() {
-        console.log("Running fw24 infrastructure...");
+        this.logger.info("Running fw24 infrastructure...");
 
         // *** order is important here, modules need to be processed first, before stacks ***
         this.processModules();
@@ -80,18 +84,21 @@ export class Application {
     }
 
     private async processStacks(executionTimes: number = 0, processedStacks: Set<string> = new Set(), processingStacks: Set<string> = new Set()) {
-        console.log("Processing stacks...");
+        this.logger.debug(`Processing stacks... executionTimes: ${executionTimes}, processedStacks: ${processedStacks.entries()}, processingStacks: ${processingStacks.entries()}`);
 
         if (executionTimes > 20) {
             throw new Error("Circular dependency detected");
         }
 
         for (const [stackName, stack] of this.stacks) {
-            console.warn(`processStacks: loop: ${executionTimes}, stackName: ${stackName}, processed: ${processedStacks.has(stackName)}, processing: ${processingStacks.has(stackName)}`);
             if (!processedStacks.has(stackName) && !processingStacks.has(stackName)) {
+                // this.logger.warn(`processStacks: loop: ${executionTimes}, stackName: ${stackName}, processed: ${processedStacks.has(stackName)}, processing: ${processingStacks.has(stackName)}`);
                 processingStacks.add(stackName);
-                console.log(`Processing stack ${stackName} : processing: ${processingStacks.has(stackName)}`);
+
+                this.logger.debug(`Processing stack ${stackName} : processing: ${processingStacks.has(stackName)}`);
+               
                 await this.processStack(stack, executionTimes, processedStacks, processingStacks);
+               
                 processingStacks.delete(stackName);
             }
         }
@@ -101,11 +108,11 @@ export class Application {
         if (stack.dependencies.length > 0) {
             for (const dependency of stack.dependencies) {
                 if (!this.stacks.has(dependency)) {
-                    //console.log(`Stack ${stack.constructor.name} depends on ${dependency} which is not in use in this infrasctructure.`);
+                    // this.logger.debug(`Stack ${stack.constructor.name} depends on ${dependency} which is not in use in this infrastructure.`);
                     continue;
                 }
                 if (!processedStacks.has(dependency)) {
-                    console.log(`Stack ${stack.constructor.name} depends on ${dependency} which is not processed yet.`);
+                    this.logger.debug(`Stack ${stack.constructor.name} depends on ${dependency} which is not processed yet.`);
                     processingStacks.delete(stack.constructor.name);
                     return;
                 }

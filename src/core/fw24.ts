@@ -5,8 +5,11 @@ import { Helper } from './helper';
 import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
 import { ITopic, Topic } from 'aws-cdk-lib/aws-sns';
 import { IFw24Module } from './module';
+import { createLogger, getCircularReplacer } from '../fw24';
 
 export class Fw24 {
+    readonly logger = createLogger('Fw24');
+    
     public appName: string = "fw24";
     private config: IApplicationConfig = {};
     public emailProvider: any;
@@ -32,6 +35,7 @@ export class Fw24 {
     }
 
     public setConfig(config: IApplicationConfig) {
+        this.logger.debug("setConfig:", config);
         this.config = config;
         // Hydrate the config object with environment variables
         Helper.hydrateConfig(this.config);
@@ -44,6 +48,7 @@ export class Fw24 {
     }
     
     public addStack(name: string, stack: any): Fw24 {
+        this.logger.debug("addStack:", JSON.stringify({name, stack}, getCircularReplacer()) );
         this.stacks[name] = stack;
         return this;
     }
@@ -53,6 +58,8 @@ export class Fw24 {
     }
 
     public addModule(name: string, module: IFw24Module) {
+        this.logger.debug("addModule:", {name, module});
+
         this.modules.set(name, module);
     }
 
@@ -61,7 +68,6 @@ export class Fw24 {
     }
 
     public hasModules() {
-        console.log(this.modules);            
         return this.modules.size > 0;
     }
 
@@ -101,6 +107,8 @@ export class Fw24 {
     }
 
     public setCognitoAuthorizer(name: string, authorizer: IAuthorizer, defaultAuthorizer: boolean = false) {
+        this.logger.debug("setCognitoAuthorizer:", JSON.stringify({name, authorizer,  defaultAuthorizer}, getCircularReplacer()));
+
         this.cognitoAuthorizers[name] = authorizer;
         // If this authorizer is the default, set it as the default authorizer
         if(defaultAuthorizer) {
@@ -129,6 +137,7 @@ export class Fw24 {
     }
 
     public set(name: string, value: any, prefix: string = '') {
+        this.logger.debug("set:", JSON.stringify({prefix, name, value}, getCircularReplacer()));
         if(prefix.length > 0) {
             prefix = `${prefix}_`;
         }
@@ -143,6 +152,7 @@ export class Fw24 {
     }
 
     public addDynamoTable(name: string, table: TableV2) {
+        this.logger.debug("addDynamoTable:", JSON.stringify({ name, table}, getCircularReplacer()) );
         this.dynamoTables[name] = table;
     }
 

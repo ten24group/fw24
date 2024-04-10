@@ -1,14 +1,17 @@
 import { SQSHandler, SQSEvent } from 'aws-lambda';
 import { SESv2Client, SendEmailCommand, SendEmailCommandInput } from '@aws-sdk/client-sesv2';
+import { createLogger } from '../fw24';
+
+const logger = createLogger?.('Mail-processor:');
 
 export const handler: SQSHandler = async (event: SQSEvent) => {
-    console.log('Received event:', event);
+    logger?.debug('Handler Received event:', event);
 
     // Initialize SES client
     const sesClient = new SESv2Client();
 
     for (const record of event.Records) {
-        console.log('Processing message with ID:', record.messageId);
+        logger?.debug('Processing message with ID:', record.messageId);
 
         // Parse message body
         const body = JSON.parse(record.body) as EmailMessage;
@@ -38,30 +41,28 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
                 Subject: { Data: body.Subject },
             }
         } else {
-            console.error('Invalid message format. Either provide TemplateName or Message and Subject. Skipping message:', body);
+            logger?.error('Invalid message format. Either provide TemplateName or Message and Subject. Skipping message:', body);
             continue;
         }
-
 
         // if reply to address is provided, use it
         if (body.ReplyToEmailAddress) {
             mailParams.ReplyToAddresses = [body.ReplyToEmailAddress];
         }
 
-
-        console.log('Sending email with parameters:', mailParams);
+        logger?.debug('Sending email with parameters:', mailParams);
 
         // Send the email
         try {
             const command = new SendEmailCommand(mailParams);
             const result = await sesClient.send(command);
-            console.log('Email sent successfully. Response:', result);
+            logger?.debug('Email sent successfully. Response:', result);
         } catch (error) {
-            console.error('Error sending email:', error);
+            logger?.error('Error sending email:', error);
         }
     }
 
-    console.log('Processing complete.');
+    logger?.debug('Processing complete.');
 
     return Promise.resolve();
 };

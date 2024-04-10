@@ -1,39 +1,23 @@
 
-export * as Logger from './'
+import { Logger as TLogger, LoggerService, LoggerConfig, LoggerFilter} from '@mu-ts/logger';
+import { randomUUID } from 'crypto';
 
-export type Level = 'debug' | 'info' | 'warn' | 'error';
-
-export interface ILogger {
-  trace(message?: any, ...optionalParams: any[]): void;
-  debug(message?: any, ...optionalParams: any[]): void;
-  info(message?: any, ...optionalParams: any[]): void;
-  warn(message?: any, ...optionalParams: any[]): void;
-  error(message?: any, ...optionalParams: any[]): void;
-  [x: string]: any;
+export interface ILogger extends TLogger {
 }
 
-export const Dummy: ILogger = {
-    trace: (_message?: any, ..._optionalParams: any[]) => {},
-    debug: (_message?: any, ..._optionalParams: any[]) => {},
-    info: (_message?: any, ..._optionalParams: any[]) => {},
-    warn: (_message?: any, ..._optionalParams: any[]) => {},
-    error: (_message?: any, ..._optionalParams: any[]) => {},
-};
+export const DefaultLogger = LoggerService.named('--');
 
-export const Default: ILogger = {
-    trace: (_message?: any, ..._optionalParams: any[]) => {
-        console.log(_message, _optionalParams);
-    },
-    debug: (_message?: any, ..._optionalParams: any[]) => {
-        console.debug(_message, _optionalParams);
-    },
-    info: (_message?: any, ..._optionalParams: any[]) => {
-        console.info(_message, _optionalParams);
-    },
-    warn: (_message?: any, ..._optionalParams: any[]) => {
-        console.warn(_message, _optionalParams);
-    },
-    error: (_message?: any, ..._optionalParams: any[]) => {
-        console.error(_message, _optionalParams);
-    },
-};
+export const createLogger = (_options: string | LoggerConfig, filters?: LoggerFilter[]) => {
+    if(typeof _options == 'string'){
+        _options = { name: _options};
+    }
+
+    _options.name = randomUUID().split('-').at(-1) + '>' + _options.name;
+
+    return LoggerService.named(_options, filters);
+}
+
+export {
+    inOut as InOut,
+    duration as Duration,
+} from '@mu-ts/logger';
