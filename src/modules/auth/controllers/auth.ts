@@ -3,6 +3,7 @@ import { Controller } from '../../../decorators/controller';
 import { Get, Post } from '../../../decorators/method';
 import { Request } from '../../../interfaces/request';
 import { Response } from '../../../interfaces/response';
+import { Authorizer } from '../../../decorators/authorizer';
 
 // import cognito client
 import { CognitoIdentityProviderClient, SignUpCommand, InitiateAuthCommand, ConfirmSignUpCommand, GlobalSignOutCommand } from "@aws-sdk/client-cognito-identity-provider";
@@ -12,9 +13,9 @@ const identityProviderClient = new CognitoIdentityProviderClient({});
 const identityClient = new CognitoIdentityClient({});
 
 @Controller('mauth', { 
-	authorizer: [{
+	authorizer: {
 		name: 'authmodule', type: 'NONE'
-	}],
+	},
 	env: [
 		{ name: 'userPoolClientID', prefix: 'authmodule' },
 		{ name: 'userPoolID', prefix: 'authmodule' },
@@ -85,6 +86,7 @@ export class AuthController extends APIGatewayController {
 		return res.json(result.AuthenticationResult);
 	}
 
+	@Authorizer('COGNITO_USER_POOLS')
 	@Post('/signout')
 	async signout(req: Request, res: Response) {
 		const {accessToken} = req.body as { accessToken: string };
