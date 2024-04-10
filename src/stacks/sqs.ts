@@ -1,19 +1,16 @@
-import { Stack, CfnOutput } from "aws-cdk-lib";
+import { CfnOutput, Stack } from "aws-cdk-lib";
 import { Queue } from "aws-cdk-lib/aws-sqs";
-import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
-import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
-import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 
-import { LambdaFunction } from "../constructs/lambda-function";
-import { Helper } from "../core/helper";
-import { IStack } from "../interfaces/stack";
 import { Fw24 } from "../core/fw24";
+import { Helper } from "../core/helper";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
+import { IStack } from "../interfaces/stack";
 
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
-import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { QueueLambda } from "../constructs/queue-lambda";
-import { Duration, createLogger } from "../fw24";
+import { ILambdaEnvConfig } from "../interfaces/lambda-env";
+import { Duration, createLogger } from "../logging";
+import { DynamoDBStack } from "./dynamodb";
 
 export interface ISQSConfig {
     queuesDirectory?: string;
@@ -22,10 +19,10 @@ export interface ISQSConfig {
 }
 
 export class SQSStack implements IStack {
-    logger = createLogger('SQSStack');
-
-    fw24: Fw24 = Fw24.getInstance();
-    dependencies: string[] = ['DynamoDBStack'];
+    readonly logger = createLogger(SQSStack.name);
+    readonly fw24: Fw24 = Fw24.getInstance();
+    
+    dependencies: string[] = [DynamoDBStack.name];
     mainStack!: Stack;
 
     // default constructor to initialize the stack configuration

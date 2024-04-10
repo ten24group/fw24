@@ -18,9 +18,9 @@ export interface ISESConfig {
 }
 
 export class SESStack implements IStack {
-    logger = createLogger('SESStack');
-
-    fw24: Fw24 = Fw24.getInstance();
+    readonly logger = createLogger(SESStack.name);
+    readonly fw24: Fw24 = Fw24.getInstance();
+    
     dependencies: string[] = [];
     mainStack!: Stack;
 

@@ -7,7 +7,7 @@ import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { SqsSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import { Fw24 } from "../core/fw24";
-import { DefaultLogger, createLogger } from "../fw24";
+import { ILogger, createLogger } from "../logging";
 
 interface QueueLambdaFunctionProps {
   // queue properties
@@ -30,9 +30,11 @@ interface QueueLambdaFunctionProps {
 }
 
 export class QueueLambda extends Construct {
+  readonly logger ?: ILogger;
 
   constructor(scope: Construct, id: string, props: QueueLambdaFunctionProps) {
     super(scope, id);
+    this.logger = createLogger(`${QueueLambda.name}-${id}`);
 
     const fw24 = Fw24.getInstance();
 
@@ -42,7 +44,7 @@ export class QueueLambda extends Construct {
     });
 
     fw24.set(props.queueName, queue.queueName, "queueName_");
-    DefaultLogger.debug("::QueueLambda:: Queue Name set in fw24 scope : ", props.queueName, " :", fw24.get(props.queueName, 'queueName_'));
+    this.logger?.debug(" Queue Name set in fw24 scope : ", props.queueName, " :", fw24.get(props.queueName, 'queueName_'));
 
     fw24.set(props.queueName, queue, "queue_");
 

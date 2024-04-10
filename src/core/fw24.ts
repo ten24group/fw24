@@ -5,10 +5,11 @@ import { Helper } from './helper';
 import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
 import { ITopic, Topic } from 'aws-cdk-lib/aws-sns';
 import { IFw24Module } from './module';
-import { createLogger, getCircularReplacer } from '../fw24';
+import { createLogger } from '../logging';
+import { getCircularReplacer } from '../utils';
 
 export class Fw24 {
-    readonly logger = createLogger('Fw24');
+    readonly logger = createLogger(Fw24.name);
     
     public appName: string = "fw24";
     private config: IApplicationConfig = {};

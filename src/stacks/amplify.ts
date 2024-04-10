@@ -5,7 +5,7 @@ import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
 import { Helper } from "../core/helper";
-import { createLogger } from "../fw24";
+import { createLogger } from "../logging";
 
 export interface IAmplifyConfig {
     appName: string;
@@ -17,9 +17,8 @@ export interface IAmplifyConfig {
 }
 
 export class AmplifyStack implements IStack{
-    logger = createLogger('AmplifyStack');
-
-    fw24: Fw24 = Fw24.getInstance();
+    readonly logger = createLogger(AmplifyStack.name);
+    readonly fw24: Fw24 = Fw24.getInstance();
     dependencies: string[] = [];
 
     // default constructor to initialize the stack configuration

@@ -10,7 +10,7 @@ import {
 
 import { Stack, CfnOutput } from "aws-cdk-lib";
 import { Helper } from "../core/helper";
-import { IControllerConfig, createLogger } from "../fw24";
+import { createLogger } from "../logging";
 import { LambdaFunction } from "../constructs/lambda-function";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
@@ -18,7 +18,12 @@ import Mutable from "../types/mutable";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 
-import { resolve, relative } from "path";
+import { SESStack } from "./ses";
+import { SQSStack } from "./sqs";
+import { SNSStack } from "./sns";
+import { DynamoDBStack } from "./dynamodb";
+import { CognitoStack } from "./cognito";
+import { IControllerConfig } from "../decorators/controller";
 
 export interface IAPIGatewayConfig {
     cors?: boolean | string | string[];
@@ -27,13 +32,13 @@ export interface IAPIGatewayConfig {
 }
 
 export class APIGateway implements IStack {
-    logger = createLogger('APIGateway');
-
-    fw24: Fw24 = Fw24.getInstance();
-    // array of type of stacks that this stack is dependent on
-    dependencies: string[] = ['SESStack', 'DynamoDBStack', 'CognitoStack', 'SQSStack', 'SNSStack'];
-    mainStack!: Stack;
+    readonly logger = createLogger(APIGateway.name);
+    readonly fw24: Fw24 = Fw24.getInstance();
+    
     api!: RestApi;
+    mainStack!: Stack;
+    // array of type of stacks that this stack is dependent on
+    dependencies: string[] = [SESStack.name, DynamoDBStack.name, CognitoStack.name, SQSStack.name, SNSStack.name];
 
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: IAPIGatewayConfig) {

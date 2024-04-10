@@ -4,18 +4,20 @@ import { IApplicationConfig } from "./interfaces/config";
 import { IStack } from "./interfaces/stack";
 import { IFw24Module } from "./core/module";
 import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
-import { Duration as LogDuration, createLogger } from "./fw24";
+import { ILogger, Duration as LogDuration, createLogger } from "./fw24";
 
 
 
 export class Application {
-    logger = createLogger('Application');
+    readonly logger: ILogger;
 
     private readonly fw24: Fw24;
     private readonly stacks: Map<string, IStack>;
     private readonly modules: Map<string, IFw24Module>; 
 
     constructor(config: IApplicationConfig = {}) {
+        this.logger = createLogger(`${Application.name}-${config.name}-${config.environment}`);
+        
         this.logger.info("Initializing fw24 infrastructure...");
 
         this.fw24 = Fw24.getInstance();
@@ -69,7 +71,7 @@ export class Application {
     
 
     private registerStack(stack: IStack, name?: string) {
-        const stackName = name || stack.constructor.name;
+        const stackName = name || stack.constructor.name; // TODO: figure out a better approach, falling back to constructor name is very limiting
         if (this.stacks.has(stackName)) {
             throw new Error(`Stack with name ${stackName} is already registered.`);
         }
@@ -84,7 +86,7 @@ export class Application {
     }
 
     private async processStacks(executionTimes: number = 0, processedStacks: Set<string> = new Set(), processingStacks: Set<string> = new Set()) {
-        this.logger.debug(`Processing stacks... executionTimes: ${executionTimes}, processedStacks: ${processedStacks.entries()}, processingStacks: ${processingStacks.entries()}`);
+        this.logger.info(`Processing stacks... executionTimes: ${executionTimes}, processedStacks: ${Array.from(processedStacks)}, processingStacks: ${Array.from(processingStacks)}`);
 
         if (executionTimes > 20) {
             throw new Error("Circular dependency detected");
@@ -95,25 +97,25 @@ export class Application {
                 // this.logger.warn(`processStacks: loop: ${executionTimes}, stackName: ${stackName}, processed: ${processedStacks.has(stackName)}, processing: ${processingStacks.has(stackName)}`);
                 processingStacks.add(stackName);
 
-                this.logger.debug(`Processing stack ${stackName} : processing: ${processingStacks.has(stackName)}`);
+                this.logger.info(`Processing stack ${stackName} : processing: ${processingStacks.has(stackName)}`);
                
-                await this.processStack(stack, executionTimes, processedStacks, processingStacks);
+                await this.processStack( stackName, stack, executionTimes, processedStacks, processingStacks);
                
                 processingStacks.delete(stackName);
             }
         }
     }
 
-    private async processStack(stack: IStack, executionTimes: number, processedStacks: Set<string>, processingStacks: Set<string>) {
+    private async processStack(stackName:string, stack: IStack, executionTimes: number, processedStacks: Set<string>, processingStacks: Set<string>) {
         if (stack.dependencies.length > 0) {
             for (const dependency of stack.dependencies) {
                 if (!this.stacks.has(dependency)) {
-                    // this.logger.debug(`Stack ${stack.constructor.name} depends on ${dependency} which is not in use in this infrastructure.`);
+                    // this.logger.debug(`Stack ${stackName} depends on ${dependency} which is not in use in this infrastructure.`);
                     continue;
                 }
                 if (!processedStacks.has(dependency)) {
-                    this.logger.debug(`Stack ${stack.constructor.name} depends on ${dependency} which is not processed yet.`);
-                    processingStacks.delete(stack.constructor.name);
+                    this.logger.info(`Stack ${stackName} depends on ${dependency} which is not processed yet.`);
+                    processingStacks.delete(stackName);
                     return;
                 }
             }
@@ -123,10 +125,10 @@ export class Application {
         await stack.construct();
 
         // Mark the stack as processed
-        processedStacks.add(stack.constructor.name);
+        processedStacks.add(stackName);
 
         // Remove the stack from the set of stacks to process
-        this.stacks.delete(stack.constructor.name);
+        this.stacks.delete(stackName);
 
         // Process dependent stacks
         this.processStacks(executionTimes + 1, processedStacks, processingStacks);

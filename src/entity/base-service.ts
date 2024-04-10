@@ -3,11 +3,11 @@ import { toHumanReadableName } from "../utils";
 import { EntityValidations } from "../validation";
 import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, updateEntity } from "./crud-service";
-import { createLogger } from "../fw24";
+import { createLogger } from "../logging";
 
 export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
-    logger = createLogger('BaseEntityService');
+    readonly logger = createLogger(BaseEntityService.name);
 
     protected entityRepository ?: EntityRepositoryTypeFromSchema<S>;
     protected entityOpsDefaultIoSchema ?: ReturnType<typeof makeOpsDefaultIOSchema<S>>;

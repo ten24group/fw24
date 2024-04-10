@@ -5,7 +5,7 @@ import { defaultMetaContainer } from ".";
 import { DefaultValidator, IValidator } from "../validation";
 import { Auditor } from "../audit";
 import { EventDispatcher } from "../event";
-import { ILogger, createLogger } from "../fw24";
+import { ILogger, createLogger } from "../logging";
 
 /**
  * 

@@ -13,10 +13,10 @@ import {
 
 import { Fw24 } from '../core/fw24';
 import { Helper } from '../core/helper';
-import { Duration, createLogger } from '../fw24';
+import { Duration, createLogger } from '../logging';
 
 export class EntityUIConfigGen{
-    logger = createLogger('EntityUIConfigGen');
+    readonly logger = createLogger(EntityUIConfigGen.name);
 
     async run(){
         this.process();

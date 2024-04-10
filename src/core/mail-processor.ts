@@ -1,17 +1,16 @@
 import { SQSHandler, SQSEvent } from 'aws-lambda';
 import { SESv2Client, SendEmailCommand, SendEmailCommandInput } from '@aws-sdk/client-sesv2';
-import { createLogger } from '../fw24';
+import { DefaultLogger } from '../logging';
 
-const logger = createLogger?.('Mail-processor:');
 
 export const handler: SQSHandler = async (event: SQSEvent) => {
-    logger?.debug('Handler Received event:', event);
+    DefaultLogger.debug(' SQSHandler Handler Received event:', event);
 
     // Initialize SES client
     const sesClient = new SESv2Client();
 
     for (const record of event.Records) {
-        logger?.debug('Processing message with ID:', record.messageId);
+        DefaultLogger.debug(' SQSHandler Processing message with ID:', record.messageId);
 
         // Parse message body
         const body = JSON.parse(record.body) as EmailMessage;
@@ -41,7 +40,7 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
                 Subject: { Data: body.Subject },
             }
         } else {
-            logger?.error('Invalid message format. Either provide TemplateName or Message and Subject. Skipping message:', body);
+            DefaultLogger.error('SQSHandler: Invalid message format. Either provide TemplateName or Message and Subject. Skipping message:', body);
             continue;
         }
 
@@ -50,19 +49,19 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
             mailParams.ReplyToAddresses = [body.ReplyToEmailAddress];
         }
 
-        logger?.debug('Sending email with parameters:', mailParams);
+        DefaultLogger.debug(' SQSHandler Sending email with parameters:', mailParams);
 
         // Send the email
         try {
             const command = new SendEmailCommand(mailParams);
             const result = await sesClient.send(command);
-            logger?.debug('Email sent successfully. Response:', result);
+            DefaultLogger.debug(' SQSHandler Email sent successfully. Response:', result);
         } catch (error) {
-            logger?.error('Error sending email:', error);
+            DefaultLogger.error('SQSHandler: Error sending email:', error);
         }
     }
 
-    logger?.debug('Processing complete.');
+    DefaultLogger.debug(' SQSHandler Processing complete.');
 
     return Promise.resolve();
 };

@@ -4,7 +4,7 @@ import { Topic } from 'aws-cdk-lib/aws-sns';
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
-import { Duration, createLogger } from "../fw24";
+import { Duration, createLogger } from "../logging";
 
 
 export interface ISNSConfig {
@@ -12,9 +12,9 @@ export interface ISNSConfig {
 }
 
 export class SNSStack implements IStack {
-    logger = createLogger('SNSStack');
-
-    fw24: Fw24 = Fw24.getInstance();
+    readonly logger = createLogger(SNSStack.name);
+    readonly fw24: Fw24 = Fw24.getInstance();
+    
     dependencies: string[] = [];
 
     constructor(private config: ISNSConfig[]) {

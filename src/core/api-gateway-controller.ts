@@ -4,13 +4,13 @@ import { Request } from "../interfaces/request";
 import { Response } from "../interfaces/response";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
-import { createLogger } from "../fw24";
+import { createLogger } from "../logging";
 
 /**
  * Base controller class for handling API Gateway events.
  */
 abstract class APIGatewayController {
-  readonly logger = createLogger('APIGatewayController');
+  readonly logger = createLogger(APIGatewayController.name);
 
   /**
    * Binds the LambdaHandler method to the instance of the class.

@@ -2,13 +2,13 @@ import { readdirSync } from "fs";
 import { resolve, join, relative } from "path";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { IFw24Module } from "./module";
-import { createLogger, Duration as LogDuration, InOut as LogInOut } from "../fw24";
+import { createLogger, Duration as LogDuration, InOut as LogInOut } from "../logging";
 
 
 
 export class Helper {
     
-    static logger = createLogger('Helper');
+    static readonly logger = createLogger(Helper.name);
 
     static hydrateConfig<T>(config: T, prefix = "APP") {
         Object.keys(process.env)
@@ -39,7 +39,6 @@ export class Helper {
     }
 
     @LogDuration()
-    @LogInOut()
     static scanTSSourceFilesFrom(path: string){
         Helper.logger.debug("Scanning TS source files from path: ", path);
         // Resolve the absolute path

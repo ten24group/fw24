@@ -9,7 +9,7 @@ import { Bucket } from "aws-cdk-lib/aws-s3";
 import { SESStack } from "../stacks/ses";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Topic } from "aws-cdk-lib/aws-sns";
-import { createLogger, ILogger } from "../fw24";
+import { createLogger, ILogger } from "../logging";
 
 export interface LambdaFunctionProps {
   entry: string;
@@ -32,7 +32,7 @@ export interface LambdaFunctionProps {
 
 export class LambdaFunction extends Construct {
   
-  logger ?: ILogger = createLogger('LambdaFunction');
+  readonly logger ?: ILogger = createLogger('LambdaFunction');
 
   constructor(scope: Construct, id: string, props: LambdaFunctionProps) {
     super(scope, id);

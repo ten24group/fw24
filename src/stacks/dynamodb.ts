@@ -12,9 +12,9 @@ export interface IDynamoConfig {
 }
 
 export class DynamoDBStack implements IStack {
-    logger = createLogger('DynamoDBStack');
-
-    fw24: Fw24 = Fw24.getInstance();
+    readonly logger = createLogger(DynamoDBStack.name);
+    readonly fw24: Fw24 = Fw24.getInstance();
+    
     dependencies: string[] = [];
 
     // default constructor to initialize the stack configuration

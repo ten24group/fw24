@@ -12,7 +12,8 @@ import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { IStack } from "../interfaces/stack";
-import { Duration, createLogger } from "../fw24";
+import { Duration, createLogger } from "../logging";
+import { SQSStack } from "./sqs";
 
 export interface IS3Config {
     bucketName: string;
@@ -31,10 +32,11 @@ export interface IS3TriggerConfig {
 }
 
 export class S3Stack implements IStack {
-    logger = createLogger('S3Stack');
+    readonly logger = createLogger(S3Stack.name);
+    readonly fw24: Fw24 = Fw24.getInstance();
 
-    fw24: Fw24 = Fw24.getInstance();
-    dependencies: string[] = ['SQSStack'];
+    dependencies: string[] = [SQSStack.name];
+
     appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;
 
@@ -51,8 +53,6 @@ export class S3Stack implements IStack {
         this.appConfig = this.fw24.getConfig();
         // get the main stack from the framework
         this.mainStack = this.fw24.getStack("main");
-        // make the fw24 instance available to the class
-        this.fw24 = this.fw24;
         // create the buckets
         this.stackConfig.forEach( ( bucketConfig: IS3Config ) => {
             this.createBucket(bucketConfig);

@@ -12,7 +12,8 @@ export const createLogger = (_options: string | LoggerConfig, filters?: LoggerFi
         _options = { name: _options};
     }
 
-    _options.name = randomUUID().split('-').at(-1) + '>' + _options.name;
+    // *** Uncomment for debugging multiple instances of same class ***
+    // _options.name = randomUUID().split('-').at(-1) + '>' + _options.name;
 
     return LoggerService.named(_options, filters);
 }

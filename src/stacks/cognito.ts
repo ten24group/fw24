@@ -30,7 +30,7 @@ export interface ICognitoConfig {
 }
 
 export class CognitoStack implements IStack {
-    logger = createLogger('CognitoStack');
+    readonly logger = createLogger(CognitoStack.name);
 
     fw24: Fw24 = Fw24.getInstance();
     dependencies: string[] = [];

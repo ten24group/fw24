@@ -1,4 +1,4 @@
-import { DefaultLogger, createLogger } from '../fw24';
+import { DefaultLogger } from '../logging';
 import { Request } from '../interfaces/request';
 import { APIGatewayEvent, Context } from "aws-lambda";
 
