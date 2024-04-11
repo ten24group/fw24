@@ -1,10 +1,5 @@
 import { Stack, CfnOutput } from "aws-cdk-lib";
 import { Queue } from "aws-cdk-lib/aws-sqs";
-import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
-import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
-import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-
-import { LambdaFunction } from "../constructs/lambda-function";
 import { Helper } from "../core/helper";
 import { IStack } from "../interfaces/stack";
 import { Fw24 } from "../core/fw24";
@@ -16,7 +11,7 @@ import { QueueLambda } from "../constructs/queue-lambda";
 
 export interface ISQSConfig {
     queuesDirectory?: string;
-    queueOptions?: QueueProps;
+    queueProps?: QueueProps;
     env?: ILambdaEnvConfig[];
 }
 
@@ -41,6 +36,7 @@ export class SQSStack implements IStack {
         if(this.stackConfig.queuesDirectory === undefined || this.stackConfig.queuesDirectory === ""){
             this.stackConfig.queuesDirectory = "./src/queues";
         }
+
         // register the queues
         await Helper.registerHandlers(this.stackConfig.queuesDirectory, this.registerQueue);
     }
@@ -67,6 +63,7 @@ export class SQSStack implements IStack {
 
         const queue = new QueueLambda(this.mainStack, queueName + "-queue", {
             queueName: queueName,
+            queueProps: this.stackConfig.queueProps,
             topics: queueConfig?.topics,
             lambdaFunctionProps: {
                 entry: queueInfo.filePath + "/" + queueInfo.fileName,
