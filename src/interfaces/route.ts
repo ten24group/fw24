@@ -4,7 +4,10 @@ export interface Route {
   functionName: string;
   path: string;
   parameters: Array<String>;
-  authorizer: string
+  authorizer?: { 
+		name?: string;
+		type: string;
+	} | string;
 }
 
 export type Routes = Route[];
