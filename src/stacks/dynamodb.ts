@@ -2,7 +2,7 @@ import { TablePropsV2, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 
 import { IStack } from "../interfaces/stack";
 import { Fw24 } from "../core/fw24";
-import { createLogger, Duration as LogDuration } from "../logging";
+import { createLogger, LogDuration } from "../logging";
 
 export interface IDynamoConfig {
     table: {

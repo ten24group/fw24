@@ -16,7 +16,7 @@ import { CognitoAuthRole } from "../constructs/cognito-auth-role";
 import { LambdaFunction } from "../constructs/lambda-function";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
-import { createLogger, Duration as LogDuration } from "../logging";
+import { createLogger, LogDuration } from "../logging";
 
 export interface ICognitoConfig {
     userPool: {

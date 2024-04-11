@@ -4,7 +4,7 @@ import { Topic } from 'aws-cdk-lib/aws-sns';
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
-import { Duration, createLogger } from "../logging";
+import { LogDuration, createLogger } from "../logging";
 
 
 export interface ISNSConfig {
@@ -22,7 +22,7 @@ export class SNSStack implements IStack {
         Helper.hydrateConfig(config,'sns');
     }
 
-    @Duration()
+    @LogDuration()
     public async construct() {
         this.logger.debug("construct: ");
 

@@ -12,7 +12,7 @@ import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { IStack } from "../interfaces/stack";
-import { Duration, createLogger } from "../logging";
+import { LogDuration, createLogger } from "../logging";
 import { SQSStack } from "./sqs";
 
 export interface IS3Config {
@@ -59,7 +59,7 @@ export class S3Stack implements IStack {
         });
     }
 
-    @Duration()
+    @LogDuration()
     private createBucket(bucketConfig: IS3Config) {
         this.logger.debug("Creating bucket: ", bucketConfig.bucketName);
         const bucketName = this.fw24.getUniqueName(bucketConfig.bucketName);
