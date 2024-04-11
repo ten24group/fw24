@@ -9,7 +9,7 @@ import { Helper } from "../core/helper";
 import { IStack } from "../interfaces/stack";
 import { Fw24 } from "../core/fw24";
 import { QueueLambda } from "../constructs/queue-lambda";
-import { createLogger, Duration as LogDuration } from "../logging";
+import { createLogger, LogDuration } from "../logging";
 
 export interface ISESConfig {
     domain: string;

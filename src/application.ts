@@ -4,7 +4,7 @@ import { IApplicationConfig } from "./interfaces/config";
 import { IStack } from "./interfaces/stack";
 import { IFw24Module } from "./core/module";
 import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
-import { ILogger, Duration as LogDuration, createLogger } from "./fw24";
+import { ILogger, LogDuration, createLogger } from "./logging";
 
 
 

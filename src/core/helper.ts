@@ -2,7 +2,7 @@ import { readdirSync } from "fs";
 import { resolve, join, relative } from "path";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { IFw24Module } from "./module";
-import { createLogger, Duration as LogDuration, InOut as LogInOut } from "../logging";
+import { createLogger, LogDuration, LogInOut } from "../logging";
 
 
 
@@ -98,7 +98,8 @@ export class Helper {
                     }
                 }
             } catch (err) {
-                Helper.logger.error("Error registering handler: ", {handlerDirectory, handlerPath, err});
+                Helper.logger.error("Error registering handler: ", {handlerDirectory, handlerPath});
+                Helper.logger.error(err);
             }
         }
     }
