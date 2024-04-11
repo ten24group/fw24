@@ -9,7 +9,7 @@ import { IStack } from "../interfaces/stack";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
 import { QueueLambda } from "../constructs/queue-lambda";
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
-import { Duration, createLogger } from "../logging";
+import { LogDuration, createLogger } from "../logging";
 import { DynamoDBStack } from "./dynamodb";
 
 export interface ISQSConfig {
@@ -32,7 +32,7 @@ export class SQSStack implements IStack {
     }
 
     // construct method to create the stack
-    @Duration()
+    @LogDuration()
     public async construct() {
         this.logger.debug("construct");
         // make the main stack available to the class

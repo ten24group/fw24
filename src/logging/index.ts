@@ -1,6 +1,5 @@
 
 import { Logger as TLogger, LoggerService, LoggerConfig, LoggerFilter} from '@mu-ts/logger';
-import { randomUUID } from 'crypto';
 
 export interface ILogger extends TLogger {
 }
@@ -19,6 +18,6 @@ export const createLogger = (_options: string | LoggerConfig, filters?: LoggerFi
 }
 
 export {
-    inOut as InOut,
-    duration as Duration,
+    inOut as LogInOut,
+    duration as LogDuration,
 } from '@mu-ts/logger';
