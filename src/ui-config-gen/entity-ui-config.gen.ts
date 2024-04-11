@@ -12,13 +12,17 @@ import {
 } from "path";
 
 import { Fw24 } from '../core/fw24';
+import { Helper } from '../core/helper';
+import { Duration, createLogger } from '../logging';
 
 export class EntityUIConfigGen{
+    readonly logger = createLogger(EntityUIConfigGen.name);
 
     async run(){
         this.process();
     }
 
+    @Duration()
     async process(){
         const menuConfigs: any[] = [];
         const entityConfigs: any = {}; 
@@ -27,7 +31,7 @@ export class EntityUIConfigGen{
 
         const services = await this.scanAndLoadServices(serviceDirectories);
 
-        console.log(`Ui-config-gen::: Process::: all-services: `, services);
+        this.logger.debug(`Ui-config-gen::: Process::: all-services: `, services);
 
         let menuIndex = 1;
         // generate UI configs
@@ -60,7 +64,7 @@ export class EntityUIConfigGen{
                 properties: entityDefaultOpsSchema.list.output
             });
 
-            // console.log(`Created entityCrudConfig for entity: ${entityName}.`, {createConfig, updateConfig, listConfig, viewConfig})
+            // this.logger.debug(`Created entityCrudConfig for entity: ${entityName}.`, {createConfig, updateConfig, listConfig, viewConfig})
 
             entityConfigs[`list-${entityName.toLowerCase()}`] = listConfig;
             entityConfigs[`create-${entityName.toLowerCase()}`] = createConfig;
@@ -74,7 +78,7 @@ export class EntityUIConfigGen{
                 menuIndex: menuIndex++
             });
 
-            // console.log(`Created menuConfig for entity: ${entityName}.`, {menuConfig})
+            // this.logger.debug(`Created menuConfig for entity: ${entityName}.`, {menuConfig})
 
             menuConfigs.push(menuConfig);
         });
@@ -82,17 +86,18 @@ export class EntityUIConfigGen{
         await this.writeToFiles(menuConfigs, entityConfigs);
     }
 
+    @Duration()
     prepareServicesDirectories(){
         const fw24 = Fw24.getInstance();
         
         const serviceDirectories = [pathResolve('./src/services/')];
 
         if(fw24.hasModules()){
-            console.log(`Ui-config-gen::: Process::: app has modules: `, fw24.getModules().keys());
+            this.logger.debug(`Ui-config-gen::: Process::: app has modules: `, fw24.getModules().keys());
             for(const [, module] of fw24.getModules()){
                 const moduleServicesPath = pathJoin(module.getBasePath(), module.getServicesDirectory());
-                console.log(`Ui-config-gen::: Process::: moduleServicesPath: `, moduleServicesPath);
-                console.log(`Ui-config-gen::: Process::: res-moduleServicesPath: `, pathResolve(moduleServicesPath) );
+                this.logger.debug(`Ui-config-gen::: Process::: moduleServicesPath: `, moduleServicesPath);
+                this.logger.debug(`Ui-config-gen::: Process::: res-moduleServicesPath: `, pathResolve(moduleServicesPath) );
                 serviceDirectories.push(pathResolve(moduleServicesPath));
             }
         }
@@ -100,14 +105,15 @@ export class EntityUIConfigGen{
         return serviceDirectories;
     }
 
+    @Duration()
     async scanAndLoadServices(serviceDirectories: Array<string>){
         const services = new Map<string, BaseEntityService<any>>();
         
         for( const dir of serviceDirectories){
-            console.log(`Ui-config-gen::: Process::: loading services from DIR: `, dir);
+            this.logger.debug(`Ui-config-gen::: Process::: loading services from DIR: `, dir);
             const dirServices = await this.scanAndLoadServicesFromDirectory(dir);
             for(const [entityName, service] of dirServices){
-                console.log(`Ui-config-gen::: Process::: loaded services from entity: `, entityName);
+                this.logger.debug(`Ui-config-gen::: Process::: loaded services from entity: `, entityName);
                 services.set(entityName, service);
             }
         }
@@ -115,24 +121,20 @@ export class EntityUIConfigGen{
         return services;
     }
     
+    @Duration()
     async scanAndLoadServicesFromDirectory(servicesDir: string) {
     
         const loadedServices = new Map<string, BaseEntityService<EntitySchema<string, string, string>> > ;
         
         if(!existsSync(servicesDir)){
-            console.log(`scanAndLoadServices:: servicesDir does not exists: ${servicesDir}`);
+            this.logger.debug(`scanAndLoadServices:: servicesDir does not exists: ${servicesDir}`);
             return loadedServices;
         }   
 
-        // Resolve the absolute path
-        // const servicesDirectory = pathResolve(pathJoin(__dirname, '..', 'src', 'services'));
-        // Get all the files in the controllers directory
-        const serviceFiles = readdirSync(servicesDir);
-        // Filter the files to only include TypeScript files
-        const servicePaths = serviceFiles.filter((file) => file.endsWith(".ts"));
+        const servicePaths = Helper.scanTSSourceFilesFrom(servicesDir);
     
         for (const servicePath of servicePaths) {
-            console.log(`trying to load servicePath: ${servicePath}`);
+            this.logger.debug(`trying to load servicePath: ${servicePath}`);
     
             try {
                 // Dynamically import the service file
@@ -142,42 +144,42 @@ export class EntityUIConfigGen{
                     // find the factory function
                     if (typeof exportedItem === "function" && exportedItem.name === "factory") {
                         const service = exportedItem() as BaseEntityService<any>;
-                        console.log(`loading service for entity: ${service.getEntityName()}`);
+                        this.logger.debug(`loading service for entity: ${service.getEntityName()}`);
                         loadedServices.set(service.getEntityName(), service);
                         break;
                     } else {
-                        // console.log(`SKIP: exportedItem is not a factory function: ${exportedItem}`);
+                        // this.logger.debug(`SKIP: exportedItem is not a factory function: ${exportedItem}`);
                     }
                 }
             } catch (e){
-                console.log(`Exception while trying to load servicePath: ${servicePath}`, e);
+                this.logger.error(`Exception while trying to load servicePath: ${servicePath}`, e);
             }
         }
     
         return loadedServices;
     }
 
-
+    @Duration()
     async writeToFiles(menuConfig: any[], entitiesConfig: any[]){
-        console.log("Called writeToFiles:::::: ");
+        this.logger.debug("Called writeToFiles:::::: ");
         const genDirectoryPath = pathResolve('./gen/');
         if (!existsSync(genDirectoryPath)){
-            console.log("Gen DIR does not exists, creating: ", genDirectoryPath);
+            this.logger.debug(`Gen DIR does not exists, creating: ${genDirectoryPath}`, );
             mkdirSync(genDirectoryPath);
         }
     
         const configDirectoryPath = pathResolve(pathJoin(genDirectoryPath, 'config'));
         if (!existsSync(configDirectoryPath)){
-            console.log("COnfig DIR does not exists, creating: ", configDirectoryPath);
+            this.logger.debug(`Config DIR does not exists, creating: ${configDirectoryPath}`);
             mkdirSync(configDirectoryPath);
         }
     
         const menuConfigFilePath = pathJoin(configDirectoryPath, 'menu.json');
-        console.log("writing menu config.. into: ", menuConfigFilePath);
+        this.logger.debug(`writing menu config.. into: ${menuConfigFilePath}`);
         writeFileSync(menuConfigFilePath, JSON.stringify(menuConfig, null, 2));
     
         const entitiesConfigFilePath = pathJoin(configDirectoryPath, 'entities.json');
-        console.log("writing entities config.. into: ", entitiesConfigFilePath);
+        this.logger.debug(`writing entities config.. into: ${entitiesConfigFilePath}`,);
         writeFileSync(entitiesConfigFilePath, JSON.stringify(entitiesConfig, null, 2));
     }
 }

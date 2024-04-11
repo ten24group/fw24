@@ -9,6 +9,7 @@ import { Bucket } from "aws-cdk-lib/aws-s3";
 import { SESStack } from "../stacks/ses";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Topic } from "aws-cdk-lib/aws-sns";
+import { createLogger, ILogger } from "../logging";
 
 export interface LambdaFunctionProps {
   entry: string;
@@ -30,6 +31,9 @@ export interface LambdaFunctionProps {
 }
 
 export class LambdaFunction extends Construct {
+  
+  readonly logger ?: ILogger = createLogger('LambdaFunction');
+
   constructor(scope: Construct, id: string, props: LambdaFunctionProps) {
     super(scope, id);
 
@@ -72,7 +76,7 @@ export class LambdaFunction extends Construct {
 
     // If we are using SES, then we need to add the email queue url to the environment
     if(props.allowSendEmail && fw24.emailProvider instanceof SESStack){
-      console.log(":GET emailQueue Name from fw24 scope : ", fw24.get('emailQueue', 'queueName_'));
+      this.logger?.debug(":GET emailQueue Name from fw24 scope : ", fw24.get('emailQueue', 'queueName_'));
       let emailQueue = fw24.getQueueByName('emailQueue');
       emailQueue.grantSendMessages(fn);
       fn.addEnvironment('EMAIL_QUEUE_URL', emailQueue.queueUrl);
@@ -109,7 +113,7 @@ export class LambdaFunction extends Construct {
     });
 
     props.queues?.forEach( ( queue: any ) => {
-      console.log(":GET Queue Name from fw24 scope : ", queue.name, " :", fw24.get(queue.name, 'queueName_'));
+      this.logger?.debug(":GET Queue Name from fw24 scope : ", queue.name, " :", fw24.get(queue.name, 'queueName_'));
       const queueArn = fw24.getArn('sqs', fw24.get(queue.name, 'queueName_'));
       const queueInstance = Queue.fromQueueArn(this, queue.name+id+'-queue', queueArn);
       queueInstance.grantSendMessages(fn);

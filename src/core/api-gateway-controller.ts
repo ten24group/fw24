@@ -4,11 +4,13 @@ import { Request } from "../interfaces/request";
 import { Response } from "../interfaces/response";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
+import { createLogger } from "../logging";
 
 /**
  * Base controller class for handling API Gateway events.
  */
 abstract class APIGatewayController {
+  readonly logger = createLogger(APIGatewayController.name);
 
   /**
    * Binds the LambdaHandler method to the instance of the class.
@@ -27,7 +29,7 @@ abstract class APIGatewayController {
    * @returns The API Gateway response object.
    */
   async LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult> {
-    console.log("Received event:", JSON.stringify(event, null, 2));
+    this.logger.debug("LambdaHandler Received event:", JSON.stringify(event, null, 2));
     // Create request and response objects
     const requestContext: Request = new RequestContext(event, context);
     const responseContext: Response = new ResponseContext();
@@ -53,7 +55,7 @@ abstract class APIGatewayController {
 
       // If the response is an instance of ResponseContext, use its status code and body
       if (controllerResponse instanceof ResponseContext) {
-        console.log("Response:", JSON.stringify(controllerResponse, null, 2));
+        this.logger.debug("LambdaHandler Response:", JSON.stringify(controllerResponse, null, 2));
         return this.handleResponse({
           statusCode: controllerResponse.statusCode || 500,
           body: controllerResponse.body,
@@ -61,11 +63,11 @@ abstract class APIGatewayController {
       }
     } catch (err) {
       // If an error occurs, log it and handle with the Exception method
-      console.error(err);
+      this.logger.error('LambdaHandler error: ',err);
       return this.handleException(requestContext, err as Error);
     }
 
-    console.log("Default Response:", JSON.stringify(responseContext, null, 2));
+    this.logger.debug("LambdaHandler Default Response:", JSON.stringify(responseContext, null, 2));
     // Return the finalized API Gateway response
     return this.handleResponse({
       statusCode: responseContext.statusCode,
@@ -81,13 +83,10 @@ abstract class APIGatewayController {
   private findMatchingRoute(requestData: Request): Route | null {
     let controller: any = this;
     var resourceWithoutRoot = '/' + requestData.resource.split('/').slice(2).join('/');
-    console.log('resourceWithoutRoot: ', resourceWithoutRoot);
-    console.log(`${requestData.httpMethod}|${resourceWithoutRoot}`,controller.routes);
+    this.logger.debug('resourceWithoutRoot: ', resourceWithoutRoot);
+    this.logger.debug(`${requestData.httpMethod}|${resourceWithoutRoot}`,controller.routes);
     return controller.routes[`${requestData.httpMethod}|${resourceWithoutRoot}`] || null;
   }
-
-  // Allow dynamic method assignment
-  [key: string]: Function;
 
   /**
    * Retrieves the function associated with the route.
@@ -98,7 +97,10 @@ abstract class APIGatewayController {
     if (!route) {
       return this.handleNotFound.bind(this);
     }
+
+    //@ts-ignore
     const routeFunction = this[route.functionName];
+
     return typeof routeFunction === "function" ? routeFunction : this.handleNotFound.bind(this);
   }
 

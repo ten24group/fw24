@@ -10,7 +10,7 @@ import {
 
 import { Stack, CfnOutput } from "aws-cdk-lib";
 import { Helper } from "../core/helper";
-import { IControllerConfig } from "../fw24";
+import { createLogger } from "../logging";
 import { LambdaFunction } from "../constructs/lambda-function";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
@@ -18,7 +18,12 @@ import Mutable from "../types/mutable";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 
-import { resolve, relative } from "path";
+import { SESStack } from "./ses";
+import { SQSStack } from "./sqs";
+import { SNSStack } from "./sns";
+import { DynamoDBStack } from "./dynamodb";
+import { CognitoStack } from "./cognito";
+import { IControllerConfig } from "../decorators/controller";
 
 export interface IAPIGatewayConfig {
     cors?: boolean | string | string[];
@@ -27,26 +32,31 @@ export interface IAPIGatewayConfig {
 }
 
 export class APIGateway implements IStack {
-    fw24: Fw24 = Fw24.getInstance();
-    // array of type of stacks that this stack is dependent on
-    dependencies: string[] = ['SESStack', 'DynamoDBStack', 'CognitoStack', 'SQSStack', 'SNSStack'];
-    mainStack!: Stack;
+    readonly logger = createLogger(APIGateway.name);
+    readonly fw24: Fw24 = Fw24.getInstance();
+    
     api!: RestApi;
+    mainStack!: Stack;
+    // array of type of stacks that this stack is dependent on
+    dependencies: string[] = [SESStack.name, DynamoDBStack.name, CognitoStack.name, SQSStack.name, SNSStack.name];
 
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: IAPIGatewayConfig) {
+        this.logger.debug('constructor:');
+
         // hydrate the config object with environment variables ex: APIGATEWAY_CONTROLLERS
         Helper.hydrateConfig(stackConfig,'APIGATEWAY');
     }
 
     // construct method to create the stack
-    public construct() {
-        console.log("APIGateway construct");
+    public async construct() {
+        this.logger.debug('construct:');
+
         // set the default api options
         const paramsApi: Mutable<RestApiProps> = this.stackConfig.apiOptions || {};
         // Enable CORS if defined
         if (this.stackConfig.cors) {
-            console.log("Enabling CORS... this.config.cors: ", this.stackConfig.cors);
+            this.logger.debug("Enabling CORS... this.config.cors: ", this.stackConfig.cors);
             paramsApi.defaultCorsPreflightOptions = {
                 allowHeaders: [
                     "Content-Type",
@@ -62,7 +72,7 @@ export class APIGateway implements IStack {
                 allowOrigins: this.getCors(),
             };
         }
-        console.log("Creating API Gateway... ");
+        this.logger.debug("Creating API Gateway... ");
         // get the main stack from the framework
         this.mainStack = this.fw24.getStack("main");
         // create the api gateway
@@ -80,14 +90,14 @@ export class APIGateway implements IStack {
 
         if(this.fw24.hasModules()){
             const modules = this.fw24.getModules();
-            console.log(" API-gateway stack: construct: app has modules ", modules);
+            this.logger.info(" API-gateway stack: construct: app has modules ", Array.from(modules.entries()));
             for(const [, module] of modules){
                 const basePath = module.getBasePath();
-                console.log(" load controllers from module base-path: ", basePath);
+                this.logger.info(" load controllers from module base-path: " + basePath);
                 Helper.registerControllersFromModule(module, this.registerController);
             }
         } else {
-            console.log(" API-gateway stack: construct: app has NO modules ");
+            this.logger.info(" API-gateway stack: construct: app has NO modules ");
         }
     }
 
@@ -118,12 +128,12 @@ export class APIGateway implements IStack {
         const controllerConfig = controllerInfo.handlerInstance?.controllerConfig;
         controllerInfo.routes = controllerInfo.handlerInstance.routes;
 
-        console.log(`Registering controller ${controllerName} from ${controllerInfo.filePath}/${controllerInfo.fileName}`);
+        this.logger.info(`Registering controller ${controllerName} from ${controllerInfo.filePath}/${controllerInfo.fileName}`);
 
         // create the api resource for the controller if it doesn't exist
         const controllerResource = this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
 
-        // console.log(`Registering routes for controller ${controllerName}`, controllerInfo.routes);
+        // this.logger.debug(`Registering routes for controller ${controllerName}`, controllerInfo.routes);
 
         // create lambda function for the controller
         const controllerLambda = new LambdaFunction(this.mainStack, controllerName + "-controller", {
@@ -143,11 +153,13 @@ export class APIGateway implements IStack {
         // in case of multiple authorizers in a single application, get the authorizer name
         let authorizerName = undefined;
         if(typeof controllerConfig?.authorizer === 'object') {
+            // default's the the App's default-authorizer
             authorizerName = controllerConfig.authorizer.name;
+            // TODO: add support to define authorizer name at the route level
         }
       
         for (const route of Object.values(controllerInfo.routes ?? {})) {
-            console.log(`Registering route ${route.httpMethod} ${route.path}`);
+            this.logger.info(`Registering route ${route.httpMethod} ${route.path}`, route);
             let currentResource: IResource = controllerResource;
             for (const pathPart of route.path.split("/")) {
                 if (pathPart === "") {
@@ -164,14 +176,14 @@ export class APIGateway implements IStack {
             for (const param of route.parameters) {
                 requestParameters[`method.request.path.${param}`] = true;
             }
-        
-            console.log(`APIGateway ~ registerController ~ add authorizer ${route.authorizer} for ${route.functionName}`);
-
+            
             const methodOptions: MethodOptions = {
                 requestParameters: requestParameters,
                 authorizationType: route.authorizer as AuthorizationType,
                 authorizer: this.fw24.getAuthorizer(route.authorizer, authorizerName),
             }
+            
+            this.logger.info(`APIGateway ~ registerController ~ add authorizer ${route.authorizer} for ${route.functionName}, authorizerName: ${authorizerName}`);
 
             currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);
         }
