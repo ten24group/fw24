@@ -49,15 +49,11 @@ export class Helper {
         const sourceFilePaths = allDirFiles.filter((file) => 
             ( 
                 file.endsWith(".ts")
-                && !file.endsWith("d.ts") 
-                && !file.endsWith("test.ts") 
-                && !file.endsWith("spec.ts")
+                && !file.endsWith(".d.ts")
             )
              ||
             ( 
                 file.endsWith(".js")
-                && !file.endsWith("test.js") 
-                && !file.endsWith("spec.js")
             )
         );
 
