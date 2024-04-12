@@ -7,7 +7,7 @@ export interface IValidatorResponse {
     errors?: Error[] | string[] 
 }
 
-export type ValidatorOptions<
+export type OpValidatorOptions<
     OpName extends keyof OpsInpSch,
     Sch extends EntitySchema<any, any, any>, 
     ConditionsMap extends TMapOfValidationConditions<any, any>, 
@@ -26,7 +26,7 @@ export interface IValidator {
         Sch extends EntitySchema<any, any, any>, 
         ConditionsMap extends TMapOfValidationConditions<any, any>, 
         OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
-    >(options: ValidatorOptions<OpName, Sch, ConditionsMap, OpsInpSch> ): Promise<IValidatorResponse>;
+    >(options: OpValidatorOptions<OpName, Sch, ConditionsMap, OpsInpSch> ): Promise<IValidatorResponse>;
 }
 
 
@@ -64,6 +64,27 @@ export type Validations<T = unknown> = {
     readonly 'lte' ?: T | string | any,
 }
 
+export type ValidationRule<T extends unknown> = {
+    // TODO; narrow validation rules by type like ['string', 'number', 'boolean' etc]
+    readonly [V in keyof Validations<T>] ?: Validations<T>[V];
+};
+
+export type ValidationRules<Input extends InputType = InputType> = {
+    [K in keyof Input] ?: ValidationRule<Input[K]>;
+}
+
+export type HttpRequestValidation< 
+    Header extends InputType = InputType, 
+    Body extends InputType = InputType,
+    Param extends InputType = InputType,
+    Query extends InputType = InputType,
+> = {
+    readonly body ?: ValidationRules<Body>,
+    readonly query ?: ValidationRules<Query>,
+    readonly param ?: ValidationRules<Param>,
+    readonly header ?: ValidationRules<Header>,
+}
+
 export type TEntityValidationCondition<I extends InputType, R extends RecordType> = {
     readonly actorRules ?: {
         [K in keyof Actor]?: Validations<Actor[K]>;
@@ -78,10 +99,6 @@ export type TEntityValidationCondition<I extends InputType, R extends RecordType
 
 export type TMapOfValidationConditions<I extends InputType = InputType, R extends RecordType = RecordType> = Record<string, TEntityValidationCondition<I, R>>;
 
-export type TValidationRuleForType<T extends unknown> = {
-    // TODO; narrow validation rules by type like ['string', 'number', 'boolean' etc]
-    readonly [V in keyof Validations<T>] ?: Validations<T>[V];
-};
 
 export type TValidationRuleForOperations<
     T extends unknown, 
@@ -117,7 +134,7 @@ export type TValidationRuleForOperations<
         ]
     }>>>,
 
-} & TValidationRuleForType<T>;
+} & ValidationRule<T>;
 
 
 /**
@@ -147,7 +164,7 @@ export type TValidationRuleForOperationsAndInput<
         ]
     }>>>,
 
-} & TValidationRuleForType<T>;
+} & ValidationRule<T>;
 
 
 export type TInputApplicableCondition<Inp extends InputType, C extends TEntityValidationCondition<any, any>> = {
@@ -174,7 +191,7 @@ export type TConditionalValidationRule<T extends unknown, ConditionsMap extends 
         Array<keyof ConditionsMap> /** default: all conditions must be satisfied */
         | 
         [ Array<keyof ConditionsMap>, 'all' | 'any' | 'none'], /** specify how conditions must be satisfied */
-} & TValidationRuleForType<T>;
+} & ValidationRule<T>;
 
 export type TEntityOpValidations<I extends InputType, R extends RecordType, C extends TMapOfValidationConditions<I, R> > = {
     readonly actorRules ?: {

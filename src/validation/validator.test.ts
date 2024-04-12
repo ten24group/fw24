@@ -1,5 +1,5 @@
 import { Narrow, OmitNever } from "../utils";
-import { EntityOpsValidations, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TConditionalValidationRule, TMapOfValidationConditions } from "./validator.type";
+import { EntityOpsValidations, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TConditionalValidationRule, TMapOfValidationConditions, ValidationRules } from "./validator.type";
 
 import { describe, expect, it } from '@jest/globals';
 import { randomUUID } from "node:crypto";
@@ -201,6 +201,18 @@ const UserValidationConditions =  {
         userId: { neq: '' }
     }},
 } as const;
+
+const SignInValidations: ValidationRules = {
+    email: { 
+      required: true,
+      datatype: 'email',
+      maxLength: 40, 
+    },
+    lastName: {
+      datatype: 'string',
+      neq: "Blah"
+    }
+};
 
 const UserOppValidations: EntityOpsValidations<User.TUserSchema2, typeof UserValidationConditions> = {
   conditions: UserValidationConditions,  
@@ -632,7 +644,7 @@ describe('Validator', () => {
 
     it('should return validation passed if no rules', () => {
       const validator = new Validator();
-      const result = validator.testAllValidationsWithErrors({}, 'test');
+      const result = validator.testValidationRule({}, 'test');
       expect(result.pass).toBe(true);
       expect(result.errors).toEqual([]);
     });
@@ -642,10 +654,9 @@ describe('Validator', () => {
       const partialValidation = {
         required: true
       };
-      const result = validator.testAllValidationsWithErrors(partialValidation, undefined);
+      const result = validator.testValidationRule(partialValidation, undefined);
       expect(result.pass).toBe(false);
       expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toBeInstanceOf(Error);
     });
 
     it('should collect multiple validation errors', () => {
@@ -655,11 +666,9 @@ describe('Validator', () => {
         minLength: 5,
         maxLength: 2
       };
-      const result = validator.testAllValidationsWithErrors(partialValidation, 'abc');
+      const result = validator.testValidationRule(partialValidation, 'abc');
       expect(result.pass).toBe(false);
       expect(result.errors).toHaveLength(2);
-      expect(result.errors[0]).toBeInstanceOf(Error);
-      expect(result.errors[1]).toBeInstanceOf(Error);
     });
 
   });
@@ -732,7 +741,7 @@ describe('Validator', () => {
         actorId: '123'
       };
 
-      const result = await validator.validateRuleWithCriteria({
+      const result = await validator.validateConditionalRule({
         rule: validationRule, 
         allConditions: CONDITION, 
         inputVal: 'input', 
@@ -743,8 +752,8 @@ describe('Validator', () => {
 
       expect(result.pass).toBe(false);
       expect(result.errors).toHaveLength(1);
-      expect(result.errors?.[0]).toBeInstanceOf(Error);
       const err = result.errors?.[0] as Error;
+      console.log(err);
       expect(err.message).toContain('minLength');
     });
 
@@ -760,7 +769,7 @@ describe('Validator', () => {
         actorId: '456'
       };
 
-      const result = await validator.validateRuleWithCriteria({
+      const result = await validator.validateConditionalRule({
         rule: validationRule, 
         allConditions: CONDITION, 
         inputVal: 'in', 

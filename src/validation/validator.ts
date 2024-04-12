@@ -3,7 +3,7 @@
  * Provides a Validator class that validates data against defined validation rules and criteria.
  */
 import { Schema } from "electrodb";
-import { IValidator, IValidatorResponse, ValidatorOptions } from "./validator.type";
+import { IValidator, IValidatorResponse, OpValidatorOptions, ValidationRule, ValidationRules } from "./validator.type";
 import { DeepWritable } from '../utils/types';
 import { Actor, EntityValidations, InputType, RecordType, TConditionalValidationRule, TEntityOpValidations, TEntityValidationCondition, TMapOfValidationConditions, Validations } from "./validator.type";
 import { TDefaultEntityOperations, EntitySchema, TEntityOpsInputSchemas } from "../entity";
@@ -116,7 +116,7 @@ export class Validator implements IValidator {
         Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
         OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
     >(
-        options: ValidatorOptions<OpName, Sch, ConditionsMap, OpsInpSch>
+        options: OpValidatorOptions<OpName, Sch, ConditionsMap, OpsInpSch>
     ): Promise<IValidatorResponse> {
         
         const { entityValidations, operationName, input, actor, record } = options;
@@ -129,12 +129,12 @@ export class Validator implements IValidator {
         }
 
         const opsValidationRules = extractOpValidationFromEntityValidations(operationName, entityValidations);
-        logger.debug("🚀 ~ Validator.validate ~ rules, input, actor, record:", JSON.stringify({ opsValidationRules, input, actor, record}));
+        logger.debug("validate ~ rules, input, actor, record:", JSON.stringify({ opsValidationRules, input, actor, record}));
         
         const { opValidations: {inputRules, actorRules, recordRules}, conditions } = opsValidationRules;
         
         let pass = true;
-        const errors: Array<Error> = [];
+        const errors: Array<Error & { errors: any}> = [];
         
         if(actorRules){
             for(const key in actorRules){
@@ -142,7 +142,7 @@ export class Validator implements IValidator {
                 const validationsWithCriteria = actorRules[key];
                 if(!validationsWithCriteria){ continue; }
 
-                const res = await this.validateRulesWithCriteria({
+                const res = await this.validateConditionalRules({
                     actor,
                     input, 
                     record, 
@@ -154,7 +154,11 @@ export class Validator implements IValidator {
                 pass = pass && res.pass;
                 if(res.errors?.length){
                     // errors.push(new Error(`Validation failed for actor.${key}`, { cause: res.errors+''}));
-                    errors.push(new Error(`Validation failed for actor.${key} ::: ${ JSON.stringify({cause: res.errors}) }`));
+                    errors.push({ 
+                        name: 'ValidationError', 
+                        message: `Validation failed for actor.${key}`,
+                        errors: res.errors
+                    });
                 }
             }
         }
@@ -165,7 +169,7 @@ export class Validator implements IValidator {
                 const validationsWithCriteria = inputRules[key];
                 if(!validationsWithCriteria){ continue; }
 
-                const res = await this.validateRulesWithCriteria({
+                const res = await this.validateConditionalRules({
                     actor,
                     input, 
                     record, 
@@ -176,7 +180,14 @@ export class Validator implements IValidator {
 
                 pass = pass && res.pass;
                 if(res.errors?.length){
-                    errors.push(new Error(`Validation failed for input.${key} ::: ${ JSON.stringify({ cause: res.errors}) }` ));
+
+                    errors.push({ 
+                        name: 'ValidationError', 
+                        message: `Validation failed for input.${key}`,
+                        errors: res.errors
+                    });
+
+                    // errors.push(new Error(`Validation failed for input.${key} ::: ${ JSON.stringify({ cause: res.errors}) }` ));
                 }
             }
         }
@@ -187,7 +198,7 @@ export class Validator implements IValidator {
                 const validationsWithCriteria = recordRules[key];
                 if(!validationsWithCriteria){ continue; }
 
-                const res = await this.validateRulesWithCriteria({
+                const res = await this.validateConditionalRules({
                     actor,
                     input, 
                     record, 
@@ -198,12 +209,18 @@ export class Validator implements IValidator {
 
                 pass = pass && res.pass;
                 if(res.errors?.length){
-                    errors.push(new Error(`Validation failed for record.${key} ::: ${ JSON.stringify({ cause: res.errors}) }`));
+                    errors.push({ 
+                        name: 'ValidationError', 
+                        message: `Validation failed for record.${key}`,
+                        errors: res.errors
+                    });
+
+                    // errors.push(new Error(`Validation failed for record.${key} ::: ${ JSON.stringify({ cause: res.errors}) }`));
                 }
             }
         }
 
-        logger.debug("🚀 ~ Validator.validate ~ result:", JSON.stringify({ pass, errors}));
+        logger.debug("validate ~ result:", JSON.stringify({ pass, errors}));
 
         const formattedErrors:string[] = [];
 
@@ -227,7 +244,7 @@ export class Validator implements IValidator {
      * @param actor - The actor object containing actor information
      * @returns A promise resolving to an object containing a boolean indicating if validation passed, and any validation errors
      */
-    async validateRulesWithCriteria<I extends InputType = any, R extends RecordType = any>(
+    async validateConditionalRules<I extends InputType = any, R extends RecordType = any>(
         options: {
             rules: TConditionalValidationRule<any, any>[],
             allConditions: TMapOfValidationConditions,
@@ -238,7 +255,7 @@ export class Validator implements IValidator {
         }
     ){
 
-        logger.debug( "🚀 ~ Validator: validateRulesWithCriteria ~ arguments:", JSON.stringify(options) );
+        logger.debug("validateConditionalRules ~ arguments:", JSON.stringify(options) );
         
         const {rules, allConditions, inputVal, input, record, actor} = options;
 
@@ -246,7 +263,7 @@ export class Validator implements IValidator {
         const errors: any = [];
 
         await Promise.all( rules.map(async (rule) => {
-            return this.validateRuleWithCriteria({
+            return this.validateConditionalRule({
                 rule, 
                 input, 
                 actor,
@@ -285,7 +302,7 @@ export class Validator implements IValidator {
      * @param actor - The actor to check criteria against
      * @returns A promise resolving to validation results
      */
-    async validateRuleWithCriteria<I extends InputType =  any, R extends RecordType = any >(
+    async validateConditionalRule<I extends InputType =  any, R extends RecordType = any >(
         options: {
             rule: TConditionalValidationRule<any, any>,
             allConditions: TMapOfValidationConditions,
@@ -296,7 +313,7 @@ export class Validator implements IValidator {
         }
     ): Promise<IValidatorResponse> {
 
-        logger.debug( "🚀 ~ Validator: validateRuleWithCriteria ~ arguments:", JSON.stringify(options) );
+        logger.debug("validateConditionalRules ~ arguments:", JSON.stringify(options) );
         
         const {rule, allConditions, inputVal, input, record, actor} = options;
         
@@ -337,7 +354,7 @@ export class Validator implements IValidator {
                 for(const conditionName of formattedConditions.conditionNames ){
                     const ctRule = allConditions[conditionName];
 
-                    const applicable =  this.testIsCriteriaApplicable( ctRule, input, record, actor);
+                    const applicable =  this.testCondition( ctRule, input, record, actor);
                     if(applicable){
                         // * test for applicability
                         // if any of them passes, we are good to go
@@ -354,7 +371,7 @@ export class Validator implements IValidator {
                 for(const conditionName of formattedConditions.conditionNames ){
                     const ctRule = allConditions[conditionName];
                     
-                    const applicable =  this.testIsCriteriaApplicable( ctRule, input, record, actor);
+                    const applicable =  this.testCondition( ctRule, input, record, actor);
                     if(formattedConditions.applicable == 'none' && applicable ){
                         
                         // * test for applicability
@@ -380,17 +397,17 @@ export class Validator implements IValidator {
         let validationPassed = true;
         const errors = [];
 
+        logger.debug("validateConditionalRules ~ criteriaPassed:", criteriaPassed);
 
-        logger.debug("🚀 ~ Validator: validateRuleWithCriteria ~ criteriaPassed:", criteriaPassed);
         if(criteriaPassed){
-            let validation = this.testAllValidationsWithErrors(partialValidation, inputVal);
-            logger.debug("🚀 ~ Validator: validateRuleWithCriteria ~ validation-result:", validation);
+            let validation = this.testValidationRule(partialValidation, inputVal);
+            logger.debug("validateConditionalRules ~ validation-result:", validation);
 
             validationPassed = validationPassed && validation.pass;
             errors.push(...validation.errors);  
         }
 
-        logger.debug("🚀 ~ Validator: validateRuleWithCriteria ~ result:", { validationPassed, errors});
+        logger.debug("validateConditionalRules ~ result:", { validationPassed, errors});
 
         return Promise.resolve({ 
             pass: validationPassed,
@@ -403,53 +420,71 @@ export class Validator implements IValidator {
      * and actor. Evaluates the actorRules, inputRules and recordRules in the
      * criteria to determine if it is applicable.
      */
-    testIsCriteriaApplicable<I extends InputType, R extends RecordType>(criteria: TEntityValidationCondition<I, R>, input?: I, record?: R, actor?: Actor) {
+    testCondition<I extends InputType, R extends RecordType>(
+        criteria: TEntityValidationCondition<I, R>, 
+        input?: I, 
+        record?: R, 
+        actor?: Actor
+    ) {
 
         const{ actorRules, inputRules, recordRules } = criteria;
 
         let applicable = true;
 
         if(actorRules){
-            applicable = applicable && this.testAllValidations<Actor>(actor, actorRules);
+            const result = this.testValidationRules<Actor>(actor, actorRules, false);
+            applicable = applicable &&  result.pass;
         }
 
         if(applicable && inputRules){
-            applicable = applicable && this.testAllValidations<I>( input, inputRules);
+            const result = this.testValidationRules<I>( input, inputRules, false);
+
+            applicable = applicable && result.pass;
         }
 
         if(applicable && recordRules){
-            applicable = applicable && this.testAllValidations<R>(record, recordRules);
+            const result = this.testValidationRules<R>(record, recordRules, false);
+            applicable = applicable && result.pass;
         }
 
         return applicable;
     }
 
     /**
-     * Tests all validations for the given input object against the provided validation rules.
+     * Tests validations rules for the given input object against the provided validation rules.
      * 
      * @param input - The input object to validate.
      * @param rules - The validation rules to test, where each key is a key on the input object.
      * @returns Whether the input passed all the validation rules.
      */
-    testAllValidations<I extends InputType>(
+    testValidationRules<I extends InputType>(
         input: I | undefined,
-        rules?: { [K in  keyof I] ?: Validations<I[K]> }, 
+        rules?: ValidationRules<I>, 
+        collectErrors: boolean = true
     ) {
         let pass = true;
+        const errors: { [k in keyof I] ?: Array<any> } = {};
         
-        if(!rules) {
-            return pass;
-        }
+        if(rules) {
+            for(const key in rules){
 
-        for(const key in rules){
-            const validations = rules[key];
-            if(validations){
-                const result = this.testValidation(validations!, input?.[key] );
-                pass = typeof result == 'boolean' ? result : false;
+                const rule = rules[key];
+                if(rule){
+                    
+                    const result = this.testValidationRule(rule, input?.[key] );                    
+                    pass = typeof result.pass == 'boolean' ? result.pass : false;
+    
+                    if(!pass && collectErrors){
+                        errors[key] = result.errors.map( err => ({...err, path: key}) );
+                    }
+                }
             }
         }
 
-        return pass;
+        return { 
+            pass, 
+            errors
+        };
     }
 
     /**
@@ -462,34 +497,44 @@ export class Validator implements IValidator {
      * Returns an object containing a boolean indicating if all validations passed, 
      * and any errors encountered.
     */
-    testAllValidationsWithErrors(partialValidation: Validations, val: any) {
-        logger.debug("🚀 ~ Validator ~ testAllValidationsWithErrors ~ arguments:", {partialValidation, val});
+    testValidationRule<T extends unknown>(validationRule: ValidationRule<T>, val: T, collectErrors = true) {
+        logger.debug("testValidationRuleWithErrors ~ arguments:", {validationRule, val});
         let pass = true;
         const errors: Array<any> = [];
         
-        if(partialValidation) {
-            // * validate one rule ar a time
-            for(const key in partialValidation){
-                //@ts-ignore
-                const validationRule = { [key]: partialValidation[key] } as Validations;
-                
-                const result = this.testValidation(validationRule, val );
+        if(validationRule) {
 
-                logger.debug("🚀 ~ Validator ~ testAllValidationsWithErrors ~ testValidation result: ", {validationRule, result});
+            // * validate one rule at a time
+            for(const key in validationRule){
+
+                const thisValidation = { 
+                    [key]: validationRule[key as keyof Validations<T>] 
+                };
+                
+                const result = this.testValidation(thisValidation, val );
+
+                logger.debug("testValidationRuleWithErrors ~ testValidation result: ", {thisValidation, result});
                 
                 if(typeof result == 'boolean'){
+
                     pass = pass && result;
-                    if(!result){
-                        errors.push( new Error(`Validation '${key}' failed`) );
+
+                    if(!result && collectErrors){
+                        errors.push( {
+                            message: `Validation '${key}' failed`,
+                            expected: thisValidation[key],                           
+                            provided: val,
+                        });
                     }
+
                 } else {
                     pass = false;
-                    errors.push(result);
+                    collectErrors && errors.push(result);
                 }
             }
         }
 
-        logger.debug("🚀 ~ Validator ~ testAllValidationsWithErrors ~ results:", {pass, errors});
+        logger.debug("testValidationRuleWithErrors ~ results:", {pass, errors});
 
         return {
             pass,
@@ -510,7 +555,7 @@ export class Validator implements IValidator {
      * @returns True if the value passes all validations, false otherwise. Can also return validation error objects.
     */
     testValidation(partialValidation: Validations, val: any){
-        logger.debug("🚀 ~ Validator ~ testValidation ~ partialValidation:, val: ", partialValidation, val);
+        logger.debug("testValidation ~ partialValidation:, val: ", partialValidation, val);
         const{ required, minLength, maxLength, pattern, datatype, unique, eq, neq, gt, gte, lt, lte } = partialValidation;
 
         if(required && val === undefined) {
