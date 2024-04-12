@@ -2,10 +2,41 @@ import { EntityRecordTypeFromSchema, EntitySchema, TEntityOpsInputSchemas } from
 import { Narrow, OmitNever, ValueOf } from '../utils/types';
 
 
-export interface IValidatorResponse {
-    pass: boolean;
-    errors?: Error[] | string[] 
+export type ValidationError = {
+    message: string,
+    expected ?: any,                           
+    provided ?: any,
 }
+
+export type ValidationRuleErrors = Array<ValidationError>;
+export type ValidationRulesErrors<I extends InputType = InputType> = {
+    [K in keyof I] ?: Array<ValidationError>
+};
+
+export type TestValidationRuleResponse = {
+    pass: boolean, 
+    errors ?: ValidationRuleErrors
+};
+
+export type TestValidationRulesResponse<I extends InputType = InputType> = {
+    pass: boolean, 
+    errors ?: { [k in keyof I] ?: Array<any> }
+};
+
+export interface IValidatorResponse<
+    A extends Actor = Actor,
+    I extends InputType = InputType,
+    R extends RecordType = RecordType,
+> {
+    pass: boolean;
+    errors ?: {
+        actor ?: ValidationRulesErrors<A>
+        input ?: ValidationRulesErrors<I>
+        record ?: ValidationRulesErrors<R>
+    },
+}
+
+
 
 export type OpValidatorOptions<
     OpName extends keyof OpsInpSch,
@@ -27,6 +58,12 @@ export interface IValidator {
         ConditionsMap extends TMapOfValidationConditions<any, any>, 
         OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
     >(options: OpValidatorOptions<OpName, Sch, ConditionsMap, OpsInpSch> ): Promise<IValidatorResponse>;
+
+    testValidationRules<I extends InputType>(
+        input: I | undefined,
+        rules?: ValidationRules<I>, 
+        collectErrors?: boolean,
+    ): TestValidationRulesResponse<I>;
 }
 
 

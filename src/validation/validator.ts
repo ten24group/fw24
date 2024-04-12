@@ -3,28 +3,11 @@
  * Provides a Validator class that validates data against defined validation rules and criteria.
  */
 import { Schema } from "electrodb";
-import { IValidator, IValidatorResponse, OpValidatorOptions, ValidationRule, ValidationRules } from "./validator.type";
+import { IValidator, IValidatorResponse, OpValidatorOptions, ValidationRule, ValidationRules, TestValidationRulesResponse, TestValidationRuleResponse, ValidationRuleErrors, ValidationRulesErrors } from "./validator.type";
 import { DeepWritable } from '../utils/types';
 import { Actor, EntityValidations, InputType, RecordType, TConditionalValidationRule, TEntityOpValidations, TEntityValidationCondition, TMapOfValidationConditions, Validations } from "./validator.type";
 import { TDefaultEntityOperations, EntitySchema, TEntityOpsInputSchemas } from "../entity";
 import { createLogger } from "../logging";
-
-if (!('toJSON' in Error.prototype)){
-    Object.defineProperty(Error.prototype, 'toJSON', {
-        value: function () {
-            var alt: any = {};
-    
-            Object.getOwnPropertyNames(this).forEach(function (key) {
-                //@ts-ignore
-                alt[key] = this[key];
-            }, this);
-    
-            return alt;
-        },
-        configurable: true,
-        writable: true
-    });
-}
 
 const logger = createLogger('Validator');
 
@@ -121,10 +104,17 @@ export class Validator implements IValidator {
         
         const { entityValidations, operationName, input, actor, record } = options;
 
+    //      pass: boolean;
+    // errors ?: {
+    //     actor ?: ValidationRulesErrors<A>
+    //     input ?: ValidationRulesErrors<I>
+    //     record ?: ValidationRulesErrors<R>
+    // },
+
         if(!entityValidations){
             return {
                 pass: true,
-                errors: []
+                errors: {}
             }
         }
 
@@ -134,7 +124,9 @@ export class Validator implements IValidator {
         const { opValidations: {inputRules, actorRules, recordRules}, conditions } = opsValidationRules;
         
         let pass = true;
-        const errors: Array<Error & { errors: any}> = [];
+        const actorErrors: ValidationRulesErrors<Actor> = {};
+        const inputErrors: ValidationRulesErrors<any> = {};
+        const recordErrors: ValidationRulesErrors<any> = {};
         
         if(actorRules){
             for(const key in actorRules){
@@ -153,12 +145,7 @@ export class Validator implements IValidator {
                 
                 pass = pass && res.pass;
                 if(res.errors?.length){
-                    // errors.push(new Error(`Validation failed for actor.${key}`, { cause: res.errors+''}));
-                    errors.push({ 
-                        name: 'ValidationError', 
-                        message: `Validation failed for actor.${key}`,
-                        errors: res.errors
-                    });
+                    actorErrors[key] = res.errors
                 }
             }
         }
@@ -179,15 +166,9 @@ export class Validator implements IValidator {
                 });
 
                 pass = pass && res.pass;
+
                 if(res.errors?.length){
-
-                    errors.push({ 
-                        name: 'ValidationError', 
-                        message: `Validation failed for input.${key}`,
-                        errors: res.errors
-                    });
-
-                    // errors.push(new Error(`Validation failed for input.${key} ::: ${ JSON.stringify({ cause: res.errors}) }` ));
+                    inputErrors[key] = res.errors
                 }
             }
         }
@@ -209,28 +190,20 @@ export class Validator implements IValidator {
 
                 pass = pass && res.pass;
                 if(res.errors?.length){
-                    errors.push({ 
-                        name: 'ValidationError', 
-                        message: `Validation failed for record.${key}`,
-                        errors: res.errors
-                    });
-
-                    // errors.push(new Error(`Validation failed for record.${key} ::: ${ JSON.stringify({ cause: res.errors}) }`));
+                    recordErrors[key] = res.errors
                 }
             }
         }
 
-        logger.debug("validate ~ result:", JSON.stringify({ pass, errors}));
-
-        const formattedErrors:string[] = [];
-
-        for(const err of errors){
-            formattedErrors.push(`${err.name}:  ${err.message}`);
-        }
+        logger.debug("validate ~ result:", JSON.stringify({ pass, actorErrors, inputErrors, recordErrors}));
 
         return Promise.resolve({
             pass,
-            errors: formattedErrors,
+            errors: {
+                actor: actorErrors, 
+                input: inputErrors, 
+                record: recordErrors
+            },
         });
     }
 
@@ -253,14 +226,14 @@ export class Validator implements IValidator {
             record?: R, 
             actor?: Actor
         }
-    ){
+    ): Promise<TestValidationRuleResponse>{
 
         logger.debug("validateConditionalRules ~ arguments:", JSON.stringify(options) );
         
         const {rules, allConditions, inputVal, input, record, actor} = options;
 
         let validationPassed = true;
-        const errors: any = [];
+        let errors: ValidationRuleErrors = [];
 
         await Promise.all( rules.map(async (rule) => {
             return this.validateConditionalRule({
@@ -311,7 +284,7 @@ export class Validator implements IValidator {
             record?: R, 
             actor?: Actor
         }
-    ): Promise<IValidatorResponse> {
+    ): Promise<TestValidationRuleResponse> {
 
         logger.debug("validateConditionalRules ~ arguments:", JSON.stringify(options) );
         
@@ -395,7 +368,7 @@ export class Validator implements IValidator {
         }
 
         let validationPassed = true;
-        const errors = [];
+        let errors: ValidationRuleErrors|undefined;
 
         logger.debug("validateConditionalRules ~ criteriaPassed:", criteriaPassed);
 
@@ -404,7 +377,7 @@ export class Validator implements IValidator {
             logger.debug("validateConditionalRules ~ validation-result:", validation);
 
             validationPassed = validationPassed && validation.pass;
-            errors.push(...validation.errors);  
+            errors = validation.errors
         }
 
         logger.debug("validateConditionalRules ~ result:", { validationPassed, errors});
@@ -461,7 +434,7 @@ export class Validator implements IValidator {
         input: I | undefined,
         rules?: ValidationRules<I>, 
         collectErrors: boolean = true
-    ) {
+    ): TestValidationRulesResponse<I> {
         let pass = true;
         const errors: { [k in keyof I] ?: Array<any> } = {};
         
@@ -475,7 +448,7 @@ export class Validator implements IValidator {
                     pass = typeof result.pass == 'boolean' ? result.pass : false;
     
                     if(!pass && collectErrors){
-                        errors[key] = result.errors.map( err => ({...err, path: key}) );
+                        errors[key] = result.errors?.map( err => ({...err, path: key}) );
                     }
                 }
             }
@@ -497,10 +470,10 @@ export class Validator implements IValidator {
      * Returns an object containing a boolean indicating if all validations passed, 
      * and any errors encountered.
     */
-    testValidationRule<T extends unknown>(validationRule: ValidationRule<T>, val: T, collectErrors = true) {
+    testValidationRule<T extends unknown>(validationRule: ValidationRule<T>, val: T, collectErrors = true): TestValidationRuleResponse {
         logger.debug("testValidationRuleWithErrors ~ arguments:", {validationRule, val});
         let pass = true;
-        const errors: Array<any> = [];
+        const errors: ValidationRuleErrors = [];
         
         if(validationRule) {
 
@@ -518,7 +491,6 @@ export class Validator implements IValidator {
                 if(typeof result == 'boolean'){
 
                     pass = pass && result;
-
                     if(!result && collectErrors){
                         errors.push( {
                             message: `Validation '${key}' failed`,
@@ -526,8 +498,8 @@ export class Validator implements IValidator {
                             provided: val,
                         });
                     }
-
                 } else {
+
                     pass = false;
                     collectErrors && errors.push(result);
                 }
@@ -540,7 +512,6 @@ export class Validator implements IValidator {
             pass,
             errors,
         };
-
     }
 
     isNumeric(num: any){

@@ -8,9 +8,23 @@ import { Authorizer } from '../../../decorators/authorizer';
 // import cognito client
 import { CognitoIdentityProviderClient, SignUpCommand, InitiateAuthCommand, ConfirmSignUpCommand, GlobalSignOutCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { CognitoIdentityClient, GetIdCommand, GetCredentialsForIdentityCommand } from "@aws-sdk/client-cognito-identity";
+import { HttpRequestValidation, ValidationRules } from '../../../validation';
 
 const identityProviderClient = new CognitoIdentityProviderClient({});
 const identityClient = new CognitoIdentityClient({});
+
+
+const SignInValidations: ValidationRules = {
+    email: { 
+      required: true,
+      datatype: 'email',
+      maxLength: 40, 
+    },
+    password: {
+      datatype: 'string',
+      neq: "Blah"
+    }
+};
 
 @Controller('mauth', { 
 	authorizer: {
@@ -32,7 +46,12 @@ export class AuthController extends APIGatewayController {
 	/*
 	Cognito signup, signin and verify email methods
 	*/
-	@Post('/signup')
+	@Get('/signup', {
+		body: {
+		  email: { required: true, datatype: 'email', maxLength: 40, },
+		  password: { datatype: 'string', neq: "Blah2" }
+		},
+	})
 	async signup(req: Request, res: Response) {
 		const {email, password} = req.body as { email?: string; password?: string };
 		const userPoolClientId = this.getUserPoolClientId();
@@ -57,7 +76,7 @@ export class AuthController extends APIGatewayController {
 		return res.send('User Signed Up');
 	}
 
-	@Post('/signin')
+	@Get('/signin', SignInValidations)
 	async signin(req: Request, res: Response) {
 		const {email, password} = req.body as { email?: string; password?: string };
 		const userPoolClientId = this.getUserPoolClientId();

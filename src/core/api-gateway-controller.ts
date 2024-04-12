@@ -5,12 +5,14 @@ import { Response } from "../interfaces/response";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
 import { createLogger } from "../logging";
+import { DefaultValidator, ValidationRules, HttpRequestValidation, IValidator } from "../validation";
 
 /**
  * Base controller class for handling API Gateway events.
  */
 abstract class APIGatewayController {
   readonly logger = createLogger(APIGatewayController.name);
+  protected validator: IValidator  = DefaultValidator;
 
   /**
    * Binds the LambdaHandler method to the instance of the class.
@@ -20,6 +22,10 @@ abstract class APIGatewayController {
   }
 
   abstract initialize(event: APIGatewayEvent, context: Context): Promise<void>;
+
+  async validate( input: any, validations: ValidationRules | HttpRequestValidation){
+      return this.validator.testValidationRules(input, validations);
+  }
 
   /**
    * Lambda handler for the controller.

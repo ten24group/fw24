@@ -333,7 +333,7 @@ describe('Validator', () => {
         entityValidations: {},
       });
       expect(result.pass).toBe(true);
-      expect(result.errors).toEqual([]);
+      expect(result.errors).toEqual({"actor": {}, "input": {}, "record": {}});
     });
 
     it('should validate actor rules', async () => {
@@ -352,7 +352,7 @@ describe('Validator', () => {
       });
       console.warn('should validate actor rules result:', result);
       expect(result.pass).toBe(true);
-      expect(result.errors).toHaveLength(0);
+      expect(result.errors?.actor).toEqual({});
     });
 
     it('should return actor rule errors', async () => {
@@ -370,8 +370,8 @@ describe('Validator', () => {
         actor
       });
       expect(result.pass).toBe(false);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors?.[0]).toContain('actor.role');
+      expect(result.errors?.actor?.role).toHaveLength(1);
+      expect(result.errors?.actor?.role?.[0]?.message).toContain('eq');
     });
 
     it('should validate input rules', async () => {
@@ -389,7 +389,7 @@ describe('Validator', () => {
         input  
       });
       expect(result.pass).toBe(true);
-      expect(result.errors).toEqual([]);
+      expect(result.errors?.input).toEqual({});
     });
 
     it('should return input rule errors', async () => {
@@ -407,8 +407,8 @@ describe('Validator', () => {
         input
       });
       expect(result.pass).toBe(false);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors?.[0]).toContain('input.email');
+      expect(result.errors?.input?.email).toHaveLength(1);
+      expect(result.errors?.input?.email?.[0]?.message).toContain('datatype');
     });
   });
 
@@ -779,7 +779,7 @@ describe('Validator', () => {
       });
 
       expect(result.pass).toBe(true);
-      expect(result.errors).toHaveLength(0);
+      expect(result.errors).toBe(undefined);
     });
 
   });
