@@ -5,8 +5,14 @@ export interface IControllerConfig {
 	authorizer?: Array<{ 
 		name?: string;
 		type: string;
+		methods ?: string[];
 		default?: boolean;
-	}> | string;
+	}> | { 
+		name?: string;
+		type: string;
+		methods ?: string[];
+		default?: boolean
+	} | string;
 	buckets?: Array<{ 
 		name: string;
 		access?: string; // read, write, readwrite | default is readwrite

@@ -1,20 +1,33 @@
 
-import { Logger as TLogger, LoggerService, LoggerConfig, LoggerFilter} from '@mu-ts/logger';
+import { Logger, ILogObj, ISettingsParam} from "tslog";
 
-export interface ILogger extends TLogger {
+export interface ILogger extends Logger<ILogObj> {
 }
 
-export const DefaultLogger = LoggerService.named('--');
+const logLevels: any = {
+    "silly": 0,
+    "trace": 1,
+    "debug": 2,
+    "info": 3,
+    "warn": 4,
+    "error": 5,
+    "fatal": 6,
+};
 
-export const createLogger = (_options: string | LoggerConfig, filters?: LoggerFilter[]) => {
-    if(typeof _options == 'string'){
-        _options = { name: _options};
+const logLevel = logLevels[process.env.LOG_LEVEL || 'info'];
+export const DefaultLogger: ILogger = new Logger();
+
+export const createLogger = (_options: string | ISettingsParam<ILogObj>) => {
+    if (typeof _options == 'string') {
+        _options = { name: _options, minLevel: logLevel};
+    }
+    // show line number only for debug and trace
+    if(!_options.hideLogPositionForProduction && logLevel > 2){
+        _options.hideLogPositionForProduction = true;
     }
 
-    // *** Uncomment for debugging multiple instances of same class ***
-    // _options.name = randomUUID().split('-').at(-1) + '>' + _options.name;
-
-    return LoggerService.named(_options, filters);
+    const logger = new Logger(_options);
+    return logger;
 }
 
 export {
