@@ -13,9 +13,9 @@ const identityProviderClient = new CognitoIdentityProviderClient({});
 const identityClient = new CognitoIdentityClient({});
 
 @Controller('mauth', { 
-	authorizer: {
+	authorizer: [{
 		name: 'authmodule', type: 'NONE'
-	},
+	}],
 	env: [
 		{ name: 'userPoolClientID', prefix: 'authmodule' },
 		{ name: 'userPoolID', prefix: 'authmodule' },

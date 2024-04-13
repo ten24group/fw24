@@ -1,6 +1,7 @@
 import { 
     AuthorizationType, 
     Cors, 
+    CorsOptions,
     IResource, 
     LambdaIntegration, 
     MethodOptions, 
@@ -56,21 +57,8 @@ export class APIGateway implements IStack {
         const paramsApi: Mutable<RestApiProps> = this.stackConfig.apiOptions || {};
         // Enable CORS if defined
         if (this.stackConfig.cors) {
-            this.logger.debug("Enabling CORS... this.config.cors: ", this.stackConfig.cors);
-            paramsApi.defaultCorsPreflightOptions = {
-                allowHeaders: [
-                    "Content-Type",
-                    "X-Amz-Date",
-                    "Authorization",
-                    "X-Api-Key",
-                    "Access-Control-Allow-Credentials",
-                    "Access-Control-Allow-Headers",
-                    "Impersonating-User-Sub",
-                ],
-                allowMethods: ["OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"],
-                allowCredentials: true,
-                allowOrigins: this.getCors(),
-            };
+            console.log("Enabling CORS... this.config.cors: ", this.stackConfig.cors);
+            paramsApi.defaultCorsPreflightOptions = this.getCorsPreflightOptions();
         }
         this.logger.debug("Creating API Gateway... ");
         // get the main stack from the framework
@@ -80,32 +68,27 @@ export class APIGateway implements IStack {
         // add the api to the framework
         this.fw24.addStack("api", this.api);
 
-        // sets the default controllers directory if not defined
-        if(this.stackConfig.controllersDirectory === undefined || this.stackConfig.controllersDirectory === ""){
-            this.stackConfig.controllersDirectory = "./src/controllers";
-        }
-        
-        // register the controllers
-        Helper.registerHandlers(this.stackConfig.controllersDirectory, this.registerController);
+       this.registerControllers();
+    }
 
-        if(this.fw24.hasModules()){
+    private registerControllers() {
+         // sets the default controllers directory if not defined
+        const controllersDirectory = this.stackConfig.controllersDirectory || "./src/controllers";
+
+        // register the controllers
+        Helper.registerHandlers(controllersDirectory, this.registerController);
+
+        if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
-            this.logger.info(" API-gateway stack: construct: app has modules ", Array.from(modules.entries()));
-            for(const [, module] of modules){
+            console.log("API-gateway stack: construct: app has modules ", modules);
+            for (const [, module] of modules) {
                 const basePath = module.getBasePath();
-                this.logger.info(" load controllers from module base-path: " + basePath);
+                console.log("Load controllers from module base-path: ", basePath);
                 Helper.registerControllersFromModule(module, this.registerController);
             }
         } else {
-            this.logger.info(" API-gateway stack: construct: app has NO modules ");
+            console.log("API-gateway stack: construct: app has NO modules ");
         }
-    }
-
-    // get the cors configuration
-    private getCors(): string[] {
-        if (this.stackConfig.cors === true) return Cors.ALL_ORIGINS;
-        if (typeof this.stackConfig.cors === "string") return [this.stackConfig.cors];
-        return this.stackConfig.cors || [];
     }
 
     // get the environment variables for the controller
@@ -122,22 +105,68 @@ export class APIGateway implements IStack {
 
     // register a single controller
     private registerController = (controllerInfo: HandlerDescriptor) => {
-        // TODO: cleanup this part
-        controllerInfo.handlerInstance = new controllerInfo.handlerClass();
-        const controllerName = controllerInfo.handlerInstance.controllerName;
-        const controllerConfig = controllerInfo.handlerInstance?.controllerConfig;
-        controllerInfo.routes = controllerInfo.handlerInstance.routes;
 
-        this.logger.info(`Registering controller ${controllerName} from ${controllerInfo.filePath}/${controllerInfo.fileName}`);
+        const { handlerClass, filePath, fileName } = controllerInfo;
+        const handlerInstance = new handlerClass();
+        const controllerName = handlerInstance.controllerName;
+        const controllerConfig = handlerInstance?.controllerConfig;
+        controllerInfo.routes = handlerInstance.routes;
+
+        this.logger.info(`Registering controller ${controllerName} from ${filePath}/${fileName}`);
 
         // create the api resource for the controller if it doesn't exist
-        const controllerResource = this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
-
-        // this.logger.debug(`Registering routes for controller ${controllerName}`, controllerInfo.routes);
+        const controllerResource = this.getOrCreateControllerResource(controllerName);
 
         // create lambda function for the controller
-        const controllerLambda = new LambdaFunction(this.mainStack, controllerName + "-controller", {
-            entry: controllerInfo.filePath + "/" + controllerInfo.fileName,
+        const controllerLambda = this.createLambdaFunction(controllerName, filePath, fileName, controllerConfig);
+        const controllerIntegration = new LambdaIntegration(controllerLambda);
+
+        const { defaultAuthorizerName, defaultAuthorizerType } = this.extractDefaultAuthorizer(controllerConfig);
+
+        this.logger.info(`APIGateway ~ registerController ~ Default Authorizer: ${defaultAuthorizerName} - ${defaultAuthorizerType}`);
+      
+        for (const route of Object.values(controllerInfo.routes ?? {})) {
+            this.logger.info(`Registering route ${route.httpMethod} ${route.path}`);
+            const currentResource = this.getOrCreateRouteResource(controllerResource, route.path);
+
+            const methodOptions = this.createMethodOptions(route, defaultAuthorizerType, defaultAuthorizerName);
+            currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);
+        }
+
+        // output the api endpoint
+        this.outputApiEndpoint(controllerName, controllerResource);
+    }
+
+    private getCorsPreflightOptions(): CorsOptions {
+        return {
+            allowHeaders: [
+                "Content-Type",
+                "X-Amz-Date",
+                "Authorization",
+                "X-Api-Key",
+                "Access-Control-Allow-Credentials",
+                "Access-Control-Allow-Headers",
+                "Impersonating-User-Sub",
+            ],
+            allowMethods: ["OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"],
+            allowCredentials: true,
+            allowOrigins: this.getCorsOrigins(),
+        };
+    }
+
+    private getCorsOrigins(): string[] {
+        if (this.stackConfig.cors === true) return Cors.ALL_ORIGINS;
+        if (typeof this.stackConfig.cors === "string") return [this.stackConfig.cors];
+        return this.stackConfig.cors || [];
+    }
+
+    private getOrCreateControllerResource = (controllerName: string): IResource => {
+        return this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
+    }
+
+    private createLambdaFunction = (controllerName: string, filePath: string, fileName: string, controllerConfig: any): NodejsFunction => {
+        return new LambdaFunction(this.mainStack, controllerName + "-controller", {
+            entry: filePath + "/" + fileName,
             layerArn: this.fw24.getLayerARN(),
             environmentVariables: this.getEnvironmentVariables(controllerConfig),
             buckets: controllerConfig?.buckets,
@@ -146,52 +175,73 @@ export class APIGateway implements IStack {
             tableName: controllerConfig?.tableName,
             allowSendEmail: true
         }) as NodejsFunction;
+    }
 
-        // create the lambda integration
-        const controllerIntegration = new LambdaIntegration(controllerLambda);
-
-        // in case of multiple authorizers in a single application, get the authorizer name
-        let authorizerName = undefined;
-        if(typeof controllerConfig?.authorizer === 'object') {
-            // default's the the App's default-authorizer
-            authorizerName = controllerConfig.authorizer.name;
-            // TODO: add support to define authorizer name at the route level
-        }
-      
-        for (const route of Object.values(controllerInfo.routes ?? {})) {
-            this.logger.info(`Registering route ${route.httpMethod} ${route.path}`, route);
-            let currentResource: IResource = controllerResource;
-            for (const pathPart of route.path.split("/")) {
-                if (pathPart === "") {
-                    continue;
-                }
-                let childResource = currentResource.getResource(pathPart);
-                if (!childResource) {
-                    childResource = currentResource.addResource(pathPart);
-                }
-                currentResource = childResource;
-            }
-
-            const requestParameters: { [key: string]: boolean } = {};
-            for (const param of route.parameters) {
-                requestParameters[`method.request.path.${param}`] = true;
-            }
-            
-            const methodOptions: MethodOptions = {
-                requestParameters: requestParameters,
-                authorizationType: route.authorizer as AuthorizationType,
-                authorizer: this.fw24.getAuthorizer(route.authorizer, authorizerName),
-            }
-            
-            this.logger.info(`APIGateway ~ registerController ~ add authorizer ${route.authorizer} for ${route.functionName}, authorizerName: ${authorizerName}`);
-
-            currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);
+    private extractDefaultAuthorizer = (controllerConfig: any): { defaultAuthorizerName: string, defaultAuthorizerType: string } => {
+        let defaultAuthorizerName;
+        let defaultAuthorizerType;
+    
+        if (Array.isArray(controllerConfig?.authorizer)) {
+            const defaultAuthorizer = controllerConfig.authorizer.find((auth: any) => auth.default) || controllerConfig.authorizer[0];
+            defaultAuthorizerName = defaultAuthorizer.name;
+            defaultAuthorizerType = defaultAuthorizer.type;
+        } else {
+            defaultAuthorizerType = controllerConfig.authorizer;
         }
 
-        // output the api endpoint
+        if(!defaultAuthorizerType && this.fw24.getConfig().defaultAuthorizationType) {
+            defaultAuthorizerType = this.fw24.getConfig().defaultAuthorizationType;
+        }
+    
+        return { defaultAuthorizerName, defaultAuthorizerType };
+    }
+
+    private getOrCreateRouteResource = (parentResource: IResource, path: string): IResource => {
+        let currentResource: IResource = parentResource;
+    
+        for (const pathPart of path.split("/")) {
+            if (pathPart === "") {
+                continue;
+            }
+    
+            let childResource = currentResource.getResource(pathPart);
+            if (!childResource) {
+                childResource = currentResource.addResource(pathPart);
+            }
+            currentResource = childResource;
+        }
+
+        return currentResource;
+    }
+
+    private createMethodOptions = (route: any, defaultAuthorizerType: string, defaultAuthorizerName: string | undefined): MethodOptions => {
+        const requestParameters: { [key: string]: boolean } = {};
+        for (const param of route.parameters) {
+            requestParameters[`method.request.path.${param}`] = true;
+        }
+    
+        let routeAuthorizerType = defaultAuthorizerType;
+        let routeAuthorizerName = defaultAuthorizerName
+        
+        if (route.authorizer && typeof route.authorizer === 'object') {
+            routeAuthorizerType = route.authorizer.type;
+            routeAuthorizerName = route.authorizer.name;
+        } else if (typeof route.authorizer === 'string') {
+            routeAuthorizerType = route.authorizer;
+        }
+    
+        return {
+            requestParameters,
+            authorizationType: routeAuthorizerType as AuthorizationType,
+            authorizer: this.fw24.getAuthorizer(routeAuthorizerType, routeAuthorizerName),
+        };
+    }
+
+    private outputApiEndpoint = (controllerName: string, controllerResource: IResource) => {
         new CfnOutput(this.mainStack, `Endpoint${controllerName}`, {
             value: this.api.url + controllerResource.path.slice(1),
             description: "API Gateway Endpoint for " + controllerName,
         });
     }
+    
 }
