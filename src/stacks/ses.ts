@@ -1,6 +1,6 @@
 import { Stack, Duration, CfnOutput } from "aws-cdk-lib";
 import { EmailIdentity, Identity, CfnTemplate } from "aws-cdk-lib/aws-ses";
-import { Queue } from "aws-cdk-lib/aws-sqs";
+import { QueueProps, Queue } from "aws-cdk-lib/aws-sqs";
 import { Effect } from "aws-cdk-lib/aws-iam";
 import { readdirSync, readFileSync, existsSync } from "fs";
 import { resolve, join, } from "path";
@@ -15,6 +15,7 @@ export interface ISESConfig {
     domain: string;
     sesOptions?: {};
     templatesDirectory?: string;
+    queueProps?: QueueProps;
 }
 
 export class SESStack implements IStack {
@@ -51,6 +52,7 @@ export class SESStack implements IStack {
             queueProps: {
                 visibilityTimeout: Duration.seconds(30),
                 receiveMessageWaitTime: Duration.seconds(10),
+                ...this.stackConfig.queueProps,
             },
             lambdaFunctionProps: {
                 entry: join(__dirname,"../core/mail-processor.js"),
@@ -61,7 +63,7 @@ export class SESStack implements IStack {
                 }],
             },
             sqsEventSourceProps: {
-                batchSize: 1,
+                batchSize: 5,
                 maxBatchingWindow: Duration.seconds(5),
                 reportBatchItemFailures: true,
             },
