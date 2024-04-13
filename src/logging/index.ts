@@ -25,6 +25,10 @@ export const createLogger = (_options: string | ISettingsParam<ILogObj>) => {
     if(!_options.hideLogPositionForProduction && logLevel > 2){
         _options.hideLogPositionForProduction = true;
     }
+    // set time format
+    if(!_options.prettyLogTimeZone){
+        _options.prettyLogTimeZone = 'local';
+    }
 
     const logger = new Logger(_options);
     return logger;
