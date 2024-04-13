@@ -2,17 +2,14 @@ import { Schema } from 'electrodb';
 import { APIGatewayController } from '../core/api-gateway-controller';
 import { Request } from '../interfaces/request';
 import { Response } from '../interfaces/response';
-import { Get } from '../decorators/method';
+import { Delete, Get, Patch, Post } from '../decorators/method';
 import { BaseEntityService } from './base-service';
 import { defaultMetaContainer } from './entity-metadata-container';
+import { EntitySchema } from './base-entity';
 
-export abstract class BaseEntityController<Sch extends Schema<any, any, any>> extends APIGatewayController {
-
-    private entityName: any;
+export abstract class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIGatewayController {
     
-    constructor(
-        entityName: string
-    ){
+    constructor( protected readonly entityName: string){
         super();
         this.entityName = entityName;
     }
@@ -30,23 +27,19 @@ export abstract class BaseEntityController<Sch extends Schema<any, any, any>> ex
         return Promise.resolve();
     }
 
-    // ** workaround to deal with base controller type def
     public getEntityService<S extends BaseEntityService<Sch>>(): S {
         return defaultMetaContainer.getEntityServiceByEntityName<S>(this.entityName);
     }
 
 	// Simple string response
-	@Get('/create')
+	@Post('')
 	async create(req: Request, res: Response) {
-
-		const data = req.queryStringParameters; 
-
-		const createdEntity = await this.getEntityService().create(data);
+		const createdEntity = await this.getEntityService().create(req.body);
 
 		return res.json({ __created__: createdEntity,  __req__: req });
 	}
 
-	@Get('/get/{id}')
+	@Get('/{id}')
 	async find(req: Request, res: Response) {
         // prepare the identifiers
         const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
@@ -56,19 +49,27 @@ export abstract class BaseEntityController<Sch extends Schema<any, any, any>> ex
 		return res.json({ __entity__: entity,  __req__: req });
 	}
 
-	@Get('/update/{id}')
+	@Get('')
+	async list(req: Request, res: Response) {
+		// TODO: pagination + filter + search
+        const data = req.queryStringParameters; 
+
+		const entities = await this.getEntityService().list(data);
+
+		return res.json(entities);
+	}
+
+	@Patch('/{id}')
 	async update(req: Request, res: Response) {
         // prepare the identifiers
         const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
 
-		const data = req.queryStringParameters; 
-
-		const updatedEntity = await this.getEntityService().update(identifiers, data);
+		const updatedEntity = await this.getEntityService().update(identifiers, req.body);
 
 		return res.json({ __updated__: updatedEntity,  __req__: req });
 	}
 
-	@Get('/delete/{id}')
+	@Delete('/{id}')
 	async delete(req: Request, res: Response) {
         // prepare the identifiers
         const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
@@ -76,15 +77,6 @@ export abstract class BaseEntityController<Sch extends Schema<any, any, any>> ex
 		const deletedEntity = await this.getEntityService().delete(identifiers);
 
 		return res.json({ __deleted__: deletedEntity,  __req__: req });
-	}
-
-	@Get('/list')
-	async list(req: Request, res: Response) {
-        const data = req.queryStringParameters; 
-
-		const entities = await this.getEntityService().list(data);
-
-		return res.json(entities);
 	}
 
 }

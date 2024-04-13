@@ -36,7 +36,7 @@ function createRouteDecorator(method: string) {
         path: route,
         httpMethod: method,
         functionName: methodToDecorate.name || methodToDecorate,
-        parameters: parameters,
+        parameters: parameters
       };
       Reflect.set(target, "routes", routes);
       //InjectParams(target, methodToDecorate, descriptor);
