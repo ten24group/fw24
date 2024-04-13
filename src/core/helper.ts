@@ -2,8 +2,14 @@ import { readdirSync } from "fs";
 import { resolve, join, relative } from "path";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { IFw24Module } from "./module";
+import { createLogger, LogDuration, LogInOut } from "../logging";
+
+
 
 export class Helper {
+    
+    static readonly logger = createLogger(Helper.name);
+
     static hydrateConfig<T>(config: T, prefix = "APP") {
         Object.keys(process.env)
             .filter(key => key.startsWith(prefix))
@@ -15,9 +21,11 @@ export class Helper {
             });
     }
 
+    @LogDuration()
     static registerControllersFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
         const basePath = module.getBasePath();
-        console.log("registerControllersFromModule::: base-path: ", basePath);
+
+        Helper.logger.info("registerControllersFromModule::: base-path: " + basePath);
 
         // relative path from the place where the script is getting executed i.e index.ts in app-root
         const relativePath = relative('./', basePath); 
@@ -25,21 +33,45 @@ export class Helper {
 
         // TODO: support for controller path prefix [ e.g. module-name/controller-path ]
 
-        console.log("registerControllersFromModule::: module-controllers-path:", controllersPath);
+        Helper.logger.info("registerControllersFromModule::: module-controllers-path: " + controllersPath);
 
         Helper.registerHandlers(controllersPath, handlerRegistrar);
     }
 
+    @LogDuration()
+    static scanTSSourceFilesFrom(path: string){
+        Helper.logger.debug("Scanning TS source files from path: ", path);
+        // Resolve the absolute path
+        const sourceDirectory = resolve(path);
+        // Get all the files in the handler directory
+        const allDirFiles = readdirSync(sourceDirectory);
+        // Filter the files to only include TypeScript files
+        const sourceFilePaths = allDirFiles.filter((file) => 
+            ( 
+                file.endsWith(".ts")
+                && !file.endsWith(".d.ts")
+            )
+             ||
+            ( 
+                file.endsWith(".js")
+            )
+        );
+
+        return sourceFilePaths;
+    }
+
     static async registerHandlers(path: string, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void) {
-        console.log("Registering Lambda Handlers from: ", path);
+        
+        Helper.logger.info("Registering Lambda Handlers from: "+ path);
+        
         // Resolve the absolute path
         const handlerDirectory = resolve(path);
-        // Get all the files in the handler directory
-        const handlerFiles = readdirSync(handlerDirectory);
         // Filter the files to only include TypeScript files
-        const handlerPaths = handlerFiles.filter((file) => file.endsWith(".ts"));
+        const handlerPaths = Helper.scanTSSourceFilesFrom(path);
+
         // Register the handlers
         for (const handlerPath of handlerPaths) {
+            Helper.logger.info("Registering Lambda Handlers from handlerPath: "+ handlerPath);
             try {
                 // Dynamically import the controller file
                 const module = await import(join(handlerDirectory, handlerPath));
@@ -52,12 +84,18 @@ export class Helper {
                             fileName: handlerPath,
                             filePath: handlerDirectory,
                         };
+
+                        Helper.logger.info("Registering Lambda Handlers registering currentHandler: ", {handlerPath, handlerDirectory});
+
                         handlerRegistrar(currentHandler);
                         break;
+                    } else {
+                        Helper.logger.info("Registering Lambda Handlers ignored exportedItem: ", {exportedItem});
                     }
                 }
             } catch (err) {
-                console.error("Error registering handler: ", handlerDirectory, handlerPath, err);
+                Helper.logger.error("Error registering handler: ", {handlerDirectory, handlerPath});
+                Helper.logger.error(err);
             }
         }
     }

@@ -11,13 +11,20 @@ import {
 
 import { Stack, CfnOutput } from "aws-cdk-lib";
 import { Helper } from "../core/helper";
-import { IControllerConfig } from "../fw24";
+import { createLogger } from "../logging";
 import { LambdaFunction } from "../constructs/lambda-function";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
 import Mutable from "../types/mutable";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+
+import { SESStack } from "./ses";
+import { SQSStack } from "./sqs";
+import { SNSStack } from "./sns";
+import { DynamoDBStack } from "./dynamodb";
+import { CognitoStack } from "./cognito";
+import { IControllerConfig } from "../decorators/controller";
 
 export interface IAPIGatewayConfig {
     cors?: boolean | string | string[];
@@ -26,21 +33,26 @@ export interface IAPIGatewayConfig {
 }
 
 export class APIGateway implements IStack {
-    fw24: Fw24 = Fw24.getInstance();
-    // array of type of stacks that this stack is dependent on
-    dependencies: string[] = ['SESStack', 'DynamoDBStack', 'CognitoStack', 'SQSStack', 'SNSStack'];
-    mainStack!: Stack;
+    readonly logger = createLogger(APIGateway.name);
+    readonly fw24: Fw24 = Fw24.getInstance();
+    
     api!: RestApi;
+    mainStack!: Stack;
+    // array of type of stacks that this stack is dependent on
+    dependencies: string[] = [SESStack.name, DynamoDBStack.name, CognitoStack.name, SQSStack.name, SNSStack.name];
 
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: IAPIGatewayConfig) {
+        this.logger.debug('constructor:');
+
         // hydrate the config object with environment variables ex: APIGATEWAY_CONTROLLERS
         Helper.hydrateConfig(stackConfig,'APIGATEWAY');
     }
 
     // construct method to create the stack
-    public construct() {
-        console.log("APIGateway construct");
+    public async construct() {
+        this.logger.debug('construct:');
+
         // set the default api options
         const paramsApi: Mutable<RestApiProps> = this.stackConfig.apiOptions || {};
         // Enable CORS if defined
@@ -48,7 +60,7 @@ export class APIGateway implements IStack {
             console.log("Enabling CORS... this.config.cors: ", this.stackConfig.cors);
             paramsApi.defaultCorsPreflightOptions = this.getCorsPreflightOptions();
         }
-        console.log("Creating API Gateway... ");
+        this.logger.debug("Creating API Gateway... ");
         // get the main stack from the framework
         this.mainStack = this.fw24.getStack("main");
         // create the api gateway
@@ -100,7 +112,7 @@ export class APIGateway implements IStack {
         const controllerConfig = handlerInstance?.controllerConfig;
         controllerInfo.routes = handlerInstance.routes;
 
-        console.log(`Registering controller ${controllerName} from ${filePath}/${fileName}`);
+        this.logger.info(`Registering controller ${controllerName} from ${filePath}/${fileName}`);
 
         // create the api resource for the controller if it doesn't exist
         const controllerResource = this.getOrCreateControllerResource(controllerName);
@@ -111,10 +123,10 @@ export class APIGateway implements IStack {
 
         const { defaultAuthorizerName, defaultAuthorizerType } = this.extractDefaultAuthorizer(controllerConfig);
 
-        console.log(`APIGateway ~ registerController ~ Default Authorizer: ${defaultAuthorizerName} - ${defaultAuthorizerType}`);
+        this.logger.info(`APIGateway ~ registerController ~ Default Authorizer: ${defaultAuthorizerName} - ${defaultAuthorizerType}`);
       
         for (const route of Object.values(controllerInfo.routes ?? {})) {
-            console.log(`Registering route ${route.httpMethod} ${route.path}`);
+            this.logger.info(`Registering route ${route.httpMethod} ${route.path}`);
             const currentResource = this.getOrCreateRouteResource(controllerResource, route.path);
 
             const methodOptions = this.createMethodOptions(route, defaultAuthorizerType, defaultAuthorizerName);

@@ -16,7 +16,7 @@ import { CognitoAuthRole } from "../constructs/cognito-auth-role";
 import { LambdaFunction } from "../constructs/lambda-function";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
-
+import { createLogger, LogDuration } from "../logging";
 
 export interface ICognitoConfig {
     userPool: {
@@ -35,23 +35,29 @@ export interface ICognitoConfig {
 }
 
 export class CognitoStack implements IStack {
+    readonly logger = createLogger(CognitoStack.name);
+
     fw24: Fw24 = Fw24.getInstance();
     dependencies: string[] = [];
     userPool!: UserPool;
     
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: ICognitoConfig) {
-        console.log("Cognito Stack constructor", stackConfig);
+        this.logger.debug("constructor: ", stackConfig);
     }
 
     // construct method to create the stack
-    public construct() {
-        console.log("Cognito construct");
+    @LogDuration()
+    public async construct() {
+        this.logger.debug("construct");
 
         const userPoolConfig = this.stackConfig.userPool;
         const mainStack = this.fw24.getStack("main");
         var namePrefix = `${this.fw24.appName}`;
 
+        if(this.stackConfig.userPool.props.userPoolName) {
+            namePrefix = `${namePrefix}-${this.stackConfig.userPool.props.userPoolName}`;
+        }
         if(this.fw24.get("tenantId")){
             namePrefix = `${namePrefix}-${this.fw24.get("tenantId")}`
         }
@@ -81,7 +87,6 @@ export class CognitoStack implements IStack {
             },
             removalPolicy: userPoolConfig.props.removalPolicy || RemovalPolicy.RETAIN,
         });
-
         const userPoolClient = new UserPoolClient(mainStack, `${namePrefix}-userPoolclient`, {
             userPool: this.userPool,
             generateSecret: false,
@@ -161,10 +166,18 @@ export class CognitoStack implements IStack {
             }
         }
 
-        this.fw24.set("userPoolID", this.userPool.userPoolId);
-        this.fw24.set("userPoolClientID", userPoolClient.userPoolClientId);
-        this.fw24.set("identityPoolID", identityPool.ref);
-        this.fw24.setCognitoAuthorizer(userPoolName, userPoolAuthorizer, true);
+        let prefix = 'default_';
+        if(this.stackConfig.userPool.props.userPoolName) {
+            prefix = this.stackConfig.userPool.props.userPoolName + '_';
+        }
+        this.fw24.set("userPoolID", this.userPool.userPoolId, prefix);
+        this.fw24.set("userPoolClientID", userPoolClient.userPoolClientId, prefix);
+        this.fw24.set("identityPoolID", identityPool.ref, prefix);
+        this.fw24.setCognitoAuthorizer(
+            this.stackConfig.userPool.props.userPoolName || 'default', 
+            userPoolAuthorizer, 
+            // TODO: better logic to control the default authorizer
+            !this.stackConfig.userPool.props.userPoolName ||  this.stackConfig.userPool.props.userPoolName == 'default');
     }
 
     public addCognitoTrigger(lambdaFunction: any){

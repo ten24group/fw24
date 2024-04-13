@@ -16,8 +16,8 @@ export * from "./stacks/dynamodb";
 export * from "./stacks/cognito";
 export * from './entity';
 export * from './utils';
+export * from './logging'
 export * from "./client"
 export * as Auditor from './audit';
 export * as Validator from './validation' ;
-export * as Logger from './logging'
 export * as EventDispatcher from './event';
