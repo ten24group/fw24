@@ -1,4 +1,4 @@
-import { HttpRequestValidation, ValidationRules } from "../validation";
+import { HttpRequestValidations, ValidationRules } from "../validation";
 
 export interface Route {
   httpMethod: string;
@@ -6,7 +6,7 @@ export interface Route {
   path: string;
   parameters: Array<String>;
   authorizer: string,
-  validations ?: ValidationRules | HttpRequestValidation
+  validations ?: ValidationRules | HttpRequestValidations
 }
 
 export type Routes = Route[];

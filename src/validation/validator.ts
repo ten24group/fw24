@@ -436,20 +436,20 @@ export class Validator implements IValidator {
         collectErrors: boolean = true
     ): TestValidationRulesResponse<I> {
         let pass = true;
-        const errors: { [k in keyof I] ?: Array<any> } = {};
+        const errors: TestValidationRulesResponse<I>['errors'] = {};
         
         if(rules) {
             for(const key in rules){
+                const thisRule = rules[key];
+                if(!thisRule){
+                    continue;
+                }
 
-                const rule = rules[key];
-                if(rule){
-                    
-                    const result = this.testValidationRule(rule, input?.[key] );                    
-                    pass = typeof result.pass == 'boolean' ? result.pass : false;
-    
-                    if(!pass && collectErrors){
-                        errors[key] = result.errors?.map( err => ({...err, path: key}) );
-                    }
+                const result = this.testValidationRule(thisRule, input?.[key] );                    
+                pass =  pass && ( typeof result.pass == 'boolean' ? result.pass : false );
+
+                if(collectErrors && result.errors){
+                    errors[key] = result.errors?.map( err => ({...err, path: key}) );
                 }
             }
         }

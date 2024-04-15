@@ -6,6 +6,7 @@ export type ValidationError = {
     message: string,
     expected ?: any,                           
     provided ?: any,
+    path ?: string,
 }
 
 export type ValidationRuleErrors = Array<ValidationError>;
@@ -20,7 +21,9 @@ export type TestValidationRuleResponse = {
 
 export type TestValidationRulesResponse<I extends InputType = InputType> = {
     pass: boolean, 
-    errors ?: { [k in keyof I] ?: Array<any> }
+    errors ?: { 
+        [k in keyof I] ?: ValidationRuleErrors 
+    }
 };
 
 export interface IValidatorResponse<
@@ -101,6 +104,10 @@ export type Validations<T = unknown> = {
     readonly 'lte' ?: T | string | any,
 }
 
+export const validations = [
+    'minLength', 'maxLength', 'required', 'pattern', 'datatype', 'unique', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte'
+];
+
 export type ValidationRule<T extends unknown> = {
     // TODO; narrow validation rules by type like ['string', 'number', 'boolean' etc]
     readonly [V in keyof Validations<T>] ?: Validations<T>[V];
@@ -110,7 +117,39 @@ export type ValidationRules<Input extends InputType = InputType> = {
     [K in keyof Input] ?: ValidationRule<Input[K]>;
 }
 
-export type HttpRequestValidation< 
+export function isValidationRule<T extends unknown>( rule: any): rule is ValidationRule<T> {
+    return typeof rule === 'object' 
+        && typeof rule !== 'function'
+        && typeof rule !== 'undefined'
+        && rule !== null
+        && validations.some(key => rule.hasOwnProperty(key))
+}
+
+export function isValidationRules<Input extends InputType = InputType>( rules: any): rules is ValidationRules<Input> {
+    return typeof rules === 'object' 
+        && typeof rules !== 'function'
+        && typeof rules !== 'undefined'
+        && rules !== null
+        && Object.keys(rules).every(key => isValidationRule(rules[key]))
+}
+
+export function isHttpRequestValidationRule( rule: any): rule is HttpRequestValidations {
+    return typeof rule === 'object' 
+        && typeof rule !== 'function'
+        && typeof rule !== 'undefined'
+        && rule !== null
+        && (
+            (rule.hasOwnProperty('body') && isValidationRules(rule.body))
+            || 
+            (rule.hasOwnProperty('query') && isValidationRules(rule.query))
+            || 
+            (rule.hasOwnProperty('param') && isValidationRules(rule.param))
+            || 
+            (rule.hasOwnProperty('header') && isValidationRules(rule.header))
+        )
+}
+
+export type HttpRequestValidations< 
     Header extends InputType = InputType, 
     Body extends InputType = InputType,
     Param extends InputType = InputType,

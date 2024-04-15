@@ -8,7 +8,8 @@ import { Authorizer } from '../../../decorators/authorizer';
 // import cognito client
 import { CognitoIdentityProviderClient, SignUpCommand, InitiateAuthCommand, ConfirmSignUpCommand, GlobalSignOutCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { CognitoIdentityClient, GetIdCommand, GetCredentialsForIdentityCommand } from "@aws-sdk/client-cognito-identity";
-import { HttpRequestValidation, ValidationRules } from '../../../validation';
+import { HttpRequestValidations, ValidationRules } from '../../../validation';
+import { Validation } from '../../../decorators/validation';
 
 const identityProviderClient = new CognitoIdentityProviderClient({});
 const identityClient = new CognitoIdentityClient({});
@@ -47,10 +48,10 @@ export class AuthController extends APIGatewayController {
 	Cognito signup, signin and verify email methods
 	*/
 	@Get('/signup', {
-		body: {
-		  email: { required: true, datatype: 'email', maxLength: 40, },
-		  password: { datatype: 'string', neq: "Blah2" }
-		},
+		validations: {
+			email: { required: true, datatype: 'email', maxLength: 40, },
+			password: { datatype: 'string', neq: "Blahh" }
+		}
 	})
 	async signup(req: Request, res: Response) {
 		const {email, password} = req.body as { email?: string; password?: string };
@@ -76,6 +77,7 @@ export class AuthController extends APIGatewayController {
 		return res.send('User Signed Up');
 	}
 
+	// @Validation(SignInValidations)
 	@Get('/signin', SignInValidations)
 	async signin(req: Request, res: Response) {
 		const {email, password} = req.body as { email?: string; password?: string };

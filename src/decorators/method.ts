@@ -1,5 +1,5 @@
 import { Route } from "../interfaces/route";
-import { HttpRequestValidation, ValidationRules } from "../validation";
+import { HttpRequestValidations, ValidationRules } from "../validation";
 
 // function InjectParams(
 //   target: any,
@@ -19,7 +19,13 @@ import { HttpRequestValidation, ValidationRules } from "../validation";
 // }
 
 function createRouteDecorator(method: string) {
-  return (route: string, validations?: ValidationRules | HttpRequestValidation) =>
+  return (
+    route: string,
+    options ?: {
+      authorizer?: string,
+      validations?: ValidationRules | HttpRequestValidations
+    } 
+  ) =>
     (target: any, methodToDecorate: any) => {
 
       const routes: Record<string, Route> = Reflect.get(target, "routes") || {};
@@ -41,8 +47,8 @@ function createRouteDecorator(method: string) {
         httpMethod: method,
         functionName: methodToDecorate.name || methodToDecorate,
         parameters: parameters,
-        validations: validations,
-        authorizer: Reflect.get(target, "authorizer") || "NONE",
+        authorizer: options?.authorizer || Reflect.get(target, "authorizer") || "NONE",
+        validations: options?.validations,
       };
 
       Reflect.set(target, "routes", routes);
