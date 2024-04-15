@@ -32,12 +32,7 @@ export class AuthController extends APIGatewayController {
 	/*
 	Cognito signup, signin and verify email methods
 	*/
-	@Get('/signup', {
-		validations: {
-			email: { required: true, datatype: 'email', maxLength: 40, },
-			password: { datatype: 'string', neq: "Blahh" }
-		}
-	})
+	@Get('/signup')
 	async signup(req: Request, res: Response) {
 		const {email, password} = req.body as { email?: string; password?: string };
 		const userPoolClientId = this.getUserPoolClientId();
@@ -62,7 +57,6 @@ export class AuthController extends APIGatewayController {
 		return res.send('User Signed Up');
 	}
 
-	// @Validation(SignInValidations)
 	@Get('/signin')
 	async signin(req: Request, res: Response) {
 		const {email, password} = req.body as { email?: string; password?: string };

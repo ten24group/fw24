@@ -66,7 +66,7 @@ abstract class APIGatewayController {
       const route = this.findMatchingRoute(requestContext);
 
       if(route?.validations){
-        this.logger.warn("Validation rules found for route:", route);
+        this.logger.info("Validation rules found for route:", route);
         
         const validationResult = await this.validate(requestContext, route.validations);
         
@@ -80,18 +80,10 @@ abstract class APIGatewayController {
           });
         }
 
-        if(validationResult.errors){
-          let { query } = validationResult.errors;
-          if(query){
-            const { password: pwd, email } = query;
-            this.logger.warn("Validation result", { pass: validationResult.pass, err: { pwd, email} });
-          }
-
-        }
 
 
       } else {
-        this.logger.warn("No validation rules found for route:", route);
+        this.logger.info("No validation rules found for route:", route);
       }
 
       const routeFunction = this.getRouteFunction(route);
