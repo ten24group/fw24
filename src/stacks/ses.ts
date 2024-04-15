@@ -48,8 +48,10 @@ export class SESStack implements IStack {
         // create main queue
         const queue = new QueueLambda(this.mainStack, `${this.fw24.appName}-mail-queue`, {
             queueName: `emailQueue`,
-            visibilityTimeout: Duration.seconds(30),
-            receiveMessageWaitTime: Duration.seconds(10),
+            queueProps: {
+                visibilityTimeout: Duration.seconds(30),
+                receiveMessageWaitTime: Duration.seconds(10),
+            },
             lambdaFunctionProps: {
                 entry: join(__dirname,"../core/mail-processor.js"),
                 policies: [{

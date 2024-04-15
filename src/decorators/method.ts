@@ -22,7 +22,6 @@ function createRouteDecorator(method: string) {
   return (
     route: string,
     options ?: {
-      authorizer?: string,
       validations?: ValidationRules | HttpRequestValidations
     } 
   ) =>
@@ -47,7 +46,6 @@ function createRouteDecorator(method: string) {
         httpMethod: method,
         functionName: methodToDecorate.name || methodToDecorate,
         parameters: parameters,
-        authorizer: options?.authorizer || Reflect.get(target, "authorizer") || "NONE",
         validations: options?.validations,
       };
 

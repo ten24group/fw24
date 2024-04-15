@@ -6,7 +6,7 @@ export interface IControllerConfig {
 		name?: string;
 		type: string;
 		methods ?: string[];
-		default?: boolean
+		default?: boolean;
 	}> | { 
 		name?: string;
 		type: string;
