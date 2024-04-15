@@ -1,7 +1,7 @@
 import { Route } from "../interfaces/route";
 import { ValidationRules, HttpRequestValidations } from "../validation";
 
-export const Validation = (validations?: ValidationRules | HttpRequestValidations) => {
+export const Validation = (validations: ValidationRules | HttpRequestValidations) => {
     return function (target: any, methodToDecorate: any) {
       
       const routes: Record<string, Route> = Reflect.get(target, "routes") || {};
