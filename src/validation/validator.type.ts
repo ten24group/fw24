@@ -9,21 +9,18 @@ export type ValidationError = {
     path ?: string,
 }
 
-export type ValidationRuleErrors = Array<ValidationError>;
-export type ValidationRulesErrors<I extends InputType = InputType> = {
+export type TestValidationRuleResponse = {
+    pass: boolean, 
+    errors ?: Array<ValidationError>
+};
+
+export type InputValidationErrors<I extends InputType = InputType> = {
     [K in keyof I] ?: Array<ValidationError>
 };
 
-export type TestValidationRuleResponse = {
+export type TestInputValidationResponse<I extends InputType = InputType> = {
     pass: boolean, 
-    errors ?: ValidationRuleErrors
-};
-
-export type TestValidationRulesResponse<I extends InputType = InputType> = {
-    pass: boolean, 
-    errors ?: { 
-        [k in keyof I] ?: ValidationRuleErrors 
-    }
+    errors ?: InputValidationErrors<I>
 };
 
 export interface IValidatorResponse<
@@ -33,9 +30,9 @@ export interface IValidatorResponse<
 > {
     pass: boolean;
     errors ?: {
-        actor ?: ValidationRulesErrors<A>
-        input ?: ValidationRulesErrors<I>
-        record ?: ValidationRulesErrors<R>
+        actor ?: InputValidationErrors<A>
+        input ?: InputValidationErrors<I>
+        record ?: InputValidationErrors<R>
     },
 }
 
@@ -62,11 +59,11 @@ export interface IValidator {
         OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
     >(options: OpValidatorOptions<OpName, Sch, ConditionsMap, OpsInpSch> ): Promise<IValidatorResponse>;
 
-    testValidationRules<I extends InputType>(
+    testInputValidation<I extends InputType>(
         input: I | undefined,
         rules?: ValidationRules<I>, 
         collectErrors?: boolean,
-    ): TestValidationRulesResponse<I>;
+    ): TestInputValidationResponse<I>;
 }
 
 
@@ -94,7 +91,7 @@ export type Validations<T = unknown> = {
     readonly 'maxLength' ?: number,
     readonly 'required' ?: boolean,
     readonly 'pattern' ?: RegExp,
-    readonly 'datatype' ?: 'string' | 'number' | 'boolean' | 'array' | 'object' | 'null' | 'email' | 'ipv4' | 'ipv6' | 'uri' | 'url' | 'uuid' | 'json' | 'date' | 'date-time',
+    readonly 'datatype' ?: 'string' | 'number' | 'boolean' | 'array' | 'object' | 'null' | 'email' | 'ip' | 'ipv4' | 'ipv6' | 'uri' | 'httpUrl' | 'uuid' | 'json' | 'date' | 'date-time',
     readonly 'unique' ?: boolean,
     readonly 'eq' ?: T | string | any,
     readonly 'neq' ?: T | string | any,
@@ -117,38 +114,6 @@ export type ValidationRules<Input extends InputType = InputType> = {
     [K in keyof Input] ?: ValidationRule<Input[K]>;
 }
 
-export function isValidationRule<T extends unknown>( rule: any): rule is ValidationRule<T> {
-    return typeof rule === 'object' 
-        && typeof rule !== 'function'
-        && typeof rule !== 'undefined'
-        && rule !== null
-        && validations.some(key => rule.hasOwnProperty(key))
-}
-
-export function isValidationRules<Input extends InputType = InputType>( rules: any): rules is ValidationRules<Input> {
-    return typeof rules === 'object' 
-        && typeof rules !== 'function'
-        && typeof rules !== 'undefined'
-        && rules !== null
-        && Object.keys(rules).every(key => isValidationRule(rules[key]))
-}
-
-export function isHttpRequestValidationRule( rule: any): rule is HttpRequestValidations {
-    return typeof rule === 'object' 
-        && typeof rule !== 'function'
-        && typeof rule !== 'undefined'
-        && rule !== null
-        && (
-            (rule.hasOwnProperty('body') && isValidationRules(rule.body))
-            || 
-            (rule.hasOwnProperty('query') && isValidationRules(rule.query))
-            || 
-            (rule.hasOwnProperty('param') && isValidationRules(rule.param))
-            || 
-            (rule.hasOwnProperty('header') && isValidationRules(rule.header))
-        )
-}
-
 export type HttpRequestValidations< 
     Header extends InputType = InputType, 
     Body extends InputType = InputType,
@@ -160,6 +125,21 @@ export type HttpRequestValidations<
     readonly param ?: ValidationRules<Param>,
     readonly header ?: ValidationRules<Header>,
 }
+
+export type TestHttpRequestValidationResponse<
+    Header extends InputType = InputType, 
+    Body extends InputType = InputType,
+    Param extends InputType = InputType,
+    Query extends InputType = InputType,
+> = {
+    pass: boolean, 
+    errors ?: {
+        body ?: InputValidationErrors<Body>,
+        query ?: InputValidationErrors<Query>,
+        param ?: InputValidationErrors<Param>,
+        header ?: InputValidationErrors<Header>,
+    }
+};
 
 export type TEntityValidationCondition<I extends InputType, R extends RecordType> = {
     readonly actorRules ?: {

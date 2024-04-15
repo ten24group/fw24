@@ -16,7 +16,7 @@ export class Application {
     private readonly modules: Map<string, IFw24Module>; 
 
     constructor(config: IApplicationConfig = {}) {
-        this.logger = createLogger(`${Application.name}-${config.name}-${config.environment}`);
+        this.logger = createLogger([Application.name, config.name, config.environment].join('-'));
         
         this.logger.info("Initializing fw24 infrastructure...");
 

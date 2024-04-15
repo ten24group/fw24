@@ -8,24 +8,9 @@ import { Authorizer } from '../../../decorators/authorizer';
 // import cognito client
 import { CognitoIdentityProviderClient, SignUpCommand, InitiateAuthCommand, ConfirmSignUpCommand, GlobalSignOutCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { CognitoIdentityClient, GetIdCommand, GetCredentialsForIdentityCommand } from "@aws-sdk/client-cognito-identity";
-import { HttpRequestValidations, ValidationRules } from '../../../validation';
-import { Validation } from '../../../decorators/validation';
 
 const identityProviderClient = new CognitoIdentityProviderClient({});
 const identityClient = new CognitoIdentityClient({});
-
-
-const SignInValidations: ValidationRules = {
-    email: { 
-      required: true,
-      datatype: 'email',
-      maxLength: 40, 
-    },
-    password: {
-      datatype: 'string',
-      neq: "Blah"
-    }
-};
 
 @Controller('mauth', { 
 	authorizer: [{
@@ -78,7 +63,7 @@ export class AuthController extends APIGatewayController {
 	}
 
 	// @Validation(SignInValidations)
-	@Get('/signin', SignInValidations)
+	@Get('/signin')
 	async signin(req: Request, res: Response) {
 		const {email, password} = req.body as { email?: string; password?: string };
 		const userPoolClientId = this.getUserPoolClientId();

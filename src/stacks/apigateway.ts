@@ -123,7 +123,7 @@ export class APIGateway implements IStack {
 
         const { defaultAuthorizerName, defaultAuthorizerType } = this.extractDefaultAuthorizer(controllerConfig);
 
-        this.logger.info(`APIGateway ~ registerController ~ Default Authorizer: ${defaultAuthorizerName} - ${defaultAuthorizerType}`);
+        this.logger.info(`registerController ~ Default Authorizer: name: ${defaultAuthorizerName} - type: ${defaultAuthorizerType}`);
       
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             this.logger.info(`Registering route ${route.httpMethod} ${route.path}`);

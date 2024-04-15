@@ -139,7 +139,7 @@ export class Fw24 {
     }
 
     public set(name: string, value: any, prefix: string = '') {
-        this.logger.debug("set:", JSON.stringify({prefix, name, value}, getCircularReplacer()));
+        this.logger.debug("set:", {prefix, name});
         if(prefix.length > 0) {
             prefix = `${prefix}_`;
         }
@@ -154,7 +154,7 @@ export class Fw24 {
     }
 
     public addDynamoTable(name: string, table: TableV2) {
-        this.logger.debug("addDynamoTable:", JSON.stringify({ name, table}, getCircularReplacer()) );
+        this.logger.debug("addDynamoTable:", {name} );
         this.dynamoTables[name] = table;
     }
 

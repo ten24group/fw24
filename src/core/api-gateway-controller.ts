@@ -5,7 +5,7 @@ import { Response } from "../interfaces/response";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
 import { createLogger } from "../logging";
-import { DefaultValidator, ValidationRules, HttpRequestValidations, IValidator, TestValidationRulesResponse, isHttpRequestValidationRule, ValidationRuleErrors, ValidationRulesErrors, TestValidationRuleResponse, isValidationRule, isValidationRules } from "../validation";
+import { DefaultValidator, ValidationRules, HttpRequestValidations, IValidator, TestInputValidationResponse, isHttpRequestValidationRule, InputValidationErrors, TestValidationRuleResponse, isValidationRule, isInputValidationRule, InputType, TestHttpRequestValidationResponse } from "../validation";
 
 /**
  * Base controller class for handling API Gateway events.
@@ -28,19 +28,20 @@ abstract class APIGatewayController {
     validations: ValidationRules | HttpRequestValidations, 
   ){
 
-    const result: TestValidationRulesResponse<{body: any, path: any, query: any, headers: any}> = {
+    const result: TestHttpRequestValidationResponse = {
       pass: true,
       errors: {} 
     };
 
     let validationRules: HttpRequestValidations = validations;
-    if(isValidationRules(validations)){
+    if(isInputValidationRule(validations)){
       validationRules = {
         body: validations 
       }
     }
     
-    if(isHttpRequestValidationRule(validations)){
+    if(isHttpRequestValidationRule(validationRules)){
+      this.logger.info("Validations are a single HttpRequestValidationRule object");
 
       for(const validationType of ['body', 'param', 'query', 'header'] as const){
         const typeValidationRules = validationRules[validationType];  
@@ -59,13 +60,16 @@ abstract class APIGatewayController {
           validationInput = requestContext.headers;
         }
 
-        const validationResult = this.validator.testValidationRules(validationInput, typeValidationRules);
+        const validationResult = this.validator.testInputValidation(validationInput, typeValidationRules);
 
         for(const prop in validationResult.errors){
           validationResult.errors[prop]?.forEach( error => error.path ? error.path = `${validationType}.${error.path}` : undefined );
         }
 
-        Object.defineProperty(result.errors, validationType, { value: validationResult.errors });
+        result.pass = result.pass && validationResult.pass;
+
+        result.errors![validationType] = validationResult.errors
+
       }
       
     }
@@ -94,16 +98,24 @@ abstract class APIGatewayController {
       const route = this.findMatchingRoute(requestContext);
 
       if(route?.validations){
+        this.logger.warn("Validation rules found for route:", route);
+        
         const validationResult = await this.validate(requestContext, route.validations);
+        
         if(!validationResult.pass){
           return this.handleResponse({
-            statusCode: 500,
+            statusCode: 400,
             body: JSON.stringify({
               message: 'Validation failed!!!',
               error: validationResult.errors 
             }),
           });
         }
+
+        this.logger.warn("Validation result", validationResult);
+
+      } else {
+        this.logger.warn("No validation rules found for route:", route);
       }
 
       const routeFunction = this.getRouteFunction(route);

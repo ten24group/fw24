@@ -4,7 +4,7 @@ import { EntityOpsValidations, EntityValidations, InputApplicableConditionsMap, 
 import { describe, expect, it } from '@jest/globals';
 import { randomUUID } from "node:crypto";
 import { DefaultEntityOperations, TDefaultEntityOperations, TEntityOpsInputSchemas, createEntitySchema } from "../entity";
-import { Validator, extractOpValidationFromEntityValidations } from "./validator";
+import { Validator, extractOpValidationFromEntityValidations, isHttpRequestValidationRule, isValidationRule, isInputValidationRule } from "./validator";
 
 
 export namespace User {
@@ -784,4 +784,135 @@ describe('Validator', () => {
 
   });
 
+});
+describe('isValidationRule', () => {
+  it('should return true for valid ValidationRule objects', () => {
+    const rule = {
+      required: true
+    };
+    expect(isValidationRule(rule)).toBe(true);
+  });
+
+  it('should return false for non-objects', () => {
+    expect(isValidationRule(123)).toBe(false);
+    expect(isValidationRule('abc')).toBe(false);
+    expect(isValidationRule(null)).toBe(false);
+    expect(isValidationRule(undefined)).toBe(false);
+  });
+
+  it('should return false for objects without valid keys', () => {
+    expect(isValidationRule({foo: 'bar'})).toBe(false);
+  });
+});
+
+describe('isValidationRules', () => {
+  it('should return true for valid ValidationRules objects', () => {
+    const rules = {
+      name: {
+        required: true
+      },
+      email: {
+        required: true,
+        email: true
+      }
+    };
+    expect(isInputValidationRule(rules)).toBe(true);
+  });
+
+  it('should return false for non-objects', () => {
+    expect(isInputValidationRule(123)).toBe(false);
+    expect(isInputValidationRule('abc')).toBe(false);
+    expect(isInputValidationRule(null)).toBe(false);
+    expect(isInputValidationRule(undefined)).toBe(false);
+  });
+
+  it('should return false for objects with invalid rules', () => {
+    const rules = {
+      name: {
+        required: true
+      },
+      email: 'invalid'
+    };
+    expect(isInputValidationRule(rules)).toBe(false);
+  });
+});
+
+describe('isHttpRequestValidationRule', () => {
+  it('should return true for valid HttpRequestValidationRule objects', () => {
+    const rule = {
+      body: {
+        name: {
+          required: true
+        }
+      }
+    };
+    expect(isHttpRequestValidationRule(rule)).toBe(true);
+  });
+
+  it('should return true for valid HttpRequestValidationRule objects 2', () => {
+    const rule = {
+      body: {
+        email: { 
+          required: true,
+          datatype: 'email',
+          maxLength: 40, 
+        },
+        password: {
+          datatype: 'string',
+          neq: "Blah"
+        }
+      }
+    };
+    expect(isHttpRequestValidationRule(rule)).toBe(true);
+  });
+
+  it('should return true for objects with valid query rules', () => {
+    const rule = {
+      query: {
+        limit: {
+          required: true,
+          integer: true
+        }  
+      }
+    };
+    expect(isHttpRequestValidationRule(rule)).toBe(true);
+  });
+
+  it('should return true for objects with valid param rules', () => {
+    const rule = {
+      param: {
+        id: {
+          required: true,
+          uuid: true
+        }
+      }
+    };
+    expect(isHttpRequestValidationRule(rule)).toBe(true);
+  });
+
+  it('should return true for objects with valid header rules', () => {
+    const rule = {
+      header: {
+        'Content-Type': {
+          required: true,
+          enum: ['application/json']
+        }
+      }
+    };
+    expect(isHttpRequestValidationRule(rule)).toBe(true);
+  });
+
+  it('should return false for non-objects', () => {
+    expect(isHttpRequestValidationRule(123)).toBe(false);
+    expect(isHttpRequestValidationRule('abc')).toBe(false);
+    expect(isHttpRequestValidationRule(null)).toBe(false);
+    expect(isHttpRequestValidationRule(undefined)).toBe(false);
+  });
+
+  it('should return false for objects without valid sub-rules', () => {
+    const rule = {
+      body: 'invalid'  
+    };
+    expect(isHttpRequestValidationRule(rule)).toBe(false);
+  });
 });

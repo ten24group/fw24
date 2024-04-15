@@ -2,14 +2,40 @@
  * Defines validation rules and criteria that can be used to validate input, record, and actor data.
  * Provides a Validator class that validates data against defined validation rules and criteria.
  */
-import { Schema } from "electrodb";
-import { IValidator, IValidatorResponse, OpValidatorOptions, ValidationRule, ValidationRules, TestValidationRulesResponse, TestValidationRuleResponse, ValidationRuleErrors, ValidationRulesErrors } from "./validator.type";
+import { IValidator, IValidatorResponse, OpValidatorOptions, ValidationRule, ValidationRules, TestInputValidationResponse, TestValidationRuleResponse, InputValidationErrors, validations, HttpRequestValidations, ValidationError } from "./validator.type";
 import { DeepWritable } from '../utils/types';
 import { Actor, EntityValidations, InputType, RecordType, TConditionalValidationRule, TEntityOpValidations, TEntityValidationCondition, TMapOfValidationConditions, Validations } from "./validator.type";
 import { TDefaultEntityOperations, EntitySchema, TEntityOpsInputSchemas } from "../entity";
 import { createLogger } from "../logging";
 
 const logger = createLogger('Validator');
+
+export function isValidationRule<T extends unknown>( rule: any): rule is ValidationRule<T> {
+    return typeof rule === 'object' 
+        && rule !== null
+        && validations.some(key => rule.hasOwnProperty(key))
+}
+
+export function isInputValidationRule<Input extends InputType = InputType>( rules: any): rules is ValidationRules<Input> {
+    return typeof rules === 'object' 
+        && rules !== null
+        && Object.keys(rules).every(key => isValidationRule(rules[key]))
+}
+
+export function isHttpRequestValidationRule( rule: any): rule is HttpRequestValidations {
+    return typeof rule === 'object' 
+        && rule !== null
+        && (
+            (rule.hasOwnProperty('body') && isInputValidationRule(rule.body))
+            || 
+            (rule.hasOwnProperty('query') && isInputValidationRule(rule.query))
+            || 
+            (rule.hasOwnProperty('param') && isInputValidationRule(rule.param))
+            || 
+            (rule.hasOwnProperty('header') && isInputValidationRule(rule.header))
+        )
+}
+
 
 export function extractOpValidationFromEntityValidations<
   Sch extends EntitySchema<any, any, any, Ops>, 
@@ -124,9 +150,9 @@ export class Validator implements IValidator {
         const { opValidations: {inputRules, actorRules, recordRules}, conditions } = opsValidationRules;
         
         let pass = true;
-        const actorErrors: ValidationRulesErrors<Actor> = {};
-        const inputErrors: ValidationRulesErrors<any> = {};
-        const recordErrors: ValidationRulesErrors<any> = {};
+        const actorErrors: InputValidationErrors<Actor> = {};
+        const inputErrors: InputValidationErrors<any> = {};
+        const recordErrors: InputValidationErrors<any> = {};
         
         if(actorRules){
             for(const key in actorRules){
@@ -233,7 +259,7 @@ export class Validator implements IValidator {
         const {rules, allConditions, inputVal, input, record, actor} = options;
 
         let validationPassed = true;
-        let errors: ValidationRuleErrors = [];
+        let errors: Array<ValidationError> = [];
 
         await Promise.all( rules.map(async (rule) => {
             return this.validateConditionalRule({
@@ -368,7 +394,7 @@ export class Validator implements IValidator {
         }
 
         let validationPassed = true;
-        let errors: ValidationRuleErrors|undefined;
+        let errors: Array<ValidationError> | undefined;
 
         logger.debug("validateConditionalRules ~ criteriaPassed:", criteriaPassed);
 
@@ -405,18 +431,18 @@ export class Validator implements IValidator {
         let applicable = true;
 
         if(actorRules){
-            const result = this.testValidationRules<Actor>(actor, actorRules, false);
+            const result = this.testInputValidation<Actor>(actor, actorRules, false);
             applicable = applicable &&  result.pass;
         }
 
         if(applicable && inputRules){
-            const result = this.testValidationRules<I>( input, inputRules, false);
+            const result = this.testInputValidation<I>( input, inputRules, false);
 
             applicable = applicable && result.pass;
         }
 
         if(applicable && recordRules){
-            const result = this.testValidationRules<R>(record, recordRules, false);
+            const result = this.testInputValidation<R>(record, recordRules, false);
             applicable = applicable && result.pass;
         }
 
@@ -430,13 +456,16 @@ export class Validator implements IValidator {
      * @param rules - The validation rules to test, where each key is a key on the input object.
      * @returns Whether the input passed all the validation rules.
      */
-    testValidationRules<I extends InputType>(
+    testInputValidation<I extends InputType>(
         input: I | undefined,
         rules?: ValidationRules<I>, 
         collectErrors: boolean = true
-    ): TestValidationRulesResponse<I> {
-        let pass = true;
-        const errors: TestValidationRulesResponse<I>['errors'] = {};
+    ): TestInputValidationResponse<I> {
+
+        const res: TestInputValidationResponse<I> = {
+            pass: true,
+            errors: {},
+        };
         
         if(rules) {
             for(const key in rules){
@@ -446,18 +475,15 @@ export class Validator implements IValidator {
                 }
 
                 const result = this.testValidationRule(thisRule, input?.[key] );                    
-                pass =  pass && ( typeof result.pass == 'boolean' ? result.pass : false );
+                res.pass =  res.pass && ( typeof result.pass == 'boolean' ? result.pass : false );
 
                 if(collectErrors && result.errors){
-                    errors[key] = result.errors?.map( err => ({...err, path: key}) );
+                    res.errors![key] = result.errors?.map( err => ({...err, path: key}) );
                 }
             }
         }
 
-        return { 
-            pass, 
-            errors
-        };
+        return res;
     }
 
     /**
@@ -471,9 +497,9 @@ export class Validator implements IValidator {
      * and any errors encountered.
     */
     testValidationRule<T extends unknown>(validationRule: ValidationRule<T>, val: T, collectErrors = true): TestValidationRuleResponse {
-        logger.debug("testValidationRuleWithErrors ~ arguments:", {validationRule, val});
+        logger.debug("testValidationRule ~ arguments:", {validationRule, val});
         let pass = true;
-        const errors: ValidationRuleErrors = [];
+        const errors: Array<ValidationError> = [];
         
         if(validationRule) {
 
@@ -486,27 +512,27 @@ export class Validator implements IValidator {
                 
                 const result = this.testValidation(thisValidation, val );
 
-                logger.debug("testValidationRuleWithErrors ~ testValidation result: ", {thisValidation, result});
+                logger.debug("testValidationRule ~ testValidation result: ", {thisValidation, result});
                 
-                if(typeof result == 'boolean'){
-
-                    pass = pass && result;
-                    if(!result && collectErrors){
-                        errors.push( {
-                            message: `Validation '${key}' failed`,
-                            expected: thisValidation[key],                           
-                            provided: val,
-                        });
-                    }
-                } else {
-
-                    pass = false;
-                    collectErrors && errors.push(result);
+                pass = pass && result;
+                if(!result && collectErrors){
+                    errors.push( {
+                        message: `Validation '${key}' failed`,
+                        expected: thisValidation[key],                           
+                        provided: val ?? '-undefined',
+                    });
                 }
+                // if(typeof result == 'boolean'){
+
+                // } else {
+
+                //     pass = false;
+                //     collectErrors && errors.push(result);
+                // }
             }
         }
 
-        logger.debug("testValidationRuleWithErrors ~ results:", {pass, errors});
+        logger.debug("testValidationRule ~ results:", {pass, errors});
 
         return {
             pass,
@@ -516,6 +542,55 @@ export class Validator implements IValidator {
 
     isNumeric(num: any){
         return !isNaN(num)
+    }
+
+    isEmail(val: string){
+        const pattern = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+        return pattern.test(val);
+    }
+
+    isUnique(val: any): boolean {
+        throw(new Error(`isUnique not implemented yet: ${val}`));
+    }
+
+    isIP(val: any){
+        return require('net').isIP(val)
+    }
+
+    isIPv4(val: any){
+        return require('net').isIPv4(val)
+    }
+
+    isIPv6(val: any){
+        return require('net').isIPv6(val)
+    }
+
+    isUUID(val: string){
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+    }
+
+    isJson(val: string) {
+        try {
+            JSON.parse(val);
+        } catch (e) {
+            return false;
+        }
+        return true;
+    }
+
+    isDate(val: string) {
+        return !isNaN(new Date(val).getDate());
+    }
+
+    isHttpUrl(val: string) {
+        let url;
+        try {
+            url = new URL(val);
+        } catch (_) {
+            return false;  
+        }
+
+        return url?.protocol === "http:" || url?.protocol === "https:";
     }
 
     /**
@@ -548,33 +623,61 @@ export class Validator implements IValidator {
             }
 
             if(datatype == 'email'){
-                const pattern = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-                return pattern.test(val);
+                return this.isEmail(val);
             }
 
-            // TODO: | 'ipv4' | 'ipv6' | 'uri' | 'url' | 'uuid' | 'json' | 'date' | 'date-time'
+            if(datatype == 'ip'){
+                return this.isIP(val);
+            }
 
-            return typeof val === datatype;
+            if(datatype == 'ipv4'){
+                return this.isIPv4(val);
+            }
+
+            if(datatype == 'ipv6'){
+                return this.isIPv6(val);
+            } 
+
+            if(datatype == 'uuid'){
+                return this.isUUID(val);
+            } 
+
+            if(datatype == 'json'){
+                return this.isJson(val);
+            } 
+
+            if(datatype == 'date'){
+                return this.isDate(val);
+            }
+
+            if(datatype == 'httpUrl'){
+                return this.isHttpUrl(val);
+            }
+
+            // TODO: 'uri' | 'date-time'
+
+            return true;
         }
+
         if(unique && val && val.length > 1) {
-            return true; // TODO: 
+            return this.isUnique(val);
         }
-        if(eq && val && val !== eq) {
+        if(eq && val !== eq) {
             return false;
         }
-        if(neq && val && val === neq) {
+        if(neq && val === neq) {
             return false;
         }
-        if(gt && val && val <= gt) {
+        if(gt && val <= gt) {
             return false;
         }
-        if(gte && val && val < gte) {
+        if(gte && val < gte) {
             return false;
         }
-        if(lt && val && val >= lt) {
+        if(lt && val >= lt) {
             return false;
         }
-        if(lte && val && val > lte) {
+        if(lte && val > lte) {
             return false;
         }
 
