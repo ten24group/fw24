@@ -25,11 +25,11 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         ],
         formPageConfig: {
             apiConfig: {
-                apiMethod: `GET`,
-                apiUrl: `/${options.entityName.toLowerCase()}/update`,
+                apiMethod: `PATCH`,
+                apiUrl: `/${options.entityName.toLowerCase()}/`,
             },
             detailApiConfig: {
-                apiUrl: `/${options.entityName.toLowerCase()}/get`,
+                apiUrl: `/${options.entityName.toLowerCase()}/`,
                 apiMethod: "GET"
             },
             formButtons: [ "submit", "cancel" ],

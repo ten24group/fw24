@@ -29,6 +29,10 @@ function createRouteDecorator(method: string) {
 
       const routes: Record<string, Route> = Reflect.get(target, "routes") || {};
 
+      if(!route){
+        route = '/'
+      };
+
       if (route && !route.startsWith("/")) {
         route = `/${route}`;
       }
