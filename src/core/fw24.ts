@@ -49,7 +49,7 @@ export class Fw24 {
     }
     
     public addStack(name: string, stack: any): Fw24 {
-        this.logger.debug("addStack:", JSON.stringify({name, stack}, getCircularReplacer()) );
+        this.logger.debug("addStack:", {name} );
         this.stacks[name] = stack;
         return this;
     }
@@ -59,7 +59,7 @@ export class Fw24 {
     }
 
     public addModule(name: string, module: IFw24Module) {
-        this.logger.debug("addModule:", {name, module});
+        this.logger.debug("addModule:", {name, module: module.getBasePath()} );
 
         this.modules.set(name, module);
     }

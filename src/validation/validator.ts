@@ -2,11 +2,14 @@
  * Defines validation rules and criteria that can be used to validate input, record, and actor data.
  * Provides a Validator class that validates data against defined validation rules and criteria.
  */
-import { IValidator, IValidatorResponse, OpValidatorOptions, ValidationRule, ValidationRules, TestInputValidationResponse, TestValidationRuleResponse, InputValidationErrors, validations, HttpRequestValidations, ValidationError } from "./validator.type";
+import { IValidator, IValidatorResponse, OpValidatorOptions, ValidationRule, ValidationRules, InputValidationResponse, TestValidationRuleResponse, InputValidationErrors, validations, HttpRequestValidations, ValidationError, HttpRequestValidationResponse } from "./validator.type";
 import { DeepWritable } from '../utils/types';
 import { Actor, EntityValidations, InputType, RecordType, TConditionalValidationRule, TEntityOpValidations, TEntityValidationCondition, TMapOfValidationConditions, Validations } from "./validator.type";
 import { TDefaultEntityOperations, EntitySchema, TEntityOpsInputSchemas } from "../entity";
 import { createLogger } from "../logging";
+
+import { Request } from '../interfaces/request';
+
 
 const logger = createLogger('Validator');
 
@@ -119,23 +122,17 @@ export class Validator implements IValidator {
      * Returns whether validation passed and any errors.
     */
     async validate<
-        OpName extends keyof OpsInpSch,
-        Sch extends EntitySchema<any, any, any, Ops>, 
+        Sch extends EntitySchema<any, any, any>, 
+        OpName extends keyof Sch['model']['entityOperations'],
         ConditionsMap extends TMapOfValidationConditions<any, any>, 
-        Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
         OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
     >(
-        options: OpValidatorOptions<OpName, Sch, ConditionsMap, OpsInpSch>
+        options: OpValidatorOptions<Sch, OpName, ConditionsMap, OpsInpSch>
+
     ): Promise<IValidatorResponse> {
         
         const { entityValidations, operationName, input, actor, record } = options;
 
-    //      pass: boolean;
-    // errors ?: {
-    //     actor ?: ValidationRulesErrors<A>
-    //     input ?: ValidationRulesErrors<I>
-    //     record ?: ValidationRulesErrors<R>
-    // },
 
         if(!entityValidations){
             return {
@@ -231,6 +228,104 @@ export class Validator implements IValidator {
                 record: recordErrors
             },
         });
+    }
+
+    /**
+     * Tests validations rules for the given input object against the provided validation rules.
+     * 
+     * @param input - The input object to validate.
+     * @param rules - The validation rules to test, where each key is a key on the input object.
+     * @returns Whether the input passed all the validation rules.
+     */
+    validateInput<I extends InputType>(
+        input: I | undefined,
+        rules?: ValidationRules<I>, 
+        collectErrors: boolean = true
+    ): InputValidationResponse<I> {
+
+        const res: InputValidationResponse<I> = {
+            pass: true,
+            errors: {},
+        };
+        
+        if(rules) {
+            for(const key in rules){
+                const thisRule = rules[key];
+                if(!thisRule){
+                    continue;
+                }
+
+                const validationRes = this.testValidationRule(thisRule, input?.[key] );                    
+                res.pass = res.pass && validationRes.pass
+
+                if(collectErrors && validationRes.errors && validationRes.errors.length){
+                    res.errors![key] = validationRes.errors?.map( err => ({...err, path: key}) );
+                }
+            }
+        }
+
+        return res;
+    }
+
+    /**
+     * Tests validations rules for the given input object against the provided validation rules.
+     * 
+     * @param input - The input object to validate.
+     * @param rules - The validation rules to test, where each key is a key on the input object.
+     * @returns Whether the input passed all the validation rules.
+     */
+    validateHttpRequest<
+        Header extends InputType = InputType, 
+        Body extends InputType = InputType,
+        Param extends InputType = InputType,
+        Query extends InputType = InputType,
+    >(
+        request: Request, 
+        validations: HttpRequestValidations<Header, Body, Param, Query>,
+        collectErrors: boolean = true
+
+    ): HttpRequestValidationResponse<Header, Body, Param, Query> {
+
+        const res: HttpRequestValidationResponse<Header, Body, Param, Query> = {
+            pass: true,
+            errors: {},
+        };
+
+        logger.warn("called validateHttpRequest", {request, validations});
+
+        for(const validationType of ['body', 'param', 'query', 'header'] as const){
+            const typeValidationRules = validations[validationType];  
+            if(!typeValidationRules){
+                continue;
+            }
+
+            let validationInput: any = {};
+            if(validationType == 'body'){
+                validationInput = request.body;
+            } else if(validationType == 'param'){
+                validationInput = request.pathParameters;
+            } else if(validationType == 'query'){
+                validationInput = request.queryStringParameters;
+            } else if(validationType == 'header'){
+                validationInput = request.headers;
+            }
+
+            const validationResult = this.validateInput(validationInput, typeValidationRules);
+        
+            logger.warn("validateHttpRequest validationResult: ", { res, validationResult});
+
+            for(const prop in validationResult.errors){
+                validationResult.errors[prop]?.forEach( error => error.path ? error.path = `${validationType}.${error.path}` : undefined );
+            }
+
+            res.pass = res.pass && validationResult.pass;
+
+            if(collectErrors){
+                res.errors![validationType] = validationResult.errors
+            }
+        }
+
+        return res;
     }
 
     /**
@@ -431,59 +526,22 @@ export class Validator implements IValidator {
         let applicable = true;
 
         if(actorRules){
-            const result = this.testInputValidation<Actor>(actor, actorRules, false);
+            const result = this.validateInput<Actor>(actor, actorRules, false);
             applicable = applicable &&  result.pass;
         }
 
         if(applicable && inputRules){
-            const result = this.testInputValidation<I>( input, inputRules, false);
+            const result = this.validateInput<I>( input, inputRules, false);
 
             applicable = applicable && result.pass;
         }
 
         if(applicable && recordRules){
-            const result = this.testInputValidation<R>(record, recordRules, false);
+            const result = this.validateInput<R>(record, recordRules, false);
             applicable = applicable && result.pass;
         }
 
         return applicable;
-    }
-
-    /**
-     * Tests validations rules for the given input object against the provided validation rules.
-     * 
-     * @param input - The input object to validate.
-     * @param rules - The validation rules to test, where each key is a key on the input object.
-     * @returns Whether the input passed all the validation rules.
-     */
-    testInputValidation<I extends InputType>(
-        input: I | undefined,
-        rules?: ValidationRules<I>, 
-        collectErrors: boolean = true
-    ): TestInputValidationResponse<I> {
-
-        const res: TestInputValidationResponse<I> = {
-            pass: true,
-            errors: {},
-        };
-        
-        if(rules) {
-            for(const key in rules){
-                const thisRule = rules[key];
-                if(!thisRule){
-                    continue;
-                }
-
-                const result = this.testValidationRule(thisRule, input?.[key] );                    
-                res.pass =  res.pass && ( typeof result.pass == 'boolean' ? result.pass : false );
-
-                if(collectErrors && result.errors){
-                    res.errors![key] = result.errors?.map( err => ({...err, path: key}) );
-                }
-            }
-        }
-
-        return res;
     }
 
     /**
@@ -497,7 +555,7 @@ export class Validator implements IValidator {
      * and any errors encountered.
     */
     testValidationRule<T extends unknown>(validationRule: ValidationRule<T>, val: T, collectErrors = true): TestValidationRuleResponse {
-        logger.debug("testValidationRule ~ arguments:", {validationRule, val});
+        logger.info("testValidationRule ~ arguments:", {validationRule, val});
         let pass = true;
         const errors: Array<ValidationError> = [];
         
@@ -512,9 +570,10 @@ export class Validator implements IValidator {
                 
                 const result = this.testValidation(thisValidation, val );
 
-                logger.debug("testValidationRule ~ testValidation result: ", {thisValidation, result});
+                logger.info("testValidationRule ~ testValidation result: ", {thisValidation, result});
                 
                 pass = pass && result;
+
                 if(!result && collectErrors){
                     errors.push( {
                         message: `Validation '${key}' failed`,
@@ -522,17 +581,10 @@ export class Validator implements IValidator {
                         provided: val ?? '-undefined',
                     });
                 }
-                // if(typeof result == 'boolean'){
-
-                // } else {
-
-                //     pass = false;
-                //     collectErrors && errors.push(result);
-                // }
             }
         }
 
-        logger.debug("testValidationRule ~ results:", {pass, errors});
+        logger.info("testValidationRule ~ results:", {pass, errors});
 
         return {
             pass,
@@ -601,7 +653,7 @@ export class Validator implements IValidator {
      * @returns True if the value passes all validations, false otherwise. Can also return validation error objects.
     */
     testValidation(partialValidation: Validations, val: any){
-        logger.debug("testValidation ~ partialValidation:, val: ", partialValidation, val);
+        logger.info("testValidation ~ partialValidation:, val: ", partialValidation, val);
         const{ required, minLength, maxLength, pattern, datatype, unique, eq, neq, gt, gte, lt, lte } = partialValidation;
 
         if(required && val === undefined) {
@@ -656,7 +708,7 @@ export class Validator implements IValidator {
 
             // TODO: 'uri' | 'date-time'
 
-            return true;
+            return typeof val === datatype;
         }
 
         if(unique && val && val.length > 1) {

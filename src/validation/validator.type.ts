@@ -1,6 +1,7 @@
 import { EntityRecordTypeFromSchema, EntitySchema, TEntityOpsInputSchemas } from "../entity";
 import { Narrow, OmitNever, ValueOf } from '../utils/types';
 
+import { Request } from '../interfaces/request';
 
 export type ValidationError = {
     message: string,
@@ -18,7 +19,7 @@ export type InputValidationErrors<I extends InputType = InputType> = {
     [K in keyof I] ?: Array<ValidationError>
 };
 
-export type TestInputValidationResponse<I extends InputType = InputType> = {
+export type InputValidationResponse<I extends InputType = InputType> = {
     pass: boolean, 
     errors ?: InputValidationErrors<I>
 };
@@ -36,11 +37,9 @@ export interface IValidatorResponse<
     },
 }
 
-
-
 export type OpValidatorOptions<
-    OpName extends keyof OpsInpSch,
     Sch extends EntitySchema<any, any, any>, 
+    OpName extends keyof Sch['model']['entityOperations'],
     ConditionsMap extends TMapOfValidationConditions<any, any>, 
     OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > = {
@@ -53,17 +52,27 @@ export type OpValidatorOptions<
 
 export interface IValidator {
     validate<
-        OpName extends keyof OpsInpSch,
         Sch extends EntitySchema<any, any, any>, 
+        OpName extends keyof Sch['model']['entityOperations'],
         ConditionsMap extends TMapOfValidationConditions<any, any>, 
         OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
-    >(options: OpValidatorOptions<OpName, Sch, ConditionsMap, OpsInpSch> ): Promise<IValidatorResponse>;
+    >(options: OpValidatorOptions< Sch, OpName, ConditionsMap, OpsInpSch> ): Promise<IValidatorResponse>;
 
-    testInputValidation<I extends InputType>(
+    validateInput<I extends InputType>(
         input: I | undefined,
         rules?: ValidationRules<I>, 
         collectErrors?: boolean,
-    ): TestInputValidationResponse<I>;
+    ): InputValidationResponse<I>;
+
+    validateHttpRequest<
+        Header extends InputType = InputType, 
+        Body extends InputType = InputType,
+        Param extends InputType = InputType,
+        Query extends InputType = InputType,
+    >(
+        requestContext: Request, 
+        validations: HttpRequestValidations<Header, Body, Param, Query>, 
+    ): HttpRequestValidationResponse<Header, Body, Param, Query>
 }
 
 
@@ -126,7 +135,7 @@ export type HttpRequestValidations<
     readonly header ?: ValidationRules<Header>,
 }
 
-export type TestHttpRequestValidationResponse<
+export type HttpRequestValidationResponse<
     Header extends InputType = InputType, 
     Body extends InputType = InputType,
     Param extends InputType = InputType,

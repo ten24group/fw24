@@ -38,7 +38,7 @@ export class Application {
     }
 
     public useModule(module: IFw24Module): Application{
-        this.logger.debug("Called UseModule with module: ", { moduleName: module.getName(), module});
+        this.logger.debug("Called UseModule with module: ", { moduleName: module.getName()});
         
         if (this.modules.has(module.getName())) {
             throw new Error(`Stack with name ${module.getName()} is already registered.`);
