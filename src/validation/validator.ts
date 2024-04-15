@@ -291,7 +291,7 @@ export class Validator implements IValidator {
             errors: {},
         };
 
-        logger.warn("called validateHttpRequest", {request, validations});
+        logger.debug("called validateHttpRequest", {request, validations});
 
         for(const validationType of ['body', 'param', 'query', 'header'] as const){
             const typeValidationRules = validations[validationType];  
@@ -312,8 +312,6 @@ export class Validator implements IValidator {
 
             const validationResult = this.validateInput(validationInput, typeValidationRules);
         
-            logger.warn("validateHttpRequest validationResult: ", { res, validationResult});
-
             for(const prop in validationResult.errors){
                 validationResult.errors[prop]?.forEach( error => error.path ? error.path = `${validationType}.${error.path}` : undefined );
             }
@@ -324,6 +322,8 @@ export class Validator implements IValidator {
                 res.errors![validationType] = validationResult.errors
             }
         }
+
+        logger.info("validateHttpRequest validationResult: ", res );
 
         return res;
     }
@@ -555,7 +555,7 @@ export class Validator implements IValidator {
      * and any errors encountered.
     */
     testValidationRule<T extends unknown>(validationRule: ValidationRule<T>, val: T, collectErrors = true): TestValidationRuleResponse {
-        logger.info("testValidationRule ~ arguments:", {validationRule, val});
+        logger.debug("testValidationRule ~ arguments:", {validationRule, val});
         let pass = true;
         const errors: Array<ValidationError> = [];
         
@@ -570,7 +570,7 @@ export class Validator implements IValidator {
                 
                 const result = this.testValidation(thisValidation, val );
 
-                logger.info("testValidationRule ~ testValidation result: ", {thisValidation, result});
+                logger.debug("testValidationRule ~ testValidation result: ", {thisValidation, result});
                 
                 pass = pass && result;
 
