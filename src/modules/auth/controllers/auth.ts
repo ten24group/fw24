@@ -6,7 +6,7 @@ import { Response } from '../../../interfaces/response';
 import { Authorizer } from '../../../decorators/authorizer';
 
 // import cognito client
-import { CognitoIdentityProviderClient, SignUpCommand, InitiateAuthCommand, ConfirmSignUpCommand, GlobalSignOutCommand } from "@aws-sdk/client-cognito-identity-provider";
+import { CognitoIdentityProviderClient, SignUpCommand, InitiateAuthCommand, ConfirmSignUpCommand, GlobalSignOutCommand, AdminAddUserToGroupCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { CognitoIdentityClient, GetIdCommand, GetCredentialsForIdentityCommand } from "@aws-sdk/client-cognito-identity";
 
 const identityProviderClient = new CognitoIdentityProviderClient({});
@@ -121,6 +121,29 @@ export class AuthController extends APIGatewayController {
 		);
 
 		return res.send('User verified');
+	}
+
+	// Add user to group
+	@Authorizer({type: 'AWS_IAM', requireRouteInGroupConfig: true})
+	@Post('/addUserToGroup')
+	async addUserToGroup(req: Request, res: Response) {
+		const {email, groupName} = req.body as { email: string; groupName: string };
+
+		if (email === undefined || groupName === undefined) {
+			return res.status(400).end('Missing email or groupName');
+		}
+
+		const result = await identityProviderClient.send(
+			new AdminAddUserToGroupCommand({
+				UserPoolId: this.getUserPoolID(),
+				GroupName: groupName,
+				Username: email,
+			}),
+		);
+
+		this.logger.debug('result', result);
+
+		return res.send('User added to group');
 	}
 
 	// generate IAM Credentials from token

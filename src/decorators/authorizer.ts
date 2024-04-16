@@ -1,6 +1,6 @@
 import { Route } from "../interfaces/route";
 
-export const Authorizer = (authorizationType: { name: string; type: string; } | string) => {
+export const Authorizer = (authorizationType: { type?: string; name?: string; groups?: string[]; requireRouteInGroupConfig?: boolean } | string) => {
     return function (target: any, methodToDecorate: any) {
       const routes: Record<string, Route> = Reflect.get(target, "routes") || {};
       const route = Object.values(routes).find(

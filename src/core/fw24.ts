@@ -4,6 +4,7 @@ import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { Helper } from './helper';
 import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
 import { ITopic, Topic } from 'aws-cdk-lib/aws-sns';
+import { Role, PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';
 import { IFw24Module } from './module';
 import { createLogger } from '../logging';
 import { getCircularReplacer } from '../utils';
@@ -161,4 +162,40 @@ export class Fw24 {
     public getDynamoTable(name: string): TableV2{
         return this.dynamoTables[name];
     }
+
+    public addRouteToRolePolicy(route: string, groups: string[], requireRouteInGroupConfig: boolean = false) {
+        if(!groups || groups.length === 0) {
+            groups = this.get('Groups', 'cognito_');
+        }
+        let routeAddedToGroupPolicy = false;
+        for (const groupName of groups) {
+            // if requireRouteInGroupConfig is true, check if the route is in the group config
+            if(requireRouteInGroupConfig && (!this.get('Routes', 'cognito_' + groupName + '_') || !this.get('Routes', 'cognito_' + groupName + '_').includes(route))) {
+                continue;
+            }
+            // get role
+            this.logger.info("addRouteToRolePolicy:", {route, groupName});
+            const role: Role = this.get('Role', 'cognito_' + groupName + '_');
+            // add role policy statement to allow route access for group
+            role.addToPolicy(this.getRoutePolicyStatement(route));
+            routeAddedToGroupPolicy = true;
+        }
+        if(!routeAddedToGroupPolicy) {
+            throw new Error(`Route ${route} not found in any group config. Please add the route to a group config to secure access.`);
+        }
+    }
+
+    public getRoutePolicyStatement(route: string) {
+        // write the policy statement
+        const statement = new PolicyStatement({
+            effect: Effect.ALLOW,
+            actions: ['execute-api:Invoke'],
+            resources: [`arn:aws:execute-api:*:*:*/*/*/${route}`],
+        });
+
+        this.logger.debug("RoutePolicyStatement:", {route, statement});
+
+        return statement;
+    }
+
 }

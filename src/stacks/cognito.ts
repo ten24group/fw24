@@ -34,7 +34,11 @@ export interface ICognitoConfig {
     groups?: {
         name: string;
         precedence?: number;
-        policyFilePaths: string[];
+        policyFilePaths?: string[];
+        // during signup the user will be added to default group
+        autoUserSignup?: boolean;
+        // Routes protected by this group
+        routes?: string[];
     }[];
     useAsDefaultAuthorizer?: boolean;
 }
@@ -96,7 +100,7 @@ export class CognitoStack implements IStack {
         this.mainStack = this.fw24.getStack("main");
 
         const userPoolConfig = {...CognitoConfigDefaults.userPool?.props, ...this.stackConfig.userPool?.props};
-        this.logger.info("user pool config: ", userPoolConfig);
+        this.logger.debug("user pool config: ", userPoolConfig);
 
         const userPoolName = userPoolConfig.userPoolName || 'default';
         const namePrefix = this.createNamePrefix(userPoolName);
@@ -170,6 +174,7 @@ export class CognitoStack implements IStack {
 
          // create user pool groups
         if (this.stackConfig.groups) {
+            this.fw24.set('Groups', this.stackConfig.groups.map(group => group.name), `cognito_`);
             for (const group of this.stackConfig.groups) {
                 // create a role for the group
                 const policyFilePaths = group.policyFilePaths;
@@ -177,6 +182,9 @@ export class CognitoStack implements IStack {
                     identityPool,
                     policyFilePaths,
                 }) as Role;
+
+                this.fw24.set('Role', role, `cognito_${group.name}_`);
+                this.fw24.set('Routes', group.routes, `cognito_${group.name}_`);
 
                 new CfnUserPoolGroup(this.mainStack, `${namePrefix}-${group.name}-group`, {
                     groupName: group.name,

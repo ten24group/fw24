@@ -3,15 +3,19 @@ import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 export interface IControllerConfig {
 	tableName?: string;
 	authorizer?: Array<{ 
-		name?: string;
 		type: string;
-		methods ?: string[];
+		name?: string;
+		methods?: string[];
+		groups?: string[];
 		default?: boolean;
+		requireRouteInGroupConfig?: boolean;
 	}> | { 
-		name?: string;
 		type: string;
-		methods ?: string[];
+		name?: string;
+		methods?: string[];
+		groups?: string[];
 		default?: boolean
+		requireRouteInGroupConfig?: boolean;
 	} | string;
 	buckets?: Array<{ 
 		name: string;
