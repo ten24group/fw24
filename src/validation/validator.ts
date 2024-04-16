@@ -578,7 +578,7 @@ export class Validator implements IValidator {
                     errors.push( {
                         message: `Validation '${key}' failed`,
                         expected: thisValidation[key],                           
-                        provided: val ?? '-undefined',
+                        provided: val ?? 'undefined',
                     });
                 }
             }
