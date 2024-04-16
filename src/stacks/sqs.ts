@@ -63,12 +63,13 @@ export class SQSStack implements IStack {
         
         const queueName = queueInfo.handlerInstance.queueName;
         const queueConfig = queueInfo.handlerInstance.queueConfig || {};
+        const queueProps = {...this.stackConfig.queueProps, ...queueConfig.queueProps};
 
         this.logger.info(`:::Registering queue ${queueName} from ${queueInfo.filePath}/${queueInfo.fileName}`);
 
         const queue = new QueueLambda(this.mainStack, queueName + "-queue", {
             queueName: queueName,
-            queueProps: this.stackConfig.queueProps,
+            queueProps: queueProps,
             topics: queueConfig?.topics,
             lambdaFunctionProps: {
                 entry: queueInfo.filePath + "/" + queueInfo.fileName,
