@@ -86,7 +86,6 @@ export class AuthController extends APIGatewayController {
 		return res.json(result.AuthenticationResult);
 	}
 
-	@Authorizer('COGNITO_USER_POOLS')
 	@Post('/signout')
 	async signout(req: Request, res: Response) {
 		const {accessToken} = req.body as { accessToken: string };

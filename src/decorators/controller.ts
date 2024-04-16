@@ -38,7 +38,6 @@ export function Controller(controllerName: string, controllerConfig: IController
 
 				// initialize the default controller config
 				const defaultConfig: IControllerConfig = {
-					authorizer: 'NONE',
 					env: []
 				};
 				

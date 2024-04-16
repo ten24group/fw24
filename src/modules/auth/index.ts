@@ -1,10 +1,9 @@
 import { AbstractFw24Module, IModuleConfig } from '../../core/module';
 import { IStack } from '../../interfaces/stack';
-import { CognitoStack } from '../../stacks/cognito';
+import { CognitoStack, ICognitoConfig } from '../../stacks/cognito';
 
-export interface IAuthModuleConfig extends IModuleConfig {
-    selfSignUpEnabled?: boolean;
-    policyFilePaths?: string[];
+export interface IAuthModuleConfig extends ICognitoConfig {
+    
 }
 
 export class AuthModule extends AbstractFw24Module {
@@ -16,13 +15,12 @@ export class AuthModule extends AbstractFw24Module {
         this.stacks = new Map();
 
         const cognito = new CognitoStack({	
+            ...config,
             userPool: {
                 props: {
-                    selfSignUpEnabled: config.selfSignUpEnabled || false,
-                    userPoolName: 'authmodule'
+                    userPoolName: 'authmodule',
                 }
             },
-            policyFilePaths: config.policyFilePaths,
         });
 
         this.stacks.set('auth-cognito', cognito );

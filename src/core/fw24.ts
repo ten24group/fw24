@@ -121,7 +121,7 @@ export class Fw24 {
         this.logger.info("getCognitoAuthorizer: " + JSON.stringify({name}, getCircularReplacer()));
         // If no name is provided and no default authorizer is set, throw an error
         if(name === undefined && this.defaultCognitoAuthorizer === undefined) {
-            throw new Error('Default Cognito Authorizer not set');
+            throw new Error('No Authorizer exists for cognito user pools. For policy based authentication, use AWS_IAM authoriser.');
         }
         // If no name is provided, return the default authorizer
         if(name === undefined) {
