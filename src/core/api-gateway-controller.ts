@@ -41,8 +41,7 @@ abstract class APIGatewayController {
       throw (new Error("Invalid http-request validation rule"));
     }
 
-    const result = this.validator.validateHttpRequest(requestContext, validationRules);
-    return Promise.resolve(result);
+    return this.validator.validateHttpRequest(requestContext, validationRules);
   }
 
   /**
