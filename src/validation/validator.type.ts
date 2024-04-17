@@ -111,7 +111,7 @@ export type TComplexValidationValueWithMessage<T> = {
     message: string,
 }
 export type TComplexValidationValueWithValidator<T> = {
-    validator: (value: T, ctx?: any) => Promise<TestValidationResult>,
+    validator: (inputValue: T, ctx?: any) => Promise<TestValidationResult>,
     message?: string,
 }
 
@@ -132,7 +132,7 @@ export type Validations<T> = {
     readonly 'lte' ?: T,
     readonly 'inList' ?: Array<T>,
     readonly 'notInList' ?: Array<T>,
-    readonly 'custom' ?: (value: T, ctx?: any) => boolean | Promise<boolean>,
+    readonly 'custom' ?: (inputValue: T, ctx?: any) => boolean | Promise<boolean>,
 }
 
 export const validations = [
