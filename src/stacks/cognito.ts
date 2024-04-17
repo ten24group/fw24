@@ -20,6 +20,7 @@ import { IStack } from "../interfaces/stack";
 import { createLogger, LogDuration } from "../logging";
 
 export interface ICognitoConfig {
+    name?: string;
     userPool?: {
         props: UserPoolProps;
     };
@@ -100,9 +101,9 @@ export class CognitoStack implements IStack {
         this.mainStack = this.fw24.getStack("main");
 
         const userPoolConfig = {...CognitoConfigDefaults.userPool?.props, ...this.stackConfig.userPool?.props};
-        this.logger.debug("user pool config: ", userPoolConfig);
+        const userPoolName = this.stackConfig.name || 'default';
+        this.logger.debug("user pool config: ", userPoolName, userPoolConfig);
 
-        const userPoolName = userPoolConfig.userPoolName || 'default';
         const namePrefix = this.createNamePrefix(userPoolName);
         if(this.stackConfig.useAsDefaultAuthorizer === undefined){
             this.stackConfig.useAsDefaultAuthorizer = true;
@@ -132,8 +133,8 @@ export class CognitoStack implements IStack {
             this.createUserPoolAutorizer(userPool, userPoolName, this.stackConfig.useAsDefaultAuthorizer);
         }
 
-        this.fw24.set("userPoolID", userPool.userPoolId, userPoolName+'_');
-        this.fw24.set("userPoolClientID", userPoolClient.userPoolClientId, userPoolName+'_');
+        this.fw24.set("userPoolID", userPool.userPoolId, userPoolName);
+        this.fw24.set("userPoolClientID", userPoolClient.userPoolClientId, userPoolName);
 
     }
 
@@ -174,7 +175,8 @@ export class CognitoStack implements IStack {
 
          // create user pool groups
         if (this.stackConfig.groups) {
-            this.fw24.set('Groups', this.stackConfig.groups.map(group => group.name), `cognito_`);
+            this.fw24.set('Groups', this.stackConfig.groups.map(group => group.name), 'cognito');
+            this.fw24.set('AutoUserSignupGroups', this.stackConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString(), userPoolName);
             for (const group of this.stackConfig.groups) {
                 // create a role for the group
                 const policyFilePaths = group.policyFilePaths;
@@ -183,8 +185,8 @@ export class CognitoStack implements IStack {
                     policyFilePaths,
                 }) as Role;
 
-                this.fw24.set('Role', role, `cognito_${group.name}_`);
-                this.fw24.set('Routes', group.routes, `cognito_${group.name}_`);
+                this.fw24.set('Role', role, `cognito_${group.name}`);
+                this.fw24.set('Routes', group.routes, `cognito_${group.name}`);
 
                 new CfnUserPoolGroup(this.mainStack, `${namePrefix}-${group.name}-group`, {
                     groupName: group.name,
@@ -225,7 +227,7 @@ export class CognitoStack implements IStack {
                 userPool.addTrigger(trigger.trigger, lambdaTrigger);
             }
         }
-        this.fw24.set("identityPoolID", identityPool.ref, userPoolName+'_');
+        this.fw24.set("identityPoolID", identityPool.ref, userPoolName);
         if(useAsDefaultAuthorizer){
             this.fw24.getConfig().defaultAuthorizationType = 'AWS_IAM';
         }

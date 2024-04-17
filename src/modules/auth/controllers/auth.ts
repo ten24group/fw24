@@ -4,6 +4,7 @@ import { Get, Post } from '../../../decorators/method';
 import { Request } from '../../../interfaces/request';
 import { Response } from '../../../interfaces/response';
 import { Authorizer } from '../../../decorators/authorizer';
+import { CognitoJwtVerifier } from "aws-jwt-verify";
 
 // import cognito client
 import { CognitoIdentityProviderClient, SignUpCommand, InitiateAuthCommand, ConfirmSignUpCommand, GlobalSignOutCommand, AdminAddUserToGroupCommand } from "@aws-sdk/client-cognito-identity-provider";
@@ -19,7 +20,8 @@ const identityClient = new CognitoIdentityClient({});
 	env: [
 		{ name: 'userPoolClientID', prefix: 'authmodule' },
 		{ name: 'userPoolID', prefix: 'authmodule' },
-		{ name: 'identityPoolID', prefix: 'authmodule' }
+		{ name: 'identityPoolID', prefix: 'authmodule' },
+		{ name: 'AutoUserSignupGroups', prefix: 'authmodule' }
 	]
 })
 export class AuthController extends APIGatewayController {	
@@ -54,6 +56,19 @@ export class AuthController extends APIGatewayController {
 				],
 			}),
 		);
+		
+		// TODO: Change to use Lambda trigger with permissions to add user to group
+		// add user to default groups
+		// const autoUserSignupGroups = this.getAutoUserSignupGroups().split(',');
+		// for (const groupName of autoUserSignupGroups) {
+		// 	await identityProviderClient.send(
+		// 		new AdminAddUserToGroupCommand({
+		// 			UserPoolId: this.getUserPoolID(),
+		// 			GroupName: groupName,
+		// 			Username: email,
+		// 		}),
+		// 	);
+		// }
 		return res.send('User Signed Up');
 	}
 
@@ -149,7 +164,23 @@ export class AuthController extends APIGatewayController {
 	// generate IAM Credentials from token
 	@Post('/getCredentials')
 	async getCredentials(req: Request, res: Response) {
-		const {idToken} = req.body as { idToken: string };
+		const {idToken} = req.body as { idToken: string};
+
+		// validate the token
+		const jwtVerifier = CognitoJwtVerifier.create({
+			userPoolId: this.getUserPoolID(),
+			clientId: this.getUserPoolClientId(),
+			tokenUse: null,
+		});
+
+		try{
+			const payload = await jwtVerifier.verify(idToken);
+			this.logger.debug("Token is valid. Payload:", payload);
+		} catch {
+			this.logger.debug("Token not valid!");
+			return res.send('Token not valid');
+		}
+
 		const providerName = `cognito-idp.us-east-1.amazonaws.com/${this.getUserPoolID()}`;
 		const identityInput = {
 			IdentityPoolId: this.getIdentityPoolId(),
@@ -187,6 +218,10 @@ export class AuthController extends APIGatewayController {
 	// private function to get userpool client id
 	private getUserPoolID() {
 		return process.env['userPoolID'] || '';
+	}
+
+	private getAutoUserSignupGroups() {
+		return process.env['AutoUserSignupGroups'] || '';
 	}
 
 }

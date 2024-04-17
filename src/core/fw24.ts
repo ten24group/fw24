@@ -165,17 +165,17 @@ export class Fw24 {
 
     public addRouteToRolePolicy(route: string, groups: string[], requireRouteInGroupConfig: boolean = false) {
         if(!groups || groups.length === 0) {
-            groups = this.get('Groups', 'cognito_');
+            groups = this.get('Groups', 'cognito');
         }
         let routeAddedToGroupPolicy = false;
         for (const groupName of groups) {
             // if requireRouteInGroupConfig is true, check if the route is in the group config
-            if(requireRouteInGroupConfig && (!this.get('Routes', 'cognito_' + groupName + '_') || !this.get('Routes', 'cognito_' + groupName + '_').includes(route))) {
+            if(requireRouteInGroupConfig && (!this.get('Routes', 'cognito_' + groupName) || !this.get('Routes', 'cognito_' + groupName).includes(route))) {
                 continue;
             }
             // get role
             this.logger.info("addRouteToRolePolicy:", {route, groupName});
-            const role: Role = this.get('Role', 'cognito_' + groupName + '_');
+            const role: Role = this.get('Role', 'cognito_' + groupName);
             // add role policy statement to allow route access for group
             role.addToPolicy(this.getRoutePolicyStatement(route));
             routeAddedToGroupPolicy = true;
