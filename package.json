@@ -39,7 +39,6 @@
         "@aws-sdk/client-sesv2": "^3.540.0",
         "@aws-sdk/client-sns": "^3.549.0",
         "@aws-sdk/client-sqs": "^3.549.0",
-        "@mu-ts/logger": "^3.2.3",
         "aws-cdk-lib": "^2.137.0",
         "constructs": "^10.3.0",
         "source-map-support": "^0.5.21",

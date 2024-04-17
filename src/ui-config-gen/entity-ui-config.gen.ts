@@ -31,7 +31,7 @@ export class EntityUIConfigGen{
 
         const services = await this.scanAndLoadServices(serviceDirectories);
 
-        this.logger.debug(`Ui-config-gen::: Process::: all-services: `, services);
+        this.logger.debug(`Ui-config-gen::: Process::: all-services: `, Array.from(services.keys()));
 
         let menuIndex = 1;
         // generate UI configs
