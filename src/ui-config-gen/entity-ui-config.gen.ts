@@ -13,7 +13,7 @@ import {
 
 import { Fw24 } from '../core/fw24';
 import { Helper } from '../core/helper';
-import { createLogger } from '../logging';
+import { LogDuration, createLogger } from '../logging';
 
 export class EntityUIConfigGen{
     readonly logger = createLogger(EntityUIConfigGen.name);
@@ -22,6 +22,7 @@ export class EntityUIConfigGen{
         this.process();
     }
 
+    @LogDuration()
     async process(){
         const menuConfigs: any[] = [];
         const entityConfigs: any = {}; 
@@ -30,7 +31,7 @@ export class EntityUIConfigGen{
 
         const services = await this.scanAndLoadServices(serviceDirectories);
 
-        this.logger.debug(`Ui-config-gen::: Process::: all-services: `, Array.from(services.keys()));
+        this.logger.debug(`Ui-config-gen::: Process::: all-services: `, services);
 
         let menuIndex = 1;
         // generate UI configs
@@ -85,6 +86,7 @@ export class EntityUIConfigGen{
         await this.writeToFiles(menuConfigs, entityConfigs);
     }
 
+    @LogDuration()
     prepareServicesDirectories(){
         const fw24 = Fw24.getInstance();
         
@@ -103,6 +105,7 @@ export class EntityUIConfigGen{
         return serviceDirectories;
     }
 
+    @LogDuration()
     async scanAndLoadServices(serviceDirectories: Array<string>){
         const services = new Map<string, BaseEntityService<any>>();
         
@@ -118,6 +121,7 @@ export class EntityUIConfigGen{
         return services;
     }
     
+    @LogDuration()
     async scanAndLoadServicesFromDirectory(servicesDir: string) {
     
         const loadedServices = new Map<string, BaseEntityService<EntitySchema<string, string, string>> > ;
@@ -155,6 +159,7 @@ export class EntityUIConfigGen{
         return loadedServices;
     }
 
+    @LogDuration()
     async writeToFiles(menuConfig: any[], entitiesConfig: any[]){
         this.logger.debug("Called writeToFiles:::::: ");
         const genDirectoryPath = pathResolve('./gen/');
