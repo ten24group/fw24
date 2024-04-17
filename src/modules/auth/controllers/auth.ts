@@ -7,7 +7,7 @@ import { Authorizer } from '../../../decorators/authorizer';
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 
 // import cognito client
-import { CognitoIdentityProviderClient, SignUpCommand, InitiateAuthCommand, ConfirmSignUpCommand, GlobalSignOutCommand, AdminAddUserToGroupCommand } from "@aws-sdk/client-cognito-identity-provider";
+import { CognitoIdentityProviderClient, SignUpCommand, InitiateAuthCommand, ConfirmSignUpCommand, GlobalSignOutCommand, ChangePasswordCommand, ForgotPasswordCommand, ConfirmForgotPasswordCommand, AdminAddUserToGroupCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { CognitoIdentityClient, GetIdCommand, GetCredentialsForIdentityCommand } from "@aws-sdk/client-cognito-identity";
 
 const identityProviderClient = new CognitoIdentityProviderClient({});
@@ -20,8 +20,7 @@ const identityClient = new CognitoIdentityClient({});
 	env: [
 		{ name: 'userPoolClientID', prefix: 'authmodule' },
 		{ name: 'userPoolID', prefix: 'authmodule' },
-		{ name: 'identityPoolID', prefix: 'authmodule' },
-		{ name: 'AutoUserSignupGroups', prefix: 'authmodule' }
+		{ name: 'identityPoolID', prefix: 'authmodule' }
 	]
 })
 export class AuthController extends APIGatewayController {	
@@ -57,18 +56,6 @@ export class AuthController extends APIGatewayController {
 			}),
 		);
 		
-		// TODO: Change to use Lambda trigger with permissions to add user to group
-		// add user to default groups
-		// const autoUserSignupGroups = this.getAutoUserSignupGroups().split(',');
-		// for (const groupName of autoUserSignupGroups) {
-		// 	await identityProviderClient.send(
-		// 		new AdminAddUserToGroupCommand({
-		// 			UserPoolId: this.getUserPoolID(),
-		// 			GroupName: groupName,
-		// 			Username: email,
-		// 		}),
-		// 	);
-		// }
 		return res.send('User Signed Up');
 	}
 
@@ -114,6 +101,7 @@ export class AuthController extends APIGatewayController {
 				AccessToken: accessToken,
 			}),
 		);
+		this.logger.debug('result', result);
 
 		return res.send('User logged out');
 	}
@@ -134,10 +122,77 @@ export class AuthController extends APIGatewayController {
 				ConfirmationCode: code,
 			}),
 		);
+		this.logger.debug('result', result);
 
 		return res.send('User verified');
 	}
 
+	// change password
+	@Post('/changePassword')
+	async changePassword(req: Request, res: Response) {
+		const {accessToken, oldPassword, newPassword} = req.body as { accessToken: string; oldPassword: string; newPassword: string };
+
+		if (accessToken === undefined || oldPassword === undefined || newPassword === undefined) {
+			return res.status(400).end('Missing accessToken, oldPassword or newPassword');
+		}
+
+		const result = await identityProviderClient.send(
+			new ChangePasswordCommand({
+				AccessToken: accessToken,
+				PreviousPassword: oldPassword,
+				ProposedPassword: newPassword,
+			}),
+		);
+
+		this.logger.debug('newPasswordResult', result);
+
+		return res.send('Password changed');
+	}
+
+	// forgot password route
+	@Post('/forgotPassword')
+	async forgotPassword(req: Request, res: Response) {
+		const {email} = req.body as { email: string };
+
+		if (email === undefined) {
+			return res.status(400).end('Missing email');
+		}
+
+		const result = await identityProviderClient.send(
+			new ForgotPasswordCommand({
+				ClientId: this.getUserPoolClientId(),
+				Username: email,
+			}),
+		);
+
+		this.logger.debug('result', result);
+
+		return res.send('Password reset email sent');
+	}
+	
+	// confirm forgot password
+	@Post('/confirmForgotPassword')
+	async confirmForgotPassword(req: Request, res: Response) {
+		const {email, code, newPassword} = req.body as { email: string; code: string; newPassword: string };
+
+		if (email === undefined || code === undefined || newPassword === undefined) {
+			return res.status(400).end('Missing email, code or newPassword');
+		}
+
+		const result = await identityProviderClient.send(
+			new ConfirmForgotPasswordCommand({
+				ClientId: this.getUserPoolClientId(),
+				Username: email,
+				ConfirmationCode: code,
+				Password: newPassword,
+			}),
+		);
+
+		this.logger.debug('result', result);
+
+		return res.send('Password reset');
+	}
+	
 	// Add user to group
 	@Authorizer({type: 'AWS_IAM', requireRouteInGroupConfig: true})
 	@Post('/addUserToGroup')
@@ -218,10 +273,6 @@ export class AuthController extends APIGatewayController {
 	// private function to get userpool client id
 	private getUserPoolID() {
 		return process.env['userPoolID'] || '';
-	}
-
-	private getAutoUserSignupGroups() {
-		return process.env['AutoUserSignupGroups'] || '';
 	}
 
 }

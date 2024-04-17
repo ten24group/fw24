@@ -109,7 +109,7 @@ export class Fw24 {
     }
 
     public setCognitoAuthorizer(name: string, authorizer: IAuthorizer, defaultAuthorizer: boolean = false) {
-        this.logger.info("setCognitoAuthorizer: ", {name, authorizer: authorizer.authorizerId, defaultAuthorizer} );
+        this.logger.debug("setCognitoAuthorizer: ", {name, authorizer: authorizer.authorizerId, defaultAuthorizer} );
 
         this.cognitoAuthorizers[name] = authorizer;
         // If this authorizer is the default, set it as the default authorizer

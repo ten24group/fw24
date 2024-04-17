@@ -14,7 +14,7 @@ import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
 import { Role, User } from "aws-cdk-lib/aws-iam";
 import { Duration, RemovalPolicy, Stack } from "aws-cdk-lib";
 import { CognitoAuthRole } from "../constructs/cognito-auth-role";
-import { LambdaFunction } from "../constructs/lambda-function";
+import { LambdaFunction, LambdaFunctionProps } from "../constructs/lambda-function";
 import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
 import { createLogger, LogDuration } from "../logging";
@@ -30,14 +30,15 @@ export interface ICognitoConfig {
     policyFilePaths?: string[];
     triggers?: {
         trigger: UserPoolOperation;
-        lambdaFunctionPath: string;
+        functionProps: LambdaFunctionProps;
     }[];
     groups?: {
         name: string;
         precedence?: number;
         policyFilePaths?: string[];
-        // during signup the user will be added to default group
+        // during signup the user will be added to this group
         autoUserSignup?: boolean;
+        autoUserSignupHandler?: string;
         // Routes protected by this group
         routes?: string[];
     }[];
@@ -176,7 +177,7 @@ export class CognitoStack implements IStack {
          // create user pool groups
         if (this.stackConfig.groups) {
             this.fw24.set('Groups', this.stackConfig.groups.map(group => group.name), 'cognito');
-            this.fw24.set('AutoUserSignupGroups', this.stackConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString(), userPoolName);
+            //this.fw24.set('AutoUserSignupGroups', this.stackConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString(), userPoolName);
             for (const group of this.stackConfig.groups) {
                 // create a role for the group
                 const policyFilePaths = group.policyFilePaths;
@@ -195,6 +196,31 @@ export class CognitoStack implements IStack {
                     precedence: group.precedence || 0,
                 });
             }
+            const autoUserSignupGroups = this.stackConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString();
+            const autoUserSignupGroupsHandler = this.stackConfig.groups.filter(group => group.autoUserSignup).map(group => group.autoUserSignupHandler);
+            // only one auto signup handler is supported, pick the first one
+            const autoGroupsAddHandler = autoUserSignupGroupsHandler[0] || '';
+            if(autoUserSignupGroups && autoGroupsAddHandler.length > 0){
+                // create a post confirmation trigger to add users to auto signup groups
+                const lambdaFunctionProps: LambdaFunctionProps = {
+                    entry: autoGroupsAddHandler,
+                    environmentVariables: {
+                        autoSignupGroups: autoUserSignupGroups,
+                    },
+                    policies: [
+                        {
+                            actions: ['cognito-idp:AdminAddUserToGroup'],
+                            resources: ['*'],
+                        }
+                    ]
+                }
+                const lambdaTrigger = new LambdaFunction(this.mainStack, `${namePrefix}-auto-post-confirmation-lambdaFunction`, {
+                    ...lambdaFunctionProps,
+                    layerArn: this.fw24.getLayerARN(),
+                }) as NodejsFunction;
+                userPool.addTrigger(UserPoolOperation.POST_CONFIRMATION, lambdaTrigger);
+            }
+
             // configure role mapping
             roleAttachment.roleMappings = {
                 "userpool": {
@@ -221,7 +247,7 @@ export class CognitoStack implements IStack {
         if (this.stackConfig.triggers) {
             for (const trigger of this.stackConfig.triggers) {
                 const lambdaTrigger = new LambdaFunction(this.mainStack, `${namePrefix}-${trigger.trigger}-lambdaFunction`, {
-                    entry: trigger.lambdaFunctionPath,
+                    ...trigger.functionProps,
                     layerArn: this.fw24.getLayerARN(),
                 }) as NodejsFunction;
                 userPool.addTrigger(trigger.trigger, lambdaTrigger);
