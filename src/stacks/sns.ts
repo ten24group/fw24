@@ -1,5 +1,5 @@
 import { CfnOutput } from "aws-cdk-lib";
-import { Topic } from 'aws-cdk-lib/aws-sns';
+import { Topic, TopicProps } from 'aws-cdk-lib/aws-sns';
 
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
@@ -9,6 +9,7 @@ import { LogDuration, createLogger } from "../logging";
 
 export interface ISNSConfig {
     topicName: string;
+    topicProps?: TopicProps;
 }
 
 export class SNSStack implements IStack {
@@ -32,6 +33,7 @@ export class SNSStack implements IStack {
             this.logger.debug("Creating topic: ", snsConfig.topicName);
 
             const topic = new Topic(mainStack, snsConfig.topicName + '-topic', {
+                ...snsConfig.topicProps
             });
 
             this.fw24.set(snsConfig.topicName, topic.topicName, "topicName_");
