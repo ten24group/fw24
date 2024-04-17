@@ -19,6 +19,7 @@ export type ValidationError = {
 
 export type TestValidationRuleResponse = {
     pass: boolean, 
+    message ?: string,
     errors ?: Array<ValidationError>
 };
 
@@ -103,13 +104,18 @@ export type RecordType = {
 }
 
 // export type TValidationValue<T = unknown > = T;
-export type TValidationValue<T = unknown > = T | TComplexValidationValue<T>;
+export type TValidationValue<T > = T | TComplexValidationValue<T>;
 
-export type TComplexValidationValue<T = unknown> = {
+export type TComplexValidationValueWithMessage<T> = {
     value: T,
-    message ?: string,
-    validator ?: (value: T, ctx?: any) => Promise<TestValidationResult>,
+    message: string,
 }
+export type TComplexValidationValueWithValidator<T> = {
+    validator: (value: T, ctx?: any) => Promise<TestValidationResult>,
+    message?: string,
+}
+
+export type TComplexValidationValue<T> = TComplexValidationValueWithMessage<T> | TComplexValidationValueWithValidator<T>
 
 export type Validations<T> = {
 	readonly 'minLength' ?: number,
@@ -136,10 +142,15 @@ export const validations = [
 export type ValidationRule<T> = {
     // TODO: narrow validation rules by type like ['string', 'number', 'boolean' etc]
     readonly [V in keyof Validations<T>] ?: TValidationValue<Validations<T>[V]>;
-};
+}
+
+export type ComplexValidationRule<T> = ValidationRule<T> & {
+    readonly message ?: string,
+    readonly validator ?: (value: T, collectErrors?: boolean) => Promise<TestValidationRuleResponse>,
+}
 
 export type ValidationRules<Input extends InputType = InputType> = {
-    [K in keyof Input] ?: ValidationRule<Input[K]>;
+    [K in keyof Input] ?: ValidationRule<Input[K]> | ComplexValidationRule<Input[K]>;
 }
 
 export type HttpRequestValidations< 
@@ -191,7 +202,7 @@ export type TValidationRuleForOperations<
     OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > = {
 
-    readonly operations ?: Narrow<Array< '*' | ValueOf<{
+    readonly operations ?: Narrow<Array<ValueOf<{
         /**
          * for each operation create a tuple like [ 'opp-name', [condition-names that are applicable on the input schema for the opp] ]
          * 
@@ -236,19 +247,41 @@ export type TValidationRuleForOperationsAndInput<
     OpsKeys extends keyof Sch['model']['entityOperations'],
     OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > = {
-    readonly operations ?: Narrow<Array< '*' | ValueOf<{
-        readonly [OppName in OpsKeys]: OppName | [ 
-            OppName, 
-            
-            /** array of condition names like ['xxx', 'yyyy']  default: all conditions must be satisfied */
-            Array<keyof OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[OppName]>, OmitNever<ConditionsMap>>> > 
-            | 
-            /** array of tuple of condition names + applicability like [ ['xxx', 'yyyy'], 'all' ]  ==> specify how conditions must be satisfied */
-            [ Array<keyof OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[OppName]>, OmitNever<ConditionsMap>>> >, 'all' | 'any' | 'none'], 
-        ]
-    }>>>,
+    readonly operations ?: Narrow<Array<ValueOf<{
+        readonly [OppName in OpsKeys]: TupleOfOpNameAndApplicableConditions<Sch, ConditionsMap, OppName, OpsInpSch> 
+    }>>> 
+    |
+    Narrow<{
+        readonly [OppName in OpsKeys] ?: [{
+            conditions: Array<keyof OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[OppName]>, OmitNever<ConditionsMap>>> >,
+            scope ?: 'all' | 'any' | 'none' /* default: [all] all conditions must be satisfied */
+        }]
+    }>,
 
 } & ValidationRule<T>;
+
+export type TupleOfOpNameAndApplicableConditions<
+    Sch extends EntitySchema<any, any, any>,
+    ConditionsMap extends TMapOfValidationConditions<any, any>,
+    OppName extends keyof Sch['model']['entityOperations'],
+    OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> = [ 
+    op: OppName, 
+    /** array of condition names like ['xxx', 'yyyy'] */
+    conditions ?: Array<keyof OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[OppName]>, OmitNever<ConditionsMap>>> >,
+    scope ?: 'all' | 'any' | 'none' /* default: [all] all conditions must be satisfied */
+]
+
+export type OpApplicableConditionsWithScope<
+    Sch extends EntitySchema<any, any, any>,
+    ConditionsMap extends TMapOfValidationConditions<any, any>,
+    OppName extends keyof Sch['model']['entityOperations'],
+    OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> = {
+    /** array of condition names like ['xxx', 'yyyy']  default: all conditions must be satisfied */
+    conditions: Array<keyof OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[OppName]>, OmitNever<ConditionsMap>>> >,
+    scope: 'all' | 'any' | 'none'
+}
 
 
 export type TInputApplicableCondition<Inp extends InputType, C extends TEntityValidationCondition<any, any>> = {
@@ -275,7 +308,7 @@ export type TConditionalValidationRule<T, ConditionsMap extends TMapOfValidation
         Array<keyof ConditionsMap> /** default: all conditions must be satisfied */
         | 
         [ Array<keyof ConditionsMap>, 'all' | 'any' | 'none'], /** specify how conditions must be satisfied */
-} & ValidationRule<T>;
+} & ComplexValidationRule<T>;
 
 export type TEntityOpValidations<I extends InputType, R extends RecordType, C extends TMapOfValidationConditions<I, R> > = {
     readonly actorRules ?: {

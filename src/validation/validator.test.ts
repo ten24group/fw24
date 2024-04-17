@@ -1,6 +1,6 @@
 import { Request } from './../interfaces/request';
 import { Narrow, OmitNever } from "../utils";
-import { EntityOpsValidations, EntityValidations, HttpRequestValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TConditionalValidationRule, TMapOfValidationConditions, ValidationRules } from "./validator.type";
+import { ComplexValidationRule, EntityOpsValidations, EntityValidations, HttpRequestValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TConditionalValidationRule, TMapOfValidationConditions, ValidationRule, ValidationRules } from "./validator.type";
 
 import { describe, expect, it } from '@jest/globals';
 import { randomUUID } from "node:crypto";
@@ -283,7 +283,6 @@ const UserValidations: EntityValidations<User.TUserSchema2, typeof UserValidatio
         tenantId: [{
             eq: 'xxx-yyy-zzz',
             operations: [
-              '*',
               'create',
               'update',
               'xxx',
@@ -301,18 +300,19 @@ const UserValidations: EntityValidations<User.TUserSchema2, typeof UserValidatio
         userId: [{
             required: true,
             operations: [
+              ['delete'], 
               ['delete', ['tenantIsXYZ', 'recordIsNotNew']], 
-              ['create', [['inputIsNitin', 'recordIsNotNew', 'tenantIsXYZ'], 'any' ] ]
+              ['create', ['inputIsNitin', 'recordIsNotNew', 'tenantIsXYZ'], 'any' ]
             ],
         }],
         lastName:[{
             required: true,
-            operations: [
-              '*',
-              'update',
-              ['update', ['recordIsNotNew', 'tenantIsXYZ']],
-              ['update', [['recordIsNotNew', 'inputIsNitin'], 'any']]
-            ]
+            operations: {
+              create: [{
+                conditions: ['recordIsNotNew', 'recordIsNotNew'],
+                scope: 'any',
+              }],
+            }
         }]
     },
     recordRules: {
@@ -484,7 +484,7 @@ describe('Validator', () => {
       const result = await validator.validateHttpRequest(request, validations);
 
       expect(result.pass).toBe(true);
-      expect(result.errors).toEqual({});
+      expect(result.errors?.body).toEqual({});
     });
 
     it('should validate request parameters', async () => {
@@ -716,6 +716,64 @@ describe('Validator', () => {
 
   });
 
+  describe('testComplexValidationRule', () => {
+    
+    it('should call custom validator if provided', async () => {
+      const validator = new Validator();
+      const customValidator = jest.fn().mockResolvedValue({
+        pass: true
+      });
+      
+      const rule: ComplexValidationRule<string> = {
+        validator: customValidator
+      };
+      
+      const value = 'test';
+      
+      const result = await validator.testComplexValidationRule(rule, value);
+      
+      expect(customValidator).toHaveBeenCalledWith(value, true);
+      expect(result.pass).toBe(true);
+    });
+
+    it('should call default validator if custom not provided', async () => {
+      const validator = new Validator();
+      const defaultValidator = jest.fn().mockResolvedValue({
+        pass: false,
+        errors: ['Error!']
+      });
+
+      validator.testValidationRule = defaultValidator;
+
+      const rule: ValidationRule<string> = {
+        maxLength: 5 
+      };
+
+      const value = 'test';
+
+      const result = await validator.testComplexValidationRule(rule, value);
+
+      expect(defaultValidator).toHaveBeenCalledWith(rule, value, true);
+      expect(result.pass).toBe(false);
+      expect(result.errors).toEqual(['Error!']);
+    });
+
+    it('should use custom message if provided', async () => {
+      const validator = new Validator();
+      const rule: ComplexValidationRule<string> = {
+        message: 'Custom error'
+      };
+      
+      const value = 'test';
+
+      const result = await validator.testComplexValidationRule(rule, value);
+
+      expect(result.message).toBe('Custom error');
+    });
+
+  });
+
+
   describe('testValidationRule()', () => {
 
     it('should return validation passed if no rules', async () => {
@@ -754,13 +812,13 @@ describe('Validator', () => {
       const validator = new Validator();
       const validatorFn = jest.fn().mockResolvedValue({pass: true});
       const validationName = 'custom';
-      const validationValue = {value: validatorFn};
+      const validationValue = {validator: validatorFn};
       const val = 'test';
 
       const result = await validator.testComplexValidation(validationName, validationValue, val as any);
 
       expect(validatorFn).toHaveBeenCalledWith(val);
-      expect(result.pass).toEqual({pass: true});
+      expect(result).toEqual({pass: true});
     });
 
     it('should call testValidation if no validator provided', async () => {
@@ -769,13 +827,13 @@ describe('Validator', () => {
       validator.testValidation = testValidationFn;
 
       const validationName = 'maxLength';
-      const validationValue = {value: 5};
+      const validationValue = {value: 5, message: "custom msg"};
       const val = 'test';
 
       const result = await validator.testComplexValidation(validationName, validationValue, val as any);
 
       expect(testValidationFn).toHaveBeenCalledWith(validationName, validationValue.value, val);
-      expect(result).toEqual({pass: false});
+      expect(result).toEqual({pass: false, message: "custom msg"});
     });
 
     it('should set custom message if provided', async () => {
@@ -1083,7 +1141,7 @@ describe('extractOpValidationFromEntityValidations()', () => {
     });
   });
 
-  it('should extract validations for given op', () => {
+  it('should extract validations for given op from array', () => {
     const entityValidations: EntityValidations<any, any> = {
       actorRules: {
         id: [{
@@ -1169,40 +1227,6 @@ describe('extractOpValidationFromEntityValidations()', () => {
     });
   });
 
-  it('should extract validations for "*" op', () => {
-    const entityValidations: EntityValidations<any, any>  = {
-      actorRules: {
-        id: [{
-          required: true,
-          operations: ['*']
-        }]  
-      }
-    };
-
-    const expectedResult = {
-      opValidations: {
-        actorRules: {
-          id: [{
-            required: true  
-          }]
-        },
-        inputRules: {},
-        recordRules: {}
-      },
-      conditions: undefined
-    };
-    
-    const result_update = extractOpValidationFromEntityValidations('update', entityValidations);
-    expect(result_update).toEqual(expectedResult);
-
-    const result_delete = extractOpValidationFromEntityValidations('delete', entityValidations);
-    expect(result_delete).toEqual(expectedResult);
-
-    const result_get = extractOpValidationFromEntityValidations('get', entityValidations);
-    expect(result_get).toEqual(expectedResult);
-
-  });
-
   it('should extract multiple validation rules for a property', () => {
     const entityValidations: EntityValidations<any, any> = {
       actorRules: {
@@ -1230,7 +1254,7 @@ describe('extractOpValidationFromEntityValidations()', () => {
     });
   });
 
-  it('should handle conditional validations', () => {
+  it('should handle conditional validations from tuple', () => {
     const conditions = {
       recordIsNotNew: {
         recordRules: {
@@ -1257,7 +1281,7 @@ describe('extractOpValidationFromEntityValidations()', () => {
       opValidations: {
         actorRules: {
           id: [{
-            conditions: ['recordIsNotNew'],
+            conditions: [ ['recordIsNotNew'], 'all'],
             required: true
           }]
         },
@@ -1265,6 +1289,80 @@ describe('extractOpValidationFromEntityValidations()', () => {
         recordRules: {}
       },
       conditions
+    });
+  });
+
+  it('should handle conditional validations from object', () => {
+    const conditions = {
+      recordIsNotNew: {
+        recordRules: {
+          userId: {
+            neq: ''
+          }
+        }
+      }
+    } as const;
+
+    const entityValidations: EntityValidations<any, typeof conditions> = {
+      conditions,
+      actorRules: {
+        id: [{
+          operations: { 
+            //@ts-ignore
+            'update': [{ conditions: ['recordIsNotNew'] }],
+          },
+          required: true
+        }]
+      }  
+    };
+
+    const result = extractOpValidationFromEntityValidations('update', entityValidations);
+
+    expect(result).toEqual({
+      opValidations: {
+        actorRules: {
+          id: [{
+            conditions: [ ['recordIsNotNew'], 'all' ],
+            required: true
+          }]
+        },
+        inputRules: {},
+        recordRules: {}
+      },
+      conditions
+    });
+  });
+
+  it('should extract validation conditions for given op from object', () => {
+    const entityValidations: EntityValidations<any, any, any> = {
+      actorRules: {
+        id: [{
+          required: true,
+          operations: {
+            //@ts-ignore
+              create: [{
+                conditions: ['recordIsNotNew', 'recordIsNotNew'],
+                scope: 'any',
+              }],
+            }
+        }]  
+      }
+    };
+    
+    const result = extractOpValidationFromEntityValidations('create', entityValidations);
+
+    expect(result).toEqual({
+      opValidations: {
+        actorRules: {
+          id: [{
+            required: true, 
+            conditions: [['recordIsNotNew', 'recordIsNotNew'], 'any'] 
+          }]
+        },
+        inputRules: {},
+        recordRules: {}
+      },
+      conditions: undefined 
     });
   });
 

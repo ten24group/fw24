@@ -3,7 +3,7 @@ import { expect } from '@jest/globals';
  * Defines validation rules and criteria that can be used to validate input, record, and actor data.
  * Provides a Validator class that validates data against defined validation rules and criteria.
  */
-import { IValidator, IValidatorResponse, OpValidatorOptions, ValidationRule, ValidationRules, InputValidationResponse, TestValidationRuleResponse, InputValidationErrors, validations, HttpRequestValidations, ValidationError, HttpRequestValidationResponse, TComplexValidationValue, TValidationValue, TestValidationResult } from "./validator.type";
+import { IValidator, IValidatorResponse, OpValidatorOptions, ValidationRule, ValidationRules, InputValidationResponse, TestValidationRuleResponse, InputValidationErrors, validations, HttpRequestValidations, ValidationError, HttpRequestValidationResponse, TComplexValidationValue, TValidationValue, TestValidationResult, ComplexValidationRule, TComplexValidationValueWithMessage, TComplexValidationValueWithValidator } from "./validator.type";
 import { DeepWritable, ValueOf } from '../utils/types';
 import { Actor, EntityValidations, InputType, RecordType, TConditionalValidationRule, TEntityOpValidations, TEntityValidationCondition, TMapOfValidationConditions, Validations } from "./validator.type";
 import { TDefaultEntityOperations, EntitySchema, TEntityOpsInputSchemas } from "../entity";
@@ -41,13 +41,29 @@ export function isHttpRequestValidationRule( rule: any): rule is HttpRequestVali
 }
 
 export function isComplexValidation<T = unknown>(val: any): val is TComplexValidationValue<T> {
-    return typeof val === 'object' && val !== null 
-        && (
-            val.hasOwnProperty('value') 
-            &&
-            (val.hasOwnProperty('message') || val.hasOwnProperty('validator'))
-        )
+    return isComplexValidationWithMessage(val) || isComplexValidationWithValidator(val);
 }
+
+export function isComplexValidationWithMessage<T = unknown>(val: any): val is TComplexValidationValueWithMessage<T> {
+    return typeof val === 'object' 
+        && val !== null 
+        && val.hasOwnProperty('value') 
+        && val.hasOwnProperty('message')
+}
+
+export function isComplexValidationWithValidator<T = unknown>(val: any): val is TComplexValidationValueWithValidator<T> {
+    return typeof val === 'object' 
+        && val !== null 
+        && val.hasOwnProperty('validator')
+}
+
+export function isComplexValidationRule<T = unknown>(val: any): val is ComplexValidationRule<T> {
+    return typeof val === 'object' 
+        && val !== null 
+        && (val.hasOwnProperty('message') || val.hasOwnProperty('validator'))
+}
+
+
 
 
 export function extractOpValidationFromEntityValidations<
@@ -81,28 +97,56 @@ export function extractOpValidationFromEntityValidations<
 			for(const rule of propertyRules as Array<any>){
 				if(!rule){ continue;}
 
-				const{operations, ...restOfTheValidations} = rule;
+				let{operations, ...restOfTheValidations} = rule;
+
+                if(!operations){
+                    operations = ['*'];
+                }
+
+                if(!Array.isArray(operations)){
+                    for(const opName in operations){
+                        if( !operations.hasOwnProperty(opName) || opName !== operationName ){
+                            continue;
+                        }
+
+                        const opConditionRules: any[] = operations[opName];
+
+                        if(!Array.isArray(opConditionRules)){
+                            throw new Error(`Invalid operations definition for ${opName} in ${operations}`);
+                        }
+
+                        opConditionRules.forEach( (rule: any) => {
+                            let thisRuleValidations = {
+                                ...restOfTheValidations,
+                                conditions: [ rule['conditions'], rule['scope'] ?? 'all' ],
+                            };
+                            formattedPropertyRules.push(thisRuleValidations);
+                        });
+                    }
+
+                } else if (Array.isArray(operations)){
+                    for(const thisOp of operations){
+                        if (Array.isArray(thisOp) && thisOp[0] === operationName ) {
+                            const [thisOpName, conditions, scope = 'all'] = thisOp;
+    
+                            /**
+                             * 
+                             * ['update', ['recordIsNotNew', 'tenantIsXYZ']],
+                             * ['update', [['recordIsNotNew', 'inputIsNitin'], 'any']]
+                             * 
+                             */
+                            let thisRuleValidations: any = {
+                                ...restOfTheValidations,
+                                conditions: [ conditions, scope],
+                            };
+    
+                            formattedPropertyRules.push(thisRuleValidations);
+                        } else if( thisOp === '*' || thisOp === operationName){
+                            formattedPropertyRules.push({ ...restOfTheValidations });
+                        }
+                    }
+                }
 			
-				for(const thisOp of operations ?? ['*']){
-					if (Array.isArray(thisOp) && thisOp[0] === operationName ) {
-                        const [thisOpName, conditions] = thisOp;
-
-						/**
-						 * 
-						 * ['update', ['recordIsNotNew', 'tenantIsXYZ']],
-						 * ['update', [['recordIsNotNew', 'inputIsNitin'], 'any']]
-						 * 
-						 */
-						let thisRuleValidations: any = {
-							...restOfTheValidations,
-                            conditions,
-						};
-
-						formattedPropertyRules.push(thisRuleValidations);
-					} else if( thisOp === '*' || thisOp === operationName){
-						formattedPropertyRules.push({ ...restOfTheValidations });
-					}
-				}
 
 				if(formattedPropertyRules.length){
 					validations[validationGroupKey]![propertyName] = formattedPropertyRules;
@@ -265,7 +309,7 @@ export class Validator implements IValidator {
                     continue;
                 }
 
-                const validationRes = await this.testValidationRule<any>(thisRule, input?.[key] );                    
+                const validationRes = await this.testComplexValidationRule<any>(thisRule, input?.[key] );                    
                 res.pass = res.pass && validationRes.pass
 
                 if(collectErrors && validationRes.errors && validationRes.errors.length){
@@ -431,15 +475,15 @@ export class Validator implements IValidator {
 
         // const conditionsOrConditionsTuple: string[] = conditions as string[];
         
-        let formattedConditions: {applicable: string, conditionNames: string[]} = {
-            applicable: 'all',
+        let formattedConditions: {scope: string, conditionNames: string[]} = {
+            scope: 'all',
             conditionNames: [],
         };
 
         if(Array.isArray(ruleConditions)){
             if(ruleConditions.length == 2){
-                const [conditions, applicability] = ruleConditions;
-                formattedConditions.applicable = applicability as string,
+                const [conditions, scope] = ruleConditions;
+                formattedConditions.scope = scope as string,
                 formattedConditions.conditionNames = conditions as string[];
             } else {
                 formattedConditions.conditionNames = ruleConditions as string[];
@@ -451,7 +495,7 @@ export class Validator implements IValidator {
         
         if(formattedConditions.conditionNames.length){
             
-            if(formattedConditions.applicable == 'any'){
+            if(formattedConditions.scope == 'any'){
 
                 criteriaPassed = false;
                 
@@ -476,7 +520,7 @@ export class Validator implements IValidator {
                     const ctRule = allConditions[conditionName];
                     
                     const applicable = await this.testCondition( ctRule, input, record, actor);
-                    if(formattedConditions.applicable == 'none' && applicable ){
+                    if(formattedConditions.scope == 'none' && applicable ){
                         
                         // * test for applicability
                         // if any of them passes the validation does not apply
@@ -484,7 +528,7 @@ export class Validator implements IValidator {
                         criteriaPassed = false;
                         break;
 
-                    } else if(formattedConditions.applicable == 'all' && !applicable){
+                    } else if(formattedConditions.scope == 'all' && !applicable){
                         
                         // * test for NOT-applicability
                         // if any of them fails the validation does not apply
@@ -495,7 +539,6 @@ export class Validator implements IValidator {
                     }
                 }
             }
-
         }
 
         let validationPassed = true;
@@ -504,7 +547,7 @@ export class Validator implements IValidator {
         logger.debug("validateConditionalRules ~ criteriaPassed:", criteriaPassed);
 
         if(criteriaPassed){
-            let validation = await this.testValidationRule(partialValidation, inputVal);
+            let validation = await this.testComplexValidationRule(partialValidation, inputVal);
             logger.debug("validateConditionalRules ~ validation-result:", validation);
 
             validationPassed = validationPassed && validation.pass;
@@ -552,6 +595,27 @@ export class Validator implements IValidator {
         }
 
         return applicable;
+    }
+
+    async testComplexValidationRule<T>(complexValidationRule: ComplexValidationRule<T>, val: T, collectErrors = true ): Promise<TestValidationRuleResponse>{
+        let res: TestValidationRuleResponse = {
+            pass: true,
+            errors: []
+        };
+
+        const { message: customMessage, validator: customValidatorForRule, ...validationRule } = complexValidationRule;
+
+        if(customValidatorForRule){
+            res = await customValidatorForRule(val, collectErrors);
+        } else {
+            res = await this.testValidationRule(validationRule, val, collectErrors);
+        }
+
+        if(customMessage){
+            res.message = res.message ?? customMessage;
+        }
+
+        return res;
     }
 
     /**
@@ -660,20 +724,18 @@ export class Validator implements IValidator {
         validationValue: TComplexValidationValue<T>, 
         val: T 
     ): Promise<TestValidationResult> {
-
         logger.info("testComplexValidation ~ partialValidation:, val: ", {validationName, validationValue, val});
 
-        let result: TestValidationResult;
+        let result: TestValidationResult = { pass: true};
 
-        if(validationValue.validator){
-
+        if( isComplexValidationWithValidator(validationValue) ){
             result = await validationValue.validator(val);
-
-        } else {
-
+        } else if(isComplexValidationWithMessage(validationValue)) {
             result = await this.testValidation(validationName, validationValue.value, val);
-            result.message = validationValue.message;
         }
+
+        // validator fn can return it's own message or it can be defined at the validation level
+        result.message = result.message || validationValue.message; 
 
         return result;
     }
