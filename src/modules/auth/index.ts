@@ -1,13 +1,15 @@
 import { AbstractFw24Module, IModuleConfig } from '../../core/module';
 import { IStack } from '../../interfaces/stack';
-import { CognitoStack } from '../../stacks/cognito';
+import { CognitoStack, ICognitoConfig } from '../../stacks/cognito';
+import { createLogger } from "../../logging";
+import { join } from 'path';
 
-export interface IAuthModuleConfig extends IModuleConfig {
-    selfSignUpEnabled?: boolean;
-    policyFilePaths?: string[];
+export interface IAuthModuleConfig extends ICognitoConfig {
+    
 }
 
 export class AuthModule extends AbstractFw24Module {
+    readonly logger = createLogger(CognitoStack.name);
 
     protected stacks: Map<string, IStack>; 
 
@@ -15,14 +17,13 @@ export class AuthModule extends AbstractFw24Module {
         super(config);
         this.stacks = new Map();
 
+        if(config.groups){
+            config.groups.filter(group => group.autoUserSignup).map(group => Object.assign(group, {autoUserSignupHandler: join(__dirname,'functions/auto-post-confirmation.js')}));
+        }
+        this.logger.debug("AuthModule: ", config);
         const cognito = new CognitoStack({	
-            userPool: {
-                props: {
-                    selfSignUpEnabled: config.selfSignUpEnabled || false,
-                    userPoolName: 'authmodule'
-                }
-            },
-            policyFilePaths: config.policyFilePaths,
+            name: 'authmodule',
+            ...config,
         });
 
         this.stacks.set('auth-cognito', cognito );

@@ -4,6 +4,7 @@ import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { Helper } from './helper';
 import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
 import { ITopic, Topic } from 'aws-cdk-lib/aws-sns';
+import { Role, PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';
 import { IFw24Module } from './module';
 import { createLogger } from '../logging';
 import { getCircularReplacer } from '../utils';
@@ -108,7 +109,7 @@ export class Fw24 {
     }
 
     public setCognitoAuthorizer(name: string, authorizer: IAuthorizer, defaultAuthorizer: boolean = false) {
-        this.logger.info("setCognitoAuthorizer: ", {name, authorizer: authorizer.authorizerId, defaultAuthorizer} );
+        this.logger.debug("setCognitoAuthorizer: ", {name, authorizer: authorizer.authorizerId, defaultAuthorizer} );
 
         this.cognitoAuthorizers[name] = authorizer;
         // If this authorizer is the default, set it as the default authorizer
@@ -121,7 +122,7 @@ export class Fw24 {
         this.logger.info("getCognitoAuthorizer: " + JSON.stringify({name}, getCircularReplacer()));
         // If no name is provided and no default authorizer is set, throw an error
         if(name === undefined && this.defaultCognitoAuthorizer === undefined) {
-            throw new Error('Default Cognito Authorizer not set');
+            throw new Error('No Authorizer exists for cognito user pools. For policy based authentication, use AWS_IAM authoriser.');
         }
         // If no name is provided, return the default authorizer
         if(name === undefined) {
@@ -161,4 +162,40 @@ export class Fw24 {
     public getDynamoTable(name: string): TableV2{
         return this.dynamoTables[name];
     }
+
+    public addRouteToRolePolicy(route: string, groups: string[], requireRouteInGroupConfig: boolean = false) {
+        if(!groups || groups.length === 0) {
+            groups = this.get('Groups', 'cognito');
+        }
+        let routeAddedToGroupPolicy = false;
+        for (const groupName of groups) {
+            // if requireRouteInGroupConfig is true, check if the route is in the group config
+            if(requireRouteInGroupConfig && (!this.get('Routes', 'cognito_' + groupName) || !this.get('Routes', 'cognito_' + groupName).includes(route))) {
+                continue;
+            }
+            // get role
+            this.logger.info("addRouteToRolePolicy:", {route, groupName});
+            const role: Role = this.get('Role', 'cognito_' + groupName);
+            // add role policy statement to allow route access for group
+            role.addToPolicy(this.getRoutePolicyStatement(route));
+            routeAddedToGroupPolicy = true;
+        }
+        if(!routeAddedToGroupPolicy) {
+            throw new Error(`Route ${route} not found in any group config. Please add the route to a group config to secure access.`);
+        }
+    }
+
+    public getRoutePolicyStatement(route: string) {
+        // write the policy statement
+        const statement = new PolicyStatement({
+            effect: Effect.ALLOW,
+            actions: ['execute-api:Invoke'],
+            resources: [`arn:aws:execute-api:*:*:*/*/*/${route}`],
+        });
+
+        this.logger.debug("RoutePolicyStatement:", {route, statement});
+
+        return statement;
+    }
+
 }

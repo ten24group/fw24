@@ -6,7 +6,8 @@ export interface Route {
   parameters: Array<String>;
   authorizer?: { 
 		name?: string;
-		type: string;
+		type?: string;
+    groups?: string[];
 	} | string;
 }
 
