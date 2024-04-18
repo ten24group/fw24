@@ -1,9 +1,11 @@
 import { SQSEvent, Context } from "aws-lambda";
+import { createLogger } from "../logging";
 
 /**
  * Base class for handling SQS events.
  */
 abstract class SQSController {
+  readonly logger = createLogger(SQSController.name);
 
   /**
    * Binds the LambdaHandler method to the instance of the class.
@@ -24,7 +26,7 @@ abstract class SQSController {
    * @returns The SQS response object.
    */
   async LambdaHandler(event: SQSEvent, context: Context): Promise<any> {
-    console.log("SQS-LambdaHandler Received event:", JSON.stringify(event, null, 2));
+    this.logger.debug("SQS-LambdaHandler Received event:", JSON.stringify(event, null, 2));
 
     // hook for the application to initialize it's state, Dependencies, config etc
     await this.initialize(event, context);

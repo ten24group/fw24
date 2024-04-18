@@ -5,23 +5,31 @@ import { Request } from '../interfaces/request';
 
 export type TestValidationResult = {
     pass: boolean,
-    message?: string,
     expected?: any,
     received?: any,
 }
 
+export type CustomMessageOrMessageId = {
+    customMessage?: string,
+    customMessageId?: string,
+}
+
+export type TestComplexValidationResult = TestValidationResult & CustomMessageOrMessageId;
+
+
 export type ValidationError = {
-    message: string,
+    messageIds ?: Array<string>,
     expected ?: any,                           
     received ?: any,
     path ?: string,
-}
+} & CustomMessageOrMessageId;
 
 export type TestValidationRuleResponse = {
     pass: boolean, 
-    message ?: string,
     errors ?: Array<ValidationError>
 };
+
+export type TestComplexValidationRuleResponse = TestValidationRuleResponse & CustomMessageOrMessageId;
 
 export type InputValidationErrors<I extends InputType = InputType> = {
     [K in keyof I] ?: Array<ValidationError>
@@ -30,7 +38,7 @@ export type InputValidationErrors<I extends InputType = InputType> = {
 export type InputValidationResponse<I extends InputType = InputType> = {
     pass: boolean, 
     errors ?: InputValidationErrors<I>
-};
+} & CustomMessageOrMessageId;
 
 export interface IValidatorResponse<
     A extends Actor = Actor,
@@ -52,14 +60,15 @@ export type OpValidatorOptions<
     OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > = {
     readonly operationName: OpName,
-    readonly entityValidations?: EntityValidations<Sch, ConditionsMap, OpsInpSch>
+    readonly entityName: Sch['model']['entity'],
+    readonly entityValidations?: EntityValidations<Sch, ConditionsMap, OpsInpSch> | EntityOpsInputValidations<Sch, OpsInpSch>,
     readonly input?: InputType,
     readonly actor?: Actor,
     readonly record?: RecordType, 
 }
 
 export interface IValidator {
-    validate<
+    validateEntity<
         Sch extends EntitySchema<any, any, any>, 
         OpName extends keyof Sch['model']['entityOperations'],
         ConditionsMap extends TMapOfValidationConditions<any, any>, 
@@ -108,10 +117,12 @@ export type TValidationValue<T > = T | TComplexValidationValue<T>;
 
 export type TComplexValidationValueWithMessage<T> = {
     value: T,
-    message: string,
+    message?: string,
+    messageId?: string, // Optional error-message-id, that is supposed to be used by error message translators
 }
 export type TComplexValidationValueWithValidator<T> = {
     validator: (inputValue: T, ctx?: any) => Promise<TestValidationResult>,
+    messageId?: string, // Optional error-message-id, that is supposed to be used by error message translators
     message?: string,
 }
 
@@ -122,7 +133,7 @@ export type Validations<T> = {
     readonly 'maxLength' ?: number,
     readonly 'required' ?: boolean,
     readonly 'pattern' ?: RegExp,
-    readonly 'datatype' ?: 'string' | 'number' | 'boolean' | 'array' | 'object' | 'null' | 'email' | 'ip' | 'ipv4' | 'ipv6' | 'uri' | 'httpUrl' | 'uuid' | 'json' | 'date' | 'date-time',
+    readonly 'datatype' ?: 'string' | 'number' | 'boolean' | 'array' | 'object' | 'null' | 'email' | 'ip' | 'ipv4' | 'ipv6' | 'httpUrl' | 'uuid' | 'json' | 'date',
     readonly 'unique' ?: boolean,
     readonly 'eq' ?: T,
     readonly 'neq' ?: T,
@@ -135,8 +146,8 @@ export type Validations<T> = {
     readonly 'custom' ?: (inputValue: T, ctx?: any) => boolean | Promise<boolean>,
 }
 
-export const validations = [
-    'minLength', 'maxLength', 'required', 'pattern', 'datatype', 'unique', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte'
+export const Validation_Keys = [
+    'minLength', 'maxLength', 'required', 'pattern', 'datatype', 'unique', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'inList', 'notInList', 'custom'
 ];
 
 export type ValidationRule<T> = {
@@ -146,7 +157,8 @@ export type ValidationRule<T> = {
 
 export type ComplexValidationRule<T> = ValidationRule<T> & {
     readonly message ?: string,
-    readonly validator ?: (value: T, collectErrors?: boolean) => Promise<TestValidationRuleResponse>,
+    readonly messageId ?: string,
+    readonly validator ?: (value: T, collectErrors?: boolean) => Promise<TestComplexValidationRuleResponse>,
 }
 
 export type ValidationRules<Input extends InputType = InputType> = {
@@ -181,13 +193,13 @@ export type HttpRequestValidationResponse<
 };
 
 export type TEntityValidationCondition<I extends InputType, R extends RecordType> = {
-    readonly actorRules ?: {
+    readonly actor ?: {
         [K in keyof Actor]?: Validations<Actor[K]>;
     },
-    readonly inputRules ?: { 
+    readonly input ?: { 
         [InputKey in keyof I] ?: Validations<I[InputKey]>;
     },
-    readonly recordRules ?: {
+    readonly record ?: {
         [RecordKey in keyof R] ?: Validations<R[RecordKey]>;
     },
 }
@@ -286,13 +298,13 @@ export type OpApplicableConditionsWithScope<
 
 export type TInputApplicableCondition<Inp extends InputType, C extends TEntityValidationCondition<any, any>> = {
   
-  readonly actorRules: C['actorRules'] extends undefined ? void : C['actorRules'],
-  readonly recordRules: C['recordRules'] extends undefined ? void : C['recordRules'],
+  readonly actor: C['actor'] extends undefined ? void : C['actor'],
+  readonly record: C['record'] extends undefined ? void : C['record'],
   
-  readonly inputRules: C['inputRules'] extends undefined 
+  readonly input: C['input'] extends undefined 
     ? void 
-    : keyof C['inputRules'] extends keyof Inp
-      ? C['inputRules']
+    : keyof C['input'] extends keyof Inp
+      ? C['input']
       : void,
 };
 
@@ -311,13 +323,13 @@ export type TConditionalValidationRule<T, ConditionsMap extends TMapOfValidation
 } & ComplexValidationRule<T>;
 
 export type TEntityOpValidations<I extends InputType, R extends RecordType, C extends TMapOfValidationConditions<I, R> > = {
-    readonly actorRules ?: {
+    readonly actor ?: {
         [K in keyof Actor]?: TConditionalValidationRule<Actor[K], C>[];
     },
-    readonly inputRules ?: {
+    readonly input ?: {
         [K in keyof I] ?: TConditionalValidationRule<I[K], C>[];
     },
-    readonly recordRules ?: {
+    readonly record ?: {
         [K in keyof R] ?: TConditionalValidationRule<R[K], C>[];
     },
 }
@@ -339,10 +351,10 @@ export type EntityOpsValidations<
 
 export type EntityValidations< 
     Sch extends EntitySchema<any, any, any, any>, 
-    ConditionsMap extends TMapOfValidationConditions<any, any>, 
+    ConditionsMap extends TMapOfValidationConditions<any, any> = any, 
     OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > = Narrow<{
-    readonly actorRules ?: {
+    readonly actor ?: {
         [ActorKey in keyof Actor] ?: Narrow<
             TValidationRuleForOperations<
                 Actor[ActorKey], 
@@ -352,7 +364,7 @@ export type EntityValidations<
             >
         >[];
     },
-    readonly recordRules ?: {
+    readonly record ?: {
         [RecordKey in keyof EntityRecordTypeFromSchema<Sch>] ?: Narrow<
             TValidationRuleForOperations<
                 EntityRecordTypeFromSchema<Sch>[RecordKey], 
@@ -362,7 +374,7 @@ export type EntityValidations<
             >
         >[];
     },
-    readonly inputRules?: {
+    readonly input?: {
         [Prop in keyof EntityRecordTypeFromSchema<Sch>] ?: Array<
             TValidationRuleForOperationsAndInput<
                 EntityRecordTypeFromSchema<Sch>[Prop], 
@@ -374,6 +386,15 @@ export type EntityValidations<
     }
 }> & {
     conditions?: ConditionsMap,
+}
+
+export type EntityOpsInputValidations<
+    Sch extends EntitySchema<any, any, any, any>,
+    OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> = {
+    [Prop in keyof EntityRecordTypeFromSchema<Sch>] ?: Array< ValidationRule<EntityRecordTypeFromSchema<Sch>[Prop]> & {
+        readonly operations: Array<keyof PropertyApplicableEntityOperations<Prop, Sch, OpsInpSch>>
+    }>
 }
 
 

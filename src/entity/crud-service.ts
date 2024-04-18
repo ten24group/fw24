@@ -88,8 +88,9 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
     }
 
     // validate
-    const validation = await validator.validate({
+    const validation = await validator.validateEntity({
         operationName: crudType,
+        entityName,
         entityValidations: entityService.getEntityValidations(),
         input: identifiers,
         actor: actor
@@ -146,8 +147,9 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     await eventDispatcher?.dispatch({ event: 'beforeCreate', context: arguments });
 
     // validate
-    const validation = await validator.validate({
+    const validation = await validator.validateEntity({
         operationName: crudType,
+        entityName,
         entityValidations: entityService.getEntityValidations(),
         input: data,
         actor: actor,
@@ -267,8 +269,9 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     await eventDispatcher?.dispatch({ event: 'beforeUpdate', context: arguments });
 
     // validate
-    const validation = await validator.validate({
+    const validation = await validator.validateEntity({
         operationName: crudType,
+        entityName,
         entityValidations: entityService.getEntityValidations(),
         input: data,
         actor: actor
@@ -339,8 +342,9 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>( optio
     }
 
     // validate
-    const validation = await validator.validate({
+    const validation = await validator.validateEntity({
         operationName: crudType,
+        entityName,
         entityValidations: entityService.getEntityValidations(),
         input: identifiers,
         actor: actor

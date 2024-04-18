@@ -57,7 +57,7 @@ export class APIGateway implements IStack {
         const paramsApi: Mutable<RestApiProps> = this.stackConfig.apiOptions || {};
         // Enable CORS if defined
         if (this.stackConfig.cors) {
-            console.log("Enabling CORS... this.config.cors: ", this.stackConfig.cors);
+            this.logger.debug("Enabling CORS... this.config.cors: ", this.stackConfig.cors);
             paramsApi.defaultCorsPreflightOptions = this.getCorsPreflightOptions();
         }
         this.logger.debug("Creating API Gateway... ");
@@ -80,14 +80,14 @@ export class APIGateway implements IStack {
 
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
-            console.log("API-gateway stack: construct: app has modules ", modules);
+            this.logger.debug("API-gateway stack: construct: app has modules ", modules);
             for (const [, module] of modules) {
                 const basePath = module.getBasePath();
-                console.log("Load controllers from module base-path: ", basePath);
+                this.logger.debug("Load controllers from module base-path: ", basePath);
                 Helper.registerControllersFromModule(module, this.registerController);
             }
         } else {
-            console.log("API-gateway stack: construct: app has NO modules ");
+            this.logger.debug("API-gateway stack: construct: app has NO modules ");
         }
     }
 

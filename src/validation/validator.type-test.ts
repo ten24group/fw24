@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { DefaultEntityOperations, TEntityOpsInputSchemas, createEntitySchema } from "../entity";
-import { EntityOpsValidations, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TestValidationResult, TestValidationRuleResponse, ValidationRules } from "./validator.type";
+import { EntityOpsValidations, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TestComplexValidationRuleResponse, TestValidationResult, TestValidationRuleResponse, ValidationRules } from "./validator.type";
 import { Narrow, OmitNever } from "../utils";
 
 
@@ -188,13 +188,13 @@ export namespace User {
 
 
 const UserValidationConditions =  {
-    tenantIsXYZ: { actorRules: {
+    tenantIsXYZ: { actor: {
         tenantId: { eq: 'xxx-yyy-zzz' }
     }},
-    inputIsNitin: { inputRules: { 
+    inputIsNitin: { input: { 
         email: { eq: 'nitin@gmail.com' }
     }},
-    recordIsNotNew: { recordRules: {
+    recordIsNotNew: { record: {
         userId: { neq: '' }
     }},
 } as const;
@@ -205,7 +205,7 @@ const SignInValidations: ValidationRules<{email: string, lastName: string, anoth
       neq: "Blah",
       custom: (val: string): boolean | Promise<boolean> => {
         // you can define a custom function to validate the input ['lastName']
-        return true;
+        return !!val;
       }
     },
     anotherProp: {
@@ -243,9 +243,9 @@ const SignInValidations: ValidationRules<{email: string, lastName: string, anoth
     email: {
       // ** custom validation rule, with it's own validator; all other validations will be ignored here
       validator: (email: string ): Promise<TestValidationRuleResponse> => {
-        const res: TestValidationRuleResponse = {
-          pass: true,
-          message: "you can return a custom message from the validator as well; and it takes precedence over the error-message defined in the rule(if any)"
+        const res: TestComplexValidationRuleResponse = {
+          pass: !!email,
+          customMessage: "you can return a custom message from the validator as well; and it takes precedence over the error-message defined in the rule(if any)"
         };
 
         //... your logic to validate the input
@@ -258,32 +258,32 @@ const SignInValidations: ValidationRules<{email: string, lastName: string, anoth
 const UserOppValidations: EntityOpsValidations<User.TUserSchema2, typeof UserValidationConditions> = {
   conditions: UserValidationConditions,  
   delete: {
-    actorRules: {
+    actor: {
         tenantId: [{ eq: 'xxx-yyy-zzz' }]
     },
-    recordRules: {
+    record: {
         userId: [{ neq: '' }]
     },
-    inputRules: {
+    input: {
         userId: [{ eq: 'nitin@gmail.com', conditions: [['recordIsNotNew', 'recordIsNotNew'], 'all']  }],
     }
   },
   create: {
-      actorRules: {
+      actor: {
           tenantId: [{ eq: 'xxx-yyy-zzz' }]
       },
-      inputRules: {
+      input: {
           email: [{ eq: 'nitin@gmail.com', conditions: ['tenantIsXYZ'] }]
       }
   },
   update: {
-      actorRules: {
+      actor: {
           tenantId: [{ eq: 'xxx-yyy-zzz' }]
       },
-      inputRules: {
+      input: {
           email: [{ eq: 'nitin@gmail.com', conditions: ['tenantIsXYZ'] }]
       },
-      recordRules: {
+      record: {
           userId: [{ neq: '' }]
       }
   },
@@ -317,9 +317,12 @@ type rty =
   keyof TEntityOpsInputSchemas<User.TUserSchema2>
   ? keyof OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, TEntityOpsInputSchemas<User.TUserSchema2>>> : never
 
+conditions: UserValidationConditions;
+
+type InputValidations = EntityValidations<User.TUserSchema2, typeof UserValidationConditions>['input'];
+
 const UserValidations: EntityValidations<User.TUserSchema2, typeof UserValidationConditions> = {
-    conditions: UserValidationConditions,
-    actorRules: {
+    actor: {
         tenantId: [{
             eq: 'xxx-yyy-zzz',
             operations: [
@@ -332,7 +335,7 @@ const UserValidations: EntityValidations<User.TUserSchema2, typeof UserValidatio
             ],
         }],
     },
-    inputRules: {
+    input: {
         email: [{
             eq: 'nitin@gmail.com',
             operations: [['create', ['inputIsNitin', 'recordIsNotNew', 'tenantIsXYZ']]],
@@ -355,7 +358,7 @@ const UserValidations: EntityValidations<User.TUserSchema2, typeof UserValidatio
             }
         }]
     },
-    recordRules: {
+    record: {
         userId: [{
             required: true,
             operations:['xxx']

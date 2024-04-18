@@ -6,9 +6,12 @@ import { Delete, Get, Patch, Post } from '../decorators/method';
 import { BaseEntityService } from './base-service';
 import { defaultMetaContainer } from './entity-metadata-container';
 import { EntitySchema } from './base-entity';
+import { createLogger } from '../logging';
 
 export abstract class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIGatewayController {
-    
+	
+	readonly logger = createLogger(BaseEntityController.name);
+
     constructor( protected readonly entityName: string){
         super();
         this.entityName = entityName;
@@ -22,7 +25,8 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
         await this.initDI();
 
         // TODO: rest of the init setup
-		console.log(`BaseEntityController.initialize - done: ${event} ${context}`);
+		
+		this.logger.debug(`BaseEntityController.initialize - done: ${event} ${context}`);
 
         return Promise.resolve();
     }

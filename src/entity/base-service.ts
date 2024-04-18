@@ -1,6 +1,6 @@
 import { EntityConfiguration } from "electrodb";
 import { toHumanReadableName } from "../utils";
-import { EntityValidations } from "../validation";
+import { EntityOpsInputValidations, EntityValidations } from "../validation";
 import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, updateEntity } from "./crud-service";
 import { createLogger } from "../logging";
@@ -81,7 +81,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     
     public getEntitySchema(): S { return this.schema;}
 
-    public getEntityValidations(): EntityValidations<any, any, any>{
+    public getEntityValidations(): EntityValidations<S> | EntityOpsInputValidations<S>{
         return {};
     };
 

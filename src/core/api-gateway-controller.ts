@@ -1,11 +1,11 @@
-import { APIGatewayEvent, Context, APIGatewayProxyResult } from "aws-lambda";
-import { Route } from "../interfaces/route";
+import { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
 import { Request } from "../interfaces/request";
 import { Response } from "../interfaces/response";
+import { Route } from "../interfaces/route";
+import { createLogger } from "../logging";
+import { DefaultValidator, HttpRequestValidations, IValidator, ValidationRules, isHttpRequestValidationRule, isInputValidationRule } from "../validation";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
-import { createLogger } from "../logging";
-import { DefaultValidator, ValidationRules, HttpRequestValidations, IValidator, InputValidationResponse, isHttpRequestValidationRule, InputValidationErrors, TestValidationRuleResponse, isValidationRule, isInputValidationRule, InputType, HttpRequestValidationResponse } from "../validation";
 
 /**
  * Base controller class for handling API Gateway events.
@@ -78,9 +78,7 @@ abstract class APIGatewayController {
             }),
           });
         }
-
-
-
+        
       } else {
         this.logger.info("No validation rules found for route:", route);
       }
