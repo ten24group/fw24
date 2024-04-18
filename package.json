@@ -1,8 +1,8 @@
 {
     "name": "@ten24group/fw24",
     "version": "0.0.4",
-    "main": "./dist/package/fw24.js",
-    "types": "./dist/package/fw24.d.ts",
+    "main": "./dist/fw24.js",
+    "types": "./dist/fw24.d.ts",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/ten24group/fw24.git"
@@ -13,7 +13,7 @@
     "scripts": {
         "fw24:watch": "tsc -w",
         "fw24:build": "tsc",
-        "fw24:release": "npm run fw24:build && standard-version && git push --follow-tags && npm publish",
+        "fw24:release": "npm run fw24:build && npm run layer:build && standard-version && git push --follow-tags && npm publish",
         "layer:build": "esbuild --bundle --platform=node --sourcemap ./src/layer/fw24.ts --outdir=dist/layer/nodejs/node_modules",
         "layer:release": "npm run layer:build && cdk deploy"
     },

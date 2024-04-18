@@ -25,7 +25,7 @@
         "experimentalDecorators": true,
         "strictPropertyInitialization": true,
         "stripInternal": true,
-        "outDir": "./dist/package",
+        "outDir": "./dist",
         "typeRoots": [
             "./node_modules/@types"
         ],
