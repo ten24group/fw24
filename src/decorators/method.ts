@@ -1,5 +1,5 @@
 import { Route } from "../interfaces/route";
-import { HttpRequestValidations, ValidationRules } from "../validation";
+import { HttpRequestValidations, InputValidationRule } from "../validation";
 
 // function InjectParams(
 //   target: any,
@@ -22,7 +22,7 @@ function createRouteDecorator(method: string) {
   return (
     route: string,
     options ?: {
-      validations?: ValidationRules | HttpRequestValidations
+      validations?: InputValidationRule | HttpRequestValidations
     } 
   ) =>
     (target: any, methodToDecorate: any) => {

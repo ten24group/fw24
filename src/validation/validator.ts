@@ -3,13 +3,11 @@ import { expect } from '@jest/globals';
  * Defines validation rules and criteria that can be used to validate input, record, and actor data.
  * Provides a Validator class that validates data against defined validation rules and criteria.
  */
-import { IValidator, IValidatorResponse, OpValidatorOptions, ValidationRule, ValidationRules, InputValidationResponse, TestValidationRuleResponse, InputValidationErrors, Validation_Keys, HttpRequestValidations, ValidationError, HttpRequestValidationResponse, TComplexValidationValue, TValidationValue, TestValidationResult, ComplexValidationRule, TComplexValidationValueWithMessage, TComplexValidationValueWithValidator, TestComplexValidationRuleResponse, TestComplexValidationResult, EntityOpsInputValidations, ValidateHttpRequestOptions } from "./validator.type";
-import { DeepWritable, ValueOf } from '../utils/types';
-import { Actor, EntityValidations, InputType, RecordType, TConditionalValidationRule, TEntityOpValidations, TEntityValidationCondition, TMapOfValidationConditions, Validations } from "./validator.type";
+import { IValidator, IValidateEntityResponse, OpValidatorOptions, ValidationRule, InputValidationRule, InputValidationResponse, TestValidationRuleResponse, Validation_Keys, HttpRequestValidations, ValidationError, HttpRequestValidationResponse, TComplexValidationValue, TValidationValue, TestValidationResult, ComplexValidationRule, TComplexValidationValueWithMessage, TComplexValidationValueWithValidator, TestComplexValidationRuleResponse, TestComplexValidationResult, EntityOpsInputValidations, ValidateHttpRequestOptions, ConditionsAndScopeTuple } from "./validator.type";
+import { DeepWritable } from '../utils/types';
+import { Actor, EntityValidations, InputType, RecordType, ConditionalValidationRule, EntityOperationValidation, EntityValidationCondition, MapOfValidationCondition, Validations } from "./validator.type";
 import { TDefaultEntityOperations, EntitySchema, TEntityOpsInputSchemas } from "../entity";
 import { createLogger } from "../logging";
-
-import { Request } from '../interfaces/request';
 
 const logger = createLogger('Validator');
 
@@ -20,9 +18,8 @@ export function isValidationRule<T extends unknown>( rule: any): rule is Validat
 
     return res;
 }
-export type ConditionsAndScopeTuple = [ conditions: string[], scope: string ];
 
-export function isConditionsAndScopeTuple(conditions: any): conditions is [ conditions: string[], scope: string ] {
+export function isConditionsAndScopeTuple(conditions: any): conditions is ConditionsAndScopeTuple {
     return conditions
         && Array.isArray(conditions) 
         && conditions.length == 2 
@@ -30,13 +27,13 @@ export function isConditionsAndScopeTuple(conditions: any): conditions is [ cond
         && ['all', 'any', 'none'].includes(conditions[1] as string) 
 }
 
-export function isInputValidationRule<Input extends InputType = InputType>( rules: any): rules is ValidationRules<Input> {
+export function isInputValidationRule<Input extends InputType = InputType>( rules: any): rules is InputValidationRule<Input> {
     return typeof rules === 'object' 
         && rules !== null
         && Object.keys(rules).every(key => isValidationRule(rules[key]))
 }
 
-export function isArrayOfValidationRule<Input extends InputType = InputType>( rules: any): rules is ValidationRules<Input> {
+export function isArrayOfValidationRule<Input extends InputType = InputType>( rules: any): rules is InputValidationRule<Input> {
     const res = typeof rules === 'object' 
         && rules !== null
         && Array.isArray(rules) 
@@ -93,7 +90,7 @@ export function isComplexValidationRule<T = unknown>(val: any): val is ComplexVa
 
 export function isEntityValidations<
   Sch extends EntitySchema<any, any, any, Ops>, 
-  ConditionsMap extends TMapOfValidationConditions<any, any>,
+  ConditionsMap extends MapOfValidationCondition<any, any>,
   Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
   OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 >(
@@ -130,7 +127,7 @@ export function isEntityInputValidations<
 
 export function extractOpValidationFromEntityValidations<
   Sch extends EntitySchema<any, any, any, Ops>, 
-  ConditionsMap extends TMapOfValidationConditions<any, any>,
+  ConditionsMap extends MapOfValidationCondition<any, any>,
   Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
   OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 >( 
@@ -138,7 +135,7 @@ export function extractOpValidationFromEntityValidations<
   entityValidations: EntityValidations<Sch, ConditionsMap, OpsInpSch> | EntityOpsInputValidations<Sch, OpsInpSch>
 ){
 
-	const entityOpValidations: DeepWritable<TEntityOpValidations<any, any, ConditionsMap>> = {
+	const entityOpValidations: DeepWritable<EntityOperationValidation<any, any, ConditionsMap>> = {
 		actor: {},
 		input: {},
 		record: {},
@@ -230,7 +227,7 @@ export function extractOpValidationFromEntityValidations<
 	}
     
 	return {
-		opValidations: {...entityOpValidations} as TEntityOpValidations<any, any, ConditionsMap>, 
+		opValidations: {...entityOpValidations} as EntityOperationValidation<any, any, ConditionsMap>, 
 		conditions: entityValidations.conditions
 	}
 }
@@ -369,16 +366,16 @@ export class Validator implements IValidator {
     async validateEntity<
         Sch extends EntitySchema<any, any, any>, 
         OpName extends keyof Sch['model']['entityOperations'],
-        ConditionsMap extends TMapOfValidationConditions<any, any>, 
+        ConditionsMap extends MapOfValidationCondition<any, any>, 
         OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
     >(
         options: OpValidatorOptions<Sch, OpName, ConditionsMap, OpsInpSch>
 
-    ): Promise<IValidatorResponse> {
+    ): Promise<IValidateEntityResponse> {
         
         const { entityValidations, entityName, operationName, input, actor, record, collectErrors=true, overriddenErrorMessages } = options;
         
-        const result: IValidatorResponse<Actor, any, any> = {
+        const result: IValidateEntityResponse<Actor, any, any> = {
             pass: true,
             errors: {
                 actor: {},
@@ -417,7 +414,7 @@ export class Validator implements IValidator {
                     record, 
                     rules:          validationsWithCriteria, 
                     inputVal:       inputVal, 
-                    allConditions:  conditions as TMapOfValidationConditions,
+                    allConditions:  conditions as MapOfValidationCondition,
                 });
                 
                 result.pass = result.pass && res.pass;
@@ -448,7 +445,7 @@ export class Validator implements IValidator {
      */
     async validateInput<I extends InputType>(
         input: I | undefined,
-        rules?: ValidationRules<I>, 
+        rules?: InputValidationRule<I>, 
         collectErrors: boolean = true
     ): Promise<InputValidationResponse<I>> {
 
@@ -564,8 +561,8 @@ export class Validator implements IValidator {
      */
     async validateConditionalRules<I extends InputType = any, R extends RecordType = any>(
         options: {
-            rules: TConditionalValidationRule<any, any>[],
-            allConditions: TMapOfValidationConditions,
+            rules: ConditionalValidationRule<any, any>[],
+            allConditions: MapOfValidationCondition,
             inputVal?: any,
             input?: I, 
             record?: R, 
@@ -627,8 +624,8 @@ export class Validator implements IValidator {
      */
     async validateConditionalRule<I extends InputType =  any, R extends RecordType = any >(
         options: {
-            rule: TConditionalValidationRule<any, any>,
-            allConditions: TMapOfValidationConditions,
+            rule: ConditionalValidationRule<any, any>,
+            allConditions: MapOfValidationCondition,
             inputVal?: any,
             input?: I, 
             record?: R, 
@@ -679,8 +676,8 @@ export class Validator implements IValidator {
 
     async testConditions<I extends InputType =  any, R extends RecordType = any >(
         options: {
-            conditions: TConditionalValidationRule<any, any>['conditions'],
-            allConditions: TMapOfValidationConditions,
+            conditions: ConditionalValidationRule<any, any>['conditions'],
+            allConditions: MapOfValidationCondition,
             inputVal?: any,
             input?: I, 
             record?: R, 
@@ -763,7 +760,7 @@ export class Validator implements IValidator {
      * criteria to determine if it is applicable.
      */
     async testCondition<I extends InputType, R extends RecordType>(
-        criteria: TEntityValidationCondition<I, R>, 
+        criteria: EntityValidationCondition<I, R>, 
         input?: I, 
         record?: R, 
         actor?: Actor

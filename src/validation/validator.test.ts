@@ -1,5 +1,5 @@
 import { Request } from './../interfaces/request';
-import { ComplexValidationRule, EntityValidations, HttpRequestValidations, TConditionalValidationRule, TMapOfValidationConditions, ValidationRule } from "./validator.type";
+import { ComplexValidationRule, EntityValidations, HttpRequestValidations, ConditionalValidationRule, MapOfValidationCondition, ValidationRule } from "./validator.type";
 
 import { describe, expect, it } from '@jest/globals';
 import { TDefaultEntityOperations } from "../entity";
@@ -222,7 +222,7 @@ describe('Validator', () => {
 
   describe('validateConditionalRules()', () => {
     const validator = new Validator();
-    const allConditions: TMapOfValidationConditions = {
+    const allConditions: MapOfValidationCondition = {
       condition1: {
         input: {
           name: { eq: 'abc' }
@@ -236,7 +236,7 @@ describe('Validator', () => {
     };
 
     it('should validate rules when all conditions pass', async () => {
-      const rules: TConditionalValidationRule<any, any>[] = [{
+      const rules: ConditionalValidationRule<any, any>[] = [{
         minLength: 8,
         conditions: [ ['condition1', 'condition2'], 'all']
       }];
@@ -269,7 +269,7 @@ describe('Validator', () => {
     });
 
     it('should skip validation if any condition fails when scope is "all"', async () => {
-      const rules: TConditionalValidationRule<any, any>[] = [{
+      const rules: ConditionalValidationRule<any, any>[] = [{
         minLength: 8,
         conditions: [['condition1', 'condition2'], 'all']
       }];
@@ -288,7 +288,7 @@ describe('Validator', () => {
     });
 
     it('should validate if any condition fails when scope is "any"', async () => {
-      const rules: TConditionalValidationRule<any, any>[] = [{
+      const rules: ConditionalValidationRule<any, any>[] = [{
         minLength: 8,
         conditions: [['condition1', 'condition2'], 'any']
       }];
@@ -307,7 +307,7 @@ describe('Validator', () => {
     });
 
     it('should skip validation if any condition passes when scope is "none"', async () => {
-      const rules: TConditionalValidationRule<any, any>[] = [{
+      const rules: ConditionalValidationRule<any, any>[] = [{
         minLength: 8,
         conditions: [['condition1', 'condition2'], 'none']
       }];
@@ -326,7 +326,7 @@ describe('Validator', () => {
     });
 
     it('should validate when all condition fail; when scope is "none"', async () => {
-      const rules: TConditionalValidationRule<any, any>[] = [{
+      const rules: ConditionalValidationRule<any, any>[] = [{
         minLength: 8,
         conditions: [['condition1', 'condition2'], 'none']
       }];
@@ -346,7 +346,7 @@ describe('Validator', () => {
   });
 
   describe('validateConditionalRule()', () => {
-    const CONDITION: TMapOfValidationConditions<any, {}> = {
+    const CONDITION: MapOfValidationCondition<any, {}> = {
         actorIs123: {
             actor: {
                 actorId: { eq: '123' } 
@@ -357,7 +357,7 @@ describe('Validator', () => {
     it('should validate rules if criteria rules pass', async () => {
       const validator = new Validator();
       
-      const validationRule: TConditionalValidationRule<any, typeof CONDITION>  = {
+      const validationRule: ConditionalValidationRule<any, typeof CONDITION>  = {
         conditions: [['actorIs123'], 'all'],
         minLength: 10
       };
@@ -384,7 +384,7 @@ describe('Validator', () => {
     it('should skip validation if criteria rules fail', async () => {
       const validator = new Validator();
       
-      const validationRule: TConditionalValidationRule<any, typeof CONDITION> = {
+      const validationRule: ConditionalValidationRule<any, typeof CONDITION> = {
         conditions: [['actorIs123'], 'all'],
         minLength: 5
       };
@@ -834,7 +834,7 @@ describe('extractOpValidationFromEntityValidations()', () => {
   });
 
   it('should extract validations for given op from array', () => {
-    const entityValidations: EntityValidations<any, any> = {
+    const entityValidations: EntityValidations<any, any, any> = {
       actor: {
         id: [{
           operations: ['create'],

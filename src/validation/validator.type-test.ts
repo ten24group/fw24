@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { DefaultEntityOperations, TEntityOpsInputSchemas, createEntitySchema } from "../entity";
-import { EntityOpsValidations, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TestComplexValidationRuleResponse, TestValidationResult, TestValidationRuleResponse, ValidationRules } from "./validator.type";
+import { EntityOperationsValidation, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TestComplexValidationRuleResponse, TestValidationResult, TestValidationRuleResponse, InputValidationRule } from "./validator.type";
 import { Narrow, OmitNever } from "../utils";
 
 
@@ -199,7 +199,7 @@ const UserValidationConditions =  {
     }},
 } as const;
 
-const SignInValidations: ValidationRules<{email: string, lastName: string, anotherProp: string}> = {
+const SignInValidations: InputValidationRule<{email: string, lastName: string, anotherProp: string}> = {
     lastName: {
       datatype: 'string',
       neq: "Blah",
@@ -255,7 +255,7 @@ const SignInValidations: ValidationRules<{email: string, lastName: string, anoth
     },
 };
 
-const UserOppValidations: EntityOpsValidations<User.TUserSchema2, typeof UserValidationConditions> = {
+const UserOppValidations: EntityOperationsValidation<User.TUserSchema2, typeof UserValidationConditions> = {
   conditions: UserValidationConditions,  
   delete: {
     actor: {

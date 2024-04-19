@@ -3,7 +3,7 @@ import { Request } from "../interfaces/request";
 import { Response } from "../interfaces/response";
 import { Route } from "../interfaces/route";
 import { createLogger } from "../logging";
-import { DefaultValidator, HttpRequestValidations, IValidator, ValidationRules, isHttpRequestValidationRule, isInputValidationRule } from "../validation";
+import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule, isHttpRequestValidationRule, isInputValidationRule } from "../validation";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
 
@@ -27,7 +27,7 @@ abstract class APIGatewayController {
       return Promise.resolve( new Map<string, string>());
   }
 
-  async validate( requestContext: Request, validations: ValidationRules | HttpRequestValidations ){
+  async validate( requestContext: Request, validations: InputValidationRule | HttpRequestValidations ){
 
     let validationRules: HttpRequestValidations = validations;
     if(isInputValidationRule(validations)){
