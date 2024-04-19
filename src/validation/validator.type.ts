@@ -217,44 +217,6 @@ export type EntityValidationCondition<I extends InputType, R extends RecordType>
 
 export type MapOfValidationCondition<I extends InputType = InputType, R extends RecordType = RecordType> = Record<string, EntityValidationCondition<I, R>>;
 
-
-export type EntityOperationValidationRule<
-    T, 
-    Sch extends EntitySchema<any, any, any>,
-    ConditionsMap extends MapOfValidationCondition<any, any>,
-    OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
-> = {
-
-    readonly operations ?: Narrow<Array<ValueOf<{
-        /**
-         * for each operation create a tuple like [ 'opp-name', [condition-names that are applicable on the input schema for the opp] ]
-         * 
-         * However the conditions can be defined in 2 formats
-         *  - [array of condition names]     ==> applicability is all i.e all conditions must evaluate to true for the rule to apply
-         *  - [[array of condition names], applicability ] ==> a tuple of conditions and their applicability i.e. user can control the applicability of the conditions
-         * 
-         * e.g. 
-         * ['*']                                        ==> applicable to all operations without conditions
-         * ['delete', 'update' ]                        ==> applicable to 'delete' and 'update' operations regardless conditions,
-         * [ 'delete', ['xxx', 'yyy', 'zzz']        ]   ==> rule applies on 'delete' operation if 'all'   'xxx', 'yyy', 'zzz'     evaluates to 'true'
-         * [ 'get',    [['xxx', 'ccc'],     'all']  ]   ==> rule applies on 'get' operation if 'all'      'xxx' and 'ccc'         evaluates to 'true'
-         * [ 'get',    [['ppp', 'qqq'],     'none'] ]   ==> rule applies on 'get' operation if 'none-of'  'ppp' and 'qqq'         evaluates to 'true'
-         * [ 'get',    [['lll', 'mmm'],     'any']  ]   ==> rule applies on 'get' operation if 'any-of'   'lll' and 'mmm'         evaluates to 'true'
-         * 
-         * */
-        readonly [OppName in keyof OpsInpSch]: OppName | [ 
-            OppName, 
-            /** array of condition names like ['xxx', 'yyyy']  default: all conditions must be satisfied */
-            Array<keyof OmitNever<ConditionsMap>>  
-            | 
-            /** array of tuple of condition names + applicability like [ ['xxx', 'yyyy'], 'all' ]  ==> specify how conditions must be satisfied */
-            [ Array<keyof OmitNever<ConditionsMap>> , 'all' | 'any' | 'none'], 
-        ]
-    }>>>,
-
-} & ValidationRule<T>;
-
-
 /**
  * 
  * Similar to `TValidationRuleForOperations` except 
@@ -264,7 +226,7 @@ export type EntityOperationValidationRule<
  * 
  */
 export type EntityOperationValidationRuleForInput<
-    T, 
+    Input, 
     Sch extends EntitySchema<any, any, any>,
     ConditionsMap extends MapOfValidationCondition<any, any>,
     OpsKeys extends keyof Sch['model']['entityOperations'],
@@ -282,7 +244,7 @@ export type EntityOperationValidationRuleForInput<
         }]
     }>,
 
-} & ValidationRule<T>;
+} & ValidationRule<Input>;
 
 export type OperationConditionsTuple<
     Sch extends EntitySchema<any, any, any>,
