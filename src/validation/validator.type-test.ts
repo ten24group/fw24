@@ -3,8 +3,7 @@ import { DefaultEntityOperations, TEntityOpsInputSchemas, createEntitySchema } f
 import { EntityOperationsValidation, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TestComplexValidationRuleResponse, TestValidationResult, TestValidationRuleResponse, InputValidationRule } from "./validator.type";
 import { Narrow, OmitNever } from "../utils";
 
-
-export namespace User {
+namespace User {
     export const createUserSchema = () => createEntitySchema({
       model: {
         version: '1',
@@ -186,7 +185,6 @@ export namespace User {
   export type TUserSchema2 = ReturnType<typeof createUserSchema2>;
 }
 
-
 const UserValidationConditions =  {
     tenantIsXYZ: { actor: {
         tenantId: { eq: 'xxx-yyy-zzz' }
@@ -329,9 +327,9 @@ const UserValidations: EntityValidations<User.TUserSchema2, typeof UserValidatio
               'create',
               'update',
               'xxx',
-              ['update', ['recordIsNotNew', 'tenantIsXYZ']],
-              ['update', [['recordIsNotNew', 'inputIsNitin'], 'any']],
-              ['delete', [['inputIsNitin', 'tenantIsXYZ'], 'all'] ]
+              ['update', ['recordIsNotNew', 'inputIsNitin', 'tenantIsXYZ']],
+              ['update', ['recordIsNotNew', 'inputIsNitin'], 'any'],
+              ['delete', ['recordIsNotNew', 'tenantIsXYZ'], 'all' ]
             ],
         }],
     },

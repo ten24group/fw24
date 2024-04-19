@@ -233,9 +233,7 @@ export type EntityOperationValidationRuleForInput<
     OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
 > = {
     readonly operations ?: Narrow<
-    Array<OpsKeys>
-    | 
-    Array<ValueOf<{ readonly [OppName in OpsKeys]: OperationConditionsTuple<Sch, ConditionsMap, OppName, OpsInpSch> }>>
+    Array< OpsKeys | ValueOf<{ readonly [OppName in OpsKeys]: OperationConditionsTuple<Sch, ConditionsMap, OppName, OpsInpSch> }>>
     |
     {
         readonly [OppName in OpsKeys] ?: [{
