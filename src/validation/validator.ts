@@ -376,7 +376,7 @@ export class Validator implements IValidator {
 
     ): Promise<IValidatorResponse> {
         
-        const { entityValidations, entityName, operationName, input, actor, record, collectErrors, overriddenErrorMessages } = options;
+        const { entityValidations, entityName, operationName, input, actor, record, collectErrors=true, overriddenErrorMessages } = options;
         
         const result: IValidatorResponse<Actor, any, any> = {
             pass: true,
@@ -492,7 +492,7 @@ export class Validator implements IValidator {
 
     ): Promise<HttpRequestValidationResponse<Header, Body, Param, Query>> {
 
-        const { requestContext, validations, collectErrors, overriddenErrorMessages } = options;
+        const { requestContext, validations, collectErrors = true, overriddenErrorMessages } = options;
 
         const res: HttpRequestValidationResponse<Header, Body, Param, Query> = {
             pass: true,
