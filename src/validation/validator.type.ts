@@ -18,7 +18,9 @@ export type TestComplexValidationResult = TestValidationResult & CustomMessageOr
 
 
 export type ValidationError = {
+    message ?: string,
     messageIds ?: Array<string>,
+    validationName?: string,
     expected ?: any,                           
     received ?: any,
     path ?: string,
@@ -65,8 +67,22 @@ export type OpValidatorOptions<
     readonly input?: InputType,
     readonly actor?: Actor,
     readonly record?: RecordType, 
+    readonly collectErrors ?: boolean,
+    readonly overriddenErrorMessages ?: Map<string, string>
 }
 
+
+export type ValidateHttpRequestOptions<
+    Header extends InputType = InputType, 
+    Body extends InputType = InputType,
+    Param extends InputType = InputType,
+    Query extends InputType = InputType,
+> = {
+    validations: HttpRequestValidations<Header, Body, Param, Query>, 
+    requestContext: Request, 
+    collectErrors ?: boolean,
+    overriddenErrorMessages ?: Map<string, string>,
+}
 export interface IValidator {
     validateEntity<
         Sch extends EntitySchema<any, any, any>, 
@@ -87,8 +103,7 @@ export interface IValidator {
         Param extends InputType = InputType,
         Query extends InputType = InputType,
     >(
-        requestContext: Request, 
-        validations: HttpRequestValidations<Header, Body, Param, Query>, 
+        options: ValidateHttpRequestOptions<Header, Body, Param, Query>
     ): Promise<HttpRequestValidationResponse<Header, Body, Param, Query>>
 }
 

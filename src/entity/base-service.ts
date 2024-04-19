@@ -19,7 +19,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return this;
     }
 
-
     /**
      * return an object containing all the required attributes/values to fulfill an index
      * e.g. entityId, tenantId, partition-keys.... etc
@@ -32,7 +31,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      * OUT  ==> { tenantId: xxx, email: xxx@yyy.com, some-partition-key: xx-yy-zz }
      *
      *  */ 
-    extractEntityIdentifiers( 
+    extractEntityIdentifiers(
         input: any, 
         context: { tenantId: string, forAccessPattern ?: string } = {
             tenantId: 'xxx-yyy-zzz'
@@ -84,6 +83,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     public getEntityValidations(): EntityValidations<S> | EntityOpsInputValidations<S>{
         return {};
     };
+
+    public async getOverriddenEntityValidationErrorMessages() {
+        return Promise.resolve( new Map<string, string>() );
+    }
 
     public getEntityPrimaryIdPropertyName() {
         const schema = this.getEntitySchema();

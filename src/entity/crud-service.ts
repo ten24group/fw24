@@ -92,6 +92,7 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
         operationName: crudType,
         entityName,
         entityValidations: entityService.getEntityValidations(),
+        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
         input: identifiers,
         actor: actor
     });
@@ -151,6 +152,7 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
         operationName: crudType,
         entityName,
         entityValidations: entityService.getEntityValidations(),
+        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
         input: data,
         actor: actor,
     });
@@ -273,6 +275,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         operationName: crudType,
         entityName,
         entityValidations: entityService.getEntityValidations(),
+        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
         input: data,
         actor: actor
     });
@@ -346,6 +349,7 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>( optio
         operationName: crudType,
         entityName,
         entityValidations: entityService.getEntityValidations(),
+        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
         input: identifiers,
         actor: actor
     });

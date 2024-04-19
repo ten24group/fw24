@@ -23,6 +23,10 @@ abstract class APIGatewayController {
 
   abstract initialize(event: APIGatewayEvent, context: Context): Promise<void>;
 
+  protected async getOverriddenHttpRequestValidationErrorMessages() {
+      return Promise.resolve( new Map<string, string>());
+  }
+
   async validate( requestContext: Request, validations: ValidationRules | HttpRequestValidations ){
 
     let validationRules: HttpRequestValidations = validations;
@@ -41,7 +45,11 @@ abstract class APIGatewayController {
       throw (new Error("Invalid http-request validation rule"));
     }
 
-    return this.validator.validateHttpRequest(requestContext, validationRules);
+    return this.validator.validateHttpRequest({
+      requestContext, 
+      validations: validationRules, 
+      overriddenErrorMessages: await this.getOverriddenHttpRequestValidationErrorMessages()
+    });
   }
 
   /**

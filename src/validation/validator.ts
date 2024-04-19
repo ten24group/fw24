@@ -3,7 +3,7 @@ import { expect } from '@jest/globals';
  * Defines validation rules and criteria that can be used to validate input, record, and actor data.
  * Provides a Validator class that validates data against defined validation rules and criteria.
  */
-import { IValidator, IValidatorResponse, OpValidatorOptions, ValidationRule, ValidationRules, InputValidationResponse, TestValidationRuleResponse, InputValidationErrors, Validation_Keys, HttpRequestValidations, ValidationError, HttpRequestValidationResponse, TComplexValidationValue, TValidationValue, TestValidationResult, ComplexValidationRule, TComplexValidationValueWithMessage, TComplexValidationValueWithValidator, TestComplexValidationRuleResponse, TestComplexValidationResult, EntityOpsInputValidations } from "./validator.type";
+import { IValidator, IValidatorResponse, OpValidatorOptions, ValidationRule, ValidationRules, InputValidationResponse, TestValidationRuleResponse, InputValidationErrors, Validation_Keys, HttpRequestValidations, ValidationError, HttpRequestValidationResponse, TComplexValidationValue, TValidationValue, TestValidationResult, ComplexValidationRule, TComplexValidationValueWithMessage, TComplexValidationValueWithValidator, TestComplexValidationRuleResponse, TestComplexValidationResult, EntityOpsInputValidations, ValidateHttpRequestOptions } from "./validator.type";
 import { DeepWritable, ValueOf } from '../utils/types';
 import { Actor, EntityValidations, InputType, RecordType, TConditionalValidationRule, TEntityOpValidations, TEntityValidationCondition, TMapOfValidationConditions, Validations } from "./validator.type";
 import { TDefaultEntityOperations, EntitySchema, TEntityOpsInputSchemas } from "../entity";
@@ -235,45 +235,123 @@ export function extractOpValidationFromEntityValidations<
 	}
 }
 
-export const genericErrorMessages: {[k:string]: string} = {
-    'validation.eq':            "Provided value '{received}' for '{key}' should be equal to '{expected}'",
-    'validation.gt':            "Provided value '{received}' for '{key}' should be greater than '{expected}'",
-    'validation.lt':            "Provided value '{received}' for '{key}' should be less than '{expected}'",
-    'validation.gte':           "Provided value '{received}' for '{key}' should be greater than or equal to '{expected}'",
-    'validation.lte':           "Provided value '{received}' for '{key}' should be less than or equal to '{expected}'",
-    'validation.neq':           "Provided value '{received}' for '{key}' should not be equal to '{expected}'",
-    'validation.custom':        "Provided value '{received}' for '{key}' is invalid",
-    'validation.inlist':        "Provided value '{received}' for '{key}' should be one of '{expected}'",
-    'validation.unique':        "Provided value '{received}' for '{key}' should be unique",
-    'validation.pattern':       "Provided value '{received}' for '{key}' should match '{expected}' pattern",
-    'validation.datatype':      "Provided value '{received}' for '{key}' should be '{expected}'",
-    'validation.required':      "Provided value '{received}' for '{key}' is required",
-    'validation.maxlength':     "Provided value '{received[0]}' for '{key}' should have maximum length of '{expected}'; instead of '{received[1]}'",
-    'validation.minlength':     "Provided value '{received[0]}' for '{key}' should have minimum length of '{expected}'; instead of '{received[1]}'",
-    'validation.notinlist':     "Provided value '{received}' for '{key}' should not be one of '{expected}'",
-}
+export const genericErrorMessages = new Map<string, string>( Object.entries({
+    'validation.eq':            "Provided value '{received}' for '{path}' should be equal to '{expected}'",
+    'validation.gt':            "Provided value '{received}' for '{path}' should be greater than '{expected}'",
+    'validation.lt':            "Provided value '{received}' for '{path}' should be less than '{expected}'",
+    'validation.gte':           "Provided value '{received}' for '{path}' should be greater than or equal to '{expected}'",
+    'validation.lte':           "Provided value '{received}' for '{path}' should be less than or equal to '{expected}'",
+    'validation.neq':           "Provided value '{received}' for '{path}' should not be equal to '{expected}'",
+    'validation.custom':        "Provided value '{received}' for '{path}' is invalid",
+    'validation.inlist':        "Provided value '{received}' for '{path}' should be one of '{expected}'",
+    'validation.unique':        "Provided value '{received}' for '{path}' should be unique",
+    'validation.pattern':       "Provided value '{received}' for '{path}' should match '{expected}' pattern",
+    'validation.datatype':      "Provided value '{received}' for '{path}' should be '{expected}'",
+    'validation.required':      "Provided value '{received}' for '{path}' is required",
+    'validation.maxlength':     "Provided value '{received[0]}' for '{path}' should have maximum length of '{expected}'; instead of '{received[1]}'",
+    'validation.minlength':     "Provided value '{received[0]}' for '{path}' should have minimum length of '{expected}'; instead of '{received[1]}'",
+    'validation.notinlist':     "Provided value '{received}' for '{path}' should not be one of '{expected}'",
+}));
 
-export function makeValidationErrorMessage(error: ValidationError){
+export function makeValidationErrorMessage(error: ValidationError, overriddenErrorMessages ?: Map<string, string>){
 
+    if(error.customMessage){
+        return error.customMessage;
+    }
+    
+    // customMessageId, or the first key 
     let messageId = error.customMessageId 
-        || error.messageIds?.reverse().find( (messageId) => !!genericErrorMessages[messageId] )
+        || error.messageIds?.reverse().find( (messageId) => overriddenErrorMessages?.has(messageId) || genericErrorMessages.has(messageId) )
         || ( error.messageIds?.length ? error.messageIds.at(-1) : undefined)
 
-    let message = error.customMessage || messageId ? genericErrorMessages[messageId as keyof typeof messageId] : 'validation.unknown-1';
+    let message = "Validation failed for '{path}'; expected '{expected}', received '{received}'";
 
-    message = message || 'validation.unknown-2';
-
-    if(Array.isArray(error.received)){
-        message = message.replace('{received[0]}', error.received[0] ?? '');
-        message = message.replace('{received[1]}', error.received[1] ?? '');
-    } else {
-        message = message.replace('{received}', error.received ? error.received + '' : '');
+    if(messageId && ( overriddenErrorMessages?.has(messageId) || genericErrorMessages.has(messageId)) ){
+        message = overriddenErrorMessages?.get(messageId) ?? genericErrorMessages.get(messageId)!;
     }
 
-    message = message.replace('{key}', error.path ?? '');
+    if(Array.isArray(error.received)){
+        message = message!.replace('{received[0]}', error.received[0] ?? '');
+        message = message.replace('{received[1]}', error.received[1] ?? '');
+    } else {
+        message = message!.replace('{received}', error.received ? error.received + '' : '');
+    }
+
+    message = message.replace('{path}', error.path ?? '');
     message = message.replace('{expected}', error.expected ? error.expected + '' : '');
 
     return message;
+}
+
+export function makeValidationMessageIdsForPrefix(
+    key: string, 
+    errorMessageIds: Array<string>,
+): Array<string> {
+
+    // make new keys by prepending the new key all existing ids
+    const keyIds = errorMessageIds.map( id => [key.toLowerCase()].concat(id).join('.'));
+
+    return keyIds;
+}
+
+export function makeValidationErrorMessageIds(
+    validationName: string, 
+    validationValue: TValidationValue<any>,
+    // inputValue: any,
+): Array<string> {
+
+    const keys: Array<string> = [ validationName.toLowerCase() ];
+
+    const ids: string[] = [ keys.join('.') ];
+
+    if(isComplexValidationWithMessage(validationValue)){
+        keys.push( ( validationValue.value+'' ).toLowerCase() );
+    } else if(isComplexValidationWithValidator(validationValue)) {
+        keys.push('validator');
+    } else {
+        keys.push( (validationValue+'').toLowerCase() );
+    }
+    ids.push( keys.join('.') );
+
+    // keys.push( (inputValue+'').toLowerCase() );
+    // ids.push( keys.join('.') );
+
+    // add the custom id to the very last
+    if(validationValue.messageId){
+        ids.push(validationValue.messageId);
+    }
+
+    return ids;
+}
+
+export function makeHttpValidationMessageIds(
+    validationType: 'body' | 'param' | 'query' | 'header',
+    propertyName: string,
+    errorMessageIds: Array<string>,
+): Array<string> {
+
+    const propIds = makeValidationMessageIdsForPrefix( `http.${validationType}.${propertyName}`, errorMessageIds);
+    // prefix everything with 'validation.'
+    return errorMessageIds.concat(propIds).map( id => `validation.${id}`);
+}
+
+export function makeEntityValidationMessageIds(
+    entityName: string,
+    validationType: 'input' | 'actor' | 'record', 
+    propertyName: string,
+    errorMessageIds: Array<string>,
+): Array<string> {
+
+    // error messages with property names prefixes
+    const propIds = makeValidationMessageIdsForPrefix(propertyName, errorMessageIds);
+    // error messages with validation type and property names prefixes
+    const validationTypeIds = makeValidationMessageIdsForPrefix(validationType, propIds);
+
+    // error messages with entity.[entityName].[property/[inputType.property]] prefixes
+    const entityValidationIds = makeValidationMessageIdsForPrefix(`entity.${entityName}`, errorMessageIds.concat(propIds.concat(validationTypeIds)));
+    
+    // all messages with validation prefixes
+    return errorMessageIds.concat(entityValidationIds).map( id => `validation.${id}`);
 }
 
 /**
@@ -298,7 +376,7 @@ export class Validator implements IValidator {
 
     ): Promise<IValidatorResponse> {
         
-        const { entityValidations, entityName, operationName, input, actor, record } = options;
+        const { entityValidations, entityName, operationName, input, actor, record, collectErrors, overriddenErrorMessages } = options;
         
         const result: IValidatorResponse<Actor, any, any> = {
             pass: true,
@@ -343,14 +421,12 @@ export class Validator implements IValidator {
                 });
                 
                 result.pass = result.pass && res.pass;
-                if(res.errors?.length){
 
+                if( collectErrors && res.errors?.length){
                     res.errors.forEach( err => {
-                        // TODO: prepare the actual messages here.
-                        err.messageIds = this.makeEntityValidationMessageIds(entityName, ruleType, key, err.messageIds ?? []);
+                        err.messageIds = makeEntityValidationMessageIds(entityName, ruleType, key, err.messageIds ?? []);
                         err.path = `${key}`;
-                        //@ts-ignore
-                        err['message'] = makeValidationErrorMessage(err);
+                        err['message'] = makeValidationErrorMessage(err, overriddenErrorMessages);
                     });
 
                     result.errors![ruleType]![key] = res.errors
@@ -398,77 +474,6 @@ export class Validator implements IValidator {
         return result;
     }
 
-    makeValidationMessageIdsForPrefix(
-        key: string, 
-        errorMessageIds: Array<string>,
-    ): Array<string> {
-
-        // make new keys by prepending the new key all existing ids
-        const keyIds = errorMessageIds.map( id => [key.toLowerCase()].concat(id).join('.'));
-
-        return keyIds;
-    }
-
-    makeValidationErrorMessageIds(
-        validationName: string, 
-        validationValue: TValidationValue<any>,
-        // inputValue: any,
-    ): Array<string> {
-
-        const keys: Array<string> = [ validationName.toLowerCase() ];
-
-        const ids: string[] = [ keys.join('.') ];
-
-        if(isComplexValidationWithMessage(validationValue)){
-            keys.push( ( validationValue.value+'' ).toLowerCase() );
-        } else if(isComplexValidationWithValidator(validationValue)) {
-            keys.push('validator');
-        } else {
-            keys.push( (validationValue+'').toLowerCase() );
-        }
-        ids.push( keys.join('.') );
-
-        // keys.push( (inputValue+'').toLowerCase() );
-        // ids.push( keys.join('.') );
-
-        // add the custom id to the very last
-        if(validationValue.messageId){
-            ids.push(validationValue.messageId);
-        }
-
-        return ids;
-    }
-
-    makeHttpValidationMessageIds(
-        validationType: 'body' | 'param' | 'query' | 'header',
-        propertyName: string,
-        errorMessageIds: Array<string>,
-    ): Array<string> {
-
-        const propIds = this.makeValidationMessageIdsForPrefix( `http.${validationType}.${propertyName}`, errorMessageIds);
-        // prefix everything with 'validation.'
-        return errorMessageIds.concat(propIds).map( id => `validation.${id}`);
-    }
-
-    makeEntityValidationMessageIds(
-        entityName: string,
-        validationType: 'input' | 'actor' | 'record', 
-        propertyName: string,
-        errorMessageIds: Array<string>,
-    ): Array<string> {
-
-        // error messages with property names prefixes
-        const propIds = this.makeValidationMessageIdsForPrefix(propertyName, errorMessageIds);
-        // error messages with validation type and property names prefixes
-        const validationTypeIds = this.makeValidationMessageIdsForPrefix(validationType, propIds);
-
-        // error messages with entity.[entityName].[property/[inputType.property]] prefixes
-        const entityValidationIds = this.makeValidationMessageIdsForPrefix(`entity.${entityName}`, errorMessageIds.concat(propIds.concat(validationTypeIds)));
-        
-        // all messages with validation prefixes
-        return errorMessageIds.concat(entityValidationIds).map( id => `validation.${id}`);
-    }
-
     /**
      * Tests validations rules for the given input object against the provided validation rules.
      * 
@@ -482,18 +487,19 @@ export class Validator implements IValidator {
         Param extends InputType = InputType,
         Query extends InputType = InputType,
     >(
-        request: Request, 
-        validations: HttpRequestValidations<Header, Body, Param, Query>,
-        collectErrors: boolean = true
+        
+        options: ValidateHttpRequestOptions<Header, Body, Param, Query>
 
     ): Promise<HttpRequestValidationResponse<Header, Body, Param, Query>> {
+
+        const { requestContext, validations, collectErrors, overriddenErrorMessages } = options;
 
         const res: HttpRequestValidationResponse<Header, Body, Param, Query> = {
             pass: true,
             errors: {},
         };
 
-        logger.debug("called validateHttpRequest", {request, validations});
+        logger.debug("called validateHttpRequest", {requestContext, validations});
 
         for(const validationType of ['body', 'param', 'query', 'header'] as const){
             const typeValidationRules = validations[validationType];  
@@ -504,13 +510,13 @@ export class Validator implements IValidator {
             let validationInput: any = {};
 
             if(validationType == 'body'){
-                validationInput = request.body;
+                validationInput = requestContext.body;
             } else if(validationType == 'param'){
-                validationInput = request.pathParameters;
+                validationInput = requestContext.pathParameters;
             } else if(validationType == 'query'){
-                validationInput = request.queryStringParameters;
+                validationInput = requestContext.queryStringParameters;
             } else if(validationType == 'header'){
-                validationInput = request.headers;
+                validationInput = requestContext.headers;
             }
 
             const validationResult = await this.validateInput<typeof validationInput>(validationInput, typeValidationRules);
@@ -523,12 +529,9 @@ export class Validator implements IValidator {
 
                     propErrors.forEach( error => {
                         error.path ? error.path = `${validationType}.${error.path}` : undefined;
-                        const httpValidationMessageIds = this.makeHttpValidationMessageIds(validationType, prop, error.messageIds || []);
+                        const httpValidationMessageIds = makeHttpValidationMessageIds(validationType, prop, error.messageIds || []);
                         error.messageIds = httpValidationMessageIds;
-
-                        //@ts-ignore
-                        error['message'] = makeValidationErrorMessage(error);
-                        // TODO: prepare the actual messages here.
+                        error['message'] = makeValidationErrorMessage(error, overriddenErrorMessages);
                         return error;
                     });
 
@@ -845,8 +848,9 @@ export class Validator implements IValidator {
 
             if(!res.pass && collectErrors){
 
-                const errorMessageIds = this.makeValidationErrorMessageIds(validationName, validationValue);
+                const errorMessageIds = makeValidationErrorMessageIds(validationName, validationValue);
                 const validationError: ValidationError = {
+                    validationName,
                     messageIds: errorMessageIds,
                     expected: testValidationResult.expected,                           
                     received: testValidationResult.received,

@@ -154,7 +154,7 @@ describe('Validator', () => {
 
     it('should validate request body', async () => {
 
-      const request: Request = {
+      const requestContext: Request = {
         body: {
           name: 'John',
           age: 20  
@@ -168,14 +168,14 @@ describe('Validator', () => {
         }
       };
       
-      const result = await validator.validateHttpRequest(request, validations);
+      const result = await validator.validateHttpRequest({ requestContext, validations });
 
       expect(result.pass).toBe(true);
       expect(result.errors?.body).toEqual({});
     });
 
     it('should validate request parameters', async () => {
-      const request: Request = {
+      const requestContext: Request = {
         pathParameters: {
           id: '123'
         }
@@ -186,13 +186,13 @@ describe('Validator', () => {
         }
       };
 
-      const result = await validator.validateHttpRequest(request, validations);
+      const result = await validator.validateHttpRequest({requestContext, validations});
 
       expect(result.pass).toBe(true);
     });
 
     it('should collect errors for failed validations', async () => {
-      const request: Request = {
+      const requestContext: Request = {
         body: {
           name: 'John',
         }
@@ -205,8 +205,14 @@ describe('Validator', () => {
         }
       };
 
-      const result = await validator.validateHttpRequest(request, validations, true);
+      const overriddenErrorMessages = new Map<string, string>(Object.entries({
+        'validation.http.body.age.gt': 'Age must be greater than 40....'
+      }));
 
+      const result = await validator.validateHttpRequest({ requestContext, validations, collectErrors: true, overriddenErrorMessages });
+
+      console.log({result});
+      
       expect(result.errors).toEqual({
         body: { age: expect.any(Array) } 
       });
