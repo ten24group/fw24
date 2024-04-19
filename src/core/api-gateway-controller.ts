@@ -3,9 +3,10 @@ import { Request } from "../interfaces/request";
 import { Response } from "../interfaces/response";
 import { Route } from "../interfaces/route";
 import { createLogger } from "../logging";
-import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule, isHttpRequestValidationRule, isInputValidationRule } from "../validation";
+import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule } from "../validation";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
+import { isHttpRequestValidationRule, isInputValidationRule } from "../validation/validator.util";
 
 /**
  * Base controller class for handling API Gateway events.
