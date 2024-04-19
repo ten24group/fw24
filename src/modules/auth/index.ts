@@ -23,8 +23,7 @@ export class AuthModule extends AbstractFw24Module {
 
         if(config.groups){
             const autoUserSignupHandler: LambdaFunctionProps = {
-                entry: join(__dirname,'functions/auto-post-confirmation.js'),
-                queues: [{name: 'auth-post-signup', actions: ['publish']}],
+                entry: join(__dirname,'functions/auto-post-confirmation.js')
             }
             config.groups.filter(group => group.autoUserSignup).map(group => Object.assign(group, {autoUserSignupHandler: autoUserSignupHandler}));
         }
