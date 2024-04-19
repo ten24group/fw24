@@ -121,16 +121,25 @@ export class APIGateway implements IStack {
         const controllerLambda = this.createLambdaFunction(controllerName, filePath, fileName, controllerConfig);
         const controllerIntegration = new LambdaIntegration(controllerLambda);
 
-        const { defaultAuthorizerName, defaultAuthorizerType } = this.extractDefaultAuthorizer(controllerConfig);
+        const { defaultAuthorizerName, defaultAuthorizerType, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig } = this.extractDefaultAuthorizer(controllerConfig);
 
-        this.logger.info(`registerController ~ Default Authorizer: name: ${defaultAuthorizerName} - type: ${defaultAuthorizerType}`);
+        this.logger.info(`Register Controller ~ Default Authorizer: name: ${defaultAuthorizerName} - type: ${defaultAuthorizerType} - groups: ${defaultAuthorizerGroups}`);
       
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             this.logger.info(`Registering route ${route.httpMethod} ${route.path}`);
             const currentResource = this.getOrCreateRouteResource(controllerResource, route.path);
 
-            const methodOptions = this.createMethodOptions(route, defaultAuthorizerType, defaultAuthorizerName);
+            const { routeAuthorizerName, routeAuthorizerType, routeAuthorizerGroups, routeRequireRouteInGroupConfig } = this.extractRouteAuthorizer(route, defaultAuthorizerType, defaultAuthorizerName, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig);
+            
+            this.logger.info(`APIGateway ~ Register Route ~ Route Authorizer: ${routeAuthorizerName} - ${routeAuthorizerType} - ${routeAuthorizerGroups}`);
+
+            const methodOptions = this.createMethodOptions(route, routeAuthorizerType, routeAuthorizerName);
             currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);
+            // if authorizer is AWS_IAM, then add the route to the policy
+            if(routeAuthorizerType === 'AWS_IAM') {
+                const fullRoutePath = controllerName + route.path;
+                this.fw24.addRouteToRolePolicy(fullRoutePath, routeAuthorizerGroups, routeRequireRouteInGroupConfig);
+            }
         }
 
         // output the api endpoint
@@ -177,14 +186,23 @@ export class APIGateway implements IStack {
         }) as NodejsFunction;
     }
 
-    private extractDefaultAuthorizer = (controllerConfig: any): { defaultAuthorizerName: string, defaultAuthorizerType: string } => {
-        let defaultAuthorizerName;
+    private extractDefaultAuthorizer = (controllerConfig: any): { defaultAuthorizerName: string, defaultAuthorizerType: string, defaultAuthorizerGroups: string[], defaultRequireRouteInGroupConfig: boolean } => {
+        let defaultAuthorizerName = 'default';
         let defaultAuthorizerType;
+        let defaultAuthorizerGroups;
+        let defaultRequireRouteInGroupConfig = false;
     
         if (Array.isArray(controllerConfig?.authorizer)) {
             const defaultAuthorizer = controllerConfig.authorizer.find((auth: any) => auth.default) || controllerConfig.authorizer[0];
-            defaultAuthorizerName = defaultAuthorizer.name;
+            defaultAuthorizerName = defaultAuthorizer.name || defaultAuthorizerName;
             defaultAuthorizerType = defaultAuthorizer.type;
+            defaultAuthorizerGroups = defaultAuthorizer.groups || [];
+            defaultRequireRouteInGroupConfig = defaultAuthorizer.requireRouteInGroupConfig || defaultRequireRouteInGroupConfig;
+        } else if (typeof controllerConfig.authorizer === 'object') {
+            defaultAuthorizerName = controllerConfig.authorizer.name || defaultAuthorizerName;
+            defaultAuthorizerType = controllerConfig.authorizer.type;
+            defaultAuthorizerGroups = controllerConfig.authorizer.groups || [];
+            defaultRequireRouteInGroupConfig = controllerConfig.requireRouteInGroupConfig || defaultRequireRouteInGroupConfig;
         } else {
             defaultAuthorizerType = controllerConfig.authorizer;
         }
@@ -193,7 +211,7 @@ export class APIGateway implements IStack {
             defaultAuthorizerType = this.fw24.getConfig().defaultAuthorizationType;
         }
     
-        return { defaultAuthorizerName, defaultAuthorizerType };
+        return { defaultAuthorizerName, defaultAuthorizerType, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig };
     }
 
     private getOrCreateRouteResource = (parentResource: IResource, path: string): IResource => {
@@ -214,20 +232,28 @@ export class APIGateway implements IStack {
         return currentResource;
     }
 
-    private createMethodOptions = (route: any, defaultAuthorizerType: string, defaultAuthorizerName: string | undefined): MethodOptions => {
+    private extractRouteAuthorizer = (route: any, defaultAuthorizerType: string, defaultAuthorizerName: string, defaultAuthorizerGroups: string[], defaultRequireRouteInGroupConfig: boolean): { routeAuthorizerName: string, routeAuthorizerType: string, routeAuthorizerGroups: string[], routeRequireRouteInGroupConfig: boolean } => {
+        let routeAuthorizerName = defaultAuthorizerName;
+        let routeAuthorizerType = defaultAuthorizerType;
+        let routeAuthorizerGroups = defaultAuthorizerGroups;
+        let routeRequireRouteInGroupConfig = defaultRequireRouteInGroupConfig;
+    
+        if (route.authorizer && typeof route.authorizer === 'object') {
+            routeAuthorizerType = route.authorizer.type || defaultAuthorizerType;
+            routeAuthorizerName = route.authorizer.name || defaultAuthorizerName;
+            routeAuthorizerGroups = route.authorizer.groups || defaultAuthorizerGroups;
+            routeRequireRouteInGroupConfig = route.authorizer.requireRouteInGroupConfig || defaultRequireRouteInGroupConfig;
+        } else if (typeof route.authorizer === 'string') {
+            routeAuthorizerType = route.authorizer;
+        }
+    
+        return { routeAuthorizerName, routeAuthorizerType, routeAuthorizerGroups, routeRequireRouteInGroupConfig };
+    }
+
+    private createMethodOptions = (route: any, routeAuthorizerType: string, routeAuthorizerName: string | undefined): MethodOptions => {
         const requestParameters: { [key: string]: boolean } = {};
         for (const param of route.parameters) {
             requestParameters[`method.request.path.${param}`] = true;
-        }
-    
-        let routeAuthorizerType = defaultAuthorizerType;
-        let routeAuthorizerName = defaultAuthorizerName
-        
-        if (route.authorizer && typeof route.authorizer === 'object') {
-            routeAuthorizerType = route.authorizer.type;
-            routeAuthorizerName = route.authorizer.name;
-        } else if (typeof route.authorizer === 'string') {
-            routeAuthorizerType = route.authorizer;
         }
     
         return {

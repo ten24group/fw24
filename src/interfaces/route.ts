@@ -7,8 +7,9 @@ export interface Route {
   parameters: Array<String>;
   authorizer?: { 
 		name?: string;
-		type: string;
-	} | string; 
+		type?: string;
+    groups?: string[];
+	} | string;
   validations ?: ValidationRules | HttpRequestValidations
 }
 

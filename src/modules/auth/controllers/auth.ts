@@ -4,9 +4,10 @@ import { Get, Post } from '../../../decorators/method';
 import { Request } from '../../../interfaces/request';
 import { Response } from '../../../interfaces/response';
 import { Authorizer } from '../../../decorators/authorizer';
+import { CognitoJwtVerifier } from "aws-jwt-verify";
 
 // import cognito client
-import { CognitoIdentityProviderClient, SignUpCommand, InitiateAuthCommand, ConfirmSignUpCommand, GlobalSignOutCommand } from "@aws-sdk/client-cognito-identity-provider";
+import { CognitoIdentityProviderClient, SignUpCommand, InitiateAuthCommand, ConfirmSignUpCommand, GlobalSignOutCommand, ChangePasswordCommand, ForgotPasswordCommand, ConfirmForgotPasswordCommand, AdminAddUserToGroupCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { CognitoIdentityClient, GetIdCommand, GetCredentialsForIdentityCommand } from "@aws-sdk/client-cognito-identity";
 
 const identityProviderClient = new CognitoIdentityProviderClient({});
@@ -54,6 +55,7 @@ export class AuthController extends APIGatewayController {
 				],
 			}),
 		);
+		
 		return res.send('User Signed Up');
 	}
 
@@ -86,7 +88,6 @@ export class AuthController extends APIGatewayController {
 		return res.json(result.AuthenticationResult);
 	}
 
-	@Authorizer('COGNITO_USER_POOLS')
 	@Post('/signout')
 	async signout(req: Request, res: Response) {
 		const {accessToken} = req.body as { accessToken: string };
@@ -100,6 +101,7 @@ export class AuthController extends APIGatewayController {
 				AccessToken: accessToken,
 			}),
 		);
+		this.logger.debug('result', result);
 
 		return res.send('User logged out');
 	}
@@ -120,14 +122,120 @@ export class AuthController extends APIGatewayController {
 				ConfirmationCode: code,
 			}),
 		);
+		this.logger.debug('result', result);
 
 		return res.send('User verified');
+	}
+
+	// change password
+	@Post('/changePassword')
+	async changePassword(req: Request, res: Response) {
+		const {accessToken, oldPassword, newPassword} = req.body as { accessToken: string; oldPassword: string; newPassword: string };
+
+		if (accessToken === undefined || oldPassword === undefined || newPassword === undefined) {
+			return res.status(400).end('Missing accessToken, oldPassword or newPassword');
+		}
+
+		const result = await identityProviderClient.send(
+			new ChangePasswordCommand({
+				AccessToken: accessToken,
+				PreviousPassword: oldPassword,
+				ProposedPassword: newPassword,
+			}),
+		);
+
+		this.logger.debug('newPasswordResult', result);
+
+		return res.send('Password changed');
+	}
+
+	// forgot password route
+	@Post('/forgotPassword')
+	async forgotPassword(req: Request, res: Response) {
+		const {email} = req.body as { email: string };
+
+		if (email === undefined) {
+			return res.status(400).end('Missing email');
+		}
+
+		const result = await identityProviderClient.send(
+			new ForgotPasswordCommand({
+				ClientId: this.getUserPoolClientId(),
+				Username: email,
+			}),
+		);
+
+		this.logger.debug('result', result);
+
+		return res.send('Password reset email sent');
+	}
+	
+	// confirm forgot password
+	@Post('/confirmForgotPassword')
+	async confirmForgotPassword(req: Request, res: Response) {
+		const {email, code, newPassword} = req.body as { email: string; code: string; newPassword: string };
+
+		if (email === undefined || code === undefined || newPassword === undefined) {
+			return res.status(400).end('Missing email, code or newPassword');
+		}
+
+		const result = await identityProviderClient.send(
+			new ConfirmForgotPasswordCommand({
+				ClientId: this.getUserPoolClientId(),
+				Username: email,
+				ConfirmationCode: code,
+				Password: newPassword,
+			}),
+		);
+
+		this.logger.debug('result', result);
+
+		return res.send('Password reset');
+	}
+	
+	// Add user to group
+	@Authorizer({type: 'AWS_IAM', requireRouteInGroupConfig: true})
+	@Post('/addUserToGroup')
+	async addUserToGroup(req: Request, res: Response) {
+		const {email, groupName} = req.body as { email: string; groupName: string };
+
+		if (email === undefined || groupName === undefined) {
+			return res.status(400).end('Missing email or groupName');
+		}
+
+		const result = await identityProviderClient.send(
+			new AdminAddUserToGroupCommand({
+				UserPoolId: this.getUserPoolID(),
+				GroupName: groupName,
+				Username: email,
+			}),
+		);
+
+		this.logger.debug('result', result);
+
+		return res.send('User added to group');
 	}
 
 	// generate IAM Credentials from token
 	@Post('/getCredentials')
 	async getCredentials(req: Request, res: Response) {
-		const {idToken} = req.body as { idToken: string };
+		const {idToken} = req.body as { idToken: string};
+
+		// validate the token
+		const jwtVerifier = CognitoJwtVerifier.create({
+			userPoolId: this.getUserPoolID(),
+			clientId: this.getUserPoolClientId(),
+			tokenUse: null,
+		});
+
+		try{
+			const payload = await jwtVerifier.verify(idToken);
+			this.logger.debug("Token is valid. Payload:", payload);
+		} catch {
+			this.logger.debug("Token not valid!");
+			return res.send('Token not valid');
+		}
+
 		const providerName = `cognito-idp.us-east-1.amazonaws.com/${this.getUserPoolID()}`;
 		const identityInput = {
 			IdentityPoolId: this.getIdentityPoolId(),
