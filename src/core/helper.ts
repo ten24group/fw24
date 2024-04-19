@@ -21,8 +21,7 @@ export class Helper {
             });
     }
 
-    @LogDuration()
-    static registerControllersFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
+    static async registerControllersFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
         const basePath = module.getBasePath();
 
         Helper.logger.info("registerControllersFromModule::: base-path: " + basePath);
@@ -38,7 +37,21 @@ export class Helper {
         Helper.registerHandlers(controllersPath, handlerRegistrar);
     }
 
-    @LogDuration()
+    static async registerQueuesFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
+        const basePath = module.getBasePath();
+
+        Helper.logger.info("registerQueuesFromModule::: base-path: " + basePath);
+
+        // relative path from the place where the script is getting executed i.e index.ts in app-root
+        const relativePath = relative('./', basePath); 
+        const queuesPath = resolve(relativePath, module.getQueuesDirectory());
+        const handlersPath = module.getQueueFileNames();
+
+        Helper.logger.info("registerQueuesFromModule::: module-queues-path: " + queuesPath);
+
+        Helper.registerHandlers(queuesPath, handlerRegistrar, handlersPath);
+    }
+
     static scanTSSourceFilesFrom(path: string){
         Helper.logger.debug("Scanning TS source files from path: ", path);
         // Resolve the absolute path
@@ -60,14 +73,19 @@ export class Helper {
         return sourceFilePaths;
     }
 
-    static async registerHandlers(path: string, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void) {
+    static async registerHandlers(path: string, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void, files: string[]=[]) {
         
         Helper.logger.info("Registering Lambda Handlers from: "+ path);
-        
         // Resolve the absolute path
         const handlerDirectory = resolve(path);
-        // Filter the files to only include TypeScript files
-        const handlerPaths = Helper.scanTSSourceFilesFrom(path);
+    
+        let handlerPaths = [];
+        if(files.length !== 0){
+            handlerPaths = files;
+        } else {
+            // Filter the files to only include TypeScript files
+            handlerPaths = Helper.scanTSSourceFilesFrom(path);
+        }
 
         // Register the handlers
         for (const handlerPath of handlerPaths) {

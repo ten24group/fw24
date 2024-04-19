@@ -38,7 +38,7 @@ export interface ICognitoConfig {
         policyFilePaths?: string[];
         // during signup the user will be added to this group
         autoUserSignup?: boolean;
-        autoUserSignupHandler?: string;
+        autoUserSignupHandler?: LambdaFunctionProps;
         // Routes protected by this group
         routes?: string[];
     }[];
@@ -200,10 +200,9 @@ export class CognitoStack implements IStack {
             const autoUserSignupGroupsHandler = this.stackConfig.groups.filter(group => group.autoUserSignup).map(group => group.autoUserSignupHandler);
             // only one auto signup handler is supported, pick the first one
             const autoGroupsAddHandler = autoUserSignupGroupsHandler[0] || '';
-            if(autoUserSignupGroups && autoGroupsAddHandler.length > 0){
+            if(autoUserSignupGroups && autoGroupsAddHandler){
                 // create a post confirmation trigger to add users to auto signup groups
-                const lambdaFunctionProps: LambdaFunctionProps = {
-                    entry: autoGroupsAddHandler,
+                const props = {
                     environmentVariables: {
                         autoSignupGroups: autoUserSignupGroups,
                     },
@@ -214,6 +213,11 @@ export class CognitoStack implements IStack {
                         }
                     ]
                 }
+                const lambdaFunctionProps = {
+                    ...autoGroupsAddHandler,
+                    ...props
+                }
+                this.logger.debug("autoUserSignupGroupsHandler: ", lambdaFunctionProps);
                 const lambdaTrigger = new LambdaFunction(this.mainStack, `${namePrefix}-auto-post-confirmation-lambdaFunction`, {
                     ...lambdaFunctionProps,
                     layerArn: this.fw24.getLayerARN(),

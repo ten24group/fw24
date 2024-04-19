@@ -47,6 +47,8 @@ export class Application {
         this.modules.set(module.getName(), module);
 
         for (const [stackName, stack] of module.getStacks()){
+            this.logger.info("UseModule: Registering stack: ", stackName, module.getDependencies(), stack.dependencies);
+            stack.dependencies = module.getDependencies();
             this.registerStack(stack, stackName);
         }
 
@@ -97,7 +99,7 @@ export class Application {
                 // this.logger.warn(`processStacks: loop: ${executionTimes}, stackName: ${stackName}, processed: ${processedStacks.has(stackName)}, processing: ${processingStacks.has(stackName)}`);
                 processingStacks.add(stackName);
 
-                this.logger.info(`Processing stack ${stackName} : processing: ${processingStacks.has(stackName)}`);
+                this.logger.info(`Processing stack ${stackName} with dependencies: ${stack.dependencies} : processing: ${processingStacks.has(stackName)}, processedStacks: ${Array.from(processedStacks)}`);
                
                 await this.processStack( stackName, stack, executionTimes, processedStacks, processingStacks);
                
@@ -107,6 +109,7 @@ export class Application {
     }
 
     private async processStack(stackName:string, stack: IStack, executionTimes: number, processedStacks: Set<string>, processingStacks: Set<string>) {
+
         if (stack.dependencies.length > 0) {
             for (const dependency of stack.dependencies) {
                 if (!this.stacks.has(dependency)) {
