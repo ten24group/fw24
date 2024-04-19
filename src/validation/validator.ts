@@ -1,13 +1,11 @@
-import { expect } from '@jest/globals';
 /**
  * Defines validation rules and criteria that can be used to validate input, record, and actor data.
  * Provides a Validator class that validates data against defined validation rules and criteria.
  */
-import { IValidator, IValidateEntityResponse, OpValidatorOptions, ValidationRule, InputValidationRule, InputValidationResponse, TestValidationRuleResponse, Validation_Keys, HttpRequestValidations, ValidationError, HttpRequestValidationResponse, TComplexValidationValue, TValidationValue, TestValidationResult, ComplexValidationRule, TComplexValidationValueWithMessage, TComplexValidationValueWithValidator, TestComplexValidationRuleResponse, TestComplexValidationResult, EntityOpsInputValidations, ValidateHttpRequestOptions, ConditionsAndScopeTuple } from "./validator.type";
-import { DeepWritable } from '../utils/types';
-import { Actor, EntityValidations, InputType, RecordType, ConditionalValidationRule, EntityOperationValidation, EntityValidationCondition, MapOfValidationCondition, Validations } from "./validator.type";
-import { TDefaultEntityOperations, EntitySchema, TEntityOpsInputSchemas } from "../entity";
+import { EntitySchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "../entity";
 import { createLogger } from "../logging";
+import { DeepWritable } from '../utils/types';
+import { Actor, ComplexValidationRule, ConditionalValidationRule, ConditionsAndScopeTuple, EntityOperationValidation, EntityOpsInputValidations, EntityValidationCondition, EntityValidations, HttpRequestValidationResponse, HttpRequestValidations, IValidateEntityResponse, IValidator, InputType, InputValidationResponse, InputValidationRule, MapOfValidationCondition, OpValidatorOptions, RecordType, TComplexValidationValue, TComplexValidationValueWithMessage, TComplexValidationValueWithValidator, TValidationValue, TestComplexValidationResult, TestComplexValidationRuleResponse, TestValidationResult, TestValidationRuleResponse, ValidateHttpRequestOptions, ValidationError, ValidationRule, Validation_Keys, Validations } from "./validator.type";
 
 const logger = createLogger('Validator');
 
