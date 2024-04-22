@@ -6,7 +6,7 @@ import { createLogger } from "../logging";
 import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule } from "../validation";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
-import { isHttpRequestValidationRule, isInputValidationRule } from "../validation/validator.util";
+import { isHttpRequestValidationRule, isInputValidationRule } from "../validation/utils";
 
 /**
  * Base controller class for handling API Gateway events.

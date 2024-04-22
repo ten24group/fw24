@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
-import { extractOpValidationFromEntityValidations, isHttpRequestValidationRule, isInputValidationRule, isValidationRule } from './validator.util';
-import { EntityValidations } from './validator.type';
+import { extractOpValidationFromEntityValidations, isHttpRequestValidationRule, isInputValidationRule, isValidationRule } from './utils';
+import { EntityValidations } from './types';
 import { TDefaultEntityOperations } from '../entity';
 
 describe('isValidationRule()', () => {

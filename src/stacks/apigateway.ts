@@ -80,7 +80,7 @@ export class APIGateway implements IStack {
 
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
-            this.logger.debug("API-gateway stack: construct: app has modules ", modules);
+            this.logger.debug("API-gateway stack: construct: app has modules ", Array.from(modules.keys()));
             for (const [, module] of modules) {
                 const basePath = module.getBasePath();
                 this.logger.debug("Load controllers from module base-path: ", basePath);

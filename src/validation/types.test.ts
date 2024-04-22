@@ -1,7 +1,20 @@
 import { randomUUID } from "crypto";
 import { DefaultEntityOperations, TEntityOpsInputSchemas, createEntitySchema } from "../entity";
-import { EntityOperationsValidation, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TestComplexValidationRuleResponse, TestValidationResult, TestValidationRuleResponse, InputValidationRule } from "./validator.type";
+import { EntityOperationsValidation, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TestComplexValidationRuleResponse, TestValidationResult, TestValidationRuleResponse, InputValidationRule } from "./types";
 import { Narrow, OmitNever } from "../utils";
+
+import { describe, expect, it } from '@jest/globals';
+
+describe('Validation.types', () => {
+  it('should narrow', () => {
+        const a: Narrow<number> = 1;
+        const b: Narrow<number> = 2;
+        const c: Narrow<number> = 3;
+        expect(a).toBe(1);
+        expect(b).toBe(2);
+        expect(c).toBe(3);
+    });
+});
 
 namespace User {
     export const createUserSchema = () => createEntitySchema({

@@ -1,8 +1,9 @@
 import { EntitySchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "../entity";
 import { createLogger } from "../logging";
 import { DeepWritable } from "../utils";
-import { ComplexValidationRule, ConditionsAndScopeTuple, EntityOperationValidation, EntityOpsInputValidations, EntityValidations, HttpRequestValidations, InputType, InputValidationRule, MapOfValidationCondition, TComplexValidationValue as ComplexValidationValue, TComplexValidationValueWithMessage as ComplexValidationValueWithMessage, TComplexValidationValueWithValidator as ComplexValidationValueWithValidator, TValidationValue, TestComplexValidationResult, ValidationError, ValidationRule, Validation_Keys } from "./validator.type";
+import { ComplexValidationRule, ConditionsAndScopeTuple, EntityOperationValidation, EntityOpsInputValidations, EntityValidations, HttpRequestValidations, InputType, InputValidationRule, MapOfValidationCondition, TComplexValidationValue as ComplexValidationValue, TComplexValidationValueWithMessage as ComplexValidationValueWithMessage, TComplexValidationValueWithValidator as ComplexValidationValueWithValidator, TValidationValue, TestComplexValidationResult, ValidationError, ValidationRule, Validation_Keys } from "./types";
 
+import genericErrorMessages from './messages';
 
 const logger = createLogger('ValidatorUtils');
 
@@ -227,24 +228,6 @@ export function extractOpValidationFromEntityValidations<
 	}
 }
 
-export const genericErrorMessages = new Map<string, string>( Object.entries({
-    'validation.eq':            "Provided value '{received}' for '{path}' should be equal to '{expected}'",
-    'validation.gt':            "Provided value '{received}' for '{path}' should be greater than '{expected}'",
-    'validation.lt':            "Provided value '{received}' for '{path}' should be less than '{expected}'",
-    'validation.gte':           "Provided value '{received}' for '{path}' should be greater than or equal to '{expected}'",
-    'validation.lte':           "Provided value '{received}' for '{path}' should be less than or equal to '{expected}'",
-    'validation.neq':           "Provided value '{received}' for '{path}' should not be equal to '{expected}'",
-    'validation.custom':        "Provided value '{received}' for '{path}' is invalid",
-    'validation.inlist':        "Provided value '{received}' for '{path}' should be one of '{expected}'",
-    'validation.unique':        "Provided value '{received}' for '{path}' should be unique",
-    'validation.pattern':       "Provided value '{received}' for '{path}' should match '{expected}' pattern",
-    'validation.datatype':      "Provided value '{received}' for '{path}' should be '{expected}'",
-    'validation.required':      "Provided value '{received}' for '{path}' is required",
-    'validation.maxlength':     "Provided value '{received[0]}' for '{path}' should have maximum length of '{expected}'; instead of '{received[1]}'",
-    'validation.minlength':     "Provided value '{received[0]}' for '{path}' should have minimum length of '{expected}'; instead of '{received[1]}'",
-    'validation.notinlist':     "Provided value '{received}' for '{path}' should not be one of '{expected}'",
-}));
-
 export function makeValidationErrorMessage(error: ValidationError, overriddenErrorMessages ?: Map<string, string>){
 
     if(error.customMessage){
@@ -265,12 +248,11 @@ export function makeValidationErrorMessage(error: ValidationError, overriddenErr
     if(Array.isArray(error.received)){
         message = message!.replace('{received[0]}', error.received[0] ?? '');
         message = message.replace('{received[1]}', error.received[1] ?? '');
-    } else {
-        message = message!.replace('{received}', error.received ? error.received + '' : '');
     }
-
+    
     message = message.replace('{path}', error.path ?? '');
     message = message.replace('{expected}', error.expected ? error.expected + '' : '');
+    message = message.replace('{received}', error.received ? error.received + '' : '');
 
     return message;
 }
@@ -279,10 +261,8 @@ export function makeValidationMessageIdsForPrefix(
     key: string, 
     errorMessageIds: Array<string>,
 ): Array<string> {
-
     // make new keys by prepending the new key all existing ids
-    const keyIds = errorMessageIds.map( id => [key.toLowerCase()].concat(id).join('.'));
-
+    const keyIds = errorMessageIds.map(id => `${key.toLowerCase()}.${id}`);
     return keyIds;
 }
 
@@ -320,6 +300,7 @@ export function makeHttpValidationMessageIds(
 ): Array<string> {
 
     const propIds = makeValidationMessageIdsForPrefix( `http.${validationType}.${propertyName}`, errorMessageIds);
+    
     // prefix everything with 'validation.'
     return errorMessageIds.concat(propIds).map( id => `validation.${id}`);
 }

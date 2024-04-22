@@ -4,8 +4,8 @@
  */
 import { EntitySchema, TEntityOpsInputSchemas } from "../entity";
 import { createLogger } from "../logging";
-import { Actor, ComplexValidationRule, ConditionalValidationRule, EntityValidationCondition, HttpRequestValidationResponse, IValidateEntityResponse, IValidator, InputType, InputValidationResponse, InputValidationRule, MapOfValidationCondition, OpValidatorOptions, RecordType, TComplexValidationValue, TValidationValue, TestComplexValidationResult, TestComplexValidationRuleResponse, TestValidationResult, TestValidationRuleResponse, ValidateHttpRequestOptions, ValidationError, ValidationRule, Validations } from "./validator.type";
-import { extractOpValidationFromEntityValidations, isComplexValidationValue, isComplexValidationValueWithMessage, isComplexValidationValueWithValidator, isConditionsAndScopeTuple, isTestComplexValidationResult, makeEntityValidationMessageIds, makeHttpValidationMessageIds, makeValidationErrorMessage, makeValidationErrorMessageIds } from "./validator.util";
+import { Actor, ComplexValidationRule, ConditionalValidationRule, EntityValidationCondition, HttpRequestValidationResponse, IValidateEntityResponse, IValidator, InputType, InputValidationResponse, InputValidationRule, MapOfValidationCondition, OpValidatorOptions, RecordType, TComplexValidationValue, TValidationValue, TestComplexValidationResult, TestComplexValidationRuleResponse, TestValidationResult, TestValidationRuleResponse, ValidateHttpRequestOptions, ValidationError, ValidationRule, Validations } from "./types";
+import { extractOpValidationFromEntityValidations, isComplexValidationValue, isComplexValidationValueWithMessage, isComplexValidationValueWithValidator, isConditionsAndScopeTuple, isTestComplexValidationResult, makeEntityValidationMessageIds, makeHttpValidationMessageIds, makeValidationErrorMessage, makeValidationErrorMessageIds } from "./utils";
 
 /**
  * Validates input data against a set of validation rules. 
@@ -579,12 +579,12 @@ export class Validator implements IValidator {
         } else if( validationName === 'minLength' ) {
 
             result.pass = val && val.length >= validationValue;
-            result.received = [val, val.length];
+            result.received = [val, val?.length];
 
         } else if( validationName === 'maxLength') {
 
             result.pass = val && val.length <= validationValue;
-            result.received = [val, val.length];
+            result.received = [val, val?.length];
 
         } else if( validationName === 'pattern') {
 

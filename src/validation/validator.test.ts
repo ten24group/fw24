@@ -1,5 +1,5 @@
 import { Request } from './../interfaces/request';
-import { ComplexValidationRule, EntityValidations, HttpRequestValidations, ConditionalValidationRule, MapOfValidationCondition, ValidationRule } from "./validator.type";
+import { ComplexValidationRule, EntityValidations, HttpRequestValidations, ConditionalValidationRule, MapOfValidationCondition, ValidationRule } from "./types";
 
 import { describe, expect, it } from '@jest/globals';
 import { TDefaultEntityOperations } from "../entity";

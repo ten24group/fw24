@@ -1,0 +1,17 @@
+export default new Map<string, string>( Object.entries({
+    'validation.eq':            "Value for '{path}' should be equal to '{expected}'",
+    'validation.gt':            "Value for '{path}' should be greater than '{expected}'",
+    'validation.lt':            "Value for '{path}' should be less than '{expected}'",
+    'validation.gte':           "Value for '{path}' should be greater than or equal to '{expected}'",
+    'validation.lte':           "Value for '{path}' should be less than or equal to '{expected}'",
+    'validation.neq':           "Value for '{path}' should not be equal to '{expected}'",
+    'validation.custom':        "Value for '{path}' is invalid",
+    'validation.inlist':        "Value for '{path}' should be one of '{expected}'",
+    'validation.unique':        "Value for '{path}' should be unique",
+    'validation.pattern':       "Value for '{path}' should match '{expected}' pattern",
+    'validation.datatype':      "Value for '{path}' should be '{expected}'",
+    'validation.required':      "Value for '{path}' is required",
+    'validation.maxlength':     "Value for '{path}' should have maximum length of '{expected}'; instead of '{received[1]}'",
+    'validation.minlength':     "Value for '{path}' should have minimum length of '{expected}'; instead of '{received[1]}'",
+    'validation.notinlist':     "Value for '{path}' should not be one of '{expected}'",
+}));

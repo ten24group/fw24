@@ -59,7 +59,7 @@ export class SQSStack implements IStack {
 
     private registerQueue = (queueInfo: HandlerDescriptor) => {
         queueInfo.handlerInstance = new queueInfo.handlerClass();
-        this.logger.debug(":::Queue instance: ", queueInfo.handlerInstance);
+        this.logger.debug(":::Queue instance: ", queueInfo.fileName, queueInfo.filePath);
         
         const queueName = queueInfo.handlerInstance.queueName;
         const queueConfig = queueInfo.handlerInstance.queueConfig || {};
