@@ -178,7 +178,7 @@ export class Validator implements IValidator {
 
             res.pass = res.pass && validationResult.pass;
 
-            if(collectErrors){
+            if(collectErrors && !validationResult.pass){
                 for(const prop in validationResult.errors){
                     const propErrors = validationResult.errors[prop] ?? [];
 
@@ -501,7 +501,7 @@ export class Validator implements IValidator {
             
             res.pass = res.pass && testValidationResult.pass;
 
-            if(!res.pass && collectErrors){
+            if(collectErrors && !testValidationResult.pass){
 
                 const errorMessageIds = makeValidationErrorMessageIds(validationName, validationValue);
                 const validationError: ValidationError = {
