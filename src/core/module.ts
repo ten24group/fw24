@@ -10,10 +10,13 @@ export interface IFw24Module{
     getStacks(): Map<string, IStack>;
     getControllersDirectory(): string;
     getServicesDirectory(): string;
+    getQueuesDirectory(): string;
+    getQueueFileNames(): string[];
+    getDependencies(): string[];
 }
 
 export abstract class AbstractFw24Module implements IFw24Module {
-
+    
     constructor( protected readonly config: IModuleConfig){
     }
 
@@ -29,5 +32,20 @@ export abstract class AbstractFw24Module implements IFw24Module {
 
     getServicesDirectory(): string {
         return pathJoin("./services/");
+    }
+
+    // Directory where queues are defined, path is relative to the module base path
+    getQueuesDirectory(): string {
+        return '';
+    }
+
+    // Array of queue file names to be registered
+    // if empty, all files in the queues directory will be registered
+    getQueueFileNames(): string[] {
+        return [];
+    }
+
+    getDependencies(): string[] {
+        return [];
     }
 }

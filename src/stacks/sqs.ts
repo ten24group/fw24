@@ -44,6 +44,21 @@ export class SQSStack implements IStack {
 
         // register the queues
         await Helper.registerHandlers(this.stackConfig.queuesDirectory, this.registerQueue);
+
+        if (this.fw24.hasModules()) {
+            const modules = this.fw24.getModules();
+            console.log("SQS stack: construct: app has modules ", modules);
+            for (const [, module] of modules) {
+                const basePath = module.getBasePath();
+                const queuesDirectory = module.getQueuesDirectory();
+                if(queuesDirectory != ''){
+                    console.log("Load queues from module base-path: ", basePath);
+                    await Helper.registerQueuesFromModule(module, this.registerQueue);
+                }
+            }
+        } else {
+            console.log("SQS stack: construct: app has no modules ");
+        }
     }
 
     private getEnvironmentVariables(queueConfig: ISQSConfig): any {
