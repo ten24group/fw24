@@ -2,7 +2,7 @@ import { EntityConfiguration } from "electrodb";
 import { toHumanReadableName } from "../utils";
 import { EntityOpsInputValidations, EntityValidations } from "../validation";
 import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
-import { createEntity, deleteEntity, getEntity, listEntity, updateEntity } from "./crud-service";
+import { Pagination, createEntity, deleteEntity, getEntity, listEntity, updateEntity } from "./crud-service";
 import { createLogger } from "../logging";
 
 export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
@@ -142,11 +142,12 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return entity;
     }
 
-    public async list(data: EntityIdentifiersTypeFromSchema<S>) {
-        this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ data:`, data);
+    public async list(options: { filters?: any, pagination?: Pagination } = {}) {
+        this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ options:`, options);
 
         const entities =  await listEntity<S>({
-            filters: data,
+            filters: options.filters,
+            pagination: options.pagination,
             entityName: this.getEntityName(),  
         });
 
