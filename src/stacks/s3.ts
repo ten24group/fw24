@@ -1,12 +1,10 @@
 import { Stack, CfnOutput } from "aws-cdk-lib";
 import { RemovalPolicy } from 'aws-cdk-lib';
-import { Bucket, BlockPublicAccess, EventType } from 'aws-cdk-lib/aws-s3';
+import { Bucket, BlockPublicAccess, EventType, BucketProps } from 'aws-cdk-lib/aws-s3';
 import { LambdaDestination, SqsDestination } from 'aws-cdk-lib/aws-s3-notifications';
 import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
-import { Queue } from "aws-cdk-lib/aws-sqs";
-import { resolve } from "path";
 
-import { LambdaFunction } from "../constructs/lambda-function";
+import { LambdaFunction, LambdaFunctionProps } from "../constructs/lambda-function";
 import { IApplicationConfig } from "../interfaces/config";
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
@@ -22,12 +20,14 @@ export interface IS3Config {
     publicReadAccess?: boolean;
     source?: string;
     triggers?: IS3TriggerConfig[];
+    bucketProps?: BucketProps
 }
 
+type S3EventDestination = 'lambda' | 'queue';
 export interface IS3TriggerConfig {
     events: EventType[];
-    destination: string;
-    handler?: string;
+    destination: S3EventDestination;
+    functionProps?: LambdaFunctionProps;
     queueName?: string;
 }
 
@@ -76,6 +76,9 @@ export class S3Stack implements IStack {
                 restrictPublicBuckets: false,
             });
         }
+        if(bucketConfig.bucketProps){
+            bucketParams = {...bucketParams, ...bucketConfig.bucketProps};
+        }
 
         const bucket = new Bucket(this.mainStack, bucketConfig.bucketName + '-bucket', bucketParams);
 
@@ -93,14 +96,14 @@ export class S3Stack implements IStack {
         if (bucketConfig.triggers && bucketConfig.triggers.length > 0) {
             bucketConfig.triggers.forEach(trigger => {
 
-                if(trigger.destination === 'lambda' && trigger.handler) {
+                if(trigger.destination === 'lambda' && trigger.functionProps) {
 
                     // create lambda function for the trigger event
-                    const functionPath = resolve(trigger.handler);
-                    this.logger.debug("Creating lambda function for the trigger event: ", functionPath);
+                    // const functionPath = resolve(trigger.handler);
+                    this.logger.debug("Creating lambda function for the trigger event: ", trigger.events.toString());
                     const functionId = bucketConfig.bucketName + "-" + trigger.destination + "-" + trigger.events.toString();
                     const lambda = new LambdaFunction(this.mainStack, functionId, {
-                        entry: functionPath
+                        ...trigger.functionProps
                     }) as NodejsFunction;
 
                     // grant the lambda function permissions to the bucket
@@ -116,12 +119,9 @@ export class S3Stack implements IStack {
                 if(trigger.destination === 'queue' && trigger.queueName) {
                     // add event notification to the bucket for each event
                     const queueId = bucketConfig.bucketName + "-" + trigger.destination + "-" + trigger.queueName;
-                    //const queueInstance = this.fw24.getQueueByName(trigger.queueName);
-                    // const queueArn = this.fw24.getArn('sqs', this.fw24.get(trigger.queueName, 'queueName_'));
-                    // const queueInstance = Queue.fromQueueArn(this.mainStack, queueId+'-queue', queueArn);
                     const queueInstance = this.fw24.get(trigger.queueName, 'queue_');
-                    this.logger.debug(":::Creating queue for the trigger event: ", queueInstance.queueArn);
                     if(queueInstance !== null){
+                        this.logger.debug(":::Creating queue for the trigger event: ", trigger.events.toString());
                         trigger.events.forEach(bucketEvent => {
                             this.logger.debug(SqsDestination,bucketEvent);
                             bucket.addEventNotification(bucketEvent, new SqsDestination(queueInstance));
