@@ -176,6 +176,24 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
         return deletedEntity;
     }
+
+    /*
+
+    $in	    Match any value in array	    {"field" : {"$in" : [value1, value2, ...]}}
+    $nin	Not match any value in array	{"field" : {"$nin" : [value1, value2, ...]}}
+    $or	    Logical operator	            {"$or": [{"status": "GOLD"}, {"status": "SILVER"}]}
+    $and	Logical operator	            {"$and": [{"status": "GOLD"}, {"sales": 1000}]}
+    $not	Negation logical operator	    {"field" : {"$not" : val}}
+
+    $gt	        >	            {"salary": {"$gt": 10000}}
+    $gte	    >=	            {"salary": {"$gte": 10000}}
+    $lt	        <	            {"salary": {"$lt": 10000}}
+    $lte	    <=	            {"salary": {"$lte": 10000}}
+    $bt	        >= value <=	    {"salary": {"$bt": [5000, 7500]}}
+    $exists	                    Check if field exists	{"field": {"$exists": true|false}}
+    $elemMatch	                Array element matching	{"contact":{"$elemMatch":{"name":"Anderson", age:35}}}
+
+    */
 }
 
 export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAttribute): Partial<EntityAttribute> & { 

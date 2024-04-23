@@ -17,6 +17,8 @@ export class RequestContext implements Request {
     public pathParameters: any;
     public isBase64Encoded: boolean;
     public httpMethod: string;
+    public debug: boolean;
+    
 
     constructor(event: APIGatewayEvent, context: Context) {
         this.event = event;
@@ -31,6 +33,14 @@ export class RequestContext implements Request {
         this.pathParameters = event.pathParameters;
         this.isBase64Encoded = event.isBase64Encoded;
         this.httpMethod = event.httpMethod;
+
+        const debugPassword = process.env.DEBUG_PASSWORD ?? 'true';
+
+        this.debug = false;
+        if(this.queryStringParameters?.debug == debugPassword){
+            this.debug = true;
+            this.queryStringParameters.debug = undefined;
+        }
 
         if (event.body) {
             

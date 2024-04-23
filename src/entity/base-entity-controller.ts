@@ -67,7 +67,7 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 			limit,
 			pages, 
 			...filters
-		} = data;
+		} = data || {};
 
 		const pagination = {
 			order: order ?? 'asc',
