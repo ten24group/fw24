@@ -3,6 +3,7 @@ import { IStack } from '../../interfaces/stack';
 import { CognitoStack, ICognitoConfig } from '../../stacks/cognito';
 import { createLogger } from "../../logging";
 import { join } from 'path';
+import { LambdaFunctionProps } from '../../constructs/lambda-function';
 
 export interface IAuthModuleConfig extends ICognitoConfig {
     
@@ -13,12 +14,18 @@ export class AuthModule extends AbstractFw24Module {
 
     protected stacks: Map<string, IStack>; 
 
+    // array of type of stacks that this stack is dependent on
+    dependencies: string[] = [];
+
     constructor( protected readonly config: IAuthModuleConfig){
         super(config);
         this.stacks = new Map();
 
         if(config.groups){
-            config.groups.filter(group => group.autoUserSignup).map(group => Object.assign(group, {autoUserSignupHandler: join(__dirname,'functions/auto-post-confirmation.js')}));
+            const autoUserSignupHandler: LambdaFunctionProps = {
+                entry: join(__dirname,'functions/auto-post-confirmation.js')
+            }
+            config.groups.filter(group => group.autoUserSignup).map(group => Object.assign(group, {autoUserSignupHandler: autoUserSignupHandler}));
         }
         this.logger.debug("AuthModule: ", config);
         const cognito = new CognitoStack({	
@@ -40,5 +47,17 @@ export class AuthModule extends AbstractFw24Module {
 
     getStacks(): Map<string, IStack> {
         return this.stacks;
+    }
+
+    getQueuesDirectory(): string {
+        return '';
+    }
+
+    getQueueFileNames(): string[] {
+        return [];
+    }
+
+    getDependencies(): string[] {
+        return this.dependencies;
     }
 }
