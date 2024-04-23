@@ -88,7 +88,7 @@ export class SQSStack implements IStack {
             topics: queueConfig?.topics,
             lambdaFunctionProps: {
                 entry: queueInfo.filePath + "/" + queueInfo.fileName,
-                layerArn: this.fw24.getLayerARN(),
+                fw24LayerArn: this.fw24.getLayerARN(),
                 environmentVariables: this.getEnvironmentVariables(queueConfig),
                 tableName: queueConfig?.tableName,
             }

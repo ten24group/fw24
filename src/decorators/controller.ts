@@ -1,3 +1,4 @@
+import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 
 export interface IControllerConfig {
@@ -30,6 +31,7 @@ export interface IControllerConfig {
 		actions: string[]; // send, receive, delete
 	}>;
 	env?: Array<ILambdaEnvConfig>;
+	functionProps?: NodejsFunctionProps
 }
 
 export function Controller(controllerName: string, controllerConfig: IControllerConfig = {}) {

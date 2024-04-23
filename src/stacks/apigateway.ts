@@ -17,7 +17,7 @@ import { Fw24 } from "../core/fw24";
 import { IStack } from "../interfaces/stack";
 import Mutable from "../types/mutable";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
-import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 
 import { SESStack } from "./ses";
 import { SQSStack } from "./sqs";
@@ -30,6 +30,7 @@ export interface IAPIGatewayConfig {
     cors?: boolean | string | string[];
     apiOptions?: RestApiProps;
     controllersDirectory?: string;
+    functionProps?: NodejsFunctionProps;
 }
 
 export class APIGateway implements IStack {
@@ -174,15 +175,17 @@ export class APIGateway implements IStack {
     }
 
     private createLambdaFunction = (controllerName: string, filePath: string, fileName: string, controllerConfig: any): NodejsFunction => {
+        const functionProps = {...this.stackConfig.functionProps, ...controllerConfig?.functionProps};
         return new LambdaFunction(this.mainStack, controllerName + "-controller", {
             entry: filePath + "/" + fileName,
-            layerArn: this.fw24.getLayerARN(),
+            fw24LayerArn: this.fw24.getLayerARN(),
             environmentVariables: this.getEnvironmentVariables(controllerConfig),
             buckets: controllerConfig?.buckets,
             queues: controllerConfig?.queues,
             topics: controllerConfig?.topics,
             tableName: controllerConfig?.tableName,
-            allowSendEmail: true
+            allowSendEmail: true,
+            functionProps: functionProps
         }) as NodejsFunction;
     }
 

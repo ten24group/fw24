@@ -10,6 +10,7 @@ import { ILogger, LogDuration, createLogger } from "./logging";
 
 export class Application {
     readonly logger: ILogger;
+    mainStack!: Stack;
 
     private readonly fw24: Fw24;
     private readonly stacks: Map<string, IStack>;
@@ -28,8 +29,13 @@ export class Application {
 
         // initialize the main stack
         const app = new App();
-        const mainStack = new Stack(app, `${config.name}-stack`)
-        this.fw24.addStack("main", mainStack);
+        this.mainStack = new Stack(app, `${config.name}-stack`, {
+            env: {
+                account: config.account,
+                region: config.region
+            }
+        })
+        this.fw24.addStack("main", this.mainStack);
     }
 
     public use(stack: IStack): Application {

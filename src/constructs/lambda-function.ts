@@ -13,14 +13,7 @@ import { createLogger, ILogger } from "../logging";
 
 export interface LambdaFunctionProps {
   entry: string;
-  runtime?: Runtime;
-  handler?: string;
-  timeout?: Duration;
-  memorySize?: number;
-  architecture?: Architecture;
-  layerArn?: string;
-  layers?: ILayerVersion[];
-  bundling?: BundlingOptions;
+  fw24LayerArn?: string;
   policies?: any[];
   environmentVariables?: { [key: string]: string };
   tableName?: string;
@@ -28,6 +21,7 @@ export interface LambdaFunctionProps {
   queues?: [{ name: string, actions: string[] }];
   topics?: [{ name: string, actions: string[] }];
   allowSendEmail?: boolean;
+  functionProps?: NodejsFunctionProps;
 }
 
 export class LambdaFunction extends Construct {
@@ -47,16 +41,24 @@ export class LambdaFunction extends Construct {
       memorySize: 128,
     };
 
+    let additionalProps: any = {
+      entry: props.entry,
+    }
     // If layerArn is defined, then we are using the layer
-    if(props.layerArn){
-      props.layers = [LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, props.layerArn)];
-      props.bundling = {
+    if(props.fw24LayerArn){
+      additionalProps.layers = [...(props.functionProps?.layers ?? []), LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, props.fw24LayerArn)];
+      additionalProps.bundling = {
+        ...props.functionProps?.bundling,
         sourceMap: true,
         externalModules: ["aws-sdk", "fw24"],
       };
     }
 
-    const fn = new NodejsFunction(this, id, { ...defaultProps, ...props });
+    const fn = new NodejsFunction(this, id, {
+      ...defaultProps, 
+      ...props.functionProps,
+      ...additionalProps
+    });
 
     // Set environment variables
     if(props.environmentVariables){
