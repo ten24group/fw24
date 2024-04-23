@@ -1,12 +1,14 @@
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
+import { IFunctionResourceAccess } from "../constructs/lambda-function";
+import { IQueueSubscriptions } from "../constructs/queue-lambda";
 
 export interface IQueueConfig {
 	queueProps?: QueueProps;
 	env?: {
         name: string;
     },
-	tableName?: string,
-	topics?: Array<{ name: string, actions: string[]}>
+	resourceAccess?: IFunctionResourceAccess
+	subscriptions?: IQueueSubscriptions
 }
 
 export function Queue(queueName: string, queueConfig?: IQueueConfig) {
