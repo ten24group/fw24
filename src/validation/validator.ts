@@ -4,7 +4,7 @@
  */
 import { EntitySchema, TEntityOpsInputSchemas } from "../entity";
 import { createLogger } from "../logging";
-import { Actor, ComplexValidationRule, ConditionalValidationRule, EntityValidationCondition, HttpRequestValidationResponse, IValidateEntityResponse, IValidator, InputType, InputValidationResponse, InputValidationRule, MapOfValidationCondition, OpValidatorOptions, RecordType, TComplexValidationValue, TValidationValue, TestComplexValidationResult, TestComplexValidationRuleResponse, TestValidationResult, TestValidationRuleResponse, ValidateHttpRequestOptions, ValidationError, ValidationRule, Validations } from "./types";
+import { Actor, ComplexValidationRule, ConditionalValidationRule, EntityValidationCondition, ValidatorResult, IValidator, InputType, InputValidationResult, InputValidationRule, MapOfValidationCondition, OpValidatorOptions, RecordType, TComplexValidationValue, TValidationValue, TestComplexValidationResult, TestComplexValidationRuleResult, TestValidationResult, TestValidationRuleResult, ValidateHttpRequestOptions, ValidationError, ValidationRule, Validations } from "./types";
 import { extractOpValidationFromEntityValidations, isComplexValidationValue, isComplexValidationValueWithMessage, isComplexValidationValueWithValidator, isConditionsAndScopeTuple, isTestComplexValidationResult, makeEntityValidationMessageIds, makeHttpValidationMessageIds, makeValidationErrorMessage, makeValidationErrorMessageIds } from "./utils";
 
 /**
@@ -29,17 +29,17 @@ export class Validator implements IValidator {
     >(
         options: OpValidatorOptions<Sch, OpName, ConditionsMap, OpsInpSch>
 
-    ): Promise<IValidateEntityResponse> {
+    ): Promise<ValidatorResult> {
         
-        const { entityValidations, entityName, operationName, input, actor, record, collectErrors=true, overriddenErrorMessages } = options;
+        const { entityValidations, entityName, operationName, input, actor, record, 
+            collectErrors = true, 
+            verboseErrors = false,
+            overriddenErrorMessages 
+        } = options;
         
-        const result: IValidateEntityResponse<Actor, any, any> = {
+        const result: ValidatorResult = {
             pass: true,
-            errors: {
-                actor: {},
-                input:{},
-                record: {},
-            }
+            errors: []
         }
 
         if(!entityValidations){
@@ -80,11 +80,13 @@ export class Validator implements IValidator {
                 if( collectErrors && res.errors?.length){
                     res.errors.forEach( err => {
                         err.messageIds = makeEntityValidationMessageIds(entityName, ruleType, key, err.messageIds ?? []);
-                        err.path = `${key}`;
+                        err.path = err.path ?? [];``
+                        err.path.push(key);
+                        err.path.push(ruleType);
                         err['message'] = makeValidationErrorMessage(err, overriddenErrorMessages);
-                    });
 
-                    result.errors![ruleType]![key] = res.errors
+                        result.errors?.push( verboseErrors ? err : {path: err.path, message: err.message} );
+                    });
                 }
             }
         }
@@ -105,9 +107,9 @@ export class Validator implements IValidator {
         input: I | undefined,
         rules?: InputValidationRule<I>, 
         collectErrors: boolean = true
-    ): Promise<InputValidationResponse<I>> {
+    ): Promise<InputValidationResult<I>> {
 
-        const result: InputValidationResponse<I> = {
+        const result: InputValidationResult<I> = {
             pass: true,
             errors: {},
         };
@@ -121,7 +123,11 @@ export class Validator implements IValidator {
 
             if(collectErrors && validationRes.errors && validationRes.errors.length){
                 result.errors![key] = validationRes.errors?.map( err => {
-                    return {...err, path: key};
+                    const path = err.path ?? [];
+                    if(!path.includes(key)){
+                        path.push(key);
+                    }
+                    return {...err, path};
                 });
             }
         }
@@ -145,13 +151,13 @@ export class Validator implements IValidator {
         
         options: ValidateHttpRequestOptions<Header, Body, Param, Query>
 
-    ): Promise<HttpRequestValidationResponse<Header, Body, Param, Query>> {
+    ): Promise<ValidatorResult> {
 
-        const { requestContext, validations, collectErrors = true, overriddenErrorMessages } = options;
+        const { requestContext, validations, collectErrors = true, verboseErrors=false, overriddenErrorMessages } = options;
 
-        const res: HttpRequestValidationResponse<Header, Body, Param, Query> = {
+        const res: ValidatorResult = {
             pass: true,
-            errors: {},
+            errors: [],
         };
 
         this.logger.debug("called validateHttpRequest", {requestContext, validations});
@@ -174,35 +180,35 @@ export class Validator implements IValidator {
                 validationInput = requestContext.headers;
             }
 
-            const validationResult = await this.validateInput<typeof validationInput>(validationInput, typeValidationRules);
+            const inputValidationResult = await this.validateInput<typeof validationInput>(validationInput, typeValidationRules);
 
-            res.pass = res.pass && validationResult.pass;
+            res.pass = res.pass && inputValidationResult.pass;
 
-            if(collectErrors && !validationResult.pass){
-                for(const prop in validationResult.errors){
-                    const propErrors = validationResult.errors[prop] ?? [];
+            if(collectErrors && !inputValidationResult.pass){
+
+                for(const prop in inputValidationResult.errors){
+                    const propErrors = inputValidationResult.errors[prop] ?? [];
 
                     propErrors.forEach( error => {
-                        error.path ? error.path = `${validationType}.${error.path}` : undefined;
-                        const httpValidationMessageIds = makeHttpValidationMessageIds(validationType, prop, error.messageIds || []);
-                        error.messageIds = httpValidationMessageIds;
-                        error['message'] = makeValidationErrorMessage(error, overriddenErrorMessages);
-                        return error;
-                    });
+                        error.path = error.path ?? [];
+                        error.path.push(validationType);
 
-                    if(validationResult.customMessage || validationResult.customMessageId){
-                        propErrors.push({
-                            customMessageId: validationResult.customMessageId,
-                            customMessage: validationResult.customMessage,
-                            path: `${validationType}.${prop}`,
+                        const httpValidationMessageIds = makeHttpValidationMessageIds({
+                            validationType, 
+                            propertyName: prop,
+                            errorMessageIds: error.messageIds || []
                         });
-                    }
+                        error.messageIds = httpValidationMessageIds;
+
+                        error.message = makeValidationErrorMessage(error, overriddenErrorMessages);
+
+                        res.errors?.push( verboseErrors ? error : {path: error.path, message: error.message} );
+                    });
                 }
-                res.errors![validationType] = validationResult.errors
             }
         }
 
-        this.logger.info("validateHttpRequest validationResult: ", res );
+        this.logger.info("validateHttpRequest result: ", res );
 
         return res;
     }
@@ -226,13 +232,13 @@ export class Validator implements IValidator {
             record?: R, 
             actor?: Actor
         }
-    ): Promise<TestComplexValidationRuleResponse>{
+    ): Promise<TestComplexValidationRuleResult>{
 
         this.logger.debug("validateConditionalRules ~ arguments:", JSON.stringify(options) );
         
         const {rules, allConditions, inputVal, input, record, actor} = options;
 
-        const result: TestComplexValidationRuleResponse = {
+        const result: TestComplexValidationRuleResult = {
             pass: true,
             errors: [],
         };
@@ -289,7 +295,7 @@ export class Validator implements IValidator {
             record?: R, 
             actor?: Actor
         }
-    ): Promise<TestComplexValidationRuleResponse> {
+    ): Promise<TestComplexValidationRuleResult> {
 
         this.logger.debug("validateConditionalRules ~ arguments:", JSON.stringify(options) );
         
@@ -306,7 +312,7 @@ export class Validator implements IValidator {
             actor,
         });
 
-        const result: TestComplexValidationRuleResponse = {
+        const result: TestComplexValidationRuleResult = {
             pass: true,
         };
 
@@ -447,8 +453,8 @@ export class Validator implements IValidator {
         return applicable;
     }
 
-    async testComplexValidationRule<T>(complexValidationRule: ComplexValidationRule<T>, val: T, collectErrors = true ): Promise<TestComplexValidationRuleResponse>{
-        let res: TestComplexValidationRuleResponse = {
+    async testComplexValidationRule<T>(complexValidationRule: ComplexValidationRule<T>, val: T, collectErrors = true ): Promise<TestComplexValidationRuleResult>{
+        let res: TestComplexValidationRuleResult = {
             pass: true,
             errors: []
         };
@@ -477,10 +483,10 @@ export class Validator implements IValidator {
      * Returns an object containing a boolean indicating if all validations passed, 
      * and any errors encountered.
     */
-    async testValidationRule<T>(validationRule: ValidationRule<T>, val: T, collectErrors = true): Promise<TestValidationRuleResponse> {
+    async testValidationRule<T>(validationRule: ValidationRule<T>, val: T, collectErrors = true): Promise<TestValidationRuleResult> {
         this.logger.info("testValidationRule ~ arguments:", {validationRule, val});
 
-        const res: TestValidationRuleResponse = {
+        const res: TestValidationRuleResult = {
             pass: true,
             errors: []
         };
@@ -505,7 +511,6 @@ export class Validator implements IValidator {
 
                 const errorMessageIds = makeValidationErrorMessageIds(validationName, validationValue);
                 const validationError: ValidationError = {
-                    validationName,
                     messageIds: errorMessageIds,
                     expected: testValidationResult.expected,                           
                     received: testValidationResult.received,
@@ -568,8 +573,8 @@ export class Validator implements IValidator {
 
         const result: TestValidationResult = { 
             pass: true, 
-            received: val,
-            expected: validationValue,
+            received: [val],
+            expected: [validationName, validationValue],
         }
         
         if(validationName === 'required' ){
@@ -579,12 +584,12 @@ export class Validator implements IValidator {
         } else if( validationName === 'minLength' ) {
 
             result.pass = val && val.length >= validationValue;
-            result.received = [val, val?.length];
+            result.received = [val, val?.length || 0];
 
         } else if( validationName === 'maxLength') {
 
             result.pass = val && val.length <= validationValue;
-            result.received = [val, val?.length];
+            result.received = [val, val?.length || 0];
 
         } else if( validationName === 'pattern') {
 

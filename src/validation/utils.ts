@@ -239,20 +239,24 @@ export function makeValidationErrorMessage(error: ValidationError, overriddenErr
         || error.messageIds?.reverse().find( (messageId) => overriddenErrorMessages?.has(messageId) || genericErrorMessages.has(messageId) )
         || ( error.messageIds?.length ? error.messageIds.at(-1) : undefined)
 
-    let message = "Validation failed for '{path}'; expected '{expected}', received '{received}'";
+    let message = "Validation failed for '{key}'; expected '{validationName}/{validationValue}', received '{received}/{refinedReceived}'.";
 
     if(messageId && ( overriddenErrorMessages?.has(messageId) || genericErrorMessages.has(messageId)) ){
         message = overriddenErrorMessages?.get(messageId) ?? genericErrorMessages.get(messageId)!;
     }
-
-    if(Array.isArray(error.received)){
-        message = message!.replace('{received[0]}', error.received[0] ?? '');
-        message = message.replace('{received[1]}', error.received[1] ?? '');
-    }
     
-    message = message.replace('{path}', error.path ?? '');
-    message = message.replace('{expected}', error.expected ? error.expected + '' : '');
-    message = message.replace('{received}', error.received ? error.received + '' : '');
+    error.path = error.path ?? [''];
+    const [inputKey] = error.path;
+    message = message.replace('{key}', inputKey);
+    message = message.replace('{path}', error.path.reverse().toString());
+
+    const [validationName, validationValue] = error.expected ?? [];
+    message = message.replace('{validationName}', validationName ? validationName + '' : '');
+    message = message.replace('{validationValue}', validationValue ? validationValue + '' : '');
+
+    const [received, refinedReceived] = error.received ?? [];
+    message = message.replace('{received}', received ? received + '' : '');
+    message = message.replace('{refinedReceived}', refinedReceived ? refinedReceived + '' : '');
 
     return message;
 }
@@ -294,12 +298,21 @@ export function makeValidationErrorMessageIds(
 }
 
 export function makeHttpValidationMessageIds(
-    validationType: 'body' | 'param' | 'query' | 'header',
-    propertyName: string,
-    errorMessageIds: Array<string>,
+    options: {
+        validationType: 'body' | 'param' | 'query' | 'header',
+        errorMessageIds: Array<string>,
+        propertyName ?: string,
+    }
 ): Array<string> {
 
-    const propIds = makeValidationMessageIdsForPrefix( `http.${validationType}.${propertyName}`, errorMessageIds);
+    const { validationType, propertyName, errorMessageIds } = options;
+
+    const keys = ['http', validationType];
+    if(propertyName){
+        keys.push(propertyName.toLowerCase());
+    }
+
+    const propIds = makeValidationMessageIdsForPrefix( keys.join('.'), errorMessageIds);
     
     // prefix everything with 'validation.'
     return errorMessageIds.concat(propIds).map( id => `validation.${id}`);

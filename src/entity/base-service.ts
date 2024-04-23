@@ -2,7 +2,7 @@ import { EntityConfiguration } from "electrodb";
 import { toHumanReadableName } from "../utils";
 import { EntityOpsInputValidations, EntityValidations } from "../validation";
 import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
-import { createEntity, deleteEntity, getEntity, listEntity, updateEntity } from "./crud-service";
+import { Pagination, createEntity, deleteEntity, getEntity, listEntity, updateEntity } from "./crud-service";
 import { createLogger } from "../logging";
 
 export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
@@ -142,11 +142,12 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return entity;
     }
 
-    public async list(data: EntityIdentifiersTypeFromSchema<S>) {
-        this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ data:`, data);
+    public async list(options: { filters?: any, pagination?: Pagination } = {}) {
+        this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ options:`, options);
 
         const entities =  await listEntity<S>({
-            filters: data,
+            filters: options.filters,
+            pagination: options.pagination,
             entityName: this.getEntityName(),  
         });
 
@@ -175,6 +176,24 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
         return deletedEntity;
     }
+
+    /*
+
+    $in	    Match any value in array	    {"field" : {"$in" : [value1, value2, ...]}}
+    $nin	Not match any value in array	{"field" : {"$nin" : [value1, value2, ...]}}
+    $or	    Logical operator	            {"$or": [{"status": "GOLD"}, {"status": "SILVER"}]}
+    $and	Logical operator	            {"$and": [{"status": "GOLD"}, {"sales": 1000}]}
+    $not	Negation logical operator	    {"field" : {"$not" : val}}
+
+    $gt	        >	            {"salary": {"$gt": 10000}}
+    $gte	    >=	            {"salary": {"$gte": 10000}}
+    $lt	        <	            {"salary": {"$lt": 10000}}
+    $lte	    <=	            {"salary": {"$lte": 10000}}
+    $bt	        >= value <=	    {"salary": {"$bt": [5000, 7500]}}
+    $exists	                    Check if field exists	{"field": {"$exists": true|false}}
+    $elemMatch	                Array element matching	{"contact":{"$elemMatch":{"name":"Anderson", age:35}}}
+
+    */
 }
 
 export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAttribute): Partial<EntityAttribute> & { 

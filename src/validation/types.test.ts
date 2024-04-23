@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { DefaultEntityOperations, TEntityOpsInputSchemas, createEntitySchema } from "../entity";
-import { EntityOperationsValidation, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TestComplexValidationRuleResponse, TestValidationResult, TestValidationRuleResponse, InputValidationRule } from "./types";
+import { EntityOperationsValidation, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TestComplexValidationRuleResult, TestValidationResult, TestValidationRuleResult, InputValidationRule } from "./types";
 import { Narrow, OmitNever } from "../utils";
 
 import { describe, expect, it } from '@jest/globals';
@@ -229,11 +229,11 @@ const SignInValidations: InputValidationRule<{email: string, lastName: string, a
       },
       // ** standard validator with overridden validator-function
       eq: {  
-        validator: (value: string | undefined) => {
+        validator: (value: string | undefined): Promise<TestValidationResult>  => {
           return Promise.resolve({
             pass: value !== undefined && value == 'xyz',
-            expected: 'whatever',
-            received: value,
+            expected: ['custom', 'whatever'],
+            received: [value],
             message: 'some error message'
           });
         }
@@ -241,11 +241,11 @@ const SignInValidations: InputValidationRule<{email: string, lastName: string, a
       // **  custom validator with a message
       custom: {
         message: 'some error message if validator resolves to false',
-        validator: (value) => {
+        validator: (value): Promise<TestValidationResult> => {
             return Promise.resolve({
               pass: value !== undefined ,
-              expected: 'an email address',
-              received: value,
+              expected: ['datatype', 'email'],
+              received: [value],
             });
         }
       }
@@ -253,8 +253,8 @@ const SignInValidations: InputValidationRule<{email: string, lastName: string, a
     },
     email: {
       // ** custom validation rule, with it's own validator; all other validations will be ignored here
-      validator: (email: string ): Promise<TestValidationRuleResponse> => {
-        const res: TestComplexValidationRuleResponse = {
+      validator: (email: string ): Promise<TestValidationRuleResult> => {
+        const res: TestComplexValidationRuleResult = {
           pass: !!email,
           customMessage: "you can return a custom message from the validator as well; and it takes precedence over the error-message defined in the rule(if any)"
         };

@@ -49,6 +49,8 @@ abstract class APIGatewayController {
     return this.validator.validateHttpRequest({
       requestContext, 
       validations: validationRules, 
+      collectErrors: true,
+      verboseErrors: requestContext.debug,
       overriddenErrorMessages: await this.getOverriddenHttpRequestValidationErrorMessages()
     });
   }

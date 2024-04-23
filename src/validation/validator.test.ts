@@ -17,7 +17,7 @@ describe('Validator', () => {
         entityValidations: {},
       });
       expect(result.pass).toBe(true);
-      expect(result.errors).toEqual({"actor": {}, "input": {}, "record": {}});
+      expect(result.errors).toEqual([]);
     });
 
     it('should validate actor rules', async () => {
@@ -36,7 +36,7 @@ describe('Validator', () => {
       });
       console.warn('should validate actor rules result:', result);
       expect(result.pass).toBe(true);
-      expect(result.errors?.actor).toEqual({});
+      expect(result.errors).toEqual([]);
     });
 
     it('should return actor rule errors', async () => {
@@ -46,6 +46,8 @@ describe('Validator', () => {
       const result = await validator.validateEntity({
         operationName: 'create',
         entityName: 'test',
+        collectErrors: true, 
+        verboseErrors: true,
         entityValidations: {
           actor: {
             role: [{ eq: 'admin' }]  
@@ -54,8 +56,8 @@ describe('Validator', () => {
         actor
       });
       expect(result.pass).toBe(false);
-      expect(result.errors?.actor?.role).toHaveLength(1);
-      expect(result.errors?.actor?.role?.[0]?.messageIds).toContain('validation.entity.test.actor.role.eq.admin');
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors?.[0]?.messageIds).toContain('validation.entity.test.actor.role.eq.admin');
     });
 
     it('should validate input rules', async () => {
@@ -73,7 +75,7 @@ describe('Validator', () => {
         input  
       });
       expect(result.pass).toBe(true);
-      expect(result.errors?.input).toEqual({});
+      expect(result.errors).toEqual([]);
     });
 
     it('should return input rule errors', async () => {
@@ -83,6 +85,8 @@ describe('Validator', () => {
       const result = await validator.validateEntity({
         operationName: 'create',
         entityName: 'test',
+        collectErrors: true, 
+        verboseErrors: true,
         entityValidations: {
           input: {
             firstName: [{ minLength: 10 }]
@@ -91,8 +95,8 @@ describe('Validator', () => {
         input
       });
       expect(result.pass).toBe(false);
-      expect(result.errors?.input?.firstName).toHaveLength(1);
-      expect(result.errors?.input?.firstName?.[0]?.messageIds).toContain('validation.entity.test.firstname.minlength');
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors?.[0]?.messageIds).toContain('validation.entity.test.firstname.minlength');
     });
   });
 
@@ -169,9 +173,9 @@ describe('Validator', () => {
       };
       
       const result = await validator.validateHttpRequest({ requestContext, validations });
-
+      console.log(result);
       expect(result.pass).toBe(true);
-      expect(result.errors?.body).toEqual({});
+      expect(result.errors).toEqual([]);
     });
 
     it('should validate request parameters', async () => {
@@ -209,13 +213,13 @@ describe('Validator', () => {
         'validation.http.body.age.gt': 'Age must be greater than 40....'
       }));
 
-      const result = await validator.validateHttpRequest({ requestContext, validations, collectErrors: true, overriddenErrorMessages });
+      const result = await validator.validateHttpRequest({ requestContext, validations, collectErrors: true, verboseErrors: true, overriddenErrorMessages });
 
       console.log({result});
       
-      expect(result.errors).toEqual({
-        body: { age: expect.any(Array) } 
-      });
+      expect(result.errors).toEqual(expect.any(Array));
+      expect(result.errors).toHaveLength(2);
+      expect(result.errors?.[0]?.messageIds).toContain('validation.http.body.age.gt');
     });
 
   });

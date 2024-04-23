@@ -3,16 +3,19 @@ import { Narrow, OmitNever, ValueOf } from '../utils/types';
 
 import { Request } from '../interfaces/request';
 
-export type TestValidationResult = {
-    pass: boolean,
-    expected?: any,
-    received?: any,
-}
-
 export type CustomMessageOrMessageId = {
     customMessage?: string,
     customMessageId?: string,
 }
+
+export type ValidationExpectedAndReceived = {
+    expected ?: [validationName: string, validationValue: any],
+    received ?: [received: any, refinedReceived?: any],
+}
+
+export type TestValidationResult = {
+    pass: boolean
+} & ValidationExpectedAndReceived;
 
 export type TestComplexValidationResult = TestValidationResult & CustomMessageOrMessageId;
 
@@ -20,39 +23,28 @@ export type TestComplexValidationResult = TestValidationResult & CustomMessageOr
 export type ValidationError = {
     message ?: string,
     messageIds ?: Array<string>,
-    validationName?: string,
-    expected ?: any,                           
-    received ?: any,
-    path ?: string,
-} & CustomMessageOrMessageId;
+    path ?: Array<string>,
+} & CustomMessageOrMessageId & ValidationExpectedAndReceived;
 
-export type TestValidationRuleResponse = {
+export type TestValidationRuleResult = {
     pass: boolean, 
     errors ?: Array<ValidationError>
 };
 
-export type TestComplexValidationRuleResponse = TestValidationRuleResponse & CustomMessageOrMessageId;
+export type TestComplexValidationRuleResult = TestValidationRuleResult & CustomMessageOrMessageId;
 
 export type InputValidationErrors<I extends InputType = InputType> = {
     [K in keyof I] ?: Array<ValidationError>
 };
 
-export type InputValidationResponse<I extends InputType = InputType> = {
+export type InputValidationResult<I extends InputType = InputType> = {
     pass: boolean, 
     errors ?: InputValidationErrors<I>
-} & CustomMessageOrMessageId;
+};
 
-export interface IValidateEntityResponse<
-    A extends Actor = Actor,
-    I extends InputType = InputType,
-    R extends RecordType = RecordType,
-> {
+export interface ValidatorResult {
     pass: boolean;
-    errors ?: {
-        actor ?: InputValidationErrors<A>
-        input ?: InputValidationErrors<I>
-        record ?: InputValidationErrors<R>
-    },
+    errors ?: Array<ValidationError>,
 }
 
 export type OpValidatorOptions<
@@ -68,6 +60,7 @@ export type OpValidatorOptions<
     readonly actor?: Actor,
     readonly record?: RecordType, 
     readonly collectErrors ?: boolean,
+    readonly verboseErrors ?: boolean,
     readonly overriddenErrorMessages ?: Map<string, string>
 }
 
@@ -78,10 +71,11 @@ export type ValidateHttpRequestOptions<
     Param extends InputType = InputType,
     Query extends InputType = InputType,
 > = {
-    validations: HttpRequestValidations<Header, Body, Param, Query>, 
-    requestContext: Request, 
-    collectErrors ?: boolean,
-    overriddenErrorMessages ?: Map<string, string>,
+    readonly validations: HttpRequestValidations<Header, Body, Param, Query>, 
+    readonly requestContext: Request, 
+    readonly collectErrors ?: boolean,
+    readonly verboseErrors ?: boolean,
+    readonly overriddenErrorMessages ?: Map<string, string>,
 }
 export interface IValidator {
     validateEntity<
@@ -89,13 +83,13 @@ export interface IValidator {
         OpName extends keyof Sch['model']['entityOperations'],
         ConditionsMap extends MapOfValidationCondition<any, any>, 
         OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
-    >(options: OpValidatorOptions< Sch, OpName, ConditionsMap, OpsInpSch> ): Promise<IValidateEntityResponse>;
+    >(options: OpValidatorOptions< Sch, OpName, ConditionsMap, OpsInpSch> ): Promise<ValidatorResult>;
 
     validateInput<I extends InputType>(
         input: I | undefined,
         rules?: InputValidationRule<I>, 
         collectErrors?: boolean,
-    ): Promise<InputValidationResponse<I>>;
+    ): Promise<InputValidationResult<I>>;
 
     validateHttpRequest<
         Header extends InputType = InputType, 
@@ -104,7 +98,7 @@ export interface IValidator {
         Query extends InputType = InputType,
     >(
         options: ValidateHttpRequestOptions<Header, Body, Param, Query>
-    ): Promise<HttpRequestValidationResponse<Header, Body, Param, Query>>
+    ): Promise<ValidatorResult>
 }
 
 
@@ -173,7 +167,7 @@ export type ValidationRule<T> = {
 export type ComplexValidationRule<T> = ValidationRule<T> & {
     readonly message ?: string,
     readonly messageId ?: string,
-    readonly validator ?: (value: T, collectErrors?: boolean) => Promise<TestComplexValidationRuleResponse>,
+    readonly validator ?: (value: T, collectErrors?: boolean) => Promise<TestComplexValidationRuleResult>,
 }
 
 export type InputValidationRule<Input extends InputType = InputType> = {
@@ -194,20 +188,6 @@ export type HttpRequestValidations<
     readonly header ?: InputValidationRule<Header>,
 }
 
-export type HttpRequestValidationResponse<
-    Header extends InputType = InputType, 
-    Body extends InputType = InputType,
-    Param extends InputType = InputType,
-    Query extends InputType = InputType,
-> = {
-    pass: boolean, 
-    errors ?: {
-        body ?: InputValidationErrors<Body>,
-        query ?: InputValidationErrors<Query>,
-        param ?: InputValidationErrors<Param>,
-        header ?: InputValidationErrors<Header>,
-    }
-};
 
 export type EntityValidationCondition<I extends InputType, R extends RecordType> = {
     readonly actor ?: InputValidationRule<Actor>,

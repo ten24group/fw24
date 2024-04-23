@@ -6,6 +6,7 @@ import { DefaultValidator, IValidator } from "../validation";
 import { Auditor } from "../audit";
 import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
+import { removeEmpty } from "../utils";
 
 /**
  * 
@@ -181,11 +182,22 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     return entity;
 }
 
+export type Pagination = {
+    limit?: number;
+    count?: number;
+    pages?: number | 'all';
+    pager?: 'raw' | 'cursor',
+    order?: 'asc' | 'desc';
+    cursor?: string,
+}
+
 export interface ListEntityArgs<
     Sch extends EntitySchema<any, any, any>,
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > extends BaseEntityCrudArgs<Sch> {
     filters: OpsSchema['list']; // TODO: filters and pagination
+    attributes?: string[];
+    pagination?: Pagination
 }
 /**
  * 
@@ -207,7 +219,16 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
         authorizer = Authorizer.Default,
         auditLogger = Auditor.Default,
         eventDispatcher = EventDispatcher.Default,
-            
+
+        filters = {},
+        pagination = {
+            order: 'asc',
+            pager: 'cursor',
+            cursor: null,
+            count: 25,
+            pages: undefined,
+            limit: undefined,
+        }
     } = options;
 
     logger.debug(`Called EntityCrud ~ listEntity ~ entityName: ${entityName} ~ filters+paging:`);
@@ -220,7 +241,23 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
         throw new Error("Authorization failed: " + { cause: authorization });
     }
 
-    const entities = await entityService.getRepository().scan.go();
+    const entities = await entityService.getRepository()
+    .match(
+        removeEmpty(filters)
+    )
+    // .where((attr, op) => {
+
+    //     // TODO: add support for custom where clauses
+    //     // when the query is not for specific attribute-values
+    //     // ${op.eq(attr.cityId, "Atlanta1")} AND ${op.contains(attr.category, "food")}
+    //     // const {} = attr;
+    //     // const {eq, ne, gt, gte, lt, lte, between, begins, exists, notExists, contains, notContains, value, name, size, type, field, escape } = op;
+        
+    //     return ``;
+    // })
+    .go(
+        removeEmpty(pagination)
+    );
 
     await eventDispatcher.dispatch({ event: 'afterList', context: arguments });
 
