@@ -13,4 +13,5 @@ export interface Request {
     pathParameters: any;
     isBase64Encoded: boolean;
     httpMethod: string;
+    debug?: boolean;
 }

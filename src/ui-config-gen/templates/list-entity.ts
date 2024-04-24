@@ -28,7 +28,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         ],
         listPageConfig: {
             apiConfig: {
-                apiUrl: `/${options.entityName.toLowerCase()}/list`,
+                apiUrl: `/${options.entityName.toLowerCase()}/`,
                 apiMethod: `GET`
             },
             propertiesConfig: [] as any[],
@@ -63,8 +63,8 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                                 content: `Are you sure you want to delete this ${options.entityName}?`
                             },
                             apiConfig: {
-                                apiUrl: `/${options.entityName.toLowerCase()}/delete`,
-                                apiMethod: `GET`
+                                apiUrl: `/${options.entityName.toLowerCase()}/`,
+                                apiMethod: `DELETE`
                             },
                             confirmSuccessRedirect: `/list-${options.entityName.toLowerCase()}`
                         }

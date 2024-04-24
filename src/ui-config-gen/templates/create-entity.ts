@@ -24,8 +24,8 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         ],
         formPageConfig: {
             apiConfig: {
-                apiMethod: `GET`,
-                apiUrl: `/${options.entityName.toLowerCase()}/create`,
+                apiMethod: `POST`,
+                apiUrl: `/${options.entityName.toLowerCase()}/`,
             },
             formButtons: [ "submit", "cancel" ],
             propertiesConfig: [] as any[],

@@ -1,16 +1,19 @@
-import { APIGatewayEvent, Context, APIGatewayProxyResult } from "aws-lambda";
-import { Route } from "../interfaces/route";
+import { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
 import { Request } from "../interfaces/request";
 import { Response } from "../interfaces/response";
+import { Route } from "../interfaces/route";
+import { createLogger } from "../logging";
+import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule } from "../validation";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
-import { createLogger } from "../logging";
+import { isHttpRequestValidationRule, isInputValidationRule } from "../validation/utils";
 
 /**
  * Base controller class for handling API Gateway events.
  */
 abstract class APIGatewayController {
   readonly logger = createLogger(APIGatewayController.name);
+  protected validator: IValidator  = DefaultValidator;
 
   /**
    * Binds the LambdaHandler method to the instance of the class.
@@ -20,6 +23,37 @@ abstract class APIGatewayController {
   }
 
   abstract initialize(event: APIGatewayEvent, context: Context): Promise<void>;
+
+  protected async getOverriddenHttpRequestValidationErrorMessages() {
+      return Promise.resolve( new Map<string, string>());
+  }
+
+  async validate( requestContext: Request, validations: InputValidationRule | HttpRequestValidations ){
+
+    let validationRules: HttpRequestValidations = validations;
+    if(isInputValidationRule(validations)){
+      if( ['GET', 'DELETE'].includes( requestContext.httpMethod.toUpperCase()) ){
+
+          validationRules = { query: validations }
+
+      } else if( ['POST', 'PUT', 'PATCH'].includes( requestContext.httpMethod.toUpperCase()) ){
+
+        validationRules = { body: validations }
+      }
+    }
+    
+    if(!isHttpRequestValidationRule(validationRules)){
+      throw (new Error("Invalid http-request validation rule"));
+    }
+
+    return this.validator.validateHttpRequest({
+      requestContext, 
+      validations: validationRules, 
+      collectErrors: true,
+      verboseErrors: requestContext.debug,
+      overriddenErrorMessages: await this.getOverriddenHttpRequestValidationErrorMessages()
+    });
+  }
 
   /**
    * Lambda handler for the controller.
@@ -40,9 +74,25 @@ abstract class APIGatewayController {
     try {
       // Find the matching route for the received request
       const route = this.findMatchingRoute(requestContext);
-      // const validation = this.findMatchingValidation(requestContext);
-      // TODO: Add Validation Check
-      // requestContext: any = validation.call(this, requestContext, responseContext);
+
+      if(route?.validations){
+        this.logger.info("Validation rules found for route:", route);
+        
+        const validationResult = await this.validate(requestContext, route.validations);
+        
+        if(!validationResult.pass){
+          return this.handleResponse({
+            statusCode: 400,
+            body: JSON.stringify({
+              message: 'Validation failed!!!',
+              error: validationResult.errors 
+            }),
+          });
+        }
+        
+      } else {
+        this.logger.info("No validation rules found for route:", route);
+      }
 
       const routeFunction = this.getRouteFunction(route);
       // Execute the associated route function

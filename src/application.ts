@@ -17,7 +17,7 @@ export class Application {
     private readonly modules: Map<string, IFw24Module>; 
 
     constructor(config: IApplicationConfig = {}) {
-        this.logger = createLogger(`${Application.name}-${config.name}-${config.environment}`);
+        this.logger = createLogger([Application.name, config.name, config.environment].join('-'));
         
         this.logger.info("Initializing fw24 infrastructure...");
 
@@ -44,7 +44,7 @@ export class Application {
     }
 
     public useModule(module: IFw24Module): Application{
-        this.logger.debug("Called UseModule with module: ", { moduleName: module.getName(), module});
+        this.logger.debug("Called UseModule with module: ", { moduleName: module.getName()});
         
         if (this.modules.has(module.getName())) {
             throw new Error(`Stack with name ${module.getName()} is already registered.`);
