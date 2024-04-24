@@ -1,8 +1,8 @@
 import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
+import { IFunctionResourceAccess } from "../constructs/lambda-function";
 
 export interface IControllerConfig {
-	tableName?: string;
 	authorizer?: Array<{ 
 		type: string;
 		name?: string;
@@ -18,18 +18,8 @@ export interface IControllerConfig {
 		default?: boolean
 		requireRouteInGroupConfig?: boolean;
 	} | string;
-	buckets?: Array<{ 
-		name: string;
-		access?: string; // read, write, readwrite | default is readwrite
-	}>;
-	topics? : Array<{
-		name: string;
-		actions: string[]; // publish, subscribe, unsubscribe
-	}>;
-	queues?: Array<{
-		name: string;
-		actions: string[]; // send, receive, delete
-	}>;
+	// define the resources that the controller need access to
+	resourceAccess?: IFunctionResourceAccess;
 	env?: Array<ILambdaEnvConfig>;
 	functionProps?: NodejsFunctionProps
 }

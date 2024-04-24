@@ -180,10 +180,7 @@ export class APIGateway implements IStack {
             entry: filePath + "/" + fileName,
             fw24LayerArn: this.fw24.getLayerARN(),
             environmentVariables: this.getEnvironmentVariables(controllerConfig),
-            buckets: controllerConfig?.buckets,
-            queues: controllerConfig?.queues,
-            topics: controllerConfig?.topics,
-            tableName: controllerConfig?.tableName,
+            resourceAccess: controllerConfig?.resourceAccess,
             allowSendEmail: true,
             functionProps: functionProps
         }) as NodejsFunction;
