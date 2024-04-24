@@ -95,7 +95,6 @@ export class CognitoStack implements IStack {
     }
 
     // construct method to create the stack
-    @LogDuration()
     public async construct() {
         this.logger.debug("construct");
 
