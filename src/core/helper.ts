@@ -52,6 +52,21 @@ export class Helper {
         Helper.registerHandlers(queuesPath, handlerRegistrar, handlersPath);
     }
 
+    static async registerTasksFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
+        const basePath = module.getBasePath();
+
+        Helper.logger.info("registerTasksFromModule::: base-path: " + basePath);
+
+        // relative path from the place where the script is getting executed i.e index.ts in app-root
+        const relativePath = relative('./', basePath); 
+        const tasksPath = resolve(relativePath, module.getTasksDirectory());
+        const handlersPath = module.getTaskFileNames();
+
+        Helper.logger.info("registerTasksFromModule::: module-tasks-path: " + tasksPath);
+
+        Helper.registerHandlers(tasksPath, handlerRegistrar, handlersPath);
+    }
+
     static scanTSSourceFilesFrom(path: string){
         Helper.logger.debug("Scanning TS source files from path: ", path);
         // Resolve the absolute path

@@ -41,6 +41,19 @@ export class SchedulerStack implements IStack {
 
         // register the tasks
         await Helper.registerHandlers(this.stackConfig.tasksDirectory, this.registerTask);
+
+        if (this.fw24.hasModules()) {
+            const modules = this.fw24.getModules();
+            for (const [, module] of modules) {
+                const basePath = module.getBasePath();
+                const tasksDirectory = module.getTasksDirectory();
+                if(tasksDirectory != ''){
+                    this.logger.info("Load tasks from module base-path: ", basePath);
+                    await Helper.registerTasksFromModule(module, this.registerTask);
+                }
+            }
+        }
+
     }
 
     private getEnvironmentVariables(config: ILambdaEnvConfig[]): any {
