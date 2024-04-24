@@ -72,7 +72,7 @@ export class SchedulerStack implements IStack {
             functionProps: {
                 ...taskProps,
             },
-
+            resourceAccess: taskConfig.resourceAccess,
         }) as NodejsFunction;
 
 

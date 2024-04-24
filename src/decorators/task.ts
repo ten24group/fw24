@@ -1,4 +1,5 @@
 import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import { IFunctionResourceAccess } from "../constructs/lambda-function";
 
 export interface ITaskConfig {
 	schedule: string;
@@ -6,7 +7,7 @@ export interface ITaskConfig {
         name: string;
     },
 	functionProps?: NodejsFunctionProps
-
+	resourceAccess?: IFunctionResourceAccess
 }
 
 export function Task(taskName: string, taskConfig?: ITaskConfig) {
