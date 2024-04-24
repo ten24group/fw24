@@ -1,11 +1,7 @@
-import { IValidator } from './validator.type';
+import { IValidator } from './types';
 import {Validator} from './validator';
 
 export * from './validator';
-export * from './validator.type'
-
-export const Dummy: IValidator = {
-    validate: () => { return Promise.resolve({pass:true}) },
-};
+export * from './types'
 
 export const DefaultValidator = new Validator();

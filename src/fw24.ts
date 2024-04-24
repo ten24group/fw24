@@ -6,6 +6,7 @@ export * from "./decorators/method";
 export * from "./decorators/queue";
 export * from "./decorators/authorizer";
 export * from "./decorators/task";
+export * from "./decorators/validation";
 export * from "./core/api-gateway-controller";
 export * from "./core/sqs-controller";
 export * from "./core/task-controller";

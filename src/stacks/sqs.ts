@@ -74,7 +74,7 @@ export class SQSStack implements IStack {
 
     private registerQueue = (queueInfo: HandlerDescriptor) => {
         queueInfo.handlerInstance = new queueInfo.handlerClass();
-        this.logger.debug(":::Queue instance: ", queueInfo.handlerInstance);
+        this.logger.debug(":::Queue instance: ", queueInfo.fileName, queueInfo.filePath);
         
         const queueName = queueInfo.handlerInstance.queueName;
         const queueConfig = queueInfo.handlerInstance.queueConfig || {};
@@ -85,12 +85,12 @@ export class SQSStack implements IStack {
         const queue = new QueueLambda(this.mainStack, queueName + "-queue", {
             queueName: queueName,
             queueProps: queueProps,
-            topics: queueConfig?.topics,
+            subscriptions: queueConfig?.subscriptions,            
             lambdaFunctionProps: {
                 entry: queueInfo.filePath + "/" + queueInfo.fileName,
                 fw24LayerArn: this.fw24.getLayerARN(),
                 environmentVariables: this.getEnvironmentVariables(queueConfig),
-                tableName: queueConfig?.tableName,
+                resourceAccess: queueConfig?.resourceAccess
             }
         }) as Queue;
 

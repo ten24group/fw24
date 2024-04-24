@@ -35,6 +35,5 @@ export const createLogger = (_options: string | ISettingsParam<ILogObj>) => {
 }
 
 export {
-    inOut as LogInOut,
-    duration as LogDuration,
-} from '@mu-ts/logger';
+    LogDuration
+} from '../decorators/LogDuration';

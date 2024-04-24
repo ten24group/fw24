@@ -6,9 +6,13 @@ import { Delete, Get, Patch, Post } from '../decorators/method';
 import { BaseEntityService } from './base-service';
 import { defaultMetaContainer } from './entity-metadata-container';
 import { EntitySchema } from './base-entity';
+import { createLogger } from '../logging';
+import { safeParseInt } from '../utils/parse';
 
 export abstract class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIGatewayController {
-    
+	
+	readonly logger = createLogger(BaseEntityController.name);
+
     constructor( protected readonly entityName: string){
         super();
         this.entityName = entityName;
@@ -22,7 +26,8 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
         await this.initDI();
 
         // TODO: rest of the init setup
-		console.log(`BaseEntityController.initialize - done: ${event} ${context}`);
+		
+		this.logger.debug(`BaseEntityController.initialize - done: ${event} ${context}`);
 
         return Promise.resolve();
     }
@@ -52,9 +57,29 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 	@Get('')
 	async list(req: Request, res: Response) {
 		// TODO: pagination + filter + search
-        const data = req.queryStringParameters; 
+        const data = req.queryStringParameters;
+		this.logger.info(`list - data:`, data);
 
-		const entities = await this.getEntityService().list(data);
+		const {
+			order,
+			cursor,
+			count,
+			limit,
+			pages, 
+			...filters
+		} = data || {};
+
+		const pagination = {
+			order: order ?? 'asc',
+            cursor: cursor ?? null,
+			
+            count: safeParseInt(count, 12).value,
+			limit: safeParseInt(limit, 250).value,
+
+            pages:  pages === 'all' ? 'all' as const : safeParseInt(pages, 1).value,
+        }
+
+		const entities = await this.getEntityService().list({filters, pagination});
 
 		return res.json(entities);
 	}

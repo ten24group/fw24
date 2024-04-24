@@ -25,8 +25,15 @@ interface QueueLambdaFunctionProps {
   // lambda function properties
   lambdaFunctionProps?: LambdaFunctionProps;
 
-  // sns subscription topics
-  topics?: [{ name: string, actions: string[] }];
+  // queue subscriptions
+  subscriptions?: IQueueSubscriptions
+}
+
+export interface IQueueSubscriptions {
+  topics: Array<{
+    name: string;
+    filters: string[]; 
+  }> | string[];
 }
 
 const QueueLambdaFunctionPropDefaults : QueueLambdaFunctionProps = {
@@ -49,7 +56,7 @@ export class QueueLambda extends Construct {
     let props = { ...QueueLambdaFunctionPropDefaults, ...queueLambdaProps };
 
     // get the dlq from fw24 or create a new dlq
-    let dlq: Queue = fw24.get(props.queueName, 'dlq_') || fw24.get('dlq_default');
+    let dlq: Queue = fw24.get(props.queueName, 'dlq') || fw24.get('dlq_default');
     
     if(!dlq){
       dlq = new Queue(this, "default-dlq", {});
@@ -69,10 +76,10 @@ export class QueueLambda extends Construct {
       ...props.queueProps,
     }) as Queue;
 
-    fw24.set(props.queueName, queue.queueName, "queueName_");
-    this.logger?.debug(" Queue Name set in fw24 scope : ", props.queueName, " :", fw24.get(props.queueName, 'queueName_'));
+    fw24.set(props.queueName, queue.queueName, "queueName");
+    this.logger?.debug(" Queue Name set in fw24 scope : ", props.queueName, " :", fw24.get(props.queueName, 'queueName'));
 
-    fw24.set(props.queueName, queue, "queue_");
+    fw24.set(props.queueName, queue, "queue");
 
     if(props.lambdaFunctionProps){
       const queueFunction = new LambdaFunction(this, `${id}-lambda`, { ...props.lambdaFunctionProps }) as NodejsFunction;
@@ -86,9 +93,12 @@ export class QueueLambda extends Construct {
     }
 
     // subscribe the queue to SNS topic
-    props?.topics?.forEach( ( topic: any) => {
-      const topicArn = fw24.getArn('sns', fw24.get(topic.name, 'topicName_'));
-      const topicInstance = Topic.fromTopicArn(this, topic.name+id+'-topic', topicArn);
+    props?.subscriptions?.topics?.forEach( ( topic: any) => {
+      const topicName = typeof topic === 'string' ? topic : topic.name;
+      const filters = typeof topic === 'string' ? [] : topic.filters;
+
+      const topicArn = fw24.getArn('sns', fw24.get(topicName, 'topicName'));
+      const topicInstance = Topic.fromTopicArn(this, topicName+id+'-topic', topicArn);
       // TODO: add ability to filter messages
       topicInstance.addSubscription(new SqsSubscription(queue));
     });

@@ -58,7 +58,7 @@ export class APIGateway implements IStack {
         const paramsApi: Mutable<RestApiProps> = this.stackConfig.apiOptions || {};
         // Enable CORS if defined
         if (this.stackConfig.cors) {
-            console.log("Enabling CORS... this.config.cors: ", this.stackConfig.cors);
+            this.logger.debug("Enabling CORS... this.config.cors: ", this.stackConfig.cors);
             paramsApi.defaultCorsPreflightOptions = this.getCorsPreflightOptions();
         }
         this.logger.debug("Creating API Gateway... ");
@@ -81,14 +81,14 @@ export class APIGateway implements IStack {
 
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
-            console.log("API-gateway stack: construct: app has modules ", modules);
+            this.logger.debug("API-gateway stack: construct: app has modules ", Array.from(modules.keys()));
             for (const [, module] of modules) {
                 const basePath = module.getBasePath();
-                console.log("Load controllers from module base-path: ", basePath);
+                this.logger.debug("Load controllers from module base-path: ", basePath);
                 Helper.registerControllersFromModule(module, this.registerController);
             }
         } else {
-            console.log("API-gateway stack: construct: app has NO modules ");
+            this.logger.debug("API-gateway stack: construct: app has NO modules ");
         }
     }
 
@@ -124,7 +124,7 @@ export class APIGateway implements IStack {
 
         const { defaultAuthorizerName, defaultAuthorizerType, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig } = this.extractDefaultAuthorizer(controllerConfig);
 
-        this.logger.info(`APIGateway ~ Register Controller ~ Default Authorizer: ${defaultAuthorizerName} - ${defaultAuthorizerType} - ${defaultAuthorizerGroups}`);
+        this.logger.info(`Register Controller ~ Default Authorizer: name: ${defaultAuthorizerName} - type: ${defaultAuthorizerType} - groups: ${defaultAuthorizerGroups}`);
       
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             this.logger.info(`Registering route ${route.httpMethod} ${route.path}`);
@@ -180,10 +180,7 @@ export class APIGateway implements IStack {
             entry: filePath + "/" + fileName,
             fw24LayerArn: this.fw24.getLayerARN(),
             environmentVariables: this.getEnvironmentVariables(controllerConfig),
-            buckets: controllerConfig?.buckets,
-            queues: controllerConfig?.queues,
-            topics: controllerConfig?.topics,
-            tableName: controllerConfig?.tableName,
+            resourceAccess: controllerConfig?.resourceAccess,
             allowSendEmail: true,
             functionProps: functionProps
         }) as NodejsFunction;

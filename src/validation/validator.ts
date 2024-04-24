@@ -2,100 +2,10 @@
  * Defines validation rules and criteria that can be used to validate input, record, and actor data.
  * Provides a Validator class that validates data against defined validation rules and criteria.
  */
-import { Schema } from "electrodb";
-import { IValidator, IValidatorResponse, ValidatorOptions } from "./validator.type";
-import { DeepWritable } from '../utils/types';
-import { Actor, EntityValidations, InputType, RecordType, TConditionalValidationRule, TEntityOpValidations, TEntityValidationCondition, TMapOfValidationConditions, Validations } from "./validator.type";
-import { TDefaultEntityOperations, EntitySchema, TEntityOpsInputSchemas } from "../entity";
+import { EntitySchema, TEntityOpsInputSchemas } from "../entity";
 import { createLogger } from "../logging";
-
-if (!('toJSON' in Error.prototype)){
-    Object.defineProperty(Error.prototype, 'toJSON', {
-        value: function () {
-            var alt: any = {};
-    
-            Object.getOwnPropertyNames(this).forEach(function (key) {
-                //@ts-ignore
-                alt[key] = this[key];
-            }, this);
-    
-            return alt;
-        },
-        configurable: true,
-        writable: true
-    });
-}
-
-const logger = createLogger('Validator');
-
-export function extractOpValidationFromEntityValidations<
-  Sch extends EntitySchema<any, any, any, Ops>, 
-  ConditionsMap extends TMapOfValidationConditions<any, any>,
-  Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
-  OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
->( 
-  operationName: keyof OpsInpSch, 
-  entityValidations: EntityValidations<Sch, ConditionsMap, OpsInpSch>
-){
-
-	const validations: DeepWritable<TEntityOpValidations<any, any, ConditionsMap>> = {
-		actorRules: {},
-		inputRules: {},
-		recordRules: {},
-	}
-
-	for(const validationGroupKey of ['actorRules', 'inputRules', 'recordRules' ] as const ){
-		
-        const groupValidationRules = entityValidations[validationGroupKey];
-		if(!groupValidationRules){ continue; }
-
-		for(const propertyName in groupValidationRules){
-
-			const propertyRules = groupValidationRules[propertyName as keyof typeof groupValidationRules];
-			if(!propertyRules){ continue; }
-			
-			const formattedPropertyRules = [];
-			
-			for(const rule of propertyRules as Array<any>){
-				if(!rule){ continue;}
-
-				const{operations, ...restOfTheValidations} = rule;
-			
-				for(const thisOp of operations ?? ['*']){
-					if (Array.isArray(thisOp) && thisOp[0] === operationName ) {
-                        const [thisOpName, conditions] = thisOp;
-
-						/**
-						 * 
-						 * ['update', ['recordIsNotNew', 'tenantIsXYZ']],
-						 * ['update', [['recordIsNotNew', 'inputIsNitin'], 'any']]
-						 * 
-						 */
-						let thisRuleValidations: any = {
-							...restOfTheValidations,
-                            conditions,
-						};
-
-						formattedPropertyRules.push(thisRuleValidations);
-					} else if( thisOp === '*' || thisOp === operationName){
-						formattedPropertyRules.push({ ...restOfTheValidations });
-					}
-				}
-
-				if(formattedPropertyRules.length){
-					validations[validationGroupKey]![propertyName] = formattedPropertyRules;
-				} else {
-					logger.debug("No applicable rules found for op: prop: group: from-rule:", [operationName, propertyName, validationGroupKey, rule]);
-				}
-			}
-		}
-	}
-    
-	return {
-		opValidations: {...validations} as TEntityOpValidations<any, any, ConditionsMap>, 
-		conditions: entityValidations.conditions
-	}
-}
+import { Actor, ComplexValidationRule, ConditionalValidationRule, EntityValidationCondition, ValidatorResult, IValidator, InputType, InputValidationResult, InputValidationRule, MapOfValidationCondition, OpValidatorOptions, RecordType, TComplexValidationValue, TValidationValue, TestComplexValidationResult, TestComplexValidationRuleResult, TestValidationResult, TestValidationRuleResult, ValidateHttpRequestOptions, ValidationError, ValidationRule, Validations } from "./types";
+import { extractOpValidationFromEntityValidations, isComplexValidationValue, isComplexValidationValueWithMessage, isComplexValidationValueWithValidator, isConditionsAndScopeTuple, isTestComplexValidationResult, makeEntityValidationMessageIds, makeHttpValidationMessageIds, makeValidationErrorMessage, makeValidationErrorMessageIds } from "./utils";
 
 /**
  * Validates input data against a set of validation rules. 
@@ -104,117 +14,203 @@ export function extractOpValidationFromEntityValidations<
  * Returns whether validation passed and any errors.
 */
 export class Validator implements IValidator {
+    readonly logger = createLogger(Validator.name);
+
     /**
      * Validates input data against a set of validation rules with criteria.
      * Handles validating at multiple levels (actor, input, record) based on the options passed in.
      * Returns whether validation passed and any errors.
     */
-    async validate<
-        OpName extends keyof OpsInpSch,
-        Sch extends EntitySchema<any, any, any, Ops>, 
-        ConditionsMap extends TMapOfValidationConditions<any, any>, 
-        Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
+    async validateEntity<
+        Sch extends EntitySchema<any, any, any>, 
+        OpName extends keyof Sch['model']['entityOperations'],
+        ConditionsMap extends MapOfValidationCondition<any, any>, 
         OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
     >(
-        options: ValidatorOptions<OpName, Sch, ConditionsMap, OpsInpSch>
-    ): Promise<IValidatorResponse> {
+        options: OpValidatorOptions<Sch, OpName, ConditionsMap, OpsInpSch>
+
+    ): Promise<ValidatorResult> {
         
-        const { entityValidations, operationName, input, actor, record } = options;
+        const { entityValidations, entityName, operationName, input, actor, record, 
+            collectErrors = true, 
+            verboseErrors = false,
+            overriddenErrorMessages 
+        } = options;
+        
+        const result: ValidatorResult = {
+            pass: true,
+            errors: []
+        }
 
         if(!entityValidations){
-            return {
-                pass: true,
-                errors: []
-            }
+            return result
         }
 
         const opsValidationRules = extractOpValidationFromEntityValidations(operationName, entityValidations);
-        logger.debug("🚀 ~ Validator.validate ~ rules, input, actor, record:", JSON.stringify({ opsValidationRules, input, actor, record}));
-        
-        const { opValidations: {inputRules, actorRules, recordRules}, conditions } = opsValidationRules;
-        
-        let pass = true;
-        const errors: Array<Error> = [];
-        
-        if(actorRules){
-            for(const key in actorRules){
 
-                const validationsWithCriteria = actorRules[key];
+        this.logger.debug("validate ~ rules, input, actor, record:", JSON.stringify({ opsValidationRules, input, actor, record}));
+        
+        const { conditions } = opsValidationRules;
+
+        for( const ruleType of ['actor', 'input', 'record'] as const){
+            const typeRules = opsValidationRules['opValidations'][ruleType];
+            if(!typeRules){ continue; } 
+
+            for(const key in typeRules){
+
+                const validationsWithCriteria = typeRules[key as keyof typeof typeRules];
                 if(!validationsWithCriteria){ continue; }
 
-                const res = await this.validateRulesWithCriteria({
+                const inputVal = ruleType == 'actor' ? actor?.[key]
+                                : ruleType == 'input' ? input?.[key]
+                                : ruleType == 'record' ? record?.[key] 
+                                : undefined;
+
+                const res = await this.validateConditionalRules({
                     actor,
                     input, 
                     record, 
                     rules:          validationsWithCriteria, 
-                    inputVal:       actor?.[key], 
-                    allConditions:  conditions as TMapOfValidationConditions,
+                    inputVal:       inputVal, 
+                    allConditions:  conditions as MapOfValidationCondition,
                 });
                 
-                pass = pass && res.pass;
-                if(res.errors?.length){
-                    // errors.push(new Error(`Validation failed for actor.${key}`, { cause: res.errors+''}));
-                    errors.push(new Error(`Validation failed for actor.${key} ::: ${ JSON.stringify({cause: res.errors}) }`));
+                result.pass = result.pass && res.pass;
+
+                if( collectErrors && res.errors?.length){
+                    res.errors.forEach( err => {
+                        err.messageIds = makeEntityValidationMessageIds(entityName, ruleType, key, err.messageIds ?? []);
+                        err.path = err.path ?? [];``
+                        err.path.push(key);
+                        err.path.push(ruleType);
+                        err['message'] = makeValidationErrorMessage(err, overriddenErrorMessages);
+
+                        result.errors?.push( verboseErrors ? err : {path: err.path, message: err.message} );
+                    });
                 }
             }
         }
 
-        if(inputRules){
-            for(const key in inputRules){
+        this.logger.info("validate ~ result:", { result });
 
-                const validationsWithCriteria = inputRules[key];
-                if(!validationsWithCriteria){ continue; }
+        return result;
+    }
 
-                const res = await this.validateRulesWithCriteria({
-                    actor,
-                    input, 
-                    record, 
-                    rules:          validationsWithCriteria, 
-                    inputVal:       input?.[key], 
-                    allConditions:  conditions as TMapOfValidationConditions,
+    /**
+     * Tests validations rules for the given input object against the provided validation rules.
+     * 
+     * @param input - The input object to validate.
+     * @param rules - The validation rules to test, where each key is a key on the input object.
+     * @returns Whether the input passed all the validation rules.
+     */
+    async validateInput<I extends InputType>(
+        input: I | undefined,
+        rules?: InputValidationRule<I>, 
+        collectErrors: boolean = true
+    ): Promise<InputValidationResult<I>> {
+
+        const result: InputValidationResult<I> = {
+            pass: true,
+            errors: {},
+        };
+
+        for(const key in rules){
+            const thisRule = rules[key];
+            if(!thisRule){ continue; }
+
+            const validationRes = await this.testComplexValidationRule<any>(thisRule, input?.[key] );                    
+            result.pass = result.pass && validationRes.pass;
+
+            if(collectErrors && validationRes.errors && validationRes.errors.length){
+                result.errors![key] = validationRes.errors?.map( err => {
+                    const path = err.path ?? [];
+                    if(!path.includes(key)){
+                        path.push(key);
+                    }
+                    return {...err, path};
                 });
+            }
+        }
 
-                pass = pass && res.pass;
-                if(res.errors?.length){
-                    errors.push(new Error(`Validation failed for input.${key} ::: ${ JSON.stringify({ cause: res.errors}) }` ));
+        return result;
+    }
+
+    /**
+     * Tests validations rules for the given input object against the provided validation rules.
+     * 
+     * @param input - The input object to validate.
+     * @param rules - The validation rules to test, where each key is a key on the input object.
+     * @returns Whether the input passed all the validation rules.
+     */
+    async validateHttpRequest<
+        Header extends InputType = InputType, 
+        Body extends InputType = InputType,
+        Param extends InputType = InputType,
+        Query extends InputType = InputType,
+    >(
+        
+        options: ValidateHttpRequestOptions<Header, Body, Param, Query>
+
+    ): Promise<ValidatorResult> {
+
+        const { requestContext, validations, collectErrors = true, verboseErrors=false, overriddenErrorMessages } = options;
+
+        const res: ValidatorResult = {
+            pass: true,
+            errors: [],
+        };
+
+        this.logger.debug("called validateHttpRequest", {requestContext, validations});
+
+        for(const validationType of ['body', 'param', 'query', 'header'] as const){
+            const typeValidationRules = validations[validationType];  
+            if(!typeValidationRules){
+                continue;
+            }
+
+            let validationInput: any = {};
+
+            if(validationType == 'body'){
+                validationInput = requestContext.body;
+            } else if(validationType == 'param'){
+                validationInput = requestContext.pathParameters;
+            } else if(validationType == 'query'){
+                validationInput = requestContext.queryStringParameters;
+            } else if(validationType == 'header'){
+                validationInput = requestContext.headers;
+            }
+
+            const inputValidationResult = await this.validateInput<typeof validationInput>(validationInput, typeValidationRules);
+
+            res.pass = res.pass && inputValidationResult.pass;
+
+            if(collectErrors && !inputValidationResult.pass){
+
+                for(const prop in inputValidationResult.errors){
+                    const propErrors = inputValidationResult.errors[prop] ?? [];
+
+                    propErrors.forEach( error => {
+                        error.path = error.path ?? [];
+                        error.path.push(validationType);
+
+                        const httpValidationMessageIds = makeHttpValidationMessageIds({
+                            validationType, 
+                            propertyName: prop,
+                            errorMessageIds: error.messageIds || []
+                        });
+                        error.messageIds = httpValidationMessageIds;
+
+                        error.message = makeValidationErrorMessage(error, overriddenErrorMessages);
+
+                        res.errors?.push( verboseErrors ? error : {path: error.path, message: error.message} );
+                    });
                 }
             }
         }
 
-        if(recordRules){
-            
-            for(const key in recordRules){
-                const validationsWithCriteria = recordRules[key];
-                if(!validationsWithCriteria){ continue; }
+        this.logger.info("validateHttpRequest result: ", res );
 
-                const res = await this.validateRulesWithCriteria({
-                    actor,
-                    input, 
-                    record, 
-                    rules:          validationsWithCriteria, 
-                    inputVal:       record?.[key], 
-                    allConditions:  conditions as TMapOfValidationConditions,
-                });
-
-                pass = pass && res.pass;
-                if(res.errors?.length){
-                    errors.push(new Error(`Validation failed for record.${key} ::: ${ JSON.stringify({ cause: res.errors}) }`));
-                }
-            }
-        }
-
-        logger.debug("🚀 ~ Validator.validate ~ result:", JSON.stringify({ pass, errors}));
-
-        const formattedErrors:string[] = [];
-
-        for(const err of errors){
-            formattedErrors.push(`${err.name}:  ${err.message}`);
-        }
-
-        return Promise.resolve({
-            pass,
-            errors: formattedErrors,
-        });
+        return res;
     }
 
     /**
@@ -227,26 +223,28 @@ export class Validator implements IValidator {
      * @param actor - The actor object containing actor information
      * @returns A promise resolving to an object containing a boolean indicating if validation passed, and any validation errors
      */
-    async validateRulesWithCriteria<I extends InputType = any, R extends RecordType = any>(
+    async validateConditionalRules<I extends InputType = any, R extends RecordType = any>(
         options: {
-            rules: TConditionalValidationRule<any, any>[],
-            allConditions: TMapOfValidationConditions,
+            rules: ConditionalValidationRule<any, any>[],
+            allConditions: MapOfValidationCondition,
             inputVal?: any,
             input?: I, 
             record?: R, 
             actor?: Actor
         }
-    ){
+    ): Promise<TestComplexValidationRuleResult>{
 
-        logger.debug( "🚀 ~ Validator: validateRulesWithCriteria ~ arguments:", JSON.stringify(options) );
+        this.logger.debug("validateConditionalRules ~ arguments:", JSON.stringify(options) );
         
         const {rules, allConditions, inputVal, input, record, actor} = options;
 
-        let validationPassed = true;
-        const errors: any = [];
+        const result: TestComplexValidationRuleResult = {
+            pass: true,
+            errors: [],
+        };
 
-        await Promise.all( rules.map(async (rule) => {
-            return this.validateRuleWithCriteria({
+        const results = await Promise.all( rules.map(async (rule) => {
+            return this.validateConditionalRule({
                 rule, 
                 input, 
                 actor,
@@ -254,21 +252,24 @@ export class Validator implements IValidator {
                 inputVal, 
                 allConditions,
             });
-        })).then( results => {
-            for(const res of results){
-                validationPassed = validationPassed && res.pass;
-                if(res.errors){
-                    errors.push(...res.errors);
-                }
+        }));
+
+        for(const ruleResult of results){
+            result.pass = result.pass && ruleResult.pass;
+            if(ruleResult.errors){
+                result.errors!.push(...ruleResult.errors);
             }
-        });
+            if(ruleResult.customMessage || ruleResult.customMessageId){
+                result.errors!.push({
+                    customMessage: ruleResult.customMessage,
+                    customMessageId: ruleResult.customMessageId,
+                })
+            }
+        }
 
-        return { 
-            pass: validationPassed,
-            errors,
-        };
+        return result;
     }
-
+    
     /**
      * Validates a validation rule that has criteria, to determine if the 
      * criteria is met before running the validation.
@@ -285,59 +286,100 @@ export class Validator implements IValidator {
      * @param actor - The actor to check criteria against
      * @returns A promise resolving to validation results
      */
-    async validateRuleWithCriteria<I extends InputType =  any, R extends RecordType = any >(
+    async validateConditionalRule<I extends InputType =  any, R extends RecordType = any >(
         options: {
-            rule: TConditionalValidationRule<any, any>,
-            allConditions: TMapOfValidationConditions,
+            rule: ConditionalValidationRule<any, any>,
+            allConditions: MapOfValidationCondition,
             inputVal?: any,
             input?: I, 
             record?: R, 
             actor?: Actor
         }
-    ): Promise<IValidatorResponse> {
+    ): Promise<TestComplexValidationRuleResult> {
 
-        logger.debug( "🚀 ~ Validator: validateRuleWithCriteria ~ arguments:", JSON.stringify(options) );
+        this.logger.debug("validateConditionalRules ~ arguments:", JSON.stringify(options) );
         
         const {rule, allConditions, inputVal, input, record, actor} = options;
         
         const { conditions: ruleConditions, ...partialValidation } = rule;
-        /**
-         * 
-         * Conditions ==> ['actorIs123', 'ppp', 'qqq'] | [ ['actorIs123', 'ppp', 'qqq'], 'all' ]
-         * 
-         * 
-         */
+ 
+        const criteriaPassed = await this.testConditions({
+            conditions: ruleConditions,
+            allConditions,
+            inputVal,
+            input,
+            record,
+            actor,
+        });
 
-        // const conditionsOrConditionsTuple: string[] = conditions as string[];
-        
-        let formattedConditions: {applicable: string, conditionNames: string[]} = {
-            applicable: 'all',
-            conditionNames: [],
+        const result: TestComplexValidationRuleResult = {
+            pass: true,
         };
 
-        if(Array.isArray(ruleConditions)){
-            if(ruleConditions.length == 2){
-                const [conditions, applicability] = ruleConditions;
-                formattedConditions.applicable = applicability as string,
-                formattedConditions.conditionNames = conditions as string[];
-            } else {
-                formattedConditions.conditionNames = ruleConditions as string[];
+        this.logger.debug("validateConditionalRules ~ criteriaPassed:", criteriaPassed);
+
+        if(criteriaPassed){
+            let validation = await this.testComplexValidationRule(partialValidation, inputVal);
+            this.logger.debug("validateConditionalRules ~ validation-result:", validation);
+
+            result.pass = result.pass && validation.pass;
+            result.errors = validation.errors;
+
+            if(validation.customMessage){
+                result.customMessage = validation.customMessage;
+            }
+            if(validation.customMessageId){
+                result.customMessageId = validation.customMessageId;
             }
         }
 
-        // record and actor are only required to test the criteria, and probably should be handled in  a separate function
+        this.logger.debug("validateConditionalRules ~ result:", { result });
+
+        return result;
+    }
+
+    async testConditions<I extends InputType =  any, R extends RecordType = any >(
+        options: {
+            conditions: ConditionalValidationRule<any, any>['conditions'],
+            allConditions: MapOfValidationCondition,
+            inputVal?: any,
+            input?: I, 
+            record?: R, 
+            actor?: Actor
+        }
+    ): Promise<boolean> {
+
+        const {conditions, allConditions, inputVal, input, record, actor} = options;
+
         let criteriaPassed = true;
+        const formattedConditions = {
+            scope: 'all',
+            conditionNames: [] as string[],
+        };
+
+        /**
+         * Conditions ==> ['actorIs123', 'ppp', 'qqq'] | [ ['actorIs123', 'ppp', 'qqq'], 'all' ] 
+         */
+        if(Array.isArray(conditions)){
+            if( isConditionsAndScopeTuple(conditions) ){
+                const [conditionNames, scope] = conditions;
+                formattedConditions.scope = scope,
+                formattedConditions.conditionNames = conditionNames;
+            } else {
+                formattedConditions.conditionNames = conditions as string[];
+            }
+        }
         
         if(formattedConditions.conditionNames.length){
             
-            if(formattedConditions.applicable == 'any'){
+            if(formattedConditions.scope == 'any'){
 
                 criteriaPassed = false;
-                
+        
                 for(const conditionName of formattedConditions.conditionNames ){
                     const ctRule = allConditions[conditionName];
 
-                    const applicable =  this.testIsCriteriaApplicable( ctRule, input, record, actor);
+                    const applicable = await this.testCondition( ctRule, input, record, actor);
                     if(applicable){
                         // * test for applicability
                         // if any of them passes, we are good to go
@@ -350,52 +392,30 @@ export class Validator implements IValidator {
             } else {
 
                 criteriaPassed = true; 
-                
+
                 for(const conditionName of formattedConditions.conditionNames ){
                     const ctRule = allConditions[conditionName];
                     
-                    const applicable =  this.testIsCriteriaApplicable( ctRule, input, record, actor);
-                    if(formattedConditions.applicable == 'none' && applicable ){
-                        
-                        // * test for applicability
-                        // if any of them passes the validation does not apply
-                        // else continue
+                    const applicable = await this.testCondition( ctRule, input, record, actor);
+                    // * test for applicability
+                    // if any of them passes the validation does not apply
+                    // else continue
+                    if(formattedConditions.scope == 'none' && applicable ){
                         criteriaPassed = false;
                         break;
-
-                    } else if(formattedConditions.applicable == 'all' && !applicable){
-                        
-                        // * test for NOT-applicability
-                        // if any of them fails the validation does not apply
-                        // else continue;
+                    } 
+                    // * test for NOT-applicability
+                    // if any of them fails the validation does not apply
+                    // else continue;
+                    else if(formattedConditions.scope == 'all' && !applicable){
                         criteriaPassed = false;
                         break;
-
                     }
                 }
             }
-
         }
 
-        let validationPassed = true;
-        const errors = [];
-
-
-        logger.debug("🚀 ~ Validator: validateRuleWithCriteria ~ criteriaPassed:", criteriaPassed);
-        if(criteriaPassed){
-            let validation = this.testAllValidationsWithErrors(partialValidation, inputVal);
-            logger.debug("🚀 ~ Validator: validateRuleWithCriteria ~ validation-result:", validation);
-
-            validationPassed = validationPassed && validation.pass;
-            errors.push(...validation.errors);  
-        }
-
-        logger.debug("🚀 ~ Validator: validateRuleWithCriteria ~ result:", { validationPassed, errors});
-
-        return Promise.resolve({ 
-            pass: validationPassed,
-            errors,
-        });
+        return criteriaPassed;
     }
 
     /**
@@ -403,53 +423,54 @@ export class Validator implements IValidator {
      * and actor. Evaluates the actorRules, inputRules and recordRules in the
      * criteria to determine if it is applicable.
      */
-    testIsCriteriaApplicable<I extends InputType, R extends RecordType>(criteria: TEntityValidationCondition<I, R>, input?: I, record?: R, actor?: Actor) {
+    async testCondition<I extends InputType, R extends RecordType>(
+        criteria: EntityValidationCondition<I, R>, 
+        input?: I, 
+        record?: R, 
+        actor?: Actor
+    ) {
 
-        const{ actorRules, inputRules, recordRules } = criteria;
+        const{ actor:actorRules, input:inputRules, record:recordRules } = criteria;
 
         let applicable = true;
 
         if(actorRules){
-            applicable = applicable && this.testAllValidations<Actor>(actor, actorRules);
+            const result = await this.validateInput<Actor>(actor, actorRules, false);
+            applicable = applicable &&  result.pass;
         }
 
         if(applicable && inputRules){
-            applicable = applicable && this.testAllValidations<I>( input, inputRules);
+            const result = await this.validateInput<I>( input, inputRules, false);
+
+            applicable = applicable && result.pass;
         }
 
         if(applicable && recordRules){
-            applicable = applicable && this.testAllValidations<R>(record, recordRules);
+            const result = await this.validateInput<R>(record, recordRules, false);
+            applicable = applicable && result.pass;
         }
 
         return applicable;
     }
 
-    /**
-     * Tests all validations for the given input object against the provided validation rules.
-     * 
-     * @param input - The input object to validate.
-     * @param rules - The validation rules to test, where each key is a key on the input object.
-     * @returns Whether the input passed all the validation rules.
-     */
-    testAllValidations<I extends InputType>(
-        input: I | undefined,
-        rules?: { [K in  keyof I] ?: Validations<I[K]> }, 
-    ) {
-        let pass = true;
-        
-        if(!rules) {
-            return pass;
+    async testComplexValidationRule<T>(complexValidationRule: ComplexValidationRule<T>, val: T, collectErrors = true ): Promise<TestComplexValidationRuleResult>{
+        let res: TestComplexValidationRuleResult = {
+            pass: true,
+            errors: []
+        };
+
+        const { message: customMessage, validator: customValidatorForRule, messageId: customMessageId, ...validationRule } = complexValidationRule;
+
+        if(customValidatorForRule){
+            res = await customValidatorForRule(val, collectErrors);
+        } else {
+            res = await this.testValidationRule(validationRule, val, collectErrors);
         }
 
-        for(const key in rules){
-            const validations = rules[key];
-            if(validations){
-                const result = this.testValidation(validations!, input?.[key] );
-                pass = typeof result == 'boolean' ? result : false;
-            }
-        }
+        res.customMessage =  customMessage ?? res.customMessage;
+        res.customMessageId = customMessageId ?? res.customMessageId ;
 
-        return pass;
+        return res;
     }
 
     /**
@@ -462,44 +483,77 @@ export class Validator implements IValidator {
      * Returns an object containing a boolean indicating if all validations passed, 
      * and any errors encountered.
     */
-    testAllValidationsWithErrors(partialValidation: Validations, val: any) {
-        logger.debug("🚀 ~ Validator ~ testAllValidationsWithErrors ~ arguments:", {partialValidation, val});
-        let pass = true;
-        const errors: Array<any> = [];
-        
-        if(partialValidation) {
-            // * validate one rule ar a time
-            for(const key in partialValidation){
-                //@ts-ignore
-                const validationRule = { [key]: partialValidation[key] } as Validations;
-                
-                const result = this.testValidation(validationRule, val );
+    async testValidationRule<T>(validationRule: ValidationRule<T>, val: T, collectErrors = true): Promise<TestValidationRuleResult> {
+        this.logger.info("testValidationRule ~ arguments:", {validationRule, val});
 
-                logger.debug("🚀 ~ Validator ~ testAllValidationsWithErrors ~ testValidation result: ", {validationRule, result});
-                
-                if(typeof result == 'boolean'){
-                    pass = pass && result;
-                    if(!result){
-                        errors.push( new Error(`Validation '${key}' failed`) );
-                    }
-                } else {
-                    pass = false;
-                    errors.push(result);
+        const res: TestValidationRuleResult = {
+            pass: true,
+            errors: []
+        };
+        
+        // * validate one rule at a time
+        for(const validationName in validationRule){
+
+            let testValidationResult: TestValidationResult;
+            let validationValue = validationRule[validationName as keyof ValidationRule<T>];
+
+            if(isComplexValidationValue(validationValue)){
+                testValidationResult = await this.testComplexValidation(validationName as keyof ValidationRule<T>, validationValue, val );
+                this.logger.debug("testValidationRule ~ testComplexValidation result: ", {validationValue, val, testValidationResult});
+            } else {
+                testValidationResult = await this.testValidation(validationName as keyof ValidationRule<T>, validationValue, val);
+                this.logger.debug("testValidationRule ~ testValidation result: ", {validationValue, val, testValidationResult});
+            }
+            
+            res.pass = res.pass && testValidationResult.pass;
+
+            if(collectErrors && !testValidationResult.pass){
+
+                const errorMessageIds = makeValidationErrorMessageIds(validationName, validationValue);
+                const validationError: ValidationError = {
+                    messageIds: errorMessageIds,
+                    expected: testValidationResult.expected,                           
+                    received: testValidationResult.received,
                 }
+
+                if(isTestComplexValidationResult(testValidationResult)){
+                    if(testValidationResult.customMessageId){
+                        validationError.customMessageId = testValidationResult.customMessageId;
+                    }
+                    if(testValidationResult.customMessage){
+                        validationError.customMessage = testValidationResult.customMessage;
+                    }
+                }
+
+                res.errors!.push(validationError);
             }
         }
 
-        logger.debug("🚀 ~ Validator ~ testAllValidationsWithErrors ~ results:", {pass, errors});
+        this.logger.info("testValidationRule ~ results:", {res});
 
-        return {
-            pass,
-            errors,
-        };
-
+        return res;
     }
 
-    isNumeric(num: any){
-        return !isNaN(num)
+    async testComplexValidation<T extends unknown>( 
+        validationName: keyof ValidationRule<T>, 
+        validationValue: TComplexValidationValue<T>, 
+        val: T 
+    ): Promise<TestComplexValidationResult> {
+        this.logger.info("testComplexValidation ~ partialValidation:, val: ", {validationName, validationValue, val});
+
+        let result: TestComplexValidationResult = { pass: true};
+
+        if( isComplexValidationValueWithValidator(validationValue) ){
+            result = await validationValue.validator(val);
+        } else if(isComplexValidationValueWithMessage(validationValue)) {
+            result = await this.testValidation(validationName, validationValue.value, val);
+        }
+
+        // validator fn can return it's own message or it can be defined at the validation level
+        result.customMessage = result.customMessage || validationValue.message; 
+        result.customMessageId = result.customMessageId || validationValue.messageId; 
+
+        return result;
     }
 
     /**
@@ -509,61 +563,185 @@ export class Validator implements IValidator {
      * @param val - The value to validate.
      * @returns True if the value passes all validations, false otherwise. Can also return validation error objects.
     */
-    testValidation(partialValidation: Validations, val: any){
-        logger.debug("🚀 ~ Validator ~ testValidation ~ partialValidation:, val: ", partialValidation, val);
-        const{ required, minLength, maxLength, pattern, datatype, unique, eq, neq, gt, gte, lt, lte } = partialValidation;
+    async testValidation(
+        validationName: keyof Validations<any>, 
+        validationValue: TValidationValue<any>, 
+        val: any 
+    ): Promise<TestValidationResult>{
 
-        if(required && val === undefined) {
-            return false;
-        }
-        if(minLength && val && val.length < minLength) {
-            return false;
-        }
-        if(maxLength && val && val.length > maxLength) {
-            return false;
-        }
-        if(pattern && val && !pattern.test(val as unknown as string)) {
-            return false;
-        }
-        if(datatype) {
+        this.logger.debug("testValidation ~ ", {validationName, validationValue, val} );
 
-            if(datatype == 'number'){
-                return this.isNumeric(val);
+        const result: TestValidationResult = { 
+            pass: true, 
+            received: [val],
+            expected: [validationName, validationValue],
+        }
+        
+        if(validationName === 'required' ){
+
+            result.pass = (val !== undefined && val !== null);
+
+        } else if( validationName === 'minLength' ) {
+
+            result.pass = val && val.length >= validationValue;
+            result.received = [val, val?.length || 0];
+
+        } else if( validationName === 'maxLength') {
+
+            result.pass = val && val.length <= validationValue;
+            result.received = [val, val?.length || 0];
+
+        } else if( validationName === 'pattern') {
+
+            result.pass = val && validationValue.test(val as unknown as string);
+
+        } else if( validationName === 'eq' ){
+
+            result.pass = val === validationValue;
+
+        } else if(validationName === 'neq') {
+
+            result.pass = val !== validationValue;
+
+        } else if(validationName === 'gt') {
+
+            result.pass = val > validationValue;
+            
+        } else if(validationName === 'gte') {
+            
+            result.pass = val >= validationValue;
+
+        } else if(validationName === 'lt') {
+
+            result.pass = val < validationValue;
+
+        } else if(validationName === 'lte') {
+
+            result.pass = val <= validationValue;
+
+        } else if(validationName === 'inList') {
+
+            result.pass = validationValue.includes(val);
+
+        } else if(validationName === 'notInList') {
+
+            result.pass = !validationValue.includes(val);
+
+        } else if( validationName === 'unique' ) {
+
+            result.pass = this.isUnique(val);
+
+        } else if(validationName === 'custom'){
+
+            if(typeof validationValue !== 'function'){
+                this.logger.warn(new Error(`Invalid custom validation rule: ${ {[validationName]: validationValue} }`));
+                result.pass = false;
+            } else {
+                result.pass = await validationValue(val);
             }
 
-            if(datatype == 'email'){
-                const pattern = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-                return pattern.test(val);
+        } if( validationName === 'datatype' ) {
+
+            if(validationValue === 'number'){
+
+                result.pass = this.isNumeric(val);
+
+            } else if(validationValue === 'email'){
+
+                result.pass = this.isEmail(val);
+
+            } else if(validationValue === 'ip'){
+
+                result.pass =  this.isIP(val);
+
+            } else if(validationValue === 'ipv4'){
+
+                result.pass = this.isIPv4(val);
+
+            } else if(validationValue === 'ipv6'){
+
+                result.pass = this.isIPv6(val);
+
+            } else if(validationValue === 'uuid'){
+
+                result.pass = this.isUUID(val);
+
+            } else if(validationValue === 'json'){
+
+                result.pass = this.isJson(val);
+
+            } else if(validationValue === 'date'){
+
+                result.pass = this.isDate(val);
+
+            } else if(validationValue === 'httpUrl'){
+
+                result.pass =  this.isHttpUrl(val);
+
+            } else if( typeof val !== validationValue ) {
+
+                result.pass = false;
             }
 
-            // TODO: | 'ipv4' | 'ipv6' | 'uri' | 'url' | 'uuid' | 'json' | 'date' | 'date-time'
+        } 
 
-            return typeof val === datatype;
-        }
-        if(unique && val && val.length > 1) {
-            return true; // TODO: 
-        }
-        if(eq && val && val !== eq) {
-            return false;
-        }
-        if(neq && val && val === neq) {
-            return false;
-        }
-        if(gt && val && val <= gt) {
-            return false;
-        }
-        if(gte && val && val < gte) {
-            return false;
-        }
-        if(lt && val && val >= lt) {
-            return false;
-        }
-        if(lte && val && val > lte) {
-            return false;
-        }
+        this.logger.debug("testValidation ~ result ", {validationName, validationValue, val, result} );
 
+        return result;
+    }
+
+    isNumeric(num: any){
+        return !isNaN(num)
+    }
+
+    isEmail(val: string){
+        const pattern = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+        return pattern.test(val);
+    }
+
+    isUnique(val: any): boolean {
+        throw(new Error(`isUnique not implemented yet: ${val}`));
+    }
+
+    isIP(val: any){
+        return !!require('net').isIP(val)
+    }
+
+    isIPv4(val: any){
+        return require('net').isIPv4(val)
+    }
+
+    isIPv6(val: any){
+        return require('net').isIPv6(val)
+    }
+
+    isUUID(val: string){
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+    }
+
+    isJson(val: string) {
+        try {
+            JSON.parse(val);
+        } catch (e) {
+            return false;
+        }
         return true;
-    }   
+    }
+
+    isDate(val: string) {
+        return !isNaN(new Date(val).getDate());
+    }
+
+    isHttpUrl(val: string) {
+        let url;
+        try {
+            url = new URL(val);
+        } catch (_) {
+            return false;  
+        }
+
+        return url?.protocol === "http:" || url?.protocol === "https:";
+    }
 }
 
 

@@ -50,7 +50,7 @@ export class Fw24 {
     }
     
     public addStack(name: string, stack: any): Fw24 {
-        this.logger.debug("addStack:", JSON.stringify({name, stack}, getCircularReplacer()) );
+        this.logger.debug("addStack:", {name} );
         this.stacks[name] = stack;
         return this;
     }
@@ -60,7 +60,7 @@ export class Fw24 {
     }
 
     public addModule(name: string, module: IFw24Module) {
-        this.logger.debug("addModule:", {name, module});
+        this.logger.debug("addModule:", {name, module: module.getBasePath()} );
 
         this.modules.set(name, module);
     }
@@ -99,7 +99,7 @@ export class Fw24 {
 
         if( !this.queues.has(name) ){
             // get full queue name
-            const queueName = this.get(name, 'queueName_');
+            const queueName = this.get(name, 'queueName');
             const queueArn = this.getArn('sqs', queueName);
             const queue = Queue.fromQueueArn(this.stacks['main'], queueName, queueArn);
             this.queues.set(name, queue);            
@@ -119,7 +119,7 @@ export class Fw24 {
     }
 
     public getCognitoAuthorizer(name?: string): IAuthorizer | undefined {
-        this.logger.info("getCognitoAuthorizer: " + JSON.stringify({name}, getCircularReplacer()));
+        this.logger.info("getCognitoAuthorizer: ", {name});
         // If no name is provided and no default authorizer is set, throw an error
         if(name === undefined && this.defaultCognitoAuthorizer === undefined) {
             throw new Error('No Authorizer exists for cognito user pools. For policy based authentication, use AWS_IAM authoriser.');
@@ -140,7 +140,7 @@ export class Fw24 {
     }
 
     public set(name: string, value: any, prefix: string = '') {
-        this.logger.debug("set:", JSON.stringify({prefix, name, value}, getCircularReplacer()));
+        this.logger.debug("set:", {prefix, name});
         if(prefix.length > 0) {
             prefix = `${prefix}_`;
         }
@@ -155,7 +155,7 @@ export class Fw24 {
     }
 
     public addDynamoTable(name: string, table: TableV2) {
-        this.logger.debug("addDynamoTable:", JSON.stringify({ name, table}, getCircularReplacer()) );
+        this.logger.debug("addDynamoTable:", {name} );
         this.dynamoTables[name] = table;
     }
 

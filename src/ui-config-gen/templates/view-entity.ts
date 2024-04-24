@@ -22,7 +22,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         detailsPageConfig: {
             detailApiConfig: {
                 apiMethod: `GET`,
-                apiUrl: `/${options.entityName.toLowerCase()}/get`,
+                apiUrl: `/${options.entityName.toLowerCase()}/`,
             },
             propertiesConfig: [] as any[],
         }
