@@ -1,6 +1,8 @@
 import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { IFunctionResourceAccess } from "../constructs/lambda-function";
+import { RemovalPolicy } from "aws-cdk-lib";
+import { RetentionDays } from "aws-cdk-lib/aws-logs";
 
 export interface IControllerConfig {
 	authorizer?: Array<{ 
@@ -22,6 +24,8 @@ export interface IControllerConfig {
 	resourceAccess?: IFunctionResourceAccess;
 	env?: Array<ILambdaEnvConfig>;
 	functionProps?: NodejsFunctionProps
+	logRetentionDays?: RetentionDays;
+	logRemovalPolicy?: RemovalPolicy;
 }
 
 export function Controller(controllerName: string, controllerConfig: IControllerConfig = {}) {

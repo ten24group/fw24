@@ -90,7 +90,9 @@ export class SQSStack implements IStack {
                 entry: queueInfo.filePath + "/" + queueInfo.fileName,
                 fw24LayerArn: this.fw24.getLayerARN(),
                 environmentVariables: this.getEnvironmentVariables(queueConfig),
-                resourceAccess: queueConfig?.resourceAccess
+                resourceAccess: queueConfig?.resourceAccess,
+                logRemovalPolicy: queueConfig?.logRemovalPolicy,
+                logRetentionDays: queueConfig?.logRetentionDays,
             }
         }) as Queue;
 

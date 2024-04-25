@@ -1,13 +1,17 @@
 import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { IFunctionResourceAccess } from "../constructs/lambda-function";
+import { RetentionDays } from "aws-cdk-lib/aws-logs";
+import { RemovalPolicy } from "aws-cdk-lib";
 
 export interface ITaskConfig {
 	schedule: string;
 	env?: {
         name: string;
-    },
-	functionProps?: NodejsFunctionProps
-	resourceAccess?: IFunctionResourceAccess
+    };
+	functionProps?: NodejsFunctionProps;
+	resourceAccess?: IFunctionResourceAccess;
+	logRetentionDays?: RetentionDays;
+	logRemovalPolicy?: RemovalPolicy;
 }
 
 export function Task(taskName: string, taskConfig?: ITaskConfig) {
