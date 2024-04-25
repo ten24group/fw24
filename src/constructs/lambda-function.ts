@@ -1,5 +1,5 @@
 import { Construct } from "constructs";
-import { Duration } from "aws-cdk-lib";
+import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { Runtime, Architecture, ILayerVersion, LayerVersion } from "aws-cdk-lib/aws-lambda";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
@@ -10,6 +10,7 @@ import { SESStack } from "../stacks/ses";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { createLogger, ILogger } from "../logging";
+import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 
 export interface LambdaFunctionProps {
   entry: string;
@@ -18,6 +19,8 @@ export interface LambdaFunctionProps {
   environmentVariables?: { [key: string]: string };
   resourceAccess?: IFunctionResourceAccess;
   allowSendEmail?: boolean;
+  logRetentionDays?: RetentionDays;
+  logRemovalPolicy?: RemovalPolicy,
   functionProps?: NodejsFunctionProps;
 }
 
@@ -57,23 +60,34 @@ export class LambdaFunction extends Construct {
       memorySize: 128,
     };
 
+    // create log group
+    let logGroup =  props.functionProps?.logGroup;
+    if(!logGroup) {
+      let logRetentionDays = props.logRetentionDays || fw24.getConfig().logRetentionDays || 30;
+      logGroup = new LogGroup(this, `${id}-LogGroup`, {
+        removalPolicy: props.logRemovalPolicy || fw24.getConfig().logRemovalPolicy || RemovalPolicy.RETAIN,
+        retention: parseInt(logRetentionDays.toString()),
+      });
+    }
+    
     let additionalProps: any = {
       entry: props.entry,
     }
     // If layerArn is defined, then we are using the layer
     if(props.fw24LayerArn){
-      additionalProps.layers = [...(props.functionProps?.layers ?? []), LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, props.fw24LayerArn)];
+      additionalProps.layers = [...(props.functionProps?.layers ?? []), LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, props.fw24LayerArn)],
       additionalProps.bundling = {
         ...props.functionProps?.bundling,
         sourceMap: true,
         externalModules: ["aws-sdk", "fw24"],
-      };
+      }
+      additionalProps.logGroup = logGroup
     }
 
     const fn = new NodejsFunction(this, id, {
       ...defaultProps, 
       ...props.functionProps,
-      ...additionalProps
+      ...additionalProps,
     });
 
     // Set environment variables

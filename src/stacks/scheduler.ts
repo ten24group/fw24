@@ -86,6 +86,8 @@ export class SchedulerStack implements IStack {
                 ...taskProps,
             },
             resourceAccess: taskConfig.resourceAccess,
+            logRetentionDays: taskConfig.logRetentionDays,
+            logRemovalPolicy: taskConfig.logRemovalPolicy,
         }) as NodejsFunction;
 
 

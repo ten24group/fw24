@@ -1,14 +1,18 @@
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
 import { IFunctionResourceAccess } from "../constructs/lambda-function";
 import { IQueueSubscriptions } from "../constructs/queue-lambda";
+import { RetentionDays } from "aws-cdk-lib/aws-logs";
+import { RemovalPolicy } from "aws-cdk-lib";
 
 export interface IQueueConfig {
 	queueProps?: QueueProps;
 	env?: {
         name: string;
-    },
-	resourceAccess?: IFunctionResourceAccess
-	subscriptions?: IQueueSubscriptions
+    };
+	resourceAccess?: IFunctionResourceAccess;
+	subscriptions?: IQueueSubscriptions;
+	logRetentionDays?: RetentionDays;
+	logRemovalPolicy?: RemovalPolicy;
 }
 
 export function Queue(queueName: string, queueConfig?: IQueueConfig) {
