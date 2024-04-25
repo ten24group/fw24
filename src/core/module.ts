@@ -13,6 +13,8 @@ export interface IFw24Module{
     getQueuesDirectory(): string;
     getQueueFileNames(): string[];
     getDependencies(): string[];
+    getTasksDirectory(): string;
+    getTaskFileNames(): string[];
 }
 
 export abstract class AbstractFw24Module implements IFw24Module {
@@ -45,7 +47,19 @@ export abstract class AbstractFw24Module implements IFw24Module {
         return [];
     }
 
+    // Directory where tasks are defined, path is relative to the module base path
+    getTasksDirectory(): string {
+        return '';
+    }
+
+    // Array of task file names to be registered
+    // if empty, all files in the tasks directory will be registered
+    getTaskFileNames(): string[] {
+        return [];
+    }
+
     getDependencies(): string[] {
         return [];
     }
+
 }
