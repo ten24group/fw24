@@ -36,7 +36,7 @@ export class SNSStack implements IStack {
                 ...snsConfig.topicProps
             });
 
-            this.fw24.set(snsConfig.topicName, topic.topicName, "topicName_");
+            this.fw24.set(snsConfig.topicName, topic.topicName, "topicName");
 
             new CfnOutput(mainStack, snsConfig.topicName + 'Output', {
                 value: topic.topicName,

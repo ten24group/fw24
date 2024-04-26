@@ -1,5 +1,5 @@
 import { Construct } from "constructs";
-import { Duration } from "aws-cdk-lib";
+import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { Runtime, Architecture, ILayerVersion, LayerVersion } from "aws-cdk-lib/aws-lambda";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
@@ -10,18 +10,37 @@ import { SESStack } from "../stacks/ses";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { createLogger, ILogger } from "../logging";
+import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 
 export interface LambdaFunctionProps {
   entry: string;
   fw24LayerArn?: string;
   policies?: any[];
   environmentVariables?: { [key: string]: string };
-  tableName?: string;
-  buckets? : [{ name: string, access?: string }];
-  queues?: [{ name: string, actions: string[] }];
-  topics?: [{ name: string, actions: string[] }];
+  resourceAccess?: IFunctionResourceAccess;
   allowSendEmail?: boolean;
+  logRetentionDays?: RetentionDays;
+  logRemovalPolicy?: RemovalPolicy,
   functionProps?: NodejsFunctionProps;
+}
+
+export interface IFunctionResourceAccess {
+  tables?: Array<{ 
+    name: string;
+    access?: string[]; // read, write, readwrite | default is readwrite
+  }> | string[];
+  buckets?: Array<{ 
+    name: string;
+    access?: string[]; // read, write, readwrite | default is readwrite
+  }> | string[];
+  topics? : Array<{
+    name: string;
+    access?: string[]; // publish | default is publish
+  }> | string[];
+  queues?: Array<{
+    name: string;
+    access?: string[]; // send, receive, delete | default is send
+  }> | string[];
 }
 
 export class LambdaFunction extends Construct {
@@ -41,23 +60,34 @@ export class LambdaFunction extends Construct {
       memorySize: 128,
     };
 
+    // create log group
+    let logGroup =  props.functionProps?.logGroup;
+    if(!logGroup) {
+      let logRetentionDays = props.logRetentionDays || fw24.getConfig().logRetentionDays || 30;
+      logGroup = new LogGroup(this, `${id}-LogGroup`, {
+        removalPolicy: props.logRemovalPolicy || fw24.getConfig().logRemovalPolicy || RemovalPolicy.RETAIN,
+        retention: parseInt(logRetentionDays.toString()),
+      });
+    }
+    
     let additionalProps: any = {
       entry: props.entry,
     }
     // If layerArn is defined, then we are using the layer
     if(props.fw24LayerArn){
-      additionalProps.layers = [...(props.functionProps?.layers ?? []), LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, props.fw24LayerArn)];
+      additionalProps.layers = [...(props.functionProps?.layers ?? []), LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, props.fw24LayerArn)],
       additionalProps.bundling = {
         ...props.functionProps?.bundling,
         sourceMap: true,
         externalModules: ["aws-sdk", "fw24"],
-      };
+      }
+      additionalProps.logGroup = logGroup
     }
 
     const fn = new NodejsFunction(this, id, {
       ...defaultProps, 
       ...props.functionProps,
-      ...additionalProps
+      ...additionalProps,
     });
 
     // Set environment variables
@@ -78,56 +108,103 @@ export class LambdaFunction extends Construct {
 
     // If we are using SES, then we need to add the email queue url to the environment
     if(props.allowSendEmail && fw24.emailProvider instanceof SESStack){
-      this.logger?.debug(":GET emailQueue Name from fw24 scope : ", fw24.get('emailQueue', 'queueName_'));
+      this.logger?.debug(":GET emailQueue Name from fw24 scope : ", fw24.get('emailQueue', 'queueName'));
       let emailQueue = fw24.getQueueByName('emailQueue');
       emailQueue.grantSendMessages(fn);
       fn.addEnvironment('EMAIL_QUEUE_URL', emailQueue.queueUrl);
     }
 
-     // logic for adding dynamodb table access to the controller
-     if (props.tableName) {
-        // get the dynamodb table based on the controller config
-        const tableInstance: TableV2 = fw24.getDynamoTable(props.tableName);
-        // add the table name to the lambda environment
-        fn.addEnvironment(`${props.tableName.toUpperCase()}_TABLE`, tableInstance.tableName);
-        // grant the lambda function read write access to the table
-        tableInstance.grantReadWriteData(fn);
-    }
-
-     // logic for adding s3 bucket access to the controller
-    props.buckets?.forEach( ( bucket: any ) => {
-      const bucketFullName = fw24.getUniqueName(bucket.name);
-      const bucketInstance: any = Bucket.fromBucketName(this, bucket.name+id+'-bucket', bucketFullName);
-      // grant the lambda function access to the bucket
-      switch (bucket.access) {
+    // logic for adding dynamodb table access to the controller
+    props.resourceAccess?.tables?.forEach( ( table: any ) => {
+      const tableName = typeof table === 'string' ? table : table.name;
+      const access = typeof table === 'string' ? ['readwrite'] : table.access || ['readwrite'];
+      // get the dynamodb table based on the controller config
+      const tableInstance: TableV2 = fw24.getDynamoTable(tableName);
+      // add the table name to the lambda environment
+      fn.addEnvironment(`${tableName.toUpperCase()}_TABLE`, tableInstance.tableName);
+      // grant the lambda function read write access to the table
+      access.forEach( (accessType: string) => {
+        switch (accessType) {
           case 'read':
-              bucketInstance.grantRead(fn);
-              break;
+            tableInstance.grantReadData(fn);
+            break;
           case 'write':
-              bucketInstance.grantWrite(fn);
-              break;
+            tableInstance.grantWriteData(fn);
+            break;
           default:
-              bucketInstance.grantReadWrite(fn);
-              break;
-      }
-      // add environment variable for the bucket name
-      fn.addEnvironment(`bucket_${bucket.name}`, bucketFullName);
+            tableInstance.grantReadWriteData(fn);
+            break;
+        }
+      });
     });
 
-    props.queues?.forEach( ( queue: any ) => {
-      this.logger?.debug(":GET Queue Name from fw24 scope : ", queue.name, " :", fw24.get(queue.name, 'queueName_'));
-      const queueArn = fw24.getArn('sqs', fw24.get(queue.name, 'queueName_'));
-      const queueInstance = Queue.fromQueueArn(this, queue.name+id+'-queue', queueArn);
-      queueInstance.grantSendMessages(fn);
-      fn.addEnvironment(`${queue.name}_queueUrl`, queueInstance.queueUrl);
+    // logic for adding s3 bucket access to the controller
+    props.resourceAccess?.buckets?.forEach( ( bucket: any ) => {
+      const bucketName = typeof bucket === 'string' ? bucket : bucket.name;
+      const access = typeof bucket === 'string' ? ['readwrite'] : bucket.access || ['readwrite'];
+
+      const bucketFullName = fw24.getUniqueName(bucketName);
+      const bucketInstance: any = Bucket.fromBucketName(this, bucketName+id+'-bucket', bucketFullName);
+      // grant the lambda function access to the bucket
+      access.forEach( (accessType: string) => {
+        switch (accessType) {
+            case 'read':
+                bucketInstance.grantRead(fn);
+                break;
+            case 'write':
+                bucketInstance.grantWrite(fn);
+                break;
+            default:
+                bucketInstance.grantReadWrite(fn);
+                break;
+        }
+      });
+      // add environment variable for the bucket name
+      fn.addEnvironment(`bucket_${bucketName}`, bucketFullName);
+    });
+
+    props.resourceAccess?.queues?.forEach( ( queue: any ) => {
+      const queueName = typeof queue === 'string' ? queue : queue.name;
+      const access = typeof queue === 'string' ? ['send'] : queue.access || ['send'];
+
+      this.logger?.debug(":GET Queue Name from fw24 scope : ", queueName, " :", fw24.get(queueName, 'queueName'));
+      const queueArn = fw24.getArn('sqs', fw24.get(queueName, 'queueName'));
+      const queueInstance = Queue.fromQueueArn(this, queueName+id+'-queue', queueArn);
+      // grant the lambda function access to the queue
+      access.forEach( (accessType: string) => {
+        switch (accessType) {
+          case 'receive':
+            queueInstance.grantConsumeMessages(fn);
+            break;
+          case 'delete':
+            queueInstance.grantPurge(fn);
+            break;
+          default:
+            queueInstance.grantSendMessages(fn);
+            break;
+        }
+      });
+      // add environment variable for the queue url
+      fn.addEnvironment(`${queueName}_queueUrl`, queueInstance.queueUrl);
     });
 
     // add sns topic permission
-    props.topics?.forEach( ( topic: any ) => {
-      const topicArn = fw24.getArn('sns', fw24.get(topic.name, 'topicName_'));
-      const topicInstance = Topic.fromTopicArn(this, topic.name+id+'-topic', topicArn);
-      topicInstance.grantPublish(fn);
-      fn.addEnvironment(`${topic.name}_topicArn`, topicInstance.topicArn);
+    props.resourceAccess?.topics?.forEach( ( topic: any ) => {
+      const topicName = typeof topic === 'string' ? topic : topic.name;
+      const access = typeof topic === 'string' ? ['publish'] : topic.access || ['publish'];
+
+      const topicArn = fw24.getArn('sns', fw24.get(topicName, 'topicName'));
+      const topicInstance = Topic.fromTopicArn(this, topicName+id+'-topic', topicArn);
+      // grant the lambda function access to the topic
+      access.forEach( (accessType: string) => {
+        switch (accessType) {
+          default:
+            topicInstance.grantPublish(fn);
+            break;
+        }
+      });
+      // add environment variable for the topic arn
+      fn.addEnvironment(`${topicName}_topicArn`, topicInstance.topicArn);
     });
 
     return fn;

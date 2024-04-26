@@ -1,27 +1,26 @@
-import { QueueProps } from "aws-cdk-lib/aws-sqs";
+import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { IFunctionResourceAccess } from "../constructs/lambda-function";
-import { IQueueSubscriptions } from "../constructs/queue-lambda";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { RemovalPolicy } from "aws-cdk-lib";
 
-export interface IQueueConfig {
-	queueProps?: QueueProps;
+export interface ITaskConfig {
+	schedule: string;
 	env?: {
         name: string;
     };
+	functionProps?: NodejsFunctionProps;
 	resourceAccess?: IFunctionResourceAccess;
-	subscriptions?: IQueueSubscriptions;
 	logRetentionDays?: RetentionDays;
 	logRemovalPolicy?: RemovalPolicy;
 }
 
-export function Queue(queueName: string, queueConfig?: IQueueConfig) {
+export function Task(taskName: string, taskConfig?: ITaskConfig) {
 	return function <T extends { new (...args: any[]): {} }>(target: T) {
 		return class extends target {
 			constructor(...args: any[]) {
 				super(...args);
-				Reflect.set(this, 'queueName', queueName);
-				Reflect.set(this, 'queueConfig', queueConfig);
+				Reflect.set(this, 'taskName', taskName);
+				Reflect.set(this, 'taskConfig', taskConfig);
 			}
 		};
 	};

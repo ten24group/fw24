@@ -99,7 +99,7 @@ export class Fw24 {
 
         if( !this.queues.has(name) ){
             // get full queue name
-            const queueName = this.get(name, 'queueName_');
+            const queueName = this.get(name, 'queueName');
             const queueArn = this.getArn('sqs', queueName);
             const queue = Queue.fromQueueArn(this.stacks['main'], queueName, queueArn);
             this.queues.set(name, queue);            

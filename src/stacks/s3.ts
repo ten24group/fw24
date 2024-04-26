@@ -119,8 +119,8 @@ export class S3Stack implements IStack {
                 if(trigger.destination === 'queue' && trigger.queueName) {
                     // add event notification to the bucket for each event
                     const queueId = bucketConfig.bucketName + "-" + trigger.destination + "-" + trigger.queueName;
-                    const queueInstance = this.fw24.get(trigger.queueName, 'queue_');
-                    if(queueInstance !== null){
+                    const queueInstance = this.fw24.get(trigger.queueName, 'queue');
+                    if(queueInstance && queueInstance !== null){
                         this.logger.debug(":::Creating queue for the trigger event: ", trigger.events.toString());
                         trigger.events.forEach(bucketEvent => {
                             this.logger.debug(SqsDestination,bucketEvent);

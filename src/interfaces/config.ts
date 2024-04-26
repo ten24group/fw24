@@ -1,3 +1,5 @@
+import { RemovalPolicy } from "aws-cdk-lib";
+
 export interface IApplicationConfig {
     name?: string;
     coreVersion?: number;
@@ -5,5 +7,7 @@ export interface IApplicationConfig {
     account?: string;
     defaultAuthorizationType?: any;
     environment?: string; // local, dev, prod
+    logRetentionDays?: number;
+    logRemovalPolicy?: RemovalPolicy;
 }
 

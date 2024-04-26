@@ -9,7 +9,7 @@ import {
     RestApiProps 
 } from "aws-cdk-lib/aws-apigateway";
 
-import { Stack, CfnOutput } from "aws-cdk-lib";
+import { Stack, CfnOutput, RemovalPolicy } from "aws-cdk-lib";
 import { Helper } from "../core/helper";
 import { createLogger } from "../logging";
 import { LambdaFunction } from "../constructs/lambda-function";
@@ -25,12 +25,15 @@ import { SNSStack } from "./sns";
 import { DynamoDBStack } from "./dynamodb";
 import { CognitoStack } from "./cognito";
 import { IControllerConfig } from "../decorators/controller";
+import { RetentionDays } from "aws-cdk-lib/aws-logs";
 
 export interface IAPIGatewayConfig {
     cors?: boolean | string | string[];
     apiOptions?: RestApiProps;
     controllersDirectory?: string;
     functionProps?: NodejsFunctionProps;
+    logRetentionDays?: RetentionDays;
+    logRemovalPolicy?: RemovalPolicy
 }
 
 export class APIGateway implements IStack {
@@ -119,6 +122,8 @@ export class APIGateway implements IStack {
         const controllerResource = this.getOrCreateControllerResource(controllerName);
 
         // create lambda function for the controller
+        controllerConfig.logRetentionDays = controllerConfig.logRetentionDays || this.stackConfig.logRetentionDays;
+        controllerConfig.logRemovalPolicy = controllerConfig.logRemovalPolicy || this.stackConfig.logRemovalPolicy;
         const controllerLambda = this.createLambdaFunction(controllerName, filePath, fileName, controllerConfig);
         const controllerIntegration = new LambdaIntegration(controllerLambda);
 
@@ -180,12 +185,11 @@ export class APIGateway implements IStack {
             entry: filePath + "/" + fileName,
             fw24LayerArn: this.fw24.getLayerARN(),
             environmentVariables: this.getEnvironmentVariables(controllerConfig),
-            buckets: controllerConfig?.buckets,
-            queues: controllerConfig?.queues,
-            topics: controllerConfig?.topics,
-            tableName: controllerConfig?.tableName,
+            resourceAccess: controllerConfig?.resourceAccess,
             allowSendEmail: true,
-            functionProps: functionProps
+            functionProps: functionProps,
+            logRetentionDays: controllerConfig.logRetentionDays,
+            logRemovalPolicy: controllerConfig.logRemovalPolicy,
         }) as NodejsFunction;
     }
 

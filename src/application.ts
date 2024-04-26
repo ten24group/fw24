@@ -14,7 +14,10 @@ export class Application {
 
     private readonly fw24: Fw24;
     private readonly stacks: Map<string, IStack>;
-    private readonly modules: Map<string, IFw24Module>; 
+    private readonly modules: Map<string, IFw24Module>;
+    private processedStacks: Map<string, Promise<void>> = new Map();
+    private stackConstructMaxConcurrency: number = 10;
+    private stackConstructCurrentConcurrency = 0;
 
     constructor(config: IApplicationConfig = {}) {
         this.logger = createLogger([Application.name, config.name, config.environment].join('-'));
@@ -74,7 +77,9 @@ export class Application {
             uiConfigGen.run();
         }
 
-        this.processStacks();
+        this.constructAllStacks().then(() => {
+            console.log('All stacks completed');
+        });
     }
     
 
@@ -93,53 +98,59 @@ export class Application {
         }
     }
 
-    private async processStacks(executionTimes: number = 0, processedStacks: Set<string> = new Set(), processingStacks: Set<string> = new Set()) {
-        this.logger.info(`Processing stacks... executionTimes: ${executionTimes}, processedStacks: ${Array.from(processedStacks)}, processingStacks: ${Array.from(processingStacks)}`);
-
-        if (executionTimes > 20) {
-            throw new Error("Circular dependency detected");
-        }
-
-        for (const [stackName, stack] of this.stacks) {
-            if (!processedStacks.has(stackName) && !processingStacks.has(stackName)) {
-                // this.logger.warn(`processStacks: loop: ${executionTimes}, stackName: ${stackName}, processed: ${processedStacks.has(stackName)}, processing: ${processingStacks.has(stackName)}`);
-                processingStacks.add(stackName);
-
-                this.logger.info(`Processing stack ${stackName} with dependencies: ${stack.dependencies} : processing: ${processingStacks.has(stackName)}, processedStacks: ${Array.from(processedStacks)}`);
-               
-                await this.processStack( stackName, stack, executionTimes, processedStacks, processingStacks);
-               
-                processingStacks.delete(stackName);
-            }
-        }
+    private constructAllStacks() {
+        const allStacks = Array.from(this.stacks.keys()).map(stackName => this.constructStack(stackName));
+        return Promise.allSettled(allStacks);
     }
 
-    private async processStack(stackName:string, stack: IStack, executionTimes: number, processedStacks: Set<string>, processingStacks: Set<string>) {
-
-        if (stack.dependencies.length > 0) {
-            for (const dependency of stack.dependencies) {
-                if (!this.stacks.has(dependency)) {
-                    // this.logger.debug(`Stack ${stackName} depends on ${dependency} which is not in use in this infrastructure.`);
-                    continue;
-                }
-                if (!processedStacks.has(dependency)) {
-                    this.logger.info(`Stack ${stackName} depends on ${dependency} which is not processed yet.`);
-                    processingStacks.delete(stackName);
-                    return;
-                }
-            }
+    async constructStack(stackName: string): Promise<void> {
+        const stack = this.stacks.get(stackName);
+        if (!stack) {
+            throw new Error(`Stack ${stackName} not found`);
         }
 
-        // Construct the stack
-        await stack.construct();
+        while (this.stackConstructCurrentConcurrency >= this.stackConstructMaxConcurrency) {
+            await new Promise(resolve => setTimeout(resolve, 100)); // Throttle if concurrency limit is reached
+        }
 
-        // Mark the stack as processed
-        processedStacks.add(stackName);
+        this.logger.info(`Processing stack ${stackName}...`);
 
-        // Remove the stack from the set of stacks to process
-        this.stacks.delete(stackName);
+        // Wait for dependencies to resolve
+        await this.waitForDependencies(stack.dependencies, stackName);
 
-        // Process dependent stacks
-        this.processStacks(executionTimes + 1, processedStacks, processingStacks);
+        this.stackConstructCurrentConcurrency++;
+        const stackCompletionPromise = stack.construct()
+            .then(() => {
+                this.stackConstructCurrentConcurrency--;
+            })
+            .catch(error => {
+                console.error(`Error executing stack ${stackName}:`, error);
+                this.stackConstructCurrentConcurrency--;
+                throw error; // Re-throw to ensure it can be handled or logged by Promise.allSettled
+            });
+
+        this.processedStacks.set(stackName, stackCompletionPromise);
+        return stackCompletionPromise;
     }
+
+    private async waitForDependencies(dependencies: string[], stackName: string): Promise<void> {
+        const promises = dependencies.map(dependency => {
+            if (!this.processedStacks.has(dependency)) {
+                this.logger.info(`Stack ${stackName}: Waiting for dependency to be resolved ${dependency}...`);
+                // If dependency not scheduled yet, listen for its addition
+                return new Promise<void>((resolve, reject) => {
+                    const interval = setInterval(() => {
+                        if (this.processedStacks.has(dependency)) {
+                            clearInterval(interval);
+                            this.processedStacks.get(dependency)!.then(resolve, reject);
+                            this.logger.info(`Stack ${stackName}: Dependency ${dependency} resolved.`);
+                        }
+                    }, 100); // Check every 100ms
+                });
+            }
+            return this.processedStacks.get(dependency)!;
+        });
+        await Promise.all(promises);
+    }
+
 }

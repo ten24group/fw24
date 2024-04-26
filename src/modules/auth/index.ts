@@ -57,6 +57,14 @@ export class AuthModule extends AbstractFw24Module {
         return [];
     }
 
+    getTasksDirectory(): string {
+        return '';
+    }
+
+    getTaskFileNames(): string[] {
+        return [];
+    }
+
     getDependencies(): string[] {
         return this.dependencies;
     }
