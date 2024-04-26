@@ -1,6 +1,7 @@
 export * from "./interfaces/route";
 export * from "./interfaces/request";
 export * from "./interfaces/response";
+export * from "./interfaces/stack";
 export * from "./decorators/controller";
 export * from "./decorators/method";
 export * from "./decorators/queue";
@@ -11,17 +12,23 @@ export * from "./core/api-gateway-controller";
 export * from "./core/sqs-controller";
 export * from "./core/task-controller";
 export * from "./core/mail-processor";
-export * from "./application";
 export * from "./core/module";
+export * from "./application";
 export * from "./stacks/apigateway";
 export * from "./stacks/amplify";
 export * from "./stacks/dynamodb";
 export * from "./stacks/cognito";
+export * from "./stacks/s3";
+export * from "./stacks/sns";
+export * from "./stacks/ses";
+export * from "./stacks/sqs";
 export * from "./stacks/scheduler";
 export * from './entity';
 export * from './utils';
-export * from './logging'
-export * from "./client"
+export * from './logging';
+export * from './client';
+export * from './types/cdk';
 export * as Auditor from './audit';
 export * as Validator from './validation' ;
 export * as EventDispatcher from './event';
+export * from "./modules/auth"

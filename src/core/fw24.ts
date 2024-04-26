@@ -7,7 +7,6 @@ import { ITopic, Topic } from 'aws-cdk-lib/aws-sns';
 import { Role, PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';
 import { IFw24Module } from './module';
 import { createLogger } from '../logging';
-import { getCircularReplacer } from '../utils';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
@@ -71,14 +70,6 @@ export class Fw24 {
 
     public hasModules() {
         return this.modules.size > 0;
-    }
-
-
-    public getLayerARN(): string {
-        if(this.stacks['main'] === undefined) {
-            throw new Error('Main stack not found');
-        }
-        return `arn:aws:lambda:${this.config.region}:${this.stacks['main'].account}:layer:Fw24CoreLayer:${this.config.coreVersion}`;
     }
 
     public getUniqueName(name: string) {

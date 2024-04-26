@@ -3,6 +3,7 @@ import { IFunctionResourceAccess } from "../constructs/lambda-function";
 import { IQueueSubscriptions } from "../constructs/queue-lambda";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { RemovalPolicy } from "aws-cdk-lib";
+import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 
 export interface IQueueConfig {
 	queueProps?: QueueProps;
@@ -11,6 +12,7 @@ export interface IQueueConfig {
     };
 	resourceAccess?: IFunctionResourceAccess;
 	subscriptions?: IQueueSubscriptions;
+	functionProps?: NodejsFunctionProps;
 	logRetentionDays?: RetentionDays;
 	logRemovalPolicy?: RemovalPolicy;
 }

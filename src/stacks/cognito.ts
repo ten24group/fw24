@@ -219,7 +219,6 @@ export class CognitoStack implements IStack {
                 this.logger.debug("autoUserSignupGroupsHandler: ", lambdaFunctionProps);
                 const lambdaTrigger = new LambdaFunction(this.mainStack, `${namePrefix}-auto-post-confirmation-lambdaFunction`, {
                     ...lambdaFunctionProps,
-                    fw24LayerArn: this.fw24.getLayerARN(),
                 }) as NodejsFunction;
                 userPool.addTrigger(UserPoolOperation.POST_CONFIRMATION, lambdaTrigger);
             }
@@ -251,7 +250,6 @@ export class CognitoStack implements IStack {
             for (const trigger of this.stackConfig.triggers) {
                 const lambdaTrigger = new LambdaFunction(this.mainStack, `${namePrefix}-${trigger.trigger}-lambdaFunction`, {
                     ...trigger.functionProps,
-                    fw24LayerArn: this.fw24.getLayerARN(),
                 }) as NodejsFunction;
                 userPool.addTrigger(trigger.trigger, lambdaTrigger);
             }

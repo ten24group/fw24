@@ -29,21 +29,6 @@ describe('Fw24', () => {
         expect(stack.account).toBe("123456789012");
     });
 
-    it('getLayerARN', () => {
-        const config = {
-            name: "fw24",
-            env: "dev",
-            region: "us-east-1",
-            coreVersion: 1
-        };
-        const fw24 = Fw24.getInstance();
-        fw24.setConfig(config);
-        fw24.addStack("main", { account: "123456789012" });
-
-        const layerARN = fw24.getLayerARN();
-        expect(layerARN).toBe("arn:aws:lambda:us-east-1:123456789012:layer:Fw24CoreLayer:1");
-    });
-
     it('getQueueArn', () => {
         const config = {
             name: "fw24",

@@ -10,11 +10,13 @@ import { QueueLambda } from "../constructs/queue-lambda";
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { LogDuration, createLogger } from "../logging";
 import { DynamoDBStack } from "./dynamodb";
+import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 
 export interface ISQSConfig {
     queuesDirectory?: string;
     queueProps?: QueueProps;
     env?: ILambdaEnvConfig[];
+    functionProps?: NodejsFunctionProps;
 }
 
 export class SQSStack implements IStack {
@@ -88,9 +90,9 @@ export class SQSStack implements IStack {
             subscriptions: queueConfig?.subscriptions,            
             lambdaFunctionProps: {
                 entry: queueInfo.filePath + "/" + queueInfo.fileName,
-                fw24LayerArn: this.fw24.getLayerARN(),
                 environmentVariables: this.getEnvironmentVariables(queueConfig),
                 resourceAccess: queueConfig?.resourceAccess,
+                functionProps: {...this.stackConfig.functionProps, ...queueConfig?.functionProps},
                 logRemovalPolicy: queueConfig?.logRemovalPolicy,
                 logRetentionDays: queueConfig?.logRetentionDays,
             }
