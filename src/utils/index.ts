@@ -22,6 +22,19 @@ export function toHumanReadableName(input: string) {
     return input.charAt(0).toUpperCase() + input.slice(1).replace(/([A-Z])/g, " $1");
 }
 
+export function camelCase(input: string) {
+    // https://stackoverflow.com/a/2970667
+    return input.replace(/(?:^\w|[A-Z]|\b\w|\s+)/g, function(match, index) {
+      if (+match === 0) return ""; // or if (/\s+/.test(match)) for white spaces
+      return index === 0 ? match.toLowerCase() : match.toUpperCase();
+    });
+}
+
+export function pascalCase(input: string) {
+    input = camelCase(input);
+    return input.charAt(0).toUpperCase() + input.slice(1);
+}
+
 export const removeEmpty = <T extends {[k:string]: any|undefined|null}>(obj: T) => {
   let newObj: DeepPartial<T> = {};
   if(!obj){

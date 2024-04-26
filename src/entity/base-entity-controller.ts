@@ -8,6 +8,7 @@ import { defaultMetaContainer } from './entity-metadata-container';
 import { EntitySchema } from './base-entity';
 import { createLogger } from '../logging';
 import { safeParseInt } from '../utils/parse';
+import { camelCase } from '../utils';
 
 export abstract class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIGatewayController {
 	
@@ -41,7 +42,15 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 	async create(req: Request, res: Response) {
 		const createdEntity = await this.getEntityService().create(req.body);
 
-		return res.json({ __created__: createdEntity,  __req__: req });
+		const result: any = {
+			[ camelCase(this.entityName) ]: createdEntity,
+			message: "Created successfully"
+		};
+		if(req.debugMode){
+			result.req = req;
+		}
+
+		return res.json(result);
 	}
 
 	@Get('/{id}')
@@ -51,7 +60,16 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 
 		const entity = await this.getEntityService().get(identifiers);
 
-		return res.json({ __entity__: entity,  __req__: req });
+		const result: any = {
+			[ camelCase(this.entityName) ]: entity,
+		};
+
+		if(req.debugMode){
+			result.req = req;
+			result.identifiers = identifiers
+		}
+
+		return res.json(result);
 	}
 
 	@Get('')
@@ -79,9 +97,21 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
             pages:  pages === 'all' ? 'all' as const : safeParseInt(pages, 1).value,
         }
 
-		const entities = await this.getEntityService().list({filters, pagination});
+		const {data: records, cursor: newCursor} = await this.getEntityService().list({filters, pagination});
 
-		return res.json(entities);
+		const result: any = {
+			cursor: newCursor,
+			items: records,
+		};
+
+		if(req.debugMode){
+			result.req = req;
+			result.pagination = pagination;
+			result.filters = filters;
+		}
+
+		return res.json(result);
+
 	}
 
 	@Patch('/{id}')
@@ -91,7 +121,16 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 
 		const updatedEntity = await this.getEntityService().update(identifiers, req.body);
 
-		return res.json({ __updated__: updatedEntity,  __req__: req });
+		const result: any = {
+			[ camelCase(this.entityName) ]: updatedEntity,
+			message: "Updated successfully"
+		};
+		if(req.debugMode){
+			result.req = req;
+			result.identifiers = identifiers
+		}
+
+		return res.json(result);
 	}
 
 	@Delete('/{id}')
@@ -101,7 +140,36 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 
 		const deletedEntity = await this.getEntityService().delete(identifiers);
 
-		return res.json({ __deleted__: deletedEntity,  __req__: req });
+		const result: any = {
+			[ camelCase(this.entityName) ]: deletedEntity,
+			message: "Deleted successfully"
+		};
+
+		if(req.debugMode){
+			result.req = req;
+		}
+
+		return res.json(result);
+	}
+
+	@Post('/query')
+	async query(req: Request, res: Response) {
+        const query = req.body;
+		this.logger.info(`query - query:`, query);
+
+		const {data: records, cursor: newCursor} = await this.getEntityService().query(query);
+
+		const result: any = {
+			cursor: newCursor,
+			items: records,
+		};
+
+		if(req.debugMode){
+			result.req = req;
+			result.query = query;
+		}
+
+		return res.json(result);
 	}
 
 }

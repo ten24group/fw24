@@ -7,6 +7,8 @@ import { Auditor } from "../audit";
 import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
 import { removeEmpty } from "../utils";
+import { EntityQuery, Pagination } from "./query.types";
+import { entityFiltersToFilterExpression } from "./query";
 
 /**
  * 
@@ -182,15 +184,6 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     return entity;
 }
 
-export type Pagination = {
-    limit?: number;
-    count?: number;
-    pages?: number | 'all';
-    pager?: 'raw' | 'cursor',
-    order?: 'asc' | 'desc';
-    cursor?: string,
-}
-
 export interface ListEntityArgs<
     Sch extends EntitySchema<any, any, any>,
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
@@ -265,6 +258,68 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
     auditLogger.audit({ entityName, crudType, entities, actor, tenant });
 
     logger.debug(`Completed EntityCrud ~ listEntity ~ entityName: ${entityName} ~ filters+paging:`);
+
+    return entities;
+}
+
+export interface QueryEntityArgs<Sch extends EntitySchema<any, any, any>> extends BaseEntityCrudArgs<Sch> {
+    query: EntityQuery<Sch>
+}
+/**
+ * 
+ * @param options 
+ * 
+ * @returns 
+ */
+export async function queryEntity<S extends EntitySchema<any, any, any>>( options: QueryEntityArgs<S>){
+
+    const { 
+        entityName, 
+        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+
+        actor,
+        tenant,
+
+        crudType = 'list',
+        logger = createLogger('CRUD-service:queryEntity'),
+        authorizer = Authorizer.Default,
+        auditLogger = Auditor.Default,
+        eventDispatcher = EventDispatcher.Default,
+
+        query = {}
+
+    } = options;
+
+    const { 
+        filters = {}, 
+        pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined } 
+    } = query;
+
+    logger.debug(`Called EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
+
+    await eventDispatcher.dispatch({event: 'beforeQuery', context: arguments });
+
+    // authorize the actor
+    const authorization = await authorizer.authorize({entityName, crudType, actor, tenant});
+    if(!authorization.pass){
+        throw new Error("Authorization failed: " + { cause: authorization });
+    }
+
+    // TODO: extract entity PK/SK filters from query and add them to the match ???
+    const dbQuery = entityService.getRepository().match({});
+
+    if(filters){
+        dbQuery.where((attr, op) => entityFiltersToFilterExpression(filters, attr, op))
+    }
+    
+    const entities = await dbQuery.go(removeEmpty(pagination));
+
+    await eventDispatcher.dispatch({ event: 'afterQuery', context: arguments });
+
+    // create audit
+    auditLogger.audit({ entityName, crudType, entities, actor, tenant });
+
+    logger.debug(`Completed EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
     return entities;
 }

@@ -1,3 +1,4 @@
+import { parseUrlQueryValue } from './../utils/parse';
 import { DefaultLogger } from '../logging';
 import { Request } from '../interfaces/request';
 import { APIGatewayEvent, Context } from "aws-lambda";
@@ -17,7 +18,7 @@ export class RequestContext implements Request {
     public pathParameters: any;
     public isBase64Encoded: boolean;
     public httpMethod: string;
-    public debug: boolean;
+    public debugMode: boolean;
     
 
     constructor(event: APIGatewayEvent, context: Context) {
@@ -34,13 +35,21 @@ export class RequestContext implements Request {
         this.isBase64Encoded = event.isBase64Encoded;
         this.httpMethod = event.httpMethod;
 
-        const debugPassword = process.env.DEBUG_PASSWORD ?? 'true';
+        // Parse the URL-query-params from string to the correct types
+        this.queryStringParameters = Object.keys(this.queryStringParameters).reduce((obj: any, key) => {
+            obj[key] = parseUrlQueryValue( this.queryStringParameters[key] );
+            return obj;
+        }, {});
 
-        this.debug = false;
+        // Check for Debug-mode
+        this.debugMode = false;
+        const debugPassword = process.env.DEBUG_PASSWORD ?? true;
         if(this.queryStringParameters?.debug == debugPassword){
-            this.debug = true;
+            this.debugMode = true;
             this.queryStringParameters.debug = undefined;
         }
+
+        // Parse the request body
 
         if (event.body) {
             

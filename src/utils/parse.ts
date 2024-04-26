@@ -43,3 +43,57 @@ export function safeParseFloat<ValType extends number>(value: any | null, defaul
 
   return {success: true, value: parsedValue};
 }
+
+
+interface ParseUrlQueryValueOptions {
+  parseNull?: boolean
+  parseUndefined?: boolean
+  parseBoolean?: boolean
+  parseNumber?: boolean
+}
+
+const defaultParseUrlQueryValueOptions = {
+  parseNull: true,
+  parseUndefined: true,
+  parseBoolean: true,
+  parseNumber: true
+}
+
+type ParsedQuery = any;
+export const parseUrlQueryValue = (target: ParsedQuery, options?: ParseUrlQueryValueOptions) : ParsedQuery => {
+  
+  options = { ...defaultParseUrlQueryValueOptions, ...options };
+
+  if (target == null) {
+    return target
+  }
+
+  switch (typeof (target)) {
+    case 'string':
+      if (target === '') {
+        return ''
+      } else if (options.parseNull && target === 'null') {
+        return null
+      } else if (options.parseUndefined && target === 'undefined') {
+        return undefined
+      } else if (options.parseBoolean && (target === 'true' || target === 'false')) {
+        return target === 'true'
+      } else if (options.parseNumber && !isNaN(Number(target))) {
+        return Number(target)
+      } else {
+        return target
+      }
+    case 'object':
+      if (Array.isArray(target)) {
+        return target.map(x => parseUrlQueryValue(x, options))
+      } else {
+        const obj = target
+        Object.keys(obj).map(key =>
+          obj[key] = parseUrlQueryValue(target[key], options)
+        )
+        return obj
+      }
+    default: 
+      return target
+  }
+}
