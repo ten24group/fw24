@@ -87,11 +87,15 @@ export class SQSStack implements IStack {
         const queue = new QueueLambda(this.mainStack, queueName + "-queue", {
             queueName: queueName,
             queueProps: queueProps,
+            visibilityTimeoutSeconds: queueConfig?.visibilityTimeoutSeconds,
+            receiveMessageWaitTimeSeconds: queueConfig?.receiveMessageWaitTimeSeconds,
+            retentionPeriodDays: queueConfig?.retentionPeriodDays,
             subscriptions: queueConfig?.subscriptions,            
             lambdaFunctionProps: {
                 entry: queueInfo.filePath + "/" + queueInfo.fileName,
                 environmentVariables: this.getEnvironmentVariables(queueConfig),
                 resourceAccess: queueConfig?.resourceAccess,
+                functionTimeout: queueConfig?.functionTimeout,
                 functionProps: {...this.stackConfig.functionProps, ...queueConfig?.functionProps},
                 logRemovalPolicy: queueConfig?.logRemovalPolicy,
                 logRetentionDays: queueConfig?.logRetentionDays,

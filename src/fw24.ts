@@ -27,7 +27,6 @@ export * from './entity';
 export * from './utils';
 export * from './logging';
 export * from './client';
-export * from './types/cdk';
 export * as Auditor from './audit';
 export * as Validator from './validation' ;
 export * as EventDispatcher from './event';

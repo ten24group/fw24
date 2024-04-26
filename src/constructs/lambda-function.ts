@@ -20,6 +20,8 @@ export interface LambdaFunctionProps {
   allowSendEmail?: boolean;
   logRetentionDays?: RetentionDays;
   logRemovalPolicy?: RemovalPolicy,
+  // timeout in seconds; use this timeout to avoid importing duration class from aws-cdk-lib
+  functionTimeout?: number;
   functionProps?: NodejsFunctionProps;
 }
 
@@ -82,6 +84,9 @@ export class LambdaFunction extends Construct {
       externalModules: [...(defaultProps?.bundling?.externalModules ?? []),...(props.functionProps?.bundling?.externalModules ?? []), "@ten24group/fw24"],
     };
     additionalProps.logGroup = logGroup;
+    if(props.functionTimeout){
+      additionalProps.timeout = Duration.seconds(props.functionTimeout);
+    }
 
     const fn = new NodejsFunction(this, id, {
       ...defaultProps, 

@@ -7,11 +7,18 @@ import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 
 export interface IQueueConfig {
 	queueProps?: QueueProps;
+	// define timeouts in seconds to avoid importing Duration class from aws-cdk-lib
+	visibilityTimeoutSeconds?: number;
+	receiveMessageWaitTimeSeconds?: number;
+	// define the retention period in days
+	retentionPeriodDays?: number;
 	env?: {
         name: string;
     };
 	resourceAccess?: IFunctionResourceAccess;
 	subscriptions?: IQueueSubscriptions;
+	// timeout in seconds; use this timeout to avoid importing duration class from aws-cdk-lib
+	functionTimeout?: number;
 	functionProps?: NodejsFunctionProps;
 	logRetentionDays?: RetentionDays;
 	logRemovalPolicy?: RemovalPolicy;

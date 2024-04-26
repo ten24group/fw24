@@ -186,6 +186,7 @@ export class APIGateway implements IStack {
             environmentVariables: this.getEnvironmentVariables(controllerConfig),
             resourceAccess: controllerConfig?.resourceAccess,
             allowSendEmail: true,
+            functionTimeout: controllerConfig?.functionTimeout,
             functionProps: functionProps,
             logRetentionDays: controllerConfig.logRetentionDays,
             logRemovalPolicy: controllerConfig.logRemovalPolicy,
