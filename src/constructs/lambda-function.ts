@@ -1,9 +1,9 @@
 import { Construct } from "constructs";
 import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
-import { Runtime, Architecture, ILayerVersion, LayerVersion } from "aws-cdk-lib/aws-lambda";
+import { Runtime, Architecture, LayerVersion } from "aws-cdk-lib/aws-lambda";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
-import { NodejsFunction, NodejsFunctionProps, BundlingOptions } from "aws-cdk-lib/aws-lambda-nodejs";
+import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Fw24 } from "../core/fw24";
 import { Bucket } from "aws-cdk-lib/aws-s3";
 import { SESStack } from "../stacks/ses";
@@ -14,13 +14,14 @@ import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 
 export interface LambdaFunctionProps {
   entry: string;
-  fw24LayerArn?: string;
   policies?: any[];
   environmentVariables?: { [key: string]: string };
   resourceAccess?: IFunctionResourceAccess;
   allowSendEmail?: boolean;
   logRetentionDays?: RetentionDays;
   logRemovalPolicy?: RemovalPolicy,
+  // timeout in seconds; use this timeout to avoid importing duration class from aws-cdk-lib
+  functionTimeout?: number;
   functionProps?: NodejsFunctionProps;
 }
 
@@ -51,13 +52,14 @@ export class LambdaFunction extends Construct {
     super(scope, id);
 
     const fw24 = Fw24.getInstance();
-
+    
     let defaultProps: NodejsFunctionProps = {
       runtime: Runtime.NODEJS_18_X,
       architecture: Architecture.ARM_64,
       handler: "handler",
       timeout: Duration.seconds(5),
       memorySize: 128,
+      ...fw24.getConfig().functionProps,
     };
 
     // create log group
@@ -73,15 +75,17 @@ export class LambdaFunction extends Construct {
     let additionalProps: any = {
       entry: props.entry,
     }
-    // If layerArn is defined, then we are using the layer
-    if(props.fw24LayerArn){
-      additionalProps.layers = [...(props.functionProps?.layers ?? []), LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, props.fw24LayerArn)],
-      additionalProps.bundling = {
-        ...props.functionProps?.bundling,
-        sourceMap: true,
-        externalModules: ["aws-sdk", "fw24"],
-      }
-      additionalProps.logGroup = logGroup
+    // use fw24 layer
+    additionalProps.layers = [...(defaultProps?.layers ?? []),...(props.functionProps?.layers ?? []), LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, fw24.get('fw24', 'layer'))];
+    additionalProps.bundling = {
+      ...defaultProps.bundling,
+      ...props.functionProps?.bundling,
+      sourceMap: true,
+      externalModules: [...(defaultProps?.bundling?.externalModules ?? []),...(props.functionProps?.bundling?.externalModules ?? []), "@ten24group/fw24"],
+    };
+    additionalProps.logGroup = logGroup;
+    if(props.functionTimeout){
+      additionalProps.timeout = Duration.seconds(props.functionTimeout);
     }
 
     const fn = new NodejsFunction(this, id, {

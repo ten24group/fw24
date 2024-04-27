@@ -183,10 +183,10 @@ export class APIGateway implements IStack {
         const functionProps = {...this.stackConfig.functionProps, ...controllerConfig?.functionProps};
         return new LambdaFunction(this.mainStack, controllerName + "-controller", {
             entry: filePath + "/" + fileName,
-            fw24LayerArn: this.fw24.getLayerARN(),
             environmentVariables: this.getEnvironmentVariables(controllerConfig),
             resourceAccess: controllerConfig?.resourceAccess,
             allowSendEmail: true,
+            functionTimeout: controllerConfig?.functionTimeout,
             functionProps: functionProps,
             logRetentionDays: controllerConfig.logRetentionDays,
             logRemovalPolicy: controllerConfig.logRemovalPolicy,

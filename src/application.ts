@@ -5,7 +5,8 @@ import { IStack } from "./interfaces/stack";
 import { IFw24Module } from "./core/module";
 import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
 import { ILogger, LogDuration, createLogger } from "./logging";
-
+import { LayerStack } from "./stacks";
+import { join } from "path";
 
 
 export class Application {
@@ -67,6 +68,14 @@ export class Application {
     @LogDuration()
     public run() {
         this.logger.info("Running fw24 infrastructure...");
+
+        // build fw24 layer
+        this.logger.info("Building fw24 layer...");
+        const fw24Layer = new LayerStack([{
+            layerName: 'fw24',
+            layerDirectory: './dist/layer'
+        }]);
+        fw24Layer.construct();
 
         // *** order is important here, modules need to be processed first, before stacks ***
         this.processModules();

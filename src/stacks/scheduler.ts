@@ -82,6 +82,7 @@ export class SchedulerStack implements IStack {
             entry: taskInfo.filePath + "/" + taskInfo.fileName,
             environmentVariables: this.getEnvironmentVariables(taskConfigEnv),
             allowSendEmail: true,
+            functionTimeout: taskConfig.functionTimeout,
             functionProps: {
                 ...taskProps,
             },
