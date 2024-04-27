@@ -30,4 +30,5 @@ export * from './client';
 export * as Auditor from './audit';
 export * as Validator from './validation' ;
 export * as EventDispatcher from './event';
-export * from "./modules/auth"
+export * from './constructs/lambda-function';
+export * from './constructs/queue-lambda';
