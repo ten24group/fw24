@@ -227,10 +227,11 @@ export function isFilterGroup<E extends EntitySchema<any, any, any>>(filterGroup
     return typeof filterGroup === 'object'
     && filterGroup !== null 
     && ['and', 'or', 'not'].some( logicalOp => (
-        filterGroup.hasOwnProperty(logicalOp) 
-        && Array.isArray(filterGroup[logicalOp]) 
-        && filterGroup[logicalOp].every( (f: any) => isFilterCriteria(f)
-    )));
+            filterGroup.hasOwnProperty(logicalOp) 
+            && Array.isArray(filterGroup[logicalOp]) 
+            && filterGroup[logicalOp].every( (f: any) => isFilterCriteria(f) || isFilterGroup(f))
+        )
+    );
 }
 
 export type EntityFilters<E extends EntitySchema<any, any, any>> = FilterGroup<E> | FilterCriteria<E>;

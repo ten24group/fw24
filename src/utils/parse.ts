@@ -64,7 +64,7 @@ export const parseUrlQueryValue = (target: ParsedQuery, options?: ParseUrlQueryV
   
   options = { ...defaultParseUrlQueryValueOptions, ...options };
 
-  if (target == null) {
+  if (!target) {
     return target
   }
 

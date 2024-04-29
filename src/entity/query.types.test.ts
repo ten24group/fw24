@@ -190,12 +190,39 @@ describe('query', () => {
 
   it('should return query object', () => {
     expect(1===1).toEqual(true);
+
+
+    const qq2 = {
+        "pagination": {
+          "limit": 40
+        },
+        "filters": {
+          "or": [
+            {
+              "and": [
+                {
+                  "prop": "authorName",
+                  "eq": "Author Name 002"
+                },
+                {
+                  "prop": "bookName",
+                  "neq": "Book Name 000"
+                }
+              ]
+            },
+            {
+                "prop": "bookName",
+                "inList": ["Book Name 005"]
+            }
+          ]
+        }
+      }
     
 
     let exp: any;
 
     const res = User.entity.entity.match({}).where( (attr, opp) => {
-      exp = entityFiltersToFilterExpression(usersQuery2.filters as EntityFilters<User.TUserSchema>, attr, opp);
+      exp = entityFiltersToFilterExpression(qq2.filters as EntityFilters<User.TUserSchema>, attr, opp);
       return ''
     }).params();
 

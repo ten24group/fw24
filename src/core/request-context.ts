@@ -35,11 +35,17 @@ export class RequestContext implements Request {
         this.isBase64Encoded = event.isBase64Encoded;
         this.httpMethod = event.httpMethod;
 
-        // Parse the URL-query-params from string to the correct types
-        this.queryStringParameters = Object.keys(this.queryStringParameters).reduce((obj: any, key) => {
-            obj[key] = parseUrlQueryValue( this.queryStringParameters[key] );
-            return obj;
-        }, {});
+        if(this.queryStringParameters && typeof this.queryStringParameters === 'object' ){
+            // Parse the URL-query-params from string to the correct types
+            this.queryStringParameters = Object.keys(this.queryStringParameters)
+            .reduce((obj: any, key) => {
+                obj[key] = parseUrlQueryValue( this.queryStringParameters[key] );
+                return obj;
+            }, {});
+
+        } else {
+            DefaultLogger.info(`this.queryStringParameters ${this.queryStringParameters} is not a valid object`);
+        }
 
         // Check for Debug-mode
         this.debugMode = false;
