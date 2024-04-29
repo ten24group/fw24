@@ -23,6 +23,8 @@ export interface IControllerConfig {
 	// define the resources that the controller need access to
 	resourceAccess?: IFunctionResourceAccess;
 	env?: Array<ILambdaEnvConfig>;
+	// timeout in seconds; use this timeout to avoid importing duration class from aws-cdk-lib
+	functionTimeout?: number;
 	functionProps?: NodejsFunctionProps
 	logRetentionDays?: RetentionDays;
 	logRemovalPolicy?: RemovalPolicy;

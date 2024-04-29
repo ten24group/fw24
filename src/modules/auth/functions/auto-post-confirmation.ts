@@ -1,5 +1,4 @@
-import { AdminAddUserToGroupCommand } from '@aws-sdk/client-cognito-identity-provider';
-import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
+import { AdminAddUserToGroupCommand, CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
 
 export const handler = async (event: any) => {
     console.log('::handler:: Event: ', event);

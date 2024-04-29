@@ -8,6 +8,8 @@ export interface ITaskConfig {
 	env?: {
         name: string;
     };
+	// timeout in seconds; use this timeout to avoid importing duration class from aws-cdk-lib
+	functionTimeout?: number;
 	functionProps?: NodejsFunctionProps;
 	resourceAccess?: IFunctionResourceAccess;
 	logRetentionDays?: RetentionDays;

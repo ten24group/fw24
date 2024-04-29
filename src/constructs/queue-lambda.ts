@@ -14,6 +14,11 @@ interface QueueLambdaFunctionProps {
   // queue properties
   queueName: string;
   queueProps?: QueueProps;
+  // define timeouts in seconds to avoid importing Duration class from aws-cdk-lib
+	visibilityTimeoutSeconds?: number;
+	receiveMessageWaitTimeSeconds?: number;
+	// define the retention period in days
+	retentionPeriodDays?: number;
 
   //SQS event source properties
   sqsEventSourceProps?: {
@@ -63,6 +68,12 @@ export class QueueLambda extends Construct {
       fw24.set('dlq_default', dlq);
     }
 
+    // set the timeouts
+    let timeoutProps: any = {};
+    if(props.visibilityTimeoutSeconds) Object.assign(timeoutProps, { visibilityTimeout : Duration.seconds(props.visibilityTimeoutSeconds)});
+    if(props.receiveMessageWaitTimeSeconds) Object.assign(timeoutProps, { receiveMessageWaitTime : Duration.seconds(props.receiveMessageWaitTimeSeconds)});
+    if(props.retentionPeriodDays) Object.assign(timeoutProps, { messageRetentionPeriod : Duration.days(props.retentionPeriodDays)});   
+
     // set the default dlq with option to override
     props.queueProps = {
       deadLetterQueue: {
@@ -70,6 +81,7 @@ export class QueueLambda extends Construct {
         queue: dlq,
       },
       ...props.queueProps,
+      ...timeoutProps,
     }
     
     const queue = new Queue(this, id, {
