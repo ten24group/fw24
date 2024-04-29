@@ -1,3 +1,4 @@
+import { isDateString, isJsonString } from "./datatypes";
 
 export type SafeParseSuccess = { success: true; value: number };
 export type SafeParseError<ValType> = { success: false; value: ValType };
@@ -50,13 +51,17 @@ interface ParseUrlQueryValueOptions {
   parseUndefined?: boolean
   parseBoolean?: boolean
   parseNumber?: boolean
+  parseJson ?: boolean
+  parseDate ?: boolean
 }
 
-const defaultParseUrlQueryValueOptions = {
+const defaultParseUrlQueryValueOptions: ParseUrlQueryValueOptions = {
   parseNull: true,
   parseUndefined: true,
   parseBoolean: true,
-  parseNumber: true
+  parseNumber: true,
+  parseJson: true,
+  parseDate: true,
 }
 
 type ParsedQuery = any;
@@ -80,6 +85,10 @@ export const parseUrlQueryValue = (target: ParsedQuery, options?: ParseUrlQueryV
         return target === 'true'
       } else if (options.parseNumber && !isNaN(Number(target))) {
         return Number(target)
+      } else if (options.parseJson && isJsonString(target) ) {
+        return JSON.parse(target)
+      } else if (options.parseDate && isDateString(target) ) {
+        return new Date(target)
       } else {
         return target
       }

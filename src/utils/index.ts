@@ -1,7 +1,7 @@
 import { DeepPartial } from './types';
 
 export * from './types';
-
+export * from './datatypes';
 
 export const getCircularReplacer = () => {
   const seen = new WeakSet();

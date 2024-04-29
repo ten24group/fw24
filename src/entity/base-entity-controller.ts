@@ -8,7 +8,7 @@ import { defaultMetaContainer } from './entity-metadata-container';
 import { EntitySchema } from './base-entity';
 import { createLogger } from '../logging';
 import { safeParseInt } from '../utils/parse';
-import { camelCase } from '../utils';
+import { camelCase, isEmptyObject, isJsonString, isObject } from '../utils';
 
 export abstract class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIGatewayController {
 	
@@ -84,20 +84,71 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 			count,
 			limit,
 			pages, 
-			...filters
+			...restOfQueryParams
 		} = data || {};
+
+		// TODO: parse filters
+		const {filters = {}, ...restOfQueryParamsWithoutFilters} = restOfQueryParams;
+
+		let parsedFilters = {};
+
+		if( restOfQueryParamsWithoutFilters && !isEmptyObject(restOfQueryParamsWithoutFilters) ){
+			// TODO: parse filters from url query string
+			/* e.g {
+					==> simple value without comparison opp
+					pqr: 2322,  		
+					
+					==> simple value with comparison opp
+					abc:neq:  234,  	
+
+					==> complex values/paths
+					abc.pqr.xyz:in: 123, 456,
+					someDate:between: 12,45 | [12, 45]
+				}
+			*/
+			this.logger.warn(`found not empty restOfQueryParamsWithoutFilters:`, restOfQueryParamsWithoutFilters);
+		};
+
+		if( !isObject(filters) ){
+
+			this.logger.warn(`filters is not an object: need to parse the filters query string`, filters);
+			
+			if(isJsonString(filters)){
+				
+				this.logger.info(`found JSON string filters parsing`, filters);
+				parsedFilters =  JSON.parse(filters);
+
+			}  else {
+
+				// TODO: parse filters query string like 
+				//
+				// `abc=123 AND ( pqr != 456 OR xyz contains 'qwe rty yui')`
+				//
+				this.logger.warn(`filters is not an object: need to parse the filters query string`, filters);
+			}
+		} else {
+			this.logger.info(`filters is a parsed object`, filters);
+			parsedFilters = filters;
+		}
 
 		const pagination = {
 			order: order ?? 'asc',
             cursor: cursor ?? null,
 			
+			// TODO: make the default-values configurable
             count: safeParseInt(count, 12).value,
 			limit: safeParseInt(limit, 250).value,
 
             pages:  pages === 'all' ? 'all' as const : safeParseInt(pages, 1).value,
         }
 
-		const {data: records, cursor: newCursor} = await this.getEntityService().list({filters, pagination});
+		this.logger.info(`parsed pagination`, pagination);
+
+
+		const {data: records, cursor: newCursor} = await this.getEntityService().list({
+			filters: parsedFilters,
+			pagination
+		});
 
 		const result: any = {
 			cursor: newCursor,

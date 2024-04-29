@@ -4,6 +4,7 @@
  */
 import { EntitySchema, TEntityOpsInputSchemas } from "../entity";
 import { createLogger } from "../logging";
+import { isDateString, isEmail, isHttpUrl, isIP, isIPv4, isIPv6, isJsonString, isNumeric, isUUID, isUnique } from "../utils";
 import { Actor, ComplexValidationRule, ConditionalValidationRule, EntityValidationCondition, ValidatorResult, IValidator, InputType, InputValidationResult, InputValidationRule, MapOfValidationCondition, OpValidatorOptions, RecordType, TComplexValidationValue, TValidationValue, TestComplexValidationResult, TestComplexValidationRuleResult, TestValidationResult, TestValidationRuleResult, ValidateHttpRequestOptions, ValidationError, ValidationRule, Validations } from "./types";
 import { extractOpValidationFromEntityValidations, isComplexValidationValue, isComplexValidationValueWithMessage, isComplexValidationValueWithValidator, isConditionsAndScopeTuple, isTestComplexValidationResult, makeEntityValidationMessageIds, makeHttpValidationMessageIds, makeValidationErrorMessage, makeValidationErrorMessageIds } from "./utils";
 
@@ -629,7 +630,7 @@ export class Validator implements IValidator {
 
         } else if( validationName === 'unique' ) {
 
-            result.pass = this.isUnique(val);
+            result.pass = isUnique(val);
 
         } else if(validationName === 'custom'){
 
@@ -644,39 +645,39 @@ export class Validator implements IValidator {
 
             if(validationValue === 'number'){
 
-                result.pass = this.isNumeric(val);
+                result.pass = isNumeric(val);
 
             } else if(validationValue === 'email'){
 
-                result.pass = this.isEmail(val);
+                result.pass = isEmail(val);
 
             } else if(validationValue === 'ip'){
 
-                result.pass =  this.isIP(val);
+                result.pass =  isIP(val);
 
             } else if(validationValue === 'ipv4'){
 
-                result.pass = this.isIPv4(val);
+                result.pass = isIPv4(val);
 
             } else if(validationValue === 'ipv6'){
 
-                result.pass = this.isIPv6(val);
+                result.pass = isIPv6(val);
 
             } else if(validationValue === 'uuid'){
 
-                result.pass = this.isUUID(val);
+                result.pass = isUUID(val);
 
             } else if(validationValue === 'json'){
 
-                result.pass = this.isJson(val);
+                result.pass = isJsonString(val);
 
             } else if(validationValue === 'date'){
 
-                result.pass = this.isDate(val);
+                result.pass = isDateString(val);
 
             } else if(validationValue === 'httpUrl'){
 
-                result.pass =  this.isHttpUrl(val);
+                result.pass =  isHttpUrl(val);
 
             } else if( typeof val !== validationValue ) {
 
@@ -688,59 +689,6 @@ export class Validator implements IValidator {
         this.logger.debug("testValidation ~ result ", {validationName, validationValue, val, result} );
 
         return result;
-    }
-
-    isNumeric(num: any){
-        return !isNaN(num)
-    }
-
-    isEmail(val: string){
-        const pattern = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-        return pattern.test(val);
-    }
-
-    isUnique(val: any): boolean {
-        throw(new Error(`isUnique not implemented yet: ${val}`));
-    }
-
-    isIP(val: any){
-        return !!require('net').isIP(val)
-    }
-
-    isIPv4(val: any){
-        return require('net').isIPv4(val)
-    }
-
-    isIPv6(val: any){
-        return require('net').isIPv6(val)
-    }
-
-    isUUID(val: string){
-        return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
-    }
-
-    isJson(val: string) {
-        try {
-            JSON.parse(val);
-        } catch (e) {
-            return false;
-        }
-        return true;
-    }
-
-    isDate(val: string) {
-        return !isNaN(new Date(val).getDate());
-    }
-
-    isHttpUrl(val: string) {
-        let url;
-        try {
-            url = new URL(val);
-        } catch (_) {
-            return false;  
-        }
-
-        return url?.protocol === "http:" || url?.protocol === "https:";
     }
 }
 

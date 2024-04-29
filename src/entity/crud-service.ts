@@ -234,23 +234,13 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
         throw new Error("Authorization failed: " + { cause: authorization });
     }
 
-    const entities = await entityService.getRepository()
-    .match(
-        removeEmpty(filters)
-    )
-    // .where((attr, op) => {
+    const dbQuery = entityService.getRepository().match({});
 
-    //     // TODO: add support for custom where clauses
-    //     // when the query is not for specific attribute-values
-    //     // ${op.eq(attr.cityId, "Atlanta1")} AND ${op.contains(attr.category, "food")}
-    //     // const {} = attr;
-    //     // const {eq, ne, gt, gte, lt, lte, between, begins, exists, notExists, contains, notContains, value, name, size, type, field, escape } = op;
-        
-    //     return ``;
-    // })
-    .go(
-        removeEmpty(pagination)
-    );
+    if(filters){
+        dbQuery.where((attr, op) => entityFiltersToFilterExpression(filters, attr, op))
+    }
+    
+    const entities = await dbQuery.go(removeEmpty(pagination));
 
     await eventDispatcher.dispatch({ event: 'afterList', context: arguments });
 
