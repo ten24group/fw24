@@ -270,7 +270,7 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>( option
         actor,
         tenant,
 
-        crudType = 'list',
+        crudType = 'query',
         logger = createLogger('CRUD-service:queryEntity'),
         authorizer = Authorizer.Default,
         auditLogger = Auditor.Default,

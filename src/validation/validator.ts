@@ -4,7 +4,7 @@
  */
 import { EntitySchema, TEntityOpsInputSchemas } from "../entity";
 import { createLogger } from "../logging";
-import { isDateString, isEmail, isHttpUrl, isIP, isIPv4, isIPv6, isJsonString, isNumeric, isUUID, isUnique } from "../utils";
+import { isDateString, isEmail, isHttpUrlString, isIP, isIPv4, isIPv6, isJsonString, isNumeric, isNumericString, isUUID, isUnique } from "../utils";
 import { Actor, ComplexValidationRule, ConditionalValidationRule, EntityValidationCondition, ValidatorResult, IValidator, InputType, InputValidationResult, InputValidationRule, MapOfValidationCondition, OpValidatorOptions, RecordType, TComplexValidationValue, TValidationValue, TestComplexValidationResult, TestComplexValidationRuleResult, TestValidationResult, TestValidationRuleResult, ValidateHttpRequestOptions, ValidationError, ValidationRule, Validations } from "./types";
 import { extractOpValidationFromEntityValidations, isComplexValidationValue, isComplexValidationValueWithMessage, isComplexValidationValueWithValidator, isConditionsAndScopeTuple, isTestComplexValidationResult, makeEntityValidationMessageIds, makeHttpValidationMessageIds, makeValidationErrorMessage, makeValidationErrorMessageIds } from "./utils";
 
@@ -645,7 +645,7 @@ export class Validator implements IValidator {
 
             if(validationValue === 'number'){
 
-                result.pass = isNumeric(val);
+                result.pass = isNumericString(val);
 
             } else if(validationValue === 'email'){
 
@@ -677,7 +677,7 @@ export class Validator implements IValidator {
 
             } else if(validationValue === 'httpUrl'){
 
-                result.pass =  isHttpUrl(val);
+                result.pass =  isHttpUrlString(val);
 
             } else if( typeof val !== validationValue ) {
 

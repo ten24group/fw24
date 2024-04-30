@@ -3,7 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import { EntityFilters, EntityQuery, FilterGroup } from './query.types';
 import { randomUUID } from 'crypto';
 import { DefaultEntityOperations, createElectroDBEntity, createEntitySchema } from './base-entity';
-import { entityFiltersToFilterExpression } from './query';
+import { entityFiltersToFilterExpression, parseUrlQueryStringParameters, queryStringParamsToEntityFilters } from './query';
 
 namespace User {
     export const createUserSchema = () => createEntitySchema({
@@ -228,6 +228,163 @@ describe('query', () => {
 
     console.log(exp);
     console.log(res);
+
+  });
+
+
+  describe('parseUrlQueryStringParameters', () => {
+
+    it('should parse simple query string params successfully', ()=>{
+      const parsed = parseUrlQueryStringParameters({
+        "foo[eq]" : "1",
+        "foo.neq": "3",
+        "bar[contains]": "fluffy",
+        "baz[in]": "4,34&343+787",
+      });
+      
+      console.log(parsed);
+
+      expect(parsed).toEqual({
+        foo: {
+          eq: '1',
+          neq: '3'
+        },
+        bar: {
+          contains: 'fluffy'
+        },
+        baz: {
+          in: '4,34&343+787'
+        }
+      });
+
+      const etQ = queryStringParamsToEntityFilters(parsed);
+      console.log(etQ);
+
+      expect(etQ).toEqual({
+        and: [
+          {
+            prop: 'foo',
+            eq: 1,
+            neq: 3
+          },
+          {
+            prop: 'bar',
+            contains: [ 'fluffy' ]
+          },
+          {
+            prop: 'baz',
+            in: [ 4, 34, 343, 787 ]
+          }
+        ],
+        not: [],
+        or: []
+      });
+    });
+
+    it('should parse query strings with and/or groups having ( [] array, and `.` dot ) notation successfully', () => {
+
+      const parsed = parseUrlQueryStringParameters({
+        "or[][foo][eq]" : "1",
+        "or[].foo.neq": "3",
+        "and[].bar[contains]": "fluffy",
+        "and[].baz[in]": "4,34",
+      });
+
+      console.log(parsed);
+
+      expect(parsed).toEqual({
+        or: [{
+          foo: {
+            eq: '1',
+            neq: '3'
+          }
+        }],
+        and: [{
+            bar: { contains: 'fluffy' },
+            baz: { in: '4,34' }
+        }]
+      });
+
+      const etQ = queryStringParamsToEntityFilters(parsed);
+      console.log(etQ);
+
+      expect(etQ).toEqual({
+        and: [{
+          prop: 'bar',
+          contains: [ 'fluffy' ]
+        },
+        {
+          prop: 'baz',
+          in: [ 4, 34]
+        }],
+        not: [],
+        or: [{
+          prop: 'foo',
+          eq: 1,
+          neq: 3
+        }]
+      });
+
+    });
+
+    it('should parse query strings with and/or groups and [split/combine/parse] values successfully', () => {
+
+      const parsed = parseUrlQueryStringParameters({
+        "or.0.foo.eq" : "1",
+        "or.1.foo.neq": "3",
+        "and.0.bar[contains]": "fluffy",
+        "and.1.baz[in]": "4,34",
+        "and.1.baz.nin": "8989",
+        "and.1.baz[nin]": "565",
+      });
+
+      console.log(parsed);
+
+      expect(parsed).toEqual({
+        "or":[
+          {"foo": {"eq": "1"} },
+          {"foo": {"neq": "3"} }
+        ],
+        "and":[{
+            "bar": { "contains": "fluffy"}
+          },
+          {
+            "baz": {
+              "in": "4,34",
+              "nin": ["8989", "565"]
+            }
+        }]
+      });
+
+      const etQ = queryStringParamsToEntityFilters(parsed);
+
+      expect(etQ).toEqual({
+        and: [
+          {
+            prop: 'bar',
+            contains: [ 'fluffy' ]
+          },
+          {
+            prop: 'baz',
+            in: [4, 34], // splitted value
+            nin: [8989, 565] // combined values
+          }
+        ],
+        not: [],
+        or: [
+          {
+            prop: 'foo',
+            eq: 1 // parsed type
+          },
+          {
+            prop: 'foo',
+            neq: 3 // parsed type
+          }
+        ]
+      });
+
+    });
+
 
   });
 

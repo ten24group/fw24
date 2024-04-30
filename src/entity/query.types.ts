@@ -62,6 +62,8 @@ export type FilterOperators<T> = {
     
     'contains': FilterOperatorValue<T | Array<T>>,
     'notContains': FilterOperatorValue<T | Array<T>>,
+
+    'containsSome': FilterOperatorValue<T | Array<T>>,
     
     'like': FilterOperatorValue<T>,
     'endsWith': FilterOperatorValue<T>,
@@ -111,7 +113,10 @@ export type FilterOperatorsExtended<T> = FilterOperators<T> & {
     'beginsWith': FilterOperators<T>['startsWith'],
 
     'includes': FilterOperators<T>['contains'],
+    'includesSome': FilterOperators<T>['containsSome'],
+
     'has': FilterOperators<T>['contains'],
+    'hasSome': FilterOperators<T>['containsSome'],
 
     'notIncludes': FilterOperators<T>['notContains'],
     'notHas': FilterOperators<T>['notContains'],
@@ -158,6 +163,9 @@ export const allFilterOperators: Array<keyof FilterOperatorsExtended<any>> = [
     'contains', 
     'includes',
     'has',
+    'containsSome',
+    'includesSome',
+    'hasSome',
 
     'notContains', 
     'notIncludes',

@@ -81,6 +81,26 @@ export type If<
   ELSE = never,
 > = CONDITION extends true ? THEN : ELSE;
 
+
+type Has<U, U1> = [U1] extends [U] ? true : false;
+
+export type PrettyPrint<A, Seen = never> = If<
+  Has<Seen, A>,
+  A,
+  A extends Record<string | number | symbol, unknown>
+    ? { [K in keyof A]: PrettyPrint<A[K], A | Seen> } & unknown
+    : A
+>
+
+   
+export type AnyClass = new (...args: any[]) => any;
+
+export type AnyFunction = (...args: any[]) => any;
+
+export type PlainObject = Record<string | number | symbol, any>;
+
+export type Nullish = null | undefined;
+
 export type IfOptional<T, TypeIfTrue, TypeIfFalse> =  T extends undefined | never ? TypeIfTrue : TypeIfFalse;
 
 /**

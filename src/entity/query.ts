@@ -4,6 +4,14 @@ import { EntitySchema } from "./base-entity";
 import { FilterCriteria } from "./query.types";
 import { createLogger } from "../logging";
 
+import {
+    parse as parseQueryString,
+    stringify as stringifyQueryParams,
+} from 'qs';
+import { isArray, isObject } from '../utils';
+import { parseValueToCorrectTypes } from '../utils/parse';
+
+
 const logger = createLogger('EntityQuery');
 
 export function filterToExpression<
@@ -71,13 +79,14 @@ export function filterToExpression<
             
             filterFragments.push( begins(attributeRef, filterVal));
 
-        } else if( ['contains', 'has', 'includes'].includes(filterKey) ){
+        } else if( ['contains', 'has', 'includes', 'containsSome'].includes(filterKey) ){
             
             filterVal = Array.isArray(filterVal) ? filterVal : [filterVal];
+            const logicalOpp = filterKey === 'containsSome' ? 'OR' : 'AND';
 
             const listFilters = filterVal.map( (val: any) => contains(attributeRef, val))
 
-            filterFragments.push( makeParenthesesGroup(listFilters, 'AND') );
+            filterFragments.push( makeParenthesesGroup(listFilters, logicalOpp) );
             
         } else if( ['notContains', 'notHas', 'notIncludes'].includes(filterKey) ){
 
@@ -235,3 +244,165 @@ export function entityFiltersToFilterExpression<
     return expression;
 
   }
+
+
+    export function parseUrlQueryStringParameters(queryStringParameters: {[name: string]: string | undefined}){
+        logger.info('parseUrlQueryStringParameters', {queryStringParameters});
+        
+        const queryString = stringifyQueryParams(queryStringParameters);
+        logger.info('parseUrlQueryStringParameters', {queryString});
+        
+        const parsed = parseQueryString(queryString, {
+            delimiter: /[;,&:+]/,
+            allowDots: true,
+            decodeDotInKeys: true,
+            parseArrays: true,
+            duplicates: 'combine',
+            allowEmptyArrays: false,
+        });
+        
+        logger.info('parseUrlQueryStringParameters', {parsed});
+        return parsed;
+    }
+
+    export const PARSE_VALUE_DELIMITERS = /(?:&|,|\+|;|:|\.)+/;
+    export const FILTER_KEYS_HAVING_ARRAY_VALUES = ['in', 'inList', 'nin', 'notIn', 'notInList', 'contains', 'includes', 'has', 'notContains' ,'notIncludes', 'notHas' ];
+
+    export function makeFilterFromQueryStringParams(paramName: string, paramValue: any){
+        logger.info('makeFilterFromQueryStringParams', {paramName, paramValue});
+
+        /**
+         *  or: [{ foo: { eq: '1' }}, { foo: { neq: '3' } }]
+        */
+        if(['and', 'or', 'not'].includes(paramName)){
+            
+            let formattedGroupVal: Array<any> = []; 
+            
+            paramValue.forEach( (item: any) => {
+                Object.keys(item).forEach( (itemKey: string) => {
+                    const itemValue = item[itemKey];
+                    const formattedItems = makeFilterFromQueryStringParams(itemKey, itemValue);
+                    formattedGroupVal = formattedGroupVal.concat(formattedItems);
+                });
+            });
+
+            logger.info('makeFilterFromQueryStringParams', {formattedGroupVal});
+
+            return formattedGroupVal;
+        }
+
+        let formattedValues: any = {};
+
+        if(!isObject(paramValue)){
+            paramValue = {'eq': paramValue};
+        }
+        
+        /*
+        foo: {
+            eq: '1',
+            neq: '3',
+            in: [232,kl,klk],
+            nin: qwq,334,jhj,
+            contains: hj+hjj+yuy7
+         }
+        */
+        Object.keys(paramValue).forEach( (key) => {
+            const keyVal = paramValue[key];
+            let formattedVal = keyVal;
+
+            // parse the values to the right types here
+            if( FILTER_KEYS_HAVING_ARRAY_VALUES.includes(key) && typeof keyVal === 'string') {
+                logger.info('Splitting key value', {key, keyVal});
+                formattedVal = keyVal.split(PARSE_VALUE_DELIMITERS);
+            }
+
+            formattedVal = parseValueToCorrectTypes(formattedVal);
+
+            formattedValues[key] = formattedVal;
+        });
+
+        const formattedItemVal = {
+            prop: paramName,
+            ...formattedValues
+        }
+
+        logger.info('makeFilterFromQueryStringParams', {formattedItemVal});
+
+        return formattedItemVal;
+    }
+
+    export function queryStringParamsToEntityFilters( queryStringParams: {[name: string]: any}){
+        logger.info('queryStringParamsToEntityFilters', {queryStringParams});
+
+        const formatted: any = {
+            and: [],
+            not: [],
+            or: [],
+        };
+
+        for(let qParamName in queryStringParams){
+
+            let groupName: keyof typeof formatted = 'and';
+
+            // then treat it as a filter item
+            if( Object.keys(formatted).includes(qParamName) ){
+                groupName = qParamName as keyof typeof formatted;
+            }
+
+            let qParamValue = queryStringParams[qParamName];
+
+            const formattedQPVal = makeFilterFromQueryStringParams(qParamName, qParamValue);
+
+            formatted[groupName] = formatted[groupName].concat(formattedQPVal);
+        }
+
+        logger.info('queryStringParamsToEntityFilters', {formatted});
+
+        return formatted;
+
+        /*
+
+        foo: {
+          eq: '1',
+          neq: '3'
+        },
+        bar: {
+          contains: 'fluffy'
+        },
+        baz: {
+          in: '4,34'
+        }
+
+
+        {
+            or: [
+            {
+                foo: {
+                eq: '1'
+                }
+            },
+            {
+                foo: {
+                neq: '3'
+                }
+            }
+            ],
+            and: [
+            {
+                bar: {
+                contains: 'fluffy'
+                }
+            },
+            {
+                baz: {
+                in: '4,34',
+                nin: [
+                    '8989',
+                    '565'
+                ]
+                }
+            }
+            ]
+        }
+        */
+    }

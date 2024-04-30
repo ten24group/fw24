@@ -8,7 +8,8 @@ import { defaultMetaContainer } from './entity-metadata-container';
 import { EntitySchema } from './base-entity';
 import { createLogger } from '../logging';
 import { safeParseInt } from '../utils/parse';
-import { camelCase, isEmptyObject, isJsonString, isObject } from '../utils';
+import { camelCase, isEmptyObject, isJsonString, isObject, merge } from '../utils';
+import { parseUrlQueryStringParameters, queryStringParamsToEntityFilters } from './query';
 
 export abstract class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIGatewayController {
 	
@@ -74,7 +75,7 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 
 	@Get('')
 	async list(req: Request, res: Response) {
-		// TODO: pagination + filter + search
+		// TODO: search
         const data = req.queryStringParameters;
 		this.logger.info(`list - data:`, data);
 
@@ -87,27 +88,9 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 			...restOfQueryParams
 		} = data || {};
 
-		// TODO: parse filters
 		const {filters = {}, ...restOfQueryParamsWithoutFilters} = restOfQueryParams;
 
 		let parsedFilters = {};
-
-		if( restOfQueryParamsWithoutFilters && !isEmptyObject(restOfQueryParamsWithoutFilters) ){
-			// TODO: parse filters from url query string
-			/* e.g {
-					==> simple value without comparison opp
-					pqr: 2322,  		
-					
-					==> simple value with comparison opp
-					abc:neq:  234,  	
-
-					==> complex values/paths
-					abc.pqr.xyz:in: 123, 456,
-					someDate:between: 12,45 | [12, 45]
-				}
-			*/
-			this.logger.warn(`found not empty restOfQueryParamsWithoutFilters:`, restOfQueryParamsWithoutFilters);
-		};
 
 		if( !isObject(filters) ){
 
@@ -126,10 +109,41 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 				//
 				this.logger.warn(`filters is not an object: need to parse the filters query string`, filters);
 			}
+
 		} else {
 			this.logger.info(`filters is a parsed object`, filters);
 			parsedFilters = filters;
 		}
+
+		if( restOfQueryParamsWithoutFilters && !isEmptyObject(restOfQueryParamsWithoutFilters) ){
+			/* 
+				e.g 
+				{
+					==> simple value without comparison opp
+					pqr: 2322,  		
+					
+					==> simple value with comparison opp
+					"foo[eq]" : "1",
+					"foo.neq": "3"
+
+					==> complex values/logical-paths
+					"or[][foo][eq]" : "1",
+					"or[].foo.neq": "3",
+					"and[].bar[contains]": "fluffy",
+					"and[].baz[in]": "4,34",
+					"and[].baz.in": "123",
+				}
+			*/
+			this.logger.info(`found not empty restOfQueryParamsWithoutFilters:`, restOfQueryParamsWithoutFilters);
+
+			const parsedQueryParams = parseUrlQueryStringParameters(restOfQueryParamsWithoutFilters);
+			this.logger.info(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
+
+			const parsedQueryParamFilters = queryStringParamsToEntityFilters(parsedQueryParams);
+			this.logger.info(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
+
+			parsedFilters = merge([parsedFilters, parsedQueryParamFilters]) ?? {};
+		} 
 
 		const pagination = {
 			order: order ?? 'asc',
@@ -143,7 +157,6 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
         }
 
 		this.logger.info(`parsed pagination`, pagination);
-
 
 		const {data: records, cursor: newCursor} = await this.getEntityService().list({
 			filters: parsedFilters,

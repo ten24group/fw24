@@ -1,4 +1,4 @@
-import { isDateString, isJsonString } from "./datatypes";
+import { isDateString, isJsonString, isNumericString } from "./datatypes";
 
 export type SafeParseSuccess = { success: true; value: number };
 export type SafeParseError<ValType> = { success: false; value: ValType };
@@ -46,28 +46,28 @@ export function safeParseFloat<ValType extends number>(value: any | null, defaul
 }
 
 
-interface ParseUrlQueryValueOptions {
+interface ParseValueToCorrectTypesOptions {
   parseNull?: boolean
   parseUndefined?: boolean
   parseBoolean?: boolean
   parseNumber?: boolean
   parseJson ?: boolean
-  parseDate ?: boolean
+  // parseDate ?: boolean
 }
 
-const defaultParseUrlQueryValueOptions: ParseUrlQueryValueOptions = {
+const defaultParseValueToCorrectTypesOptions: ParseValueToCorrectTypesOptions = {
   parseNull: true,
   parseUndefined: true,
   parseBoolean: true,
   parseNumber: true,
   parseJson: true,
-  parseDate: true,
+  // parseDate: true,
 }
 
-type ParsedQuery = any;
-export const parseUrlQueryValue = (target: ParsedQuery, options?: ParseUrlQueryValueOptions) : ParsedQuery => {
+type ParsedValueType = any;
+export const parseValueToCorrectTypes = (target: ParsedValueType, options?: ParseValueToCorrectTypesOptions) : ParsedValueType => {
   
-  options = { ...defaultParseUrlQueryValueOptions, ...options };
+  options = { ...defaultParseValueToCorrectTypesOptions, ...options };
 
   if (!target) {
     return target
@@ -83,22 +83,24 @@ export const parseUrlQueryValue = (target: ParsedQuery, options?: ParseUrlQueryV
         return undefined
       } else if (options.parseBoolean && (target === 'true' || target === 'false')) {
         return target === 'true'
-      } else if (options.parseNumber && !isNaN(Number(target))) {
+      } else if (options.parseNumber && isNumericString(target) ) {
         return Number(target)
       } else if (options.parseJson && isJsonString(target) ) {
         return JSON.parse(target)
-      } else if (options.parseDate && isDateString(target) ) {
-        return new Date(target)
-      } else {
+      }
+      //  else if (options.parseDate && isDateString(target) ) {
+      //   return new Date(target)
+      // } 
+      else {
         return target
       }
     case 'object':
       if (Array.isArray(target)) {
-        return target.map(x => parseUrlQueryValue(x, options))
+        return target.map(x => parseValueToCorrectTypes(x, options))
       } else {
         const obj = target
         Object.keys(obj).map(key =>
-          obj[key] = parseUrlQueryValue(target[key], options)
+          obj[key] = parseValueToCorrectTypes(target[key], options)
         )
         return obj
       }
