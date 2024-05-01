@@ -162,7 +162,7 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 
 		const {data: records, cursor: newCursor} = await this.getEntityService().list({
 			filters: parsedFilters,
-			attributes: attributes.split(','),
+			attributes: attributes?.split?.(','),
 			pagination
 		});
 
