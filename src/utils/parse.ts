@@ -1,3 +1,4 @@
+import { isDateString, isJsonString, isNumericString } from "./datatypes";
 
 export type SafeParseSuccess = { success: true; value: number };
 export type SafeParseError<ValType> = { success: false; value: ValType };
@@ -42,4 +43,68 @@ export function safeParseFloat<ValType extends number>(value: any | null, defaul
   }
 
   return {success: true, value: parsedValue};
+}
+
+
+interface ParseValueToCorrectTypesOptions {
+  parseNull?: boolean
+  parseUndefined?: boolean
+  parseBoolean?: boolean
+  parseNumber?: boolean
+  parseJson ?: boolean
+  // parseDate ?: boolean
+}
+
+const defaultParseValueToCorrectTypesOptions: ParseValueToCorrectTypesOptions = {
+  parseNull: true,
+  parseUndefined: true,
+  parseBoolean: true,
+  parseNumber: true,
+  parseJson: true,
+  // parseDate: true,
+}
+
+type ParsedValueType = any;
+export const parseValueToCorrectTypes = (target: ParsedValueType, options?: ParseValueToCorrectTypesOptions) : ParsedValueType => {
+  
+  options = { ...defaultParseValueToCorrectTypesOptions, ...options };
+
+  if (!target) {
+    return target
+  }
+
+  switch (typeof (target)) {
+    case 'string':
+      if (target === '') {
+        return ''
+      } else if (options.parseNull && target === 'null') {
+        return null
+      } else if (options.parseUndefined && target === 'undefined') {
+        return undefined
+      } else if (options.parseBoolean && (target === 'true' || target === 'false')) {
+        return target === 'true'
+      } else if (options.parseNumber && isNumericString(target) ) {
+        return Number(target)
+      } else if (options.parseJson && isJsonString(target) ) {
+        return JSON.parse(target)
+      }
+      //  else if (options.parseDate && isDateString(target) ) {
+      //   return new Date(target)
+      // } 
+      else {
+        return target
+      }
+    case 'object':
+      if (Array.isArray(target)) {
+        return target.map(x => parseValueToCorrectTypes(x, options))
+      } else {
+        const obj = target
+        Object.keys(obj).map(key =>
+          obj[key] = parseValueToCorrectTypes(target[key], options)
+        )
+        return obj
+      }
+    default: 
+      return target
+  }
 }

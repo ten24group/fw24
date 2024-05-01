@@ -114,6 +114,7 @@ namespace User {
             create: "create",
             update: "update",
             delete: "delete",
+            query: "query",
             xxx: "xxx",
             yyy: "yyy"
         },

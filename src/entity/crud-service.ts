@@ -1,12 +1,13 @@
-import { Schema } from "electrodb";
-import { Authorizer } from "../authorize";
-import { TDefaultEntityOperations, EntitySchema, EntityServiceTypeFromSchema, TEntityOpsInputSchemas } from "./base-entity";
 import { defaultMetaContainer } from ".";
-import { DefaultValidator, IValidator } from "../validation";
 import { Auditor } from "../audit";
+import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
-import { removeEmpty } from "../utils";
+import { isEmptyObject, removeEmpty } from "../utils";
+import { DefaultValidator, IValidator } from "../validation";
+import { EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
+import { entityFilterCriteriaToExpression } from "./query";
+import { EntityQuery, Pagination } from "./query-types";
 
 /**
  * 
@@ -47,18 +48,19 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     // telemetry
 }
 
-
 export interface GetEntityArgs<
     Sch extends EntitySchema<any, any, any>,
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > extends BaseEntityCrudArgs<Sch> {
     id: OpsSchema['get'];
+    attributes ?: Array<string>;
 }
 
 export async function getEntity<S extends EntitySchema<any, any, any>>( options: GetEntityArgs<S>){
 
     const { 
         id,
+        attributes,
         entityName, 
         entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
         
@@ -74,13 +76,11 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
             
     } = options;
 
-    logger.debug(`Called EntityCrud ~ getEntity ~ entityName: ${entityName} ~ id:`, id);
+    logger.debug(`Called EntityCrud ~ getEntity ~ entityName: ${entityName}:`, {id, attributes});
 
     await eventDispatcher.dispatch({event: 'beforeGet', context: arguments });
 
     const identifiers = entityService.extractEntityIdentifiers(id);
-
-    // TODO: validation
 
     // authorize the actor
     const authorization = await authorizer.authorize({entityName, crudType, identifiers, actor, tenant});
@@ -102,7 +102,7 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
         throw new Error("Validation failed for get: " + JSON.stringify({ cause: validation }));
     }
 
-    const entity = await entityService.getRepository().get(identifiers).go();
+    const entity = await entityService.getRepository().get(identifiers).go({attributes});
 
     await eventDispatcher.dispatch({event: 'afterGet', context: arguments});
 
@@ -182,15 +182,6 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     return entity;
 }
 
-export type Pagination = {
-    limit?: number;
-    count?: number;
-    pages?: number | 'all';
-    pager?: 'raw' | 'cursor',
-    order?: 'asc' | 'desc';
-    cursor?: string,
-}
-
 export interface ListEntityArgs<
     Sch extends EntitySchema<any, any, any>,
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
@@ -241,23 +232,13 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
         throw new Error("Authorization failed: " + { cause: authorization });
     }
 
-    const entities = await entityService.getRepository()
-    .match(
-        removeEmpty(filters)
-    )
-    // .where((attr, op) => {
+    const dbQuery = entityService.getRepository().match({});
 
-    //     // TODO: add support for custom where clauses
-    //     // when the query is not for specific attribute-values
-    //     // ${op.eq(attr.cityId, "Atlanta1")} AND ${op.contains(attr.category, "food")}
-    //     // const {} = attr;
-    //     // const {eq, ne, gt, gte, lt, lte, between, begins, exists, notExists, contains, notContains, value, name, size, type, field, escape } = op;
-        
-    //     return ``;
-    // })
-    .go(
-        removeEmpty(pagination)
-    );
+    if(filters && !isEmptyObject(filters)){
+        dbQuery.where((attr, op) => entityFilterCriteriaToExpression(filters, attr, op))
+    }
+    
+    const entities = await dbQuery.go(removeEmpty(pagination));
 
     await eventDispatcher.dispatch({ event: 'afterList', context: arguments });
 
@@ -265,6 +246,67 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
     auditLogger.audit({ entityName, crudType, entities, actor, tenant });
 
     logger.debug(`Completed EntityCrud ~ listEntity ~ entityName: ${entityName} ~ filters+paging:`);
+
+    return entities;
+}
+
+export interface QueryEntityArgs<Sch extends EntitySchema<any, any, any>> extends BaseEntityCrudArgs<Sch> {
+    query: EntityQuery<Sch>
+}
+/**
+ * 
+ * @param options 
+ * 
+ * @returns 
+ */
+export async function queryEntity<S extends EntitySchema<any, any, any>>( options: QueryEntityArgs<S>){
+
+    const { 
+        entityName, 
+        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+
+        actor,
+        tenant,
+
+        crudType = 'query',
+        logger = createLogger('CRUD-service:queryEntity'),
+        authorizer = Authorizer.Default,
+        auditLogger = Auditor.Default,
+        eventDispatcher = EventDispatcher.Default,
+
+        query = {}
+
+    } = options;
+
+    const { 
+        filters = {}, 
+        pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined } 
+    } = query;
+
+    logger.debug(`Called EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
+
+    await eventDispatcher.dispatch({event: 'beforeQuery', context: arguments });
+
+    // authorize the actor
+    const authorization = await authorizer.authorize({entityName, crudType, actor, tenant});
+    if(!authorization.pass){
+        throw new Error("Authorization failed: " + { cause: authorization });
+    }
+
+    const dbQuery = entityService.getRepository().match({});
+
+    if(filters && !isEmptyObject(filters)){
+        dbQuery.where((attr, op) => entityFilterCriteriaToExpression(filters, attr, op))
+    }
+    
+    const entities = await dbQuery.go(removeEmpty(pagination));
+
+    await eventDispatcher.dispatch({ event: 'afterQuery', context: arguments });
+
+    // create audit
+    auditLogger.audit({ entityName, crudType, entities, actor, tenant });
+
+    logger.debug(`Completed EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
     return entities;
 }

@@ -38,11 +38,10 @@ export interface EntitySchema<
     };
 }
 
-
-// todo: maybe make it a enum
 export const DefaultEntityOperations = {
     get: "get",
     list: "list",
+    query: "query",
     create: "create",
     update: "update",
     delete: "delete",
@@ -58,15 +57,11 @@ export type TEntityOpsInputSchemas<
 Sch extends EntitySchema<any, any, any>,
 > = {
     readonly [opName in keyof Sch['model']['entityOperations']] 
-        : opName extends 'get' 
-            ? EntityIdentifiersTypeFromSchema<Sch>
-            : opName extends 'create' 
-                ? CreateEntityItemTypeFromSchema<Sch>
-                : opName extends 'update' 
-                    ? UpdateEntityItemTypeFromSchema<Sch>
-                    : opName extends 'delete' 
-                        ? EntityIdentifiersTypeFromSchema<Sch>
-                        : {}
+        : opName extends 'get'      ? EntityIdentifiersTypeFromSchema<Sch>
+        : opName extends 'create'   ? CreateEntityItemTypeFromSchema<Sch>
+        : opName extends 'update'   ? UpdateEntityItemTypeFromSchema<Sch>
+        : opName extends 'delete'   ? EntityIdentifiersTypeFromSchema<Sch>
+        : {}
 }
 
 export type CreateEntityOptions<S extends EntitySchema<any, any, any>> = {

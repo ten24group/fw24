@@ -7,6 +7,7 @@ import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRu
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
 import { isHttpRequestValidationRule, isInputValidationRule } from "../validation/utils";
+import { getCircularReplacer } from "../utils";
 
 /**
  * Base controller class for handling API Gateway events.
@@ -50,7 +51,7 @@ abstract class APIGatewayController {
       requestContext, 
       validations: validationRules, 
       collectErrors: true,
-      verboseErrors: requestContext.debug,
+      verboseErrors: requestContext.debugMode,
       overriddenErrorMessages: await this.getOverriddenHttpRequestValidationErrorMessages()
     });
   }
@@ -85,7 +86,7 @@ abstract class APIGatewayController {
             statusCode: 400,
             body: JSON.stringify({
               message: 'Validation failed!!!',
-              error: validationResult.errors 
+              errors: validationResult.errors 
             }),
           });
         }
@@ -113,7 +114,7 @@ abstract class APIGatewayController {
       }
     } catch (err) {
       // If an error occurs, log it and handle with the Exception method
-      this.logger.error('LambdaHandler error: ',err);
+      this.logger.error('LambdaHandler error: ', err);
       return this.handleException(requestContext, err as Error);
     }
 
@@ -162,7 +163,7 @@ abstract class APIGatewayController {
   private handleNotFound(_req: Request): APIGatewayProxyResult {
     return this.handleResponse({
       statusCode: 404,
-      body: JSON.stringify({ error: "Not Found" }),
+      body: JSON.stringify({ message: "Not Found" }),
     });
   }
 
@@ -172,10 +173,20 @@ abstract class APIGatewayController {
    * @param err - The error object.
    * @returns The response object with a 500 status code.
    */
-  private handleException(_req: Request, err: Error): APIGatewayProxyResult {
+  private handleException(req: Request, err: Error): APIGatewayProxyResult {
+    
+    const result: any = {
+      message: err.message,
+    }
+
+    if(req.debugMode){
+      result.req = req;
+      result.errors = [err];
+    }
+    
     return this.handleResponse({
       statusCode: 500,
-      body: JSON.stringify({ error: err.message }),
+      body: JSON.stringify(result, getCircularReplacer()),
     });
   }
 

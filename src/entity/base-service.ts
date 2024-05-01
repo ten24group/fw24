@@ -1,9 +1,10 @@
 import { EntityConfiguration } from "electrodb";
-import { toHumanReadableName } from "../utils";
+import { createLogger } from "../logging";
+import { isArrayOfStrings, isEmptyArray, pickKeys, toHumanReadableName } from "../utils";
 import { EntityOpsInputValidations, EntityValidations } from "../validation";
 import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
-import { Pagination, createEntity, deleteEntity, getEntity, listEntity, updateEntity } from "./crud-service";
-import { createLogger } from "../logging";
+import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
+import { EntityQuery, Pagination, isArrayOfObjectOfStringKeysAndBooleanValues } from "./query-types";
 
 export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
@@ -79,6 +80,18 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     public getEntityName(): S['model']['entity'] { return this.schema.model.entity; }
     
     public getEntitySchema(): S { return this.schema;}
+    
+    public getRepository(){
+        if(!this.entityRepository){
+            const {entity} = createElectroDBEntity({ 
+                schema: this.getEntitySchema(), 
+                entityConfigurations: this.entityConfigurations 
+            });
+            this.entityRepository = entity as EntityRepositoryTypeFromSchema<S>;
+        }
+
+        return this.entityRepository!;
+    }
 
     public getEntityValidations(): EntityValidations<S> | EntityOpsInputValidations<S>{
         return {};
@@ -108,23 +121,73 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return this.entityOpsDefaultIoSchema;
     }
 
-    public getRepository(){
-        if(!this.entityRepository){
-            const {entity} = createElectroDBEntity({ 
-                schema: this.getEntitySchema(), 
-                entityConfigurations: this.entityConfigurations 
-            });
-            this.entityRepository = entity as EntityRepositoryTypeFromSchema<S>;
-        }
-
-        return this.entityRepository!;
+    /**
+     * @returns Array<string> the default attribute names for serialization to be used by the detail-pages
+     */
+    public getDefaultSerializationAttributeNames(): Array<string>{
+        const defaultOutputSchemaAttributesMap = this.getOpsDefaultIOSchema().get.output;
+        return Array.from( defaultOutputSchemaAttributesMap.keys() ) as Array<string>;
     }
 
-    public async get( identifiers: EntityIdentifiersTypeFromSchema<S> ) {
-        this.logger.debug(`Called ~ get ~ entityName: ${this.getEntityName()} ~ id:`, identifiers);
+    /**
+     * @returns Array<string> the default attribute names for listing/query serialization
+     */
+    public getListingAttributeNames(): Array<string>{
+        return this.getDefaultSerializationAttributeNames();
+    }
+
+    /**
+     * @returns Array<string> the default attribute names to be used for keyword search
+    */
+    public getSearchableAttributeNames(): Array<string>{
+        const attributeNames = [];
+        const schema = this.getEntitySchema();
+        
+        for(const attName in schema.attributes){
+            const att = schema.attributes[attName];
+            if( !att.hidden && att.type === 'string' ){ // TODO: add meta annotation for searchable attributes
+                attributeNames.push(attName); 
+            }
+        }
+
+        return attributeNames;
+    }
+
+    /**
+     * @returns Array<string> the default attribute names that can be used for filtering the records
+    */
+    public getFilterableAttributeNames(): Array<string>{
+        const attributeNames = [];
+        const schema = this.getEntitySchema();
+        
+        for(const attName in schema.attributes){
+            const att = schema.attributes[attName];
+            if( !att.hidden && att.type === 'string' ){ // TODO: add meta annotation for searchable attributes
+                attributeNames.push(attName); 
+            }
+        }
+
+        return attributeNames;
+    }
+
+    public serializeRecord<T extends Record<string, any> >(record: T, attributes = this.getDefaultSerializationAttributeNames() ): Partial<T> {
+        return pickKeys<T>(record, ...attributes);
+    }
+
+    public serializeRecords<T extends Record<string, any>>(record: Array<T>, attributes = this.getDefaultSerializationAttributeNames() ): Array<Partial<T>> {
+        return record.map(record => this.serializeRecord<T>(record, attributes));
+    }
+
+    public async get( identifiers: EntityIdentifiersTypeFromSchema<S>, attributes ?: Array<string> ) {
+        this.logger.debug(`Called ~ get ~ entityName: ${this.getEntityName()}: `, {identifiers, attributes});
+        
+        if(!attributes){
+            attributes = this.getDefaultSerializationAttributeNames()
+        }
 
         const entity =  await getEntity<S>({
             id: identifiers, 
+            attributes,
             entityName: this.getEntityName(),
         });
 
@@ -142,7 +205,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return entity;
     }
 
-    public async list(options: { filters?: any, pagination?: Pagination } = {}) {
+    public async list(options: { filters?: any, pagination?: Pagination, attributes ?: Array<string> } = {}) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ options:`, options);
 
         const entities =  await listEntity<S>({
@@ -150,6 +213,39 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             pagination: options.pagination,
             entityName: this.getEntityName(),  
         });
+
+        if(!options.attributes){
+            options.attributes = this.getListingAttributeNames();
+        }
+
+        entities.data = this.serializeRecords(entities.data, options.attributes);
+
+        return entities;
+    }
+
+    public async query(query: EntityQuery<S> ) {
+        this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
+
+        const {selection} = query;
+
+        let attributes: Array<string> | undefined = undefined;
+
+        if(isArrayOfObjectOfStringKeysAndBooleanValues(selection)){
+            attributes = Object.entries(selection).filter( ([,v]) => !!v).map( ([k]) => k );
+        } else if(isArrayOfStrings(selection)) {
+            attributes = selection;
+        }
+
+        const entities =  await queryEntity<S>({
+            query,
+            entityName: this.getEntityName(),  
+        });
+
+        if(!attributes || isEmptyArray(attributes)){
+            attributes = this.getListingAttributeNames();
+        }
+
+        entities.data = this.serializeRecords(entities.data, attributes);
 
         return entities;
     }
@@ -177,23 +273,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return deletedEntity;
     }
 
-    /*
-
-    $in	    Match any value in array	    {"field" : {"$in" : [value1, value2, ...]}}
-    $nin	Not match any value in array	{"field" : {"$nin" : [value1, value2, ...]}}
-    $or	    Logical operator	            {"$or": [{"status": "GOLD"}, {"status": "SILVER"}]}
-    $and	Logical operator	            {"$and": [{"status": "GOLD"}, {"sales": 1000}]}
-    $not	Negation logical operator	    {"field" : {"$not" : val}}
-
-    $gt	        >	            {"salary": {"$gt": 10000}}
-    $gte	    >=	            {"salary": {"$gte": 10000}}
-    $lt	        <	            {"salary": {"$lt": 10000}}
-    $lte	    <=	            {"salary": {"$lte": 10000}}
-    $bt	        >= value <=	    {"salary": {"$bt": [5000, 7500]}}
-    $exists	                    Check if field exists	{"field": {"$exists": true|false}}
-    $elemMatch	                Array element matching	{"contact":{"$elemMatch":{"name":"Anderson", age:35}}}
-
-    */
 }
 
 export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAttribute): Partial<EntityAttribute> & { 

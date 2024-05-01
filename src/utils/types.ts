@@ -1,7 +1,3 @@
-
-import { EntityItem, Schema } from "electrodb";
-import { EntityTypeFromSchema } from "../entity";
-
 /**
  * Used to narrow the inferred generic type for readability
  * @param INPUT Type
@@ -81,6 +77,26 @@ export type If<
   ELSE = never,
 > = CONDITION extends true ? THEN : ELSE;
 
+
+type Has<U, U1> = [U1] extends [U] ? true : false;
+
+export type PrettyPrint<A, Seen = never> = If<
+  Has<Seen, A>,
+  A,
+  A extends Record<string | number | symbol, unknown>
+    ? { [K in keyof A]: PrettyPrint<A[K], A | Seen> } & unknown
+    : A
+>
+
+   
+export type AnyClass = new (...args: any[]) => any;
+
+export type AnyFunction = (...args: any[]) => any;
+
+export type PlainObject = Record<string | number | symbol, any>;
+
+export type Nullish = null | undefined;
+
 export type IfOptional<T, TypeIfTrue, TypeIfFalse> =  T extends undefined | never ? TypeIfTrue : TypeIfFalse;
 
 /**
@@ -107,3 +123,10 @@ export type PickPropertiesByType<T, U> = {
 };
 
 export type OmitNever<T> = { [K in keyof T as T[K] extends never | undefined ? never : K]: T[K] }
+
+type AllKeys<T> = T extends unknown ? keyof T : never;
+type Id<T> = T extends infer U ? { [K in keyof U]: U[K] } : never;
+type _ExclusiveUnion<T, K extends PropertyKey> =
+    T extends unknown ? Id<T & Partial<Record<Exclude<K, keyof T>, never>>> : never;
+
+export type ExclusiveUnion<T> = _ExclusiveUnion<T, AllKeys<T>>;
