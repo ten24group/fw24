@@ -38,8 +38,6 @@ export interface EntitySchema<
     };
 }
 
-
-// todo: maybe make it a enum
 export const DefaultEntityOperations = {
     get: "get",
     list: "list",

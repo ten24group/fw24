@@ -1,4 +1,4 @@
-import { Narrow, ValueOf } from "../utils";
+import { Narrow, ValueOf, isArrayOfType, isBoolean, isObject, isString } from "../utils";
 import { EntitySchema } from "./base-entity";
 
 
@@ -252,4 +252,11 @@ export type EntityQuery<E extends EntitySchema<any, any, any>> = {
     filters?: EntityFilters<E>,
     selection?: EntitySelection<E>,
     pagination ?: Pagination
+}
+
+export type ObjectOfStringKeysAndBooleanValues = {[k:string]: boolean};
+export function isArrayOfObjectOfStringKeysAndBooleanValues(payload: any ): payload is Array<ObjectOfStringKeysAndBooleanValues> {
+    return isArrayOfType<ObjectOfStringKeysAndBooleanValues>(payload, (item: any): item is ObjectOfStringKeysAndBooleanValues => {
+        return isObject(item) && Object.entries(item).every(([key, value]) => isString(key) && isBoolean(value));
+    });
 }

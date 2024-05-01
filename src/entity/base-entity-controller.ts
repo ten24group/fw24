@@ -58,8 +58,9 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 	async find(req: Request, res: Response) {
         // prepare the identifiers
         const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
+		const attributes = req.queryStringParameters?.attributes?.split?.(',');
 
-		const entity = await this.getEntityService().get(identifiers);
+		const entity = await this.getEntityService().get(identifiers, attributes);
 
 		const result: any = {
 			[ camelCase(this.entityName) ]: entity,
@@ -85,6 +86,7 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 			count,
 			limit,
 			pages, 
+			attributes,
 			...restOfQueryParams
 		} = data || {};
 
@@ -160,6 +162,7 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 
 		const {data: records, cursor: newCursor} = await this.getEntityService().list({
 			filters: parsedFilters,
+			attributes: attributes.split(','),
 			pagination
 		});
 

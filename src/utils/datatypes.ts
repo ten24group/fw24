@@ -155,6 +155,14 @@ export function isArray(payload: any): payload is Array<any> {
     return getType(payload) === 'Array'
 }
 
+export function isArrayOfType<T>(value: any, evalType: (item: any) => item is T ): value is Array<T> {
+    return Array.isArray(value) && value.every(item => evalType(item));
+}
+
+export function isArrayOfStrings(payload: any ): payload is string[] {
+    return isArrayOfType<string>(payload, isString);
+}
+
 export function isEmptyArray(payload: any): boolean{
     return isArray(payload) && payload.length === 0;
 }

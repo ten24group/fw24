@@ -1,4 +1,4 @@
-import { isEmptyArray, isEmptyObject, isPlainObject } from "./datatypes";
+import { isArray, isObject } from "./datatypes";
 
 /**
  * Recursively remove props from an object, if the prop's value matches `valueToRemove`
@@ -12,35 +12,77 @@ import { isEmptyArray, isEmptyObject, isPlainObject } from "./datatypes";
   ```
  *
  */
-export function exclude(
-  payload: Record<string, any>,
-  valueToRemove: any,
-  ...valuesToRemove: any[]
-): Record<string, unknown> {
-  
-  if (!isPlainObject(payload)) return payload;
+export function excludeValues<T extends Record<string, unknown> = Record<string, unknown>>(
+    payload: T,
+    ...valuesToRemove: any[]
+): Partial<T> {
+    if (!isObject(payload)) return payload;
 
-  const remove = [valueToRemove, ...valuesToRemove];
+    return Object.fromEntries( 
+        Object.entries(payload).filter(([, v]) => ![...valuesToRemove].includes(v)) 
+    ) as Partial<T>;
+}
 
-  const removeEmptyObjects = !!remove.find((val) => isEmptyObject(val));
-  const removeEmptyArrays = !!remove.find((val) => isEmptyArray(val));
+export function excludeValuesRecursively<T extends Record<string, any> = Record<string, any> >(
+    payload: T | Array<T>,
+    ...valuesToRemove: any[]
+): Partial<T> | Array<Partial<T>> {
+    
+    if(isArray(payload)){
+        return payload.map( item => excludeValuesRecursively(item, ...valuesToRemove) ) as Array<Partial<T>>  ;
+    }
 
-  return Object.entries(payload).reduce<Record<string, any>>(
-    (carry, [key, value]) => {
-      if (removeEmptyObjects && isEmptyObject(value)) return carry;
-      if (removeEmptyArrays && isEmptyArray(value)) return carry;
-      if (remove.includes(value)) return carry;
-
-      const newVal = exclude(value, remove[0], ...remove.slice(1))
-      if (removeEmptyObjects && isEmptyObject(newVal)) return carry;
-      if (removeEmptyArrays && isEmptyArray(newVal)) return carry;
-
-      carry[key] = newVal;
-      return carry;
-    }, 
-  {});
+    return excludeValues<T>(payload, ...valuesToRemove );
 }
 
 export const removeEmpty = <T extends {[k:string]: any|undefined|null}>(obj: T) => {
-  return exclude( obj, undefined, null, '');
+    return excludeValues( obj, undefined, null, '');
 };
+
+export function excludeKeys<T extends Record<string, any> = Record<string, any>>(
+    payload: T,
+    ...keysToRemove: Array<string>
+): Partial<T> {
+  
+    if (!isObject(payload)) return payload;
+
+    return Object.fromEntries( 
+        Object.entries(payload).filter(([k]) => ![...keysToRemove].includes(k)) 
+    ) as Partial<T>;
+}
+
+export function excludeKeysRecursively<T extends Record<string, any> = Record<string, any> >(
+    payload: T | Array<T>,
+    ...keysToRemove: Array<string>
+): Partial<T> | Array<Partial<T>> {
+    
+    if(isArray(payload)){
+        return payload.map( item => excludeKeysRecursively(item, ...keysToRemove) ) as Array<Partial<T>>  ;
+    }
+
+    return excludeKeys<T>(payload, ...keysToRemove );
+}
+
+export function pickKeys<T extends Record<string, any> = Record<string, any>>(
+    payload: T,
+    ...keysToKeep: Array<string>
+): Partial<T> {
+  
+    if (!isObject(payload)) return payload;
+
+    return Object.fromEntries( 
+        Object.entries(payload).filter(([k]) => [...keysToKeep].includes(k)) 
+    ) as Partial<T>;
+}
+
+export function pickKeysRecursively<T extends Record<string, any> = Record<string, any> >(
+    payload: T | Array<T>,
+    ...keysToKeep: Array<string>
+): Partial<T> | Array<Partial<T>> {
+    
+    if(isArray(payload)){
+        return payload.map( item => pickKeysRecursively(item, ...keysToKeep) ) as Array<Partial<T>>  ;
+    }
+
+    return pickKeys<T>(payload, ...keysToKeep );
+}

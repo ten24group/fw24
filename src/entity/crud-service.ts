@@ -49,18 +49,19 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     // telemetry
 }
 
-
 export interface GetEntityArgs<
     Sch extends EntitySchema<any, any, any>,
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > extends BaseEntityCrudArgs<Sch> {
     id: OpsSchema['get'];
+    attributes ?: Array<string>;
 }
 
 export async function getEntity<S extends EntitySchema<any, any, any>>( options: GetEntityArgs<S>){
 
     const { 
         id,
+        attributes,
         entityName, 
         entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
         
@@ -76,13 +77,11 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
             
     } = options;
 
-    logger.debug(`Called EntityCrud ~ getEntity ~ entityName: ${entityName} ~ id:`, id);
+    logger.debug(`Called EntityCrud ~ getEntity ~ entityName: ${entityName}:`, {id, attributes});
 
     await eventDispatcher.dispatch({event: 'beforeGet', context: arguments });
 
     const identifiers = entityService.extractEntityIdentifiers(id);
-
-    // TODO: validation
 
     // authorize the actor
     const authorization = await authorizer.authorize({entityName, crudType, identifiers, actor, tenant});
@@ -104,7 +103,7 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
         throw new Error("Validation failed for get: " + JSON.stringify({ cause: validation }));
     }
 
-    const entity = await entityService.getRepository().get(identifiers).go();
+    const entity = await entityService.getRepository().get(identifiers).go({attributes});
 
     await eventDispatcher.dispatch({event: 'afterGet', context: arguments});
 
