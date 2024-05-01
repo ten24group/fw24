@@ -3,7 +3,7 @@ import { Auditor } from "../audit";
 import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
-import { removeEmpty } from "../utils";
+import { isEmptyObject, removeEmpty } from "../utils";
 import { DefaultValidator, IValidator } from "../validation";
 import { EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
 import { entityFilterCriteriaToExpression } from "./query";
@@ -234,7 +234,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
 
     const dbQuery = entityService.getRepository().match({});
 
-    if(filters){
+    if(filters && !isEmptyObject(filters)){
         dbQuery.where((attr, op) => entityFilterCriteriaToExpression(filters, attr, op))
     }
     
@@ -293,10 +293,9 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>( option
         throw new Error("Authorization failed: " + { cause: authorization });
     }
 
-    // TODO: extract entity PK/SK filters from query and add them to the match ???
     const dbQuery = entityService.getRepository().match({});
 
-    if(filters){
+    if(filters && !isEmptyObject(filters)){
         dbQuery.where((attr, op) => entityFilterCriteriaToExpression(filters, attr, op))
     }
     
