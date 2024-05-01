@@ -1,7 +1,3 @@
-
-import { EntityItem, Schema } from "electrodb";
-import { EntityTypeFromSchema } from "../entity";
-
 /**
  * Used to narrow the inferred generic type for readability
  * @param INPUT Type
@@ -127,3 +123,10 @@ export type PickPropertiesByType<T, U> = {
 };
 
 export type OmitNever<T> = { [K in keyof T as T[K] extends never | undefined ? never : K]: T[K] }
+
+type AllKeys<T> = T extends unknown ? keyof T : never;
+type Id<T> = T extends infer U ? { [K in keyof U]: U[K] } : never;
+type _ExclusiveUnion<T, K extends PropertyKey> =
+    T extends unknown ? Id<T & Partial<Record<Exclude<K, keyof T>, never>>> : never;
+
+export type ExclusiveUnion<T> = _ExclusiveUnion<T, AllKeys<T>>;

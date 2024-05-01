@@ -1,14 +1,13 @@
-import { Schema } from "electrodb";
-import { Authorizer } from "../authorize";
-import { TDefaultEntityOperations, EntitySchema, EntityServiceTypeFromSchema, TEntityOpsInputSchemas } from "./base-entity";
 import { defaultMetaContainer } from ".";
-import { DefaultValidator, IValidator } from "../validation";
 import { Auditor } from "../audit";
+import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
 import { removeEmpty } from "../utils";
-import { EntityQuery, Pagination } from "./query.types";
-import { entityFiltersToFilterExpression } from "./query";
+import { DefaultValidator, IValidator } from "../validation";
+import { EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
+import { entityFilterCriteriaToExpression } from "./query";
+import { EntityQuery, Pagination } from "./query-types";
 
 /**
  * 
@@ -236,7 +235,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
     const dbQuery = entityService.getRepository().match({});
 
     if(filters){
-        dbQuery.where((attr, op) => entityFiltersToFilterExpression(filters, attr, op))
+        dbQuery.where((attr, op) => entityFilterCriteriaToExpression(filters, attr, op))
     }
     
     const entities = await dbQuery.go(removeEmpty(pagination));
@@ -298,7 +297,7 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>( option
     const dbQuery = entityService.getRepository().match({});
 
     if(filters){
-        dbQuery.where((attr, op) => entityFiltersToFilterExpression(filters, attr, op))
+        dbQuery.where((attr, op) => entityFilterCriteriaToExpression(filters, attr, op))
     }
     
     const entities = await dbQuery.go(removeEmpty(pagination));

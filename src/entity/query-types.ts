@@ -1,4 +1,4 @@
-import { Narrow, ValueOf, isArrayOfType, isBoolean, isObject, isString } from "../utils";
+import { ExclusiveUnion, Narrow, ValueOf, isArray, isArrayOfType, isBoolean, isObject, isString } from "../utils";
 import { EntitySchema } from "./base-entity";
 
 
@@ -24,18 +24,18 @@ export type StringLiteralToType<T> = T extends 'string' ? string
     : any;
 
 export type ComplexFilterOperatorValue<T> ={
-val: T,
-// default val type will be literal
-valType ?: 
-    // the exact value will be used for comparison
-    'literal'       
-    // when the compression is with another property of the same entity [including properties of nested maps(objects) or lists(arrays) ]
-    | 'propRef'     
-    // when the value needs to be evaluated first for example [`now()`, `$currentUser`, `$requestId`]  
-    // TODO: add support for evaluating filter expressions and a dictionary of supported expressions/syntax
-    | 'expression', 
-// a label to be used by the UI for the filter value; useful for persisted filter-configs
-label?: any,
+    val: T,
+    // default val type will be literal
+    valType ?: 
+        // the exact value will be used for comparison
+        'literal'       
+        // when the compression is with another property of the same entity [including properties of nested maps(objects) or lists(arrays) ]
+        | 'propRef'     
+        // when the value needs to be evaluated first for example [`now()`, `$currentUser`, `$requestId`]  
+        // TODO: add support for evaluating filter expressions and a dictionary of supported expressions/syntax
+        | 'expression', 
+    // a label to be used by the UI for the filter value; useful for persisted filter-configs
+    label?: any,
 }
 
 export type FilterOperatorValue<T> = T |  ComplexFilterOperatorValue<T>;
@@ -88,17 +88,17 @@ export type FilterOperatorsExtended<T> = FilterOperators<T> & {
     '<>': FilterOperators<T>['neq'],
     'ne': FilterOperators<T>['neq'],
 
-    'greaterThen': FilterOperators<T>['gt'],
+    'greaterThan': FilterOperators<T>['gt'],
     '>': FilterOperators<T>['gt'],
 
-    'greaterThenOrEqualTo': FilterOperators<T>['gte'],
+    'greaterThanOrEqualTo': FilterOperators<T>['gte'],
     '>=': FilterOperators<T>['gte'],
     '>==': FilterOperators<T>['gte'],
 
-    'lessThen': FilterOperators<T>['lt'],
+    'lessThan': FilterOperators<T>['lt'],
     '<': FilterOperators<T>['lt'],
 
-    'lessThenOrEqualTo': FilterOperators<T>['lte'],
+    'lessThanOrEqualTo': FilterOperators<T>['lte'],
     '<=': FilterOperators<T>['lte'],
     '<==': FilterOperators<T>['lte'],
 
@@ -137,20 +137,20 @@ export const allFilterOperators: Array<keyof FilterOperatorsExtended<any>> = [
     '!==', 
     '<>', 
     
-    'greaterThen',
+    'greaterThan',
     'gt', 
     '>',
 
-    'greaterThenOrEqualTo',
+    'greaterThanOrEqualTo',
     'gte', 
     '>=',
     '>==',
 
-    'lessThen',
+    'lessThan',
     'lt', 
     '<',
 
-    'lessThenOrEqualTo',
+    'lessThanOrEqualTo',
     'lte', 
     '<=',
     '<==',
@@ -200,58 +200,84 @@ export type FilterOperatorsForDynamo<T> = Exclude<FilterOperatorsExtended<T>, 'e
 
 export const filterOperatorsForDynamo: Array<keyof FilterOperatorsForDynamo<any>>  = allFilterOperators.filter(op => !['endsWith'].includes(op) );
 
-export type FilterCriteria<E extends EntitySchema<any, any, any>> = {
-    prop: keyof E['attributes'],
-
+export type IdAndLabel = {
     id?: string,
     label?: string,
-    logicalOp?: 'and' | 'or', // defaults to `and`
-}
-& {
-    [ op in keyof FilterOperatorsExtended<ValueOf<E['attributes']>['type']> ]?: FilterOperatorsExtended< StringLiteralToType< ValueOf<E['attributes']>['type'] > >[op]
+};
+
+export type IdAndLabelAndLogicalOp = IdAndLabel & {
+    logicalOp?: LogicalOperator,
 }
 
-export type FilterGroup<E extends EntitySchema<any, any, any>> = {
-    id?: string,
-    label?: string,
-} & {
-    [op in LogicalOperator] ?: Array< FilterCriteria<E> | FilterGroup<E> >
+export type FilterCriteria<T> = IdAndLabelAndLogicalOp & {
+    [op in keyof FilterOperatorsExtended<T>] ?: FilterOperatorsExtended<StringLiteralToType<T>>[op]
 }
 
-export function isComplexFilterOperatorValue<T>(filterVal: any): filterVal is ComplexFilterOperatorValue<T> {
-    return typeof filterVal === 'object'
-    && filterVal !== null 
-    && filterVal.hasOwnProperty('val')
+export type AttributeFilter<E extends EntitySchema<any, any, any>> = 
+IdAndLabelAndLogicalOp 
+& FilterCriteria<ValueOf<E['attributes']>['type']>
+& { 
+    attribute: keyof E['attributes'] 
+};
+
+export type EntityFilter<E extends EntitySchema<any, any, any>> = IdAndLabelAndLogicalOp & {
+    [ key in keyof E['attributes'] ] ?: FilterCriteria<E['attributes'][key]['type']>
+};
+
+export type FilterGroup<E extends EntitySchema<any, any, any>> = IdAndLabel & {
+    [op in LogicalOperator] ?: Array< 
+        ExclusiveUnion<
+            EntityFilter<E> 
+            | AttributeFilter<E> 
+            | FilterGroup<E>
+        > 
+    > 
 }
 
-export function isFilterCriteria<E extends EntitySchema<any, any, any>>(filterCriteria: any): filterCriteria is FilterCriteria<E> {
-    return typeof filterCriteria === 'object'
-    && filterCriteria !== null 
-    && filterCriteria.hasOwnProperty('prop') 
-    && filterOperatorsForDynamo.some( key => filterCriteria.hasOwnProperty(key) )
-}
-
-export function isFilterGroup<E extends EntitySchema<any, any, any>>(filterGroup: any): filterGroup is FilterGroup<E> {
-    return typeof filterGroup === 'object'
-    && filterGroup !== null 
-    && ['and', 'or', 'not'].some( logicalOp => (
-            filterGroup.hasOwnProperty(logicalOp) 
-            && Array.isArray(filterGroup[logicalOp]) 
-            && filterGroup[logicalOp].every( (f: any) => isFilterCriteria(f) || isFilterGroup(f))
-        )
-    );
-}
-
-export type EntityFilters<E extends EntitySchema<any, any, any>> = FilterGroup<E> | FilterCriteria<E>;
+export type EntityFilterCriteria<E extends EntitySchema<any, any, any>> = ExclusiveUnion< FilterGroup<E> | EntityFilter<E> >;
 
 export type EntitySelection<E extends EntitySchema<any, any, any>> = Array<keyof E['attributes']> | {
     [prop in keyof E['attributes']]?: boolean
 }
 
 export type EntityQuery<E extends EntitySchema<any, any, any>> = {
-    filters?: EntityFilters<E>,
+    filters?: EntityFilterCriteria<E>,
     selection?: EntitySelection<E>,
     pagination ?: Pagination
+}
+
+export function isComplexFilterValue<T>(payload: any): payload is ComplexFilterOperatorValue<T> {
+    return isObject(payload) && payload.hasOwnProperty('val')
+}
+
+export function isFilterCriteria<T>(filterCriteria: any): filterCriteria is FilterCriteria<T> {
+    return isObject(filterCriteria) 
+    && filterOperatorsForDynamo.some( key => filterCriteria.hasOwnProperty(key) )
+}
+
+export function isAttributeFilter<E extends EntitySchema<any, any, any>>(payload: any): payload is AttributeFilter<E> {
+    return isFilterCriteria(payload) && payload.hasOwnProperty('attribute') 
+}
+
+export function isEntityFilter<E extends EntitySchema<any, any, any>>(payload: any): payload is EntityFilter<E> {
+    return isObject(payload)
+    && Object.entries(payload)
+    // except these things every other key must represent a filter
+    .filter(([k]) => !['id', 'label', 'logicalOp'].includes(k)) 
+    .every( ([, v]) => isFilterCriteria(v) )
+}
+
+export function isFilterGroup<E extends EntitySchema<any, any, any>>(filterGroup: any): filterGroup is FilterGroup<E> {
+    return isObject(filterGroup)
+    && ['and', 'or', 'not'].some( 
+        logicalOp => (
+            filterGroup.hasOwnProperty(logicalOp) 
+            && isArray(filterGroup[logicalOp]) 
+            && filterGroup[logicalOp].every( 
+                (f: any) => isAttributeFilter(f) || isFilterGroup(f) || isEntityFilter(f) 
+            )
+        )
+    );
 }
 
 export type ObjectOfStringKeysAndBooleanValues = {[k:string]: boolean};

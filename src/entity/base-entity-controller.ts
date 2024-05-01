@@ -9,7 +9,7 @@ import { EntitySchema } from './base-entity';
 import { createLogger } from '../logging';
 import { safeParseInt } from '../utils/parse';
 import { camelCase, isEmptyObject, isJsonString, isObject, merge } from '../utils';
-import { parseUrlQueryStringParameters, queryStringParamsToEntityFilters } from './query';
+import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
 
 export abstract class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIGatewayController {
 	
@@ -141,7 +141,7 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 			const parsedQueryParams = parseUrlQueryStringParameters(restOfQueryParamsWithoutFilters);
 			this.logger.info(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
 
-			const parsedQueryParamFilters = queryStringParamsToEntityFilters(parsedQueryParams);
+			const parsedQueryParamFilters = queryStringParamsToFilterGroup(parsedQueryParams);
 			this.logger.info(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
 
 			parsedFilters = merge([parsedFilters, parsedQueryParamFilters]) ?? {};

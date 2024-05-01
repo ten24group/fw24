@@ -1,20 +1,18 @@
-import { EntityFilters, EntityQuery, FilterGroup, FilterOperatorValue, isComplexFilterOperatorValue, isFilterCriteria, isFilterGroup } from './query.types';
-import { Item, Schema, WhereAttributes, WhereOperations } from "electrodb";
-import { EntitySchema } from "./base-entity";
-import { FilterCriteria } from "./query.types";
+import { Item, WhereAttributes, WhereOperations } from "electrodb";
 import { createLogger } from "../logging";
+import { EntitySchema } from "./base-entity";
+import { AttributeFilter, EntityFilter, EntityFilterCriteria, FilterCriteria, FilterGroup, isAttributeFilter, isComplexFilterValue, isEntityFilter, isFilterGroup } from './query-types';
 
 import {
     parse as parseQueryString,
     stringify as stringifyQueryParams,
 } from 'qs';
-import { isArray, isObject } from '../utils';
-import { parseValueToCorrectTypes } from '../utils/parse';
 
+import { isObject, parseValueToCorrectTypes } from '../utils';
 
 const logger = createLogger('EntityQuery');
 
-export function filterToExpression<
+export function attributeFilterToExpression<
   A extends string,
   F extends string,
   C extends string,
@@ -22,11 +20,11 @@ export function filterToExpression<
   I extends Item<A, F, C, S, S["attributes"]>,
   WAttributes extends WhereAttributes<A, F, C, S, I>,
   WOperations extends WhereOperations<A, F, C, S, I>,
->(filter: FilterCriteria<any>, attributes: WAttributes, operations: WOperations){
+>(filter: AttributeFilter<any>, attributes: WAttributes, operations: WOperations){
     
     logger.info('filterToExpression', {filter});
 
-    const { id, label, prop, logicalOp = 'and', ...filters } = filter;
+    const { id, label, attribute: prop, logicalOp = 'and', ...filters } = filter;
 
     const attributeRef = attributes[prop as keyof WAttributes];
 
@@ -42,7 +40,7 @@ export function filterToExpression<
         
         let filterVal = filters[filterKey as keyof typeof filters];
 
-        if(isComplexFilterOperatorValue(filterVal)){
+        if(isComplexFilterValue(filterVal)){
             console.log("isComplexFilterOperatorValue ", filterVal);
             // TODO: handle `expression` filter values
             filterVal = filterVal?.valType == 'propRef' ? name(filterVal.val) : filterVal.val;
@@ -134,7 +132,36 @@ export function makeParenthesesGroup( items: Array<string>, delimiter: string ):
     return items.length > 1 ? '( ' + items.join(` ${delimiter.toUpperCase()} `) + ' )' : items[0];
 }
 
-export function filterCriteriaOrFilterGroupToExpression<
+export function entityFilterToFilterGroup<
+    A extends string,
+    F extends string,
+    C extends string,
+    S extends EntitySchema<A, F, C>
+>(entityFilter: EntityFilter<S>): FilterGroup<S> {
+
+    if(!isEntityFilter(entityFilter)){
+        throw new Error(`invalid entity filter ${entityFilter}`);
+    }
+
+    logger.info('entityFilterToFilterGroup', entityFilter);
+    
+    const entityFilterGroup: FilterGroup<S> = {};
+    const {id, label, logicalOp='and', ...entityPopsFilters} = entityFilter;
+
+    entityFilterGroup.id = id;
+    entityFilterGroup.label = id;
+    
+    const logicalOpFilters = Object.entries<FilterCriteria<any>>( entityPopsFilters as { [s: string]: FilterCriteria<any>; }).map( ( [ key, val ] ): AttributeFilter<any> => {
+        return {...val, attribute: key };
+    });
+
+    entityFilterGroup[logicalOp] = logicalOpFilters as any;
+
+    logger.info('entityFilterToFilterGroup', entityFilterGroup);
+    return entityFilterGroup;
+}
+
+export function entityFilterToExpression<
   A extends string,
   F extends string,
   C extends string,
@@ -142,14 +169,79 @@ export function filterCriteriaOrFilterGroupToExpression<
   I extends Item<A, F, C, S, S["attributes"]>,
   WAttributes extends WhereAttributes<A, F, C, S, I>,
   WOperations extends WhereOperations<A, F, C, S, I>,
->(filterCriteriaOrFilterGroup: FilterGroup<S> | FilterCriteria<S>, attributes: WAttributes, operations: WOperations){
-    if(isFilterGroup(filterCriteriaOrFilterGroup)){
-        return filterGroupToExpression(filterCriteriaOrFilterGroup, attributes, operations);
-    } else if(isFilterCriteria(filterCriteriaOrFilterGroup)) {
-        return filterToExpression(filterCriteriaOrFilterGroup, attributes, operations);
+>(
+    entityFilterCriteria: EntityFilterCriteria<S>, 
+    attributes: WAttributes, 
+    operations: WOperations
+){
+    
+    logger.info('entityFilterToExpression');
+
+    const filterGroup = entityFilterToFilterGroup(entityFilterCriteria);
+    logger.info('entityFilterToExpression', {filterGroup});
+
+    const expression = filterGroupToExpression(filterGroup, attributes, operations);
+    
+    logger.info('entityFilterToExpression', {expression});
+    
+    return expression;
+}
+
+export function entityFilterCriteriaToExpression<
+    A extends string,
+    F extends string,
+    C extends string,
+    S extends EntitySchema<A, F, C>,
+    I extends Item<A, F, C, S, S["attributes"]>,
+    WAttributes extends WhereAttributes<A, F, C, S, I>,
+    WOperations extends WhereOperations<A, F, C, S, I>,
+>(
+    filterCriteria: EntityFilterCriteria<S>,
+    attributes: WAttributes,
+    operations: WOperations
+) {
+    logger.info('entityFilterCriteriaToExpression', {filterCriteria});
+
+    let expression = filterCriteriaOrFilterGroupOrAttributeFilterToExpression({
+        filterCriteria, 
+        attributes, 
+        operations
+    });
+
+    logger.info('entityFilterCriteriaToExpression', { expression});
+    return expression;
+}
+
+export function filterCriteriaOrFilterGroupOrAttributeFilterToExpression<
+    A extends string,
+    F extends string,
+    C extends string,
+    S extends EntitySchema<A, F, C>,
+    I extends Item<A, F, C, S, S["attributes"]>,
+    WAttributes extends WhereAttributes<A, F, C, S, I>,
+    WOperations extends WhereOperations<A, F, C, S, I>,
+>(  
+    options: {
+        filterCriteria: EntityFilter<S>, 
+        attributes: WAttributes, 
+        operations: WOperations
     }
-    logger.error('filterCriteriaOrFilterGroupToExpression: filterCriteriaOrFilterGroup is not a FilterGroup or FilterCriteria', {filterCriteriaOrFilterGroup});
-    throw new Error('filterCriteriaOrFilterGroup is not a FilterGroup or FilterCriteria');
+){
+    const{ filterCriteria, attributes, operations} = options;
+    
+    if(isEntityFilter(filterCriteria)) {
+        return entityFilterToExpression(filterCriteria, attributes, operations);
+    } else if(isFilterGroup(filterCriteria)){
+        return filterGroupToExpression(filterCriteria, attributes, operations);
+    } else if(isAttributeFilter(filterCriteria)) {
+        return attributeFilterToExpression(filterCriteria, attributes, operations);
+    }
+
+    const msg = `entityFilters is not a EntityFilterGroup or EntityFilterCriteria or EntityAttributeFilterCriteria`;
+
+    logger.error(`filterCriteriaOrFilterGroupToExpression: ${msg}`, {filterCriteria});
+
+    throw new Error(`${msg}`);
 }
 
 export function filterGroupToExpression<
@@ -170,7 +262,11 @@ export function filterGroupToExpression<
     
     const andFragments: Array<string> = [];
     for(const thisFilter of and){
-        const thisExpression = filterCriteriaOrFilterGroupToExpression(thisFilter, attributes, operations);
+        const thisExpression = filterCriteriaOrFilterGroupOrAttributeFilterToExpression({
+            filterCriteria: thisFilter, 
+            attributes, 
+            operations
+        });
         if(thisExpression.length){
             andFragments.push(thisExpression);
         }
@@ -183,7 +279,11 @@ export function filterGroupToExpression<
 
     const orFragments: Array<string> = [];
     for(const thisFilter of or){
-        const thisExpression = filterCriteriaOrFilterGroupToExpression(thisFilter, attributes, operations);
+        const thisExpression = filterCriteriaOrFilterGroupOrAttributeFilterToExpression({
+            filterCriteria: thisFilter, 
+            attributes, 
+            operations
+        });
         if(thisExpression.length){
             orFragments.push(thisExpression);
         }
@@ -196,7 +296,11 @@ export function filterGroupToExpression<
 
     const notFragments: Array<string> = [];
     for(const thisFilter of not){
-        const thisExpression = filterCriteriaOrFilterGroupToExpression(thisFilter, attributes, operations);
+        const thisExpression = filterCriteriaOrFilterGroupOrAttributeFilterToExpression({
+            filterCriteria: thisFilter, 
+            attributes, 
+            operations
+        });
         if(thisExpression.length){
             notFragments.push(thisExpression);
         }
@@ -209,200 +313,125 @@ export function filterGroupToExpression<
 
     logger.info('filterGroupToExpression', {filterGroupFragments});
 
-    
     const filterExpression = makeParenthesesGroup(filterGroupFragments, 'AND');  
     logger.info('filterGroupToExpression', {filterExpression});
 
     return filterExpression;
 }
 
-export function entityFiltersToFilterExpression<
-  A extends string,
-  F extends string,
-  C extends string,
-  S extends EntitySchema<A, F, C>,
-  I extends Item<A, F, C, S, S["attributes"]>,
-  WAttributes extends WhereAttributes<A, F, C, S, I>,
-  WOperations extends WhereOperations<A, F, C, S, I>,
-  >(
-    entityFilters: EntityFilters<S>,
-    attributes: WAttributes,
-    operations: WOperations
-  ) {
-    logger.info('entityFiltersToFilterExpression', {entityFilters});
 
-    let expression = '';
+export function parseUrlQueryStringParameters(queryStringParameters: {[name: string]: string | undefined}){
+    logger.info('parseUrlQueryStringParameters', {queryStringParameters});
+    
+    const queryString = stringifyQueryParams(queryStringParameters);
+    logger.info('parseUrlQueryStringParameters', {queryString});
+    
+    const parsed = parseQueryString(queryString, {
+        delimiter: /[;,&:+]/,
+        allowDots: true,
+        decodeDotInKeys: true,
+        parseArrays: true,
+        duplicates: 'combine',
+        allowEmptyArrays: false,
+    });
+    
+    logger.info('parseUrlQueryStringParameters', {parsed});
+    return parsed;
+}
 
-    if(isFilterCriteria(entityFilters) ){
-        expression = filterToExpression(entityFilters, attributes, operations);
-    } else if(isFilterGroup(entityFilters)) {
-        expression = filterGroupToExpression(entityFilters, attributes, operations);
-    }
+export const PARSE_VALUE_DELIMITERS = /(?:&|,|\+|;|:|\.)+/;
+export const FILTER_KEYS_HAVING_ARRAY_VALUES = ['in', 'inList', 'nin', 'notIn', 'notInList', 'contains', 'includes', 'has', 'notContains' ,'notIncludes', 'notHas' ];
 
-    logger.info('entityQueryToFilterExpression', { expression});
+export function makeFilterFromQueryStringParam(paramName: string, paramValue: any){
+    logger.info('makeFilterFromQueryStringParam', {paramName, paramValue});
 
-    return expression;
-
-  }
-
-
-    export function parseUrlQueryStringParameters(queryStringParameters: {[name: string]: string | undefined}){
-        logger.info('parseUrlQueryStringParameters', {queryStringParameters});
+    /**
+     *  { paramName: or,  paramValue: [{ foo: { eq: '1' }}, { foo: { neq: '3' } }] }
+    */
+    if(['and', 'or', 'not'].includes(paramName)){
         
-        const queryString = stringifyQueryParams(queryStringParameters);
-        logger.info('parseUrlQueryStringParameters', {queryString});
+        let formattedGroupVal: Array<any> = []; 
         
-        const parsed = parseQueryString(queryString, {
-            delimiter: /[;,&:+]/,
-            allowDots: true,
-            decodeDotInKeys: true,
-            parseArrays: true,
-            duplicates: 'combine',
-            allowEmptyArrays: false,
-        });
-        
-        logger.info('parseUrlQueryStringParameters', {parsed});
-        return parsed;
-    }
-
-    export const PARSE_VALUE_DELIMITERS = /(?:&|,|\+|;|:|\.)+/;
-    export const FILTER_KEYS_HAVING_ARRAY_VALUES = ['in', 'inList', 'nin', 'notIn', 'notInList', 'contains', 'includes', 'has', 'notContains' ,'notIncludes', 'notHas' ];
-
-    export function makeFilterFromQueryStringParams(paramName: string, paramValue: any){
-        logger.info('makeFilterFromQueryStringParams', {paramName, paramValue});
-
-        /**
-         *  or: [{ foo: { eq: '1' }}, { foo: { neq: '3' } }]
-        */
-        if(['and', 'or', 'not'].includes(paramName)){
-            
-            let formattedGroupVal: Array<any> = []; 
-            
-            paramValue.forEach( (item: any) => {
-                Object.keys(item).forEach( (itemKey: string) => {
-                    const itemValue = item[itemKey];
-                    const formattedItems = makeFilterFromQueryStringParams(itemKey, itemValue);
-                    formattedGroupVal = formattedGroupVal.concat(formattedItems);
-                });
+        paramValue.forEach( (item: any) => {
+            Object.keys(item).forEach( (itemKey: string) => {
+                const itemValue = item[itemKey];
+                const formattedItems = makeFilterFromQueryStringParam(itemKey, itemValue);
+                formattedGroupVal = formattedGroupVal.concat(formattedItems);
             });
+        });
 
-            logger.info('makeFilterFromQueryStringParams', {formattedGroupVal});
+        logger.info('makeFilterFromQueryStringParam', {formattedGroupVal});
 
-            return formattedGroupVal;
-        }
+        return formattedGroupVal;
+    }
 
-        let formattedValues: any = {};
+    let formattedValues: any = {};
 
-        if(!isObject(paramValue)){
-            paramValue = {'eq': paramValue};
-        }
-        
-        /*
+    if(!isObject(paramValue)){
+        paramValue = {'eq': paramValue};
+    }
+    
+    /*
         foo: {
             eq: '1',
             neq: '3',
             in: [232,kl,klk],
             nin: qwq,334,jhj,
             contains: hj+hjj+yuy7
-         }
-        */
-        Object.keys(paramValue).forEach( (key) => {
-            const keyVal = paramValue[key];
-            let formattedVal = keyVal;
+        }
+    */
+    Object.keys(paramValue).forEach( (key) => {
+        const keyVal = paramValue[key];
+        let formattedVal = keyVal;
 
-            // parse the values to the right types here
-            if( FILTER_KEYS_HAVING_ARRAY_VALUES.includes(key) && typeof keyVal === 'string') {
-                logger.info('Splitting key value', {key, keyVal});
-                formattedVal = keyVal.split(PARSE_VALUE_DELIMITERS);
-            }
-
-            formattedVal = parseValueToCorrectTypes(formattedVal);
-
-            formattedValues[key] = formattedVal;
-        });
-
-        const formattedItemVal = {
-            prop: paramName,
-            ...formattedValues
+        // parse the values to the right types here
+        if( FILTER_KEYS_HAVING_ARRAY_VALUES.includes(key) && typeof keyVal === 'string') {
+            logger.info('Splitting key value', {key, keyVal});
+            formattedVal = keyVal.split(PARSE_VALUE_DELIMITERS);
         }
 
-        logger.info('makeFilterFromQueryStringParams', {formattedItemVal});
+        formattedVal = parseValueToCorrectTypes(formattedVal);
 
-        return formattedItemVal;
+        formattedValues[key] = formattedVal;
+    });
+
+    const formattedItemVal = {
+        attribute: paramName,
+        ...formattedValues
     }
 
-    export function queryStringParamsToEntityFilters( queryStringParams: {[name: string]: any}){
-        logger.info('queryStringParamsToEntityFilters', {queryStringParams});
+    logger.info('makeFilterFromQueryStringParam', {formattedItemVal});
 
-        const formatted: any = {
-            and: [],
-            not: [],
-            or: [],
-        };
+    return formattedItemVal;
+}
 
-        for(let qParamName in queryStringParams){
+export function queryStringParamsToFilterGroup( queryStringParams: {[name: string]: any}){
+    logger.info('queryStringParamsToFilterGroup', {queryStringParams});
 
-            let groupName: keyof typeof formatted = 'and';
+    const formatted: FilterGroup<any> = {
+        id: 'queryStringParamsToFilterGroup',
+        and: [],
+        not: [],
+        or: [],
+    };
 
-            // then treat it as a filter item
-            if( Object.keys(formatted).includes(qParamName) ){
-                groupName = qParamName as keyof typeof formatted;
-            }
+    for(let qParamName in queryStringParams){
 
-            let qParamValue = queryStringParams[qParamName];
+        let groupName: keyof typeof formatted = 'and';
 
-            const formattedQPVal = makeFilterFromQueryStringParams(qParamName, qParamValue);
-
-            formatted[groupName] = formatted[groupName].concat(formattedQPVal);
+        // then treat it as a filter item
+        if( Object.keys(formatted).includes(qParamName) ){
+            groupName = qParamName as keyof typeof formatted;
         }
 
-        logger.info('queryStringParamsToEntityFilters', {formatted});
+        let qParamValue = queryStringParams[qParamName];
 
-        return formatted;
+        const formattedQPVal = makeFilterFromQueryStringParam(qParamName, qParamValue);
 
-        /*
-
-        foo: {
-          eq: '1',
-          neq: '3'
-        },
-        bar: {
-          contains: 'fluffy'
-        },
-        baz: {
-          in: '4,34'
-        }
-
-
-        {
-            or: [
-            {
-                foo: {
-                eq: '1'
-                }
-            },
-            {
-                foo: {
-                neq: '3'
-                }
-            }
-            ],
-            and: [
-            {
-                bar: {
-                contains: 'fluffy'
-                }
-            },
-            {
-                baz: {
-                in: '4,34',
-                nin: [
-                    '8989',
-                    '565'
-                ]
-                }
-            }
-            ]
-        }
-        */
+        formatted[groupName] = formatted[groupName]!.concat(formattedQPVal) as any;
     }
+
+    logger.info('queryStringParamsToFilterGroup', {formatted});
+
+    return formatted;
+}
