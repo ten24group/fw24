@@ -182,13 +182,8 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     return entity;
 }
 
-export interface ListEntityArgs<
-    Sch extends EntitySchema<any, any, any>,
-    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
-> extends BaseEntityCrudArgs<Sch> {
-    filters: OpsSchema['list']; // TODO: filters and pagination
-    attributes?: string[];
-    pagination?: Pagination
+export interface ListEntityArgs<Sch extends EntitySchema<any, any, any> > extends BaseEntityCrudArgs<Sch> {
+    query: EntityQuery<Sch>
 }
 /**
  * 
@@ -211,16 +206,13 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
         auditLogger = Auditor.Default,
         eventDispatcher = EventDispatcher.Default,
 
-        filters = {},
-        pagination = {
-            order: 'asc',
-            pager: 'cursor',
-            cursor: null,
-            count: 25,
-            pages: undefined,
-            limit: undefined,
-        }
+        query = {},
     } = options;
+
+    const { 
+        filters, 
+        pagination= { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined }, 
+    } = query;
 
     logger.debug(`Called EntityCrud ~ listEntity ~ entityName: ${entityName} ~ filters+paging:`);
 

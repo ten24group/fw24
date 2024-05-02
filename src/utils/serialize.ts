@@ -15,3 +15,8 @@ export const getCircularReplacer = () => {
     return value;
   };
 };
+
+
+export const deepCopy = (obj: any) => {
+  return structuredClone(obj);
+}

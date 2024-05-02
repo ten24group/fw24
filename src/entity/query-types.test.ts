@@ -231,7 +231,7 @@ const userFilters3: tt = {
 };
 
 const usersQuery: EntityQuery<User.TUserSchema> = {
-  selection: ['email', 'firstName', 'lastName'],
+  attributes: ['email', 'firstName', 'lastName'],
   filters: userFilters,
   pagination: {
     limit: 10,
@@ -241,7 +241,7 @@ const usersQuery: EntityQuery<User.TUserSchema> = {
 }
 
 const usersQuery2: EntityQuery<User.TUserSchema> = {
-  selection: {
+  attributes: {
     email: true,
     firstName: true,
     lastName: true,

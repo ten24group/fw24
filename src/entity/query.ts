@@ -8,7 +8,7 @@ import {
     stringify as stringifyQueryParams,
 } from 'qs';
 
-import { isObject, parseValueToCorrectTypes } from '../utils';
+import { isEmpty, isEmptyObject, isObject, parseValueToCorrectTypes } from '../utils';
 
 const logger = createLogger('EntityQuery');
 
@@ -434,4 +434,53 @@ export function queryStringParamsToFilterGroup( queryStringParams: {[name: strin
     logger.info('queryStringParamsToFilterGroup', {formatted});
 
     return formatted;
+}
+
+export function makeFilterGroupForSearchKeywords<E extends EntitySchema<any, any, any>>(
+    keywords: Array<string>, 
+    attributeNames: Array<string> = []
+): FilterGroup<E>{
+    logger.info('queryStringParamsToFilterGroup', {keywords, attributeNames});
+
+    const filterGroup: FilterGroup<E> = {
+        id: 'keywordSearchFilterGroup',
+        or: [],
+    };
+
+    attributeNames.forEach( (attributeName) => {
+        filterGroup!.or!.push({
+            attribute: attributeName,
+            contains: keywords,
+        } as any);
+    });
+
+    return filterGroup;
+}
+
+export function addFilterGroupToEntityFilterCriteria<E extends EntitySchema<any, any, any> >(
+    filterGroup: FilterGroup<E>,
+    entityFilterCriteria?: EntityFilterCriteria<E>, 
+): EntityFilterCriteria<E> {
+    logger.info('addFilterGroupToEntityFilterCriteria', {entityFilterCriteria, filterGroup});
+
+    const newFilterCriteria: FilterGroup<E> = isFilterGroup<E>(entityFilterCriteria) 
+    ? { ...entityFilterCriteria } 
+    : { id: '_addFilterGroupToEntityFilterCriteria' };
+
+    // make sure it has an `and` group
+    newFilterCriteria.and = newFilterCriteria.and || [];  
+
+    /** 
+     * *spread out the filters to make sure we have a copy of the original filter criteria 
+     * !maybe a deep copy will make more sense
+     * 
+     */
+
+    if( isAttributeFilter(entityFilterCriteria) || isEntityFilter(entityFilterCriteria) ){
+        newFilterCriteria.and.push({...entityFilterCriteria});
+    }
+
+    newFilterCriteria.and.push({...filterGroup} as any);
+
+    return newFilterCriteria as EntityFilterCriteria<E>;
 }

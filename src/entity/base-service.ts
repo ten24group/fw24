@@ -1,10 +1,11 @@
 import { EntityConfiguration } from "electrodb";
 import { createLogger } from "../logging";
-import { isArrayOfStrings, isEmptyArray, pickKeys, toHumanReadableName } from "../utils";
+import { isArray, isArrayOfStrings, isEmpty, isEmptyArray, isSimpleValue, isString, pickKeys, toHumanReadableName } from "../utils";
 import { EntityOpsInputValidations, EntityValidations } from "../validation";
 import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
 import { EntityQuery, Pagination, isArrayOfObjectOfStringKeysAndBooleanValues } from "./query-types";
+import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords } from "./query";
 
 export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
@@ -145,7 +146,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         
         for(const attName in schema.attributes){
             const att = schema.attributes[attName];
-            if( !att.hidden && att.type === 'string' ){ // TODO: add meta annotation for searchable attributes
+            if( !att.hidden && !att.isIdentifier && att.type === 'string' ){ // TODO: add meta annotation for searchable attributes
                 attributeNames.push(attName); 
             }
         }
@@ -205,35 +206,72 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return entity;
     }
 
-    public async list(options: { filters?: any, pagination?: Pagination, attributes ?: Array<string> } = {}) {
-        this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ options:`, options);
+    // TODO: should be part of some config
+    protected delimitersRegex = /(?:&| |,|\+)+/; 
 
+    public async list(query: EntityQuery<S> = {}) {
+        this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
+
+        if(!query.attributes || isEmptyArray(query.attributes)){
+            query.attributes = this.getListingAttributeNames();
+        }
+        
+        if(query.search){
+            if(isString(query.search)){
+                query.search = query.search.trim().split(this.delimitersRegex ?? ' ').filter(s => !!s);
+            }
+
+            if(query.search.length > 0){
+
+                if(isString(query.searchAttributes)){
+                    query.searchAttributes = query.searchAttributes.split(',').filter(s => !!s);
+                }
+                if(!query.searchAttributes || isEmpty(query.searchAttributes)){
+                    query.searchAttributes = this.getSearchableAttributeNames();
+                }
+                
+                const searchFilterGroup = makeFilterGroupForSearchKeywords(query.search, query.searchAttributes);
+                
+                query.filters = addFilterGroupToEntityFilterCriteria<S>(searchFilterGroup as any, query.filters);
+            }
+        }
+        
         const entities =  await listEntity<S>({
-            filters: options.filters,
-            pagination: options.pagination,
+            query: query,
             entityName: this.getEntityName(),  
         });
 
-        if(!options.attributes){
-            options.attributes = this.getListingAttributeNames();
-        }
+        entities.data = this.serializeRecords(entities.data, query.attributes as Array<string>);
 
-        entities.data = this.serializeRecords(entities.data, options.attributes);
-
-        return entities;
+        return {...entities, query};
     }
 
     public async query(query: EntityQuery<S> ) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
-        const {selection} = query;
+        const {attributes} = query;
 
-        let attributes: Array<string> | undefined = undefined;
+        let selectAttributes: Array<string> | undefined = undefined;
 
-        if(isArrayOfObjectOfStringKeysAndBooleanValues(selection)){
-            attributes = Object.entries(selection).filter( ([,v]) => !!v).map( ([k]) => k );
-        } else if(isArrayOfStrings(selection)) {
-            attributes = selection;
+        if(isArrayOfObjectOfStringKeysAndBooleanValues(attributes)){
+            selectAttributes = Object.entries(attributes).filter( ([,v]) => !!v).map( ([k]) => k );
+        } else if(isArrayOfStrings(attributes)) {
+            selectAttributes = attributes;
+        }
+
+        if(query.search){
+            if(isString(query.search)){
+                query.search = query.search.trim().split(this.delimitersRegex ?? ' ').filter(s =>!!s);
+            }
+
+            if(query.search.length > 0){
+                
+                query.searchAttributes = query.searchAttributes || this.getSearchableAttributeNames();
+                
+                const searchFilterGroup = makeFilterGroupForSearchKeywords(query.search, query.searchAttributes);
+                
+                query.filters = addFilterGroupToEntityFilterCriteria<S>(searchFilterGroup as any, query.filters);
+            }
         }
 
         const entities =  await queryEntity<S>({
@@ -241,13 +279,14 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             entityName: this.getEntityName(),  
         });
 
-        if(!attributes || isEmptyArray(attributes)){
-            attributes = this.getListingAttributeNames();
+        if(!selectAttributes || isEmptyArray(selectAttributes)){
+            selectAttributes = this.getListingAttributeNames();
         }
 
-        entities.data = this.serializeRecords(entities.data, attributes);
+        entities.data = this.serializeRecords(entities.data, selectAttributes);
 
-        return entities;
+        return {...entities, query};
+
     }
 
     public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>) {

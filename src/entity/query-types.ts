@@ -1,4 +1,4 @@
-import { ExclusiveUnion, Narrow, ValueOf, isArray, isArrayOfType, isBoolean, isObject, isString } from "../utils";
+import { ExclusiveUnion, Narrow, ValueOf, isArray, isArrayOfType, isBoolean, isEmpty, isEmptyObject, isObject, isString } from "../utils";
 import { EntitySchema } from "./base-entity";
 
 
@@ -241,18 +241,27 @@ export type EntitySelection<E extends EntitySchema<any, any, any>> = Array<keyof
 }
 
 export type EntityQuery<E extends EntitySchema<any, any, any>> = {
+    // selections
+    attributes?: EntitySelection<E>,
+    
     filters?: EntityFilterCriteria<E>,
-    selection?: EntitySelection<E>,
-    pagination ?: Pagination
+    
+    // keywords for search can be delimited by [',', ' ', '+']
+    search ?: string | Array<string>,
+
+    // list of the attributes to search for
+    searchAttributes ?: Array<string>,
+    
+    pagination ?: Pagination,
 }
 
 export function isComplexFilterValue<T>(payload: any): payload is ComplexFilterOperatorValue<T> {
     return isObject(payload) && payload.hasOwnProperty('val')
 }
 
-export function isFilterCriteria<T>(filterCriteria: any): filterCriteria is FilterCriteria<T> {
-    return isObject(filterCriteria) 
-    && filterOperatorsForDynamo.some( key => filterCriteria.hasOwnProperty(key) )
+export function isFilterCriteria<T>(payload: any): payload is FilterCriteria<T> {
+    return isObject(payload) 
+    && filterOperatorsForDynamo.some( key => payload.hasOwnProperty(key) )
 }
 
 export function isAttributeFilter<E extends EntitySchema<any, any, any>>(payload: any): payload is AttributeFilter<E> {
@@ -261,19 +270,21 @@ export function isAttributeFilter<E extends EntitySchema<any, any, any>>(payload
 
 export function isEntityFilter<E extends EntitySchema<any, any, any>>(payload: any): payload is EntityFilter<E> {
     return isObject(payload)
+    && !isEmpty(payload)
     && Object.entries(payload)
     // except these things every other key must represent a filter
     .filter(([k]) => !['id', 'label', 'logicalOp'].includes(k)) 
     .every( ([, v]) => isFilterCriteria(v) )
 }
 
-export function isFilterGroup<E extends EntitySchema<any, any, any>>(filterGroup: any): filterGroup is FilterGroup<E> {
-    return isObject(filterGroup)
+export function isFilterGroup<E extends EntitySchema<any, any, any>>(payload: any): payload is FilterGroup<E> {
+    return isObject(payload) 
+    && !isEmpty(payload)
     && ['and', 'or', 'not'].some( 
         logicalOp => (
-            filterGroup.hasOwnProperty(logicalOp) 
-            && isArray(filterGroup[logicalOp]) 
-            && filterGroup[logicalOp].every( 
+            payload.hasOwnProperty(logicalOp) 
+            && isArray(payload[logicalOp]) 
+            && payload[logicalOp].every( 
                 (f: any) => isAttributeFilter(f) || isFilterGroup(f) || isEntityFilter(f) 
             )
         )
