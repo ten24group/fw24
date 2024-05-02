@@ -1,5 +1,6 @@
 import {  Schema } from "electrodb";
 import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { camelCase } from "../../utils";
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
     options: {
@@ -8,6 +9,10 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         properties: TIOSchemaAttributesMap<S>
     }
 ) => {
+
+    const{ entityName, properties } = options;
+    const entityNameLower = entityName.toLowerCase();
+    const entityNameCamel = camelCase(entityName);
 
     let config = {
         pageTitle:  `Create ${options.entityName}`,
@@ -19,24 +24,24 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         pageHeaderActions: [
             {
                 label:  "Back",
-                url:    `/list-${options.entityName.toLowerCase()}`
+                url:    `/list-${entityNameLower}`
             }
         ],
         formPageConfig: {
             apiConfig: {
                 apiMethod: `POST`,
-                apiUrl: `/${options.entityName.toLowerCase()}/`,
+                responseKey: entityNameCamel,
+                apiUrl: `/${entityNameLower}/`,
             },
             formButtons: [ "submit", "cancel" ],
             propertiesConfig: [] as any[],
-            submitSuccessRedirect: `/list-${options.entityName.toLowerCase()}`,
+            submitSuccessRedirect: `/list-${entityNameLower}`,
         }
     };
 
-    const propertiesConfig = config.formPageConfig.propertiesConfig;
+    const _propertiesConfig = config.formPageConfig.propertiesConfig;
 
-
-    options.properties.forEach( prop => {
+    properties.forEach( prop => {
         if(prop){
 
             const propConfig = {
@@ -46,7 +51,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 validations:    prop.validations
             };
 
-            propertiesConfig.push(propConfig);
+            _propertiesConfig.push(propConfig);
         }
     });
 
