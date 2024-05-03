@@ -16,28 +16,32 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     }
 ) => {
 
+    const{ entityName, entityNamePlural, properties } = options;
+    const entityNameLower = entityName.toLowerCase();
+
     let listingConfig = {
-        pageTitle:  `List Of ${options.entityNamePlural}`,
+        pageTitle:  `List Of ${entityNamePlural}`,
         pageType:   "list",
         breadcrums: [],
         pageHeaderActions: [
             {
                 label:  "create",
-                url:    `/create-${options.entityName.toLowerCase()}`
+                url:    `/create-${entityNameLower}`
             }
         ],
         listPageConfig: {
             apiConfig: {
-                apiUrl: `/${options.entityName.toLowerCase()}/`,
-                apiMethod: `GET`
+                apiMethod: `GET`,
+                responseKey: 'items',
+                apiUrl: `/${entityNameLower}/`,
             },
             propertiesConfig: [] as any[],
         }
     };
 
-    const propertiesConfig = listingConfig.listPageConfig.propertiesConfig;
+    const _propertiesConfig = listingConfig.listPageConfig.propertiesConfig;
 
-    options.properties.forEach( prop => {
+    properties.forEach( prop => {
         if(prop){
             const propConfig: ListingPropConfig = {
                 name:      `${prop.name}`,
@@ -51,7 +55,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 propConfig.actions = [
                     {
                         icon: 'edit',
-                        url: `/edit-${options.entityName.toLowerCase()}`
+                        url: `/edit-${entityNameLower}`
                     },
                     {
                         icon: 'delete',
@@ -59,24 +63,25 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                         modelConfig: {
                             modalType: 'confirm',
                             modalPageConfig: {
-                                title: `Delete ${options.entityName}`,
-                                content: `Are you sure you want to delete this ${options.entityName}?`
+                                title: `Delete ${entityName}`,
+                                content: `Are you sure you want to delete this ${entityName}?`
                             },
                             apiConfig: {
-                                apiUrl: `/${options.entityName.toLowerCase()}/`,
-                                apiMethod: `DELETE`
+                                apiMethod: `DELETE`,
+                                responseKey: entityNameLower,
+                                apiUrl: `/${entityNameLower}/`,
                             },
-                            confirmSuccessRedirect: `/list-${options.entityName.toLowerCase()}`
+                            confirmSuccessRedirect: `/list-${entityNameLower}`
                         }
                     },
                     {
                         icon: `view`,
-                        url: `/view-${options.entityName.toLowerCase()}`
+                        url: `/view-${entityNameLower}`
                     }
                 ];
             }
 
-            propertiesConfig.push(propConfig);
+            _propertiesConfig.push(propConfig);
         }
     });
 

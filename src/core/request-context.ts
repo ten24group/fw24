@@ -52,7 +52,7 @@ export class RequestContext implements Request {
         const debugPassword = process.env.DEBUG_PASSWORD ?? true;
         if(this.queryStringParameters?.debug == debugPassword){
             this.debugMode = true;
-            this.queryStringParameters.debug = undefined;
+            delete this.queryStringParameters.debug;
         }
 
         // Parse the request body

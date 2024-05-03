@@ -1,5 +1,6 @@
 import {  Schema } from "electrodb";
 import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { camelCase } from "../../utils";
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
     options: {
@@ -10,8 +11,12 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     }
 ) => {
 
+    const{ entityName, properties } = options;
+    const entityNameLower = entityName.toLowerCase();
+    const entityNameCamel = camelCase(entityName);
+
     let config = {
-        pageTitle:  `Update ${options.entityName}`,
+        pageTitle:  `Update ${entityName}`,
         pageType:   'form',
         cardStyle: {
             width: '50%'
@@ -20,29 +25,31 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         pageHeaderActions: [
             {
                 label:  "Back",
-                url:    `/list-${options.entityName.toLowerCase()}`
+                url:  `/list-${entityNameLower}`
             },
         ],
         formPageConfig: {
             apiConfig: {
                 apiMethod: `PATCH`,
-                apiUrl: `/${options.entityName.toLowerCase()}/`,
+                responseKey: entityNameCamel,
+                apiUrl: `/${entityNameLower}/`,
             },
             detailApiConfig: {
-                apiUrl: `/${options.entityName.toLowerCase()}/`,
-                apiMethod: "GET"
+                apiMethod: "GET",
+                responseKey: entityNameCamel,
+                apiUrl: `/${entityNameLower}/`,
             },
             formButtons: [ "submit", "cancel" ],
             propertiesConfig: [] as any[],
-            submitSuccessRedirect: `/list-${options.entityName.toLowerCase()}`,
+            submitSuccessRedirect: `/list-${entityNameLower}`,
         }
     };
 
-    const propertiesConfig = config.formPageConfig.propertiesConfig;
+    const _propertiesConfig = config.formPageConfig.propertiesConfig;
 
-    options.properties.forEach( prop => {
+    properties.forEach( prop => {
         if(prop){
-            propertiesConfig.push({
+            _propertiesConfig.push({
                 label:          prop.name,
                 column:         prop.id,
                 fieldType:      `${prop.fieldType || 'text'}`,

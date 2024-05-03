@@ -1,5 +1,6 @@
 import {  Schema } from "electrodb";
 import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { camelCase } from "../../utils";
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
     options: {
@@ -9,30 +10,35 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     }
 ) => {
 
+    const{ entityName, properties } = options;
+    const entityNameLower = entityName.toLowerCase();
+    const entityNameCamel = camelCase(entityName);
+    
     let config = {
-        pageTitle:  `${options.entityName} Details`,
+        pageTitle:  `${entityName} Details`,
         pageType:   'details',
         breadcrums: [],
         pageHeaderActions: [
             {
                 label:  "Back",
-                url:    `/list-${options.entityName.toLowerCase()}`
+                url:    `/list-${entityNameLower}`
             }
         ],
         detailsPageConfig: {
             detailApiConfig: {
                 apiMethod: `GET`,
-                apiUrl: `/${options.entityName.toLowerCase()}/`,
+                responseKey: entityNameCamel,
+                apiUrl: `/${entityNameLower}/`,
             },
             propertiesConfig: [] as any[],
         }
     };
 
-    const propertiesConfig = config.detailsPageConfig.propertiesConfig;
+    const _propertiesConfig = config.detailsPageConfig.propertiesConfig;
 
-    options.properties.forEach( prop => {
+    properties.forEach( prop => {
         if(prop){
-            propertiesConfig.push({
+            _propertiesConfig.push({
                 label:          `${prop.name}`,
                 column:         `${prop.id}`,
                 fieldType:      `${prop.fieldType || 'text'}`,

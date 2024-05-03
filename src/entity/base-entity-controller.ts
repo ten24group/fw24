@@ -8,8 +8,9 @@ import { defaultMetaContainer } from './entity-metadata-container';
 import { EntitySchema } from './base-entity';
 import { createLogger } from '../logging';
 import { safeParseInt } from '../utils/parse';
-import { camelCase, isEmptyObject, isJsonString, isObject, merge } from '../utils';
+import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, merge } from '../utils';
 import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
+import { EntityFilterCriteria } from './query-types';
 
 export abstract class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIGatewayController {
 	
@@ -76,7 +77,6 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 
 	@Get('')
 	async list(req: Request, res: Response) {
-		// TODO: search
         const data = req.queryStringParameters;
 		this.logger.info(`list - data:`, data);
 
@@ -86,11 +86,10 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 			count,
 			limit,
 			pages, 
-			attributes,
 			...restOfQueryParams
 		} = data || {};
 
-		const {filters = {}, ...restOfQueryParamsWithoutFilters} = restOfQueryParams;
+		const {filters = {}, attributes, search, searchAttributes, ...restOfQueryParamsWithoutFilters} = restOfQueryParams;
 
 		let parsedFilters = {};
 
@@ -160,11 +159,16 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 
 		this.logger.info(`parsed pagination`, pagination);
 
-		const {data: records, cursor: newCursor} = await this.getEntityService().list({
-			filters: parsedFilters,
+
+		const query = {
+			filters: deepCopy(parsedFilters) as EntityFilterCriteria<Sch>,
 			attributes: attributes?.split?.(','),
-			pagination
-		});
+			pagination,
+			search,
+			searchAttributes
+		};
+		
+		const {data: records, cursor: newCursor, query: parsedQuery} = await this.getEntityService().list(query);
 
 		const result: any = {
 			cursor: newCursor,
@@ -172,13 +176,22 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 		};
 
 		if(req.debugMode){
+
 			result.req = req;
-			result.pagination = pagination;
-			result.filters = filters;
+
+			result.criteria = {
+				// inputs
+				pagination,
+				filters,
+				parsedFilters,
+				restOfQueryParamsWithoutFilters,
+				
+				// outputs
+				parsedQuery
+			};
 		}
 
 		return res.json(result);
-
 	}
 
 	@Patch('/{id}')
@@ -224,7 +237,10 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
         const query = req.body;
 		this.logger.info(`query - query:`, query);
 
-		const {data: records, cursor: newCursor} = await this.getEntityService().query(query);
+		// make a deep copy for debugging purposes
+		const inputQuery = deepCopy(query);
+
+		const {data: records, cursor: newCursor, query: parsedQuery} = await this.getEntityService().query(query);
 
 		const result: any = {
 			cursor: newCursor,
@@ -233,7 +249,10 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 
 		if(req.debugMode){
 			result.req = req;
-			result.query = query;
+			result.criteria = {
+				inputQuery,
+				parsedQuery
+			};
 		}
 
 		return res.json(result);
