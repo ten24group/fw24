@@ -17,6 +17,7 @@ export class SNSStack implements IStack {
     readonly fw24: Fw24 = Fw24.getInstance();
     
     dependencies: string[] = [];
+    output:any = {};
 
     constructor(private config: ISNSConfig[]) {
         this.logger.debug("constructor: ", config);

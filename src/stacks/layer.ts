@@ -18,6 +18,7 @@ export class LayerStack implements IStack {
     readonly fw24: Fw24 = Fw24.getInstance();
     
     dependencies: string[] = [];
+    output:any = {};
 
     constructor(private config: ILayerConfig[]) {
         this.logger.debug("constructor: ", config);

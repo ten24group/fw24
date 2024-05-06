@@ -6,7 +6,6 @@ import { IFw24Module } from "./core/module";
 import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
 import { ILogger, LogDuration, createLogger } from "./logging";
 import { LayerStack } from "./stacks";
-import { join } from "path";
 
 
 export class Application {
@@ -89,6 +88,7 @@ export class Application {
         this.constructAllStacks().then(() => {
             console.log('All stacks completed');
         });
+
     }
     
 
@@ -123,7 +123,7 @@ export class Application {
         }
 
         this.logger.info(`Processing stack ${stackName}...`);
-
+        
         // Wait for dependencies to resolve
         await this.waitForDependencies(stack.dependencies, stackName);
 
@@ -144,6 +144,11 @@ export class Application {
 
     private async waitForDependencies(dependencies: string[], stackName: string): Promise<void> {
         const promises = dependencies.map(dependency => {
+            // if dependency stack does not exists in the stack list, mark it as processed
+            if (!this.stacks.has(dependency)) {
+                this.logger.info(`Dependency stack ${dependency} not found, marking it resolved.`);
+                this.processedStacks.set(dependency, Promise.resolve());
+            }
             if (!this.processedStacks.has(dependency)) {
                 this.logger.info(`Stack ${stackName}: Waiting for dependency to be resolved ${dependency}...`);
                 // If dependency not scheduled yet, listen for its addition

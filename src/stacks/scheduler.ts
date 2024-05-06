@@ -22,6 +22,7 @@ export class SchedulerStack implements IStack {
     
     dependencies: string[] = [];
     mainStack!: Stack;
+    output:any = {};
 
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: ISchedulerConfig) {

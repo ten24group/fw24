@@ -44,6 +44,7 @@ export class APIGateway implements IStack {
     mainStack!: Stack;
     // array of type of stacks that this stack is dependent on
     dependencies: string[] = [SESStack.name, DynamoDBStack.name, CognitoStack.name, SQSStack.name, SNSStack.name];
+    output:any = {};
 
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: IAPIGatewayConfig) {

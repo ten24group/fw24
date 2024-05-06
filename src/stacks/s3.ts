@@ -27,7 +27,8 @@ type S3EventDestination = 'lambda' | 'queue';
 export interface IS3TriggerConfig {
     events: EventType[];
     destination: S3EventDestination;
-    functionProps?: LambdaFunctionProps;
+    lambdaFunctionProps?: LambdaFunctionProps;
+    functionName?: string;
     queueName?: string;
 }
 
@@ -39,6 +40,7 @@ export class S3Stack implements IStack {
 
     appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;
+    output: any = {};
 
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: IS3Config[]) {
@@ -96,14 +98,14 @@ export class S3Stack implements IStack {
         if (bucketConfig.triggers && bucketConfig.triggers.length > 0) {
             bucketConfig.triggers.forEach(trigger => {
 
-                if(trigger.destination === 'lambda' && trigger.functionProps) {
+                if(trigger.destination === 'lambda' && trigger.lambdaFunctionProps) {
 
                     // create lambda function for the trigger event
                     // const functionPath = resolve(trigger.handler);
                     this.logger.debug("Creating lambda function for the trigger event: ", trigger.events.toString());
                     const functionId = bucketConfig.bucketName + "-" + trigger.destination + "-" + trigger.events.toString();
                     const lambda = new LambdaFunction(this.mainStack, functionId, {
-                        ...trigger.functionProps
+                        ...trigger.lambdaFunctionProps
                     }) as NodejsFunction;
 
                     // grant the lambda function permissions to the bucket
@@ -114,6 +116,12 @@ export class S3Stack implements IStack {
                     trigger.events.forEach(bucketEvent => {
                         bucket.addEventNotification(bucketEvent, new LambdaDestination(lambda));
                     });
+
+                    const functionOutput: any = {
+                        [trigger?.functionName || functionId]: lambda
+                    }
+                    // set the output
+                    this.output.function = {...this.output.function, ...functionOutput}
                 }
 
                 if(trigger.destination === 'queue' && trigger.queueName) {

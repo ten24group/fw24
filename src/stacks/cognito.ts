@@ -88,6 +88,7 @@ export class CognitoStack implements IStack {
     fw24: Fw24 = Fw24.getInstance();
     dependencies: string[] = [];
     mainStack!: Stack;
+    output:any = {};
     
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: ICognitoConfig) {

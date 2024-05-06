@@ -25,6 +25,7 @@ export class SQSStack implements IStack {
     
     dependencies: string[] = [DynamoDBStack.name];
     mainStack!: Stack;
+    output:any = {};
 
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: ISQSConfig) {

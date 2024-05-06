@@ -16,6 +16,7 @@ export class DynamoDBStack implements IStack {
     readonly fw24: Fw24 = Fw24.getInstance();
     
     dependencies: string[] = [];
+    output:any = {};
 
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: IDynamoConfig) {

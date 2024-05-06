@@ -20,6 +20,8 @@ export class AmplifyStack implements IStack{
     readonly logger = createLogger(AmplifyStack.name);
     readonly fw24: Fw24 = Fw24.getInstance();
     dependencies: string[] = [];
+    output:any = {};
+
 
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: IAmplifyConfig){

@@ -97,7 +97,18 @@ export class LambdaFunction extends Construct {
     // Set environment variables
     if(props.environmentVariables){
       for (const [key, value] of Object.entries(props.environmentVariables)) {
-        fn.addEnvironment(key, value);
+        let envValue = value;
+        let envKey = key;
+        // if key is prefixed with fw24_ access environment variables from fw24 scope
+        if(value.startsWith('fw24_')){
+          // last part of the key is the environment variable name in fw24 scope
+          let fw24Key = key.split('_').pop() || '';
+          // if the key has 3 parts then the second part is the scope name
+          let prefix = key.split('_').length == 3 ? key.split('_')[1] : '';
+          envValue = fw24.get(fw24Key,prefix);
+          this.logger?.debug(`:GET environment variable from fw24 scope : ${fw24Key} : ${envValue}`);
+        }
+        fn.addEnvironment(envKey, envValue);
       }
     }
 
