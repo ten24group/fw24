@@ -87,7 +87,9 @@ export class EntityUIConfigGen{
             menuConfigs.push(menuConfig);
         });
 
-        const authConfigs = MakeAuthConfig({});
+        const authEndpoint = Fw24.getInstance().getConfig().authEndpoint ?? 'auth';
+
+        const authConfigs = MakeAuthConfig({authEndpoint});
 
         await this.writeToFiles(menuConfigs, entityConfigs, authConfigs);
     }

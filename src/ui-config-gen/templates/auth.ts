@@ -33,24 +33,22 @@ export default (
                 apiUrl: `/${authEndpoint}/signin/`,
                 apiMethod: "POST"
             },
-            data: {
-                pageType: "form",
-                propertiesConfig: [
-                    {
-                        column: "email",
-                        label : "Email Address",
-                        placeholder: "Email Address",
-                        validations: ["required", "email"]
-                    }, 
-                    {
-                        column: "password",
-                        label : "Password",
-                        fieldType: "password",
-                        placeholder: "Password",
-                        validations: ["required"]
-                    }
-                ]
-            }
+            pageType: "form",
+            propertiesConfig: [
+                {
+                    column: "email",
+                    label : "Email Address",
+                    placeholder: "Email Address",
+                    validations: ["required", "email"]
+                }, 
+                {
+                    column: "password",
+                    label : "Password",
+                    fieldType: "password",
+                    placeholder: "Password",
+                    validations: ["required"]
+                }
+            ]
         };             
     }
 
@@ -60,30 +58,28 @@ export default (
                 apiUrl: `/${authEndpoint}/signup/`,
                 apiMethod: "POST"
             },
-            data: {
-                pageType: "form",
-                propertiesConfig: [
-                    {
-                        column: "email",
-                        label : "Email Address",
-                        placeholder: "Email Address",
-                        validations: ["required", "email"]
-                    }, 
-                    {
-                        column: "password",
-                        label : "Password",
-                        fieldType: "password",
-                        placeholder: "Password",
-                        validations: ["required"]
-                    },
-                    {
-                        column: "confirmPassword",
-                        label : "Confirm Password",
-                        placeholder: "",
-                        validations: ["required", "match:password"]
-                    }
-                ]
-            }
+            pageType: "form",
+            propertiesConfig: [
+                {
+                    column: "email",
+                    label : "Email Address",
+                    placeholder: "Email Address",
+                    validations: ["required", "email"]
+                }, 
+                {
+                    column: "password",
+                    label : "Password",
+                    fieldType: "password",
+                    placeholder: "Password",
+                    validations: ["required"]
+                },
+                {
+                    column: "confirmPassword",
+                    label : "Confirm Password",
+                    placeholder: "",
+                    validations: ["required", "match:password"]
+                }
+            ]
         };             
     }
 
@@ -94,23 +90,21 @@ export default (
                 apiUrl: `/${authEndpoint}/verify/`,
                 apiMethod: "POST"
             },
-            data: {
-                pageType: "form",
-                propertiesConfig: [
-                    {
-                        column: "email",
-                        label : "Email Address",
-                        placeholder: "Email Address",
-                        validations: ["required", "email"]
-                    }, 
-                    {
-                        column: "code",
-                        label : "Code",
-                        placeholder: "Code",
-                        validations: ["required"]
-                    }
-                ]
-            }
+            pageType: "form",
+            propertiesConfig: [
+                {
+                    column: "email",
+                    label : "Email Address",
+                    placeholder: "Email Address",
+                    validations: ["required", "email"]
+                }, 
+                {
+                    column: "code",
+                    label : "Code",
+                    placeholder: "Code",
+                    validations: ["required"]
+                }
+            ]
         };             
     }
 
@@ -120,17 +114,15 @@ export default (
                 apiUrl: `/${authEndpoint}/forgotPassword/`,
                 apiMethod: "POST"
             },
-            data: {
-                pageType: "form",
-                propertiesConfig: [
-                    {
-                        column: "email",
-                        label : "Email Address",
-                        placeholder: "Email Address",
-                        validations: ["required", "email"]
-                    }
-                ]
-            }
+            pageType: "form",
+            propertiesConfig: [
+                {
+                    column: "email",
+                    label : "Email Address",
+                    placeholder: "Email Address",
+                    validations: ["required", "email"]
+                }
+            ]
         };
 
         config['/reset-password'] = {
@@ -138,35 +130,33 @@ export default (
                 apiUrl: `/${authEndpoint}/confirmForgotPassword/`,
                 apiMethod: "POST"
             },
-            data: {
-                pageType: "form",
-                propertiesConfig: [
-                    {
-                        column: "email",
-                        label : "Email Address",
-                        placeholder: "Email Address",
-                        validations: ["required", "email"]
-                    },
-                    {
-                        column: "code",
-                        label : "Code",
-                        placeholder: "Code",
-                        validations: ["required"]
-                    },
-                    {
-                        column: "newPassword",
-                        label : "New Password",
-                        placeholder: "",
-                        validations: ["required"]
-                    },
-                    {
-                        column: "confirmNewPassword",
-                        label : "Confirm New Password",
-                        placeholder: "",
-                        validations: ["required", "match:newPassword"]
-                    }
-                ]
-            }
+            pageType: "form",
+            propertiesConfig: [
+                {
+                    column: "email",
+                    label : "Email Address",
+                    placeholder: "Email Address",
+                    validations: ["required", "email"]
+                },
+                {
+                    column: "code",
+                    label : "Code",
+                    placeholder: "Code",
+                    validations: ["required"]
+                },
+                {
+                    column: "newPassword",
+                    label : "New Password",
+                    placeholder: "",
+                    validations: ["required"]
+                },
+                {
+                    column: "confirmNewPassword",
+                    label : "Confirm New Password",
+                    placeholder: "",
+                    validations: ["required", "match:newPassword"]
+                }
+            ]
         };              
     }
 
