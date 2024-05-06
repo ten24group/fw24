@@ -157,6 +157,9 @@ export class Fw24 {
     public addRouteToRolePolicy(route: string, groups: string[], requireRouteInGroupConfig: boolean = false) {
         if(!groups || groups.length === 0) {
             groups = this.get('Groups', 'cognito');
+            if(!groups) {
+                throw new Error(`No groups defined. Group is required to add route: ${route} to role policy.`);
+            }
         }
         let routeAddedToGroupPolicy = false;
         for (const groupName of groups) {
@@ -167,6 +170,9 @@ export class Fw24 {
             // get role
             this.logger.info("addRouteToRolePolicy:", {route, groupName});
             const role: Role = this.get('Role', 'cognito_' + groupName);
+            if(!role) {
+                throw new Error(`Role not found for group: ${groupName}. Role is required to add route: ${route} to role policy.`);
+            }
             // add role policy statement to allow route access for group
             role.addToPolicy(this.getRoutePolicyStatement(route));
             routeAddedToGroupPolicy = true;
