@@ -1,13 +1,13 @@
-import { Schema } from "electrodb";
-import { Authorizer } from "../authorize";
-import { CreateEntityItemTypeFromSchema, EntityIdentifiersTypeFromSchema, EntityServiceTypeFromSchema, UpdateEntityItemTypeFromSchema } from "./base-entity";
 import { defaultMetaContainer } from ".";
-import { Validator } from "../validation";
-import { Logger } from "../logging";
 import { Auditor } from "../audit";
+import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
-
-export type CRUD = 'create' | 'get' | 'update' | 'delete' | 'list';
+import { ILogger, createLogger } from "../logging";
+import { isEmptyObject, removeEmpty } from "../utils";
+import { DefaultValidator, IValidator } from "../validation";
+import { EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
+import { entityFilterCriteriaToExpression } from "./query";
+import { EntityQuery, Pagination } from "./query-types";
 
 /**
  * 
@@ -30,17 +30,16 @@ export type CRUD = 'create' | 'get' | 'update' | 'delete' | 'list';
  * 
  */
 
-export interface BaseEntityCrudArgs<S extends Schema<any, any, any>> {
+export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     entityName: string;
     entityService?: EntityServiceTypeFromSchema<S>;
 
-    crudType?: CRUD;
-    logLevel?: 'debug' | 'info' | 'warn' | 'error';
+    crudType?: keyof TDefaultEntityOperations;
     actor?: any; // todo: define actor context: [ User+Tenant OR System on behalf of some User+Tenant] trying to perform the operation
     tenant?: any; // todo: define tenant context
 
-    logger?: Logger.ILogger;
-    validator?: Validator.IValidator;        // todo: define validator signature
+    logger?: ILogger;
+    validator?: IValidator;        // todo: define validator signature
     authorizer?: Authorizer.IAuthorizer;        // todo: define authorizer signature
     auditLogger?: Auditor.IAuditor;       // todo: define audit logger signature
     eventDispatcher?: EventDispatcher.IEventDispatcher;  // todo define event dispatcher signature
@@ -49,15 +48,19 @@ export interface BaseEntityCrudArgs<S extends Schema<any, any, any>> {
     // telemetry
 }
 
-
-export interface GetEntityArgs<S extends Schema<any, any, any>> extends BaseEntityCrudArgs<S> {
-    id: EntityIdentifiersTypeFromSchema<S>;
+export interface GetEntityArgs<
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> extends BaseEntityCrudArgs<Sch> {
+    id: OpsSchema['get'];
+    attributes ?: Array<string>;
 }
 
-export async function getEntity<S extends Schema<any, any, any>>( options: GetEntityArgs<S>){
+export async function getEntity<S extends EntitySchema<any, any, any>>( options: GetEntityArgs<S>){
 
     const { 
         id,
+        attributes,
         entityName, 
         entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
         
@@ -65,14 +68,15 @@ export async function getEntity<S extends Schema<any, any, any>>( options: GetEn
         tenant,
         
         crudType = 'get',
-        logger = Logger.Default,
+        logger = createLogger('CRUD-service:getEntity'),
+        validator = DefaultValidator,
         authorizer = Authorizer.Default,
         auditLogger = Auditor.Default,
         eventDispatcher = EventDispatcher.Default,
             
     } = options;
 
-    logger.debug(`Called EntityCrud ~ getEntity ~ entityName: ${entityName} ~ id:`, id);
+    logger.debug(`Called EntityCrud ~ getEntity ~ entityName: ${entityName}:`, {id, attributes});
 
     await eventDispatcher.dispatch({event: 'beforeGet', context: arguments });
 
@@ -81,10 +85,24 @@ export async function getEntity<S extends Schema<any, any, any>>( options: GetEn
     // authorize the actor
     const authorization = await authorizer.authorize({entityName, crudType, identifiers, actor, tenant});
     if(!authorization.pass){
-        throw new Error("Authorization failed: " + { cause: authorization });
+        throw new Error("Authorization failed for get: " + { cause: authorization });
     }
 
-    const entity = await entityService.getRepository().get(identifiers).go();
+    // validate
+    const validation = await validator.validateEntity({
+        operationName: crudType,
+        entityName,
+        entityValidations: entityService.getEntityValidations(),
+        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+        input: identifiers,
+        actor: actor
+    });
+
+    if(!validation.pass){
+        throw new Error("Validation failed for get: " + JSON.stringify({ cause: validation }));
+    }
+
+    const entity = await entityService.getRepository().get(identifiers).go({attributes});
 
     await eventDispatcher.dispatch({event: 'afterGet', context: arguments});
 
@@ -96,10 +114,13 @@ export async function getEntity<S extends Schema<any, any, any>>( options: GetEn
     return entity;
 }
 
-export interface CreateEntityArgs<S extends Schema<any, any, any>> extends BaseEntityCrudArgs<S> {
-    data: CreateEntityItemTypeFromSchema<S>
+export interface CreateEntityArgs<
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> extends BaseEntityCrudArgs<Sch> {
+    data: OpsSchema['create'];
 }
-export async function createEntity<S extends Schema<any, any, any>>(options : CreateEntityArgs<S>) {
+export async function createEntity<S extends EntitySchema<any, any, any>>(options : CreateEntityArgs<S>) {
     const { 
         data,
         entityName, 
@@ -110,8 +131,8 @@ export async function createEntity<S extends Schema<any, any, any>>(options : Cr
         tenant,
         
         crudType = 'create',
-        logger = Logger.Default,
-        validator = Validator.Default,
+        logger = createLogger('CRUD-service:createEntity'),
+        validator = DefaultValidator,
         authorizer = Authorizer.Default,
         auditLogger = Auditor.Default,
         eventDispatcher = EventDispatcher.Default,
@@ -120,19 +141,31 @@ export async function createEntity<S extends Schema<any, any, any>>(options : Cr
 
     logger.debug(`Called EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data);
     
+    if(!data){
+        throw new Error("No data provided for create operation");
+    }
+
     // pre events
     await eventDispatcher?.dispatch({ event: 'beforeCreate', context: arguments });
 
     // validate
-    const validation = await validator.validate({entityName, crudType, data });
+    const validation = await validator.validateEntity({
+        operationName: crudType,
+        entityName,
+        entityValidations: entityService.getEntityValidations(),
+        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+        input: data,
+        actor: actor,
+    });
+
     if(!validation.pass){
-        throw new Error("Validation failed: " + { cause: validation });
+        throw new Error("Validation failed for create: " + JSON.stringify({ cause: validation }));
     }
 
     // authorize the actor 
     const authorization = await authorizer.authorize({ entityName, crudType, data, actor, tenant });
     if(!authorization.pass){
-        throw new Error("Authorization failed: " + { cause: authorization });
+        throw new Error("Authorization failed for create: " + { cause: authorization });
     }
 
     const entity = await entityService.getRepository().create(data).go();
@@ -149,17 +182,16 @@ export async function createEntity<S extends Schema<any, any, any>>(options : Cr
     return entity;
 }
 
-export interface ListEntityArgs<S extends Schema<any, any, any>> extends BaseEntityCrudArgs<S> {
-    filters: EntityIdentifiersTypeFromSchema<S>;
+export interface ListEntityArgs<Sch extends EntitySchema<any, any, any> > extends BaseEntityCrudArgs<Sch> {
+    query: EntityQuery<Sch>
 }
 /**
  * 
- * TODO; Filters, Paging etc
  * @param options 
  * 
  * @returns 
  */
-export async function listEntity<S extends Schema<any, any, any>>( options: ListEntityArgs<S>){
+export async function listEntity<S extends EntitySchema<any, any, any>>( options: ListEntityArgs<S>){
 
     const { 
         entityName, 
@@ -169,12 +201,18 @@ export async function listEntity<S extends Schema<any, any, any>>( options: List
         tenant,
 
         crudType = 'list',
-        logger = Logger.Default,
+        logger = createLogger('CRUD-service:listEntity'),
         authorizer = Authorizer.Default,
         auditLogger = Auditor.Default,
         eventDispatcher = EventDispatcher.Default,
-            
+
+        query = {},
     } = options;
+
+    const { 
+        filters, 
+        pagination= { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined }, 
+    } = query;
 
     logger.debug(`Called EntityCrud ~ listEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
@@ -186,7 +224,13 @@ export async function listEntity<S extends Schema<any, any, any>>( options: List
         throw new Error("Authorization failed: " + { cause: authorization });
     }
 
-    const entities = await entityService.getRepository().scan.go();
+    const dbQuery = entityService.getRepository().match({});
+
+    if(filters && !isEmptyObject(filters)){
+        dbQuery.where((attr, op) => entityFilterCriteriaToExpression(filters, attr, op))
+    }
+    
+    const entities = await dbQuery.go(removeEmpty(pagination));
 
     await eventDispatcher.dispatch({ event: 'afterList', context: arguments });
 
@@ -198,11 +242,77 @@ export async function listEntity<S extends Schema<any, any, any>>( options: List
     return entities;
 }
 
-export interface UpdateEntityArgs<S extends Schema<any, any, any>> extends BaseEntityCrudArgs<S> {
-    id: EntityIdentifiersTypeFromSchema<S>,
-    data: UpdateEntityItemTypeFromSchema<S>
+export interface QueryEntityArgs<Sch extends EntitySchema<any, any, any>> extends BaseEntityCrudArgs<Sch> {
+    query: EntityQuery<Sch>
 }
-export async function updateEntity<S extends Schema<any, any, any>>(options : UpdateEntityArgs<S>) {
+/**
+ * 
+ * @param options 
+ * 
+ * @returns 
+ */
+export async function queryEntity<S extends EntitySchema<any, any, any>>( options: QueryEntityArgs<S>){
+
+    const { 
+        entityName, 
+        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+
+        actor,
+        tenant,
+
+        crudType = 'query',
+        logger = createLogger('CRUD-service:queryEntity'),
+        authorizer = Authorizer.Default,
+        auditLogger = Auditor.Default,
+        eventDispatcher = EventDispatcher.Default,
+
+        query = {}
+
+    } = options;
+
+    const { 
+        filters = {}, 
+        pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined } 
+    } = query;
+
+    logger.debug(`Called EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
+
+    await eventDispatcher.dispatch({event: 'beforeQuery', context: arguments });
+
+    // authorize the actor
+    const authorization = await authorizer.authorize({entityName, crudType, actor, tenant});
+    if(!authorization.pass){
+        throw new Error("Authorization failed: " + { cause: authorization });
+    }
+
+    const dbQuery = entityService.getRepository().match({});
+
+    if(filters && !isEmptyObject(filters)){
+        dbQuery.where((attr, op) => entityFilterCriteriaToExpression(filters, attr, op))
+    }
+    
+    const entities = await dbQuery.go(removeEmpty(pagination));
+
+    await eventDispatcher.dispatch({ event: 'afterQuery', context: arguments });
+
+    // create audit
+    auditLogger.audit({ entityName, crudType, entities, actor, tenant });
+
+    logger.debug(`Completed EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
+
+    return entities;
+}
+
+export interface UpdateEntityArgs<
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> extends BaseEntityCrudArgs<Sch> {
+    id: OpsSchema['get'],
+    data: OpsSchema['update'],
+    conditions?: any // TODO
+}
+
+export async function updateEntity<S extends EntitySchema<any, any, any>>(options : UpdateEntityArgs<S>) {
     const { 
         id,
         data,
@@ -214,8 +324,8 @@ export async function updateEntity<S extends Schema<any, any, any>>(options : Up
         tenant,
 
         crudType = 'update',
-        logger = Logger.Default,
-        validator = Validator.Default,
+        logger = createLogger('CRUD-service:updateEntity'),
+        validator = DefaultValidator,
         authorizer = Authorizer.Default,
         auditLogger = Auditor.Default,
         eventDispatcher = EventDispatcher.Default,
@@ -224,13 +334,25 @@ export async function updateEntity<S extends Schema<any, any, any>>(options : Up
 
     logger.debug(`Called EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, data);
     
+    if(!data){
+        throw new Error("No data provided for update operation");
+    }
+
     // pre events
     await eventDispatcher?.dispatch({ event: 'beforeUpdate', context: arguments });
 
     // validate
-    const validation = await validator.validate({entityName, crudType, data });
+    const validation = await validator.validateEntity({
+        operationName: crudType,
+        entityName,
+        entityValidations: entityService.getEntityValidations(),
+        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+        input: data,
+        actor: actor
+    });
+
     if(!validation.pass){
-        throw new Error("Validation failed: " + { cause: validation });
+        throw new Error("Validation failed for update: " + JSON.stringify({ cause: validation }));
     }
 
     const identifiers = entityService.extractEntityIdentifiers(id);
@@ -238,7 +360,7 @@ export async function updateEntity<S extends Schema<any, any, any>>(options : Up
     // authorize the actor 
     const authorization = await authorizer.authorize({ entityName, crudType, identifiers, data, actor, tenant });
     if(!authorization.pass){
-        throw new Error("Authorization failed: " + { cause: authorization });
+        throw new Error("Authorization failed for update: " + { cause: authorization });
     }
 
     const entity = await entityService.getRepository().patch(identifiers).set(data).go();
@@ -255,10 +377,14 @@ export async function updateEntity<S extends Schema<any, any, any>>(options : Up
     return entity;
 }
 
-export interface DeleteEntityArgs<S extends Schema<any, any, any>> extends BaseEntityCrudArgs<S> {
-    id: EntityIdentifiersTypeFromSchema<S>;
+export interface DeleteEntityArgs<
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> extends BaseEntityCrudArgs<Sch> {
+    id: OpsSchema['delete'];
 }
-export async function deleteEntity<S extends Schema<any, any, any>>( options: DeleteEntityArgs<S>){
+
+export async function deleteEntity<S extends EntitySchema<any, any, any>>( options: DeleteEntityArgs<S>){
 
     const { 
         id,
@@ -269,7 +395,8 @@ export async function deleteEntity<S extends Schema<any, any, any>>( options: De
         tenant,
 
         crudType = 'delete',
-        logger = Logger.Default,
+        logger = createLogger('CRUD-service:deleteEntity'),
+        validator = DefaultValidator,
         authorizer = Authorizer.Default,
         auditLogger = Auditor.Default,
         eventDispatcher = EventDispatcher.Default,
@@ -278,19 +405,33 @@ export async function deleteEntity<S extends Schema<any, any, any>>( options: De
 
     logger.debug(`Called EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
 
-    await eventDispatcher.dispatch({event: 'beforeGet', context: arguments });
+    await eventDispatcher.dispatch({event: 'beforeDelete', context: arguments });
 
     const identifiers = entityService.extractEntityIdentifiers(id);
 
     // authorize the actor
     const authorization = await authorizer.authorize({entityName, crudType, identifiers, actor, tenant});
     if(!authorization.pass){
-        throw new Error("Authorization failed: " + { cause: authorization });
+        throw new Error("Authorization failed for delete: " + { cause: authorization });
+    }
+
+    // validate
+    const validation = await validator.validateEntity({
+        operationName: crudType,
+        entityName,
+        entityValidations: entityService.getEntityValidations(),
+        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+        input: identifiers,
+        actor: actor
+    });
+
+    if(!validation.pass){
+        throw new Error("Validation failed for delete: " + JSON.stringify({ cause: validation }));
     }
 
     const entity = await entityService.getRepository().delete(identifiers).go();
 
-    await eventDispatcher.dispatch({event: 'afterGet', context: arguments});
+    await eventDispatcher.dispatch({event: 'afterDelete', context: arguments});
 
     // create audit
     auditLogger.audit({entityName, crudType, identifiers, entity, actor, tenant});

@@ -1,4 +1,5 @@
 import { Route } from "../interfaces/route";
+import { HttpRequestValidations, InputValidationRule } from "../validation";
 
 // function InjectParams(
 //   target: any,
@@ -18,14 +19,26 @@ import { Route } from "../interfaces/route";
 // }
 
 function createRouteDecorator(method: string) {
-  return (route: string) =>
+  return (
+    route: string,
+    options ?: {
+      validations?: InputValidationRule | HttpRequestValidations
+    } 
+  ) =>
     (target: any, methodToDecorate: any) => {
+
       const routes: Record<string, Route> = Reflect.get(target, "routes") || {};
+
+      if(!route){
+        route = '/'
+      };
+
       if (route && !route.startsWith("/")) {
         route = `/${route}`;
       }
 
       var parameters: Array<String> = [];
+
       route.split('/').forEach((param) => {
         if(param.startsWith('{') && param.endsWith('}')){
           parameters.push(param.slice(1, -1));
@@ -37,7 +50,9 @@ function createRouteDecorator(method: string) {
         httpMethod: method,
         functionName: methodToDecorate.name || methodToDecorate,
         parameters: parameters,
+        validations: options?.validations,
       };
+
       Reflect.set(target, "routes", routes);
       //InjectParams(target, methodToDecorate, descriptor);
     };

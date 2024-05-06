@@ -1,5 +1,6 @@
-import { Entity, EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem } from "electrodb";
+import { Entity, EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, createSchema, Attribute } from "electrodb";
 import { BaseEntityService } from "./base-service";
+import { Narrow, Writable } from "../utils/types";
 
 /**
  *  ElectroDB entity  examples
@@ -13,12 +14,72 @@ import { BaseEntityService } from "./base-service";
  * 
  */
 
-export type CreateEntityOptions<S extends Schema<any, any, any>> = {
+export type EntityAttribute = Attribute & {
+    name ?: string; // Human readable name
+    isIdentifier?: boolean;
+    // field type for the UI
+    validations ?: any[],
+    fieldType?: 'text' | 'textarea' | 'select' | 'multi-select' | 'date' | 'time' | 'date-time' | 'number' | 'password' | 'radio' | 'checkbox';
+}
+
+export interface EntitySchema<
+    A extends string, 
+    F extends string, 
+    C extends string,
+    Opp extends TDefaultEntityOperations = TDefaultEntityOperations
+> extends Schema<A, F, C>{
+    readonly model: Schema<A, F, C>['model'] & {
+        readonly entityNamePlural: string;
+        readonly entityOperations: Opp; 
+        readonly entityMenuIcon ?: string,
+    };
+    readonly attributes: {
+        readonly [a in A]: EntityAttribute;
+    };
+}
+
+export const DefaultEntityOperations = {
+    get: "get",
+    list: "list",
+    query: "query",
+    create: "create",
+    update: "update",
+    delete: "delete",
+};
+
+export type TDefaultEntityOperations = typeof DefaultEntityOperations;
+
+/**
+ * Extend this type for additional operations's input-schema types 
+ * 
+ */
+export type TEntityOpsInputSchemas<
+Sch extends EntitySchema<any, any, any>,
+> = {
+    readonly [opName in keyof Sch['model']['entityOperations']] 
+        : opName extends 'get'      ? EntityIdentifiersTypeFromSchema<Sch>
+        : opName extends 'create'   ? CreateEntityItemTypeFromSchema<Sch>
+        : opName extends 'update'   ? UpdateEntityItemTypeFromSchema<Sch>
+        : opName extends 'delete'   ? EntityIdentifiersTypeFromSchema<Sch>
+        : {}
+}
+
+export type CreateEntityOptions<S extends EntitySchema<any, any, any>> = {
     schema: S,
     entityConfigurations: EntityConfiguration;
 }
 
-export function createElectroDBEntity<S extends Schema<any, any, any>>(options: CreateEntityOptions<S>) {
+export function createEntitySchema<
+  A extends string,
+  F extends string,
+  C extends string,
+  S extends EntitySchema<A, F, C, Ops>,
+  Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
+>(schema: S): S {
+    return createSchema(schema);
+}
+
+export function createElectroDBEntity<S extends EntitySchema<any, any, any>>(options: CreateEntityOptions<S>) {
     const { schema, entityConfigurations} = options;
 
 	const newElectroDbEntity = new Entity(
@@ -35,18 +96,21 @@ export function createElectroDBEntity<S extends Schema<any, any, any>>(options: 
 }
 
 // Infer types utils
-export type EntityTypeFromSchema<TSchema> = TSchema extends Schema<infer A, infer F, infer C> 
+export type EntityTypeFromSchema<TSchema> = TSchema extends EntitySchema<infer A, infer F, infer C> 
     ? Entity<A, F, C, TSchema> 
     : never;
 
+
+export type EntityRecordTypeFromSchema<Sch extends EntitySchema<any, any, any>> = Narrow<EntityItem<EntityTypeFromSchema<Sch>>>;
+
 // Entity service
-export type EntityServiceTypeFromSchema<TSchema extends Schema<any, any, any>> = BaseEntityService<TSchema>;
+export type EntityServiceTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = BaseEntityService<TSchema>;
 
 // Entity identifiers
-export type EntityIdentifiersTypeFromSchema<TSchema extends Schema<any, any, any>> = EntityIdentifiers<EntityTypeFromSchema<TSchema>>;
+export type EntityIdentifiersTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<EntityIdentifiers<EntityTypeFromSchema<TSchema>>>;
 
 // Create entity
-export type CreateEntityItemTypeFromSchema<TSchema extends Schema<any, any, any>> = CreateEntityItem<EntityTypeFromSchema<TSchema>>;
+export type CreateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<CreateEntityItem<EntityTypeFromSchema<TSchema>>>;
 
 // Update entity
-export type UpdateEntityItemTypeFromSchema<TSchema extends Schema<any, any, any> > = UpdateEntityItem<EntityTypeFromSchema<TSchema>>;
+export type UpdateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any> > = Writable<UpdateEntityItem<EntityTypeFromSchema<TSchema>>>;

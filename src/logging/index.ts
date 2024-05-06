@@ -1,39 +1,39 @@
 
-export * as Logger from './'
+import { Logger, ILogObj, ISettingsParam} from "tslog";
 
-export type Level = 'debug' | 'info' | 'warn' | 'error';
-
-export interface ILogger {
-  trace(message?: any, ...optionalParams: any[]): void;
-  debug(message?: any, ...optionalParams: any[]): void;
-  info(message?: any, ...optionalParams: any[]): void;
-  warn(message?: any, ...optionalParams: any[]): void;
-  error(message?: any, ...optionalParams: any[]): void;
-  [x: string]: any;
+export interface ILogger extends Logger<ILogObj> {
 }
 
-export const Dummy: ILogger = {
-    trace: (_message?: any, ..._optionalParams: any[]) => {},
-    debug: (_message?: any, ..._optionalParams: any[]) => {},
-    info: (_message?: any, ..._optionalParams: any[]) => {},
-    warn: (_message?: any, ..._optionalParams: any[]) => {},
-    error: (_message?: any, ..._optionalParams: any[]) => {},
+const logLevels: any = {
+    "silly": 0,
+    "trace": 1,
+    "debug": 2,
+    "info": 3,
+    "warn": 4,
+    "error": 5,
+    "fatal": 6,
 };
 
-export const Default: ILogger = {
-    trace: (_message?: any, ..._optionalParams: any[]) => {
-        console.log(_message, _optionalParams);
-    },
-    debug: (_message?: any, ..._optionalParams: any[]) => {
-        console.debug(_message, _optionalParams);
-    },
-    info: (_message?: any, ..._optionalParams: any[]) => {
-        console.info(_message, _optionalParams);
-    },
-    warn: (_message?: any, ..._optionalParams: any[]) => {
-        console.warn(_message, _optionalParams);
-    },
-    error: (_message?: any, ..._optionalParams: any[]) => {
-        console.error(_message, _optionalParams);
-    },
-};
+const logLevel = logLevels[process.env.LOG_LEVEL || 'info'];
+export const DefaultLogger: ILogger = new Logger();
+
+export const createLogger = (_options: string | ISettingsParam<ILogObj>) => {
+    if (typeof _options == 'string') {
+        _options = { name: _options, minLevel: logLevel};
+    }
+    // show line number only for debug and trace
+    if(!_options.hideLogPositionForProduction && logLevel > 2){
+        _options.hideLogPositionForProduction = true;
+    }
+    // set time format
+    if(!_options.prettyLogTimeZone){
+        _options.prettyLogTimeZone = 'local';
+    }
+
+    const logger = new Logger(_options);
+    return logger;
+}
+
+export {
+    LogDuration
+} from '../decorators/LogDuration';

@@ -1,7 +1,10 @@
+import { parseValueToCorrectTypes } from './../utils/parse';
+import { DefaultLogger } from '../logging';
 import { Request } from '../interfaces/request';
 import { APIGatewayEvent, Context } from "aws-lambda";
 
 export class RequestContext implements Request {
+
 
     public event: APIGatewayEvent;
     public context: Context;
@@ -15,6 +18,8 @@ export class RequestContext implements Request {
     public pathParameters: any;
     public isBase64Encoded: boolean;
     public httpMethod: string;
+    public debugMode: boolean;
+    
 
     constructor(event: APIGatewayEvent, context: Context) {
         this.event = event;
@@ -29,6 +34,28 @@ export class RequestContext implements Request {
         this.pathParameters = event.pathParameters;
         this.isBase64Encoded = event.isBase64Encoded;
         this.httpMethod = event.httpMethod;
+
+        if(this.queryStringParameters && typeof this.queryStringParameters === 'object' ){
+            // Parse the URL-query-params from string to the correct types
+            this.queryStringParameters = Object.keys(this.queryStringParameters)
+            .reduce((obj: any, key) => {
+                obj[key] = parseValueToCorrectTypes( this.queryStringParameters[key] );
+                return obj;
+            }, {});
+
+        } else {
+            DefaultLogger.info(`this.queryStringParameters ${this.queryStringParameters} is not a valid object`);
+        }
+
+        // Check for Debug-mode
+        this.debugMode = false;
+        const debugPassword = process.env.DEBUG_PASSWORD ?? true;
+        if(this.queryStringParameters?.debug == debugPassword){
+            this.debugMode = true;
+            delete this.queryStringParameters.debug;
+        }
+
+        // Parse the request body
 
         if (event.body) {
             
@@ -47,7 +74,7 @@ export class RequestContext implements Request {
                 try{
                     this.body = JSON.parse(event.body);
                 }catch(e){
-                    console.error("Error in parsing the event body...", event.body);
+                    DefaultLogger.error("::RequestContext:: Error in parsing the event body...", event.body);
                     this.body = event.body;
                 }
             }

@@ -2,17 +2,21 @@ import { Schema } from 'electrodb';
 import { APIGatewayController } from '../core/api-gateway-controller';
 import { Request } from '../interfaces/request';
 import { Response } from '../interfaces/response';
-import { Get } from '../decorators/method';
+import { Delete, Get, Patch, Post } from '../decorators/method';
 import { BaseEntityService } from './base-service';
 import { defaultMetaContainer } from './entity-metadata-container';
+import { EntitySchema } from './base-entity';
+import { createLogger } from '../logging';
+import { safeParseInt } from '../utils/parse';
+import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, merge } from '../utils';
+import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
+import { EntityFilterCriteria } from './query-types';
 
-export abstract class BaseEntityController<Sch extends Schema<any, any, any>> extends APIGatewayController {
+export abstract class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIGatewayController {
+	
+	readonly logger = createLogger(BaseEntityController.name);
 
-    private entityName: any;
-    
-    constructor(
-        entityName: string
-    ){
+    constructor( protected readonly entityName: string){
         super();
         this.entityName = entityName;
     }
@@ -25,66 +29,233 @@ export abstract class BaseEntityController<Sch extends Schema<any, any, any>> ex
         await this.initDI();
 
         // TODO: rest of the init setup
-		console.log(`BaseEntityController.initialize - done: ${event} ${context}`);
+		
+		this.logger.debug(`BaseEntityController.initialize - done: ${event} ${context}`);
 
         return Promise.resolve();
     }
 
-    // ** workaround to deal with base controller type def
     public getEntityService<S extends BaseEntityService<Sch>>(): S {
         return defaultMetaContainer.getEntityServiceByEntityName<S>(this.entityName);
     }
 
 	// Simple string response
-	@Get('/create')
+	@Post('')
 	async create(req: Request, res: Response) {
+		const createdEntity = await this.getEntityService().create(req.body);
 
-		const data = req.queryStringParameters; 
+		const result: any = {
+			[ camelCase(this.entityName) ]: createdEntity,
+			message: "Created successfully"
+		};
+		if(req.debugMode){
+			result.req = req;
+		}
 
-		const createdEntity = await this.getEntityService().create(data);
-
-		return res.json({ __created__: createdEntity,  __req__: req });
+		return res.json(result);
 	}
 
-	@Get('/get/{id}')
+	@Get('/{id}')
 	async find(req: Request, res: Response) {
         // prepare the identifiers
         const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
+		const attributes = req.queryStringParameters?.attributes?.split?.(',');
 
-		const entity = await this.getEntityService().get(identifiers);
+		const entity = await this.getEntityService().get(identifiers, attributes);
 
-		return res.json({ __entity__: entity,  __req__: req });
+		const result: any = {
+			[ camelCase(this.entityName) ]: entity,
+		};
+
+		if(req.debugMode){
+			result.req = req;
+			result.identifiers = identifiers
+		}
+
+		return res.json(result);
 	}
 
-	@Get('/update/{id}')
+	@Get('')
+	async list(req: Request, res: Response) {
+        const data = req.queryStringParameters;
+		this.logger.info(`list - data:`, data);
+
+		const {
+			order,
+			cursor,
+			count,
+			limit,
+			pages, 
+			...restOfQueryParams
+		} = data || {};
+
+		const {filters = {}, attributes, search, searchAttributes, ...restOfQueryParamsWithoutFilters} = restOfQueryParams;
+
+		let parsedFilters = {};
+
+		if( !isObject(filters) ){
+
+			this.logger.warn(`filters is not an object: need to parse the filters query string`, filters);
+			
+			if(isJsonString(filters)){
+				
+				this.logger.info(`found JSON string filters parsing`, filters);
+				parsedFilters =  JSON.parse(filters);
+
+			}  else {
+
+				// TODO: parse filters query string like 
+				//
+				// `abc=123 AND ( pqr != 456 OR xyz contains 'qwe rty yui')`
+				//
+				this.logger.warn(`filters is not an object: need to parse the filters query string`, filters);
+			}
+
+		} else {
+			this.logger.info(`filters is a parsed object`, filters);
+			parsedFilters = filters;
+		}
+
+		if( restOfQueryParamsWithoutFilters && !isEmptyObject(restOfQueryParamsWithoutFilters) ){
+			/* 
+				e.g 
+				{
+					==> simple value without comparison opp
+					pqr: 2322,  		
+					
+					==> simple value with comparison opp
+					"foo[eq]" : "1",
+					"foo.neq": "3"
+
+					==> complex values/logical-paths
+					"or[][foo][eq]" : "1",
+					"or[].foo.neq": "3",
+					"and[].bar[contains]": "fluffy",
+					"and[].baz[in]": "4,34",
+					"and[].baz.in": "123",
+				}
+			*/
+			this.logger.info(`found not empty restOfQueryParamsWithoutFilters:`, restOfQueryParamsWithoutFilters);
+
+			const parsedQueryParams = parseUrlQueryStringParameters(restOfQueryParamsWithoutFilters);
+			this.logger.info(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
+
+			const parsedQueryParamFilters = queryStringParamsToFilterGroup(parsedQueryParams);
+			this.logger.info(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
+
+			parsedFilters = merge([parsedFilters, parsedQueryParamFilters]) ?? {};
+		} 
+
+		const pagination = {
+			order: order ?? 'asc',
+            cursor: cursor ?? null,
+			
+			// TODO: make the default-values configurable
+            count: safeParseInt(count, 12).value,
+			limit: safeParseInt(limit, 250).value,
+
+            pages:  pages === 'all' ? 'all' as const : safeParseInt(pages, 1).value,
+        }
+
+		this.logger.info(`parsed pagination`, pagination);
+
+
+		const query = {
+			filters: deepCopy(parsedFilters) as EntityFilterCriteria<Sch>,
+			attributes: attributes?.split?.(','),
+			pagination,
+			search,
+			searchAttributes
+		};
+		
+		const {data: records, cursor: newCursor, query: parsedQuery} = await this.getEntityService().list(query);
+
+		const result: any = {
+			cursor: newCursor,
+			items: records,
+		};
+
+		if(req.debugMode){
+
+			result.req = req;
+
+			result.criteria = {
+				// inputs
+				pagination,
+				filters,
+				parsedFilters,
+				restOfQueryParamsWithoutFilters,
+				
+				// outputs
+				parsedQuery
+			};
+		}
+
+		return res.json(result);
+	}
+
+	@Patch('/{id}')
 	async update(req: Request, res: Response) {
         // prepare the identifiers
         const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
 
-		const data = req.queryStringParameters; 
+		const updatedEntity = await this.getEntityService().update(identifiers, req.body);
 
-		const updatedEntity = await this.getEntityService().update(identifiers, data);
+		const result: any = {
+			[ camelCase(this.entityName) ]: updatedEntity,
+			message: "Updated successfully"
+		};
+		if(req.debugMode){
+			result.req = req;
+			result.identifiers = identifiers
+		}
 
-		return res.json({ __updated__: updatedEntity,  __req__: req });
+		return res.json(result);
 	}
 
-	@Get('/delete/{id}')
+	@Delete('/{id}')
 	async delete(req: Request, res: Response) {
         // prepare the identifiers
         const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
 
 		const deletedEntity = await this.getEntityService().delete(identifiers);
 
-		return res.json({ __deleted__: deletedEntity,  __req__: req });
+		const result: any = {
+			[ camelCase(this.entityName) ]: deletedEntity,
+			message: "Deleted successfully"
+		};
+
+		if(req.debugMode){
+			result.req = req;
+		}
+
+		return res.json(result);
 	}
 
-	@Get('/list')
-	async list(req: Request, res: Response) {
-        const data = req.queryStringParameters; 
+	@Post('/query')
+	async query(req: Request, res: Response) {
+        const query = req.body;
+		this.logger.info(`query - query:`, query);
 
-		const entities = await this.getEntityService().list(data);
+		// make a deep copy for debugging purposes
+		const inputQuery = deepCopy(query);
 
-		return res.json(entities);
+		const {data: records, cursor: newCursor, query: parsedQuery} = await this.getEntityService().query(query);
+
+		const result: any = {
+			cursor: newCursor,
+			items: records,
+		};
+
+		if(req.debugMode){
+			result.req = req;
+			result.criteria = {
+				inputQuery,
+				parsedQuery
+			};
+		}
+
+		return res.json(result);
 	}
 
 }

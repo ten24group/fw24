@@ -1,14 +1,20 @@
-import { APIGatewayEvent, Context, APIGatewayProxyResult } from "aws-lambda";
-import { Route } from "../interfaces/route";
+import { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
 import { Request } from "../interfaces/request";
 import { Response } from "../interfaces/response";
+import { Route } from "../interfaces/route";
+import { createLogger } from "../logging";
+import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule } from "../validation";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
+import { isHttpRequestValidationRule, isInputValidationRule } from "../validation/utils";
+import { getCircularReplacer } from "../utils";
 
 /**
  * Base controller class for handling API Gateway events.
  */
 abstract class APIGatewayController {
+  readonly logger = createLogger(APIGatewayController.name);
+  protected validator: IValidator  = DefaultValidator;
 
   /**
    * Binds the LambdaHandler method to the instance of the class.
@@ -19,6 +25,37 @@ abstract class APIGatewayController {
 
   abstract initialize(event: APIGatewayEvent, context: Context): Promise<void>;
 
+  protected async getOverriddenHttpRequestValidationErrorMessages() {
+      return Promise.resolve( new Map<string, string>());
+  }
+
+  async validate( requestContext: Request, validations: InputValidationRule | HttpRequestValidations ){
+
+    let validationRules: HttpRequestValidations = validations;
+    if(isInputValidationRule(validations)){
+      if( ['GET', 'DELETE'].includes( requestContext.httpMethod.toUpperCase()) ){
+
+          validationRules = { query: validations }
+
+      } else if( ['POST', 'PUT', 'PATCH'].includes( requestContext.httpMethod.toUpperCase()) ){
+
+        validationRules = { body: validations }
+      }
+    }
+    
+    if(!isHttpRequestValidationRule(validationRules)){
+      throw (new Error("Invalid http-request validation rule"));
+    }
+
+    return this.validator.validateHttpRequest({
+      requestContext, 
+      validations: validationRules, 
+      collectErrors: true,
+      verboseErrors: requestContext.debugMode,
+      overriddenErrorMessages: await this.getOverriddenHttpRequestValidationErrorMessages()
+    });
+  }
+
   /**
    * Lambda handler for the controller.
    * Handles incoming API Gateway events.
@@ -27,7 +64,7 @@ abstract class APIGatewayController {
    * @returns The API Gateway response object.
    */
   async LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult> {
-    console.log("Received event:", JSON.stringify(event, null, 2));
+    this.logger.debug("LambdaHandler Received event:", JSON.stringify(event, null, 2));
     // Create request and response objects
     const requestContext: Request = new RequestContext(event, context);
     const responseContext: Response = new ResponseContext();
@@ -38,9 +75,25 @@ abstract class APIGatewayController {
     try {
       // Find the matching route for the received request
       const route = this.findMatchingRoute(requestContext);
-      // const validation = this.findMatchingValidation(requestContext);
-      // TODO: Add Validation Check
-      // requestContext: any = validation.call(this, requestContext, responseContext);
+
+      if(route?.validations){
+        this.logger.info("Validation rules found for route:", route);
+        
+        const validationResult = await this.validate(requestContext, route.validations);
+        
+        if(!validationResult.pass){
+          return this.handleResponse({
+            statusCode: 400,
+            body: JSON.stringify({
+              message: 'Validation failed!!!',
+              errors: validationResult.errors 
+            }),
+          });
+        }
+        
+      } else {
+        this.logger.info("No validation rules found for route:", route);
+      }
 
       const routeFunction = this.getRouteFunction(route);
       // Execute the associated route function
@@ -53,7 +106,7 @@ abstract class APIGatewayController {
 
       // If the response is an instance of ResponseContext, use its status code and body
       if (controllerResponse instanceof ResponseContext) {
-        console.log("Response:", JSON.stringify(controllerResponse, null, 2));
+        this.logger.debug("LambdaHandler Response:", JSON.stringify(controllerResponse, null, 2));
         return this.handleResponse({
           statusCode: controllerResponse.statusCode || 500,
           body: controllerResponse.body,
@@ -61,11 +114,11 @@ abstract class APIGatewayController {
       }
     } catch (err) {
       // If an error occurs, log it and handle with the Exception method
-      console.error(err);
+      this.logger.error('LambdaHandler error: ', err);
       return this.handleException(requestContext, err as Error);
     }
 
-    console.log("Default Response:", JSON.stringify(responseContext, null, 2));
+    this.logger.debug("LambdaHandler Default Response:", JSON.stringify(responseContext, null, 2));
     // Return the finalized API Gateway response
     return this.handleResponse({
       statusCode: responseContext.statusCode,
@@ -81,13 +134,10 @@ abstract class APIGatewayController {
   private findMatchingRoute(requestData: Request): Route | null {
     let controller: any = this;
     var resourceWithoutRoot = '/' + requestData.resource.split('/').slice(2).join('/');
-    console.log('resourceWithoutRoot: ', resourceWithoutRoot);
-    console.log(`${requestData.httpMethod}|${resourceWithoutRoot}`,controller.routes);
+    this.logger.debug('resourceWithoutRoot: ', resourceWithoutRoot);
+    this.logger.debug(`${requestData.httpMethod}|${resourceWithoutRoot}`,controller.routes);
     return controller.routes[`${requestData.httpMethod}|${resourceWithoutRoot}`] || null;
   }
-
-  // Allow dynamic method assignment
-  [key: string]: Function;
 
   /**
    * Retrieves the function associated with the route.
@@ -98,7 +148,10 @@ abstract class APIGatewayController {
     if (!route) {
       return this.handleNotFound.bind(this);
     }
+
+    //@ts-ignore
     const routeFunction = this[route.functionName];
+
     return typeof routeFunction === "function" ? routeFunction : this.handleNotFound.bind(this);
   }
 
@@ -110,7 +163,7 @@ abstract class APIGatewayController {
   private handleNotFound(_req: Request): APIGatewayProxyResult {
     return this.handleResponse({
       statusCode: 404,
-      body: JSON.stringify({ error: "Not Found" }),
+      body: JSON.stringify({ message: "Not Found" }),
     });
   }
 
@@ -120,10 +173,20 @@ abstract class APIGatewayController {
    * @param err - The error object.
    * @returns The response object with a 500 status code.
    */
-  private handleException(_req: Request, err: Error): APIGatewayProxyResult {
+  private handleException(req: Request, err: Error): APIGatewayProxyResult {
+    
+    const result: any = {
+      message: err.message,
+    }
+
+    if(req.debugMode){
+      result.req = req;
+      result.errors = [err];
+    }
+    
     return this.handleResponse({
       statusCode: 500,
-      body: JSON.stringify({ error: err.message }),
+      body: JSON.stringify(result, getCircularReplacer()),
     });
   }
 
