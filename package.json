@@ -1,6 +1,6 @@
 {
     "name": "@ten24group/fw24",
-    "version": "0.0.11",
+    "version": "0.0.12",
     "main": "./dist/package/fw24.js",
     "types": "./dist/package/fw24.d.ts",
     "repository": {
