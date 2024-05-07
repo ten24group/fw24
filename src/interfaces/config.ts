@@ -5,6 +5,7 @@ export interface IApplicationConfig {
     name?: string;
     region?: string;
     account?: string;
+    authEndpoint?: string;
     defaultAuthorizationType?: any;
     environment?: string; // local, dev, prod
     logRetentionDays?: number;
