@@ -156,11 +156,14 @@ export class APIGateway implements IStack {
         return {
             allowHeaders: [
                 "Content-Type",
-                "X-Amz-Date",
                 "Authorization",
                 "X-Api-Key",
+                "X-Amz-Date",
+                "X-Amz-Content-Sha256",
+                "X-Amz-Security-Token",
                 "Access-Control-Allow-Credentials",
                 "Access-Control-Allow-Headers",
+                "Access-Control-Allow-Origin",
                 "Impersonating-User-Sub",
             ],
             allowMethods: ["OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"],
