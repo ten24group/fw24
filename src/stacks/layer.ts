@@ -48,7 +48,7 @@ export class LayerStack implements IStack {
 
             this.fw24.set(layerConfig.layerName, layer.layerVersionArn, "layer");
 
-            new CfnOutput(mainStack, layerConfig.layerName + 'Output', {
+            new CfnOutput(mainStack, layerConfig.layerName + 'LayerArn', {
                 value: layer.layerVersionArn,
             });
         });
