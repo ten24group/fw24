@@ -14,7 +14,7 @@ import { getCircularReplacer } from "../utils";
  */
 abstract class APIGatewayController {
   readonly logger = createLogger(APIGatewayController.name);
-  protected validator: IValidator  = DefaultValidator;
+  protected validator: IValidator = DefaultValidator;
 
   /**
    * Binds the LambdaHandler method to the instance of the class.
