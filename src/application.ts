@@ -6,7 +6,7 @@ import { IFw24Module } from "./core/module";
 import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
 import { ILogger, LogDuration, createLogger } from "./logging";
 import { LayerStack } from "./stacks";
-import { join } from "path";
+import { randomUUID } from 'crypto';
 
 
 export class Application {
@@ -93,9 +93,13 @@ export class Application {
     
 
     private registerStack(stack: IStack, name?: string) {
-        const stackName = name || stack.constructor.name; // TODO: figure out a better approach, falling back to constructor name is very limiting
+         // TODO: figure out a better approach, falling back to constructor name is very limiting
+        let stackName = name || stack.constructor.name;
         if (this.stacks.has(stackName)) {
-            throw new Error(`Stack with name ${stackName} is already registered.`);
+            // handle multiple stacks of same type
+            const newStackName = stackName.concat('-', randomUUID());
+            this.logger.info(`Stack with name ${stackName} is already registered, renaming to ${newStackName}`);
+            stackName = newStackName;
         }
         this.stacks.set(stackName, stack);
     }
@@ -144,6 +148,11 @@ export class Application {
 
     private async waitForDependencies(dependencies: string[], stackName: string): Promise<void> {
         const promises = dependencies.map(dependency => {
+            // if dependency stack does not exists in the stack list, mark it as processed
+            if (!this.stacks.has(dependency)) {
+                this.logger.info(`Dependency stack ${dependency} not found, marking it resolved.`);
+                this.processedStacks.set(dependency, Promise.resolve());
+            }
             if (!this.processedStacks.has(dependency)) {
                 this.logger.info(`Stack ${stackName}: Waiting for dependency to be resolved ${dependency}...`);
                 // If dependency not scheduled yet, listen for its addition
