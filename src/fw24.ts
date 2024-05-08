@@ -13,6 +13,7 @@ export * from './utils';
 export * from './logging';
 export * from './client';
 
+export * from './validation';
+
 export * as Auditor from './audit';
-export * as Validator from './validation' ;
 export * as EventDispatcher from './event';

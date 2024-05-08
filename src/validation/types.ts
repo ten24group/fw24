@@ -55,7 +55,7 @@ export type OpValidatorOptions<
 > = {
     readonly operationName: OpName,
     readonly entityName: Sch['model']['entity'],
-    readonly entityValidations?: EntityValidations<Sch, ConditionsMap, OpsInpSch> | EntityOpsInputValidations<Sch, OpsInpSch>,
+    readonly entityValidations?: EntityValidations<Sch, ConditionsMap, OpsInpSch> | EntityInputValidations<Sch, OpsInpSch>,
     readonly input?: InputType,
     readonly actor?: Actor,
     readonly record?: RecordType, 
@@ -339,13 +339,16 @@ export type EntityValidations<
     conditions?: ConditionsMap,
 }
 
-export type EntityOpsInputValidations<
+export type EntityInputValidations<
     Sch extends EntitySchema<any, any, any, any>,
     OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
 > = {
-    [Prop in keyof EntityRecordTypeFromSchema<Sch>] ?: Array< ValidationRule<EntityRecordTypeFromSchema<Sch>[Prop]> & {
-        readonly operations: Array<keyof PropertyApplicableEntityOperations<Prop, Sch, OpsInpSch>>
-    }>
+    [Prop in keyof EntityRecordTypeFromSchema<Sch>] ?: Array< 
+        ValidationRule<EntityRecordTypeFromSchema<Sch>[Prop]> 
+        & {
+            readonly operations: Array<keyof PropertyApplicableEntityOperations<Prop, Sch, OpsInpSch>>
+        }
+    >
 }
 
 

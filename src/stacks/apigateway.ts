@@ -143,7 +143,13 @@ export class APIGateway implements IStack {
             currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);
             // if authorizer is AWS_IAM, then add the route to the policy
             if(routeAuthorizerType === 'AWS_IAM') {
-                const fullRoutePath = controllerName + route.path;
+                let fullRoutePath = controllerName + route.path;
+
+                // * replace each param placeholder `{id}` with an `*`
+                route.parameters?.forEach( par => {
+                    fullRoutePath = fullRoutePath.replace(`{${par}}`, '*'); 
+                })
+
                 this.fw24.addRouteToRolePolicy(fullRoutePath, routeAuthorizerGroups, routeRequireRouteInGroupConfig);
             }
         }

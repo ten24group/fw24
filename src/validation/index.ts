@@ -1,4 +1,3 @@
-import { IValidator } from './types';
 import {Validator} from './validator';
 
 export * from './validator';

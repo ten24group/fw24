@@ -1,7 +1,7 @@
 import { EntitySchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "../entity";
 import { createLogger } from "../logging";
 import { DeepWritable } from "../utils";
-import { ComplexValidationRule, ConditionsAndScopeTuple, EntityOperationValidation, EntityOpsInputValidations, EntityValidations, HttpRequestValidations, InputType, InputValidationRule, MapOfValidationCondition, TComplexValidationValue as ComplexValidationValue, TComplexValidationValueWithMessage as ComplexValidationValueWithMessage, TComplexValidationValueWithValidator as ComplexValidationValueWithValidator, TValidationValue, TestComplexValidationResult, ValidationError, ValidationRule, Validation_Keys } from "./types";
+import { ComplexValidationRule, ConditionsAndScopeTuple, EntityOperationValidation, EntityInputValidations, EntityValidations, HttpRequestValidations, InputType, InputValidationRule, MapOfValidationCondition, TComplexValidationValue as ComplexValidationValue, TComplexValidationValueWithMessage as ComplexValidationValueWithMessage, TComplexValidationValueWithValidator as ComplexValidationValueWithValidator, TValidationValue, TestComplexValidationResult, ValidationError, ValidationRule, Validation_Keys } from "./types";
 
 import genericErrorMessages from './messages';
 
@@ -116,7 +116,7 @@ export function isEntityOpsInputValidations<
 >(
     validations: any
 
-): validations is EntityOpsInputValidations<Sch, OpsInpSch> {
+): validations is EntityInputValidations<Sch, OpsInpSch> {
     return typeof validations === 'object' && validations !== null
         &&  Object.keys(validations).every( prop => isArrayOfValidationRule(validations[prop]))
 }
@@ -128,7 +128,7 @@ export function extractOpValidationFromEntityValidations<
   OpsInpSch extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 >( 
   operationName: keyof OpsInpSch, 
-  entityValidations: EntityValidations<Sch, ConditionsMap, OpsInpSch> | EntityOpsInputValidations<Sch, OpsInpSch>
+  entityValidations: EntityValidations<Sch, ConditionsMap, OpsInpSch> | EntityInputValidations<Sch, OpsInpSch>
 ){
 
 	const entityOpValidations: DeepWritable<EntityOperationValidation<any, any, ConditionsMap>> = {
