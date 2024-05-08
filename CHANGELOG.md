@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.13](https://github.com/ten24group/fw24/compare/v0.0.12...v0.0.13) (2024-05-08)
+
+
+### Bug Fixes
+
+* AWS_IAM policy statements for routees with path params ([41a49b2](https://github.com/ten24group/fw24/commit/41a49b2d7de22ee783897645745a6476d81ccb91))
+
 ### [0.0.12](https://github.com/ten24group/fw24/compare/v0.0.11...v0.0.12) (2024-05-07)
 
 ### [0.0.11](https://github.com/ten24group/fw24/compare/v0.0.10...v0.0.11) (2024-05-06)
