@@ -104,7 +104,7 @@ export class Fw24 {
 
         this.cognitoAuthorizers[name] = authorizer;
         // If this authorizer is the default, set it as the default authorizer
-        if(defaultAuthorizer) {
+        if(defaultAuthorizer !== false) {
             this.defaultCognitoAuthorizer = authorizer;
         }
     }
@@ -119,6 +119,10 @@ export class Fw24 {
         if(name === undefined) {
             return this.defaultCognitoAuthorizer;
         }
+        // if authorizer with name is not found, throw an error
+        if(this.cognitoAuthorizers[name] === undefined) {
+            throw new Error(`Authorizer with name: ${name} not found`);
+        }
         // If a name is provided, return the authorizer with that name
         return this.cognitoAuthorizers[name];
     }
@@ -128,6 +132,14 @@ export class Fw24 {
             return this.getCognitoAuthorizer(name);
         }
         return undefined;
+    }
+
+    public setDefaultCognitoAuthorizerName(name: string) {
+        this.set('defaultCognitoAuthorizerName', name, 'cognito');
+    }
+
+    public getDefaultCognitoAuthorizerName() {
+        return this.get('defaultCognitoAuthorizerName', 'cognito');
     }
 
     public set(name: string, value: any, prefix: string = '') {
@@ -158,7 +170,8 @@ export class Fw24 {
         if(!groups || groups.length === 0) {
             groups = this.get('Groups', 'cognito');
             if(!groups) {
-                throw new Error(`No groups defined. Group is required to add route: ${route} to role policy.`);
+                this.logger.warn(`No groups defined. Adding route: ${route} to role policy for default authenticated role.`);
+                groups = ['default'];
             }
         }
         let routeAddedToGroupPolicy = false;
@@ -171,14 +184,15 @@ export class Fw24 {
             this.logger.info("addRouteToRolePolicy:", {route, groupName});
             const role: Role = this.get('Role', 'cognito_' + groupName);
             if(!role) {
-                throw new Error(`Role not found for group: ${groupName}. Role is required to add route: ${route} to role policy.`);
+                this.logger.error(`Role not found for group: ${groupName}. Role is required to add route: ${route} to role policy. Please make sure you have a group defined in your config with the name: ${groupName}.`);
+                return;
             }
             // add role policy statement to allow route access for group
             role.addToPolicy(this.getRoutePolicyStatement(route));
             routeAddedToGroupPolicy = true;
         }
         if(!routeAddedToGroupPolicy) {
-            throw new Error(`Route ${route} not found in any group config. Please add the route to a group config to secure access.`);
+            this.logger.error(`Route ${route} not found in any group config. Please add the route to a group config to secure access.`);
         }
     }
 

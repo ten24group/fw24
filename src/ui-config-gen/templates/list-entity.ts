@@ -20,7 +20,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     const entityNameLower = entityName.toLowerCase();
 
     let listingConfig = {
-        pageTitle:  `List Of ${entityNamePlural}`,
+        pageTitle:  `${entityNamePlural} Listing`,
         pageType:   "list",
         breadcrums: [],
         pageHeaderActions: [
