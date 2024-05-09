@@ -203,7 +203,7 @@ export class APIGateway implements IStack {
     }
 
     private extractDefaultAuthorizer = (controllerConfig: any): { defaultAuthorizerName: string, defaultAuthorizerType: string, defaultAuthorizerGroups: string[], defaultRequireRouteInGroupConfig: boolean } => {
-        let defaultAuthorizerName = 'default';
+        let defaultAuthorizerName = this.fw24.getDefaultCognitoAuthorizerName();
         let defaultAuthorizerType;
         let defaultAuthorizerGroups;
         let defaultRequireRouteInGroupConfig = false;

@@ -151,8 +151,11 @@ export class CognitoStack implements IStack {
             // TODO: better logic to control the default authorizer
             useAsDefaultAuthorizer
         );
-        if(useAsDefaultAuthorizer){
+
+        if(useAsDefaultAuthorizer !== false){
             this.fw24.getConfig().defaultAuthorizationType = 'COGNITO_USER_POOLS';
+            this.fw24.setDefaultCognitoAuthorizerName(userPoolName);
+            this.logger.info("Default Authorizer set to COGNITO_USER_POOLS");
         }
     }
 
@@ -173,7 +176,7 @@ export class CognitoStack implements IStack {
             identityPoolId: identityPool.ref,
         }
 
-         // create user pool groups
+        // create user pool groups
         if (this.stackConfig.groups) {
             this.fw24.set('Groups', this.stackConfig.groups.map(group => group.name), 'cognito');
             //this.fw24.set('AutoUserSignupGroups', this.stackConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString(), userPoolName);
@@ -240,6 +243,9 @@ export class CognitoStack implements IStack {
             policyFilePaths
         }) as Role;
 
+        // if no groups are defined all policies are added to the default authenticated role
+        this.fw24.set('Role', authenticatedRole, `cognito_default`);
+
         roleAttachment.roles = {};
         roleAttachment.roles.authenticated = authenticatedRole.roleArn;
 
@@ -255,8 +261,9 @@ export class CognitoStack implements IStack {
             }
         }
         this.fw24.set("identityPoolID", identityPool.ref, userPoolName);
-        if(useAsDefaultAuthorizer){
+        if(useAsDefaultAuthorizer !== false){
             this.fw24.getConfig().defaultAuthorizationType = 'AWS_IAM';
+            this.logger.info("Default Authorizer set to AWS_IAM");
         }
     }
 
