@@ -20,7 +20,7 @@ export class LayerStack implements IStack {
     dependencies: string[] = [];
 
     constructor(private config: ILayerConfig[]) {
-        this.logger.debug("constructor: ", config);
+        this.logger.debug("constructor: ");
         Helper.hydrateConfig(config,'layer');
     }
 

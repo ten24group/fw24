@@ -91,7 +91,7 @@ export class CognitoStack implements IStack {
     
     // default constructor to initialize the stack configuration
     constructor(private stackConfig: ICognitoConfig) {
-        this.logger.debug("constructor: ", stackConfig);
+        this.logger.debug("constructor: ");
     }
 
     // construct method to create the stack
