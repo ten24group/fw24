@@ -49,7 +49,7 @@ export class SQSStack implements IStack {
 
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
-            console.log("SQS stack: construct: app has modules ", modules);
+            console.log("SQS stack: construct: app has modules ", Array.from(modules.keys()));
             for (const [, module] of modules) {
                 const basePath = module.getBasePath();
                 const queuesDirectory = module.getQueuesDirectory();

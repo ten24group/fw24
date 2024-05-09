@@ -101,7 +101,7 @@ export class EntityUIConfigGen{
         const serviceDirectories = [pathResolve('./src/services/')];
 
         if(fw24.hasModules()){
-            this.logger.debug(`Ui-config-gen::: Process::: app has modules: `, fw24.getModules().keys());
+            this.logger.debug(`Ui-config-gen::: Process::: app has modules: `, Array.from(fw24.getModules().keys()));
             for(const [, module] of fw24.getModules()){
                 const moduleServicesPath = pathJoin(module.getBasePath(), module.getServicesDirectory());
                 this.logger.debug(`Ui-config-gen::: Process::: moduleServicesPath: `, moduleServicesPath);

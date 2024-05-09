@@ -19,7 +19,7 @@ export class SNSStack implements IStack {
     dependencies: string[] = [];
 
     constructor(private config: ISNSConfig[]) {
-        this.logger.debug("constructor: ", config);
+        this.logger.debug("constructor: ");
         Helper.hydrateConfig(config,'sns');
     }
 

@@ -281,7 +281,7 @@ export class APIGateway implements IStack {
 
     private outputApiEndpoint = (controllerName: string, controllerResource: IResource) => {
         new CfnOutput(this.mainStack, `Endpoint${controllerName}`, {
-            value: this.api.url + controllerResource.path.slice(1),
+            value: this.api.url + controllerResource.path.slice(1) + '/',
             description: "API Gateway Endpoint for " + controllerName,
         });
     }

@@ -46,7 +46,8 @@ function createRouteDecorator(method: string) {
       });
 
       routes[`${method}|${route}`] = {
-        path: route,
+        // Make sure path ends with a slash `/` [AWS signature needs the exact path (with or without slash)]
+        path: route.endsWith('/') ? route : `${route}/`, 
         httpMethod: method,
         functionName: methodToDecorate.name || methodToDecorate,
         parameters: parameters,
