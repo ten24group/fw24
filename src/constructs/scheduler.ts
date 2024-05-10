@@ -93,7 +93,7 @@ export class SchedulerConstruct implements FW24Construct {
             logRemovalPolicy: taskConfig.logRemovalPolicy,
         }) as NodejsFunction;
 
-        this.fw24.setConstructOutput(this, OutputType.FUNCTION, taskName, task);
+        this.fw24.setConstructOutput(this, taskName, task, OutputType.FUNCTION);
 
         new Rule(this.mainStack, taskName + "-scheduler", {
             schedule: Schedule.expression(taskConfig.schedule),

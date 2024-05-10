@@ -103,7 +103,7 @@ export class QueueConstruct implements FW24Construct {
                 logRetentionDays: queueConfig?.logRetentionDays,
             }
         }) as Queue;
-        this.fw24.setConstructOutput(this, OutputType.QUEUE, queueName, queue);
+        this.fw24.setConstructOutput(this, queueName, queue, OutputType.QUEUE);
 
         // output the api endpoint
         new CfnOutput(this.mainStack, `SQS-${queueName}`, {

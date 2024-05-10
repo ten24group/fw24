@@ -126,7 +126,7 @@ export class APIConstruct implements FW24Construct {
         controllerConfig.logRetentionDays = controllerConfig.logRetentionDays || this.apiConstructConfig.logRetentionDays;
         controllerConfig.logRemovalPolicy = controllerConfig.logRemovalPolicy || this.apiConstructConfig.logRemovalPolicy;
         const controllerLambda = this.createLambdaFunction(controllerName, filePath, fileName, controllerConfig);
-        this.fw24.setConstructOutput(this, OutputType.FUNCTION, controllerName, controllerLambda);
+        this.fw24.setConstructOutput(this, controllerName, controllerLambda, OutputType.FUNCTION);
 
         const controllerIntegration = new LambdaIntegration(controllerLambda);
 

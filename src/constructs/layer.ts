@@ -46,7 +46,7 @@ export class LayerConstruct implements FW24Construct {
                 ...defaultLayerProps,
                 ...layerConfig.layerProps
             });
-            this.fw24.setConstructOutput(this, OutputType.LAYER, layerConfig.layerName, layer);
+            this.fw24.setConstructOutput(this, layerConfig.layerName, layer, OutputType.LAYER);
 
             this.fw24.set(layerConfig.layerName, layer.layerVersionArn, "layer");
 

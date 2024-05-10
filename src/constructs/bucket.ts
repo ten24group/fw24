@@ -81,7 +81,7 @@ export class BucketConstruct implements FW24Construct {
         }
 
         const bucket = new Bucket(this.mainStack, bucketConfig.bucketName + '-bucket', bucketParams);
-        this.fw24.setConstructOutput(this, OutputType.BUCKET, bucketConfig.bucketName, bucket);
+        this.fw24.setConstructOutput(this, bucketConfig.bucketName, bucket, OutputType.BUCKET);
 
         if(bucketConfig.publicReadAccess === true){
             bucket.grantPublicAccess();

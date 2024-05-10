@@ -36,7 +36,7 @@ export class TopicConstruct implements FW24Construct {
             const topic = new Topic(mainStack, topicConfig.topicName + '-topic', {
                 ...topicConfig.topicProps
             });
-            this.fw24.setConstructOutput(this, OutputType.TOPIC, topicConfig.topicName, topic);
+            this.fw24.setConstructOutput(this, topicConfig.topicName, topic, OutputType.TOPIC);
 
             this.fw24.set(topicConfig.topicName, topic.topicName, "topicName");
 

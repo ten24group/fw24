@@ -118,7 +118,7 @@ export class AuthConstruct implements FW24Construct {
             ...userPoolConfig,
             userPoolName: namePrefix
         });
-        this.fw24.setConstructOutput(this, OutputType.USERPOOL, userPoolName, userPool);
+        this.fw24.setConstructOutput(this, userPoolName, userPool, OutputType.USERPOOL);
 
         const userPoolClientConfig: UserPoolClientProps = {
             userPool: userPool,
@@ -129,7 +129,7 @@ export class AuthConstruct implements FW24Construct {
         const userPoolClient = new UserPoolClient(this.mainStack, `${namePrefix}-userPoolclient`, {
             ...userPoolClientConfig
         });
-        this.fw24.setConstructOutput(this, OutputType.USERPOOLCLIENT, userPoolName, userPoolClient);
+        this.fw24.setConstructOutput(this, userPoolName, userPoolClient, OutputType.USERPOOLCLIENT);
 
         // Identity pool based authentication
         if(this.authConstructConfig.groups || this.authConstructConfig.policyFilePaths || this.fw24.getConfig().defaultAuthorizationType == 'AWS_IAM') {

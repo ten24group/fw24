@@ -158,16 +158,24 @@ export class Fw24 {
         return this.environment[`${prefix}${name}`];
     }
 
-    public setConstructOutput(construct: FW24Construct, outputType: OutputType, key: string, value: any) {
+    public setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType) {
         this.logger.debug(`setConstructOutput: ${construct.name}`, {outputType, key});
-        construct.output = {
-            ...construct.output,
-            [outputType]: {
-                ...construct.output?.[outputType],
+        if(outputType){
+            construct.output = {
+                ...construct.output,
+                [outputType]: {
+                    ...construct.output?.[outputType],
+                    [key]: value
+                }
+            }
+            this.set(key, value, `${construct.name}_${outputType}`);
+        } else {
+            construct.output = {
+                ...construct.output,
                 [key]: value
             }
+            this.set(key, value, construct.name);
         }
-        this.set(key, value, `${construct.name}_${outputType}`);
     }
 
     public addDynamoTable(name: string, table: TableV2) {

@@ -31,6 +31,7 @@ export interface FW24ConstructOutout extends Record<string, any>{
     [OutputType.USERPOOL]: Record<string,UserPool>;
     [OutputType.IDENTITYPOOL]: Record<string,CfnIdentityPool>;
     [OutputType.USERPOOLCLIENT]: Record<string,UserPoolClient>;
+    [key: string]: any;
 }
 
 export enum OutputType   {
