@@ -12,8 +12,8 @@ import { getCircularReplacer } from "../utils";
 /**
  * Base controller class for handling API Gateway events.
  */
-abstract class APIGatewayController {
-  readonly logger = createLogger(APIGatewayController.name);
+abstract class APIController {
+  readonly logger = createLogger(APIController.name);
   protected validator: IValidator = DefaultValidator;
 
   /**
@@ -213,10 +213,10 @@ abstract class APIGatewayController {
    * Creates a new instance of the controller and returns its LambdaHandler method.
    * @returns The LambdaHandler method of the controller.
    */
-  static CreateHandler( constructorFunc: { new (): APIGatewayController} ) {
+  static CreateHandler( constructorFunc: { new (): APIController} ) {
     const controller = new constructorFunc();
     return controller.LambdaHandler;
   }
 }
 
-export { APIGatewayController };
+export { APIController };
