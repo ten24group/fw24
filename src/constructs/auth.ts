@@ -276,9 +276,6 @@ export class AuthConstruct implements FW24Construct {
     private createNamePrefix(userPoolName: string) {
         var namePrefix = `${this.fw24.appName}`;
         namePrefix = `${namePrefix}-${userPoolName}`;
-        // if(this.fw24.get("tenantId")){
-        //     namePrefix = `${namePrefix}-${this.fw24.get("tenantId")}`
-        // }
         return namePrefix;
     }
 }

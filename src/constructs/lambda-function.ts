@@ -106,8 +106,9 @@ export class LambdaFunction extends Construct {
           // if the key has 3 parts then the second part is the scope name
           let prefix = key.split('_').length == 3 ? key.split('_')[1] : '';
           envValue = fw24.get(fw24Key,prefix);
-          this.logger?.debug(`:GET environment variable from fw24 scope : ${fw24Key} : ${envValue}`);
+          this.logger?.debug(`:GET environment variable from fw24 scope : ${fw24Key} : ${envValue}`, id);
         }
+        this.logger?.debug(`:SET environment variable : ${envKey} : ${envValue}`, id);
         fn.addEnvironment(envKey, envValue);
       }
     }
@@ -123,7 +124,7 @@ export class LambdaFunction extends Construct {
 
     // If we are using SES, then we need to add the email queue url to the environment
     if(props.allowSendEmail && fw24.emailProvider instanceof MailerConstruct){
-      this.logger?.debug(":GET emailQueue Name from fw24 scope : ", fw24.get('emailQueue', 'queueName'));
+      this.logger?.debug(":GET emailQueue Name from fw24 scope : ", fw24.get('emailQueue', 'queueName'), id);
       let emailQueue = fw24.getQueueByName('emailQueue');
       emailQueue.grantSendMessages(fn);
       fn.addEnvironment('EMAIL_QUEUE_URL', emailQueue.queueUrl);
