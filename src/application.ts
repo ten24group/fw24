@@ -1,11 +1,11 @@
 import { App, Stack } from "aws-cdk-lib";
 import { Fw24 } from "./core/fw24";
 import { IApplicationConfig } from "./interfaces/config";
-import { IStack } from "./interfaces/stack";
+import { IConstruct } from "./interfaces/construct";
 import { IFw24Module } from "./core/module";
 import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
 import { ILogger, LogDuration, createLogger } from "./logging";
-import { LayerStack } from "./stacks";
+import { LayerConstruct } from "./constructs";
 import { randomUUID } from 'crypto';
 
 
@@ -14,11 +14,11 @@ export class Application {
     mainStack!: Stack;
 
     private readonly fw24: Fw24;
-    private readonly stacks: Map<string, IStack>;
+    private readonly constructs: Map<string, IConstruct>;
     private readonly modules: Map<string, IFw24Module>;
-    private processedStacks: Map<string, Promise<void>> = new Map();
-    private stackConstructMaxConcurrency: number = 10;
-    private stackConstructCurrentConcurrency = 0;
+    private processedConstructs: Map<string, Promise<void>> = new Map();
+    private resourceConstructMaxConcurrency: number = 10;
+    private resourceConstructCurrentConcurrency = 0;
 
     constructor(config: IApplicationConfig = {}) {
         this.logger = createLogger([Application.name, config.name, config.environment].join('-'));
@@ -28,7 +28,7 @@ export class Application {
         this.fw24 = Fw24.getInstance();
         this.fw24.setConfig(config);
 
-        this.stacks = new Map();
+        this.constructs = new Map();
         this.modules = new Map();
 
         // initialize the main stack
@@ -42,8 +42,8 @@ export class Application {
         this.fw24.addStack("main", this.mainStack);
     }
 
-    public use(stack: IStack): Application {
-        this.registerStack(stack);
+    public use(construct: IConstruct): Application {
+        this.registerConstruct(construct);
         return this;
     }
 
@@ -51,15 +51,15 @@ export class Application {
         this.logger.debug("Called UseModule with module: ", { moduleName: module.getName()});
         
         if (this.modules.has(module.getName())) {
-            throw new Error(`Stack with name ${module.getName()} is already registered.`);
+            throw new Error(`Module with name ${module.getName()} is already registered.`);
         }
 
         this.modules.set(module.getName(), module);
 
-        for (const [stackName, stack] of module.getStacks()){
-            this.logger.info("UseModule: Registering stack: ", stackName, module.getDependencies(), stack.dependencies);
-            stack.dependencies = module.getDependencies();
-            this.registerStack(stack, stackName);
+        for (const [constructName, construct] of module.getConstructs()){
+            this.logger.info("UseModule: Registering construct: ", constructName, module.getDependencies(), construct.dependencies);
+            construct.dependencies = module.getDependencies();
+            this.registerConstruct(construct, constructName);
         }
 
         return this;
@@ -71,13 +71,13 @@ export class Application {
 
         // build fw24 layer
         this.logger.info("Building fw24 layer...");
-        const fw24Layer = new LayerStack([{
+        const fw24Layer = new LayerConstruct([{
             layerName: 'fw24',
             layerDirectory: './dist/layer'
         }]);
         fw24Layer.construct();
 
-        // *** order is important here, modules need to be processed first, before stacks ***
+        // *** order is important here, modules need to be processed first, before constructs ***
         this.processModules();
 
         // TODO: make it configurable
@@ -86,22 +86,21 @@ export class Application {
             uiConfigGen.run();
         }
 
-        this.constructAllStacks().then(() => {
-            console.log('All stacks completed');
+        this.constructAllResources().then(() => {
+            console.log('All construct resource creation completed');
         });
     }
     
 
-    private registerStack(stack: IStack, name?: string) {
-         // TODO: figure out a better approach, falling back to constructor name is very limiting
-        let stackName = name || stack.constructor.name;
-        if (this.stacks.has(stackName)) {
-            // handle multiple stacks of same type
-            const newStackName = stackName.concat('-', randomUUID());
-            this.logger.info(`Stack with name ${stackName} is already registered, renaming to ${newStackName}`);
-            stackName = newStackName;
+    private registerConstruct(construct: IConstruct, name?: string) {
+        let constructName = name || construct.name;
+        if (this.constructs.has(constructName)) {
+            // handle multiple constructs of same type
+            const newConstructName = constructName.concat('-', randomUUID());
+            this.logger.info(`Construct with name ${constructName} is already registered, renaming to ${newConstructName}`);
+            constructName = newConstructName;
         }
-        this.stacks.set(stackName, stack);
+        this.constructs.set(constructName, construct);
     }
 
 
@@ -111,62 +110,62 @@ export class Application {
         }
     }
 
-    private constructAllStacks() {
-        const allStacks = Array.from(this.stacks.keys()).map(stackName => this.constructStack(stackName));
-        return Promise.allSettled(allStacks);
+    private constructAllResources() {
+        const allConstructs = Array.from(this.constructs.keys()).map(constructName => this.constructResources(constructName));
+        return Promise.allSettled(allConstructs);
     }
 
-    async constructStack(stackName: string): Promise<void> {
-        const stack = this.stacks.get(stackName);
-        if (!stack) {
-            throw new Error(`Stack ${stackName} not found`);
+    async constructResources(constructName: string): Promise<void> {
+        const construct = this.constructs.get(constructName);
+        if (!construct) {
+            throw new Error(`Construct ${constructName} not found`);
         }
 
-        while (this.stackConstructCurrentConcurrency >= this.stackConstructMaxConcurrency) {
+        while (this.resourceConstructCurrentConcurrency >= this.resourceConstructMaxConcurrency) {
             await new Promise(resolve => setTimeout(resolve, 100)); // Throttle if concurrency limit is reached
         }
 
-        this.logger.info(`Processing stack ${stackName}...`);
+        this.logger.info(`Processing construct ${constructName}...`);
 
         // Wait for dependencies to resolve
-        await this.waitForDependencies(stack.dependencies, stackName);
+        await this.waitForDependencies(construct.dependencies, constructName);
 
-        this.stackConstructCurrentConcurrency++;
-        const stackCompletionPromise = stack.construct()
+        this.resourceConstructCurrentConcurrency++;
+        const constructCompletionPromise = construct.construct()
             .then(() => {
-                this.stackConstructCurrentConcurrency--;
+                this.resourceConstructCurrentConcurrency--;
             })
             .catch(error => {
-                console.error(`Error executing stack ${stackName}:`, error);
-                this.stackConstructCurrentConcurrency--;
+                console.error(`Error executing construct ${constructName}:`, error);
+                this.resourceConstructCurrentConcurrency--;
                 throw error; // Re-throw to ensure it can be handled or logged by Promise.allSettled
             });
 
-        this.processedStacks.set(stackName, stackCompletionPromise);
-        return stackCompletionPromise;
+        this.processedConstructs.set(constructName, constructCompletionPromise);
+        return constructCompletionPromise;
     }
 
-    private async waitForDependencies(dependencies: string[], stackName: string): Promise<void> {
+    private async waitForDependencies(dependencies: string[], constructName: string): Promise<void> {
         const promises = dependencies.map(dependency => {
-            // if dependency stack does not exists in the stack list, mark it as processed
-            if (!this.stacks.has(dependency)) {
-                this.logger.info(`Dependency stack ${dependency} not found, marking it resolved.`);
-                this.processedStacks.set(dependency, Promise.resolve());
+            // if dependency construct does not exists in the construct list, mark it as processed
+            if (!this.constructs.has(dependency)) {
+                this.logger.info(`Dependency construct ${dependency} not found, marking it resolved.`);
+                this.processedConstructs.set(dependency, Promise.resolve());
             }
-            if (!this.processedStacks.has(dependency)) {
-                this.logger.info(`Stack ${stackName}: Waiting for dependency to be resolved ${dependency}...`);
+            if (!this.processedConstructs.has(dependency)) {
+                this.logger.info(`Construct ${constructName}: Waiting for dependency to be resolved ${dependency}...`);
                 // If dependency not scheduled yet, listen for its addition
                 return new Promise<void>((resolve, reject) => {
                     const interval = setInterval(() => {
-                        if (this.processedStacks.has(dependency)) {
+                        if (this.processedConstructs.has(dependency)) {
                             clearInterval(interval);
-                            this.processedStacks.get(dependency)!.then(resolve, reject);
-                            this.logger.info(`Stack ${stackName}: Dependency ${dependency} resolved.`);
+                            this.processedConstructs.get(dependency)!.then(resolve, reject);
+                            this.logger.info(`Construct ${constructName}: Dependency ${dependency} resolved.`);
                         }
                     }, 100); // Check every 100ms
                 });
             }
-            return this.processedStacks.get(dependency)!;
+            return this.processedConstructs.get(dependency)!;
         });
         await Promise.all(promises);
     }

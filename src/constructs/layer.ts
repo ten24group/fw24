@@ -2,33 +2,34 @@ import { CfnOutput } from "aws-cdk-lib";
 
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
-import { IStack } from "../interfaces/stack";
+import { IConstruct, IConstructOutout, OutputType } from "../interfaces/construct";
 import { LogDuration, createLogger } from "../logging";
 import { Architecture, Code, LayerVersion, LayerVersionProps, Runtime } from 'aws-cdk-lib/aws-lambda'
 
 
-export interface ILayerConfig {
+export interface ILayerConstructConfig {
     layerName: string;
     layerDirectory: string;
     layerProps?: LayerVersionProps
 }
 
-export class LayerStack implements IStack {
-    readonly logger = createLogger(LayerStack.name);
+export class LayerConstruct implements IConstruct {
+    readonly logger = createLogger(LayerConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
     
+    name: string = LayerConstruct.name;
     dependencies: string[] = [];
+    output!: IConstructOutout;
 
-    constructor(private config: ILayerConfig[]) {
-        this.logger.debug("constructor: ");
-        Helper.hydrateConfig(config,'layer');
+    constructor(private layerConstructConfig: ILayerConstructConfig[]) {
+        Helper.hydrateConfig(layerConstructConfig,'LAYER');
     }
 
     @LogDuration()
     public async construct() {
         const mainStack = this.fw24.getStack('main');
 
-        this.config.forEach( ( layerConfig: ILayerConfig ) => {
+        this.layerConstructConfig.forEach( ( layerConfig: ILayerConstructConfig ) => {
             this.logger.debug("Creating layer: ", layerConfig.layerName);
 
             const defaultLayerProps: LayerVersionProps = {
@@ -45,6 +46,7 @@ export class LayerStack implements IStack {
                 ...defaultLayerProps,
                 ...layerConfig.layerProps
             });
+            this.fw24.setConstructOutput(this, OutputType.LAYER, layerConfig.layerName, layer);
 
             this.fw24.set(layerConfig.layerName, layer.layerVersionArn, "layer");
 

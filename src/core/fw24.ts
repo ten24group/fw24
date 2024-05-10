@@ -1,5 +1,6 @@
 import { IAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2';
 import { IApplicationConfig } from '../interfaces/config';
+import { IConstruct, OutputType } from '../interfaces/construct';
 import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { Helper } from './helper';
 import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
@@ -155,6 +156,18 @@ export class Fw24 {
             prefix = `${prefix}_`;
         }
         return this.environment[`${prefix}${name}`];
+    }
+
+    public setConstructOutput(construct: IConstruct, outputType: OutputType, key: string, value: any) {
+        this.logger.debug(`setConstructOutput: ${construct.name}`, {outputType, key});
+        construct.output = {
+            ...construct.output,
+            [outputType]: {
+                ...construct.output?.[outputType],
+                [key]: value
+            }
+        }
+        this.set(key, value, `${construct.name}_${outputType}`);
     }
 
     public addDynamoTable(name: string, table: TableV2) {
