@@ -1,4 +1,5 @@
 import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { camelCase } from "../../utils";
 
 export type ListingPropConfig = {
     name: string,
@@ -18,9 +19,10 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 
     const{ entityName, entityNamePlural, properties } = options;
     const entityNameLower = entityName.toLowerCase();
+    const entityNameCamel = camelCase(entityName);
 
     let listingConfig = {
-        pageTitle:  `${entityNamePlural} Listing`,
+        pageTitle:  `${camelCase(entityNamePlural)} Listing`,
         pageType:   "list",
         breadcrums: [],
         pageHeaderActions: [
@@ -63,8 +65,8 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                         modelConfig: {
                             modalType: 'confirm',
                             modalPageConfig: {
-                                title: `Delete ${entityName}`,
-                                content: `Are you sure you want to delete this ${entityName}?`
+                                title: `Delete ${entityNameCamel}`,
+                                content: `Are you sure you want to delete this ${entityNameCamel}?`
                             },
                             apiConfig: {
                                 apiMethod: `DELETE`,

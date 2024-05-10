@@ -16,7 +16,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     const entityNameCamel = camelCase(entityName);
 
     let config = {
-        pageTitle:  `Update ${entityName}`,
+        pageTitle:  `Update ${entityNameCamel}`,
         pageType:   'form',
         cardStyle: {
             width: '50%'
