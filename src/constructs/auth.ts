@@ -13,13 +13,14 @@ import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
 import { Role, User } from "aws-cdk-lib/aws-iam";
 import { Duration, RemovalPolicy, Stack } from "aws-cdk-lib";
-import { CognitoAuthRole } from "../constructs/cognito-auth-role";
-import { LambdaFunction, LambdaFunctionProps } from "../constructs/lambda-function";
+import { CognitoAuthRole } from "./cognito-auth-role";
+import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
 import { Fw24 } from "../core/fw24";
-import { IStack } from "../interfaces/stack";
+import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
 import { createLogger, LogDuration } from "../logging";
+import { Helper } from "../core";
 
-export interface ICognitoConfig {
+export interface IAuthConstructConfig {
     name?: string;
     userPool?: {
         props: UserPoolProps;
@@ -46,7 +47,7 @@ export interface ICognitoConfig {
 }
 
 
-const CognitoConfigDefaults: ICognitoConfig = {
+const AuthConstructConfigDefaults: IAuthConstructConfig = {
     userPool: {
         props: {
             selfSignUpEnabled: false,
@@ -82,16 +83,19 @@ const CognitoConfigDefaults: ICognitoConfig = {
 }
 
 
-export class CognitoStack implements IStack {
-    readonly logger = createLogger(CognitoStack.name);
+export class AuthConstruct implements FW24Construct {
+    readonly logger = createLogger(AuthConstruct.name);
+    readonly fw24: Fw24 = Fw24.getInstance();
 
-    fw24: Fw24 = Fw24.getInstance();
+    name: string = AuthConstruct.name;
     dependencies: string[] = [];
+    output!: FW24ConstructOutout;
+
     mainStack!: Stack;
     
     // default constructor to initialize the stack configuration
-    constructor(private stackConfig: ICognitoConfig) {
-        this.logger.debug("constructor: ");
+    constructor(private authConstructConfig: IAuthConstructConfig) {
+        Helper.hydrateConfig(authConstructConfig,'COGNITO');
     }
 
     // construct method to create the stack
@@ -100,13 +104,13 @@ export class CognitoStack implements IStack {
 
         this.mainStack = this.fw24.getStack("main");
 
-        const userPoolConfig = {...CognitoConfigDefaults.userPool?.props, ...this.stackConfig.userPool?.props};
-        const userPoolName = this.stackConfig.name || 'default';
+        const userPoolConfig = {...AuthConstructConfigDefaults.userPool?.props, ...this.authConstructConfig.userPool?.props};
+        const userPoolName = this.authConstructConfig.name || 'default';
         this.logger.debug("user pool config: ", userPoolName, userPoolConfig);
 
         const namePrefix = this.createNamePrefix(userPoolName);
-        if(this.stackConfig.useAsDefaultAuthorizer === undefined){
-            this.stackConfig.useAsDefaultAuthorizer = true;
+        if(this.authConstructConfig.useAsDefaultAuthorizer === undefined){
+            this.authConstructConfig.useAsDefaultAuthorizer = true;
         }
 
         // TODO: Add ability to create multi-tenant user pools
@@ -114,23 +118,25 @@ export class CognitoStack implements IStack {
             ...userPoolConfig,
             userPoolName: namePrefix
         });
+        this.fw24.setConstructOutput(this, userPoolName, userPool, OutputType.USERPOOL);
 
         const userPoolClientConfig: UserPoolClientProps = {
             userPool: userPool,
-            ...CognitoConfigDefaults.userPoolClient?.props, 
-            ...this.stackConfig.userPoolClient?.props
+            ...AuthConstructConfigDefaults.userPoolClient?.props, 
+            ...this.authConstructConfig.userPoolClient?.props
         };
 
         const userPoolClient = new UserPoolClient(this.mainStack, `${namePrefix}-userPoolclient`, {
             ...userPoolClientConfig
         });
+        this.fw24.setConstructOutput(this, userPoolName, userPoolClient, OutputType.USERPOOLCLIENT);
 
         // Identity pool based authentication
-        if(this.stackConfig.groups || this.stackConfig.policyFilePaths || this.fw24.getConfig().defaultAuthorizationType == 'AWS_IAM') {
-            this.createIdentityPoolAuthorizer(userPool, userPoolClient, userPoolName, this.stackConfig.useAsDefaultAuthorizer);
+        if(this.authConstructConfig.groups || this.authConstructConfig.policyFilePaths || this.fw24.getConfig().defaultAuthorizationType == 'AWS_IAM') {
+            this.createIdentityPoolAuthorizer(userPool, userPoolClient, userPoolName, this.authConstructConfig.useAsDefaultAuthorizer);
         } else {
             // user pool base authentification
-            this.createUserPoolAutorizer(userPool, userPoolName, this.stackConfig.useAsDefaultAuthorizer);
+            this.createUserPoolAutorizer(userPool, userPoolName, this.authConstructConfig.useAsDefaultAuthorizer);
         }
 
         this.fw24.set("userPoolID", userPool.userPoolId, userPoolName);
@@ -177,10 +183,10 @@ export class CognitoStack implements IStack {
         }
 
         // create user pool groups
-        if (this.stackConfig.groups) {
-            this.fw24.set('Groups', this.stackConfig.groups.map(group => group.name), 'cognito');
-            //this.fw24.set('AutoUserSignupGroups', this.stackConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString(), userPoolName);
-            for (const group of this.stackConfig.groups) {
+        if (this.authConstructConfig.groups) {
+            this.fw24.set('Groups', this.authConstructConfig.groups.map(group => group.name), 'cognito');
+            //this.fw24.set('AutoUserSignupGroups', this.authConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString(), userPoolName);
+            for (const group of this.authConstructConfig.groups) {
                 // create a role for the group
                 const policyFilePaths = group.policyFilePaths;
                 const role = new CognitoAuthRole(this.mainStack, `${namePrefix}-${group.name}-CognitoAuthRole`, {
@@ -198,8 +204,8 @@ export class CognitoStack implements IStack {
                     precedence: group.precedence || 0,
                 });
             }
-            const autoUserSignupGroups = this.stackConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString();
-            const autoUserSignupGroupsHandler = this.stackConfig.groups.filter(group => group.autoUserSignup).map(group => group.autoUserSignupHandler);
+            const autoUserSignupGroups = this.authConstructConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString();
+            const autoUserSignupGroupsHandler = this.authConstructConfig.groups.filter(group => group.autoUserSignup).map(group => group.autoUserSignupHandler);
             // only one auto signup handler is supported, pick the first one
             const autoGroupsAddHandler = autoUserSignupGroupsHandler[0] || '';
             if(autoUserSignupGroups && autoGroupsAddHandler){
@@ -237,7 +243,7 @@ export class CognitoStack implements IStack {
         }
 
         // IAM role for authenticated users if no groups are defined
-        const policyFilePaths = this.stackConfig.policyFilePaths;
+        const policyFilePaths = this.authConstructConfig.policyFilePaths;
         const authenticatedRole = new CognitoAuthRole(this.mainStack, `${namePrefix}-CognitoAuthRole`, {
             identityPool,
             policyFilePaths
@@ -252,8 +258,8 @@ export class CognitoStack implements IStack {
         new CfnIdentityPoolRoleAttachment(this.mainStack, `${namePrefix}-IdentityPoolRoleAttachment`, roleAttachment);
 
         // create triggers
-        if (this.stackConfig.triggers) {
-            for (const trigger of this.stackConfig.triggers) {
+        if (this.authConstructConfig.triggers) {
+            for (const trigger of this.authConstructConfig.triggers) {
                 const lambdaTrigger = new LambdaFunction(this.mainStack, `${namePrefix}-${trigger.trigger}-lambdaFunction`, {
                     ...trigger.functionProps,
                 }) as NodejsFunction;
