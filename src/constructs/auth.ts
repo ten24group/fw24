@@ -16,7 +16,7 @@ import { Duration, RemovalPolicy, Stack } from "aws-cdk-lib";
 import { CognitoAuthRole } from "./cognito-auth-role";
 import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
 import { Fw24 } from "../core/fw24";
-import { IConstruct, IConstructOutout, OutputType } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
 import { createLogger, LogDuration } from "../logging";
 import { Helper } from "../core";
 
@@ -83,13 +83,13 @@ const AuthConstructConfigDefaults: IAuthConstructConfig = {
 }
 
 
-export class AuthConstruct implements IConstruct {
+export class AuthConstruct implements FW24Construct {
     readonly logger = createLogger(AuthConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = AuthConstruct.name;
     dependencies: string[] = [];
-    output!: IConstructOutout;
+    output!: FW24ConstructOutout;
 
     mainStack!: Stack;
     

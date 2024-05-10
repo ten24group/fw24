@@ -14,7 +14,7 @@ import { Helper } from "../core/helper";
 import { createLogger } from "../logging";
 import { LambdaFunction } from "./lambda-function";
 import { Fw24 } from "../core/fw24";
-import { IConstruct, IConstructOutout, OutputType } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
 import Mutable from "../types/mutable";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
@@ -36,14 +36,14 @@ export interface IAPIConstructConfig {
     logRemovalPolicy?: RemovalPolicy
 }
 
-export class APIConstruct implements IConstruct {
+export class APIConstruct implements FW24Construct {
     readonly logger = createLogger(APIConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
     
     name: string = APIConstruct.name;
     // array of type of stacks that this stack is dependent on
     dependencies: string[] = [MailerConstruct.name, DynamoDBConstruct.name, AuthConstruct.name, QueueConstruct.name, TopicConstruct.name];
-    output!: IConstructOutout;
+    output!: FW24ConstructOutout;
 
     api!: RestApi;
     mainStack!: Stack;

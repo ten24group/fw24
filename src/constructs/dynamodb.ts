@@ -1,6 +1,6 @@
 import { TablePropsV2, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 
-import { IConstruct, IConstructOutout } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutout } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import { createLogger, LogDuration } from "../logging";
 
@@ -11,13 +11,13 @@ export interface IDynamoDBConfig {
     }
 }
 
-export class DynamoDBConstruct implements IConstruct {
+export class DynamoDBConstruct implements FW24Construct {
     readonly logger = createLogger(DynamoDBConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
     
     name: string = DynamoDBConstruct.name;
     dependencies: string[] = [];
-    output!: IConstructOutout;
+    output!: FW24ConstructOutout;
 
     // default constructor to initialize the stack configuration
     constructor(private dynamoDBConfig: IDynamoDBConfig) {

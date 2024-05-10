@@ -1,6 +1,6 @@
 import { CfnOutput, Stack, aws_events_targets } from "aws-cdk-lib";
 import { Helper } from "../core/helper";
-import { IConstruct, IConstructOutout, OutputType } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 
@@ -16,13 +16,13 @@ export interface ISchedulerConstructConfig {
     functionProps?: NodejsFunctionProps;
 }
 
-export class SchedulerConstruct implements IConstruct {
+export class SchedulerConstruct implements FW24Construct {
     readonly logger = createLogger(SchedulerConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
     
     name: string = SchedulerConstruct.name;
     dependencies: string[] = [];
-    output!: IConstructOutout;
+    output!: FW24ConstructOutout;
 
     mainStack!: Stack;
 

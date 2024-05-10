@@ -3,7 +3,7 @@ import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
 import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha';
 
 import { Fw24 } from "../core/fw24";
-import { IConstruct, IConstructOutout } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutout } from "../interfaces/construct";
 import { Helper } from "../core/helper";
 import { createLogger } from "../logging";
 
@@ -16,13 +16,13 @@ export interface ISiteConstructConfig {
     buildSpec: any; // BuildSpec.fromObject
 }
 
-export class SiteConstruct implements IConstruct{
+export class SiteConstruct implements FW24Construct{
     readonly logger = createLogger(SiteConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = SiteConstruct.name;
     dependencies: string[] = [];
-    output!: IConstructOutout;
+    output!: FW24ConstructOutout;
 
     // default constructor to initialize the stack configuration
     constructor(private siteConstructConfig: ISiteConstructConfig){

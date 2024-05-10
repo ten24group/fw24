@@ -9,7 +9,7 @@ import { IApplicationConfig } from "../interfaces/config";
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-import { IConstruct, IConstructOutout, OutputType } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
 import { LogDuration, createLogger } from "../logging";
 import { QueueConstruct } from "./queue";
 
@@ -31,13 +31,13 @@ export interface IS3TriggerConfig {
     queueName?: string;
 }
 
-export class BucketConstruct implements IConstruct {
+export class BucketConstruct implements FW24Construct {
     readonly logger = createLogger(BucketConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = BucketConstruct.name;
     dependencies: string[] = [QueueConstruct.name];
-    output!: IConstructOutout;
+    output!: FW24ConstructOutout;
 
     appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;

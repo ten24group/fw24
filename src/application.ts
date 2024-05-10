@@ -1,7 +1,7 @@
 import { App, Stack } from "aws-cdk-lib";
 import { Fw24 } from "./core/fw24";
 import { IApplicationConfig } from "./interfaces/config";
-import { IConstruct } from "./interfaces/construct";
+import { FW24Construct } from "./interfaces/construct";
 import { IFw24Module } from "./core/module";
 import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
 import { ILogger, LogDuration, createLogger } from "./logging";
@@ -14,7 +14,7 @@ export class Application {
     mainStack!: Stack;
 
     private readonly fw24: Fw24;
-    private readonly constructs: Map<string, IConstruct>;
+    private readonly constructs: Map<string, FW24Construct>;
     private readonly modules: Map<string, IFw24Module>;
     private processedConstructs: Map<string, Promise<void>> = new Map();
     private resourceConstructMaxConcurrency: number = 10;
@@ -42,7 +42,7 @@ export class Application {
         this.fw24.addStack("main", this.mainStack);
     }
 
-    public use(construct: IConstruct): Application {
+    public use(construct: FW24Construct): Application {
         this.registerConstruct(construct);
         return this;
     }
@@ -92,7 +92,7 @@ export class Application {
     }
     
 
-    private registerConstruct(construct: IConstruct, name?: string) {
+    private registerConstruct(construct: FW24Construct, name?: string) {
         let constructName = name || construct.name;
         if (this.constructs.has(constructName)) {
             // handle multiple constructs of same type

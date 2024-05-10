@@ -3,7 +3,7 @@ import { Topic, TopicProps } from 'aws-cdk-lib/aws-sns';
 
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
-import { IConstruct, IConstructOutout, OutputType } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
 import { LogDuration, createLogger } from "../logging";
 
 
@@ -12,13 +12,13 @@ export interface ITopicConstructConfig {
     topicProps?: TopicProps;
 }
 
-export class TopicConstruct implements IConstruct {
+export class TopicConstruct implements FW24Construct {
     readonly logger = createLogger(TopicConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
     
     name: string = TopicConstruct.name;
     dependencies: string[] = [];
-    output!: IConstructOutout;
+    output!: FW24ConstructOutout;
 
     constructor(private topicConstructConfig: ITopicConstructConfig[]) {
         Helper.hydrateConfig(topicConstructConfig,'SNS');

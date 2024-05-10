@@ -7,7 +7,7 @@ import { Topic } from "aws-cdk-lib/aws-sns";
 import { LayerVersion } from "aws-cdk-lib/aws-lambda";
 import { CfnIdentityPool, UserPool, UserPoolClient } from "aws-cdk-lib/aws-cognito";
 
-export interface IConstruct {
+export interface FW24Construct {
     name: string;
     dependencies: string[];
     fw24: Fw24;
@@ -15,10 +15,10 @@ export interface IConstruct {
     // outputs from the stack that can be used by other stacks
     // cocnvension for output is to use the resource and name as the key
     // e.g. output: bucket.[bucketName] = bucket; function.[functionName] = function
-    output: IConstructOutout;
+    output: FW24ConstructOutout;
 }
 
-export interface IConstructOutout extends Record<string, any>{
+export interface FW24ConstructOutout extends Record<string, any>{
     [OutputType.FUNCTION]: Record<string,NodejsFunction>;
     [OutputType.BUCKET]: Record<string,Bucket>;
     [OutputType.QUEUE]: Record<string,Queue>;

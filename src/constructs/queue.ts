@@ -1,7 +1,7 @@
 import { CfnOutput, Stack } from "aws-cdk-lib";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Helper } from "../core/helper";
-import { IConstruct, IConstructOutout, OutputType } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 
@@ -19,13 +19,13 @@ export interface IQueueConstructConfig {
     functionProps?: NodejsFunctionProps;
 }
 
-export class QueueConstruct implements IConstruct {
+export class QueueConstruct implements FW24Construct {
     readonly logger = createLogger(QueueConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
     
     name: string = QueueConstruct.name;
     dependencies: string[] = [DynamoDBConstruct.name];
-    output!: IConstructOutout;
+    output!: FW24ConstructOutout;
 
     mainStack!: Stack;
 

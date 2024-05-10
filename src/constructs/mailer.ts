@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, existsSync } from "fs";
 import { resolve, join, } from "path";
 
 import { Helper } from "../core/helper";
-import { IConstruct, IConstructOutout } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutout } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import { QueueLambda } from "./queue-lambda";
 import { createLogger, LogDuration } from "../logging";
@@ -18,13 +18,13 @@ export interface IMailerConstructConfig {
     queueProps?: QueueProps;
 }
 
-export class MailerConstruct implements IConstruct {
+export class MailerConstruct implements FW24Construct {
     readonly logger = createLogger(MailerConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
     
     name: string = MailerConstruct.name;
     dependencies: string[] = [];
-    output!: IConstructOutout;
+    output!: FW24ConstructOutout;
 
     mainStack!: Stack;
 

@@ -1,6 +1,6 @@
 import { IAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2';
 import { IApplicationConfig } from '../interfaces/config';
-import { IConstruct, OutputType } from '../interfaces/construct';
+import { FW24Construct, OutputType } from '../interfaces/construct';
 import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { Helper } from './helper';
 import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
@@ -158,7 +158,7 @@ export class Fw24 {
         return this.environment[`${prefix}${name}`];
     }
 
-    public setConstructOutput(construct: IConstruct, outputType: OutputType, key: string, value: any) {
+    public setConstructOutput(construct: FW24Construct, outputType: OutputType, key: string, value: any) {
         this.logger.debug(`setConstructOutput: ${construct.name}`, {outputType, key});
         construct.output = {
             ...construct.output,
