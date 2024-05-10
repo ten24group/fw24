@@ -35,8 +35,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      *  */ 
     extractEntityIdentifiers(
         input: any, 
-        context: { tenantId: string, forAccessPattern ?: string } = {
-            tenantId: 'xxx-yyy-zzz'
+        context: { 
+            // tenantId: string, 
+            forAccessPattern ?: string } = {
+            // tenantId: 'xxx-yyy-zzz'
         } 
     ): EntityIdentifiersTypeFromSchema<S>{
         const identifiers: any = {};
@@ -46,7 +48,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         }
 
         // TODO: tenant logic
-        identifiers['tenantId'] = input.tenantId || context.tenantId;
+        // identifiers['tenantId'] = input.tenantId || context.tenantId;
 
         const accessPatterns = makeEntityAccessPatternsSchema(this.getEntitySchema());
 
