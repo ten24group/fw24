@@ -63,6 +63,7 @@ export class BucketConstruct implements FW24Construct {
     private createBucket(bucketConfig: IBucketConstructConfig) {
         this.logger.debug("Creating bucket: ", bucketConfig.bucketName);
         const bucketName = this.fw24.getUniqueName(bucketConfig.bucketName);
+        this.logger.info("Creating bucket name: ", bucketName);
         var bucketParams: any = {
             bucketName: bucketName,
             removalPolicy: bucketConfig.removalPolicy || RemovalPolicy.DESTROY,

@@ -21,7 +21,6 @@ import { createLogger, LogDuration } from "../logging";
 import { Helper } from "../core";
 
 export interface IAuthConstructConfig {
-    name?: string;
     userPool?: {
         props: UserPoolProps;
     };
@@ -105,18 +104,18 @@ export class AuthConstruct implements FW24Construct {
         this.mainStack = this.fw24.getStack("main");
 
         const userPoolConfig = {...AuthConstructConfigDefaults.userPool?.props, ...this.authConstructConfig.userPool?.props};
-        const userPoolName = this.authConstructConfig.name || 'default';
+        const userPoolName = this.authConstructConfig.userPool?.props?.userPoolName || 'default';
+        this.logger.info("Creating user pool: ", userPoolName);
         this.logger.debug("user pool config: ", userPoolName, userPoolConfig);
 
-        const namePrefix = this.createNamePrefix(userPoolName);
         if(this.authConstructConfig.useAsDefaultAuthorizer === undefined){
             this.authConstructConfig.useAsDefaultAuthorizer = true;
         }
 
         // TODO: Add ability to create multi-tenant user pools
-        const userPool: UserPool = new UserPool(this.mainStack, `${namePrefix}-userPool`, {
+        const userPool: UserPool = new UserPool(this.mainStack, `${userPoolName}-userPool`, {
             ...userPoolConfig,
-            userPoolName: namePrefix
+            userPoolName: this.createUniqueUserPoolName(userPoolName),
         });
         this.fw24.setConstructOutput(this, userPoolName, userPool, OutputType.USERPOOL);
 
@@ -126,7 +125,7 @@ export class AuthConstruct implements FW24Construct {
             ...this.authConstructConfig.userPoolClient?.props
         };
 
-        const userPoolClient = new UserPoolClient(this.mainStack, `${namePrefix}-userPoolclient`, {
+        const userPoolClient = new UserPoolClient(this.mainStack, `${userPoolName}-userPoolclient`, {
             ...userPoolClientConfig
         });
         this.fw24.setConstructOutput(this, userPoolName, userPoolClient, OutputType.USERPOOLCLIENT);
@@ -146,7 +145,7 @@ export class AuthConstruct implements FW24Construct {
 
     private createUserPoolAutorizer(userPool: UserPool, userPoolName: string, useAsDefaultAuthorizer: boolean) {
         // cognito authorizer 
-        const userPoolAuthorizer = new CognitoUserPoolsAuthorizer(this.mainStack, `${this.createNamePrefix(userPoolName)}-Authorizer`, {
+        const userPoolAuthorizer = new CognitoUserPoolsAuthorizer(this.mainStack, `${userPoolName}-Authorizer`, {
             cognitoUserPools: [userPool],
             identitySource: 'method.request.header.Authorization',
         });
@@ -166,15 +165,15 @@ export class AuthConstruct implements FW24Construct {
     }
 
     private createIdentityPoolAuthorizer(userPool: UserPool, userPoolClient: UserPoolClient, userPoolName: string, useAsDefaultAuthorizer: boolean) {
-        const namePrefix = this.createNamePrefix(userPoolName)
 
-        const identityPool = new CfnIdentityPool(this.mainStack, `${namePrefix}-identityPool`, {
+        const identityPool = new CfnIdentityPool(this.mainStack, `${userPoolName}-identityPool`, {
             allowUnauthenticatedIdentities: true,
             cognitoIdentityProviders: [{
                 clientId: userPoolClient.userPoolClientId,
                 providerName: userPool.userPoolProviderName,
             }],
         });
+        this.fw24.setConstructOutput(this, userPoolName, identityPool, OutputType.IDENTITYPOOL);
 
         // configure identity pool role attachment
         const identityProvider = userPool.userPoolProviderName + ':' + userPoolClient.userPoolClientId;
@@ -189,7 +188,7 @@ export class AuthConstruct implements FW24Construct {
             for (const group of this.authConstructConfig.groups) {
                 // create a role for the group
                 const policyFilePaths = group.policyFilePaths;
-                const role = new CognitoAuthRole(this.mainStack, `${namePrefix}-${group.name}-CognitoAuthRole`, {
+                const role = new CognitoAuthRole(this.mainStack, `${userPoolName}-${group.name}-CognitoAuthRole`, {
                     identityPool,
                     policyFilePaths,
                 }) as Role;
@@ -197,7 +196,7 @@ export class AuthConstruct implements FW24Construct {
                 this.fw24.set('Role', role, `cognito_${group.name}`);
                 this.fw24.set('Routes', group.routes, `cognito_${group.name}`);
 
-                new CfnUserPoolGroup(this.mainStack, `${namePrefix}-${group.name}-group`, {
+                new CfnUserPoolGroup(this.mainStack, `${userPoolName}-${group.name}-group`, {
                     groupName: group.name,
                     userPoolId: userPool.userPoolId,
                     roleArn: role.roleArn,
@@ -226,7 +225,7 @@ export class AuthConstruct implements FW24Construct {
                     ...props
                 }
                 this.logger.debug("autoUserSignupGroupsHandler: ", lambdaFunctionProps);
-                const lambdaTrigger = new LambdaFunction(this.mainStack, `${namePrefix}-auto-post-confirmation-lambdaFunction`, {
+                const lambdaTrigger = new LambdaFunction(this.mainStack, `${userPoolName}-auto-post-confirmation-lambdaFunction`, {
                     ...lambdaFunctionProps,
                 }) as NodejsFunction;
                 userPool.addTrigger(UserPoolOperation.POST_CONFIRMATION, lambdaTrigger);
@@ -244,7 +243,7 @@ export class AuthConstruct implements FW24Construct {
 
         // IAM role for authenticated users if no groups are defined
         const policyFilePaths = this.authConstructConfig.policyFilePaths;
-        const authenticatedRole = new CognitoAuthRole(this.mainStack, `${namePrefix}-CognitoAuthRole`, {
+        const authenticatedRole = new CognitoAuthRole(this.mainStack, `${userPoolName}-CognitoAuthRole`, {
             identityPool,
             policyFilePaths
         }) as Role;
@@ -255,12 +254,12 @@ export class AuthConstruct implements FW24Construct {
         roleAttachment.roles = {};
         roleAttachment.roles.authenticated = authenticatedRole.roleArn;
 
-        new CfnIdentityPoolRoleAttachment(this.mainStack, `${namePrefix}-IdentityPoolRoleAttachment`, roleAttachment);
+        new CfnIdentityPoolRoleAttachment(this.mainStack, `${userPoolName}-IdentityPoolRoleAttachment`, roleAttachment);
 
         // create triggers
         if (this.authConstructConfig.triggers) {
             for (const trigger of this.authConstructConfig.triggers) {
-                const lambdaTrigger = new LambdaFunction(this.mainStack, `${namePrefix}-${trigger.trigger}-lambdaFunction`, {
+                const lambdaTrigger = new LambdaFunction(this.mainStack, `${userPoolName}-${trigger.trigger}-lambdaFunction`, {
                     ...trigger.functionProps,
                 }) as NodejsFunction;
                 userPool.addTrigger(trigger.trigger, lambdaTrigger);
@@ -273,9 +272,7 @@ export class AuthConstruct implements FW24Construct {
         }
     }
 
-    private createNamePrefix(userPoolName: string) {
-        var namePrefix = `${this.fw24.appName}`;
-        namePrefix = `${namePrefix}-${userPoolName}`;
-        return namePrefix;
+    private createUniqueUserPoolName(userPoolName: string) {
+        return `${this.fw24.appName}-${userPoolName}`;
     }
 }

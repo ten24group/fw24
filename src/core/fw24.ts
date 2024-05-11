@@ -77,7 +77,7 @@ export class Fw24 {
         if(this.stacks['main'] === undefined) {
             throw new Error('Main stack not found');
         }
-        return `${name}-${this.config.name}-${this.config.environment}-${this.stacks['main'].account}`;
+        return `${name}-${this.config.name}-${this.config.environment || 'env'}-${this.stacks['main'].account}`;
     }
 
     public getArn(type:string, name: string): string {
