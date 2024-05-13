@@ -76,6 +76,7 @@ export default (
                 {
                     column: "confirmPassword",
                     label : "Confirm Password",
+                    fieldType: "password",
                     placeholder: "",
                     validations: ["required", "match:password"]
                 }
@@ -147,12 +148,14 @@ export default (
                 {
                     column: "newPassword",
                     label : "New Password",
+                    fieldType: "password",
                     placeholder: "",
                     validations: ["required"]
                 },
                 {
                     column: "confirmNewPassword",
                     label : "Confirm New Password",
+                    fieldType: "password",
                     placeholder: "",
                     validations: ["required", "match:newPassword"]
                 }
