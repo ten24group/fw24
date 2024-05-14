@@ -35,7 +35,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
             apiConfig: {
                 apiMethod: `GET`,
                 responseKey: 'items',
-                apiUrl: `/${entityNameLower}/`,
+                apiUrl: `/${entityNameLower}`,
             },
             propertiesConfig: [] as any[],
         }
@@ -71,7 +71,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                             apiConfig: {
                                 apiMethod: `DELETE`,
                                 responseKey: entityNameLower,
-                                apiUrl: `/${entityNameLower}/`,
+                                apiUrl: `/${entityNameLower}`,
                             },
                             confirmSuccessRedirect: `/list-${entityNameLower}`
                         }

@@ -30,7 +30,7 @@ export default (
     if(enableSignin){
         config['/login'] = {
             apiConfig: {
-                apiUrl: `/${authEndpoint}/signin/`,
+                apiUrl: `/${authEndpoint}/signin`,
                 apiMethod: "POST"
             },
             pageType: "form",
@@ -55,7 +55,7 @@ export default (
     if(enableSignUp){
         config['/signup'] = {
             apiConfig: {
-                apiUrl: `/${authEndpoint}/signup/`,
+                apiUrl: `/${authEndpoint}/signup`,
                 apiMethod: "POST"
             },
             pageType: "form",
@@ -88,7 +88,7 @@ export default (
     if(enableAccountVerification){
         config['/verify'] = {
             apiConfig: {
-                apiUrl: `/${authEndpoint}/verify/`,
+                apiUrl: `/${authEndpoint}/verify`,
                 apiMethod: "POST"
             },
             pageType: "form",
@@ -112,7 +112,7 @@ export default (
     if(enableForgotPassword){
         config['/forgot-password'] = {
             apiConfig: {
-                apiUrl: `/${authEndpoint}/forgotPassword/`,
+                apiUrl: `/${authEndpoint}/forgotPassword`,
                 apiMethod: "POST"
             },
             pageType: "form",
@@ -128,7 +128,7 @@ export default (
 
         config['/reset-password'] = {
             apiConfig: {
-                apiUrl: `/${authEndpoint}/confirmForgotPassword/`,
+                apiUrl: `/${authEndpoint}/confirmForgotPassword`,
                 apiMethod: "POST"
             },
             pageType: "form",

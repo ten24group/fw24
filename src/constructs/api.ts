@@ -132,15 +132,15 @@ export class APIConstruct implements FW24Construct {
 
         const { defaultAuthorizerName, defaultAuthorizerType, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig } = this.extractDefaultAuthorizer(controllerConfig);
 
-        this.logger.info(`Register Controller ~ Default Authorizer: name: ${defaultAuthorizerName} - type: ${defaultAuthorizerType} - groups: ${defaultAuthorizerGroups}`);
+        this.logger.debug(`Register Controller ~ Default Authorizer: name: ${defaultAuthorizerName} - type: ${defaultAuthorizerType} - groups: ${defaultAuthorizerGroups}`);
       
         for (const route of Object.values(controllerInfo.routes ?? {})) {
-            this.logger.info(`Registering route ${route.httpMethod} ${route.path}`);
+            this.logger.debug(`Registering route ${route.httpMethod} ${route.path}`);
             const currentResource = this.getOrCreateRouteResource(controllerResource, route.path);
 
             const { routeAuthorizerName, routeAuthorizerType, routeAuthorizerGroups, routeRequireRouteInGroupConfig } = this.extractRouteAuthorizer(route, defaultAuthorizerType, defaultAuthorizerName, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig);
             
-            this.logger.info(`APIGateway ~ Register Route ~ Route Authorizer: ${routeAuthorizerName} - ${routeAuthorizerType} - ${routeAuthorizerGroups}`);
+            this.logger.info(`Registering route Authorizer: ${routeAuthorizerName} - ${routeAuthorizerType} - ${routeAuthorizerGroups}`);
 
             const methodOptions = this.createMethodOptions(route, routeAuthorizerType, routeAuthorizerName);
             currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);
@@ -284,7 +284,7 @@ export class APIConstruct implements FW24Construct {
 
     private outputApiEndpoint = (controllerName: string, controllerResource: IResource) => {
         new CfnOutput(this.mainStack, `Endpoint${controllerName}`, {
-            value: this.api.url + controllerResource.path.slice(1) + '/',
+            value: this.api.url + controllerResource.path.slice(1),
             description: "API Gateway Endpoint for " + controllerName,
         });
     }
