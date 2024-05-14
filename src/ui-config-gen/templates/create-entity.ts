@@ -31,7 +31,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
             apiConfig: {
                 apiMethod: `POST`,
                 responseKey: entityNameCamel,
-                apiUrl: `/${entityNameLower}/`,
+                apiUrl: `/${entityNameLower}`,
             },
             formButtons: [ "submit", "cancel" ],
             propertiesConfig: [] as any[],

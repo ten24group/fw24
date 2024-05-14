@@ -28,7 +28,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
             detailApiConfig: {
                 apiMethod: `GET`,
                 responseKey: entityNameCamel,
-                apiUrl: `/${entityNameLower}/`,
+                apiUrl: `/${entityNameLower}`,
             },
             propertiesConfig: [] as any[],
         }
