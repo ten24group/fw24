@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.21](https://github.com/ten24group/fw24/compare/v0.0.20...v0.0.21) (2024-05-15)
+
+
+### Bug Fixes
+
+* auth UI config password fields ([7f23994](https://github.com/ten24group/fw24/commit/7f2399489f338aef0ebf74b4a5c0d13c38a65596))
+
 ### [0.0.20](https://github.com/ten24group/fw24/compare/v0.0.19...v0.0.20) (2024-05-11)
 
 ### [0.0.19](https://github.com/ten24group/fw24/compare/v0.0.18...v0.0.19) (2024-05-10)
