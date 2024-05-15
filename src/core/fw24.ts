@@ -1,5 +1,6 @@
 import { IAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2';
 import { IApplicationConfig } from '../interfaces/config';
+import { FW24Construct, OutputType } from '../interfaces/construct';
 import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { Helper } from './helper';
 import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
@@ -76,7 +77,7 @@ export class Fw24 {
         if(this.stacks['main'] === undefined) {
             throw new Error('Main stack not found');
         }
-        return `${name}-${this.config.name}-${this.config.environment}-${this.stacks['main'].account}`;
+        return `${name}-${this.config.name}-${this.config.environment || 'env'}-${this.stacks['main'].account}`;
     }
 
     public getArn(type:string, name: string): string {
@@ -104,7 +105,7 @@ export class Fw24 {
 
         this.cognitoAuthorizers[name] = authorizer;
         // If this authorizer is the default, set it as the default authorizer
-        if(defaultAuthorizer) {
+        if(defaultAuthorizer !== false) {
             this.defaultCognitoAuthorizer = authorizer;
         }
     }
@@ -119,6 +120,10 @@ export class Fw24 {
         if(name === undefined) {
             return this.defaultCognitoAuthorizer;
         }
+        // if authorizer with name is not found, throw an error
+        if(this.cognitoAuthorizers[name] === undefined) {
+            throw new Error(`Authorizer with name: ${name} not found`);
+        }
         // If a name is provided, return the authorizer with that name
         return this.cognitoAuthorizers[name];
     }
@@ -128,6 +133,14 @@ export class Fw24 {
             return this.getCognitoAuthorizer(name);
         }
         return undefined;
+    }
+
+    public setDefaultCognitoAuthorizerName(name: string) {
+        this.set('defaultCognitoAuthorizerName', name, 'cognito');
+    }
+
+    public getDefaultCognitoAuthorizerName() {
+        return this.get('defaultCognitoAuthorizerName', 'cognito');
     }
 
     public set(name: string, value: any, prefix: string = '') {
@@ -145,6 +158,26 @@ export class Fw24 {
         return this.environment[`${prefix}${name}`];
     }
 
+    public setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType) {
+        this.logger.debug(`setConstructOutput: ${construct.name}`, {outputType, key});
+        if(outputType){
+            construct.output = {
+                ...construct.output,
+                [outputType]: {
+                    ...construct.output?.[outputType],
+                    [key]: value
+                }
+            }
+            this.set(key, value, `${construct.name}_${outputType}`);
+        } else {
+            construct.output = {
+                ...construct.output,
+                [key]: value
+            }
+            this.set(key, value, construct.name);
+        }
+    }
+
     public addDynamoTable(name: string, table: TableV2) {
         this.logger.debug("addDynamoTable:", {name} );
         this.dynamoTables[name] = table;
@@ -157,6 +190,10 @@ export class Fw24 {
     public addRouteToRolePolicy(route: string, groups: string[], requireRouteInGroupConfig: boolean = false) {
         if(!groups || groups.length === 0) {
             groups = this.get('Groups', 'cognito');
+            if(!groups) {
+                this.logger.warn(`No groups defined. Adding route: ${route} to role policy for default authenticated role.`);
+                groups = ['default'];
+            }
         }
         let routeAddedToGroupPolicy = false;
         for (const groupName of groups) {
@@ -167,12 +204,16 @@ export class Fw24 {
             // get role
             this.logger.info("addRouteToRolePolicy:", {route, groupName});
             const role: Role = this.get('Role', 'cognito_' + groupName);
+            if(!role) {
+                this.logger.error(`Role not found for group: ${groupName}. Role is required to add route: ${route} to role policy. Please make sure you have a group defined in your config with the name: ${groupName}.`);
+                return;
+            }
             // add role policy statement to allow route access for group
             role.addToPolicy(this.getRoutePolicyStatement(route));
             routeAddedToGroupPolicy = true;
         }
         if(!routeAddedToGroupPolicy) {
-            throw new Error(`Route ${route} not found in any group config. Please add the route to a group config to secure access.`);
+            this.logger.error(`Route ${route} not found in any group config. Please add the route to a group config to secure access.`);
         }
     }
 

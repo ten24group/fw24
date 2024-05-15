@@ -12,22 +12,22 @@ import {
 import { Stack, CfnOutput, RemovalPolicy } from "aws-cdk-lib";
 import { Helper } from "../core/helper";
 import { createLogger } from "../logging";
-import { LambdaFunction } from "../constructs/lambda-function";
+import { LambdaFunction } from "./lambda-function";
 import { Fw24 } from "../core/fw24";
-import { IStack } from "../interfaces/stack";
+import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
 import Mutable from "../types/mutable";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 
-import { SESStack } from "./ses";
-import { SQSStack } from "./sqs";
-import { SNSStack } from "./sns";
-import { DynamoDBStack } from "./dynamodb";
-import { CognitoStack } from "./cognito";
+import { MailerConstruct } from "./mailer";
+import { QueueConstruct } from "./queue";
+import { TopicConstruct } from "./topic";
+import { DynamoDBConstruct } from "./dynamodb";
+import { AuthConstruct } from "./auth";
 import { IControllerConfig } from "../decorators/controller";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 
-export interface IAPIGatewayConfig {
+export interface IAPIConstructConfig {
     cors?: boolean | string | string[];
     apiOptions?: RestApiProps;
     controllersDirectory?: string;
@@ -36,21 +36,22 @@ export interface IAPIGatewayConfig {
     logRemovalPolicy?: RemovalPolicy
 }
 
-export class APIGateway implements IStack {
-    readonly logger = createLogger(APIGateway.name);
+export class APIConstruct implements FW24Construct {
+    readonly logger = createLogger(APIConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
     
+    name: string = APIConstruct.name;
+    // array of type of stacks that this stack is dependent on
+    dependencies: string[] = [MailerConstruct.name, DynamoDBConstruct.name, AuthConstruct.name, QueueConstruct.name, TopicConstruct.name];
+    output!: FW24ConstructOutout;
+
     api!: RestApi;
     mainStack!: Stack;
-    // array of type of stacks that this stack is dependent on
-    dependencies: string[] = [SESStack.name, DynamoDBStack.name, CognitoStack.name, SQSStack.name, SNSStack.name];
 
     // default constructor to initialize the stack configuration
-    constructor(private stackConfig: IAPIGatewayConfig) {
-        this.logger.debug('constructor:');
-
+    constructor(private apiConstructConfig: IAPIConstructConfig) {
         // hydrate the config object with environment variables ex: APIGATEWAY_CONTROLLERS
-        Helper.hydrateConfig(stackConfig,'APIGATEWAY');
+        Helper.hydrateConfig(apiConstructConfig,'APIGATEWAY');
     }
 
     // construct method to create the stack
@@ -58,10 +59,10 @@ export class APIGateway implements IStack {
         this.logger.debug('construct:');
 
         // set the default api options
-        const paramsApi: Mutable<RestApiProps> = this.stackConfig.apiOptions || {};
+        const paramsApi: Mutable<RestApiProps> = this.apiConstructConfig.apiOptions || {};
         // Enable CORS if defined
-        if (this.stackConfig.cors) {
-            this.logger.debug("Enabling CORS... this.config.cors: ", this.stackConfig.cors);
+        if (this.apiConstructConfig.cors) {
+            this.logger.debug("Enabling CORS... this.config.cors: ", this.apiConstructConfig.cors);
             paramsApi.defaultCorsPreflightOptions = this.getCorsPreflightOptions();
         }
         this.logger.debug("Creating API Gateway... ");
@@ -77,7 +78,7 @@ export class APIGateway implements IStack {
 
     private registerControllers() {
          // sets the default controllers directory if not defined
-        const controllersDirectory = this.stackConfig.controllersDirectory || "./src/controllers";
+        const controllersDirectory = this.apiConstructConfig.controllersDirectory || "./src/controllers";
 
         // register the controllers
         Helper.registerHandlers(controllersDirectory, this.registerController);
@@ -122,28 +123,36 @@ export class APIGateway implements IStack {
         const controllerResource = this.getOrCreateControllerResource(controllerName);
 
         // create lambda function for the controller
-        controllerConfig.logRetentionDays = controllerConfig.logRetentionDays || this.stackConfig.logRetentionDays;
-        controllerConfig.logRemovalPolicy = controllerConfig.logRemovalPolicy || this.stackConfig.logRemovalPolicy;
+        controllerConfig.logRetentionDays = controllerConfig.logRetentionDays || this.apiConstructConfig.logRetentionDays;
+        controllerConfig.logRemovalPolicy = controllerConfig.logRemovalPolicy || this.apiConstructConfig.logRemovalPolicy;
         const controllerLambda = this.createLambdaFunction(controllerName, filePath, fileName, controllerConfig);
+        this.fw24.setConstructOutput(this, controllerName, controllerLambda, OutputType.FUNCTION);
+
         const controllerIntegration = new LambdaIntegration(controllerLambda);
 
         const { defaultAuthorizerName, defaultAuthorizerType, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig } = this.extractDefaultAuthorizer(controllerConfig);
 
-        this.logger.info(`Register Controller ~ Default Authorizer: name: ${defaultAuthorizerName} - type: ${defaultAuthorizerType} - groups: ${defaultAuthorizerGroups}`);
+        this.logger.debug(`Register Controller ~ Default Authorizer: name: ${defaultAuthorizerName} - type: ${defaultAuthorizerType} - groups: ${defaultAuthorizerGroups}`);
       
         for (const route of Object.values(controllerInfo.routes ?? {})) {
-            this.logger.info(`Registering route ${route.httpMethod} ${route.path}`);
+            this.logger.debug(`Registering route ${route.httpMethod} ${route.path}`);
             const currentResource = this.getOrCreateRouteResource(controllerResource, route.path);
 
             const { routeAuthorizerName, routeAuthorizerType, routeAuthorizerGroups, routeRequireRouteInGroupConfig } = this.extractRouteAuthorizer(route, defaultAuthorizerType, defaultAuthorizerName, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig);
             
-            this.logger.info(`APIGateway ~ Register Route ~ Route Authorizer: ${routeAuthorizerName} - ${routeAuthorizerType} - ${routeAuthorizerGroups}`);
+            this.logger.info(`Registering route Authorizer: ${routeAuthorizerName} - ${routeAuthorizerType} - ${routeAuthorizerGroups}`);
 
             const methodOptions = this.createMethodOptions(route, routeAuthorizerType, routeAuthorizerName);
             currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);
             // if authorizer is AWS_IAM, then add the route to the policy
             if(routeAuthorizerType === 'AWS_IAM') {
-                const fullRoutePath = controllerName + route.path;
+                let fullRoutePath = controllerName + route.path;
+
+                // * replace each param placeholder `{id}` with an `*`
+                route.parameters?.forEach( par => {
+                    fullRoutePath = fullRoutePath.replace(`{${par}}`, '*'); 
+                })
+
                 this.fw24.addRouteToRolePolicy(fullRoutePath, routeAuthorizerGroups, routeRequireRouteInGroupConfig);
             }
         }
@@ -156,11 +165,14 @@ export class APIGateway implements IStack {
         return {
             allowHeaders: [
                 "Content-Type",
-                "X-Amz-Date",
                 "Authorization",
                 "X-Api-Key",
+                "X-Amz-Date",
+                "X-Amz-Content-Sha256",
+                "X-Amz-Security-Token",
                 "Access-Control-Allow-Credentials",
                 "Access-Control-Allow-Headers",
+                "Access-Control-Allow-Origin",
                 "Impersonating-User-Sub",
             ],
             allowMethods: ["OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -170,9 +182,9 @@ export class APIGateway implements IStack {
     }
 
     private getCorsOrigins(): string[] {
-        if (this.stackConfig.cors === true) return Cors.ALL_ORIGINS;
-        if (typeof this.stackConfig.cors === "string") return [this.stackConfig.cors];
-        return this.stackConfig.cors || [];
+        if (this.apiConstructConfig.cors === true) return Cors.ALL_ORIGINS;
+        if (typeof this.apiConstructConfig.cors === "string") return [this.apiConstructConfig.cors];
+        return this.apiConstructConfig.cors || [];
     }
 
     private getOrCreateControllerResource = (controllerName: string): IResource => {
@@ -180,7 +192,7 @@ export class APIGateway implements IStack {
     }
 
     private createLambdaFunction = (controllerName: string, filePath: string, fileName: string, controllerConfig: any): NodejsFunction => {
-        const functionProps = {...this.stackConfig.functionProps, ...controllerConfig?.functionProps};
+        const functionProps = {...this.apiConstructConfig.functionProps, ...controllerConfig?.functionProps};
         return new LambdaFunction(this.mainStack, controllerName + "-controller", {
             entry: filePath + "/" + fileName,
             environmentVariables: this.getEnvironmentVariables(controllerConfig),
@@ -194,7 +206,7 @@ export class APIGateway implements IStack {
     }
 
     private extractDefaultAuthorizer = (controllerConfig: any): { defaultAuthorizerName: string, defaultAuthorizerType: string, defaultAuthorizerGroups: string[], defaultRequireRouteInGroupConfig: boolean } => {
-        let defaultAuthorizerName = 'default';
+        let defaultAuthorizerName = this.fw24.getDefaultCognitoAuthorizerName();
         let defaultAuthorizerType;
         let defaultAuthorizerGroups;
         let defaultRequireRouteInGroupConfig = false;

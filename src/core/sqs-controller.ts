@@ -4,8 +4,8 @@ import { createLogger } from "../logging";
 /**
  * Base class for handling SQS events.
  */
-abstract class SQSController {
-  readonly logger = createLogger(SQSController.name);
+abstract class QueueController {
+  readonly logger = createLogger(QueueController.name);
 
   /**
    * Binds the LambdaHandler method to the instance of the class.
@@ -39,10 +39,10 @@ abstract class SQSController {
    * Creates a new instance of the controller and returns its LambdaHandler method.
    * @returns The LambdaHandler method of the controller.
    */
-  static CreateHandler( queueFunc: { new (): SQSController} ) {
+  static CreateHandler( queueFunc: { new (): QueueController} ) {
     const queue = new queueFunc();
     return queue.LambdaHandler;
   }
 }
 
-export { SQSController };
+export { QueueController };

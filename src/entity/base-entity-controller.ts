@@ -1,5 +1,5 @@
 import { Schema } from 'electrodb';
-import { APIGatewayController } from '../core/api-gateway-controller';
+import { APIController } from '../core/api-gateway-controller';
 import { Request } from '../interfaces/request';
 import { Response } from '../interfaces/response';
 import { Delete, Get, Patch, Post } from '../decorators/method';
@@ -12,7 +12,7 @@ import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, merge } fro
 import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
 import { EntityFilterCriteria } from './query-types';
 
-export abstract class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIGatewayController {
+export abstract class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIController {
 	
 	readonly logger = createLogger(BaseEntityController.name);
 

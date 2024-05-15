@@ -1,4 +1,5 @@
 import {  Schema } from "electrodb";
+import { camelCase } from "../../utils";
 
 export default(
     options: {
@@ -10,17 +11,17 @@ export default(
 ) => {
 
     let config = {
-        label: `${options.entityNamePlural}`,
+        label: `${camelCase(options.entityNamePlural)}`,
         icon: `${ options.icon || 'appStore' }`,
         key: options.menuIndex,
         children: [
             {
-                label: `${options.entityName} List`,
+                label: `${camelCase(options.entityName)} List`,
                 key: (options.menuIndex || 1) * 10 + 1,
                 url: `/list-${options.entityName.toLowerCase()}`
             },
             {
-                label: `Add New ${options.entityName}`,
+                label: `Add New ${camelCase(options.entityName)}`,
                 key: (options.menuIndex || 1) * 10 + 2,
                 url: `/create-${options.entityName.toLowerCase()}`
             }

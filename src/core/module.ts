@@ -1,13 +1,13 @@
 import {join as pathJoin } from "path";
 
-import { IStack } from "../interfaces/stack";
+import { FW24Construct } from "../interfaces/construct";
 
 export interface IModuleConfig{}
 
 export interface IFw24Module{
     getName(): string;
     getBasePath(): string;
-    getStacks(): Map<string, IStack>;
+    getConstructs(): Map<string, FW24Construct>;
     getControllersDirectory(): string;
     getServicesDirectory(): string;
     getQueuesDirectory(): string;
@@ -22,7 +22,7 @@ export abstract class AbstractFw24Module implements IFw24Module {
     constructor( protected readonly config: IModuleConfig){
     }
 
-    abstract getStacks(): Map<string, IStack>;
+    abstract getConstructs(): Map<string, FW24Construct>;
 
     abstract getName(): string;
 

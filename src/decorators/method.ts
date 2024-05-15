@@ -46,7 +46,11 @@ function createRouteDecorator(method: string) {
       });
 
       routes[`${method}|${route}`] = {
-        path: route,
+        // Make sure path does-not end with a trailing-slash `/` 
+        // [AWS signature needs the exact path (with or without slash)]
+        // And API gateway strips teh training slash from the API-endpoint
+        // * we need to make sure that API, Auth-policy, and Frontend-code all follow the same convention
+        path: route.endsWith('/') ? route.slice(0,-1) : route, 
         httpMethod: method,
         functionName: methodToDecorate.name || methodToDecorate,
         parameters: parameters,
