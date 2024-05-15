@@ -58,7 +58,7 @@ FW24 offers a robust validation framework that extends beyond API validations to
         },
     } as const;
 
-    const myHttpRequestValidations: EntityValidations<any> = {
+    const myEntityValidations: EntityValidations<any> = {
         actor: {
             tenantId: [{
                 eq: 'xxx-yyy-zzz',
@@ -76,10 +76,10 @@ FW24 offers a robust validation framework that extends beyond API validations to
         },
         input: {
             email: [{
-                eq: 'nitin@gmail.com',
+                eq: 'test@example.com',
                 operations: [
                     // applies to `create` operation only when none of the provided conditions evaluates to true
-                    ['create', ['inputIsNitin', 'recordIsNotNew'], 'none']
+                    ['create', ['inputIsJohnDoe', 'recordIsNotNew'], 'none']
                 ],
             }],
             lastName:[{
@@ -87,7 +87,7 @@ FW24 offers a robust validation framework that extends beyond API validations to
                 operations: {
                     // alternate syntax to define the operation conditions
                     create: [{
-                        conditions: ['recordIsNotNew', 'recordIsNotNew'],
+                        conditions: ['recordIsNotNew', 'inputIsJohnDoe'],
                         scope: 'any',
                     }],
                 }
