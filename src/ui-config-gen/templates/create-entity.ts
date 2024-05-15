@@ -15,7 +15,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     const entityNameCamel = camelCase(entityName);
 
     let config = {
-        pageTitle:  `Create ${options.entityName}`,
+        pageTitle:  `Create ${entityNameCamel}`,
         pageType:   'form',
         cardStyle: {
             width: '50%'
@@ -31,7 +31,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
             apiConfig: {
                 apiMethod: `POST`,
                 responseKey: entityNameCamel,
-                apiUrl: `/${entityNameLower}/`,
+                apiUrl: `/${entityNameLower}`,
             },
             formButtons: [ "submit", "cancel" ],
             propertiesConfig: [] as any[],

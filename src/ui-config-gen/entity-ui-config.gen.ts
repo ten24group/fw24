@@ -5,6 +5,9 @@ import MakeViewEntityConfig from './templates/view-entity';
 import MakeEntityMenuConfig from './templates/entity-menu';
 import { BaseEntityService, EntitySchema } from '../entity';
 
+import MakeAuthConfig from './templates/auth';
+
+
 import {existsSync, mkdirSync, writeFileSync, readdirSync} from "fs";
 import {
     resolve as pathResolve, 
@@ -14,6 +17,7 @@ import {
 import { Fw24 } from '../core/fw24';
 import { Helper } from '../core/helper';
 import { LogDuration, createLogger } from '../logging';
+import auth from './templates/auth';
 
 export class EntityUIConfigGen{
     readonly logger = createLogger(EntityUIConfigGen.name);
@@ -83,7 +87,11 @@ export class EntityUIConfigGen{
             menuConfigs.push(menuConfig);
         });
 
-        await this.writeToFiles(menuConfigs, entityConfigs);
+        const authEndpoint = Fw24.getInstance().getConfig().authEndpoint ?? 'auth';
+
+        const authConfigs = MakeAuthConfig({authEndpoint});
+
+        await this.writeToFiles(menuConfigs, entityConfigs, authConfigs);
     }
 
     @LogDuration()
@@ -93,7 +101,7 @@ export class EntityUIConfigGen{
         const serviceDirectories = [pathResolve('./src/services/')];
 
         if(fw24.hasModules()){
-            this.logger.debug(`Ui-config-gen::: Process::: app has modules: `, fw24.getModules().keys());
+            this.logger.debug(`Ui-config-gen::: Process::: app has modules: `, Array.from(fw24.getModules().keys()));
             for(const [, module] of fw24.getModules()){
                 const moduleServicesPath = pathJoin(module.getBasePath(), module.getServicesDirectory());
                 this.logger.debug(`Ui-config-gen::: Process::: moduleServicesPath: `, moduleServicesPath);
@@ -160,7 +168,7 @@ export class EntityUIConfigGen{
     }
 
     @LogDuration()
-    async writeToFiles(menuConfig: any[], entitiesConfig: any[]){
+    async writeToFiles(menuConfig: any, entitiesConfig: any, authConfig: any){
         this.logger.debug("Called writeToFiles:::::: ");
         const genDirectoryPath = pathResolve('./gen/');
         if (!existsSync(genDirectoryPath)){
@@ -175,12 +183,16 @@ export class EntityUIConfigGen{
         }
     
         const menuConfigFilePath = pathJoin(configDirectoryPath, 'menu.json');
-        this.logger.debug(`writing menu config.. into: ${menuConfigFilePath}`);
+        this.logger.debug(`writing menu-config.. into: ${menuConfigFilePath}`);
         writeFileSync(menuConfigFilePath, JSON.stringify(menuConfig, null, 2));
     
         const entitiesConfigFilePath = pathJoin(configDirectoryPath, 'entities.json');
-        this.logger.debug(`writing entities config.. into: ${entitiesConfigFilePath}`,);
+        this.logger.debug(`writing entities-config.. into: ${entitiesConfigFilePath}`,);
         writeFileSync(entitiesConfigFilePath, JSON.stringify(entitiesConfig, null, 2));
+
+        const authConfigFilePath = pathJoin(configDirectoryPath, 'auth.json');
+        this.logger.debug(`writing auth-config.. into: ${authConfigFilePath}`,);
+        writeFileSync(authConfigFilePath, JSON.stringify(authConfig, null, 2));
     }
 }
 

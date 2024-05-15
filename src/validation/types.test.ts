@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { DefaultEntityOperations, TEntityOpsInputSchemas, createEntitySchema } from "../entity";
-import { EntityOperationsValidation, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TestComplexValidationRuleResult, TestValidationResult, TestValidationRuleResult, InputValidationRule } from "./types";
+import { EntityOperationsValidation, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TestComplexValidationRuleResult, TestValidationResult, TestValidationRuleResult, InputValidationRule, EntityInputValidations } from "./types";
 import { Narrow, OmitNever } from "../utils";
 
 import { describe, expect, it } from '@jest/globals';
@@ -138,6 +138,12 @@ namespace User {
           required: true,
         },
         lastName: {
+          type: 'string',
+        },
+        status: {
+          type: 'string',
+        },
+        parentId: {
           type: 'string',
         },
         email: {
@@ -331,7 +337,32 @@ type rty =
 
 conditions: UserValidationConditions;
 
-type InputValidations = EntityValidations<User.TUserSchema2, typeof UserValidationConditions>['input'];
+type ExtendedSchema = Narrow<TEntityOpsInputSchemas<User.TUserSchema2> & {
+    'xxx': {
+        parentId: string;
+        status: number;
+    }
+}>
+
+const inpVal: EntityInputValidations<User.TUserSchema2, ExtendedSchema> = {
+  firstName: [{
+		operations: ['create', 'update'],
+		required: true,
+		minLength: 2,
+		maxLength: 10,
+		notInList: ['Abc', 'Xyz'],
+	}],
+	password: [{
+		required: true,
+		minLength: 8,
+		operations: ['create']
+	}],
+  parentId: [{
+    operations: [ 'update', 'xxx'],
+      required: true,
+      datatype: 'uuid'
+  }]
+}
 
 const UserValidations: EntityValidations<User.TUserSchema2, typeof UserValidationConditions> = {
     actor: {

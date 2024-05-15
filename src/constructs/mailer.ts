@@ -6,44 +6,46 @@ import { readdirSync, readFileSync, existsSync } from "fs";
 import { resolve, join, } from "path";
 
 import { Helper } from "../core/helper";
-import { IStack } from "../interfaces/stack";
+import { FW24Construct, FW24ConstructOutout } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
-import { QueueLambda } from "../constructs/queue-lambda";
+import { QueueLambda } from "./queue-lambda";
 import { createLogger, LogDuration } from "../logging";
 
-export interface ISESConfig {
+export interface IMailerConstructConfig {
     domain: string;
     sesOptions?: {};
     templatesDirectory?: string;
     queueProps?: QueueProps;
 }
 
-export class SESStack implements IStack {
-    readonly logger = createLogger(SESStack.name);
+export class MailerConstruct implements FW24Construct {
+    readonly logger = createLogger(MailerConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
     
+    name: string = MailerConstruct.name;
     dependencies: string[] = [];
+    output!: FW24ConstructOutout;
+
     mainStack!: Stack;
 
     // default constructor to initialize the stack configuration
-    constructor(private stackConfig: ISESConfig) {
-        this.logger.debug("constructor: stackConfig", stackConfig);
+    constructor(private mailerConstructConfig: IMailerConstructConfig) {
+        this.logger.debug("constructor:");
         
-        Helper.hydrateConfig(stackConfig,'SES');
+        Helper.hydrateConfig(mailerConstructConfig,'SES');
         this.fw24.emailProvider = this;
     }
 
     // construct method to create the stack
     @LogDuration()
     public async construct() {
-        this.logger.debug("construct:");
 
         // make the main stack available to the class
         this.mainStack = this.fw24.getStack("main");
        
         // create identity
         const identity = new EmailIdentity(this.mainStack, `${this.fw24.appName}-ses-identity`, {
-            identity: Identity.domain(this.stackConfig.domain)
+            identity: Identity.domain(this.mailerConstructConfig.domain)
         });
         
         // create main queue
@@ -52,7 +54,7 @@ export class SESStack implements IStack {
             queueProps: {
                 visibilityTimeout: Duration.seconds(30),
                 receiveMessageWaitTime: Duration.seconds(10),
-                ...this.stackConfig.queueProps,
+                ...this.mailerConstructConfig.queueProps,
             },
             lambdaFunctionProps: {
                 entry: join(__dirname,"../core/mail-processor.js"),
@@ -70,11 +72,11 @@ export class SESStack implements IStack {
         }) as Queue;
 
          // sets the default templates directory if not defined
-         if(this.stackConfig.templatesDirectory === undefined || this.stackConfig.templatesDirectory === ""){
-            this.stackConfig.templatesDirectory = "./src/templates/email";
+         if(this.mailerConstructConfig.templatesDirectory === undefined || this.mailerConstructConfig.templatesDirectory === ""){
+            this.mailerConstructConfig.templatesDirectory = "./src/templates/email";
         }
         // register the templates
-        this.registerTemplates(this.stackConfig.templatesDirectory);
+        this.registerTemplates(this.mailerConstructConfig.templatesDirectory);
         
         // print queue url
         new CfnOutput(this.mainStack, "mail-queue-url", {

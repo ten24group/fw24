@@ -1,7 +1,7 @@
 import { EntityConfiguration } from "electrodb";
 import { createLogger } from "../logging";
 import { isArray, isArrayOfStrings, isEmpty, isEmptyArray, isSimpleValue, isString, pickKeys, toHumanReadableName } from "../utils";
-import { EntityOpsInputValidations, EntityValidations } from "../validation";
+import { EntityInputValidations, EntityValidations } from "../validation";
 import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
 import { EntityQuery, Pagination, isArrayOfObjectOfStringKeysAndBooleanValues } from "./query-types";
@@ -35,8 +35,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      *  */ 
     extractEntityIdentifiers(
         input: any, 
-        context: { tenantId: string, forAccessPattern ?: string } = {
-            tenantId: 'xxx-yyy-zzz'
+        context: { 
+            // tenantId: string, 
+            forAccessPattern ?: string } = {
+            // tenantId: 'xxx-yyy-zzz'
         } 
     ): EntityIdentifiersTypeFromSchema<S>{
         const identifiers: any = {};
@@ -46,7 +48,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         }
 
         // TODO: tenant logic
-        identifiers['tenantId'] = input.tenantId || context.tenantId;
+        // identifiers['tenantId'] = input.tenantId || context.tenantId;
 
         const accessPatterns = makeEntityAccessPatternsSchema(this.getEntitySchema());
 
@@ -94,7 +96,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return this.entityRepository!;
     }
 
-    public getEntityValidations(): EntityValidations<S> | EntityOpsInputValidations<S>{
+    public getEntityValidations(): EntityValidations<S> | EntityInputValidations<S>{
         return {};
     };
 

@@ -1,55 +1,57 @@
 import { CfnOutput, Stack } from "aws-cdk-lib";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Helper } from "../core/helper";
-import { IStack } from "../interfaces/stack";
+import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
-import { QueueLambda } from "../constructs/queue-lambda";
+import { QueueLambda } from "./queue-lambda";
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { LogDuration, createLogger } from "../logging";
-import { DynamoDBStack } from "./dynamodb";
+import { DynamoDBConstruct } from "./dynamodb";
 import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 
-export interface ISQSConfig {
+export interface IQueueConstructConfig {
     queuesDirectory?: string;
     queueProps?: QueueProps;
     env?: ILambdaEnvConfig[];
     functionProps?: NodejsFunctionProps;
 }
 
-export class SQSStack implements IStack {
-    readonly logger = createLogger(SQSStack.name);
+export class QueueConstruct implements FW24Construct {
+    readonly logger = createLogger(QueueConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
     
-    dependencies: string[] = [DynamoDBStack.name];
+    name: string = QueueConstruct.name;
+    dependencies: string[] = [DynamoDBConstruct.name];
+    output!: FW24ConstructOutout;
+
     mainStack!: Stack;
 
     // default constructor to initialize the stack configuration
-    constructor(private stackConfig: ISQSConfig) {
-        this.logger.debug("constructor", stackConfig);
-        Helper.hydrateConfig(stackConfig,'SQS');
+    constructor(private queueConstructConfig: IQueueConstructConfig) {
+        this.logger.debug("constructor", queueConstructConfig);
+        Helper.hydrateConfig(queueConstructConfig,'SQS');
     }
 
     // construct method to create the stack
     @LogDuration()
     public async construct() {
-        this.logger.debug("construct");
         // make the main stack available to the class
         this.mainStack = this.fw24.getStack("main");
         // make the fw24 instance available to the class
         // sets the default queues directory if not defined
-        if(this.stackConfig.queuesDirectory === undefined || this.stackConfig.queuesDirectory === ""){
-            this.stackConfig.queuesDirectory = "./src/queues";
+        if(this.queueConstructConfig.queuesDirectory === undefined || this.queueConstructConfig.queuesDirectory === ""){
+            this.queueConstructConfig.queuesDirectory = "./src/queues";
         }
 
         // register the queues
-        await Helper.registerHandlers(this.stackConfig.queuesDirectory, this.registerQueue);
+        await Helper.registerHandlers(this.queueConstructConfig.queuesDirectory, this.registerQueue);
 
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
-            console.log("SQS stack: construct: app has modules ", modules);
+            console.log("SQS stack: construct: app has modules ", Array.from(modules.keys()));
             for (const [, module] of modules) {
                 const basePath = module.getBasePath();
                 const queuesDirectory = module.getQueuesDirectory();
@@ -63,9 +65,9 @@ export class SQSStack implements IStack {
         }
     }
 
-    private getEnvironmentVariables(queueConfig: ISQSConfig): any {
+    private getEnvironmentVariables(queueConstructConfig: IQueueConstructConfig): any {
         const env: any = {};
-        for (const envConfig of queueConfig.env || []) {
+        for (const envConfig of queueConstructConfig.env || []) {
             const value = this.fw24.get(envConfig.name, envConfig.prefix || '');
             if (value) {
                 env[envConfig.name] = value;
@@ -80,7 +82,7 @@ export class SQSStack implements IStack {
         
         const queueName = queueInfo.handlerInstance.queueName;
         const queueConfig = queueInfo.handlerInstance.queueConfig || {};
-        const queueProps = {...this.stackConfig.queueProps, ...queueConfig.queueProps};
+        const queueProps = {...this.queueConstructConfig.queueProps, ...queueConfig.queueProps};
 
         this.logger.info(`:::Registering queue ${queueName} from ${queueInfo.filePath}/${queueInfo.fileName}`);
 
@@ -96,11 +98,12 @@ export class SQSStack implements IStack {
                 environmentVariables: this.getEnvironmentVariables(queueConfig),
                 resourceAccess: queueConfig?.resourceAccess,
                 functionTimeout: queueConfig?.functionTimeout,
-                functionProps: {...this.stackConfig.functionProps, ...queueConfig?.functionProps},
+                functionProps: {...this.queueConstructConfig.functionProps, ...queueConfig?.functionProps},
                 logRemovalPolicy: queueConfig?.logRemovalPolicy,
                 logRetentionDays: queueConfig?.logRetentionDays,
             }
         }) as Queue;
+        this.fw24.setConstructOutput(this, queueName, queue, OutputType.QUEUE);
 
         // output the api endpoint
         new CfnOutput(this.mainStack, `SQS-${queueName}`, {
