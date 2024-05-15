@@ -16,32 +16,75 @@ import { Duration, RemovalPolicy, Stack } from "aws-cdk-lib";
 import { CognitoAuthRole } from "./cognito-auth-role";
 import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
 import { Fw24 } from "../core/fw24";
-import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { createLogger, LogDuration } from "../logging";
 import { Helper } from "../core";
 
+/**
+ * Configuration interface for the AuthConstruct.
+ */
 export interface IAuthConstructConfig {
+    /**
+     * Configuration for the User Pool.
+     */
     userPool?: {
         props: UserPoolProps;
     };
+    /**
+     * Configuration for the User Pool Client.
+     */
     userPoolClient?: {
         props: any;
     };
+    /**
+     * Array of file paths for policy files.
+     */
     policyFilePaths?: string[];
+    /**
+     * Array of triggers for user pool operations.
+     */
     triggers?: {
+        /**
+         * The user pool operation that triggers the function.
+         */
         trigger: UserPoolOperation;
+        /**
+         * Configuration for the Lambda function.
+         */
         functionProps: LambdaFunctionProps;
     }[];
+    /**
+     * Array of groups for the AuthConstruct.
+     */
     groups?: {
+        /**
+         * The name of the group.
+         */
         name: string;
+        /**
+         * The precedence of the group.
+         */
         precedence?: number;
+        /**
+         * Array of file paths for policy files specific to this group.
+         */
         policyFilePaths?: string[];
-        // during signup the user will be added to this group
+        /**
+         * Flag indicating whether the user should be automatically signed up to this group during signup.
+         */
         autoUserSignup?: boolean;
+        /**
+         * Configuration for the Lambda function that handles automatic user signup.
+         */
         autoUserSignupHandler?: LambdaFunctionProps;
-        // Routes protected by this group
+        /**
+         * Array of routes protected by this group.
+         */
         routes?: string[];
     }[];
+    /**
+     * Flag indicating whether to use this AuthConstruct as the default authorizer.
+     */
     useAsDefaultAuthorizer?: boolean;
 }
 
@@ -88,7 +131,7 @@ export class AuthConstruct implements FW24Construct {
 
     name: string = AuthConstruct.name;
     dependencies: string[] = [];
-    output!: FW24ConstructOutout;
+    output!: FW24ConstructOutput;
 
     mainStack!: Stack;
     

@@ -6,15 +6,33 @@ import { readdirSync, readFileSync, existsSync } from "fs";
 import { resolve, join, } from "path";
 
 import { Helper } from "../core/helper";
-import { FW24Construct, FW24ConstructOutout } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import { QueueLambda } from "./queue-lambda";
 import { createLogger, LogDuration } from "../logging";
 
+/**
+ * Represents the configuration for the Mailer construct.
+ */
 export interface IMailerConstructConfig {
+    /**
+     * The domain for the mailer.
+     */
     domain: string;
+
+    /**
+     * Optional SES options.
+     */
     sesOptions?: {};
+
+    /**
+     * The directory where the templates are located.
+     */
     templatesDirectory?: string;
+
+    /**
+     * The properties for the queue.
+     */
     queueProps?: QueueProps;
 }
 
@@ -24,7 +42,7 @@ export class MailerConstruct implements FW24Construct {
     
     name: string = MailerConstruct.name;
     dependencies: string[] = [];
-    output!: FW24ConstructOutout;
+    output!: FW24ConstructOutput;
 
     mainStack!: Stack;
 

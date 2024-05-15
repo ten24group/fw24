@@ -18,6 +18,12 @@ import { HttpRequestValidations, InputValidationRule } from "../validation";
 //   };
 // }
 
+/**
+ * Creates a route decorator for HTTP methods.
+ * 
+ * @param method - The HTTP method for the route decorator.
+ * @returns A decorator function that can be used to decorate class methods as routes.
+ */
 function createRouteDecorator(method: string) {
   return (
     route: string,
@@ -62,9 +68,46 @@ function createRouteDecorator(method: string) {
     };
 }
 
+/**
+ * Decorator function for defining a GET route.
+ * 
+ * @param path - The path of the route.
+ * @returns A decorator function that can be used to decorate a method.
+ */
 export const Get = createRouteDecorator("GET");
+
+/**
+ * Decorator function for creating a POST route.
+ * @param path - The path for the route.
+ */
 export const Post = createRouteDecorator("POST");
+
+/**
+ * Decorator function for defining a PUT route.
+ * @param target The target object.
+ * @param propertyKey The name of the property being decorated.
+ * @param descriptor The property descriptor.
+ */
 export const Put = createRouteDecorator("PUT");
+/**
+ * Decorator function for defining a DELETE route.
+ * 
+ * @param path - The path of the route.
+ * @returns A decorator function that can be used to decorate a method as a DELETE route.
+ */
 export const Delete = createRouteDecorator("DELETE");
+
+/**
+ * Decorator function for PATCH routes.
+ * @param target The target object.
+ * @param propertyKey The name of the property.
+ * @param descriptor The property descriptor.
+ */
 export const Patch = createRouteDecorator("PATCH");
+/**
+ * Represents a decorator that creates a route decorator with the specified HTTP method "OPTIONS".
+ * @param target The target object.
+ * @param propertyKey The property key.
+ * @param descriptor The property descriptor.
+ */
 export const Options = createRouteDecorator("OPTIONS");

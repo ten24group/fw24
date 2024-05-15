@@ -22,17 +22,22 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     }
 
     /**
-     * return an object containing all the required attributes/values to fulfill an index
+     * Extracts entity identifiers from the input object based on the provided context to fulfill an index.
      * e.g. entityId, tenantId, partition-keys.... etc
-     * this will be used by the BaseEntityService to find the right entity for get/update/delete operations
+     * it is used by the `BaseEntityService` to find the right entity for `get`/`update`/`delete` operations
      * 
-     * @param options
-     * @returns object containing all the required attributes/values to fulfill an index
+     * @template S - The type of the entity schema.
+     * @param input - The input object from which to extract the identifiers.
+     * @param context - The context object containing additional information for extraction.
+     * @param context.forAccessPattern - The access pattern for which to extract the identifiers.
+     * @returns The extracted entity identifiers.
+     * @throws {Error} If the input is missing or not an object.
+     * 
      * e.g. 
      * IN   ==> `Request` object with headers, body, auth-context etc
      * OUT  ==> { tenantId: xxx, email: xxx@yyy.com, some-partition-key: xx-yy-zz }
      *
-     *  */ 
+     */
     extractEntityIdentifiers(
         input: any, 
         context: { 
@@ -96,10 +101,30 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return this.entityRepository!;
     }
 
+    /**
+     * Placeholder for the entity validations; override this to provide your own validations
+     * @returns An object containing the entity validations.
+     */
     public getEntityValidations(): EntityValidations<S> | EntityInputValidations<S>{
         return {};
     };
 
+    /**
+     * Placeholder for the custom validation-error-messages; override this to provide your own error-messages.
+     * @returns A map containing the custom validation-error-messages.
+     * 
+     * @example
+     * ```typescript
+     *  public async getOverriddenEntityValidationErrorMessages() {
+     *      return Promise.resolve( new Map<string, string>( 
+     *          Object.entries({ 
+     *              'validation.email.required': 'Email is required!!!!!', 
+     *              'validation.password.required': 'Password is required!!!!!'
+     *          })
+     *      ));
+     * }
+     * ```
+     */
     public async getOverriddenEntityValidationErrorMessages() {
         return Promise.resolve( new Map<string, string>() );
     }
@@ -117,6 +142,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return undefined;
     }
 
+    /**
+     * Returns the default input/output schema for entity operations.
+     * 
+    */
     public getOpsDefaultIOSchema() {
         if(!this.entityOpsDefaultIoSchema){
             this.entityOpsDefaultIoSchema  = makeOpsDefaultIOSchema<S>(this.getEntitySchema());
@@ -125,7 +154,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     }
 
     /**
-     * @returns Array<string> the default attribute names for serialization to be used by the detail-pages
+     * Returns an array of default serialization attribute names. Used by the `detail` API to serialize the entity.
+     * 
+     * @returns {Array<string>} An array of default serialization attribute names.
      */
     public getDefaultSerializationAttributeNames(): Array<string>{
         const defaultOutputSchemaAttributesMap = this.getOpsDefaultIOSchema().get.output;
@@ -133,14 +164,16 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     }
 
     /**
-     * @returns Array<string> the default attribute names for listing/query serialization
+     * Returns attribute names for listing and search API. Defaults to the default serialization attribute names.
+     * @returns {Array<string>} An array of attribute names.
      */
     public getListingAttributeNames(): Array<string>{
         return this.getDefaultSerializationAttributeNames();
     }
 
     /**
-     * @returns Array<string> the default attribute names to be used for keyword search
+     * Returns the default attribute names to be used for keyword search. Defaults to all string attributes which are not hidden and are not identifiers.
+     * @returns {Array<string>} attribute names to be used for keyword search
     */
     public getSearchableAttributeNames(): Array<string>{
         const attributeNames = [];
@@ -148,7 +181,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         
         for(const attName in schema.attributes){
             const att = schema.attributes[attName];
-            if( !att.hidden && !att.isIdentifier && att.type === 'string' ){ // TODO: add meta annotation for searchable attributes
+            // TODO: add meta annotation for searchable attributes
+            if( !att.hidden && !att.isIdentifier && att.type === 'string' ){ 
                 attributeNames.push(attName); 
             }
         }
@@ -157,7 +191,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     }
 
     /**
-     * @returns Array<string> the default attribute names that can be used for filtering the records
+     * Returns the default attribute names that can be used for filtering the records. Defaults to all string attributes which are not hidden.
+     * 
+     * @returns {Array<string>} attribute names to be used for keyword search
     */
     public getFilterableAttributeNames(): Array<string>{
         const attributeNames = [];
@@ -181,6 +217,13 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return record.map(record => this.serializeRecord<T>(record, attributes));
     }
 
+    /**
+     * Retrieves an entity by its identifiers.
+     * 
+     * @param identifiers - The identifiers of the entity.
+     * @param attributes - Optional array of attribute names to include in the response.
+     * @returns A promise that resolves to the retrieved entity data.
+     */
     public async get( identifiers: EntityIdentifiersTypeFromSchema<S>, attributes ?: Array<string> ) {
         this.logger.debug(`Called ~ get ~ entityName: ${this.getEntityName()}: `, {identifiers, attributes});
         
@@ -197,11 +240,17 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return entity?.data;
     }
     
-    public async create(data: CreateEntityItemTypeFromSchema<S>) {
-        this.logger.debug(`Called ~ create ~ entityName: ${this.getEntityName()} ~ data:`, data);
+    /**
+     * Creates a new entity.
+     * 
+     * @param payload - The payload for creating the entity.
+     * @returns The created entity.
+     */
+    public async create(payload: CreateEntityItemTypeFromSchema<S>) {
+        this.logger.debug(`Called ~ create ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
 
         const entity =  await createEntity<S>({
-            data: data, 
+            data: payload, 
             entityName: this.getEntityName(),  
         });
 
@@ -211,6 +260,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     // TODO: should be part of some config
     protected delimitersRegex = /(?:&| |,|\+)+/; 
 
+    /**
+     * Retrieves a list of entities based on the provided query.
+     * - If no specific attributes are provided in the query, it defaults to a list of attribute names obtained from `getListingAttributeNames()`.
+     * - If a search term is provided in the query it will split the search term by `/(?:&| |,|\+)+/` Regex and will filter out empty strings.
+     * - If search attributes are not provided in the query, it defaults to a list of searchable attribute names obtained from `getSearchableAttributeNames()`.
+     * 
+     * @param query - The query object containing filters, search keywords, and attributes.
+     * @returns A Promise that resolves to an object containing the list of entities and the original query.
+     */
     public async list(query: EntityQuery<S> = {}) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
@@ -239,7 +297,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         }
         
         const entities =  await listEntity<S>({
-            query: query,
+            query,
             entityName: this.getEntityName(),  
         });
 
@@ -248,6 +306,16 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return {...entities, query};
     }
 
+
+    /**
+     * Executes a query on the entity.
+     * - If no specific attributes are provided in the query, it defaults to a list of attribute names obtained from `getListingAttributeNames()`.
+     * - If a search term is provided in the query it will split the search term by `/(?:&| |,|\+)+/` Regex and will filter out empty strings.
+     *   -- If search attributes are not provided in the query, it defaults to a list of searchable attribute names obtained from `getSearchableAttributeNames()`.
+     *   -- If there are any non-empty search-terms, it will add a filter group to the query based on the search keywords.
+     * @param query - The entity query to execute.
+     * @returns A promise that resolves to the result of the query.
+     */
     public async query(query: EntityQuery<S> ) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
@@ -291,6 +359,13 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
     }
 
+    /**
+     * Updates an entity in the database.
+     *
+     * @param identifiers - The identifiers of the entity to update.
+     * @param data - The updated data for the entity.
+     * @returns The updated entity.
+     */
     public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>) {
         this.logger.debug(`Called ~ update ~ entityName: ${this.getEntityName()} ~ identifiers:, data:`, identifiers, data);
 
@@ -303,6 +378,12 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 	    return updatedEntity;
     }
 
+    /**
+     * Deletes an entity based on the provided identifiers.
+     * 
+     * @param identifiers - The identifiers of the entity to be deleted.
+     * @returns A promise that resolves to the deleted entity.
+     */
     public async delete(identifiers: EntityIdentifiersTypeFromSchema<S>) {
         this.logger.debug(`Called ~ delete ~ entityName: ${this.getEntityName()} ~ identifiers:`, identifiers);
         
@@ -335,6 +416,11 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
 export type TIOSchemaAttribute = ReturnType<typeof entityAttributeToIOSchemaAttribute>;
 export type TIOSchemaAttributesMap<S extends EntitySchema<any, any, any>> = Map<keyof S['attributes'], TIOSchemaAttribute>;
 
+/**
+ * Creates an access patterns schema based on the provided entity schema.
+ * @param schema The entity schema.
+ * @returns A map of access patterns, where the keys are the index names and the values are maps of attribute names and their corresponding schema attributes.
+ */
 export function makeEntityAccessPatternsSchema<S extends EntitySchema<any, any, any>>(schema: S) {
     const accessPatterns = new Map< keyof S['indexes'], TIOSchemaAttributesMap<S> >();
 
@@ -366,6 +452,15 @@ export function makeEntityAccessPatternsSchema<S extends EntitySchema<any, any, 
     return accessPatterns;
 }
 
+/**
+ * Generates the default input and output schemas for various operations of an entity.
+ * 
+ * @template S - The entity schema type.
+ * @template Ops - The type of entity operations.
+ * 
+ * @param schema - The entity schema.
+ * @returns The default input and output schemas for the entity operations.
+ */
 export function makeOpsDefaultIOSchema<
     S extends EntitySchema<any, any, any, Ops>,
     Ops extends TDefaultEntityOperations = TDefaultEntityOperations,

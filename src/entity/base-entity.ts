@@ -14,14 +14,36 @@ import { Narrow, Writable } from "../utils/types";
  * 
  */
 
+/**
+ * Represents an entity attribute.
+ */
 export type EntityAttribute = Attribute & {
-    name ?: string; // Human readable name
+    /**
+     * The human readable name of the attribute.
+     */
+    name?: string;
+    
+    /**
+     * Indicates whether the attribute is an identifier.
+     */
     isIdentifier?: boolean;
-    // field type for the UI
-    validations ?: any[],
+    
+    /**
+     * Validations for the attribute.
+     */
+    validations?: any[];
+    
+    /**
+     * The field type for the UI.
+     */
     fieldType?: 'text' | 'textarea' | 'select' | 'multi-select' | 'date' | 'time' | 'date-time' | 'number' | 'password' | 'radio' | 'checkbox';
 }
 
+/**
+ * Represents the schema for an entity.
+ *
+ * @template Opp - The type of entity operations.
+ */
 export interface EntitySchema<
     A extends string, 
     F extends string, 
@@ -50,8 +72,9 @@ export const DefaultEntityOperations = {
 export type TDefaultEntityOperations = typeof DefaultEntityOperations;
 
 /**
+ * Represents the input schemas for entity operations.
  * Extend this type for additional operations's input-schema types 
- * 
+ * @template Sch - The entity schema type.
  */
 export type TEntityOpsInputSchemas<
 Sch extends EntitySchema<any, any, any>,
@@ -69,6 +92,56 @@ export type CreateEntityOptions<S extends EntitySchema<any, any, any>> = {
     entityConfigurations: EntityConfiguration;
 }
 
+
+/**
+ * This function is used to define an entity schema for DynamoDB based entity, and it used ElectroDB under the hood. 
+ * It takes an object as an argument that describes the model, attributes, and indexes of the entity.
+ * the generic params are only for the type inference, and they are not used in the function.
+ * 
+ * @param schema - The entity schema configuration.
+ * 
+ * @example
+ * import { createEntitySchema } from '@ten24Group/fw24'
+ * 
+ * const entitySchema = createEntitySchema({
+ *   // entity schema configuration
+ * 
+ *  // metadata about the entity
+ *  model: {
+ *      version: '1',
+ *      entity: 'user',             // the name of the entity
+ *      entityNamePlural: 'Users', // used by auto generated UI
+ *      entityOperations: DefaultEntityOperations, // the operations that can be performed on the entity
+ *      service: 'users', // ElectroDB service name [logical group of entities]
+ *  },   
+ * // the attributes for the entity
+ *  attributes: {
+ *     userId: {
+ *      type: 'string',
+ *      required: true,  
+ *      readOnly: true,
+ *      default: () => randomUUID()
+ *    },
+ *   // ... other attributes
+ *  },    
+ * // the access patterns for the entity
+ *  indexes: {
+ *      primary: {
+ *          pk: {
+ *              field: 'primary_pk',    
+ *              composite: ['userId'],
+ *          },
+ *          sk: {
+ *              field: 'primary_sk',
+ *              composite: [],
+ *          }
+ *      },
+ *      // ... other indexes
+ *  },        
+ * } as const );
+ * 
+ * 
+ */
 export function createEntitySchema<
   A extends string,
   F extends string,

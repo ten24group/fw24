@@ -132,6 +132,12 @@ export function makeParenthesesGroup( items: Array<string>, delimiter: string ):
     return items.length > 1 ? '( ' + items.join(` ${delimiter.toUpperCase()} `) + ' )' : items[0];
 }
 
+/**
+ * Converts an entity filter to a filter group.
+ * @param entityFilter The entity filter to convert.
+ * @returns The converted filter group.
+ * @throws Error if the entity filter is invalid.
+ */
 export function entityFilterToFilterGroup<
     A extends string,
     F extends string,
@@ -161,6 +167,13 @@ export function entityFilterToFilterGroup<
     return entityFilterGroup;
 }
 
+/**
+ * Converts the entity filter criteria into a filter expression.
+ * @param entityFilterCriteria The entity filter criteria to convert.
+ * @param attributes The attributes for the filter expression.
+ * @param operations The operations for the filter expression.
+ * @returns The filter expression.
+ */
 export function entityFilterToExpression<
   A extends string,
   F extends string,
@@ -187,6 +200,14 @@ export function entityFilterToExpression<
     return expression;
 }
 
+/**
+ * Converts the given entity filter criteria to an expression.
+ * 
+ * @param filterCriteria - The entity filter criteria to convert.
+ * @param attributes - The attributes for the filter criteria.
+ * @param operations - The operations for the filter criteria.
+ * @returns The expression representing the converted filter criteria.
+ */
 export function entityFilterCriteriaToExpression<
     A extends string,
     F extends string,
@@ -212,6 +233,12 @@ export function entityFilterCriteriaToExpression<
     return expression;
 }
 
+/**
+ * Converts a filter criteria, filter group, or attribute filter to an expression.
+ * @param options - The options object containing the filter criteria, attributes, and operations.
+ * @returns The expression representing the converted filter criteria.
+ * @throws An error if the filter criteria is not a valid EntityFilterGroup, EntityFilterCriteria, or EntityAttributeFilterCriteria.
+ */
 export function filterCriteriaOrFilterGroupOrAttributeFilterToExpression<
     A extends string,
     F extends string,
@@ -244,6 +271,13 @@ export function filterCriteriaOrFilterGroupOrAttributeFilterToExpression<
     throw new Error(`${msg}`);
 }
 
+/**
+ * Converts a filter group object into a filter expression string.
+ * @param filterGroup - The filter group object to convert.
+ * @param attributes - The attributes object.
+ * @param operations - The operations object.
+ * @returns The filter expression string.
+ */
 export function filterGroupToExpression<
   A extends string,
   F extends string,
@@ -320,6 +354,11 @@ export function filterGroupToExpression<
 }
 
 
+/**
+ * Parses the query string parameters from an object into a structured format.
+ * @param queryStringParameters - The query string parameters as an object.
+ * @returns The parsed query string parameters.
+ */
 export function parseUrlQueryStringParameters(queryStringParameters: {[name: string]: string | undefined}){
     logger.info('parseUrlQueryStringParameters', {queryStringParameters});
     
@@ -339,38 +378,51 @@ export function parseUrlQueryStringParameters(queryStringParameters: {[name: str
     return parsed;
 }
 
+/**
+ * Regular expression pattern used to parse value delimiters.
+ * The pattern matches any of the following characters: &, ,, +, ;, :, or ..
+ */
 export const PARSE_VALUE_DELIMITERS = /(?:&|,|\+|;|:|\.)+/;
+/**
+ * An array of filter keys that can have array values.
+ */
 export const FILTER_KEYS_HAVING_ARRAY_VALUES = ['in', 'inList', 'nin', 'notIn', 'notInList', 'contains', 'includes', 'has', 'notContains' ,'notIncludes', 'notHas' ];
 
-export function makeFilterFromQueryStringParam(paramName: string, paramValue: any){
-    logger.info('makeFilterFromQueryStringParam', {paramName, paramValue});
+/**
+ * Converts a query string parameter into a filter object.
+ * @param paramName - The name of the query string parameter.
+ * @param paramValue - The value of the query string parameter.
+ * @returns The formatted filter object.
+ */
+export function makeFilterFromQueryStringParam(paramName: string, paramValue: any) {
+    logger.info('makeFilterFromQueryStringParam', { paramName, paramValue });
 
     /**
      *  { paramName: or,  paramValue: [{ foo: { eq: '1' }}, { foo: { neq: '3' } }] }
-    */
-    if(['and', 'or', 'not'].includes(paramName)){
-        
-        let formattedGroupVal: Array<any> = []; 
-        
-        paramValue.forEach( (item: any) => {
-            Object.keys(item).forEach( (itemKey: string) => {
+     */
+    if (['and', 'or', 'not'].includes(paramName)) {
+
+        let formattedGroupVal: Array<any> = [];
+
+        paramValue.forEach((item: any) => {
+            Object.keys(item).forEach((itemKey: string) => {
                 const itemValue = item[itemKey];
                 const formattedItems = makeFilterFromQueryStringParam(itemKey, itemValue);
                 formattedGroupVal = formattedGroupVal.concat(formattedItems);
             });
         });
 
-        logger.info('makeFilterFromQueryStringParam', {formattedGroupVal});
+        logger.info('makeFilterFromQueryStringParam', { formattedGroupVal });
 
         return formattedGroupVal;
     }
 
     let formattedValues: any = {};
 
-    if(!isObject(paramValue)){
-        paramValue = {'eq': paramValue};
+    if (!isObject(paramValue)) {
+        paramValue = { 'eq': paramValue };
     }
-    
+
     /*
         foo: {
             eq: '1',
@@ -380,13 +432,13 @@ export function makeFilterFromQueryStringParam(paramName: string, paramValue: an
             contains: hj+hjj+yuy7
         }
     */
-    Object.keys(paramValue).forEach( (key) => {
+    Object.keys(paramValue).forEach((key) => {
         const keyVal = paramValue[key];
         let formattedVal = keyVal;
 
         // parse the values to the right types here
-        if( FILTER_KEYS_HAVING_ARRAY_VALUES.includes(key) && typeof keyVal === 'string') {
-            logger.info('Splitting key value', {key, keyVal});
+        if (FILTER_KEYS_HAVING_ARRAY_VALUES.includes(key) && typeof keyVal === 'string') {
+            logger.info('Splitting key value', { key, keyVal });
             formattedVal = keyVal.split(PARSE_VALUE_DELIMITERS);
         }
 
@@ -400,11 +452,16 @@ export function makeFilterFromQueryStringParam(paramName: string, paramValue: an
         ...formattedValues
     }
 
-    logger.info('makeFilterFromQueryStringParam', {formattedItemVal});
+    logger.info('makeFilterFromQueryStringParam', { formattedItemVal });
 
     return formattedItemVal;
 }
 
+/**
+ * Converts query string parameters to a filter group.
+ * @param queryStringParams - The query string parameters.
+ * @returns The formatted filter group.
+ */
 export function queryStringParamsToFilterGroup( queryStringParams: {[name: string]: any}){
     logger.info('queryStringParamsToFilterGroup', {queryStringParams});
 
@@ -436,6 +493,12 @@ export function queryStringParamsToFilterGroup( queryStringParams: {[name: strin
     return formatted;
 }
 
+/**
+ * Creates a filter group for searching keywords in the specified attributes.
+ * @param keywords - An array of keywords to search for.
+ * @param attributeNames - An array of attribute names to search within. Defaults to an empty array.
+ * @returns A filter group object.
+ */
 export function makeFilterGroupForSearchKeywords<E extends EntitySchema<any, any, any>>(
     keywords: Array<string>, 
     attributeNames: Array<string> = []
@@ -457,6 +520,14 @@ export function makeFilterGroupForSearchKeywords<E extends EntitySchema<any, any
     return filterGroup;
 }
 
+/**
+ * Adds a filter group to the entity filter criteria.
+ * 
+ * @template E - The entity schema type.
+ * @param {FilterGroup<E>} filterGroup - The filter group to add.
+ * @param {EntityFilterCriteria<E>} [entityFilterCriteria] - The existing entity filter criteria.
+ * @returns {EntityFilterCriteria<E>} - The updated entity filter criteria.
+ */
 export function addFilterGroupToEntityFilterCriteria<E extends EntitySchema<any, any, any> >(
     filterGroup: FilterGroup<E>,
     entityFilterCriteria?: EntityFilterCriteria<E>, 
@@ -471,9 +542,8 @@ export function addFilterGroupToEntityFilterCriteria<E extends EntitySchema<any,
     newFilterCriteria.and = newFilterCriteria.and || [];  
 
     /** 
-     * *spread out the filters to make sure we have a copy of the original filter criteria 
-     * !maybe a deep copy will make more sense
-     * 
+     * Spread out the filters to make sure we have a copy of the original filter criteria.
+     * Note: A deep copy may make more sense.
      */
 
     if( isAttributeFilter(entityFilterCriteria) || isEntityFilter(entityFilterCriteria) ){

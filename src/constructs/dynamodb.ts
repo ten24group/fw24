@@ -1,12 +1,21 @@
 import { TablePropsV2, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 
-import { FW24Construct, FW24ConstructOutout } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import { createLogger, LogDuration } from "../logging";
 
+/**
+ * Represents the configuration for a DynamoDB table.
+ */
 export interface IDynamoDBConfig {
     table: {
+        /**
+         * The name of the DynamoDB table.
+         */
         name: string;
+        /**
+         * The properties for the DynamoDB table.
+         */
         props: TablePropsV2;
     }
 }
@@ -17,7 +26,7 @@ export class DynamoDBConstruct implements FW24Construct {
     
     name: string = DynamoDBConstruct.name;
     dependencies: string[] = [];
-    output!: FW24ConstructOutout;
+    output!: FW24ConstructOutput;
 
     // default constructor to initialize the stack configuration
     constructor(private dynamoDBConfig: IDynamoDBConfig) {
