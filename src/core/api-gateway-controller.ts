@@ -30,7 +30,6 @@ import { Controller, IControllerConfig } from "../decorators";
  * @param options.name - The name of the API handler.
  * @param options.path - The path for the API handler.
  * @param options.method - The HTTP method for the API handler.
- * @param options.validations - The input validations for the API handler.
  * @param handler - The handler function for the API handler.
  * @returns An object containing the handler function and the controller descriptor.
  */
@@ -39,16 +38,15 @@ export function createApiHandler(
         name: string, 
         path?: string, 
         method?: RouteMethods, 
-        validations ?: InputValidationRule | HttpRequestValidations 
     } & IControllerConfig,
     handler: (event: APIGatewayEvent, context: Context) => Promise<APIGatewayProxyResult>,
 ) {
 
-    const {name, path = '', method = Get, validations, ...controllerConfig} = options;
+    const {name, path = '', method = Get, ...controllerConfig} = options;
 
     @Controller(name, controllerConfig)
     class ControllerDescriptor{
-        @method(path, {validations})
+        @method(path)
         async inlineHandler(){
             // placeholder function
         }

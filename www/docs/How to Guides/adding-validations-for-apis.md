@@ -95,7 +95,7 @@ For methods of type [`POST`, `PATCH`, `PUT`], the validations apply to the reque
     };
 
     @Controller('demo')
-    export class MyController extends APIGatewayController {
+    export class MyController extends APIController {
         
         @Get('/my-endpoint', {
             validations: {

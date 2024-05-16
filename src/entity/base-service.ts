@@ -235,6 +235,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             id: identifiers, 
             attributes,
             entityName: this.getEntityName(),
+            entityService: this,
         });
 
         return entity?.data;
@@ -251,7 +252,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
         const entity =  await createEntity<S>({
             data: payload, 
-            entityName: this.getEntityName(),  
+            entityName: this.getEntityName(),
+            entityService: this,
         });
 
         return entity;
@@ -298,7 +300,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         
         const entities =  await listEntity<S>({
             query,
-            entityName: this.getEntityName(),  
+            entityName: this.getEntityName(), 
+            entityService: this, 
         });
 
         entities.data = this.serializeRecords(entities.data, query.attributes as Array<string>);
@@ -346,7 +349,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
         const entities =  await queryEntity<S>({
             query,
-            entityName: this.getEntityName(),  
+            entityName: this.getEntityName(),
+            entityService: this,
         });
 
         if(!selectAttributes || isEmptyArray(selectAttributes)){
@@ -372,7 +376,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         const updatedEntity =  await updateEntity<S>({
             id: identifiers,
             data: data, 
-            entityName: this.getEntityName(),  
+            entityName: this.getEntityName(),
+            entityService: this,
         });
 
 	    return updatedEntity;
