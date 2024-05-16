@@ -3,16 +3,42 @@ import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
 import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha';
 
 import { Fw24 } from "../core/fw24";
-import { FW24Construct, FW24ConstructOutout } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { Helper } from "../core/helper";
 import { createLogger } from "../logging";
 
+/**
+ * Represents the configuration for the site construct.
+ */
 export interface ISiteConstructConfig {
+    /**
+     * The name of the application.
+     */
     appName: string;
+    
+    /**
+     * The owner of the GitHub repository.
+     */
     githubOwner: string;
+    
+    /**
+     * The name of the GitHub repository.
+     */
     githubRepo: string;
+    
+    /**
+     * The branch of the GitHub repository.
+     */
     githubBranch: string;
+    
+    /**
+     * The name of the secret key.
+     */
     secretKeyName: string;
+    
+    /**
+     * The build specification for the site.
+     */
     buildSpec: any; // BuildSpec.fromObject
 }
 
@@ -22,7 +48,7 @@ export class SiteConstruct implements FW24Construct{
 
     name: string = SiteConstruct.name;
     dependencies: string[] = [];
-    output!: FW24ConstructOutout;
+    output!: FW24ConstructOutput;
 
     // default constructor to initialize the stack configuration
     constructor(private siteConstructConfig: ISiteConstructConfig){

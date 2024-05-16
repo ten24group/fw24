@@ -2,15 +2,29 @@ import { CfnOutput } from "aws-cdk-lib";
 
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
-import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { LogDuration, createLogger } from "../logging";
 import { Architecture, Code, LayerVersion, LayerVersionProps, Runtime } from 'aws-cdk-lib/aws-lambda'
 
 
+/**
+ * Represents the configuration for a layer construct.
+ */
 export interface ILayerConstructConfig {
+    /**
+     * The name of the layer.
+     */
     layerName: string;
+    
+    /**
+     * The directory of the layer.
+     */
     layerDirectory: string;
-    layerProps?: LayerVersionProps
+    
+    /**
+     * Optional properties for the layer version.
+     */
+    layerProps?: LayerVersionProps;
 }
 
 export class LayerConstruct implements FW24Construct {
@@ -19,7 +33,7 @@ export class LayerConstruct implements FW24Construct {
     
     name: string = LayerConstruct.name;
     dependencies: string[] = [];
-    output!: FW24ConstructOutout;
+    output!: FW24ConstructOutput;
 
     constructor(private layerConstructConfig: ILayerConstructConfig[]) {
         Helper.hydrateConfig(layerConstructConfig,'LAYER');

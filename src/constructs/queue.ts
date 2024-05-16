@@ -1,7 +1,7 @@
 import { CfnOutput, Stack } from "aws-cdk-lib";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Helper } from "../core/helper";
-import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 
@@ -12,10 +12,28 @@ import { LogDuration, createLogger } from "../logging";
 import { DynamoDBConstruct } from "./dynamodb";
 import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 
+/**
+ * Represents the configuration for a queue construct.
+ */
 export interface IQueueConstructConfig {
+    /**
+     * The directory where queues are stored.
+     */
     queuesDirectory?: string;
+
+    /**
+     * The properties for the queue.
+     */
     queueProps?: QueueProps;
+
+    /**
+     * The environment configuration for the queue.
+     */
     env?: ILambdaEnvConfig[];
+
+    /**
+     * The properties for the function.
+     */
     functionProps?: NodejsFunctionProps;
 }
 
@@ -25,7 +43,7 @@ export class QueueConstruct implements FW24Construct {
     
     name: string = QueueConstruct.name;
     dependencies: string[] = [DynamoDBConstruct.name];
-    output!: FW24ConstructOutout;
+    output!: FW24ConstructOutput;
 
     mainStack!: Stack;
 

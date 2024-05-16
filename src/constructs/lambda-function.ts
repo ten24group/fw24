@@ -12,35 +12,103 @@ import { Topic } from "aws-cdk-lib/aws-sns";
 import { createLogger, ILogger } from "../logging";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 
+/**
+ * Represents the properties for a Lambda function.
+ */
 export interface LambdaFunctionProps {
+  /**
+   * The entry point for the Lambda function.
+   */
   entry: string;
+
+  /**
+   * The policies to attach to the Lambda function's execution role.
+   */
   policies?: any[];
+
+  /**
+   * The environment variables to set for the Lambda function.
+   */
   environmentVariables?: { [key: string]: string };
+
+  /**
+   * The resource access configuration for the Lambda function.
+   */
   resourceAccess?: IFunctionResourceAccess;
+
+  /**
+   * Indicates whether the Lambda function is allowed to send emails.
+   */
   allowSendEmail?: boolean;
+
+  /**
+   * The number of days to retain the logs for the Lambda function.
+   */
   logRetentionDays?: RetentionDays;
-  logRemovalPolicy?: RemovalPolicy,
-  // timeout in seconds; use this timeout to avoid importing duration class from aws-cdk-lib
+
+  /**
+   * The removal policy for the Lambda function's logs.
+   */
+  logRemovalPolicy?: RemovalPolicy;
+
+  /**
+   * The timeout duration for the Lambda function in seconds.
+   * Use this timeout to avoid importing the duration class from aws-cdk-lib.
+   */
   functionTimeout?: number;
+
+  /**
+   * Additional properties for the Node.js Lambda function.
+   */
   functionProps?: NodejsFunctionProps;
 }
 
+/**
+ * Represents the access permissions for various resources that can be accessed by a function.
+ */
 export interface IFunctionResourceAccess {
+  /**
+   * Access permissions for tables.
+   * Each table can have a name and an optional array of access permissions.
+   * The access permissions can be 'read', 'write', or 'readwrite'.
+   * If no access permissions are specified, the default is 'readwrite'.
+   */
   tables?: Array<{ 
     name: string;
-    access?: string[]; // read, write, readwrite | default is readwrite
+    access?: string[];
   }> | string[];
+
+  /**
+   * Access permissions for buckets.
+   * Each bucket can have a name and an optional array of access permissions.
+   * The access permissions can be 'read', 'write', or 'readwrite'.
+   * If no access permissions are specified, the default is 'readwrite'.
+   */
   buckets?: Array<{ 
     name: string;
-    access?: string[]; // read, write, readwrite | default is readwrite
+    access?: string[];
   }> | string[];
+
+  /**
+   * Access permissions for topics.
+   * Each topic can have a name and an optional array of access permissions.
+   * The access permissions can be 'publish'.
+   * If no access permissions are specified, the default is 'publish'.
+   */
   topics? : Array<{
     name: string;
-    access?: string[]; // publish | default is publish
+    access?: string[];
   }> | string[];
+
+  /**
+   * Access permissions for queues.
+   * Each queue can have a name and an optional array of access permissions.
+   * The access permissions can be 'send', 'receive', or 'delete'.
+   * If no access permissions are specified, the default is 'send'.
+   */
   queues?: Array<{
     name: string;
-    access?: string[]; // send, receive, delete | default is send
+    access?: string[];
   }> | string[];
 }
 

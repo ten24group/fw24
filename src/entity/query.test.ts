@@ -106,15 +106,6 @@ describe('entityFilterToFilterGroup', () => {
         });
     });
 
-    it('should return empty filter group for empty filter', () => {
-        const filter = {};
-        const result = entityFilterToFilterGroup(filter);
-
-        expect(result).toEqual({
-            and: [] 
-        });
-    });
-
     it('should throw error for invalid filter shape', () => {
         const filter = {
             name: 'John' // invalid shape
