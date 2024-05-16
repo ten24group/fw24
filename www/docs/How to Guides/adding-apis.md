@@ -8,7 +8,7 @@ FW24 adheres to the Model-View-Controller (MVC) pattern and prioritizes conventi
 
 ## Simple API handler
 
-Whether you are trying things out or you like to define your APIs individually we have got you covered. To create an API handler FW24 provides you a factory function `createApiHandler` which will return a handler and a descriptor;
+Whether you're experimenting or prefer to define your APIs individually, FW24 has the tools you need. To create an API handler, FW24 offers a factory function called `createApiHandler`. This function returns both a handler and a descriptor for your convenience.
 > both `handler` and the descriptor need to be exported.
 
 ```ts
