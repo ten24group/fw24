@@ -1,6 +1,6 @@
 # BaseEntityController
 
-The `BaseEntityController` class is an abstract class that extends `APIGatewayController`. It serves as a base controller for handling CRUD operations on entities. 
+The `BaseEntityController` class is an abstract class that extends `APIController`. It serves as a base controller for handling CRUD operations on entities. 
 
 ### Constructor
 ```typescript

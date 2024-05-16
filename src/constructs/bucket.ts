@@ -9,25 +9,73 @@ import { IApplicationConfig } from "../interfaces/config";
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { LogDuration, createLogger } from "../logging";
 import { QueueConstruct } from "./queue";
 
+/**
+ * Represents the configuration for a bucket construct.
+ */
 export interface IBucketConstructConfig {
+    /**
+     * The name of the bucket.
+     */
     bucketName: string;
+
+    /**
+     * The removal policy for the bucket.
+     */
     removalPolicy?: any;
+
+    /**
+     * Specifies whether to automatically delete objects in the bucket when the bucket is deleted.
+     */
     autoDeleteObjects?: boolean;
+
+    /**
+     * Specifies whether the bucket allows public read access.
+     */
     publicReadAccess?: boolean;
+
+    /**
+     * The source of the bucket.
+     */
     source?: string;
+
+    /**
+     * The triggers for the bucket.
+     */
     triggers?: IS3TriggerConfig[];
-    bucketProps?: BucketProps
+
+    /**
+     * The properties of the bucket.
+     */
+    bucketProps?: BucketProps;
 }
 
 type S3EventDestination = 'lambda' | 'queue';
+/**
+ * Represents the configuration for an S3 trigger.
+ */
 export interface IS3TriggerConfig {
+    /**
+     * The events that will trigger the S3 trigger.
+     */
     events: EventType[];
+
+    /**
+     * The destination for the S3 trigger.
+     */
     destination: S3EventDestination;
+
+    /**
+     * Optional properties for the Lambda function associated with the S3 trigger.
+     */
     functionProps?: LambdaFunctionProps;
+
+    /**
+     * The name of the queue associated with the S3 trigger.
+     */
     queueName?: string;
 }
 
@@ -37,7 +85,7 @@ export class BucketConstruct implements FW24Construct {
 
     name: string = BucketConstruct.name;
     dependencies: string[] = [QueueConstruct.name];
-    output!: FW24ConstructOutout;
+    output!: FW24ConstructOutput;
 
     appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;

@@ -34,7 +34,14 @@ interface QueueLambdaFunctionProps {
   subscriptions?: IQueueSubscriptions
 }
 
+/**
+ * Represents the subscriptions for a queue.
+ */
 export interface IQueueSubscriptions {
+  /**
+   * An array of topics with their corresponding filters.
+   * Each topic has a name and an array of filters.
+   */
   topics: Array<{
     name: string;
     filters: string[]; 

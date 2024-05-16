@@ -13,12 +13,12 @@ export interface FW24Construct {
     fw24: Fw24;
     construct(): Promise<void>;
     // outputs from the stack that can be used by other stacks
-    // cocnvension for output is to use the resource and name as the key
+    // convention for output is to use the resource and name as the key
     // e.g. output: bucket.[bucketName] = bucket; function.[functionName] = function
-    output: FW24ConstructOutout;
+    output: FW24ConstructOutput;
 }
 
-export interface FW24ConstructOutout extends Record<string, any>{
+export interface FW24ConstructOutput extends Record<string, any>{
     [OutputType.FUNCTION]: Record<string,NodejsFunction>;
     [OutputType.BUCKET]: Record<string,Bucket>;
     [OutputType.QUEUE]: Record<string,Queue>;

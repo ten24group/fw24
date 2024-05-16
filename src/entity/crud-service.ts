@@ -48,14 +48,30 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     // telemetry
 }
 
+/**
+ * Represents the arguments for retrieving an entity.
+ * @template Sch - The entity schema type.
+ * @template OpsSchema - The input schemas for entity operations.
+ */
 export interface GetEntityArgs<
     Sch extends EntitySchema<any, any, any>,
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > extends BaseEntityCrudArgs<Sch> {
+    /**
+     * The ID of the entity to retrieve.
+     */
     id: OpsSchema['get'];
-    attributes ?: Array<string>;
+    /**
+     * Optional array of attributes to include in the retrieved entity.
+     */
+    attributes?: Array<string>;
 }
 
+/**
+ * Retrieves an entity based on the provided options.
+ * @param options - The options for retrieving the entity.
+ * @returns The retrieved entity.
+ */
 export async function getEntity<S extends EntitySchema<any, any, any>>( options: GetEntityArgs<S>){
 
     const { 
@@ -114,12 +130,28 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
     return entity;
 }
 
+/**
+ * Represents the arguments for creating an entity.
+ * @template Sch - The entity schema type.
+ * @template OpsSchema - The input schemas for entity operations.
+ */
 export interface CreateEntityArgs<
     Sch extends EntitySchema<any, any, any>,
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > extends BaseEntityCrudArgs<Sch> {
+    /**
+     * The data for creating the entity.
+     */
     data: OpsSchema['create'];
 }
+
+/**
+ * Creates an entity using the provided options.
+ * 
+ * @param options - The options for creating the entity.
+ * @returns The created entity.
+ * @throws Error if no data is provided for create operation, validation fails, or authorization fails.
+ */
 export async function createEntity<S extends EntitySchema<any, any, any>>(options : CreateEntityArgs<S>) {
     const { 
         data,
@@ -182,14 +214,19 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     return entity;
 }
 
+/**
+ * Represents the arguments for listing entities.
+ * @template Sch - The entity schema type.
+ */
 export interface ListEntityArgs<Sch extends EntitySchema<any, any, any> > extends BaseEntityCrudArgs<Sch> {
     query: EntityQuery<Sch>
 }
+
 /**
- * 
- * @param options 
- * 
- * @returns 
+ * Retrieves a list of entities based on the provided options.
+ *
+ * @param options - The options for listing entities.
+ * @returns A promise that resolves to an array of entities.
  */
 export async function listEntity<S extends EntitySchema<any, any, any>>( options: ListEntityArgs<S>){
 
@@ -245,11 +282,11 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
 export interface QueryEntityArgs<Sch extends EntitySchema<any, any, any>> extends BaseEntityCrudArgs<Sch> {
     query: EntityQuery<Sch>
 }
+
 /**
- * 
- * @param options 
- * 
- * @returns 
+ * Executes a query on the specified entity.
+ * @param options - The options for the query.
+ * @returns A promise that resolves to the result of the query.
  */
 export async function queryEntity<S extends EntitySchema<any, any, any>>( options: QueryEntityArgs<S>){
 
@@ -303,15 +340,37 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>( option
     return entities;
 }
 
+/**
+ * Represents the arguments for updating an entity.
+ * @template Sch - The entity schema type.
+ * @template OpsSchema - The input schemas for entity operations.
+ */
 export interface UpdateEntityArgs<
     Sch extends EntitySchema<any, any, any>,
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > extends BaseEntityCrudArgs<Sch> {
-    id: OpsSchema['get'],
-    data: OpsSchema['update'],
-    conditions?: any // TODO
+    /**
+     * The Identifiers of the entity to update.
+     */
+    id: OpsSchema['get'];
+    /**
+     * The data to update the entity with.
+     */
+    data: OpsSchema['update'];
+    /**
+     * Optional conditions for the update operation.
+     */
+    conditions?: any; // TODO
 }
 
+/**
+ * Updates an entity in the database.
+ * 
+ * @template S - The entity schema type.
+ * @param {UpdateEntityArgs<S>} options - The options for updating the entity.
+ * @returns {Promise<Entity>} - A promise that resolves to the updated entity.
+ * @throws {Error} - If no data is provided for the update operation, or if validation or authorization fails.
+ */
 export async function updateEntity<S extends EntitySchema<any, any, any>>(options : UpdateEntityArgs<S>) {
     const { 
         id,
@@ -377,13 +436,26 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     return entity;
 }
 
+/**
+ * the arguments for deleting an entity.
+ * @template Sch - The entity schema type.
+ * @template OpsSchema - The input schemas for entity operations.
+ */
 export interface DeleteEntityArgs<
     Sch extends EntitySchema<any, any, any>,
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
 > extends BaseEntityCrudArgs<Sch> {
+    /**
+     * The ID of the entity to be deleted.
+     */
     id: OpsSchema['delete'];
 }
 
+/**
+ * Deletes an entity based on the provided options.
+ * @param options - The options for deleting the entity.
+ * @returns The deleted entity.
+ */
 export async function deleteEntity<S extends EntitySchema<any, any, any>>( options: DeleteEntityArgs<S>){
 
     const { 

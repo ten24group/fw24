@@ -14,7 +14,7 @@ import { Helper } from "../core/helper";
 import { createLogger } from "../logging";
 import { LambdaFunction } from "./lambda-function";
 import { Fw24 } from "../core/fw24";
-import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import Mutable from "../types/mutable";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
@@ -27,13 +27,40 @@ import { AuthConstruct } from "./auth";
 import { IControllerConfig } from "../decorators/controller";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 
+/**
+ * Represents the configuration options for an API construct.
+ */
 export interface IAPIConstructConfig {
+    /**
+     * Specifies the CORS configuration for the API.
+     * It can be a boolean value, a single string, or an array of strings.
+     */
     cors?: boolean | string | string[];
+
+    /**
+     * Specifies additional options for the API.
+     */
     apiOptions?: RestApiProps;
+
+    /**
+     * Specifies the directory where the controllers are located.
+     */
     controllersDirectory?: string;
+
+    /**
+     * Specifies the properties for the Node.js function.
+     */
     functionProps?: NodejsFunctionProps;
+
+    /**
+     * Specifies the number of days to retain the API logs.
+     */
     logRetentionDays?: RetentionDays;
-    logRemovalPolicy?: RemovalPolicy
+
+    /**
+     * Specifies the removal policy for the API logs.
+     */
+    logRemovalPolicy?: RemovalPolicy;
 }
 
 export class APIConstruct implements FW24Construct {
@@ -43,7 +70,7 @@ export class APIConstruct implements FW24Construct {
     name: string = APIConstruct.name;
     // array of type of stacks that this stack is dependent on
     dependencies: string[] = [MailerConstruct.name, DynamoDBConstruct.name, AuthConstruct.name, QueueConstruct.name, TopicConstruct.name];
-    output!: FW24ConstructOutout;
+    output!: FW24ConstructOutput;
 
     api!: RestApi;
     mainStack!: Stack;
@@ -114,7 +141,7 @@ export class APIConstruct implements FW24Construct {
         const { handlerClass, filePath, fileName } = controllerInfo;
         const handlerInstance = new handlerClass();
         const controllerName = handlerInstance.controllerName;
-        const controllerConfig = handlerInstance?.controllerConfig;
+        const controllerConfig: IControllerConfig = handlerInstance?.controllerConfig || {};
         controllerInfo.routes = handlerInstance.routes;
 
         this.logger.info(`Registering controller ${controllerName} from ${filePath}/${fileName}`);

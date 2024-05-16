@@ -3,10 +3,13 @@ import { Topic, TopicProps } from 'aws-cdk-lib/aws-sns';
 
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
-import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { LogDuration, createLogger } from "../logging";
 
 
+/**
+ * Represents the configuration for a topic construct.
+ */
 export interface ITopicConstructConfig {
     topicName: string;
     topicProps?: TopicProps;
@@ -18,7 +21,7 @@ export class TopicConstruct implements FW24Construct {
     
     name: string = TopicConstruct.name;
     dependencies: string[] = [];
-    output!: FW24ConstructOutout;
+    output!: FW24ConstructOutput;
 
     constructor(private topicConstructConfig: ITopicConstructConfig[]) {
         Helper.hydrateConfig(topicConstructConfig,'SNS');

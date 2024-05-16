@@ -23,21 +23,30 @@ export type StringLiteralToType<T> = T extends 'string' ? string
     : T extends 'map' ? any 
     : any;
 
-export type ComplexFilterOperatorValue<T> ={
+/**
+ * Represents a complex filter operator value.
+ * @template T - The type of the value.
+ */
+export type ComplexFilterOperatorValue<T> = {
     val: T,
-    // default val type will be literal
-    valType ?: 
-        // the exact value will be used for comparison
-        'literal'       
-        // when the compression is with another property of the same entity [including properties of nested maps(objects) or lists(arrays) ]
-        | 'propRef'     
-        // when the value needs to be evaluated first for example [`now()`, `$currentUser`, `$requestId`]  
-        // TODO: add support for evaluating filter expressions and a dictionary of supported expressions/syntax
-        | 'expression', 
-    // a label to be used by the UI for the filter value; useful for persisted filter-configs
+    /**
+     * The type of the value.
+     * - 'literal': The exact value will be used for comparison.
+     * - 'propRef': The comparison is with another property of the same entity, including properties of nested maps (objects) or lists (arrays).
+     * - 'expression': The value needs to be evaluated first, for example [`now()`, `$currentUser`, `$requestId`].
+     * TODO: Add support for evaluating filter expressions and a dictionary of supported expressions/syntax.
+     */
+    valType?: 'literal' | 'propRef' | 'expression',
+    /**
+     * A label to be used by the UI for the filter value. Useful for persisted filter configurations.
+     */
     label?: any,
 }
 
+/**
+ * Represents a value that can be used as an operator in a filter.
+ * It can be either a single value of type T or a complex filter operator value.
+ */
 export type FilterOperatorValue<T> = T |  ComplexFilterOperatorValue<T>;
 
 // TODO: narrow available filters based of the type of the attribute  [string, number, date, boolean, complex etc]
@@ -209,10 +218,34 @@ export type IdAndLabelAndLogicalOp = IdAndLabel & {
     logicalOp?: LogicalOperator,
 }
 
+/**
+ * Represents the filter criteria for a query.
+ * @template T - The type of the filter criteria.
+ * 
+ * @example
+ * { 
+ *   eq: 'value',
+ *   neq: 'value',
+ *   gt: 'value',
+ *   gte: 'value',
+ * }
+ */
 export type FilterCriteria<T> = IdAndLabelAndLogicalOp & {
     [op in keyof FilterOperatorsExtended<T>] ?: FilterOperatorsExtended<StringLiteralToType<T>>[op]
 }
 
+/**
+ * Represents an attribute filter for an entity.
+ * @template E - The entity schema type.
+ * 
+ * @example
+ * {
+ *  attribute: 'name',
+ *  eq: 'value',
+ *  neq: 'value',
+ *  gt: 'value',
+ * }
+ */
 export type AttributeFilter<E extends EntitySchema<any, any, any>> = 
 IdAndLabelAndLogicalOp 
 & FilterCriteria<ValueOf<E['attributes']>['type']>
@@ -220,10 +253,42 @@ IdAndLabelAndLogicalOp
     attribute: keyof E['attributes'] 
 };
 
+/**
+ * Represents a filter for an entity.
+ * @template E - The entity schema type.
+ */
 export type EntityFilter<E extends EntitySchema<any, any, any>> = IdAndLabelAndLogicalOp & {
+    /**
+     * The filter criteria for each attribute of the entity.
+     */
     [ key in keyof E['attributes'] ] ?: FilterCriteria<E['attributes'][key]['type']>
 };
 
+/**
+ * Represents a filter group for querying entities.
+ * @template E - The entity schema type.
+ * 
+ * @example
+ *  {
+ *    and: [
+ *     {
+ *        attribute: 'name',
+ *        eq: 'value',
+ *        neq: 'value',
+ *        gt: 'value',
+ *    },
+ *    {
+ *      or: [{    
+ *        attribute: 'name',
+ *        eq: 'value',
+ *        neq: 'value',
+ *        gt: 'value',
+ *      },
+ *      {...}
+ *     ]
+ *   }
+ * ]}
+ */
 export type FilterGroup<E extends EntitySchema<any, any, any>> = IdAndLabel & {
     [op in LogicalOperator] ?: Array< 
         ExclusiveUnion<
@@ -234,25 +299,53 @@ export type FilterGroup<E extends EntitySchema<any, any, any>> = IdAndLabel & {
     > 
 }
 
+/**
+ * Represents the criteria for filtering entities.
+ * @template E - The entity schema type.
+ */
 export type EntityFilterCriteria<E extends EntitySchema<any, any, any>> = ExclusiveUnion< FilterGroup<E> | EntityFilter<E> >;
 
+/**
+ * Represents the selection of attributes for an entity.
+ * It can be an array of attribute keys or an object with attribute keys as properties.
+ * If an attribute key is present in the object, it indicates that the attribute should be included in the selection.
+ * If the value of the property is `true`, the attribute will be included.
+ * If the value of the property is `false`, the attribute will be excluded.
+ * @template E - The entity schema type.
+ */
 export type EntitySelection<E extends EntitySchema<any, any, any>> = Array<keyof E['attributes']> | {
     [prop in keyof E['attributes']]?: boolean
 }
 
+/**
+ * Represents a query for retrieving entities of type E.
+ */
 export type EntityQuery<E extends EntitySchema<any, any, any>> = {
-    // selections
+    /**
+     * Specifies the attributes to be selected for each entity.
+     */
     attributes?: EntitySelection<E>,
     
+    /**
+     * Specifies the filter criteria for the query.
+     */
     filters?: EntityFilterCriteria<E>,
     
-    // keywords for search can be delimited by [',', ' ', '+']
-    search ?: string | Array<string>,
+    /**
+     * Specifies the search string or an array of search strings.
+     * Keywords for search can be delimited by [',', ' ', '+'].
+     */
+    search?: string | Array<string>,
 
-    // list of the attributes to search for
-    searchAttributes ?: Array<string>,
+    /**
+     * Specifies the list of attributes to search for.
+     */
+    searchAttributes?: Array<string>,
     
-    pagination ?: Pagination,
+    /**
+     * Specifies the pagination settings for the query.
+     */
+    pagination?: Pagination,
 }
 
 export function isComplexFilterValue<T>(payload: any): payload is ComplexFilterOperatorValue<T> {

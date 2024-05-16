@@ -1,6 +1,6 @@
 # APIGateway Controller
 
-The `APIGatewayController` class is a base controller class for handling API Gateway events.
+The `APIController` class is a base controller class for handling API Gateway events.
 
 ### Constructor
 
@@ -84,12 +84,12 @@ private handleResponse(res: APIGatewayProxyResult): APIGatewayProxyResult
 #### CreateHandler
 
 ```typescript
-static CreateHandler( constructorFunc: { new (): APIGatewayController} )
+static CreateHandler( constructorFunc: { new (): APIController} )
 ```
 
 - Creates a new instance of the controller and returns its `LambdaHandler` method.
 - Parameters:
-  - `constructorFunc`: The constructor function of `APIGatewayController`.
+  - `constructorFunc`: The constructor function of `APIController`.
 
 ### Static Properties
 
@@ -104,7 +104,7 @@ static CreateHandler( constructorFunc: { new (): APIGatewayController} )
 To create an instance of the controller:
 
 ```typescript
-const controller = new APIGatewayController();
+const controller = new APIController();
 ```
 
 To handle API Gateway events using the `LambdaHandler` method:
@@ -113,4 +113,4 @@ To handle API Gateway events using the `LambdaHandler` method:
 const response = await controller.LambdaHandler(event, context);
 ```
 
-This documentation provides an overview of the `APIGatewayController` class and its methods for handling API Gateway events.
+This documentation provides an overview of the `APIController` class and its methods for handling API Gateway events.

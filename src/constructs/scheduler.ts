@@ -1,6 +1,6 @@
 import { CfnOutput, Stack, aws_events_targets } from "aws-cdk-lib";
 import { Helper } from "../core/helper";
-import { FW24Construct, FW24ConstructOutout, OutputType } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 
@@ -10,9 +10,23 @@ import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-node
 import { LambdaFunction } from "./lambda-function";
 import { Rule, Schedule } from "aws-cdk-lib/aws-events";
 
+/**
+ * Represents the configuration for the Scheduler construct.
+ */
 export interface ISchedulerConstructConfig {
+    /**
+     * The directory where the tasks are located.
+     */
     tasksDirectory?: string;
+
+    /**
+     * The environment configuration for the Lambda functions.
+     */
     env?: ILambdaEnvConfig[];
+
+    /**
+     * The function properties for the Node.js functions.
+     */
     functionProps?: NodejsFunctionProps;
 }
 
@@ -22,7 +36,7 @@ export class SchedulerConstruct implements FW24Construct {
     
     name: string = SchedulerConstruct.name;
     dependencies: string[] = [];
-    output!: FW24ConstructOutout;
+    output!: FW24ConstructOutput;
 
     mainStack!: Stack;
 

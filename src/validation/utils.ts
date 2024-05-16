@@ -10,7 +10,7 @@ const logger = createLogger('ValidatorUtils');
 export function isValidationRule<T extends unknown>( rule: any): rule is ValidationRule<T> {
     const res = typeof rule === 'object' 
         && rule !== null
-        && Object.keys(rule).every(key => Validation_Keys.includes(key) || 'operations' === key );
+        && Object.keys(rule).every(key => Validation_Keys.includes(key as any) || 'operations' === key );
 
     return res;
 }
@@ -121,6 +121,19 @@ export function isEntityOpsInputValidations<
         &&  Object.keys(validations).every( prop => isArrayOfValidationRule(validations[prop]))
 }
 
+/**
+ * Extracts operation-specific validations from entity validations.
+ * 
+ * @template Sch - The entity schema type.
+ * @template ConditionsMap - The map of validation conditions.
+ * @template Ops - The default entity operations type.
+ * @template OpsInpSch - The entity operations input schemas type.
+ * 
+ * @param {keyof OpsInpSch} operationName - The name of the operation.
+ * @param {EntityValidations<Sch, ConditionsMap, OpsInpSch> | EntityInputValidations<Sch, OpsInpSch>} entityValidations - The entity validations or entity input validations.
+ * 
+ * @returns {{ opValidations: EntityOperationValidation<any, any, ConditionsMap>, conditions: any }} - The extracted operation validations and conditions.
+ */
 export function extractOpValidationFromEntityValidations<
   Sch extends EntitySchema<any, any, any, Ops>, 
   ConditionsMap extends MapOfValidationCondition<any, any>,
@@ -228,6 +241,12 @@ export function extractOpValidationFromEntityValidations<
 	}
 }
 
+/**
+ * Generates a validation error message based on the provided error object and optional overridden error messages.
+ * @param error - The validation error object.
+ * @param overriddenErrorMessages - Optional map of overridden error messages.
+ * @returns The generated validation error message.
+ */
 export function makeValidationErrorMessage(error: ValidationError, overriddenErrorMessages ?: Map<string, string>){
 
     if(error.customMessage){
@@ -261,6 +280,12 @@ export function makeValidationErrorMessage(error: ValidationError, overriddenErr
     return message;
 }
 
+/**
+ * Creates validation message IDs for a given prefix.
+ * @param key - The prefix key.
+ * @param errorMessageIds - An array of existing error message IDs.
+ * @returns An array of new error message IDs with the prefix key.
+ */
 export function makeValidationMessageIdsForPrefix(
     key: string, 
     errorMessageIds: Array<string>,
@@ -270,6 +295,12 @@ export function makeValidationMessageIdsForPrefix(
     return keyIds;
 }
 
+/**
+ * Generates an array of validation error message IDs based on the provided validation name and value.
+ * @param validationName - The name of the validation.
+ * @param validationValue - The value of the validation.
+ * @returns An array of validation error message IDs.
+ */
 export function makeValidationErrorMessageIds(
     validationName: string, 
     validationValue: TValidationValue<any>,
@@ -297,6 +328,11 @@ export function makeValidationErrorMessageIds(
     return ids;
 }
 
+/**
+ * Generates an array of HTTP validation message IDs.
+ * @param options - The options for generating the validation message IDs.
+ * @returns An array of validation message IDs.
+ */
 export function makeHttpValidationMessageIds(
     options: {
         validationType: 'body' | 'param' | 'query' | 'header',
@@ -318,6 +354,14 @@ export function makeHttpValidationMessageIds(
     return errorMessageIds.concat(propIds).map( id => `validation.${id}`);
 }
 
+/**
+ * Generates an array of validation message IDs for a given entity, validation type, property, and error message IDs.
+ * @param entityName - The name of the entity.
+ * @param validationType - The type of validation ('input', 'actor', or 'record').
+ * @param propertyName - The name of the property.
+ * @param errorMessageIds - An array of error message IDs.
+ * @returns An array of validation message IDs.
+ */
 export function makeEntityValidationMessageIds(
     entityName: string,
     validationType: 'input' | 'actor' | 'record', 
