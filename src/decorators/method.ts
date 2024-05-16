@@ -111,3 +111,5 @@ export const Patch = createRouteDecorator("PATCH");
  * @param descriptor The property descriptor.
  */
 export const Options = createRouteDecorator("OPTIONS");
+
+export type RouteMethods = typeof Options | typeof Patch | typeof Delete | typeof Put | typeof Post | typeof Get;

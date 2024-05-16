@@ -8,6 +8,59 @@ import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
 import { isHttpRequestValidationRule, isInputValidationRule } from "../validation/utils";
 import { getCircularReplacer } from "../utils";
+import { Get, RouteMethods } from "../decorators/method";
+import { Controller, IControllerConfig } from "../decorators";
+
+/**
+ * Creates an API handler without defining a class
+ * 
+ * @example
+ * ```typescript
+ * export const { handler, descriptor } = createApiHandler(
+ *  { method: Get, name: 'demo', authorizer: 'NONE' },
+ *   async ( event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult> => {
+ *       return Promise.resolve({
+ *           statusCode: 200,
+ *           body: JSON.stringify({ message: "Hello World!"})
+ *       })
+ *   }
+ * )
+ * ```
+ * @param options - The options for creating the API handler.
+ * @param options.name - The name of the API handler.
+ * @param options.path - The path for the API handler.
+ * @param options.method - The HTTP method for the API handler.
+ * @param options.validations - The input validations for the API handler.
+ * @param handler - The handler function for the API handler.
+ * @returns An object containing the handler function and the controller descriptor.
+ */
+export function createApiHandler( 
+    options: { 
+        name: string, 
+        path?: string, 
+        method?: RouteMethods, 
+        validations ?: InputValidationRule | HttpRequestValidations 
+    } & IControllerConfig,
+    handler: (event: APIGatewayEvent, context: Context) => Promise<APIGatewayProxyResult>,
+) {
+
+    const {name, path = '', method = Get, validations, ...controllerConfig} = options;
+
+    @Controller(name, controllerConfig)
+    class ControllerDescriptor{
+        @method(path, {validations})
+        async inlineHandler(){
+            // placeholder function
+        }
+    }
+
+    Object.defineProperty(handler, 'name', { value: 'handler' });
+    
+    return { 
+        handler, 
+        descriptor: ControllerDescriptor
+    };
+}
 
 /**
  * Base controller class for handling API Gateway events.

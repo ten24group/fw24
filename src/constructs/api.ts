@@ -141,7 +141,7 @@ export class APIConstruct implements FW24Construct {
         const { handlerClass, filePath, fileName } = controllerInfo;
         const handlerInstance = new handlerClass();
         const controllerName = handlerInstance.controllerName;
-        const controllerConfig = handlerInstance?.controllerConfig;
+        const controllerConfig: IControllerConfig = handlerInstance?.controllerConfig || {};
         controllerInfo.routes = handlerInstance.routes;
 
         this.logger.info(`Registering controller ${controllerName} from ${filePath}/${fileName}`);
