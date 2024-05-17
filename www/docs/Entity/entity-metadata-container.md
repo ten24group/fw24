@@ -40,7 +40,7 @@ The `MetadataContainer` class is used to manage entity services and cache them f
 
 ### Usage
 
-```typescript
+```ts
 import { BaseEntityService } from "./base-service";
 
 // Define MetadataContainer instance

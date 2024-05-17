@@ -4,7 +4,7 @@ The `APIController` class is a base controller class for handling API Gateway ev
 
 ### Constructor
 
-```typescript
+```ts
 constructor()
 ```
 
@@ -14,7 +14,7 @@ constructor()
 
 #### LambdaHandler
 
-```typescript
+```ts
 async LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult>
 ```
 
@@ -27,7 +27,7 @@ async LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewa
 
 #### findMatchingRoute
 
-```typescript
+```ts
 private findMatchingRoute(requestData: Request): Route | null
 ```
 
@@ -38,7 +38,7 @@ private findMatchingRoute(requestData: Request): Route | null
 
 #### getRouteFunction
 
-```typescript
+```ts
 private getRouteFunction(route: Route | null): Function
 ```
 
@@ -49,7 +49,7 @@ private getRouteFunction(route: Route | null): Function
 
 #### handleNotFound
 
-```typescript
+```ts
 private handleNotFound(_req: Request): APIGatewayProxyResult
 ```
 
@@ -60,7 +60,7 @@ private handleNotFound(_req: Request): APIGatewayProxyResult
 
 #### handleException
 
-```typescript
+```ts
 private handleException(_req: Request, err: Error): APIGatewayProxyResult
 ```
 
@@ -72,7 +72,7 @@ private handleException(_req: Request, err: Error): APIGatewayProxyResult
 
 #### handleResponse
 
-```typescript
+```ts
 private handleResponse(res: APIGatewayProxyResult): APIGatewayProxyResult
 ```
 
@@ -83,7 +83,7 @@ private handleResponse(res: APIGatewayProxyResult): APIGatewayProxyResult
 
 #### CreateHandler
 
-```typescript
+```ts
 static CreateHandler( constructorFunc: { new (): APIController} )
 ```
 
@@ -103,13 +103,13 @@ static CreateHandler( constructorFunc: { new (): APIController} )
 
 To create an instance of the controller:
 
-```typescript
+```ts
 const controller = new APIController();
 ```
 
 To handle API Gateway events using the `LambdaHandler` method:
 
-```typescript
+```ts
 const response = await controller.LambdaHandler(event, context);
 ```
 

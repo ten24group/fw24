@@ -24,7 +24,7 @@ The `ResponseContext` class implements the `Response` interface and provides met
 
 ## Example Usage
 
-```typescript
+```ts
 import { ResponseContext } from './ResponseContext';
 
 const response = new ResponseContext();

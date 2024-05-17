@@ -3,7 +3,7 @@
 The `SQS` class is responsible for setting up and registering SQS queues and associated Lambda functions.
 
 ## Imports
-```typescript
+```ts
 import { Duration, Stack, CfnOutput } from "aws-cdk-lib";
 import Mutable from "../types/mutable";
 import { readdirSync } from "fs";
@@ -23,7 +23,7 @@ import { IQLambdaEnvConfig } from "../fw24";
 ```
 
 ## Class Definition
-```typescript
+```ts
 export class SQS {
     appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;

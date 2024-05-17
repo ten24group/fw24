@@ -3,14 +3,14 @@
 The `BaseEntityService` class is an abstract class that provides a base implementation for interacting with entities using ElectroDB and CRUD operations. It contains methods for common CRUD operations such as creating, reading, updating, and deleting entities.
 
 ## Import Statements
-```typescript
+```ts
 import { EntityConfiguration, Schema } from "electrodb";
 import { CreateEntityItemTypeFromSchema, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, updateEntity } from "./crud-service";
 ```
 
 ## Class Definition
-```typescript
+```ts
 export abstract class BaseEntityService<S extends Schema<any, any, any>> {
 
     protected entityRepository?: EntityRepositoryTypeFromSchema<S>;

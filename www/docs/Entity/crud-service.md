@@ -65,7 +65,7 @@ The entity CRUD operations rely on the following components and dependencies:
 To use the entity CRUD operations, create instances of the arguments interfaces (`GetEntityArgs`, `CreateEntityArgs`, etc.) with required parameters and call the respective CRUD method (`getEntity`, `createEntity`, etc.) with the options.
 
 ## Example
-```typescript
+```ts
 const getEntityArgs: GetEntityArgs<YourSchema> = { id: entityId, entityName: 'YourEntity', ... };
 const retrievedEntity = await getEntity(getEntityArgs);
 ```

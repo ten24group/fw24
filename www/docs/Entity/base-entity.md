@@ -26,7 +26,7 @@ This function creates an electroDB entity with the provided `schema` and `entity
 - `UpdateEntityItemTypeFromSchema<TSchema>`: Represents the type for updating an entity item from a schema. 
 
 ## Example Usage
-```typescript
+```ts
 import { Entity, EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem } from "electrodb";
 import { BaseEntityService } from "./base-service";
 

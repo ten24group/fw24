@@ -15,7 +15,7 @@ import { Controller, IControllerConfig } from "../decorators";
  * Creates an API handler without defining a class
  * 
  * @example
- * ```typescript
+ * ```ts
  * export const { handler, descriptor } = createApiHandler(
  *  { method: Get, name: 'demo', authorizer: 'NONE' },
  *   async ( event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult> => {

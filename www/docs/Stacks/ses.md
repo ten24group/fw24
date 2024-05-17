@@ -64,7 +64,7 @@ The `SESStack` class is responsible for setting up an AWS CDK stack that include
 
 ## Usage
 
-```typescript
+```ts
 const sesConfig: ISESConfig = {
     domain: 'example.com'
 };

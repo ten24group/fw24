@@ -39,7 +39,7 @@ Creates a new instance of the controller and returns its `LambdaHandler` method.
 
 ## Usage
 
-```typescript
+```ts
 import { SQSController } from "./SQSController";
 
 class MySQSController extends SQSController {

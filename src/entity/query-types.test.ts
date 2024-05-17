@@ -213,7 +213,7 @@ const testFilter: FilterGroup<any> = {
       eq: 'someName',
       between: {
         val: ['122', '126'],
-        label: "Between xxx and yyyy"
+        filterLabel: "Between xxx and yyyy"
       },
     },
     {
@@ -260,7 +260,7 @@ const userFilters: EntityFilterCriteria<User.TUserSchema> = {
       attribute: 'createdAt',
       between: {
         val: ['122', '126'],
-        label: "Between xxx and yyyy"
+        valLabel: "Between xxx and yyyy"
       }
     },
   ],
@@ -305,7 +305,7 @@ const userFilters2: EntityFilterCriteria<User.TUserSchema> = {
       createdAt: {
         between: {
           val: ['122', '126'],
-          label: "Between xxx and yyyy"
+          valLabel: "Between xxx and yyyy"
         }
       }
     },
