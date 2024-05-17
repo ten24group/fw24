@@ -152,12 +152,23 @@ This will add an entity `book.ts` in the `./src/entities/` directory, a service 
 This is where you write your business logic; the `BaseEntityService` provides default implementation for CRUD operations [get, create, update, list, delete, query] and some helpers like `getListingAttributeNames`,  `getSearchableAttributeNames` etc. You can override these and control what the list API return's, and what attributes are searched by default when the client passes sends a keyword-search `?search=awesome+book`.
 
 ```ts
-    import { BaseEntityService } from '@ten24group/fw24';
+    import { BaseEntityService, defaultMetaContainer } from '@ten24group/fw24';
     import { Dynamo } from '../db/[project-name].dynamo.client';
     import { Book } from '../entities/book';
 
     export class Service extends BaseEntityService<Book.BookSchemaType> {
         // your custom code goes here
+        async businessFuncOne(){
+
+            // make sure user service is registered in the container before calling this logic.
+            // the standard code to do that would be in the `initDI()` function of your controller.
+            const userService = defaultMetaContainer.getServiceByEntityName('user');
+
+            const user = await userService.get({'userId': 'aaa-bbb--ccc'});
+
+            // do something with the user 
+
+        }
     }
 
     export const factory = () => {
