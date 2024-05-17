@@ -40,7 +40,7 @@ export type ComplexFilterOperatorValue<T> = {
     /**
      * A label to be used by the UI for the filter value. Useful for persisted filter configurations.
      */
-    label?: any,
+    valLabel?: any,
 }
 
 /**
@@ -210,8 +210,8 @@ export type FilterOperatorsForDynamo<T> = Exclude<FilterOperatorsExtended<T>, 'e
 export const filterOperatorsForDynamo: Array<keyof FilterOperatorsForDynamo<any>>  = allFilterOperators.filter(op => !['endsWith'].includes(op) );
 
 export type IdAndLabel = {
-    id?: string,
-    label?: string,
+    filterId?: string,
+    filterLabel?: string,
 };
 
 export type IdAndLabelAndLogicalOp = IdAndLabel & {
@@ -256,6 +256,24 @@ IdAndLabelAndLogicalOp
 /**
  * Represents a filter for an entity.
  * @template E - The entity schema type.
+ * 
+ * @example
+ * ```ts
+ *   interface UserEntitySchema {
+ *     attributes: {
+ *       id: { type: 'string' },
+ *       age: { type: 'number' },
+ *       name: { type: 'string' },
+ *     };
+ *   }
+ * 
+ * 
+ *   const filter: EntityFilter<UserEntitySchema> = {
+ *     id: { eq: '123' },
+ *     name: { like: 'John', notLike: 'Doe', logicalOp: 'OR' }, // `name like 'John' OR name not like 'Doe'`
+ *     age: { gte: 18 },
+ *   };
+ *  
  */
 export type EntityFilter<E extends EntitySchema<any, any, any>> = IdAndLabelAndLogicalOp & {
     /**
@@ -319,6 +337,36 @@ export type EntitySelection<E extends EntitySchema<any, any, any>> = Array<keyof
 
 /**
  * Represents a query for retrieving entities of type E.
+ * 
+ * @example
+ * 
+ * ```ts
+ * interface UserEntitySchema {
+ *   attributes: {
+ *     name: { type: 'string' };
+ *     age: { type: 'number' };
+ *   };
+ * }
+ * 
+ * type UserQuery = EntityQuery<UserEntitySchema>;
+ * 
+ * const query: UserQuery = {
+ *   attributes: ['name', 'age'], // selection attributes
+ *   filters: {
+ *     name: { like: 'John' },
+ *     age: { gte: 18 },
+ *   },
+ *   search: 'John',
+ *   searchAttributes: ['name'], // searchable attributes
+ *   pagination: {
+ *     cursor: 'xxxxxxxx-yyyyyy-zzzzzzz',
+ *     count: 10,   // number of records to return in the response
+ *     pages: 1,    // default:1; number of the pages to scan for queries when scanning is needed
+ *     limit: 1000, // default:none; number of maximum returns to scan for queries when scanning is needed
+ *     order: 'asc'
+ *   },
+ * };
+ * ```
  */
 export type EntityQuery<E extends EntitySchema<any, any, any>> = {
     /**
@@ -366,7 +414,7 @@ export function isEntityFilter<E extends EntitySchema<any, any, any>>(payload: a
     && !isEmpty(payload)
     && Object.entries(payload)
     // except these things every other key must represent a filter
-    .filter(([k]) => !['id', 'label', 'logicalOp'].includes(k)) 
+    .filter(([k]) => !['filterId', 'filterLabel', 'logicalOp'].includes(k)) 
     .every( ([, v]) => isFilterCriteria(v) )
 }
 

@@ -16,14 +16,14 @@ The `DynamoStack` class is used for creating and managing DynamoDB tables in an 
 
 ## Methods
 ### Constructor
-```typescript
+```ts
 constructor(config: IDynamoConfig)
 ```
 - Initializes a new instance of the `DynamoStack` class with the provided `IDynamoConfig`.
 - Logs a message "DynamoDBTable".
 
 ### `construct(appConfig: IApplicationConfig)`
-```typescript
+```ts
 public construct(appConfig: IApplicationConfig)
 ```
 - Constructs and deploys the DynamoDB table based on the configuration provided.
@@ -35,7 +35,7 @@ public construct(appConfig: IApplicationConfig)
 - Registers the table instance in the global scope with the `appQualifiedTableName`.
 
 ## Usage
-```typescript
+```ts
 import { DynamoStack } from 'path/to/DynamoStack';
 import { IApplicationConfig } from 'path/to/interfaces/config';
 

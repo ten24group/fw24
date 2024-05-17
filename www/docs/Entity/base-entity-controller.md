@@ -3,14 +3,14 @@
 The `BaseEntityController` class is an abstract class that extends `APIController`. It serves as a base controller for handling CRUD operations on entities. 
 
 ### Constructor
-```typescript
+```ts
 constructor(entityName: string)
 ```
 
 - **entityName:** A string representing the name of the entity.
 
 ### Properties
-```typescript
+```ts
 private entityName: any;
 ```
 
@@ -19,13 +19,13 @@ private entityName: any;
 ### Methods
 
 #### initDI()
-```typescript
+```ts
 abstract initDI(): Promise<void>;
 ```
 - Abstract method to initialize dependency injection. 
 
 #### initialize(event: any, context: any)
-```typescript
+```ts
 async initialize(event: any, context: any): Promise<void>
 ```
 - Initializes DI and other setup.
@@ -33,13 +33,13 @@ async initialize(event: any, context: any): Promise<void>
 - **context:** A context object.
 
 #### getEntityService extends BaseEntityService()
-```typescript
+```ts
 public getEntityService<S extends BaseEntityService<Sch>>(): S
 ```
 - Returns the entity service for the entity.
 
 #### create(req: Request, res: Response)
-```typescript
+```ts
 @Get('/create')
 async create(req: Request, res: Response): Promise<void>
 ```
@@ -48,7 +48,7 @@ async create(req: Request, res: Response): Promise<void>
 - **res:** Response object.
 
 #### find(req: Request, res: Response)
-```typescript
+```ts
 @Get('/get/{id}')
 async find(req: Request, res: Response): Promise<void>
 ```
@@ -57,7 +57,7 @@ async find(req: Request, res: Response): Promise<void>
 - **res:** Response object.
 
 #### update(req: Request, res: Response)
-```typescript
+```ts
 @Get('/update/{id}')
 async update(req: Request, res: Response): Promise<void>
 ```
@@ -66,7 +66,7 @@ async update(req: Request, res: Response): Promise<void>
 - **res:** Response object.
 
 #### delete(req: Request, res: Response)
-```typescript
+```ts
 @Get('/delete/{id}')
 async delete(req: Request, res: Response): Promise<void>
 ```
@@ -75,7 +75,7 @@ async delete(req: Request, res: Response): Promise<void>
 - **res:** Response object.
 
 #### list(req: Request, res: Response)
-```typescript
+```ts
 @Get('/list')
 async list(req: Request, res: Response): Promise<void>
 ```

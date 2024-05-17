@@ -24,7 +24,7 @@ export function attributeFilterToExpression<
     
     logger.info('filterToExpression', {filter});
 
-    const { id, label, attribute: prop, logicalOp = 'and', ...filters } = filter;
+    const { filterId: id, filterLabel: label, attribute: prop, logicalOp = 'and', ...filters } = filter;
 
     const attributeRef = attributes[prop as keyof WAttributes];
 
@@ -132,11 +132,42 @@ export function makeParenthesesGroup( items: Array<string>, delimiter: string ):
     return items.length > 1 ? '( ' + items.join(` ${delimiter.toUpperCase()} `) + ' )' : items[0];
 }
 
+
 /**
  * Converts an entity filter to a filter group.
  * @param entityFilter The entity filter to convert.
  * @returns The converted filter group.
  * @throws Error if the entity filter is invalid.
+ * 
+ * @example
+ * 
+ * ```ts
+ * interface UserEntitySchema {
+ *   // rest of the schema stuff...
+ *   attributes: {
+ *     id: { type: 'string' };
+ *     name: { type: 'string' };
+ *     age: { type: 'number' };
+ *   };
+ * }
+ * 
+ * const userFilter: EntityFilter<UserEntitySchema> = {
+ *     id: { eq: '123' },
+ *     name: { like: 'John' },
+ *     age: { gte: 18 },
+ * };
+ * 
+ * const userFilterGroup = entityFilterToFilterGroup(userFilter);
+ * expect(userFilterGroup).to.deep.equal({
+ *     and: [
+ *         { attribute: 'id', eq: '123' },
+ *         { attribute: 'name', like: 'John' },
+ *         { attribute: 'age', gte: 18 },
+ *     ],
+ * });
+ * ```
+ * * 'and' becomes the default logical operator if not specified in the filter.
+ * 
  */
 export function entityFilterToFilterGroup<
     A extends string,
@@ -152,12 +183,14 @@ export function entityFilterToFilterGroup<
     logger.info('entityFilterToFilterGroup', entityFilter);
     
     const entityFilterGroup: FilterGroup<S> = {};
-    const {id, label, logicalOp='and', ...entityPopsFilters} = entityFilter;
+    const {filterId, filterLabel: label, logicalOp='and', ...entityPopsFilters} = entityFilter;
 
-    entityFilterGroup.id = id;
-    entityFilterGroup.label = id;
+    entityFilterGroup.filterId = filterId;
+    entityFilterGroup.filterLabel = label;
     
-    const logicalOpFilters = Object.entries<FilterCriteria<any>>( entityPopsFilters as { [s: string]: FilterCriteria<any>; }).map( ( [ key, val ] ): AttributeFilter<any> => {
+    const logicalOpFilters = Object
+    .entries<FilterCriteria<any>>( entityPopsFilters as { [s: string]: FilterCriteria<any>; })
+    .map( ( [ key, val ] ): AttributeFilter<any> => {
         return {...val, attribute: key };
     });
 
@@ -290,7 +323,7 @@ export function filterGroupToExpression<
     
     logger.info('filterGroupToExpression', {filterGroup});
 
-    const {id, label, and = [], or = [], not = []} = filterGroup;
+    const {filterId: id, filterLabel: label, and = [], or = [], not = []} = filterGroup;
     logger.info('filterGroupToExpression', {and, or, id, label, not});
     const filterGroupFragments: Array<string> = [];
     
@@ -358,6 +391,31 @@ export function filterGroupToExpression<
  * Parses the query string parameters from an object into a structured format.
  * @param queryStringParameters - The query string parameters as an object.
  * @returns The parsed query string parameters.
+ * 
+ * @example
+ * ```ts
+ *  const queryStringParameters = {
+ *      'user.name': 'John',
+ *      'user.age': '30',
+ *      'user.hobbies': 'reading,writing',
+ *      'user.address.city': 'New York',
+ *      'user.address.country': 'USA',
+ *  };
+ *  
+ *  const parsed = parseUrlQueryStringParameters(queryStringParameters);
+ *  
+ *  expect(parsed).to.deep.equal({
+ *      user: {
+ *      name: 'John',
+ *      age: '30',
+ *      hobbies: ['reading', 'writing'],
+ *      address: {
+ *          city: 'New York',
+ *          country: 'USA',
+ *      },
+ *      },
+ *  });
+ * ```
  */
 export function parseUrlQueryStringParameters(queryStringParameters: {[name: string]: string | undefined}){
     logger.info('parseUrlQueryStringParameters', {queryStringParameters});
@@ -457,16 +515,57 @@ export function makeFilterFromQueryStringParam(paramName: string, paramValue: an
     return formattedItemVal;
 }
 
+
 /**
  * Converts query string parameters to a filter group.
  * @param queryStringParams - The query string parameters.
  * @returns The formatted filter group.
+ * @example
+ * ```ts
+ *  const queryStringParams = {
+ *      'and': [
+ *          { 'user.age': { 'gt': '30' } },
+ *          { 'user.hobbies': { 'in': 'reading,writing' } },
+ *      ],
+ *      'or': [
+ *          { 'user.name': { 'eq': 'John' } },
+ *          { 'user.address.city': { 'eq': 'New York' } },
+ *      ],
+ *  };
+ *  
+ *  const filterGroup = queryStringParamsToFilterGroup(queryStringParams);
+ *  
+ *  expect(filterGroup).to.deep.equal({
+ *      filterId: 'queryStringParamsToFilterGroup',
+ *      and: [
+ *          {
+ *              attribute: 'user.age',
+ *              gt: 30,
+ *          },
+ *          {
+ *              attribute: 'user.hobbies',
+ *              in: ['reading', 'writing'],
+ *          },
+ *      ],
+ *      not: [],
+ *      or: [
+ *          {
+ *             attribute: 'user.name',
+ *            eq: 'John',
+ *          },
+ *          {
+ *              attribute: 'user.address.city',
+ *           eq: 'New York',
+ *          },
+ *      ],
+ *  });
+ * ```
  */
 export function queryStringParamsToFilterGroup( queryStringParams: {[name: string]: any}){
     logger.info('queryStringParamsToFilterGroup', {queryStringParams});
 
     const formatted: FilterGroup<any> = {
-        id: 'queryStringParamsToFilterGroup',
+        filterId: 'queryStringParamsToFilterGroup',
         and: [],
         not: [],
         or: [],
@@ -503,10 +602,10 @@ export function makeFilterGroupForSearchKeywords<E extends EntitySchema<any, any
     keywords: Array<string>, 
     attributeNames: Array<string> = []
 ): FilterGroup<E>{
-    logger.info('queryStringParamsToFilterGroup', {keywords, attributeNames});
+    logger.info('makeFilterGroupForSearchKeywords', {keywords, attributeNames});
 
     const filterGroup: FilterGroup<E> = {
-        id: 'keywordSearchFilterGroup',
+        filterId: 'keywordSearchFilterGroup',
         or: [],
     };
 
@@ -536,7 +635,7 @@ export function addFilterGroupToEntityFilterCriteria<E extends EntitySchema<any,
 
     const newFilterCriteria: FilterGroup<E> = isFilterGroup<E>(entityFilterCriteria) 
     ? { ...entityFilterCriteria } 
-    : { id: '_addFilterGroupToEntityFilterCriteria' };
+    : { filterId: '_addFilterGroupToEntityFilterCriteria' };
 
     // make sure it has an `and` group
     newFilterCriteria.and = newFilterCriteria.and || [];  

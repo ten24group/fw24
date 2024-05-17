@@ -114,7 +114,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      * @returns A map containing the custom validation-error-messages.
      * 
      * @example
-     * ```typescript
+     * ```ts
      *  public async getOverriddenEntityValidationErrorMessages() {
      *      return Promise.resolve( new Map<string, string>( 
      *          Object.entries({ 

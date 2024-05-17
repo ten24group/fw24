@@ -3,7 +3,7 @@
 The `Amplify` class is responsible for creating and configuring an Amplify application using AWS CDK. It takes an `IAmplifyConfig` object as a parameter in the constructor and provides a method `construct` to build the Amplify application based on the passed configuration.
 
 ## Imports
-```typescript
+```ts
 import { SecretValue, CfnOutput } from "aws-cdk-lib";
 import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha'
 import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
@@ -13,7 +13,7 @@ import { IAmplifyConfig } from "../interfaces/amplify";
 ```
 
 ### Constructor
-```typescript
+```ts
 constructor(private config: IAmplifyConfig){
     console.log('Amplify stack constructor', config);
     /*
@@ -31,7 +31,7 @@ constructor(private config: IAmplifyConfig){
 - The constructor also includes a comment with a sample CLI command to create a secret using AWS Secrets Manager.
 
 ### construct Method
-```typescript
+```ts
 public construct(appConfig: IApplicationConfig){
     console.log('Amplify construct appConfig, config', appConfig, this.config);
 

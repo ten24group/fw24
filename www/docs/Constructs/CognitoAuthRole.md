@@ -17,7 +17,7 @@ This class represents a custom construct for creating a Cognito authentication r
 3. `props` (Type: `any`): Additional properties required for the Cognito authentication role.
 
 ### Code:
-```typescript
+```ts
 constructor(scope: Construct, id: string, props: any) {
     // Constructor implementation
 }
@@ -25,7 +25,7 @@ constructor(scope: Construct, id: string, props: any) {
 
 ## Methods:
 ### Code:
-```typescript
+```ts
     this.role.addToPolicy(
         new iam.PolicyStatement({
             effect: iam.Effect.ALLOW,
@@ -40,7 +40,7 @@ constructor(scope: Construct, id: string, props: any) {
 ```
 
 ## Usage:
-```typescript
+```ts
 // Creating an instance of CognitoAuthRole
 const cognitoAuthRole = new CognitoAuthRole(this, "MyCognitoAuthRole", {
     identityPool: myIdentityPool,

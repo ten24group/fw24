@@ -6,7 +6,7 @@ The `Helper` class contains a static method `hydrateConfig` used to populate a c
 
 ### hydrateConfig
 
-```typescript
+```ts
 static hydrateConfig<T>(config: T, prefix = "APP")
 ```
 
@@ -29,7 +29,7 @@ For each matching key:
 
 #### Example
 
-```typescript
+```ts
 const myConfig = {};
 Helper.hydrateConfig(myConfig, 'PREFIX');
 ```
