@@ -376,9 +376,9 @@ The Query API retrieves a list of books according to a supplied query. This quer
     ```js
     {
         filters: {
-            author: 'John Doe',
+            authorName: { eq: 'John Doe' },
         },
-        attributes: ['title', 'author'],
+        attributes: ['title', 'authorName'],
         pagination: {
             order: 'desc',
             cursor: 'aaa-bbb-ccc',
