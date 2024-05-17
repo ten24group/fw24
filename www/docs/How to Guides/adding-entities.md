@@ -6,7 +6,7 @@ sidebar_position: 3
 
 An entity symbolizes a unique business object. Unlike a traditional relational database that requires a separate table for each entity, a single DynamoDB table can accommodate countless entities.
 
-## Defining Entity Schema
+## Entity Schema
 
 DynamoDB is schemaless, which means users are responsible for enforcing constraints, constructing indexes, and validating data. This is where the entity-schema becomes indispensable. The schema defines your entity's attributes, operations, access patterns, and more.
 >Fw24 utilizes [ElectroDB](https://electrodb.dev/) internally. [Learn more](https://electrodb.dev/en/modeling/schema/)
