@@ -35,6 +35,25 @@ export class LayerConstruct implements FW24Construct {
     dependencies: string[] = [];
     output!: FW24ConstructOutput;
 
+    /**
+     * Creates a new LayerConstruct instance.
+     * @param layerConstructConfig - The configuration for the LayerConstruct.
+     * 
+     * @example
+     * ```ts
+     * // Detailed usage example
+     * const layerConfig: ILayerConstructConfig[] = [
+     *   {
+     *     layerName: "MyLayer",
+     *     layerDirectory: "/path/to/layer",
+     *     layerProps: {
+     *       // additional layer properties
+     *     }
+     *   }
+     * ];
+     * const layer = new LayerConstruct(layerConfig);
+     * ```
+     */
     constructor(private layerConstructConfig: ILayerConstructConfig[]) {
         Helper.hydrateConfig(layerConstructConfig,'LAYER');
     }

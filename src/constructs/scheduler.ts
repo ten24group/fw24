@@ -30,6 +30,17 @@ export interface ISchedulerConstructConfig {
     functionProps?: NodejsFunctionProps;
 }
 
+/**
+ * @example
+ * ```ts
+ * const schedulerConfig: ISchedulerConstructConfig = {
+ *   tasksDirectory: "./src/tasks",
+ *   // other configuration properties
+ * };
+ * const scheduler = new SchedulerConstruct(schedulerConfig);
+ * await scheduler.construct();
+ * ```
+ */
 export class SchedulerConstruct implements FW24Construct {
     readonly logger = createLogger(SchedulerConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();

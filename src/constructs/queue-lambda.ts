@@ -10,28 +10,64 @@ import { SqsSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import { Fw24 } from "../core/fw24";
 import { ILogger, createLogger } from "../logging";
 
+/**
+ * Represents the properties for a QueueLambdaFunction.
+ */
 interface QueueLambdaFunctionProps {
-  // queue properties
+  /**
+   * The name of the queue.
+   */
   queueName: string;
+
+  /**
+   * The properties for the queue.
+   */
   queueProps?: QueueProps;
-  // define timeouts in seconds to avoid importing Duration class from aws-cdk-lib
-	visibilityTimeoutSeconds?: number;
-	receiveMessageWaitTimeSeconds?: number;
-	// define the retention period in days
-	retentionPeriodDays?: number;
 
-  //SQS event source properties
+  /**
+   * The visibility timeout for the queue in seconds.
+   */
+  visibilityTimeoutSeconds?: number;
+
+  /**
+   * The wait time for receiving messages from the queue in seconds.
+   */
+  receiveMessageWaitTimeSeconds?: number;
+
+  /**
+   * The retention period for the queue in days.
+   */
+  retentionPeriodDays?: number;
+
+  /**
+   * The properties for the SQS event source.
+   */
   sqsEventSourceProps?: {
+    /**
+     * The number of messages to retrieve from the queue in a single batch.
+     */
     batchSize?: number;
-    maxBatchingWindow?: Duration;
-    reportBatchItemFailures?: boolean;
-  }
 
-  // lambda function properties
+    /**
+     * The maximum amount of time to wait before triggering a batch of messages.
+     */
+    maxBatchingWindow?: Duration;
+
+    /**
+     * Whether to report failures for individual batch items.
+     */
+    reportBatchItemFailures?: boolean;
+  };
+
+  /**
+   * The properties for the lambda function.
+   */
   lambdaFunctionProps?: LambdaFunctionProps;
 
-  // queue subscriptions
-  subscriptions?: IQueueSubscriptions
+  /**
+   * The subscriptions for the queue.
+   */
+  subscriptions?: IQueueSubscriptions;
 }
 
 /**
@@ -48,6 +84,9 @@ export interface IQueueSubscriptions {
   }> | string[];
 }
 
+/**
+ * Default properties for the QueueLambdaFunction.
+ */
 const QueueLambdaFunctionPropDefaults : QueueLambdaFunctionProps = {
   queueName: "",
   queueProps: {
@@ -56,6 +95,42 @@ const QueueLambdaFunctionPropDefaults : QueueLambdaFunctionProps = {
   },
 }
 
+/**
+ * @class
+ * @constructor
+ * @param {Construct} scope - The scope in which the construct is defined.
+ * @param {string} id - The logical ID of the construct.
+ * @param {QueueLambdaFunctionProps} queueLambdaProps - The properties for the QueueLambda construct.
+ * @returns {Queue} - The created Queue instance.
+ * 
+ * @example
+ * ```ts
+ * // Create a new QueueLambda instance
+ * const queueLambda = new QueueLambda(scope, 'MyQueueLambda', {
+ *   queueName: 'MyQueue',
+ *   visibilityTimeoutSeconds: 60,
+ *   receiveMessageWaitTimeSeconds: 10,
+ *   retentionPeriodDays: 7,
+ *   queueProps: {
+ *     fifo: true,
+ *     encryption: QueueEncryption.KMS,
+ *   },
+ *   lambdaFunctionProps: {
+ *     runtime: Runtime.NODEJS_14_X,
+ *     handler: 'index.handler',
+ *     code: Code.fromAsset('lambda'),
+ *   },
+ *   sqsEventSourceProps: {
+ *     batchSize: 10,
+ *     maxBatchingWindow: Duration.minutes(1),
+ *     reportBatchItemFailures: false,
+ *   },
+ *   subscriptions: {
+ *     topics: ['MyTopic'],
+ *   },
+ * });
+ * ```
+ */
 export class QueueLambda extends Construct {
   readonly logger ?: ILogger;
 
@@ -90,7 +165,7 @@ export class QueueLambda extends Construct {
       ...props.queueProps,
       ...timeoutProps,
     }
-    
+
     const queue = new Queue(this, id, {
       ...props.queueProps,
     }) as Queue;

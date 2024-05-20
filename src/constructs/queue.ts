@@ -37,6 +37,33 @@ export interface IQueueConstructConfig {
     functionProps?: NodejsFunctionProps;
 }
 
+
+/**
+ * Represents a QueueConstruct that creates and registers queues in the stack.
+ * @implements FW24Construct
+ * @example
+ * ```ts
+ * // Create a new QueueConstruct instance
+ * const queueConfig: IQueueConstructConfig = {
+ *   queuesDirectory: "./src/queues",
+ *   env: [
+ *     { name: "QUEUE_NAME", prefix: "PREFIX_" },
+ *     { name: "QUEUE_URL" }
+ *   ],
+ *   queueProps: {
+ *     fifo: true,
+ *     contentBasedDeduplication: true
+ *   },
+ *   functionProps: {
+ *     memorySize: 512,
+ *     timeout: Duration.seconds(30)
+ *   }
+ * };
+ * const queueConstruct = new QueueConstruct(queueConfig);
+ *
+ * app.use(queueConstruct);
+ * ```
+ */
 export class QueueConstruct implements FW24Construct {
     readonly logger = createLogger(QueueConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
@@ -47,13 +74,18 @@ export class QueueConstruct implements FW24Construct {
 
     mainStack!: Stack;
 
-    // default constructor to initialize the stack configuration
+    /**
+     * Default constructor to initialize the stack configuration.
+     * @param queueConstructConfig The configuration for the QueueConstruct.
+     */
     constructor(private queueConstructConfig: IQueueConstructConfig) {
         this.logger.debug("constructor", queueConstructConfig);
         Helper.hydrateConfig(queueConstructConfig,'SQS');
     }
 
-    // construct method to create the stack
+    /**
+     * Construct method to create the stack.
+     */
     @LogDuration()
     public async construct() {
         // make the main stack available to the class
@@ -83,6 +115,11 @@ export class QueueConstruct implements FW24Construct {
         }
     }
 
+    /**
+     * Retrieves the environment variables from the queue construct configuration.
+     * @param queueConstructConfig The configuration for the QueueConstruct.
+     * @returns The environment variables as an object.
+     */
     private getEnvironmentVariables(queueConstructConfig: IQueueConstructConfig): any {
         const env: any = {};
         for (const envConfig of queueConstructConfig.env || []) {
@@ -94,6 +131,10 @@ export class QueueConstruct implements FW24Construct {
         return env;
     }
 
+    /**
+     * Registers a queue using the provided queue information.
+     * @param queueInfo The information about the queue to be registered.
+     */
     private registerQueue = (queueInfo: HandlerDescriptor) => {
         queueInfo.handlerInstance = new queueInfo.handlerClass();
         this.logger.debug(":::Queue instance: ", queueInfo.fileName, queueInfo.filePath);

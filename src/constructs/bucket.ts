@@ -79,6 +79,42 @@ export interface IS3TriggerConfig {
     queueName?: string;
 }
 
+/**
+ * FW24 Construct to add buckets to your application.
+ * 
+ * @param bucketConstructConfig - The configuration for the bucket construct.
+ * 
+ * @example
+ * const bucketConfig: IBucketConstructConfig[] = [
+ *   {
+ *     bucketName: 'my-bucket',
+ *     removalPolicy: RemovalPolicy.RETAIN,
+ *     autoDeleteObjects: false,
+ *     publicReadAccess: true,
+ *     bucketProps: {
+ *       encryption: BucketEncryption.KMS,
+ *       versioned: true,
+ *     },
+ *     source: '/path/to/source',
+ *     triggers: [
+ *       {
+ *         destination: 'lambda',
+ *         events: [BucketEvent.OBJECT_CREATED],
+ *         functionProps: {
+ *           runtime: Runtime.NODEJS_12_X,
+ *           handler: 'index.handler',
+ *           code: Code.fromAsset('/path/to/lambda'),
+ *         },
+ *       },
+ *     ],
+ *   },
+ * ];
+ * 
+ * const bucket = new BucketConstruct(bucketConfig);
+ * 
+ * app.use(bucket).run();
+ * 
+ */
 export class BucketConstruct implements FW24Construct {
     readonly logger = createLogger(BucketConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
