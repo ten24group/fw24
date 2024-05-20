@@ -43,8 +43,8 @@ export class RequestContext implements Request {
                 return obj;
             }, {});
 
-        } else {
-            DefaultLogger.info(`this.queryStringParameters ${this.queryStringParameters} is not a valid object`);
+        // } else {
+        //     DefaultLogger.info(`this.queryStringParameters ${this.queryStringParameters} is not a valid object`);
         }
 
         // Check for Debug-mode

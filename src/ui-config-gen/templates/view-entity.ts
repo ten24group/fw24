@@ -1,6 +1,6 @@
 import {  Schema } from "electrodb";
 import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
-import { camelCase } from "../../utils";
+import { camelCase, pascalCase } from "../../utils";
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
     options: {
@@ -13,9 +13,10 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     const{ entityName, properties } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
+    const entityNamePascalCase = pascalCase(entityName);
     
     let config = {
-        pageTitle:  `${entityName} Details`,
+        pageTitle:  `${entityNamePascalCase} Details`,
         pageType:   'details',
         breadcrums: [],
         pageHeaderActions: [
