@@ -1,5 +1,5 @@
 
-# SiteConstruct
+# Site
 
 ## Introduction
 
