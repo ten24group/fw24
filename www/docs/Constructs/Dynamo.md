@@ -1,5 +1,5 @@
 
-# DynamoDBConstruct
+# DynamoDB
 
 ## Introduction
 
