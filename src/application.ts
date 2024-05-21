@@ -66,7 +66,7 @@ export class Application {
     }
 
     @LogDuration()
-    public run() {
+    public async run() {
         this.logger.info("Running fw24 infrastructure...");
 
         // build fw24 layer
@@ -86,9 +86,9 @@ export class Application {
             uiConfigGen.run();
         }
 
-        this.constructAllResources().then(() => {
-            console.log('All construct resource creation completed');
-        });
+        await this.constructAllResources()
+        
+        console.log('All construct resource creation completed');
     }
     
 
