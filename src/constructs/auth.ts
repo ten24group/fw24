@@ -135,7 +135,17 @@ export class AuthConstruct implements FW24Construct {
 
     mainStack!: Stack;
     
-    // default constructor to initialize the stack configuration
+    /**
+     * Create a new AuthConstruct.
+     * @param authConstructConfig - The configuration object for the Auth construct.
+     * @example
+     * // Create a new instance of the Auth class
+     * const authConfig: IAuthConstructConfig = {
+     *   // Provide the necessary configuration options
+     *   // ...
+     * };
+     * const auth = new Auth(authConfig);
+     */
     constructor(private authConstructConfig: IAuthConstructConfig) {
         Helper.hydrateConfig(authConstructConfig,'COGNITO');
     }

@@ -20,6 +20,29 @@ export interface IDynamoDBConfig {
     }
 }
 
+/**
+ * @param dynamoDBConfig The configuration object for DynamoDB.
+ * @example
+ * ```ts
+ * 
+ * const dynamoDBConfig: IDynamoDBConfig = {
+ *   table: {
+ *     name: 'myTable',
+ *     props: {
+ *       partitionKey: { name: 'id', type: 'STRING' },
+ *       sortKey: { name: 'timestamp', type: 'NUMBER' },
+ *       billingMode: 'PAY_PER_REQUEST',
+ *       removalPolicy: cdk.RemovalPolicy.DESTROY
+ *     }
+ *   }
+ * };
+ * 
+ * const dynamoDB = new DynamoDBConstruct(dynamoDBConfig);
+ * 
+ * app.use(dynamoDB);
+ * 
+ * ```
+ */
 export class DynamoDBConstruct implements FW24Construct {
     readonly logger = createLogger(DynamoDBConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
@@ -28,7 +51,16 @@ export class DynamoDBConstruct implements FW24Construct {
     dependencies: string[] = [];
     output!: FW24ConstructOutput;
 
-    // default constructor to initialize the stack configuration
+    /**
+     * Constructs a new instance of the DynamoDB class.
+     * @param dynamoDBConfig The configuration object for DynamoDB.
+     * @example
+     * const dynamoDBConfig = {
+     *   region: 'us-west-2',
+     *   tableName: 'myTable'
+     * };
+     * const dynamoDB = new DynamoDB(dynamoDBConfig);
+     */
     constructor(private dynamoDBConfig: IDynamoDBConfig) {
     }
 

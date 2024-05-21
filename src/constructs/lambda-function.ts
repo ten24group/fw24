@@ -112,15 +112,69 @@ export interface IFunctionResourceAccess {
   }> | string[];
 }
 
+
+/**
+ * Represents a Lambda function construct.
+ *
+ * @example
+ * ```ts
+ * // Create a Lambda function with custom properties
+ * const lambdaProps: LambdaFunctionProps = {
+ *   entry: "index.js",
+ *   policies: [
+ *     {
+ *       effect: Effect.ALLOW,
+ *       actions: [
+ *          "s3:GetObject"
+ *       ],
+ *       resources: ["arn:aws:s3:::my-bucket/*"],
+ *     },
+ *   ],
+ *   environmentVariables: {
+ *     MY_ENV_VAR: "my-value",
+ *   },
+ *   resourceAccess: {
+ *     tables: [
+ *       {
+ *         name: "my-table",
+ *         access: ["read", "write"],
+ *       },
+ *     ],
+ *     buckets: ["my-bucket"],
+ *     topics: ["my-topic"],
+ *     queues: ["my-queue"],
+ *   },
+ *   allowSendEmail: true,
+ *   logRetentionDays: RetentionDays.ONE_WEEK,
+ *   logRemovalPolicy: RemovalPolicy.DESTROY,
+ *   functionTimeout: 10,
+ *   functionProps: {
+ *     runtime: Runtime.NODEJS_14_X,
+ *     memorySize: 256,
+ *   },
+ * };
+ *
+ * const lambdaFunction = new LambdaFunction(stack, "MyLambdaFunction", lambdaProps);
+ * 
+ * ```
+ */
 export class LambdaFunction extends Construct {
   
   readonly logger ?: ILogger = createLogger('LambdaFunction');
 
+  /**
+   * Constructs a new instance of the LambdaFunction class.
+   * @param scope - The parent construct.
+   * @param id - The ID of the construct.
+   * @param props - The Lambda function properties.
+   * @returns The Lambda function.
+   */
   constructor(scope: Construct, id: string, props: LambdaFunctionProps) {
     super(scope, id);
 
     const fw24 = Fw24.getInstance();
     
+    // Default properties for the Node.js function
     let defaultProps: NodejsFunctionProps = {
       runtime: Runtime.NODEJS_18_X,
       architecture: Architecture.ARM_64,
@@ -130,7 +184,7 @@ export class LambdaFunction extends Construct {
       ...fw24.getConfig().functionProps,
     };
 
-    // create log group
+    // Create log group if not provided
     let logGroup =  props.functionProps?.logGroup;
     if(!logGroup) {
       let logRetentionDays = props.logRetentionDays || fw24.getConfig().logRetentionDays || 30;
@@ -143,7 +197,7 @@ export class LambdaFunction extends Construct {
     let additionalProps: any = {
       entry: props.entry,
     }
-    // use fw24 layer
+    // Use fw24 layer
     additionalProps.layers = [...(defaultProps?.layers ?? []),...(props.functionProps?.layers ?? []), LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, fw24.get('fw24', 'layer'))];
     additionalProps.bundling = {
       ...defaultProps.bundling,
@@ -156,6 +210,7 @@ export class LambdaFunction extends Construct {
       additionalProps.timeout = Duration.seconds(props.functionTimeout);
     }
 
+    // Create the Node.js function
     const fn = new NodejsFunction(this, id, {
       ...defaultProps, 
       ...props.functionProps,
@@ -167,11 +222,11 @@ export class LambdaFunction extends Construct {
       for (const [key, value] of Object.entries(props.environmentVariables)) {
         let envValue = value;
         let envKey = key;
-        // if key is prefixed with fw24_ access environment variables from fw24 scope
+        // If key is prefixed with fw24_, access environment variables from fw24 scope
         if(value.startsWith('fw24_')){
-          // last part of the key is the environment variable name in fw24 scope
+          // Last part of the key is the environment variable name in fw24 scope
           let fw24Key = key.split('_').pop() || '';
-          // if the key has 3 parts then the second part is the scope name
+          // If the key has 3 parts then the second part is the scope name
           let prefix = key.split('_').length == 3 ? key.split('_')[1] : '';
           envValue = fw24.get(fw24Key,prefix);
           this.logger?.debug(`:GET environment variable from fw24 scope : ${fw24Key} : ${envValue}`, id);
@@ -198,15 +253,15 @@ export class LambdaFunction extends Construct {
       fn.addEnvironment('EMAIL_QUEUE_URL', emailQueue.queueUrl);
     }
 
-    // logic for adding dynamodb table access to the controller
+    // Logic for adding DynamoDB table access to the controller
     props.resourceAccess?.tables?.forEach( ( table: any ) => {
       const tableName = typeof table === 'string' ? table : table.name;
       const access = typeof table === 'string' ? ['readwrite'] : table.access || ['readwrite'];
-      // get the dynamodb table based on the controller config
+      // Get the DynamoDB table based on the controller config
       const tableInstance: TableV2 = fw24.getDynamoTable(tableName);
-      // add the table name to the lambda environment
+      // Add the table name to the lambda environment
       fn.addEnvironment(`${tableName.toUpperCase()}_TABLE`, tableInstance.tableName);
-      // grant the lambda function read write access to the table
+      // Grant the lambda function read write access to the table
       access.forEach( (accessType: string) => {
         switch (accessType) {
           case 'read':
@@ -222,14 +277,14 @@ export class LambdaFunction extends Construct {
       });
     });
 
-    // logic for adding s3 bucket access to the controller
+    // Logic for adding S3 bucket access to the controller
     props.resourceAccess?.buckets?.forEach( ( bucket: any ) => {
       const bucketName = typeof bucket === 'string' ? bucket : bucket.name;
       const access = typeof bucket === 'string' ? ['readwrite'] : bucket.access || ['readwrite'];
 
       const bucketFullName = fw24.getUniqueName(bucketName);
       const bucketInstance: any = Bucket.fromBucketName(this, bucketName+id+'-bucket', bucketFullName);
-      // grant the lambda function access to the bucket
+      // Grant the lambda function access to the bucket
       access.forEach( (accessType: string) => {
         switch (accessType) {
             case 'read':
@@ -243,7 +298,7 @@ export class LambdaFunction extends Construct {
                 break;
         }
       });
-      // add environment variable for the bucket name
+      // Add environment variable for the bucket name
       fn.addEnvironment(`bucket_${bucketName}`, bucketFullName);
     });
 
@@ -254,7 +309,7 @@ export class LambdaFunction extends Construct {
       this.logger?.debug(":GET Queue Name from fw24 scope : ", queueName, " :", fw24.get(queueName, 'queueName'));
       const queueArn = fw24.getArn('sqs', fw24.get(queueName, 'queueName'));
       const queueInstance = Queue.fromQueueArn(this, queueName+id+'-queue', queueArn);
-      // grant the lambda function access to the queue
+      // Grant the lambda function access to the queue
       access.forEach( (accessType: string) => {
         switch (accessType) {
           case 'receive':
@@ -268,18 +323,18 @@ export class LambdaFunction extends Construct {
             break;
         }
       });
-      // add environment variable for the queue url
+      // Add environment variable for the queue url
       fn.addEnvironment(`${queueName}_queueUrl`, queueInstance.queueUrl);
     });
 
-    // add sns topic permission
+    // Add SNS topic permission
     props.resourceAccess?.topics?.forEach( ( topic: any ) => {
       const topicName = typeof topic === 'string' ? topic : topic.name;
       const access = typeof topic === 'string' ? ['publish'] : topic.access || ['publish'];
 
       const topicArn = fw24.getArn('sns', fw24.get(topicName, 'topicName'));
       const topicInstance = Topic.fromTopicArn(this, topicName+id+'-topic', topicArn);
-      // grant the lambda function access to the topic
+      // Grant the lambda function access to the topic
       access.forEach( (accessType: string) => {
         switch (accessType) {
           default:
@@ -287,7 +342,7 @@ export class LambdaFunction extends Construct {
             break;
         }
       });
-      // add environment variable for the topic arn
+      // Add environment variable for the topic arn
       fn.addEnvironment(`${topicName}_topicArn`, topicInstance.topicArn);
     });
 
