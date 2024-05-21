@@ -1,12 +1,21 @@
----
-sidebar_position: 2
----
 
-# Getting Started
+# SiteConstruct
 
-`SiteConstruct` is a robust tool from the FW24 that simplifies the process of deploying static websites using AWS Amplify in your application. This guide will walk you through the process of importing, configuring, and using `SiteConstruct` in your project.
+## Introduction
 
-## Step 1: Importing
+`SiteConstruct` is a powerful tool from the FW24 suite designed to streamline the deployment of static websites using AWS Amplify. It abstracts the complexities of setting up AWS Amplify, allowing developers to focus on building their applications rather than managing infrastructure.
+
+With `SiteConstruct`, you can easily configure and deploy your static websites directly from your GitHub repository. It provides a simple interface to specify your `application name`, `GitHub owner`, `repository`, `branch`, and the `secret key name` for your GitHub authentication token.
+
+Moreover, `SiteConstruct` also allows you to define a `buildSpec` for your website, which outlines the build and test settings for your application. This includes the commands to run during each build phase, the location of build output artifacts, and the directories to cache between builds.
+
+In essence, `SiteConstruct` is a robust tool that simplifies the deployment process, making it an excellent choice for developers looking to deploy static websites on AWS Amplify with minimal hassle.
+
+## Getting Started
+
+This guide will walk you through the process of importing, configuring, and using `SiteConstruct` in your project.
+
+### Step 1: Importing
 
 First things first, let's bring `SiteConstruct` into your project. You can do this by importing it from the FW24 as shown below:
 
@@ -14,7 +23,7 @@ First things first, let's bring `SiteConstruct` into your project. You can do th
 import { SiteConstruct } from '@ten24group/fw24';
 ```
 
-## Step 2: Configuration
+### Step 2: Configuration
 
 Now that `SiteConstruct` is part of your project, it's time to configure it to suit your needs. The configuration involves setting up `appName`, `githubOwner`, `githubRepo`, `githubBranch`, `secretKeyName`, and the `buildSpec` for your website:
 
@@ -64,7 +73,7 @@ In this configuration:
 
 Feel free to adjust these settings to match your application's requirements.
 
-## Step 3: Usages
+### Step 3: Usages
 
 With `SiteConstruct` configured, it's time to put it to work. Here's how you can incorporate it into your application:
 

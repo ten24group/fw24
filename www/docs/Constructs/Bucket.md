@@ -1,12 +1,20 @@
----
-sidebar_position: 2
----
+# BucketConstruct
 
-# Getting Started
+## Introduction
 
-Welcome to the `BucketConstruct` guide! `BucketConstruct` is a powerful tool from the FW24 that simplifies the process of setting up and managing AWS S3 buckets in your application. This guide will walk you through the process of importing, configuring, and using `BucketConstruct` in your project.
+`BucketConstruct` is a robust construct from the FW24 toolkit, designed to simplify the process of integrating AWS S3 buckets into your application.
 
-## Step 1: Importing
+With `BucketConstruct`, you can effortlessly define multiple S3 buckets, manage their permissions (public/private), and associate a bucket with a local directory. This association ensures automatic synchronization of all changes from the local directory to the bucket, providing a seamless data management experience.
+
+One of the standout features of `BucketConstruct` is its ability to add functions that respond to bucket events. This allows you to automate actions based on changes in your S3 buckets, enhancing the reactivity and dynamism of your application.
+
+Whether you're dealing with user uploads, logs, or other types of data, `BucketConstruct` simplifies the task of managing S3 buckets in AWS. It's an invaluable tool that not only streamlines data storage but also boosts the overall efficiency and responsiveness of your application.
+
+## Getting Started
+
+This guide will walk you through the process of importing, configuring, and using `BucketConstruct` in your project.
+
+### Step 1: Importing
 
 First things first, let's bring `BucketConstruct` into your project. You can do this by importing it from the FW24 package as shown below:
 
@@ -14,7 +22,7 @@ First things first, let's bring `BucketConstruct` into your project. You can do 
 import { BucketConstruct } from '@ten24group/fw24';
 ```
 
-## Step 2: Configuration
+### Step 2: Configuration
 
 Now that `BucketConstruct` is part of your project, it's time to configure it to suit your needs. The configuration involves setting up `bucketName`, `removalPolicy`, `autoDeleteObjects`, `publicReadAccess`, `bucketProps`, `source`, and `triggers`:
 
@@ -55,7 +63,7 @@ In this configuration:
 
 Feel free to adjust these settings to match your application's requirements.
 
-## Step 3: Usages
+### Step 3: Usages
 
 With BucketConstruct configured, it's time to put it to work. Here's how you can incorporate it into your application:
 

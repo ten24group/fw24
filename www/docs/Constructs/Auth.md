@@ -1,12 +1,20 @@
----
-sidebar_position: 2
----
+# Auth Construct
 
-# Getting Started
+## Introduction
 
-`AuthConstruct` is a powerful tool from the FW24 that simplifies the process of setting up and managing authentication in AWS. This guide will walk you through the process of importing, configuring, and using `AuthConstruct` in your project.
+`AuthConstruct` is a powerful construct provided by `FW24`, designed to seamlessly integrate authentication capabilities into your application. This construct abstracts the complexities of user authentication, allowing developers to focus on building their application's core functionalities.
 
-## Step 1: Importing
+In the provided code, `AuthConstruct` is used to set up an authentication system. It takes in a configuration object that specifies the authentication details such as user pool, identity pool, and user pool client.
+
+With `AuthConstruct`, you can easily manage user sign-up, sign-in, access control, and even multi-factor authentication. It's a versatile tool that not only enhances the security of your application but also improves the user experience by providing a smooth and secure authentication process.
+
+Whether you're building a small application or an enterprise-level system, `AuthConstruct` can be a valuable addition to your `FW24` toolkit.
+
+## Getting Started
+
+This guide will walk you through the process of importing, configuring, and using `AuthConstruct` in your project.
+
+### Step 1: Importing
 
 First things first, let's bring AuthConstruct into your project. You can do this by importing it from the FW24 as shown below:
 
@@ -14,7 +22,7 @@ First things first, let's bring AuthConstruct into your project. You can do this
 import { AuthConstruct } from '@ten24group/fw24';
 ```
 
-## Step 2: Configuration
+### Step 2: Configuration
 
 Now that `AuthConstruct` is part of your project, it's time to configure it to suit your needs. The configuration involves setting up `userPool`, `identityPool`, `userPoolClient`, and other options:
 
@@ -43,7 +51,7 @@ In this configuration:
 
 Feel free to adjust these settings to match your application's requirements.
 
-## Step 3: Usages
+### Step 3: Usages
 
 With AuthConstruct configured, it's time to put it to work. Here's how you can incorporate it into your application:
 
