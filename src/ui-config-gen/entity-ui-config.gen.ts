@@ -6,6 +6,7 @@ import MakeEntityMenuConfig from './templates/entity-menu';
 import { BaseEntityService, EntitySchema } from '../entity';
 
 import MakeAuthConfig from './templates/auth';
+import MakeDashboardConfig from './templates/dashboard';
 
 
 import {existsSync, mkdirSync, writeFileSync, readdirSync} from "fs";
@@ -17,7 +18,6 @@ import {
 import { Fw24 } from '../core/fw24';
 import { Helper } from '../core/helper';
 import { LogDuration, createLogger } from '../logging';
-import auth from './templates/auth';
 
 export class EntityUIConfigGen{
     readonly logger = createLogger(EntityUIConfigGen.name);
@@ -88,10 +88,11 @@ export class EntityUIConfigGen{
         });
 
         const authEndpoint = Fw24.getInstance().getConfig().authEndpoint ?? 'auth';
-
         const authConfigs = MakeAuthConfig({authEndpoint});
 
-        await this.writeToFiles(menuConfigs, entityConfigs, authConfigs);
+        const dashboardConfig = MakeDashboardConfig();
+
+        await this.writeToFiles(menuConfigs, entityConfigs, authConfigs, dashboardConfig);
     }
 
     @LogDuration()
@@ -168,7 +169,7 @@ export class EntityUIConfigGen{
     }
 
     @LogDuration()
-    async writeToFiles(menuConfig: any, entitiesConfig: any, authConfig: any){
+    async writeToFiles(menuConfig: any, entitiesConfig: any, authConfig: any, dashboardConfig: any){
         this.logger.debug("Called writeToFiles:::::: ");
         const genDirectoryPath = pathResolve('./gen/');
         if (!existsSync(genDirectoryPath)){
@@ -193,6 +194,11 @@ export class EntityUIConfigGen{
         const authConfigFilePath = pathJoin(configDirectoryPath, 'auth.json');
         this.logger.debug(`writing auth-config.. into: ${authConfigFilePath}`,);
         writeFileSync(authConfigFilePath, JSON.stringify(authConfig, null, 2));
+
+        const dashboardConfigFilePath = pathJoin(configDirectoryPath, 'dashboard.json');
+        this.logger.debug(`writing dashboard-config.. into: ${dashboardConfigFilePath}`,);
+        writeFileSync(dashboardConfigFilePath, JSON.stringify(dashboardConfig, null, 2));
+        
     }
 }
 
