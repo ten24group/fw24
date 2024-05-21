@@ -102,7 +102,6 @@ export interface IS3TriggerConfig {
  *         events: [BucketEvent.OBJECT_CREATED],
  *         functionProps: {
  *           runtime: Runtime.NODEJS_12_X,
- *           handler: 'index.handler',
  *           entry: '/path/to/lambda_function',
  *         },
  *       },

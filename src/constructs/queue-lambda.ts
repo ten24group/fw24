@@ -117,7 +117,6 @@ const QueueLambdaFunctionPropDefaults : QueueLambdaFunctionProps = {
  *   },
  *   lambdaFunctionProps: {
  *     runtime: Runtime.NODEJS_14_X,
- *     handler: 'index.handler',
  *     entry: '/path/to/lambda_function',
  *   },
  *   sqsEventSourceProps: {

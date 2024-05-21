@@ -43,7 +43,6 @@ Now that `BucketConstruct` is part of your project, it's time to configure it to
         events: [BucketEvent.OBJECT_CREATED],
         functionProps: {
           runtime: Runtime.NODEJS_12_X,
-          handler: 'index.handler',
           entry: '/path/to/lambda_function',
         },
       },
