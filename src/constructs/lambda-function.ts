@@ -123,9 +123,11 @@ export interface IFunctionResourceAccess {
  *   entry: "index.js",
  *   policies: [
  *     {
- *       Effect: "Allow",
- *       Action: "s3:GetObject",
- *       Resource: "arn:aws:s3:::my-bucket/*",
+ *       effect: Effect.ALLOW,
+ *       actions: [
+ *          "s3:GetObject"
+ *       ],
+ *       resources: ["arn:aws:s3:::my-bucket/*"],
  *     },
  *   ],
  *   environmentVariables: {

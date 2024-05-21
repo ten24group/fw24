@@ -103,7 +103,7 @@ export interface IS3TriggerConfig {
  *         functionProps: {
  *           runtime: Runtime.NODEJS_12_X,
  *           handler: 'index.handler',
- *           code: Code.fromAsset('/path/to/lambda'),
+ *           entry: '/path/to/lambda_function',
  *         },
  *       },
  *     ],

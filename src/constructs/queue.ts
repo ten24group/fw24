@@ -55,8 +55,7 @@ export interface IQueueConstructConfig {
  *     contentBasedDeduplication: true
  *   },
  *   functionProps: {
- *     memorySize: 512,
- *     timeout: Duration.seconds(30)
+ *     memorySize: 512
  *   }
  * };
  * const queueConstruct = new QueueConstruct(queueConfig);

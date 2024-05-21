@@ -23,7 +23,6 @@ Now that `TopicConstruct` is part of your project, it's time to configure it to 
     topicName: 'my-topic',
     topicProps: {
       displayName: 'My Topic',
-      masterKey: 'my-master-key',
     },
   });
 ```

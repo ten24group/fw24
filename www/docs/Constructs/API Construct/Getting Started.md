@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Getting Started
 
-Welcome to the `APIConstruct` guide! `APIConstruct` is a powerful tool from the FW24 that simplifies the process of setting up and managing an API Gateway in AWS. This guide will walk you through the process of importing, configuring, and using `APIConstruct` in your project.
+`APIConstruct` is a powerful tool from the FW24 that simplifies the process of setting up and managing an API Gateway in AWS. This guide will walk you through the process of importing, configuring, and using `APIConstruct` in your project.
 
 ## Step 1: Importing
 

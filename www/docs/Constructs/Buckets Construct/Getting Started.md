@@ -36,7 +36,7 @@ Now that `BucketConstruct` is part of your project, it's time to configure it to
         functionProps: {
           runtime: Runtime.NODEJS_12_X,
           handler: 'index.handler',
-          code: Code.fromAsset('/path/to/lambda'),
+          entry: '/path/to/lambda_function',
         },
       },
     ],

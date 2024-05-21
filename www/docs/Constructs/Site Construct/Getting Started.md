@@ -4,11 +4,11 @@ sidebar_position: 2
 
 # Getting Started
 
-Welcome to the `SiteConstruct` guide! `SiteConstruct` is a robust tool from the FW24 package that simplifies the process of deploying static websites using AWS Amplify in your application. This guide will walk you through the process of importing, configuring, and using `SiteConstruct` in your project.
+`SiteConstruct` is a robust tool from the FW24 that simplifies the process of deploying static websites using AWS Amplify in your application. This guide will walk you through the process of importing, configuring, and using `SiteConstruct` in your project.
 
 ## Step 1: Importing
 
-First things first, let's bring `SiteConstruct` into your project. You can do this by importing it from the FW24 package as shown below:
+First things first, let's bring `SiteConstruct` into your project. You can do this by importing it from the FW24 as shown below:
 
 ```ts
 import { SiteConstruct } from '@ten24group/fw24';
@@ -16,45 +16,51 @@ import { SiteConstruct } from '@ten24group/fw24';
 
 ## Step 2: Configuration
 
-Now that `SiteConstruct` is part of your project, it's time to configure it to suit your needs. The configuration involves setting up `App`, `CustomRule`, `GitHubSourceCodeProvider`, and `ISiteConstructConfig`:
+Now that `SiteConstruct` is part of your project, it's time to configure it to suit your needs. The configuration involves setting up `appName`, `githubOwner`, `githubRepo`, `githubBranch`, `secretKeyName`, and the `buildSpec` for your website:
 
 ```ts
   var site = new SiteConstruct({
-    App: {
-      name: 'my-app',
-      repository: 'https://github.com/user/repo',
-      environmentVariables: {
-        'ENV_VAR_NAME': 'value',
-        // add more environment variables as needed
-      },
-    },
-    CustomRule: [
-      {
-        source: '/<source>',
-        target: '/<target>',
-        status: '302',
-      },
-    ],
-    GitHubSourceCodeProvider: {
-      owner: 'github-user',
-      repository : 'github-repo',
-      oauthToken: cdk.SecretValue.secretsManager('GITHUB_TOKEN'),
-    },
-    ISiteConstructConfig: {
-      env: {
-        name: 'my-env',
-        prefix: 'my-prefix',
-      },
-    },
+    appName: "My App";
+    githubOwner: "my-user";
+    githubRepo: "my-app";
+    githubBranch: "develop";
+    secretKeyName: "my-github-auth-token";
+    buildSpec: {
+        version: 1,
+        frontend: {
+            phases: {
+              preBuild: {
+                commands: [
+                      // this command below will pull the token from AWS secretsmanager and export it into the build process
+                      "export GITHUB_TOKEN=$(aws secretsmanager get-secret-value --secret-id my-github-auth-token --query 'SecretString' --output text)", 
+                      // install the dependencies
+                      "npm install"
+                    ],
+                },
+                build: {
+                    commands: ["npm run build"],
+                },
+            },
+            artifacts: {
+                baseDirectory: "dist",
+                files: ["**/*"],
+            },
+            cache: {
+                paths: ["node_modules/**/*"],
+            },
+        },
+    }
   });
 ```
 
 In this configuration:
 
-- `App` sets the AWS Amplify application that will host your static website. You can specify the name and repository of the application here.
-- `CustomRule` sets the custom rules for the AWS Amplify application, such as redirection rules.
-- `GitHubSourceCodeProvider` sets the source code provider for the AWS Amplify application. It's where AWS Amplify expects to find your website's source code.
-- `ISiteConstructConfig` sets the interface for the configuration of the site construct. It's where you specify the properties of your static website.
+- `appName` sets the AWS Amplify application that will host your static website. You can specify the name and repository of the application here.
+- `githubOwner` is the username of the GitHub account where the repository for your website is located.
+- `githubRepo` is the name of the GitHub repository that contains the code for your website.
+- `githubBranch` is the branch in your GitHub repository that AWS Amplify should use to build and deploy your website.
+- `secretKeyName` is the name of the AWS Secrets Manager secret that contains your GitHub personal access token. AWS Amplify uses this token to access your GitHub repository.
+- `buildSpec` is a configuration object in AWS Amplify that defines the build and test settings for your application. It specifies the commands to run during each build phase (like pre-build, build, and post-build), the location of build output artifacts, and the directories to cache between builds.
 
 Feel free to adjust these settings to match your application's requirements.
 
@@ -66,10 +72,4 @@ With `SiteConstruct` configured, it's time to put it to work. Here's how you can
   app.use(site).run();
 ```
 
-This will add the configured site to your application. You can now manage static websites in your AWS applications using the `SiteConstruct`.
-
-## Step 4: Continuous Integration and Continuous Delivery (CI/CD)
-
-One of the key features of `SiteConstruct` is its ability to leverage AWS Amplify's CI/CD capabilities. This means that whenever you push changes to the source code repository specified in `GitHubSourceCodeProvider`, AWS Amplify will automatically build and deploy your website. This automation ensures that your website is always up-to-date with the latest changes.
-
-In conclusion, `SiteConstruct` provides a streamlined way to manage static websites, making it easier to deploy and host websites in your AWS applications. Whether you're creating a personal blog, a company website, or a portfolio, `SiteConstruct` simplifies the task of managing static websites in AWS. It's an invaluable tool that not only streamlines website deployment but also enhances the overall efficiency and responsiveness of your application, thanks to the CI/CD capabilities of AWS Amplify.
+After the deployment of your application, Amplify establishes necessary hooks into the designated repository. Consequently, any modifications pushed to the specified branch and repository in the configuration will initiate an automatic build and deployment of your website via AWS Amplify. This automated process ensures that your website consistently reflects the most recent updates.

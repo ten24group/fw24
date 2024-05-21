@@ -36,7 +36,7 @@ In this configuration:
 - `domain` sets the domain for the mailer. It's the domain from which the emails will be sent.
 - `sesOptions` sets optional SES options. You can specify additional configuration options for AWS SES here.
 - `templatesDirectory` sets the directory path where the email templates are located. AWS SES will use these templates for sending emails.
-- `queueProps` sets the properties for the queue. If you're using a queue (like AWS SQS) to manage your email sending tasks, you can specify the queue properties here.
+- `queueProps` sets the properties for the queue. To manage your email sending tasks, you can specify the `queue-properties` here.
 
 Feel free to adjust these settings to match your application's requirements.
 

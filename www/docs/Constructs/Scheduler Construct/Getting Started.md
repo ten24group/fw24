@@ -27,7 +27,6 @@ Now that `SchedulerConstruct` is part of your project, it's time to configure it
     },
     functionProps: {
       runtime: lambda.Runtime.NODEJS_14_X,
-      handler: 'index.handler'
     },
   });
 ```
