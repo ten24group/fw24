@@ -7,7 +7,7 @@ The `DynamoDBConstruct` is a part of the FW24 toolkit, designed to simplify the 
 
 name: The name of the DynamoDB table.
 props: The properties for the DynamoDB table, such as partitionKey, sortKey, and billingMode.
-This construct provides a streamlined way to manage DynamoDB tables, making it easier to work with data in your AWS applications. Whether you're storing user data, application logs, or other types of data, `DynamoDBConstruct` simplifies the task of managing DynamoDB tables in AWS. It's an invaluable tool that not only streamlines data storage but also boosts the overall efficiency and responsiveness of your application.
+This construct provides a streamlined way to manage DynamoDB tables, making it easier to work with data in your AWS applications. Whether you're storing user data, application logs, or other types of data, `DynamoDBConstruct` simplifies the task of managing DynamoDB tables in AWS.
 
 ## Getting Started
 

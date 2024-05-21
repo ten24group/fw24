@@ -8,8 +8,6 @@ In the provided code, `AuthConstruct` is used to set up an authentication system
 
 With `AuthConstruct`, you can easily manage user sign-up, sign-in, access control, and even multi-factor authentication. It's a versatile tool that not only enhances the security of your application but also improves the user experience by providing a smooth and secure authentication process.
 
-Whether you're building a small application or an enterprise-level system, `AuthConstruct` can be a valuable addition to your `FW24` toolkit.
-
 ## Getting Started
 
 This guide will walk you through the process of importing, configuring, and using `AuthConstruct` in your project.

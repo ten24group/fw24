@@ -13,7 +13,7 @@ With `LayerConstruct`, you can define a Lambda Layer with its properties. The co
 - `layerDirectory`: This is the directory path where the layer's code resides. It's where AWS Lambda expects to find your layer code.
 - `layerProps`: These are additional properties for the Lambda Layer, such as `compatibleRuntimes` and `compatibleArchitectures`. These properties allow you to specify the runtime that your layer is compatible with and the architectures that your layer supports.
 
-`LayerConstruct` provides a streamlined way to manage Lambda Layers, making it easier to share code and resources across multiple AWS Lambda functions. Whether you're sharing custom libraries, managing dependencies, or sharing data across multiple functions, `LayerConstruct` simplifies the task of managing Lambda Layers in AWS. It's an invaluable tool that not only streamlines code sharing but also enhances the overall efficiency and responsiveness of your application.
+`LayerConstruct` provides a streamlined way to manage Lambda Layers, making it easier to share code and resources across multiple AWS Lambda functions. Whether you're sharing custom libraries, managing dependencies, or sharing data across multiple functions, `LayerConstruct` simplifies the task of managing Lambda Layers in AWS. It's an invaluable tool that not only streamlines code sharing but also enhances the overall efficiency and responsiveness of your application by minimizing the size of your lambda functions.
 
 ## Getting Started
 

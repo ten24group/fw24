@@ -8,7 +8,7 @@ With `BucketConstruct`, you can effortlessly define multiple S3 buckets, manage 
 
 One of the standout features of `BucketConstruct` is its ability to add functions that respond to bucket events. This allows you to automate actions based on changes in your S3 buckets, enhancing the reactivity and dynamism of your application.
 
-Whether you're dealing with user uploads, logs, or other types of data, `BucketConstruct` simplifies the task of managing S3 buckets in AWS. It's an invaluable tool that not only streamlines data storage but also boosts the overall efficiency and responsiveness of your application.
+Whether you're dealing with user uploads, logs, or other types of data, `BucketConstruct` simplifies the task of managing S3 buckets in AWS.
 
 ## Getting Started
 

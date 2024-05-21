@@ -10,10 +10,6 @@ APIConstruct's responsibilities don't end there. It also manages the permissions
 
 APIConstruct leverages the `IAPIConstructConfig` interface to configure the API construct. This interface, defined in the `api.ts` file, includes options for specifying the CORS configuration for the API, additional options for the API, the directory where the controllers are located, the properties for the Node.js function, the number of days to retain the API logs, and the removal policy for the API logs.
 
-By providing a configuration object that adheres to the `IAPIConstructConfig` interface, you can effortlessly customize the behavior of the API construct to align with your specific needs.
-
-In conclusion, APIConstruct is a comprehensive construct that simplifies the process of setting up and managing an API Gateway in AWS. Whether you're building a small application with a few routes or a large application with complex routing and authorization needs, APIConstruct is equipped to handle it all.
-
 ## Getting Started
 
 `APIConstruct` is a powerful tool from the FW24 that simplifies the process of setting up and managing an API Gateway in AWS. This guide will walk you through the process of importing, configuring, and using `APIConstruct` in your project.
