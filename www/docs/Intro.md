@@ -1,16 +1,10 @@
----
-sidebar_position: 1
----
+# Introduction
 
-# Framework 24
-
-FW24 is a rapid application development framework designed specifically for serverless architectures. It abstracts the complexity of AWS CDK constructs, providing users with a familiar and simple MVC-based structure to work with.
+Framework24 (FW24) is a rapid application development framework designed specifically for serverless architectures. It abstracts the complexity of AWS CDK constructs, providing users with a familiar and simple MVC-based structure to work with.
 
 The framework is designed to accelerate the development process, with built-in support for a variety of features that are commonly required in modern web applications.
 
 ## Key features
-
-- ***Emails and Templates***: Built-in support for sending emails using non-blocking queues and support for customizable email templates, facilitating consistent and professional communication.
 
 - ***Command-Line Interface (CLI) Support***: FW24 is equipped with a dedicated command-line interface, `cli24`. This interface streamlines various tasks, including setting up the development environment and generating new sites. It allows developers to execute commands directly from the terminal, making it easier to manage and control the application's development process.
 

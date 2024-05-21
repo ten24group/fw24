@@ -126,13 +126,14 @@ FW24 prefers conventions over configurations and follows a very intuitive direct
 ├── cdk.json
 ├── docs -- CLI generated API docs
 │   └── api
-│       ├── postman-nb9fz6aah9.json
-│       └── swagger-nb9fz6aah9.json
+│       ├── postman-xxx.json
+│       └── swagger-xxx.json
 ├── gen -- auto-generated configs used by the framework internally
 │   └── config
 │       ├── auth.json
 │       ├── entities.json
 │       └── menu.json
+│       └── dashboard.json
 ├── package-lock.json
 ├── package.json
 ├── src

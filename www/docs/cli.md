@@ -98,7 +98,6 @@ Here is a list of available commands:
 ### Documentation
 
 - `list-routes`: Generate a list of API Gateway endpoints and methods for a given project. Use `-p, --projectName <projectName>` to specify the project name.
-- `generate-source-docs`: Generate source file documentation using OpenAPI.
 - `generate-api-docs <projectName>`: Generate API documentation for a `fw24` project.
 
 ### Sample Project
