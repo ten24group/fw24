@@ -1,6 +1,6 @@
 import {  Schema } from "electrodb";
 import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
-import { camelCase } from "../../utils";
+import { camelCase, pascalCase } from "../../utils";
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
     options: {
@@ -14,9 +14,11 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     const{ entityName, properties } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
+    const entityNamePascalCase = pascalCase(entityName);
+
 
     let config = {
-        pageTitle:  `Update ${entityName}`,
+        pageTitle:  `Update ${entityNamePascalCase}`,
         pageType:   'form',
         cardStyle: {
             width: '50%'
@@ -32,12 +34,12 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
             apiConfig: {
                 apiMethod: `PATCH`,
                 responseKey: entityNameCamel,
-                apiUrl: `/${entityNameLower}/`,
+                apiUrl: `/${entityNameLower}`,
             },
             detailApiConfig: {
                 apiMethod: "GET",
                 responseKey: entityNameCamel,
-                apiUrl: `/${entityNameLower}/`,
+                apiUrl: `/${entityNameLower}`,
             },
             formButtons: [ "submit", "cancel" ],
             propertiesConfig: [] as any[],

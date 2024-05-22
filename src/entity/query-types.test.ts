@@ -2,8 +2,10 @@ import { And, Narrow, PrettyPrint } from '../utils/types';
 import { describe, expect, it } from '@jest/globals';
 import { EntityFilterCriteria, EntityQuery, FilterGroup } from './query-types';
 import { randomUUID } from 'crypto';
-import { DefaultEntityOperations, createElectroDBEntity, createEntitySchema } from './base-entity';
+import { DefaultEntityOperations, EntityAttribute, EntitySchema, createElectroDBEntity, createEntitySchema } from './base-entity';
 import { entityFilterCriteriaToExpression, parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
+import { createCustomAttribute } from 'electrodb';
+import { type } from 'os';
 
 namespace User {
     export const createUserSchema = () => createEntitySchema({
@@ -96,6 +98,113 @@ namespace User {
   export const entity = createElectroDBEntity({schema: schema, entityConfigurations: {
     table: 'xxxx'
   }});
+
+  export function createEntityAttribute<A extends EntityAttribute>(att: A): A {
+    return att;
+  }
+
+  export function createEntityModelMeta<M extends EntitySchema<any, any, any>['model']>(model: M): M {
+    return model;
+  }
+
+  export function createEntityAccessPattern<Idx extends EntitySchema<any, any, any>['indexes'][ keyof EntitySchema<any, any, any>['indexes'] ] >(idx: Idx): Idx {
+    return idx;
+  }
+
+  export class BaseEntity {
+
+    protected getModel() {
+      return createEntityModelMeta({
+        entity: this.constructor.name,
+        version: '1',
+        service: `${this.constructor.name}Service`,
+        entityNamePlural: 'Tests', // pluralize `this.constructor.name` use `https://github.com/plurals/pluralize`
+        entityOperations: DefaultEntityOperations,
+      });
+    }
+
+    protected getAttributes() {
+      return {
+        createdAt: createEntityAttribute({
+          type: 'string',
+          required: true,
+          set: () => new Date().toISOString(),
+        }),
+        updatedAt: createEntityAttribute({
+          type: 'string',
+          required: true,
+          readOnly: true,
+          set: () => new Date().toISOString()
+        })
+      } as const
+    }
+
+    protected getAccessPatterns() {
+      return {};
+    }
+
+    public getSchema(){
+      return createEntitySchema({
+        model: this.getModel(),
+        attributes: this.getAttributes(),
+        indexes: this.getAccessPatterns(),
+      });
+    }
+
+  }
+
+  export class TestEntity extends BaseEntity {
+
+    readonly attributes = {
+      id: createEntityAttribute({
+        type: 'string',
+        readOnly: true,
+        isIdentifier: true    
+      }),
+  
+      firstName: createEntityAttribute({
+        type: 'string',
+        required: true,
+      }),
+  
+      lastName: createEntityAttribute({ 
+        type: 'string'
+      })
+    }  as const;
+
+
+    readonly indexes = {
+      default: createEntityAccessPattern({
+          pk: {
+            field: 'pk',
+            composite: ['id'],
+          },
+          sk: {
+            field: 'sk',
+            composite: [],
+          }
+      }),
+    } as const;
+
+    public getAttributes() {
+        return {
+          ...super.getAttributes(),
+          ...this.attributes
+        };
+    }
+
+    public getAccessPatterns(){
+      return {
+        ...super.getAccessPatterns(),
+        ...this.indexes
+      };
+    }
+
+    public test(){
+      const sch = this.getSchema().attributes;
+
+    }
+  }
 }
 
 const testFilter: FilterGroup<any> = {
@@ -104,7 +213,7 @@ const testFilter: FilterGroup<any> = {
       eq: 'someName',
       between: {
         val: ['122', '126'],
-        label: "Between xxx and yyyy"
+        filterLabel: "Between xxx and yyyy"
       },
     },
     {
@@ -151,7 +260,7 @@ const userFilters: EntityFilterCriteria<User.TUserSchema> = {
       attribute: 'createdAt',
       between: {
         val: ['122', '126'],
-        label: "Between xxx and yyyy"
+        valLabel: "Between xxx and yyyy"
       }
     },
   ],
@@ -196,7 +305,7 @@ const userFilters2: EntityFilterCriteria<User.TUserSchema> = {
       createdAt: {
         between: {
           val: ['122', '126'],
-          label: "Between xxx and yyyy"
+          valLabel: "Between xxx and yyyy"
         }
       }
     },

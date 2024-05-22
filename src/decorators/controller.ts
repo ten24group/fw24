@@ -3,33 +3,60 @@ import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { IFunctionResourceAccess } from "../constructs/lambda-function";
 import { RemovalPolicy } from "aws-cdk-lib";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
+import { AuthorizerTypeMetadata } from "./authorizer";
 
+/**
+ * Represents the configuration options for a controller.
+ */
 export interface IControllerConfig {
-	authorizer?: Array<{ 
-		type: string;
-		name?: string;
-		methods?: string[];
-		groups?: string[];
-		default?: boolean;
-		requireRouteInGroupConfig?: boolean;
-	}> | { 
-		type: string;
-		name?: string;
-		methods?: string[];
-		groups?: string[];
-		default?: boolean
-		requireRouteInGroupConfig?: boolean;
-	} | string;
-	// define the resources that the controller need access to
+	/**
+	 * Specifies the authorizer for the controller.
+	 * It can be an array of authorizer objects, a single authorizer object, or a string.
+	 */
+	authorizer?:
+		| Array<AuthorizerTypeMetadata>
+		| AuthorizerTypeMetadata
+		| string;
+
+	/**
+	 * Defines the resources that the controller needs access to.
+	 */
 	resourceAccess?: IFunctionResourceAccess;
+
+	/**
+	 * Specifies the environment configurations for the controller.
+	 */
 	env?: Array<ILambdaEnvConfig>;
-	// timeout in seconds; use this timeout to avoid importing duration class from aws-cdk-lib
+
+	/**
+	 * Specifies the timeout for the controller function in seconds.
+	 * Use this timeout to avoid importing the duration class from aws-cdk-lib.
+	 */
 	functionTimeout?: number;
-	functionProps?: NodejsFunctionProps
+
+	/**
+	 * Specifies additional properties for the controller function.
+	 */
+	functionProps?: NodejsFunctionProps;
+
+	/**
+	 * Specifies the number of days to retain the controller function's logs.
+	 */
 	logRetentionDays?: RetentionDays;
+
+	/**
+	 * Specifies the removal policy for the controller function's logs.
+	 */
 	logRemovalPolicy?: RemovalPolicy;
 }
 
+/**
+ * Decorator function for defining a controller.
+ * 
+ * @param controllerName - The name of the controller.
+ * @param controllerConfig - Optional configuration for the controller.
+ * @returns A class decorator function.
+ */
 export function Controller(controllerName: string, controllerConfig: IControllerConfig = {}) {
 	return function <T extends { new (...args: any[]): {} }>(target: T) {
 		return class extends target {

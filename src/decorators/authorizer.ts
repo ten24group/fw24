@@ -1,6 +1,18 @@
 import { Route } from "../interfaces/route";
 
-export const Authorizer = (authorizationType: { type?: string; name?: string; groups?: string[]; requireRouteInGroupConfig?: boolean } | string) => {
+export type AuthorizerTypeMetadata = { 
+  type?: string; 
+  name?: string; 
+  groups?: string[]; 
+  requireRouteInGroupConfig?: boolean 
+};
+
+/**
+ * Specifies the authorizer for the API-route, it can be a single authorizer-type-metadata-object, or a authorizer-type-name. 
+ * @param authorizationType - The authorization type for the route.
+ * @returns A decorator function that sets the authorization type for the route.
+ */
+export const Authorizer = (authorizationType: AuthorizerTypeMetadata | string) => {
     return function (target: any, methodToDecorate: any) {
       const routes: Record<string, Route> = Reflect.get(target, "routes") || {};
       const route = Object.values(routes).find(

@@ -4,65 +4,149 @@ import { Bucket, BlockPublicAccess, EventType, BucketProps } from 'aws-cdk-lib/a
 import { LambdaDestination, SqsDestination } from 'aws-cdk-lib/aws-s3-notifications';
 import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
 
-import { LambdaFunction, LambdaFunctionProps } from "../constructs/lambda-function";
+import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
 import { IApplicationConfig } from "../interfaces/config";
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-import { IStack } from "../interfaces/stack";
+import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { LogDuration, createLogger } from "../logging";
-import { SQSStack } from "./sqs";
+import { QueueConstruct } from "./queue";
 
-export interface IS3Config {
+/**
+ * Represents the configuration for a bucket construct.
+ */
+export interface IBucketConstructConfig {
+    /**
+     * The name of the bucket.
+     */
     bucketName: string;
+
+    /**
+     * The removal policy for the bucket.
+     */
     removalPolicy?: any;
+
+    /**
+     * Specifies whether to automatically delete objects in the bucket when the bucket is deleted.
+     */
     autoDeleteObjects?: boolean;
+
+    /**
+     * Specifies whether the bucket allows public read access.
+     */
     publicReadAccess?: boolean;
+
+    /**
+     * The source of the bucket.
+     */
     source?: string;
+
+    /**
+     * The triggers for the bucket.
+     */
     triggers?: IS3TriggerConfig[];
-    bucketProps?: BucketProps
+
+    /**
+     * The properties of the bucket.
+     */
+    bucketProps?: BucketProps;
 }
 
 type S3EventDestination = 'lambda' | 'queue';
+/**
+ * Represents the configuration for an S3 trigger.
+ */
 export interface IS3TriggerConfig {
+    /**
+     * The events that will trigger the S3 trigger.
+     */
     events: EventType[];
+
+    /**
+     * The destination for the S3 trigger.
+     */
     destination: S3EventDestination;
+
+    /**
+     * Optional properties for the Lambda function associated with the S3 trigger.
+     */
     functionProps?: LambdaFunctionProps;
+
+    /**
+     * The name of the queue associated with the S3 trigger.
+     */
     queueName?: string;
 }
 
-export class S3Stack implements IStack {
-    readonly logger = createLogger(S3Stack.name);
+/**
+ * FW24 Construct to add buckets to your application.
+ * 
+ * @param bucketConstructConfig - The configuration for the bucket construct.
+ * 
+ * @example
+ * const bucketConfig: IBucketConstructConfig[] = [
+ *   {
+ *     bucketName: 'my-bucket',
+ *     removalPolicy: RemovalPolicy.RETAIN,
+ *     autoDeleteObjects: false,
+ *     publicReadAccess: true,
+ *     bucketProps: {
+ *       encryption: BucketEncryption.KMS,
+ *       versioned: true,
+ *     },
+ *     source: '/path/to/source',
+ *     triggers: [
+ *       {
+ *         destination: 'lambda',
+ *         events: [BucketEvent.OBJECT_CREATED],
+ *         functionProps: {
+ *           runtime: Runtime.NODEJS_12_X,
+ *           entry: '/path/to/lambda_function',
+ *         },
+ *       },
+ *     ],
+ *   },
+ * ];
+ * 
+ * const bucket = new BucketConstruct(bucketConfig);
+ * 
+ * app.use(bucket).run();
+ * 
+ */
+export class BucketConstruct implements FW24Construct {
+    readonly logger = createLogger(BucketConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
 
-    dependencies: string[] = [SQSStack.name];
+    name: string = BucketConstruct.name;
+    dependencies: string[] = [QueueConstruct.name];
+    output!: FW24ConstructOutput;
 
     appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;
 
     // default constructor to initialize the stack configuration
-    constructor(private stackConfig: IS3Config[]) {
-        this.logger.debug("constructor: ");
-        Helper.hydrateConfig(stackConfig,'S3');
+    constructor(private bucketConstructConfig: IBucketConstructConfig[]) {
+        Helper.hydrateConfig(bucketConstructConfig,'S3');
     }
 
     // construct method to create the stack
     public async construct() {
-        this.logger.debug("construct: ");
         // make the main stack available to the class
         this.appConfig = this.fw24.getConfig();
         // get the main stack from the framework
         this.mainStack = this.fw24.getStack("main");
         // create the buckets
-        this.stackConfig.forEach( ( bucketConfig: IS3Config ) => {
+        this.bucketConstructConfig.forEach( ( bucketConfig: IBucketConstructConfig ) => {
             this.createBucket(bucketConfig);
         });
     }
 
     @LogDuration()
-    private createBucket(bucketConfig: IS3Config) {
+    private createBucket(bucketConfig: IBucketConstructConfig) {
         this.logger.debug("Creating bucket: ", bucketConfig.bucketName);
         const bucketName = this.fw24.getUniqueName(bucketConfig.bucketName);
+        this.logger.info("Creating bucket name: ", bucketName);
         var bucketParams: any = {
             bucketName: bucketName,
             removalPolicy: bucketConfig.removalPolicy || RemovalPolicy.DESTROY,
@@ -81,6 +165,7 @@ export class S3Stack implements IStack {
         }
 
         const bucket = new Bucket(this.mainStack, bucketConfig.bucketName + '-bucket', bucketParams);
+        this.fw24.setConstructOutput(this, bucketConfig.bucketName, bucket, OutputType.BUCKET);
 
         if(bucketConfig.publicReadAccess === true){
             bucket.grantPublicAccess();

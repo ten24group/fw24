@@ -1,32 +1,15 @@
-# Framework24 Core
+# Framework24
 
-
-
-## Build Layer & Deploy
-
-Use esbuild to compile the JavaScript files for the Layer, deploy the Layer with CDK
+A modern, serverless, framework to launch software products quickly and scale seamlessly
 
 ```shell
-npm run release:layer -- --profile=<YOUR PROFILE>
+npx @ten24group/cli24 create myapp
 ```
-
-## Use Framework24
-
-Install the package using:
 
 ```shell
-npm i @ten24group/fw24
+npx @ten24group/cli24 generate-sample-project fw24sample
 ```
 
+Framework24 (FW24) is a rapid application development framework designed specifically for serverless architectures. It abstracts the complexity of AWS CDK constructs, providing users with a familiar and simple MVC-based structure to work with.
 
-## Build Package for development
-
-Use `tsc` to create the files for the package when using `npm install`
-
-```shell
-npm run build:fw24
-```
-
-
-
-Reference: [Creating Lambda Layers with TypeScript and CDK - The Right Way](https://www.shawntorsitano.com/2022/06/19/creating-lambda-layers-with-typescript-and-cdk-the-right-way/)
+The framework is designed to accelerate the development process, with built-in support for a variety of features that are commonly required in modern web applications.

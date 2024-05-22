@@ -55,7 +55,7 @@ export type OpValidatorOptions<
 > = {
     readonly operationName: OpName,
     readonly entityName: Sch['model']['entity'],
-    readonly entityValidations?: EntityValidations<Sch, ConditionsMap, OpsInpSch> | EntityOpsInputValidations<Sch, OpsInpSch>,
+    readonly entityValidations?: EntityValidations<Sch, ConditionsMap, OpsInpSch> | EntityInputValidations<Sch, OpsInpSch>,
     readonly input?: InputType,
     readonly actor?: Actor,
     readonly record?: RecordType, 
@@ -122,19 +122,47 @@ export type RecordType = {
 }
 
 // export type TValidationValue<T = unknown > = T;
+/**
+ * Represents a validation value that can be either of type T or a complex validation value.
+ * @template T - The type of the validation value.
+ */
 export type TValidationValue<T > = T | TComplexValidationValue<T>;
 
+/**
+ * Represents a complex validation value with an optional message or message ID.
+ * @template T - The type of the value being validated.
+ */
 export type TComplexValidationValueWithMessage<T> = {
     value: T,
     message?: string,
     messageId?: string, // Optional error-message-id, that is supposed to be used by error message translators
 }
+/**
+ * Represents a complex validation value with a validator function.
+ * @template T The type of the input value to be validated.
+ */
 export type TComplexValidationValueWithValidator<T> = {
+    /**
+     * The validator function that performs the validation on the input value.
+     * @param inputValue The input value to be validated.
+     * @param ctx An optional context object that can be used during validation.
+     * @returns A promise that resolves to a TestValidationResult.
+     */
     validator: (inputValue: T, ctx?: any) => Promise<TestValidationResult>,
-    messageId?: string, // Optional error-message-id, that is supposed to be used by error message translators
+    /**
+     * An optional error message ID that is supposed to be used by error message translators.
+     */
+    messageId?: string,
+    /**
+     * An optional error message that provides additional information about the validation failure.
+     */
     message?: string,
 }
 
+/**
+ * Represents a complex validation value that can either have a custom error message or a custom validator function.
+ * @template T - The type of the value being validated.
+ */
 export type TComplexValidationValue<T> = TComplexValidationValueWithMessage<T> | TComplexValidationValueWithValidator<T>
 
 export type Validations<T> = {
@@ -155,27 +183,58 @@ export type Validations<T> = {
     readonly 'custom' ?: (inputValue: T, ctx?: any) => boolean | Promise<boolean>,
 }
 
-export const Validation_Keys = [
+export const Validation_Keys: Array<keyof Validations<any>> = [
     'minLength', 'maxLength', 'required', 'pattern', 'datatype', 'unique', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'inList', 'notInList', 'custom'
 ];
 
+/**
+ * Represents a validation rule for a specific type.
+ * @template T - The type to be validated.
+ */
 export type ValidationRule<T> = {
     // TODO: narrow validation rules by type like ['string', 'number', 'boolean' etc]
     readonly [V in keyof Validations<T>] ?: TValidationValue<Validations<T>[V]>;
 }
 
+/**
+ * Represents a complex validation rule.
+ * @template T The type of value being validated.
+ */
 export type ComplexValidationRule<T> = ValidationRule<T> & {
-    readonly message ?: string,
-    readonly messageId ?: string,
-    readonly validator ?: (value: T, collectErrors?: boolean) => Promise<TestComplexValidationRuleResult>,
+    /**
+     * The custom error message for the validation rule.
+     */
+    readonly message?: string,
+    /**
+     * The custom error message ID for the validation rule.
+     */
+    readonly messageId?: string,
+    /**
+     * The custom validator function for the validation rule.
+     * @param value The value to be validated.
+     * @param collectErrors A flag indicating whether to collect all errors or stop at the first error.
+     * @returns A promise that resolves to the result of the complex validation rule.
+     */
+    readonly validator?: (value: T, collectErrors?: boolean) => Promise<TestComplexValidationRuleResult>,
 }
 
+/**
+ * Represents a validation rule for an object/schema.
+ * @template Input - The input type for which the validation rule is defined.
+ */
 export type InputValidationRule<Input extends InputType = InputType> = {
     [K in keyof Input] ?: ValidationRule<Input[K]> | ComplexValidationRule<Input[K]>;
 }
 
 export type ConditionsAndScopeTuple = [ conditions: string[], scope: string ];
 
+/**
+ * Represents the validation rules for an HTTP request.
+ * @template Header - The type of the request header.
+ * @template Body - The type of the request body.
+ * @template Param - The type of the request parameters.
+ * @template Query - The type of the request query parameters.
+ */
 export type HttpRequestValidations< 
     Header extends InputType = InputType, 
     Body extends InputType = InputType,
@@ -189,10 +248,24 @@ export type HttpRequestValidations<
 }
 
 
+/**
+ * Represents a validation condition for an entity.
+ * @template I The input type.
+ * @template R The record type.
+ */
 export type EntityValidationCondition<I extends InputType, R extends RecordType> = {
-    readonly actor ?: InputValidationRule<Actor>,
-    readonly input ?: InputValidationRule<I>,
-    readonly record ?: InputValidationRule<R>,
+    /**
+     * The validation rule for the actor.
+     */
+    readonly actor?: InputValidationRule<Actor>,
+    /**
+     * The validation rule for the input.
+     */
+    readonly input?: InputValidationRule<I>,
+    /**
+     * The validation rule for the record.
+     */
+    readonly record?: InputValidationRule<R>,
 }
 
 export type MapOfValidationCondition<I extends InputType = InputType, R extends RecordType = RecordType> = Record<string, EntityValidationCondition<I, R>>;
@@ -224,6 +297,15 @@ export type EntityOperationValidationRuleForInput<
 
 } & ValidationRule<Input>;
 
+/**
+ * Represents a tuple that defines the conditional applicability of the validation-rule to the operation.
+ * i.e. it validation-rule only applies when the condition is satisfied.
+ *
+ * @template Sch - The entity schema type.
+ * @template ConditionsMap - The map of validation conditions.
+ * @template OppName - The name of the operation.
+ * @template OpsInpSch - The input schemas for entity operations.
+ */
 export type OperationConditionsTuple<
     Sch extends EntitySchema<any, any, any>,
     ConditionsMap extends MapOfValidationCondition<any, any>,
@@ -231,19 +313,45 @@ export type OperationConditionsTuple<
     OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
 > = [ 
     op: OppName, 
-    /** array of condition names like ['xxx', 'yyyy'] */
+    /** 
+     * An array of condition names.
+     * Example: ['xxx', 'yyyy']
+     */
     conditions ?: Array<keyof OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[OppName]>, OmitNever<ConditionsMap>>> >,
-    scope ?: 'all' | 'any' | 'none' /* default: [all] all conditions must be satisfied */
+    /**
+     * The scope of the conditions.
+     * Possible values: 'all', 'any', 'none'
+     * Default: 'all' (all conditions must be satisfied)
+     */
+    scope ?: 'all' | 'any' | 'none',
 ]
 
+/**
+ * Represents the conditional applicability of the validation-rule to the specific operation.
+ *
+ * @template Sch - The entity schema type.
+ * @template ConditionsMap - The map of validation conditions.
+ * @template OppName - The name of the entity operation.
+ * @template OpsInpSch - The input schemas for entity operations.
+ */
 export type OperationConditions<
     Sch extends EntitySchema<any, any, any>,
     ConditionsMap extends MapOfValidationCondition<any, any>,
     OppName extends keyof Sch['model']['entityOperations'],
     OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
 > = {
-    /** array of condition names like ['xxx', 'yyyy']  default: all conditions must be satisfied */
+    /**
+     * Array of condition names that must be satisfied for the validation-rule to be applicable for operation.
+     * By default, all conditions must be satisfied.
+     */
     conditions: Array<keyof OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[OppName]>, OmitNever<ConditionsMap>>> >,
+    
+    /**
+     * The scope of the conditions.
+     * - 'all': All conditions must be satisfied.
+     * - 'any': At least one condition must be satisfied.
+     * - 'none': No conditions should be satisfied.
+     */
     scope: 'all' | 'any' | 'none'
 }
 
@@ -266,13 +374,31 @@ export type InputApplicableConditionsMap<Inp extends InputType, ConditionsMap ex
     : never;
 }>
 
+/**
+ * Represents a conditional validation rule.
+ * @template T - The type of the value being validated.
+ * @template ConditionsMap - A map of validation conditions.
+ */
 export type ConditionalValidationRule<T, ConditionsMap extends MapOfValidationCondition<InputType, RecordType>> = {
+    /**
+     * The conditions that must be satisfied for the validation rule to apply.
+     * @remarks
+     * - If not specified, all conditions must be satisfied.
+     * - If specified as an array, all conditions in the array must be satisfied.
+     * - If specified as a tuple, the first element is an array of conditions and the second element is a string specifying how the conditions must be satisfied ('all', 'any', or 'none').
+     */
     readonly conditions ?: 
-        Array<keyof ConditionsMap> /** default: all conditions must be satisfied */
+        Array<keyof ConditionsMap>
         | 
-        [ Array<keyof ConditionsMap>, 'all' | 'any' | 'none'], /** specify how conditions must be satisfied */
+        [ Array<keyof ConditionsMap>, 'all' | 'any' | 'none'],
 } & ComplexValidationRule<T>;
 
+/**
+ * Represents the validation rules for an entity-operation.
+ * @template I - The input type.
+ * @template R - The record type.
+ * @template C - The map of validation conditions.
+ */
 export type EntityOperationValidation<I extends InputType, R extends RecordType, C extends MapOfValidationCondition<I, R> > = {
     readonly actor ?: {
         [K in keyof Actor]?: ConditionalValidationRule<Actor[K], C>[];
@@ -285,11 +411,21 @@ export type EntityOperationValidation<I extends InputType, R extends RecordType,
     },
 }
 
+/**
+ * Represents the validation for entity all operations.
+ *
+ * @template Sch - The entity schema type.
+ * @template ConditionsMap - The map of validation conditions.
+ * @template OpsInpSch - The entity operations input schemas type.
+ */
 export type EntityOperationsValidation<
     Sch extends EntitySchema<any, any, any>,
     ConditionsMap extends MapOfValidationCondition<any, any>,
     OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
 > = Narrow<{
+    /**
+     * Represents the validation for each entity operation.
+     */
     readonly [oppName in keyof OpsInpSch] ?: EntityOperationValidation<
         Narrow<OpsInpSch[oppName]>, // operation input schema
         EntityRecordTypeFromSchema<Sch>, // entity record type
@@ -297,6 +433,9 @@ export type EntityOperationsValidation<
         OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[oppName]>, ConditionsMap>>
     >
 } & {
+    /**
+     * Represents the validation conditions for the entity.
+     */
     readonly conditions?: MapOfValidationCondition<any, EntityRecordTypeFromSchema<Sch>>
 }>
 
@@ -339,13 +478,22 @@ export type EntityValidations<
     conditions?: ConditionsMap,
 }
 
-export type EntityOpsInputValidations<
+/**
+ * Represents the validation rules for each property of an entity input. these validation rules are not conditional.
+ * To use conditional validations, use `EntityValidations` instead. 
+ * @template Sch - The entity schema type.
+ * @template OpsInpSch - The entity operations input schemas type.
+ */
+export type EntityInputValidations<
     Sch extends EntitySchema<any, any, any, any>,
     OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
 > = {
-    [Prop in keyof EntityRecordTypeFromSchema<Sch>] ?: Array< ValidationRule<EntityRecordTypeFromSchema<Sch>[Prop]> & {
-        readonly operations: Array<keyof PropertyApplicableEntityOperations<Prop, Sch, OpsInpSch>>
-    }>
+    [Prop in keyof EntityRecordTypeFromSchema<Sch>] ?: Array< 
+        ValidationRule<EntityRecordTypeFromSchema<Sch>[Prop]> 
+        & {
+            readonly operations: Array<keyof PropertyApplicableEntityOperations<Prop, Sch, OpsInpSch>>
+        }
+    >
 }
 
 

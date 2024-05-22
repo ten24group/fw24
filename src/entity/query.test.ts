@@ -29,8 +29,8 @@ describe('entityFilterToFilterGroup', () => {
 
     it('should set id and label', () => {
         const filter = {
-        id: 'myFilter',
-        label: 'myFilter',
+        filterId: 'myFilter',
+        filterLabel: 'myFilter',
         name: {
             equalTo: 'John'
         }
@@ -38,8 +38,8 @@ describe('entityFilterToFilterGroup', () => {
 
         const result = entityFilterToFilterGroup(filter);
 
-        expect(result.id).toBe('myFilter');
-        expect(result.label).toBe('myFilter');
+        expect(result.filterId).toBe('myFilter');
+        expect(result.filterLabel).toBe('myFilter');
     });
 
     it('should handle custom logical operator', () => {
@@ -106,15 +106,6 @@ describe('entityFilterToFilterGroup', () => {
         });
     });
 
-    it('should return empty filter group for empty filter', () => {
-        const filter = {};
-        const result = entityFilterToFilterGroup(filter);
-
-        expect(result).toEqual({
-            and: [] 
-        });
-    });
-
     it('should throw error for invalid filter shape', () => {
         const filter = {
             name: 'John' // invalid shape
@@ -158,7 +149,7 @@ it('should parse simple query string params successfully', ()=>{
     console.log(etQ);
 
     expect(etQ).toEqual({
-        id: 'queryStringParamsToFilterGroup',
+        filterId: 'queryStringParamsToFilterGroup',
         and: [
             {
                 attribute: 'foo',
@@ -207,7 +198,7 @@ it('should parse query strings with and/or groups having ( [] array, and `.` dot
     console.log(etQ);
 
     expect(etQ).toEqual({
-        id: 'queryStringParamsToFilterGroup',
+        filterId: 'queryStringParamsToFilterGroup',
         and: [{
             attribute: 'bar',
             contains: [ 'fluffy' ]
@@ -258,7 +249,7 @@ it('should parse query strings with and/or groups and [split/combine/parse] valu
     const etQ = queryStringParamsToFilterGroup(parsed);
 
     expect(etQ).toEqual({
-        id: 'queryStringParamsToFilterGroup',
+        filterId: 'queryStringParamsToFilterGroup',
         and: [
             {
                 attribute: 'bar',

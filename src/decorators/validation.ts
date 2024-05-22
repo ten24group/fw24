@@ -1,6 +1,11 @@
 import { Route } from "../interfaces/route";
 import { InputValidationRule, HttpRequestValidations } from "../validation";
 
+/**
+ * Decorator function for adding validations to a route.
+ * @param validations - The validations to be applied to the route.
+ * @returns A decorator function that adds the validations to the route.
+ */
 export const Validation = (validations: InputValidationRule | HttpRequestValidations) => {
     return function (target: any, methodToDecorate: any) {
       

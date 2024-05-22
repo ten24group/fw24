@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.0.21](https://github.com/ten24group/fw24/compare/v0.0.20...v0.0.21) (2024-05-15)
+
+
+### Bug Fixes
+
+* auth UI config password fields ([7f23994](https://github.com/ten24group/fw24/commit/7f2399489f338aef0ebf74b4a5c0d13c38a65596))
+
+### [0.0.20](https://github.com/ten24group/fw24/compare/v0.0.19...v0.0.20) (2024-05-11)
+
+### [0.0.19](https://github.com/ten24group/fw24/compare/v0.0.18...v0.0.19) (2024-05-10)
+
+### [0.0.18](https://github.com/ten24group/fw24/compare/v0.0.17...v0.0.18) (2024-05-10)
+
+### [0.0.17](https://github.com/ten24group/fw24/compare/v0.0.16...v0.0.17) (2024-05-09)
+
+### [0.0.16](https://github.com/ten24group/fw24/compare/v0.0.15...v0.0.16) (2024-05-08)
+
+### [0.0.15](https://github.com/ten24group/fw24/compare/v0.0.13...v0.0.15) (2024-05-08)
+
+### [0.0.14](https://github.com/ten24group/fw24/compare/v0.0.13...v0.0.14) (2024-05-08)
+
+### [0.0.13](https://github.com/ten24group/fw24/compare/v0.0.12...v0.0.13) (2024-05-08)
+
+
+### Bug Fixes
+
+* AWS_IAM policy statements for routees with path params ([41a49b2](https://github.com/ten24group/fw24/commit/41a49b2d7de22ee783897645745a6476d81ccb91))
+
+### [0.0.12](https://github.com/ten24group/fw24/compare/v0.0.11...v0.0.12) (2024-05-07)
+
+### [0.0.11](https://github.com/ten24group/fw24/compare/v0.0.10...v0.0.11) (2024-05-06)
+
 ### [0.0.10](https://github.com/ten24group/fw24/compare/v0.0.7...v0.0.10) (2024-05-06)
 
 

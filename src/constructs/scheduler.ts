@@ -1,32 +1,59 @@
 import { CfnOutput, Stack, aws_events_targets } from "aws-cdk-lib";
 import { Helper } from "../core/helper";
-import { IStack } from "../interfaces/stack";
+import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { LogDuration, createLogger } from "../logging";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
-import { LambdaFunction } from "../constructs/lambda-function";
+import { LambdaFunction } from "./lambda-function";
 import { Rule, Schedule } from "aws-cdk-lib/aws-events";
 
-export interface ISchedulerConfig {
+/**
+ * Represents the configuration for the Scheduler construct.
+ */
+export interface ISchedulerConstructConfig {
+    /**
+     * The directory where the tasks are located.
+     */
     tasksDirectory?: string;
+
+    /**
+     * The environment configuration for the Lambda functions.
+     */
     env?: ILambdaEnvConfig[];
+
+    /**
+     * The function properties for the Node.js functions.
+     */
     functionProps?: NodejsFunctionProps;
 }
 
-export class SchedulerStack implements IStack {
-    readonly logger = createLogger(SchedulerStack.name);
+/**
+ * @example
+ * ```ts
+ * const schedulerConfig: ISchedulerConstructConfig = {
+ *   tasksDirectory: "./src/tasks",
+ *   // other configuration properties
+ * };
+ * const scheduler = new SchedulerConstruct(schedulerConfig);
+ * await scheduler.construct();
+ * ```
+ */
+export class SchedulerConstruct implements FW24Construct {
+    readonly logger = createLogger(SchedulerConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
     
+    name: string = SchedulerConstruct.name;
     dependencies: string[] = [];
+    output!: FW24ConstructOutput;
+
     mainStack!: Stack;
 
     // default constructor to initialize the stack configuration
-    constructor(private stackConfig: ISchedulerConfig) {
-        this.logger.debug("constructor", stackConfig);
-        Helper.hydrateConfig(stackConfig,'Scheduler');
+    constructor(private schedulerConstructConfig: ISchedulerConstructConfig) {
+        Helper.hydrateConfig(schedulerConstructConfig,'SCHEDULER');
     }
 
     // construct method to create the stack
@@ -35,12 +62,12 @@ export class SchedulerStack implements IStack {
         // make the main stack available to the class
         this.mainStack = this.fw24.getStack("main");
         // sets the default tasks directory if not defined
-        if(this.stackConfig.tasksDirectory === undefined || this.stackConfig.tasksDirectory === ""){
-            this.stackConfig.tasksDirectory = "./src/tasks";
+        if(this.schedulerConstructConfig.tasksDirectory === undefined || this.schedulerConstructConfig.tasksDirectory === ""){
+            this.schedulerConstructConfig.tasksDirectory = "./src/tasks";
         }
 
         // register the tasks
-        await Helper.registerHandlers(this.stackConfig.tasksDirectory, this.registerTask);
+        await Helper.registerHandlers(this.schedulerConstructConfig.tasksDirectory, this.registerTask);
 
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
@@ -73,8 +100,8 @@ export class SchedulerStack implements IStack {
         
         const taskName = taskInfo.handlerInstance.taskName;
         const taskConfig = taskInfo.handlerInstance.taskConfig || {};
-        const taskProps = {...this.stackConfig.functionProps, ...taskConfig.functionProps};
-        const taskConfigEnv = [...(this.stackConfig.env ?? []),...taskConfig.env ?? []];
+        const taskProps = {...this.schedulerConstructConfig.functionProps, ...taskConfig.functionProps};
+        const taskConfigEnv = [...(this.schedulerConstructConfig.env ?? []),...taskConfig.env ?? []];
 
         this.logger.info(`Registering task ${taskName} from ${taskInfo.filePath}/${taskInfo.fileName}`);
 
@@ -91,6 +118,7 @@ export class SchedulerStack implements IStack {
             logRemovalPolicy: taskConfig.logRemovalPolicy,
         }) as NodejsFunction;
 
+        this.fw24.setConstructOutput(this, taskName, task, OutputType.FUNCTION);
 
         new Rule(this.mainStack, taskName + "-scheduler", {
             schedule: Schedule.expression(taskConfig.schedule),

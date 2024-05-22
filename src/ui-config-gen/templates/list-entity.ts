@@ -1,4 +1,5 @@
 import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { pascalCase } from "../../utils";
 
 export type ListingPropConfig = {
     name: string,
@@ -18,9 +19,10 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 
     const{ entityName, entityNamePlural, properties } = options;
     const entityNameLower = entityName.toLowerCase();
+    const entityNamePascalCase = pascalCase(entityName);
 
     let listingConfig = {
-        pageTitle:  `List Of ${entityNamePlural}`,
+        pageTitle:  `${entityNamePascalCase} Listing`,
         pageType:   "list",
         breadcrums: [],
         pageHeaderActions: [
@@ -33,7 +35,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
             apiConfig: {
                 apiMethod: `GET`,
                 responseKey: 'items',
-                apiUrl: `/${entityNameLower}/`,
+                apiUrl: `/${entityNameLower}`,
             },
             propertiesConfig: [] as any[],
         }
@@ -63,13 +65,13 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                         modelConfig: {
                             modalType: 'confirm',
                             modalPageConfig: {
-                                title: `Delete ${entityName}`,
-                                content: `Are you sure you want to delete this ${entityName}?`
+                                title: `Delete ${entityNamePascalCase}`,
+                                content: `Are you sure you want to delete this ${entityNamePascalCase}?`
                             },
                             apiConfig: {
                                 apiMethod: `DELETE`,
                                 responseKey: entityNameLower,
-                                apiUrl: `/${entityNameLower}/`,
+                                apiUrl: `/${entityNameLower}`,
                             },
                             confirmSuccessRedirect: `/list-${entityNameLower}`
                         }

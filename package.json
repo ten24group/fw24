@@ -1,6 +1,6 @@
 {
     "name": "@ten24group/fw24",
-    "version": "0.0.10",
+    "version": "0.0.21",
     "main": "./dist/package/fw24.js",
     "types": "./dist/package/fw24.d.ts",
     "repository": {
@@ -18,7 +18,6 @@
         "layer:release": "npm run layer:build && cdk deploy"
     },
     "devDependencies": {
-        "@aws-cdk/aws-amplify-alpha": "^2.131.0-alpha.0",
         "@aws-cdk/aws-cognito-identitypool-alpha": "^2.132.0-alpha.0",
         "@types/aws-lambda": "^8.10.125",
         "@types/jest": "^29.5.12",
@@ -34,6 +33,7 @@
         "typescript": "^5.2.2"
     },
     "dependencies": {
+        "@aws-cdk/aws-amplify-alpha": "^2.131.0-alpha.0",
         "@aws-sdk/client-cognito-identity": "^3.549.0",
         "@aws-sdk/client-cognito-identity-provider": "^3.549.0",
         "@aws-sdk/client-s3": "^3.550.0",
