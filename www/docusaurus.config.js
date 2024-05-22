@@ -88,7 +88,11 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
             items: [
               {
                 label: 'About Us',
-                to: 'https://ten24.co',
+                to: 'https://www.ten24.co',
+              },
+              {
+                label: 'Contact Us',
+                to: 'https://www.ten24.co/get-in-touch/',
               },
               {
                 label: 'GitHub',
