@@ -5,7 +5,7 @@ import styles from './HomepageFeatures.module.css';
 const FeatureList = [
   {
     title: 'Time To Launch',
-    imgUrl: require('../../static/img/time-to-launch.png').default,
+    imgUrl: require('../../static/img/icon-time-to-launch.png').default,
     description: (
       <>
         Reduce time to launch by 3 to 4 months. Plan, build, deploy and test faster. 
@@ -14,7 +14,7 @@ const FeatureList = [
   },
   {
     title: 'Build For Less',
-    imgUrl: require('../../static/img/time-to-launch.png').default,
+    imgUrl: require('../../static/img/icon-build-for-less.png').default,
     description: (
       <>
         Save <strong>significant</strong> development costs with more flexibility for the future.
@@ -23,7 +23,7 @@ const FeatureList = [
   },
   {
     title: 'Open Source',
-    imgUrl: require('../../static/img/time-to-launch.png').default,
+    imgUrl: require('../../static/img/icon-open-source.png').default,
     description: (
       <>
         Available under the MIT license. 
