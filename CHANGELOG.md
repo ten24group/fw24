@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-alpha.3](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.2...v0.1.1-alpha.3) (2024-05-23)
+
+### [0.1.1-alpha.2](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.1...v0.1.1-alpha.2) (2024-05-22)
+
+### [0.1.1-alpha.1](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.0...v0.1.1-alpha.1) (2024-05-22)
+
+### [0.1.1-alpha.0](https://github.com/ten24group/fw24/compare/v0.0.21...v0.1.1-alpha.0) (2024-05-22)
+
+
+### Bug Fixes
+
+* filter example ([b07a1bb](https://github.com/ten24group/fw24/commit/b07a1bb1f5be2620a510c9a28f8b04f8be9ca48c))
+* types ([2c2c0c2](https://github.com/ten24group/fw24/commit/2c2c0c221d68b5b4b6b870493074427e865c0f12))
+* typos, TS code example block and renamed filter's id and label keys, and add examples for entity-query functions ([455baee](https://github.com/ten24group/fw24/commit/455baeecc458a72b1e19f2a989da5cd7688ca7ad))
+
 ### [0.0.21](https://github.com/ten24group/fw24/compare/v0.0.20...v0.0.21) (2024-05-15)
 
 

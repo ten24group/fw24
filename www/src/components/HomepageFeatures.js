@@ -4,20 +4,20 @@ import styles from './HomepageFeatures.module.css';
 
 const FeatureList = [
   {
-    title: 'Time To Launch',
+    title: 'Launch Faster',
     imgUrl: require('../../static/img/icon-time-to-launch.png').default,
     description: (
       <>
-        Reduce time to launch by 3 to 4 months. Plan, build, deploy and test faster. 
+        Framework24 allows you to Plan, build and deploy software applications faster. Start writing business logic on day one because the framework abstracts boilerplate code, signfigantly reducing start-up time and ongoing development. 
       </>
     ),
   },
   {
-    title: 'Build For Less',
+    title: 'Cost Efficiency',
     imgUrl: require('../../static/img/icon-build-for-less.png').default,
     description: (
       <>
-        Save <strong>significant</strong> development costs with more flexibility for the future.
+        A serverless architecture can provide significant cost savings and Framework24 provides an opininated design that makes development more streamlined and efficient, maximizing your resources.
       </>
     ),
   },
@@ -26,8 +26,7 @@ const FeatureList = [
     imgUrl: require('../../static/img/icon-open-source.png').default,
     description: (
       <>
-        Available under the MIT license. 
-        Customize and contribute without concerns about IP. 
+        Framework24 is available under the MIT license. Your team can customize and contribute without concerns about IP.
       </>
     ),
   },

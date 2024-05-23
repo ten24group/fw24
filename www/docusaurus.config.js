@@ -4,14 +4,14 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
 // With JSDoc @type annotations, IDEs can provide config autocompletion
 /** @type {import('@docusaurus/types').DocusaurusConfig} */
 (module.exports = {
-  title: 'Framework24 Documentation',
-  tagline: 'A modern, serverless, framework to launch software products quickly and scale seamlessly',
+  title: 'Framework24',
+  tagline: 'A modern serverless framework to launch software products quickly and scale seamlessly',
   url: 'https://fw24.dev',
   baseUrl: '/',
   onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'warn',
   favicon: 'img/favicon.ico',
-  organizationName: 'Ten24 Group',
+  organizationName: 'Ten24 Group, LLC',
   projectName: 'fw24',
 
   presets: [
@@ -101,7 +101,7 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
             ],
           },
         ],
-        copyright: `Copyright © ${new Date().getFullYear()} Ten24 Group.`,
+        copyright: `Copyright © ${new Date().getFullYear()} Ten24 Group, LLC`,
       },
       prism: {
         theme: lightCodeTheme,
