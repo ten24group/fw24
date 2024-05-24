@@ -39,7 +39,7 @@ Ensure that you have Node.js and npm installed on your system. FW24 requires Nod
 FW24 provides a command-line interface (CLI) for managing your applications. Install it using npm:
 
 ```shell
-npm i @ten24group/cli24
+npm i -g @ten24group/cli24
 ```
 
 ### Step 2: Generate a New Application
