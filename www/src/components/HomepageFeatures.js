@@ -8,7 +8,7 @@ const FeatureList = [
     imgUrl: require('../../static/img/icon-time-to-launch.png').default,
     description: (
       <>
-        Framework24 allows you to Plan, build and deploy software applications faster. Start writing business logic on day one because the framework abstracts boilerplate code, signfigantly reducing start-up time and ongoing development. 
+        Plan, build and deploy software applications faster. Start writing business logic on day one because the framework abstracts boilerplate code, significantly reducing start-up time and ongoing development. 
       </>
     ),
   },
@@ -17,7 +17,7 @@ const FeatureList = [
     imgUrl: require('../../static/img/icon-build-for-less.png').default,
     description: (
       <>
-        A serverless architecture can provide significant cost savings and Framework24 provides an opininated design that makes development more streamlined and efficient, maximizing your resources.
+        A serverless architecture can provide significant cost savings and Framework24 provides an opinionated design that makes development more streamlined and efficient, maximizing your resources.
       </>
     ),
   },
@@ -27,6 +27,7 @@ const FeatureList = [
     description: (
       <>
         Framework24 is available under the MIT license. Your team can customize and contribute without concerns about IP.
+        The framework is currently in an Alpha Release.
       </>
     ),
   },
