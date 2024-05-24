@@ -16,6 +16,15 @@
   --ifm-code-font-size: 95%;
 }
 
+.hero {
+  background-color: #2b3137;
+  padding: 48px;
+}
+
+.top-banner {
+  padding: 35px;
+}
+
 .docusaurus-highlight-code-line {
   background-color: rgba(0, 0, 0, 0.1);
   display: block;

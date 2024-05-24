@@ -35,10 +35,10 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
       navbar: {
-        title: 'fw24',
+        title: '',
         logo: {
           alt: 'Framework24',
-          src: 'img/logo.png',
+          src: 'img/logo-framework.png',
         },
         items: [
           {
@@ -46,6 +46,11 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
             docId: 'Intro',
             position: 'left',
             label: 'Docs',
+          },
+          {
+            label: 'Contact Us',
+            href: 'https://www.ten24.co/get-in-touch/',
+            position: 'left',
           },
           {
             href: 'https://github.com/ten24group/fw24',
