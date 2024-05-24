@@ -11,8 +11,8 @@ function HomepageHeader() {
   return (
     <header className={clsx('hero hero--primary', styles.heroBanner)}>
       <div className="container">
-        <h1 className="hero__title">{siteConfig.title}</h1>
-        <p className="hero__subtitle">{siteConfig.tagline}</p>
+        <p className="hero__subtitle">A modern serverless framework to launch software <br />
+        products quickly and scale seamlessly</p>
         <div className={styles.buttons}>
           <Link
             className="button button--secondary button--lg"
@@ -25,12 +25,25 @@ function HomepageHeader() {
   );
 }
 
+function TopBanner() {
+  return (
+    <div className="top-banner">
+      <div className="container">
+        <div className={styles.buttons}>
+          <img src="img/logo-framework24.jpg" alt="Framework24" width="400px" />
+        </div>
+      </div>
+    </div>
+  );
+} 
+
 export default function Home() {
   const {siteConfig} = useDocusaurusContext();
   return (
     <Layout
       title={`${siteConfig.title}`}
       description="A modern, serverless, framework to launch software products quickly and scale seamlessly">
+      <TopBanner />
       <HomepageHeader />
       <main>
         <HomepageFeatures />
