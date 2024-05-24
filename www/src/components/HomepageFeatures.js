@@ -8,7 +8,7 @@ const FeatureList = [
     imgUrl: require('../../static/img/icon-time-to-launch.png').default,
     description: (
       <>
-        Plan, build and deploy software applications faster. Start writing business logic on day one because the framework abstracts boilerplate code, significantly reducing start-up time and ongoing development. 
+        Plan, build and deploy software applications faster. Start writing business logic on day one - Framework24 abstracts boilerplate code, significantly reducing start-up time and ongoing development. 
       </>
     ),
   },
@@ -17,7 +17,7 @@ const FeatureList = [
     imgUrl: require('../../static/img/icon-build-for-less.png').default,
     description: (
       <>
-        A serverless architecture can provide significant cost savings and Framework24 provides an opinionated design that makes development more streamlined and efficient, maximizing your resources.
+        Combine serverless architecture with an opinionated development framework that makes development more streamlined and efficient, maximizing your resources and saving cost.
       </>
     ),
   },
