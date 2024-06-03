@@ -1,11 +1,23 @@
-import { EntityConfiguration } from "electrodb";
+import { Attribute, EntityConfiguration } from "electrodb";
 import { createLogger } from "../logging";
-import { isArray, isArrayOfStrings, isEmpty, isEmptyArray, isSimpleValue, isString, pickKeys, toHumanReadableName } from "../utils";
+import { getValueByPath, isArray, isArrayOfStrings, isEmpty, isEmptyArray, isObject, isSimpleValue, isString, pickKeys, toHumanReadableName } from "../utils";
 import { EntityInputValidations, EntityValidations } from "../validation";
-import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
+import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
-import { EntityQuery, Pagination, isArrayOfObjectOfStringKeysAndBooleanValues } from "./query-types";
-import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords } from "./query";
+import { EntityQuery, EntitySelections, Pagination, isArrayOfObjectOfStringKeysAndBooleanValues } from "./query-types";
+import { addFilterGroupToEntityFilterCriteria, inferRelationshipsForEntitySelections, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
+import { defaultMetaContainer } from "./entity-metadata-container";
+
+
+export type ExtractEntityIdentifiersContext = {
+    // tenantId: string, 
+    forAccessPattern ?: string
+}
+
+type GetOptions<S extends EntitySchema<any, any, any>> = {
+    identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>,
+    selections?: EntitySelections<S>  
+}
 
 export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
@@ -39,18 +51,19 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      *
      */
     extractEntityIdentifiers(
-        input: any, 
-        context: { 
-            // tenantId: string, 
-            forAccessPattern ?: string } = {
+        input: Record<string, string> | Array<Record<string, string>>, 
+        context: ExtractEntityIdentifiersContext = {
             // tenantId: 'xxx-yyy-zzz'
         } 
-    ): EntityIdentifiersTypeFromSchema<S>{
-        const identifiers: any = {};
+    ): EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>> {
 
         if(!input || typeof input !== 'object') {
-            throw new Error('Input is required and must be an object');
+            throw new Error('Input is required and must be an object containing entity-identifiers or an array of objects containing entity-identifiers');
         }
+
+        const isBatchInput = isArray(input);
+
+        const inputs = isBatchInput ? input : [input];
 
         // TODO: tenant logic
         // identifiers['tenantId'] = input.tenantId || context.tenantId;
@@ -69,20 +82,26 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             }
         }
 
-        const primaryAttName = this.getEntityPrimaryIdPropertyName();        
-        for(const {name: attName, required} of identifierAttributes){
-            if( input.hasOwnProperty(attName) ){
-                identifiers[attName] = input[attName];
-            } else if( attName == primaryAttName && input.hasOwnProperty('id') ){
-                identifiers[attName] = input.id;
-            } else if(required) {
-                this.logger.warn(`required attribute: ${attName} for access-pattern: ${context.forAccessPattern ?? '--primary--'} is not found in input:`, input);
+        const primaryAttName = this.getEntityPrimaryIdPropertyName();  
+
+        const identifiersBatch = inputs.map( input => {
+                const identifiers: any = {};
+                for(const {name: attName, required} of identifierAttributes){
+                    if( input.hasOwnProperty(attName) ){
+                        identifiers[attName] = input[attName];
+                    } else if( attName == primaryAttName && input.hasOwnProperty('id') ){
+                        identifiers[attName] = input.id;
+                    } else if(required) {
+                        this.logger.warn(`required attribute: ${attName} for access-pattern: ${context.forAccessPattern ?? '--primary--'} is not found in input:`, input);
+                    }
+                }
+                return identifiers as EntityIdentifiersTypeFromSchema<S>;
             }
-        }
+        );
 
-        this.logger.debug('Extracting identifiers from identifiers:', identifiers);
+        this.logger.debug('Extracting identifiers from identifiers:', identifiersBatch);
 
-        return identifiers as EntityIdentifiersTypeFromSchema<S>;
+        return isBatchInput ? identifiersBatch : identifiersBatch[0];
     };
 
     public getEntityName(): S['model']['entity'] { return this.schema.model.entity; }
@@ -158,16 +177,16 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      * 
      * @returns {Array<string>} An array of default serialization attribute names.
      */
-    public getDefaultSerializationAttributeNames(): Array<string>{
+    public getDefaultSerializationAttributeNames(): EntitySelections<S>{
         const defaultOutputSchemaAttributesMap = this.getOpsDefaultIOSchema().get.output;
-        return Array.from( defaultOutputSchemaAttributesMap.keys() ) as Array<string>;
+        return Array.from( defaultOutputSchemaAttributesMap.keys() ) as EntitySelections<S>;
     }
 
     /**
      * Returns attribute names for listing and search API. Defaults to the default serialization attribute names.
      * @returns {Array<string>} An array of attribute names.
      */
-    public getListingAttributeNames(): Array<string>{
+    public getListingAttributeNames(): EntitySelections<S>{
         return this.getDefaultSerializationAttributeNames();
     }
 
@@ -201,7 +220,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         
         for(const attName in schema.attributes){
             const att = schema.attributes[attName];
-            if( !att.hidden && att.type === 'string' ){ // TODO: add meta annotation for searchable attributes
+            // TODO: add meta annotation for filterable attributes
+            if( !att.hidden && ['string', 'number'].includes(att.type as string) ){ 
                 attributeNames.push(attName); 
             }
         }
@@ -210,33 +230,211 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     }
 
     public serializeRecord<T extends Record<string, any> >(record: T, attributes = this.getDefaultSerializationAttributeNames() ): Partial<T> {
-        return pickKeys<T>(record, ...attributes);
+        
+        let keys: Array<string>;
+
+        if(Array.isArray(attributes)){
+            const parsed = parseEntityAttributePaths(attributes);
+            keys = Object.keys(parsed);
+        } else {
+            keys = Object.keys(attributes);
+        }
+
+        return pickKeys<T>(record, ...keys);
     }
 
     public serializeRecords<T extends Record<string, any>>(record: Array<T>, attributes = this.getDefaultSerializationAttributeNames() ): Array<Partial<T>> {
         return record.map(record => this.serializeRecord<T>(record, attributes));
     }
 
+    private async hydrateRecords(
+        relations: Array<[relatedAttributeName: string, options: HydrateOptionForRelation<any>]>, 
+        rootEntityRecords: Array<{ [x: string]: any; }>
+    ) {
+        this.logger.info(`called 'hydrateRecords' for entity: ${this.getEntityName()}`, {relations, rootEntityRecords});
+        await Promise.all( relations?.map( async ([relatedAttributeName, options]) => {
+            await this.hydrateSingleRelation(rootEntityRecords, relatedAttributeName, options);
+        }));
+	}
+
+    private async hydrateSingleRelation(rootEntityRecords: any[], relatedAttributeName: string, options: HydrateOptionForRelation<any>){
+        this.logger.info(`called 'hydrateSingleRelation' relation: ${relatedAttributeName} for entity: ${this.getEntityName()}`, {
+            rootEntityRecords,
+            options
+        });
+
+        const relatedEntityName = options.entityName;
+
+        // Get related entity service
+        const relatedEntityService = defaultMetaContainer.getEntityServiceByEntityName(relatedEntityName) as BaseEntityService<any>;
+        if(!relatedEntityService){
+            throw new Error(`No service found in the 'defaultMetaContainer' for relationship: ${relatedAttributeName}(${relatedEntityName}); please make sure service or factory has been registered in the 'defaultMetaContainer'`);
+        }
+
+        // Get relation metadata
+        const relationAttributeMetadata = this.schema?.attributes && this.schema.attributes[relatedAttributeName as keyof typeof this.schema.attributes] as EntityAttribute;
+        if(!relationAttributeMetadata || !relationAttributeMetadata?.relation){
+            this.logger.warn(`No metadata found for relationship: ${relatedAttributeName}`, relationAttributeMetadata);
+            return;
+        }
+        // make a copy to make sure not to override anything
+        const relationMetadata = {...relationAttributeMetadata.relation};
+
+        // Get relation identifiers batch
+        const relationPrimaryIdentifierName = relatedEntityService.getEntityPrimaryIdPropertyName() as string;
+        relationMetadata.identifiers = relationMetadata.identifiers || { 
+            source: relationPrimaryIdentifierName,
+            target: relationPrimaryIdentifierName
+        }
+
+        const identifierMappings = Array.isArray(relationMetadata.identifiers) ? relationMetadata.identifiers : [ relationMetadata.identifiers ]
+
+        // Create a dictionary to map related-entity-identifiers to the 
+        // map of [sourceEntityData, identifiers]
+        const identifiersToSourceEntityDictionary = new Map<any, any>();
+
+        // Create relationIdentifiersBatch to fetch all related entities in one single query
+        const relationIdentifiersBatch = rootEntityRecords.flatMap( entityData => {
+            
+            const isToManyRelation = Array.isArray(entityData[relatedAttributeName]);
+
+            const identifiersDataBatch = isToManyRelation ? entityData[relatedAttributeName] : [ entityData[relatedAttributeName] ];
+
+            this.logger.info('IdentifiersDataBatch:, entityData:, relatedAttributeName: ', {identifiersDataBatch, isToManyRelation, entityData, relatedAttributeName});
+
+            const identifiersBatch = identifiersDataBatch.map( (identifiersData: any) => {
+                if(!identifiersData){
+                    return;
+                }
+
+                const identifiers = identifierMappings.reduce((acc: any, identifierMapping) => {
+                    const { source, target } = identifierMapping;
+
+                    const identifierVal = isObject(identifiersData) && identifiersData ? getValueByPath(identifiersData, source!) : identifiersData;
+                    
+                    if(identifierVal) { 
+                        acc[target] = identifierVal;
+                    }
+                    
+                    return acc;
+
+                }, {} as { [key: string]: any });
+
+                return identifiers;
+                
+            })
+            .filter( (identifiers: any) => !!identifiers);
+
+            identifiersToSourceEntityDictionary.set(entityData, identifiersBatch);
+
+            return identifiersBatch;
+        });
+
+        // ensure all the identifier attributes are part of the selections
+        Object.keys(relationIdentifiersBatch[0]).forEach( (key: string) => {
+            if(Array.isArray(options.attributes) && !options.attributes.includes(key)){
+                options.attributes.push(key);
+            } else if(isObject(options.attributes) && !options.attributes.hasOwnProperty(key) ){
+                options.attributes = {
+                    ...options.attributes,
+                    [key]: true
+                }
+            }
+        });
+
+        // Fetch related entities
+        const relatedEntities = await relatedEntityService.get({
+            identifiers: relationIdentifiersBatch,
+            selections: options.attributes,
+        });
+
+        // Merge related entities
+        identifiersToSourceEntityDictionary.forEach( (identifiersBatch, sourceEntityData ) => {
+            this.logger.info('in identifiersToSourceEntityDictionary loop: sourceEntityData, identifiersBatch', {sourceEntityData, identifiersBatch})
+            const relatedRecords = identifiersBatch.map( (identifiers: any) => {
+                return relatedEntities?.find( (relatedEntityData: any) => {
+                    return Object.entries(identifiers).every( ([target, value]) =>
+                        relatedEntityData.hasOwnProperty(target) && relatedEntityData[target] === value
+                    )
+                })
+            });
+
+            const isToManyRelation = Array.isArray(sourceEntityData[relatedAttributeName]);
+            
+            if(!isToManyRelation && relatedRecords.length > 0){
+                sourceEntityData[relatedAttributeName] = relatedRecords[0];
+            } else {
+                sourceEntityData[relatedAttributeName] = relatedRecords;
+            }
+        });
+    }
+
     /**
      * Retrieves an entity by its identifiers.
      * 
      * @param identifiers - The identifiers of the entity.
-     * @param attributes - Optional array of attribute names to include in the response.
+     * @param selections - Optional array of attribute names to include in the response.
      * @returns A promise that resolves to the retrieved entity data.
      */
-    public async get( identifiers: EntityIdentifiersTypeFromSchema<S>, attributes ?: Array<string> ) {
-        this.logger.debug(`Called ~ get ~ entityName: ${this.getEntityName()}: `, {identifiers, attributes});
+    
+    public async get( options: GetOptions<S> ) {
         
-        if(!attributes){
-            attributes = this.getDefaultSerializationAttributeNames()
+        const {identifiers, selections} = options;
+
+        this.logger.info(`Called ~ get ~ entityName: ${this.getEntityName()}: `, {identifiers, attributes: selections});
+        
+        let formattedSelections = selections;
+        if(!selections){
+            formattedSelections = this.getDefaultSerializationAttributeNames()
         }
+
+        this.logger.info(`Formatted selections 1 for entity: ${this.getEntityName()}`, formattedSelections);
+
+        if(Array.isArray(formattedSelections)){
+            const parsedOptions = parseEntityAttributePaths(formattedSelections);
+
+            formattedSelections = inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
+        }
+
+        this.logger.info(`Formatted selections 2 for entity: ${this.getEntityName()}`, formattedSelections);
+
+        const requiredSelectAttributes = Object.entries(formattedSelections as any).reduce((acc, [attName, options]) => {
+            acc.push(attName);
+            if(isObject(options) && options.identifiers){
+                const identifiers: Array<RelationIdentifier<any>> = Array.isArray(options.identifiers) ? options.identifiers : [options.identifiers];                
+                // extract top level identifiers from option.identifiers which is of type RelationIdentifiers
+                const topKeys = identifiers.map( identifier => identifier.source?.split?.('.')?.[0] ).filter( key => !!key) as string[] ;
+                acc.push(...topKeys);
+            }
+            return acc;
+        }, [] as string[]);
+
+        const uniqueSelectionAttributes = [...new Set(requiredSelectAttributes)]
 
         const entity =  await getEntity<S>({
             id: identifiers, 
-            attributes,
+            attributes: uniqueSelectionAttributes, // only fetching top level keys from the DB
             entityName: this.getEntityName(),
             entityService: this,
         });
+
+		if(!!formattedSelections && entity?.data){
+            this.logger.info(`Checking if entity has any attributes needing hydration: ${this.getEntityName()}`, {formattedSelections, entity: entity.data});
+            const entries = Object.entries(formattedSelections);
+            this.logger.info("entries", JSON.stringify(entries, null, 2));
+
+            const relationalAttributes = entries?.map( ([attributeName, options]) => [attributeName, options] )
+            // only attributes in hydrate options that have relation metadata attached to them needs to be hydrated
+            .filter( ([, options]) => isObject(options) );
+
+            this.logger.info("relationalAttributes", {relationalAttributes});
+
+            if(relationalAttributes.length){
+                await this.hydrateRecords(relationalAttributes as any, [entity.data]);
+            }
+		}
+
+        this.logger.info(`Completed ~ get ~ entityName: ${this.getEntityName()}: `, {identifiers, entity});
 
         return entity?.data;
     }
@@ -274,8 +472,14 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     public async list(query: EntityQuery<S> = {}) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
-        if(!query.attributes || isEmptyArray(query.attributes)){
-            query.attributes = this.getListingAttributeNames();
+        if(!query.attributes){
+            query.attributes = this.getListingAttributeNames()
+        }
+        
+        // for listing API attributes would be an array
+        if(Array.isArray(query.attributes)){
+            const parsedOptions = parseEntityAttributePaths(query.attributes);
+            query.attributes = inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
         }
         
         if(query.search){
@@ -304,7 +508,19 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             entityService: this, 
         });
 
-        entities.data = this.serializeRecords(entities.data, query.attributes as Array<string>);
+        entities.data = this.serializeRecords(entities.data, query.attributes);
+
+        if(query.attributes && entities.data){
+            const relationalAttributes = Object.entries(query.attributes)?.map( ([attributeName, options]) => {
+                return [attributeName, options];
+            })
+            // only attributes in hydrate options that have relation metadata attached to them needs to be hydrated
+            .filter( ([, options]) => isObject(options) );
+
+            if(relationalAttributes.length){
+    			await this.hydrateRecords(relationalAttributes as any, entities.data);
+            }
+		}
 
         return {...entities, query};
     }
@@ -324,12 +540,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
         const {attributes} = query;
 
-        let selectAttributes: Array<string> | undefined = undefined;
-
-        if(isArrayOfObjectOfStringKeysAndBooleanValues(attributes)){
-            selectAttributes = Object.entries(attributes).filter( ([,v]) => !!v).map( ([k]) => k );
-        } else if(isArrayOfStrings(attributes)) {
-            selectAttributes = attributes;
+        let selectAttributes: EntitySelections<S> | undefined = attributes || this.getListingAttributeNames();
+        
+        if(Array.isArray(selectAttributes)){
+            // parse the list of dot-separated attribute-identifiers paths and ensure all the required metadata is there
+            const parsedOptions = parseEntityAttributePaths(selectAttributes);
+            selectAttributes = inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
+        } else {
+            // ensure all the provided select attributes has required metadata all the way down to the leaf level
+            selectAttributes = inferRelationshipsForEntitySelections(this.getEntitySchema(), selectAttributes);
         }
 
         if(query.search){
@@ -353,14 +572,21 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             entityService: this,
         });
 
-        if(!selectAttributes || isEmptyArray(selectAttributes)){
-            selectAttributes = this.getListingAttributeNames();
-        }
-
         entities.data = this.serializeRecords(entities.data, selectAttributes);
 
-        return {...entities, query};
+        if(selectAttributes && entities.data){
+            const relationalAttributes = Object.entries(selectAttributes)?.map( ([attributeName, options]) => {
+                return [attributeName, options];
+            })
+            // only attributes in hydrate options that have relation metadata attached to them needs to be hydrated
+            .filter( ([, options]) => isObject(options) );
 
+            if(relationalAttributes.length){
+			    await this.hydrateRecords(relationalAttributes as any, entities.data);
+            }
+		}
+
+        return {...entities, query};
     }
 
     /**
@@ -389,7 +615,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      * @param identifiers - The identifiers of the entity to be deleted.
      * @returns A promise that resolves to the deleted entity.
      */
-    public async delete(identifiers: EntityIdentifiersTypeFromSchema<S>) {
+    public async delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>) {
         this.logger.debug(`Called ~ delete ~ entityName: ${this.getEntityName()} ~ identifiers:`, identifiers);
         
         const deletedEntity =  await deleteEntity<S>({
@@ -406,16 +632,20 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
     id: string,
     name: string,
 } {
+
+    const { type, name, fieldType, required, readOnly, isIdentifier, validations, relation } = att;
+
     return {
         id: attId,
-        type: att.type,
-        name: att.name || toHumanReadableName( attId ),
-        fieldType: att.fieldType,
-        required: att.required,
-        readOnly: att.readOnly,
-        isIdentifier: att.isIdentifier,
-        validations: att.validations ||  att.required ? ['required'] : [],
-    };
+        type,
+        name: name || toHumanReadableName( attId ),
+        fieldType,
+        required,
+        readOnly,
+        isIdentifier,
+        validations: validations ||  att.required ? ['required'] : [],
+        relation,
+    }
 }
 
 export type TIOSchemaAttribute = ReturnType<typeof entityAttributeToIOSchemaAttribute>;

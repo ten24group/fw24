@@ -94,38 +94,39 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
 
     logger.debug(`Called EntityCrud ~ getEntity ~ entityName: ${entityName}:`, {id, attributes});
 
-    await eventDispatcher.dispatch({event: 'beforeGet', context: arguments });
+    // await eventDispatcher.dispatch({event: 'beforeGet', context: arguments });
 
     const identifiers = entityService.extractEntityIdentifiers(id);
 
     // authorize the actor
-    const authorization = await authorizer.authorize({entityName, crudType, identifiers, actor, tenant});
-    if(!authorization.pass){
-        throw new Error("Authorization failed for get: " + { cause: authorization });
-    }
+    // const authorization = await authorizer.authorize({entityName, crudType, identifiers, actor, tenant});
+    // if(!authorization.pass){
+    //     throw new Error("Authorization failed for get: " + { cause: authorization });
+    // }
 
-    // validate
-    const validation = await validator.validateEntity({
-        operationName: crudType,
-        entityName,
-        entityValidations: entityService.getEntityValidations(),
-        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
-        input: identifiers,
-        actor: actor
-    });
+    
+    // // validate
+    // const validation = await validator.validateEntity({
+    //     operationName: crudType,
+    //     entityName,
+    //     entityValidations: entityService.getEntityValidations(),
+    //     overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+    //     input: identifiers,
+    //     actor: actor
+    // });
 
-    if(!validation.pass){
-        throw new Error("Validation failed for get: " + JSON.stringify({ cause: validation }));
-    }
+    // if(!validation.pass){
+    //     throw new Error("Validation failed for get: " + JSON.stringify({ cause: validation }));
+    // }
 
     const entity = await entityService.getRepository().get(identifiers).go({attributes});
 
-    await eventDispatcher.dispatch({event: 'afterGet', context: arguments});
+    // await eventDispatcher.dispatch({event: 'afterGet', context: arguments});
 
     // create audit
-    auditLogger.audit({entityName, crudType, identifiers, entity, actor, tenant});
+    // auditLogger.audit({entityName, crudType, identifiers, entity, actor, tenant});
 
-    logger.debug(`Completed EntityCrud ~ getEntity ~ entityName: ${entityName} ~ id:`, id);
+    // logger.debug(`Completed EntityCrud ~ getEntity ~ entityName: ${entityName} ~ id:`, id);
 
     return entity;
 }

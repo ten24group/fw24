@@ -1,6 +1,6 @@
 import { Entity, EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, createSchema, Attribute } from "electrodb";
 import { BaseEntityService } from "./base-service";
-import { Narrow, Writable } from "../utils/types";
+import { Narrow, OmitNever, Paths, ValueOf, Writable } from "../utils/types";
 
 /**
  *  ElectroDB entity  examples
@@ -15,6 +15,96 @@ import { Narrow, Writable } from "../utils/types";
  */
 
 /**
+ * Represents the options for hydrating an entity.
+ * It can be a string representing the entity name,
+ * or an object with additional attributes and hydrate options.
+*/
+export type RelationalAttributes<T extends EntitySchema<any, any, any, any>> = OmitNever<{
+  [K in keyof T['attributes']]: T['attributes'][K]['hidden'] extends true ? never 
+    : PickRelation<T, K> extends never ? never 
+    : PickRelation<T, K>;
+}>
+
+export type NonRelationalAttributes<T extends EntitySchema<any, any, any, any>> = OmitNever<{
+  [K in keyof T['attributes']]: T['attributes'][K]['hidden'] extends true ? never
+  : PickRelation<T, K> extends never ? T['attributes'][K] : never
+}>
+
+export type PickRelation<E extends EntitySchema<any, any, any, any>, A extends keyof E['attributes']> = 
+E['attributes'][A]['relation'] extends Relation<infer R> ? Relation<R> : never;
+
+// utility type for prepare all the paths for entity and it's relations
+type _EntityAttributePaths<E extends EntitySchema<any, any, any, any>> = 
+{ [K in keyof NonRelationalAttributes<E>] ?: K } 
+& 
+{ [K in keyof RelationalAttributes<E>] ?: _EntityAttributePaths<RelationalAttributes<E>[K]['entity'] > }
+// utility type for prepare all the paths for entity and it's relations
+export type EntityAttributePaths<E extends EntitySchema<any, any, any, any>> = Paths<_EntityAttributePaths<E>>;
+
+
+export type HydrateOptionsMapForEntity<T extends EntitySchema<any, any, any, any>> = 
+{ [K in keyof NonRelationalAttributes<T>] ?: boolean; } 
+& 
+{ [K in keyof RelationalAttributes<T>]?: boolean | HydrateOptionForRelation<RelationalAttributes<T>[K]> };
+
+export type HydrateOptionForEntity<E extends EntitySchema<any, any, any, any>> = HydrateOptionsMapForEntity<E> | Array<EntityAttributePaths<E>>;
+
+export type HydrateOptionForRelation<Rel extends Relation<any>=any> = {
+    entityName?: Rel['entity']['model']['entity'],
+    relationType?: Rel['type'],
+    identifiers?: RelationIdentifiers<Rel['entity']>,
+    attributes: HydrateOptionForEntity<Rel['entity']>
+}
+
+
+export type RelationIdentifier<E extends EntitySchema<any, any, any, any> = any> = { source?: string, target: keyof E['attributes'] };
+export type RelationIdentifiers<E extends EntitySchema<any, any, any, any> = any> = RelationIdentifier<E> | Array<RelationIdentifier<E>>
+/**
+ * Creates an entity relation and infers the type based on the provided relation.
+ * 
+ * @param relation - The relation to create.
+ * @returns The created relation.
+ */
+export function createEntityRelation<E extends EntitySchema<any, any, any, any>>(relation: Relation<E>): Relation<E> {
+    return relation;
+}
+
+/**
+ * Represents a relation between entities.
+ *
+ * @template E - The type of the related entity schema.
+ */
+export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
+    /**
+     * Represents a relation between entities.
+     */
+    entity: E;
+
+    /**
+     * The type of the relation.
+     * Possible values: 'one-to-one', 'one-to-many', 'many-to-one', 'many-to-many'.
+     */
+    type: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many';
+
+    /**
+     * Identifiers to load the related entity.
+     * These are mappings between source entity attributes and related entity attributes.
+     * The keys for source entities can support paths like 'att1.nestedKey1'.
+     * The values can be a string representing the related entity attribute or an array of strings.
+     * 
+     */
+    identifiers?: RelationIdentifiers<E>;
+
+    // set this to true in entity-definition to auto-hydrate this relation
+    hydrate ?: boolean;
+    
+    /**
+     * Attributes to load when hydrating this relation and Options for hydrating the relational attributes of of this relation.
+     */
+    attributes?: HydrateOptionForEntity<E>;
+};
+
+/**
  * Represents an entity attribute.
  */
 export type EntityAttribute = Attribute & {
@@ -27,7 +117,10 @@ export type EntityAttribute = Attribute & {
      * Indicates whether the attribute is an identifier.
      */
     isIdentifier?: boolean;
-    
+
+    // define a relation with another entity use the type-helper `createEntityRelation` function
+    relation ?: Relation;
+
     /**
      * Validations for the attribute.
      */
@@ -80,10 +173,10 @@ export type TEntityOpsInputSchemas<
 Sch extends EntitySchema<any, any, any>,
 > = {
     readonly [opName in keyof Sch['model']['entityOperations']] 
-        : opName extends 'get'      ? EntityIdentifiersTypeFromSchema<Sch>
+        : opName extends 'get'      ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
         : opName extends 'create'   ? CreateEntityItemTypeFromSchema<Sch>
         : opName extends 'update'   ? UpdateEntityItemTypeFromSchema<Sch>
-        : opName extends 'delete'   ? EntityIdentifiersTypeFromSchema<Sch>
+        : opName extends 'delete'   ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
         : {}
 }
 
@@ -174,7 +267,7 @@ export type EntityTypeFromSchema<TSchema> = TSchema extends EntitySchema<infer A
     : never;
 
 
-export type EntityRecordTypeFromSchema<Sch extends EntitySchema<any, any, any>> = Narrow<EntityItem<EntityTypeFromSchema<Sch>>>;
+export type EntityRecordTypeFromSchema<Sch extends EntitySchema<any, any, any>> = EntityItem<EntityTypeFromSchema<Sch>>;
 
 // Entity service
 export type EntityServiceTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = BaseEntityService<TSchema>;
