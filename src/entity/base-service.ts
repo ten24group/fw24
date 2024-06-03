@@ -321,7 +321,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
                 }, {} as { [key: string]: any });
 
                 return identifiers;
-                
+
             })
             .filter( (identifiers: any) => !!identifiers);
 
@@ -419,15 +419,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         });
 
 		if(!!formattedSelections && entity?.data){
-            this.logger.info(`Checking if entity has any attributes needing hydration: ${this.getEntityName()}`, {formattedSelections, entity: entity.data});
-            const entries = Object.entries(formattedSelections);
-            this.logger.info("entries", JSON.stringify(entries, null, 2));
 
-            const relationalAttributes = entries?.map( ([attributeName, options]) => [attributeName, options] )
+            const relationalAttributes = Object.entries(formattedSelections)?.map( ([attributeName, options]) => [attributeName, options] )
             // only attributes in hydrate options that have relation metadata attached to them needs to be hydrated
             .filter( ([, options]) => isObject(options) );
-
-            this.logger.info("relationalAttributes", {relationalAttributes});
 
             if(relationalAttributes.length){
                 await this.hydrateRecords(relationalAttributes as any, [entity.data]);
@@ -633,18 +628,17 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
     name: string,
 } {
 
-    const { type, name, fieldType, required, readOnly, isIdentifier, validations, relation } = att;
+    const {  name, validations, required, relation, default: defaultVal, get: getter, set: setter, watch, ...restMeta  } = att;
+
+    const { entity: relatedEntity, ...restRelation } = relation || {};
+    const relationMeta = relatedEntity ? {...restRelation, entity: relatedEntity?.model?.entity} : undefined;
 
     return {
+        ...restMeta,
         id: attId,
-        type,
         name: name || toHumanReadableName( attId ),
-        fieldType,
-        required,
-        readOnly,
-        isIdentifier,
-        validations: validations ||  att.required ? ['required'] : [],
-        relation,
+        relation: relationMeta as any,
+        validations: validations || required ? ['required'] : [],
     }
 }
 

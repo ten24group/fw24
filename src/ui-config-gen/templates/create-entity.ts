@@ -6,7 +6,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     options: {
         entityName: string,
         entityNamePlural: string,
-        properties: TIOSchemaAttributesMap<S>
+        properties: TIOSchemaAttributesMap<S>,
     }
 ) => {
 
@@ -46,10 +46,10 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         if(prop){
 
             const propConfig = {
+                ...prop,
                 label:          prop.name,
                 column:         prop.id,
-                fieldType:      `${prop.fieldType || 'text'}`,
-                validations:    prop.validations
+                fieldType:      prop.fieldType || 'text',
             };
 
             _propertiesConfig.push(propConfig);

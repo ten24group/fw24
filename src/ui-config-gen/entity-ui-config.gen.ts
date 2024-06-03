@@ -65,7 +65,7 @@ export class EntityUIConfigGen{
             const viewConfig = MakeViewEntityConfig({
                 entityName,
                 entityNamePlural: entitySchema.model.entityNamePlural,
-                properties: entityDefaultOpsSchema.list.output
+                properties: entityDefaultOpsSchema.get.output
             });
 
             // this.logger.debug(`Created entityCrudConfig for entity: ${entityName}.`, {createConfig, updateConfig, listConfig, viewConfig})

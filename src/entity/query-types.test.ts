@@ -240,7 +240,16 @@ namespace User {
             source: 'admin',
             target: 'userId'
           }],
-        } as const)
+        } as const),
+
+        fieldType: 'select',
+
+        options: {
+          apiMethod: 'GET',
+          apiUrl: '/entity/user2',
+          responseKey: 'items'
+        }
+
       },
       name: {
         type: 'string',

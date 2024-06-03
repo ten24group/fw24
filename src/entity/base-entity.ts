@@ -1,3 +1,4 @@
+import { EntityQuery } from './query-types';
 import { Entity, EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, createSchema, Attribute } from "electrodb";
 import { BaseEntityService } from "./base-service";
 import { Narrow, OmitNever, Paths, ValueOf, Writable } from "../utils/types";
@@ -104,6 +105,7 @@ export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
     attributes?: HydrateOptionForEntity<E>;
 };
 
+
 /**
  * Represents an entity attribute.
  */
@@ -125,11 +127,161 @@ export type EntityAttribute = Attribute & {
      * Validations for the attribute.
      */
     validations?: any[];
-    
-    /**
-     * The field type for the UI.
-     */
-    fieldType?: 'text' | 'textarea' | 'select' | 'multi-select' | 'date' | 'time' | 'date-time' | 'number' | 'password' | 'radio' | 'checkbox';
+
+} 
+& FieldMetadata;
+
+
+export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldMetadata 
+    | TimeFieldMetadata | DateTimeFieldMetadata | BooleanFieldMetadata 
+    | SelectFieldMetadata | RadioFieldMetadata | CheckboxFieldMetadata 
+    | FileFieldMetadata | RangeFieldMetadata | ColorFieldMetadata
+    | ImageFieldMetadata | HiddenFieldMetadata | CustomFieldMetadata 
+    | RatingFieldMetadata | EditorFieldMetadata | CodeEditorFieldMetadata;
+
+// Metadata for UI
+export interface BaseFieldMetadata {
+    isVisible?: boolean; // if the field is visible or hidden for all operations
+    placeholder?: string;
+    helpText?: string;
+    tooltip?: string; // maybe this can be inferred from the helpText
+}
+
+interface TextFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'text' | 'textarea' | 'password';
+  maxLength?: number;
+  mask?: string;
+}
+
+interface NumberFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'number';
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+interface DateFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'date';
+  minDate?: Date;
+  maxDate?: Date;
+  dateFormat?: string; // format to display the date
+}
+
+
+interface TimeFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'time';
+  minTime?: string; // in HH:mm format
+  maxTime?: string; // in HH:mm format
+  timeFormat?: string; // format to display the time
+}
+
+interface DateTimeFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'datetime';
+  minDateTime?: Date;
+  maxDateTime?: Date;
+  dateTimeFormat?: string; // format to display the date and time
+}
+
+interface ColorFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'color';
+  defaultColor?: string; // default color value
+}
+
+interface BooleanFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'boolean';
+  trueLabel?: string; // label for the true value
+  falseLabel?: string; // label for the false value
+}
+
+interface SelectFieldMetadata<E extends EntitySchema<any, any, any> = any> extends BaseFieldMetadata {
+  fieldType?: 'select' | 'multi-select' | 'autocomplete';
+  options: FieldOptions<E>;
+  maxSelections?: number; // maximum number of selections
+}
+
+interface RadioFieldMetadata<E extends EntitySchema<any, any, any>=any> extends BaseFieldMetadata {
+  fieldType?: 'radio';
+  options: FieldOptions<E>;
+  layout?: 'horizontal' | 'vertical'; // layout of the radio buttons
+}
+
+interface CheckboxFieldMetadata<E extends EntitySchema<any, any, any>=any> extends BaseFieldMetadata {
+    fieldType?: 'checkbox';
+    options: FieldOptions<E>;
+}
+
+interface FileFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'file';
+  acceptedFileTypes?: string[];
+  maxFileSize?: number; // maximum file size in bytes
+}
+
+interface RangeFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'range';
+  min?: number;
+  max?: number;
+  step?: number;
+  showValue?: boolean; // whether to show the current value
+}
+
+interface ImageFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'image';
+  acceptedFileTypes?: string[];
+  maxFileSize?: number; // maximum file size in bytes
+  aspectRatio?: string; // desired aspect ratio for the image
+}
+
+interface HiddenFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'hidden';
+}
+
+interface CustomFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'custom';
+}
+
+interface RatingFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'rating';
+  maxRating?: number; // maximum rating value
+}
+
+interface EditorFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'editor' | 'rich-text';  
+}
+
+interface CodeEditorFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'code' | 'markdown' | 'json';  
+}
+
+export type FieldOptions<E extends EntitySchema<any, any, any>=any> = Array<FieldOption> | FieldOptionsAPIConfig<E>;
+
+export type FieldOption = {
+  value: string,
+  label: string,
+}
+
+/**
+ * Represents the template for attributes.
+ * like
+ * ```ts
+ * {
+ *      composite: ['att1', 'att2'],
+ *      template: '{att1}-AND-${att2}' // any arbitrary string with placeholders
+ * }
+ * ```
+*/
+export type AttributesTemplate = {
+    composite: Array<string>,
+    template: string,
+}
+export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
+    apiMethod: 'GET' | 'POST',
+    apiUrl: string,
+    responseKey: string,
+    query?: EntityQuery<E>,
+    optionMapping?: {
+        label: string | AttributesTemplate, // 
+        value: string | AttributesTemplate, // 
+    },
 }
 
 /**

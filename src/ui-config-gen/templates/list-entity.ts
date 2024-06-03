@@ -46,13 +46,13 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     properties.forEach( prop => {
         if(prop){
             const propConfig: ListingPropConfig = {
-                name:      `${prop.name}`,
+                ...prop,
+                hidden: !prop.isVisible,
                 dataIndex:  `${prop.id}`,
-                fieldType:  `${prop.fieldType || 'text'}`
+                fieldType:  prop.fieldType || 'text',
             };
 
             if(prop?.isIdentifier){
-                propConfig.hidden = true;
 
                 propConfig.actions = [
                     {
