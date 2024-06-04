@@ -141,7 +141,9 @@ export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldM
 
 // Metadata for UI
 export interface BaseFieldMetadata {
-    isVisible?: boolean; // if the field is visible or hidden for all operations
+    isVisible?: boolean; // if the field is visible or hidden on all detail-pages
+    isListable?: boolean; // if the field is visible in the list view
+    isEditable?: boolean; // if the field is editable
     placeholder?: string;
     helpText?: string;
     tooltip?: string; // maybe this can be inferred from the helpText
@@ -188,7 +190,7 @@ interface ColorFieldMetadata extends BaseFieldMetadata {
 }
 
 interface BooleanFieldMetadata extends BaseFieldMetadata {
-  fieldType?: 'boolean';
+  fieldType?: 'boolean' | 'switch' | 'toggle';
   trueLabel?: string; // label for the true value
   falseLabel?: string; // label for the false value
 }
@@ -208,6 +210,7 @@ interface RadioFieldMetadata<E extends EntitySchema<any, any, any>=any> extends 
 interface CheckboxFieldMetadata<E extends EntitySchema<any, any, any>=any> extends BaseFieldMetadata {
     fieldType?: 'checkbox';
     options: FieldOptions<E>;
+    layout?: 'horizontal' | 'vertical'; // layout of the radio buttons
 }
 
 interface FileFieldMetadata extends BaseFieldMetadata {

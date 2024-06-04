@@ -45,9 +45,13 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 
     properties.forEach( prop => {
         if(prop){
+            
+            if(prop.hasOwnProperty('isListable') && !prop.isListable){
+                return;
+            }
+
             const propConfig: ListingPropConfig = {
                 ...prop,
-                hidden: !prop.isVisible,
                 dataIndex:  `${prop.id}`,
                 fieldType:  prop.fieldType || 'text',
             };
