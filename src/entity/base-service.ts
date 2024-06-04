@@ -330,8 +330,18 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             return identifiersBatch;
         });
 
+        // remove duplicates from relationIdentifiersBatch array
+        const uniqueRelationIdentifiersBatch = Array.from(
+            // create a set of stringified identifiers to remove duplicates
+            new Set( 
+                relationIdentifiersBatch.map(i => JSON.stringify(i)) 
+            )
+        )
+        // convert back to array of identifiers
+        .map(i => JSON.parse(i));
+
         // ensure all the identifier attributes are part of the selections
-        Object.keys(relationIdentifiersBatch[0]).forEach( (key: string) => {
+        Object.keys(uniqueRelationIdentifiersBatch[0]).forEach( (key: string) => {
             if(Array.isArray(options.attributes) && !options.attributes.includes(key)){
                 options.attributes.push(key);
             } else if(isObject(options.attributes) && !options.attributes.hasOwnProperty(key) ){
@@ -344,7 +354,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
         // Fetch related entities
         const relatedEntities = await relatedEntityService.get({
-            identifiers: relationIdentifiersBatch,
+            identifiers: uniqueRelationIdentifiersBatch,
             selections: options.attributes,
         });
 
@@ -713,13 +723,13 @@ export function makeOpsDefaultIOSchema<
 		}
 		
 		// TODO: loop in validations
-		if(!att.default && !att.hidden){
+		if(!att.hidden){
 			inputSchemaAttributes['create']?.set(attName, {
                 ...entityAttributeToIOSchemaAttribute(attName, att),
 			});
         }
 
-		if(!att.readOnly && !att.default && !att.hidden){
+		if(!att.readOnly && !att.hidden){
             inputSchemaAttributes['update']?.set(attName, {
                 ...entityAttributeToIOSchemaAttribute(attName, att),
 			});
