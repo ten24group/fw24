@@ -4,6 +4,7 @@ import { Bucket } from "aws-cdk-lib/aws-s3";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Role } from "aws-cdk-lib/aws-iam";
 import { Topic } from "aws-cdk-lib/aws-sns";
+import { Vpc, ISubnet, ISecurityGroup} from "aws-cdk-lib/aws-ec2";
 import { LayerVersion } from "aws-cdk-lib/aws-lambda";
 import { CfnIdentityPool, UserPool, UserPoolClient } from "aws-cdk-lib/aws-cognito";
 
@@ -31,6 +32,10 @@ export interface FW24ConstructOutput extends Record<string, any>{
     [OutputType.USERPOOL]: Record<string,UserPool>;
     [OutputType.IDENTITYPOOL]: Record<string,CfnIdentityPool>;
     [OutputType.USERPOOLCLIENT]: Record<string,UserPoolClient>;
+    [OutputType.VPC]: Record<string,Vpc>;
+    [OutputType.SUBNET]: Record<string,ISubnet>;
+    [OutputType.SUBNETS]: Record<string,ISubnet[]>;
+    [OutputType.SECURITYGROUP]: Record<string,ISecurityGroup>;
     [key: string]: any;
 }
 
@@ -47,4 +52,8 @@ export enum OutputType   {
     USERPOOL = 'userpool',
     IDENTITYPOOL = 'identitypool',
     USERPOOLCLIENT = 'userpoolclient',
+    VPC = 'vpc',
+    SUBNET = 'subnet',
+    SUBNETS = 'subnets',
+    SECURITYGROUP = 'securitygroup'
 }
