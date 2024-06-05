@@ -24,7 +24,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     readonly logger = createLogger(BaseEntityService.name);
 
     protected entityRepository ?: EntityRepositoryTypeFromSchema<S>;
-    protected entityOpsDefaultIoSchema ?: ReturnType<typeof makeOpsDefaultIOSchema<S>>;
+    protected entityOpsDefaultIoSchema ?: ReturnType<typeof this.makeOpsDefaultIOSchema<S>>;
 
     constructor(
         protected readonly schema: S,
@@ -162,12 +162,115 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     }
 
     /**
+ * Generates the default input and output schemas for various operations of an entity.
+ * 
+ * @template S - The entity schema type.
+ * @template Ops - The type of entity operations.
+ * 
+ * @param schema - The entity schema.
+ * @returns The default input and output schemas for the entity operations.
+ */
+ protected makeOpsDefaultIOSchema<
+    S extends EntitySchema<any, any, any, Ops>,
+    Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
+>( schema: S) {
+	
+	const inputSchemaAttributes = {
+		create: new Map() as TIOSchemaAttributesMap<S> ,
+		update: new Map() as TIOSchemaAttributesMap<S> ,
+	};
+
+	const outputSchemaAttributes = {
+        detail: new Map() as TIOSchemaAttributesMap<S>,
+        list: new Map() as TIOSchemaAttributesMap<S>,
+    };
+
+	// create and update
+	for(const attName in schema.attributes){
+		const att = schema.attributes[attName];
+
+		if(!att.hidden){
+			outputSchemaAttributes.detail.set(attName, {
+                ...entityAttributeToIOSchemaAttribute(attName, att), 
+			});
+		}
+
+        if(!att.hidden && ( !att.hasOwnProperty('isListable') || att.isListable ) ){
+			outputSchemaAttributes.list.set(attName, {
+                ...entityAttributeToIOSchemaAttribute(attName, att),
+			});
+        }
+		
+		if(!att.hidden && ( !att.hasOwnProperty('isCreatable') || att.isCreatable ) ){
+			inputSchemaAttributes.create.set(attName, {
+                ...entityAttributeToIOSchemaAttribute(attName, att),
+			});
+        }
+
+		if(!att.readOnly && ( !att.hasOwnProperty('isEditable') || att.isEditable )){
+            inputSchemaAttributes.update.set(attName, {
+                ...entityAttributeToIOSchemaAttribute(attName, att),
+			});
+		}
+	}
+
+	const accessPatterns = makeEntityAccessPatternsSchema(schema);
+    
+	// if there's an index named `primary`, use that, else fallback to first index
+	// accessPatternAttributes['get'] = accessPatterns.get('primary') ?? accessPatterns.entries().next().value;
+	// accessPatternAttributes['delete'] = accessPatterns.get('primary') ?? accessPatterns.entries().next().value;
+
+
+	// for(const ap of accessPatterns.keys()){
+	// 	accessPatternAttributes[`get_${ap}`] = accessPatterns.get(ap);
+	// 	accessPatternAttributes[`delete_${ap}`] = accessPatterns.get(ap);
+	// }
+
+	// const inputSchemaAttributes: any = {};	
+	// inputSchemaAttributes['create'] = {
+	// 	'identifiers': accessPatternAttributes['get'],
+	// 	'data': inputSchemaAttributes['create'],
+	// }
+	// inputSchemaAttributes['update'] = {
+	// 	'identifiers': accessPatternAttributes['get'],
+	// 	'data': inputSchemaAttributes['update'],
+	// }
+
+	const defaultAccessPattern = accessPatterns.get('primary');
+    
+    // TODO: add schema for the rest fo the secondary access-patterns
+
+	return {
+		get: {
+			by: defaultAccessPattern,
+			output: outputSchemaAttributes.detail, // default for the detail page
+		},
+		delete: {
+			by: defaultAccessPattern
+		},
+		create: {
+			input: inputSchemaAttributes.create,
+			output: outputSchemaAttributes,
+		},
+		update: {
+			by: defaultAccessPattern,
+			input: inputSchemaAttributes.update,
+			output: outputSchemaAttributes.detail,
+		},
+		list: {
+			output: outputSchemaAttributes.list,
+		},
+	};
+}
+
+
+    /**
      * Returns the default input/output schema for entity operations.
      * 
     */
     public getOpsDefaultIOSchema() {
         if(!this.entityOpsDefaultIoSchema){
-            this.entityOpsDefaultIoSchema  = makeOpsDefaultIOSchema<S>(this.getEntitySchema());
+            this.entityOpsDefaultIoSchema  = this.makeOpsDefaultIOSchema<S>(this.getEntitySchema());
         }
         return this.entityOpsDefaultIoSchema;
     }
@@ -200,8 +303,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         
         for(const attName in schema.attributes){
             const att = schema.attributes[attName];
-            // TODO: add meta annotation for searchable attributes
-            if( !att.hidden && !att.isIdentifier && att.type === 'string' ){ 
+            if( !att.hidden && !att.isIdentifier && att.type === 'string'
+                && 
+                (!att.hasOwnProperty('isSearchable') || att.isSearchable ) 
+             ){ 
                 attributeNames.push(attName); 
             }
         }
@@ -220,8 +325,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         
         for(const attName in schema.attributes){
             const att = schema.attributes[attName];
-            // TODO: add meta annotation for filterable attributes
-            if( !att.hidden && ['string', 'number'].includes(att.type as string) ){ 
+            if( 
+                !att.hidden && ['string', 'number'].includes(att.type as string) 
+                && 
+                (!att.hasOwnProperty('isFilterable') || att.isFilterable ) 
+            ){ 
                 attributeNames.push(attName); 
             }
         }
@@ -690,98 +798,3 @@ export function makeEntityAccessPatternsSchema<S extends EntitySchema<any, any, 
 
     return accessPatterns;
 }
-
-/**
- * Generates the default input and output schemas for various operations of an entity.
- * 
- * @template S - The entity schema type.
- * @template Ops - The type of entity operations.
- * 
- * @param schema - The entity schema.
- * @returns The default input and output schemas for the entity operations.
- */
-export function makeOpsDefaultIOSchema<
-    S extends EntitySchema<any, any, any, Ops>,
-    Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
->( schema: S) {
-	
-	const inputSchemaAttributes = {
-		create: new Map() as TIOSchemaAttributesMap<S> ,
-		update: new Map() as TIOSchemaAttributesMap<S> ,
-	};
-
-	const outputSchemaAttributes = new Map() as TIOSchemaAttributesMap<S> ;
-
-	// create and update
-	for(const attName in schema.attributes){
-		const att = schema.attributes[attName];
-
-		if(!att.hidden){
-			outputSchemaAttributes.set(attName, {
-                ...entityAttributeToIOSchemaAttribute(attName, att), 
-			});
-		}
-		
-		// TODO: loop in validations
-		if(!att.hidden){
-			inputSchemaAttributes['create']?.set(attName, {
-                ...entityAttributeToIOSchemaAttribute(attName, att),
-			});
-        }
-
-		if(!att.readOnly && !att.hidden){
-            inputSchemaAttributes['update']?.set(attName, {
-                ...entityAttributeToIOSchemaAttribute(attName, att),
-			});
-		}
-	}
-
-	const accessPatterns = makeEntityAccessPatternsSchema(schema);
-    
-	// if there's an index named `primary`, use that, else fallback to first index
-	// accessPatternAttributes['get'] = accessPatterns.get('primary') ?? accessPatterns.entries().next().value;
-	// accessPatternAttributes['delete'] = accessPatterns.get('primary') ?? accessPatterns.entries().next().value;
-
-
-	// for(const ap of accessPatterns.keys()){
-	// 	accessPatternAttributes[`get_${ap}`] = accessPatterns.get(ap);
-	// 	accessPatternAttributes[`delete_${ap}`] = accessPatterns.get(ap);
-	// }
-
-	// const inputSchemaAttributes: any = {};	
-	// inputSchemaAttributes['create'] = {
-	// 	'identifiers': accessPatternAttributes['get'],
-	// 	'data': inputSchemaAttributes['create'],
-	// }
-	// inputSchemaAttributes['update'] = {
-	// 	'identifiers': accessPatternAttributes['get'],
-	// 	'data': inputSchemaAttributes['update'],
-	// }
-
-	const defaultAccessPattern = accessPatterns.get('primary');
-
-	return {
-		get: {
-			// TODO: add schema for the rest fo the secondary access-patterns
-			by: defaultAccessPattern,
-			output: outputSchemaAttributes, // default for the detail page
-		},
-		delete: {
-			by: defaultAccessPattern
-		},
-		create: {
-			input: inputSchemaAttributes['create'],
-			output: outputSchemaAttributes,
-		},
-		update: {
-			by: defaultAccessPattern,
-			input: inputSchemaAttributes['update'],
-			output: outputSchemaAttributes,
-		},
-		list: {
-			// TODO pagination and filtering input-schema
-			output: outputSchemaAttributes,
-		},
-	};
-}
-

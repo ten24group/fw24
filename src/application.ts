@@ -83,7 +83,7 @@ export class Application {
         // TODO: make it configurable
         if(true){
             const uiConfigGen = new EntityUIConfigGen();
-            uiConfigGen.run();
+            await uiConfigGen.run();
         }
 
         await this.constructAllResources()

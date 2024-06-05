@@ -143,7 +143,10 @@ export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldM
 export interface BaseFieldMetadata {
     isVisible?: boolean; // if the field is visible or hidden on all detail-pages
     isListable?: boolean; // if the field is visible in the list view
+    isCreatable?: boolean; // if the field is creatable
     isEditable?: boolean; // if the field is editable
+    isFilterable?: boolean; // if the field is filterable
+    isSearchable?: boolean; // if the field is searchable
     placeholder?: string;
     helpText?: string;
     tooltip?: string; // maybe this can be inferred from the helpText
