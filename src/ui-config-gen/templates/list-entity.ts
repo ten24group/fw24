@@ -49,11 +49,11 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
             if(prop.hasOwnProperty('isListable') && !prop.isListable){
                 return;
             }
-
             const propConfig: ListingPropConfig = {
                 ...prop,
                 dataIndex:  `${prop.id}`,
                 fieldType:  prop.fieldType || 'text',
+                hidden: prop.hasOwnProperty('isVisible') && !prop.isVisible
             };
 
             if(prop?.isIdentifier){

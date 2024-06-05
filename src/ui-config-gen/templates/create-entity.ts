@@ -45,11 +45,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     properties.forEach( prop => {
         if(prop){
 
-            if(
-                ( prop.hasOwnProperty('isEditable') && !prop.isEditable) 
-                || 
-                ( prop.hasOwnProperty('isVisible') && !prop.isVisible )
-            ){
+            if(prop.hasOwnProperty('isEditable') && !prop.isEditable ){
                 return;
             }
 
@@ -58,6 +54,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 label:          prop.name,
                 column:         prop.id,
                 fieldType:      prop.fieldType || 'text',
+                hidden: prop.hasOwnProperty('isVisible') && !prop.isVisible
             };
 
             _propertiesConfig.push(propConfig);

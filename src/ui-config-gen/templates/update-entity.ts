@@ -55,8 +55,6 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 
                 (prop.hasOwnProperty('isEditable') && !prop.isEditable)
                 ||
-                (prop.hasOwnProperty('isVisible') && !prop.isVisible)
-                ||
                 (prop.hasOwnProperty('readOnly') && prop.readOnly)
             ){
                 return;
@@ -67,6 +65,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 label:          prop.name,
                 column:         prop.id,
                 fieldType:      prop.fieldType || 'text',
+                hidden: prop.hasOwnProperty('isVisible') && !prop.isVisible
             });
         }
     });

@@ -40,15 +40,12 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     properties.forEach( prop => {
         if(prop){
 
-            if( prop.hasOwnProperty('isVisible') && !prop.isVisible ){
-                return;
-            }
-
             _propertiesConfig.push({
                 ...prop,
                 label:          prop.name,
                 column:         prop.id,
                 fieldType:      prop.fieldType || 'text',
+                hidden: prop.hasOwnProperty('isVisible') && !prop.isVisible
             });
         }
     });
