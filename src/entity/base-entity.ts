@@ -251,7 +251,7 @@ interface RatingFieldMetadata extends BaseFieldMetadata {
 }
 
 interface EditorFieldMetadata extends BaseFieldMetadata {
-  fieldType?: 'editor' | 'rich-text';  
+  fieldType?: 'rich-text' | 'wysiwyg';  
 }
 
 interface CodeEditorFieldMetadata extends BaseFieldMetadata {
