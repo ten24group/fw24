@@ -1,8 +1,10 @@
 import { 
     AuthorizationType, 
+    AwsIntegration, 
     Cors, 
     CorsOptions,
     IResource, 
+    Integration, 
     LambdaIntegration, 
     MethodOptions, 
     RestApi, 
@@ -26,6 +28,9 @@ import { DynamoDBConstruct } from "./dynamodb";
 import { AuthConstruct } from "./auth";
 import { IControllerConfig } from "../decorators/controller";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
+import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import { Queue } from "aws-cdk-lib/aws-sqs";
+import { Topic } from "aws-cdk-lib/aws-sns";
 
 /**
  * Represents the configuration options for an API construct.
@@ -61,6 +66,7 @@ export interface IAPIConstructConfig {
      * Specifies the removal policy for the API logs.
      */
     logRemovalPolicy?: RemovalPolicy;
+
 }
 
 export class APIConstruct implements FW24Construct {
@@ -83,7 +89,6 @@ export class APIConstruct implements FW24Construct {
 
     // construct method to create the stack
     public async construct() {
-        this.logger.debug('construct:');
 
         // set the default api options
         const paramsApi: Mutable<RestApiProps> = this.apiConstructConfig.apiOptions || {};
@@ -149,13 +154,17 @@ export class APIConstruct implements FW24Construct {
         // create the api resource for the controller if it doesn't exist
         const controllerResource = this.getOrCreateControllerResource(controllerName);
 
+        var controllerTarget = controllerConfig.target;
+        var controllerIntegration: any;
         // create lambda function for the controller
-        controllerConfig.logRetentionDays = controllerConfig.logRetentionDays || this.apiConstructConfig.logRetentionDays;
-        controllerConfig.logRemovalPolicy = controllerConfig.logRemovalPolicy || this.apiConstructConfig.logRemovalPolicy;
-        const controllerLambda = this.createLambdaFunction(controllerName, filePath, fileName, controllerConfig);
-        this.fw24.setConstructOutput(this, controllerName, controllerLambda, OutputType.FUNCTION);
+        if (controllerTarget === 'function' || controllerTarget === undefined) {
+            controllerConfig.logRetentionDays = controllerConfig.logRetentionDays || this.apiConstructConfig.logRetentionDays;
+            controllerConfig.logRemovalPolicy = controllerConfig.logRemovalPolicy || this.apiConstructConfig.logRemovalPolicy;
+            const controllerLambda = this.createLambdaFunction(controllerName, filePath, fileName, controllerConfig);
+            this.fw24.setConstructOutput(this, controllerName, controllerLambda, OutputType.FUNCTION);
 
-        const controllerIntegration = new LambdaIntegration(controllerLambda);
+            controllerIntegration = new LambdaIntegration(controllerLambda);
+        } 
 
         const { defaultAuthorizerName, defaultAuthorizerType, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig } = this.extractDefaultAuthorizer(controllerConfig);
 
@@ -163,13 +172,48 @@ export class APIConstruct implements FW24Construct {
       
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             this.logger.debug(`Registering route ${route.httpMethod} ${route.path}`);
+            const routeTarget = route.target || controllerTarget;
             const currentResource = this.getOrCreateRouteResource(controllerResource, route.path);
-
-            const { routeAuthorizerName, routeAuthorizerType, routeAuthorizerGroups, routeRequireRouteInGroupConfig } = this.extractRouteAuthorizer(route, defaultAuthorizerType, defaultAuthorizerName, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig);
+            const { routeAuthorizerName, routeAuthorizerType, routeAuthorizerGroups, routeRequireRouteInGroupConfig } = this.extractRouteAuthorizer(route, defaultAuthorizerType, defaultAuthorizerName, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig);            
+            this.logger.debug(`Registering route Authorizer: ${routeAuthorizerName} - ${routeAuthorizerType} - ${routeAuthorizerGroups}`);
+            let methodOptions = this.createMethodOptions(route, routeAuthorizerType, routeAuthorizerName);
             
-            this.logger.info(`Registering route Authorizer: ${routeAuthorizerName} - ${routeAuthorizerType} - ${routeAuthorizerGroups}`);
+            if (routeTarget === 'queue') {
+                const queueName = route.path.replace('/', '');
+                controllerIntegration = this.createSQSIntegration(queueName, controllerName);
+                methodOptions = {
+                    ...methodOptions,
+                    methodResponses: [
+                        {
+                            statusCode: "202",
+                        },
+                        {
+                            statusCode: "400",
+                        },
+                        {
+                            statusCode: "500",
+                        },
+                    ],
+                }
+            } else if (routeTarget === 'topic') {
+                const topicName = route.path.replace('/', '');
+                controllerIntegration = this.createSNSIntegration(topicName, controllerName);
+                methodOptions = {
+                    ...methodOptions,
+                    methodResponses: [
+                        {
+                            statusCode: "202",
+                        },
+                        {
+                            statusCode: "400",
+                        },
+                        {
+                            statusCode: "500",
+                        },
+                    ],
+                }
+            }
 
-            const methodOptions = this.createMethodOptions(route, routeAuthorizerType, routeAuthorizerName);
             currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);
             // if authorizer is AWS_IAM, then add the route to the policy
             if(routeAuthorizerType === 'AWS_IAM') {
@@ -305,8 +349,74 @@ export class APIConstruct implements FW24Construct {
         return {
             requestParameters,
             authorizationType: routeAuthorizerType as AuthorizationType,
-            authorizer: this.fw24.getAuthorizer(routeAuthorizerType, routeAuthorizerName),
+            authorizer: this.fw24.getAuthorizer(routeAuthorizerType, routeAuthorizerName)
         };
+    }
+
+    private createSQSIntegration = (queueName: string, controllerName: string): AwsIntegration => {
+        const integrationRole = new Role(this.mainStack, controllerName + "-sqs-integration-role", {
+            assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
+        });
+        const queueInstance: Queue = this.fw24.get(queueName,'queue');
+        queueInstance.grantSendMessages(integrationRole);
+        return new AwsIntegration({
+            service: "sqs",
+            path: this.fw24.getConfig().account + "/" + queueInstance.queueName,
+            integrationHttpMethod: "POST",
+            options: {
+                credentialsRole: integrationRole,
+                requestParameters: {
+                    "integration.request.header.Content-Type": "'application/x-www-form-urlencoded'",
+                },
+                requestTemplates: {
+                    "application/json": `Action=SendMessage&MessageBody=$util.urlEncode($input.body)`,
+                },
+                integrationResponses: [
+                    {
+                        statusCode: "202",
+                    },
+                    {
+                        statusCode: "400",
+                    },
+                    {
+                        statusCode: "500",
+                    },
+                ],
+            },
+        });
+    }
+
+    private createSNSIntegration = (topicName: string, controllerName: string): AwsIntegration => {
+        const integrationRole = new Role(this.mainStack, controllerName + "-sns-integration-role", {
+            assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
+        });
+        const topicInstance: Topic = this.fw24.get(topicName, 'topic');
+        topicInstance.grantPublish(integrationRole);
+        return new AwsIntegration({
+            service: "sns",
+            path: '/',
+            integrationHttpMethod: "POST",
+            options: {
+                credentialsRole: integrationRole,                
+                requestParameters: {
+                    "integration.request.header.Content-Type": "'application/x-www-form-urlencoded'",
+                },
+                requestTemplates: {
+                    "application/json": `Action=Publish&TopicArn=$util.urlEncode(\'${topicInstance.topicArn}\')&Message=$util.urlEncode($input.body)`,
+                },
+                integrationResponses: [
+                    {
+                        statusCode: "202",
+                    },
+                    {
+                        statusCode: "400",
+                    },
+                    {
+                        statusCode: "500",
+                    },
+                ],
+            },
+        });
     }
 
     private outputApiEndpoint = (controllerName: string, controllerResource: IResource) => {

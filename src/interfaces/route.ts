@@ -10,7 +10,8 @@ export interface Route {
 		type?: string;
     groups?: string[];
 	} | string;
-  validations ?: InputValidationRule | HttpRequestValidations
+  validations ?: InputValidationRule | HttpRequestValidations;
+  target?: string;
 }
 
 export type Routes = Route[];

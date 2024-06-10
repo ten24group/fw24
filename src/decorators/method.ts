@@ -28,7 +28,13 @@ function createRouteDecorator(method: string) {
   return (
     route: string,
     options ?: {
-      validations?: InputValidationRule | HttpRequestValidations
+      validations?: InputValidationRule | HttpRequestValidations,
+      /**
+       * Specifies the target for the API
+       * Values can be "queue" or "topic"
+       * @default ""
+       */
+      target?: string;
     } 
   ) =>
     (target: any, methodToDecorate: any) => {
@@ -61,6 +67,7 @@ function createRouteDecorator(method: string) {
         functionName: methodToDecorate.name || methodToDecorate,
         parameters: parameters,
         validations: options?.validations,
+        target: options?.target
       };
 
       Reflect.set(target, "routes", routes);
