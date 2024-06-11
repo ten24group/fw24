@@ -142,7 +142,7 @@ export class QueueLambda extends Construct {
     let props = { ...QueueLambdaFunctionPropDefaults, ...queueLambdaProps };
 
     // get the dlq from fw24 or create a new dlq
-    let dlq: Queue = fw24.get(props.queueName, 'dlq') || fw24.get('dlq_default');
+    let dlq: Queue = fw24.get(props.queueName, 'dlq') || fw24.get(props.queueName+'_dlq', 'queue') || fw24.get('dlq_default');
     
     if(!dlq){
       dlq = new Queue(this, "default-dlq", {});

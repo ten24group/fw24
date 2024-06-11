@@ -1,5 +1,6 @@
 import { CfnOutput } from "aws-cdk-lib";
 import { Topic, TopicProps } from 'aws-cdk-lib/aws-sns';
+import { EmailSubscription, SmsSubscription } from 'aws-cdk-lib/aws-sns-subscriptions';
 
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
@@ -13,6 +14,10 @@ import { LogDuration, createLogger } from "../logging";
 export interface ITopicConstructConfig {
     topicName: string;
     topicProps?: TopicProps;
+    notificationProps?: {
+        email?: string[];
+        sms?: string[];
+    }
 }
 
 export class TopicConstruct implements FW24Construct {
@@ -40,8 +45,23 @@ export class TopicConstruct implements FW24Construct {
                 ...topicConfig.topicProps
             });
             this.fw24.setConstructOutput(this, topicConfig.topicName, topic, OutputType.TOPIC);
-
             this.fw24.set(topicConfig.topicName, topic.topicName, "topicName");
+
+            if(topicConfig.notificationProps?.email){
+                for (const email of topicConfig.notificationProps.email) {
+                    topic.addSubscription(
+                        new EmailSubscription(email)
+                    );
+                }
+            }
+
+            if(topicConfig.notificationProps?.sms){
+                for (const sms of topicConfig.notificationProps.sms) {
+                    topic.addSubscription(
+                        new SmsSubscription(sms)
+                    );
+                }
+            }
 
             new CfnOutput(mainStack, topicConfig.topicName + 'Output', {
                 value: topic.topicName,
