@@ -63,7 +63,7 @@ export function Controller(controllerName: string, controllerConfig: IController
 			constructor(...args: any[]) {
 				super(...args);
 				// set the controller name
-				Reflect.set(this, 'controllerName', controllerName);
+				Reflect.set(this, 'controllerName', controllerName.toLowerCase());
 
 				// initialize the default controller config
 				const defaultConfig: IControllerConfig = {

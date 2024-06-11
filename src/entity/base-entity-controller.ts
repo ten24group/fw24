@@ -90,9 +90,9 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 	async find(req: Request, res: Response): Promise<Response> {
         // prepare the identifiers
         const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
-		const attributes = req.queryStringParameters?.attributes?.split?.(',');
+		const selections = req.queryStringParameters?.attributes?.split?.(',');
 
-		const entity = await this.getEntityService().get(identifiers, attributes);
+		const entity = await this.getEntityService().get({identifiers, selections});
 
 		const result: any = {
 			[camelCase(this.entityName)]: entity,
@@ -207,7 +207,7 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
         // prepare the identifiers
         const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
 
-		const updatedEntity = await this.getEntityService().update(identifiers, req.body);
+		const updatedEntity = await this.getEntityService().update(identifiers as any, req.body);
 
 		const result: any = {
 			[camelCase(this.entityName)]: updatedEntity,

@@ -1,5 +1,5 @@
 import {  Schema } from "electrodb";
-import { pascalCase } from "../../utils";
+import { toHumanReadableName } from "../../utils";
 
 export default(
     options: {
@@ -11,17 +11,17 @@ export default(
 ) => {
 
     let config = {
-        label: `${pascalCase(options.entityNamePlural)}`,
+        label: `${toHumanReadableName(options.entityNamePlural)}`,
         icon: `${ options.icon || 'appStore' }`,
         key: options.menuIndex,
         children: [
             {
-                label: `${pascalCase(options.entityName)} List`,
+                label: `${toHumanReadableName(options.entityName)} List`,
                 key: (options.menuIndex || 1) * 10 + 1,
                 url: `/list-${options.entityName.toLowerCase()}`
             },
             {
-                label: `Add New ${pascalCase(options.entityName)}`,
+                label: `Add New ${toHumanReadableName(options.entityName)}`,
                 key: (options.menuIndex || 1) * 10 + 2,
                 url: `/create-${options.entityName.toLowerCase()}`
             }

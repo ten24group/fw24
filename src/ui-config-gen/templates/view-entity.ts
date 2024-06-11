@@ -6,7 +6,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     options: {
         entityName: string,
         entityNamePlural: string,
-        properties: TIOSchemaAttributesMap<S>
+        properties: TIOSchemaAttributesMap<S>,
     }
 ) => {
 
@@ -39,10 +39,13 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 
     properties.forEach( prop => {
         if(prop){
+
             _propertiesConfig.push({
-                label:          `${prop.name}`,
-                column:         `${prop.id}`,
-                fieldType:      `${prop.fieldType || 'text'}`,
+                ...prop,
+                label:          prop.name,
+                column:         prop.id,
+                fieldType:      prop.fieldType || 'text',
+                hidden: prop.hasOwnProperty('isVisible') && !prop.isVisible
             });
         }
     });

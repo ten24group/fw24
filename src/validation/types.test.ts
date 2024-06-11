@@ -1,9 +1,11 @@
+import { EntitySchema, Relation, RelationalAttributes, createEntityRelation, HydrateOptionForEntity } from './../entity/base-entity';
 import { randomUUID } from "crypto";
 import { DefaultEntityOperations, TEntityOpsInputSchemas, createEntitySchema } from "../entity";
 import { EntityOperationsValidation, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TestComplexValidationRuleResult, TestValidationResult, TestValidationRuleResult, InputValidationRule, EntityInputValidations } from "./types";
 import { Narrow, OmitNever } from "../utils";
 
 import { describe, expect, it } from '@jest/globals';
+import { Entity } from 'electrodb';
 
 describe('Validation.types', () => {
   it('should narrow', () => {
@@ -16,7 +18,8 @@ describe('Validation.types', () => {
     });
 });
 
-namespace User {
+export namespace User {
+
     export const createUserSchema = () => createEntitySchema({
       model: {
         version: '1',
@@ -69,10 +72,6 @@ namespace User {
           default: () => Date.now().toString(),
           set: () => Date.now().toString(),
         },
-        deletedAt:{
-          type: "string",
-          readOnly: false
-        },
       },
       indexes: {
         primary: {
@@ -101,108 +100,191 @@ namespace User {
       },
     } as const);
 
-  export type TUserSchema = ReturnType<typeof createUserSchema>
+    export type TUserSchema = ReturnType<typeof createUserSchema>
 
-  export const createUserSchema2 = () => createEntitySchema({
-      model: {
-        version: '1',
-        entity: 'user',
-        entityNamePlural: 'Users',
-        entityOperations: {
-            get: "get",
-            list: "list",
-            create: "create",
-            update: "update",
-            delete: "delete",
-            query: "query",
-            xxx: "xxx",
-            yyy: "yyy"
-        },
-        service: 'users', // electro DB service name [logical group of entities]
-      },
-      attributes: {
-        userId: {
-          type: 'string',
-          required: true,
-          readOnly: true,
-          default: () => randomUUID()
-        },
-        tenantId: {
-          type: 'string',
-          required: true,
-          readOnly: true,
-          default: () => 'xxx-yyy-zzz' // TODO: have some global logic drive this value
-        },
-        firstName: {
-          type: 'string',
-          required: true,
-        },
-        lastName: {
-          type: 'string',
-        },
-        status: {
-          type: 'string',
-        },
-        parentId: {
-          type: 'string',
-        },
-        email: {
-          type: 'string',
-          required: true,
-        },
-        password: {
-          type: 'string',
-          required: true,
-        },
-        createdAt: {
-          // will be set once at the time of create
-          type: "string",
-          readOnly: true,
-          required: true,
-          default: () => Date.now().toString(),
-          set: () => Date.now().toString(),
-        },
-        updatedAt:{
-          type: "string",
-          watch: "*", // will be set every time any prop is updated
-          required: true,
-          readOnly: true,
-          default: () => Date.now().toString(),
-          set: () => Date.now().toString(),
-        },
-        deletedAt:{
-          type: "string",
-          readOnly: false
-        },
-      },
-      indexes: {
-        primary: {
-          pk: {
-            field: 'pk',
-            template: "t_${tenantId}#u_${userId}",
-            composite: ['tenantId', 'userId'],
-          },
-          sk: {
-            field: 'sk',
-            composite: [],
-          },
-        },
-        byEmail: {
-          index: 'gsi1',
-          pk: {
-            field: 'gsi1pk',
-            template: "t_${tenantId}#u_${email}",
-            composite: ['tenantId', 'email'],
-          },
-          sk: {
-            field: 'gsi1sk',
-            composite: [],
-          },
-        },
-      },
-  } as const);
+    const userSch1 = createUserSchema();
 
-  export type TUserSchema2 = ReturnType<typeof createUserSchema2>;
+    export const createUserSchema2 = () => createEntitySchema({
+        model: {
+          version: '2',
+          entity: 'user2',
+          entityNamePlural: 'Users2',
+          entityOperations: {
+              get: "get",
+              list: "list",
+              create: "create",
+              update: "update",
+              delete: "delete",
+              query: "query",
+              xxx: "xxx",
+              yyy: "yyy"
+          },
+          service: 'users', // electro DB service name [logical group of entities]
+        },
+        attributes: {
+          userId: {
+            type: 'string',
+            required: true,
+            readOnly: true,
+            default: () => randomUUID()
+          },
+          tenantId: {
+            type: 'string',
+            required: true,
+            readOnly: true,
+            default: () => 'xxx-yyy-zzz', // TODO: have some global logic drive this value
+            relation: createEntityRelation({
+              entity: userSch1,
+              type: 'many-to-one',
+              attributes: ['userId', 'updatedAt', 'createdAt'],
+              identifiers: [{
+                source: 'tenantId',
+                target: 'userId'
+              }],
+            } as const)
+          },
+          firstName: {
+            type: 'string',
+            required: true,
+          },
+          lastName: {
+            type: 'string',
+          },
+          status: {
+            type: 'string',
+          },
+          parentId: {
+            type: 'string',
+          },
+          email: {
+            type: 'string',
+            required: true,
+          },
+          password: {
+            type: 'string',
+            required: true,
+          },
+          createdAt: {
+            // will be set once at the time of create
+            type: "string",
+            readOnly: true,
+            required: true,
+            default: () => Date.now().toString(),
+            set: () => Date.now().toString(),
+          },
+          updatedAt:{
+            type: "string",
+            watch: "*", // will be set every time any prop is updated
+            required: true,
+            readOnly: true,
+            default: () => Date.now().toString(),
+            set: () => Date.now().toString(),
+          },
+          deletedAt:{
+            type: "string",
+            readOnly: false
+          },
+        },
+        indexes: {
+          primary: {
+            pk: {
+              field: 'pk',
+              template: "t_${tenantId}#u_${userId}",
+              composite: ['tenantId', 'userId'],
+            },
+            sk: {
+              field: 'sk',
+              composite: [],
+            },
+          },
+          byEmail: {
+            index: 'gsi1',
+            pk: {
+              field: 'gsi1pk',
+              template: "t_${tenantId}#u_${email}",
+              composite: ['tenantId', 'email'],
+            },
+            sk: {
+              field: 'gsi1sk',
+              composite: [],
+            },
+          },
+        },
+    } as const);
+
+    export type TUserSchema2 = ReturnType<typeof createUserSchema2>;
+    export const userSch2 = createUserSchema2();
+
+    export const createGroupSchema = () => createEntitySchema({
+        model: {
+          version: '1',
+          entity: 'group',
+          entityNamePlural: 'Groups',
+          entityOperations: DefaultEntityOperations,
+          service: 'users', // electro DB service name [logical group of entities]
+        },
+        attributes: {
+          groupId: {
+            type: 'string',
+            required: true,
+            readOnly: true,
+            default: () => randomUUID()
+          },
+          adminId: {
+            type: 'string',
+            required: true,
+            readOnly: true,
+            default: () => 'xxx-yyy-zzz', // TODO: have some global logic drive this value
+            relation: createEntityRelation({
+              entity: userSch2,
+              type: 'many-to-one',
+              identifiers: [{
+                source: 'adminId',
+                target: 'userId'
+              }],
+            } as const)
+          },
+          name: {
+            type: 'string',
+            required: true,
+          },
+          createdAt: {
+            // will be set once at the time of create
+            type: "string",
+            readOnly: true,
+            required: true,
+            default: () => Date.now().toString(),
+            set: () => Date.now().toString(),
+          },
+          updatedAt:{
+            type: "string",
+            watch: "*", // will be set every time any prop is updated
+            required: true,
+            readOnly: true,
+            default: () => Date.now().toString(),
+            set: () => Date.now().toString(),
+          }
+        },
+        indexes: {
+          primary: {
+            pk: {
+              field: 'pk',
+              template: "t_${tenantId}#u_${userId}",
+              composite: ['tenantId', 'userId'],
+            },
+            sk: {
+              field: 'sk',
+              composite: [],
+            },
+          }
+        },
+    } as const);
+
+    export type TGroupSchema = ReturnType<typeof createGroupSchema>;
+    export const groupSch = createGroupSchema();
+
+    type tt = RelationalAttributes<TUserSchema2>;
+    type tx = Narrow<HydrateOptionForEntity<TUserSchema>>;
 }
 
 const UserValidationConditions =  {
@@ -386,8 +468,6 @@ const UserValidations: EntityValidations<User.TUserSchema2, typeof UserValidatio
         userId: [{
             required: true,
             operations: [
-              ['delete'], 
-              ['delete', ['tenantIsXYZ', 'recordIsNotNew']], 
               ['create', ['inputIsNitin', 'recordIsNotNew', 'tenantIsXYZ'], 'any' ]
             ],
         }],

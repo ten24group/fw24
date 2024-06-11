@@ -1,7 +1,7 @@
 import { Item, WhereAttributes, WhereOperations } from "electrodb";
 import { createLogger } from "../logging";
-import { EntitySchema } from "./base-entity";
-import { AttributeFilter, EntityFilter, EntityFilterCriteria, FilterCriteria, FilterGroup, isAttributeFilter, isComplexFilterValue, isEntityFilter, isFilterGroup } from './query-types';
+import { EntitySchema, HydrateOptionForRelation, HydrateOptionsMapForEntity, NonRelationalAttributes, Relation, RelationIdentifiers } from "./base-entity";
+import { AttributeFilter, EntityFilter, EntityFilterCriteria, EntitySelections, FilterCriteria, FilterGroup, isAttributeFilter, isComplexFilterValue, isEntityFilter, isFilterGroup } from './query-types';
 
 import {
     parse as parseQueryString,
@@ -11,6 +11,140 @@ import {
 import { isEmpty, isEmptyObject, isObject, parseValueToCorrectTypes } from '../utils';
 
 const logger = createLogger('EntityQuery');
+
+/**
+ * Infers relationships between entities based on the provided schema and object.
+ * @param schema The entity schema.
+ * @param paths The object containing attribute values.
+ * @returns The inferred relationships as a HydrateOptionsMapForEntity.
+ */
+export function inferRelationshipsForEntitySelections<E extends EntitySchema<any, any, any>>(
+    schema: E,
+    paths: ParsedEntityAttributePaths,
+): HydrateOptionsMapForEntity<E> {
+
+    logger.debug('Called inferRelationshipsForEntitySelections', { paths });
+
+    const inferred: any = {};
+
+    Object.entries(schema.attributes).forEach(([attributeName, attributeMeta]) => {
+        const attVal = paths[attributeName];
+
+        if (!attVal) {
+            return;
+        }
+
+        const isRelational = !!attributeMeta.relation;
+
+        // For non-relational attributes, or relational attributes without any nested attributes info, just set the value to true
+        if (!isRelational || !isObject(attVal)) {
+            inferred[attributeName] = attVal;
+            return;
+        }
+
+        // For relational attributes, set the entity name, relation type, identifiers, and attributes.
+        // Attributes for the related entity can contain further nested relationships; hence we infer the metadata recursively.
+        const relationMeta = attributeMeta.relation!;
+        const relatedEntity = relationMeta.entity as EntitySchema<any, any, any>;
+
+        logger.debug('inferRelationshipsForEntitySelections relationMeta', { attVal });
+
+        const meta: HydrateOptionForRelation = {
+            entityName: relatedEntity.model.entity,
+            relationType: relationMeta.type,
+            identifiers: relationMeta.identifiers,
+            attributes: {},
+        };
+
+        meta.attributes = inferRelationshipsForEntitySelections(
+            relatedEntity,
+            attVal.attributes || relationMeta.attributes,
+        );
+
+        inferred[attributeName] = meta
+    });
+
+    return inferred;
+}
+
+type ParsedEntityAttributePaths = {
+    [key: string]: boolean | { attributes: ParsedEntityAttributePaths };
+};
+
+type ParsedEntityAttributePathsWithRelationMeta = {
+    [key: string]: boolean | HydrateOptionForRelation;
+};
+/**
+ * Parses the given array of entity attribute paths into a structured format.
+ * @param paths - The array of entity attribute paths.
+ * @returns The parsed entity attribute paths.
+ * 
+ * @example
+ * ```ts
+ * const paths = ['user.name', 'user.age', 'user.address.city'];
+ * const parsed = parseEntityAttributePaths(paths);
+ * 
+ * console.log(parsed);
+ * // Output: 
+ * // {
+ * //   user: {
+ * //     name: true,
+ * //     age: true,
+ * //     address: {
+ * //       city: true
+ * //     }
+ * //   }
+ * // }
+ * ```
+ */
+export function parseEntityAttributePaths(paths: string[]): ParsedEntityAttributePaths {
+    logger.info('parseEntityAttributePaths', { paths });
+
+    type ParsedAttributePaths = {
+        [key: string]: boolean | ParsedAttributePaths;
+    };
+
+    const parsed = paths.reduce<ParsedEntityAttributePaths>((acc, path) => {
+        const keys = path.split('.');
+        
+        keys.reduce<ParsedAttributePaths>((obj, key, index) => {
+            if (index === keys.length - 1) {
+                if (typeof obj[key] === 'object') {
+                    // If the key already exists as an object, do nothing
+                } else {
+                    // If the key doesn't exist or is a boolean, set it to true
+                    obj[key] = true;
+                }
+            } else {
+                if (typeof obj[key] === 'boolean') {
+                    // If the key already exists as a boolean, convert it to an object
+                    obj[key] = {};
+                } else {
+                    // If the key doesn't exist, set it to an object
+                    obj[key] = obj[key] || {};
+                }
+            }
+
+            return obj[key] as ParsedAttributePaths;
+        }, acc);
+
+        return acc;
+    }, {});
+
+    const format = (obj: ParsedAttributePaths): ParsedEntityAttributePaths  => {
+        const res: ParsedEntityAttributePaths = {};
+        Object.entries(obj).forEach(([key, val]) => {
+            if (isObject(val)){
+                res[key] = { attributes: format(val) };
+            } else {
+                res[key] = true;
+            }
+        });
+        return res;
+    }
+
+    return format(parsed);
+};
 
 export function attributeFilterToExpression<
   A extends string,
