@@ -216,10 +216,23 @@ interface CheckboxFieldMetadata<E extends EntitySchema<any, any, any>=any> exten
     layout?: 'horizontal' | 'vertical'; // layout of the radio buttons
 }
 
-interface FileFieldMetadata extends BaseFieldMetadata {
+interface CommonFileFieldMetadata {
+  accept?: string; // file types to accept e.g. "image/*" | "image/png" | "image/jpeg" | "image/gif" | "image/bmp" | "image/webp" | "application/pdf" | "application/msword"
+  fileNamePrefix?: string; // prefix for the file name e.g. 'profile-pic-' | 'documents/' | 'nested/path/to/images/'
+  getSignedUploadUrlAPIConfig?: GetSignedUploadUrlAPIConfig, // API config to get signed upload URL
+}
+
+interface FileFieldMetadata extends BaseFieldMetadata, CommonFileFieldMetadata {
   fieldType?: 'file';
-  acceptedFileTypes?: string[];
   maxFileSize?: number; // maximum file size in bytes
+}
+
+interface ImageFieldMetadata extends BaseFieldMetadata,CommonFileFieldMetadata {
+  fieldType?: 'image';
+  maxFileSize?: number; // maximum file size in bytes
+  aspectRatio?: string; // desired aspect ratio for the image
+  withImageCrop?: boolean; // whether to allow image cropping at the time of uploading
+  accept?: "image/*" | "image/png" | "image/jpeg" | "image/gif" | "image/bmp" | "image/webp";
 }
 
 interface RangeFieldMetadata extends BaseFieldMetadata {
@@ -230,12 +243,10 @@ interface RangeFieldMetadata extends BaseFieldMetadata {
   showValue?: boolean; // whether to show the current value
 }
 
-interface ImageFieldMetadata extends BaseFieldMetadata {
-  fieldType?: 'image';
-  acceptedFileTypes?: string[];
-  maxFileSize?: number; // maximum file size in bytes
-  aspectRatio?: string; // desired aspect ratio for the image
-}
+export type GetSignedUploadUrlAPIConfig  = {
+  apiUrl: string;
+  apiMethod: 'GET' | 'POST';
+};
 
 interface HiddenFieldMetadata extends BaseFieldMetadata {
   fieldType?: 'hidden';
