@@ -1,5 +1,3 @@
-import slugify from "slugify";
-
 export function toHumanReadableName(input: string) {
     // capitalize the first char and split on the uppercase chars
     return input.charAt(0).toUpperCase() + input.slice(1).replace(/([A-Z])/g, " $1");
@@ -18,14 +16,15 @@ export function pascalCase(input: string) {
     return input.charAt(0).toUpperCase() + input.slice(1);
 }
 
-export const toSlug = (str: string, options?: {
-  replacement?: string;
-  remove?: RegExp;
-  lower?: boolean;
-  strict?: boolean;
-  locale?: string;
-  trim?: boolean;
-}) => {
-
-  return slugify(str, { lower: true, trim: true, ...options });
+export function toSlug(str: string): string {
+    if(!str) return '';
+    
+    return str.toString().normalize('NFD').replace(/[\u0300-\u036f]/g, "") //remove diacritics
+            .toLowerCase()
+            .replace(/\s+/g, '-') //spaces to dashes
+            .replace(/&/g, '-and-') //ampersand to and
+            .replace(/[^\w\-]+/g, '') //remove non-words
+            .replace(/\-\-+/g, '-') //collapse multiple dashes
+            .replace(/^-+/, '') //trim starting dash
+            .replace(/-+$/, ''); //trim ending dash
 };
