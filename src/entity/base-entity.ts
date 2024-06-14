@@ -218,18 +218,17 @@ interface CheckboxFieldMetadata<E extends EntitySchema<any, any, any>=any> exten
 
 interface CommonFileFieldMetadata {
   accept?: string; // file types to accept e.g. "image/*" | "image/png" | "image/jpeg" | "image/gif" | "image/bmp" | "image/webp" | "application/pdf" | "application/msword"
+  maxFileSize?: number; // maximum file size in bytes
   fileNamePrefix?: string; // prefix for the file name e.g. 'profile-pic-' | 'documents/' | 'nested/path/to/images/'
   getSignedUploadUrlAPIConfig?: GetSignedUploadUrlAPIConfig, // API config to get signed upload URL
 }
 
 interface FileFieldMetadata extends BaseFieldMetadata, CommonFileFieldMetadata {
   fieldType?: 'file';
-  maxFileSize?: number; // maximum file size in bytes
 }
 
 interface ImageFieldMetadata extends BaseFieldMetadata,CommonFileFieldMetadata {
   fieldType?: 'image';
-  maxFileSize?: number; // maximum file size in bytes
   aspectRatio?: string; // desired aspect ratio for the image
   withImageCrop?: boolean; // whether to allow image cropping at the time of uploading
   accept?: "image/*" | "image/png" | "image/jpeg" | "image/gif" | "image/bmp" | "image/webp";
@@ -261,7 +260,7 @@ interface RatingFieldMetadata extends BaseFieldMetadata {
   maxRating?: number; // maximum rating value
 }
 
-interface EditorFieldMetadata extends BaseFieldMetadata {
+interface EditorFieldMetadata extends BaseFieldMetadata,CommonFileFieldMetadata {
   fieldType?: 'rich-text' | 'wysiwyg';  
 }
 
