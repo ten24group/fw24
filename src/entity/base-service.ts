@@ -289,7 +289,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      * @returns {Array<string>} An array of attribute names.
      */
     public getListingAttributeNames(): EntitySelections<S>{
-        return this.getDefaultSerializationAttributeNames();
+        const defaultOutputSchemaAttributesMap = this.getOpsDefaultIOSchema().list.output;
+        return Array.from( defaultOutputSchemaAttributesMap.keys() ) as EntitySelections<S>;
     }
 
     /**
@@ -757,7 +758,7 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         relation: relationMeta as any,
         validations: validations || required ? ['required'] : [],
         isVisible: !att.hasOwnProperty('isVisible') || att.isVisible,
-        isEditable: (!att.hasOwnProperty('isEditable') || att.isEditable),
+        isEditable: !att.hasOwnProperty('isEditable') || att.isEditable,
         isListable: !att.hasOwnProperty('isListable') || att.isListable,
         isCreatable: !att.hasOwnProperty('isCreatable') || att.isCreatable,
         isFilterable: !att.hasOwnProperty('isFilterable') || att.isFilterable,
