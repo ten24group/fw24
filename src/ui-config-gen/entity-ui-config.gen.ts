@@ -75,6 +75,11 @@ export class EntityUIConfigGen{
             entityConfigs[`edit-${entityName.toLowerCase()}`] = updateConfig;
             entityConfigs[`view-${entityName.toLowerCase()}`] = viewConfig;
 
+            // skip if entity is not to be included in menu
+            if(entitySchema.model.hasOwnProperty('includeInMenu') && !entitySchema.model.includeInMenu){ 
+                return;
+            }
+
             const menuConfig = MakeEntityMenuConfig({
                 entityName,
                 entityNamePlural: entitySchema.model.entityNamePlural,

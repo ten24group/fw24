@@ -187,30 +187,29 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
 	// create and update
 	for(const attName in schema.attributes){
-		const att = schema.attributes[attName];
 
-		if(!att.hidden){
-			outputSchemaAttributes.detail.set(attName, {
-                ...entityAttributeToIOSchemaAttribute(attName, att), 
-			});
+		const att = schema.attributes[attName];
+        const formattedAtt = entityAttributeToIOSchemaAttribute(attName, att);
+        
+        if(formattedAtt.hidden){
+            // if it's marked as hidden it's not visible to any op
+            continue;
+        }
+
+		if(formattedAtt.isVisible){
+			outputSchemaAttributes.detail.set(attName, {...formattedAtt});
 		}
 
-        if(!att.hidden && ( !att.hasOwnProperty('isListable') || att.isListable ) ){
-			outputSchemaAttributes.list.set(attName, {
-                ...entityAttributeToIOSchemaAttribute(attName, att),
-			});
+        if(formattedAtt.isListable){
+			outputSchemaAttributes.list.set(attName, {...formattedAtt});
         }
 		
-		if(!att.hidden && ( !att.hasOwnProperty('isCreatable') || att.isCreatable ) ){
-			inputSchemaAttributes.create.set(attName, {
-                ...entityAttributeToIOSchemaAttribute(attName, att),
-			});
+		if(formattedAtt.isCreatable){
+			inputSchemaAttributes.create.set(attName, {...formattedAtt});
         }
 
-		if(!att.readOnly && ( !att.hasOwnProperty('isEditable') || att.isEditable )){
-            inputSchemaAttributes.update.set(attName, {
-                ...entityAttributeToIOSchemaAttribute(attName, att),
-			});
+		if( formattedAtt.isEditable){
+            inputSchemaAttributes.update.set(attName, {...formattedAtt});
 		}
 	}
 
@@ -290,7 +289,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      * @returns {Array<string>} An array of attribute names.
      */
     public getListingAttributeNames(): EntitySelections<S>{
-        return this.getDefaultSerializationAttributeNames();
+        const defaultOutputSchemaAttributesMap = this.getOpsDefaultIOSchema().list.output;
+        return Array.from( defaultOutputSchemaAttributesMap.keys() ) as EntitySelections<S>;
     }
 
     /**
@@ -757,6 +757,12 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         name: name || toHumanReadableName( attId ),
         relation: relationMeta as any,
         validations: validations || required ? ['required'] : [],
+        isVisible: !att.hasOwnProperty('isVisible') || att.isVisible,
+        isEditable: !att.hasOwnProperty('isEditable') || att.isEditable,
+        isListable: !att.hasOwnProperty('isListable') || att.isListable,
+        isCreatable: !att.hasOwnProperty('isCreatable') || att.isCreatable,
+        isFilterable: !att.hasOwnProperty('isFilterable') || att.isFilterable,
+        isSearchable: !att.hasOwnProperty('isSearchable') || att.isSearchable,
     }
 }
 

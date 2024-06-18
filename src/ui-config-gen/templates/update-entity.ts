@@ -51,12 +51,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     properties.forEach( prop => {
         if(prop){
 
-            if(
-
-                (prop.hasOwnProperty('isEditable') && !prop.isEditable)
-                ||
-                (prop.hasOwnProperty('readOnly') && prop.readOnly)
-            ){
+            if( !prop.isEditable || prop.readOnly ){
                 return;
             }
 

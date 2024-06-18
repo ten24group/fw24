@@ -314,7 +314,8 @@ export interface EntitySchema<
     readonly model: Schema<A, F, C>['model'] & {
         readonly entityNamePlural: string;
         readonly entityOperations: Opp; 
-        readonly entityMenuIcon ?: string,
+        readonly entityMenuIcon ?: string, // default is 'appStore'
+        readonly includeInMenu ?: boolean, // default is true
     };
     readonly attributes: {
         readonly [a in A]: EntityAttribute;

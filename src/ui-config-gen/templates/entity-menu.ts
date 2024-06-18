@@ -1,4 +1,3 @@
-import {  Schema } from "electrodb";
 import { toHumanReadableName } from "../../utils";
 
 export default(
