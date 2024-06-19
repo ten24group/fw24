@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-alpha.6](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.5...v0.1.1-alpha.6) (2024-06-19)
+
+
+### Bug Fixes
+
+* api's signature issues due to chat casing in endpoint-names ([f0a921c](https://github.com/ten24group/fw24/commit/f0a921c187f6ba4c1bee7d56c1e74a5cc2f2c578))
+* default linsting-attribute names ([a60409e](https://github.com/ten24group/fw24/commit/a60409e701ac10720078a2341220eb2a51a19fc5))
+* field-type for wysiwyg attribteus ([2ae3db5](https://github.com/ten24group/fw24/commit/2ae3db50392641f8ec77294720f402e025e7cb62))
+* hard error in hydrateSingleRelation due to duplicate identifiers in batch ([888743c](https://github.com/ten24group/fw24/commit/888743cb2df921bf4e2e17d2761e47935fda7f36))
+
 ### [0.1.1-alpha.5](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.4...v0.1.1-alpha.5) (2024-06-05)
 
 ### [0.1.1-alpha.4](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.3...v0.1.1-alpha.4) (2024-06-03)
