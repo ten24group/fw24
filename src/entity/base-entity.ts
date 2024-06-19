@@ -415,7 +415,7 @@ export function createEntitySchema<
 }
 
 export function createElectroDBEntity<S extends EntitySchema<any, any, any>>(options: CreateEntityOptions<S>) {
-    const { schema, entityConfigurations} = options;
+  const { schema, entityConfigurations} = options;
 
 	const newElectroDbEntity = new Entity(
         schema, 

@@ -81,6 +81,51 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 	}
 
 	/**
+	 * Update the attribute value of an entity with the given attribute name, and a value identifier
+	 * attribute can be a list or a map containing nested complex data types.
+	 * this api will set update the value[nested values as well] of the attribute with the given value identifier, which is a '.' dot separated string
+	 * 
+	 * @param req - The request object containing the path parameters and request body.
+	 * @param res - The response object.
+	 * @returns A Promise that resolves to the response object.
+	 * 
+	 * @example
+	 * ```ts
+	 * 
+	 * POST domain/entity/123/att-name/a.b.c
+	 * BODY: {
+	 * 		xxx: 'red',
+	 * 		yyy: 'blue'
+	 * }
+	 * ```
+	 */
+	@Post('/{id}/{attributeName}')
+	async createAttributeValue(req: Request, res: Response): Promise<Response> {
+        // prepare the identifiers
+        const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
+
+		const {attributeName} = req.pathParameters;
+
+		const updatedEntity = await this.getEntityService().createAttributeValue({
+			identifiers: identifiers as any,
+			attributeName,
+			attValueIdentifier: null,
+			data: req.body
+		});
+		
+		const result: any = {
+			[camelCase(this.entityName)]: updatedEntity,
+			message: "Updated successfully"
+		};
+		if (req.debugMode) {
+			result.req = req;
+			result.identifiers = identifiers;
+		}
+
+		return res.json(result);
+	}
+
+	/**
 	 * Finds an entity by ID.
 	 * @param {Request} req - The request object.
 	 * @param {Response} res - The response object.
@@ -209,6 +254,51 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 
 		const updatedEntity = await this.getEntityService().update(identifiers as any, req.body);
 
+		const result: any = {
+			[camelCase(this.entityName)]: updatedEntity,
+			message: "Updated successfully"
+		};
+		if (req.debugMode) {
+			result.req = req;
+			result.identifiers = identifiers;
+		}
+
+		return res.json(result);
+	}
+
+	/**
+	 * Update the attribute value of an entity with the given attribute name, and a value identifier
+	 * attribute can be a list or a map containing nested complex data types.
+	 * this api will set update the value[nested values as well] of the attribute with the given value identifier, which is a '.' dot separated string
+	 * 
+	 * @param req - The request object containing the path parameters and request body.
+	 * @param res - The response object.
+	 * @returns A Promise that resolves to the response object.
+	 * 
+	 * @example
+	 * ```ts
+	 * 
+	 * POST domain/entity/123/att-name/a.b.c
+	 * BODY: {
+	 * 		xxx: 'red',
+	 * 		yyy: 'blue'
+	 * }
+	 * ```
+	 */
+	@Patch('/{id}/{attributeName}/{attValueIdentifier}')
+	async updateAttributeValue(req: Request, res: Response): Promise<Response> {
+        // prepare the identifiers
+        const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
+
+		const {attributeName, attValueIdentifier} = req.pathParameters;
+
+		const updatedEntity = await this.getEntityService().updateAttributeValue({
+			identifiers: identifiers as any,
+			attributeName,
+			attValueIdentifier,
+			data: req.body
+		});
+		
 		const result: any = {
 			[camelCase(this.entityName)]: updatedEntity,
 			message: "Updated successfully"

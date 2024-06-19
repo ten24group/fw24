@@ -1,6 +1,6 @@
 import { Attribute, EntityConfiguration } from "electrodb";
 import { createLogger } from "../logging";
-import { getValueByPath, isArray, isArrayOfStrings, isEmpty, isEmptyArray, isObject, isSimpleValue, isString, pickKeys, toHumanReadableName } from "../utils";
+import { getValueByPath, isArray, isArrayOfStrings, isEmpty, isEmptyArray, isObject, isSimpleValue, isString, pickKeys, setValueByPath, toHumanReadableName } from "../utils";
 import { EntityInputValidations, EntityValidations } from "../validation";
 import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
@@ -570,6 +570,48 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return entity;
     }
 
+    public async createAttributeValue<A extends keyof S['attributes']>(options: {
+        identifiers: EntityIdentifiersTypeFromSchema<S>, 
+        attributeName: A,
+        attValueIdentifier?: any,
+        data: any
+    }) {
+        const {identifiers, attributeName, attValueIdentifier, data} = options;
+        this.logger.debug(`Called ~ updateAttribute ~ entityName: ${this.getEntityName()} ~ options: `, {options});
+
+        const entityData = await getEntity({
+            id: identifiers, 
+            entityName: this.getEntityName(), 
+            entityService: this,
+            attributes: [attributeName as string]
+        });
+
+        if(!entityData?.data){
+            throw "Entity not found! for identifiers: " + JSON.stringify(identifiers);
+        }
+
+        const attributeData = entityData?.data?.[attributeName as any];
+
+        if(!attributeData){
+            throw `No attribute-data found in the entity-data for attributeName: ${attributeName as string} ` ;
+        }
+        
+        const updatedEntityData = {
+            [attributeName as string]: setValueByPath({...attributeData}, attValueIdentifier, data),
+        };
+
+        console.log('updatedEntityData:', updatedEntityData);
+
+        const updatedEntity =  await updateEntity<S>({
+            id: identifiers,
+            data: updatedEntityData as any, 
+            entityName: this.getEntityName(),
+            entityService: this,
+        });
+
+	    return updatedEntity;
+    }
+
     // TODO: should be part of some config
     protected delimitersRegex = /(?:&| |,|\+)+/; 
 
@@ -715,6 +757,57 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         const updatedEntity =  await updateEntity<S>({
             id: identifiers,
             data: data, 
+            entityName: this.getEntityName(),
+            entityService: this,
+        });
+
+	    return updatedEntity;
+    }
+
+    /**
+     * Updates an entity in the database.
+     *
+     * @param identifiers - The identifiers of the entity to update.
+     * @param data - The updated data for the attribute.
+     * @param attributeName - The name of the attribute to update.
+     * @param attValueIdentifier - The identifier of the attribute value to update as the attribute can be a [list, map, set].
+     * @returns The updated entity.
+     */
+    public async updateAttributeValue<A extends keyof S['attributes']>(options: {
+        identifiers: EntityIdentifiersTypeFromSchema<S>, 
+        attributeName: A,
+        attValueIdentifier: any,
+        data: any
+    }) {
+        const {identifiers, attributeName, attValueIdentifier, data} = options;
+        this.logger.debug(`Called ~ updateAttribute ~ entityName: ${this.getEntityName()} ~ options: `, {options});
+
+        const entityData = await getEntity({
+            id: identifiers, 
+            entityName: this.getEntityName(), 
+            entityService: this,
+            attributes: [attributeName as string]
+        });
+
+        if(!entityData?.data){
+            throw "Entity not found! for identifiers: " + JSON.stringify(identifiers);
+        }
+
+        const attributeData = entityData?.data?.[attributeName as any];
+
+        if(!attributeData){
+            throw `No attribute-data found in the entity-data for attributeName: ${attributeName as string} ` ;
+        }
+        
+        const updatedEntityData = {
+            [attributeName as string]: setValueByPath({...attributeData}, attValueIdentifier, data),
+        };
+
+        console.log('updatedEntityData:', updatedEntityData);
+
+        const updatedEntity =  await updateEntity<S>({
+            id: identifiers,
+            data: updatedEntityData as any, 
             entityName: this.getEntityName(),
             entityService: this,
         });
