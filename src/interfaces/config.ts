@@ -5,7 +5,14 @@ export interface IApplicationConfig {
     name?: string;
     region?: string;
     account?: string;
-    authEndpoint?: string;
+    disableUIConfigGen?: boolean;
+    uiConfigGenOptions?: {
+        authEndpoint?: string;
+        disableSignIn?: boolean;
+        disableSignUp?: boolean;
+        disableForgotPassword?: boolean;
+        disableAccountVerification?: boolean;
+    };
     defaultAuthorizationType?: any;
     environment?: string; // local, dev, prod
     logRetentionDays?: number;
