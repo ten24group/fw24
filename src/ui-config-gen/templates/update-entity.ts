@@ -40,7 +40,10 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 responseKey: entityNameCamel,
                 apiUrl: `/${entityNameLower}`,
             },
-            formButtons: [ "submit", "cancel" ],
+            formButtons: [ "submit", "reset", {
+                text:  "Cancel",
+                url:    `/list-${entityNameLower}`
+            }],
             propertiesConfig: [] as any[],
             submitSuccessRedirect: `/list-${entityNameLower}`,
         }

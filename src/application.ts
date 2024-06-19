@@ -80,8 +80,9 @@ export class Application {
         // *** order is important here, modules need to be processed first, before constructs ***
         this.processModules();
 
-        // TODO: make it configurable
-        if(true){
+        const disableUIConfigGen = Fw24.getInstance().getConfig().disableUIConfigGen;
+
+        if(!disableUIConfigGen){
             const uiConfigGen = new EntityUIConfigGen();
             await uiConfigGen.run();
         }

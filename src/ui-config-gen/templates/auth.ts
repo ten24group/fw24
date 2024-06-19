@@ -1,33 +1,26 @@
 
 export default (
     options: {
-
         authEndpoint?: string,
-
-        enableSignin?: boolean,
-        enableSignUp?: boolean,
-
-        enableForgotPassword?: boolean,
-
-        enableAccountVerification?: boolean,
+        disableSignin?: boolean,
+        disableSignUp?: boolean,
+        disableForgotPassword?: boolean,
+        disableAccountVerification?: boolean,
     }
 ) =>  {
 
     const {
-        authEndpoint = 'auth',
-
-        enableSignin = true,
-        enableSignUp = true,
-
-        enableForgotPassword = true,
-
-        enableAccountVerification = true,
+        authEndpoint,
+        disableSignin,
+        disableSignUp,
+        disableForgotPassword,
+        disableAccountVerification,
     } = options;
 
     
     const config: any = {};
 
-    if(enableSignin){
+    if(!disableSignin){
         config['/login'] = {
             apiConfig: {
                 apiUrl: `/${authEndpoint}/signin`,
@@ -52,7 +45,7 @@ export default (
         };             
     }
 
-    if(enableSignUp){
+    if(!disableSignUp){
         config['/signup'] = {
             apiConfig: {
                 apiUrl: `/${authEndpoint}/signup`,
@@ -85,7 +78,7 @@ export default (
     }
 
 
-    if(enableAccountVerification){
+    if(!disableAccountVerification){
         config['/verify'] = {
             apiConfig: {
                 apiUrl: `/${authEndpoint}/verify`,
@@ -109,7 +102,7 @@ export default (
         };             
     }
 
-    if(enableForgotPassword){
+    if(!disableForgotPassword){
         config['/forgot-password'] = {
             apiConfig: {
                 apiUrl: `/${authEndpoint}/forgotPassword`,
