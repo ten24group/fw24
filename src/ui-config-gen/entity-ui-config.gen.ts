@@ -9,7 +9,7 @@ import MakeAuthConfig from './templates/auth';
 import MakeDashboardConfig from './templates/dashboard';
 
 
-import {existsSync, mkdirSync, writeFileSync, readdirSync} from "fs";
+import {existsSync, mkdirSync, writeFileSync} from "fs";
 import {
     resolve as pathResolve, 
     join as pathJoin
@@ -92,8 +92,12 @@ export class EntityUIConfigGen{
             menuConfigs.push(menuConfig);
         });
 
-        const authEndpoint = Fw24.getInstance().getConfig().authEndpoint ?? 'auth';
-        const authConfigs = MakeAuthConfig({authEndpoint});
+        const authConfigOptions = Fw24.getInstance().getConfig().uiConfigGenOptions || {};
+
+        const authConfigs = MakeAuthConfig({
+            ...authConfigOptions, 
+            authEndpoint: authConfigOptions.authEndpoint || 'auth' 
+        });
 
         const dashboardConfig = MakeDashboardConfig();
 
