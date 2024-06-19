@@ -65,7 +65,7 @@ export class EntityUIConfigGen{
             const viewConfig = MakeViewEntityConfig({
                 entityName,
                 entityNamePlural: entitySchema.model.entityNamePlural,
-                properties: entityDefaultOpsSchema.list.output
+                properties: entityDefaultOpsSchema.get.output
             });
 
             // this.logger.debug(`Created entityCrudConfig for entity: ${entityName}.`, {createConfig, updateConfig, listConfig, viewConfig})
@@ -74,6 +74,11 @@ export class EntityUIConfigGen{
             entityConfigs[`create-${entityName.toLowerCase()}`] = createConfig;
             entityConfigs[`edit-${entityName.toLowerCase()}`] = updateConfig;
             entityConfigs[`view-${entityName.toLowerCase()}`] = viewConfig;
+
+            // skip if entity is not to be included in menu
+            if(entitySchema.model.hasOwnProperty('includeInMenu') && !entitySchema.model.includeInMenu){ 
+                return;
+            }
 
             const menuConfig = MakeEntityMenuConfig({
                 entityName,

@@ -6,8 +6,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     options: {
         entityName: string,
         entityNamePlural: string,
-        properties: TIOSchemaAttributesMap<S>
-
+        properties: TIOSchemaAttributesMap<S>,
     }
 ) => {
 
@@ -51,11 +50,17 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 
     properties.forEach( prop => {
         if(prop){
+
+            if( !prop.isEditable || prop.readOnly ){
+                return;
+            }
+
             _propertiesConfig.push({
+                ...prop,
                 label:          prop.name,
                 column:         prop.id,
-                fieldType:      `${prop.fieldType || 'text'}`,
-                validations:    prop.validations
+                fieldType:      prop.fieldType || 'text',
+                hidden: prop.hasOwnProperty('isVisible') && !prop.isVisible
             });
         }
     });

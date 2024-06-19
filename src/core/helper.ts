@@ -104,7 +104,7 @@ export class Helper {
 
         // Register the handlers
         for (const handlerPath of handlerPaths) {
-            Helper.logger.info("Registering Lambda Handlers from handlerPath: "+ handlerPath);
+            Helper.logger.debug("Registering Lambda Handlers from handlerPath: "+ handlerPath);
             try {
                 // Dynamically import the controller file
                 const module = await import(join(handlerDirectory, handlerPath));
@@ -118,12 +118,12 @@ export class Helper {
                             filePath: handlerDirectory,
                         };
 
-                        Helper.logger.info("Registering Lambda Handlers registering currentHandler: ", {handlerPath, handlerDirectory});
+                        Helper.logger.debug("Registering Lambda Handlers registering currentHandler: ", {handlerPath, handlerDirectory});
 
                         handlerRegistrar(currentHandler);
                         break;
                     } else {
-                        Helper.logger.info("Registering Lambda Handlers ignored exportedItem: ", {exportedItem});
+                        Helper.logger.debug("Registering Lambda Handlers ignored exportedItem: ", {exportedItem});
                     }
                 }
             } catch (err) {

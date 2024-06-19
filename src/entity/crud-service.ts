@@ -94,17 +94,18 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
 
     logger.debug(`Called EntityCrud ~ getEntity ~ entityName: ${entityName}:`, {id, attributes});
 
-    await eventDispatcher.dispatch({event: 'beforeGet', context: arguments });
+    // await eventDispatcher.dispatch({event: 'beforeGet', context: arguments });
 
     const identifiers = entityService.extractEntityIdentifiers(id);
 
     // authorize the actor
-    const authorization = await authorizer.authorize({entityName, crudType, identifiers, actor, tenant});
-    if(!authorization.pass){
-        throw new Error("Authorization failed for get: " + { cause: authorization });
-    }
+    // const authorization = await authorizer.authorize({entityName, crudType, identifiers, actor, tenant});
+    // if(!authorization.pass){
+    //     throw new Error("Authorization failed for get: " + { cause: authorization });
+    // }
 
-    // validate
+    
+    // // validate
     const validation = await validator.validateEntity({
         operationName: crudType,
         entityName,
@@ -120,10 +121,10 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
 
     const entity = await entityService.getRepository().get(identifiers).go({attributes});
 
-    await eventDispatcher.dispatch({event: 'afterGet', context: arguments});
+    // await eventDispatcher.dispatch({event: 'afterGet', context: arguments});
 
     // create audit
-    auditLogger.audit({entityName, crudType, identifiers, entity, actor, tenant});
+    // auditLogger.audit({entityName, crudType, identifiers, entity, actor, tenant});
 
     logger.debug(`Completed EntityCrud ~ getEntity ~ entityName: ${entityName} ~ id:`, id);
 
@@ -178,7 +179,7 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     }
 
     // pre events
-    await eventDispatcher?.dispatch({ event: 'beforeCreate', context: arguments });
+    // await eventDispatcher?.dispatch({ event: 'beforeCreate', context: arguments });
 
     // validate
     const validation = await validator.validateEntity({
@@ -195,18 +196,18 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     }
 
     // authorize the actor 
-    const authorization = await authorizer.authorize({ entityName, crudType, data, actor, tenant });
-    if(!authorization.pass){
-        throw new Error("Authorization failed for create: " + { cause: authorization });
-    }
+    // const authorization = await authorizer.authorize({ entityName, crudType, data, actor, tenant });
+    // if(!authorization.pass){
+    //     throw new Error("Authorization failed for create: " + { cause: authorization });
+    // }
 
     const entity = await entityService.getRepository().create(data).go();
 
     // post events
-    await eventDispatcher?.dispatch({ event: 'afterCreate', context: {...arguments, entity} });
+    // await eventDispatcher?.dispatch({ event: 'afterCreate', context: {...arguments, entity} });
 
     // create audit
-    auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
+    // auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
 
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data, entity.data);
@@ -253,13 +254,13 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
 
     logger.debug(`Called EntityCrud ~ listEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
-    await eventDispatcher.dispatch({event: 'beforeList', context: arguments });
+    // await eventDispatcher.dispatch({event: 'beforeList', context: arguments });
 
     // authorize the actor
-    const authorization = await authorizer.authorize({entityName, crudType, actor, tenant});
-    if(!authorization.pass){
-        throw new Error("Authorization failed: " + { cause: authorization });
-    }
+    // const authorization = await authorizer.authorize({entityName, crudType, actor, tenant});
+    // if(!authorization.pass){
+    //     throw new Error("Authorization failed: " + { cause: authorization });
+    // }
 
     const dbQuery = entityService.getRepository().match({});
 
@@ -269,10 +270,10 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
     
     const entities = await dbQuery.go(removeEmpty(pagination));
 
-    await eventDispatcher.dispatch({ event: 'afterList', context: arguments });
+    // await eventDispatcher.dispatch({ event: 'afterList', context: arguments });
 
     // create audit
-    auditLogger.audit({ entityName, crudType, entities, actor, tenant });
+    // auditLogger.audit({ entityName, crudType, entities, actor, tenant });
 
     logger.debug(`Completed EntityCrud ~ listEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
@@ -314,13 +315,13 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>( option
 
     logger.debug(`Called EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
-    await eventDispatcher.dispatch({event: 'beforeQuery', context: arguments });
+    // await eventDispatcher.dispatch({event: 'beforeQuery', context: arguments });
 
-    // authorize the actor
-    const authorization = await authorizer.authorize({entityName, crudType, actor, tenant});
-    if(!authorization.pass){
-        throw new Error("Authorization failed: " + { cause: authorization });
-    }
+    // // authorize the actor
+    // const authorization = await authorizer.authorize({entityName, crudType, actor, tenant});
+    // if(!authorization.pass){
+    //     throw new Error("Authorization failed: " + { cause: authorization });
+    // }
 
     const dbQuery = entityService.getRepository().match({});
 
@@ -330,10 +331,10 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>( option
     
     const entities = await dbQuery.go(removeEmpty(pagination));
 
-    await eventDispatcher.dispatch({ event: 'afterQuery', context: arguments });
+    // await eventDispatcher.dispatch({ event: 'afterQuery', context: arguments });
 
-    // create audit
-    auditLogger.audit({ entityName, crudType, entities, actor, tenant });
+    // // create audit
+    // auditLogger.audit({ entityName, crudType, entities, actor, tenant });
 
     logger.debug(`Completed EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
@@ -398,7 +399,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     }
 
     // pre events
-    await eventDispatcher?.dispatch({ event: 'beforeUpdate', context: arguments });
+    // await eventDispatcher?.dispatch({ event: 'beforeUpdate', context: arguments });
 
     // validate
     const validation = await validator.validateEntity({
@@ -410,25 +411,25 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         actor: actor
     });
 
-    if(!validation.pass){
-        throw new Error("Validation failed for update: " + JSON.stringify({ cause: validation }));
-    }
+    // if(!validation.pass){
+    //     throw new Error("Validation failed for update: " + JSON.stringify({ cause: validation }));
+    // }
 
     const identifiers = entityService.extractEntityIdentifiers(id);
 
     // authorize the actor 
-    const authorization = await authorizer.authorize({ entityName, crudType, identifiers, data, actor, tenant });
-    if(!authorization.pass){
-        throw new Error("Authorization failed for update: " + { cause: authorization });
-    }
+    // const authorization = await authorizer.authorize({ entityName, crudType, identifiers, data, actor, tenant });
+    // if(!authorization.pass){
+    //     throw new Error("Authorization failed for update: " + { cause: authorization });
+    // }
 
     const entity = await entityService.getRepository().patch(identifiers).set(data).go();
 
-    // post events
-    await eventDispatcher?.dispatch({ event: 'afterUpdate', context: {...arguments, entity} });
+    // // post events
+    // await eventDispatcher?.dispatch({ event: 'afterUpdate', context: {...arguments, entity} });
 
-    // create audit
-    auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
+    // // create audit
+    // auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
 
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, data, entity.data);
@@ -477,15 +478,15 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>( optio
 
     logger.debug(`Called EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
 
-    await eventDispatcher.dispatch({event: 'beforeDelete', context: arguments });
+    // await eventDispatcher.dispatch({event: 'beforeDelete', context: arguments });
 
     const identifiers = entityService.extractEntityIdentifiers(id);
 
     // authorize the actor
-    const authorization = await authorizer.authorize({entityName, crudType, identifiers, actor, tenant});
-    if(!authorization.pass){
-        throw new Error("Authorization failed for delete: " + { cause: authorization });
-    }
+    // const authorization = await authorizer.authorize({entityName, crudType, identifiers, actor, tenant});
+    // if(!authorization.pass){
+    //     throw new Error("Authorization failed for delete: " + { cause: authorization });
+    // }
 
     // validate
     const validation = await validator.validateEntity({
@@ -503,10 +504,10 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>( optio
 
     const entity = await entityService.getRepository().delete(identifiers).go();
 
-    await eventDispatcher.dispatch({event: 'afterDelete', context: arguments});
+    // await eventDispatcher.dispatch({event: 'afterDelete', context: arguments});
 
     // create audit
-    auditLogger.audit({entityName, crudType, identifiers, entity, actor, tenant});
+    // auditLogger.audit({entityName, crudType, identifiers, entity, actor, tenant});
 
     logger.debug(`Completed EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
 

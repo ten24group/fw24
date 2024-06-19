@@ -48,6 +48,13 @@ export interface IControllerConfig {
 	 * Specifies the removal policy for the controller function's logs.
 	 */
 	logRemovalPolicy?: RemovalPolicy;
+
+	/**
+     * Specifies the target for the API
+     * Values can be "function", "queue" or "topic"
+     * @default "function"
+     */
+    target?: string;
 }
 
 /**
@@ -63,7 +70,7 @@ export function Controller(controllerName: string, controllerConfig: IController
 			constructor(...args: any[]) {
 				super(...args);
 				// set the controller name
-				Reflect.set(this, 'controllerName', controllerName);
+				Reflect.set(this, 'controllerName', controllerName.toLowerCase());
 
 				// initialize the default controller config
 				const defaultConfig: IControllerConfig = {

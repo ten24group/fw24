@@ -1,5 +1,5 @@
-import { ExclusiveUnion, Narrow, ValueOf, isArray, isArrayOfType, isBoolean, isEmpty, isEmptyObject, isObject, isString } from "../utils";
-import { EntitySchema } from "./base-entity";
+import { ExclusiveUnion, Narrow, Paths, ValueOf, isArray, isArrayOfType, isBoolean, isEmpty, isEmptyObject, isObject, isString } from "../utils";
+import { EntitySchema, HydrateOptionForEntity, NonRelationalAttributes, Relation, RelationalAttributes } from "./base-entity";
 
 
 export type Pagination = {
@@ -329,11 +329,52 @@ export type EntityFilterCriteria<E extends EntitySchema<any, any, any>> = Exclus
  * If an attribute key is present in the object, it indicates that the attribute should be included in the selection.
  * If the value of the property is `true`, the attribute will be included.
  * If the value of the property is `false`, the attribute will be excluded.
+ * The attributes can be dot delimited keys to represent relation's attributes.
+ * In case of objects, attributes can be nested objects where each key represents an attribute of the entity.
+ * For relational attributes, the value can be a boolean for both relational and non-relational attributes.
+ * For relational attributes, the value can also be an object with required metadata like entity-name, identifiers meta for the entity, and further attributes to hydrate in this relation.
+ * The entity-name and identifiers meta are not required and will be inferred by the backend.
  * @template E - The entity schema type.
+ * 
+ * @example
+ * 
+ * ```ts
+ * 
+ * interface UserEntitySchema {
+ *   attributes: {
+ *     name: { type: 'string' };
+ *     age: { type: 'number' };
+ *     email: { type: 'string' };
+ *     posts: { type: 'array',  relation: { entity: PostEntitySchema, type: 'one-to-many' } };
+ *   };
+ * }
+ * 
+ * interface PostEntitySchema {
+ *   attributes: {
+ *     title: { type: 'string' };
+ *     content: { type: 'string' };
+ *   };
+ * }
+ * 
+ * type UserSelections = EntitySelections<UserEntitySchema>;
+ * 
+ * // Select specific attributes
+ * const selections1: UserSelections = ['name', 'age']; // ['name', 'age']
+ * 
+ * // Include specific attributes
+ * const selections4: UserSelections = { name: true, age: true }; // { name: true, age: true }
+ * 
+ * // Include relation attributes
+ * const selections5: UserSelections = { posts: true }; // { posts: true }
+ * 
+ * // Include nested attributes
+ * const selections6: UserSelections = { 'posts': { identifiers: ['title', 'content'] };
+ * 
+ * // Include nested attributes with metadata
+ * const selections7: UserSelections = { 'posts': { identifiers: { postId: 'id' }, attributes: ['title'] } }; // { 'posts': { entityName: 'Post', attributeName: 'posts' identifiers: { id: '123-xxx-yyy' }, attributes: ['title'] } }
+ * ```
  */
-export type EntitySelection<E extends EntitySchema<any, any, any>> = Array<keyof E['attributes']> | {
-    [prop in keyof E['attributes']]?: boolean
-}
+export type EntitySelections<E extends EntitySchema<any, any, any>> = HydrateOptionForEntity<E>;
 
 /**
  * Represents a query for retrieving entities of type E.
@@ -368,11 +409,15 @@ export type EntitySelection<E extends EntitySchema<any, any, any>> = Array<keyof
  * };
  * ```
  */
+/**
+ * Represents a query for retrieving entities.
+ * @template E - The entity schema type.
+ */
 export type EntityQuery<E extends EntitySchema<any, any, any>> = {
     /**
-     * Specifies the attributes to be selected for each entity.
+     * Specifies the attributes to be selected for the entity.
      */
-    attributes?: EntitySelection<E>,
+    attributes?: EntitySelections<E>,
     
     /**
      * Specifies the filter criteria for the query.

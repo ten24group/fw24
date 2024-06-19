@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
+import { parseEntityAttributePaths, parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
 
 
 import { entityFilterToFilterGroup } from './query';
@@ -117,6 +117,33 @@ describe('entityFilterToFilterGroup', () => {
     });
 
 
+});
+
+describe('parseEntityAttributePaths', () => {
+  it('should transform array to nested object', () => {
+    const array = ['name', 'groupId', 'admin', 'admin.firstName', 'admin.lastName', 'admin.tenant' ,'admin.tenant.firstName', 'admin.tenant.lastName'];
+
+    const result = parseEntityAttributePaths(array);
+
+    const expected = {
+        name: true,
+        groupId: true,
+        admin: {
+            attributes: {
+                firstName: true,
+                lastName: true,
+                tenant: {
+                    attributes: {
+                        firstName: true,
+                        lastName: true,
+                    }
+                },
+            }
+        },
+    };
+
+    expect(result).toEqual(expected);
+  });
 });
 
 
