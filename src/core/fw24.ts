@@ -202,7 +202,7 @@ export class Fw24 {
                 continue;
             }
             // get role
-            this.logger.info("addRouteToRolePolicy:", {route, groupName});
+            this.logger.debug("addRouteToRolePolicy:", {route, groupName});
             const role: Role = this.get('Role', 'cognito_' + groupName);
             if(!role) {
                 this.logger.error(`Role not found for group: ${groupName}. Role is required to add route: ${route} to role policy. Please make sure you have a group defined in your config with the name: ${groupName}.`);

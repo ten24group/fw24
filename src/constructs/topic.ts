@@ -46,6 +46,7 @@ export class TopicConstruct implements FW24Construct {
             });
             this.fw24.setConstructOutput(this, topicConfig.topicName, topic, OutputType.TOPIC);
             this.fw24.set(topicConfig.topicName, topic.topicName, "topicName");
+            this.fw24.set(topicConfig.topicName, topic, "topic");
 
             if(topicConfig.notificationProps?.email){
                 for (const email of topicConfig.notificationProps.email) {

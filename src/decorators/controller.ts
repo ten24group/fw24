@@ -48,6 +48,13 @@ export interface IControllerConfig {
 	 * Specifies the removal policy for the controller function's logs.
 	 */
 	logRemovalPolicy?: RemovalPolicy;
+
+	/**
+     * Specifies the target for the API
+     * Values can be "function", "queue" or "topic"
+     * @default "function"
+     */
+    target?: string;
 }
 
 /**
