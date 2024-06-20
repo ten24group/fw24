@@ -27,7 +27,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         breadcrums: [],
         pageHeaderActions: [
             {
-                label:  "create",
+                label:  "Create",
                 url:    `/create-${entityNameLower}`
             }
         ],
