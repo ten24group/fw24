@@ -1,13 +1,12 @@
-import { Attribute, EntityConfiguration } from "electrodb";
+import { EntityConfiguration } from "electrodb";
 import { createLogger } from "../logging";
-import { getValueByPath, isArray, isArrayOfStrings, isEmpty, isEmptyArray, isObject, isSimpleValue, isString, pickKeys, toHumanReadableName } from "../utils";
+import { JsonSerializer, getValueByPath, isArray, isEmpty, isObject, isString, pickKeys, toHumanReadableName } from "../utils";
 import { EntityInputValidations, EntityValidations } from "../validation";
-import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
+import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
-import { EntityQuery, EntitySelections, Pagination, isArrayOfObjectOfStringKeysAndBooleanValues } from "./query-types";
+import { EntityQuery, EntitySelections } from "./query-types";
 import { addFilterGroupToEntityFilterCriteria, inferRelationshipsForEntitySelections, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 import { defaultMetaContainer } from "./entity-metadata-container";
-
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
@@ -506,15 +505,13 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             formattedSelections = this.getDefaultSerializationAttributeNames()
         }
 
-        this.logger.info(`Formatted selections 1 for entity: ${this.getEntityName()}`, formattedSelections);
-
         if(Array.isArray(formattedSelections)){
             const parsedOptions = parseEntityAttributePaths(formattedSelections);
 
             formattedSelections = inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
         }
 
-        this.logger.info(`Formatted selections 2 for entity: ${this.getEntityName()}`, formattedSelections);
+        this.logger.info(`Formatted selections for entity: ${this.getEntityName()}`, formattedSelections);
 
         const requiredSelectAttributes = Object.entries(formattedSelections as any).reduce((acc, [attName, options]) => {
             acc.push(attName);
@@ -535,6 +532,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             entityName: this.getEntityName(),
             entityService: this,
         });
+
+        this.logger.info(`Retrieved entity: ${this.getEntityName()}`, JsonSerializer.stringify(entity));
 
 		if(!!formattedSelections && entity?.data){
 
@@ -744,18 +743,23 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAttribute): Partial<EntityAttribute> & { 
     id: string,
     name: string,
+    properties?: TIOSchemaAttribute[]
 } {
 
-    const {  name, validations, required, relation, default: defaultVal, get: getter, set: setter, watch, ...restMeta  } = att;
+    const {  name, validations, required, relation, default: defaultValue, get: getter, set: setter, watch, ...restMeta  } = att;
 
     const { entity: relatedEntity, ...restRelation } = relation || {};
     const relationMeta = relatedEntity ? {...restRelation, entity: relatedEntity?.model?.entity} : undefined;
 
-    return {
-        ...restMeta,
+    const {items, type, properties, ...restRestMeta} = restMeta as any;
+
+    const formatted: any = {
+        ...restRestMeta,
+        type,
         id: attId,
         name: name || toHumanReadableName( attId ),
         relation: relationMeta as any,
+        defaultValue,
         validations: validations || required ? ['required'] : [],
         isVisible: !att.hasOwnProperty('isVisible') || att.isVisible,
         isEditable: !att.hasOwnProperty('isEditable') || att.isEditable,
@@ -764,6 +768,22 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         isFilterable: !att.hasOwnProperty('isFilterable') || att.isFilterable,
         isSearchable: !att.hasOwnProperty('isSearchable') || att.isSearchable,
     }
+
+    //
+    // ** make sure to not override the inner fields of attributes like `list-[items]-[map]-properties` **
+    //
+    if(type === 'map'){
+        formatted['properties'] = Object.entries<any>(properties).map( ([k, v]) => entityAttributeToIOSchemaAttribute(k, v) );
+    } else if(type === 'list' && items.type === 'map'){
+        formatted['items'] = { 
+            ...items,
+            properties: Object.entries<any>(items.properties).map( ([k, v]) => entityAttributeToIOSchemaAttribute(k, v) )
+        };
+    }
+
+    // TODO: add support for set, enum, and custom-types
+
+    return formatted
 }
 
 export type TIOSchemaAttribute = ReturnType<typeof entityAttributeToIOSchemaAttribute>;
