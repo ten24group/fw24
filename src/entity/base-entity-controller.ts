@@ -1,4 +1,3 @@
-import { Schema } from 'electrodb';
 import { APIController } from '../core/api-gateway-controller';
 import { Request } from '../interfaces/request';
 import { Response } from '../interfaces/response';

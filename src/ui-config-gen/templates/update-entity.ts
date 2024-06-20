@@ -1,5 +1,5 @@
 import {  Schema } from "electrodb";
-import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { EntitySchema, TIOSchemaAttribute, TIOSchemaAttributesMap } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
@@ -51,22 +51,37 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 
     const _propertiesConfig = config.formPageConfig.propertiesConfig;
 
-    properties.forEach( prop => {
-        if(prop){
+    const formatProps = (props: TIOSchemaAttribute[]) => props
+    .filter( prop => prop && prop.isEditable && !prop.readOnly )
+    .map( formatProp );
 
-            if( !prop.isEditable || prop.readOnly ){
-                return;
+    const formatProp = (thisProp: TIOSchemaAttribute) => {
+        const formatted: any =  {
+            ...thisProp,
+            label:          thisProp.name,
+            column:         thisProp.id,
+            fieldType:      thisProp.fieldType || 'text',
+            hidden: thisProp.hasOwnProperty('isVisible') && !thisProp.isVisible
+        }; 
+
+        const items = (thisProp as any).items;
+        if(thisProp.type === 'map'){
+            formatted['properties'] =  formatProps(thisProp.properties ?? []);
+        } else if(thisProp.type === 'list' && items?.type === 'map'){
+            formatted['items'] = {
+                ...formatted['items'],
+                properties: formatProps(items.properties ?? [])
             }
-
-            _propertiesConfig.push({
-                ...prop,
-                label:          prop.name,
-                column:         prop.id,
-                fieldType:      prop.fieldType || 'text',
-                hidden: prop.hasOwnProperty('isVisible') && !prop.isVisible
-            });
         }
-    });
+
+        // TODO: add support for set, enum, and custom-types
+
+        return formatted;
+    }
+
+    const formattedProps = formatProps(Array.from(properties.values()));
+
+    _propertiesConfig.push(...formattedProps);
 
     return config;
 };
