@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-alpha.8](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.7...v0.1.1-alpha.8) (2024-06-20)
+
+
+### Bug Fixes
+
+* no data returning for nested map attribtues ([400a951](https://github.com/ten24group/fw24/commit/400a9510378405b9a42f1542a2392a6002cb9ae0))
+
 ### [0.1.1-alpha.7](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.6...v0.1.1-alpha.7) (2024-06-19)
 
 ### [0.1.1-alpha.6](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.5...v0.1.1-alpha.6) (2024-06-19)
