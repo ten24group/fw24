@@ -96,7 +96,7 @@ export class EntityUIConfigGen{
 
         const authConfigs = MakeAuthConfig({
             ...authConfigOptions, 
-            authEndpoint: authConfigOptions.authEndpoint || 'auth' 
+            authEndpoint: authConfigOptions.authEndpoint || 'mauth' 
         });
 
         const dashboardConfig = MakeDashboardConfig();
