@@ -751,7 +751,7 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
     const { entity: relatedEntity, ...restRelation } = relation || {};
     const relationMeta = relatedEntity ? {...restRelation, entity: relatedEntity?.model?.entity} : undefined;
 
-    const {items, type, properties, ...restRestMeta} = restMeta as any;
+    const {items, type, properties, addNewOption, ...restRestMeta} = restMeta as any;
 
     const formatted: any = {
         ...restRestMeta,
@@ -767,6 +767,10 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         isCreatable: !att.hasOwnProperty('isCreatable') || att.isCreatable,
         isFilterable: !att.hasOwnProperty('isFilterable') || att.isFilterable,
         isSearchable: !att.hasOwnProperty('isSearchable') || att.isSearchable,
+    }
+
+    if(addNewOption){
+        formatted['addNewOption'] = addNewOption;
     }
 
     //

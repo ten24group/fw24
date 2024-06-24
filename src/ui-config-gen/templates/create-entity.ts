@@ -1,22 +1,24 @@
-import {  Schema } from "electrodb";
-import { EntitySchema, TIOSchemaAttribute, TIOSchemaAttributesMap } from "../../entity";
+import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
-import { DefaultLogger } from "../../logging";
+import { formatEntityAttributesForCreate } from "./util";
+
+export type CreateEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
+    entityName: string,
+    entityNamePlural: string,
+    properties: TIOSchemaAttributesMap<S>,
+}
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
-    options: {
-        entityName: string,
-        entityNamePlural: string,
-        properties: TIOSchemaAttributesMap<S>,
-    }
+    options: CreateEntityPageOptions<S>
 ) => {
 
-    const{ entityName, properties } = options;
+    const{ entityName } = options;
     const entityNameLower = entityName.toLowerCase();
-    const entityNameCamel = camelCase(entityName);
     const entityNamePascalCase = pascalCase(entityName);
 
-    let config = {
+    const formPageConfig = makeCreateEntityFormConfig(options);
+
+    return {
         pageTitle:  `Create ${entityNamePascalCase}`,
         pageType:   'form',
         cardStyle: {
@@ -28,55 +30,43 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 label:  "Back",
                 url:    `/list-${entityNameLower}`
             }
-        ],
+        ], 
         formPageConfig: {
-            apiConfig: {
-                apiMethod: `POST`,
-                responseKey: entityNameCamel,
-                apiUrl: `/${entityNameLower}`,
-            },
-            formButtons: [ "submit", "reset", {
-                text:  "Cancel",
-                url:    `/list-${entityNameLower}`
-            }],
-            propertiesConfig: [] as any[],
-            submitSuccessRedirect: `/list-${entityNameLower}`,
+            ...formPageConfig, 
+            formButtons: [
+                "submit", 
+                "reset", 
+                {
+                    text:  "Cancel",
+                    url:    `/list-${entityNameLower}`
+                }
+            ],
+            submitSuccessRedirect: `/list-${entityNameLower}`
         }
     };
+};
 
-    const _propertiesConfig = config.formPageConfig.propertiesConfig;
+export function makeCreateEntityFormConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> (
+    options: CreateEntityPageOptions<S>
+){
 
-    const formatProps = (props: TIOSchemaAttribute[]) => props
-    .filter( prop => prop && prop.isCreatable )
-    .map( formatProp );
+    const{ entityName, properties } = options;
+    const entityNameLower = entityName.toLowerCase();
+    const entityNameCamel = camelCase(entityName);
 
-    const formatProp = (thisProp: TIOSchemaAttribute) => {
-        const formatted: any =  {
-            ...thisProp,
-            label:          thisProp.name,
-            column:         thisProp.id,
-            fieldType:      thisProp.fieldType || 'text',
-            hidden: thisProp.hasOwnProperty('isVisible') && !thisProp.isVisible
-        }; 
-
-        const items = (thisProp as any).items;
-        if(thisProp.type === 'map'){
-            formatted['properties'] =  formatProps(thisProp.properties ?? []);
-        } else if(thisProp.type === 'list' && items?.type === 'map'){
-            formatted['items'] = {
-                ...formatted['items'],
-                properties: formatProps(items.properties ?? [])
-            }
-        }
-
-        // TODO: add support for set, enum, and custom-types
-
-        return formatted;
+    const formPageConfig = {
+        apiConfig: {
+            apiMethod: `POST`,
+            responseKey: entityNameCamel,
+            apiUrl: `/${entityNameLower}`,
+        },
+        formButtons: [ "submit", "reset"],
+        propertiesConfig: [] as any[],
     }
 
-    const formattedProps = formatProps(Array.from(properties.values()));
+    const formattedProps = formatEntityAttributesForCreate(Array.from(properties.values()));
 
-    _propertiesConfig.push(...formattedProps);
+    formPageConfig.propertiesConfig.push(...formattedProps);
 
-    return config;
-};
+    return formPageConfig;
+}
