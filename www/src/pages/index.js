@@ -5,6 +5,7 @@ import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import styles from './index.module.css';
 import HomepageFeatures from '../components/HomepageFeatures';
+import CodeBlock from '@theme/CodeBlock';
 
 function HomepageHeader() {
   const {siteConfig} = useDocusaurusContext();
@@ -13,6 +14,11 @@ function HomepageHeader() {
       <div className="container">
         <p className="hero__subtitle">A modern serverless framework to launch software <br />
         products quickly and scale seamlessly</p>
+        <div className='code-home'>
+          <CodeBlock className="language-bash">
+            {"npm i -g @ten24group/cli24\ncli24 generate-sample-project myapp"}
+          </CodeBlock>
+        </div>
         <div className={styles.buttons}>
           <Link
             className="button button--secondary button--lg"
