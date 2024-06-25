@@ -53,7 +53,7 @@ export function formatEntityAttributeForFormOrDetail(thisProp: TIOSchemaAttribut
                     entityNamePlural: entitySchema.model.entityNamePlural,
                 });
 
-                formatted['viewInModel'] = {
+                formatted['openInModal'] = {
                     modalType: 'details',
                     modalPageConfig
                 }
@@ -65,7 +65,7 @@ export function formatEntityAttributeForFormOrDetail(thisProp: TIOSchemaAttribut
                     entityNamePlural: entitySchema.model.entityNamePlural,
                 });
                 
-                formatted['viewInModel'] = {
+                formatted['openInModal'] = {
                     modalType: 'list',
                     modalPageConfig
                 }
@@ -155,8 +155,8 @@ export function formatEntityAttributesForList( entityName: string, properties: T
                 },
                 {
                     icon: 'delete',
-                    openInModel: true,
-                    modelConfig: {
+                    openInModal: true,
+                    modalConfig: {
                         modalType: 'confirm',
                         modalPageConfig: {
                             title: `Delete ${entityNamePascalCase}`,
