@@ -3,10 +3,10 @@
         "noUnusedLocals": false,
         "allowUnreachableCode": false,
         "esModuleInterop": true,
-        "target": "ES2021",
+        "target": "ES2022",
         "module": "commonjs",
         "lib": [
-            "es2021",
+            "ES2022",
             "DOM"
         ],
         "resolveJsonModule": true,
