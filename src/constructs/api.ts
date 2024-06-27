@@ -32,6 +32,7 @@ import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Topic } from "aws-cdk-lib/aws-sns";
 
+
 /**
  * Represents the configuration options for an API construct.
  */

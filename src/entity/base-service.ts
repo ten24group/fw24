@@ -1,4 +1,7 @@
 import { EntityConfiguration } from "electrodb";
+
+import AWSXRay from 'aws-xray-sdk-core';
+
 import { createLogger } from "../logging";
 import { JsonSerializer, getValueByPath, isArray, isEmpty, isObject, isString, pickKeys, toHumanReadableName } from "../utils";
 import { EntityInputValidations, EntityValidations } from "../validation";
@@ -613,11 +616,28 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
                 query.filters = addFilterGroupToEntityFilterCriteria<S>(searchFilterGroup as any, query.filters);
             }
         }
-        
-        const entities =  await listEntity<S>({
-            query,
-            entityName: this.getEntityName(), 
-            entityService: this, 
+
+        const entities = await AWSXRay.captureAsyncFunc(`${BaseEntityService.name}::list::listEntity`, async (subsegment) => {
+            try {
+
+                subsegment?.addMetadata('entityName', this.getEntityName());
+                subsegment?.addMetadata('query', query);
+
+                const entities =  await listEntity<S>({
+                    query,
+                    entityName: this.getEntityName(), 
+                    entityService: this, 
+                });
+
+                return entities;
+
+            } catch (error: any) {
+                subsegment?.addError(error);
+                this.logger.error("Error processing event:", error);
+                throw error;
+            } finally {
+                subsegment?.close();
+            }
         });
 
         entities.data = this.serializeRecords(entities.data, query.attributes);
@@ -630,7 +650,21 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             .filter( ([, options]) => isObject(options) );
 
             if(relationalAttributes.length){
-    			await this.hydrateRecords(relationalAttributes as any, entities.data);
+
+                await AWSXRay.captureAsyncFunc(`${BaseEntityService.name}::list::hydrateRecords`, async (subsegment) => {
+                    try {
+
+                        subsegment?.addMetadata('relationalAttributes', relationalAttributes);
+                        await this.hydrateRecords(relationalAttributes as any, entities.data);
+
+                    } catch (error: any) {
+                        subsegment?.addError(error);
+                        this.logger.error("Error processing event:", error);
+                        throw error;
+                    } finally {
+                        subsegment?.close();
+                    }
+                });
             }
 		}
 
