@@ -12,6 +12,9 @@ import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { LogDuration, createLogger } from "../logging";
 import { QueueConstruct } from "./queue";
+import { Certificate, CertificateValidation } from "aws-cdk-lib/aws-certificatemanager";
+import { CloudFrontWebDistribution, ViewerCertificate, SecurityPolicyProtocol, SSLMethod } from "aws-cdk-lib/aws-cloudfront";
+import { CertificateConstruct } from "./certificate";
 
 /**
  * Represents the configuration for a bucket construct.
@@ -51,6 +54,20 @@ export interface IBucketConstructConfig {
      * The properties of the bucket.
      */
     bucketProps?: BucketProps;
+
+    /**
+     * The CFN distribution config for the bucket.
+     */
+    cfnDistributionConfig?: {
+        /**
+         * The domain name for the bucket to setup a cloudfront distribution
+         */
+        domainName?: string;
+        /**
+         * The certificateArn for the domain. If this is not provided, a new certificate will be created.
+         */
+        certificateArn?: string;
+    }
 }
 
 type S3EventDestination = 'lambda' | 'queue';
@@ -95,6 +112,7 @@ export interface IS3TriggerConfig {
  *       encryption: BucketEncryption.KMS,
  *       versioned: true,
  *     },
+ *     domain: 'files.example.com',
  *     source: '/path/to/source',
  *     triggers: [
  *       {
@@ -216,6 +234,42 @@ export class BucketConstruct implements FW24Construct {
             });
         }
         
+        const cfnDistributionConfig = bucketConfig.cfnDistributionConfig;
+        if(cfnDistributionConfig && cfnDistributionConfig.domainName && cfnDistributionConfig.domainName.length > 0){
+
+            this.logger.debug("Creating bucket domain: ", cfnDistributionConfig.domainName);
+            const certificateConstruct = new CertificateConstruct({
+                domainName: cfnDistributionConfig.domainName,
+                certificateArn: cfnDistributionConfig.certificateArn
+            });
+            certificateConstruct.construct();
+            const certificate = certificateConstruct.output[OutputType.CERTIFICATE][cfnDistributionConfig.domainName];
+
+            // create a cloudfront distribution for the bucket
+            const cfnDistribution = new CloudFrontWebDistribution(this.mainStack, bucketConfig.bucketName + '-distribution', {
+                originConfigs: [
+                    {
+                        s3OriginSource: {
+                            s3BucketSource: bucket,
+                        },
+                        behaviors: [{ isDefaultBehavior: true }],
+                    },
+                ],
+                viewerCertificate: ViewerCertificate.fromAcmCertificate(certificate, {
+                    aliases: [cfnDistributionConfig.domainName],
+                    securityPolicy: SecurityPolicyProtocol.TLS_V1_2_2021,
+                    sslMethod: SSLMethod.SNI,
+                }),
+
+            });
+            this.fw24.setConstructOutput(this, bucketConfig.bucketName, cfnDistribution, OutputType.CLOUDFRONTWEBDISTRIBUTION);
+
+            new CfnOutput(this.mainStack, bucketConfig.bucketName + 'cfnOutput', {
+                value: cfnDistribution.distributionDomainName,
+            });
+            
+        }
+
         new CfnOutput(this.mainStack, bucketConfig.bucketName + 'Output', {
             value: bucket.bucketName,
         });

@@ -1,6 +1,6 @@
 import { SecretValue, CfnOutput } from "aws-cdk-lib";
 import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
-import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha';
+import { App, Branch, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha';
 
 import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
@@ -40,6 +40,23 @@ export interface ISiteConstructConfig {
      * The build specification for the site.
      */
     buildSpec: any; // BuildSpec.fromObject
+
+    /**
+     * The domain for the site.
+     */
+    domain?: string;
+
+    /**
+     * The subdomain for the branch. defaults to the branch name.
+     */
+    subdomain?: string;
+
+    /**
+     * Map the domain to the www subdomain.
+     * Default is false
+     * @default false
+     */
+    mapRootDomain?: boolean;
 }
 
 export class SiteConstruct implements FW24Construct{
@@ -79,7 +96,19 @@ export class SiteConstruct implements FW24Construct{
         // add the custom rules
         amplifyApp.addCustomRule(CustomRule.SINGLE_PAGE_APPLICATION_REDIRECT);
         // add the branch
-        amplifyApp.addBranch(this.siteConstructConfig.githubBranch);
+        const branch = amplifyApp.addBranch(this.siteConstructConfig.githubBranch);
+        // add the domain
+        if(this.siteConstructConfig.domain){
+            const siteDomain = amplifyApp.addDomain(this.siteConstructConfig.domain);
+            if (this.siteConstructConfig.mapRootDomain === true) {
+                siteDomain.mapRoot(branch);
+                siteDomain.mapSubDomain(branch, 'www');
+            } else {
+                const subDomain = this.siteConstructConfig.subdomain || this.siteConstructConfig.githubBranch;
+                siteDomain.mapSubDomain(branch, subDomain);
+            }
+        }
+
         // add the stack to the framework
         fw24.addStack('amplify', amplifyApp);
         // add the amplify url to the main stack outputs
