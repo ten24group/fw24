@@ -3,7 +3,7 @@ import MakeUpdateEntityConfig from './templates/update-entity';
 import MakeListEntityConfig from './templates/list-entity';
 import MakeViewEntityConfig from './templates/view-entity';
 import MakeEntityMenuConfig from './templates/entity-menu';
-import { BaseEntityService, EntitySchema } from '../entity';
+import { BaseEntityService, EntitySchema, defaultMetaContainer } from '../entity';
 
 import MakeAuthConfig from './templates/auth';
 import MakeDashboardConfig from './templates/dashboard';
@@ -164,6 +164,7 @@ export class EntityUIConfigGen{
                         const service = exportedItem() as BaseEntityService<any>;
                         this.logger.debug(`loading service for entity: ${service.getEntityName()}`);
                         loadedServices.set(service.getEntityName(), service);
+                        defaultMetaContainer.setEntityServiceByEntityName(service.getEntityName(), service);
                         break;
                     } else {
                         // this.logger.debug(`SKIP: exportedItem is not a factory function: ${exportedItem}`);

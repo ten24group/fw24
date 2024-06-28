@@ -1,5 +1,6 @@
 import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
 import { pascalCase } from "../../utils";
+import { formatEntityAttributesForList } from "./util";
 
 export type ListingPropConfig = {
     name: string,
@@ -9,19 +10,23 @@ export type ListingPropConfig = {
     actions?: any[]
 };
 
+export type ListEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
+    entityName: string,
+    entityNamePlural: string,
+    properties: TIOSchemaAttributesMap<S>
+}
+
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
-    options: {
-        entityName: string,
-        entityNamePlural: string,
-        properties: TIOSchemaAttributesMap<S>
-    }
+    options: ListEntityPageOptions<S>
 ) => {
 
     const{ entityName, entityNamePlural, properties } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
 
-    let listingConfig = {
+    const listPageConfig = makeViewEntityListConfig(options);
+
+    return {
         pageTitle:  `${entityNamePascalCase} Listing`,
         pageType:   "list",
         breadcrums: [],
@@ -31,65 +36,29 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 url:    `/create-${entityNameLower}`
             }
         ],
-        listPageConfig: {
-            apiConfig: {
-                apiMethod: `GET`,
-                responseKey: 'items',
-                apiUrl: `/${entityNameLower}`,
-            },
-            propertiesConfig: [] as any[],
-        }
+        listPageConfig
     };
-
-    const _propertiesConfig = listingConfig.listPageConfig.propertiesConfig;
-
-    properties.forEach( prop => {
-        if(prop){
-            
-            if(!prop.isListable){
-                return;
-            }
-            const propConfig: ListingPropConfig = {
-                ...prop,
-                dataIndex:  `${prop.id}`,
-                fieldType:  prop.fieldType || 'text',
-                hidden: prop.hasOwnProperty('isVisible') && !prop.isVisible
-            };
-
-            if(prop.isIdentifier){
-
-                propConfig.actions = [
-                    {
-                        icon: 'edit',
-                        url: `/edit-${entityNameLower}`
-                    },
-                    {
-                        icon: 'delete',
-                        openInModel: true,
-                        modelConfig: {
-                            modalType: 'confirm',
-                            modalPageConfig: {
-                                title: `Delete ${entityNamePascalCase}`,
-                                content: `Are you sure you want to delete this ${entityNamePascalCase}?`
-                            },
-                            apiConfig: {
-                                apiMethod: `DELETE`,
-                                responseKey: entityNameLower,
-                                apiUrl: `/${entityNameLower}`,
-                            },
-                            confirmSuccessRedirect: `/list-${entityNameLower}`
-                        }
-                    },
-                    {
-                        icon: `view`,
-                        url: `/view-${entityNameLower}`
-                    }
-                ];
-            }
-
-            _propertiesConfig.push(propConfig);
-        }
-    });
-
-    return listingConfig;
 };
+
+export function makeViewEntityListConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> (
+    options: ListEntityPageOptions<S>
+){
+
+    const{ entityName, properties } = options;
+    const entityNameLower = entityName.toLowerCase();
+
+    const listPageConfig = {
+        apiConfig: {
+            apiMethod: `GET`,
+            responseKey: 'items',
+            apiUrl: `/${entityNameLower}`,
+        },
+        propertiesConfig: [] as any[],
+    }
+
+    const formattedProps = formatEntityAttributesForList( entityName, Array.from(properties.values()) );
+
+    listPageConfig.propertiesConfig.push(...formattedProps);
+
+    return listPageConfig;
+}

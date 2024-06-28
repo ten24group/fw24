@@ -202,7 +202,23 @@ interface SelectFieldMetadata<E extends EntitySchema<any, any, any> = any> exten
   fieldType?: 'select' | 'multi-select' | 'autocomplete';
   options: FieldOptions<E>;
   maxSelections?: number; // maximum number of selections
+  // whether to allow adding new options
+  addNewOption?: {
+    entityName: string; // entity name to create new option
+  }; 
 }
+
+// Type guard for SelectFieldMetadata
+export function isSelectFieldMetadata(obj: any): obj is SelectFieldMetadata {
+  return (
+    typeof obj === 'object' 
+    && !!obj 
+    && 'options' in obj 
+    && ['select', 'multi-select', 'autocomplete'].includes(obj.fieldType)
+  );
+}
+
+
 
 interface RadioFieldMetadata<E extends EntitySchema<any, any, any>=any> extends BaseFieldMetadata {
   fieldType?: 'radio';

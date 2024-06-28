@@ -7,6 +7,8 @@ import { Topic } from "aws-cdk-lib/aws-sns";
 import { Vpc, ISubnet, ISecurityGroup} from "aws-cdk-lib/aws-ec2";
 import { LayerVersion } from "aws-cdk-lib/aws-lambda";
 import { CfnIdentityPool, UserPool, UserPoolClient } from "aws-cdk-lib/aws-cognito";
+import { CloudFrontWebDistribution } from "aws-cdk-lib/aws-cloudfront";
+import { ICertificate } from "aws-cdk-lib/aws-certificatemanager";
 
 export interface FW24Construct {
     name: string;
@@ -36,6 +38,8 @@ export interface FW24ConstructOutput extends Record<string, any>{
     [OutputType.SUBNET]: Record<string,ISubnet>;
     [OutputType.SUBNETS]: Record<string,ISubnet[]>;
     [OutputType.SECURITYGROUP]: Record<string,ISecurityGroup>;
+    [OutputType.CLOUDFRONTWEBDISTRIBUTION]: Record<string,CloudFrontWebDistribution>;
+    [OutputType.CERTIFICATE]: Record<string,ICertificate>;
     [key: string]: any;
 }
 
@@ -55,5 +59,7 @@ export enum OutputType   {
     VPC = 'vpc',
     SUBNET = 'subnet',
     SUBNETS = 'subnets',
-    SECURITYGROUP = 'securitygroup'
+    SECURITYGROUP = 'securitygroup',
+    CLOUDFRONTWEBDISTRIBUTION = 'cloudfrontwebdistribution',
+    CERTIFICATE = 'certificate',
 }

@@ -5,14 +5,113 @@
  * 
  */
 
-import {
-	ERROR_NOT_ARRAY,
-	getCounter,
-	getType,
-	isMergeable,
-	isNullable,
-} from "./utils";
-import { type Mergeable, MergeableType, type MergedMany, type NonMergeable, type Nullable, type WithValue } from "./types";
+export type Merged<T1, T2> =
+    T1 extends Nullable
+        ? T2 // [Nullable, T2] -> T2
+        : T2 extends Nullable
+            ? T1 // [T1, Nullable] -> T1
+            : T1 extends MergeableObject
+                ? T2 extends MergeableObject
+                    ? MergedObject<T1, T2> // [MergeableObject, MergeableObject] -> MergedObject<T1, T2>
+                    : T2 // [MergeableObject, T2] -> T2
+                : T1 extends Readonly<MergeableArray>
+                    ? T2 extends Readonly<MergeableArray>
+                        ? MergedArray<T1, T2> // [MergeableArray, MergeableArray] -> MergedArray<T1, T2>
+                        : T2 // [MergeableArray, T2] -> T2
+                    : T1 extends MergeableMap
+                        ? T2 extends MergeableMap
+                            ? MergedMap<T1, T2> // [MergeableMap, MergeableMap] -> MergedMap<T1, T2>
+                            : T2 // [MergeableMap, T2] -> T2
+                        : T1 extends MergeableSet
+                            ? T2 extends MergeableSet
+                                ? MergedSet<T1, T2> // [MergeableSet, MergeableSet] -> MergedSet<T1, T2>
+                                : T2 // [MergeableSet, T2] -> T2
+                            : T2; // [NonMergeable, T2] -> T2
+
+type MergedObject<T1 extends MergeableObject, T2 extends MergeableObject> = {
+    [Key in keyof T1 | keyof T2]:
+        Key extends keyof T2
+            ? Key extends keyof T1
+                ? Merged<T1[Key], T2[Key]>
+                : T2[Key]
+            : Key extends keyof T1
+                ? T1[Key]
+                : never;
+};
+
+type MergedArray<T1, T2> =
+    T1 extends Readonly<[infer First1, ...infer Rest1]>
+        ? T2 extends Readonly<[infer First2, ...infer Rest2]>
+            ? [Merged<First1, First2>, ...MergedArray<Rest1, Rest2>]
+            : T1
+        : T2;
+
+type MergedMap<T1 extends MergeableMap, T2 extends MergeableMap> = T1 extends Map<infer K1, infer V1>
+    ? T2 extends Map<infer K2, infer V2>
+        ? Map<K1 | K2, V1 | V2>
+        : never
+    : never;
+
+type MergedSet<T1 extends MergeableSet, T2 extends MergeableSet> = Set<
+    (T1 extends Set<infer Value1> ? Value1 : never)
+    | (T2 extends Set<infer Value2> ? Value2 : never)
+>;
+
+type MergedMany<T extends unknown[]> =
+    T extends [infer T1, ...infer Rest]
+        ? Rest extends []
+            ? T1 // [T1] -> T1
+            : T1 extends Nullable
+                ? MergedMany<Rest> // [Nullable, ...Rest] -> MergedMany<Rest>
+                : Rest extends [infer T2, ...infer Rest2]
+                    ? Rest2 extends []
+                        ? Merged<T1, T2> // [T1, T2] -> Merged<T1, T2>
+                        : Merged<Merged<T1, T2>, MergedMany<Rest2>> // [T1, T2, ...Rest2] -> Merged<T1, MergedMany<Rest2>>
+                    : never
+        : null; // []
+
+type MergeableObject = Record<PropertyKey, unknown>;
+type MergeableArray = unknown[];
+type MergeableMap = Map<unknown, unknown>;
+type MergeableSet = Set<unknown>;
+type Mergeable = MergeableObject | MergeableArray | MergeableMap | MergeableSet;
+type Nullable = null | undefined;
+type NonMergeable<T> = T extends Mergeable | Nullable ? never : T;
+enum MergeableType {
+    Object = "Object",
+    Array = "Array",
+    Set = "Set",
+    Map = "Map",
+    Nullable = "Nullable",
+    NonMergeable = "NonMergeable",
+}
+
+interface WithValue<T> {
+    value: T;
+}
+
+const isObject = (obj: unknown): obj is MergeableObject =>
+	Object.prototype.toString.call(obj) === "[object Object]";
+const isArray = (obj: unknown): obj is MergeableArray => Array.isArray(obj);
+const isMap = (obj: unknown): obj is MergeableMap => !!obj && Object.getPrototypeOf(obj) === Map.prototype;
+const isSet = (obj: unknown): obj is MergeableSet => !!obj && Object.getPrototypeOf(obj) === Set.prototype;
+const isNullable = (obj: unknown): obj is Nullable => obj === null || obj === undefined;
+const isMergeable = (obj: unknown): obj is Mergeable => isObject(obj) || isArray(obj) || isMap(obj) || isSet(obj);
+const getType = (obj: unknown): MergeableType => {
+	if (isObject(obj)) { return MergeableType.Object; }
+	if (isArray(obj)) { return MergeableType.Array; }
+	if (isMap(obj)) { return MergeableType.Map; }
+	if (isSet(obj)) { return MergeableType.Set; }
+	if (isNullable(obj)) { return MergeableType.Nullable; }
+	return MergeableType.NonMergeable;
+};
+
+const getCounter = (() => {
+	let counter = -1;
+	return (reset = false) => reset ? counter = 0 : ++counter;
+})();
+
+const ERROR_NOT_ARRAY = "Argument must be an array" as const;
 
 /**
  * Merge objects with circular references
