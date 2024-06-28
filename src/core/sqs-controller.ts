@@ -1,6 +1,8 @@
 import { SQSEvent, Context } from "aws-lambda";
 import { createLogger } from "../logging";
 
+import AWSXRay from 'aws-xray-sdk-core';
+
 /**
  * Base class for handling SQS events.
  */
@@ -27,12 +29,37 @@ abstract class QueueController {
    */
   async LambdaHandler(event: SQSEvent, context: Context): Promise<any> {
     this.logger.debug("SQS-LambdaHandler Received event:", JSON.stringify(event, null, 2));
+    
+    await AWSXRay.captureAsyncFunc(`${QueueController.name}::LambdaHandler::initialize`, async (subsegment) => {
+      try {
 
-    // hook for the application to initialize it's state, Dependencies, config etc
-    await this.initialize(event, context);
-    // Execute the associated route function
+        // hook for the application to initialize it's state, Dependencies, config etc
+        await this.initialize(event, context);
 
-    await this.process(event, context);
+      } catch (error: any) {
+        subsegment?.addError(error);
+        this.logger.error("Error processing event:", error);
+        throw error;
+      } finally {
+        subsegment?.close();
+      }
+    });
+
+    await AWSXRay.captureAsyncFunc(`${QueueController.name}::LambdaHandler::process`, async (subsegment) => {
+      try {
+
+        // Execute the associated route function
+        await this.process(event, context);
+
+      } catch (error: any) {
+        subsegment?.addError(error);
+        this.logger.error("Error processing event:", error);
+        throw error;
+      } finally {
+        subsegment?.close();
+      }
+    });
+
 }
 
 /**

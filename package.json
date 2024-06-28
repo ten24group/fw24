@@ -55,6 +55,7 @@
         "@aws-sdk/s3-request-presigner": "^3.592.0",
         "@smithy/smithy-client": "^3.1.1",
         "aws-jwt-verify": "^4.0.1",
+        "aws-xray-sdk-core": "^3.9.0",
         "constructs": "^10.3.0",
         "qs": "^6.12.1",
         "source-map-support": "^0.5.21",

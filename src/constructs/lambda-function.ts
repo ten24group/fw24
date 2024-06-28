@@ -1,7 +1,7 @@
 import { Construct } from "constructs";
 import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
-import { Runtime, Architecture, LayerVersion, ApplicationLogLevel, LoggingFormat } from "aws-cdk-lib/aws-lambda";
+import { Runtime, Architecture, LayerVersion, ApplicationLogLevel, LoggingFormat, Tracing } from "aws-cdk-lib/aws-lambda";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Fw24 } from "../core/fw24";
@@ -201,6 +201,7 @@ export class LambdaFunction extends Construct {
       timeout: Duration.seconds(5),
       memorySize: 128,
       loggingFormat: process.env.LOG_FORMAT?.toLowerCase?.() === 'json' ?  LoggingFormat.JSON : LoggingFormat.TEXT,
+      tracing: Tracing.ACTIVE,
       ...fw24.getConfig().functionProps,
     };
 
