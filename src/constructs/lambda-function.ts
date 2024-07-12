@@ -1,7 +1,7 @@
 import { Construct } from "constructs";
 import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
-import { Runtime, Architecture, LayerVersion } from "aws-cdk-lib/aws-lambda";
+import { Runtime, Architecture, LayerVersion, ApplicationLogLevel, LoggingFormat } from "aws-cdk-lib/aws-lambda";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Fw24 } from "../core/fw24";
@@ -158,6 +158,25 @@ export interface IFunctionResourceAccess {
  * 
  * ```
  */
+
+export function formatLogLevel(logLevel?: string) {
+   switch(logLevel?.toUpperCase()) {
+    case'ERROR': 
+      return ApplicationLogLevel.ERROR;
+    case 'WARN':
+      return ApplicationLogLevel.WARN;
+    case 'DEBUG':
+      return ApplicationLogLevel.DEBUG;
+    case 'TRACE':
+      return ApplicationLogLevel.TRACE;
+    case 'FATAL':
+      return ApplicationLogLevel.FATAL;
+    case 'INFO':
+    default: 
+      return ApplicationLogLevel.INFO
+  }
+}
+
 export class LambdaFunction extends Construct {
   
   readonly logger ?: ILogger = createLogger('LambdaFunction');
@@ -181,8 +200,17 @@ export class LambdaFunction extends Construct {
       handler: "handler",
       timeout: Duration.seconds(5),
       memorySize: 128,
+      loggingFormat: process.env.LOG_FORMAT?.toLowerCase?.() === 'json' ?  LoggingFormat.JSON : LoggingFormat.TEXT,
       ...fw24.getConfig().functionProps,
     };
+
+    //  'Error'  To use ApplicationLogLevel and/or SystemLogLevel you must set LoggingFormat to 'JSON', got 'Text'.
+    if(defaultProps.loggingFormat === LoggingFormat.JSON){
+      defaultProps = {
+        ...defaultProps,
+        applicationLogLevelV2: formatLogLevel( process.env.LOG_LEVEL)
+      };
+    }
 
     // Create log group if not provided
     let logGroup =  props.functionProps?.logGroup;

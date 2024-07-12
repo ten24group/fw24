@@ -1,21 +1,26 @@
 import {  Schema } from "electrodb";
 import { EntitySchema, TIOSchemaAttribute, TIOSchemaAttributesMap } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
+import { formatEntityAttributesForDetail, formatEntityAttributesForFormOrDetail } from "./util";
+
+export type ViewEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
+    entityName: string,
+    entityNamePlural: string,
+    properties: TIOSchemaAttributesMap<S>,
+}
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
-    options: {
-        entityName: string,
-        entityNamePlural: string,
-        properties: TIOSchemaAttributesMap<S>,
-    }
+    options: ViewEntityPageOptions<S>
 ) => {
 
-    const{ entityName, properties } = options;
+    const{ entityName } = options;
     const entityNameLower = entityName.toLowerCase();
-    const entityNameCamel = camelCase(entityName);
     const entityNamePascalCase = pascalCase(entityName);
     
-    let config = {
+
+    const detailsPageConfig = makeViewEntityDetailConfig(options);
+
+    return {
         pageTitle:  `${entityNamePascalCase} Details`,
         pageType:   'details',
         breadcrums: [],
@@ -25,49 +30,30 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 url:    `/list-${entityNameLower}`
             }
         ],
-        detailsPageConfig: {
-            detailApiConfig: {
-                apiMethod: `GET`,
-                responseKey: entityNameCamel,
-                apiUrl: `/${entityNameLower}`,
-            },
-            propertiesConfig: [] as any[],
-        }
+        detailsPageConfig,
     };
+};
 
-    const _propertiesConfig = config.detailsPageConfig.propertiesConfig;
+export function makeViewEntityDetailConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> (
+    options: ViewEntityPageOptions<S>
+){
 
-    const formatProps = (props: TIOSchemaAttribute[]) => props
-    .filter( prop => prop && prop.isVisible )
-    .map( formatProp );
+    const{ entityName, properties } = options;
+    const entityNameLower = entityName.toLowerCase();
+    const entityNameCamel = camelCase(entityName);
 
-    const formatProp = (thisProp: TIOSchemaAttribute) => {
-        const formatted: any =  {
-            ...thisProp,
-            label:          thisProp.name,
-            column:         thisProp.id,
-            fieldType:      thisProp.fieldType || 'text',
-            hidden: thisProp.hasOwnProperty('isVisible') && !thisProp.isVisible
-        }; 
-
-        const items = (thisProp as any).items;
-        if(thisProp.type === 'map'){
-            formatted['properties'] =  formatProps(thisProp.properties ?? []);
-        } else if(thisProp.type === 'list' && items?.type === 'map'){
-            formatted['items'] = {
-                ...formatted['items'],
-                properties: formatProps(items.properties ?? [])
-            }
-        }
-
-        // TODO: add support for set, enum, and custom-types
-
-        return formatted;
+    const detailsPageConfig = {
+        detailApiConfig: {
+            apiMethod: `GET`,
+            responseKey: entityNameCamel,
+            apiUrl: `/${entityNameLower}`,
+        },
+        propertiesConfig: [] as any[],
     }
 
-    const formattedProps = formatProps(Array.from(properties.values()));
+    const formattedProps = formatEntityAttributesForDetail(Array.from(properties.values()));
 
-    _propertiesConfig.push(...formattedProps);
+    detailsPageConfig.propertiesConfig.push(...formattedProps);
 
-    return config;
-};
+    return detailsPageConfig;
+}

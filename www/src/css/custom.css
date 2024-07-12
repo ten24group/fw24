@@ -39,3 +39,16 @@ html[data-theme='dark'] .docusaurus-highlight-code-line {
 .footer--dark {
 
 } */
+
+.code-home {
+  width: 50%;
+  margin: auto;
+}
+
+html[data-theme='light'] code {
+  background-color: rgb(8, 8, 8);
+}
+
+html[data-theme='light'] code span {
+  color: white; 
+}
