@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-alpha.10](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.9...v0.1.1-alpha.10) (2024-07-12)
+
+
+### Bug Fixes
+
+* ui-config for listing delete action ([be1718d](https://github.com/ten24group/fw24/commit/be1718db2a578ec37aa882249fb58118aa3ccd84))
+* utils import throwing runtime errors ([b13c098](https://github.com/ten24group/fw24/commit/b13c098125d5b23837fca12c9b563954223a1325))
+
 ### [0.1.1-alpha.9](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.8...v0.1.1-alpha.9) (2024-06-24)
 
 ### [0.1.1-alpha.8](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.7...v0.1.1-alpha.8) (2024-06-20)
