@@ -61,3 +61,11 @@ cd myapp-backend
 
 cli24 watch local
 ```
+
+### Step 4: Cleanup
+
+To delete all the created resources, run the cli delete command from the projects parent directory:
+
+```shell
+cli24 delete myapp
+```

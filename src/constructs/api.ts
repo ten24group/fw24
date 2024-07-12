@@ -3,6 +3,7 @@ import {
     AwsIntegration, 
     Cors, 
     CorsOptions,
+    EndpointType,
     IResource, 
     Integration, 
     LambdaIntegration, 
@@ -31,6 +32,7 @@ import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Topic } from "aws-cdk-lib/aws-sns";
+import { CertificateConstruct } from "./certificate";
 
 /**
  * Represents the configuration options for an API construct.
@@ -67,6 +69,16 @@ export interface IAPIConstructConfig {
      */
     logRemovalPolicy?: RemovalPolicy;
 
+    /**
+     * The custom domain name for the API.
+     */
+    domainName?: string;
+
+    /**
+     * The certificate ARN for the custom domain name.
+     */
+    certificateArn?: string;
+
 }
 
 export class APIConstruct implements FW24Construct {
@@ -96,6 +108,19 @@ export class APIConstruct implements FW24Construct {
         if (this.apiConstructConfig.cors) {
             this.logger.debug("Enabling CORS... this.config.cors: ", this.apiConstructConfig.cors);
             paramsApi.defaultCorsPreflightOptions = this.getCorsPreflightOptions();
+        }
+        if(this.apiConstructConfig.domainName && this.apiConstructConfig.domainName.length > 0){
+            const certificateConstruct = new CertificateConstruct({
+                domainName: this.apiConstructConfig.domainName,
+                certificateArn: this.apiConstructConfig.certificateArn
+            });
+            certificateConstruct.construct();
+            const certificate = certificateConstruct.output[OutputType.CERTIFICATE][this.apiConstructConfig.domainName];
+            paramsApi.domainName = {
+                domainName: this.apiConstructConfig.domainName,
+                certificate: certificate,
+                basePath: paramsApi.deployOptions?.stageName || '/',
+            };
         }
         this.logger.debug("Creating API Gateway... ");
         // get the main stack from the framework
