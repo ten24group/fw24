@@ -45,10 +45,10 @@ html[data-theme='dark'] .docusaurus-highlight-code-line {
   margin: auto;
 }
 
-html[data-theme='light'] code {
+html[data-theme='light'] .code-home code {
   background-color: rgb(8, 8, 8);
 }
 
-html[data-theme='light'] code span {
+html[data-theme='light'] .code-home code span {
   color: white; 
 }
