@@ -24,6 +24,14 @@ cli24 create myapp
 
 This command will create two new directories: `myapp-backend` and `myapp-admin`, setting up the basic structure of your application.
 
+## Deploy Your Project
+
+To deploy your project to AWS, use `deploy` command from inside your project folder:
+
+```shell
+cli24 deploy myapp
+```
+
 ## Real-Time Development with Watch Mode
 
 CLI24's `watch` command allows you to run your backend in watch mode. This means your development server will start and automatically reload whenever you make changes to your code. To use this feature, navigate to the backend directory and run:
@@ -34,6 +42,13 @@ cli24 watch local
 ```
 
 CLI24 is more than just a tool; it's a powerful ally that makes building and deploying FW24 applications a breeze. Whether you're a seasoned developer or just starting with FW24, CLI24 is designed to enhance your productivity and streamline your development workflow.
+
+## Clean-up
+To delete your app and all it's related AWS resources, run the following from outside your project folder:
+
+```shell
+cli24 delete myapp
+```
 
 ## Usage
 
@@ -62,6 +77,8 @@ Here is a list of available commands:
 
 - `add-dynamodb-table <tableName>`: Add a DynamoDB table to a `fw24` project.
 - `add-dynamodb-entity <entityName>`: Add a DynamoDB entity to a `fw24` project. Requires `-t, --tableName <tableName>`, `-p, --entityNamePlural <entityNamePlural>`, and `-ep, --entityProperties <entityProperties>` to specify the DynamoDB table name, entity plural name, and entity properties.
+- `add-dynamodb-entity-property <entityName> -p <propertyName> -t <propertyType> [wysiwyg|date|string]`: Add property to an entity
+- `cli24 add-dynamodb-entity-relationship <entityName> -p <propertyName> -r <relatedEntityName>`: Add a related property to an entity
 - `add-mailer <domainName>`: Add a Mailer to a `fw24` project.
 - `add-bucket <bucketName>`: Add an S3 bucket to a `fw24` project.
 - `add-bucket-withhandler <bucketName> <functionName>`: Add an S3 bucket handler function to a `fw24` project.
@@ -88,6 +105,7 @@ Here is a list of available commands:
 - `delete <projectName>`: Delete a `fw24` project and destroy all resources.
 - `delete-backend <projectName>`: Delete a `fw24` backend project and destroy all resources.
 - `delete-admin <projectName>`: Delete a `fw24` admin project and destroy all resources.
+- `add-cicd -o GITHUBORG -r REPO -b BRANCH -e ENV_FILENAME`: Setup a github workflow action to automatically deploy your project
 
 ### Logging
 
