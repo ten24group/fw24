@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-alpha.11](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.10...v0.1.1-alpha.11) (2024-07-22)
+
+
+### Features
+
+* support for uniqueue values for entity-attributes and updated `create` and `update` functions to enforce uniqueness ([fb00c32](https://github.com/ten24group/fw24/commit/fb00c32e2d09690f1812ae302bc7f1208cca7844))
+
 ### [0.1.1-alpha.10](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.9...v0.1.1-alpha.10) (2024-07-12)
 
 
