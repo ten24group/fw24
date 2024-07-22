@@ -29,7 +29,7 @@ This command will create two new directories: `myapp-backend` and `myapp-admin`,
 To deploy your project to AWS, use `deploy` command from inside your project folder:
 
 ```shell
-cli24 deploy myapp
+cli24 deploy local
 ```
 
 ## Real-Time Development with Watch Mode
