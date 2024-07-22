@@ -3,7 +3,7 @@ import { EntityConfiguration } from "electrodb";
 import AWSXRay from 'aws-xray-sdk-core';
 
 import { createLogger } from "../logging";
-import { JsonSerializer, getValueByPath, isArray, isEmpty, isObject, isString, pickKeys, toHumanReadableName } from "../utils";
+import { JsonSerializer, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isObject, isString, pickKeys, toHumanReadableName } from "../utils";
 import { EntityInputValidations, EntityValidations } from "../validation";
 import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
@@ -315,6 +315,35 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
         return attributeNames;
     }
+    
+
+    /**
+     * Returns the unique attributes of the entity. 
+     * Defaults to all attributes which are marked as unique or are identifiers; 
+     * Or if they are part of a composite primary key where the composite length is 1.
+     * 
+     * @returns {Array<EntityAttribute>} unique attributes of the entity
+    */
+    public getUniqueAttributes(): Array<EntityAttribute>{
+        const attributes = [];
+        const schema = this.getEntitySchema();
+        
+        for(const attName in schema.attributes){
+            const att = schema.attributes[attName];
+
+            let isUnique = att.hasOwnProperty('isUnique') ? att.isUnique : att.isIdentifier;
+
+            if( isUnique ){ 
+                attributes.push({
+                    ...att,
+                    isUnique,
+                    name: attName,
+                }); 
+            }
+        }
+
+        return attributes;
+    }
 
     /**
      * Returns the default attribute names that can be used for filtering the records. Defaults to all string attributes which are not hidden.
@@ -344,7 +373,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         let keys: Array<string>;
 
         if(Array.isArray(attributes)){
-            const parsed = parseEntityAttributePaths(attributes);
+            const parsed = parseEntityAttributePaths(attributes as string[] );
             keys = Object.keys(parsed);
         } else {
             keys = Object.keys(attributes);
@@ -509,7 +538,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         }
 
         if(Array.isArray(formattedSelections)){
-            const parsedOptions = parseEntityAttributePaths(formattedSelections);
+            const parsedOptions = parseEntityAttributePaths(formattedSelections as string[] );
 
             formattedSelections = inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
         }
@@ -553,6 +582,92 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
         return entity?.data;
     }
+
+
+    /**
+     * Checks the uniqueness of an attribute value and updates the payload if necessary.
+     * @param options - The options for checking uniqueness and updating the payload.
+     * @param options.payloadToUpdate - The payload object to update.
+     * @param options.attributeName - The name of the attribute to check uniqueness for.
+     * @param options.attributeValue - The value of the attribute to check uniqueness for.
+     * @param options.maxAttemptsForCreatingUniqueAttributeValue - The maximum number of attempts to create a unique attribute value.
+     * @returns A boolean indicating whether the attribute value is unique.
+     */
+    public async checkUniquenessAndUpdate(options: {
+        payloadToUpdate: any,
+        attributeName: string, 
+        attributeValue: any,
+        ignoredEntityIdentifiers?: {
+            [key: string]: any
+        }
+        maxAttemptsForCreatingUniqueAttributeValue: number,
+    }) {
+        
+        const { payloadToUpdate, attributeName, ignoredEntityIdentifiers, maxAttemptsForCreatingUniqueAttributeValue } = options;
+        let { attributeValue } = options;
+
+        let isUnique = false;
+        let triesCount = 1;
+
+        while (!isUnique && triesCount < maxAttemptsForCreatingUniqueAttributeValue) {
+            isUnique = await this.isUniqueAttributeValue(attributeName, attributeValue, ignoredEntityIdentifiers);
+            if (!isUnique) {
+                attributeValue = this.generateUniqueValue(attributeValue, triesCount);
+            }
+            triesCount++;
+        }
+
+        if(isUnique){
+            payloadToUpdate[attributeName] = attributeValue;
+        }
+
+        return isUnique;
+    }
+
+    /**
+     * Checks if the given attribute value is unique for the specified attribute name.
+     * @param attributeName - The name of the attribute to check uniqueness for.
+     * @param attributeValue - The value of the attribute to check uniqueness for.
+     * @returns A boolean indicating whether the attribute value is unique or not.
+     */
+    public async isUniqueAttributeValue(
+        attributeName: string, 
+        attributeValue: any,
+        ignoredEntityIdentifiers?: {
+            [key: string]: any
+        }
+    ) {
+
+        this.logger.info(`Called ~ isUniqueAttributeValue ~ entityName: ${this.getEntityName()} ~ attributeName: ${attributeName} ~ attributeValue: ${attributeValue}`);
+        
+        const query = this.getRepository().match({
+            [attributeName]: attributeValue
+        });
+
+        // ignore the current entity being updated for uniqueness check of the attribute-value
+        if(ignoredEntityIdentifiers && !isEmptyObjectDeep(ignoredEntityIdentifiers) ){
+            Object.entries(ignoredEntityIdentifiers).forEach(([key, value]) => {
+                query.where((attributes, { ne }) => ne(attributes[key], value) );
+            });
+        }
+
+        const entity = await  query.go();
+
+        this.logger.info(`isUniqueAttributeValue ~ entityName: ${this.getEntityName()} ~ attributeName: ${attributeName} ~ attributeValue: ${attributeValue} ~ entity:`, entity);
+
+        return entity.data?.length === 0;
+    }
+
+    /**
+     * Generates a unique value by appending a unique suffix to the original value.
+     * @param originalValue - The original value to generate a unique value from.
+     * @param attempt - The attempt number or string to be used as a suffix (default: random string).
+     * @returns The generated unique value.
+     */
+    public generateUniqueValue(originalValue: any, attempt: number | string = Math.random().toString(36).substring(2, 15) ): string {
+        const uniqueSuffix = `${Date.now()}-${attempt}`;
+        return `${originalValue}-${uniqueSuffix}`;
+    }
     
     /**
      * Creates a new entity.
@@ -562,6 +677,37 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      */
     public async create(payload: CreateEntityItemTypeFromSchema<S>) {
         this.logger.debug(`Called ~ create ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
+
+        const uniqueFields = this.getUniqueAttributes();
+        const skipCheckingAttributesUniqueness = false;
+        const maxAttemptsForCreatingUniqueAttributeValue = 5;
+
+        if(!skipCheckingAttributesUniqueness && uniqueFields.length){
+            let uniquenessChecks = [];
+
+            // Prepare uniqueness checks for all unique fields
+            for (const { name } of uniqueFields) {
+                if (payload.hasOwnProperty(name!)) {
+                    let value = payload[name!];
+                    // Push a function that performs the uniqueness check into the array
+                    uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
+                        payloadToUpdate: payload,
+                        attributeName: name!,
+                        attributeValue: value,
+                        maxAttemptsForCreatingUniqueAttributeValue,
+                    }));
+                }
+            }
+
+            // Execute all uniqueness checks in parallel
+            const checkResults = await Promise.all(uniquenessChecks.map(check => check()));
+
+            // If any check failed (returned false), throw an error
+            if (checkResults.includes(false)) {
+                throw new Error("Unable to ensure uniqueness for one or more fields.");
+            }
+
+        }
 
         const entity =  await createEntity<S>({
             data: payload, 
@@ -593,7 +739,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         
         // for listing API attributes would be an array
         if(Array.isArray(query.attributes)){
-            const parsedOptions = parseEntityAttributePaths(query.attributes);
+            const parsedOptions = parseEntityAttributePaths(query.attributes as string[] );
             query.attributes = inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
         }
         
@@ -690,7 +836,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         
         if(Array.isArray(selectAttributes)){
             // parse the list of dot-separated attribute-identifiers paths and ensure all the required metadata is there
-            const parsedOptions = parseEntityAttributePaths(selectAttributes);
+            const parsedOptions = parseEntityAttributePaths(selectAttributes as string[] );
             selectAttributes = inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
         } else {
             // ensure all the provided select attributes has required metadata all the way down to the leaf level
@@ -744,6 +890,46 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      */
     public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>) {
         this.logger.debug(`Called ~ update ~ entityName: ${this.getEntityName()} ~ identifiers:, data:`, identifiers, data);
+
+        const uniqueFields = this.getUniqueAttributes();
+        const skipCheckingAttributesUniqueness = false;
+        const maxAttemptsForCreatingUniqueAttributeValue = 5;
+
+        if(!skipCheckingAttributesUniqueness && uniqueFields.length){
+            let uniquenessChecks = [];
+
+            // Prepare uniqueness checks for all unique fields
+            for (const { name, readOnly } of uniqueFields) {
+
+                // ensure readonly attributes are not updated
+                if(readOnly){
+                    delete data[name as keyof typeof data];
+                    continue;
+                }
+                
+                if (data.hasOwnProperty(name!)) {
+                    let value = data[name as keyof typeof data];
+
+                    // Push a function that performs the uniqueness check into the array
+                    uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
+                        payloadToUpdate: data,
+                        attributeName: name!,
+                        attributeValue: value,
+                        maxAttemptsForCreatingUniqueAttributeValue,
+                        ignoredEntityIdentifiers: identifiers, // skip the current entity being updated for uniqueness check
+                    }));
+                }
+            }
+
+            // Execute all uniqueness checks in parallel
+            const checkResults = await Promise.all(uniquenessChecks.map(check => check()));
+
+            // If any check failed (returned false), throw an error
+            if (checkResults.includes(false)) {
+                throw new Error("Unable to ensure uniqueness for one or more fields.");
+            }
+
+        }
 
         const updatedEntity =  await updateEntity<S>({
             id: identifiers,
