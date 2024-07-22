@@ -34,6 +34,7 @@ import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { CertificateConstruct } from "./certificate";
 
+
 /**
  * Represents the configuration options for an API construct.
  */

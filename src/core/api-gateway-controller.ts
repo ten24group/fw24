@@ -11,6 +11,8 @@ import { getCircularReplacer } from "../utils";
 import { Get, RouteMethods } from "../decorators/method";
 import { Controller, IControllerConfig } from "../decorators";
 
+import AWSXRay from 'aws-xray-sdk-core';
+
 /**
  * Creates an API handler without defining a class
  * 
@@ -82,28 +84,47 @@ abstract class APIController {
 
   async validate( requestContext: Request, validations: InputValidationRule | HttpRequestValidations ){
 
-    let validationRules: HttpRequestValidations = validations;
-    if(isInputValidationRule(validations)){
-      if( ['GET', 'DELETE'].includes( requestContext.httpMethod.toUpperCase()) ){
+    return await AWSXRay.captureAsyncFunc(`${APIController.name}::LambdaHandler::process`, async (subsegment) => {
+      try {
 
-          validationRules = { query: validations }
+        let validationRules: HttpRequestValidations = validations;
 
-      } else if( ['POST', 'PUT', 'PATCH'].includes( requestContext.httpMethod.toUpperCase()) ){
+        if(isInputValidationRule(validations)){
+          if( ['GET', 'DELETE'].includes( requestContext.httpMethod.toUpperCase()) ){
 
-        validationRules = { body: validations }
+              validationRules = { query: validations }
+
+          } else if( ['POST', 'PUT', 'PATCH'].includes( requestContext.httpMethod.toUpperCase()) ){
+
+            validationRules = { body: validations }
+          }
+        }
+
+        subsegment?.addMetadata('validationRules', validationRules);
+        
+        if(!isHttpRequestValidationRule(validationRules)){
+          throw (new Error("Invalid http-request validation rule"));
+        }
+
+        const result = await this.validator.validateHttpRequest({
+          requestContext, 
+          validations: validationRules, 
+          collectErrors: true,
+          verboseErrors: requestContext.debugMode,
+          overriddenErrorMessages: await this.getOverriddenHttpRequestValidationErrorMessages()
+        });
+
+        subsegment?.addMetadata('validationResult', result);
+
+        return result;
+
+      } catch (error: any) {
+        subsegment?.addError(error);
+        this.logger.error("Error processing event:", error);
+        throw error;
+      } finally {
+        subsegment?.close();
       }
-    }
-    
-    if(!isHttpRequestValidationRule(validationRules)){
-      throw (new Error("Invalid http-request validation rule"));
-    }
-
-    return this.validator.validateHttpRequest({
-      requestContext, 
-      validations: validationRules, 
-      collectErrors: true,
-      verboseErrors: requestContext.debugMode,
-      overriddenErrorMessages: await this.getOverriddenHttpRequestValidationErrorMessages()
     });
   }
 
@@ -116,12 +137,25 @@ abstract class APIController {
    */
   async LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult> {
     this.logger.debug("LambdaHandler Received event:", JSON.stringify(event, null, 2));
+
     // Create request and response objects
     const requestContext: Request = new RequestContext(event, context);
     const responseContext: Response = new ResponseContext();
 
-    // hook for the application to initialize it's state, Dependencies, config etc
-    await this.initialize(event, context);
+    await AWSXRay.captureAsyncFunc(`${APIController.name}::LambdaHandler::initialize`, async (subsegment) => {
+      try {
+
+        // hook for the application to initialize it's state, Dependencies, config etc
+        await this.initialize(event, context);
+
+      } catch (error: any) {
+        subsegment?.addError(error);
+        this.logger.error("Error processing event:", error);
+        throw error;
+      } finally {
+        subsegment?.close();
+      }
+    });
 
     try {
       // Find the matching route for the received request
@@ -147,14 +181,24 @@ abstract class APIController {
       }
 
       const routeFunction = this.getRouteFunction(route);
-      // Execute the associated route function
-      let controllerResponse: any = routeFunction.call(this, requestContext, responseContext);
+      
+      const controllerResponse = await AWSXRay.captureAsyncFunc(`${APIController.name}::LambdaHandler::call`, async (subsegment) => {
+        
+        try {
+          // Execute the associated route function
+          const result = await routeFunction.call(this, requestContext, responseContext);
+          
+          return result;
+        } catch (error: any) {
+          subsegment?.addError(error);
+          this.logger.error("Error processing event:", error);
+          throw error;
+        } finally {
+          subsegment?.close();
+        }
+      });
 
-      // Resolve promises, if any
-      if (controllerResponse instanceof Promise) {
-        controllerResponse = await controllerResponse;
-      }
-
+    
       // If the response is an instance of ResponseContext, use its status code and body
       if (controllerResponse instanceof ResponseContext) {
         this.logger.debug("LambdaHandler Response:", JSON.stringify(controllerResponse, null, 2));
@@ -163,6 +207,7 @@ abstract class APIController {
           body: controllerResponse.body,
         });
       }
+
     } catch (err) {
       // If an error occurs, log it and handle with the Exception method
       this.logger.error('LambdaHandler error: ', err);

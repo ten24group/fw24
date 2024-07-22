@@ -120,6 +120,11 @@ export type EntityAttribute = Attribute & {
      */
     isIdentifier?: boolean;
 
+    /**
+     * Indicates whether the attribute is an identifier.
+     */
+    isUnique?: boolean;
+
     // define a relation with another entity use the type-helper `createEntityRelation` function
     relation ?: Relation;
 
