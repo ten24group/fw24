@@ -1,48 +1,53 @@
-import { registry, Token } from './di-registry';
-import { DEPENDENCIES_KEY, INJECT_KEY, INJECTABLE_KEY, ON_INIT_KEY } from './const';
-import { createToken } from './utils';
+// decorators.ts
 
-export function Injectable(options: { singleton?: boolean, name?: string } = {}): ClassDecorator {
+import { DEPENDENCIES_KEY, INJECT_KEY, ON_INIT_KEY } from './const';
+import { makeDIToken } from './utils';
+import { BaseProviderOptions, DepIdentifier } from './types';
+import { DIContainer, registerProvider } from './di-container';
+
+
+export function Injectable(options: BaseProviderOptions = {}): ClassDecorator {
     return (target: any) => {
-        const token = createToken(options.name || target.name);
-        registry.defineMetadata({
-            key: INJECTABLE_KEY, 
-            value: true, 
-            target
-        });
-        registry.register(token, { useClass: target as unknown as new (...args: any[]) => any, singleton: options.singleton, name: options.name });
+        registerProvider({
+            ...options,
+            useClass: target,
+            name: options.name || target.name
+        })
     };
 }
 
-
-export function Inject<T>(depNameOrToken: string | Token<T>, name?: string): PropertyDecorator & ParameterDecorator {
-
-    if(typeof depNameOrToken === 'string') {
-        return Inject(createToken(depNameOrToken), name);
-    }
-    
-    const token = depNameOrToken;
+export function Inject<T>(depNameOrToken: DepIdentifier<T>): PropertyDecorator & ParameterDecorator {
+        
+    const token = makeDIToken(depNameOrToken);
 
     return (target: Object, propertyKey: string | symbol | undefined, parameterIndex?: number) => {
         
+        const registry = DIContainer.INSTANCE;
+        
         if (typeof parameterIndex === 'number') {
+            
             const existingDependencies = registry.getMetadata({
                 key: INJECT_KEY,
                 target
             }) || {};
 
-            existingDependencies[parameterIndex] = { token, name };
+            existingDependencies[parameterIndex] = { token };
+
             registry.defineMetadata({
                 key: INJECT_KEY, 
                 value: existingDependencies, 
                 target
             });
+
         } else if (propertyKey !== undefined) {
+
             const existingDependencies = registry.getMetadata({
                 key: DEPENDENCIES_KEY, 
                 target
             }) || [];
-            existingDependencies.push({ token, name, propertyKey });
+
+            existingDependencies.push({ token, propertyKey });
+
             registry.defineMetadata({
                 key: DEPENDENCIES_KEY, 
                 value: existingDependencies, 
@@ -52,24 +57,9 @@ export function Inject<T>(depNameOrToken: string | Token<T>, name?: string): Pro
     };
 }
 
-export function Conditional(condition: () => boolean): ClassDecorator {
-    return (target: any) => {
-        let options = registry.getMetadata({
-            key: INJECTABLE_KEY, 
-            target
-        }) || {};
-        if (typeof options !== 'object') {
-            options = {};
-        }
-        options.condition = condition;
-        const token = createToken(options.name || target.name);
-        registry.register(token, { ...options, useClass: target as unknown as new (...args: any[]) => any });
-    };
-}
-
 export function OnInit(): MethodDecorator {
     return (target, propertyKey) => {
-        registry.defineMetadata({
+        DIContainer.INSTANCE.defineMetadata({
             key: ON_INIT_KEY, 
             value: propertyKey, 
             target

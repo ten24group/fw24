@@ -1,3 +1,5 @@
-export { createToken } from './utils';
-export { registry as diContainer, registerProvider, resolveAll } from './di-registry';
-export { Injectable, Inject, Conditional, OnInit } from './decorators';
+import { DIContainer } from './di-container';
+
+export { makeDIToken as createToken } from './utils';
+export { DIContainer, registerProvider } from './di-container';
+export { Injectable, Inject, OnInit } from './decorators';

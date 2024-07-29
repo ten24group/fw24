@@ -1,41 +1,39 @@
 import { describe, expect, it } from '@jest/globals';
-import { diContainer, createToken, Injectable, Inject, Conditional, OnInit } from './';
+import { DIContainer, createToken, Injectable, Inject, OnInit } from './';
 
 describe('DI Decorators', () => {
     
     // Clear metadata before each test
     beforeEach(() => {
-        diContainer.clear();
+        DIContainer.INSTANCE.clear();
     });
 
     it('should register a class with @Injectable', () => {
         @Injectable({ singleton: true })
         class TestService {}
 
-        const token = createToken<TestService>('TestService', 'MyApp');
-        diContainer.register(token, { useClass: TestService, singleton: true });
-
-        const provider = (diContainer as any).providers.get(token.toString());
+        const token = createToken<TestService>('TestService');
+        DIContainer.INSTANCE.register({ useClass: TestService, singleton: true, name: token.toString() });
+        const provider = (DIContainer.INSTANCE as any).providers.get(token.toString());
         expect(provider).toBeDefined();
         expect(provider.useClass).toBe(TestService);
     });
 
     it('should inject a dependency with @Inject', async () => {
         @Injectable()
-        class DependencyService {}
+        class DependencyService {
 
-        const DependencyServiceToken = createToken<DependencyService>('DependencyService');
+        }
 
         @Injectable()
         class TestService {
-            constructor(@Inject(DependencyServiceToken) private dependencyService: DependencyService) {}
+            constructor(@Inject(DependencyService) private dependencyService: DependencyService) {
+                console.log('TestService.constructor', { dependencyService });
+            }
         }
 
-        const TestServiceToken = createToken<TestService>('TestService');
-        diContainer.register(DependencyServiceToken, { useClass: DependencyService });
-        diContainer.register(TestServiceToken, { useClass: TestService });
-
-        const testServiceInstance = await diContainer.resolve(TestServiceToken);
+        const testServiceInstance = DIContainer.INSTANCE.resolve(TestService);
+        
         expect(testServiceInstance).toBeInstanceOf(TestService);
         expect((testServiceInstance as any).dependencyService).toBeInstanceOf(DependencyService);
     });
@@ -43,14 +41,13 @@ describe('DI Decorators', () => {
     it('should conditionally register a provider with @Conditional', () => {
         const condition = jest.fn(() => true);
 
-        @Conditional(condition)
-        @Injectable({ singleton: true })
+        @Injectable({ singleton: true, condition })
         class ConditionalService {}
 
         const token = createToken<ConditionalService>('ConditionalService');
-        diContainer.register(token, { useClass: ConditionalService, singleton: true });
+        DIContainer.INSTANCE.register({ useClass: ConditionalService, singleton: true, name: token.toString() });
 
-        const provider = (diContainer as any).providers.get(token.toString());
+        const provider = (DIContainer.INSTANCE as any).providers.get(token.toString());
         expect(provider).toBeDefined();
         expect(provider.useClass).toBe(ConditionalService);
     })
@@ -61,12 +58,12 @@ describe('DI Decorators', () => {
         @Injectable()
         class TestService {
             @OnInit()
-            async onInit11() {
+            onInit11() {
                 onInitSpy();
             }
         }
 
-        const testServiceInstance = await diContainer.resolve(TestService.name);
+        const testServiceInstance = DIContainer.INSTANCE.resolve(TestService.name);
 
         expect(testServiceInstance).toBeInstanceOf(TestService);
         expect(onInitSpy).toHaveBeenCalled();
