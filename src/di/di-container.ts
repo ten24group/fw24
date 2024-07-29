@@ -3,15 +3,31 @@ import { DefineMetadataOptions, GetMetadataOptions, IMetadataStore, MetadataStor
 import { ClassProviderOptions, DepIdentifier, FactoryProviderOptions, isClassProviderOptions, isFactoryProviderOptions, isValueProviderOptions, ProviderOptions, Token } from './types';
 import { makeDIToken, hasConstructor } from './utils';
 
+type Middleware<T> = (next: () => T) => T;
+type MiddlewareAsync<T> = (next: () => Promise<T>) => Promise<T>;
+
 export class DIContainer {
-
-    public static INSTANCE: DIContainer;
-
+    
     private providers = new Map<string, ProviderOptions<any>>();
     private cache = new Map<string, any>();
     private resolving = new Map<string, any>();
+    private middlewares: Middleware<any>[] = [];
+    private asyncMiddlewares: MiddlewareAsync<any>[] = [];
 
-    constructor(private metadataStore: IMetadataStore = new MetadataStore()) {};
+    
+    private static globalInstance: DIContainer;
+    static get INSTANCE(): DIContainer {
+        if (!this.globalInstance) {
+            this.globalInstance = new DIContainer();
+        }
+        return this.globalInstance;
+    }
+    
+    constructor(private metadataStore: IMetadataStore = new MetadataStore(), private parentContainer?: DIContainer) {}
+    
+    createChildContainer( metadataStore: IMetadataStore = this.metadataStore ): DIContainer {
+        return new DIContainer(metadataStore, this);
+    }
 
     register<T>(options: ProviderOptions<T> & { name: string }) {
         const token = makeDIToken(options.name);
@@ -35,20 +51,52 @@ export class DIContainer {
         const providerKey = this.getProviderIdentifier(token);
 
         // ensure reregistration overwrites the existing provider and the cache if any
-        if(optionsCopy.singleton && this.cache.has(providerKey)) {
+        if (optionsCopy.singleton && this.cache.has(providerKey)) {
             console.warn(`Provider ${providerKey} is being overwritten. The existing instance will be removed from the cache.`);
             this.cache.delete(providerKey);
         }
+
         this.providers.set(providerKey, optionsCopy);
+    }
+
+    registerInParentContainer<T>(options: ProviderOptions<T> & { name: string }) {
+        if (this.parentContainer) {
+            this.parentContainer.register(options);
+        } else {
+            throw new Error('No parent container to add the provider to.');
+        }
+    }
+
+    registerInRootContainer<T>(options: ProviderOptions<T> & { name: string }) {
+        let rootContainer = this as DIContainer;
+        while (rootContainer.parentContainer) {
+            rootContainer = rootContainer.parentContainer;
+        }
+        rootContainer.register(options);
+    }
+
+    useMiddleware(middleware: Middleware<any>) {
+        this.middlewares.push(middleware);
+    }
+
+    useAsyncMiddleware(middleware: MiddlewareAsync<any>) {
+        this.asyncMiddlewares.push(middleware);
     }
 
     resolve<T>(depNameOrToken: DepIdentifier, path: Set<string> = new Set()): T {
         const token = makeDIToken(depNameOrToken);
         const providerKey = this.getProviderIdentifier(token);
-        const options = this.providers.get(providerKey);
 
+        let options = this.providers.get(providerKey);
+        
         if (!options) {
-            console.error('No provider found:', { token, path, providers: this.providers, providerKey });
+
+            if (this.parentContainer) {
+                return this.parentContainer.resolve(depNameOrToken, path);
+            }
+
+            console.error('No provider found for:', { token, providerKey,  path });
+
             throw new Error(`No provider found for ${token.toString()}`);
         }
 
@@ -65,33 +113,46 @@ export class DIContainer {
         }
 
         path.add(providerKey);
-        let instance: T;
 
-        try {
-            instance = this.createInstance(options, path, token);
-        } catch (error: any) {
+        const createInstance = () => {
+            let instance: T;
+
+            try {
+                instance = this.createInstance(options, path, token);
+            } catch (error: any) {
+                path.delete(providerKey);
+                throw new Error(`Error resolving ${token.toString()}: ${error.message}`);
+            }
+
+            if (options.singleton) {
+                this.cache.set(providerKey, instance);
+            }
+
+            this.resolving.delete(providerKey);
+            this.injectProperties(instance);
+            this.initializeInstance(instance);
             path.delete(providerKey);
-            throw new Error(`Error resolving ${token.toString()}: ${error.message}`);
-        }
 
-        if (options.singleton) {
-            this.cache.set(providerKey, instance);
-        }
+            return instance;
+        };
 
-        this.resolving.delete(providerKey);
-        this.injectProperties(instance);
-        this.initializeInstance(instance);
-        path.delete(providerKey);
-        return instance;
+        return this.applyMiddlewares(createInstance);
     }
 
     async resolveAsync<T>(depNameOrToken: DepIdentifier, path: Set<string> = new Set()): Promise<T> {
         const token = makeDIToken(depNameOrToken);
         const providerKey = this.getProviderIdentifier(token);
-        const options = this.providers.get(providerKey);
 
+        let options = this.providers.get(providerKey);
+        
         if (!options) {
+
+            if (this.parentContainer) {
+                return this.parentContainer.resolveAsync(depNameOrToken, path);
+            }
+
             console.error('No provider found:', { token, path, providers: this.providers, providerKey });
+
             throw new Error(`No provider found for ${token.toString()}`);
         }
 
@@ -108,24 +169,30 @@ export class DIContainer {
         }
 
         path.add(providerKey);
-        let instance: T;
 
-        try {
-            instance = await this.createInstanceAsync(options, path, token);
-        } catch (error: any) {
+        const createInstance = async () => {
+            let instance: T;
+
+            try {
+                instance = await this.createInstanceAsync(options, path, token);
+            } catch (error: any) {
+                path.delete(providerKey);
+                throw new Error(`Error resolving ${token.toString()}: ${error.message}`);
+            }
+
+            if (options.singleton) {
+                this.cache.set(providerKey, instance);
+            }
+
+            this.resolving.delete(providerKey);
+            await this.injectPropertiesAsync(instance);
+            await this.initializeInstanceAsync(instance);
             path.delete(providerKey);
-            throw new Error(`Error resolving ${token.toString()}: ${error.message}`);
-        }
 
-        if (options.singleton) {
-            this.cache.set(providerKey, instance);
-        }
+            return instance;
+        };
 
-        this.resolving.delete(providerKey);
-        await this.injectPropertiesAsync(instance);
-        await this.initializeInstanceAsync(instance);
-        path.delete(providerKey);
-        return instance;
+        return this.applyAsyncMiddlewares(createInstance);
     }
 
     private createInstance<T>(options: ProviderOptions<T>, path: Set<string>, token: Token<any>): T {
@@ -295,7 +362,7 @@ export class DIContainer {
         }) || [];
 
         for (const dep of dependencies) {
-            const propertyValue = (async () => {
+            const propertyValue = (() => {
                 try {
                     return this.resolve(dep.token);
                 } catch (error) {
@@ -368,21 +435,50 @@ export class DIContainer {
     }
 
     getMetadata<T extends any = any>(options: GetMetadataOptions): T | undefined {
-        return this.metadataStore.getMetadata(options);
+        return this.metadataStore.getMetadata(options) || (this.parentContainer && this.parentContainer.getMetadata(options));
     }
 
     hasMetadata(key: string | symbol, target: any): boolean {
-        return this.metadataStore.hasMetadata(key, target);
+        return this.metadataStore.hasMetadata(key, target) || (this.parentContainer && this.parentContainer.hasMetadata(key, target)) == true;
+    }
+
+    private applyMiddlewares<T>(next: () => T): T {
+        let index = -1;
+
+        const dispatch = (i: number): T => {
+            if (i <= index) throw new Error('next() called multiple times');
+            index = i;
+            const middleware = this.middlewares[i];
+            if (middleware) {
+                return middleware(() => dispatch(i + 1));
+            }
+            return next();
+        };
+
+        return dispatch(0);
+    }
+
+    private async applyAsyncMiddlewares<T>(next: () => Promise<T>): Promise<T> {
+        let index = -1;
+
+        const dispatch = async (i: number): Promise<T> => {
+            if (i <= index) throw new Error('next() called multiple times');
+            index = i;
+            const middleware = this.asyncMiddlewares[i];
+            if (middleware) {
+                return await middleware(() => dispatch(i + 1));
+            }
+            return next();
+        };
+
+        return dispatch(0);
     }
 }
-
-const registry = new DIContainer();
-DIContainer.INSTANCE = registry;
 
 /**
  * Register a provider manually.
  * @param options The options for the provider.
  */
-export function registerProvider<T>(options: ProviderOptions<T> & { name: string }) {
-    return DIContainer.INSTANCE.register(options);
+export function registerProvider<T>(options: ProviderOptions<T> & { name: string}, container: DIContainer = DIContainer.INSTANCE ) {
+    return container.register(options);
 }

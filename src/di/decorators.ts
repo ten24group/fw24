@@ -6,13 +6,16 @@ import { BaseProviderOptions, DepIdentifier, Token } from './types';
 import { DIContainer, registerProvider } from './di-container';
 
 
-export function Injectable(options: BaseProviderOptions = {}): ClassDecorator {
+export function Injectable(options: BaseProviderOptions = {}, container: DIContainer = DIContainer.INSTANCE): ClassDecorator {
     return (target: any) => {
+
         registerProvider({
-            ...options,
-            useClass: target,
-            name: options.name || target.name
-        });
+                ...options,
+                useClass: target,
+                name: options.name || target.name,
+            }, 
+            container
+        );
     };
 }
 
@@ -24,11 +27,8 @@ export function Inject<T>(depNameOrToken: DepIdentifier<T>, options: InjectOptio
     const token = makeDIToken(depNameOrToken);
 
     return (target: Object, propertyKey: string | symbol | undefined, parameterIndex?: number) => {
+        
         const registry = DIContainer.INSTANCE;
-
-        if(!registry.has(target.constructor.name)) {
-            throw new Error(`No provider is registered for class '${target.constructor.name}' please make sure it's decorated with @Injectable()`);
-        }
 
         if (typeof parameterIndex === 'number') {
             const existingDependencies = registry.getMetadata<{ [key: number]: { token: Token<any>; isOptional?: boolean } }>({
@@ -63,11 +63,6 @@ export function Inject<T>(depNameOrToken: DepIdentifier<T>, options: InjectOptio
 
 export function OnInit(): MethodDecorator {
     return (target, propertyKey) => {
-
-        if( !DIContainer.INSTANCE.has(target.constructor.name)) {
-            throw new Error(`No provider is registered for class '${target.constructor.name}' please make sure it's decorated with @Injectable()`);
-        }
-
         DIContainer.INSTANCE.defineMetadata({
             key: ON_INIT_METHOD_KEY,
             value: propertyKey,

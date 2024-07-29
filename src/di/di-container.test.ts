@@ -70,6 +70,7 @@ describe('DIContainer', () => {
         });
 
         it('should handle circular dependencies', async () => {
+
             @Injectable()
             class ClassA {
                 constructor(@Inject('ClassB') public b: any) {}
@@ -123,11 +124,7 @@ describe('DIContainer', () => {
                 @Inject(Dependency)
                 public dependency!: Dependency;
             }
-
-            container.register({ useClass: Dependency, name: Dependency.name });
-            container.register({ useClass: TestClass, name: TestClass.name });
-
-            const instance = await container.resolve<TestClass>(TestClass);
+            const instance = container.resolve<TestClass>(TestClass);
 
             expect(instance).toBeInstanceOf(TestClass);
             expect(instance.dependency).toBeInstanceOf(Dependency);
@@ -140,9 +137,7 @@ describe('DIContainer', () => {
                 public optionalDependency?: any;
             }
 
-            container.register({ useClass: TestClass, name: TestClass.name });
-
-            const instance = await container.resolve<TestClass>(TestClass);
+            const instance = container.resolve<TestClass>(TestClass);
 
             expect(instance).toBeInstanceOf(TestClass);
             expect(instance.optionalDependency).toBeUndefined();
@@ -419,6 +414,356 @@ describe('DIContainer', () => {
             expect(instance.c.b.a).toBeInstanceOf(ServiceA);
             expect(instance.a).toBeInstanceOf(ServiceA);
         });
+    });
+
+
+    describe('Child Containers', () => {
+
+        describe('inheritance', () => {
+            it('should inherit providers from parent container', () => {
+                @Injectable()
+                class ParentService {}
+
+                container.register({ useClass: ParentService, name: 'ParentService' });
+
+                const childContainer = container.createChildContainer();
+                const instance = childContainer.resolve<ParentService>('ParentService');
+
+                expect(instance).toBeInstanceOf(ParentService);
+            });
+
+            it('should override providers in child container', () => {
+                @Injectable()
+                class ParentService {
+                    getMessage() {
+                        return 'parent';
+                    }
+                }
+
+                @Injectable()
+                class ChildService {
+                    getMessage() {
+                        return 'child';
+                    }
+                }
+
+                container.register({ useClass: ParentService, name: 'Service' });
+
+                const childContainer = container.createChildContainer();
+                childContainer.register({ useClass: ChildService, name: 'Service' });
+
+                const instance = childContainer.resolve<ChildService>('Service');
+
+                expect(instance).toBeInstanceOf(ChildService);
+                expect(instance.getMessage()).toBe('child');
+            });
         });
+
+        describe('provider shadowing', () => {
+            it('should shadow parent container providers', () => {
+                @Injectable()
+                class ParentService {
+                    getMessage() {
+                        return 'parent';
+                    }
+                }
+
+                @Injectable()
+                class ChildService {
+                    getMessage() {
+                        return 'child';
+                    }
+                }
+
+                container.register({ useClass: ParentService, name: 'Service' });
+
+                const childContainer = container.createChildContainer();
+                childContainer.register({ useClass: ChildService, name: 'Service' });
+
+                const childInstance = childContainer.resolve<ChildService>('Service');
+                const parentInstance = container.resolve<ParentService>('Service');
+
+                expect(childInstance).toBeInstanceOf(ChildService);
+                expect(childInstance.getMessage()).toBe('child');
+                expect(parentInstance).toBeInstanceOf(ParentService);
+                expect(parentInstance.getMessage()).toBe('parent');
+            });
+        });
+
+        describe('adding providers to parent and root containers', () => {
+            it('should add providers to parent container', () => {
+                @Injectable()
+                class ParentService {}
+
+                @Injectable()
+                class ChildService {}
+
+                const childContainer = container.createChildContainer();
+                childContainer.registerInParentContainer({ useClass: ParentService, name: 'ParentService' });
+
+                const instance = container.resolve<ParentService>('ParentService');
+
+                expect(instance).toBeInstanceOf(ParentService);
+            });
+
+            it('should add providers to root container', () => {
+                @Injectable()
+                class RootService {}
+
+                const childContainer = container.createChildContainer();
+                childContainer.registerInRootContainer({ useClass: RootService, name: 'RootService' });
+
+                const instance = container.resolve<RootService>('RootService');
+
+                expect(instance).toBeInstanceOf(RootService);
+            });
+        });
+
+        describe('conditional resolution in child containers', () => {
+            it('should conditionally register providers in child container', () => {
+                @Injectable()
+                class ParentService {}
+
+                const childContainer = container.createChildContainer();
+                childContainer.register({
+                    useClass: ParentService,
+                    name: 'ConditionalService',
+                    condition: () => false
+                });
+
+                expect(() => childContainer.resolve('ConditionalService')).toThrow('No provider found for Symbol(fw24.di.token:ConditionalService)');
+            });
+        });
+
+        describe('middleware support in child containers', () => {
+            it('should apply middleware to child container resolutions', () => {
+                const middlewareSpy = jest.fn((next) => next());
+                
+                const childContainer = container.createChildContainer();
+
+                childContainer.useMiddleware(middlewareSpy);
+
+                @Injectable()
+                class MiddlewareService {}
+
+                childContainer.register({ useClass: MiddlewareService, name: 'MiddlewareService' });
+
+                const instance = childContainer.resolve<MiddlewareService>('MiddlewareService');
+                expect(middlewareSpy).toHaveBeenCalled();
+                expect(instance).toBeInstanceOf(MiddlewareService);
+            });
+
+            it('should apply async middleware to child container resolutions', async () => {
+                const middlewareSpy = jest.fn(async (next) => await next());
+                const childContainer = container.createChildContainer();
+
+                childContainer.useAsyncMiddleware(middlewareSpy);
+
+                @Injectable()
+                class MiddlewareService {}
+
+                childContainer.register({ useClass: MiddlewareService, name: 'MiddlewareService' });
+
+                const instance = await childContainer.resolveAsync<MiddlewareService>('MiddlewareService');
+                expect(middlewareSpy).toHaveBeenCalled();
+                expect(instance).toBeInstanceOf(MiddlewareService);
+            });
+        });
+
+        describe('property injection in child containers', () => {
+            it('should inject properties using @Inject', async () => {
+                @Injectable()
+                class Dependency {}
+
+                @Injectable()
+                class TestClass {
+                    @Inject(Dependency)
+                    public dependency!: Dependency;
+                }
+
+                container.register({ useClass: Dependency, name: Dependency.name });
+                container.register({ useClass: TestClass, name: TestClass.name });
+
+                const instance = await container.resolve<TestClass>(TestClass);
+
+                expect(instance).toBeInstanceOf(TestClass);
+                expect(instance.dependency).toBeInstanceOf(Dependency);
+            });
+
+            it('should handle optional property injection', async () => {
+                @Injectable()
+                class TestClass {
+                    @Inject('OptionalDependency', { isOptional: true })
+                    public optionalDependency?: any;
+                }
+
+                container.register({ useClass: TestClass, name: TestClass.name });
+
+                const instance = await container.resolve<TestClass>(TestClass);
+
+                expect(instance).toBeInstanceOf(TestClass);
+                expect(instance.optionalDependency).toBeUndefined();
+            });
+
+            it('should inject properties using @Inject in child container', async () => {
+                @Injectable()
+                class Dependency {}
+
+                @Injectable()
+                class TestClass {
+                    @Inject(Dependency)
+                    public dependency!: Dependency;
+                }
+
+                const childContainer = container.createChildContainer();
+                childContainer.register({ useClass: Dependency, name: Dependency.name });
+                childContainer.register({ useClass: TestClass, name: TestClass.name });
+                const instance = childContainer.resolve<TestClass>(TestClass);
+
+                expect(instance).toBeInstanceOf(TestClass);
+                expect(instance.dependency).toBeInstanceOf(Dependency);
+            });
+
+            it('should handle optional property injection in child container', async () => {
+                @Injectable()
+                class TestClass {
+                    @Inject('OptionalDependency', { isOptional: true })
+                    public optionalDependency?: any;
+                }
+
+                const childContainer = container.createChildContainer();
+                childContainer.register({ useClass: TestClass, name: TestClass.name });
+
+                const instance = await childContainer.resolve<TestClass>(TestClass);
+
+                expect(instance).toBeInstanceOf(TestClass);
+                expect(instance.optionalDependency).toBeUndefined();
+            });
+        });
+    });
+
+    describe('Middlewares/Interceptors', () => {
+
+        describe('middleware', () => {
+            it('should apply middleware to resolutions', () => {
+                const middlewareSpy = jest.fn((next) => {
+                    console.log('Middleware before');
+                    const result = next();
+                    console.log('Middleware after');
+                    return result;
+                });
+
+                container.useMiddleware(middlewareSpy);
+
+                @Injectable()
+                class MiddlewareService {}
+
+                container.register({ useClass: MiddlewareService, name: 'MiddlewareService' });
+
+                const instance = container.resolve<MiddlewareService>('MiddlewareService');
+
+                expect(middlewareSpy).toHaveBeenCalled();
+                expect(instance).toBeInstanceOf(MiddlewareService);
+            });
+
+            it('should allow middleware to modify the result', () => {
+                const middlewareSpy = jest.fn((next) => {
+                    const result = next();
+
+                    result.modified = true;
+                    return result;
+                });
+
+                container.useMiddleware(middlewareSpy);
+
+                @Injectable()
+                class MiddlewareService {
+                    value = 'original';
+                }
+
+                container.register({ useClass: MiddlewareService, name: 'MiddlewareService' });
+
+                const instance = container.resolve<any>('MiddlewareService');
+
+                expect(instance).toBeInstanceOf(MiddlewareService);
+                expect(instance.modified).toBe(true);
+            });
+
+            it('should handle errors in middleware', () => {
+                const middlewareSpy = jest.fn(() => {
+                    throw new Error('Middleware error');
+                });
+
+                container.useMiddleware(middlewareSpy);
+
+                @Injectable()
+                class MiddlewareService {}
+
+                container.register({ useClass: MiddlewareService, name: 'MiddlewareService' });
+
+                expect(() => container.resolve<MiddlewareService>('MiddlewareService')).toThrowError('Middleware error');
+            });
+        });
+
+        describe('async middleware', () => {
+            it('should apply async middleware to resolutions', async () => {
+                const middlewareSpy = jest.fn(async (next) => {
+                    console.log('Async middleware before');
+                    const result = await next();
+                    console.log('Async middleware after');
+                    return result;
+                });
+
+                container.useAsyncMiddleware(middlewareSpy);
+
+                @Injectable()
+                class MiddlewareService {}
+
+                container.register({ useClass: MiddlewareService, name: 'MiddlewareService' });
+
+                const instance = await container.resolveAsync<MiddlewareService>('MiddlewareService');
+
+                expect(middlewareSpy).toHaveBeenCalled();
+                expect(instance).toBeInstanceOf(MiddlewareService);
+            });
+
+            it('should allow async middleware to modify the result', async () => {
+                const middlewareSpy = jest.fn(async (next) => {
+                    const result = await next();
+                    result.modified = true;
+                    return result;
+                });
+
+                container.useAsyncMiddleware(middlewareSpy);
+
+                @Injectable()
+                class MiddlewareService {
+                    value = 'original';
+                }
+
+                container.register({ useClass: MiddlewareService, name: 'MiddlewareService' });
+
+                const instance = await container.resolveAsync<any>('MiddlewareService');
+
+                expect(instance).toBeInstanceOf(MiddlewareService);
+                expect(instance.modified).toBe(true);
+            });
+
+            it('should handle errors in async middleware', async () => {
+                const middlewareSpy = jest.fn(async () => {
+                    throw new Error('Async middleware error');
+                });
+
+                container.useAsyncMiddleware(middlewareSpy);
+
+                @Injectable()
+                class MiddlewareService {}
+
+                container.register({ useClass: MiddlewareService, name: 'MiddlewareService' });
+
+                await expect(container.resolveAsync<MiddlewareService>('MiddlewareService')).rejects.toThrow('Async middleware error');
+            });
+        });
+    });
 
 });
