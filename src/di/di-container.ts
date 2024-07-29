@@ -29,29 +29,25 @@ export class DIContainer {
         this.providers.set(providerKey, options);
     }
 
-    resolve<T>(depNameOrToken: DepIdentifier, path: string[] = []): T {
-
-        
+    resolve<T>(depNameOrToken: DepIdentifier, path: Set<string> = new Set()): T {
         const token = makeDIToken(depNameOrToken);
-
         const providerKey = this.getProviderIdentifier(token);
-
         const options = this.providers.get(providerKey);
 
         if (!options) {
-            console.error('++resolve++', {token, path, providers: this.providers, providerKey });
+            console.error('++resolve++', { token, path, providers: this.providers, providerKey });
             throw new Error(`No provider found for ${token.toString()}`);
         }
 
-        if (options.singleton) {
-            if (this.cache.has(providerKey)) {
-                return this.cache.get(providerKey);
-            }
+        if (options.singleton && this.cache.has(providerKey)) {
+            return this.cache.get(providerKey);
         }
 
-        if (path.includes(providerKey)) {
-            throw new Error(`Circular dependency detected: ${path.join(' -> ')} -> ${providerKey}`);
+        if (path.has(providerKey)) {
+            throw new Error(`Circular dependency detected: ${Array.from(path).join(' -> ')} -> ${providerKey}`);
         }
+
+        path.add(providerKey);
 
         let instance: T;
 
@@ -63,15 +59,15 @@ export class DIContainer {
             }) || {};
 
             const dependencies = Object.values(injectMetadata).map(
-                dep => this.resolve(dep.token, [...path, providerKey])
+                dep => this.resolve(dep.token, new Set(path))
             );
 
             instance = new options.useClass(...dependencies);
 
         } else if ( isFactoryProviderOptions(options) ) {
-            
-            const dependencies = (options.deps || []).map(dep => this.resolve(dep, [...path, providerKey]));
-            
+
+            const dependencies = (options.deps || []).map(dep => this.resolve(dep, new Set(path)));
+
             instance = options.useFactory(...dependencies);
 
         } else if ( isValueProviderOptions(options) ) {
@@ -102,6 +98,8 @@ export class DIContainer {
                 }
             }
         }
+
+        path.delete(providerKey);
 
         return instance;
     }
