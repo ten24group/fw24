@@ -26,6 +26,10 @@ export function Inject<T>(depNameOrToken: DepIdentifier<T>, options: InjectOptio
     return (target: Object, propertyKey: string | symbol | undefined, parameterIndex?: number) => {
         const registry = DIContainer.INSTANCE;
 
+        if(!registry.has(target.constructor.name)) {
+            throw new Error(`No provider is registered for class '${target.constructor.name}' please make sure it's decorated with @Injectable()`);
+        }
+
         if (typeof parameterIndex === 'number') {
             const existingDependencies = registry.getMetadata<{ [key: number]: { token: Token<any>; isOptional?: boolean } }>({
                 key: CONSTRUCTOR_INJECT_KEY,
@@ -59,6 +63,11 @@ export function Inject<T>(depNameOrToken: DepIdentifier<T>, options: InjectOptio
 
 export function OnInit(): MethodDecorator {
     return (target, propertyKey) => {
+
+        if( !DIContainer.INSTANCE.has(target.constructor.name)) {
+            throw new Error(`No provider is registered for class '${target.constructor.name}' please make sure it's decorated with @Injectable()`);
+        }
+
         DIContainer.INSTANCE.defineMetadata({
             key: ON_INIT_METHOD_KEY,
             value: propertyKey,

@@ -4,6 +4,7 @@ import { IFunctionResourceAccess } from "../constructs/lambda-function";
 import { RemovalPolicy } from "aws-cdk-lib";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { AuthorizerTypeMetadata } from "./authorizer";
+import { DIContainer } from "../di";
 
 /**
  * Represents the configuration options for a controller.
@@ -66,7 +67,8 @@ export interface IControllerConfig {
  */
 export function Controller(controllerName: string, controllerConfig: IControllerConfig = {}) {
 	return function <T extends { new (...args: any[]): {} }>(target: T) {
-		return class extends target {
+		
+		class ExtendedTarget extends target {
 			constructor(...args: any[]) {
 				super(...args);
 				// set the controller name
@@ -81,5 +83,10 @@ export function Controller(controllerName: string, controllerConfig: IController
 				Reflect.set(this, 'controllerConfig', { ...defaultConfig, ...controllerConfig});
 			}
 		};
+
+		Object.defineProperty(ExtendedTarget, 'name', { value: target.name });
+		DIContainer.INSTANCE.register({ singleton: true, name: target.name, useClass: ExtendedTarget });
+
+		return ExtendedTarget;
 	};
 }

@@ -1,12 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import { DIContainer, createToken, Injectable, Inject, OnInit } from './';
 import { PROPERTY_INJECT_KEY, CONSTRUCTOR_INJECT_KEY, ON_INIT_METHOD_KEY } from './const';
-import { makeDIToken } from './utils';
-
-// jest.mock('./utils', () => ({
-//     ...jest.requireActual('./utils'),
-//     makeDIToken: jest.fn((name: string) => Symbol(`fw24.di.token:${String(name)}`)),
-// }));
 
 describe('DI Decorators', () => {
     
