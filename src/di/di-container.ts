@@ -1,15 +1,23 @@
-import { PROPERTY_INJECT_KEY, CONSTRUCTOR_INJECT_KEY, ON_INIT_METHOD_KEY } from './const';
-import { Inject, Injectable, InjectOptions, OnInit } from './decorators';
+import { PartialBy } from '../utils';
+import { PROPERTY_INJECT_METADATA_KEY, CONSTRUCTOR_INJECT_METADATA_KEY, ON_INIT_HOOK_METADATA_KEY } from './const';
+import { Inject, Injectable, OnInit } from './decorators';
 import { DefineMetadataOptions, GetMetadataOptions, IMetadataStore, MetadataStore } from './metadata-store';
 import { 
   BaseProviderOptions, ClassProviderOptions, DepIdentifier, FactoryProviderOptions, 
-  isClassProviderOptions, isFactoryProviderOptions, isValueProviderOptions, ProviderOptions, 
+  InjectOptions, 
+  isClassProviderOptions, isFactoryProviderOptions, isValueProviderOptions, ParameterInjectMetadata, PropertyInjectMetadata, ProviderOptions, 
   Token 
 } from './types';
 import { makeDIToken, hasConstructor } from './utils';
 
-type Middleware<T> = (next: () => T) => T;
-type MiddlewareAsync<T> = (next: () => Promise<T>) => Promise<T>;
+type Middleware<T> = {
+    order: number;
+    middleware: (next: () => T) => T;
+};
+type MiddlewareAsync<T> = {
+    order: number;
+    middleware: (next: () => Promise<T>) => Promise<T>;
+};
 
 export class DIContainer {
     
@@ -28,7 +36,12 @@ export class DIContainer {
         return this.globalInstance;
     }
     
-    constructor(private metadataStore: IMetadataStore = new MetadataStore(), private parentContainer?: DIContainer) {}
+    constructor(private metadataStore: IMetadataStore = new MetadataStore(), private parentContainer?: DIContainer) {
+        // to ensure destructuring works correctly
+        this.Injectable = this.Injectable.bind(this);
+        this.Inject = this.Inject.bind(this);
+        this.OnInit = this.OnInit.bind(this);
+    }
     
     createChildContainer(metadataStore: IMetadataStore = this.metadataStore): DIContainer {
         const child = new DIContainer(metadataStore, this);
@@ -36,22 +49,88 @@ export class DIContainer {
         return child;
     }
 
+    createToken<T>(tokenOrType: DepIdentifier<T>): Token<T> {
+        return makeDIToken(tokenOrType);
+    }
+
     register<T>(options: ProviderOptions<T> & { name: string }) {
-        const token = makeDIToken(options.name);
+        const token = this.createToken(options.name);
 
-        if (options.condition && !options.condition()) return;
+        const optionsCopy = { 
+            ...options, 
+            priority: options.priority !== undefined ? options.priority : 0,
+            singleton: options.singleton !== undefined ? options.singleton : true,
+        };
+        
+        // DO not register the provider if condition is not met
+        if (optionsCopy.condition && !optionsCopy.condition()) return;
+        
+        this.validateProviderOptions(optionsCopy, token);
 
-        this.validateProviderOptions(options, token);
-
-        const optionsCopy = { ...options, singleton: options.singleton !== undefined ? options.singleton : true };
+        // Do not override existing provider if it has higher priority; but override if it has lower or similar priority
+        const existingProvider = this.providers.get(token);
+        if(existingProvider){
+            if (existingProvider.priority !== undefined && optionsCopy.priority !== undefined && optionsCopy.priority < existingProvider.priority) {
+                return; 
+            } else {
+                console.warn(`Provider ${String(token)} is being overwritten. The existing instance will be removed from the cache if applicable.`);
+            }
+        }
 
         // ensure reregistration overwrites the existing provider and the cache if any
         if (optionsCopy.singleton && this.cache.has(token)) {
-            console.warn(`Provider ${String(token)} is being overwritten. The existing instance will be removed from the cache.`);
             this.cache.delete(token);
         }
 
         this.providers.set(token, optionsCopy);
+    }
+
+    registerConstructorDependency<T>( target: any, parameterIndex: number, depNameOrToken: DepIdentifier<T>, options: InjectOptions<T> = {} ) {
+        const token = this.createToken(depNameOrToken);
+
+        const existingDependencies = this.getMetadata<{ [key: number]: ParameterInjectMetadata<T> }>({
+            key: CONSTRUCTOR_INJECT_METADATA_KEY,
+            target: target
+        }) || {};
+
+        existingDependencies[parameterIndex] = { ...options, token };
+
+        this.defineMetadata({
+            key: CONSTRUCTOR_INJECT_METADATA_KEY,
+            value: existingDependencies,
+            target: target
+        });
+    }
+
+    registerPropertyDependency<T>( target: any, propertyKey: string | symbol, depNameOrToken: DepIdentifier<T>, options: InjectOptions<T> = {} ) {
+        const token = this.createToken(depNameOrToken);
+
+        const existingDependencies = this.getMetadata<PropertyInjectMetadata<T>[]>({
+            key: PROPERTY_INJECT_METADATA_KEY,
+            target
+        }) || [];
+
+        existingDependencies.push({ ...options, token, propertyKey });
+
+        this.defineMetadata({
+            key: PROPERTY_INJECT_METADATA_KEY,
+            value: existingDependencies,
+            target
+        });
+    }
+
+    registerOnInitHook(target: any, propertyKey: string | symbol) {
+        this.defineMetadata({
+            key: ON_INIT_HOOK_METADATA_KEY,
+            value: propertyKey,
+            target
+        });
+    }
+
+    removeProvider(depNameOrToken: DepIdentifier) {
+        const token = this.createToken(depNameOrToken);
+        this.providers.delete(token);
+        this.cache.delete(token);
     }
 
     registerInParentContainer<T>(options: ProviderOptions<T> & { name: string }) {
@@ -70,16 +149,8 @@ export class DIContainer {
         rootContainer.register(options);
     }
 
-    useMiddleware(middleware: Middleware<any>) {
-        this.middlewares.push(middleware);
-    }
-
-    useAsyncMiddleware(middleware: MiddlewareAsync<any>) {
-        this.asyncMiddlewares.push(middleware);
-    }
-
     resolve<T>(depNameOrToken: DepIdentifier, path: Set<Token<any>> = new Set()): T {
-        const token = makeDIToken(depNameOrToken);
+        const token = this.createToken(depNameOrToken);
         let options = this.providers.get(token);
         if (!options) {
             if (this.parentContainer) {
@@ -108,7 +179,7 @@ export class DIContainer {
     }
 
     async resolveAsync<T>(depNameOrToken: DepIdentifier, path: Set<Token<any>> = new Set()): Promise<T> {
-        const token = makeDIToken(depNameOrToken);
+        const token = this.createToken(depNameOrToken);
 
         let options = this.providers.get(token);
         if (!options) {
@@ -251,8 +322,8 @@ export class DIContainer {
     }
 
     private resolveDependencies<T>(target: T, path: Set<Token<any>>): any[] {
-        const injectMetadata = this.getMetadata<{ [key: number]: { token: Token<any>, isOptional?: boolean } }>({
-            key: CONSTRUCTOR_INJECT_KEY,
+        const injectMetadata = this.getMetadata<{ [key: number]: ParameterInjectMetadata<T> }>({
+            key: CONSTRUCTOR_INJECT_METADATA_KEY,
             target: target
         }) || {};
 
@@ -260,15 +331,15 @@ export class DIContainer {
             try {
                 return this.resolve(dep.token, path);
             } catch (error) {
-                if (dep.isOptional) return undefined;
+                if (dep.isOptional) return dep.defaultValue !== undefined ? dep.defaultValue : undefined;
                 throw error;
             }
         });
     }
 
     private async resolveDependenciesAsync<T>(target: T, path: Set<Token<any>>): Promise<any[]> {
-        const injectMetadata = this.getMetadata<{ [key: number]: { token: Token<any>, isOptional?: boolean } }>({
-            key: CONSTRUCTOR_INJECT_KEY,
+        const injectMetadata = this.getMetadata<{ [key: number]: ParameterInjectMetadata<T> }>({
+            key: CONSTRUCTOR_INJECT_METADATA_KEY,
             target: target
         }) || {};
 
@@ -276,7 +347,7 @@ export class DIContainer {
             try {
                 return await this.resolveAsync(dep.token, path);
             } catch (error) {
-                if (dep.isOptional) return undefined;
+                if (dep.isOptional) return dep.defaultValue !== undefined ? dep.defaultValue : undefined;
                 throw error;
             }
         }));
@@ -286,7 +357,7 @@ export class DIContainer {
         if (!hasConstructor(instance)) return;
 
         const initMethod = this.getMetadata<keyof typeof instance>({
-            key: ON_INIT_METHOD_KEY,
+            key: ON_INIT_HOOK_METADATA_KEY,
             target: instance.constructor.prototype
         });
 
@@ -308,7 +379,7 @@ export class DIContainer {
         if (!hasConstructor(instance)) return;
 
         const initMethod = this.getMetadata<keyof typeof instance>({
-            key: ON_INIT_METHOD_KEY,
+            key: ON_INIT_HOOK_METADATA_KEY,
             target: instance.constructor.prototype
         });
 
@@ -329,8 +400,8 @@ export class DIContainer {
     private injectProperties<T>(instance: T): void {
         if (!hasConstructor(instance)) return;
 
-        const dependencies = this.getMetadata<{ propertyKey: string | symbol, token: Token<any>, isOptional?: boolean }[]>({
-            key: PROPERTY_INJECT_KEY,
+        const dependencies = this.getMetadata<PropertyInjectMetadata<T>[]>({
+            key: PROPERTY_INJECT_METADATA_KEY,
             target: instance.constructor.prototype
         }) || [];
 
@@ -355,8 +426,8 @@ export class DIContainer {
     private async injectPropertiesAsync<T>(instance: T): Promise<void> {
         if (!hasConstructor(instance)) return;
 
-        const dependencies = this.getMetadata<{ propertyKey: string | symbol, token: Token<any>, isOptional?: boolean }[]>({
-            key: PROPERTY_INJECT_KEY,
+        const dependencies = this.getMetadata<PropertyInjectMetadata<T>[]>({
+            key: PROPERTY_INJECT_METADATA_KEY,
             target: instance.constructor.prototype
         }) || [];
 
@@ -379,7 +450,7 @@ export class DIContainer {
     }
 
     has(depNameOrToken: DepIdentifier): boolean {
-        const token = makeDIToken(depNameOrToken);
+        const token = this.createToken(depNameOrToken);
         return this.providers.has(token);
     }
 
@@ -417,16 +488,37 @@ export class DIContainer {
         return OnInit(this);
     }
 
+    useMiddleware({middleware, order = 1}: PartialBy<Middleware<any>, 'order' >) {
+        this.middlewares.push({ middleware, order });
+        this.middlewares.sort((a, b) => a.order - b.order);
+    }
+
+    useAsyncMiddleware({middleware, order = 1}: PartialBy<MiddlewareAsync<any>, 'order'> ) {
+        this.asyncMiddlewares.push({ middleware, order });
+        this.asyncMiddlewares.sort((a, b) => a.order - b.order);
+    }
+
     private applyMiddlewares<T>(next: () => T): T {
         let index = -1;
 
         const dispatch = (i: number): T => {
-            if (i <= index) throw new Error('next() called multiple times');
+            if (i <= index) {
+                throw new Error('next() called multiple times');
+            }
+            
             index = i;
-            const middleware = this.middlewares[i];
+
+            if (i >= this.middlewares.length) {
+                return next(); // Ensure we don't access out of bounds
+            }
+
+            const middlewareInfo = this.middlewares[i];
+            const middleware = middlewareInfo?.middleware;
+
             if (middleware) {
                 return middleware(() => dispatch(i + 1));
             }
+
             return next();
         };
 
@@ -437,23 +529,25 @@ export class DIContainer {
         let index = -1;
 
         const dispatch = async (i: number): Promise<T> => {
-            if (i <= index) throw new Error('next() called multiple times');
+            if (i <= index) {
+                throw new Error('next() called multiple times');
+            }
             index = i;
-            const middleware = this.asyncMiddlewares[i];
+
+            if (i >= this.asyncMiddlewares.length) {
+                return next(); // Ensure we don't access out of bounds
+            }
+
+            const middlewareInfo = this.asyncMiddlewares[i];
+            const middleware = middlewareInfo?.middleware;
+
             if (middleware) {
                 return await middleware(() => dispatch(i + 1));
             }
+
             return next();
         };
 
         return dispatch(0);
     }
-}
-
-/**
- * Register a provider manually.
- * @param options The options for the provider.
- */
-export function registerProvider<T>(options: ProviderOptions<T> & { name: string}, container: DIContainer = DIContainer.INSTANCE ) {
-    return container.register(options);
 }

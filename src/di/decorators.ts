@@ -1,67 +1,36 @@
-import { PROPERTY_INJECT_KEY, CONSTRUCTOR_INJECT_KEY, ON_INIT_METHOD_KEY } from './const';
+import { PROPERTY_INJECT_METADATA_KEY, CONSTRUCTOR_INJECT_METADATA_KEY, ON_INIT_HOOK_METADATA_KEY } from './const';
 import { makeDIToken } from './utils';
-import { BaseProviderOptions, DepIdentifier, Token } from './types';
-import { DIContainer, registerProvider } from './di-container';
+import { BaseProviderOptions, DepIdentifier, InjectOptions, ParameterInjectMetadata, PropertyInjectMetadata, Token } from './types';
+import { DIContainer } from './di-container';
 
 export function Injectable(options: BaseProviderOptions = {}, container: DIContainer = DIContainer.INSTANCE): ClassDecorator {
     return (target: any) => {
 
-        registerProvider({
-                ...options,
-                useClass: target,
-                name: options.name || target.name,
-            }, 
-            container
-        );
+        container.register({
+            ...options,
+            useClass: target,
+            name: options.name || target.name,
+        });
     };
 }
 
-export type InjectOptions = {
-    isOptional?: boolean;
-};
-
-export function Inject<T>(depNameOrToken: DepIdentifier<T>, options: InjectOptions = {}, container: DIContainer = DIContainer.INSTANCE): PropertyDecorator & ParameterDecorator {
-    const token = makeDIToken(depNameOrToken);
+export function Inject<T>(depNameOrToken: DepIdentifier<T>, options: InjectOptions<T> = {}, container: DIContainer = DIContainer.INSTANCE): PropertyDecorator & ParameterDecorator {
 
     return (target: Object, propertyKey: string | symbol | undefined, parameterIndex?: number) => {
         
         if (typeof parameterIndex === 'number') {
-            const existingDependencies = container.getMetadata<{ [key: number]: { token: Token<any>; isOptional?: boolean } }>({
-                key: CONSTRUCTOR_INJECT_KEY,
-                target: target
-            }) || {};
 
-            existingDependencies[parameterIndex] = { ...options, token };
-
-            container.defineMetadata({
-                key: CONSTRUCTOR_INJECT_KEY,
-                value: existingDependencies,
-                target: target
-            });
+            container.registerConstructorDependency(target, parameterIndex, depNameOrToken, { ...options });
 
         } else if (propertyKey !== undefined) {
-            const existingDependencies = container.getMetadata<{ propertyKey: string | symbol; token: Token<any>; isOptional?: boolean }[]>({
-                key: PROPERTY_INJECT_KEY,
-                target
-            }) || [];
 
-            existingDependencies.push({ ...options, token, propertyKey });
-
-            container.defineMetadata({
-                key: PROPERTY_INJECT_KEY,
-                value: existingDependencies,
-                target
-            });
+            container.registerPropertyDependency(target, propertyKey, depNameOrToken, { ...options });
         }
     };
 }
 
 export function OnInit( container: DIContainer = DIContainer.INSTANCE ): MethodDecorator {
     return (target, propertyKey) => {
-        container.defineMetadata({
-            key: ON_INIT_METHOD_KEY,
-            value: propertyKey,
-            target: target
-        });
+        container.registerOnInitHook(target, propertyKey);
     };
 }

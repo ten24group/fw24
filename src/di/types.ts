@@ -5,6 +5,7 @@ export type ClassConstructor<T extends any = any> = new (...args: any[]) => T;
 export type BaseProviderOptions = {
     name?: string;
     singleton?: boolean;
+    priority?: number;
     condition?: () => boolean;
 }
 
@@ -34,3 +35,17 @@ export function isValueProviderOptions<T>(options: ProviderOptions<T>): options 
 }
 
 export type ProviderOptions<T> =  ClassProviderOptions<T> | FactoryProviderOptions<T> | ValueProviderOptions<T>;
+
+export type InjectOptions<T extends unknown = unknown> = {
+    isOptional?: boolean;
+    defaultValue?: T
+};
+
+export type ParameterInjectMetadata<T extends unknown = unknown> = InjectOptions<T> & {
+    token: Token<any>;
+};
+
+export type PropertyInjectMetadata<T extends unknown = unknown> = InjectOptions<T> & {
+    token: Token<any>;
+    propertyKey: string | symbol;
+};

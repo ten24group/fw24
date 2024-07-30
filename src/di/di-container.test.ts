@@ -1,16 +1,17 @@
-import { Injectable, Inject, OnInit } from './decorators';
 import { DIContainer } from './di-container';
 import { makeDIToken } from './utils';
 
-const container = DIContainer.INSTANCE;
 
 describe('DIContainer', () => {
-
-    beforeEach(() => {
-        container.clear();
-    });
-
+    
     describe('register', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+        
+        beforeEach(() => {
+            container.clear();
+        });
+
         it('should register a class with useClass', () => {
             @Injectable()
             class TestClass {}
@@ -40,6 +41,13 @@ describe('DIContainer', () => {
     });
 
     describe('resolve', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
         it('should resolve a class', async () => {
             @Injectable()
             class TestClass {}
@@ -70,13 +78,10 @@ describe('DIContainer', () => {
         });
 
         it('should handle circular dependencies', async () => {
-
-            @Injectable()
             class ClassA {
                 constructor(@Inject('ClassB') public b: any) {}
             }
 
-            @Injectable()
             class ClassB {
                 constructor(@Inject('ClassA') public a: any) {}
             }
@@ -115,6 +120,13 @@ describe('DIContainer', () => {
     });
 
     describe('property injection', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
         it('should inject properties using @Inject', async () => {
             @Injectable()
             class Dependency {}
@@ -145,6 +157,14 @@ describe('DIContainer', () => {
     });
 
     describe('multiple dependency injection', () => {
+
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
         it('should inject multiple dependencies', async () => {
             @Injectable()
             class DependencyA {}
@@ -173,6 +193,13 @@ describe('DIContainer', () => {
     });
 
     describe('optional constructor parameter injection', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
         it('should handle optional constructor parameter injection', async () => {
             @Injectable()
             class TestClass {
@@ -191,6 +218,13 @@ describe('DIContainer', () => {
     });
 
     describe('singleton behavior', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
         it('should reuse singleton instances', async () => {
             @Injectable({ singleton: true })
             class TestClass {}
@@ -207,6 +241,13 @@ describe('DIContainer', () => {
     });
 
     describe('conditionally registered providers', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
         it('should not register a provider if condition is false', () => {
             const token = makeDIToken<string>('ConditionalService');
 
@@ -229,6 +270,13 @@ describe('DIContainer', () => {
     });
 
     describe('async resolve', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
         it('should resolve a class asynchronously', async () => {
             @Injectable()
             class TestClass {}
@@ -295,6 +343,13 @@ describe('DIContainer', () => {
     });
 
     describe('clear', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
         it('should clear all providers and cache', () => {
             @Injectable()
             class TestClass {}
@@ -309,6 +364,13 @@ describe('DIContainer', () => {
     });
 
     describe('error handling', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
         it('should throw an error when registering an invalid provider', () => {
             expect(() => {
                 container.register({ useClass: null as any, name: 'InvalidProvider' });
@@ -322,6 +384,13 @@ describe('DIContainer', () => {
     });
 
     describe('inheritance', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
         it('should inject dependencies in a derived class', async () => {
             @Injectable()
             class BaseService {}
@@ -344,6 +413,13 @@ describe('DIContainer', () => {
     });
 
     describe('lifecycle hooks', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
         it('should call @OnInit method for each instance', async () => {
             const onInitSpy = jest.fn();
 
@@ -363,6 +439,13 @@ describe('DIContainer', () => {
     });
 
     describe('re-registration', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
         it('should update provider when re-registered', async () => {
             class OriginalService {}
 
@@ -373,7 +456,6 @@ describe('DIContainer', () => {
 
             let instance = container.resolve(token);
             expect(instance).toBeInstanceOf(OriginalService);
-            debugger;
             container.register({ useClass: UpdatedService, name: token.toString() });
 
             instance = container.resolve(token);
@@ -382,6 +464,13 @@ describe('DIContainer', () => {
     });
 
     describe('complex dependency graphs', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
         it('should resolve complex dependency graphs', async () => {
             @Injectable()
             class ServiceA {}
@@ -416,8 +505,13 @@ describe('DIContainer', () => {
         });
     });
 
-
     describe('Child Containers', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
 
         describe('inheritance', () => {
             it('should inherit providers from parent container', () => {
@@ -539,7 +633,7 @@ describe('DIContainer', () => {
                 
                 const childContainer = container.createChildContainer();
 
-                childContainer.useMiddleware(middlewareSpy);
+                childContainer.useMiddleware({middleware: middlewareSpy});
 
                 @Injectable()
                 class MiddlewareService {}
@@ -555,7 +649,7 @@ describe('DIContainer', () => {
                 const middlewareSpy = jest.fn(async (next) => await next());
                 const childContainer = container.createChildContainer();
 
-                childContainer.useAsyncMiddleware(middlewareSpy);
+                childContainer.useAsyncMiddleware({middleware: middlewareSpy});
 
                 @Injectable()
                 class MiddlewareService {}
@@ -641,8 +735,22 @@ describe('DIContainer', () => {
     });
 
     describe('Middlewares/Interceptors', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
 
         describe('middleware', () => {
+
+            const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+            beforeEach(() => {
+                container.clear();
+            });
+
             it('should apply middleware to resolutions', () => {
                 const middlewareSpy = jest.fn((next) => {
                     console.log('Middleware before');
@@ -651,7 +759,7 @@ describe('DIContainer', () => {
                     return result;
                 });
 
-                container.useMiddleware(middlewareSpy);
+                container.useMiddleware({middleware: middlewareSpy});
 
                 @Injectable()
                 class MiddlewareService {}
@@ -672,7 +780,7 @@ describe('DIContainer', () => {
                     return result;
                 });
 
-                container.useMiddleware(middlewareSpy);
+                container.useMiddleware({middleware: middlewareSpy});
 
                 @Injectable()
                 class MiddlewareService {
@@ -692,7 +800,7 @@ describe('DIContainer', () => {
                     throw new Error('Middleware error');
                 });
 
-                container.useMiddleware(middlewareSpy);
+                container.useMiddleware({middleware: middlewareSpy});
 
                 @Injectable()
                 class MiddlewareService {}
@@ -712,7 +820,7 @@ describe('DIContainer', () => {
                     return result;
                 });
 
-                container.useAsyncMiddleware(middlewareSpy);
+                container.useAsyncMiddleware({middleware: middlewareSpy});
 
                 @Injectable()
                 class MiddlewareService {}
@@ -732,7 +840,7 @@ describe('DIContainer', () => {
                     return result;
                 });
 
-                container.useAsyncMiddleware(middlewareSpy);
+                container.useAsyncMiddleware({middleware: middlewareSpy});
 
                 @Injectable()
                 class MiddlewareService {
@@ -752,7 +860,7 @@ describe('DIContainer', () => {
                     throw new Error('Async middleware error');
                 });
 
-                container.useAsyncMiddleware(middlewareSpy);
+                container.useAsyncMiddleware({middleware: middlewareSpy});
 
                 @Injectable()
                 class MiddlewareService {}
@@ -761,6 +869,298 @@ describe('DIContainer', () => {
 
                 await expect(container.resolveAsync<MiddlewareService>('MiddlewareService')).rejects.toThrow('Async middleware error');
             });
+        });
+    });
+    
+    describe('Provider Priority Registration', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
+        class TestClassA {
+            value: string = 'A';
+        }
+
+        class TestClassB {
+            value: string = 'B';
+        }
+
+        test('should register a provider with higher priority', () => {
+            container.register({
+                name: 'test',
+                useClass: TestClassA,
+                priority: 1
+            });
+
+            const instance = container.resolve<TestClassA>('test');
+            expect(instance.value).toBe('A');
+        });
+
+        test('should not override a provider with a higher priority', () => {
+            container.register({
+                name: 'test',
+                useClass: TestClassA,
+                priority: 2
+            });
+
+            container.register({
+                name: 'test',
+                useClass: TestClassB,
+                priority: 1
+            });
+
+            const instance = container.resolve<TestClassA>('test');
+            expect(instance.value).toBe('A'); // Should not override with lower priority
+        });
+
+        test('should override a provider with a lower priority', () => {
+            container.register({
+                name: 'test',
+                useClass: TestClassA,
+                priority: 1
+            });
+
+            container.register({
+                name: 'test',
+                useClass: TestClassB,
+                priority: 2
+            });
+
+            const instance = container.resolve<TestClassB>('test');
+            expect(instance.value).toBe('B'); // Should override with higher priority
+        });
+
+        test('should register a provider without priority and override if new one has priority', () => {
+            container.register({
+                name: 'test',
+                useClass: TestClassA
+            });
+
+            container.register({
+                name: 'test',
+                useClass: TestClassB,
+                priority: 1
+            });
+
+            const instance = container.resolve<TestClassB>('test');
+            expect(instance.value).toBe('B'); // Should override since new provider has priority
+        });
+
+        test('should not register a provider with lower priority when one without priority exists', () => {
+            container.register({
+                name: 'test',
+                useClass: TestClassA
+            });
+            
+            container.register({
+                name: 'test',
+                useClass: TestClassB,
+                priority: -1
+            });
+
+            const instance = container.resolve<TestClassA>('test');
+            expect(instance.value).toBe('A'); // Should not override since existing provider has no priority
+        });
+    });
+
+    describe('Optional Dependency Injection with Default Value', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
+        class TestClassA {
+            value: string;
+            constructor(value: string = 'A') {
+                this.value = value;
+            }
+        }
+
+        class DependentClass {
+            constructor( 
+                public dep: TestClassA
+            ) {}
+        }
+
+        test('should inject dependency when provided', () => {
+            
+            container.register({
+                name: 'dep',
+                useClass: TestClassA
+            });
+
+            container.register({
+                name: 'dependent',
+                useClass: DependentClass
+            });
+
+            container.registerConstructorDependency(DependentClass, 0, 'dep', { 
+                isOptional: true,
+                defaultValue: new TestClassA('default'),
+            });
+
+            const instance = container.resolve<DependentClass>('dependent');
+            expect(instance.dep.value).toBe('A');
+        });
+
+        test('should use default value when dependency is not provided', () => {
+            container.register({
+                name: 'dependent',
+                useClass: DependentClass
+            });
+
+            container.registerConstructorDependency(DependentClass, 0, 'dep', { 
+                isOptional: true,
+                defaultValue: new TestClassA('default'),
+            });
+
+            const instance = container.resolve<DependentClass>('dependent');
+            expect(instance.dep.value).toBe('default');
+        });
+    });
+
+    describe('Middleware Execution Order Control', () => {
+        const container = new DIContainer();
+        const { Injectable, Inject, OnInit } = container;
+
+        beforeEach(() => {
+            container.clear();
+        });
+
+        class TestClassA {
+            value: string;
+            constructor(value: string = 'A') {
+                this.value = value;
+            }
+        }
+
+        test('should execute middlewares in specified order', () => {
+            const result: string[] = [];
+
+            container.useMiddleware({ 
+                middleware: next => {
+                    result.push('middleware1');
+                    return next();
+                }, 
+                order: 0
+            });
+
+            container.useMiddleware({ 
+                middleware: next => {
+                    result.push('middleware2');
+                    return next();
+                }, 
+                order: 1
+            });
+
+            container.useMiddleware({ 
+                middleware: next => {
+                    result.push('middleware0');
+                    return next();
+                }, 
+                order: -1
+            });
+
+            container.register({
+                name: 'test',
+                useClass: TestClassA
+            });
+
+            container.resolve<TestClassA>('test');
+            expect(result).toEqual(['middleware0', 'middleware1', 'middleware2']);
+        });
+
+        test('should execute async middlewares in specified order', async () => {
+            const result: string[] = [];
+
+            container.useAsyncMiddleware({ 
+                middleware: async next => {
+                    result.push('middleware1');
+                    return next();
+                }, 
+                order: 0
+            });
+
+            container.useAsyncMiddleware({ 
+                middleware: async next => {
+                    result.push('middleware2');
+                    return next();
+                }, 
+                order: 1
+            });
+
+            container.useAsyncMiddleware({ 
+                middleware: async next => {
+                    result.push('middleware0');
+                    return next();
+                }, 
+                order: -1
+            });
+
+            container.register({
+                name: 'test',
+                useClass: TestClassA
+            });
+
+            await container.resolveAsync<TestClassA>('test');
+            expect(result).toEqual(['middleware0', 'middleware1', 'middleware2']);
+        });
+    });
+
+    describe('Provider Removal', () => {
+
+        const container = new DIContainer();
+
+        beforeEach(() => {
+            container.clear();
+        });
+
+        class TestClassA {
+            value: string;
+            constructor(value: string = 'A') {
+                this.value = value;
+            }
+        }
+
+        class TestClassB {
+            value: string = 'B';
+        }
+
+        test('should remove a registered provider', () => {
+            container.register({
+                name: 'test',
+                useClass: TestClassA
+            });
+            container.removeProvider('test');
+            expect(() => container.resolve<TestClassA>('test')).toThrow();
+        });
+
+        test('should remove a provider from the cache', () => {
+            container.register({
+                name: 'test',
+                useClass: TestClassA,
+                singleton: true
+            });
+
+            const instance1 = container.resolve<TestClassA>('test');
+            container.removeProvider('test');
+            container.register({
+                name: 'test',
+                useClass: TestClassB
+            });
+            const instance2 = container.resolve<TestClassA>('test');
+
+            expect(instance1.value).toBe('A');
+            expect(instance2.value).toBe('B');
+        });
+
+        test('should handle removing non-existent provider gracefully', () => {
+            expect(() => container.removeProvider('nonExistent')).not.toThrow();
         });
     });
 

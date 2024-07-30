@@ -124,6 +124,9 @@ export type PickPropertiesByType<T, U> = {
 
 export type OmitNever<T> = { [K in keyof T as T[K] extends never | undefined ? never : K]: T[K] }
 
+export type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>
+export type PartialBy<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
+
 type AllKeys<T> = T extends unknown ? keyof T : never;
 type Id<T> = T extends infer U ? { [K in keyof U]: U[K] } : never;
 type _ExclusiveUnion<T, K extends PropertyKey> =
