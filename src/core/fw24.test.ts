@@ -6,7 +6,7 @@ describe('Fw24', () => {
     it('getUniqueName', () => {
         const config = {
             name: "fw24",
-            env: "dev",
+            environment: "dev",
         };
         const fw24 = Fw24.getInstance();
         fw24.setConfig(config);

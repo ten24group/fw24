@@ -373,7 +373,7 @@ describe('DIContainer', () => {
 
             let instance = container.resolve(token);
             expect(instance).toBeInstanceOf(OriginalService);
-
+            debugger;
             container.register({ useClass: UpdatedService, name: token.toString() });
 
             instance = container.resolve(token);
@@ -421,10 +421,8 @@ describe('DIContainer', () => {
 
         describe('inheritance', () => {
             it('should inherit providers from parent container', () => {
-                @Injectable()
+                @Injectable({name: 'ParentService'})
                 class ParentService {}
-
-                container.register({ useClass: ParentService, name: 'ParentService' });
 
                 const childContainer = container.createChildContainer();
                 const instance = childContainer.resolve<ParentService>('ParentService');

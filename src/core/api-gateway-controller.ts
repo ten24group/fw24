@@ -1,4 +1,4 @@
-import { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
+import { APIGatewayEvent, APIGatewayProxyResult, Context, Handler } from "aws-lambda";
 import { Request } from "../interfaces/request";
 import { Response } from "../interfaces/response";
 import { Route } from "../interfaces/route";
@@ -10,6 +10,7 @@ import { isHttpRequestValidationRule, isInputValidationRule } from "../validatio
 import { getCircularReplacer } from "../utils";
 import { Get, RouteMethods } from "../decorators/method";
 import { Controller, IControllerConfig } from "../decorators";
+import { DIContainer } from "../di";
 
 /**
  * Creates an API handler without defining a class
@@ -228,11 +229,7 @@ abstract class APIController {
     
     const result: any = {
       message: err.message,
-    }
-
-    if(req.debugMode){
-      result.req = req;
-      result.errors = [err];
+      ...(req.debugMode && { stack: err.stack, req })
     }
     
     return this.handleResponse({
@@ -264,9 +261,10 @@ abstract class APIController {
    * Creates a new instance of the controller and returns its LambdaHandler method.
    * @returns The LambdaHandler method of the controller.
    */
-  static CreateHandler( constructorFunc: { new (): APIController} ) {
-    const controller = new constructorFunc();
-    return controller.LambdaHandler;
+  static CreateHandler( constructorFunc: string ): Handler {
+    const instance = DIContainer.INSTANCE.resolve<APIController>(constructorFunc);
+    // const controller = new constructorFunc();
+    return instance.LambdaHandler;
   }
 }
 
