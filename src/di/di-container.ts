@@ -13,9 +13,9 @@ type MiddlewareAsync<T> = (next: () => Promise<T>) => Promise<T>;
 
 export class DIContainer {
     
-    private providers = new Map<string, ProviderOptions<any>>();
-    private cache = new Map<string, any>();
-    private resolving = new Map<string, any>();
+    private providers = new Map<symbol, ProviderOptions<any>>();
+    private cache = new Map<symbol, any>();
+    private resolving = new Map<symbol, any>();
     private middlewares: Middleware<any>[] = [];
     private asyncMiddlewares: MiddlewareAsync<any>[] = [];
     private childContainers = new Set<DIContainer>();
@@ -44,15 +44,14 @@ export class DIContainer {
         this.validateProviderOptions(options, token);
 
         const optionsCopy = { ...options, singleton: options.singleton !== undefined ? options.singleton : true };
-        const providerKey = this.getProviderIdentifier(token);
 
         // ensure reregistration overwrites the existing provider and the cache if any
-        if (optionsCopy.singleton && this.cache.has(providerKey)) {
-            console.warn(`Provider ${providerKey} is being overwritten. The existing instance will be removed from the cache.`);
-            this.cache.delete(providerKey);
+        if (optionsCopy.singleton && this.cache.has(token)) {
+            console.warn(`Provider ${String(token)} is being overwritten. The existing instance will be removed from the cache.`);
+            this.cache.delete(token);
         }
 
-        this.providers.set(providerKey, optionsCopy);
+        this.providers.set(token, optionsCopy);
     }
 
     registerInParentContainer<T>(options: ProviderOptions<T> & { name: string }) {
@@ -79,66 +78,64 @@ export class DIContainer {
         this.asyncMiddlewares.push(middleware);
     }
 
-    resolve<T>(depNameOrToken: DepIdentifier, path: Set<string> = new Set()): T {
+    resolve<T>(depNameOrToken: DepIdentifier, path: Set<Token<any>> = new Set()): T {
         const token = makeDIToken(depNameOrToken);
-        const providerKey = this.getProviderIdentifier(token);
-        let options = this.providers.get(providerKey);
+        let options = this.providers.get(token);
         if (!options) {
             if (this.parentContainer) {
                 return this.parentContainer.resolve(depNameOrToken, path);
             }
-            console.error('No provider found for:', { providerKey, path });
-            throw new Error(`No provider found for ${providerKey}`);
+            console.error('No provider found for:', { token, path });
+            throw new Error(`No provider found for ${token.toString()}`);
         }
 
-        if (options.singleton && this.cache.has(providerKey)) {
-            return this.cache.get(providerKey);
+        if (options.singleton && this.cache.has(token)) {
+            return this.cache.get(token);
         }
 
-        if (this.resolving.has(providerKey)) {
-            return this.resolving.get(providerKey);
+        if (this.resolving.has(token)) {
+            return this.resolving.get(token);
         }
 
-        if (path.has(providerKey)) {
-            throw new Error(`Circular dependency detected: ${Array.from(path).join(' -> ')} -> ${providerKey}`);
+        if (path.has(token)) {
+            throw new Error(`Circular dependency detected: ${Array.from(path).join(' -> ')} -> ${token.toString()}`);
         }
 
-        path.add(providerKey);
+        path.add(token);
         return this.applyMiddlewares(
-            () => this.createAndCacheInstance(options, providerKey, path, token)
+            () => this.createAndCacheInstance(token, options, path)
         );
     }
 
-    async resolveAsync<T>(depNameOrToken: DepIdentifier, path: Set<string> = new Set()): Promise<T> {
+    async resolveAsync<T>(depNameOrToken: DepIdentifier, path: Set<Token<any>> = new Set()): Promise<T> {
         const token = makeDIToken(depNameOrToken);
-        const providerKey = this.getProviderIdentifier(token);
 
-        let options = this.providers.get(providerKey);
+        let options = this.providers.get(token);
         if (!options) {
             if (this.parentContainer) {
                 return this.parentContainer.resolve(depNameOrToken, path);
             }
-            console.error('No provider found for:', { providerKey, path });
-            throw new Error(`No provider found for ${providerKey}`);
+            console.error('No provider found for:', { token, path });
+            throw new Error(`No provider found for ${token.toString()}`);
         }
 
-        if (options.singleton && this.cache.has(providerKey)) {
-            return this.cache.get(providerKey);
+        if (options.singleton && this.cache.has(token)) {
+            return this.cache.get(token);
         }
 
-        if (this.resolving.has(providerKey)) {
-            return this.resolving.get(providerKey);
+        if (this.resolving.has(token)) {
+            return this.resolving.get(token);
         }
 
-        if (path.has(providerKey)) {
+        if (path.has(token)) {
             // should not be needed; left here for debugging/testing purposes
-            throw new Error(`Circular dependency detected: ${Array.from(path).join(' -> ')} -> ${providerKey}`);
+            throw new Error(`Circular dependency detected: ${Array.from(path).join(' -> ')} -> ${token.toString()}`);
         }
 
-        path.add(providerKey);
+        path.add(token);
 
         return this.applyAsyncMiddlewares(
-            () => this.createAndCacheInstanceAsync(options, providerKey, path, token)
+            () => this.createAndCacheInstanceAsync(token, options, path)
         );
     }
 
@@ -154,35 +151,35 @@ export class DIContainer {
         }
     }
 
-    private createAndCacheInstance<T>(options: ProviderOptions<T>, providerKey: string, path: Set<string>, token: Token<any>): T {
-        const instance = this.createInstance(options, path, token);
+    private createAndCacheInstance<T>(token: Token<any>, options: ProviderOptions<T>, path: Set<Token<any>>): T {
+        const instance = this.createInstance(token, options, path);
         if (options.singleton) {
-            this.cache.set(providerKey, instance);
+            this.cache.set(token, instance);
         }
-        this.resolving.delete(providerKey);
+        this.resolving.delete(token);
         this.injectProperties(instance);
         this.initializeInstance(instance);
-        path.delete(providerKey);
+        path.delete(token);
         return instance;
     }
 
-    private async createAndCacheInstanceAsync<T>(options: ProviderOptions<T>, providerKey: string, path: Set<string>, token: Token<any>): Promise<T> {
-        const instance = await this.createInstanceAsync(options, path, token);
+    private async createAndCacheInstanceAsync<T>(token: Token<any>, options: ProviderOptions<T>, path: Set<Token<any>>): Promise<T> {
+        const instance = await this.createInstanceAsync(token, options, path);
         if (options.singleton) {
-            this.cache.set(providerKey, instance);
+            this.cache.set(token, instance);
         }
 
-        this.resolving.delete(providerKey);
+        this.resolving.delete(token);
         await this.injectPropertiesAsync(instance);
         await this.initializeInstanceAsync(instance);
-        path.delete(providerKey);
+        path.delete(token);
 
         return instance;
     }
 
-    private createInstance<T>(options: ProviderOptions<T>, path: Set<string>, token: Token<any>): T {
+    private createInstance<T>(token: Token<any>, options: ProviderOptions<T>, path: Set<Token<any>>): T {
         if (isClassProviderOptions(options)) {
-            return this.createClassInstance(options, path, token);
+            return this.createClassInstance(token, options, path);
         } else if (isFactoryProviderOptions(options)) {
             return this.createFactoryInstance(options, path);
         } else if (isValueProviderOptions(options)) {
@@ -192,9 +189,9 @@ export class DIContainer {
         }
     }
 
-    private async createInstanceAsync<T>(options: ProviderOptions<T>, path: Set<string>, token: Token<any>): Promise<T> {
+    private async createInstanceAsync<T>(token: Token<any>, options: ProviderOptions<T>, path: Set<Token<any>>): Promise<T> {
         if (isClassProviderOptions(options)) {
-            return this.createClassInstanceAsync(options, path, token);
+            return this.createClassInstanceAsync(token, options, path);
         } else if (isFactoryProviderOptions(options)) {
             return this.createFactoryInstanceAsync(options, path);
         } else if (isValueProviderOptions(options)) {
@@ -204,58 +201,56 @@ export class DIContainer {
         }
     }
 
-    private createClassInstance<T>(options: ClassProviderOptions<T>, path: Set<string>, token: Token<any>): T {
-        const providerKey = this.getProviderIdentifier(token);
+    private createClassInstance<T>(token: Token<any>, options: ClassProviderOptions<T>, path: Set<Token<any>>): T {
 
-        if (this.resolving.has(providerKey)) {
-            return this.resolving.get(providerKey);
+        if (this.resolving.has(token)) {
+            return this.resolving.get(token);
         }
 
         // Create a placeholder object and store it in the resolving map
         const instancePlaceholder: T = Object.create(options.useClass.prototype);
-        this.resolving.set(providerKey, instancePlaceholder);
+        this.resolving.set(token, instancePlaceholder);
 
         const dependencies = this.resolveDependencies(options.useClass, path);
         const actualInstance = new options.useClass(...dependencies);
         Object.assign(instancePlaceholder as any, actualInstance);
 
-        this.resolving.set(providerKey, actualInstance);
+        this.resolving.set(token, actualInstance);
 
         return actualInstance;
     }
 
-    private async createClassInstanceAsync<T>(options: ClassProviderOptions<T>, path: Set<string>, token: Token<any>): Promise<T> {
-        const providerKey = this.getProviderIdentifier(token);
+    private async createClassInstanceAsync<T>(token: Token<any>, options: ClassProviderOptions<T>, path: Set<Token<any>>): Promise<T> {
 
-        if (this.resolving.has(providerKey)) {
-            return this.resolving.get(providerKey);
+        if (this.resolving.has(token)) {
+            return this.resolving.get(token);
         }
 
         // Create a placeholder object and store it in the resolving map
         const instancePlaceholder: T = Object.create(options.useClass.prototype);
-        this.resolving.set(providerKey, instancePlaceholder);
+        this.resolving.set(token, instancePlaceholder);
 
         const dependencies = await this.resolveDependenciesAsync(options.useClass, path);
         const actualInstance = new options.useClass(...dependencies);
         Object.assign(instancePlaceholder as any, actualInstance);
 
         // Replace the placeholder instance in the resolving map with the actual instance
-        this.resolving.set(providerKey, actualInstance);
+        this.resolving.set(token, actualInstance);
 
         return actualInstance;
     }
 
-    private createFactoryInstance<T>(options: FactoryProviderOptions<T>, path: Set<string>): T {
+    private createFactoryInstance<T>(options: FactoryProviderOptions<T>, path: Set<Token<any>>): T {
         const dependencies = (options.deps || []).map(dep => this.resolve(dep, path));
         return options.useFactory(...dependencies);
     }
 
-    private async createFactoryInstanceAsync<T>(options: FactoryProviderOptions<T>, path: Set<string>): Promise<T> {
+    private async createFactoryInstanceAsync<T>(options: FactoryProviderOptions<T>, path: Set<Token<any>>): Promise<T> {
         const dependencies = await Promise.all((options.deps || []).map(dep => this.resolveAsync(dep, path)));
         return options.useFactory(...dependencies);
     }
 
-    private resolveDependencies<T>(target: T, path: Set<string>): any[] {
+    private resolveDependencies<T>(target: T, path: Set<Token<any>>): any[] {
         const injectMetadata = this.getMetadata<{ [key: number]: { token: Token<any>, isOptional?: boolean } }>({
             key: CONSTRUCTOR_INJECT_KEY,
             target: target
@@ -271,7 +266,7 @@ export class DIContainer {
         });
     }
 
-    private async resolveDependenciesAsync<T>(target: T, path: Set<string>): Promise<any[]> {
+    private async resolveDependenciesAsync<T>(target: T, path: Set<Token<any>>): Promise<any[]> {
         const injectMetadata = this.getMetadata<{ [key: number]: { token: Token<any>, isOptional?: boolean } }>({
             key: CONSTRUCTOR_INJECT_KEY,
             target: target
@@ -383,14 +378,9 @@ export class DIContainer {
         }
     }
 
-    private getProviderIdentifier(token: Token<any>): string {
-        return token.toString();
-    }
-
     has(depNameOrToken: DepIdentifier): boolean {
         const token = makeDIToken(depNameOrToken);
-        const providerKey = this.getProviderIdentifier(token);
-        return this.providers.has(providerKey);
+        return this.providers.has(token);
     }
 
     clear(clearChildContainers = true) {

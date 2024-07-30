@@ -23,19 +23,19 @@ describe('DIContainer', () => {
             const token = makeDIToken<string>('TestFactory');
             const factory = () => 'test';
             container.register({ useFactory: factory, name: token.toString() });
-            expect(container['providers'].has(token.toString())).toBe(true);
+            expect(container['providers'].has(token)).toBe(true);
         });
 
         it('should register a value with useValue', () => {
             const token = makeDIToken<string>('TestValue');
             container.register({ useValue: 'test', name: token.toString() });
-            expect(container['providers'].has(token.toString())).toBe(true);
+            expect(container['providers'].has(token)).toBe(true);
         });
 
         it('should not register if condition is false', () => {
             const token = makeDIToken<string>('TestCondition');
             container.register({ useValue: 'test', condition: () => false, name: token.toString() });
-            expect(container['providers'].has(token.toString())).toBe(false);
+            expect(container['providers'].has(token)).toBe(false);
         });
     });
 
