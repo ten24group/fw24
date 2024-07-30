@@ -1,6 +1,7 @@
 import { PROPERTY_INJECT_KEY, CONSTRUCTOR_INJECT_KEY, ON_INIT_METHOD_KEY } from './const';
+import { Inject, Injectable, InjectOptions, OnInit } from './decorators';
 import { DefineMetadataOptions, GetMetadataOptions, IMetadataStore, MetadataStore } from './metadata-store';
-import { ClassProviderOptions, DepIdentifier, FactoryProviderOptions, isClassProviderOptions, isFactoryProviderOptions, isValueProviderOptions, ProviderOptions, Token } from './types';
+import { BaseProviderOptions, ClassProviderOptions, DepIdentifier, FactoryProviderOptions, isClassProviderOptions, isFactoryProviderOptions, isValueProviderOptions, ProviderOptions, Token } from './types';
 import { makeDIToken, hasConstructor } from './utils';
 
 type Middleware<T> = (next: () => T) => T;
@@ -13,8 +14,8 @@ export class DIContainer {
     private resolving = new Map<string, any>();
     private middlewares: Middleware<any>[] = [];
     private asyncMiddlewares: MiddlewareAsync<any>[] = [];
+    private childContainers = new Set<DIContainer>();
 
-    
     private static globalInstance: DIContainer;
     static get INSTANCE(): DIContainer {
         if (!this.globalInstance) {
@@ -26,7 +27,9 @@ export class DIContainer {
     constructor(private metadataStore: IMetadataStore = new MetadataStore(), private parentContainer?: DIContainer) {}
     
     createChildContainer( metadataStore: IMetadataStore = this.metadataStore ): DIContainer {
-        return new DIContainer(metadataStore, this);
+        const child = new DIContainer(metadataStore, this);
+        this.childContainers.add(child);
+        return child;
     }
 
     register<T>(options: ProviderOptions<T> & { name: string }) {
@@ -411,7 +414,6 @@ export class DIContainer {
         }
     }
 
-
     private getProviderIdentifier(token: Token<any>): string {
         return token.toString();
     }
@@ -422,11 +424,14 @@ export class DIContainer {
         return this.providers.has(providerKey);
     }
 
-    clear() {
+    clear(clearChildContainers = true) {
         this.providers.clear();
         this.cache.clear();
         this.metadataStore.clear();
         this.resolving.clear();
+        if(clearChildContainers){
+            this.childContainers.forEach(container => container.clear());
+        }
     }
 
     // Metadata storage methods
@@ -440,6 +445,18 @@ export class DIContainer {
 
     hasMetadata(key: string | symbol, target: any): boolean {
         return this.metadataStore.hasMetadata(key, target) || (this.parentContainer && this.parentContainer.hasMetadata(key, target)) == true;
+    }
+
+    Injectable(options: BaseProviderOptions = {}) {
+        return Injectable(options, this);
+    }
+
+    Inject<T>(depNameOrToken: DepIdentifier<T>, options: InjectOptions = {}) {
+        return Inject(depNameOrToken, options, this);
+    }
+
+    OnInit() {
+        return OnInit(this);
     }
 
     private applyMiddlewares<T>(next: () => T): T {
