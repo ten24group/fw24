@@ -1,39 +1,42 @@
 import { PartialBy } from '../utils';
-import { PROPERTY_INJECT_METADATA_KEY, CONSTRUCTOR_INJECT_METADATA_KEY, ON_INIT_HOOK_METADATA_KEY } from './const';
+import { CONSTRUCTOR_INJECT_METADATA_KEY, DI_MODULE_METADATA_KEY, ON_INIT_HOOK_METADATA_KEY, PROPERTY_INJECT_METADATA_KEY } from './const';
 import { Inject, Injectable, OnInit } from './decorators';
 import { DefineMetadataOptions, GetMetadataOptions, IMetadataStore, MetadataStore } from './metadata-store';
-import { 
-  BaseProviderOptions, ClassProviderOptions, DepIdentifier, FactoryProviderOptions, 
-  InjectOptions, 
-  isClassProviderOptions, isFactoryProviderOptions, isValueProviderOptions, ParameterInjectMetadata, PropertyInjectMetadata, ProviderOptions, 
-  Token 
+import {
+    BaseProviderOptions,
+    ClassProviderOptions,
+    DepIdentifier,
+    DIModuleOptions,
+    FactoryProviderOptions,
+    InjectOptions,
+    isClassProviderOptions, 
+    isFactoryProviderOptions, 
+    isValueProviderOptions, 
+    Middleware, 
+    MiddlewareAsync,
+    ParameterInjectMetadata, PropertyInjectMetadata, ProviderOptions,
+    Token
 } from './types';
-import { makeDIToken, hasConstructor } from './utils';
+import { hasConstructor, makeDIToken } from './utils';
 
-type Middleware<T> = {
-    order: number;
-    middleware: (next: () => T) => T;
-};
-type MiddlewareAsync<T> = {
-    order: number;
-    middleware: (next: () => Promise<T>) => Promise<T>;
-};
 
 export class DIContainer {
     
     private providers = new Map<symbol, ProviderOptions<any>>();
+
     private cache = new Map<symbol, any>();
     private resolving = new Map<symbol, any>();
     private middlewares: Middleware<any>[] = [];
     private asyncMiddlewares: MiddlewareAsync<any>[] = [];
     private childContainers = new Set<DIContainer>();
 
-    private static globalInstance: DIContainer;
-    static get INSTANCE(): DIContainer {
-        if (!this.globalInstance) {
-            this.globalInstance = new DIContainer();
+    private static rootInstance: DIContainer;
+
+    static get ROOT(): DIContainer {
+        if (!this.rootInstance) {
+            this.rootInstance = new DIContainer();
         }
-        return this.globalInstance;
+        return this.rootInstance;
     }
     
     constructor(private metadataStore: IMetadataStore = new MetadataStore(), private parentContainer?: DIContainer) {
@@ -83,6 +86,68 @@ export class DIContainer {
         }
 
         this.providers.set(token, optionsCopy);
+    }
+
+    importModule(target: any){
+
+        const moduleMeta = this.getMetadata<DIModuleOptions>({
+            target: target,
+            key: DI_MODULE_METADATA_KEY,
+        });
+
+        if(!moduleMeta){
+            throw new Error(`Module ${target.name} does not have any metadata, make sure it's decorated with @DIModule`);
+        }
+
+        const { imports = [], exports = [], providers = [], identifier } = moduleMeta;
+
+        const moduleContainer = this.createChildContainer(); // TODO: annotate the container with some metadata for debugging
+        
+        // make sure all the module providers are loaded into the module's container's providers
+        for (const provider of providers) {
+            moduleContainer.register(provider);
+        }
+        // and make sure all the module exports are also loaded into the module's container's providers
+        for( const importedModule of imports) {
+            moduleContainer.importModule(importedModule);
+        }
+
+        // load all the export from this module into the current container
+        for( const exportedDep of exports) {
+            if(moduleContainer.has(exportedDep)){
+                const token = moduleContainer.createToken(exportedDep);
+                // TODO: need a conflict resolution strategy
+                // make sure to handle the conflicts with actual providers;
+                // maybe use provider aliases or annotate the providers with the module's identifier
+                this.register({
+                    // make sure the dependency is resolved by the actual module; 
+                    // that way any overrides/interceptors are applied properly
+                    name: String(token), // TODO: change the name to {provide: depNameOrToken, ...rest}
+                    useFactory: () => moduleContainer.resolve(token),
+                });
+            } else {
+                throw new Error(`Module ${moduleContainer.constructor.name} does not provide ${String(exportedDep)}`);
+            }
+        }
+
+        // TODO: module lifecycle hooks
+
+        return {
+            identifier,
+            container: moduleContainer
+        }
+    }
+
+    registerModuleMetadata(target: any, options: PartialBy<DIModuleOptions, 'identifier'>) {
+        options.identifier = options.identifier || target;
+        this.defineMetadata({
+            target: target,
+            key: DI_MODULE_METADATA_KEY,
+            value: { 
+                ...options, 
+                identifier: this.createToken(target) 
+            },
+        });
     }
 
     registerConstructorDependency<T>( target: any, parameterIndex: number, depNameOrToken: DepIdentifier<T>, options: InjectOptions<T> = {} ) {
@@ -141,14 +206,6 @@ export class DIContainer {
         }
     }
 
-    registerInRootContainer<T>(options: ProviderOptions<T> & { name: string }) {
-        let rootContainer = this as DIContainer;
-        while (rootContainer.parentContainer) {
-            rootContainer = rootContainer.parentContainer;
-        }
-        rootContainer.register(options);
-    }
-
     resolve<T>(depNameOrToken: DepIdentifier, path: Set<Token<any>> = new Set()): T {
         const token = this.createToken(depNameOrToken);
         let options = this.providers.get(token);
@@ -178,38 +235,6 @@ export class DIContainer {
         );
     }
 
-    async resolveAsync<T>(depNameOrToken: DepIdentifier, path: Set<Token<any>> = new Set()): Promise<T> {
-        const token = this.createToken(depNameOrToken);
-
-        let options = this.providers.get(token);
-        if (!options) {
-            if (this.parentContainer) {
-                return this.parentContainer.resolve(depNameOrToken, path);
-            }
-            console.error('No provider found for:', { token, path });
-            throw new Error(`No provider found for ${token.toString()}`);
-        }
-
-        if (options.singleton && this.cache.has(token)) {
-            return this.cache.get(token);
-        }
-
-        if (this.resolving.has(token)) {
-            return this.resolving.get(token);
-        }
-
-        if (path.has(token)) {
-            // should not be needed; left here for debugging/testing purposes
-            throw new Error(`Circular dependency detected: ${Array.from(path).join(' -> ')} -> ${token.toString()}`);
-        }
-
-        path.add(token);
-
-        return this.applyAsyncMiddlewares(
-            () => this.createAndCacheInstanceAsync(token, options, path)
-        );
-    }
-
     private validateProviderOptions<T>(options: ProviderOptions<T>, token: Token<any>) {
         if (isClassProviderOptions(options) && !options.useClass) {
             throw new Error(`Invalid provider configuration for ${token.toString()}. useClass is required for class providers`);
@@ -234,37 +259,11 @@ export class DIContainer {
         return instance;
     }
 
-    private async createAndCacheInstanceAsync<T>(token: Token<any>, options: ProviderOptions<T>, path: Set<Token<any>>): Promise<T> {
-        const instance = await this.createInstanceAsync(token, options, path);
-        if (options.singleton) {
-            this.cache.set(token, instance);
-        }
-
-        this.resolving.delete(token);
-        await this.injectPropertiesAsync(instance);
-        await this.initializeInstanceAsync(instance);
-        path.delete(token);
-
-        return instance;
-    }
-
     private createInstance<T>(token: Token<any>, options: ProviderOptions<T>, path: Set<Token<any>>): T {
         if (isClassProviderOptions(options)) {
             return this.createClassInstance(token, options, path);
         } else if (isFactoryProviderOptions(options)) {
             return this.createFactoryInstance(options, path);
-        } else if (isValueProviderOptions(options)) {
-            return options.useValue;
-        } else {
-            throw new Error(`Provider for ${token.toString()} is not correctly configured`);
-        }
-    }
-
-    private async createInstanceAsync<T>(token: Token<any>, options: ProviderOptions<T>, path: Set<Token<any>>): Promise<T> {
-        if (isClassProviderOptions(options)) {
-            return this.createClassInstanceAsync(token, options, path);
-        } else if (isFactoryProviderOptions(options)) {
-            return this.createFactoryInstanceAsync(options, path);
         } else if (isValueProviderOptions(options)) {
             return options.useValue;
         } else {
@@ -291,33 +290,8 @@ export class DIContainer {
         return actualInstance;
     }
 
-    private async createClassInstanceAsync<T>(token: Token<any>, options: ClassProviderOptions<T>, path: Set<Token<any>>): Promise<T> {
-
-        if (this.resolving.has(token)) {
-            return this.resolving.get(token);
-        }
-
-        // Create a placeholder object and store it in the resolving map
-        const instancePlaceholder: T = Object.create(options.useClass.prototype);
-        this.resolving.set(token, instancePlaceholder);
-
-        const dependencies = await this.resolveDependenciesAsync(options.useClass, path);
-        const actualInstance = new options.useClass(...dependencies);
-        Object.assign(instancePlaceholder as any, actualInstance);
-
-        // Replace the placeholder instance in the resolving map with the actual instance
-        this.resolving.set(token, actualInstance);
-
-        return actualInstance;
-    }
-
     private createFactoryInstance<T>(options: FactoryProviderOptions<T>, path: Set<Token<any>>): T {
         const dependencies = (options.deps || []).map(dep => this.resolve(dep, path));
-        return options.useFactory(...dependencies);
-    }
-
-    private async createFactoryInstanceAsync<T>(options: FactoryProviderOptions<T>, path: Set<Token<any>>): Promise<T> {
-        const dependencies = await Promise.all((options.deps || []).map(dep => this.resolveAsync(dep, path)));
         return options.useFactory(...dependencies);
     }
 
@@ -335,22 +309,6 @@ export class DIContainer {
                 throw error;
             }
         });
-    }
-
-    private async resolveDependenciesAsync<T>(target: T, path: Set<Token<any>>): Promise<any[]> {
-        const injectMetadata = this.getMetadata<{ [key: number]: ParameterInjectMetadata<T> }>({
-            key: CONSTRUCTOR_INJECT_METADATA_KEY,
-            target: target
-        }) || {};
-
-        return await Promise.all(Object.values(injectMetadata).map(async dep => {
-            try {
-                return await this.resolveAsync(dep.token, path);
-            } catch (error) {
-                if (dep.isOptional) return dep.defaultValue !== undefined ? dep.defaultValue : undefined;
-                throw error;
-            }
-        }));
     }
 
     private initializeInstance<T>(instance: T): void {
@@ -375,28 +333,6 @@ export class DIContainer {
         }
     }
 
-    private async initializeInstanceAsync<T>(instance: T): Promise<void> {
-        if (!hasConstructor(instance)) return;
-
-        const initMethod = this.getMetadata<keyof typeof instance>({
-            key: ON_INIT_HOOK_METADATA_KEY,
-            target: instance.constructor.prototype
-        });
-
-        if (initMethod) {
-            const theInitMethod = instance[initMethod] as Function;
-            if (typeof theInitMethod === 'function') {
-                try {
-                    await theInitMethod();
-                } catch (error: any) {
-                    throw new Error(`Initialization method failed for ${instance.constructor.name}: ${error.message}`);
-                }
-            } else {
-                throw new Error(`Initialization method ${String(initMethod)} is not a function on ${instance.constructor.name}`);
-            }
-        }
-    }
-
     private injectProperties<T>(instance: T): void {
         if (!hasConstructor(instance)) return;
 
@@ -409,32 +345,6 @@ export class DIContainer {
             const propertyValue = (() => {
                 try {
                     return this.resolve(dep.token);
-                } catch (error) {
-                    if (dep.isOptional) return undefined;
-                    throw error;
-                }
-            })();
-
-            Object.defineProperty(instance, dep.propertyKey, {
-                value: propertyValue,
-                enumerable: true,
-                configurable: true
-            });
-        }
-    }
-
-    private async injectPropertiesAsync<T>(instance: T): Promise<void> {
-        if (!hasConstructor(instance)) return;
-
-        const dependencies = this.getMetadata<PropertyInjectMetadata<T>[]>({
-            key: PROPERTY_INJECT_METADATA_KEY,
-            target: instance.constructor.prototype
-        }) || [];
-
-        for (const dep of dependencies) {
-            const propertyValue = await (async () => {
-                try {
-                    return await this.resolveAsync(dep.token);
                 } catch (error) {
                     if (dep.isOptional) return undefined;
                     throw error;
@@ -476,7 +386,7 @@ export class DIContainer {
         return this.metadataStore.hasMetadata(key, target) || this.parentContainer?.hasMetadata(key, target) === true;
     }
 
-    Injectable(options: BaseProviderOptions = {}) {
+    Injectable(options: PartialBy<BaseProviderOptions, 'name'> = {}) {
         return Injectable(options, this);
     }
 
@@ -523,6 +433,153 @@ export class DIContainer {
         };
 
         return dispatch(0);
+    }
+
+    async resolveAsync<T>(depNameOrToken: DepIdentifier, path: Set<Token<any>> = new Set()): Promise<T> {
+        const token = this.createToken(depNameOrToken);
+
+        let options = this.providers.get(token);
+        if (!options) {
+            if (this.parentContainer) {
+                return this.parentContainer.resolve(depNameOrToken, path);
+            }
+            console.error('No provider found for:', { token, path });
+            throw new Error(`No provider found for ${token.toString()}`);
+        }
+
+        if (options.singleton && this.cache.has(token)) {
+            return this.cache.get(token);
+        }
+
+        if (this.resolving.has(token)) {
+            return this.resolving.get(token);
+        }
+
+        if (path.has(token)) {
+            // should not be needed; left here for debugging/testing purposes
+            throw new Error(`Circular dependency detected: ${Array.from(path).join(' -> ')} -> ${token.toString()}`);
+        }
+
+        path.add(token);
+
+        return this.applyAsyncMiddlewares(
+            () => this.createAndCacheInstanceAsync(token, options, path)
+        );
+    }
+
+    private async createAndCacheInstanceAsync<T>(token: Token<any>, options: ProviderOptions<T>, path: Set<Token<any>>): Promise<T> {
+        const instance = await this.createInstanceAsync(token, options, path);
+        if (options.singleton) {
+            this.cache.set(token, instance);
+        }
+
+        this.resolving.delete(token);
+        await this.injectPropertiesAsync(instance);
+        await this.initializeInstanceAsync(instance);
+        path.delete(token);
+
+        return instance;
+    }
+
+    private async createInstanceAsync<T>(token: Token<any>, options: ProviderOptions<T>, path: Set<Token<any>>): Promise<T> {
+        if (isClassProviderOptions(options)) {
+            return this.createClassInstanceAsync(token, options, path);
+        } else if (isFactoryProviderOptions(options)) {
+            return this.createFactoryInstanceAsync(options, path);
+        } else if (isValueProviderOptions(options)) {
+            return options.useValue;
+        } else {
+            throw new Error(`Provider for ${token.toString()} is not correctly configured`);
+        }
+    }
+
+    private async createClassInstanceAsync<T>(token: Token<any>, options: ClassProviderOptions<T>, path: Set<Token<any>>): Promise<T> {
+
+        if (this.resolving.has(token)) {
+            return this.resolving.get(token);
+        }
+
+        // Create a placeholder object and store it in the resolving map
+        const instancePlaceholder: T = Object.create(options.useClass.prototype);
+        this.resolving.set(token, instancePlaceholder);
+
+        const dependencies = await this.resolveDependenciesAsync(options.useClass, path);
+        const actualInstance = new options.useClass(...dependencies);
+        Object.assign(instancePlaceholder as any, actualInstance);
+
+        // Replace the placeholder instance in the resolving map with the actual instance
+        this.resolving.set(token, actualInstance);
+
+        return actualInstance;
+    }
+
+    private async resolveDependenciesAsync<T>(target: T, path: Set<Token<any>>): Promise<any[]> {
+        const injectMetadata = this.getMetadata<{ [key: number]: ParameterInjectMetadata<T> }>({
+            key: CONSTRUCTOR_INJECT_METADATA_KEY,
+            target: target
+        }) || {};
+
+        return await Promise.all(Object.values(injectMetadata).map(async dep => {
+            try {
+                return await this.resolveAsync(dep.token, path);
+            } catch (error) {
+                if (dep.isOptional) return dep.defaultValue !== undefined ? dep.defaultValue : undefined;
+                throw error;
+            }
+        }));
+    }
+
+    private async initializeInstanceAsync<T>(instance: T): Promise<void> {
+        if (!hasConstructor(instance)) return;
+
+        const initMethod = this.getMetadata<keyof typeof instance>({
+            key: ON_INIT_HOOK_METADATA_KEY,
+            target: instance.constructor.prototype
+        });
+
+        if (initMethod) {
+            const theInitMethod = instance[initMethod] as Function;
+            if (typeof theInitMethod === 'function') {
+                try {
+                    await theInitMethod();
+                } catch (error: any) {
+                    throw new Error(`Initialization method failed for ${instance.constructor.name}: ${error.message}`);
+                }
+            } else {
+                throw new Error(`Initialization method ${String(initMethod)} is not a function on ${instance.constructor.name}`);
+            }
+        }
+    }
+
+    private async createFactoryInstanceAsync<T>(options: FactoryProviderOptions<T>, path: Set<Token<any>>): Promise<T> {
+        const dependencies = await Promise.all((options.deps || []).map(dep => this.resolveAsync(dep, path)));
+        return options.useFactory(...dependencies);
+    }
+
+    private async injectPropertiesAsync<T>(instance: T): Promise<void> {
+        if (!hasConstructor(instance)) return;
+
+        const dependencies = this.getMetadata<PropertyInjectMetadata<T>[]>({
+            key: PROPERTY_INJECT_METADATA_KEY,
+            target: instance.constructor.prototype
+        }) || [];
+
+        for (const dep of dependencies) {
+            const propertyValue = await (async () => {
+                try {
+                    return await this.resolveAsync(dep.token);
+                } catch (error) {
+                    if (dep.isOptional) return undefined;
+                    throw error;
+                }
+            })();
+
+            Object.defineProperty(instance, dep.propertyKey, {
+                value: propertyValue,
+                enumerable: true,
+                configurable: true
+            });
+        }
     }
 
     private async applyAsyncMiddlewares<T>(next: () => Promise<T>): Promise<T> {

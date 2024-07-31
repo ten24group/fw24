@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import { DIContainer, createToken, Injectable, Inject, OnInit } from './';
 import { PROPERTY_INJECT_METADATA_KEY, CONSTRUCTOR_INJECT_METADATA_KEY, ON_INIT_HOOK_METADATA_KEY } from './const';
-const container = DIContainer.INSTANCE;
+const container = DIContainer.ROOT;
 describe('DI Decorators', () => {
     
     // Clear metadata before each test

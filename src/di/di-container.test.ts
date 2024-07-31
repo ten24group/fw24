@@ -1,4 +1,5 @@
 import { DIContainer } from './di-container';
+import { DIModuleOptions } from './types';
 import { makeDIToken } from './utils';
 
 
@@ -597,18 +598,6 @@ describe('DIContainer', () => {
 
                 expect(instance).toBeInstanceOf(ParentService);
             });
-
-            it('should add providers to root container', () => {
-                @Injectable()
-                class RootService {}
-
-                const childContainer = container.createChildContainer();
-                childContainer.registerInRootContainer({ useClass: RootService, name: 'RootService' });
-
-                const instance = container.resolve<RootService>('RootService');
-
-                expect(instance).toBeInstanceOf(RootService);
-            });
         });
 
         describe('conditional resolution in child containers', () => {
@@ -1163,5 +1152,88 @@ describe('DIContainer', () => {
             expect(() => container.removeProvider('nonExistent')).not.toThrow();
         });
     });
+
+    describe('Modules', () => {
+        const container = new DIContainer();
+        beforeEach(() => {
+            container.clear();
+        });
+
+        it('should register a module', () => {
+
+            class TestModule{}
+            
+            class TestClassA {};
+
+            // annotate the Module Class with the required metadata
+            container.registerModuleMetadata( TestModule, {
+                identifier: TestModule,
+                providers: [
+                    { useClass: TestClassA, name: 'test' },
+                    { useValue: 'test', name: 'testValue' },
+                    { useFactory: () => 'test', name: 'testFactory'}
+                ], 
+                exports: ['testValue']
+            });
+
+            // import the module into the container
+            const module = container.importModule(TestModule);
+
+            // resolve the exported provider from the parent container
+            const instance = container.resolve<TestClassA>('testValue');
+            expect(instance).toBe('test');
+
+            // throw on none exported provider
+            expect(() => container.resolve('test')).toThrow("No provider found for Symbol(fw24.di.token:test)");
+            
+            // should be able to resolve any provider from the module's container
+            const instance2 = module.container.resolve('test');
+            expect(instance2).toBeInstanceOf(TestClassA);
+
+        });
+
+         it('should import an empty module without errors', () => {
+            class TestModule{}
+            const options = { imports: [], exports: [], providers: [] };
+            container.registerModuleMetadata(TestModule, options);
+
+            const module = container.importModule(TestModule);
+            expect(module).toBeDefined();
+        });
+
+        it('should register nested modules correctly', () => {
+            class NestedModule {}
+            class TestModule {}
+            
+            container.registerModuleMetadata(NestedModule, {
+                imports: [],
+                exports: ['nestedDep'],
+                providers: [{ name: 'nestedDep', useValue: 'nestedValue' }]
+            });
+
+
+            container.registerModuleMetadata(TestModule, {
+                imports: [NestedModule],
+                exports: ['nestedDep'],
+                providers: []
+            });
+
+            container.importModule(TestModule);
+            const resolvedValue = container.resolve('nestedDep');
+            expect(resolvedValue).toBe('nestedValue');
+        });
+
+        it('should throw an error if an export is not provided', () => {
+            class TestModule {}
+
+            container.registerModuleMetadata(TestModule, {
+                imports: [],
+                exports: ['missingDep'],
+                providers: []
+            });
+
+            expect(() => container.importModule(TestModule)).toThrow();
+        });
+    })
 
 });
