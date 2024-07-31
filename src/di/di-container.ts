@@ -1,24 +1,21 @@
 import { PartialBy } from '../utils';
-import { CONSTRUCTOR_INJECT_METADATA_KEY, DI_MODULE_METADATA_KEY, ON_INIT_HOOK_METADATA_KEY, PROPERTY_INJECT_METADATA_KEY } from './const';
-import { Inject, Injectable, OnInit } from './decorators';
-import { DefineMetadataOptions, GetMetadataOptions, IMetadataStore, MetadataStore } from './metadata-store';
+import { Injectable } from './decorators';
+
 import {
     BaseProviderOptions,
+    ClassConstructor,
     ClassProviderOptions,
     DepIdentifier,
-    DIModuleOptions,
     FactoryProviderOptions,
-    InjectOptions,
     isClassProviderOptions, 
     isFactoryProviderOptions, 
     isValueProviderOptions, 
     Middleware, 
     MiddlewareAsync,
-    ParameterInjectMetadata, PropertyInjectMetadata, ProviderOptions,
+    ProviderOptions,
     Token
 } from './types';
-import { hasConstructor, makeDIToken } from './utils';
-
+import { getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPropertyDependenciesMetadata, hasConstructor, makeDIToken } from './utils';
 
 export class DIContainer {
     
@@ -26,12 +23,13 @@ export class DIContainer {
 
     private cache = new Map<symbol, any>();
     private resolving = new Map<symbol, any>();
+
     private middlewares: Middleware<any>[] = [];
     private asyncMiddlewares: MiddlewareAsync<any>[] = [];
+
     private childContainers = new Set<DIContainer>();
 
     private static rootInstance: DIContainer;
-
     static get ROOT(): DIContainer {
         if (!this.rootInstance) {
             this.rootInstance = new DIContainer();
@@ -39,25 +37,74 @@ export class DIContainer {
         return this.rootInstance;
     }
     
-    constructor(private metadataStore: IMetadataStore = new MetadataStore(), private parentContainer?: DIContainer) {
+    constructor(private parentContainer?: DIContainer) {
         // to ensure destructuring works correctly
         this.Injectable = this.Injectable.bind(this);
-        this.Inject = this.Inject.bind(this);
-        this.OnInit = this.OnInit.bind(this);
+    }
+
+    Injectable(options: PartialBy<BaseProviderOptions, 'provide'> = {}) {
+        return Injectable(options, this);
     }
     
-    createChildContainer(metadataStore: IMetadataStore = this.metadataStore): DIContainer {
-        const child = new DIContainer(metadataStore, this);
+    createChildContainer(): DIContainer {
+        const child = new DIContainer(this);
         this.childContainers.add(child);
         return child;
+    }
+
+    module(target: any){
+
+        const moduleMeta = getModuleMetadata(target)
+
+        if(!moduleMeta){
+            throw new Error(`Module ${target.name} does not have any metadata, make sure it's decorated with @DIModule`);
+        }
+
+        const { imports = [], exports = [], providers = [], identifier } = moduleMeta;
+
+        const moduleContainer = this.createChildContainer(); // TODO: annotate the container with some metadata for debugging
+        
+        // make sure all the module providers are loaded into the module's container's providers
+        for (const provider of providers) {
+            moduleContainer.register(provider);
+        }
+        // and make sure all the module exports are also loaded into the module's container's providers
+        for( const importedModule of imports) {
+            moduleContainer.module(importedModule);
+        }
+
+        // load all the export from this module into the current container
+        for( const exportedDep of exports) {
+            if(moduleContainer.has(exportedDep)){
+                const token = moduleContainer.createToken(exportedDep);
+                // TODO: need a conflict resolution strategy
+                // make sure to handle the conflicts with actual providers;
+                // maybe use provider aliases or annotate the providers with the module's identifier
+                this.register({
+                    // make sure the dependency is resolved by the actual module; 
+                    // that way any overrides/interceptors are applied properly
+                    provide: String(token), // TODO: change the name to {provide: depNameOrToken, ...rest}
+                    useFactory: () => moduleContainer.resolve(token),
+                });
+            } else {
+                throw new Error(`Module ${moduleContainer.constructor.name} does not provide ${String(exportedDep)}`);
+            }
+        }
+
+        // TODO: module lifecycle hooks
+
+        return {
+            identifier,
+            container: moduleContainer
+        }
     }
 
     createToken<T>(tokenOrType: DepIdentifier<T>): Token<T> {
         return makeDIToken(tokenOrType);
     }
 
-    register<T>(options: ProviderOptions<T> & { name: string }) {
-        const token = this.createToken(options.name);
+    register<T>(options: ProviderOptions<T> ) {
+        const token = this.createToken(options.provide);
 
         const optionsCopy = { 
             ...options, 
@@ -88,117 +135,13 @@ export class DIContainer {
         this.providers.set(token, optionsCopy);
     }
 
-    importModule(target: any){
-
-        const moduleMeta = this.getMetadata<DIModuleOptions>({
-            target: target,
-            key: DI_MODULE_METADATA_KEY,
-        });
-
-        if(!moduleMeta){
-            throw new Error(`Module ${target.name} does not have any metadata, make sure it's decorated with @DIModule`);
-        }
-
-        const { imports = [], exports = [], providers = [], identifier } = moduleMeta;
-
-        const moduleContainer = this.createChildContainer(); // TODO: annotate the container with some metadata for debugging
-        
-        // make sure all the module providers are loaded into the module's container's providers
-        for (const provider of providers) {
-            moduleContainer.register(provider);
-        }
-        // and make sure all the module exports are also loaded into the module's container's providers
-        for( const importedModule of imports) {
-            moduleContainer.importModule(importedModule);
-        }
-
-        // load all the export from this module into the current container
-        for( const exportedDep of exports) {
-            if(moduleContainer.has(exportedDep)){
-                const token = moduleContainer.createToken(exportedDep);
-                // TODO: need a conflict resolution strategy
-                // make sure to handle the conflicts with actual providers;
-                // maybe use provider aliases or annotate the providers with the module's identifier
-                this.register({
-                    // make sure the dependency is resolved by the actual module; 
-                    // that way any overrides/interceptors are applied properly
-                    name: String(token), // TODO: change the name to {provide: depNameOrToken, ...rest}
-                    useFactory: () => moduleContainer.resolve(token),
-                });
-            } else {
-                throw new Error(`Module ${moduleContainer.constructor.name} does not provide ${String(exportedDep)}`);
-            }
-        }
-
-        // TODO: module lifecycle hooks
-
-        return {
-            identifier,
-            container: moduleContainer
-        }
-    }
-
-    registerModuleMetadata(target: any, options: PartialBy<DIModuleOptions, 'identifier'>) {
-        options.identifier = options.identifier || target;
-        this.defineMetadata({
-            target: target,
-            key: DI_MODULE_METADATA_KEY,
-            value: { 
-                ...options, 
-                identifier: this.createToken(target) 
-            },
-        });
-    }
-
-    registerConstructorDependency<T>( target: any, parameterIndex: number, depNameOrToken: DepIdentifier<T>, options: InjectOptions<T> = {} ) {
-        const token = this.createToken(depNameOrToken);
-
-        const existingDependencies = this.getMetadata<{ [key: number]: ParameterInjectMetadata<T> }>({
-            key: CONSTRUCTOR_INJECT_METADATA_KEY,
-            target: target
-        }) || {};
-
-        existingDependencies[parameterIndex] = { ...options, token };
-
-        this.defineMetadata({
-            key: CONSTRUCTOR_INJECT_METADATA_KEY,
-            value: existingDependencies,
-            target: target
-        });
-    }
-
-    registerPropertyDependency<T>( target: any, propertyKey: string | symbol, depNameOrToken: DepIdentifier<T>, options: InjectOptions<T> = {} ) {
-        const token = this.createToken(depNameOrToken);
-
-        const existingDependencies = this.getMetadata<PropertyInjectMetadata<T>[]>({
-            key: PROPERTY_INJECT_METADATA_KEY,
-            target
-        }) || [];
-
-        existingDependencies.push({ ...options, token, propertyKey });
-
-        this.defineMetadata({
-            key: PROPERTY_INJECT_METADATA_KEY,
-            value: existingDependencies,
-            target
-        });
-    }
-
-    registerOnInitHook(target: any, propertyKey: string | symbol) {
-        this.defineMetadata({
-            key: ON_INIT_HOOK_METADATA_KEY,
-            value: propertyKey,
-            target
-        });
-    }
-
     removeProvider(depNameOrToken: DepIdentifier) {
         const token = this.createToken(depNameOrToken);
         this.providers.delete(token);
         this.cache.delete(token);
     }
 
-    registerInParentContainer<T>(options: ProviderOptions<T> & { name: string }) {
+    registerInParentContainer<T>(options: ProviderOptions<T> & { provide: string }) {
         if (this.parentContainer) {
             this.parentContainer.register(options);
         } else {
@@ -295,13 +238,11 @@ export class DIContainer {
         return options.useFactory(...dependencies);
     }
 
-    private resolveDependencies<T>(target: T, path: Set<Token<any>>): any[] {
-        const injectMetadata = this.getMetadata<{ [key: number]: ParameterInjectMetadata<T> }>({
-            key: CONSTRUCTOR_INJECT_METADATA_KEY,
-            target: target
-        }) || {};
+    private resolveDependencies<T extends ClassConstructor>(target: T, path: Set<Token<any>>): any[] {
+        
+        const injectMetadata = getConstructorDependenciesMetadata(target);
 
-        return Object.values(injectMetadata).map(dep => {
+        return injectMetadata.map(dep => {
             try {
                 return this.resolve(dep.token, path);
             } catch (error) {
@@ -314,13 +255,10 @@ export class DIContainer {
     private initializeInstance<T>(instance: T): void {
         if (!hasConstructor(instance)) return;
 
-        const initMethod = this.getMetadata<keyof typeof instance>({
-            key: ON_INIT_HOOK_METADATA_KEY,
-            target: instance.constructor.prototype
-        });
+        const initMethod = getOnInitHookMetadata(instance.constructor as ClassConstructor);
 
         if (initMethod) {
-            const theInitMethod = instance[initMethod] as Function;
+            const theInitMethod = instance[initMethod as keyof typeof instance] as Function;
             if (typeof theInitMethod === 'function') {
                 try {
                     theInitMethod();
@@ -336,10 +274,8 @@ export class DIContainer {
     private injectProperties<T>(instance: T): void {
         if (!hasConstructor(instance)) return;
 
-        const dependencies = this.getMetadata<PropertyInjectMetadata<T>[]>({
-            key: PROPERTY_INJECT_METADATA_KEY,
-            target: instance.constructor.prototype
-        }) || [];
+        const dependencies = getPropertyDependenciesMetadata(instance.constructor as ClassConstructor);
+
 
         for (const dep of dependencies) {
             const propertyValue = (() => {
@@ -367,35 +303,10 @@ export class DIContainer {
     clear(clearChildContainers = true) {
         this.providers.clear();
         this.cache.clear();
-        this.metadataStore.clear();
         this.resolving.clear();
         if(clearChildContainers){
             this.childContainers.forEach(container => container.clear());
         }
-    }
-
-    defineMetadata<T = any>(options: DefineMetadataOptions<T>) {
-        this.metadataStore.defineMetadata(options);
-    }
-
-    getMetadata<T = any>(options: GetMetadataOptions): T | undefined {
-        return this.metadataStore.getMetadata(options) || this.parentContainer?.getMetadata(options);
-    }
-
-    hasMetadata(key: string | symbol, target: any): boolean {
-        return this.metadataStore.hasMetadata(key, target) || this.parentContainer?.hasMetadata(key, target) === true;
-    }
-
-    Injectable(options: PartialBy<BaseProviderOptions, 'name'> = {}) {
-        return Injectable(options, this);
-    }
-
-    Inject<T>(depNameOrToken: DepIdentifier<T>, options: InjectOptions = {}) {
-        return Inject(depNameOrToken, options, this);
-    }
-
-    OnInit() {
-        return OnInit(this);
     }
 
     useMiddleware({middleware, order = 1}: PartialBy<Middleware<any>, 'order' >) {
@@ -513,13 +424,11 @@ export class DIContainer {
         return actualInstance;
     }
 
-    private async resolveDependenciesAsync<T>(target: T, path: Set<Token<any>>): Promise<any[]> {
-        const injectMetadata = this.getMetadata<{ [key: number]: ParameterInjectMetadata<T> }>({
-            key: CONSTRUCTOR_INJECT_METADATA_KEY,
-            target: target
-        }) || {};
+    private async resolveDependenciesAsync<T extends ClassConstructor>(target: T, path: Set<Token<any>>): Promise<any[]> {
 
-        return await Promise.all(Object.values(injectMetadata).map(async dep => {
+        const injectMetadata = getConstructorDependenciesMetadata(target);
+
+        return await Promise.all(injectMetadata.map(async dep => {
             try {
                 return await this.resolveAsync(dep.token, path);
             } catch (error) {
@@ -532,13 +441,10 @@ export class DIContainer {
     private async initializeInstanceAsync<T>(instance: T): Promise<void> {
         if (!hasConstructor(instance)) return;
 
-        const initMethod = this.getMetadata<keyof typeof instance>({
-            key: ON_INIT_HOOK_METADATA_KEY,
-            target: instance.constructor.prototype
-        });
+        const initMethod = getOnInitHookMetadata(instance.constructor as ClassConstructor);
 
         if (initMethod) {
-            const theInitMethod = instance[initMethod] as Function;
+            const theInitMethod = instance[initMethod as keyof typeof instance] as Function;
             if (typeof theInitMethod === 'function') {
                 try {
                     await theInitMethod();
@@ -559,10 +465,7 @@ export class DIContainer {
     private async injectPropertiesAsync<T>(instance: T): Promise<void> {
         if (!hasConstructor(instance)) return;
 
-        const dependencies = this.getMetadata<PropertyInjectMetadata<T>[]>({
-            key: PROPERTY_INJECT_METADATA_KEY,
-            target: instance.constructor.prototype
-        }) || [];
+        const dependencies = getPropertyDependenciesMetadata(instance.constructor as ClassConstructor);
 
         for (const dep of dependencies) {
             const propertyValue = await (async () => {

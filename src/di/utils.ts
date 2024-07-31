@@ -1,4 +1,10 @@
-import { DepIdentifier, Token } from "./types";
+import { PartialBy, useMetadataManager } from "../utils";
+import { ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions, ParameterInjectMetadata, PropertyInjectMetadata, Token } from "./types";
+
+export const PROPERTY_INJECT_METADATA_KEY = 'PROPERTY_DEPENDENCY';
+export const CONSTRUCTOR_INJECT_METADATA_KEY = 'CONSTRUCTOR_DEPENDENCY';
+export const ON_INIT_HOOK_METADATA_KEY = 'ON_INIT_HOOK';
+export const DI_MODULE_METADATA_KEY = 'DI_MODULE';
 
 export function isSerializedSymbol(token: string): boolean {
     const serializedSymbolPattern = /^Symbol\(.+\)$/;
@@ -51,6 +57,82 @@ export function makeDIToken<T>(tokenOrType: DepIdentifier<T>, namespace: string 
 
 export function hasConstructor(obj: any): obj is { constructor: Function } {
     return obj && typeof obj.constructor === 'function' && obj.constructor.prototype;
+}
+
+export const DIMetadataStore = useMetadataManager({namespace: 'fw24:di'});
+
+export function registerModuleMetadata(target: any, options: PartialBy<DIModuleOptions, 'identifier'>) {
+    options.identifier = options.identifier || target;
+    DIMetadataStore.setPropertyMetadata(target, DI_MODULE_METADATA_KEY, { 
+        ...options, 
+        identifier: makeDIToken(target) 
+    });
+}
+
+export function registerConstructorDependency<T>( target: any, parameterIndex: number, depNameOrToken: DepIdentifier<T>, options: InjectOptions<T> = {} ) {
+    const token = makeDIToken(depNameOrToken);
+
+    const existingDependencies: ParameterInjectMetadata<T>[] = DIMetadataStore.getPropertyMetadata(
+        target,
+        CONSTRUCTOR_INJECT_METADATA_KEY,
+    ) || [];
+    
+    existingDependencies[parameterIndex] = { ...options, token };
+
+    DIMetadataStore.setPropertyMetadata(
+        target,
+        CONSTRUCTOR_INJECT_METADATA_KEY,
+        existingDependencies,
+        true
+    );
+}
+
+export function getConstructorDependenciesMetadata<T>(target: ClassConstructor): ParameterInjectMetadata<T>[] {
+    return DIMetadataStore.getPropertyMetadata(
+        target, 
+        CONSTRUCTOR_INJECT_METADATA_KEY
+    ) || [];
+}
+
+export function registerPropertyDependency<T>( target: ClassConstructor, propertyKey: string | symbol, depNameOrToken: DepIdentifier<T>, options: InjectOptions<T> = {} ) {
+    const token = makeDIToken(depNameOrToken);
+
+    const existingDependencies = DIMetadataStore.getPropertyMetadata<PropertyInjectMetadata<T>[]>(
+        target,
+        PROPERTY_INJECT_METADATA_KEY
+    ) || [];
+
+    existingDependencies.push({ ...options, token, propertyKey });
+
+    DIMetadataStore.setPropertyMetadata(
+        target,
+        PROPERTY_INJECT_METADATA_KEY, 
+        existingDependencies, 
+        true
+    );
+}
+
+export function getPropertyDependenciesMetadata<T>(target: ClassConstructor): PropertyInjectMetadata<T>[] {
+    return DIMetadataStore.getPropertyMetadata(
+        target, 
+        PROPERTY_INJECT_METADATA_KEY
+    ) || [];
+}
+
+export function registerOnInitHook<T extends ClassConstructor>(target: T, propertyKey: string | symbol) {
+    DIMetadataStore.setPropertyMetadata(
+        target, 
+        ON_INIT_HOOK_METADATA_KEY, 
+        propertyKey
+    );
+}
+
+export function getOnInitHookMetadata<T extends ClassConstructor>(target: T): string | symbol | undefined {
+    return DIMetadataStore.getPropertyMetadata(target, ON_INIT_HOOK_METADATA_KEY);
+}
+
+export function getModuleMetadata(target: any): DIModuleOptions | undefined {
+    return DIMetadataStore.getPropertyMetadata(target, DI_MODULE_METADATA_KEY);
 }
 
 

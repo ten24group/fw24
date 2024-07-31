@@ -85,7 +85,7 @@ export function Controller(controllerName: string, controllerConfig: IController
 		};
 
 		Object.defineProperty(ExtendedTarget, 'name', { value: target.name });
-		DIContainer.ROOT.register({ singleton: true, name: target.name, useClass: ExtendedTarget });
+		DIContainer.ROOT.register({ singleton: true, provide: target.name, useClass: ExtendedTarget });
 
 		return ExtendedTarget;
 	};

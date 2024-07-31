@@ -1,37 +1,50 @@
-import { PROPERTY_INJECT_METADATA_KEY, CONSTRUCTOR_INJECT_METADATA_KEY, ON_INIT_HOOK_METADATA_KEY } from './const';
-import { makeDIToken } from './utils';
-import { BaseProviderOptions, DepIdentifier, InjectOptions, ParameterInjectMetadata, PropertyInjectMetadata, Token } from './types';
+import { BaseProviderOptions, ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions } from './types';
 import { DIContainer } from './di-container';
 import { PartialBy } from '../utils';
+import { registerConstructorDependency, registerModuleMetadata, registerOnInitHook, registerPropertyDependency } from './utils';
 
-export function Injectable(options: PartialBy<BaseProviderOptions, 'name'> = {}, container: DIContainer = DIContainer.ROOT): ClassDecorator {
-    return (target: any) => {
+export function Injectable(
+    options:  PartialBy<BaseProviderOptions, 'provide'> = {}, 
+    container: DIContainer = DIContainer.ROOT
+): ClassDecorator {
 
+    return (constructor: Function) => {
         container.register({
             ...options,
-            useClass: target,
-            name: options.name || target.name,
+            useClass: constructor as ClassConstructor,
+            provide: options.provide || constructor,
         });
     };
 }
 
-export function Inject<T>(depNameOrToken: DepIdentifier<T>, options: InjectOptions<T> = {}, container: DIContainer = DIContainer.ROOT): PropertyDecorator & ParameterDecorator {
+export function DIModule(options: PartialBy<DIModuleOptions, 'identifier'>): ClassDecorator {
+    return function (constructor: Function) {
+        registerModuleMetadata(constructor, options);
+    };
+}
 
-    return (target: Object, propertyKey: string | symbol | undefined, parameterIndex?: number) => {
+export function Inject<T>(depNameOrToken: DepIdentifier<T>, options: InjectOptions<T> = {}): PropertyDecorator & ParameterDecorator {
+
+    return (target: any, propertyKey: string | symbol | undefined, parameterIndex?: number) => {
         
         if (typeof parameterIndex === 'number') {
 
-            container.registerConstructorDependency(target, parameterIndex, depNameOrToken, { ...options });
+            registerConstructorDependency(target.prototype.constructor, parameterIndex, depNameOrToken, { ...options });
 
         } else if (propertyKey !== undefined) {
 
-            container.registerPropertyDependency(target, propertyKey, depNameOrToken, { ...options });
+            registerPropertyDependency(
+                target.constructor as ClassConstructor, 
+                propertyKey, 
+                depNameOrToken, 
+                { ...options }
+            );
         }
     };
 }
 
-export function OnInit( container: DIContainer = DIContainer.ROOT ): MethodDecorator {
-    return (target, propertyKey) => {
-        container.registerOnInitHook(target, propertyKey);
+export function OnInit(): MethodDecorator {
+    return (target: any, propertyKey: string | symbol) => {
+        registerOnInitHook(target.constructor as ClassConstructor, propertyKey);
     };
 }

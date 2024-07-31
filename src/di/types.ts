@@ -5,7 +5,7 @@ export type DepIdentifier<T extends unknown = unknown> = symbol | string | Funct
 export type ClassConstructor<T extends any = any> = new (...args: any[]) => T;
 
 export type BaseProviderOptions = {
-    name: string;
+    provide: DepIdentifier<any>;
     singleton?: boolean;
     priority?: number;
     condition?: () => boolean;
