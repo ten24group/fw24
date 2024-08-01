@@ -61,12 +61,12 @@ export function hasConstructor(obj: any): obj is { constructor: Function } {
 
 export const DIMetadataStore = useMetadataManager({namespace: 'fw24:di'});
 
-export function registerModuleMetadata(target: any, options: PartialBy<DIModuleOptions, 'identifier'>) {
+export function registerModuleMetadata(target: any, options: PartialBy<DIModuleOptions, 'identifier'>, override = false) {
     options.identifier = options.identifier || target;
     DIMetadataStore.setPropertyMetadata(target, DI_MODULE_METADATA_KEY, { 
         ...options, 
         identifier: makeDIToken(target) 
-    });
+    }, override);
 }
 
 export function registerConstructorDependency<T>( target: any, parameterIndex: number, depNameOrToken: DepIdentifier<T>, options: InjectOptions<T> = {} ) {

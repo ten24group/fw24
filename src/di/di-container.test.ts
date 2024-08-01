@@ -1,6 +1,6 @@
 import { DIContainer } from './di-container';
 import { makeDIToken, registerConstructorDependency, registerModuleMetadata } from './utils';
-import { DIModule, Inject, OnInit } from './decorators';
+import { DIModule, Inject, Injectable, OnInit } from './decorators';
 
 describe('DIContainer', () => {
     let container: DIContainer;
@@ -1107,6 +1107,18 @@ describe('DIContainer', () => {
             class TestModule {}
 
             expect(() => container.module(TestModule)).toThrow();
+        });
+
+        it('Make @Injectable register provider with specific module', () => {
+            @DIModule({})
+            class TestModule {}
+
+            @Injectable({providedIn: TestModule})
+            class TestClass {}
+
+            const module = container.module(TestModule);
+
+            expect(module.container.resolve(TestClass)).toBeDefined();
         });
     });
 

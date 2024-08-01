@@ -1,19 +1,57 @@
-import { BaseProviderOptions, ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions } from './types';
+import { BaseProviderOptions, ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions, ProviderOptions } from './types';
 import { DIContainer } from './di-container';
 import { PartialBy } from '../utils';
-import { registerConstructorDependency, registerModuleMetadata, registerOnInitHook, registerPropertyDependency } from './utils';
+import { getModuleMetadata, registerConstructorDependency, registerModuleMetadata, registerOnInitHook, registerPropertyDependency } from './utils';
+
+export type InjectableOptions = PartialBy<BaseProviderOptions, 'provide'> & {
+    providedIn?: 'ROOT' | ClassConstructor;
+};
 
 export function Injectable(
-    options:  PartialBy<BaseProviderOptions, 'provide'> = {}, 
-    container: DIContainer = DIContainer.ROOT
+    options: InjectableOptions = { providedIn: 'ROOT' },
+    container?: DIContainer
 ): ClassDecorator {
-
     return (constructor: Function) => {
-        container.register({
+
+        container = container || DIContainer.ROOT;
+
+        const optionsCopy: ProviderOptions<any> = {
             ...options,
             useClass: constructor as ClassConstructor,
             provide: options.provide || constructor,
-        });
+        };
+
+        if(!options.providedIn){
+            container.register(optionsCopy);
+            return;
+        }
+
+        if( options.providedIn === 'ROOT'){
+            DIContainer.ROOT.register(optionsCopy);
+            return;
+        } 
+        
+        if(typeof options.providedIn === 'function') {
+
+            // Check if the providedIn is a class constructor
+            const moduleMetadata = getModuleMetadata(options.providedIn) as DIModuleOptions | undefined;
+            
+            if (!moduleMetadata) {
+                throw new Error(
+                    `Invalid providedIn option for ${constructor.name}. Ensure the class is decorated with @DIModule({...}).`
+                );
+            }
+
+            moduleMetadata.providers = [...(moduleMetadata.providers || []), optionsCopy];
+
+            registerModuleMetadata(options.providedIn, moduleMetadata, true);
+
+        } else {
+
+            throw new Error(
+                `Invalid providedIn option for ${constructor.name}. Ensure it is either "ROOT" or a class decorated with @DIModule({...}).`
+            );
+        }
     };
 }
 

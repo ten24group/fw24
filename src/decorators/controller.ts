@@ -5,6 +5,7 @@ import { RemovalPolicy } from "aws-cdk-lib";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { AuthorizerTypeMetadata } from "./authorizer";
 import { DIContainer } from "../di";
+import { APIController } from "../core/api-gateway-controller";
 
 /**
  * Represents the configuration options for a controller.
@@ -87,6 +88,8 @@ export function Controller(controllerName: string, controllerConfig: IController
 		Object.defineProperty(ExtendedTarget, 'name', { value: target.name });
 		DIContainer.ROOT.register({ singleton: true, provide: target.name, useClass: ExtendedTarget });
 
+		exports['default'] = DIContainer.ROOT.resolve<APIController>(target.name)?.LambdaHandler;
+		console.log('++++exports+++', exports['default']);
 		return ExtendedTarget;
 	};
 }

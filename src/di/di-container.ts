@@ -18,16 +18,16 @@ import {
 import { applyMiddlewares, applyMiddlewaresAsync, getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPropertyDependenciesMetadata, hasConstructor, makeDIToken, validateProviderOptions } from './utils';
 
 export class DIContainer {
-    
-    private providers = new Map<symbol, ProviderOptions<any>>();
 
     private cache = new Map<symbol, any>();
     private resolving = new Map<symbol, any>();
 
+    private providers = new Map<symbol, ProviderOptions<any>>();
+    private childContainers = new Set<DIContainer>();
+    
     private middlewares: Middleware<any>[] = [];
     private asyncMiddlewares: MiddlewareAsync<any>[] = [];
 
-    private childContainers = new Set<DIContainer>();
 
     private static rootInstance: DIContainer;
     static get ROOT(): DIContainer {
@@ -103,7 +103,11 @@ export class DIContainer {
         return makeDIToken(tokenOrType);
     }
 
-    register<T>(options: ProviderOptions<T> ) {
+    register<T>(options: ProviderOptions<T>, container: DIContainer = this): { provides: Token<T>, options: ProviderOptions<T> } | undefined {
+        if(container !== this){
+           return container.register(options);
+        }
+
         const token = this.createToken(options.provide);
 
         const optionsCopy = { 
@@ -133,6 +137,11 @@ export class DIContainer {
         }
 
         this.providers.set(token, optionsCopy);
+
+        return {
+            provides: token,
+            options: optionsCopy
+        }
     }
 
     removeProvider(depNameOrToken: DepIdentifier) {
@@ -317,12 +326,12 @@ export class DIContainer {
 
     useMiddleware({middleware, order = 1}: PartialBy<Middleware<any>, 'order' >) {
         this.middlewares.push({ middleware, order });
-        this.middlewares.sort((a, b) => a.order - b.order);
+        this.middlewares.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) );
     }
 
     useAsyncMiddleware({middleware, order = 1}: PartialBy<MiddlewareAsync<any>, 'order'> ) {
         this.asyncMiddlewares.push({ middleware, order });
-        this.asyncMiddlewares.sort((a, b) => a.order - b.order);
+        this.asyncMiddlewares.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     }
 
     private async createAndCacheInstanceAsync<T>(token: Token<any>, options: ProviderOptions<T>, path: Set<Token<any>>): Promise<T> {

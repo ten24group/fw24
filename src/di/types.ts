@@ -40,11 +40,11 @@ export type ProviderOptions<T extends unknown = unknown> =  ClassProviderOptions
 
 
 export type Middleware<T> = {
-    order: number;
+    order?: number;
     middleware: (next: () => T) => T;
 };
 export type MiddlewareAsync<T> = {
-    order: number;
+    order?: number;
     middleware: (next: () => Promise<T>) => Promise<T>;
 };
 
