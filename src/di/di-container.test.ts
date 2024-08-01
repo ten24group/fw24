@@ -23,19 +23,19 @@ describe('DIContainer', () => {
         it('should register a factory with useFactory', () => {
             const token = makeDIToken<string>('TestFactory');
             const factory = () => 'test';
-            container.register({ useFactory: factory, provide: token.toString() });
+            container.register({ useFactory: factory, provide: token });
             expect(container['providers'].has(token)).toBe(true);
         });
 
         it('should register a value with useValue', () => {
             const token = makeDIToken<string>('TestValue');
-            container.register({ useValue: 'test', provide: token.toString() });
+            container.register({ useValue: 'test', provide: token });
             expect(container['providers'].has(token)).toBe(true);
         });
 
         it('should not register if condition is false', () => {
             const token = makeDIToken<string>('TestCondition');
-            container.register({ useValue: 'test', condition: () => false, provide: token.toString() });
+            container.register({ useValue: 'test', condition: () => false, provide: token });
             expect(container['providers'].has(token)).toBe(false);
         });
     });
@@ -52,7 +52,7 @@ describe('DIContainer', () => {
             @Injectable()
             class TestClass {}
             const token = makeDIToken<TestClass>('TestClass');
-            container.register({ useClass: TestClass, provide: token.toString() });
+            container.register({ useClass: TestClass, provide: token });
             const instance = await container.resolve(token);
             expect(instance).toBeInstanceOf(TestClass);
         });
@@ -60,14 +60,14 @@ describe('DIContainer', () => {
         it('should resolve a factory', async () => {
             const token = makeDIToken<string>('TestFactory');
             const factory = () => 'test';
-            container.register({ useFactory: factory, provide: token.toString() });
+            container.register({ useFactory: factory, provide: token });
             const instance = await container.resolve(token);
             expect(instance).toBe('test');
         });
 
         it('should resolve a value', async () => {
             const token = makeDIToken<string>('TestValue');
-            container.register({ useValue: 'test', provide: token.toString() });
+            container.register({ useValue: 'test', provide: token });
             const instance = await container.resolve(token);
             expect(instance).toBe('test');
         });
@@ -110,7 +110,7 @@ describe('DIContainer', () => {
             }
 
             const token = makeDIToken<TestClass>('TestClass');
-            container.register({ useClass: TestClass, provide: token.toString() });
+            container.register({ useClass: TestClass, provide: token });
 
             const instance = await container.resolve(token);
 
@@ -263,7 +263,7 @@ describe('DIContainer', () => {
             @Injectable({ condition: () => true })
             class ConditionalService {}
 
-            container.register({ useClass: ConditionalService, provide: token.toString() });
+            container.register({ useClass: ConditionalService, provide: token });
 
             expect(container.has(token)).toBe(true);
         });
@@ -282,7 +282,7 @@ describe('DIContainer', () => {
             class TestClass {}
 
             const token = makeDIToken<TestClass>('TestClass');
-            container.register({ useClass: TestClass, provide: token.toString() });
+            container.register({ useClass: TestClass, provide: token });
 
             const instance = await container.resolveAsync(token);
             expect(instance).toBeInstanceOf(TestClass);
@@ -291,7 +291,7 @@ describe('DIContainer', () => {
         it('should resolve a factory asynchronously', async () => {
             const token = makeDIToken<string>('TestFactory');
             const factory = () => 'test';
-            container.register({ useFactory: factory, provide: token.toString() });
+            container.register({ useFactory: factory, provide: token });
 
             const instance = await container.resolveAsync(token);
             expect(instance).toBe('test');
@@ -299,7 +299,7 @@ describe('DIContainer', () => {
 
         it('should resolve a value asynchronously', async () => {
             const token = makeDIToken<string>('TestValue');
-            container.register({ useValue: 'test', provide: token.toString() });
+            container.register({ useValue: 'test', provide: token });
 
             const instance = await container.resolveAsync(token);
             expect(instance).toBe('test');
@@ -452,11 +452,11 @@ describe('DIContainer', () => {
             class UpdatedService {}
 
             const token = makeDIToken<OriginalService>('Service');
-            container.register({ useClass: OriginalService, provide: token.toString() });
+            container.register({ useClass: OriginalService, provide: token });
 
             let instance = container.resolve(token);
             expect(instance).toBeInstanceOf(OriginalService);
-            container.register({ useClass: UpdatedService, provide: token.toString() });
+            container.register({ useClass: UpdatedService, provide: token });
 
             instance = container.resolve(token);
             expect(instance).toBeInstanceOf(UpdatedService);

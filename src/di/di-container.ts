@@ -15,7 +15,7 @@ import {
     ProviderOptions,
     Token
 } from './types';
-import { getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPropertyDependenciesMetadata, hasConstructor, makeDIToken } from './utils';
+import { applyMiddlewares, applyMiddlewaresAsync, getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPropertyDependenciesMetadata, hasConstructor, makeDIToken, validateProviderOptions } from './utils';
 
 export class DIContainer {
     
@@ -115,7 +115,7 @@ export class DIContainer {
         // DO not register the provider if condition is not met
         if (optionsCopy.condition && !optionsCopy.condition()) return;
         
-        this.validateProviderOptions(optionsCopy, token);
+        validateProviderOptions(optionsCopy, token);
 
         // Do not override existing provider if it has higher priority; but override if it has lower or similar priority
         const existingProvider = this.providers.get(token);
@@ -149,12 +149,19 @@ export class DIContainer {
         }
     }
 
-    resolve<T>(depNameOrToken: DepIdentifier, path: Set<Token<any>> = new Set()): T {
+    resolve<T, Async extends boolean = false>(
+        depNameOrToken: DepIdentifier,
+        path: Set<Token<any>> = new Set(),
+        async: Async = false as Async
+    ): Async extends true ? Promise<T> : T {
+
         const token = this.createToken(depNameOrToken);
+        
         let options = this.providers.get(token);
+
         if (!options) {
             if (this.parentContainer) {
-                return this.parentContainer.resolve(depNameOrToken, path);
+                return this.parentContainer.resolve(depNameOrToken, path, async) as any;
             }
             console.error('No provider found for:', { token, path });
             throw new Error(`No provider found for ${token.toString()}`);
@@ -173,21 +180,20 @@ export class DIContainer {
         }
 
         path.add(token);
-        return this.applyMiddlewares(
-            () => this.createAndCacheInstance(token, options, path)
-        );
+
+        return  async 
+            ? applyMiddlewaresAsync(
+                this.asyncMiddlewares,
+                () => this.createAndCacheInstanceAsync<T>(token, options, path)
+            )
+            : applyMiddlewares(
+                this.middlewares,
+                () => this.createAndCacheInstance(token, options, path)
+            )
     }
 
-    private validateProviderOptions<T>(options: ProviderOptions<T>, token: Token<any>) {
-        if (isClassProviderOptions(options) && !options.useClass) {
-            throw new Error(`Invalid provider configuration for ${token.toString()}. useClass is required for class providers`);
-        } else if (isFactoryProviderOptions(options) && !options.useFactory) {
-            throw new Error(`Invalid provider configuration for ${token.toString()}. useFactory is required for factory providers`);
-        } else if (isValueProviderOptions(options) && options.useValue === undefined) {
-            throw new Error(`Invalid provider configuration for ${token.toString()}. useValue is required for value providers`);
-        } else if (!isClassProviderOptions(options) && !isFactoryProviderOptions(options) && !isValueProviderOptions(options)) {
-            throw new Error(`Invalid provider configuration for ${token.toString()}`);
-        }
+    async resolveAsync<T>( depNameOrToken: DepIdentifier<T>, path?: Set<Token<any>>){
+        return await this.resolve<T, true>(depNameOrToken, path, true);
     }
 
     private createAndCacheInstance<T>(token: Token<any>, options: ProviderOptions<T>, path: Set<Token<any>>): T {
@@ -319,65 +325,6 @@ export class DIContainer {
         this.asyncMiddlewares.sort((a, b) => a.order - b.order);
     }
 
-    private applyMiddlewares<T>(next: () => T): T {
-        let index = -1;
-
-        const dispatch = (i: number): T => {
-            if (i <= index) {
-                throw new Error('next() called multiple times');
-            }
-            
-            index = i;
-
-            if (i >= this.middlewares.length) {
-                return next(); // Ensure we don't access out of bounds
-            }
-
-            const middlewareInfo = this.middlewares[i];
-            const middleware = middlewareInfo?.middleware;
-
-            if (middleware) {
-                return middleware(() => dispatch(i + 1));
-            }
-
-            return next();
-        };
-
-        return dispatch(0);
-    }
-
-    async resolveAsync<T>(depNameOrToken: DepIdentifier, path: Set<Token<any>> = new Set()): Promise<T> {
-        const token = this.createToken(depNameOrToken);
-
-        let options = this.providers.get(token);
-        if (!options) {
-            if (this.parentContainer) {
-                return this.parentContainer.resolve(depNameOrToken, path);
-            }
-            console.error('No provider found for:', { token, path });
-            throw new Error(`No provider found for ${token.toString()}`);
-        }
-
-        if (options.singleton && this.cache.has(token)) {
-            return this.cache.get(token);
-        }
-
-        if (this.resolving.has(token)) {
-            return this.resolving.get(token);
-        }
-
-        if (path.has(token)) {
-            // should not be needed; left here for debugging/testing purposes
-            throw new Error(`Circular dependency detected: ${Array.from(path).join(' -> ')} -> ${token.toString()}`);
-        }
-
-        path.add(token);
-
-        return this.applyAsyncMiddlewares(
-            () => this.createAndCacheInstanceAsync(token, options, path)
-        );
-    }
-
     private async createAndCacheInstanceAsync<T>(token: Token<any>, options: ProviderOptions<T>, path: Set<Token<any>>): Promise<T> {
         const instance = await this.createInstanceAsync(token, options, path);
         if (options.singleton) {
@@ -483,31 +430,5 @@ export class DIContainer {
                 configurable: true
             });
         }
-    }
-
-    private async applyAsyncMiddlewares<T>(next: () => Promise<T>): Promise<T> {
-        let index = -1;
-
-        const dispatch = async (i: number): Promise<T> => {
-            if (i <= index) {
-                throw new Error('next() called multiple times');
-            }
-            index = i;
-
-            if (i >= this.asyncMiddlewares.length) {
-                return next(); // Ensure we don't access out of bounds
-            }
-
-            const middlewareInfo = this.asyncMiddlewares[i];
-            const middleware = middlewareInfo?.middleware;
-
-            if (middleware) {
-                return await middleware(() => dispatch(i + 1));
-            }
-
-            return next();
-        };
-
-        return dispatch(0);
     }
 }

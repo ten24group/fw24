@@ -1,5 +1,5 @@
 import { PartialBy, useMetadataManager } from "../utils";
-import { ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions, ParameterInjectMetadata, PropertyInjectMetadata, Token } from "./types";
+import { ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions, isClassProviderOptions, isFactoryProviderOptions, isValueProviderOptions, Middleware, MiddlewareAsync, ParameterInjectMetadata, PropertyInjectMetadata, ProviderOptions, Token } from "./types";
 
 export const PROPERTY_INJECT_METADATA_KEY = 'PROPERTY_DEPENDENCY';
 export const CONSTRUCTOR_INJECT_METADATA_KEY = 'CONSTRUCTOR_DEPENDENCY';
@@ -133,6 +133,71 @@ export function getOnInitHookMetadata<T extends ClassConstructor>(target: T): st
 
 export function getModuleMetadata(target: any): DIModuleOptions | undefined {
     return DIMetadataStore.getPropertyMetadata(target, DI_MODULE_METADATA_KEY);
+}
+
+export function validateProviderOptions<T>(options: ProviderOptions<T>, token: Token<any>) {
+    if (isClassProviderOptions(options) && !options.useClass) {
+        throw new Error(`Invalid provider configuration for ${token.toString()}. useClass is required for class providers`);
+    } else if (isFactoryProviderOptions(options) && !options.useFactory) {
+        throw new Error(`Invalid provider configuration for ${token.toString()}. useFactory is required for factory providers`);
+    } else if (isValueProviderOptions(options) && options.useValue === undefined) {
+        throw new Error(`Invalid provider configuration for ${token.toString()}. useValue is required for value providers`);
+    } else if (!isClassProviderOptions(options) && !isFactoryProviderOptions(options) && !isValueProviderOptions(options)) {
+        throw new Error(`Invalid provider configuration for ${token.toString()}`);
+    }
+}
+
+export function applyMiddlewares<T>(middlewares: Middleware<any>[], next: () => T): T {
+    let index = -1;
+
+    const dispatch = (i: number): T => {
+        if (i <= index) {
+            throw new Error('next() called multiple times');
+        }
+        
+        index = i;
+
+        if (i >= middlewares.length) {
+            return next(); // Ensure we don't access out of bounds
+        }
+
+        const middlewareInfo = middlewares[i];
+        const middleware = middlewareInfo?.middleware;
+
+        if (middleware) {
+            return middleware(() => dispatch(i + 1));
+        }
+
+        return next();
+    };
+
+    return dispatch(0);
+}
+
+export async function applyMiddlewaresAsync<T>(middlewares: MiddlewareAsync<any>[], next: () => Promise<T>): Promise<T> {
+    let index = -1;
+
+    const dispatch = async (i: number): Promise<T> => {
+        if (i <= index) {
+            throw new Error('next() called multiple times');
+        }
+        index = i;
+
+        if (i >= middlewares.length) {
+            return next(); // Ensure we don't access out of bounds
+        }
+
+        const middlewareInfo = middlewares[i];
+        const middleware = middlewareInfo?.middleware;
+
+        if (middleware) {
+            return await middleware(() => dispatch(i + 1));
+        }
+
+        return next();
+    };
+
+    return dispatch(0);
 }
 
 
