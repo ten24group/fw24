@@ -169,6 +169,8 @@ export class APIConstruct implements FW24Construct {
     private registerController = (controllerInfo: HandlerDescriptor) => {
 
         const { handlerClass, filePath, fileName } = controllerInfo;
+        // TODO: no need to create na instance of the controller class
+        // use metadata from the class prototype
         const handlerInstance = new handlerClass();
         const controllerName = handlerInstance.controllerName;
         const controllerConfig: IControllerConfig = handlerInstance?.controllerConfig || {};
