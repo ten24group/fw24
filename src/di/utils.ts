@@ -1,5 +1,6 @@
 import { PartialBy, useMetadataManager } from "../utils";
-import { ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions, isClassProviderOptions, isFactoryProviderOptions, isValueProviderOptions, Middleware, MiddlewareAsync, ParameterInjectMetadata, PropertyInjectMetadata, ProviderOptions, Token } from "./types";
+import { DIContainer } from "./di-container";
+import { ClassConstructor, DependencyGraphNode, DepIdentifier, DIModuleOptions, InjectOptions, isClassProviderOptions, isFactoryProviderOptions, isValueProviderOptions, Middleware, MiddlewareAsync, ParameterInjectMetadata, PropertyInjectMetadata, ProviderOptions, Token } from "./types";
 
 export const PROPERTY_INJECT_METADATA_KEY = 'PROPERTY_DEPENDENCY';
 export const CONSTRUCTOR_INJECT_METADATA_KEY = 'CONSTRUCTOR_DEPENDENCY';
@@ -61,7 +62,9 @@ export function hasConstructor(obj: any): obj is { constructor: Function } {
 
 export const DIMetadataStore = useMetadataManager({namespace: 'fw24:di'});
 
-export function registerModuleMetadata(target: any, options: PartialBy<DIModuleOptions, 'identifier'>, override = false) {
+export type RegisterDIModuleMetadataOptions = Omit<DIModuleOptions, 'identifier'> & {identifier?: ClassConstructor | Token<any>};
+
+export function registerModuleMetadata(target: any, options: RegisterDIModuleMetadataOptions, override = false) {
     options.identifier = options.identifier || target;
     DIMetadataStore.setPropertyMetadata(target, DI_MODULE_METADATA_KEY, { 
         ...options, 
@@ -200,4 +203,143 @@ export async function applyMiddlewaresAsync<T>(middlewares: MiddlewareAsync<any>
     return dispatch(0);
 }
 
+export function serializeGraphToText(graph: DependencyGraphNode[]) {
+    const output: string[] = ['Dependency Graph:'];
 
+    function printNode(node: DependencyGraphNode, prefix: string, isLast: boolean, visited: Set<string>): void {
+        const resolvedFrom = node.resolvedFrom ? ` (resolved from ${node.resolvedFrom})` : '';
+
+        output.push(`${prefix}${isLast ? '└── ' : '├── '}${node.token}${resolvedFrom}`);
+
+        const newPrefix = prefix + (isLast ? '    ' : '│   ');
+
+        visited.add(node.token);
+
+        const depArray = Array.from(node.dependencies);
+        if (depArray.length === 0) {
+            output.push(`${newPrefix}└── No dependencies`);
+        } else {
+            depArray.forEach((dep, index) => {
+                const depNode = graph.find(n => n.token === dep);
+                if (depNode) {
+                    if (visited.has(depNode.token)) {
+                        output.push(`${newPrefix}${index === depArray.length - 1 ? '└── ' : '├── '}Circular dependency detected: ${node.token} -> ${depNode.token}`);
+                    } else {
+                        printNode(depNode, newPrefix, index === depArray.length - 1, new Set(visited));
+                    }
+                }
+            });
+        }
+    }
+
+    // Start from nodes with no incoming dependencies
+    const rootNodes = graph.filter(node => !Array.from(graph).some(n => n.dependencies.has(node.token)));
+    rootNodes.forEach((rootNode, index) => {
+        printNode(rootNode, '', index === rootNodes.length - 1, new Set<string>());
+    });
+
+    // Include standalone nodes (nodes with no dependencies and not dependent on by others)
+    const standaloneNodes = graph.filter(node => node.dependencies.size === 0 && !rootNodes.includes(node));
+    standaloneNodes.forEach((node) => {
+        output.push(`└── ${node.token}${node.resolvedFrom ? ` (resolved from ${node.resolvedFrom})` : ''}`);
+        output.push(`    └── No dependencies`);
+    });
+
+    return output.join('\n');
+}
+
+export function generateCompleteDependencyGraph(rootContainer: DIContainer): DependencyGraphNode[] {
+        const graph: Map<string, DependencyGraphNode> = new Map();
+        const visitedContainers = new Set<DIContainer>();
+
+        // Start from the provided root container
+        buildDependencyGraphForContainer(rootContainer, graph, visitedContainers);
+
+        return Array.from(graph.values());
+    }
+
+    export function buildDependencyGraphForContainer(container: DIContainer, graph: Map<string, DependencyGraphNode>, visitedContainers: Set<DIContainer>) {
+        if (visitedContainers.has(container)) {
+            return; // Prevent infinite recursion in case of circular module imports
+        }
+
+        visitedContainers.add(container);
+
+        for (const [token, options] of container.getProviders().entries()) {
+            const tokenString = token.toString();
+            if (!graph.has(tokenString)) {
+                addDependencyGraphNode(container, graph, tokenString, options, new Set<string>(), visitedContainers);
+            }
+        }
+
+        // Recurse into child containers (imported modules)
+        for (const childContainer of container.getChildContainers()) {
+            buildDependencyGraphForContainer(childContainer, graph, visitedContainers);
+        }
+    }
+
+    export function addDependencyGraphNode(
+        container: DIContainer,
+        graph: Map<string, DependencyGraphNode>,
+        tokenString: string,
+        options: ProviderOptions<any>,
+        visitedTokens: Set<string>, // Track visited tokens for the current path
+        visitedContainers: Set<DIContainer>
+    ) {
+        if (visitedTokens.has(tokenString)) {
+            console.warn(`Circular dependency detected: ${Array.from(visitedTokens).join(' -> ')} -> ${tokenString}`);
+            return; // Circular dependency detected, stop further resolution
+        }
+
+        visitedTokens.add(tokenString);
+
+        const node: DependencyGraphNode = graph.get(tokenString) || {
+            token: tokenString,
+            dependencies: new Set(),
+            resolvedFrom: container.containerIdentifier.toString(),
+            availableInContainers: new Set<string>()
+        };
+
+        // Add the current container to the list of containers where this token is available
+        node.availableInContainers.add(container.containerIdentifier.toString());
+
+        let dependencies: string[] = [];
+
+        if ('useClass' in options) {
+            const { constructorDependencies, propertyDependencies } = container.getClassDependencies(options.useClass);
+            dependencies = [
+                ...constructorDependencies.map(dep => makeDIToken(dep.token).toString()),
+                ...propertyDependencies.map(dep => makeDIToken(dep.token).toString())
+            ];
+        } else if ('deps' in options && options.deps) {
+            dependencies = options.deps.map(dep => makeDIToken(dep).toString());
+        }
+
+        for (const dep of dependencies) {
+            node.dependencies.add(dep);
+
+            // Check if the dependency is an alias or directly provided
+            let resolvedOptions = container.getProviders().get(makeDIToken(dep));
+            let resolvedContainer = container;
+            let currentContainer = container.getParentContainer();
+            while (!resolvedOptions && currentContainer) {
+                resolvedOptions = currentContainer.getProviders().get(makeDIToken(dep));
+                if (resolvedOptions) {
+                    resolvedContainer = currentContainer;
+                }
+                currentContainer = currentContainer.getParentContainer();
+            }
+
+            // If the dependency has not been resolved yet, recurse into the appropriate container
+            if (resolvedOptions) {
+                addDependencyGraphNode(resolvedContainer, graph, dep, resolvedOptions, new Set(visitedTokens), visitedContainers);
+            }
+        }
+
+        // Update the resolvedFrom information if this node is shadowed by another container
+        if (node.resolvedFrom !== container.containerIdentifier.toString()) {
+            node.resolvedFrom += ` (shadowed by ${container.containerIdentifier.toString()})`;
+        }
+
+        graph.set(tokenString, node);
+    }

@@ -15,29 +15,29 @@ export type ClassProviderOptions<T> = BaseProviderOptions & {
     useClass: ClassConstructor<T>;
 }
 
-export function isClassProviderOptions<T>(options: ProviderOptions<T>): options is ClassProviderOptions<T> {
-    return (options as ClassProviderOptions<T>).useClass !== undefined;
-}
-
 export type FactoryProviderOptions<T> = BaseProviderOptions & {
     deps?: Token<any>[];
     useFactory: (...args: any[]) => T;
-}
-
-export function isFactoryProviderOptions<T>(options: ProviderOptions<T>): options is FactoryProviderOptions<T> {
-    return (options as FactoryProviderOptions<T>).useFactory !== undefined;
 }
 
 export type ValueProviderOptions<T> = BaseProviderOptions & {
     useValue: T;
 }
 
+export type ProviderOptions<T extends unknown = unknown> =  ClassProviderOptions<T> | FactoryProviderOptions<T> | ValueProviderOptions<T>;
+
+export function isClassProviderOptions<T>(options: ProviderOptions<T>): options is ClassProviderOptions<T> {
+    return (options as ClassProviderOptions<T>).useClass !== undefined;
+}
+
+export function isFactoryProviderOptions<T>(options: ProviderOptions<T>): options is FactoryProviderOptions<T> {
+    return (options as FactoryProviderOptions<T>).useFactory !== undefined;
+}
+
+
 export function isValueProviderOptions<T>(options: ProviderOptions<T>): options is ValueProviderOptions<T> {
     return (options as ValueProviderOptions<T>).useValue !== undefined;
 }
-
-export type ProviderOptions<T extends unknown = unknown> =  ClassProviderOptions<T> | FactoryProviderOptions<T> | ValueProviderOptions<T>;
-
 
 export type Middleware<T> = {
     order?: number;
@@ -49,8 +49,8 @@ export type MiddlewareAsync<T> = {
 };
 
 export type DIModuleOptions = {
-    identifier: DepIdentifier<any>;
-    imports?: DepIdentifier<any>[];
+    identifier: Token<any>;
+    imports?: ClassConstructor[];
     exports?: DepIdentifier[];
     providers?: ProviderOptions[];
 }
@@ -73,3 +73,11 @@ export type PropertyInjectMetadata<T extends unknown = unknown> = InjectOptions<
     token: Token<any>;
     propertyKey: string | symbol;
 };
+
+
+export type DependencyGraphNode = {
+    token: string;
+    dependencies: Set<string>;   
+    resolvedFrom: string; // Container where the provider is resolved from
+    availableInContainers: Set<string>; // Containers where this provider is available
+}

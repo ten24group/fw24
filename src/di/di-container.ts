@@ -1,3 +1,4 @@
+import { createLogger, ILogger } from './../logging/index';
 import { PartialBy } from '../utils';
 import { Injectable } from './decorators';
 
@@ -5,6 +6,7 @@ import {
     BaseProviderOptions,
     ClassConstructor,
     ClassProviderOptions,
+    DependencyGraphNode,
     DepIdentifier,
     FactoryProviderOptions,
     isClassProviderOptions, 
@@ -15,7 +17,7 @@ import {
     ProviderOptions,
     Token
 } from './types';
-import { applyMiddlewares, applyMiddlewaresAsync, getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPropertyDependenciesMetadata, hasConstructor, makeDIToken, validateProviderOptions } from './utils';
+import { applyMiddlewares, applyMiddlewaresAsync, generateCompleteDependencyGraph, getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPropertyDependenciesMetadata, hasConstructor, makeDIToken, serializeGraphToText, validateProviderOptions } from './utils';
 
 export class DIContainer {
 
@@ -28,6 +30,8 @@ export class DIContainer {
     private middlewares: Middleware<any>[] = [];
     private asyncMiddlewares: MiddlewareAsync<any>[] = [];
 
+    public readonly containerIdentifier: symbol | string;
+    private readonly logger: ILogger;
 
     private static rootInstance: DIContainer;
     static get ROOT(): DIContainer {
@@ -37,22 +41,36 @@ export class DIContainer {
         return this.rootInstance;
     }
     
-    constructor(private parentContainer?: DIContainer) {
+    constructor(private parentContainer?: DIContainer, identifier: symbol | string = 'ROOT') {
         // to ensure destructuring works correctly
         this.Injectable = this.Injectable.bind(this);
+        this.containerIdentifier = identifier;
+        this.logger = createLogger(`DIContainer[${identifier.toString()}]`);
     }
 
     Injectable(options: PartialBy<BaseProviderOptions, 'provide'> = {}) {
         return Injectable(options, this);
     }
     
-    createChildContainer(): DIContainer {
-        const child = new DIContainer(this);
+    createChildContainer(identifier: symbol | string): DIContainer {
+        const child = new DIContainer(this, identifier);
         this.childContainers.add(child);
         return child;
     }
 
-    module(target: any){
+    getProviders() {
+        return this.providers;
+    }
+
+    getParentContainer() {
+        return this.parentContainer
+    }
+
+    getChildContainers() {
+        return this.childContainers;
+    }
+
+    module(target: ClassConstructor){
 
         const moduleMeta = getModuleMetadata(target)
 
@@ -62,7 +80,7 @@ export class DIContainer {
 
         const { imports = [], exports = [], providers = [], identifier } = moduleMeta;
 
-        const moduleContainer = this.createChildContainer(); // TODO: annotate the container with some metadata for debugging
+        const moduleContainer = this.createChildContainer(identifier); 
         
         // make sure all the module providers are loaded into the module's container's providers
         for (const provider of providers) {
@@ -83,7 +101,7 @@ export class DIContainer {
                 this.register({
                     // make sure the dependency is resolved by the actual module; 
                     // that way any overrides/interceptors are applied properly
-                    provide: String(token), // TODO: change the name to {provide: depNameOrToken, ...rest}
+                    provide: String(token),
                     useFactory: () => moduleContainer.resolve(token),
                 });
             } else {
@@ -124,10 +142,13 @@ export class DIContainer {
         // Do not override existing provider if it has higher priority; but override if it has lower or similar priority
         const existingProvider = this.providers.get(token);
         if(existingProvider){
+            this.logger.warn(`Conflict detected: in [${this.containerIdentifier.toString()}] - [${token.toString()}] already registered.`, { existing: existingProvider, new: optionsCopy});
+
             if (existingProvider.priority !== undefined && optionsCopy.priority !== undefined && optionsCopy.priority < existingProvider.priority) {
+                this.logger.warn(`Provider ${String(token)} is not being overwritten because the existing provider has higher priority.`, {existing: existingProvider, new: optionsCopy});
                 return; 
             } else {
-                console.warn(`Provider ${String(token)} is being overwritten. The existing instance will be removed from the cache if applicable.`);
+                this.logger.warn(`Provider ${String(token)} is being overwritten. The existing instance will be removed from the cache if applicable.`);
             }
         }
 
@@ -172,8 +193,10 @@ export class DIContainer {
             if (this.parentContainer) {
                 return this.parentContainer.resolve(depNameOrToken, path, async) as any;
             }
-            console.error('No provider found for:', { token, path });
-            throw new Error(`No provider found for ${token.toString()}`);
+            throw new Error(`No provider found for ${token.toString()}. 
+                Current path: ${Array.from(path).join(' -> ')}. 
+                Container: ${String(this.containerIdentifier)}.
+            `);
         }
 
         if (options.singleton && this.cache.has(token)) {
@@ -251,6 +274,16 @@ export class DIContainer {
     private createFactoryInstance<T>(options: FactoryProviderOptions<T>, path: Set<Token<any>>): T {
         const dependencies = (options.deps || []).map(dep => this.resolve(dep, path));
         return options.useFactory(...dependencies);
+    }
+
+    getClassDependencies(target: ClassConstructor) {
+        const constructorDependencies = getConstructorDependenciesMetadata(target);
+        const propertyDependencies = getPropertyDependenciesMetadata(target);
+
+        return {
+            propertyDependencies,
+            constructorDependencies
+        }
     }
 
     private resolveDependencies<T extends ClassConstructor>(target: T, path: Set<Token<any>>): any[] {
@@ -439,5 +472,25 @@ export class DIContainer {
                 configurable: true
             });
         }
+    }
+
+    logProviders() {
+        for (const [token, options] of this.providers.entries()) {
+            this.logger.info(`Provider: [${this.containerIdentifier.toString()}] - ${token.toString()}:`, options);
+        }
+        this.parentContainer?.logProviders();
+    }
+
+    logCache() {
+        for (const [token, instance] of this.cache.entries()) {
+            this.logger.info(`Cache: [${this.containerIdentifier.toString()}] - ${token.toString()}:`, instance);
+        }
+        this.parentContainer?.logCache();
+    }
+
+    logDependencyGraph() {
+        const graph = generateCompleteDependencyGraph(this);
+        // Serialize the dependency graph
+        serializeGraphToText(graph);
     }
 }

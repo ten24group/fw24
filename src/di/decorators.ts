@@ -1,7 +1,7 @@
 import { BaseProviderOptions, ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions, ProviderOptions } from './types';
 import { DIContainer } from './di-container';
 import { PartialBy } from '../utils';
-import { getModuleMetadata, registerConstructorDependency, registerModuleMetadata, registerOnInitHook, registerPropertyDependency } from './utils';
+import { getModuleMetadata, registerConstructorDependency, RegisterDIModuleMetadataOptions, registerModuleMetadata, registerOnInitHook, registerPropertyDependency } from './utils';
 
 export type InjectableOptions = PartialBy<BaseProviderOptions, 'provide'> & {
     providedIn?: 'ROOT' | ClassConstructor;
@@ -55,7 +55,7 @@ export function Injectable(
     };
 }
 
-export function DIModule(options: PartialBy<DIModuleOptions, 'identifier'>): ClassDecorator {
+export function DIModule(options: RegisterDIModuleMetadataOptions): ClassDecorator {
     return function (constructor: Function) {
         registerModuleMetadata(constructor, options);
     };

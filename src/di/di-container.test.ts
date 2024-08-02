@@ -1,5 +1,5 @@
 import { DIContainer } from './di-container';
-import { makeDIToken, registerConstructorDependency, registerModuleMetadata } from './utils';
+import { generateCompleteDependencyGraph, makeDIToken, registerConstructorDependency, registerModuleMetadata, serializeGraphToText } from './utils';
 import { DIModule, Inject, Injectable, OnInit } from './decorators';
 
 describe('DIContainer', () => {
@@ -400,7 +400,7 @@ describe('DIContainer', () => {
         let childContainer: DIContainer;
 
         beforeEach(() => {
-            childContainer = container.createChildContainer();
+            childContainer = container.createChildContainer('child');
         });
 
         describe('Inheritance', () => {
@@ -1141,8 +1141,8 @@ describe('DIContainer', () => {
 
             container.register({ useClass: ScopedService, provide: 'ScopedService', singleton: false });
 
-            const childContainer1 = container.createChildContainer();
-            const childContainer2 = container.createChildContainer();
+            const childContainer1 = container.createChildContainer('child1');
+            const childContainer2 = container.createChildContainer('child2');
 
             const instance1 = childContainer1.resolve<ScopedService>('ScopedService');
             const instance2 = childContainer2.resolve<ScopedService>('ScopedService');
@@ -1225,7 +1225,7 @@ describe('DIContainer', () => {
             }
 
             container.register({ useClass: BaseService, provide: BaseService.name });
-            const childContainer = container.createChildContainer();
+            const childContainer = container.createChildContainer('child');
             childContainer.register({ useClass: DerivedService, provide: DerivedService.name });
 
             const baseInstance = childContainer.resolve<BaseService>(BaseService);
@@ -1257,8 +1257,8 @@ describe('DIContainer', () => {
             @container.Injectable({ singleton: true })
             class SingletonService {}
 
-            const childContainer1 = container.createChildContainer();
-            const childContainer2 = container.createChildContainer();
+            const childContainer1 = container.createChildContainer('child1');
+            const childContainer2 = container.createChildContainer('child2');
 
             const instance1 = childContainer1.resolve<SingletonService>(SingletonService);
             const instance2 = childContainer2.resolve<SingletonService>(SingletonService);
@@ -1513,4 +1513,184 @@ describe('DIContainer', () => {
             expect(middlewareSpy).toHaveBeenCalledTimes(2);
         });
     });
+
+    describe('Dependency graph', () => {
+        beforeEach(() => {
+            DIContainer.ROOT.clear();
+        })
+
+        it('should return the dependency graph of a class', () => {
+
+            interface ILoggerService {
+                log(message: string): void;
+            }
+
+            interface IAuthService {
+                authenticate(user: string, password: string): boolean;
+            }
+
+            interface IUserService {
+                getUser(id: number): string;
+            }
+
+            interface IProductService {
+                getProduct(id: number): string;
+            }
+
+            interface IOrderService {
+                createOrder(userId: number, productId: number): string;
+            }
+
+            interface IAService {
+                callB(): void;
+            }
+
+            interface IBService {
+                callA(): void;
+            }
+
+            // Services Implementation
+            @Injectable()
+            class LoggerService implements ILoggerService {
+                log(message: string) {
+                    console.log('Log:', message);
+                }
+            }
+
+            @Injectable()
+            class AuthService implements IAuthService {
+                constructor( @Inject('ILoggerService') private logger: ILoggerService) {}
+                
+                authenticate(user: string, password: string): boolean {
+                    this.logger.log(`Authenticating ${user}:${password}`);
+                    return true; // Simplified for the example
+                }
+            }
+
+            @Injectable()
+            class UserService implements IUserService {
+                constructor( @Inject('IAuthService') private authService: IAuthService) {}
+
+                getUser(id: number): string {
+                    if (this.authService.authenticate('user', 'password')) {
+                        return `User${id}`;
+                    }
+                    return 'Unauthorized';
+                }
+            }
+
+            @Injectable()
+            class ProductService implements IProductService {
+                constructor(@Inject('IAuthService') private authService: IAuthService) {}
+
+                getProduct(id: number): string {
+                    if (this.authService.authenticate('user', 'password')) {
+                        return `Product${id}`;
+                    }
+                    return 'Unauthorized';
+                }
+            }
+
+            @Injectable()
+            class OrderService implements IOrderService {
+                constructor( 
+                    @Inject('IUserService') private userService: IUserService, 
+                    @Inject('IProductService') private productService: IProductService
+                ) {}
+
+                createOrder(userId: number, productId: number): string {
+                    const user = this.userService.getUser(userId);
+                    const product = this.productService.getProduct(productId);
+                    return `Order created for ${user} and ${product}`;
+                }
+            }
+
+            // Circular Dependency Example
+            class AService implements IAService {
+                constructor( @Inject('IAService') private bService: IBService) {}
+
+                callB() {
+                    console.log('A calls B');
+                    this.bService.callA();
+                }
+            }
+
+            class BService implements IBService {
+                constructor(@Inject('IAService') private aService: IAService) {}
+
+                callA() {
+                    console.log('B calls A');
+                    this.aService.callB();
+                }
+            }
+
+            // Module Declarations
+            @DIModule({
+                providers: [
+                    { provide: 'ILoggerService', useClass: LoggerService }
+                ],
+                exports: ['ILoggerService']
+            })
+            class CoreModule {}
+
+            @DIModule({
+                imports: [CoreModule],
+                providers: [
+                    { provide: 'IAuthService', useClass: AuthService }
+                ],
+                exports: ['IAuthService']
+            })
+            class SharedModule {}
+
+            @DIModule({
+                imports: [SharedModule],
+                providers: [
+                    { provide: 'IUserService', useClass: UserService }
+                ]
+            })
+            class FeatureModuleA {}
+
+            @DIModule({
+                imports: [SharedModule],
+                providers: [
+                    { provide: 'IProductService', useClass: ProductService }
+                ]
+            })
+            class FeatureModuleB {}
+
+            @DIModule({
+                imports: [FeatureModuleA, FeatureModuleB],
+                providers: [
+                    { provide: 'IOrderService', useClass: OrderService }
+                ]
+            })
+            class FeatureModuleC {}
+
+            @DIModule({
+                providers: [
+                    { provide: 'IAService', useClass: AService },
+                    { provide: 'IBService', useClass: BService }
+                ]
+            })
+            class CircularModule {}
+
+            // Setup the DI Container
+            const rootContainer = DIContainer.ROOT;
+
+            // Register modules
+            rootContainer.module(CoreModule);
+            rootContainer.module(SharedModule);
+            rootContainer.module(FeatureModuleA);
+            rootContainer.module(FeatureModuleB);
+            rootContainer.module(FeatureModuleC);
+            const module = rootContainer.module(CircularModule);
+
+            const graph = generateCompleteDependencyGraph(module.container);
+
+            // Serialize the dependency graph
+            const graphText = serializeGraphToText(graph);
+
+            console.log(graphText);
+        })
+    })
 });
