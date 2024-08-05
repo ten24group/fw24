@@ -4,6 +4,7 @@ import {
     applyMiddlewaresAsync,
     getConstructorDependenciesMetadata,
     getModuleMetadata,
+    getPathValue,
     getPropertyDependenciesMetadata,
     hasConstructor,
     makeDIToken,
@@ -29,13 +30,12 @@ describe('Utility Functions - Complex Scenarios', () => {
             }
 
             const token = makeDIToken(OuterFunction());
-            expect(typeof token).toBe('symbol');
-            expect(String(token)).toBe('Symbol(fw24.di.token:InnerFunction)');
+            expect(String(token)).toBe('fw24.di.token:InnerFunction');
         });
 
         it('should create a token with custom namespace', () => {
             const token = makeDIToken('test', 'custom.namespace');
-            expect(String(token)).toBe('Symbol(custom.namespace:test)');
+            expect(String(token)).toBe('custom.namespace:test');
         });
     });
 
@@ -51,7 +51,7 @@ describe('Utility Functions - Complex Scenarios', () => {
             const dependencies = getConstructorDependenciesMetadata(TestClass);
 
             expect(dependencies.length).toBe(1);
-            expect(dependencies[0].token.toString()).toBe('Symbol(fw24.di.token:Dep2)');
+            expect(dependencies[0].token.toString()).toBe('fw24.di.token:Dep2');
         });
 
         it('should merge options for the same dependency', () => {
@@ -181,7 +181,7 @@ describe('Utility Functions - Complex Scenarios', () => {
         it('should throw an error for invalid provider types', () => {
             const token = makeDIToken('Test');
 
-            expect(() => validateProviderOptions({} as any, token)).toThrowError(
+            expect(() => validateProviderOptions({} as any, token)).toThrow(
                 `Invalid provider configuration for ${token.toString()}`
             );
         });
@@ -196,4 +196,55 @@ describe('Utility Functions - Complex Scenarios', () => {
             expect(() => validateProviderOptions(invalidOptions, token)).toThrow();
         });
     });
+
+    describe('getPathValue', () => {
+        const obj = {
+            user: {
+                name: 'John Doe',
+                address: {
+                    city: 'New York',
+                    zip: '10001'
+                },
+                friends: [
+                    { name: 'Jane' },
+                    { name: 'Doe' }
+                ]
+            },
+            items: [
+                { id: 1, value: 'Item 1' },
+                { id: 2, value: 'Item 2' }
+            ]
+        };
+
+        test('should return the value at the given path', () => {
+            expect(getPathValue(obj, 'user.name')).toBe('John Doe');
+            expect(getPathValue(obj, 'user.address.city')).toBe('New York');
+            expect(getPathValue(obj, 'user.friends.0.name')).toBe('Jane');
+            expect(getPathValue(obj, 'items.1.value')).toBe('Item 2');
+        });
+
+        test('should throw an error for invalid path', () => {
+            expect(() => getPathValue(obj, 'user.age')).toThrow("Invalid path at 'user'. Key 'age' not found in object");
+            expect(() => getPathValue(obj, 'user.friends.2.name')).toThrow("Invalid path at 'user.friends'. Index '2' out of range");
+        });
+
+        test('should support pattern matching', () => {
+            expect(getPathValue(obj, 'user.*')).toEqual({
+                name: 'John Doe',
+                address: {
+                    city: 'New York',
+                    zip: '10001'
+                },
+                friends: [
+                    { name: 'Jane' },
+                    { name: 'Doe' }
+                ]
+            });
+            expect(getPathValue(obj, 'user.address.*')).toEqual({
+                city: 'New York',
+                zip: '10001'
+            });
+        });
+    });
+
 });

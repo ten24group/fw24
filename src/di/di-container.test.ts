@@ -1,6 +1,8 @@
 import { DIContainer } from './di-container';
-import { generateCompleteDependencyGraph, makeDIToken, registerConstructorDependency, registerModuleMetadata, serializeGraphToText } from './utils';
-import { DIModule, Inject, Injectable, OnInit } from './decorators';
+import { makeDIToken, registerConstructorDependency, registerModuleMetadata } from './utils';
+import { DIModule, Inject, Injectable, InjectConfig, InjectContainer, OnInit } from './decorators';
+import { ConfigProviderOptions } from './types';
+import { version } from 'os';
 
 describe('DIContainer', () => {
     let container: DIContainer;
@@ -21,19 +23,19 @@ describe('DIContainer', () => {
         it('registers a factory with useFactory', () => {
             const token = makeDIToken<string>('TestFactory');
             const factory = () => 'test';
-            container.register({ useFactory: factory, provide: token.toString() });
+            container.register({ useFactory: factory, provide: token });
             expect(container['providers'].has(token)).toBe(true);
         });
 
         it('registers a value with useValue', () => {
             const token = makeDIToken<string>('TestValue');
-            container.register({ useValue: 'test', provide: token.toString() });
+            container.register({ useValue: 'test', provide: token });
             expect(container['providers'].has(token)).toBe(true);
         });
 
         it('does not register if condition is false', () => {
             const token = makeDIToken<string>('TestCondition');
-            container.register({ useValue: 'test', condition: () => false, provide: token.toString() });
+            container.register({ useValue: 'test', condition: () => false, provide: token });
             expect(container['providers'].has(token)).toBe(false);
         });
     });
@@ -51,21 +53,21 @@ describe('DIContainer', () => {
         it('resolves a factory', async () => {
             const token = makeDIToken<string>('TestFactory');
             const factory = () => 'test';
-            container.register({ useFactory: factory, provide: token.toString() });
+            container.register({ useFactory: factory, provide: token });
             const instance = await container.resolve(token);
             expect(instance).toBe('test');
         });
 
         it('resolves a value', async () => {
             const token = makeDIToken<string>('TestValue');
-            container.register({ useValue: 'test', provide: token.toString() });
+            container.register({ useValue: 'test', provide: token });
             const instance = await container.resolve(token);
             expect(instance).toBe('test');
         });
 
         it('throws an error if no provider is found', () => {
             const token = makeDIToken<string>('NonExistent');
-            expect(() => container.resolve(token)).toThrowError('No provider found for Symbol(fw24.di.token:NonExistent)');
+            expect(() => container.resolve(token)).toThrowError('No provider found for fw24.di.token:NonExistent');
         });
 
         it('handles circular dependencies', async () => {
@@ -221,7 +223,7 @@ describe('DIContainer', () => {
         it('resolves a factory asynchronously', async () => {
             const token = makeDIToken<string>('TestFactory');
             const factory = () => 'test';
-            container.register({ useFactory: factory, provide: token.toString() });
+            container.register({ useFactory: factory, provide: token });
 
             const instance = await container.resolveAsync(token);
             expect(instance).toBe('test');
@@ -229,7 +231,7 @@ describe('DIContainer', () => {
 
         it('resolves a value asynchronously', async () => {
             const token = makeDIToken<string>('TestValue');
-            container.register({ useValue: 'test', provide: token.toString() });
+            container.register({ useValue: 'test', provide: token });
 
             const instance = await container.resolveAsync(token);
             expect(instance).toBe('test');
@@ -353,11 +355,11 @@ describe('DIContainer', () => {
             class UpdatedService {}
 
             const token = makeDIToken<OriginalService>('Service');
-            container.register({ useClass: OriginalService, provide: token.toString() });
+            container.register({ useClass: OriginalService, provide: token });
 
             let instance = container.resolve(token);
             expect(instance).toBeInstanceOf(OriginalService);
-            container.register({ useClass: UpdatedService, provide: token.toString() });
+            container.register({ useClass: UpdatedService, provide: token });
 
             instance = container.resolve(token);
             expect(instance).toBeInstanceOf(UpdatedService);
@@ -475,7 +477,7 @@ describe('DIContainer', () => {
                 @Injectable()
                 class ParentService {}
 
-                childContainer.registerInParentContainer({ useClass: ParentService, provide: 'ParentService' });
+                childContainer.registerInParent({ useClass: ParentService, provide: 'ParentService' });
 
                 const instance = container.resolve<ParentService>('ParentService');
 
@@ -496,7 +498,7 @@ describe('DIContainer', () => {
                     condition: () => false
                 });
 
-                expect(() => childContainer.resolve('ConditionalService')).toThrow('No provider found for Symbol(fw24.di.token:ConditionalService)');
+                expect(() => childContainer.resolve('ConditionalService')).toThrow('No provider found for fw24.di.token:ConditionalService');
             });
         });
 
@@ -932,7 +934,7 @@ describe('DIContainer', () => {
                 provide: 'test',
                 useClass: TestClassA
             });
-            container.removeProvider('test');
+            container.removeProvidersFor('test');
             expect(() => container.resolve<TestClassA>('test')).toThrow();
         });
 
@@ -944,7 +946,7 @@ describe('DIContainer', () => {
             });
 
             const instance1 = container.resolve<TestClassA>('test');
-            container.removeProvider('test');
+            container.removeProvidersFor('test');
             container.register({
                 provide: 'test',
                 useClass: TestClassB
@@ -956,7 +958,7 @@ describe('DIContainer', () => {
         });
 
         test('handles removing non-existent provider gracefully', () => {
-            expect(() => container.removeProvider('nonExistent')).not.toThrow();
+            expect(() => container.removeProvidersFor('nonExistent')).not.toThrow();
         });
     });
 
@@ -988,7 +990,7 @@ describe('DIContainer', () => {
             const instance = container.resolve<TestClassA>('testValue');
             expect(instance).toBe('test');
 
-            expect(() => container.resolve('test')).toThrow('No provider found for Symbol(fw24.di.token:test)');
+            expect(() => container.resolve('test')).toThrow('No provider found for fw24.di.token:test');
 
             const instance2 = module.container.resolve('test');
             expect(instance2).toBeInstanceOf(TestClassA);
@@ -1062,7 +1064,7 @@ describe('DIContainer', () => {
             const instance = container.resolve<TestClassA>('testValue');
             expect(instance).toBe('test');
 
-            expect(() => container.resolve('test')).toThrow('No provider found for Symbol(fw24.di.token:test)');
+            expect(() => container.resolve('test')).toThrow('No provider found for fw24.di.token:test');
 
             const instance2 = module.container.resolve('test');
             expect(instance2).toBeInstanceOf(TestClassA);
@@ -1161,7 +1163,7 @@ describe('DIContainer', () => {
             @container.Injectable({ condition: conditionFn })
             class DynamicConditionService {}
 
-            container.register({ useClass: DynamicConditionService, provide: token.toString(), condition: conditionFn });
+            container.register({ useClass: DynamicConditionService, provide: token, condition: conditionFn });
 
             if (container.has(token)) {
                 expect(container.resolve(token)).toBeInstanceOf(DynamicConditionService);
@@ -1199,7 +1201,7 @@ describe('DIContainer', () => {
                 throw new Error('Factory error');
             });
 
-            container.register({ useFactory: factory, provide: token.toString() });
+            container.register({ useFactory: factory, provide: token });
 
             expect(() => container.resolve(token)).toThrow('Factory error');
             expect(factory).toHaveBeenCalled();
@@ -1336,7 +1338,7 @@ describe('DIContainer', () => {
             const token = makeDIToken<string>('AsyncFactory');
             const factory = async () => 'async test';
 
-            container.register({ useFactory: factory, provide: token.toString() });
+            container.register({ useFactory: factory, provide: token });
 
             const instance = await container.resolveAsync(token);
             expect(instance).toBe('async test');
@@ -1372,7 +1374,7 @@ describe('DIContainer', () => {
             @container.Injectable()
             class MiddlewareService {}
 
-            expect(() => container.resolve<MiddlewareService>('MiddlewareService')).toThrowError('Middleware error');
+            expect(() => container.resolve<MiddlewareService>('MiddlewareService')).toThrow('Middleware error');
         });
     });
 
@@ -1514,183 +1516,356 @@ describe('DIContainer', () => {
         });
     });
 
-    describe('Dependency graph', () => {
+    describe('Config resolveConfig', () => {
+        let rootContainer: DIContainer;
+        let childContainer: DIContainer;
+
         beforeEach(() => {
-            DIContainer.ROOT.clear();
-        })
+            rootContainer = new DIContainer(undefined, 'ROOT');
+            childContainer = rootContainer.createChildContainer('CHILD');
+        });
 
-        it('should return the dependency graph of a class', () => {
+        it('should register and resolve configuration from the root container', () => {
+            const configProvider: ConfigProviderOptions = {
+                provide: 'app.name',
+                useConfig: 'TestApp',
+                priority: 1,
+            };
 
-            interface ILoggerService {
-                log(message: string): void;
+            rootContainer.registerConfigProvider(configProvider);
+
+            const resolvedConfig = rootContainer.resolveConfig('app.name');
+            expect(resolvedConfig).toBe('TestApp');
+        });
+
+        it('should merge and resolve configurations from parent and child containers', () => {
+            const rootConfigProvider: ConfigProviderOptions = {
+                provide: 'app',
+                useConfig: { name: 'TestApp', version: '1.0' },
+                priority: 1,
+            };
+
+            const childConfigProvider: ConfigProviderOptions = {
+                provide: 'app',
+                useConfig: { version: '2.0' },
+                priority: 1,
+            };
+
+            rootContainer.registerConfigProvider(rootConfigProvider);
+            childContainer.registerConfigProvider(childConfigProvider);
+
+            const resolvedConfig = childContainer.resolveConfig('app');
+            expect(resolvedConfig).toEqual({ name: 'TestApp', version: '2.0' });
+        });
+
+        it('should respect priority when resolving configuration', () => {
+            const lowPriorityConfig: ConfigProviderOptions = {
+                provide: 'app.name',
+                useConfig: 'LowPriorityApp',
+                priority: 1,
+            };
+
+            const highPriorityConfig: ConfigProviderOptions = {
+                provide: 'app.name',
+                useConfig: 'HighPriorityApp',
+                priority: 2,
+            };
+
+            rootContainer.registerConfigProvider(lowPriorityConfig);
+            rootContainer.registerConfigProvider(highPriorityConfig);
+
+            const resolvedConfig = rootContainer.resolveConfig('app.name');
+            expect(resolvedConfig).toBe('HighPriorityApp');
+        });
+
+        it('should filter configurations based on tags', () => {
+            const configWithTag: ConfigProviderOptions = {
+                provide: 'app.name',
+                useConfig: 'TaggedApp',
+                tags: ['release'],
+            };
+
+            const configWithoutTag: ConfigProviderOptions = {
+                provide: 'app.name',
+                useConfig: 'UntaggedApp',
+            };
+
+            rootContainer.registerConfigProvider(configWithTag);
+            rootContainer.registerConfigProvider(configWithoutTag);
+
+            const resolvedConfigWithTags = rootContainer.resolveConfig('app.name', {
+                tags: ['release'],
+            });
+            expect(resolvedConfigWithTags).toBe('TaggedApp');
+
+        });
+
+        it('should throw for non-existent configuration paths', () => {
+            expect(() => rootContainer.resolveConfig('non.existent.path')).toThrow();
+        });
+    });
+
+
+    describe('DI Container Self Injection', () => {
+        let rootContainer: DIContainer;
+
+        beforeEach(() => {
+            rootContainer = new DIContainer(undefined, 'ROOT');
+        });
+
+        @Injectable()
+        class ServiceWithContainer {
+            constructor(
+                @InjectContainer() private container: DIContainer
+            ) {}
+
+            getContainerIdentifier(): string {
+                return this.container.containerId;
+            }
+        }
+
+        // Another mock service class to test dependency resolution
+        @Injectable()
+        class AnotherService {
+            getValue(): string {
+                return 'Hello from AnotherService';
+            }
+        }
+
+        // Service class that depends on another service and the container
+        @Injectable()
+        class ServiceWithDependencies {
+            constructor(
+                @Inject(AnotherService) private anotherService: AnotherService,
+                @InjectContainer() private container: DIContainer
+            ) {}
+
+            getServiceValue(): string {
+                return this.anotherService.getValue();
             }
 
-            interface IAuthService {
-                authenticate(user: string, password: string): boolean;
+            getContainerIdentifier(): string {
+                return this.container.containerId;
+            }
+        }
+
+         @Injectable()
+        class ServiceWithPropertyDependencies {
+            @InjectContainer() 
+            private container?: DIContainer
+
+            constructor(
+                @Inject(AnotherService) private anotherService: AnotherService,
+            ) {}
+
+            getServiceValue(): string {
+                return this.anotherService.getValue();
             }
 
-            interface IUserService {
-                getUser(id: number): string;
+            getContainerIdentifier() {
+                return this.container?.containerId;
             }
+        }
 
-            interface IProductService {
-                getProduct(id: number): string;
+        it('should inject DIContainer into a service', () => {
+            rootContainer.register({ provide: ServiceWithContainer, useClass: ServiceWithContainer });
+            const serviceInstance = rootContainer.resolve(ServiceWithContainer);
+
+            expect(serviceInstance).toBeInstanceOf(ServiceWithContainer);
+            expect(serviceInstance?.getContainerIdentifier()).toBe('ROOT');
+        });
+
+        it('should resolve dependencies and inject DIContainer', () => {
+            rootContainer.register({ provide: AnotherService, useClass: AnotherService });
+            rootContainer.register({ provide: ServiceWithDependencies, useClass: ServiceWithDependencies });
+
+            const serviceInstance = rootContainer.resolve(ServiceWithDependencies);
+
+            expect(serviceInstance).toBeInstanceOf(ServiceWithDependencies);
+            expect(serviceInstance?.getServiceValue()).toBe('Hello from AnotherService');
+            expect(serviceInstance?.getContainerIdentifier()).toBe('ROOT');
+        });
+
+        it('should resolve dependencies and inject DIContainer as property injection', () => {
+            rootContainer.register({ provide: AnotherService, useClass: AnotherService });
+            rootContainer.register({ provide: ServiceWithPropertyDependencies, useClass: ServiceWithPropertyDependencies });
+
+            const serviceInstance = rootContainer.resolve(ServiceWithPropertyDependencies);
+
+            expect(serviceInstance).toBeInstanceOf(ServiceWithPropertyDependencies);
+            expect(serviceInstance?.getServiceValue()).toBe('Hello from AnotherService');
+            expect(serviceInstance?.getContainerIdentifier()).toBe('ROOT');
+        });
+
+        it('should inject DIContainer into a service with child container', () => {
+            const childContainer = rootContainer.createChildContainer('CHILD');
+            childContainer.register({ provide: ServiceWithContainer, useClass: ServiceWithContainer });
+
+            const serviceInstance = childContainer.resolve(ServiceWithContainer);
+
+            expect(serviceInstance).toBeInstanceOf(ServiceWithContainer);
+            expect(serviceInstance?.getContainerIdentifier()).toBe('CHILD');
+        });
+
+        it('should resolve from child container and inject DIContainer', () => {
+            const childContainer = rootContainer.createChildContainer('CHILD');
+            childContainer.register({ provide: AnotherService, useClass: AnotherService });
+            childContainer.register({ provide: ServiceWithDependencies, useClass: ServiceWithDependencies });
+
+            const serviceInstance = childContainer.resolve(ServiceWithDependencies);
+
+            expect(serviceInstance).toBeInstanceOf(ServiceWithDependencies);
+            expect(serviceInstance?.getServiceValue()).toBe('Hello from AnotherService');
+            expect(serviceInstance?.getContainerIdentifier()).toBe('CHILD');
+        });
+
+        it('should resolve from child container and inject DIContainer as property injection', () => {
+            const childContainer = rootContainer.createChildContainer('CHILD');
+            childContainer.register({ provide: AnotherService, useClass: AnotherService });
+            childContainer.register({ provide: ServiceWithPropertyDependencies, useClass: ServiceWithPropertyDependencies });
+
+            const serviceInstance = childContainer.resolve(ServiceWithPropertyDependencies);
+
+            expect(serviceInstance).toBeInstanceOf(ServiceWithPropertyDependencies);
+            expect(serviceInstance?.getServiceValue()).toBe('Hello from AnotherService');
+            expect(serviceInstance?.getContainerIdentifier()).toBe('CHILD');
+        });
+    });
+
+    describe('Config Injection via Decorator', () => {
+        let rootContainer: DIContainer;
+        let childContainer: DIContainer;
+
+        // Mock service class that requires configuration injection
+        @Injectable()
+        class ServiceWithConfig {
+            constructor(
+                @InjectConfig('app.name') private appName: string,
+                @InjectConfig('app.version') private appVersion: string
+            ) {}
+
+            getAppDetails(): string {
+                return `App: ${this.appName}, Version: ${this.appVersion}`;
             }
+        }
 
-            interface IOrderService {
-                createOrder(userId: number, productId: number): string;
+        // Another service with configuration injected via property
+        @Injectable()
+        class ServiceWithPropertyConfig {
+            @InjectConfig('app.name')
+            private appName!: string;
+
+            @InjectConfig('app.version')
+            private appVersion!: string;
+
+            getAppDetails(): string {
+                return `App: ${this.appName}, Version: ${this.appVersion}`;
             }
+        }
 
-            interface IAService {
-                callB(): void;
-            }
+        beforeEach(() => {
+            rootContainer = new DIContainer(undefined, 'ROOT');
+            childContainer = rootContainer.createChildContainer('CHILD');
+        });
 
-            interface IBService {
-                callA(): void;
-            }
+        it('should inject configuration into a service via constructor', () => {
+            rootContainer.registerConfigProvider({
+                provide: 'app',
+                useConfig: { name: 'TestApp', version: '1.0' }
+            });
 
-            // Services Implementation
-            @Injectable()
-            class LoggerService implements ILoggerService {
-                log(message: string) {
-                    console.log('Log:', message);
-                }
-            }
+            rootContainer.register({ provide: ServiceWithConfig, useClass: ServiceWithConfig });
+            const serviceInstance = rootContainer.resolve(ServiceWithConfig);
 
-            @Injectable()
-            class AuthService implements IAuthService {
-                constructor( @Inject('ILoggerService') private logger: ILoggerService) {}
-                
-                authenticate(user: string, password: string): boolean {
-                    this.logger.log(`Authenticating ${user}:${password}`);
-                    return true; // Simplified for the example
-                }
-            }
+            expect(serviceInstance).toBeInstanceOf(ServiceWithConfig);
+            expect(serviceInstance?.getAppDetails()).toBe('App: TestApp, Version: 1.0');
+        });
 
-            @Injectable()
-            class UserService implements IUserService {
-                constructor( @Inject('IAuthService') private authService: IAuthService) {}
+        it('should inject configuration into a service via properties', () => {
+            rootContainer.registerConfigProvider({
+                provide: 'app',
+                useConfig: { name: 'TestApp', version: '1.0' }
+            });
 
-                getUser(id: number): string {
-                    if (this.authService.authenticate('user', 'password')) {
-                        return `User${id}`;
-                    }
-                    return 'Unauthorized';
-                }
-            }
+            rootContainer.register({ provide: ServiceWithPropertyConfig, useClass: ServiceWithPropertyConfig });
+            const serviceInstance = rootContainer.resolve(ServiceWithPropertyConfig);
 
-            @Injectable()
-            class ProductService implements IProductService {
-                constructor(@Inject('IAuthService') private authService: IAuthService) {}
+            expect(serviceInstance).toBeInstanceOf(ServiceWithPropertyConfig);
+            expect(serviceInstance?.getAppDetails()).toBe('App: TestApp, Version: 1.0');
+        });
 
-                getProduct(id: number): string {
-                    if (this.authService.authenticate('user', 'password')) {
-                        return `Product${id}`;
-                    }
-                    return 'Unauthorized';
-                }
-            }
+        it('should merge configurations from parent and child containers and inject', () => {
+            rootContainer.registerConfigProvider({
+                provide: 'app',
+                useConfig: { name: 'TestApp', version: '1.0' }
+            });
 
-            @Injectable()
-            class OrderService implements IOrderService {
-                constructor( 
-                    @Inject('IUserService') private userService: IUserService, 
-                    @Inject('IProductService') private productService: IProductService
-                ) {}
+            childContainer.registerConfigProvider({
+                provide: 'app',
+                useConfig: { version: '2.0' }
+            });
 
-                createOrder(userId: number, productId: number): string {
-                    const user = this.userService.getUser(userId);
-                    const product = this.productService.getProduct(productId);
-                    return `Order created for ${user} and ${product}`;
-                }
-            }
+            childContainer.register({ provide: ServiceWithConfig, useClass: ServiceWithConfig });
+            const serviceInstance = childContainer.resolve(ServiceWithConfig);
 
-            // Circular Dependency Example
-            class AService implements IAService {
-                constructor( @Inject('IAService') private bService: IBService) {}
+            expect(serviceInstance).toBeInstanceOf(ServiceWithConfig);
+            expect(serviceInstance?.getAppDetails()).toBe('App: TestApp, Version: 2.0');
+        });
 
-                callB() {
-                    console.log('A calls B');
-                    this.bService.callA();
-                }
-            }
+        it('should respect priority when injecting configuration', () => {
+            rootContainer.registerConfigProvider({
+                provide: 'app',
+                useConfig: {
+                    name: 'LowPriorityApp',
+                    version: '1.0'
+                },
+                priority: 1
+            });
 
-            class BService implements IBService {
-                constructor(@Inject('IAService') private aService: IAService) {}
+            rootContainer.registerConfigProvider({
+                provide: 'app.name',
+                useConfig: 'HighPriorityApp',
+                priority: 2
+            });
 
-                callA() {
-                    console.log('B calls A');
-                    this.aService.callB();
-                }
-            }
+            rootContainer.register({ provide: ServiceWithConfig, useClass: ServiceWithConfig });
+            const serviceInstance = rootContainer.resolve(ServiceWithConfig);
 
-            // Module Declarations
-            @DIModule({
-                providers: [
-                    { provide: 'ILoggerService', useClass: LoggerService }
-                ],
-                exports: ['ILoggerService']
-            })
-            class CoreModule {}
+            expect(serviceInstance).toBeInstanceOf(ServiceWithConfig);
+            expect(serviceInstance?.getAppDetails()).toContain('HighPriorityApp');
+        });
 
-            @DIModule({
-                imports: [CoreModule],
-                providers: [
-                    { provide: 'IAuthService', useClass: AuthService }
-                ],
-                exports: ['IAuthService']
-            })
-            class SharedModule {}
+        it('should filter configurations based on tags and inject', () => {
 
-            @DIModule({
-                imports: [SharedModule],
-                providers: [
-                    { provide: 'IUserService', useClass: UserService }
-                ]
-            })
-            class FeatureModuleA {}
+            rootContainer.registerConfigProvider({
+                provide: 'app',
+                useConfig: {
+                    version: '1.0---'
+                },
+            });
 
-            @DIModule({
-                imports: [SharedModule],
-                providers: [
-                    { provide: 'IProductService', useClass: ProductService }
-                ]
-            })
-            class FeatureModuleB {}
+            rootContainer.registerConfigProvider({
+                provide: 'app.name',
+                useConfig: 'TaggedApp',
+                tags: ['release']
+            });
 
-            @DIModule({
-                imports: [FeatureModuleA, FeatureModuleB],
-                providers: [
-                    { provide: 'IOrderService', useClass: OrderService }
-                ]
-            })
-            class FeatureModuleC {}
+            rootContainer.registerConfigProvider({
+                provide: 'app.name',
+                useConfig: 'UntaggedApp'
+            });
 
-            @DIModule({
-                providers: [
-                    { provide: 'IAService', useClass: AService },
-                    { provide: 'IBService', useClass: BService }
-                ]
-            })
-            class CircularModule {}
+            rootContainer.register({ provide: ServiceWithConfig, useClass: ServiceWithConfig, tags: ['release'] });
+            const serviceInstance = rootContainer.resolve(ServiceWithConfig, { tags: ['release'] });
 
-            // Setup the DI Container
-            const rootContainer = DIContainer.ROOT;
+            expect(serviceInstance).toBeInstanceOf(ServiceWithConfig);
+            expect(serviceInstance?.getAppDetails()).toContain('TaggedApp');
+        });
 
-            // Register modules
-            rootContainer.module(CoreModule);
-            rootContainer.module(SharedModule);
-            rootContainer.module(FeatureModuleA);
-            rootContainer.module(FeatureModuleB);
-            rootContainer.module(FeatureModuleC);
-            const module = rootContainer.module(CircularModule);
+        it('should throw an error for non-existent configuration paths during injection', () => {
+            rootContainer.register({ provide: ServiceWithConfig, useClass: ServiceWithConfig });
+            expect(() => rootContainer.resolve(ServiceWithConfig)).toThrow();
+        });
+    });
 
-            const graph = generateCompleteDependencyGraph(module.container);
-
-            // Serialize the dependency graph
-            const graphText = serializeGraphToText(graph);
-
-            console.log(graphText);
-        })
-    })
 });

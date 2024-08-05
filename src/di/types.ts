@@ -1,42 +1,80 @@
+import { PartialBy } from "../utils";
 import { DIContainer } from "./di-container";
 
-export type Token<T> = symbol & { __type?: T };
-export type DepIdentifier<T extends unknown = unknown> = symbol | string | Function | Token<T> | ClassConstructor<T>;
+export type Token = string;
+export type DepIdentifier<T = any> = string | Function | ClassConstructor<T>;
 export type ClassConstructor<T extends any = any> = new (...args: any[]) => T;
 
 export type BaseProviderOptions = {
     provide: DepIdentifier<any>;
     singleton?: boolean;
     priority?: number;
+    tags?: string[]; // Tags for additional filtering
     condition?: () => boolean;
+    override?: boolean; // Indicates if this provider should explicitly override others
 }
 
-export type ClassProviderOptions<T> = BaseProviderOptions & {
+export interface ClassProviderOptions<T = ClassConstructor<any>> extends BaseProviderOptions {
     useClass: ClassConstructor<T>;
 }
 
-export type FactoryProviderOptions<T> = BaseProviderOptions & {
-    deps?: Token<any>[];
+export interface FactoryProviderOptions<T = any> extends BaseProviderOptions {
+    deps?: DepIdentifier[];
     useFactory: (...args: any[]) => T;
 }
 
-export type ValueProviderOptions<T> = BaseProviderOptions & {
+export interface ValueProviderOptions<T = any> extends BaseProviderOptions {
     useValue: T;
 }
 
-export type ProviderOptions<T extends unknown = unknown> =  ClassProviderOptions<T> | FactoryProviderOptions<T> | ValueProviderOptions<T>;
+export interface ConfigProviderOptions<T = any> extends BaseProviderOptions {
+    useConfig: T; // Configuration object
+}
 
-export function isClassProviderOptions<T>(options: ProviderOptions<T>): options is ClassProviderOptions<T> {
+export interface AliasProviderOptions<T> extends BaseProviderOptions {
+    aliasFor: DepIdentifier<T>;
+}
+
+export type ProviderOptions<T = any> =  
+    | ClassProviderOptions<T> 
+    | FactoryProviderOptions<T> 
+    | ValueProviderOptions<T> 
+    | ConfigProviderOptions<T>
+    | AliasProviderOptions<T>;
+
+// util type to infer the right provider type from the passed in ProviderOptions
+export type InferProviderType<T> = T extends ClassProviderOptions<infer U> ? U
+    : T extends FactoryProviderOptions<infer U> ? U
+    : T extends ValueProviderOptions<infer U> ? U
+    : T extends ConfigProviderOptions<infer U> ? U
+    : never;
+
+// the stored value of a provider byt the container
+export type InternalProviderOptions<T = any> = {
+    _id: string;
+    _type: 'config' | 'standard';
+    _container: DIContainer; // Reference to the container that registered this provider
+    _provider: ProviderOptions<T>;
+}
+
+export function isClassProviderOptions<T>(options: BaseProviderOptions): options is ClassProviderOptions<T> {
     return (options as ClassProviderOptions<T>).useClass !== undefined;
 }
 
-export function isFactoryProviderOptions<T>(options: ProviderOptions<T>): options is FactoryProviderOptions<T> {
+export function isFactoryProviderOptions<T>(options: BaseProviderOptions): options is FactoryProviderOptions<T> {
     return (options as FactoryProviderOptions<T>).useFactory !== undefined;
 }
 
-
-export function isValueProviderOptions<T>(options: ProviderOptions<T>): options is ValueProviderOptions<T> {
+export function isValueProviderOptions<T>(options: BaseProviderOptions): options is ValueProviderOptions<T> {
     return (options as ValueProviderOptions<T>).useValue !== undefined;
+}
+
+export function isConfigProviderOptions<T>(options: BaseProviderOptions): options is ConfigProviderOptions<T> {
+    return (options as ConfigProviderOptions<any>).useConfig !== undefined;
+}
+
+export function isAliasProviderOptions<T>(options: BaseProviderOptions): options is AliasProviderOptions<T> {
+    return (options as AliasProviderOptions<any>).aliasFor !== undefined;
 }
 
 export type Middleware<T> = {
@@ -49,10 +87,10 @@ export type MiddlewareAsync<T> = {
 };
 
 export type DIModuleOptions = {
-    identifier: Token<any>;
+    identifier: ClassConstructor;
     imports?: ClassConstructor[];
     exports?: DepIdentifier[];
-    providers?: ProviderOptions[];
+    providers?: ProviderOptions<any>[];
 }
 
 export interface DIModule extends DIModuleOptions {}
@@ -62,22 +100,26 @@ export type DIModuleConstructor = { new (...args: any[]): DIModule };
 
 export type InjectOptions<T extends unknown = unknown> = {
     isOptional?: boolean;
+    isConfig?: boolean;
     defaultValue?: T
 };
 
 export type ParameterInjectMetadata<T extends unknown = unknown> = InjectOptions<T> & {
-    token: Token<any>;
+    token: Token;
 };
 
 export type PropertyInjectMetadata<T extends unknown = unknown> = InjectOptions<T> & {
-    token: Token<any>;
+    token: Token;
     propertyKey: string | symbol;
 };
 
+export type PriorityCriteria =
+  | { greaterThan: number }
+  | { lessThan: number }
+  | { eq: number }
+  | { between: [number, number] };
+  
 
-export type DependencyGraphNode = {
-    token: string;
-    dependencies: Set<string>;   
-    resolvedFrom: string; // Container where the provider is resolved from
-    availableInContainers: Set<string>; // Containers where this provider is available
+export interface InjectableOptions extends PartialBy<BaseProviderOptions, 'provide'> {
+    providedIn?: 'ROOT' | ClassConstructor;
 }

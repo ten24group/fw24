@@ -61,21 +61,53 @@ export function DIModule(options: RegisterDIModuleMetadataOptions): ClassDecorat
     };
 }
 
-export function Inject<T>(depNameOrToken: DepIdentifier<T>, options: InjectOptions<T> = {}): PropertyDecorator & ParameterDecorator {
+export function Inject<T>(dependencyToken: DepIdentifier<T>, options: InjectOptions<T> = {}): PropertyDecorator & ParameterDecorator {
 
     return (target: any, propertyKey: string | symbol | undefined, parameterIndex?: number) => {
         
         if (typeof parameterIndex === 'number') {
 
-            registerConstructorDependency(target.prototype.constructor, parameterIndex, depNameOrToken, { ...options });
+            registerConstructorDependency(target.prototype.constructor, parameterIndex, dependencyToken, { ...options });
 
         } else if (propertyKey !== undefined) {
 
             registerPropertyDependency(
                 target.constructor as ClassConstructor, 
                 propertyKey, 
-                depNameOrToken, 
+                dependencyToken, 
                 { ...options }
+            );
+        }
+    };
+}
+
+
+// Special decorator for injecting the container itself
+export function InjectContainer(): PropertyDecorator & ParameterDecorator {
+    return (target: any, propertyKey: string | symbol | undefined, parameterIndex?: number) => {
+        if (typeof parameterIndex === 'number') {
+            registerConstructorDependency(target.prototype.constructor, parameterIndex, DIContainer, {});
+        } else if (propertyKey !== undefined) {
+            registerPropertyDependency(
+                target.constructor as ClassConstructor,
+                propertyKey,
+                DIContainer,
+            );
+        }
+    };
+}
+
+// Special decorator for injecting configuration paths
+export function InjectConfig(configPath: string, options: InjectOptions<any> = {}): PropertyDecorator & ParameterDecorator {
+    return (target: any, propertyKey: string | symbol | undefined, parameterIndex?: number) => {
+        if (typeof parameterIndex === 'number') {
+            registerConstructorDependency(target.prototype.constructor, parameterIndex, configPath, { ...options, isConfig: true });
+        } else if (propertyKey !== undefined) {
+            registerPropertyDependency(
+                target.constructor as ClassConstructor,
+                propertyKey,
+                configPath,
+                { ...options, isConfig: true }
             );
         }
     };
