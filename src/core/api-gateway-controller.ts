@@ -261,10 +261,9 @@ abstract class APIController {
    * Creates a new instance of the controller and returns its LambdaHandler method.
    * @returns The LambdaHandler method of the controller.
    */
-  static CreateHandler( constructorFunc: string ): Handler {
-    const instance = DIContainer.ROOT.resolve<APIController>(constructorFunc);
-    // const controller = new constructorFunc();
-    return instance.LambdaHandler;
+  static CreateHandler( constructorFunc: { new (): APIController} ) {
+    const controller = new constructorFunc();
+    return controller.LambdaHandler;
   }
 }
 

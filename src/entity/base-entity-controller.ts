@@ -3,7 +3,6 @@ import { Request } from '../interfaces/request';
 import { Response } from '../interfaces/response';
 import { Delete, Get, Patch, Post } from '../decorators/method';
 import { BaseEntityService } from './base-service';
-import { defaultMetaContainer } from './entity-metadata-container';
 import { EntitySchema } from './base-entity';
 import { createLogger } from '../logging';
 import { safeParseInt } from '../utils/parse';
@@ -15,7 +14,7 @@ import { EntityFilterCriteria } from './query-types';
  * Abstract base class for entity controllers.
  * @template Sch - The entity schema type.
  */
-export abstract class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIController {
+export class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIController {
 	
 	readonly logger = createLogger(BaseEntityController.name);
 
@@ -23,16 +22,10 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
      * Creates an instance of BaseEntityController.
      * @param {string} entityName - The name of the entity.
      */
-    constructor(protected readonly entityName: string) {
+    constructor(protected readonly entityName: string, protected readonly entityService: BaseEntityService<Sch>) {
         super();
         this.entityName = entityName;
     }
-
-    /**
-     * Initializes the dependency injection for the entity controller.
-     * @returns {Promise<void>} A promise that resolves when the dependency injection is initialized.
-     */
-    abstract initDI(): Promise<void>;
 
     /**
      * Initializes the entity controller.
@@ -42,10 +35,6 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
      * @returns {Promise<void>} A promise that resolves when the initialization is complete.
      */
     async initialize(event: any, context: any): Promise<void> {
-        await this.initDI();
-
-        // TODO: rest of the init setup
-		
 		this.logger.debug(`BaseEntityController.initialize - done: ${event} ${context}`);
     }
 
@@ -55,7 +44,7 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
      * @returns {S} The entity service.
      */
     public getEntityService<S extends BaseEntityService<Sch>>(): S {
-        return defaultMetaContainer.getEntityServiceByEntityName<S>(this.entityName);
+        return this.entityService as S;
     }
 
 	/**
