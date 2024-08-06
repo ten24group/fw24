@@ -44,6 +44,11 @@ export function Injectable(
 
             moduleMetadata.providers = [...(moduleMetadata.providers || []), optionsCopy];
 
+            // handle dynamically loaded providers after module has been registered
+            if(moduleMetadata.container){
+                moduleMetadata.container.register(optionsCopy);
+            }
+
             registerModuleMetadata(options.providedIn, moduleMetadata, true);
 
         } else {

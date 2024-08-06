@@ -1,6 +1,6 @@
-import { createLogger, ILogger } from './../logging/index';
 import { v4 as generateUUID } from 'uuid';
 import { DeepPartial, PartialBy } from '../utils';
+import { createLogger, ILogger } from './../logging/index';
 import { Injectable } from './decorators';
 
 import {
@@ -12,17 +12,17 @@ import {
     FactoryProviderOptions,
     InternalProviderOptions,
     isAliasProviderOptions,
-    isClassProviderOptions, 
-    isConfigProviderOptions, 
-    isFactoryProviderOptions, 
-    isValueProviderOptions, 
-    Middleware, 
+    isClassProviderOptions,
+    isConfigProviderOptions,
+    isFactoryProviderOptions,
+    isValueProviderOptions,
+    Middleware,
     MiddlewareAsync,
     PriorityCriteria,
     ProviderOptions,
     Token
 } from './types';
-import { applyMiddlewares, applyMiddlewaresAsync, filterAndSortProviders, flattenConfig, getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPathValue, getPropertyDependenciesMetadata, hasConstructor, makeDIToken, matchesPattern, matchesPriority, setPathValue, stripDITokenNamespace, validateProviderOptions } from './utils';
+import { applyMiddlewares, applyMiddlewaresAsync, filterAndSortProviders, flattenConfig, getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPathValue, getPropertyDependenciesMetadata, hasConstructor, makeDIToken, matchesPattern, registerModuleMetadata, setPathValue, stripDITokenNamespace, validateProviderOptions } from './utils';
 
 export class DIContainer {
 
@@ -91,7 +91,7 @@ export class DIContainer {
 
     module(target: ClassConstructor){
 
-        const moduleMeta = getModuleMetadata(target)
+        const moduleMeta = getModuleMetadata(target);
 
         if(!moduleMeta){
             throw new Error(`Module ${target.name} does not have any metadata, make sure it's decorated with @DIModule`);
@@ -99,7 +99,15 @@ export class DIContainer {
 
         const { imports = [], exports = [], providers = [], identifier } = moduleMeta;
 
-        const moduleContainer = this.createChildContainer(identifier.name); 
+        const moduleContainer = this.createChildContainer(identifier); 
+
+        if(moduleMeta.container){
+            this.logger.warn(`Module ${moduleMeta.identifier} already has a container, replacing it. any dynamically loaded provider won't get registered in the previous container: [ TODO: rethink providedIn feature ]`);
+        } else {
+            this.logger.warn(`Module ${moduleMeta.identifier} metadata does not have a container, assigning one.`, { id: moduleContainer.containerId });
+            moduleMeta.container = moduleContainer;
+            registerModuleMetadata(target, moduleMeta, true);
+        }
         
         // make sure all the module providers are loaded into the module's container's providers
         for (const provider of providers) {
@@ -590,9 +598,19 @@ export class DIContainer {
         }
     }
 
-    has(dependencyToken: DepIdentifier): boolean {
+    has(
+        dependencyToken: DepIdentifier, 
+        criteria?: {
+            priority?: PriorityCriteria;
+            tags?: string[];
+        } 
+    ): boolean {
+
         const token = this.createToken(dependencyToken);
-        return this.providers.has(token);
+
+        const bestProviders = this.collectBestProvidersFor<any>(token, criteria);
+
+        return bestProviders.length > 0;
     }
 
     clear(clearChildContainers = true) {

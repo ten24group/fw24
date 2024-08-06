@@ -87,7 +87,8 @@ export type MiddlewareAsync<T> = {
 };
 
 export type DIModuleOptions = {
-    identifier: ClassConstructor;
+    identifier: string;
+    container: DIContainer;
     imports?: ClassConstructor[];
     exports?: DepIdentifier[];
     providers?: ProviderOptions<any>[];
