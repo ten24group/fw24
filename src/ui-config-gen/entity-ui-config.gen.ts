@@ -22,7 +22,9 @@ import { DIContainer } from '../di';
 
 export class EntityUIConfigGen{
     readonly logger = createLogger(EntityUIConfigGen.name);
-    readonly uiGebDIContainer = DIContainer.ROOT.createChildContainer('ui-config-gen');
+    // make sure to create a child container to not pollute anything in the Application container 
+    // while scanning and loading stuff
+    readonly uiGebDIContainer = Fw24.getInstance().getAppDIContainer().createChildContainer('ui-config-gen-container');
 
     async run(){
         this.process();
@@ -127,29 +129,37 @@ export class EntityUIConfigGen{
 
     @LogDuration()
     async scanAndLoadServices(serviceDirectories: Array<string>){
-        const services = new Map<string, BaseEntityService<any>>();
+
+        const scannedServices = new Set<Function>();
         
         for( const dir of serviceDirectories){
             this.logger.debug(`Ui-config-gen::: Process::: loading services from DIR: `, dir);
-            const dirServices = await this.scanAndLoadServicesFromDirectory(dir);
-            for(const [entityName, service] of dirServices){
-                this.logger.debug(`Ui-config-gen::: Process::: loaded services from entity: `, entityName);
-                services.set(entityName, service);
-            }
+            const dirServiceTokens = await this.scanServicesFromDirectory(dir);
+            dirServiceTokens.forEach( token => scannedServices.add(token));
         }
+                
+        // resolve all services
+        const resolvedServices = new Map<string, BaseEntityService<any>>();
 
-        return services;
+        scannedServices.forEach( token => {
+            const service = this.uiGebDIContainer.resolve(token) as BaseEntityService<any>;
+            this.logger.debug(`resolved service for entity: ${service.getEntityName()}`);
+
+            this.logger.debug(`Ui-config-gen::: Process::: loaded services from entity: `, service.getEntityName());
+            resolvedServices.set(service.getEntityName(), service);
+        })
+
+        return resolvedServices;
     }
     
     @LogDuration()
-    async scanAndLoadServicesFromDirectory(servicesDir: string) {
+    async scanServicesFromDirectory(servicesDir: string) {
     
-        const loadedServices = new Map<string, BaseEntityService<EntitySchema<string, string, string>>>;
-        const _loadedServicesTokens = new Set<Function>();
+        const scannedServices = new Set<Function>();
         
         if(!existsSync(servicesDir)){
-            this.logger.debug(`scanAndLoadServices:: servicesDir does not exists: ${servicesDir}`);
-            return loadedServices;
+            this.logger.warn(`scanServicesFromDirectory: servicesDir does not exists: ${servicesDir}`);
+            return scannedServices;
         }   
 
         const servicePaths = Helper.scanTSSourceFilesFrom(servicesDir);
@@ -160,6 +170,7 @@ export class EntityUIConfigGen{
             try {
                 // Dynamically import the service file
                 const module = await import(pathJoin(servicesDir, servicePath));
+                
                 // Find and instantiate service classes
                 for (const exportedItem of Object.values(module)) {
                     if (
@@ -168,25 +179,21 @@ export class EntityUIConfigGen{
                             && 'prototype' in exportedItem 
                             && exportedItem.prototype instanceof BaseEntityService
                     ) {
+                        
                         this.uiGebDIContainer.register({ provide: exportedItem, useClass: exportedItem as any });
-                        _loadedServicesTokens.add(exportedItem);
+                        scannedServices.add(exportedItem);
+
                     } else {
-                        this.logger.debug(`SKIP: exportedItem is not a service class: ${exportedItem}`);
+
+                        this.logger.debug(`scanServicesFromDirectory: SKIP: exportedItem is not a service class: ${exportedItem}`);
                     }
                 }
             } catch (e){
-                this.logger.error(`Exception while trying to load servicePath: ${servicePath}`, e);
+                this.logger.error(`scanServicesFromDirectory: Exception while trying to load servicePath: ${servicePath}`, e);
             }
         }
 
-        // resolve all services
-        _loadedServicesTokens.forEach( token => {
-            const service = this.uiGebDIContainer.resolve(token) as BaseEntityService<any>;
-            this.logger.debug(`resolved service for entity: ${service.getEntityName()}`);
-            loadedServices.set(service.getEntityName(), service);
-        })
-    
-        return loadedServices;
+        return scannedServices;
     }
 
     @LogDuration()
