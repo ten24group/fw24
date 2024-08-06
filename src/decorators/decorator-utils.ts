@@ -60,7 +60,7 @@ export type ControllerDIOptions = {
 	 * 
 	 * @default: DIContainer.ROOT
 	 */
-	autoResolveFrom?: DIContainer;
+	resolvingContainer?: DIContainer;
 	
 	/**
 	 * Specifies the DI-module options for the controller.
@@ -72,7 +72,7 @@ export type ControllerDIOptions = {
 		 * you don't need to specify this unless you are creating a separate module and want to use that module as the parent of this controller's module.
 		 * @default: DIContainer.ROOT
 		 */
-		registerWith ?: DIContainer;
+		parentContainer ?: DIContainer;
 	};
 }
 
@@ -81,7 +81,7 @@ export type ControllerDIOptions = {
  *
  * @param target - The class for which DI is being set up.
  * @param options - DI options including the container and module configurations.
- * @param fallbackToRootContainer - Whether to use the default DIContainer.ROOT if autoResolveFrom is not specified in di options.
+ * @param fallbackToRootContainer - Whether to use the default DIContainer.ROOT if resolvingContainer is not specified in di options.
  * @returns The DI container used for the setup.
  */
 export function setupDI<T>(
@@ -90,18 +90,18 @@ export function setupDI<T>(
     fallbackToRootContainer: boolean = false
 ): DIContainer | undefined {
 
-    const { autoResolveFrom, module } = options;
+    const { resolvingContainer, module } = options;
 
-    if (module && autoResolveFrom) {
-        throw new Error('Cannot specify both "autoResolveFrom" and "module" for controller DIOptions');
+    if (module && resolvingContainer) {
+        throw new Error('Cannot specify both "resolvingContainer" and "module" for controller DIOptions');
     }
 
-    let container: DIContainer | undefined = options.autoResolveFrom || (fallbackToRootContainer ? DIContainer.ROOT : undefined);
+    let container: DIContainer | undefined = options.resolvingContainer || (fallbackToRootContainer ? DIContainer.ROOT : undefined);
 
     if (options.module) {
         registerModuleMetadata(target, options.module);
-        options.module.registerWith = options.module.registerWith || DIContainer.ROOT;
-        container = options.module.registerWith.module(target).container;
+        options.module.parentContainer = options.module.parentContainer || DIContainer.ROOT;
+        container = options.module.parentContainer.module(target).container;
     }
     
     if (container) {

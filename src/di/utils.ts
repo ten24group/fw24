@@ -56,10 +56,9 @@ export function hasConstructor(obj: any): obj is { constructor: Function } {
 
 export const DIMetadataStore = useMetadataManager({namespace: 'fw24:di'});
 
-export type RegisterDIModuleMetadataOptions = Omit<DIModuleOptions, 'identifier'> & {identifier?: ClassConstructor | Token};
+export type RegisterDIModuleMetadataOptions = Omit<DIModuleOptions, 'identifier' | 'container'>;
 
 export function registerModuleMetadata(target: any, options: RegisterDIModuleMetadataOptions, override = false) {
-    options.identifier = options.identifier || target;
     DIMetadataStore.setPropertyMetadata(target, DI_MODULE_METADATA_KEY, { 
         ...options, 
         identifier: makeDIToken(target) 

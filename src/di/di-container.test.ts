@@ -976,7 +976,6 @@ describe('DIContainer', () => {
             class TestClassA {}
 
             registerModuleMetadata(TestModule, {
-                identifier: TestModule,
                 providers: [
                     { useClass: TestClassA, provide: 'test' },
                     { useValue: 'test', provide: 'testValue' },

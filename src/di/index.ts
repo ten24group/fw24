@@ -1,3 +1,3 @@
 export { DIContainer } from './di-container';
 export { makeDIToken as createToken, stripDITokenNamespace } from './utils';
-export { Injectable, Inject, OnInit, InjectConfig, InjectContainer } from './decorators';
+export { Injectable, Inject, OnInit, InjectConfig, InjectContainer, DIModule } from './decorators';
