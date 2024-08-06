@@ -1,9 +1,6 @@
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
-import { IFunctionResourceAccess } from "../constructs/lambda-function";
 import { IQueueSubscriptions } from "../constructs/queue-lambda";
-import { RetentionDays } from "aws-cdk-lib/aws-logs";
-import { RemovalPolicy } from "aws-cdk-lib";
-import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import { CommonLambdaHandlerOptions, ControllerDIOptions, resolveAndExportHandler, setupDI } from "./decorator-utils";
 
 /**
  * Configuration options for the queue.
@@ -11,7 +8,7 @@ import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 /**
  * Represents the configuration options for a queue.
  */
-export interface IQueueConfig {
+export type IQueueConfig = CommonLambdaHandlerOptions &  {
 	/**
 	 * The properties of the queue.
 	 */
@@ -40,36 +37,9 @@ export interface IQueueConfig {
 	};
 
 	/**
-	 * The resource access configuration for the queue.
-	 */
-	resourceAccess?: IFunctionResourceAccess;
-
-	/**
 	 * The subscriptions for the queue.
 	 */
 	subscriptions?: IQueueSubscriptions;
-
-	/**
-	 * The timeout for the function associated with the queue, in seconds.
-	 * * use this timeout to avoid importing duration class from aws-cdk-lib
-	 * 
-	 */
-	functionTimeout?: number;
-
-	/**
-	 * The properties for the Node.js function associated with the queue.
-	 */
-	functionProps?: NodejsFunctionProps;
-
-	/**
-	 * The number of days to retain the logs for the queue.
-	 */
-	logRetentionDays?: RetentionDays;
-
-	/**
-	 * The removal policy for the logs of the queue.
-	 */
-	logRemovalPolicy?: RemovalPolicy;
 }
 
 /**
@@ -78,14 +48,29 @@ export interface IQueueConfig {
  * @param queueConfig - Optional configuration for the queue.
  * @returns A class decorator function.
  */
-export function Queue(queueName: string, queueConfig?: IQueueConfig) {
+export function Queue(queueName: string, queueConfig: IQueueConfig = {}, di: ControllerDIOptions = {}) {
 	return function <T extends { new (...args: any[]): {} }>(target: T) {
-		return class extends target {
+
+		// Default autoExportLambdaHandler to true if undefined
+		queueConfig.autoExportLambdaHandler = queueConfig.autoExportLambdaHandler ?? true;
+
+		// Create an extended class that includes additional setup
+		class ExtendedTarget extends target {
 			constructor(...args: any[]) {
 				super(...args);
 				Reflect.set(this, 'queueName', queueName);
 				Reflect.set(this, 'queueConfig', queueConfig);
 			}
-		};
+		}
+
+		// Preserve the original class name
+		Object.defineProperty(ExtendedTarget, 'name', { value: target.name });
+
+		const container = setupDI(ExtendedTarget, di, queueConfig.autoExportLambdaHandler);
+		if (queueConfig.autoExportLambdaHandler) {
+			resolveAndExportHandler(ExtendedTarget, container);
+		}
+
+		return ExtendedTarget;
 	};
 }

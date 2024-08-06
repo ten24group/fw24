@@ -1,12 +1,9 @@
-import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
-import { IFunctionResourceAccess } from "../constructs/lambda-function";
-import { RetentionDays } from "aws-cdk-lib/aws-logs";
-import { RemovalPolicy } from "aws-cdk-lib";
+import { CommonLambdaHandlerOptions, ControllerDIOptions, resolveAndExportHandler, setupDI } from "./decorator-utils";
 
 /**
  * Represents the configuration for a task.
  */
-export interface ITaskConfig {
+export type ITaskConfig = CommonLambdaHandlerOptions & {
 	/**
 	 * The schedule for the task.
 	 */
@@ -19,31 +16,6 @@ export interface ITaskConfig {
 		name: string;
 	};
 
-	/**
-	 * The timeout for the task in seconds.
-	 * Use this timeout to avoid importing the duration class from aws-cdk-lib.
-	 */
-	functionTimeout?: number;
-
-	/**
-	 * The function properties for the task.
-	 */
-	functionProps?: NodejsFunctionProps;
-
-	/**
-	 * The resource access configuration for the task.
-	 */
-	resourceAccess?: IFunctionResourceAccess;
-
-	/**
-	 * The number of days to retain the task's logs.
-	 */
-	logRetentionDays?: RetentionDays;
-
-	/**
-	 * The removal policy for the task's logs.
-	 */
-	logRemovalPolicy?: RemovalPolicy;
 }
 
 /**
@@ -52,14 +24,29 @@ export interface ITaskConfig {
  * @param taskConfig - Optional configuration for the task.
  * @returns A class decorator function.
  */
-export function Task(taskName: string, taskConfig?: ITaskConfig) {
+export function Task(taskName: string, taskConfig: ITaskConfig, di: ControllerDIOptions = {}) {
 	return function <T extends { new (...args: any[]): {} }>(target: T) {
-		return class extends target {
+
+		// Default autoExportLambdaHandler to true if undefined
+		taskConfig.autoExportLambdaHandler = taskConfig.autoExportLambdaHandler ?? true;
+
+		// Create an extended class that includes additional setup
+		class ExtendedTarget extends target {
 			constructor(...args: any[]) {
 				super(...args);
 				Reflect.set(this, 'taskName', taskName);
 				Reflect.set(this, 'taskConfig', taskConfig);
 			}
-		};
+		}
+
+		// Preserve the original class name
+		Object.defineProperty(ExtendedTarget, 'name', { value: target.name });
+
+		const container = setupDI(ExtendedTarget, di, taskConfig.autoExportLambdaHandler);
+		if (taskConfig.autoExportLambdaHandler) {
+			resolveAndExportHandler(ExtendedTarget, container);
+		}
+
+		return ExtendedTarget;
 	};
 }
