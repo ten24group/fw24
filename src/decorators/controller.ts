@@ -1,7 +1,7 @@
 
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { AuthorizerTypeMetadata } from "./authorizer";
-import { CommonLambdaHandlerOptions, ControllerDIOptions, resolveAndExportHandler, setupDI } from "./decorator-utils";
+import { CommonLambdaHandlerOptions, resolveAndExportHandler, setupDI } from "./decorator-utils";
 
 /**
  * Represents the configuration options for a controller.
@@ -36,7 +36,7 @@ export type IControllerConfig = CommonLambdaHandlerOptions & {
  * @param controllerConfig - Optional configuration for the controller.
  * @returns A class decorator function.
  */
-export function Controller(controllerName: string, controllerConfig: IControllerConfig = {}, di: ControllerDIOptions = {}) {
+export function Controller(controllerName: string, controllerConfig: IControllerConfig = {}) {
 	return function <T extends { new (...args: any[]): {} }>(target: T) {
 		// Default autoExportLambdaHandler to true if undefined
 		controllerConfig.autoExportLambdaHandler = controllerConfig.autoExportLambdaHandler ?? true;
@@ -62,7 +62,12 @@ export function Controller(controllerName: string, controllerConfig: IController
 		// Preserve the original class name
 		Object.defineProperty(ExtendedTarget, 'name', { value: target.name });
 
+		const di = {
+			module: controllerConfig.module,
+			providedBy: controllerConfig.providedBy,
+		}
 		const container = setupDI(ExtendedTarget, di, controllerConfig.autoExportLambdaHandler);
+		
 		if (controllerConfig.autoExportLambdaHandler) {
 			resolveAndExportHandler(ExtendedTarget, container);
 		}

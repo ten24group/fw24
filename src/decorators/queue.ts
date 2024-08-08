@@ -1,6 +1,6 @@
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
 import { IQueueSubscriptions } from "../constructs/queue-lambda";
-import { CommonLambdaHandlerOptions, ControllerDIOptions, resolveAndExportHandler, setupDI } from "./decorator-utils";
+import { CommonLambdaHandlerOptions, resolveAndExportHandler, setupDI } from "./decorator-utils";
 
 /**
  * Configuration options for the queue.
@@ -48,7 +48,7 @@ export type IQueueConfig = CommonLambdaHandlerOptions &  {
  * @param queueConfig - Optional configuration for the queue.
  * @returns A class decorator function.
  */
-export function Queue(queueName: string, queueConfig: IQueueConfig = {}, di: ControllerDIOptions = {}) {
+export function Queue(queueName: string, queueConfig: IQueueConfig = {}) {
 	return function <T extends { new (...args: any[]): {} }>(target: T) {
 
 		// Default autoExportLambdaHandler to true if undefined
@@ -66,7 +66,12 @@ export function Queue(queueName: string, queueConfig: IQueueConfig = {}, di: Con
 		// Preserve the original class name
 		Object.defineProperty(ExtendedTarget, 'name', { value: target.name });
 
+		const di = {
+			module: queueConfig.module,
+			providedBy: queueConfig.providedBy,
+		}
 		const container = setupDI(ExtendedTarget, di, queueConfig.autoExportLambdaHandler);
+
 		if (queueConfig.autoExportLambdaHandler) {
 			resolveAndExportHandler(ExtendedTarget, container);
 		}
