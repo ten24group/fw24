@@ -138,7 +138,7 @@ export function validateProviderOptions<T>(options: ProviderOptions<T>, token: T
         throw new Error(`Invalid provider configuration for ${token.toString()}. 'useFactory' is required for factory providers`);
     } else if (isValueProviderOptions(options) && options.useValue === undefined) {
         throw new Error(`Invalid provider configuration for ${token.toString()}. 'useValue' is required for value providers`);
-    } else if (isAliasProviderOptions(options) && options.aliasFor === undefined) {
+    } else if (isAliasProviderOptions(options) && options.useExisting === undefined) {
         throw new Error(`Invalid provider configuration for ${token.toString()}. 'aliasFor' is required for alias providers`);
     } else if (isConfigProviderOptions(options) && options.useConfig === undefined) {
         throw new Error(`Invalid provider configuration for ${token.toString()}. 'useConfig' is required for config providers`);

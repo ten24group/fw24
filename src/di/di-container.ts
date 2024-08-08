@@ -455,7 +455,7 @@ export class DIContainer {
         const { _id, _provider: provider } = options;
 
         if(isAliasProviderOptions(provider)){
-            return this.resolve(provider.aliasFor, {}, path, async);
+            return this.resolve(provider.useExisting, {}, path, async);
         } 
 
         if (isClassProviderOptions(provider)) {

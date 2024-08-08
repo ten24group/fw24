@@ -32,7 +32,7 @@ export interface ConfigProviderOptions<T = any> extends BaseProviderOptions {
 }
 
 export interface AliasProviderOptions<T> extends BaseProviderOptions {
-    aliasFor: DepIdentifier<T>;
+    useExisting: DepIdentifier<T>;
 }
 
 export type ProviderOptions<T = any> =  
@@ -74,7 +74,7 @@ export function isConfigProviderOptions<T>(options: BaseProviderOptions): option
 }
 
 export function isAliasProviderOptions<T>(options: BaseProviderOptions): options is AliasProviderOptions<T> {
-    return (options as AliasProviderOptions<any>).aliasFor !== undefined;
+    return (options as AliasProviderOptions<any>).useExisting !== undefined;
 }
 
 export type Middleware<T> = {
