@@ -4,7 +4,7 @@ import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
 import { isEmptyObject, removeEmpty } from "../utils";
 import { DefaultValidator, IValidator } from "../validation";
-import { EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
+import { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
 import { entityFilterCriteriaToExpression } from "./query";
 import { EntityQuery } from "./query-types";
 
@@ -145,6 +145,10 @@ export interface CreateEntityArgs<
     data: OpsSchema['create'];
 }
 
+export type CreateEntityResponse<Sch extends EntitySchema<any, any, any>> = {
+   data ?: EntityResponseItemTypeFromSchema<Sch>
+}
+
 /**
  * Creates an entity using the provided options.
  * 
@@ -152,7 +156,7 @@ export interface CreateEntityArgs<
  * @returns The created entity.
  * @throws Error if no data is provided for create operation, validation fails, or authorization fails.
  */
-export async function createEntity<S extends EntitySchema<any, any, any>>(options : CreateEntityArgs<S>) {
+export async function createEntity<S extends EntitySchema<any, any, any>>(options : CreateEntityArgs<S>): Promise<CreateEntityResponse<S>> {
     const { 
         data,
         entityName,
@@ -210,7 +214,7 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data, entity.data);
 
-    return entity;
+    return entity as CreateEntityResponse<S>;
 }
 
 /**
