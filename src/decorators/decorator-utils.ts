@@ -53,11 +53,11 @@ export type CommonLambdaHandlerOptions = {
 	autoExportLambdaHandler?: boolean;
 
 	/**
-	 * Specifies the parent DI-container or parent Module to register this module in or auto-resolve the container instance from.
-	 * you don't need to specify this unless you are creating a separate module and want to use that module as the parent of this controller/module.
+	 * Specifies the parent DI-container or to register this module in or auto-resolve the container instance from.
+	 * you don't need to specify this unless you are creating a separate container and want to use that container as the parent of this controller/module.
 	 * @default: DIContainer.ROOT
 	 */
-	providedBy ?: DIContainer | 'ROOT' | ClassConstructor;
+	providedBy ?: DIContainer | 'ROOT';
 	
 	/**
 	 * Specifies the DI-module options for the controller.
@@ -78,7 +78,7 @@ export function setupDI<T>(
     target: ClassConstructor<T>,
     options: {
 		module?: RegisterDIModuleMetadataOptions,
-		providedBy?: DIContainer | 'ROOT' | ClassConstructor,
+		providedBy?: DIContainer | 'ROOT',
 	},
     fallbackToRootContainer: boolean = false
 ): DIContainer | undefined {
@@ -87,17 +87,7 @@ export function setupDI<T>(
 
 	let resolvingContainer: DIContainer | undefined;
 
-	if(typeof options.providedBy === 'function' ){
-
-		const parentModuleMetadata = getModuleMetadata(options.providedBy);
-		
-		if(!parentModuleMetadata){
-			throw new Error(`Invalid 'providedBy': [${options.providedBy.name}] option for ${target.name}. Ensure the class is decorated with @DIModule({...} || @Container({ module: {}})).`);
-		}
-
-		resolvingContainer = parentModuleMetadata.container;
-
-	} else if(options.providedBy instanceof DIContainer){
+	if(options.providedBy instanceof DIContainer){
 
 		resolvingContainer = options.providedBy;
 
