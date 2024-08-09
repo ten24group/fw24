@@ -1,4 +1,4 @@
-import { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
+import { APIGatewayEvent, APIGatewayProxyResult, Context, Handler } from "aws-lambda";
 import { Request } from "../interfaces/request";
 import { Response } from "../interfaces/response";
 import { Route } from "../interfaces/route";
@@ -10,6 +10,8 @@ import { isHttpRequestValidationRule, isInputValidationRule } from "../validatio
 import { getCircularReplacer } from "../utils";
 import { Get, RouteMethods } from "../decorators/method";
 import { Controller, IControllerConfig } from "../decorators";
+import { AbstractLambdaHandler } from "./abstract-lambda-handler";
+
 
 /**
  * Creates an API handler without defining a class
@@ -44,11 +46,11 @@ export function createApiHandler(
 
     const {name, path = '', method = Get, ...controllerConfig} = options;
 
-    @Controller(name, controllerConfig)
+    @Controller(name, { ...controllerConfig, autoExportLambdaHandler: false })
     class ControllerDescriptor{
         @method(path)
         async inlineHandler(){
-            // placeholder function
+            // placeholder function only used for routing metadata
         }
     }
 
@@ -63,16 +65,9 @@ export function createApiHandler(
 /**
  * Base controller class for handling API Gateway events.
  */
-abstract class APIController {
+abstract class APIController extends AbstractLambdaHandler {
   readonly logger = createLogger(APIController.name);
   protected validator: IValidator = DefaultValidator;
-
-  /**
-   * Binds the LambdaHandler method to the instance of the class.
-   */
-  constructor() {
-    this.LambdaHandler = this.LambdaHandler.bind(this)
-  }
 
   abstract initialize(event: APIGatewayEvent, context: Context): Promise<void>;
 
@@ -228,11 +223,7 @@ abstract class APIController {
     
     const result: any = {
       message: err.message,
-    }
-
-    if(req.debugMode){
-      result.req = req;
-      result.errors = [err];
+      ...(req.debugMode && { stack: err.stack, req })
     }
     
     return this.handleResponse({
@@ -258,15 +249,6 @@ abstract class APIController {
     res.headers["Access-Control-Allow-Origin"] = res.headers["Access-Control-Allow-Origin"] ||  "*";
 
     return res;
-  }
-
-  /**
-   * Creates a new instance of the controller and returns its LambdaHandler method.
-   * @returns The LambdaHandler method of the controller.
-   */
-  static CreateHandler( constructorFunc: { new (): APIController} ) {
-    const controller = new constructorFunc();
-    return controller.LambdaHandler;
   }
 }
 

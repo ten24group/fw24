@@ -17,7 +17,11 @@ const logLevels: any = {
 const logLevel = logLevels[process.env.LOG_LEVEL || 'info'];
 export const DefaultLogger: ILogger = new Logger();
 
-export const createLogger = (_options: string | ISettingsParam<ILogObj>) => {
+export const createLogger = (_options: string | Function | ISettingsParam<ILogObj>) => {
+    
+    if(typeof _options == 'function'){
+        _options = _options.name;
+    }
     if (typeof _options == 'string') {
         _options = { name: _options, minLevel: logLevel};
     }

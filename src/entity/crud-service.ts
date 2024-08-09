@@ -1,13 +1,12 @@
-import { defaultMetaContainer } from ".";
 import { Auditor } from "../audit";
 import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
 import { isEmptyObject, removeEmpty } from "../utils";
 import { DefaultValidator, IValidator } from "../validation";
-import { EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
+import { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
 import { entityFilterCriteriaToExpression } from "./query";
-import { EntityQuery, Pagination } from "./query-types";
+import { EntityQuery } from "./query-types";
 
 /**
  * 
@@ -32,7 +31,7 @@ import { EntityQuery, Pagination } from "./query-types";
 
 export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     entityName: string;
-    entityService?: EntityServiceTypeFromSchema<S>;
+    entityService: EntityServiceTypeFromSchema<S>;
 
     crudType?: keyof TDefaultEntityOperations;
     actor?: any; // todo: define actor context: [ User+Tenant OR System on behalf of some User+Tenant] trying to perform the operation
@@ -78,7 +77,7 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
         id,
         attributes,
         entityName, 
-        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+        entityService, 
         
         actor,
         tenant,
@@ -146,6 +145,10 @@ export interface CreateEntityArgs<
     data: OpsSchema['create'];
 }
 
+export type CreateEntityResponse<Sch extends EntitySchema<any, any, any>> = {
+   data ?: EntityResponseItemTypeFromSchema<Sch>
+}
+
 /**
  * Creates an entity using the provided options.
  * 
@@ -153,12 +156,11 @@ export interface CreateEntityArgs<
  * @returns The created entity.
  * @throws Error if no data is provided for create operation, validation fails, or authorization fails.
  */
-export async function createEntity<S extends EntitySchema<any, any, any>>(options : CreateEntityArgs<S>) {
+export async function createEntity<S extends EntitySchema<any, any, any>>(options : CreateEntityArgs<S>): Promise<CreateEntityResponse<S>> {
     const { 
         data,
-        entityName, 
-        
-        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+        entityName,
+        entityService, 
         
         actor,
         tenant,
@@ -212,7 +214,7 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data, entity.data);
 
-    return entity;
+    return entity as CreateEntityResponse<S>;
 }
 
 /**
@@ -233,7 +235,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
 
     const { 
         entityName, 
-        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+        entityService, 
 
         actor,
         tenant,
@@ -293,7 +295,7 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>( option
 
     const { 
         entityName, 
-        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+        entityService, 
 
         actor,
         tenant,
@@ -378,7 +380,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         data,
         entityName, 
 
-        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+        entityService, 
 
         actor,
         tenant,
@@ -462,7 +464,7 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>( optio
     const { 
         id,
         entityName, 
-        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+        entityService, 
 
         actor,
         tenant,

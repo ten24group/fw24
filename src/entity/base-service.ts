@@ -1,12 +1,13 @@
+import { resolve } from 'path';
 import { EntityConfiguration } from "electrodb";
 import { createLogger } from "../logging";
-import { JsonSerializer, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isObject, isString, pickKeys, toHumanReadableName } from "../utils";
+import { JsonSerializer, camelCase, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isObject, isString, pickKeys, toHumanReadableName } from "../utils";
 import { EntityInputValidations, EntityValidations } from "../validation";
 import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
 import { EntityQuery, EntitySelections } from "./query-types";
 import { addFilterGroupToEntityFilterCriteria, inferRelationshipsForEntitySelections, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
-import { defaultMetaContainer } from "./entity-metadata-container";
+import { DIContainer } from "../di";
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
@@ -28,8 +29,31 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     constructor(
         protected readonly schema: S,
         protected readonly entityConfigurations: EntityConfiguration,
+        protected readonly diContainer?: DIContainer,
     ){
         return this;
+    }
+
+    getRelatedEntityServiceDIToken(relatedEntityName: string){
+        return `${camelCase(relatedEntityName)}Service`;
+    }
+
+    getEntityServiceByEntityName<T extends EntitySchema<any, any, any>>(relatedEntityName: string){
+        if(!this.diContainer){
+            throw new Error('DI Container is required to resolve related entity services');
+        }
+        return this.diContainer.resolve<BaseEntityService<T>>(
+            this.getRelatedEntityServiceDIToken(relatedEntityName)
+        );
+    }
+
+    hasEntityServiceByEntityName(relatedEntityName: string){
+        if(!this.diContainer){
+            throw new Error('DI Container is required to resolve related entity services');
+        }
+        return this.diContainer.has(
+            this.getRelatedEntityServiceDIToken(relatedEntityName)
+        );
     }
 
     /**
@@ -235,31 +259,31 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 	// }
 
 	const defaultAccessPattern = accessPatterns.get('primary');
-    
-    // TODO: add schema for the rest fo the secondary access-patterns
+        
+        // TODO: add schema for the rest fo the secondary access-patterns
 
-	return {
-		get: {
-			by: defaultAccessPattern,
-			output: outputSchemaAttributes.detail, // default for the detail page
-		},
-		delete: {
-			by: defaultAccessPattern
-		},
-		create: {
-			input: inputSchemaAttributes.create,
-			output: outputSchemaAttributes,
-		},
-		update: {
-			by: defaultAccessPattern,
-			input: inputSchemaAttributes.update,
-			output: outputSchemaAttributes.detail,
-		},
-		list: {
-			output: outputSchemaAttributes.list,
-		},
-	};
-}
+        return {
+            get: {
+                by: defaultAccessPattern,
+                output: outputSchemaAttributes.detail, // default for the detail page
+            },
+            delete: {
+                by: defaultAccessPattern
+            },
+            create: {
+                input: inputSchemaAttributes.create,
+                output: outputSchemaAttributes,
+            },
+            update: {
+                by: defaultAccessPattern,
+                input: inputSchemaAttributes.update,
+                output: outputSchemaAttributes.detail,
+            },
+            list: {
+                output: outputSchemaAttributes.list,
+            },
+        };
+    }
 
 
     /**
@@ -402,9 +426,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         const relatedEntityName = options.entityName;
 
         // Get related entity service
-        const relatedEntityService = defaultMetaContainer.getEntityServiceByEntityName(relatedEntityName) as BaseEntityService<any>;
+        const relatedEntityService = this.getEntityServiceByEntityName(relatedEntityName);
         if(!relatedEntityService){
-            throw new Error(`No service found in the 'defaultMetaContainer' for relationship: ${relatedAttributeName}(${relatedEntityName}); please make sure service or factory has been registered in the 'defaultMetaContainer'`);
+            throw new Error(`No service found for relationship: ${relatedAttributeName}(${relatedEntityName}); please make sure service has been registered in the required 'di-container'`);
         }
 
         // Get relation metadata
@@ -919,6 +943,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         const deletedEntity =  await deleteEntity<S>({
             id: identifiers,
             entityName: this.getEntityName(),  
+            entityService: this,
         });
 
         return deletedEntity;

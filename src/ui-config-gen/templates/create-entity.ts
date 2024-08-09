@@ -1,4 +1,4 @@
-import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
 import { formatEntityAttributesForCreate } from "./util";
 
@@ -9,14 +9,15 @@ export type CreateEntityPageOptions<S extends EntitySchema<string, string, strin
 }
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
-    options: CreateEntityPageOptions<S>
+    options: CreateEntityPageOptions<S>,
+    entityService: BaseEntityService<S>
 ) => {
 
     const{ entityName } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
 
-    const formPageConfig = makeCreateEntityFormConfig(options);
+    const formPageConfig = makeCreateEntityFormConfig(options, entityService);
 
     return {
         pageTitle:  `Create ${entityNamePascalCase}`,
@@ -47,7 +48,8 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 };
 
 export function makeCreateEntityFormConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> (
-    options: CreateEntityPageOptions<S>
+    options: CreateEntityPageOptions<S>,
+    entityService: BaseEntityService<S>
 ){
 
     const{ entityName, properties } = options;
@@ -64,7 +66,7 @@ export function makeCreateEntityFormConfig<S extends EntitySchema<string, string
         propertiesConfig: [] as any[],
     }
 
-    const formattedProps = formatEntityAttributesForCreate(Array.from(properties.values()));
+    const formattedProps = formatEntityAttributesForCreate( Array.from(properties.values()), entityService);
 
     formPageConfig.propertiesConfig.push(...formattedProps);
 

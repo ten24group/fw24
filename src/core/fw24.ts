@@ -8,13 +8,15 @@ import { ITopic, Topic } from 'aws-cdk-lib/aws-sns';
 import { Role, PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';
 import { IFw24Module } from './module';
 import { createLogger } from '../logging';
+import { DIContainer } from '../di';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
     
-    public appName: string = "fw24";
+    appName: string = "fw24";
+    emailProvider: any;
+    
     private config: IApplicationConfig = {};
-    public emailProvider: any;
     private stacks: any = {};
     private environment: any = {};
     private defaultCognitoAuthorizer: IAuthorizer | undefined;
@@ -26,9 +28,11 @@ export class Fw24 {
     private topics = new Map<string, ITopic>();
     private modules = new Map<string, IFw24Module>();
 
+    private appDIContainer: DIContainer = DIContainer.ROOT;
+
     private constructor() {}
 
-    public static getInstance(): Fw24 {
+    static getInstance(): Fw24 {
         if (!Fw24.instance) {
             Fw24.instance = new Fw24();
         }
@@ -36,7 +40,7 @@ export class Fw24 {
         return Fw24.instance;
     }
 
-    public setConfig(config: IApplicationConfig) {
+    setConfig(config: IApplicationConfig) {
         this.logger.debug("setConfig:", config);
         this.config = config;
         // Hydrate the config object with environment variables
@@ -45,49 +49,57 @@ export class Fw24 {
         this.appName = config.name!;
     }
 
-    public getConfig(): IApplicationConfig {
+    getConfig(): IApplicationConfig {
         return this.config;
     }
+
+    setAppDIContainer(container: DIContainer) {
+        this.appDIContainer = container;
+    }
+
+    getAppDIContainer(): DIContainer {
+        return this.appDIContainer;
+    }
     
-    public addStack(name: string, stack: any): Fw24 {
+    addStack(name: string, stack: any): Fw24 {
         this.logger.debug("addStack:", {name} );
         this.stacks[name] = stack;
         return this;
     }
 
-    public getStack(name: string): any {
+    getStack(name: string): any {
         return this.stacks[name];
     }
 
-    public addModule(name: string, module: IFw24Module) {
+    addModule(name: string, module: IFw24Module) {
         this.logger.debug("addModule:", {name, module: module.getBasePath()} );
 
         this.modules.set(name, module);
     }
 
-    public getModules() {
+    getModules() {
         return this.modules
     }
 
-    public hasModules() {
+    hasModules() {
         return this.modules.size > 0;
     }
 
-    public getUniqueName(name: string) {
+    getUniqueName(name: string) {
         if(this.stacks['main'] === undefined) {
             throw new Error('Main stack not found');
         }
         return `${name}-${this.config.name}-${this.config.environment || 'env'}-${this.stacks['main'].account}`;
     }
 
-    public getArn(type:string, name: string): string {
+    getArn(type:string, name: string): string {
         if(this.stacks['main'] === undefined) {
             throw new Error('Main stack not found');
         }
         return `arn:aws:${type}:${this.config.region}:${this.stacks['main'].account}:${name}`;
     }
 
-    public getQueueByName(name: string): IQueue {
+    getQueueByName(name: string): IQueue {
 
         if( !this.queues.has(name) ){
             // get full queue name
@@ -100,7 +112,7 @@ export class Fw24 {
         return this.queues.get(name)!;
     }
 
-    public setCognitoAuthorizer(name: string, authorizer: IAuthorizer, defaultAuthorizer: boolean = false) {
+    setCognitoAuthorizer(name: string, authorizer: IAuthorizer, defaultAuthorizer: boolean = false) {
         this.logger.debug("setCognitoAuthorizer: ", {name, authorizer: authorizer.authorizerId, defaultAuthorizer} );
 
         this.cognitoAuthorizers[name] = authorizer;
@@ -110,7 +122,7 @@ export class Fw24 {
         }
     }
 
-    public getCognitoAuthorizer(name?: string): IAuthorizer | undefined {
+    getCognitoAuthorizer(name?: string): IAuthorizer | undefined {
         this.logger.info("getCognitoAuthorizer: ", {name});
         // If no name is provided and no default authorizer is set, throw an error
         if(name === undefined && this.defaultCognitoAuthorizer === undefined) {
@@ -128,22 +140,22 @@ export class Fw24 {
         return this.cognitoAuthorizers[name];
     }
 
-    public getAuthorizer(authorizationType: string, name?: string): IAuthorizer | undefined {
+    getAuthorizer(authorizationType: string, name?: string): IAuthorizer | undefined {
         if(authorizationType === "COGNITO_USER_POOLS") {
             return this.getCognitoAuthorizer(name);
         }
         return undefined;
     }
 
-    public setDefaultCognitoAuthorizerName(name: string) {
+    setDefaultCognitoAuthorizerName(name: string) {
         this.set('defaultCognitoAuthorizerName', name, 'cognito');
     }
 
-    public getDefaultCognitoAuthorizerName() {
+    getDefaultCognitoAuthorizerName() {
         return this.get('defaultCognitoAuthorizerName', 'cognito');
     }
 
-    public set(name: string, value: any, prefix: string = '') {
+    set(name: string, value: any, prefix: string = '') {
         this.logger.debug("set:", {prefix, name});
         if(prefix.length > 0) {
             prefix = `${prefix}_`;
@@ -151,14 +163,14 @@ export class Fw24 {
         this.environment[`${prefix}${name}`] = value;
     }
 
-    public get(name: string, prefix: string = ''): any {
+    get(name: string, prefix: string = ''): any {
         if(prefix.length > 0) {
             prefix = `${prefix}_`;
         }
         return this.environment[`${prefix}${name}`];
     }
 
-    public setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType) {
+    setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType) {
         this.logger.debug(`setConstructOutput: ${construct.name}`, {outputType, key});
         if(outputType){
             construct.output = {
@@ -178,16 +190,16 @@ export class Fw24 {
         }
     }
 
-    public addDynamoTable(name: string, table: TableV2) {
+    addDynamoTable(name: string, table: TableV2) {
         this.logger.debug("addDynamoTable:", {name} );
         this.dynamoTables[name] = table;
     }
 
-    public getDynamoTable(name: string): TableV2{
+    getDynamoTable(name: string): TableV2{
         return this.dynamoTables[name];
     }
 
-    public addRouteToRolePolicy(route: string, groups: string[], requireRouteInGroupConfig: boolean = false) {
+    addRouteToRolePolicy(route: string, groups: string[], requireRouteInGroupConfig: boolean = false) {
         if(!groups || groups.length === 0) {
             groups = this.get('Groups', 'cognito');
             if(!groups) {
@@ -217,7 +229,7 @@ export class Fw24 {
         }
     }
 
-    public getRoutePolicyStatement(route: string) {
+    getRoutePolicyStatement(route: string) {
         // write the policy statement
         const statement = new PolicyStatement({
             effect: Effect.ALLOW,
