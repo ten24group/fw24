@@ -1009,8 +1009,8 @@ describe('DIContainer', () => {
 
             registerModuleMetadata(NestedModule, {
                 imports: [],
+                providers: [{ provide: 'nestedDep', useValue: 'nestedValue' }],
                 exports: ['nestedDep'],
-                providers: [{ provide: 'nestedDep', useValue: 'nestedValue' }]
             });
 
             registerModuleMetadata(TestModule, {

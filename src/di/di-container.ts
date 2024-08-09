@@ -32,7 +32,12 @@ export class DIContainer {
     private readonly asyncMiddlewares: MiddlewareAsync<any>[] = [];
 
     private _resolving = new Map<string, any>();
-    get resolving() {
+    get resolving(): Map<string, any> {
+
+        if(this.mainContainer){
+            return this.mainContainer.resolving;
+        }
+
         if(!this._resolving){
             this._resolving = new Map<string, any>();
         }
@@ -40,7 +45,12 @@ export class DIContainer {
     }
 
     private _cache = new Map<string, any>();
-    get cache() {
+    get cache(): Map<string, any> {
+
+        if(this.mainContainer){
+            return this.mainContainer.cache;
+        }
+
         if(!this._cache){
             this._cache = new Map<string, any>();
         }
@@ -48,20 +58,50 @@ export class DIContainer {
     }
 
     private _providers: Map<string, InternalProviderOptions[]> | undefined;
-    get providers() {
+    get providers(): Map<string, InternalProviderOptions[]> {
+
+        if(this.mainContainer){
+            return this.mainContainer.providers;
+        }
+
         if(!this._providers){
             this._providers = new Map<string, InternalProviderOptions[]>();
         }
         return this._providers
     }
 
+    private _exports: Map<string, InternalProviderOptions[]> | undefined;
+    get exports(): Map<string, InternalProviderOptions[]> {
+
+        if(this.mainContainer){
+            return this.mainContainer.exports;
+        }
+
+        if(!this._exports){
+            this._exports = new Map<string, InternalProviderOptions[]>();
+        }
+        return this._exports
+    }
+
+    // when this container is a proxy for another container; the another container's ref will be stored here
+    private mainContainer: DIContainer | undefined;
+
     get parent() {
         return this.parentContainer
     }
-    get children() {
-        return this.childContainers;
+
+    private _childContainers: Set<DIContainer> | undefined;
+    get childContainers(): Set<DIContainer> {
+
+        if(this.mainContainer){
+            return this.mainContainer.childContainers;
+        }
+
+        if(!this._childContainers){
+            this._childContainers = new Set<DIContainer>();
+        }
+        return this._childContainers
     }
-    private childContainers = new Set<DIContainer>();
 
     private static _rootInstance: DIContainer;
     static get ROOT(): DIContainer {
@@ -94,51 +134,91 @@ export class DIContainer {
         const moduleMeta = getModuleMetadata(target);
 
         if(!moduleMeta){
-            throw new Error(`Module ${target.name} does not have any metadata, make sure it's decorated with @DIModule`);
+            throw new Error(`Module ${target.name} does not have any metadata, make sure it's decorated with @DIModule()`);
         }
 
         const { imports = [], exports = [], providers = [], identifier } = moduleMeta;
 
-        const moduleContainer = this.createChildContainer(identifier); 
+        // if there's no container in the module metadata, create the main container for the module
+        if(!moduleMeta.container){
 
-        if(moduleMeta.container){
-            this.logger.warn(`Module ${moduleMeta.identifier} already has a container, replacing it. any dynamically loaded provider won't get registered in the previous container: [ TODO: rethink providedIn feature ]`);
-        } else {
-            this.logger.warn(`Module ${moduleMeta.identifier} metadata does not have a container, assigning one.`, { id: moduleContainer.containerId });
+            const moduleContainer = new DIContainer(undefined, identifier); 
+            this.logger.info(`Module ${moduleMeta.identifier} metadata does not have a container, assigning one.`, { id: moduleContainer.containerId });
             moduleMeta.container = moduleContainer;
             registerModuleMetadata(target, moduleMeta, true);
-        }
-        
-        // make sure all the module providers are loaded into the module's container's providers
-        for (const provider of providers) {
-            moduleContainer.register(provider);
-        }
-        // and make sure all the module exports are also loaded into the module's container's providers
-        for( const importedModule of imports) {
-            moduleContainer.module(importedModule);
-        }
 
-        // load all the export from this module into the current container
-        for( const exportedDep of exports) {
-            if(moduleContainer.has(exportedDep)){
-                const token = moduleContainer.createToken(exportedDep);
-                this.register({
-                    // make sure the dependency is resolved by the original-module container; 
-                    // that way any interceptors are applied properly
-                    provide: token,
-                    useFactory: () => moduleContainer.resolve(token),
-                });
-            } else {
-                throw new Error(`Module ${moduleContainer.constructor.name} does not provide ${String(exportedDep)}`);
+            // make sure all the module providers are loaded into the module's container's providers
+            for (const provider of providers) {
+                moduleContainer.register(provider);
             }
+            // and make sure all the module exports are also loaded into the module's container's providers
+            for( const importedModule of imports) {
+                moduleContainer.module(importedModule);
+            }
+    
+            // load all the export from this module into the current container
+            for( const exportedDep of exports) {
+                moduleContainer.exportProvidersFor(exportedDep);
+            }
+
+            // TODO: module lifecycle hooks
         }
 
-        // TODO: module lifecycle hooks
+        const moduleProxyContainer = this.createChildContainer(`${identifier}:ProxyForImportHierarchy`);
+        moduleProxyContainer.mainContainer = moduleMeta.container;
 
         return {
             identifier,
-            container: moduleContainer
+            container: moduleProxyContainer
         }
+    }
+
+    exportProvidersFor<T>(exportedDep: DepIdentifier<T>) {
+        // const token = this.createToken(exportedDep);
+        
+        // if(!this.has(exportedDep)){
+        //     throw new Error(`Module ${this.containerId} does not provide ${token}`);
+        // } 
+        // // make the token providers available in exports
+        // this.exports.set(token, this.providers.get(token)!); 
+
+        const token = this.createToken(exportedDep);
+    
+        // Check if the token is available either in the current container's providers or its children's exports
+        const availableProviders = this.providers.get(token) || [];
+        const childExportedProviders = Array.from(this.childContainers)
+            .flatMap(child => child.exports.get(token) || []);
+
+        if (availableProviders.length === 0 && childExportedProviders.length === 0) {
+            throw new Error(`Module ${this.containerId} does not provide ${token}`);
+        }
+
+        // Set the export based on available providers and child exports
+        const providersToExport = availableProviders.length > 0 ? availableProviders : childExportedProviders;
+
+        this.exports.set(token, providersToExport.map(provider => { 
+
+            const { _container, _provider, _type, _id } = provider;
+            const { condition, provide, priority, override, singleton, tags } = _provider;
+
+            return {
+                _provider: {
+                    // make a factory proxy, so the resolve calls for this provider 
+                    // are delegated to the actual container
+                    useFactory: () => _container.resolve(provide),
+                    // maintain the rest of the provider metadata as similar to the original provider
+                    condition, 
+                    provide, 
+                    priority, 
+                    override, 
+                    singleton, 
+                    tags,
+                },
+                _id,
+                _type,
+                _container: this 
+            }
+        }));
     }
 
     createToken<T>(tokenOrType: DepIdentifier<T>): Token {
@@ -284,16 +364,27 @@ export class DIContainer {
     private collectMatchingConfigPaths(query: string): Set<string> {
         const matchingPaths: Set<string> = new Set();
 
-        let current: DIContainer | undefined = this;
-        while (current) {
-            const providerKeys = current.providers.keys();
-            for (const path of providerKeys) {
+        const processKeys = (keys: IterableIterator<string>) => {
+            for (const path of keys) {
                 const actualPath = stripDITokenNamespace(path);
-                const matched = matchesPattern(actualPath, query);
-                if (matched) {
+                if (matchesPattern(actualPath, query)) {
                     matchingPaths.add(path);
                 }
             }
+        };
+
+        let current: DIContainer | undefined = this;
+
+        while (current) {
+            // Check the providers in the current container
+            processKeys(current.providers.keys());
+
+            // Check the exported providers from child containers
+            current.childContainers.forEach(child => {
+                processKeys(child.exports.keys());
+            });
+
+            // Move to the parent container
             current = current.parent;
         }
 
@@ -349,11 +440,35 @@ export class DIContainer {
         let current: DIContainer | undefined = this;
 
         while (current) {
+            
             let pathProviders = current.providers.get(path) || [];
+
             if(criteria?.type){
                 pathProviders = pathProviders.filter((provider) => provider._type === criteria.type);
             }
-            bestProviders.push(...pathProviders);
+
+            bestProviders.push(...pathProviders.map(provider => ({ 
+                ...provider, 
+                // when it's a proxy container make sure the provider has it's reference for resolving it later, 
+                // that way the provider is resolved using the right hierarchy
+                _container: current! 
+            })));
+
+            // Collect exported providers from child containers
+            current.childContainers.forEach(child => {
+                let childProviders = child.exports.get(path) || [];
+
+                if (criteria?.type) {
+                    childProviders = childProviders.filter(provider => provider._type === criteria.type);
+                }
+
+                childProviders.forEach(provider => {
+                    if (!bestProviders.find(({ _id }) => _id === provider._id)) {
+                        bestProviders.push({ ...provider, _container: child });
+                    }
+                });
+            });
+
             current = current.parent;
         }
 
