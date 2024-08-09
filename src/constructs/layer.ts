@@ -24,7 +24,7 @@ export interface ILayerConstructConfig {
     /**
      * Optional properties for the layer version.
      */
-    layerProps?: LayerVersionProps;
+    layerProps?: Omit<LayerVersionProps, 'code'>;
 }
 
 export class LayerConstruct implements FW24Construct {
