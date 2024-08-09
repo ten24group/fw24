@@ -1867,4 +1867,116 @@ describe('DIContainer', () => {
         });
     });
 
+    describe('Module Exports and Imports', () => {
+        it('resolves exported dependencies from imported modules', () => {
+            class ModuleA {}
+            class ModuleB {}
+
+            @container.Injectable()
+            class ServiceA {}
+
+            @container.Injectable()
+            class ServiceB {
+                constructor(@Inject(ServiceA) public serviceA: ServiceA) {}
+            }
+
+            registerModuleMetadata(ModuleA, {
+                providers: [{ provide: ServiceA, useClass: ServiceA }],
+                exports: [ServiceA]
+            });
+
+            registerModuleMetadata(ModuleB, {
+                imports: [ModuleA],
+                providers: [{ provide: ServiceB, useClass: ServiceB }]
+            });
+
+            container.module(ModuleB);
+
+            const instanceB = container.resolve<ServiceB>(ServiceB);
+            expect(instanceB).toBeInstanceOf(ServiceB);
+            expect(instanceB.serviceA).toBeInstanceOf(ServiceA);
+        });
+
+        it('imports a module with no exports without errors', () => {
+            class ModuleWithNoExports {}
+
+            registerModuleMetadata(ModuleWithNoExports, {
+                providers: [{ provide: 'service', useValue: 'test' }],
+                exports: []
+            });
+
+            expect(() => container.module(ModuleWithNoExports)).not.toThrow();
+        });
+
+        it('resolves overlapping exports from multiple modules correctly', () => {
+            class ModuleA {}
+            class ModuleB {}
+
+            @container.Injectable()
+            class ServiceA {
+                getMessage() {
+                    return 'from A';
+                }
+            }
+
+            @container.Injectable()
+            class ServiceB {
+                getMessage() {
+                    return 'from B';
+                }
+            }
+
+            registerModuleMetadata(ModuleA, {
+                providers: [{ provide: 'shared', useClass: ServiceA }],
+                exports: ['shared']
+            });
+
+            registerModuleMetadata(ModuleB, {
+                providers: [{ provide: 'shared', useClass: ServiceB, priority: 1 }],
+                exports: ['shared']
+            });
+
+            container.module(ModuleA);
+            container.module(ModuleB);
+
+            const instance = container.resolve<any>('shared');
+            expect(instance.getMessage()).toBe('from B'); // Assumes ModuleB was registered after ModuleA
+        });
+
+        it('correctly resolves providers from nested module exports', () => {
+            class GrandchildModule {}
+            class ChildModule {}
+            class ParentModule {}
+
+            @container.Injectable()
+            class GrandchildService {
+                getValue() {
+                    return 'grandchild';
+                }
+            }
+
+            registerModuleMetadata(GrandchildModule, {
+                providers: [{ provide: 'grandchild', useClass: GrandchildService }],
+                exports: ['grandchild']
+            });
+
+            registerModuleMetadata(ChildModule, {
+                imports: [GrandchildModule],
+                exports: ['grandchild']
+            });
+
+            registerModuleMetadata(ParentModule, {
+                imports: [ChildModule],
+                exports: ['grandchild']
+            });
+
+            container.module(ParentModule);
+
+            const instance = container.resolve<GrandchildService>('grandchild');
+            expect(instance).toBeInstanceOf(GrandchildService);
+            expect(instance.getValue()).toBe('grandchild');
+        });
+    });
+
+
 });
