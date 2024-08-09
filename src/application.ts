@@ -76,7 +76,7 @@ export class Application {
         this.logger.info("Building fw24 layer...");
         const fw24Layer = new LayerConstruct([{
             layerName: 'fw24',
-            layerDirectory: './dist/layer'
+            sourcePath: './dist/layer'
         }]);
         fw24Layer.construct();
 

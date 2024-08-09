@@ -12,4 +12,3 @@ export * from './cognito-auth-role';
 export * from './lambda-function';
 export * from './queue-lambda';
 export * from './vpc';
-export * from './layers';

@@ -17,12 +17,17 @@ export type LayerEntryOptions = {
 export function LayerEntry( options: LayerEntryOptions = {} ) {
     return function (target: Function) {
 
-        let { layerName, props, buildOptions } = options;
+        let { layerName, props={}, buildOptions={} } = options;
         
         layerName = layerName || target.name; // maybe use some internal token to avoid conflicts
 
         Reflect.set(target, 'layerName', layerName);
         Reflect.set(target, 'layerProps', props);
+
+        if(!buildOptions.external){
+            buildOptions.external = ['aws-sdk', '@ten24Group/fw24']; // default external modules
+        }
+        
         Reflect.set(target, 'buildOptions', buildOptions);
     };
 }
