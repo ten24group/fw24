@@ -1,12 +1,15 @@
-import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
-import { RemovalPolicy } from "aws-cdk-lib";
-import { RetentionDays } from "aws-cdk-lib/aws-logs";
-import { IFunctionResourceAccess } from "../constructs/lambda-function";
+import type { RemovalPolicy } from "aws-cdk-lib";
+import type { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import type { RetentionDays } from "aws-cdk-lib/aws-logs";
+import type { IFunctionResourceAccess } from "../constructs/lambda-function";
+import type { ILayerVersion } from "aws-cdk-lib/aws-lambda";
 
-import { AbstractLambdaHandler } from "../core/abstract-lambda-handler";
+import type { ClassConstructor } from "../di/types";
+import type { RegisterDIModuleMetadataOptions } from "../di/utils";
+
+import { AbstractLambdaHandler } from "../core/runtime/abstract-lambda-handler";
 import { DIContainer } from "../di";
-import { ClassConstructor, DIModuleOptions } from "../di/types";
-import { getModuleMetadata, RegisterDIModuleMetadataOptions, registerModuleMetadata } from "../di/utils";
+import { registerModuleMetadata } from "../di/utils";
 
 export type CommonLambdaHandlerOptions = {
 
@@ -24,7 +27,9 @@ export type CommonLambdaHandlerOptions = {
 	/**
 	 * Specifies additional properties for the controller function.
 	 */
-	functionProps?: NodejsFunctionProps;
+	functionProps?: Omit<NodejsFunctionProps, 'layers'> & {
+		readonly layers?: Array<ILayerVersion | string>;
+	}
 
 	/**
 	 * Specifies the number of days to retain the controller function's logs.

@@ -1,6 +1,6 @@
-import { BaseProviderOptions, ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions, ProviderOptions } from './types';
+import type { BaseProviderOptions, ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions, ProviderOptions } from './types';
+import type { PartialBy } from '../utils';
 import { DIContainer } from './di-container';
-import { PartialBy } from '../utils';
 import { getModuleMetadata, registerConstructorDependency, RegisterDIModuleMetadataOptions, registerModuleMetadata, registerOnInitHook, registerPropertyDependency } from './utils';
 
 export type InjectableOptions = PartialBy<BaseProviderOptions, 'provide'> & {

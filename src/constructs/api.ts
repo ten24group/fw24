@@ -33,6 +33,7 @@ import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { CertificateConstruct } from "./certificate";
+import { LayerConstruct } from "./layer";
 
 /**
  * Represents the configuration options for an API construct.
@@ -87,7 +88,7 @@ export class APIConstruct implements FW24Construct {
     
     name: string = APIConstruct.name;
     // array of type of stacks that this stack is dependent on
-    dependencies: string[] = [MailerConstruct.name, DynamoDBConstruct.name, AuthConstruct.name, QueueConstruct.name, TopicConstruct.name];
+    dependencies: string[] = [MailerConstruct.name, DynamoDBConstruct.name, AuthConstruct.name, QueueConstruct.name, TopicConstruct.name, LayerConstruct.name];
     output!: FW24ConstructOutput;
 
     api!: RestApi;
@@ -159,7 +160,7 @@ export class APIConstruct implements FW24Construct {
         for (const envConfig of controllerConfig.env || []) {
             const value = this.fw24.get(envConfig.name, envConfig.prefix || '');
             if (value) {
-                env[envConfig.name] = value;
+                env[envConfig.exportName ?? envConfig.name] = value;
             }
         }
         return env;

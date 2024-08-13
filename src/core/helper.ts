@@ -1,7 +1,7 @@
 import { readdirSync } from "fs";
 import { resolve, join, relative } from "path";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
-import { IFw24Module } from "./module";
+import { IFw24Module } from "./runtime/module";
 import { createLogger, LogDuration } from "../logging";
 
 

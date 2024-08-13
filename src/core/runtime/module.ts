@@ -1,6 +1,6 @@
 import {join as pathJoin } from "path";
 
-import { FW24Construct } from "../interfaces/construct";
+import type { FW24Construct } from "../../interfaces/construct";
 
 export interface IModuleConfig{}
 

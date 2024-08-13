@@ -1,4 +1,4 @@
-import { APIGatewayEvent, Context } from "aws-lambda";
+import type { APIGatewayEvent, Context } from "aws-lambda";
 /* TODO: refactor this and make easier to access the data */
 export interface Request {
     event: APIGatewayEvent;

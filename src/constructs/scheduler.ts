@@ -88,7 +88,7 @@ export class SchedulerConstruct implements FW24Construct {
         for (const envConfig of config || []) {
             const value = this.fw24.get(envConfig.name, envConfig.prefix || '');
             if (value) {
-                env[envConfig.name] = value;
+                env[envConfig.exportName ?? envConfig.name] = value;
             }
         }
         return env;

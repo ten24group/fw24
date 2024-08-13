@@ -124,7 +124,7 @@ export class QueueConstruct implements FW24Construct {
         for (const envConfig of queueConstructConfig.env || []) {
             const value = this.fw24.get(envConfig.name, envConfig.prefix || '');
             if (value) {
-                env[envConfig.name] = value;
+                env[envConfig.exportName ?? envConfig.name] = value;
             }
         }
         return env;

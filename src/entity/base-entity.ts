@@ -1,7 +1,11 @@
-import { EntityQuery } from './query-types';
-import { Entity, EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, createSchema, Attribute, ResponseItem } from "electrodb";
-import { BaseEntityService } from "./base-service";
-import { Narrow, OmitNever, Paths, ValueOf, Writable } from "../utils/types";
+import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem } from "electrodb";
+import { createSchema, Entity } from "electrodb";
+
+import type { EntityQuery } from './query-types';
+import type { BaseEntityService } from "./base-service";
+import type { OmitNever, Paths, Writable } from "../utils/types";
+
+
 
 /**
  *  ElectroDB entity  examples

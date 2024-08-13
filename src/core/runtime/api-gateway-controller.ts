@@ -1,16 +1,14 @@
-import { APIGatewayEvent, APIGatewayProxyResult, Context, Handler } from "aws-lambda";
-import { Request } from "../interfaces/request";
-import { Response } from "../interfaces/response";
-import { Route } from "../interfaces/route";
-import { createLogger } from "../logging";
-import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule } from "../validation";
+import type { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
+import type { Request, Response, Route } from "../../interfaces";
+import { Controller, IControllerConfig } from "../../decorators";
+import { Get, RouteMethods } from "../../decorators/method";
+import { createLogger } from "../../logging";
+import { getCircularReplacer } from "../../utils";
+import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule } from "../../validation";
+import { isHttpRequestValidationRule, isInputValidationRule } from "../../validation/utils";
+import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
-import { isHttpRequestValidationRule, isInputValidationRule } from "../validation/utils";
-import { getCircularReplacer } from "../utils";
-import { Get, RouteMethods } from "../decorators/method";
-import { Controller, IControllerConfig } from "../decorators";
-import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 
 
 /**

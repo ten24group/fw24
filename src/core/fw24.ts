@@ -4,9 +4,9 @@ import { FW24Construct, OutputType } from '../interfaces/construct';
 import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { Helper } from './helper';
 import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
-import { ITopic, Topic } from 'aws-cdk-lib/aws-sns';
+import type { ITopic } from 'aws-cdk-lib/aws-sns';
 import { Role, PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';
-import { IFw24Module } from './module';
+import { IFw24Module } from './runtime/module';
 import { createLogger } from '../logging';
 import { DIContainer } from '../di';
 

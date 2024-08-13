@@ -1,13 +1,14 @@
-import { resolve } from 'path';
-import { EntityConfiguration } from "electrodb";
+import type { EntityConfiguration } from "electrodb";
+import type { EntityInputValidations, EntityValidations } from "../validation";
+import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema } from "./base-entity";
+import type { EntityQuery, EntitySelections } from "./query-types";
+import type { DIContainer } from "../di";
+
 import { createLogger } from "../logging";
+import { createElectroDBEntity } from "./base-entity";
 import { JsonSerializer, camelCase, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isObject, isString, pickKeys, toHumanReadableName } from "../utils";
-import { EntityInputValidations, EntityValidations } from "../validation";
-import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
-import { EntityQuery, EntitySelections } from "./query-types";
 import { addFilterGroupToEntityFilterCriteria, inferRelationshipsForEntitySelections, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
-import { DIContainer } from "../di";
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 

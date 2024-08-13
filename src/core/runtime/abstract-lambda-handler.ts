@@ -1,4 +1,4 @@
-import { createLogger } from "../logging";
+import { createLogger } from "../../logging";
 
 export abstract class AbstractLambdaHandler {
   readonly logger = createLogger(AbstractLambdaHandler.name);

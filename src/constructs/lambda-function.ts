@@ -1,7 +1,7 @@
 import { Construct } from "constructs";
 import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
-import { Runtime, Architecture, LayerVersion, ApplicationLogLevel, LoggingFormat } from "aws-cdk-lib/aws-lambda";
+import { Runtime, Architecture, LayerVersion, ApplicationLogLevel, LoggingFormat, ILayerVersion } from "aws-cdk-lib/aws-lambda";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Fw24 } from "../core/fw24";
@@ -60,7 +60,9 @@ export interface LambdaFunctionProps {
   /**
    * Additional properties for the Node.js Lambda function.
    */
-  functionProps?: NodejsFunctionProps;
+  functionProps?: Omit<NodejsFunctionProps, 'layers'> & {
+    readonly layers?: Array<ILayerVersion | string>;
+  }
 }
 
 /**
@@ -225,13 +227,32 @@ export class LambdaFunction extends Construct {
     let additionalProps: any = {
       entry: props.entry,
     }
-    // Use fw24 layer
-    additionalProps.layers = [...(defaultProps?.layers ?? []),...(props.functionProps?.layers ?? []), LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, fw24.get('fw24', 'layer'))];
+    
+    // resolve layer names to actual layer arns
+    const layers = [ ...(defaultProps?.layers ?? []), ...(props.functionProps?.layers ?? [])] as Array<string | ILayerVersion>;
+    const resolvedLayers = layers.map( layerName => {
+      if(typeof layerName === 'string'){
+
+        return LayerVersion.fromLayerVersionArn(this, `${id}-${layerName}-Layer`, fw24.get(layerName, 'layer') );
+      }
+      return layerName;
+    })
+    
+    additionalProps.layers = [
+      ...resolvedLayers,
+      // Use fw24 layer
+      LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, fw24.get('fw24', 'layer'))
+    ];
+
     additionalProps.bundling = {
       ...defaultProps.bundling,
       ...props.functionProps?.bundling,
       sourceMap: true,
-      externalModules: [...(defaultProps?.bundling?.externalModules ?? []),...(props.functionProps?.bundling?.externalModules ?? []), "@ten24group/fw24"],
+      externalModules: [
+        ...(defaultProps?.bundling?.externalModules ?? []),
+        ...(props.functionProps?.bundling?.externalModules ?? []), 
+        "@ten24group/fw24"
+      ],
     };
     additionalProps.logGroup = logGroup;
     if(props.functionTimeout){

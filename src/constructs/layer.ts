@@ -6,7 +6,7 @@ import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/co
 import { LogDuration, createLogger } from "../logging";
 import { Architecture, Code, LayerVersion, LayerVersionProps, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { basename as pathBaseName, resolve as pathResolve, join as pathJoin, extname as pathExtname } from 'path';
-import { existsSync, mkdirSync, readdirSync, statSync, rmSync, lstatSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, statSync, rmSync, lstatSync, copyFileSync } from 'fs';
 import { build, BuildOptions } from 'esbuild';
 
 
@@ -63,10 +63,15 @@ export interface IBuildAndPackageConfig {
      * Flag to clear the output directory after packaging; defaults to false.
      */
     clearOutputDir?: boolean;
+
+    /**
+     * Configurable output path for the package.
+     */ 
+    packagePath?: string; 
 }
 
 /**
- * configuration for layer construct.
+ * Configuration for layer construct.
  */
 export type ILayerConstructConfig = IPackageDirectoryConfig | IBuildAndPackageConfig;
 
@@ -114,7 +119,7 @@ export class LayerConstruct implements FW24Construct {
         // add defaults
         config.forEach((layerConfig) => {
             layerConfig.mode = layerConfig.mode || 'PACKAGE_DIRECTORY';
-            if(layerConfig.mode === 'BUILD_AND_PACKAGE'){
+            if (layerConfig.mode === 'BUILD_AND_PACKAGE') {
                 layerConfig.clearOutputDir = layerConfig.clearOutputDir ?? false;
             }
         });
@@ -131,7 +136,7 @@ export class LayerConstruct implements FW24Construct {
 
             if (layerConfig.mode === 'PACKAGE_DIRECTORY') {
                 await this.packageDirectory(layerConfig, mainStack);
-            } else if(layerConfig.mode === 'BUILD_AND_PACKAGE') {
+            } else if (layerConfig.mode === 'BUILD_AND_PACKAGE') {
                 await this.scanAndPackageFiles(layerConfig, mainStack);
             } else {
                 throw new Error(`Invalid mode for layer ${layerConfig}`);
@@ -190,10 +195,7 @@ export class LayerConstruct implements FW24Construct {
      * @param layerConfig - The configuration for the layer.
      */
     private async tryCreateLayerForFile(file: string, distDirectory: string, mainStack: any, layerConfig: IBuildAndPackageConfig) {
-        const fileBaseName = pathBaseName(file, pathExtname(file));
-        const outputDir = pathJoin(distDirectory, fileBaseName);
-        const outputFile = pathJoin(outputDir, 'index.js');
-
+        
         const moduleExports = await import(file);
 
         const layerDescriptorName = Object.keys(moduleExports).find((key) => {
@@ -210,7 +212,21 @@ export class LayerConstruct implements FW24Construct {
 
         const layerDescriptor = moduleExports[layerDescriptorName];
         const buildOptions = getLayerBuildOptions(layerDescriptor) || {};
-        const layerName = getLayerName(layerDescriptor);
+
+        const fileBaseName = pathBaseName(file, pathExtname(file));
+        const layerName = getLayerName(layerDescriptor) || fileBaseName;
+        const configuredOutputPath = `nodejs/node_modules/${layerConfig.packagePath ?? ''}` ;
+    
+        const outputDir = pathJoin(distDirectory, layerName, configuredOutputPath, fileBaseName);
+        const bundleDir = pathJoin(distDirectory, layerName);
+        const outputFile = pathJoin(outputDir, 'index.js');
+
+        // this is the path that will be used in the layer import statement
+        const layerImportPath = pathJoin('/opt', configuredOutputPath, fileBaseName, 'index.js');
+        // put it into fw24's config so it can be added to the lambda's environment variables
+        console.log('layerImportPath', layerImportPath);
+        this.fw24.set(layerName+'ImportPath', layerImportPath, 'layerImportPath');
+
         const layerProps = getLayerProps(layerDescriptor);
 
         if (!existsSync(outputDir)) {
@@ -222,7 +238,7 @@ export class LayerConstruct implements FW24Construct {
         const defaultLayerProps: LayerVersionProps = {
             layerVersionName: layerName,
             compatibleRuntimes: [Runtime.NODEJS_18_X],
-            code: Code.fromAsset(outputDir),
+            code: Code.fromAsset(bundleDir),
             compatibleArchitectures: [Architecture.ARM_64],
         };
 
@@ -245,8 +261,6 @@ export class LayerConstruct implements FW24Construct {
         }
     }
 }
-
-// Utility functions
 
 /**
  * Recursively scans a directory and returns a list of TypeScript files.
@@ -272,7 +286,7 @@ function scanDirectory(directory: string): string[] {
 }
 
 function isLayerEntry(target: any): boolean {
-    return Reflect.get(target, 'layerName') !== undefined;
+    return Reflect.get(target, 'isLayerEntry') === true;
 }
 
 function getLayerName(target: any) {
@@ -298,11 +312,18 @@ async function bundleWithEsbuild(entryFile: string, outputFile: string, buildOpt
         bundle: true,
         platform: 'node',
         target: 'node18',
-        minify: true,
-        keepNames: true, // Keep the names in the minified code for DI-tokens
-        sourcemap: false,
-        external: buildOptions.external || [], // Specify external packages
+        minify: false,
+        // keepNames: true, // Keep the names in the minified code for DI-tokens
+        sourcemap: true,
         ...buildOptions, // Override with specific build options
+        external: [ ...(buildOptions.external || []), 
+            // make sure all the dependencies of core-fw layer are marked as external
+            '@ten24group/fw24',
+            '@aws-sdk',
+            '@smithy',
+            'aws-cdk-lib',
+            'esbuild',
+        ], // Specify external packages
         outfile: outputFile,
         entryPoints: [entryFile],
     };

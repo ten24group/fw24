@@ -1,4 +1,4 @@
-import { HttpRequestValidations, InputValidationRule } from "../validation";
+import type { HttpRequestValidations, InputValidationRule } from "../validation";
 
 export interface Route {
   httpMethod: string;

@@ -1,5 +1,5 @@
 import { v4 as generateUUID } from 'uuid';
-import { DeepPartial, PartialBy } from '../utils';
+import type { DeepPartial, PartialBy } from '../utils';
 import { createLogger, ILogger } from './../logging/index';
 import { Injectable } from './decorators';
 
@@ -174,51 +174,52 @@ export class DIContainer {
     }
 
     exportProvidersFor<T>(exportedDep: DepIdentifier<T>) {
-        // const token = this.createToken(exportedDep);
-        
-        // if(!this.has(exportedDep)){
-        //     throw new Error(`Module ${this.containerId} does not provide ${token}`);
-        // } 
-        // // make the token providers available in exports
-        // this.exports.set(token, this.providers.get(token)!); 
-
         const token = this.createToken(exportedDep);
-    
-        // Check if the token is available either in the current container's providers or its children's exports
+
+        // Collect providers directly matching the export token
         const availableProviders = this.providers.get(token) || [];
         const childExportedProviders = Array.from(this.childContainers)
             .flatMap(child => child.exports.get(token) || []);
 
-        if (availableProviders.length === 0 && childExportedProviders.length === 0) {
-            throw new Error(`Module ${this.containerId} does not provide ${token}`);
-        }
+        // Combine available providers and child exported providers
+        const allProviders = [...availableProviders, ...childExportedProviders];
 
-        // Set the export based on available providers and child exports
-        const providersToExport = availableProviders.length > 0 ? availableProviders : childExportedProviders;
+        // Nested function to map and export providers
+        const mapAndExportProviders = (providers: InternalProviderOptions[], targetToken: string) => {
+            const exported = providers.map(provider => {
+                const { _container, _provider, _id } = provider;
+                const { condition, provide, priority, override, singleton, tags } = _provider;
 
-        this.exports.set(token, providersToExport.map(provider => { 
+                return {
+                    _provider: {
+                        useFactory: () => _container.resolve(provide),
+                        condition,
+                        provide,
+                        priority,
+                        override,
+                        singleton,
+                        tags,
+                    },
+                    _id,
+                    _type: provider._type,
+                    _container: this
+                };
+            });
 
-            const { _container, _provider, _type, _id } = provider;
-            const { condition, provide, priority, override, singleton, tags } = _provider;
+            // Merge or set these exported providers under their respective keys
+            const existingExports = this.exports.get(targetToken) || [];
+            this.exports.set(targetToken, [...existingExports, ...exported]);
+        };
 
-            return {
-                _provider: {
-                    // make a factory proxy, so the resolve calls for this provider 
-                    // are delegated to the actual container
-                    useFactory: () => _container.resolve(provide),
-                    // maintain the rest of the provider metadata as similar to the original provider
-                    condition, 
-                    provide, 
-                    priority, 
-                    override, 
-                    singleton, 
-                    tags,
-                },
-                _id,
-                _type,
-                _container: this 
+        // Export the standard and config providers directly matching the token
+        mapAndExportProviders(allProviders, token);
+
+        // Find all config providers whose keys start with the token and export them
+        for (const [configKey, configProviders] of this.providers.entries()) {
+            if (configKey.startsWith(token) && configProviders.some(p => p._type === 'config')) {
+                mapAndExportProviders(configProviders, configKey);
             }
-        }));
+        }
     }
 
     createToken<T>(tokenOrType: DepIdentifier<T>): Token {

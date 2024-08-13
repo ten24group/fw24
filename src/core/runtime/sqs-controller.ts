@@ -1,5 +1,5 @@
 import { SQSEvent, Context } from "aws-lambda";
-import { createLogger } from "../logging";
+import { createLogger } from "../../logging";
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 
 /**

@@ -2,7 +2,7 @@ import { App, Stack } from "aws-cdk-lib";
 import { Fw24 } from "./core/fw24";
 import { IApplicationConfig } from "./interfaces/config";
 import { FW24Construct } from "./interfaces/construct";
-import { IFw24Module } from "./core/module";
+import { IFw24Module } from "./core/runtime/module";
 import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
 import { ILogger, LogDuration, createLogger } from "./logging";
 import { LayerConstruct } from "./constructs";

@@ -1,14 +1,14 @@
-import { APIController } from '../core/api-gateway-controller';
-import { Request } from '../interfaces/request';
-import { Response } from '../interfaces/response';
+import type { Request, Response } from '../interfaces';
+import type { EntitySchema } from './base-entity';
+import type { BaseEntityService } from './base-service';
+import type { EntityFilterCriteria } from './query-types';
+
+import { APIController } from '../core/runtime/api-gateway-controller';
 import { Delete, Get, Patch, Post } from '../decorators/method';
-import { BaseEntityService } from './base-service';
-import { EntitySchema } from './base-entity';
 import { createLogger } from '../logging';
-import { safeParseInt } from '../utils/parse';
 import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, merge } from '../utils';
+import { safeParseInt } from '../utils/parse';
 import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
-import { EntityFilterCriteria } from './query-types';
 
 /**
  * Abstract base class for entity controllers.

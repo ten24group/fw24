@@ -1,4 +1,5 @@
-import { CommonLambdaHandlerOptions, resolveAndExportHandler, setupDI } from "./decorator-utils";
+import type { CommonLambdaHandlerOptions } from "./decorator-utils";
+import { resolveAndExportHandler, setupDI } from "./decorator-utils";
 
 /**
  * Represents the configuration for a task.

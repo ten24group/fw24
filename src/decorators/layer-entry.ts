@@ -1,7 +1,6 @@
 // decorators/layer-entry.ts
-import { LayerVersionProps } from 'aws-cdk-lib/aws-lambda';
-import { BuildOptions } from 'esbuild';
-
+import type { LayerVersionProps } from 'aws-cdk-lib/aws-lambda';
+import type { BuildOptions } from 'esbuild';
 
 export type LayerEntryOptions = {
     layerName?: string,
@@ -19,13 +18,12 @@ export function LayerEntry( options: LayerEntryOptions = {} ) {
 
         let { layerName, props={}, buildOptions={} } = options;
         
-        layerName = layerName || target.name; // maybe use some internal token to avoid conflicts
-
+        Reflect.set(target, 'isLayerEntry', true);
         Reflect.set(target, 'layerName', layerName);
         Reflect.set(target, 'layerProps', props);
 
         if(!buildOptions.external){
-            buildOptions.external = ['aws-sdk', '@ten24Group/fw24']; // default external modules
+            buildOptions.external = []; // default external modules
         }
         
         Reflect.set(target, 'buildOptions', buildOptions);

@@ -1,6 +1,7 @@
 export * from "./../interfaces";
 export * from "./../decorators";
-export * from "./../core";
+// It is important to make sure that we only include the things needed by the fw24-runtime
+export * from "./../core/runtime";
 export * from './../entity';
 export * from './../logging';
 export * from './../client';

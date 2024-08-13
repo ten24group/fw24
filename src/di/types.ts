@@ -1,5 +1,5 @@
-import { PartialBy } from "../utils";
-import { DIContainer } from "./di-container";
+import type { PartialBy } from "../utils";
+import type { DIContainer } from "./di-container";
 
 export type Token = string;
 export type DepIdentifier<T = any> = string | Function | ClassConstructor<T>;

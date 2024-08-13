@@ -1,7 +1,8 @@
 
-import { ILambdaEnvConfig } from "../interfaces/lambda-env";
-import { AuthorizerTypeMetadata } from "./authorizer";
-import { CommonLambdaHandlerOptions, resolveAndExportHandler, setupDI } from "./decorator-utils";
+import type { ILambdaEnvConfig } from "../interfaces/lambda-env";
+import type { AuthorizerTypeMetadata } from "./authorizer";
+import type { CommonLambdaHandlerOptions } from "./decorator-utils";
+import { resolveAndExportHandler, setupDI } from "./decorator-utils";
 
 /**
  * Represents the configuration options for a controller.
@@ -37,9 +38,25 @@ export type IControllerConfig = CommonLambdaHandlerOptions & {
  * @returns A class decorator function.
  */
 export function Controller(controllerName: string, controllerConfig: IControllerConfig = {}) {
+	
+	
 	return function <T extends { new (...args: any[]): {} }>(target: T) {
 		// Default autoExportLambdaHandler to true if undefined
 		controllerConfig.autoExportLambdaHandler = controllerConfig.autoExportLambdaHandler ?? true;
+
+		const entryPackageName = process.env['entryPackageName'];
+
+		if(entryPackageName){
+			console.info(`Controller ${controllerName} is configured to import package: ${entryPackageName}`);
+			try {
+				const entry = require(entryPackageName);
+				console.info(`Controller ${controllerName} imported package: ${entryPackageName}`, entry);
+			} catch (error) {
+				console.error(`Controller ${controllerName} failed to import package: ${entryPackageName}`, error);
+			}
+		} else {
+			console.info(`Controller ${controllerName} is not configured to import any package`);
+		}
 
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {

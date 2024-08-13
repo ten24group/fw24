@@ -1,6 +1,7 @@
-import { QueueProps } from "aws-cdk-lib/aws-sqs";
-import { IQueueSubscriptions } from "../constructs/queue-lambda";
-import { CommonLambdaHandlerOptions, resolveAndExportHandler, setupDI } from "./decorator-utils";
+import type { QueueProps } from "aws-cdk-lib/aws-sqs";
+import type { IQueueSubscriptions } from "../constructs/queue-lambda";
+import type { CommonLambdaHandlerOptions } from "./decorator-utils";
+import { resolveAndExportHandler, setupDI } from "./decorator-utils";
 
 /**
  * Configuration options for the queue.
