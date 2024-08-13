@@ -1,7 +1,7 @@
 import type { QueueProps } from "aws-cdk-lib/aws-sqs";
 import type { IQueueSubscriptions } from "../constructs/queue-lambda";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
-import { resolveAndExportHandler, setupDI } from "./decorator-utils";
+import { resolveAndExportHandler, setupDI, trySettingUpEntryPackage } from "./decorator-utils";
 
 /**
  * Configuration options for the queue.
@@ -55,6 +55,8 @@ export function Queue(queueName: string, queueConfig: IQueueConfig = {}) {
 		// Default autoExportLambdaHandler to true if undefined
 		queueConfig.autoExportLambdaHandler = queueConfig.autoExportLambdaHandler ?? true;
 
+		trySettingUpEntryPackage(queueName);
+		
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {
 			constructor(...args: any[]) {

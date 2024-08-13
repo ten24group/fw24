@@ -10,6 +10,7 @@ import type { RegisterDIModuleMetadataOptions } from "../di/utils";
 import { AbstractLambdaHandler } from "../core/runtime/abstract-lambda-handler";
 import { DIContainer } from "../di";
 import { registerModuleMetadata } from "../di/utils";
+import { DefaultLogger } from "../logging";
 
 export type CommonLambdaHandlerOptions = {
 
@@ -69,6 +70,22 @@ export type CommonLambdaHandlerOptions = {
 	 * Under the hood this will create a dedicated module and container for this controller; you can use this option to shadow the providers and configs available in the parent scopes.
 	 */
 	module?: RegisterDIModuleMetadataOptions
+}
+
+export function trySettingUpEntryPackage(controllerName: string) {
+	const entryPackageName = process.env['entryPackageName']; // TODO: key should be a constant and available for the users
+
+	if(entryPackageName){
+		DefaultLogger.info(`Controller ${controllerName} is configured to import entry-package: ${entryPackageName}`);
+		try {
+			const entry = require(entryPackageName);
+			DefaultLogger.info(`Controller ${controllerName} imported entry-package: ${entryPackageName}`, entry);
+		} catch (error) {
+			console.error(`Controller ${controllerName} failed to import entry-package: ${entryPackageName}`, error);
+		}
+	} else {
+		DefaultLogger.info(`Controller ${controllerName} is not configured to import any entry-package`);
+	}
 }
 
 /**
