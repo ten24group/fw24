@@ -2,7 +2,7 @@ import { EntityConfiguration } from "electrodb";
 import { createLogger } from "../logging";
 import { JsonSerializer, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isObject, isString, pickKeys, toHumanReadableName } from "../utils";
 import { EntityInputValidations, EntityValidations } from "../validation";
-import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
+import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
 import { EntityQuery, EntitySelections } from "./query-types";
 import { addFilterGroupToEntityFilterCriteria, inferRelationshipsForEntitySelections, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
@@ -240,6 +240,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
 	return {
 		get: {
+			by: defaultAccessPattern,
+			output: outputSchemaAttributes.detail, // default for the detail page
+		},
+        duplicate: {
 			by: defaultAccessPattern,
 			output: outputSchemaAttributes.detail, // default for the detail page
 		},
@@ -714,6 +718,65 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
         return entity;
     }
+
+    /**
+     * Creates a duplicate entity data based on the given identifiers.
+     * 
+     * @param identifiers - The identifiers of the entity.
+     * @returns The duplicate entity data.
+     * @throws Error if no record is found for the given identifiers.
+     * 
+     * @example
+     * const identifiers = { id: 1 };
+     * const duplicateData = await makeDuplicateEntityDataByIdentifiers(identifiers);
+     * console.log(duplicateData); // { name: 'John Doe', age: 30, ... }
+     */
+    protected async makeDuplicateEntityData(identifiers: EntityIdentifiersTypeFromSchema<S>){
+        const entity = await this.get({identifiers}) as EntityRecordTypeFromSchema<S>;
+
+		if(!entity){
+			throw new Error(`No ${this.getEntityName()} record found for identifiers: ${identifiers}`);
+		}
+
+		let duplicateEventData: CreateEntityItemTypeFromSchema<S> = {} as any;
+        const primaryIdPropName = this.getEntityPrimaryIdPropertyName() as string;
+
+        const schema = this.getEntitySchema();
+        const entitySlugAttribute = (schema.model?.entitySlugAttribute ?? 'slug').toUpperCase();
+        const entityNameAttribute = (schema.model?.entityNameAttribute ?? 'name').toUpperCase();
+
+        for (let [key, value] of Object.entries(entity)) {
+
+            if (key !== primaryIdPropName) { 
+                // TODO: handle when entity has multiple identifiers
+
+                if( key.toUpperCase() === entityNameAttribute ){
+                    value = `${value} - Copy`;
+                } else if( key.toUpperCase() === entitySlugAttribute ){
+                    value = `${value}-copy`;
+                }
+
+                duplicateEventData[key as keyof typeof duplicateEventData] = value;
+            }
+        }
+
+        return duplicateEventData;
+    }
+
+    /**
+     * Creates a duplicate entity based on the provided identifiers.
+     * 
+     * @param id - The identifiers of the entity to duplicate.
+     * @returns A promise that resolves to the duplicated entity.
+     * 
+     * @example
+     * const entityId = { id: 123, name: 'example' };
+     * const duplicatedEntity = await duplicate(entityId);
+     */
+    public async duplicate(id: EntityIdentifiersTypeFromSchema<S>){
+        const duplicateEventData = await this.makeDuplicateEntityData(id);
+		return await this.create(duplicateEventData);
+	}
 
     // TODO: should be part of some config
     protected delimitersRegex = /(?:&| |,|\+)+/; 

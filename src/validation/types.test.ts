@@ -116,6 +116,7 @@ export namespace User {
               update: "update",
               delete: "delete",
               query: "query",
+              duplicate: "duplicate",
               xxx: "xxx",
               yyy: "yyy"
           },
