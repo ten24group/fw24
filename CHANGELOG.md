@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-alpha.12](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.11...v0.1.1-alpha.12) (2024-08-16)
+
 ### [0.1.1-alpha.11](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.10...v0.1.1-alpha.11) (2024-07-22)
 
 
