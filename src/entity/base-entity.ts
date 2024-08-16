@@ -337,6 +337,9 @@ export interface EntitySchema<
         readonly entityOperations: Opp; 
         readonly entityMenuIcon ?: string, // default is 'appStore'
         readonly includeInMenu ?: boolean, // default is true
+        readonly entityNameAttribute ?: string, // default is 'name'
+        readonly entityImageAttribute ?: string, // default is 'image'
+        readonly entitySlugAttribute ?: string, // default is 'slug'
     };
     readonly attributes: {
         readonly [a in A]: EntityAttribute;
@@ -350,6 +353,7 @@ export const DefaultEntityOperations = {
     create: "create",
     update: "update",
     delete: "delete",
+    duplicate: "duplicate",
 };
 
 export type TDefaultEntityOperations = typeof DefaultEntityOperations;
@@ -363,14 +367,15 @@ export type TEntityOpsInputSchemas<
 Sch extends EntitySchema<any, any, any>,
 > = {
     readonly [opName in keyof Sch['model']['entityOperations']] 
-        : opName extends 'get'      ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
-        : opName extends 'create'   ? CreateEntityItemTypeFromSchema<Sch>
-        : opName extends 'update'   ? UpdateEntityItemTypeFromSchema<Sch>
-        : opName extends 'delete'   ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
+        : opName extends 'get'        ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
+        : opName extends 'create'     ? CreateEntityItemTypeFromSchema<Sch>
+        : opName extends 'update'     ? UpdateEntityItemTypeFromSchema<Sch>
+        : opName extends 'delete'     ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
+        : opName extends 'duplicate'  ? EntityIdentifiersTypeFromSchema<Sch>
         : {}
 }
 
-export type CreateEntityOptions<S extends EntitySchema<any, any, any>> = {
+export type CreateElectroDBEntityOptions<S extends EntitySchema<any, any, any>> = {
     schema: S,
     entityConfigurations: EntityConfiguration;
 }
@@ -435,7 +440,7 @@ export function createEntitySchema<
     return createSchema(schema);
 }
 
-export function createElectroDBEntity<S extends EntitySchema<any, any, any>>(options: CreateEntityOptions<S>) {
+export function createElectroDBEntity<S extends EntitySchema<any, any, any>>(options: CreateElectroDBEntityOptions<S>) {
     const { schema, entityConfigurations} = options;
 
 	const newElectroDbEntity = new Entity(
