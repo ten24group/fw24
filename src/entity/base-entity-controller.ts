@@ -4,12 +4,23 @@ import { Response } from '../interfaces/response';
 import { Delete, Get, Patch, Post } from '../decorators/method';
 import { BaseEntityService } from './base-service';
 import { defaultMetaContainer } from './entity-metadata-container';
-import { EntitySchema } from './base-entity';
+import { EntityIdentifiersTypeFromSchema, EntitySchema } from './base-entity';
 import { createLogger } from '../logging';
 import { safeParseInt } from '../utils/parse';
-import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, merge } from '../utils';
+import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, merge, toSlug } from '../utils';
 import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
 import { EntityFilterCriteria } from './query-types';
+import { randomUUID } from 'crypto';
+import { getSignedUrlForFileUpload } from '../client/s3';
+
+type seconds = number;
+export type GetSignedUrlForFileUploadSchema = { 
+	fileName: string, 
+	bucketName: string, 
+	expiresIn?: seconds, // default to 15*60 seconds
+	fileNamePrefix ?: string, 
+	contentType?: string // default to */*
+};
 
 /**
  * Abstract base class for entity controllers.
@@ -74,6 +85,69 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 		};
 		if (req.debugMode) {
 			result.req = req;
+		}
+
+		return res.json(result);
+	}
+
+	@Get('/getSignedUrlForFileUpload', {
+		validations: {
+			fileName: {
+				required: true,
+				datatype: 'string',
+			},
+			bucketName: {
+				required: true,
+				datatype: 'string',
+			},
+		}
+	})
+    async getSignedUrlForFileUpload(req: Request, res: Response){
+
+		let { bucketName, fileName, expiresIn = 15*60, fileNamePrefix = "", contentType="*/*" } = req.queryStringParameters as GetSignedUrlForFileUploadSchema ?? {};
+
+		const nameParts = fileName.split('.');
+		const fileExtension = nameParts.pop();
+		
+		// ensure it's unique
+		fileName = `${fileNamePrefix}${toSlug(nameParts.join('.'))}-${randomUUID()}.${fileExtension}`;
+				
+		const signedUploadURL = await getSignedUrlForFileUpload({
+			fileName,
+			expiresIn,
+			bucketName,
+			contentType,
+		});
+
+		const response: any = {
+			fileName,
+			expiresIn,
+			contentType,
+			signedUploadURL,
+		};
+
+		if(req.debugMode){
+			response['bucketName'] = bucketName;
+		}
+
+		return res.json(response);
+    }
+
+	@Get('/duplicate/{id}')
+	async duplicate(req: Request, res: Response){
+		const service = this.getEntityService();
+
+        const identifiers = service.extractEntityIdentifiers(req.pathParameters) as EntityIdentifiersTypeFromSchema<Sch>;
+		
+		const duplicateEntity = await service.duplicate(identifiers);
+
+		const result: any = {
+			[camelCase(this.entityName)]: duplicateEntity,
+		};
+
+		if (req.debugMode) {
+			result.req = req;
+			result.identifiers = identifiers;
 		}
 
 		return res.json(result);
