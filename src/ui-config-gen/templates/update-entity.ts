@@ -27,6 +27,24 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         breadcrums: [],
         pageHeaderActions: [
             {
+                icon: 'copy',
+                label: `Duplicate`,
+                openInModal: true,
+                modalConfig: {
+                    modalType: 'confirm',
+                    modalPageConfig: {
+                        title: `Duplicate ${entityNamePascalCase}`,
+                        content: `Are you sure you want to duplicate this ${entityNamePascalCase}?`
+                    },
+                    apiConfig: {
+                        apiMethod: `GET`,
+                        responseKey: entityNameLower,
+                        apiUrl: `/${entityNameLower}/duplicate`,
+                    },
+                    submitSuccessRedirect: `/list-${entityNameLower}`
+                }
+            },
+            {
                 label:  "Back",
                 url:    `/list-${entityNameLower}`
             }

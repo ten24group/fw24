@@ -750,7 +750,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             if (key !== primaryIdPropName) { 
                 // TODO: handle when entity has multiple identifiers
 
-                if( key.toUpperCase() === entityNameAttribute ){
+                if( key.toUpperCase() === entityNameAttribute || key.toUpperCase() === `${this.getEntityName().toUpperCase()}NAME`){
                     value = `${value} - Copy`;
                 } else if( key.toUpperCase() === entitySlugAttribute ){
                     value = `${value}-copy`;
