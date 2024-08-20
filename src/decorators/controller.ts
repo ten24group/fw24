@@ -2,7 +2,7 @@
 import type { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import type { AuthorizerTypeMetadata } from "./authorizer";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
-import { resolveAndExportHandler, setupDI, trySettingUpEntryPackage } from "./decorator-utils";
+import { resolveAndExportHandler, setupDI, tryImportingEntryPackages } from "./decorator-utils";
 
 /**
  * Represents the configuration options for a controller.
@@ -44,7 +44,7 @@ export function Controller(controllerName: string, controllerConfig: IController
 		// Default autoExportLambdaHandler to true if undefined
 		controllerConfig.autoExportLambdaHandler = controllerConfig.autoExportLambdaHandler ?? true;
 
-		trySettingUpEntryPackage(controllerName);
+		tryImportingEntryPackages(controllerName);
 
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {

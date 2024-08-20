@@ -1,5 +1,5 @@
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
-import { resolveAndExportHandler, setupDI, trySettingUpEntryPackage } from "./decorator-utils";
+import { resolveAndExportHandler, setupDI, tryImportingEntryPackages } from "./decorator-utils";
 
 /**
  * Represents the configuration for a task.
@@ -31,7 +31,7 @@ export function Task(taskName: string, taskConfig: ITaskConfig) {
 		// Default autoExportLambdaHandler to true if undefined
 		taskConfig.autoExportLambdaHandler = taskConfig.autoExportLambdaHandler ?? true;
 
-		trySettingUpEntryPackage(taskName);
+		tryImportingEntryPackages(taskName);
 
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {

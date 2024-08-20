@@ -1,5 +1,7 @@
 import type { RemovalPolicy } from "aws-cdk-lib";
 import type { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import type { DIContainer } from "../di/di-container";
+import type { ILayerVersion } from "aws-cdk-lib/aws-lambda";
 
 export interface IApplicationConfig {
     name?: string;
@@ -17,6 +19,10 @@ export interface IApplicationConfig {
     environment?: string; // local, dev, prod
     logRetentionDays?: number;
     logRemovalPolicy?: RemovalPolicy;
-    functionProps?: NodejsFunctionProps
+    functionProps?: Omit<NodejsFunctionProps, 'layers'> & {
+		readonly layers?: Array<ILayerVersion | string>;
+	}
+    appDIContainer?: DIContainer;
+    lambdaEntryPackages?: string[];
 }
 

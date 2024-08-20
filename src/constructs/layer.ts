@@ -225,7 +225,7 @@ export class LayerConstruct implements FW24Construct {
         const layerImportPath = pathJoin('/opt', configuredOutputPath, fileBaseName, 'index.js');
         // put it into fw24's config so it can be added to the lambda's environment variables
         console.log('layerImportPath', layerImportPath);
-        this.fw24.set(layerName+'ImportPath', layerImportPath, 'layerImportPath');
+        this.fw24.set(layerName, layerImportPath, 'layerImportPath');
 
         const layerProps = getLayerProps(layerDescriptor);
 

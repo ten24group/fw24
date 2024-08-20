@@ -21,7 +21,7 @@ export class Application {
     private resourceConstructMaxConcurrency: number = 10;
     private resourceConstructCurrentConcurrency = 0;
 
-    constructor(config: IApplicationConfig = {}, appDIContainer?: DIContainer) {
+    constructor(config: IApplicationConfig = {}) {
         this.logger = createLogger([Application.name, config.name, config.environment].join('-'));
         
         this.logger.info("Initializing fw24 infrastructure...");
@@ -29,8 +29,6 @@ export class Application {
         this.fw24 = Fw24.getInstance();
         this.fw24.setConfig(config);
         
-        this.fw24.setAppDIContainer(appDIContainer || DIContainer.ROOT);
-
         this.constructs = new Map();
         this.modules = new Map();
 

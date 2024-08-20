@@ -9,6 +9,7 @@ export interface IFw24Module{
     getBasePath(): string;
     getConstructs(): Map<string, FW24Construct>;
     getControllersDirectory(): string;
+    getLambdaEntryPackages(): string[];
     getServicesDirectory(): string;
     getQueuesDirectory(): string;
     getQueueFileNames(): string[];
@@ -59,6 +60,10 @@ export abstract class AbstractFw24Module implements IFw24Module {
     }
 
     getDependencies(): string[] {
+        return [];
+    }
+
+    getLambdaEntryPackages(): string[] {
         return [];
     }
 

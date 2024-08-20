@@ -1,3 +1,4 @@
+import { join } from 'path';
 import { 
     AuthorizationType, 
     AwsIntegration, 
@@ -12,6 +13,9 @@ import {
     RestApiProps 
 } from "aws-cdk-lib/aws-apigateway";
 
+import type HandlerDescriptor from "../interfaces/handler-descriptor";
+import type { IFw24Module } from "../core/";
+
 import { Stack, CfnOutput, RemovalPolicy } from "aws-cdk-lib";
 import { Helper } from "../core/helper";
 import { createLogger } from "../logging";
@@ -19,7 +23,6 @@ import { LambdaFunction } from "./lambda-function";
 import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import Mutable from "../types/mutable";
-import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 
 import { MailerConstruct } from "./mailer";
@@ -34,6 +37,8 @@ import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { CertificateConstruct } from "./certificate";
 import { LayerConstruct } from "./layer";
+import { isArray } from "../utils";
+import { ENV } from "../fw24";
 
 /**
  * Represents the configuration options for an API construct.
@@ -146,8 +151,13 @@ export class APIConstruct implements FW24Construct {
             this.logger.debug("API-gateway stack: construct: app has modules ", Array.from(modules.keys()));
             for (const [, module] of modules) {
                 const basePath = module.getBasePath();
+                
                 this.logger.debug("Load controllers from module base-path: ", basePath);
-                Helper.registerControllersFromModule(module, this.registerController);
+                
+                Helper.registerControllersFromModule(
+                    module,                     
+                    (desc: HandlerDescriptor) => this.registerController(desc, module)
+                );
             }
         } else {
             this.logger.debug("API-gateway stack: construct: app has NO modules ");
@@ -166,8 +176,45 @@ export class APIConstruct implements FW24Construct {
         return env;
     }
 
+    private prepareEntryPackages(controllerConfig: IControllerConfig, ownerModule?: IFw24Module): string[] {
+        let entryPackages = controllerConfig.entryPackages || [];
+        
+        if(isArray(entryPackages)){
+            entryPackages = {
+                override: false,
+                packageNames: entryPackages
+            }
+        }
+
+        // if the controller does not want to override the application/module entry packages and include them as well
+        if( !('override' in entryPackages) || entryPackages.override === false){
+            const moduleEntryPackages = ownerModule?.getLambdaEntryPackages() || [];
+            const appEntryPackages = this.fw24.getLambdaEntryPackages();
+            entryPackages.packageNames = [
+                ...entryPackages.packageNames,
+                ...moduleEntryPackages,
+                ...appEntryPackages
+            ];
+        }
+
+        return entryPackages.packageNames.map((packageName: string) => { 
+            
+            if(packageName.startsWith('env:')){
+                const parts = packageName.split(':'); // env:layerImportPath:layerName => ['env', 'layerImportPath', 'layerName'];
+                // get the value from the environment ==> fw24.get('xxxx', 'layerImportPath');
+                const value = parts.length === 3 
+                    ? this.fw24.get(parts[2], parts[1]) 
+                    : this.fw24.get(parts[1]);
+
+                return value;
+            }
+
+            return packageName;
+         });
+    }
+
     // register a single controller
-    private registerController = (controllerInfo: HandlerDescriptor) => {
+    private registerController = (controllerInfo: HandlerDescriptor, ownerModule?: IFw24Module) => {
 
         const { handlerClass, filePath, fileName } = controllerInfo;
         // TODO: no need to create na instance of the controller class
@@ -178,6 +225,10 @@ export class APIConstruct implements FW24Construct {
         controllerInfo.routes = handlerInstance.routes;
 
         this.logger.info(`Registering controller ${controllerName} from ${filePath}/${fileName}`);
+
+        // prepare the entry packages for the controller's lambda function
+        const entryPackages = this.prepareEntryPackages(controllerConfig, ownerModule);
+        controllerConfig.entryPackages = entryPackages;
 
         // create the api resource for the controller if it doesn't exist
         const controllerResource = this.getOrCreateControllerResource(controllerName);
@@ -290,11 +341,18 @@ export class APIConstruct implements FW24Construct {
         return this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
     }
 
-    private createLambdaFunction = (controllerName: string, filePath: string, fileName: string, controllerConfig: any): NodejsFunction => {
+    private createLambdaFunction = (controllerName: string, filePath: string, fileName: string, controllerConfig: IControllerConfig): NodejsFunction => {
         const functionProps = {...this.apiConstructConfig.functionProps, ...controllerConfig?.functionProps};
+        
+        const envVariables = this.getEnvironmentVariables(controllerConfig);
+        // do not override the entry packages if already set
+        if( !(ENV.ENTRY_PACKAGES in envVariables) && controllerConfig.entryPackages){
+            envVariables[ENV.ENTRY_PACKAGES] = (controllerConfig.entryPackages as Array<string>).join(',');
+        }
+
         return new LambdaFunction(this.mainStack, controllerName + "-controller", {
             entry: filePath + "/" + fileName,
-            environmentVariables: this.getEnvironmentVariables(controllerConfig),
+            environmentVariables: envVariables,
             resourceAccess: controllerConfig?.resourceAccess,
             allowSendEmail: true,
             functionTimeout: controllerConfig?.functionTimeout,

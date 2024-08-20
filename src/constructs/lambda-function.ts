@@ -203,7 +203,7 @@ export class LambdaFunction extends Construct {
       timeout: Duration.seconds(5),
       memorySize: 128,
       loggingFormat: process.env.LOG_FORMAT?.toLowerCase?.() === 'json' ?  LoggingFormat.JSON : LoggingFormat.TEXT,
-      ...fw24.getConfig().functionProps,
+      ...fw24.getConfig().functionProps as NodejsFunctionProps,
     };
 
     //  'Error'  To use ApplicationLogLevel and/or SystemLogLevel you must set LoggingFormat to 'JSON', got 'Text'.

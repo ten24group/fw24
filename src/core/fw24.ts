@@ -28,8 +28,6 @@ export class Fw24 {
     private topics = new Map<string, ITopic>();
     private modules = new Map<string, IFw24Module>();
 
-    private appDIContainer: DIContainer = DIContainer.ROOT;
-
     private constructor() {}
 
     static getInstance(): Fw24 {
@@ -53,12 +51,12 @@ export class Fw24 {
         return this.config;
     }
 
-    setAppDIContainer(container: DIContainer) {
-        this.appDIContainer = container;
+    getAppDIContainer(): DIContainer {
+        return this.config.appDIContainer || DIContainer.ROOT;
     }
 
-    getAppDIContainer(): DIContainer {
-        return this.appDIContainer;
+    getLambdaEntryPackages(): string[] {
+        return this.config.lambdaEntryPackages || [];
     }
     
     addStack(name: string, stack: any): Fw24 {

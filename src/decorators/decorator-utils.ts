@@ -11,6 +11,7 @@ import { AbstractLambdaHandler } from "../core/runtime/abstract-lambda-handler";
 import { DIContainer } from "../di";
 import { registerModuleMetadata } from "../di/utils";
 import { DefaultLogger } from "../logging";
+import { ENV } from "../const";
 
 export type CommonLambdaHandlerOptions = {
 
@@ -59,6 +60,15 @@ export type CommonLambdaHandlerOptions = {
 	autoExportLambdaHandler?: boolean;
 
 	/**
+	 * Specifies the entry packages to import before initializing the lambda.
+	 * This is useful when you want to import packages to do some initial setup [like warming up DI container] before executing the handler.
+	 */
+	entryPackages?: string[] | {
+		override: boolean;
+		packageNames: string[];
+	};
+
+	/**
 	 * Specifies the parent DI-container or to register this module in or auto-resolve the container instance from.
 	 * you don't need to specify this unless you are creating a separate container and want to use that container as the parent of this controller/module.
 	 * @default: DIContainer.ROOT
@@ -72,20 +82,28 @@ export type CommonLambdaHandlerOptions = {
 	module?: RegisterDIModuleMetadataOptions
 }
 
-export function trySettingUpEntryPackage(controllerName: string) {
-	const entryPackageName = process.env['entryPackageName']; // TODO: key should be a constant and available for the users
+export function tryImportingEntryPackages(controllerName: string) {
+  const entryPackageNames = process.env[ENV.ENTRY_PACKAGES];
 
-	if(entryPackageName){
-		DefaultLogger.info(`Controller ${controllerName} is configured to import entry-package: ${entryPackageName}`);
-		try {
-			const entry = require(entryPackageName);
-			DefaultLogger.info(`Controller ${controllerName} imported entry-package: ${entryPackageName}`, entry);
-		} catch (error) {
-			console.error(`Controller ${controllerName} failed to import entry-package: ${entryPackageName}`, error);
-		}
-	} else {
-		DefaultLogger.info(`Controller ${controllerName} is not configured to import any entry-package`);
-	}
+  if (entryPackageNames) {
+    const packageNamesArray = entryPackageNames.split(',').map(pkg => pkg.trim()); // Split and trim package names
+
+    DefaultLogger.info(`Controller ${controllerName} is configured to import entry-packages: ${packageNamesArray.join(', ')}`);
+
+    packageNamesArray.forEach((entryPackageName) => {
+      try {
+        const entry = require(entryPackageName);
+		// call the default export if available
+		entry.default && typeof entry.default === 'function' && entry.default(); 
+        DefaultLogger.info(`Controller ${controllerName} successfully imported entry-package: ${entryPackageName}`, entry);
+      } catch (error) {
+        DefaultLogger.error(`Controller ${controllerName} failed to import entry-package: ${entryPackageName}`, error);
+      }
+    });
+
+  } else {
+    DefaultLogger.info(`Controller ${controllerName} is not configured to import any entry-package`);
+  }
 }
 
 /**
