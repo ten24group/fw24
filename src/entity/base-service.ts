@@ -1,12 +1,12 @@
 import type { EntityConfiguration } from "electrodb";
-import type { EntityInputValidations, EntityValidations } from "../validation";
-import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema } from "./base-entity";
-import type { EntityQuery, EntitySelections } from "./query-types";
 import type { DIContainer } from "../di";
+import type { EntityInputValidations, EntityValidations } from "../validation";
+import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema } from "./base-entity";
+import type { EntityQuery, EntitySelections } from "./query-types";
 
 import { createLogger } from "../logging";
-import { createElectroDBEntity } from "./base-entity";
 import { JsonSerializer, camelCase, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isObject, isString, pickKeys, toHumanReadableName } from "../utils";
+import { createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
 import { addFilterGroupToEntityFilterCriteria, inferRelationshipsForEntitySelections, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 
@@ -263,28 +263,32 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         
         // TODO: add schema for the rest fo the secondary access-patterns
 
-        return {
-            get: {
-                by: defaultAccessPattern,
-                output: outputSchemaAttributes.detail, // default for the detail page
-            },
-            delete: {
-                by: defaultAccessPattern
-            },
-            create: {
-                input: inputSchemaAttributes.create,
-                output: outputSchemaAttributes,
-            },
-            update: {
-                by: defaultAccessPattern,
-                input: inputSchemaAttributes.update,
-                output: outputSchemaAttributes.detail,
-            },
-            list: {
-                output: outputSchemaAttributes.list,
-            },
-        };
-    }
+	return {
+		get: {
+			by: defaultAccessPattern,
+			output: outputSchemaAttributes.detail, // default for the detail page
+		},
+        duplicate: {
+			by: defaultAccessPattern,
+			output: outputSchemaAttributes.detail, // default for the detail page
+		},
+		delete: {
+			by: defaultAccessPattern
+		},
+		create: {
+			input: inputSchemaAttributes.create,
+			output: outputSchemaAttributes,
+		},
+		update: {
+			by: defaultAccessPattern,
+			input: inputSchemaAttributes.update,
+			output: outputSchemaAttributes.detail,
+		},
+		list: {
+			output: outputSchemaAttributes.list,
+		},
+	};
+}
 
 
     /**
@@ -739,6 +743,65 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
         return entity;
     }
+
+    /**
+     * Creates a duplicate entity data based on the given identifiers.
+     * 
+     * @param identifiers - The identifiers of the entity.
+     * @returns The duplicate entity data.
+     * @throws Error if no record is found for the given identifiers.
+     * 
+     * @example
+     * const identifiers = { id: 1 };
+     * const duplicateData = await makeDuplicateEntityDataByIdentifiers(identifiers);
+     * console.log(duplicateData); // { name: 'John Doe', age: 30, ... }
+     */
+    protected async makeDuplicateEntityData(identifiers: EntityIdentifiersTypeFromSchema<S>){
+        const entity = await this.get({identifiers}) as EntityRecordTypeFromSchema<S>;
+
+		if(!entity){
+			throw new Error(`No ${this.getEntityName()} record found for identifiers: ${identifiers}`);
+		}
+
+		let duplicateEventData: CreateEntityItemTypeFromSchema<S> = {} as any;
+        const primaryIdPropName = this.getEntityPrimaryIdPropertyName() as string;
+
+        const schema = this.getEntitySchema();
+        const entitySlugAttribute = (schema.model?.entitySlugAttribute ?? 'slug').toUpperCase();
+        const entityNameAttribute = (schema.model?.entityNameAttribute ?? 'name').toUpperCase();
+
+        for (let [key, value] of Object.entries(entity)) {
+
+            if (key !== primaryIdPropName) { 
+                // TODO: handle when entity has multiple identifiers
+
+                if( key.toUpperCase() === entityNameAttribute || key.toUpperCase() === `${this.getEntityName().toUpperCase()}NAME`){
+                    value = `${value} - Copy`;
+                } else if( key.toUpperCase() === entitySlugAttribute ){
+                    value = `${value}-copy`;
+                }
+
+                duplicateEventData[key as keyof typeof duplicateEventData] = value;
+            }
+        }
+
+        return duplicateEventData;
+    }
+
+    /**
+     * Creates a duplicate entity based on the provided identifiers.
+     * 
+     * @param id - The identifiers of the entity to duplicate.
+     * @returns A promise that resolves to the duplicated entity.
+     * 
+     * @example
+     * const entityId = { id: 123, name: 'example' };
+     * const duplicatedEntity = await duplicate(entityId);
+     */
+    public async duplicate(id: EntityIdentifiersTypeFromSchema<S>){
+        const duplicateEventData = await this.makeDuplicateEntityData(id);
+		return await this.create(duplicateEventData);
+	}
 
     // TODO: should be part of some config
     protected delimitersRegex = /(?:&| |,|\+)+/; 

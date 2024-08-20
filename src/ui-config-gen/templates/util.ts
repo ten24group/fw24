@@ -174,7 +174,7 @@ export function formatEntityAttributesForList( entityName: string, properties: T
                             responseKey: entityNameLower,
                             apiUrl: `/${entityNameLower}`,
                         },
-                        confirmSuccessRedirect: `/list-${entityNameLower}`
+                        submitSuccessRedirect: `/list-${entityNameLower}`
                     }
                 },
                 {
