@@ -67,11 +67,11 @@ export function Controller(controllerName: string, controllerConfig: IController
 		// Preserve the original class name
 		Object.defineProperty(ExtendedTarget, 'name', { value: target.name });
 
-		const di = {
-			module: controllerConfig.module,
-			providedBy: controllerConfig.providedBy,
-		}
-		const container = setupDI(ExtendedTarget, di, controllerConfig.autoExportLambdaHandler);
+		const container = setupDI({
+			target: ExtendedTarget,
+			module: controllerConfig.module || {},
+			fallbackToRootContainer: controllerConfig.autoExportLambdaHandler
+		});
 		
 		if (controllerConfig.autoExportLambdaHandler) {
 			resolveAndExportHandler(ExtendedTarget, container);

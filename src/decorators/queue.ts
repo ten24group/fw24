@@ -69,11 +69,11 @@ export function Queue(queueName: string, queueConfig: IQueueConfig = {}) {
 		// Preserve the original class name
 		Object.defineProperty(ExtendedTarget, 'name', { value: target.name });
 
-		const di = {
-			module: queueConfig.module,
-			providedBy: queueConfig.providedBy,
-		}
-		const container = setupDI(ExtendedTarget, di, queueConfig.autoExportLambdaHandler);
+		const container = setupDI({
+			target: ExtendedTarget,
+			module: queueConfig.module || {},
+			fallbackToRootContainer: queueConfig.autoExportLambdaHandler
+		});
 
 		if (queueConfig.autoExportLambdaHandler) {
 			resolveAndExportHandler(ExtendedTarget, container);

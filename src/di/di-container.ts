@@ -34,8 +34,8 @@ export class DIContainer {
     private _resolving = new Map<string, any>();
     get resolving(): Map<string, any> {
 
-        if(this.mainContainer){
-            return this.mainContainer.resolving;
+        if(this.proxyFor){
+            return this.proxyFor.resolving;
         }
 
         if(!this._resolving){
@@ -47,8 +47,8 @@ export class DIContainer {
     private _cache = new Map<string, any>();
     get cache(): Map<string, any> {
 
-        if(this.mainContainer){
-            return this.mainContainer.cache;
+        if(this.proxyFor){
+            return this.proxyFor.cache;
         }
 
         if(!this._cache){
@@ -60,8 +60,8 @@ export class DIContainer {
     private _providers: Map<string, InternalProviderOptions[]> | undefined;
     get providers(): Map<string, InternalProviderOptions[]> {
 
-        if(this.mainContainer){
-            return this.mainContainer.providers;
+        if(this.proxyFor){
+            return this.proxyFor.providers;
         }
 
         if(!this._providers){
@@ -73,8 +73,8 @@ export class DIContainer {
     private _exports: Map<string, InternalProviderOptions[]> | undefined;
     get exports(): Map<string, InternalProviderOptions[]> {
 
-        if(this.mainContainer){
-            return this.mainContainer.exports;
+        if(this.proxyFor){
+            return this.proxyFor.exports;
         }
 
         if(!this._exports){
@@ -84,7 +84,7 @@ export class DIContainer {
     }
 
     // when this container is a proxy for another container; the another container's ref will be stored here
-    private mainContainer: DIContainer | undefined;
+    private proxyFor: DIContainer | undefined;
 
     get parent() {
         return this.parentContainer
@@ -93,14 +93,27 @@ export class DIContainer {
     private _childContainers: Set<DIContainer> | undefined;
     get childContainers(): Set<DIContainer> {
 
-        if(this.mainContainer){
-            return this.mainContainer.childContainers;
+        if(this.proxyFor){
+            return this.proxyFor.childContainers;
         }
 
         if(!this._childContainers){
             this._childContainers = new Set<DIContainer>();
         }
         return this._childContainers
+    }
+
+    private _proxies: Set<DIContainer> | undefined;
+    get proxies(): Set<DIContainer> {
+
+        if(this.proxyFor){
+            return this.proxyFor.proxies;
+        }
+
+        if(!this._proxies){
+            this._proxies = new Set<DIContainer>();
+        }
+        return this._proxies
     }
 
     private static _rootInstance: DIContainer;
@@ -118,7 +131,6 @@ export class DIContainer {
         this.logger = createLogger(`DIContainer[${identifier}]`);
     }
 
-
     Injectable(options: PartialBy<BaseProviderOptions, 'provide'> = {}) {
         return Injectable(options, this);
     }
@@ -127,6 +139,45 @@ export class DIContainer {
         const child = new DIContainer(this, identifier);
         this.childContainers.add(child);
         return child;
+    }
+
+    protected addProxyContainerIn = (parentContainer: DIContainer): DIContainer => {
+        
+        const child = parentContainer.createChildContainer(`${this.containerId}:ProxyIn[${parentContainer.containerId}]`);
+        
+        child.proxyFor = this;
+        this.proxies.add(child);
+
+        return child;
+    }
+
+    public hasChildContainerById(identifier: string): boolean {
+        let found = Array.from(this.childContainers).some(element => {
+            element.containerId.startsWith(identifier);
+        });
+
+        if(!found && this.childContainers.size > 0){
+            found = Array.from(this.childContainers).some(cc => cc.hasChildContainerById(identifier) );
+        }
+        
+        return found;
+    }
+
+    public getChildContainerById(identifier: string): any {
+        let foundContainer = Array.from(this.childContainers).find(element => {
+            return element.containerId.startsWith(identifier);
+        });
+
+        if (!foundContainer && this.childContainers.size > 0) {
+            for (const cc of this.childContainers) {
+                foundContainer = cc.getChildContainerById(identifier);
+                if (foundContainer) {
+                    break;
+                }
+            }
+        }
+
+        return foundContainer;
     }
 
     module(target: ClassConstructor){
@@ -164,9 +215,8 @@ export class DIContainer {
             // TODO: module lifecycle hooks
         }
 
-        const moduleProxyContainer = this.createChildContainer(`${identifier}:ProxyForImportHierarchy`);
-        moduleProxyContainer.mainContainer = moduleMeta.container;
-
+        const moduleProxyContainer = moduleMeta.container.addProxyContainerIn(this);
+        
         return {
             identifier,
             container: moduleProxyContainer
@@ -325,14 +375,6 @@ export class DIContainer {
             this.cache.delete(provider._id!);
         });
         this.providers.delete(token);
-    }
-
-    registerInParent<T>(options: ProviderOptions<T> & { provide: string }) {
-        if (this.parent) {
-            this.parent.register(options);
-        } else {
-            throw new Error('No parent container to add the provider to.');
-        }
     }
 
     // Resolve a configuration path with flexible criteria, supporting wildcards and regex

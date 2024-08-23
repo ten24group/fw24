@@ -87,11 +87,32 @@ export type MiddlewareAsync<T> = {
 };
 
 export type DIModuleOptions = {
+    /**
+     * The id token for this module, assigned by the framework.
+     */
     identifier: string;
+    /**
+     * The container instance specific to this module, this's the internal instance and is assigned by the framework.
+     */
     container: DIContainer;
+    /**
+     * List of modules to import into this module, the exported providers of the imported modules will be available in this module.
+     */
     imports?: ClassConstructor[];
+    /**
+     * List of providers to be exported from the module, the exported providers can be used in other modules that import this module, or in the container that registers this module.
+     */
     exports?: DepIdentifier[];
-    providers?: ProviderOptions<any>[];
+    /**
+     * Providers to be registered in the module's container; these providers are only available to the module's children and can shadow/override providers in parent hierarchy by specifying priority and other criteria [but only for the Injectable/s in itself and it's children].
+     */
+    providers ?: ProviderOptions<any>[];
+	/**
+	 * Specifies the parent DI-container or parent Module to register this module in or auto-resolve the container instance from.
+	 * you don't need to specify this unless you are creating a separate module and want to use that module as the parent of this controller/module.
+	 * @default: DIContainer.ROOT
+	 */
+	providedBy ?: DIContainer | 'ROOT' | ClassConstructor;
 }
 
 export interface DIModule extends DIModuleOptions {}

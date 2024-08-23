@@ -136,15 +136,15 @@ export class APIConstruct implements FW24Construct {
         // add the api to the framework
         this.fw24.addStack("api", this.api);
 
-       this.registerControllers();
+       await this.registerControllers();
     }
 
-    private registerControllers() {
+    private async registerControllers() {
          // sets the default controllers directory if not defined
         const controllersDirectory = this.apiConstructConfig.controllersDirectory || "./src/controllers";
 
         // register the controllers
-        Helper.registerHandlers(controllersDirectory, this.registerController);
+        await Helper.registerHandlers(controllersDirectory, this.registerController);
 
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();

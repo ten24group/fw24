@@ -470,21 +470,6 @@ describe('DIContainer', () => {
             });
         });
 
-        describe('Adding Providers to Parent and Root Containers', () => {
-            it('adds providers to parent container', () => {
-                const { Injectable } = container;
-
-                @Injectable()
-                class ParentService {}
-
-                childContainer.registerInParent({ useClass: ParentService, provide: 'ParentService' });
-
-                const instance = container.resolve<ParentService>('ParentService');
-
-                expect(instance).toBeInstanceOf(ParentService);
-            });
-        });
-
         describe('Conditional Resolution in Child Containers', () => {
             it('conditionally registers providers in child container', () => {
                 const { Injectable } = container;

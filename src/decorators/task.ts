@@ -45,11 +45,11 @@ export function Task(taskName: string, taskConfig: ITaskConfig) {
 		// Preserve the original class name
 		Object.defineProperty(ExtendedTarget, 'name', { value: target.name });
 
-		const di = {
-			module: taskConfig.module,
-			providedBy: taskConfig.providedBy,
-		}
-		const container = setupDI(ExtendedTarget, di, taskConfig.autoExportLambdaHandler);
+		const container = setupDI({
+			target: ExtendedTarget,
+			module: taskConfig.module || {},
+			fallbackToRootContainer: taskConfig.autoExportLambdaHandler
+		});
 
 		if (taskConfig.autoExportLambdaHandler) {
 			resolveAndExportHandler(ExtendedTarget, container);

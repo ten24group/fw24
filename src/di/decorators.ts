@@ -1,7 +1,7 @@
 import type { BaseProviderOptions, ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions, ProviderOptions } from './types';
 import type { PartialBy } from '../utils';
 import { DIContainer } from './di-container';
-import { getModuleMetadata, registerConstructorDependency, RegisterDIModuleMetadataOptions, registerModuleMetadata, registerOnInitHook, registerPropertyDependency } from './utils';
+import { getModuleMetadata, registerConstructorDependency, RegisterDIModuleMetadataOptions, registerModuleMetadata, registerOnInitHook, registerPropertyDependency, setupDIModule } from './utils';
 
 export type InjectableOptions = PartialBy<BaseProviderOptions, 'provide'> & {
     providedIn?: 'ROOT' | ClassConstructor;
@@ -63,6 +63,15 @@ export function Injectable(
 export function DIModule(options: RegisterDIModuleMetadataOptions): ClassDecorator {
     return function (constructor: Function) {
         registerModuleMetadata(constructor, options);
+
+        // if module metadata has a providedBy option, then make sure to register the container into the providedBy module/container
+        if(options.providedBy){
+            setupDIModule({
+                target: constructor as ClassConstructor, 
+                module: options,
+                fallbackToRootContainer: false
+            });
+        }
     };
 }
 

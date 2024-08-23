@@ -9,7 +9,7 @@ import type { RegisterDIModuleMetadataOptions } from "../di/utils";
 
 import { AbstractLambdaHandler } from "../core/runtime/abstract-lambda-handler";
 import { DIContainer } from "../di";
-import { registerModuleMetadata } from "../di/utils";
+import { getModuleMetadata, registerModuleMetadata, setupDIModule } from "../di/utils";
 import { DefaultLogger } from "../logging";
 import { ENV } from "../const";
 
@@ -67,13 +67,6 @@ export type CommonLambdaHandlerOptions = {
 		override: boolean;
 		packageNames: string[];
 	};
-
-	/**
-	 * Specifies the parent DI-container or to register this module in or auto-resolve the container instance from.
-	 * you don't need to specify this unless you are creating a separate container and want to use that container as the parent of this controller/module.
-	 * @default: DIContainer.ROOT
-	 */
-	providedBy ?: DIContainer | 'ROOT';
 	
 	/**
 	 * Specifies the DI-module options for the controller.
@@ -115,44 +108,13 @@ export function tryImportingEntryPackages(controllerName: string) {
  * @returns The DI container used for the setup.
  */
 export function setupDI<T>(
-    target: ClassConstructor<T>,
-    options: {
-		module?: RegisterDIModuleMetadataOptions,
-		providedBy?: DIContainer | 'ROOT',
+	options: {
+		target: ClassConstructor<T>,
+		module: RegisterDIModuleMetadataOptions,
+		fallbackToRootContainer?: boolean
 	},
-    fallbackToRootContainer: boolean = false
 ): DIContainer | undefined {
-
-    options.providedBy = options.providedBy || (fallbackToRootContainer ? DIContainer.ROOT : undefined);
-
-	let resolvingContainer: DIContainer | undefined;
-
-	if(options.providedBy instanceof DIContainer){
-
-		resolvingContainer = options.providedBy;
-
-	} else if(options.providedBy === 'ROOT'){
-
-		resolvingContainer = DIContainer.ROOT;
-	}
-
-    if (options.module) {
-		
-		if(!resolvingContainer){
-			throw new Error(`Invalid 'providedBy' option for ${target.name}. Ensure it is either "ROOT" or an instance of DI container or a Module.`);
-		}
-
-		registerModuleMetadata(target, options.module);
-		// register the module in the resolving container and use the module's container for resolving the controller instance
-		resolvingContainer = resolvingContainer.module(target).container;
-    }
-    
-    if (resolvingContainer) {
-        // register the controller itself as a provider 
-        resolvingContainer.register({ provide: target, useClass: target, tags: ['_internal_'] });
-    }
-
-    return resolvingContainer;
+	return setupDIModule(options);
 }
 
 export function resolveHandler(target: string, container?: DIContainer) {
