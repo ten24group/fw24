@@ -226,6 +226,8 @@ export class DIContainer {
     exportProvidersFor<T>(exportedDep: DepIdentifier<T>) {
         const token = this.createToken(exportedDep);
 
+        let foundProvidersForToken = false;
+
         // Collect providers directly matching the export token
         const availableProviders = this.providers.get(token) || [];
         const childExportedProviders = Array.from(this.childContainers)
@@ -236,6 +238,9 @@ export class DIContainer {
 
         // Nested function to map and export providers
         const mapAndExportProviders = (providers: InternalProviderOptions[], targetToken: string) => {
+            
+            foundProvidersForToken = true;
+
             const exported = providers.map(provider => {
                 const { _container, _provider, _id } = provider;
                 const { condition, provide, priority, override, singleton, tags } = _provider;
@@ -261,14 +266,20 @@ export class DIContainer {
             this.exports.set(targetToken, [...existingExports, ...exported]);
         };
 
-        // Export the standard and config providers directly matching the token
-        mapAndExportProviders(allProviders, token);
+        if(allProviders.length > 0){
+            // Export the standard and config providers directly matching the token
+            mapAndExportProviders(allProviders, token);
+        }
 
         // Find all config providers whose keys start with the token and export them
         for (const [configKey, configProviders] of this.providers.entries()) {
             if (configKey.startsWith(token) && configProviders.some(p => p._type === 'config')) {
                 mapAndExportProviders(configProviders, configKey);
             }
+        }
+        
+        if(!foundProvidersForToken){
+            throw new Error(`Nothing To export; No providers found for ${token}`);
         }
     }
 
@@ -360,7 +371,7 @@ export class DIContainer {
         const internalProviderOptions = {
             ...options,
             _id: generateUUID(),
-            _type: options._type || 'standard',
+            _type: options._type || 'any',
             _container: this,
         };
 
@@ -478,27 +489,49 @@ export class DIContainer {
             tags?: string[];
         }
     ): InternalProviderOptions<T>[] {
-        const bestProviders: InternalProviderOptions[] = [];
+        const bestProviders =  new Map<string, InternalProviderOptions<T>>();
 
         let current: DIContainer | undefined = this;
 
+        const visitedContainers = new Set<DIContainer>();
+
         while (current) {
-            
+            if (visitedContainers.has(current)) {
+                throw new Error('Circular reference detected in container hierarchy');
+            }
+            visitedContainers.add(current);
+
             let pathProviders = current.providers.get(path) || [];
 
-            if(criteria?.type){
-                pathProviders = pathProviders.filter((provider) => provider._type === criteria.type);
+            if (criteria?.type) {
+                pathProviders = pathProviders.filter(provider => provider._type === criteria.type);
             }
 
-            bestProviders.push(...pathProviders.map(provider => ({ 
-                ...provider, 
-                // when it's a proxy container make sure the provider has it's reference for resolving it later, 
-                // that way the provider is resolved using the right hierarchy
-                _container: current! 
-            })));
+            pathProviders.forEach(provider => { 
+                provider = {
+                    ...provider, 
+                    // when it's a proxy container make sure the provider has it's reference for resolving it later,
+                    // that way the provider is resolved using the right hierarchy
+                    _container: current as DIContainer
+                };
+
+                if(!bestProviders.has(provider._id)){
+                    bestProviders.set(provider._id, provider);
+                } else {
+                    this.logger.info(`Provider with id ${provider._id} already exists in best-providers, skipping it.`);
+                }
+            });
 
             // Collect exported providers from child containers
             current.childContainers.forEach(child => {
+
+                // as we're moving from child to parent, make sure to skip over the visited containers
+                if(visitedContainers.has(child)){
+                    return;
+                } else {
+                    visitedContainers.add(child);
+                }
+
                 let childProviders = child.exports.get(path) || [];
 
                 if (criteria?.type) {
@@ -506,8 +539,16 @@ export class DIContainer {
                 }
 
                 childProviders.forEach(provider => {
-                    if (!bestProviders.find(({ _id }) => _id === provider._id)) {
-                        bestProviders.push({ ...provider, _container: child });
+                    provider = { 
+                        ...provider, 
+                        // when it's a proxy container make sure the provider has it's reference for resolving it later,
+                        _container: child 
+                    };
+
+                    if(!bestProviders.has(provider._id)){
+                        bestProviders.set(provider._id, provider);
+                    } else {
+                        this.logger.info(`Provider with id ${provider._id} already exists in best-providers, skipping exported-provider from child container: ${child.containerId}`);
                     }
                 });
             });
@@ -516,7 +557,8 @@ export class DIContainer {
         }
 
         // Filter and sort providers based on criteria and conflict resolution strategies
-        return filterAndSortProviders(bestProviders, criteria);
+        const bestProvidersArray = Array.from(bestProviders.values());
+        return filterAndSortProviders(bestProvidersArray, criteria);
     }
 
     resolve<T, Async extends boolean = false>(

@@ -9,7 +9,7 @@ import type { RegisterDIModuleMetadataOptions } from "../di/utils";
 
 import { AbstractLambdaHandler } from "../core/runtime/abstract-lambda-handler";
 import { DIContainer } from "../di";
-import { getModuleMetadata, registerModuleMetadata, setupDIModule } from "../di/utils";
+import { setupDIModule } from "../di/utils/setupDIModule";
 import { DefaultLogger } from "../logging";
 import { ENV } from "../const";
 

@@ -52,7 +52,7 @@ export type InferProviderType<T> = T extends ClassProviderOptions<infer U> ? U
 // the stored value of a provider byt the container
 export type InternalProviderOptions<T = any> = {
     _id: string;
-    _type: 'config' | 'standard';
+    _type: 'config' | 'service' | 'schema' | 'controller' | 'module' | 'any';
     _container: DIContainer; // Reference to the container that registered this provider
     _provider: ProviderOptions<T>;
 }
