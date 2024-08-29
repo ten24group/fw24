@@ -9,6 +9,7 @@ import { Role, PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';
 import { IFw24Module } from './runtime/module';
 import { createLogger } from '../logging';
 import { DIContainer } from '../di';
+import { IDIContainer } from '../interfaces/di';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
@@ -51,7 +52,7 @@ export class Fw24 {
         return this.config;
     }
 
-    getAppDIContainer(): DIContainer {
+    getAppDIContainer(): IDIContainer {
         return this.config.appDIContainer || DIContainer.ROOT;
     }
 

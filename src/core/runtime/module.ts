@@ -1,6 +1,7 @@
 import {join as pathJoin } from "path";
 
 import type { FW24Construct } from "../../interfaces/construct";
+import { IDIContainer } from "../../interfaces";
 
 export interface IModuleConfig{}
 

@@ -1,8 +1,7 @@
 import { DIContainer } from './di-container';
 import { makeDIToken, registerConstructorDependency, registerModuleMetadata } from './utils';
 import { DIModule, Inject, Injectable, InjectConfig, InjectContainer, OnInit } from './decorators';
-import { ConfigProviderOptions } from './types';
-import { version } from 'os';
+import { ConfigProviderOptions } from './../interfaces/di';
 
 describe('DIContainer', () => {
     let container: DIContainer;
@@ -1099,10 +1098,10 @@ describe('DIContainer', () => {
             @DIModule({})
             class TestModule {}
 
+            const module = container.module(TestModule);
+
             @Injectable({providedIn: TestModule})
             class TestClass {}
-
-            const module = container.module(TestModule);
 
             expect(module.container.resolve(TestClass)).toBeDefined();
         });

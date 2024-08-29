@@ -38,7 +38,7 @@ import { Topic } from "aws-cdk-lib/aws-sns";
 import { CertificateConstruct } from "./certificate";
 import { LayerConstruct } from "./layer";
 import { isArray } from "../utils";
-import { ENV } from "../fw24";
+import { ENV_KEYS } from "../fw24";
 
 /**
  * Represents the configuration options for an API construct.
@@ -346,8 +346,8 @@ export class APIConstruct implements FW24Construct {
         
         const envVariables = this.getEnvironmentVariables(controllerConfig);
         // do not override the entry packages if already set
-        if( !(ENV.ENTRY_PACKAGES in envVariables) && controllerConfig.entryPackages){
-            envVariables[ENV.ENTRY_PACKAGES] = (controllerConfig.entryPackages as Array<string>).join(',');
+        if( !(ENV_KEYS.ENTRY_PACKAGES in envVariables) && controllerConfig.entryPackages){
+            envVariables[ENV_KEYS.ENTRY_PACKAGES] = (controllerConfig.entryPackages as Array<string>).join(',');
         }
 
         return new LambdaFunction(this.mainStack, controllerName + "-controller", {

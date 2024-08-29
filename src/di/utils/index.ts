@@ -1,5 +1,7 @@
 import { useMetadataManager } from "../../utils";
-import { ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions, InternalProviderOptions, isAliasProviderOptions, isClassProviderOptions, isConfigProviderOptions, isFactoryProviderOptions, isValueProviderOptions, Middleware, MiddlewareAsync, ParameterInjectMetadata, PriorityCriteria, PropertyInjectMetadata, ProviderOptions, Token } from "./../types";
+import type { ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions, InternalProviderOptions, Middleware, MiddlewareAsync, ParameterInjectMetadata, PriorityCriteria, PropertyInjectMetadata, ProviderOptions, Token } from "./../../interfaces/di";
+
+import { isAliasProviderOptions, isClassProviderOptions, isConfigProviderOptions, isFactoryProviderOptions, isValueProviderOptions, } from "./../../utils/di";
 
 export const PROPERTY_INJECT_METADATA_KEY = 'PROPERTY_DEPENDENCY';
 export const CONSTRUCTOR_INJECT_METADATA_KEY = 'CONSTRUCTOR_DEPENDENCY';

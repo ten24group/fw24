@@ -7,3 +7,4 @@ export * from "./queue";
 export * from "./task";
 export * from "./validation";
 export * from "./layer-entry";
+export * from "./service";

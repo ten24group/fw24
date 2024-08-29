@@ -10,21 +10,27 @@ import {
     ConfigProviderOptions,
     DepIdentifier,
     FactoryProviderOptions,
+    IDIContainer,
     InternalProviderOptions,
-    isAliasProviderOptions,
-    isClassProviderOptions,
-    isConfigProviderOptions,
-    isFactoryProviderOptions,
-    isValueProviderOptions,
     Middleware,
     MiddlewareAsync,
     PriorityCriteria,
     ProviderOptions,
     Token
-} from './types';
-import { applyMiddlewares, applyMiddlewaresAsync, filterAndSortProviders, flattenConfig, getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPathValue, getPropertyDependenciesMetadata, hasConstructor, makeDIToken, matchesPattern, registerModuleMetadata, setPathValue, stripDITokenNamespace, validateProviderOptions } from './utils';
+} from './../interfaces/di';
 
-export class DIContainer {
+import { 
+    isAliasProviderOptions,
+    isClassProviderOptions,
+    isConfigProviderOptions,
+    isFactoryProviderOptions,
+    isValueProviderOptions,
+} from './../utils/di';
+
+import { applyMiddlewares, applyMiddlewaresAsync, filterAndSortProviders, flattenConfig, getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPathValue, getPropertyDependenciesMetadata, hasConstructor, makeDIToken, matchesPattern, registerModuleMetadata, setPathValue, stripDITokenNamespace, validateProviderOptions } from './utils';
+import { DI_TOKENS } from '../const';
+
+export class DIContainer implements IDIContainer {
 
     public readonly containerId: string;
     private readonly logger: ILogger;
@@ -32,7 +38,7 @@ export class DIContainer {
     private readonly asyncMiddlewares: MiddlewareAsync<any>[] = [];
 
     private _resolving = new Map<string, any>();
-    get resolving(): Map<string, any> {
+    protected get resolving(): Map<string, any> {
 
         if(this.proxyFor){
             return this.proxyFor.resolving;
@@ -45,7 +51,7 @@ export class DIContainer {
     }
 
     private _cache = new Map<string, any>();
-    get cache(): Map<string, any> {
+    protected get cache(): Map<string, any> {
 
         if(this.proxyFor){
             return this.proxyFor.cache;
@@ -84,9 +90,9 @@ export class DIContainer {
     }
 
     // when this container is a proxy for another container; the another container's ref will be stored here
-    private proxyFor: DIContainer | undefined;
+    public proxyFor: DIContainer | undefined;
 
-    get parent() {
+    get parent(): DIContainer | undefined {
         return this.parentContainer
     }
 
@@ -117,7 +123,7 @@ export class DIContainer {
     }
 
     private static _rootInstance: DIContainer;
-    static get ROOT(): DIContainer {
+    static get ROOT(): IDIContainer {
         if (!this._rootInstance) {
             this._rootInstance = new DIContainer();
         }
@@ -132,7 +138,7 @@ export class DIContainer {
     }
 
     Injectable(options: PartialBy<BaseProviderOptions, 'provide'> = {}) {
-        return Injectable(options, this);
+        return Injectable({...options, providedIn: this});
     }
     
     createChildContainer(identifier: string): DIContainer {
@@ -215,7 +221,7 @@ export class DIContainer {
             // TODO: module lifecycle hooks
         }
 
-        const moduleProxyContainer = moduleMeta.container.addProxyContainerIn(this);
+        const moduleProxyContainer = (moduleMeta.container as DIContainer).addProxyContainerIn(this);
         
         return {
             identifier,
@@ -223,7 +229,7 @@ export class DIContainer {
         }
     }
 
-    exportProvidersFor<T>(exportedDep: DepIdentifier<T>) {
+    protected exportProvidersFor<T>(exportedDep: DepIdentifier<T>) {
         const token = this.createToken(exportedDep);
 
         let foundProvidersForToken = false;
@@ -243,7 +249,7 @@ export class DIContainer {
 
             const exported = providers.map(provider => {
                 const { _container, _provider, _id } = provider;
-                const { condition, provide, priority, override, singleton, tags } = _provider;
+                const { condition, provide, priority, override, singleton, tags, type } = _provider;
 
                 return {
                     _provider: {
@@ -254,9 +260,9 @@ export class DIContainer {
                         override,
                         singleton,
                         tags,
+                        type,
                     },
                     _id,
-                    _type: provider._type,
                     _container: this
                 };
             });
@@ -273,7 +279,7 @@ export class DIContainer {
 
         // Find all config providers whose keys start with the token and export them
         for (const [configKey, configProviders] of this.providers.entries()) {
-            if (configKey.startsWith(token) && configProviders.some(p => p._type === 'config')) {
+            if (configKey.startsWith(token) && configProviders.some(p => p._provider.type === 'config')) {
                 mapAndExportProviders(configProviders, configKey);
             }
         }
@@ -297,6 +303,7 @@ export class DIContainer {
 
         const optionsCopy = {
             ...options,
+            type: options.type || 'unknown',
             priority: options.priority !== undefined ? options.priority : 0,
             singleton: options.singleton !== undefined ? options.singleton : true,
         };
@@ -309,9 +316,7 @@ export class DIContainer {
         if (isConfigProviderOptions(options)) {
             this.registerConfigProvider(options);
         } else {
-            this.registerProvider({
-                _provider: optionsCopy
-            });
+            this.registerProvider({ _provider: optionsCopy });
         }
 
         return {
@@ -326,22 +331,19 @@ export class DIContainer {
         let provideToken = stripDITokenNamespace(this.createToken(provide));
         const flattenedEntries = flattenConfig(useConfig, provideToken);
 
-        for (const [configPath, value] of flattenedEntries) {
-
-            const providerOptions = {
-                ...rest,
-                provide: configPath,
-                useConfig: value,
-            };
-            
+        for (const [configPath, value] of flattenedEntries) {            
             this.registerProvider({
-                _type: 'config',
-                _provider: providerOptions,
+                _provider: {
+                    ...rest,
+                    type: 'config',
+                    provide: configPath,
+                    useConfig: value,
+                },
             });
         }
     }
 
-    protected registerProvider(options: PartialBy<InternalProviderOptions, '_id' | '_type' | '_container'>) {
+    protected registerProvider(options: PartialBy<InternalProviderOptions, '_id' | '_container'>) {
         const currentProvider = options._provider;
         const token = this.createToken(currentProvider.provide);
 
@@ -371,7 +373,6 @@ export class DIContainer {
         const internalProviderOptions = {
             ...options,
             _id: generateUUID(),
-            _type: options._type || 'any',
             _container: this,
         };
 
@@ -485,7 +486,7 @@ export class DIContainer {
         path: string, 
         criteria?: {
             priority?: PriorityCriteria;
-            type?: InternalProviderOptions['_type'], 
+            type?: ProviderOptions['type'], 
             tags?: string[];
         }
     ): InternalProviderOptions<T>[] {
@@ -504,7 +505,7 @@ export class DIContainer {
             let pathProviders = current.providers.get(path) || [];
 
             if (criteria?.type) {
-                pathProviders = pathProviders.filter(provider => provider._type === criteria.type);
+                pathProviders = pathProviders.filter(p => p._provider.type === criteria.type);
             }
 
             pathProviders.forEach(provider => { 
@@ -535,7 +536,7 @@ export class DIContainer {
                 let childProviders = child.exports.get(path) || [];
 
                 if (criteria?.type) {
-                    childProviders = childProviders.filter(provider => provider._type === criteria.type);
+                    childProviders = childProviders.filter(p => p._provider.type === criteria.type);
                 }
 
                 childProviders.forEach(provider => {
@@ -574,7 +575,7 @@ export class DIContainer {
         const token = this.createToken(dependencyToken);
 
         // if token is `DIContainer` return the current container
-        if( DI_CONTAINER_TOKEN === token){
+        if( DI_TOKENS.DI_CONTAINER === token){
             return (async ? Promise.resolve(this) : this ) as Async extends true ? Promise<T> : T;
         }
         
@@ -597,7 +598,7 @@ export class DIContainer {
         const { _id, _container, _provider: provider } = options;
 
         if ( _container !== this ){
-            return _container.resolveProviderValue(options, path, async);
+            return (_container as DIContainer).resolveProviderValue(options, path, async);
         }
         
         if (provider.singleton && this.cache.has(_id)) {
@@ -939,6 +940,3 @@ export class DIContainer {
         this.parent?.logCache();
     }
 }
-
-export const DI_CONTAINER_TOKEN = makeDIToken(DIContainer);
-

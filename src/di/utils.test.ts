@@ -1,4 +1,4 @@
-import { Middleware, MiddlewareAsync, ProviderOptions } from "./types";
+import { Middleware, MiddlewareAsync, ProviderOptions } from "./../interfaces/di";
 import {
     applyMiddlewares,
     applyMiddlewaresAsync,

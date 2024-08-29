@@ -4,14 +4,14 @@ import type { RetentionDays } from "aws-cdk-lib/aws-logs";
 import type { IFunctionResourceAccess } from "../constructs/lambda-function";
 import type { ILayerVersion } from "aws-cdk-lib/aws-lambda";
 
-import type { ClassConstructor } from "../di/types";
+import type { ClassConstructor, IDIContainer } from "../interfaces/di";
 import type { RegisterDIModuleMetadataOptions } from "../di/utils";
 
 import { AbstractLambdaHandler } from "../core/runtime/abstract-lambda-handler";
 import { DIContainer } from "../di";
 import { setupDIModule } from "../di/utils/setupDIModule";
 import { DefaultLogger } from "../logging";
-import { ENV } from "../const";
+import { ENV_KEYS } from "../const";
 
 export type CommonLambdaHandlerOptions = {
 
@@ -76,7 +76,7 @@ export type CommonLambdaHandlerOptions = {
 }
 
 export function tryImportingEntryPackages(controllerName: string) {
-  const entryPackageNames = process.env[ENV.ENTRY_PACKAGES];
+  const entryPackageNames = process.env[ENV_KEYS.ENTRY_PACKAGES];
 
   if (entryPackageNames) {
     const packageNamesArray = entryPackageNames.split(',').map(pkg => pkg.trim()); // Split and trim package names
@@ -113,11 +113,11 @@ export function setupDI<T>(
 		module: RegisterDIModuleMetadataOptions,
 		fallbackToRootContainer?: boolean
 	},
-): DIContainer | undefined {
+): IDIContainer | undefined {
 	return setupDIModule(options);
 }
 
-export function resolveHandler(target: string, container?: DIContainer) {
+export function resolveHandler(target: string, container?: IDIContainer) {
     if(!container){
         throw new Error(`Could not setup DI for controller: ${target}. make sure DI is setup correctly`);
     }
@@ -137,7 +137,7 @@ export function resolveHandler(target: string, container?: DIContainer) {
     return handler;
 }
 
-export function resolveAndExportHandler(target: Function, container?: DIContainer ) {
+export function resolveAndExportHandler(target: Function, container?: IDIContainer ) {
     const handler = resolveHandler(target.name, container);
     exportHandler(handler, 'handler', getCallingModule(4)); // export into the modules of the file the decorator is used in
 }

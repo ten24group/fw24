@@ -1,63 +1,13 @@
-import type { BaseProviderOptions, ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions, ProviderOptions } from './types';
-import type { PartialBy } from '../utils';
+import type { ClassConstructor, DepIdentifier, InjectOptions } from './../interfaces/di';
 import { DIContainer } from './di-container';
-import { getModuleMetadata, registerConstructorDependency, RegisterDIModuleMetadataOptions, registerModuleMetadata, registerOnInitHook, registerPropertyDependency } from './utils';
+import { registerConstructorDependency, RegisterDIModuleMetadataOptions, registerModuleMetadata, registerOnInitHook, registerPropertyDependency } from './utils';
 import { setupDIModule } from './utils/setupDIModule';
 
-export type InjectableOptions = PartialBy<BaseProviderOptions, 'provide'> & {
-    providedIn?: 'ROOT' | ClassConstructor;
-};
+import { tryRegisterInjectable, type InjectableOptions } from './utils/tryRegisterInjectable';
 
-export function Injectable(
-    options: InjectableOptions = { providedIn: 'ROOT' },
-    container?: DIContainer
-): ClassDecorator {
+export function Injectable( options: InjectableOptions = { providedIn: 'ROOT' }): ClassDecorator {
     return (constructor: Function) => {
-
-        container = container || DIContainer.ROOT;
-
-        const optionsCopy: ProviderOptions<any> = {
-            ...options,
-            useClass: constructor as ClassConstructor,
-            provide: options.provide || constructor,
-        };
-
-        if(!options.providedIn){
-            container.register(optionsCopy);
-            return;
-        }
-
-        if( options.providedIn === 'ROOT'){
-            DIContainer.ROOT.register(optionsCopy);
-            return;
-        } 
-        
-        if(typeof options.providedIn === 'function') {
-
-            // Check if the providedIn is a class constructor
-            const moduleMetadata = getModuleMetadata(options.providedIn) as DIModuleOptions | undefined;
-            
-            if (!moduleMetadata) {
-                throw new Error(
-                    `Invalid providedIn option for ${constructor.name}. Ensure the class is decorated with @DIModule({...}).`
-                );
-            }
-
-            moduleMetadata.providers = [...(moduleMetadata.providers || []), optionsCopy];
-
-            // handle dynamically loaded providers after module has been registered
-            if(moduleMetadata.container){
-                moduleMetadata.container.register(optionsCopy);
-            }
-
-            registerModuleMetadata(options.providedIn, moduleMetadata, true);
-
-        } else {
-
-            throw new Error(
-                `Invalid providedIn option for ${constructor.name}. Ensure it is either "ROOT" or a class decorated with @DIModule({...}).`
-            );
-        }
+        tryRegisterInjectable(constructor as ClassConstructor, options);
     };
 }
 
@@ -133,3 +83,4 @@ export function OnInit(): MethodDecorator {
         registerOnInitHook(target.constructor as ClassConstructor, propertyKey);
     };
 }
+
