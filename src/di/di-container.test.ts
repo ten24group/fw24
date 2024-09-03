@@ -507,7 +507,7 @@ describe('DIContainer', () => {
             it('applies async middleware to child container resolutions', async () => {
                 const middlewareSpy = jest.fn(async (next) => await next());
 
-                childContainer.useAsyncMiddleware({ middleware: middlewareSpy });
+                childContainer.useMiddlewareAsync({ middleware: middlewareSpy });
 
                 const { Injectable } = container;
 
@@ -633,7 +633,7 @@ describe('DIContainer', () => {
                     return result;
                 });
 
-                container.useAsyncMiddleware({ middleware: middlewareSpy });
+                container.useMiddlewareAsync({ middleware: middlewareSpy });
 
                 const { Injectable } = container;
 
@@ -653,7 +653,7 @@ describe('DIContainer', () => {
                     return result;
                 });
 
-                container.useAsyncMiddleware({ middleware: middlewareSpy });
+                container.useMiddlewareAsync({ middleware: middlewareSpy });
 
                 const { Injectable } = container;
 
@@ -673,7 +673,7 @@ describe('DIContainer', () => {
                     throw new Error('Async middleware error');
                 });
 
-                container.useAsyncMiddleware({ middleware: middlewareSpy });
+                container.useMiddlewareAsync({ middleware: middlewareSpy });
 
                 const { Injectable } = container;
 
@@ -867,7 +867,7 @@ describe('DIContainer', () => {
         test('executes async middlewares in specified order', async () => {
             const result: string[] = [];
 
-            container.useAsyncMiddleware({
+            container.useMiddlewareAsync({
                 middleware: async next => {
                     result.push('middleware1');
                     return next();
@@ -875,7 +875,7 @@ describe('DIContainer', () => {
                 order: 0
             });
 
-            container.useAsyncMiddleware({
+            container.useMiddlewareAsync({
                 middleware: async next => {
                     result.push('middleware2');
                     return next();
@@ -883,7 +883,7 @@ describe('DIContainer', () => {
                 order: 1
             });
 
-            container.useAsyncMiddleware({
+            container.useMiddlewareAsync({
                 middleware: async next => {
                     result.push('middleware0');
                     return next();

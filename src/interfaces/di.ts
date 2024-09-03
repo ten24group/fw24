@@ -1,4 +1,4 @@
-import { PartialBy } from '../utils/types';
+import { DeepPartial, PartialBy } from '../utils/types';
 
 export type Token = string;
 export type DepIdentifier<T = any> = string | Function | ClassConstructor<T>;
@@ -131,8 +131,23 @@ export interface IDIContainer {
     proxyFor: IDIContainer | undefined;
     proxies: Set<IDIContainer> | undefined;
 
+    Injectable(options?: PartialBy<BaseProviderOptions, "provide">): ClassDecorator;
+
     // Method to register a provider
     register<T>(provider: ProviderOptions<T>): void;
+
+    registerConfigProvider(options: ConfigProviderOptions): void;
+
+    has(dependencyToken: DepIdentifier, criteria?: {
+        priority?: PriorityCriteria;
+        tags?: string[];
+    }): boolean;
+
+    clear(clearChildContainers?: boolean): void;
+
+    useMiddleware({ middleware, order }: PartialBy<Middleware<any>, "order">): void;
+
+    useMiddlewareAsync({ middleware, order }: PartialBy<MiddlewareAsync<any>, "order">): void;
     
     resolve<T, Async extends boolean = false>(
         dependencyToken: DepIdentifier<T>,
@@ -142,7 +157,25 @@ export interface IDIContainer {
         },
         path?: Set<Token>,
         async?: Async
-    ): Async extends true ? Promise<T> : T 
+    ): Async extends true ? Promise<T> : T;
+
+    resolveConfig<T = any>(query?: string, criteria?: {
+        priority?: PriorityCriteria;
+        tags?: string[];
+    }): DeepPartial<T>
+
+    resolveAsync<T>(dependencyToken: DepIdentifier<T>, criteria?: {
+        priority?: PriorityCriteria;
+        tags?: string[];
+    }, path?: Set<Token>): Promise<T>;
+
+    resolveProviderValue<T, Async extends boolean = false>(
+        options: InternalProviderOptions<T>, 
+        path?: Set<Token>, 
+        async?: Async
+    ): Async extends true ? Promise<T> : T;
+
+    removeProvidersFor(dependencyToken: DepIdentifier): void;
 
     hasChildContainerById(identifier: string): boolean;
 
@@ -157,4 +190,15 @@ export interface IDIContainer {
 
     // Method to create a token for a dependency
     createToken<T>(identifier: DepIdentifier<T>): string;
+
+    getClassDependencies(target: ClassConstructor): {
+        propertyDependencies: PropertyInjectMetadata<unknown>[];
+        constructorDependencies: ParameterInjectMetadata<unknown>[];
+    };
+
+    logProviders(): void;
+
+    logCache(): void;
+
+    
 }

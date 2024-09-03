@@ -157,7 +157,7 @@ export class DIContainer implements IDIContainer {
         return child;
     }
 
-    public hasChildContainerById(identifier: string): boolean {
+    hasChildContainerById(identifier: string): boolean {
         let found = Array.from(this.childContainers).some(element => {
             element.containerId.startsWith(identifier);
         });
@@ -533,13 +533,13 @@ export class DIContainer implements IDIContainer {
                     visitedContainers.add(child);
                 }
 
-                let childProviders = child.exports.get(path) || [];
+                let childExportedProviders = child.exports.get(path) || [];
 
                 if (criteria?.type) {
-                    childProviders = childProviders.filter(p => p._provider.type === criteria.type);
+                    childExportedProviders = childExportedProviders.filter(p => p._provider.type === criteria.type);
                 }
 
-                childProviders.forEach(provider => {
+                childExportedProviders.forEach(provider => {
                     provider = { 
                         ...provider, 
                         // when it's a proxy container make sure the provider has it's reference for resolving it later,
@@ -856,7 +856,7 @@ export class DIContainer implements IDIContainer {
         return instance;
     }
 
-    useAsyncMiddleware({middleware, order = 1}: PartialBy<MiddlewareAsync<any>, 'order'> ) {
+    useMiddlewareAsync({middleware, order = 1}: PartialBy<MiddlewareAsync<any>, 'order'> ) {
         this.asyncMiddlewares.push({ middleware, order });
         this.asyncMiddlewares.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     }

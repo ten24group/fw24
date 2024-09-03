@@ -18,13 +18,12 @@ import {
 import { Fw24 } from '../core/fw24';
 import { Helper } from '../core/helper';
 import { LogDuration, createLogger } from '../logging';
-import { DIContainer } from '../di';
 
 export class EntityUIConfigGen{
     readonly logger = createLogger(EntityUIConfigGen.name);
     // make sure to create a child container to not pollute anything in the Application container 
     // while scanning and loading stuff
-    readonly uiGebDIContainer = Fw24.getInstance().getAppDIContainer().createChildContainer('ui-config-gen-container');
+    readonly uiGenDIContainer = Fw24.getInstance().getAppDIContainer().createChildContainer('ui-config-gen-container');
 
     async run(){
         this.process();
@@ -142,7 +141,7 @@ export class EntityUIConfigGen{
         const resolvedServices = new Map<string, BaseEntityService<any>>();
 
         scannedServices.forEach( token => {
-            const service = this.uiGebDIContainer.resolve(token) as BaseEntityService<any>;
+            const service = this.uiGenDIContainer.resolve(token) as BaseEntityService<any>;
             this.logger.debug(`resolved service for entity: ${service.getEntityName()}`);
 
             this.logger.debug(`Ui-config-gen::: Process::: loaded services from entity: `, service.getEntityName());
@@ -179,8 +178,16 @@ export class EntityUIConfigGen{
                             && 'prototype' in exportedItem 
                             && exportedItem.prototype instanceof BaseEntityService
                     ) {
+                        if(!this.uiGenDIContainer.has(exportedItem)){
+                            // figure-out the relevant container for the exported item and register a proxy into ui config gen container
+
+                            this.logger.debug(`scanServicesFromDirectory: registering service: ${exportedItem}`);
+
+
+                            // this.uiGenDIContainer.register({ provide: exportedItem, useClass: exportedItem as any });
+
+                        }
                         
-                        this.uiGebDIContainer.register({ provide: exportedItem, useClass: exportedItem as any });
                         scannedServices.add(exportedItem);
 
                     } else {
