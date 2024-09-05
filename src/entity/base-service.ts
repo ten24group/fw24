@@ -7,7 +7,6 @@ import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateE
 import { EntityQuery, EntitySelections } from "./query-types";
 import { addFilterGroupToEntityFilterCriteria, inferRelationshipsForEntitySelections, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 import { defaultMetaContainer } from "./entity-metadata-container";
-import { get } from "http";
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
