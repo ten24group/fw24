@@ -41,10 +41,11 @@ export type SignedUrlForFileUploadOptions = {
     fileName: string, 
     bucketName: string, 
     contentType?: string, 
-    expiresIn?: number
+    expiresIn?: number,
+    customDomain?: string,
 };
 
-export const getSignedUrlForFileUpload = async ({ bucketName, fileName, contentType, expiresIn = 15 * 60 }: SignedUrlForFileUploadOptions ) => {
+export const getSignedUrlForFileUpload = async ({ bucketName, fileName, contentType, expiresIn = 15 * 60, customDomain }: SignedUrlForFileUploadOptions ) => {
 
     const command = new PutObjectCommand({ 
         Bucket: bucketName, 
@@ -52,5 +53,12 @@ export const getSignedUrlForFileUpload = async ({ bucketName, fileName, contentT
         ContentType: contentType 
     });
 
-    return await getSignedUrlForCommand(command, {expiresIn});
+    const signedUrl = await getSignedUrlForCommand(command, {expiresIn});
+
+    if(!customDomain){
+        return signedUrl;
+    }
+
+    // Replace the default S3 endpoint with your custom domain
+    return signedUrl.replace(`https://${bucketName}.s3.amazonaws.com`, `https://${customDomain}`);
 }
