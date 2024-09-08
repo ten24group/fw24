@@ -83,17 +83,6 @@ export class SchedulerConstruct implements FW24Construct {
 
     }
 
-    private getEnvironmentVariables(config: ILambdaEnvConfig[]): any {
-        const env: any = {};
-        for (const envConfig of config || []) {
-            const value = this.fw24.get(envConfig.name, envConfig.prefix || '');
-            if (value) {
-                env[envConfig.name] = value;
-            }
-        }
-        return env;
-    }
-
     private registerTask= (taskInfo: HandlerDescriptor) => {
         taskInfo.handlerInstance = new taskInfo.handlerClass();
         this.logger.debug("Task instance: ", taskInfo.handlerInstance);
@@ -107,7 +96,7 @@ export class SchedulerConstruct implements FW24Construct {
 
         const task = new LambdaFunction(this.mainStack, taskName + "-task", {
             entry: taskInfo.filePath + "/" + taskInfo.fileName,
-            environmentVariables: this.getEnvironmentVariables(taskConfigEnv),
+            environmentVariables: this.fw24.resolveEnvVariables(taskConfigEnv),
             allowSendEmail: true,
             functionTimeout: taskConfig.functionTimeout,
             functionProps: {

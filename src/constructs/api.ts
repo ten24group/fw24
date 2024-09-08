@@ -153,18 +153,6 @@ export class APIConstruct implements FW24Construct {
         }
     }
 
-    // get the environment variables for the controller
-    private getEnvironmentVariables(controllerConfig: IControllerConfig): any {
-        const env: any = {};
-        for (const envConfig of controllerConfig.env || []) {
-            const value = this.fw24.get(envConfig.name, envConfig.prefix || '');
-            if (value) {
-                env[envConfig.name] = value;
-            }
-        }
-        return env;
-    }
-
     // register a single controller
     private registerController = (controllerInfo: HandlerDescriptor) => {
 
@@ -291,7 +279,7 @@ export class APIConstruct implements FW24Construct {
         const functionProps = {...this.apiConstructConfig.functionProps, ...controllerConfig?.functionProps};
         return new LambdaFunction(this.mainStack, controllerName + "-controller", {
             entry: filePath + "/" + fileName,
-            environmentVariables: this.getEnvironmentVariables(controllerConfig),
+            environmentVariables: this.fw24.resolveEnvVariables(controllerConfig.env),
             resourceAccess: controllerConfig?.resourceAccess,
             allowSendEmail: true,
             functionTimeout: controllerConfig?.functionTimeout,
