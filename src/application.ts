@@ -27,6 +27,12 @@ export class Application {
 
         this.fw24 = Fw24.getInstance();
         this.fw24.setConfig(config);
+        
+        if (config.environmentVariables) {
+            Object.entries(config.environmentVariables).forEach(([key, value]) => {
+                this.fw24.set(key, value);
+            })
+        }
 
         this.constructs = new Map();
         this.modules = new Map();

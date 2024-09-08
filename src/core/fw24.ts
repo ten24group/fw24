@@ -8,6 +8,7 @@ import { ITopic, Topic } from 'aws-cdk-lib/aws-sns';
 import { Role, PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';
 import { IFw24Module } from './module';
 import { createLogger } from '../logging';
+import { ILambdaEnvConfig } from '../interfaces';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
@@ -16,7 +17,7 @@ export class Fw24 {
     private config: IApplicationConfig = {};
     public emailProvider: any;
     private stacks: any = {};
-    private environment: any = {};
+    private environmentVariables: any = {};
     private defaultCognitoAuthorizer: IAuthorizer | undefined;
     private cognitoAuthorizers: { [key: string]: IAuthorizer } = {};
     private dynamoTables: { [key: string]: TableV2 } = {};
@@ -148,14 +149,25 @@ export class Fw24 {
         if(prefix.length > 0) {
             prefix = `${prefix}_`;
         }
-        this.environment[`${prefix}${name}`] = value;
+        this.environmentVariables[`${prefix}${name}`] = value;
     }
 
     public get(name: string, prefix: string = ''): any {
         if(prefix.length > 0) {
             prefix = `${prefix}_`;
         }
-        return this.environment[`${prefix}${name}`];
+        return this.environmentVariables[`${prefix}${name}`];
+    }
+
+    resolveEnvVariables = (env: ILambdaEnvConfig[] = []) => {
+        const resolved: any = {};
+        for (const envConfig of env ) {
+            const value = envConfig.value ?? this.get(envConfig.name, envConfig.prefix || '');
+            if (value) {
+                resolved[envConfig.name] = value;
+            }
+        }
+        return resolved;
     }
 
     public setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType) {
