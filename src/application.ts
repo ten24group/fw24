@@ -7,8 +7,6 @@ import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
 import { ILogger, LogDuration, createLogger } from "./logging";
 import { LayerConstruct } from "./constructs";
 import { randomUUID } from 'crypto';
-import { DIContainer } from "./di";
-
 
 export class Application {
     readonly logger: ILogger;
