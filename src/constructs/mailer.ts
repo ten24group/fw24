@@ -96,7 +96,7 @@ export class MailerConstruct implements FW24Construct {
                 ...this.mailerConstructConfig.queueProps,
             },
             lambdaFunctionProps: {
-                entry: join(__dirname, "../core/mail-processor.js"),
+                entry: join(__dirname, "../core/runtime/mail-processor.js"),
                 policies: [
                     {
                         actions: [
