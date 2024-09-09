@@ -55,10 +55,12 @@ export const getSignedUrlForFileUpload = async ({ bucketName, fileName, contentT
 
     const signedUrl = await getSignedUrlForCommand(command, {expiresIn});
 
+    console.warn("getSignedUrlForFileUpload:", {signedUrl, customDomain});
+
     if(!customDomain){
         return signedUrl;
     }
 
-    // Replace the default S3 endpoint with your custom domain
-    return signedUrl.replace(`https://${bucketName}.s3.amazonaws.com`, `https://${customDomain}`);
+    // Replace the default S3 endpoint, something like `...905418271365.s3.us-east-1.amazonaws.com` with `custom-domain` like `a.b.c.com`
+    return signedUrl.replace(new RegExp(`${bucketName}\\.s3\\.[a-z0-9-]+\\.amazonaws\\.com`), customDomain);
 }
