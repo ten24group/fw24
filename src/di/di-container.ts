@@ -452,6 +452,7 @@ export class DIContainer implements IDIContainer {
         criteria?: {
             priority?: PriorityCriteria;
             tags?: string[];
+            allProvidersFromChildContainers?: boolean
         }
     ): Map<string, any> {
 
@@ -468,10 +469,11 @@ export class DIContainer implements IDIContainer {
         }
 
         paths.forEach((path) => {
-            const bestProviders = this.collectBestProvidersFor<ConfigProviderOptions>(
-                path, 
-                {...criteria, type: 'config'}
-            );
+            const bestProviders = this.collectBestProvidersFor<ConfigProviderOptions>({
+                ...criteria, 
+                token: path, 
+                type: 'config'
+            });
             
             const resolvedValue = reduceProviders(bestProviders);
 
@@ -482,17 +484,19 @@ export class DIContainer implements IDIContainer {
     }
 
     // Collect all providers for a given path across the hierarchy
-    private collectBestProvidersFor<T>(
-        path: string, 
-        criteria?: {
-            priority?: PriorityCriteria;
+    public collectBestProvidersFor<T>(
+        criteria: {
+            token?: string,
+            tags?: string[],
             type?: ProviderOptions['type'], 
-            tags?: string[];
+            priority?: PriorityCriteria,
+            allProvidersFromChildContainers?: boolean
         }
     ): InternalProviderOptions<T>[] {
         const bestProviders =  new Map<string, InternalProviderOptions<T>>();
 
         let current: DIContainer | undefined = this;
+        let allProvidersFromChildContainers = criteria.allProvidersFromChildContainers || false;
 
         const visitedContainers = new Set<DIContainer>();
 
@@ -502,25 +506,27 @@ export class DIContainer implements IDIContainer {
             }
             visitedContainers.add(current);
 
-            let pathProviders = current.providers.get(path) || [];
+            let pathProviders = criteria.token 
+                ? current.providers.get(criteria.token) || [] 
+                : Array.from(current.providers.values()).flat();
 
             if (criteria?.type) {
                 pathProviders = pathProviders.filter(p => p._provider.type === criteria.type);
             }
 
             pathProviders.forEach(provider => { 
-                provider = {
+
+                if(bestProviders.has(provider._id)){
+                    this.logger.info(`Provider with id ${provider._id} already exists in best-providers, skipping it.`);
+                    return;
+                }
+
+                bestProviders.set(provider._id, {
                     ...provider, 
                     // when it's a proxy container make sure the provider has it's reference for resolving it later,
                     // that way the provider is resolved using the right hierarchy
                     _container: current as DIContainer
-                };
-
-                if(!bestProviders.has(provider._id)){
-                    bestProviders.set(provider._id, provider);
-                } else {
-                    this.logger.info(`Provider with id ${provider._id} already exists in best-providers, skipping it.`);
-                }
+                });
             });
 
             // Collect exported providers from child containers
@@ -533,24 +539,28 @@ export class DIContainer implements IDIContainer {
                     visitedContainers.add(child);
                 }
 
-                let childExportedProviders = child.exports.get(path) || [];
+                const childProviders = allProvidersFromChildContainers ? child.providers : child.exports;
+
+                let childExportedProviders = criteria.token ? (childProviders.get(criteria.token) || []) 
+                    : Array.from(childProviders.values()).flat();
 
                 if (criteria?.type) {
                     childExportedProviders = childExportedProviders.filter(p => p._provider.type === criteria.type);
                 }
 
                 childExportedProviders.forEach(provider => {
-                    provider = { 
+
+                    if(bestProviders.has(provider._id)){
+                        this.logger.info(`Provider with id ${provider._id} already exists in best-providers, skipping exported-provider from child container: ${child.containerId}`);
+                        return;
+                    }
+
+                    bestProviders.set(provider._id, { 
                         ...provider, 
                         // when it's a proxy container make sure the provider has it's reference for resolving it later,
                         _container: child 
-                    };
+                    });
 
-                    if(!bestProviders.has(provider._id)){
-                        bestProviders.set(provider._id, provider);
-                    } else {
-                        this.logger.info(`Provider with id ${provider._id} already exists in best-providers, skipping exported-provider from child container: ${child.containerId}`);
-                    }
                 });
             });
 
@@ -567,6 +577,7 @@ export class DIContainer implements IDIContainer {
         criteria?: {
             priority?: PriorityCriteria;
             tags?: string[];
+            allProvidersFromChildContainers?: boolean
         },
         path: Set<Token> = new Set(),
         async: Async = false as Async
@@ -575,11 +586,14 @@ export class DIContainer implements IDIContainer {
         const token = this.createToken(dependencyToken);
 
         // if token is `DIContainer` return the current container
-        if( DI_TOKENS.DI_CONTAINER === token){
+        if( DI_TOKENS.DI_CONTAINER === token || this.createToken(DIContainer) === token){
             return (async ? Promise.resolve(this) : this ) as Async extends true ? Promise<T> : T;
         }
         
-        const bestProviders = this.collectBestProvidersFor<T>(token, criteria);
+        const bestProviders = this.collectBestProvidersFor<T>({
+            ...criteria,
+            token,
+        });
         
         if (bestProviders.length === 0) {
             throw new Error(`No provider found for ${token}`);
@@ -802,14 +816,19 @@ export class DIContainer implements IDIContainer {
     has(
         dependencyToken: DepIdentifier, 
         criteria?: {
-            priority?: PriorityCriteria;
             tags?: string[];
+            type?: ProviderOptions['type'],
+            priority?: PriorityCriteria;
+            allProvidersFromChildContainers?: boolean
         } 
     ): boolean {
 
         const token = this.createToken(dependencyToken);
 
-        const bestProviders = this.collectBestProvidersFor<any>(token, criteria);
+        const bestProviders = this.collectBestProvidersFor<any>({
+            ...criteria,
+            token,
+        });
 
         return bestProviders.length > 0;
     }

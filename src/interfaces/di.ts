@@ -1,3 +1,4 @@
+import { type } from 'os';
 import { DeepPartial, PartialBy } from '../utils/types';
 
 export type Token = string;
@@ -139,9 +140,21 @@ export interface IDIContainer {
     registerConfigProvider(options: ConfigProviderOptions): void;
 
     has(dependencyToken: DepIdentifier, criteria?: {
-        priority?: PriorityCriteria;
         tags?: string[];
+        type?: ProviderOptions['type'],
+        priority?: PriorityCriteria;
+        allProvidersFromChildContainers?: boolean
     }): boolean;
+
+    collectBestProvidersFor<T>(
+        criteria: {
+            token?: string,
+            tags?: string[],
+            type?: ProviderOptions['type'], 
+            priority?: PriorityCriteria,
+            allProvidersFromChildContainers?: boolean
+        }
+    ): InternalProviderOptions<T>[];
 
     clear(clearChildContainers?: boolean): void;
 
@@ -152,21 +165,24 @@ export interface IDIContainer {
     resolve<T, Async extends boolean = false>(
         dependencyToken: DepIdentifier<T>,
         criteria?: {
-            priority?: PriorityCriteria;
             tags?: string[];
+            priority?: PriorityCriteria;
+            allProvidersFromChildContainers?: boolean;
         },
         path?: Set<Token>,
         async?: Async
     ): Async extends true ? Promise<T> : T;
 
     resolveConfig<T = any>(query?: string, criteria?: {
-        priority?: PriorityCriteria;
         tags?: string[];
+        priority?: PriorityCriteria;
+        allProvidersFromChildContainers?: boolean;
     }): DeepPartial<T>
 
     resolveAsync<T>(dependencyToken: DepIdentifier<T>, criteria?: {
-        priority?: PriorityCriteria;
         tags?: string[];
+        priority?: PriorityCriteria;
+        allProvidersFromChildContainers?: boolean;
     }, path?: Set<Token>): Promise<T>;
 
     resolveProviderValue<T, Async extends boolean = false>(
