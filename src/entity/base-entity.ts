@@ -325,6 +325,20 @@ export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
     },
 }
 
+export const SpecialAttributeTypes = { 
+  name: 'name', 
+  slug: 'slug', 
+  color: 'color', 
+  image: 'image', 
+  description: 'description',
+
+  createdAt: 'createdAt', 
+  updatedAt: 'updatedAt', 
+  deletedAt: 'deletedAt' 
+};
+
+export type SpecialAttributeType = keyof typeof SpecialAttributeTypes;
+
 /**
  * Represents the schema for an entity.
  *
@@ -340,10 +354,11 @@ export interface EntitySchema<
         readonly entityNamePlural: string;
         readonly entityOperations: Opp; 
         readonly entityMenuIcon ?: string, // default is 'appStore'
-        readonly includeInMenu ?: boolean, // default is true
         readonly entityNameAttribute ?: string, // default is 'name'
-        readonly entityImageAttribute ?: string, // default is 'image'
         readonly entitySlugAttribute ?: string, // default is 'slug'
+        readonly entityImageAttribute ?: string, // default is 'image'
+        readonly excludeFromAdminMenu ?: boolean, // default is true
+        readonly entityDescriptionAttribute ?: string, // default is 'description'
     };
     readonly attributes: {
         readonly [a in A]: EntityAttribute;

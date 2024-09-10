@@ -18,6 +18,7 @@ export interface IApplicationConfig {
     };
     defaultAuthorizationType?: any;
     environment?: string; // local, dev, prod
+    environmentVariables?: Record<string, string>;
     logRetentionDays?: number;
     logRemovalPolicy?: RemovalPolicy;
     functionProps?: Omit<NodejsFunctionProps, 'layers'> & {

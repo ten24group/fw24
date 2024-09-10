@@ -1,44 +1,46 @@
-import { join } from 'path';
-import { 
-    AuthorizationType, 
-    AwsIntegration, 
-    Cors, 
+import type {
+    AuthorizationType,
     CorsOptions,
-    EndpointType,
-    IResource, 
-    Integration, 
-    LambdaIntegration, 
-    MethodOptions, 
-    RestApi, 
-    RestApiProps 
+    IResource,
+    MethodOptions,
+    RestApiProps
 } from "aws-cdk-lib/aws-apigateway";
 
-import type HandlerDescriptor from "../interfaces/handler-descriptor";
+import {
+    AwsIntegration,
+    Cors,
+    LambdaIntegration,
+    RestApi,
+} from "aws-cdk-lib/aws-apigateway";
+
+import { CfnOutput, RemovalPolicy, Stack } from "aws-cdk-lib";
+
+import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import { RetentionDays } from "aws-cdk-lib/aws-logs";
+import { Topic } from "aws-cdk-lib/aws-sns";
+import { Queue } from "aws-cdk-lib/aws-sqs";
+
 import type { IFw24Module } from "../core/";
+import type HandlerDescriptor from "../interfaces/handler-descriptor";
 
-import { Stack, CfnOutput, RemovalPolicy } from "aws-cdk-lib";
-import { Helper } from "../core/helper";
-import { createLogger } from "../logging";
-import { LambdaFunction } from "./lambda-function";
-import { Fw24 } from "../core/fw24";
-import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
-import Mutable from "../types/mutable";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import { Fw24 } from "../core/fw24";
+import { Helper } from "../core/helper";
+import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
+import { createLogger } from "../logging";
+import Mutable from "../types/mutable";
+import { LambdaFunction } from "./lambda-function";
 
+import { IControllerConfig } from "../decorators/controller";
+import { ENV_KEYS } from "../fw24";
+import { isArray } from "../utils";
+import { AuthConstruct } from "./auth";
+import { CertificateConstruct } from "./certificate";
+import { DynamoDBConstruct } from "./dynamodb";
+import { LayerConstruct } from "./layer";
 import { MailerConstruct } from "./mailer";
 import { QueueConstruct } from "./queue";
 import { TopicConstruct } from "./topic";
-import { DynamoDBConstruct } from "./dynamodb";
-import { AuthConstruct } from "./auth";
-import { IControllerConfig } from "../decorators/controller";
-import { RetentionDays } from "aws-cdk-lib/aws-logs";
-import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
-import { Queue } from "aws-cdk-lib/aws-sqs";
-import { Topic } from "aws-cdk-lib/aws-sns";
-import { CertificateConstruct } from "./certificate";
-import { LayerConstruct } from "./layer";
-import { isArray } from "../utils";
-import { ENV_KEYS } from "../fw24";
 
 /**
  * Represents the configuration options for an API construct.
@@ -164,18 +166,6 @@ export class APIConstruct implements FW24Construct {
         }
     }
 
-    // get the environment variables for the controller
-    private getEnvironmentVariables(controllerConfig: IControllerConfig): any {
-        const env: any = {};
-        for (const envConfig of controllerConfig.env || []) {
-            const value = this.fw24.get(envConfig.name, envConfig.prefix || '');
-            if (value) {
-                env[envConfig.exportName ?? envConfig.name] = value;
-            }
-        }
-        return env;
-    }
-
     private prepareEntryPackages(controllerConfig: IControllerConfig, ownerModule?: IFw24Module): string[] {
         let entryPackages = controllerConfig.entryPackages || [];
         
@@ -212,6 +202,7 @@ export class APIConstruct implements FW24Construct {
             return packageName;
          });
     }
+
 
     // register a single controller
     private registerController = (controllerInfo: HandlerDescriptor, ownerModule?: IFw24Module) => {
@@ -344,7 +335,8 @@ export class APIConstruct implements FW24Construct {
     private createLambdaFunction = (controllerName: string, filePath: string, fileName: string, controllerConfig: IControllerConfig): NodejsFunction => {
         const functionProps = {...this.apiConstructConfig.functionProps, ...controllerConfig?.functionProps};
         
-        const envVariables = this.getEnvironmentVariables(controllerConfig);
+        const envVariables = this.fw24.resolveEnvVariables(controllerConfig.env);
+       
         // do not override the entry packages if already set
         if( !(ENV_KEYS.ENTRY_PACKAGES in envVariables) && controllerConfig.entryPackages){
             envVariables[ENV_KEYS.ENTRY_PACKAGES] = (controllerConfig.entryPackages as Array<string>).join(',');

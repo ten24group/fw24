@@ -80,7 +80,7 @@ export class EntityUIConfigGen{
             entityConfigs[`view-${entityName.toLowerCase()}`] = viewConfig;
 
             // skip if entity is not to be included in menu
-            if(entitySchema.model.hasOwnProperty('includeInMenu') && !entitySchema.model.includeInMenu){ 
+            if(entitySchema.model.excludeFromAdminMenu){ 
                 return;
             }
 
