@@ -14,6 +14,8 @@ import { randomUUID } from 'crypto';
 import { getSignedUrlForFileUpload } from '../client/s3';
 
 type seconds = number;
+export const FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY = 'FILES_BUCKET_CUSTOM_DOMAIN';
+export const FILES_BUCKET_CUSTOM_DOMAIN_VALUE = process.env[FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY] ?? '';
 export type GetSignedUrlForFileUploadSchema = { 
 	fileName: string, 
 	bucketName: string, 
@@ -111,13 +113,18 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 		
 		// ensure it's unique
 		fileName = `${fileNamePrefix}${toSlug(nameParts.join('.'))}-${randomUUID()}.${fileExtension}`;
-				
-		const signedUploadURL = await getSignedUrlForFileUpload({
+		
+		const options = {
 			fileName,
 			expiresIn,
 			bucketName,
 			contentType,
-		});
+			customDomain: FILES_BUCKET_CUSTOM_DOMAIN_VALUE
+		};
+
+		this.logger.info(`getSignedUrlForFileUpload::`, options);
+
+		const signedUploadURL = await getSignedUrlForFileUpload(options);
 
 		const response: any = {
 			fileName,

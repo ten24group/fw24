@@ -115,22 +115,6 @@ export class QueueConstruct implements FW24Construct {
     }
 
     /**
-     * Retrieves the environment variables from the queue construct configuration.
-     * @param queueConstructConfig The configuration for the QueueConstruct.
-     * @returns The environment variables as an object.
-     */
-    private getEnvironmentVariables(queueConstructConfig: IQueueConstructConfig): any {
-        const env: any = {};
-        for (const envConfig of queueConstructConfig.env || []) {
-            const value = this.fw24.get(envConfig.name, envConfig.prefix || '');
-            if (value) {
-                env[envConfig.name] = value;
-            }
-        }
-        return env;
-    }
-
-    /**
      * Registers a queue using the provided queue information.
      * @param queueInfo The information about the queue to be registered.
      */
@@ -153,7 +137,7 @@ export class QueueConstruct implements FW24Construct {
             subscriptions: queueConfig?.subscriptions,            
             lambdaFunctionProps: {
                 entry: queueInfo.filePath + "/" + queueInfo.fileName,
-                environmentVariables: this.getEnvironmentVariables(queueConfig),
+                environmentVariables: this.fw24.resolveEnvVariables(queueConfig.env),
                 resourceAccess: queueConfig?.resourceAccess,
                 functionTimeout: queueConfig?.functionTimeout,
                 functionProps: {...this.queueConstructConfig.functionProps, ...queueConfig?.functionProps},
