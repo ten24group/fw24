@@ -1,5 +1,5 @@
 import type { EntityConfiguration } from "electrodb";
-import type { DIContainer } from "../di";
+import { DIContainer } from "../di";
 import type { EntityInputValidations, EntityValidations } from "../validation";
 import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema } from "./base-entity";
 import type { EntityQuery, EntitySelections } from "./query-types";
@@ -9,6 +9,7 @@ import { JsonSerializer, camelCase, getValueByPath, isArray, isEmpty, isEmptyObj
 import { createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
 import { addFilterGroupToEntityFilterCriteria, inferRelationshipsForEntitySelections, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
+import { IDIContainer } from "../interfaces";
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
@@ -30,7 +31,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     constructor(
         protected readonly schema: S,
         protected readonly entityConfigurations: EntityConfiguration,
-        protected readonly diContainer?: DIContainer,
+        protected readonly diContainer: IDIContainer = DIContainer.ROOT,
     ){
         return this;
     }

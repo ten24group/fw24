@@ -44,7 +44,7 @@ export function setupDIModule<T>(
 			throw new Error(`Invalid 'providedBy' option for ${target.name}. Ensure it is either "ROOT" or an instance of DI container or a Module.`);
 		}
 
-		registerModuleMetadata(target, options.module);
+		registerModuleMetadata(target, options.module, true);
 		
 		// register the module in the resolving container and use the module's container for resolving the controller instance
 		resolvingContainer = resolvingContainer.module(target).container;

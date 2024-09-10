@@ -135,7 +135,7 @@ export interface IDIContainer {
     Injectable(options?: PartialBy<BaseProviderOptions, "provide">): ClassDecorator;
 
     // Method to register a provider
-    register<T>(provider: ProviderOptions<T>): void;
+    register<T>(provider: ProviderOptions<T>): { provide: Token, options: ProviderOptions<T> } | undefined;
 
     registerConfigProvider(options: ConfigProviderOptions): void;
 
