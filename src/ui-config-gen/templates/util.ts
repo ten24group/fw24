@@ -1,4 +1,5 @@
 import { BaseEntityService, TIOSchemaAttribute, isSelectFieldMetadata } from "../../entity";
+import { DefaultLogger } from "../../logging";
 import { pascalCase } from "../../utils";
 import { makeCreateEntityFormConfig } from "./create-entity";
 import { makeViewEntityListConfig } from "./list-entity";
@@ -36,6 +37,8 @@ export function formatEntityAttributeForFormOrDetail(
                 modalType: 'form',
                 modalPageConfig: formConfig
             }
+        } else {
+            DefaultLogger.warn(`Could not find related-entity-service for entity [${entityName}] in ${entityService.constructor.name}`);
         }
     }
     

@@ -63,22 +63,16 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     }
 
     getRelatedEntityServiceDIToken(relatedEntityName: string){
-        return `${camelCase(relatedEntityName)}Service`;
+        return `${pascalCase(camelCase(relatedEntityName))}Service`;
     }
 
     getEntityServiceByEntityName<T extends EntitySchema<any, any, any>>(relatedEntityName: string){
-        if(!this.diContainer){
-            throw new Error('DI Container is required to resolve related entity services');
-        }
         return this.diContainer.resolve<BaseEntityService<T>>(
             this.getRelatedEntityServiceDIToken(relatedEntityName)
         );
     }
 
     hasEntityServiceByEntityName(relatedEntityName: string){
-        if(!this.diContainer){
-            throw new Error('DI Container is required to resolve related entity services');
-        }
         return this.diContainer.has(
             this.getRelatedEntityServiceDIToken(relatedEntityName)
         );
