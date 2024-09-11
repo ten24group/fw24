@@ -485,8 +485,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
             const identifiersDataBatch = isToManyRelation ? entityData[relatedAttributeName] : [ entityData[relatedAttributeName] ];
 
-            this.logger.info('IdentifiersDataBatch:, entityData:, relatedAttributeName: ', {identifiersDataBatch, isToManyRelation, entityData, relatedAttributeName});
-
             const identifiersBatch = identifiersDataBatch.map( (identifiersData: any) => {
                 if(!identifiersData){
                     return;
@@ -545,7 +543,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
         // Merge related entities
         identifiersToSourceEntityDictionary.forEach( (identifiersBatch, sourceEntityData ) => {
-            this.logger.info('in identifiersToSourceEntityDictionary loop: sourceEntityData, identifiersBatch', {sourceEntityData, identifiersBatch})
             const relatedRecords = identifiersBatch.map( (identifiers: any) => {
                 return relatedEntities?.find( (relatedEntityData: any) => {
                     return Object.entries(identifiers).every( ([target, value]) =>
@@ -623,8 +620,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
                 await this.hydrateRecords(relationalAttributes as any, [entity.data]);
             }
 		}
-
-        this.logger.info(`Completed ~ get ~ entityName: ${this.getEntityName()}: `, {identifiers, entity});
 
         return entity?.data;
     }
