@@ -88,7 +88,7 @@ export function tryImportingEntryPackages(controllerName: string) {
         const entry = require(entryPackageName);
 		// call the default export if available
 		entry.default && typeof entry.default === 'function' && entry.default(); 
-        DefaultLogger.info(`Controller ${controllerName} successfully imported entry-package: ${entryPackageName}`, entry);
+        DefaultLogger.info(`Controller ${controllerName} successfully imported entry-package: ${entryPackageName}`);
       } catch (error) {
         DefaultLogger.error(`Controller ${controllerName} failed to import entry-package: ${entryPackageName}`, error);
       }

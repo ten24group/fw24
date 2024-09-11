@@ -437,7 +437,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         relations: Array<[relatedAttributeName: string, options: HydrateOptionForRelation<any>]>, 
         rootEntityRecords: Array<{ [x: string]: any; }>
     ) {
-        this.logger.info(`called 'hydrateRecords' for entity: ${this.getEntityName()}`, {relations, rootEntityRecords});
+        this.logger.info(`called 'hydrateRecords' for entity: ${this.getEntityName()}`);
         await Promise.all( relations?.map( async ([relatedAttributeName, options]) => {
             await this.hydrateSingleRelation(rootEntityRecords, relatedAttributeName, options);
         }));
@@ -445,7 +445,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
     private async hydrateSingleRelation(rootEntityRecords: any[], relatedAttributeName: string, options: HydrateOptionForRelation<any>){
         this.logger.info(`called 'hydrateSingleRelation' relation: ${relatedAttributeName} for entity: ${this.getEntityName()}`, {
-            rootEntityRecords,
             options
         });
 
