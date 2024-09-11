@@ -191,7 +191,7 @@ export class DIContainer implements IDIContainer {
         const moduleMeta = getModuleMetadata(target);
 
         if(!moduleMeta){
-            throw new Error(`Module ${target.name} does not have any metadata, make sure it's decorated with @DIModule()`);
+            throw new Error(`Module ${target.name} does not have any metadata, make sure it's decorated with @DIModule(). DIContainer[${this.containerId}]`);
         }
 
         const { imports = [], exports = [], providers = [], identifier } = moduleMeta;
@@ -285,7 +285,7 @@ export class DIContainer implements IDIContainer {
         }
         
         if(!foundProvidersForToken){
-            throw new Error(`Nothing To export; No providers found for ${token}`);
+            throw new Error(`Nothing To export; No providers found for ${token}. DIContainer[${this.containerId}]`);
         }
     }
 
@@ -502,7 +502,7 @@ export class DIContainer implements IDIContainer {
 
         while (current) {
             if (visitedContainers.has(current)) {
-                throw new Error('Circular reference detected in container hierarchy');
+                throw new Error('Circular reference detected in container hierarchy. DIContainer[${this.containerId}]');
             }
             visitedContainers.add(current);
 
@@ -596,7 +596,7 @@ export class DIContainer implements IDIContainer {
         });
         
         if (bestProviders.length === 0) {
-            throw new Error(`No provider found for ${token}`);
+            throw new Error(`No provider found for ${token}. DIContainer[${this.containerId}]`);
         }
         const options = bestProviders[0];
         
@@ -624,7 +624,7 @@ export class DIContainer implements IDIContainer {
         }
 
         if (path.has(_id)) {
-            throw new Error(`Circular dependency detected: ${Array.from(path).join(' -> ')} -> ${_id}`);
+            throw new Error(`Circular dependency detected: ${Array.from(path).join(' -> ')} -> ${_id}. DIContainer[${this.containerId}]`);
         }
 
         path.add(_id);
@@ -697,7 +697,7 @@ export class DIContainer implements IDIContainer {
             return provider.useConfig as Async extends true ? Promise<T> : T;
         } 
 
-        throw new Error(`Provider for '${_id}' is not correctly configured`);
+        throw new Error(`Provider for '${_id}' is not correctly configured. DIContainer[${this.containerId}]`);
     }
 
     private createClassInstance<T, Async extends boolean = false>(
@@ -781,10 +781,10 @@ export class DIContainer implements IDIContainer {
                 try {
                     theInitMethod();
                 } catch (error: any) {
-                    throw new Error(`Initialization method failed for ${instance.constructor.name}: ${error.message}`);
+                    throw new Error(`Initialization method failed for ${instance.constructor.name}: ${error.message}. DIContainer[${this.containerId}]`);
                 }
             } else {
-                throw new Error(`Initialization method ${String(initMethod)} is not a function on ${instance.constructor.name}`);
+                throw new Error(`Initialization method ${String(initMethod)} is not a function on ${instance.constructor.name}. DIContainer[${this.containerId}]`);
             }
         }
     }
@@ -909,10 +909,10 @@ export class DIContainer implements IDIContainer {
                 try {
                     await theInitMethod();
                 } catch (error: any) {
-                    throw new Error(`Initialization method failed for ${instance.constructor.name}: ${error.message}`);
+                    throw new Error(`Initialization method failed for ${instance.constructor.name}: ${error.message}. DIContainer[${this.containerId}]`);
                 }
             } else {
-                throw new Error(`Initialization method ${String(initMethod)} is not a function on ${instance.constructor.name}`);
+                throw new Error(`Initialization method ${String(initMethod)} is not a function on ${instance.constructor.name}. DIContainer[${this.containerId}]`);
             }
         }
     }
