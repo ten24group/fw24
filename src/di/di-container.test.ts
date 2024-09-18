@@ -1098,15 +1098,56 @@ describe('DIContainer', () => {
             @DIModule({})
             class TestModule {}
 
-            const module = container.module(TestModule);
-
             @Injectable({providedIn: TestModule})
             class TestClass {}
+            
+            const module = container.module(TestModule);
 
             expect(module.container.resolve(TestClass)).toBeDefined();
         });
     });
 
+    describe('DIContainer - hasChildContainerById', () => {
+        let container: DIContainer;
+
+        beforeEach(() => {
+            container = new DIContainer();
+        });
+
+        it('should return true if a direct child container has the identifier', () => {
+            const childContainer1 = container.createChildContainer('child1');
+            const childContainer2 = container.createChildContainer('child2');
+
+            expect(container.hasChildContainerById('child1')).toBe(true);
+            expect(container.hasChildContainerById('child2')).toBe(true);
+        });
+
+        it('should return true if a nested child container has the identifier', () => {
+            const childContainer1 = container.createChildContainer('child1');
+            const nestedChildContainer = childContainer1.createChildContainer('nested-child1');
+
+            expect(container.hasChildContainerById('nested-child1')).toBe(true);
+        });
+
+        it('should return false if no child container has the identifier', () => {
+            const childContainer1 = container.createChildContainer('child1');
+
+            expect(container.hasChildContainerById('non-existent')).toBe(false);
+        });
+
+        it('should return false if there are no child containers', () => {
+            expect(container.hasChildContainerById('any-id')).toBe(false);
+        });
+
+        it('should return true if a nested child container has the identifier even if the direct child does not', () => {
+            const childContainer1 = container.createChildContainer('child1');
+            const nestedChildContainer = childContainer1.createChildContainer('nested-child1');
+
+            expect(container.hasChildContainerById('nested-child1')).toBe(true);
+            expect(container.hasChildContainerById('child1')).toBe(true);
+            expect(container.hasChildContainerById('non-existent')).toBe(false);
+        });
+    });
 
     describe('Provider Registration without a `provide` Key', () => {
         it('should throw an error when registering a provider without a `provide` key', () => {

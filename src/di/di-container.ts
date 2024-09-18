@@ -158,9 +158,10 @@ export class DIContainer implements IDIContainer {
     }
 
     hasChildContainerById(identifier: string): boolean {
-        let found = Array.from(this.childContainers).some(element => {
-            element.containerId.startsWith(identifier);
-        });
+        
+        let found = Array.from(this.childContainers).some(
+            element => element.containerId.startsWith(identifier) 
+        );
 
         if(!found && this.childContainers.size > 0){
             found = Array.from(this.childContainers).some(cc => cc.hasChildContainerById(identifier) );
@@ -346,6 +347,7 @@ export class DIContainer implements IDIContainer {
     protected registerProvider(options: PartialBy<InternalProviderOptions, '_id' | '_container'>) {
         const currentProvider = options._provider;
         const token = this.createToken(currentProvider.provide);
+        currentProvider._token = token;
 
         const tokenProviders = this.providers.get(token) || [];
 
@@ -945,16 +947,35 @@ export class DIContainer implements IDIContainer {
         }
     }
 
-    logProviders() {
-        for (const [token, options] of this.providers.entries()) {
-            this.logger.info(`Provider: [${this.containerId}] - ${token}:`, options);
+    logChildContainers(){
+        for (const container of this.childContainers) {
+            console.info(`Child Container: ${container.containerId}`);
+            container.logChildContainers();
         }
-        this.parent?.logProviders();
+    }
+
+    logProviders(allProvidersFromChildContainers=true) {
+        const internalProviders = this.collectBestProvidersFor<any>({
+            allProvidersFromChildContainers,
+        });
+
+        for (const ip of internalProviders) {
+            let filtered = {
+                ...ip,
+                _container: ip._container.containerId,
+                _provider: {
+                    ...ip._provider,
+                    useClass: (ip._provider as any)?.useClass?.name, 
+                    provide: (ip._provider.provide as any).name ? (ip._provider.provide as any).name : ip._provider.provide 
+                }
+            };
+            console.info(`Provider: [${ip._container.containerId}] - ${ip._provider._token}:`, {options: filtered});
+        }
     }
 
     logCache() {
         for (const [token, instance] of this.cache.entries()) {
-            this.logger.info(`Cache: [${this.containerId}] - ${token}:`, instance);
+            console.info(`Cache: [${this.containerId}] - ${token}:`, instance);
         }
         this.parent?.logCache();
     }

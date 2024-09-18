@@ -6,6 +6,7 @@ export type DepIdentifier<T = any> = string | Function | ClassConstructor<T>;
 export type ClassConstructor<T extends any = any> = new (...args: any[]) => T;
 
 export type BaseProviderOptions = {
+    _token?: Token;
     provide: DepIdentifier<any>;
     type?: 'config' | 'service' | 'schema' | 'controller' | 'module' | 'unknown';
     singleton?: boolean;
@@ -213,6 +214,8 @@ export interface IDIContainer {
     };
 
     logProviders(): void;
+
+    logChildContainers(): void;
 
     logCache(): void;
 
