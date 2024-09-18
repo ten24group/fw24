@@ -17,6 +17,7 @@ export function tryRegisterInjectable(target: ClassConstructor, options: Injecta
     };
 
     let container: IDIContainer | undefined;
+    let diContainerHasBeenInitialized = true;
 
     if(!options.providedIn || options.providedIn === 'ROOT'){
 
@@ -33,7 +34,7 @@ export function tryRegisterInjectable(target: ClassConstructor, options: Injecta
         
         if (!moduleMetadata) {
             throw new Error(
-                `Invalid providedIn option for ${target.name}. Ensure the class is decorated with @DIModule({...}).`
+                `Invalid providedIn option for ${target.name}. No module metadata found for ${options.providedIn.name}; ensure the class is decorated with @DIModule({...}).`
             );
         }
 
@@ -41,15 +42,24 @@ export function tryRegisterInjectable(target: ClassConstructor, options: Injecta
         
         registerModuleMetadata(options.providedIn, moduleMetadata, true);
 
+        diContainerHasBeenInitialized = !!moduleMetadata.container;
+
         container = moduleMetadata.container;
     }
 
     if(container){
-        container.register(optionsCopy);
-    } else {
+        
+        try {
+            container.register(optionsCopy);
+        } catch (error) {
+            console.error(`Error registering ${target.name} with container:`, container);
+            throw error;
+        }
+
+    } else if(diContainerHasBeenInitialized) {
 
         throw new Error(
-            `Invalid providedIn option for ${target.name}. Ensure it is either "ROOT" or an instance of DI-container or a class decorated with @DIModule({...}).`
+            `Invalid providedIn option for ${target.name}, no container could be resolved. Ensure it is either 'ROOT' or an instance of DI-container or a class decorated with @DIModule({...}).`
         );
     }
 }
