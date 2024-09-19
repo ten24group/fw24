@@ -1,5 +1,5 @@
-import { RegisterDIModuleMetadataOptions, registerModuleMetadata } from ".";
-import { DIContainer } from "../di-container";
+import { type RegisterDIModuleMetadataOptions, registerModuleMetadata } from "../metadata";
+import { DIContainer } from "../container";
 import { ClassConstructor, IDIContainer } from "../../interfaces/di";
 import { tryGetModuleDIContainer } from "./tryGetModuleDIContainer";
 
@@ -44,7 +44,7 @@ export function setupDIModule<T>(
 			throw new Error(`Invalid 'providedBy' option for ${target.name}. Ensure it is either "ROOT" or an instance of DI container or a Module.`);
 		}
 
-		registerModuleMetadata(target, options.module, true);
+		registerModuleMetadata(target, options.module);
 		
 		// register the module in the resolving container and use the module's container for resolving the controller instance
 		resolvingContainer = resolvingContainer.module(target).container;

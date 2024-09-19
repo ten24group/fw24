@@ -27,11 +27,11 @@ export type ITaskConfig = CommonLambdaHandlerOptions & {
  */
 export function Task(taskName: string, taskConfig: ITaskConfig) {
 	return function <T extends { new (...args: any[]): {} }>(target: T) {
+		tryImportingEntryPackages(taskName);
 
 		// Default autoExportLambdaHandler to true if undefined
 		taskConfig.autoExportLambdaHandler = taskConfig.autoExportLambdaHandler ?? true;
 
-		tryImportingEntryPackages(taskName);
 
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {

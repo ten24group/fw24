@@ -49,7 +49,7 @@ export function getAttributeNameBy(schema: EntitySchema<any, any, any>, spec: Sp
 
 export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
-    readonly logger = createLogger(BaseEntityService.name);
+    readonly logger = createLogger(BaseEntityService);
 
     protected entityRepository ?: EntityRepositoryTypeFromSchema<S>;
     protected entityOpsDefaultIoSchema ?: ReturnType<typeof this.makeOpsDefaultIOSchema<S>>;

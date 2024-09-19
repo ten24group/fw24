@@ -19,3 +19,46 @@ export function isConfigProviderOptions<T>(options: BaseProviderOptions): option
 export function isAliasProviderOptions<T>(options: BaseProviderOptions): options is AliasProviderOptions<T> {
     return (options as AliasProviderOptions<any>).useExisting !== undefined;
 }
+
+function arraysEqual(a: any[], b: any[]): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
+export function compareProviderOptions(a: BaseProviderOptions, b: BaseProviderOptions): boolean {
+
+    // Compare the common properties
+    if(
+        !(
+            a.priority === b.priority &&
+            arraysEqual(a.tags || [], b.tags || []) &&
+            a.condition?.toString() === b.condition?.toString() &&
+            a.override === b.override &&
+            a.provide === b.provide &&
+            a.type === b.type
+        )
+    ){
+        return false;
+    }
+
+    if (isClassProviderOptions(a) && isClassProviderOptions(b)) {
+        return a.useClass === b.useClass;
+    }
+    if (isFactoryProviderOptions(a) && isFactoryProviderOptions(b)) {
+        return a.useFactory === b.useFactory && arraysEqual(a.deps || [], b.deps || []);
+    }
+    if (isValueProviderOptions(a) && isValueProviderOptions(b)) {
+        return a.useValue === b.useValue;
+    }
+    if (isConfigProviderOptions(a) && isConfigProviderOptions(b)) {
+        return a.useConfig === b.useConfig;
+    }
+    if (isAliasProviderOptions(a) && isAliasProviderOptions(b)) {
+        return a.useExisting === b.useExisting;
+    }
+
+    return false;
+}

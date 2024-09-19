@@ -1,5 +1,6 @@
 import { v4 as generateUUID } from 'uuid';
-import type { DeepPartial, PartialBy } from '../utils';
+import { MetadataManager } from '../utils/metadata';
+import { type DeepPartial, type PartialBy } from '../utils/types';
 import { createLogger, ILogger } from './../logging/index';
 import { Injectable } from './decorators';
 
@@ -19,7 +20,7 @@ import {
     Token
 } from './../interfaces/di';
 
-import { 
+import {
     isAliasProviderOptions,
     isClassProviderOptions,
     isConfigProviderOptions,
@@ -27,10 +28,15 @@ import {
     isValueProviderOptions,
 } from './../utils/di';
 
-import { applyMiddlewares, applyMiddlewaresAsync, filterAndSortProviders, flattenConfig, getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPathValue, getPropertyDependenciesMetadata, hasConstructor, makeDIToken, matchesPattern, registerModuleMetadata, setPathValue, stripDITokenNamespace, validateProviderOptions } from './utils';
+import { applyMiddlewares, applyMiddlewaresAsync, filterAndSortProviders, flattenConfig, getPathValue, hasConstructor, makeDIToken, matchesPattern, setPathValue, stripDITokenNamespace, validateProviderOptions } from './utils';
+
+import { getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPropertyDependenciesMetadata, } from './metadata';
+
 import { DI_TOKENS } from '../const';
 
 export class DIContainer implements IDIContainer {
+
+    static readonly DIMetadataStore = new MetadataManager({namespace: 'fw24:di'});
 
     public readonly containerId: string;
     private readonly logger: ILogger;
@@ -147,18 +153,36 @@ export class DIContainer implements IDIContainer {
         return child;
     }
 
-    protected addProxyContainerIn = (parentContainer: DIContainer): DIContainer => {
-        
-        const child = parentContainer.createChildContainer(`${this.containerId}:ProxyIn[${parentContainer.containerId}]`);
-        
-        child.proxyFor = this;
-        this.proxies.add(child);
+    protected createChildContainerProxyIdentifier(parentContainer: DIContainer): string {
+        return `${this.containerId}:ProxyIn[${parentContainer.containerId}]`
+    }
 
-        return child;
+    protected addProxyContainerIn = (parentContainer: DIContainer): DIContainer => {
+
+        const proxyContainerId = this.createChildContainerProxyIdentifier(parentContainer);
+
+        // make sure to remove old proxy from the importing module if exists
+        if(parentContainer.hasChildContainerById(proxyContainerId)){
+            
+            this.logger.warn(`Found old proxy container: [${proxyContainerId}] in parent: [${parentContainer.containerId}]; replacing it`);
+            
+            const oldProxyContainer = parentContainer.getChildContainerById(proxyContainerId);
+            
+            parentContainer.removeChildContainerById(proxyContainerId);
+
+            this.proxies.delete(oldProxyContainer);
+        }
+        
+        const newProxyContainer = parentContainer.createChildContainer(proxyContainerId);
+        
+        newProxyContainer.proxyFor = this;
+
+        this.proxies.add(newProxyContainer);
+
+        return newProxyContainer;
     }
 
     hasChildContainerById(identifier: string): boolean {
-        
         let found = Array.from(this.childContainers).some(
             element => element.containerId.startsWith(identifier) 
         );
@@ -170,7 +194,12 @@ export class DIContainer implements IDIContainer {
         return found;
     }
 
-    public getChildContainerById(identifier: string): any {
+    removeChildContainerById(identifier: string): void {
+        const childContainer = this.getChildContainerById(identifier);
+        this.childContainers.delete(childContainer);
+    }
+
+    getChildContainerById(identifier: string): any {
         let foundContainer = Array.from(this.childContainers).find(element => {
             return element.containerId.startsWith(identifier);
         });
@@ -202,8 +231,8 @@ export class DIContainer implements IDIContainer {
 
             const moduleContainer = new DIContainer(undefined, identifier); 
             this.logger.info(`Module ${moduleMeta.identifier} metadata does not have a container, assigning one.`, { id: moduleContainer.containerId });
-            moduleMeta.container = moduleContainer;
-            registerModuleMetadata(target, moduleMeta, true);
+            
+            moduleMeta.setContainer(moduleContainer);
 
             // make sure all the module providers are loaded into the module's container's providers
             for (const provider of providers) {
@@ -221,7 +250,7 @@ export class DIContainer implements IDIContainer {
 
             // TODO: module lifecycle hooks
         }
-
+        
         const moduleProxyContainer = (moduleMeta.container as DIContainer).addProxyContainerIn(this);
         
         return {
@@ -230,7 +259,7 @@ export class DIContainer implements IDIContainer {
         }
     }
 
-    protected exportProvidersFor<T>(exportedDep: DepIdentifier<T>) {
+    public exportProvidersFor<T>(exportedDep: DepIdentifier<T>) {
         const token = this.createToken(exportedDep);
 
         let foundProvidersForToken = false;

@@ -1,12 +1,6 @@
-import { useMetadataManager } from "../../utils";
-import type { ClassConstructor, DepIdentifier, DIModuleOptions, InjectOptions, InternalProviderOptions, Middleware, MiddlewareAsync, ParameterInjectMetadata, PriorityCriteria, PropertyInjectMetadata, ProviderOptions, Token } from "./../../interfaces/di";
+import type { DepIdentifier, InternalProviderOptions, Middleware, MiddlewareAsync, PriorityCriteria, ProviderOptions, Token } from "./../../interfaces/di";
 
 import { isAliasProviderOptions, isClassProviderOptions, isConfigProviderOptions, isFactoryProviderOptions, isValueProviderOptions, } from "./../../utils/di";
-
-export const PROPERTY_INJECT_METADATA_KEY = 'PROPERTY_DEPENDENCY';
-export const CONSTRUCTOR_INJECT_METADATA_KEY = 'CONSTRUCTOR_DEPENDENCY';
-export const ON_INIT_HOOK_METADATA_KEY = 'ON_INIT_HOOK';
-export const DI_MODULE_METADATA_KEY = 'DI_MODULE';
 
 export function isSerializedSymbol(token: string): boolean {
     const serializedSymbolPattern = /^Symbol\(.+\)$/;
@@ -54,84 +48,6 @@ export function stripDITokenNamespace(token: Token, namespace: string = 'fw24.di
 
 export function hasConstructor(obj: any): obj is { constructor: Function } {
     return obj && typeof obj.constructor === 'function' && obj.constructor.prototype;
-}
-
-export const DIMetadataStore = useMetadataManager({namespace: 'fw24:di'});
-
-export type RegisterDIModuleMetadataOptions = Omit<DIModuleOptions, 'identifier' | 'container'>;
-
-export function registerModuleMetadata(target: any, options: RegisterDIModuleMetadataOptions, override = false) {
-    DIMetadataStore.setPropertyMetadata(target, DI_MODULE_METADATA_KEY, { 
-        ...options, 
-        identifier: makeDIToken(target) 
-    }, override);
-}
-
-
-export function registerConstructorDependency<T>( target: any, parameterIndex: number, dependencyToken: DepIdentifier<T>, options: InjectOptions<T> = {} ) {
-    const token = makeDIToken(dependencyToken);
-
-    const existingDependencies: ParameterInjectMetadata<T>[] = DIMetadataStore.getPropertyMetadata(
-        target,
-        CONSTRUCTOR_INJECT_METADATA_KEY,
-    ) || [];
-    
-    existingDependencies[parameterIndex] = { ...options, token };
-
-    DIMetadataStore.setPropertyMetadata(
-        target,
-        CONSTRUCTOR_INJECT_METADATA_KEY,
-        existingDependencies,
-        true
-    );
-}
-
-export function getConstructorDependenciesMetadata<T>(target: ClassConstructor): ParameterInjectMetadata<T>[] {
-    return DIMetadataStore.getPropertyMetadata(
-        target, 
-        CONSTRUCTOR_INJECT_METADATA_KEY
-    ) || [];
-}
-
-export function registerPropertyDependency<T>( target: ClassConstructor, propertyKey: string | symbol, dependencyToken: DepIdentifier<T>, options: InjectOptions<T> = {} ) {
-    const token = makeDIToken(dependencyToken);
-
-    const existingDependencies = DIMetadataStore.getPropertyMetadata<PropertyInjectMetadata<T>[]>(
-        target,
-        PROPERTY_INJECT_METADATA_KEY
-    ) || [];
-
-    existingDependencies.push({ ...options, token, propertyKey });
-
-    DIMetadataStore.setPropertyMetadata(
-        target,
-        PROPERTY_INJECT_METADATA_KEY, 
-        existingDependencies, 
-        true
-    );
-}
-
-export function getPropertyDependenciesMetadata<T>(target: ClassConstructor): PropertyInjectMetadata<T>[] {
-    return DIMetadataStore.getPropertyMetadata(
-        target, 
-        PROPERTY_INJECT_METADATA_KEY
-    ) || [];
-}
-
-export function registerOnInitHook<T extends ClassConstructor>(target: T, propertyKey: string | symbol) {
-    DIMetadataStore.setPropertyMetadata(
-        target, 
-        ON_INIT_HOOK_METADATA_KEY, 
-        propertyKey
-    );
-}
-
-export function getOnInitHookMetadata<T extends ClassConstructor>(target: T): string | symbol | undefined {
-    return DIMetadataStore.getPropertyMetadata(target, ON_INIT_HOOK_METADATA_KEY);
-}
-
-export function getModuleMetadata(target: any): DIModuleOptions | undefined {
-    return DIMetadataStore.getPropertyMetadata(target, DI_MODULE_METADATA_KEY);
 }
 
 export function validateProviderOptions<T>(options: ProviderOptions<T>, token: Token) {

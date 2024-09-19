@@ -1,7 +1,8 @@
 import type { PartialBy } from '../../utils/types';
-import type { BaseProviderOptions, ClassConstructor, DIModuleOptions, IDIContainer, ProviderOptions } from './../../interfaces/di';
-import { getModuleMetadata, registerModuleMetadata } from './';
-import { DIContainer } from './../di-container';
+import type { BaseProviderOptions, ClassConstructor, IDIContainer, ProviderOptions } from './../../interfaces/di';
+import { getModuleMetadata } from '../metadata';
+import { DIContainer } from './../container';
+import { DefaultLogger } from '../../logging';
 
 
 export type InjectableOptions = PartialBy<BaseProviderOptions, 'provide'> & {
@@ -30,7 +31,7 @@ export function tryRegisterInjectable(target: ClassConstructor, options: Injecta
     else if(typeof options.providedIn === 'function') {
 
         // Check if the providedIn is a class constructor
-        const moduleMetadata = getModuleMetadata(options.providedIn) as DIModuleOptions | undefined;
+        const moduleMetadata = getModuleMetadata(options.providedIn);
         
         if (!moduleMetadata) {
             throw new Error(
@@ -38,10 +39,8 @@ export function tryRegisterInjectable(target: ClassConstructor, options: Injecta
             );
         }
 
-        moduleMetadata.providers = [...(moduleMetadata.providers || []), optionsCopy];
+        moduleMetadata.addProvider(optionsCopy);
         
-        registerModuleMetadata(options.providedIn, moduleMetadata, true);
-
         diContainerHasBeenInitialized = !!moduleMetadata.container;
 
         container = moduleMetadata.container;
@@ -52,7 +51,7 @@ export function tryRegisterInjectable(target: ClassConstructor, options: Injecta
         try {
             container.register(optionsCopy);
         } catch (error) {
-            console.error(`Error registering ${target.name} with container:`, container);
+            DefaultLogger.error(`tryRegisterInjectable:: Error registering ${target.name} with container:`, container);
             throw error;
         }
 

@@ -1,12 +1,14 @@
-import { DIContainer } from './di-container';
-import { makeDIToken, registerConstructorDependency, registerModuleMetadata } from './utils';
+import { DIContainer } from './container';
+import { makeDIToken } from './utils';
 import { DIModule, Inject, Injectable, InjectConfig, InjectContainer, OnInit } from './decorators';
-import { ConfigProviderOptions } from './../interfaces/di';
+import { ConfigProviderOptions } from '../interfaces/di';
+import { registerConstructorDependency, registerModuleMetadata } from './metadata';
 
 describe('DIContainer', () => {
     let container: DIContainer;
 
     beforeEach(() => {
+        DIContainer.DIMetadataStore.clearMetadata();
         container = new DIContainer();
     });
 
@@ -402,6 +404,7 @@ describe('DIContainer', () => {
 
         beforeEach(() => {
             childContainer = container.createChildContainer('child');
+            DIContainer.DIMetadataStore.clearMetadata();
         });
 
         describe('Inheritance', () => {
@@ -949,6 +952,7 @@ describe('DIContainer', () => {
     describe('Modules', () => {
         beforeEach(() => {
             container.clear();
+            DIContainer.DIMetadataStore.clearMetadata();
         });
 
         it('registers a module', () => {
@@ -1024,6 +1028,7 @@ describe('DIContainer', () => {
     describe('Modules with @DIModule()', () => {
         beforeEach(() => {
             container.clear();
+            DIContainer.DIMetadataStore.clearMetadata();
         });
 
         it('registers a module with @DIModule', () => {
@@ -1112,6 +1117,7 @@ describe('DIContainer', () => {
 
         beforeEach(() => {
             container = new DIContainer();
+            DIContainer.DIMetadataStore.clearMetadata();
         });
 
         it('should return true if a direct child container has the identifier', () => {
@@ -1545,6 +1551,7 @@ describe('DIContainer', () => {
         let childContainer: DIContainer;
 
         beforeEach(() => {
+            DIContainer.DIMetadataStore.clearMetadata();
             rootContainer = new DIContainer(undefined, 'ROOT');
             childContainer = rootContainer.createChildContainer('CHILD');
         });
@@ -1635,63 +1642,21 @@ describe('DIContainer', () => {
 
         beforeEach(() => {
             rootContainer = new DIContainer(undefined, 'ROOT');
+            DIContainer.DIMetadataStore.clearMetadata();
         });
 
-        @Injectable()
-        class ServiceWithContainer {
-            constructor(
-                @InjectContainer() private container: DIContainer
-            ) {}
-
-            getContainerIdentifier(): string {
-                return this.container.containerId;
-            }
-        }
-
-        // Another mock service class to test dependency resolution
-        @Injectable()
-        class AnotherService {
-            getValue(): string {
-                return 'Hello from AnotherService';
-            }
-        }
-
-        // Service class that depends on another service and the container
-        @Injectable()
-        class ServiceWithDependencies {
-            constructor(
-                @Inject(AnotherService) private anotherService: AnotherService,
-                @InjectContainer() private container: DIContainer
-            ) {}
-
-            getServiceValue(): string {
-                return this.anotherService.getValue();
-            }
-
-            getContainerIdentifier(): string {
-                return this.container.containerId;
-            }
-        }
-
-         @Injectable()
-        class ServiceWithPropertyDependencies {
-            @InjectContainer() 
-            private container?: DIContainer
-
-            constructor(
-                @Inject(AnotherService) private anotherService: AnotherService,
-            ) {}
-
-            getServiceValue(): string {
-                return this.anotherService.getValue();
-            }
-
-            getContainerIdentifier() {
-                return this.container?.containerId;
-            }
-        }
-
         it('should inject DIContainer into a service', () => {
+            @Injectable()
+            class ServiceWithContainer {
+                constructor(
+                    @InjectContainer() private container: DIContainer
+                ) {}
+
+                getContainerIdentifier(): string {
+                    return this.container.containerId;
+                }
+            }
+
             rootContainer.register({ provide: ServiceWithContainer, useClass: ServiceWithContainer });
             const serviceInstance = rootContainer.resolve(ServiceWithContainer);
 
@@ -1700,6 +1665,31 @@ describe('DIContainer', () => {
         });
 
         it('should resolve dependencies and inject DIContainer', () => {
+            // Another mock service class to test dependency resolution
+            @Injectable()
+            class AnotherService {
+                getValue(): string {
+                    return 'Hello from AnotherService';
+                }
+            }
+
+            // Service class that depends on another service and the container
+            @Injectable()
+            class ServiceWithDependencies {
+                constructor(
+                    @Inject(AnotherService) private anotherService: AnotherService,
+                    @InjectContainer() private container: DIContainer
+                ) {}
+
+                getServiceValue(): string {
+                    return this.anotherService.getValue();
+                }
+
+                getContainerIdentifier(): string {
+                    return this.container.containerId;
+                }
+            }
+
             rootContainer.register({ provide: AnotherService, useClass: AnotherService });
             rootContainer.register({ provide: ServiceWithDependencies, useClass: ServiceWithDependencies });
 
@@ -1711,6 +1701,32 @@ describe('DIContainer', () => {
         });
 
         it('should resolve dependencies and inject DIContainer as property injection', () => {
+            // Another mock service class to test dependency resolution
+            @Injectable()
+            class AnotherService {
+                getValue(): string {
+                    return 'Hello from AnotherService';
+                }
+            }
+
+            @Injectable()
+            class ServiceWithPropertyDependencies {
+                @InjectContainer() 
+                private container?: DIContainer
+
+                constructor(
+                    @Inject(AnotherService) private anotherService: AnotherService,
+                ) {}
+
+                getServiceValue(): string {
+                    return this.anotherService.getValue();
+                }
+
+                getContainerIdentifier() {
+                    return this.container?.containerId;
+                }
+        }
+
             rootContainer.register({ provide: AnotherService, useClass: AnotherService });
             rootContainer.register({ provide: ServiceWithPropertyDependencies, useClass: ServiceWithPropertyDependencies });
 
@@ -1722,6 +1738,17 @@ describe('DIContainer', () => {
         });
 
         it('should inject DIContainer into a service with child container', () => {
+            @Injectable()
+            class ServiceWithContainer {
+                constructor(
+                    @InjectContainer() private container: DIContainer
+                ) {}
+
+                getContainerIdentifier(): string {
+                    return this.container.containerId;
+                }
+            }
+
             const childContainer = rootContainer.createChildContainer('CHILD');
             childContainer.register({ provide: ServiceWithContainer, useClass: ServiceWithContainer });
 
@@ -1732,6 +1759,28 @@ describe('DIContainer', () => {
         });
 
         it('should resolve from child container and inject DIContainer', () => {
+            // Another mock service class to test dependency resolution
+            @Injectable()
+            class AnotherService {
+                getValue(): string {
+                    return 'Hello from AnotherService';
+                }
+            }
+            @Injectable()
+            class ServiceWithDependencies {
+                constructor(
+                    @Inject(AnotherService) private anotherService: AnotherService,
+                    @InjectContainer() private container: DIContainer
+                ) {}
+
+                getServiceValue(): string {
+                    return this.anotherService.getValue();
+                }
+
+                getContainerIdentifier(): string {
+                    return this.container.containerId;
+                }
+            }
             const childContainer = rootContainer.createChildContainer('CHILD');
             childContainer.register({ provide: AnotherService, useClass: AnotherService });
             childContainer.register({ provide: ServiceWithDependencies, useClass: ServiceWithDependencies });
@@ -1744,6 +1793,32 @@ describe('DIContainer', () => {
         });
 
         it('should resolve from child container and inject DIContainer as property injection', () => {
+            // Another mock service class to test dependency resolution
+            @Injectable()
+            class AnotherService {
+                getValue(): string {
+                    return 'Hello from AnotherService';
+                }
+            }
+
+            @Injectable()
+            class ServiceWithPropertyDependencies {
+                @InjectContainer() 
+                private container?: DIContainer
+
+                constructor(
+                    @Inject(AnotherService) private anotherService: AnotherService,
+                ) {}
+
+                getServiceValue(): string {
+                    return this.anotherService.getValue();
+                }
+
+                getContainerIdentifier() {
+                    return this.container?.containerId;
+                }
+            }
+
             const childContainer = rootContainer.createChildContainer('CHILD');
             childContainer.register({ provide: AnotherService, useClass: AnotherService });
             childContainer.register({ provide: ServiceWithPropertyDependencies, useClass: ServiceWithPropertyDependencies });
@@ -1760,34 +1835,8 @@ describe('DIContainer', () => {
         let rootContainer: DIContainer;
         let childContainer: DIContainer;
 
-        // Mock service class that requires configuration injection
-        @Injectable()
-        class ServiceWithConfig {
-            constructor(
-                @InjectConfig('app.name') private appName: string,
-                @InjectConfig('app.version') private appVersion: string
-            ) {}
-
-            getAppDetails(): string {
-                return `App: ${this.appName}, Version: ${this.appVersion}`;
-            }
-        }
-
-        // Another service with configuration injected via property
-        @Injectable()
-        class ServiceWithPropertyConfig {
-            @InjectConfig('app.name')
-            private appName!: string;
-
-            @InjectConfig('app.version')
-            private appVersion!: string;
-
-            getAppDetails(): string {
-                return `App: ${this.appName}, Version: ${this.appVersion}`;
-            }
-        }
-
         beforeEach(() => {
+            DIContainer.DIMetadataStore.clearMetadata();
             rootContainer = new DIContainer(undefined, 'ROOT');
             childContainer = rootContainer.createChildContainer('CHILD');
         });
@@ -1797,6 +1846,19 @@ describe('DIContainer', () => {
                 provide: 'app',
                 useConfig: { name: 'TestApp', version: '1.0' }
             });
+
+            // Mock service class that requires configuration injection
+            @Injectable()
+            class ServiceWithConfig {
+                constructor(
+                    @InjectConfig('app.name') private appName: string,
+                    @InjectConfig('app.version') private appVersion: string
+                ) {}
+
+                getAppDetails(): string {
+                    return `App: ${this.appName}, Version: ${this.appVersion}`;
+                }
+            }
 
             rootContainer.register({ provide: ServiceWithConfig, useClass: ServiceWithConfig });
             const serviceInstance = rootContainer.resolve(ServiceWithConfig);
@@ -1810,6 +1872,20 @@ describe('DIContainer', () => {
                 provide: 'app',
                 useConfig: { name: 'TestApp', version: '1.0' }
             });
+
+            // Another service with configuration injected via property
+            @Injectable()
+            class ServiceWithPropertyConfig {
+                @InjectConfig('app.name')
+                private appName!: string;
+
+                @InjectConfig('app.version')
+                private appVersion!: string;
+
+                getAppDetails(): string {
+                    return `App: ${this.appName}, Version: ${this.appVersion}`;
+                }
+            }
 
             rootContainer.register({ provide: ServiceWithPropertyConfig, useClass: ServiceWithPropertyConfig });
             const serviceInstance = rootContainer.resolve(ServiceWithPropertyConfig);
@@ -1828,6 +1904,19 @@ describe('DIContainer', () => {
                 provide: 'app',
                 useConfig: { version: '2.0' }
             });
+
+            // Mock service class that requires configuration injection
+            @Injectable()
+            class ServiceWithConfig {
+                constructor(
+                    @InjectConfig('app.name') private appName: string,
+                    @InjectConfig('app.version') private appVersion: string
+                ) {}
+
+                getAppDetails(): string {
+                    return `App: ${this.appName}, Version: ${this.appVersion}`;
+                }
+            }
 
             childContainer.register({ provide: ServiceWithConfig, useClass: ServiceWithConfig });
             const serviceInstance = childContainer.resolve(ServiceWithConfig);
@@ -1851,6 +1940,19 @@ describe('DIContainer', () => {
                 useConfig: 'HighPriorityApp',
                 priority: 2
             });
+
+            // Mock service class that requires configuration injection
+            @Injectable()
+            class ServiceWithConfig {
+                constructor(
+                    @InjectConfig('app.name') private appName: string,
+                    @InjectConfig('app.version') private appVersion: string
+                ) {}
+
+                getAppDetails(): string {
+                    return `App: ${this.appName}, Version: ${this.appVersion}`;
+                }
+            }
 
             rootContainer.register({ provide: ServiceWithConfig, useClass: ServiceWithConfig });
             const serviceInstance = rootContainer.resolve(ServiceWithConfig);
@@ -1879,6 +1981,19 @@ describe('DIContainer', () => {
                 useConfig: 'UntaggedApp'
             });
 
+            // Mock service class that requires configuration injection
+            @Injectable()
+            class ServiceWithConfig {
+                constructor(
+                    @InjectConfig('app.name') private appName: string,
+                    @InjectConfig('app.version') private appVersion: string
+                ) {}
+
+                getAppDetails(): string {
+                    return `App: ${this.appName}, Version: ${this.appVersion}`;
+                }
+            }
+
             rootContainer.register({ provide: ServiceWithConfig, useClass: ServiceWithConfig, tags: ['release'] });
             const serviceInstance = rootContainer.resolve(ServiceWithConfig, { tags: ['release'] });
 
@@ -1887,6 +2002,20 @@ describe('DIContainer', () => {
         });
 
         it('should throw an error for non-existent configuration paths during injection', () => {
+
+            // Mock service class that requires configuration injection
+            @Injectable()
+            class ServiceWithConfig {
+                constructor(
+                    @InjectConfig('app.name') private appName: string,
+                    @InjectConfig('app.version') private appVersion: string
+                ) {}
+
+                getAppDetails(): string {
+                    return `App: ${this.appName}, Version: ${this.appVersion}`;
+                }
+            }
+
             rootContainer.register({ provide: ServiceWithConfig, useClass: ServiceWithConfig });
             expect(() => rootContainer.resolve(ServiceWithConfig)).toThrow();
         });

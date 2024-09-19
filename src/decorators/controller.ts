@@ -41,10 +41,10 @@ export function Controller(controllerName: string, controllerConfig: IController
 	
 	
 	return function <T extends { new (...args: any[]): {} }>(target: T) {
+		tryImportingEntryPackages();
+
 		// Default autoExportLambdaHandler to true if undefined
 		controllerConfig.autoExportLambdaHandler = controllerConfig.autoExportLambdaHandler ?? true;
-
-		tryImportingEntryPackages(controllerName);
 
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {

@@ -5,10 +5,9 @@ import type { IFunctionResourceAccess } from "../constructs/lambda-function";
 import type { ILayerVersion } from "aws-cdk-lib/aws-lambda";
 
 import type { ClassConstructor, IDIContainer } from "../interfaces/di";
-import type { RegisterDIModuleMetadataOptions } from "../di/utils";
+import type { RegisterDIModuleMetadataOptions } from "../di/metadata";
 
 import { AbstractLambdaHandler } from "../core/runtime/abstract-lambda-handler";
-import { DIContainer } from "../di";
 import { setupDIModule } from "../di/utils/setupDIModule";
 import { DefaultLogger } from "../logging";
 import { ENV_KEYS } from "../const";
@@ -75,28 +74,37 @@ export type CommonLambdaHandlerOptions = {
 	module?: RegisterDIModuleMetadataOptions
 }
 
-export function tryImportingEntryPackages(controllerName: string) {
-  const entryPackageNames = process.env[ENV_KEYS.ENTRY_PACKAGES];
+export function tryImportingEntryPackages(name = getCallingModule(3)?.path ) {
+  DefaultLogger.info(`tryImportingEntryPackages: called for ${name}`);
 
-  if (entryPackageNames) {
-    const packageNamesArray = entryPackageNames.split(',').map(pkg => pkg.trim()); // Split and trim package names
+  try {
+		const entryPackageNames = process.env[ENV_KEYS.ENTRY_PACKAGES];
 
-    DefaultLogger.info(`Controller ${controllerName} is configured to import entry-packages: ${packageNamesArray.join(', ')}`);
+		DefaultLogger.info('tryImportingEntryPackages: entryPackageNames', entryPackageNames);
 
-    packageNamesArray.forEach((entryPackageName) => {
-      try {
-        const entry = require(entryPackageName);
-		// call the default export if available
-		entry.default && typeof entry.default === 'function' && entry.default(); 
-        DefaultLogger.info(`Controller ${controllerName} successfully imported entry-package: ${entryPackageName}`);
-      } catch (error) {
-        DefaultLogger.error(`Controller ${controllerName} failed to import entry-package: ${entryPackageName}`, error);
-      }
-    });
+		if (entryPackageNames) {
+			const packageNamesArray = entryPackageNames.split(',').map(pkg => pkg.trim()); // Split and trim package names
 
-  } else {
-    DefaultLogger.info(`Controller ${controllerName} is not configured to import any entry-package`);
-  }
+			DefaultLogger.info(`tryImportingEntryPackages: Controller ${name} is configured to import entry-packages: ${packageNamesArray.join(', ')}`);
+
+			packageNamesArray.forEach((entryPackageName) => {
+				try {
+					DefaultLogger.info("trying to import entry", {entryPackageName});
+					const entry = require(entryPackageName);
+					// call the default export if available
+					entry.default && typeof entry.default === 'function' && entry.default(); 
+					DefaultLogger.info(`Controller ${name} successfully imported entry-package: ${entryPackageName}`);
+				} catch (error) {
+					DefaultLogger.error(`Controller ${name} failed to import entry-package: ${entryPackageName}`, error);
+				}
+			});
+
+		} else {
+			DefaultLogger.info(`Controller ${name} is not configured to import any entry-package`);
+		}
+	} catch(e){
+		console.error("Error importing entry packages in controller.ts", e);
+	}
 }
 
 /**

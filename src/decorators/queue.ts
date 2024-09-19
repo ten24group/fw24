@@ -51,11 +51,11 @@ export type IQueueConfig = CommonLambdaHandlerOptions &  {
  */
 export function Queue(queueName: string, queueConfig: IQueueConfig = {}) {
 	return function <T extends { new (...args: any[]): {} }>(target: T) {
+		tryImportingEntryPackages(queueName);
 
 		// Default autoExportLambdaHandler to true if undefined
 		queueConfig.autoExportLambdaHandler = queueConfig.autoExportLambdaHandler ?? true;
 
-		tryImportingEntryPackages(queueName);
 		
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {

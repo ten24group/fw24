@@ -1,6 +1,6 @@
 import type { ClassConstructor, DepIdentifier, InjectOptions } from './../interfaces/di';
-import { DIContainer } from './di-container';
-import { registerConstructorDependency, RegisterDIModuleMetadataOptions, registerModuleMetadata, registerOnInitHook, registerPropertyDependency } from './utils';
+import { DIContainer } from './container';
+import { registerConstructorDependency, RegisterDIModuleMetadataOptions, registerModuleMetadata, registerOnInitHook, registerPropertyDependency } from './metadata';
 import { setupDIModule } from './utils/setupDIModule';
 
 import { tryRegisterInjectable, type InjectableOptions } from './utils/tryRegisterInjectable';

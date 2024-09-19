@@ -1,24 +1,32 @@
-import { getModuleMetadata } from ".";
-import { DIContainer } from "../di-container";
-import type { DIModuleOptions } from "../../interfaces/di";
+import { getModuleMetadata } from "../metadata";
+import { DIContainer } from "../container";
+import type { IDIContainer } from "../../interfaces/di";
+import { DefaultLogger } from "../../logging";
 
 export function tryGetModuleDIContainer(moduleClass: Function) {
-	const parentModuleMetadata = getModuleMetadata(moduleClass) as DIModuleOptions | undefined;
+	const parentModuleMetadata = getModuleMetadata(moduleClass);
 
 	if (!parentModuleMetadata) {
 		throw new Error(`Invalid 'providedBy': [${moduleClass.name}] option. Ensure the class is decorated with @DIModule({...} || @Container({ module: {}})).`);
 	}
 
 	if (!parentModuleMetadata.container) {
-		console.warn("No container found in module's metadata, this should only happen during build time and when the module is imported into root container via an entry-layer, trying to get the container fro this module, from the ROOT ");
+		
+		DefaultLogger.warn(`No container found in module's metadata: [${moduleClass.name}], this should only happen during build time and when the module is imported into root container via an entry-layer, trying to get the container for this module, from the ROOT `);
 
 		if (DIContainer.ROOT.hasChildContainerById(parentModuleMetadata.identifier)) {
-			console.info(`child container found in ROOT for module: ${parentModuleMetadata.identifier}`);
-			const container = DIContainer.ROOT.getChildContainerById(parentModuleMetadata.identifier);
+			
+			DefaultLogger.info(`child container found in ROOT for module: ${parentModuleMetadata.identifier}`);
+			const container = DIContainer.ROOT.getChildContainerById(parentModuleMetadata.identifier) as IDIContainer;
 			// the container in the ROOT will be a proxy, make sure to get the actual container out of the proxy
-			parentModuleMetadata.container = container!.proxyFor!;
+			parentModuleMetadata.setContainer(container.proxyFor!);
+
 		} else {
-			throw new Error(`no child container found in ROOT for module: ${parentModuleMetadata.identifier}; If it is supposed to have an entry, please make sure those configurations are in right order.`);
+
+			const msg = `no child container found in ROOT for module: ${parentModuleMetadata.identifier}; If it is supposed to have an entry, please make sure those configurations are in right order.`;
+			DefaultLogger.error(msg);
+
+			throw new Error(msg);
 		}
 	}
 

@@ -6,43 +6,73 @@ type MetadataManagerConfig = {
 
 export class MetadataManager {
     private namespace: string;
+    private metadataMap: Map<object, Map<string, any>>;
+
+    logMetadata(){
+        for(const [target, metadata] of this.metadataMap){
+            for(let [key, value] of metadata){
+                // value = { 
+                //     ...value, 
+                //     logger: undefined,
+                //     container: value.container?.containerId, 
+                // }
+                console.log("Target: ", target, "Key: ", key, " Value: ", { 
+                    ...value, 
+                    logger: undefined,
+                    container: value.container?.containerId, 
+                });
+            }
+        }
+    }
+
+    clearMetadata(){
+        this.metadataMap.clear();
+    }
 
     constructor(config: MetadataManagerConfig = {}) {
         this.namespace = config.namespace || 'fw24:metadata:default';
+        this.metadataMap = new Map();
     }
 
     private getNamespacedKey(key: string): string {
-        if(key.startsWith(this.namespace)){
-            return key;
-        }
         return `${this.namespace}_${key}`;
+    }
+
+    private ensureTargetMetadata(target: object): Map<string, any> {
+        if (!this.metadataMap.has(target)) {
+            this.metadataMap.set(target, new Map());
+        }
+        return this.metadataMap.get(target)!;
     }
 
     private setMetadata(target: object, key: string, value: any, override = false) {
         const metadataKey = this.getNamespacedKey(key);
-        if (Reflect.has(target, metadataKey) && !override) {
+        const targetMetadata = this.ensureTargetMetadata(target);
+
+        if (targetMetadata.has(metadataKey) && !override) {
             throw new Error(`Metadata for key "${key}" already exists and override flag is not set.`);
+            // value = merge([targetMetadata.get(metadataKey), value]);
         }
-        Reflect.set(target, metadataKey, value);
+        targetMetadata.set(metadataKey, value);
     }
 
     private getMetadata(target: object, key: string): any | undefined {
         const metadataKey = this.getNamespacedKey(key);
-        if (Reflect.has(target, metadataKey)) {
-            return Reflect.get(target, metadataKey);
-        }
-        return undefined;
+        const targetMetadata = this.metadataMap.get(target);
+        return targetMetadata?.get(metadataKey);
     }
 
     private hasMetadata(target: object, key: string): boolean {
         const metadataKey = this.getNamespacedKey(key);
-        return Reflect.has(target, metadataKey);
+        const targetMetadata = this.metadataMap.get(target);
+        return targetMetadata?.has(metadataKey) ?? false;
     }
 
     private deleteMetadata(target: object, key: string) {
         const metadataKey = this.getNamespacedKey(key);
-        if (Reflect.has(target, metadataKey)) {
-            Reflect.deleteProperty(target, metadataKey);
+        const targetMetadata = this.metadataMap.get(target);
+        if (targetMetadata) {
+            targetMetadata.delete(metadataKey);
         }
     }
 
@@ -59,25 +89,25 @@ export class MetadataManager {
     }
 
     setClassMetadataForKey<T>(target: Function, key: string | symbol, value: T, override = false) {
-        const classMetadata: Record< string | symbol, any> = this.getClassMetadata(target) || {};
-        if(classMetadata[key] !== undefined && !override){
+        const classMetadata: Record<string | symbol, any> = this.getClassMetadata(target) || {};
+        if (classMetadata[key] !== undefined && !override) {
             throw new Error(`Class Metadata for key "${String(key)}" already exists and override flag is not set.`);
         }
         classMetadata[key] = value;
         this.setClassMetadata(target, classMetadata, override);
     }
 
-    getClassMetadataForKey<T>(target: Function, key: string | symbol ): T | undefined {
-        const classMetadata: Record< string | symbol, any> = this.getClassMetadata(target) || {};
-        return classMetadata?.[key] || undefined;
+    getClassMetadataForKey<T>(target: Function, key: string | symbol): T | undefined {
+        const classMetadata: Record<string | symbol, any> = this.getClassMetadata(target) || {};
+        return classMetadata?.[key];
     }
 
-    hasClassMetadataFOrKey(target: Function, key: string | symbol): boolean {
-        const classMetadata: Record< string | symbol, any> = this.getClassMetadata(target) || {};
-        return classMetadata && classMetadata.hasOwnProperty(key);
+    hasClassMetadataForKey(target: Function, key: string | symbol): boolean {
+        const classMetadata: Record<string | symbol, any> = this.getClassMetadata(target) || {};
+        return classMetadata.hasOwnProperty(key);
     }
 
-    setPropertyMetadata<T>(target: Object, propertyKey: string | number | symbol, value: T, override = false) {
+    setPropertyMetadata<T>(target: object, propertyKey: string | number | symbol, value: T, override = false) {
         this.setMetadata(target, `propertyMetadata_${String(propertyKey)}`, value, override);
     }
 
@@ -85,7 +115,7 @@ export class MetadataManager {
         return this.getMetadata(target, `propertyMetadata_${String(propertyKey)}`);
     }
 
-    hasPropertyMetadata<T extends object,>(target: T, propertyKey: keyof T): boolean {
+    hasPropertyMetadata<T extends object>(target: T, propertyKey: keyof T): boolean {
         return this.hasMetadata(target, `propertyMetadata_${String(propertyKey)}`);
     }
 
@@ -145,27 +175,28 @@ export class MetadataManager {
         this.deleteMetadata(target, `parameterMetadata_${String(propertyKey)}`);
     }
 
-    listMetadataKeys(target: Object): string[] {
+    listMetadataKeys(target: object): string[] {
         const keys: string[] = [];
-        for (const key in target) {
-            if (Reflect.has(target, key)) {
+        const targetMetadata = this.metadataMap.get(target);
+        if (targetMetadata) {
+            for (const key of targetMetadata.keys()) {
                 keys.push(key);
             }
         }
         return keys;
     }
 
-    mergeMetadata<T extends object>(target: Object, propertyKey: keyof T, ...sources: any[]) {
-        const merged = merge([{}, ...sources]);
+    mergeMetadata<T extends object>(target: object, propertyKey: keyof T, ...sources: any[]) {
+        const merged = Object.assign({}, ...sources);
         this.setMetadata(target, `propertyMetadata_${String(propertyKey)}`, merged, true);
     }
 
-    cloneMetadata(source: Object, target: Object) {
+    cloneMetadata(source: object, target: object) {
         const metadataKeys = this.listMetadataKeys(source);
         metadataKeys.forEach((key) => {
-            if (key.includes(this.namespace)) {
-                const metadata = this.getMetadata(source, key as any);
-                this.setMetadata(target, key as any, metadata, true);
+            const metadata = this.getMetadata(source, key);
+            if (metadata) {
+                this.setMetadata(target, key, metadata, true);
             }
         });
     }
@@ -192,9 +223,3 @@ export class MetadataManager {
         }
     }
 }
-
-export function useMetadataManager(config: MetadataManagerConfig){
-    return new MetadataManager(config);
-}
-
-export const defaultMetadataManager = new MetadataManager();

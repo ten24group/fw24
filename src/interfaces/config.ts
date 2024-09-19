@@ -1,6 +1,6 @@
 import type { RemovalPolicy } from "aws-cdk-lib";
 import type { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
-import type { DIContainer } from "../di/di-container";
+import type { DIContainer } from "../di/container";
 import type { ILayerVersion } from "aws-cdk-lib/aws-lambda";
 import { IDIContainer } from "./di";
 

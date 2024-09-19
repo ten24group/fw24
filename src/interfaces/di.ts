@@ -1,4 +1,3 @@
-import { type } from 'os';
 import { DeepPartial, PartialBy } from '../utils/types';
 
 export type Token = string;
@@ -194,8 +193,12 @@ export interface IDIContainer {
 
     removeProvidersFor(dependencyToken: DepIdentifier): void;
 
+    exportProvidersFor<T>(exportedDep: DepIdentifier<T>): void
+
     hasChildContainerById(identifier: string): boolean;
 
+    removeChildContainerById(identifier: string): void;
+    
     getChildContainerById(identifier: string): IDIContainer | undefined;
 
     createChildContainer(identifier: string): IDIContainer;
