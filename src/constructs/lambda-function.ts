@@ -1,6 +1,6 @@
 import { Construct } from "constructs";
 import { Duration, RemovalPolicy } from "aws-cdk-lib";
-import { PolicyStatement } from "aws-cdk-lib/aws-iam";
+import { PolicyStatement, type PolicyStatementProps } from "aws-cdk-lib/aws-iam";
 import { Runtime, Architecture, LayerVersion, ApplicationLogLevel, LoggingFormat, ILayerVersion } from "aws-cdk-lib/aws-lambda";
 import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
@@ -11,6 +11,13 @@ import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { createLogger, ILogger } from "../logging";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
+
+export type TPolicyStatementOrProps = PolicyStatement | PolicyStatementProps ;
+export type TImportedPolicy = {name: string, isOptional?: boolean};
+
+export function isImportedPolicy(policy: TPolicyStatementOrProps | TImportedPolicy): policy is TImportedPolicy {
+  return (policy as TImportedPolicy).name !== undefined;
+}
 
 /**
  * Represents the properties for a Lambda function.
@@ -24,7 +31,7 @@ export interface LambdaFunctionProps {
   /**
    * The policies to attach to the Lambda function's execution role.
    */
-  policies?: any[];
+  policies?: Array<TPolicyStatementOrProps | TImportedPolicy>;
 
   /**
    * The environment variables to set for the Lambda function.
@@ -123,14 +130,17 @@ export interface IFunctionResourceAccess {
  * // Create a Lambda function with custom properties
  * const lambdaProps: LambdaFunctionProps = {
  *   entry: "index.js",
- *   policies: [
- *     {
- *       effect: Effect.ALLOW,
- *       actions: [
+ *   policies: [{
+ *         effect: Effect.ALLOW,
+ *         actions: [
  *          "s3:GetObject"
- *       ],
- *       resources: ["arn:aws:s3:::my-bucket/*"],
- *     },
+ *         ],
+ *         resources: ["arn:aws:s3:::my-bucket/*"],
+ *     }, 
+ *     {
+ *       policy: "authModule:create-user-auth-record",
+ *       isOptional: true
+ *     }
  *   ],
  *   environmentVariables: {
  *     MY_ENV_VAR: "my-value",
@@ -288,9 +298,20 @@ export class LambdaFunction extends Construct {
     // Attach policies to the function
     if(props.policies){
       props.policies.forEach(policy => {
-        fn.addToRolePolicy(
-          new PolicyStatement(policy)
-        );
+
+        if(isImportedPolicy(policy) ){
+          if( !policy.isOptional && !fw24.hasPolicy(policy.name)){
+            throw new Error(`Policy ${policy} not found in fw24 scope`);
+          }
+          policy = fw24.getPolicy(policy.name) as PolicyStatementProps | PolicyStatement;
+        }
+
+
+        if(!(policy instanceof PolicyStatement)){
+          policy = new PolicyStatement(policy);
+        }
+
+        fn.addToRolePolicy(policy as PolicyStatement);
       });
     }
 

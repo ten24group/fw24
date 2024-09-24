@@ -345,6 +345,7 @@ export class APIConstruct implements FW24Construct {
         return new LambdaFunction(this.mainStack, controllerName + "-controller", {
             entry: filePath + "/" + fileName,
             environmentVariables: envVariables,
+            policies: controllerConfig?.policies,
             resourceAccess: controllerConfig?.resourceAccess,
             allowSendEmail: true,
             functionTimeout: controllerConfig?.functionTimeout,

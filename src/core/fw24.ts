@@ -1,16 +1,16 @@
 import { IAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2';
+import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
+import { Effect, PolicyStatement, type PolicyStatementProps, type Role } from 'aws-cdk-lib/aws-iam';
+import type { ITopic } from 'aws-cdk-lib/aws-sns';
+import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
+import { DIContainer } from '../di';
+import { type ILambdaEnvConfig } from '../interfaces';
 import { IApplicationConfig } from '../interfaces/config';
 import { FW24Construct, OutputType } from '../interfaces/construct';
-import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
-import { Helper } from './helper';
-import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
-import type { ITopic } from 'aws-cdk-lib/aws-sns';
-import { Role, PolicyStatement, Effect } from 'aws-cdk-lib/aws-iam';
-import { type IFw24Module } from './runtime/module';
-import { createLogger } from '../logging';
-import { DIContainer } from '../di';
 import { type IDIContainer } from '../interfaces/di';
-import { type ILambdaEnvConfig } from '../interfaces';
+import { createLogger } from '../logging';
+import { Helper } from './helper';
+import { type IFw24Module } from './runtime/module';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
@@ -21,6 +21,7 @@ export class Fw24 {
     private config: IApplicationConfig = {};
     private stacks: any = {};
     private environmentVariables: any = {};
+    private policyStatements =  new Map<string, PolicyStatementProps | PolicyStatement>();
     private defaultCognitoAuthorizer: IAuthorizer | undefined;
     private cognitoAuthorizers: { [key: string]: IAuthorizer } = {};
     private dynamoTables: { [key: string]: TableV2 } = {};
@@ -73,6 +74,13 @@ export class Fw24 {
 
     addModule(name: string, module: IFw24Module) {
         this.logger.debug("addModule:", {name, module: module.getBasePath()} );
+
+        // collect all exported policies from this module
+        for(const [policyName, policy] of module.getExportedPolicies() ){
+            // TODO: convention to namespace policy keys with the module-id/name
+            // TODO: convention to provide some placeholders/templates in the policy statements
+            this.setPolicy(policyName, policy);
+        }
 
         this.modules.set(name, module);
     }
@@ -168,6 +176,19 @@ export class Fw24 {
             prefix = `${prefix}_`;
         }
         return this.environmentVariables[`${prefix}${name}`];
+    }
+
+    setPolicy(name: string, value: PolicyStatementProps | PolicyStatement) {
+        this.logger.debug("setPolicy:", name, value);
+        this.policyStatements.set(name, value);
+    }
+
+    getPolicy(name: string): PolicyStatementProps | PolicyStatement | undefined {
+        return this.policyStatements.get(name);
+    }
+
+    hasPolicy(name: string): boolean{
+        return this.policyStatements.has(name);
     }
 
     resolveEnvVariables = (env: ILambdaEnvConfig[] = []) => {

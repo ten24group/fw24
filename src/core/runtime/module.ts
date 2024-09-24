@@ -2,6 +2,7 @@ import {join as pathJoin } from "path";
 
 import type { FW24Construct } from "../../interfaces/construct";
 import { IDIContainer } from "../../interfaces";
+import { PolicyStatement, PolicyStatementProps } from "aws-cdk-lib/aws-iam";
 
 export interface IModuleConfig{}
 
@@ -17,6 +18,7 @@ export interface IFw24Module{
     getDependencies(): string[];
     getTasksDirectory(): string;
     getTaskFileNames(): string[];
+    getExportedPolicies(): Map<string, PolicyStatementProps | PolicyStatement>;
 }
 
 export abstract class AbstractFw24Module implements IFw24Module {
@@ -66,6 +68,10 @@ export abstract class AbstractFw24Module implements IFw24Module {
 
     getLambdaEntryPackages(): string[] {
         return [];
+    }
+
+    getExportedPolicies(): Map<string, PolicyStatementProps | PolicyStatement> {
+        return new Map();
     }
 
 }

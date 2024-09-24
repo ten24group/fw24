@@ -1,7 +1,7 @@
 import type { RemovalPolicy } from "aws-cdk-lib";
 import type { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import type { RetentionDays } from "aws-cdk-lib/aws-logs";
-import type { IFunctionResourceAccess } from "../constructs/lambda-function";
+import type { IFunctionResourceAccess, TImportedPolicy, TPolicyStatementOrProps } from "../constructs/lambda-function";
 import type { ILayerVersion } from "aws-cdk-lib/aws-lambda";
 
 import type { ClassConstructor, IDIContainer } from "../interfaces/di";
@@ -18,6 +18,11 @@ export type CommonLambdaHandlerOptions = {
 	 * Defines the resources that the controller needs access to.
 	 */
 	resourceAccess?: IFunctionResourceAccess;
+
+	/**
+	 * The policies to attach to the Lambda function's execution role.
+	 */
+	policies?: Array<TPolicyStatementOrProps | TImportedPolicy>;
 
 	/**
 	 * Specifies the timeout for the controller function in seconds.

@@ -258,8 +258,10 @@ export class AuthConstruct implements FW24Construct {
             }
             const autoUserSignupGroups = this.authConstructConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString();
             const autoUserSignupGroupsHandler = this.authConstructConfig.groups.filter(group => group.autoUserSignup).map(group => group.autoUserSignupHandler);
-            // only one auto signup handler is supported, pick the first one
+            
+            // Note: only one auto signup handler is supported, pick the first one
             const autoGroupsAddHandler = autoUserSignupGroupsHandler[0] || '';
+            
             if(autoUserSignupGroups && autoGroupsAddHandler){
                 // create a post confirmation trigger to add users to auto signup groups
                 const props = {
