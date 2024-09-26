@@ -77,9 +77,12 @@ export class Fw24 {
 
         // collect all exported policies from this module
         for(const [policyName, policy] of module.getExportedPolicies() ){
-            // TODO: convention to namespace policy keys with the module-id/name
-            // TODO: convention to provide some placeholders/templates in the policy statements
-            this.setPolicy(policyName, policy);
+            this.setPolicy(policyName, policy, module.getName());
+        }
+
+        // add all exported static env values into the FW24 scope
+        for( const [envName, envValue] of module.getExportedEnvironmentVariables() ){
+            this.set( envName, envValue, module.getName() );
         }
 
         this.modules.set(name, module);
@@ -163,45 +166,74 @@ export class Fw24 {
         return this.get('defaultCognitoAuthorizerName', 'cognito');
     }
 
-    set(name: string, value: any, prefix: string = '') {
-        this.logger.debug("set:", {prefix, name});
+    ensurePrefix(key: string, prefix: string = '') {
         if(prefix.length > 0) {
-            prefix = `${prefix}_`;
+            prefix = `${prefix.toUpperCase()}_`;
         }
-        this.environmentVariables[`${prefix}${name}`] = value;
+
+        if(!key.startsWith(prefix)) {
+            key = `${prefix}${key}`;
+        }
+
+        // * encode/special characters in key to make them friendly for aws Lambda env
+
+        // replace all non-alphanumeric characters with underscore
+        return key.replace(/[^a-zA-Z0-9_]/g, '_');
+    }
+
+    set(name: string, value: any, prefix: string = '') {
+        this.environmentVariables[this.ensurePrefix(name, prefix)] = value;
     }
 
     get(name: string, prefix: string = ''): any {
-        if(prefix.length > 0) {
-            prefix = `${prefix}_`;
-        }
-        return this.environmentVariables[`${prefix}${name}`];
-    }
-
-    setPolicy(name: string, value: PolicyStatementProps | PolicyStatement) {
-        this.logger.debug("setPolicy:", name, value);
-        this.policyStatements.set(name, value);
-    }
-
-    getPolicy(name: string): PolicyStatementProps | PolicyStatement | undefined {
-        return this.policyStatements.get(name);
-    }
-
-    hasPolicy(name: string): boolean{
-        return this.policyStatements.has(name);
+        return this.environmentVariables[this.ensurePrefix(name, prefix)];
     }
 
     resolveEnvVariables = (env: ILambdaEnvConfig[] = []) => {
         const resolved: any = {};
         for (const envConfig of env ) {
-            const value = envConfig.value ?? this.get(envConfig.name, envConfig.prefix || '');
+            const value = envConfig.value ?? this.get(envConfig.name, envConfig.prefix);
             if (value) {
                 resolved[envConfig.exportName ?? envConfig.name] = value;
+            } else {
+                this.logger.warn(`Environment variable [prefix: ${envConfig.prefix}] ${envConfig.name} not found in the environment variables.`);
             }
         }
         return resolved;
     }
 
+    
+    /**
+     * Resolves the value for the given template from the Fw24-scope env if it follows the conventions like `env:xxx:yyy`, `env:yyy`.
+     * 
+     * @param keyTemplate - The template for the environment key to resolve.
+     *  e.g. env:Users_Table_name, env:userModule:Users_Table_name
+     * @returns The resolved value for the key.
+     */
+    tryResolveEnvKeyTemplate = (keyTemplate: string) => {
+      if(keyTemplate.startsWith('env:')){
+        // env:userModule:Users_Table_name => ['env', 'userModule', 'Users_Table_name'];
+        const parts = keyTemplate.split(':'); 
+        
+        // get the actual value from the fw24 scope ==> fw24.get('Users_Table_name', 'userModule');
+        keyTemplate = parts.length === 3 ? this.get(parts[2], parts[1]) : this.get(parts[1]);
+      }
+      return keyTemplate;
+    }
+
+    setPolicy(policyName: string, value: PolicyStatementProps | PolicyStatement, prefix: string = '') {
+        this.logger.debug("setPolicy:", prefix, policyName, value);
+        this.policyStatements.set(this.ensurePrefix(policyName, prefix), value);
+    }
+
+    getPolicy(policyName: string, prefix: string = ''): PolicyStatementProps | PolicyStatement | undefined {
+        return this.policyStatements.get(this.ensurePrefix(policyName, prefix));
+    }
+
+    hasPolicy(policyName: string, prefix: string = ''): boolean{
+        return this.policyStatements.has(this.ensurePrefix(policyName, prefix));
+    }
+    
     setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType) {
         this.logger.debug(`setConstructOutput: ${construct.name}`, {outputType, key});
         if(outputType){

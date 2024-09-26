@@ -187,20 +187,7 @@ export class APIConstruct implements FW24Construct {
             ];
         }
 
-        return entryPackages.packageNames.map((packageName: string) => { 
-            
-            if(packageName.startsWith('env:')){
-                const parts = packageName.split(':'); // env:layerImportPath:layerName => ['env', 'layerImportPath', 'layerName'];
-                // get the value from the environment ==> fw24.get('xxxx', 'layerImportPath');
-                const value = parts.length === 3 
-                    ? this.fw24.get(parts[2], parts[1]) 
-                    : this.fw24.get(parts[1]);
-
-                return value;
-            }
-
-            return packageName;
-         });
+        return entryPackages.packageNames.map(this.fw24.tryResolveEnvKeyTemplate);
     }
 
 

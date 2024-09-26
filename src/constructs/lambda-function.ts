@@ -13,7 +13,7 @@ import { createLogger, ILogger } from "../logging";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 
 export type TPolicyStatementOrProps = PolicyStatement | PolicyStatementProps ;
-export type TImportedPolicy = {name: string, isOptional?: boolean};
+export type TImportedPolicy = {name: string, isOptional?: boolean, prefix?: string};
 
 export function isImportedPolicy(policy: TPolicyStatementOrProps | TImportedPolicy): policy is TImportedPolicy {
   return (policy as TImportedPolicy).name !== undefined;
@@ -296,24 +296,24 @@ export class LambdaFunction extends Construct {
     }
 
     // Attach policies to the function
-    if(props.policies){
-      props.policies.forEach(policy => {
+    (props.policies ?? []).forEach( policy => {
 
-        if(isImportedPolicy(policy) ){
-          if( !policy.isOptional && !fw24.hasPolicy(policy.name)){
-            throw new Error(`Policy ${policy} not found in fw24 scope`);
-          }
-          policy = fw24.getPolicy(policy.name) as PolicyStatementProps | PolicyStatement;
+      if(isImportedPolicy(policy) ){
+        
+        if( !policy.isOptional && !fw24.hasPolicy(policy.name, policy.prefix)){
+          throw new Error(`Policy ${policy} not found in fw24 scope`);
         }
 
+        policy = fw24.getPolicy(policy.name, policy.prefix) as PolicyStatementProps | PolicyStatement;
+      }
 
-        if(!(policy instanceof PolicyStatement)){
-          policy = new PolicyStatement(policy);
-        }
+      if(!(policy instanceof PolicyStatement)){
+        policy = new PolicyStatement(policy);
+      }
 
-        fn.addToRolePolicy(policy as PolicyStatement);
-      });
-    }
+      fn.addToRolePolicy(policy as PolicyStatement);
+      
+    });
 
     // If we are using SES, then we need to add the email queue url to the environment
     if(props.allowSendEmail && fw24.emailProvider instanceof MailerConstruct){
@@ -325,7 +325,11 @@ export class LambdaFunction extends Construct {
 
     // Logic for adding DynamoDB table access to the controller
     props.resourceAccess?.tables?.forEach( ( table: any ) => {
-      const tableName = typeof table === 'string' ? table : table.name;
+      let tableName = typeof table === 'string' ? table : table.name;
+      
+      // ensure the placeholder env keys are resolved from the fw24 scope
+      tableName = fw24.tryResolveEnvKeyTemplate(tableName);
+
       const access = typeof table === 'string' ? ['readwrite'] : table.access || ['readwrite'];
       // Get the DynamoDB table based on the controller config
       const tableInstance: TableV2 = fw24.getDynamoTable(tableName);
@@ -349,7 +353,11 @@ export class LambdaFunction extends Construct {
 
     // Logic for adding S3 bucket access to the controller
     props.resourceAccess?.buckets?.forEach( ( bucket: any ) => {
-      const bucketName = typeof bucket === 'string' ? bucket : bucket.name;
+      let bucketName = typeof bucket === 'string' ? bucket : bucket.name;
+
+      // ensure the placeholder env keys are resolved from the fw24 scope
+      bucketName = fw24.tryResolveEnvKeyTemplate(bucketName);
+
       const access = typeof bucket === 'string' ? ['readwrite'] : bucket.access || ['readwrite'];
 
       const bucketFullName = fw24.getUniqueName(bucketName);
@@ -373,7 +381,11 @@ export class LambdaFunction extends Construct {
     });
 
     props.resourceAccess?.queues?.forEach( ( queue: any ) => {
-      const queueName = typeof queue === 'string' ? queue : queue.name;
+      let queueName = typeof queue === 'string' ? queue : queue.name;
+
+      // ensure the placeholder env keys are resolved from the fw24 scope
+      queueName = fw24.tryResolveEnvKeyTemplate(queueName);
+
       const access = typeof queue === 'string' ? ['send'] : queue.access || ['send'];
 
       this.logger?.debug(":GET Queue Name from fw24 scope : ", queueName, " :", fw24.get(queueName, 'queueName'));
@@ -399,7 +411,11 @@ export class LambdaFunction extends Construct {
 
     // Add SNS topic permission
     props.resourceAccess?.topics?.forEach( ( topic: any ) => {
-      const topicName = typeof topic === 'string' ? topic : topic.name;
+      let topicName = typeof topic === 'string' ? topic : topic.name;
+
+      // ensure the placeholder env keys are resolved from the fw24 scope
+      topicName = fw24.tryResolveEnvKeyTemplate(topicName);
+
       const access = typeof topic === 'string' ? ['publish'] : topic.access || ['publish'];
 
       const topicArn = fw24.getArn('sns', fw24.get(topicName, 'topicName'));

@@ -19,6 +19,7 @@ export interface IFw24Module{
     getTasksDirectory(): string;
     getTaskFileNames(): string[];
     getExportedPolicies(): Map<string, PolicyStatementProps | PolicyStatement>;
+    getExportedEnvironmentVariables(): Map<string, string>;
 }
 
 export abstract class AbstractFw24Module implements IFw24Module {
@@ -28,9 +29,11 @@ export abstract class AbstractFw24Module implements IFw24Module {
 
     abstract getConstructs(): Map<string, FW24Construct>;
 
-    abstract getName(): string;
-
     abstract getBasePath(): string;
+
+    getName(): string {
+        return this.constructor.name
+    }
 
     getControllersDirectory(): string {
         return pathJoin("./controllers/");
@@ -74,4 +77,7 @@ export abstract class AbstractFw24Module implements IFw24Module {
         return new Map();
     }
 
+    getExportedEnvironmentVariables(): Map<string, string> {
+        return new Map();
+    }
 }
