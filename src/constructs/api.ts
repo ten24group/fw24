@@ -33,7 +33,7 @@ import { LambdaFunction } from "./lambda-function";
 
 import { IControllerConfig } from "../decorators/controller";
 import { ENV_KEYS } from "../fw24";
-import { isArray } from "../utils";
+import { isArray, isString } from "../utils";
 import { AuthConstruct } from "./auth";
 import { CertificateConstruct } from "./certificate";
 import { DynamoDBConstruct } from "./dynamodb";
@@ -365,6 +365,29 @@ export class APIConstruct implements FW24Construct {
 
         if(!defaultAuthorizerType && this.fw24.getConfig().defaultAuthorizationType) {
             defaultAuthorizerType = this.fw24.getConfig().defaultAuthorizationType;
+        }
+
+        if(defaultAuthorizerGroups){
+
+            // if the value for the groups is a template string, 
+            // resolve it [when the application want to allow multiple user groups to have access]
+            // when the value is like "env:xxx:group1" ==> "group1-resolved" || "group1,group2" || "env:xxx:group1,env:xxx:group2"
+            if(isString(defaultAuthorizerGroups)) {
+                defaultAuthorizerGroups = this.fw24.tryResolveEnvKeyTemplate(defaultAuthorizerGroups)
+            }
+            // now if the resolved value is again a string, split it by comma
+            // when the value is like "group1,group2" ==> ["group1", "group2"]
+            if(isString(defaultAuthorizerName)) {
+                defaultAuthorizerGroups = defaultAuthorizerGroups.split(',');
+            }
+    
+            // resolve the group names from fw24-scope if it's a template
+            // when the value is like ["env:xxx:group1","env:xxx:group2"] ==> ["group1-resolved", "group2-resolved"]
+            defaultAuthorizerGroups = (defaultAuthorizerGroups as Array<string>).map(this.fw24.tryResolveEnvKeyTemplate);
+    
+            // flat-map the groups if they resolved group values are again comma separated
+            // when the resolved value is like ["a,b", "c,d"] ==> ["a", "b", "c", "d"]
+            defaultAuthorizerGroups = (defaultAuthorizerGroups as Array<string>).flatMap((group: string) => group.split(','));
         }
     
         return { defaultAuthorizerName, defaultAuthorizerType, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig };
