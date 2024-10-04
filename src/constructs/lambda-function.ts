@@ -11,6 +11,7 @@ import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { createLogger, ILogger } from "../logging";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
+import { ensureNoSpecialChars, ensureSuffix, ensureValidEnvKey } from "../utils/keys";
 
 export type TPolicyStatementOrProps = PolicyStatement | PolicyStatementProps ;
 export type TImportedPolicy = {name: string, isOptional?: boolean, prefix?: string};
@@ -287,11 +288,17 @@ export class LambdaFunction extends Construct {
           let fw24Key = key.split('_').pop() || '';
           // If the key has 3 parts then the second part is the scope name
           let prefix = key.split('_').length == 3 ? key.split('_')[1] : '';
-          envValue = fw24.get(fw24Key,prefix);
+          envValue = fw24.get(fw24Key, prefix);
           this.logger?.debug(`:GET environment variable from fw24 scope : ${fw24Key} : ${envValue}`, id);
         }
+        
         this.logger?.debug(`:SET environment variable : ${envKey} : ${envValue}`, id);
-        fn.addEnvironment(envKey, envValue);
+        
+        addEnvironmentKeyValueForFunction({
+          fn,
+          key: envKey,
+          value: envValue
+        });
       }
     }
 
@@ -320,7 +327,11 @@ export class LambdaFunction extends Construct {
       this.logger?.debug(":GET emailQueue Name from fw24 scope : ", fw24.get('emailQueue', 'queueName'), id);
       let emailQueue = fw24.getQueueByName('emailQueue');
       emailQueue.grantSendMessages(fn);
-      fn.addEnvironment('EMAIL_QUEUE_URL', emailQueue.queueUrl);
+      addEnvironmentKeyValueForFunction({
+        fn,
+        key: `EMAIL_QUEUE_URL`,
+        value: emailQueue.queueUrl
+      });
     }
 
     // Logic for adding DynamoDB table access to the controller
@@ -330,11 +341,19 @@ export class LambdaFunction extends Construct {
       // ensure the placeholder env keys are resolved from the fw24 scope
       tableName = fw24.tryResolveEnvKeyTemplate(tableName);
 
+      const appQualifiedTableName = ensureNoSpecialChars(ensureSuffix(tableName, `table`));
+
       const access = typeof table === 'string' ? ['readwrite'] : table.access || ['readwrite'];
       // Get the DynamoDB table based on the controller config
-      const tableInstance: TableV2 = fw24.getDynamoTable(tableName);
-      // Add the table name to the lambda environment
-      fn.addEnvironment(`${tableName.toUpperCase()}_TABLE`, tableInstance.tableName);
+      const tableInstance: TableV2 = fw24.getDynamoTable(appQualifiedTableName);
+      
+      // Add the table name to the lambda environment      
+      addEnvironmentKeyValueForFunction({
+        fn,
+        key: `${appQualifiedTableName}`,
+        value: tableInstance.tableName
+      });
+
       // Grant the lambda function read write access to the table
       access.forEach( (accessType: string) => {
         switch (accessType) {
@@ -376,8 +395,14 @@ export class LambdaFunction extends Construct {
                 break;
         }
       });
+      
       // Add environment variable for the bucket name
-      fn.addEnvironment(`bucket_${bucketName}`, bucketFullName);
+      addEnvironmentKeyValueForFunction({
+        fn,
+        key: `bucket_${bucketName}`,
+        value: bucketFullName
+      });
+      
     });
 
     props.resourceAccess?.queues?.forEach( ( queue: any ) => {
@@ -405,8 +430,13 @@ export class LambdaFunction extends Construct {
             break;
         }
       });
+
       // Add environment variable for the queue url
-      fn.addEnvironment(`${queueName}_queueUrl`, queueInstance.queueUrl);
+      addEnvironmentKeyValueForFunction({
+        fn,
+        key: `${queueName}_topicArn`,
+        value: queueInstance.queueUrl
+      })
     });
 
     // Add SNS topic permission
@@ -429,9 +459,28 @@ export class LambdaFunction extends Construct {
         }
       });
       // Add environment variable for the topic arn
-      fn.addEnvironment(`${topicName}_topicArn`, topicInstance.topicArn);
+      addEnvironmentKeyValueForFunction({
+        fn,
+        key: `${topicName}_topicArn`,
+        value: topicInstance.topicArn
+      })
     });
 
     return fn;
   }
 }
+
+function addEnvironmentKeyValueForFunction( options: {
+    fn: NodejsFunction, 
+    key: string, 
+    value: string,
+    prefix ?: string,
+    suffix ?: string, 
+  }){
+
+    const { fn, key, value, prefix = '', suffix = '' } = options;
+
+    const envKey = ensureValidEnvKey(key, prefix, suffix);
+    
+    fn.addEnvironment(envKey, value);
+  }

@@ -11,6 +11,7 @@ import { type IDIContainer } from '../interfaces/di';
 import { createLogger } from '../logging';
 import { Helper } from './helper';
 import { type IFw24Module } from './runtime/module';
+import { ensureNoSpecialChars, ensureValidEnvKey } from '../utils/keys';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
@@ -166,27 +167,13 @@ export class Fw24 {
         return this.get('defaultCognitoAuthorizerName', 'cognito');
     }
 
-    ensurePrefix(key: string, prefix: string = '') {
-        if(prefix.length > 0) {
-            prefix = `${prefix.toUpperCase()}_`;
-        }
-
-        if(!key.startsWith(prefix)) {
-            key = `${prefix}${key}`;
-        }
-
-        // * encode/special characters in key to make them friendly for aws Lambda env
-
-        // replace all non-alphanumeric characters with underscore
-        return key.replace(/[^a-zA-Z0-9_]/g, '_');
-    }
 
     set(name: string, value: any, prefix: string = '') {
-        this.environmentVariables[this.ensurePrefix(name, prefix)] = value;
+        this.environmentVariables[ensureValidEnvKey(name, prefix)] = value;
     }
 
     get(name: string, prefix: string = ''): any {
-        return this.environmentVariables[this.ensurePrefix(name, prefix)];
+        return this.environmentVariables[ensureValidEnvKey(name, prefix)];
     }
 
     resolveEnvVariables = (env: ILambdaEnvConfig[] = []) => {
@@ -223,15 +210,15 @@ export class Fw24 {
 
     setPolicy(policyName: string, value: PolicyStatementProps | PolicyStatement, prefix: string = '') {
         this.logger.debug("setPolicy:", prefix, policyName, value);
-        this.policyStatements.set(this.ensurePrefix(policyName, prefix), value);
+        this.policyStatements.set(ensureValidEnvKey(policyName, prefix), value);
     }
 
     getPolicy(policyName: string, prefix: string = ''): PolicyStatementProps | PolicyStatement | undefined {
-        return this.policyStatements.get(this.ensurePrefix(policyName, prefix));
+        return this.policyStatements.get(ensureValidEnvKey(policyName, prefix));
     }
 
     hasPolicy(policyName: string, prefix: string = ''): boolean{
-        return this.policyStatements.has(this.ensurePrefix(policyName, prefix));
+        return this.policyStatements.has(ensureValidEnvKey(policyName, prefix));
     }
     
     setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType) {
@@ -255,12 +242,13 @@ export class Fw24 {
     }
 
     addDynamoTable(name: string, table: TableV2) {
+        name = ensureNoSpecialChars(name);
         this.logger.debug("addDynamoTable:", {name} );
         this.dynamoTables[name] = table;
     }
 
     getDynamoTable(name: string): TableV2{
-        return this.dynamoTables[name];
+        return this.dynamoTables[ensureNoSpecialChars(name)];
     }
 
     addRouteToRolePolicy(route: string, groups: string[], requireRouteInGroupConfig: boolean = false) {
