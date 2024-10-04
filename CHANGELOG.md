@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-alpha.13](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.12...v0.1.1-alpha.13) (2024-10-04)
+
+
+### Bug Fixes
+
+* custom domain logic in S3 client's getSignedUrlForFileUpload ([27fdc2b](https://github.com/ten24group/fw24/commit/27fdc2be418adabf33ea9487bc0cbc7e6d41c9a6))
+* QueueLambda to not add any batching stuff when it's used for a fifo queue ([bc5d0f2](https://github.com/ten24group/fw24/commit/bc5d0f26a5ffaf6c6cbbbec545b10a80a95357fe))
+
 ### [0.1.1-alpha.12](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.11...v0.1.1-alpha.12) (2024-08-16)
 
 ### [0.1.1-alpha.11](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.10...v0.1.1-alpha.11) (2024-07-22)
