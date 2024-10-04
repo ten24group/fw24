@@ -1,8 +1,8 @@
 import { EntityConfiguration } from "electrodb";
 import { createLogger } from "../logging";
-import { JsonSerializer, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isObject, isString, pickKeys, toHumanReadableName } from "../utils";
+import { JsonSerializer, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
 import { EntityInputValidations, EntityValidations } from "../validation";
-import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
+import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
 import { EntityQuery, EntitySelections } from "./query-types";
 import { addFilterGroupToEntityFilterCriteria, inferRelationshipsForEntitySelections, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
@@ -16,6 +16,32 @@ export type ExtractEntityIdentifiersContext = {
 type GetOptions<S extends EntitySchema<any, any, any>> = {
     identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>,
     selections?: EntitySelections<S>  
+}
+
+export function hasAttribute(schema: EntitySchema<any, any, any>, attributeName: string){
+    return ( attributeName in schema.attributes );
+}
+
+export function hasAttributeBy(schema: EntitySchema<any, any, any>, spec: SpecialAttributeType ){
+    return getAttributeNameBy(schema, spec) !== undefined;
+}
+
+export function getAttributeNameBy(schema: EntitySchema<any, any, any>, spec: SpecialAttributeType ){
+    
+    let specAttMetaKey = `entity${pascalCase(spec)}Attribute`;
+    if( specAttMetaKey in schema.model ){
+        return schema.model[specAttMetaKey as keyof typeof schema.model] as string;
+    }
+    
+    if( hasAttribute(schema, `${schema.model.entity}${pascalCase(spec)}`) ){
+        return `${schema.model.entity}${pascalCase(spec)}`;
+    }
+
+    if( hasAttribute(schema, spec) ){
+        return spec;
+    }
+
+    return undefined;
 }
 
 export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
@@ -86,9 +112,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         const identifiersBatch = inputs.map( input => {
                 const identifiers: any = {};
                 for(const {name: attName, required} of identifierAttributes){
-                    if( input.hasOwnProperty(attName) ){
+                    if( (attName in input ) ){
                         identifiers[attName] = input[attName];
-                    } else if( attName == primaryAttName && input.hasOwnProperty('id') ){
+                    } else if( attName == primaryAttName && ('id' in input ) ){
                         identifiers[attName] = input.id;
                     } else if(required) {
                         this.logger.warn(`required attribute: ${attName} for access-pattern: ${context.forAccessPattern ?? '--primary--'} is not found in input:`, input);
@@ -308,7 +334,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             const att = schema.attributes[attName];
             if( !att.hidden && !att.isIdentifier && att.type === 'string'
                 && 
-                (!att.hasOwnProperty('isSearchable') || att.isSearchable ) 
+                (!('isSearchable' in att ) || att.isSearchable ) 
              ){ 
                 attributeNames.push(attName); 
             }
@@ -332,7 +358,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         for(const attName in schema.attributes){
             const att = schema.attributes[attName];
 
-            let isUnique = att.hasOwnProperty('isUnique') ? att.isUnique : att.isIdentifier;
+            let isUnique = ( 'isUnique' in att ) ? att.isUnique : att.isIdentifier;
 
             if( isUnique ){ 
                 attributes.push({
@@ -360,7 +386,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             if( 
                 !att.hidden && ['string', 'number'].includes(att.type as string) 
                 && 
-                (!att.hasOwnProperty('isFilterable') || att.isFilterable ) 
+                (!('isFilterable' in att ) || att.isFilterable ) 
             ){ 
                 attributeNames.push(attName); 
             }
@@ -484,7 +510,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         Object.keys(uniqueRelationIdentifiersBatch[0]).forEach( (key: string) => {
             if(Array.isArray(options.attributes) && !options.attributes.includes(key)){
                 options.attributes.push(key);
-            } else if(isObject(options.attributes) && !options.attributes.hasOwnProperty(key) ){
+            } else if(isObject(options.attributes) && !( key in options.attributes) ){
                 options.attributes = {
                     ...options.attributes,
                     [key]: true
@@ -504,7 +530,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             const relatedRecords = identifiersBatch.map( (identifiers: any) => {
                 return relatedEntities?.find( (relatedEntityData: any) => {
                     return Object.entries(identifiers).every( ([target, value]) =>
-                        relatedEntityData.hasOwnProperty(target) && relatedEntityData[target] === value
+                        ( target in relatedEntityData ) && relatedEntityData[target] === value
                     )
                 })
             });
@@ -679,6 +705,17 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     public async create(payload: CreateEntityItemTypeFromSchema<S>) {
         this.logger.debug(`Called ~ create ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
 
+        const schema = this.getEntitySchema();
+        const entitySlugAttribute = getAttributeNameBy(schema, 'slug') || '';
+        const entityNameAttribute = getAttributeNameBy(schema, 'name') || '';
+
+        // auto generate slug if it's not provided and entity has a name
+        if(entitySlugAttribute && !(entitySlugAttribute in payload)){
+            if(entityNameAttribute && (entityNameAttribute in payload)){
+                payload[entitySlugAttribute as keyof typeof payload] = toSlug(payload[entityNameAttribute]) as any;
+            }
+        }
+
         const uniqueFields = this.getUniqueAttributes();
         const skipCheckingAttributesUniqueness = false;
         const maxAttemptsForCreatingUniqueAttributeValue = 5;
@@ -688,7 +725,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
             // Prepare uniqueness checks for all unique fields
             for (const { name } of uniqueFields) {
-                if (payload.hasOwnProperty(name!)) {
+                if ( name! in payload ) {
                     let value = payload[name!];
                     // Push a function that performs the uniqueness check into the array
                     uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
@@ -742,15 +779,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         const primaryIdPropName = this.getEntityPrimaryIdPropertyName() as string;
 
         const schema = this.getEntitySchema();
-        const entitySlugAttribute = (schema.model?.entitySlugAttribute ?? 'slug').toUpperCase();
-        const entityNameAttribute = (schema.model?.entityNameAttribute ?? 'name').toUpperCase();
+        const entitySlugAttribute = (getAttributeNameBy(schema, 'slug') || '').toUpperCase();
+        const entityNameAttribute = (getAttributeNameBy(schema, 'name') || '').toUpperCase();
 
         for (let [key, value] of Object.entries(entity)) {
 
             if (key !== primaryIdPropName) { 
                 // TODO: handle when entity has multiple identifiers
 
-                if( key.toUpperCase() === entityNameAttribute || key.toUpperCase() === `${this.getEntityName().toUpperCase()}NAME`){
+                if( key.toUpperCase() === entityNameAttribute){
                     value = `${value} - Copy`;
                 } else if( key.toUpperCase() === entitySlugAttribute ){
                     value = `${value}-copy`;
@@ -936,7 +973,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
                     continue;
                 }
                 
-                if (data.hasOwnProperty(name!)) {
+                if (name! in data) {
                     let value = data[name as keyof typeof data];
 
                     // Push a function that performs the uniqueness check into the array
@@ -1010,12 +1047,12 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         relation: relationMeta as any,
         defaultValue,
         validations: validations || required ? ['required'] : [],
-        isVisible: !att.hasOwnProperty('isVisible') || att.isVisible,
-        isEditable: !att.hasOwnProperty('isEditable') || att.isEditable,
-        isListable: !att.hasOwnProperty('isListable') || att.isListable,
-        isCreatable: !att.hasOwnProperty('isCreatable') || att.isCreatable,
-        isFilterable: !att.hasOwnProperty('isFilterable') || att.isFilterable,
-        isSearchable: !att.hasOwnProperty('isSearchable') || att.isSearchable,
+        isVisible: !('isVisible' in att) || att.isVisible,
+        isEditable: !('isEditable' in att) || att.isEditable,
+        isListable: !('isListable' in att) || att.isListable,
+        isCreatable: !('isCreatable' in att) || att.isCreatable,
+        isFilterable: !('isFilterable' in att) || att.isFilterable,
+        isSearchable: !('isSearchable' in att) || att.isSearchable,
     }
 
     if(addNewOption){

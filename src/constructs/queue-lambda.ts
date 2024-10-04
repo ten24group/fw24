@@ -4,11 +4,12 @@ import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
 import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
-import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
+import { SqsEventSource, SqsEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { SqsSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import { Fw24 } from "../core/fw24";
 import { ILogger, createLogger } from "../logging";
+import { Helper } from "../core";
 
 /**
  * Represents the properties for a QueueLambdaFunction.
@@ -112,7 +113,7 @@ const QueueLambdaFunctionPropDefaults : QueueLambdaFunctionProps = {
  *   receiveMessageWaitTimeSeconds: 10,
  *   retentionPeriodDays: 7,
  *   queueProps: {
- *     fifo: true,
+ *     fifo: false,
  *     encryption: QueueEncryption.KMS,
  *   },
  *   lambdaFunctionProps: {
@@ -176,13 +177,20 @@ export class QueueLambda extends Construct {
 
     if(props.lambdaFunctionProps){
       const queueFunction = new LambdaFunction(this, `${id}-lambda`, { ...props.lambdaFunctionProps }) as NodejsFunction;
-
+      
+      const isFifoQueue = Helper.isFifoQueueProps({ 
+        ...(props.queueProps || {}), 
+        queueName: props.queueName 
+      });
+      
+      const eventSourceProps: SqsEventSourceProps =  isFifoQueue ? {} : {
+        batchSize: props.sqsEventSourceProps?.batchSize ?? 1,
+        maxBatchingWindow: props.sqsEventSourceProps?.maxBatchingWindow ?? Duration.seconds(5),
+        reportBatchItemFailures: props.sqsEventSourceProps?.reportBatchItemFailures ?? true,
+      };
+      
       // add event source to lambda function
-      queueFunction.addEventSource(new SqsEventSource(queue, {
-        batchSize: props.sqsEventSourceProps?.batchSize || 1,
-        maxBatchingWindow: props.sqsEventSourceProps?.maxBatchingWindow || Duration.seconds(5),
-        reportBatchItemFailures: props.sqsEventSourceProps?.reportBatchItemFailures || true,
-      }));
+      queueFunction.addEventSource(new SqsEventSource(queue, eventSourceProps));
     }
 
     // subscribe the queue to SNS topic
