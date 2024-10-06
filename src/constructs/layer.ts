@@ -3,7 +3,7 @@ import { CfnOutput } from "aws-cdk-lib";
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
-import { LogDuration, createLogger } from "../logging";
+import { DefaultLogger, LogDuration, createLogger } from "../logging";
 import { Architecture, Code, LayerVersion, LayerVersionProps, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { basename as pathBaseName, resolve as pathResolve, join as pathJoin, extname as pathExtname } from 'path';
 import { existsSync, mkdirSync, readdirSync, statSync, rmSync, lstatSync, copyFileSync } from 'fs';
@@ -163,7 +163,7 @@ export class LayerConstruct implements FW24Construct {
         });
         
         this.fw24.setConstructOutput(this, layerConfig.layerName, layer, OutputType.LAYER);
-        this.fw24.set(layerConfig.layerName, layer.layerVersionArn, "layer");
+        this.fw24.setEnvironmentVariable(layerConfig.layerName, layer.layerVersionArn, "layer");
 
         new CfnOutput(mainStack, layerConfig.layerName + 'LayerArn', {
             value: layer.layerVersionArn,
@@ -224,8 +224,8 @@ export class LayerConstruct implements FW24Construct {
         // this is the path that will be used in the layer import statement
         const layerImportPath = pathJoin('/opt', configuredOutputPath, fileBaseName, 'index.js');
         // put it into fw24's config so it can be added to the lambda's environment variables
-        console.log('layerImportPath', layerImportPath);
-        this.fw24.set(layerName, layerImportPath, 'layerImportPath');
+        this.logger.info('layerImportPath', layerImportPath);
+        this.fw24.setEnvironmentVariable(layerName, layerImportPath, 'layerImportPath');
 
         const layerProps = getLayerProps(layerDescriptor);
 
@@ -249,7 +249,7 @@ export class LayerConstruct implements FW24Construct {
         });
 
         this.fw24.setConstructOutput(this, layerName, layer, OutputType.LAYER);
-        this.fw24.set(layerName, layer.layerVersionArn, "layer");
+        this.fw24.setEnvironmentVariable(layerName, layer.layerVersionArn, "layer");
 
         new CfnOutput(mainStack, layerName + 'LayerArn', {
             value: layer.layerVersionArn,
@@ -328,7 +328,7 @@ async function bundleWithEsbuild(entryFile: string, outputFile: string, buildOpt
         entryPoints: [entryFile],
     };
 
-    console.log(`Bundling ${entryFile} into ${outputFile} with options:`, defaultOptions);
+    DefaultLogger.info(`Bundling ${entryFile} into ${outputFile} with options:`, defaultOptions);
     await build(defaultOptions);
 }
 
@@ -339,8 +339,8 @@ async function bundleWithEsbuild(entryFile: string, outputFile: string, buildOpt
 function cleanupDirectory(directory: string) {
     try {
         rmSync(directory, { recursive: true, force: true });
-        console.log(`Cleaned up temporary directory: ${directory}`);
+        DefaultLogger.info(`Cleaned up temporary directory: ${directory}`);
     } catch (error) {
-        console.error(`Failed to clean up directory ${directory}:`, error);
+        DefaultLogger.error(`Failed to clean up directory ${directory}:`, error);
     }
 }

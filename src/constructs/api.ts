@@ -445,7 +445,7 @@ export class APIConstruct implements FW24Construct {
         const integrationRole = new Role(this.mainStack, controllerName + "-sqs-integration-role", {
             assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
         });
-        const queueInstance: Queue = this.fw24.get(queueName,'queue');
+        const queueInstance: Queue = this.fw24.getEnvironmentVariable(queueName,'queue');
         queueInstance.grantSendMessages(integrationRole);
         return new AwsIntegration({
             service: "sqs",
@@ -478,7 +478,7 @@ export class APIConstruct implements FW24Construct {
         const integrationRole = new Role(this.mainStack, controllerName + "-sns-integration-role", {
             assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
         });
-        const topicInstance: Topic = this.fw24.get(topicName, 'topic');
+        const topicInstance: Topic = this.fw24.getEnvironmentVariable(topicName, 'topic');
         topicInstance.grantPublish(integrationRole);
         return new AwsIntegration({
             service: "sns",

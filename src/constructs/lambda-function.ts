@@ -221,7 +221,7 @@ export class LambdaFunction extends Construct {
     if(defaultProps.loggingFormat === LoggingFormat.JSON){
       defaultProps = {
         ...defaultProps,
-        applicationLogLevelV2: formatLogLevel( process.env.LOG_LEVEL)
+        applicationLogLevelV2: formatLogLevel(process.env.LOG_LEVEL)
       };
     }
 
@@ -244,7 +244,7 @@ export class LambdaFunction extends Construct {
     const resolvedLayers = layers.map( layerName => {
       if(typeof layerName === 'string'){
 
-        return LayerVersion.fromLayerVersionArn(this, `${id}-${layerName}-Layer`, fw24.get(layerName, 'layer') );
+        return LayerVersion.fromLayerVersionArn(this, `${id}-${layerName}-Layer`, fw24.getEnvironmentVariable(layerName, 'layer') );
       }
       return layerName;
     })
@@ -252,7 +252,7 @@ export class LambdaFunction extends Construct {
     additionalProps.layers = [
       ...resolvedLayers,
       // Use fw24 layer
-      LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, fw24.get('fw24', 'layer'))
+      LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, fw24.getEnvironmentVariable('fw24', 'layer'))
     ];
 
     additionalProps.bundling = {
@@ -277,29 +277,40 @@ export class LambdaFunction extends Construct {
       ...additionalProps,
     });
 
+    props.environmentVariables = props.environmentVariables ?? {};
+    
+    // * EXPORT the log-level for our logger-instances in the runtime of this lambda
+    // See '../logging/index.ts' for more info
+    // NOTE: this log-level is different than the aws-log-level
+    // aws requires the log format set to JSON to override log-level see `applicationLogLevelV2` in the code above
+
+    // ensure the environment-variables for the lambda always have a log-level
+    if( !('LOG_LEVEL' in props.environmentVariables) ){
+      props.environmentVariables['LOG_LEVEL'] = fw24.getEnvironmentVariable('LOG_LEVEL');
+    }
+    debugger;
+
     // Set environment variables
-    if(props.environmentVariables){
-      for (const [key, value] of Object.entries(props.environmentVariables)) {
-        let envValue = value;
-        let envKey = key;
-        // If key is prefixed with fw24_, access environment variables from fw24 scope
-        if(value.startsWith('fw24_')){
-          // Last part of the key is the environment variable name in fw24 scope
-          let fw24Key = key.split('_').pop() || '';
-          // If the key has 3 parts then the second part is the scope name
-          let prefix = key.split('_').length == 3 ? key.split('_')[1] : '';
-          envValue = fw24.get(fw24Key, prefix);
-          this.logger?.debug(`:GET environment variable from fw24 scope : ${fw24Key} : ${envValue}`, id);
-        }
-        
-        this.logger?.debug(`:SET environment variable : ${envKey} : ${envValue}`, id);
-        
-        addEnvironmentKeyValueForFunction({
-          fn,
-          key: envKey,
-          value: envValue
-        });
+    for (const [key, value] of Object.entries(props.environmentVariables)) {
+      let envValue = value;
+      let envKey = key;
+      // If key is prefixed with fw24_, access environment variables from fw24 scope
+      if(value.startsWith('fw24_')){
+        // Last part of the key is the environment variable name in fw24 scope
+        let fw24Key = key.split('_').pop() || '';
+        // If the key has 3 parts then the second part is the scope name
+        let prefix = key.split('_').length == 3 ? key.split('_')[1] : '';
+        envValue = fw24.getEnvironmentVariable(fw24Key, prefix);
+        this.logger?.debug(`:GET environment variable from fw24 scope : ${fw24Key} : ${envValue}`, id);
       }
+      
+      this.logger?.debug(`:SET environment variable : ${envKey} : ${envValue}`, id);
+      
+      addEnvironmentKeyValueForFunction({
+        fn,
+        key: envKey,
+        value: envValue
+      });
     }
 
     // Attach policies to the function
@@ -324,7 +335,7 @@ export class LambdaFunction extends Construct {
 
     // If we are using SES, then we need to add the email queue url to the environment
     if(props.allowSendEmail && fw24.emailProvider instanceof MailerConstruct){
-      this.logger?.debug(":GET emailQueue Name from fw24 scope : ", fw24.get('emailQueue', 'queueName'), id);
+      this.logger?.debug(":GET emailQueue Name from fw24 scope : ", fw24.getEnvironmentVariable('emailQueue', 'queueName'), id);
       let emailQueue = fw24.getQueueByName('emailQueue');
       emailQueue.grantSendMessages(fn);
       addEnvironmentKeyValueForFunction({
@@ -413,8 +424,8 @@ export class LambdaFunction extends Construct {
 
       const access = typeof queue === 'string' ? ['send'] : queue.access || ['send'];
 
-      this.logger?.debug(":GET Queue Name from fw24 scope : ", queueName, " :", fw24.get(queueName, 'queueName'));
-      const queueArn = fw24.getArn('sqs', fw24.get(queueName, 'queueName'));
+      this.logger?.debug(":GET Queue Name from fw24 scope : ", queueName, " :", fw24.getEnvironmentVariable(queueName, 'queueName'));
+      const queueArn = fw24.getArn('sqs', fw24.getEnvironmentVariable(queueName, 'queueName'));
       const queueInstance = Queue.fromQueueArn(this, queueName+id+'-queue', queueArn);
       // Grant the lambda function access to the queue
       access.forEach( (accessType: string) => {
@@ -448,7 +459,7 @@ export class LambdaFunction extends Construct {
 
       const access = typeof topic === 'string' ? ['publish'] : topic.access || ['publish'];
 
-      const topicArn = fw24.getArn('sns', fw24.get(topicName, 'topicName'));
+      const topicArn = fw24.getArn('sns', fw24.getEnvironmentVariable(topicName, 'topicName'));
       const topicInstance = Topic.fromTopicArn(this, topicName+id+'-topic', topicArn);
       // Grant the lambda function access to the topic
       access.forEach( (accessType: string) => {

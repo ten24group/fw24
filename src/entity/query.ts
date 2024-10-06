@@ -177,7 +177,6 @@ export function attributeFilterToExpression<
         let filterVal = filters[filterKey as keyof typeof filters];
 
         if(isComplexFilterValue(filterVal)){
-            console.log("isComplexFilterOperatorValue ", filterVal);
             // TODO: handle `expression` filter values
             filterVal = filterVal?.valType == 'propRef' ? name(filterVal.val) : filterVal.val;
         }

@@ -221,7 +221,7 @@ export class BucketConstruct implements FW24Construct {
 
                 if(trigger.destination === 'queue' && trigger.queueName) {
                     // add event notification to the bucket for each event
-                    const queueInstance = this.fw24.get(trigger.queueName, 'queue');
+                    const queueInstance = this.fw24.getEnvironmentVariable(trigger.queueName, 'queue');
                     if(queueInstance && queueInstance !== null){
                         this.logger.debug(":::Creating queue for the trigger event: ", trigger.events.toString());
                         trigger.events.forEach(bucketEvent => {

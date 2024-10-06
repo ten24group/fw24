@@ -51,8 +51,8 @@ describe('Fw24', () => {
         };
         const fw24 = Fw24.getInstance();
         fw24.setConfig(config);
-        fw24.set("myVar", "myVal");
-        expect(fw24.get("myVar")).toBe("myVal");
+        fw24.setEnvironmentVariable("myVar", "myVal");
+        expect(fw24.getEnvironmentVariable("myVar")).toBe("myVal");
     });
 
     it('set with prefix', ()    => {
@@ -62,8 +62,8 @@ describe('Fw24', () => {
         };
         const fw24 = Fw24.getInstance();
         fw24.setConfig(config);
-        fw24.set("myVar", "myVal", "APP");
-        expect(fw24.get("myVar", "APP")).toBe("myVal");
+        fw24.setEnvironmentVariable("myVar", "myVal", "APP");
+        expect(fw24.getEnvironmentVariable("myVar", "APP")).toBe("myVal");
     });
 
     it('getAuthorizer with unknown type', () => {

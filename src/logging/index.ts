@@ -14,7 +14,9 @@ const logLevels: any = {
     "fatal": 6,
 };
 
-const logLevel = logLevels[process.env.LOG_LEVEL || 'info'];
+const logLevel = logLevels[(process.env.LOG_LEVEL || 'info').toLowerCase()];
+console.error("logLevel:::::", logLevel);
+
 export const DefaultLogger: ILogger = new Logger();
 
 export const createLogger = (_options: string | Function | ISettingsParam<ILogObj>) => {
@@ -34,7 +36,12 @@ export const createLogger = (_options: string | Function | ISettingsParam<ILogOb
         _options.prettyLogTimeZone = 'local';
     }
 
-    const logger = new Logger(_options);
+    const logger = new Logger({
+        ..._options, 
+        // ensure min log level is always there
+        minLevel: _options.minLevel ?? logLevel 
+    });
+    
     return logger;
 }
 

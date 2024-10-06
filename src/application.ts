@@ -29,8 +29,14 @@ export class Application {
         
         if (config.environmentVariables) {
             Object.entries(config.environmentVariables).forEach(([key, value]) => {
-                this.fw24.set(key, value);
+                this.fw24.setEnvironmentVariable(key, value);
             })
+        }
+
+        // ensure there's a log-level set in the fw24 scope so that the constructs can ask for this value
+        // this's only the global value, and can be overridden by each lambda function.
+        if(!this.fw24.hasEnvironmentVariable('LOG_LEVEL')){
+            this.fw24.setEnvironmentVariable('LOG_LEVEL', process.env.LOG_LEVEL || 'INFO' );
         }
 
         this.constructs = new Map();
@@ -94,7 +100,7 @@ export class Application {
 
         await this.constructAllResources()
         
-        console.log('All construct resource creation completed');
+        this.logger.info('All construct resource creation completed');
     }
     
 

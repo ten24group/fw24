@@ -191,8 +191,8 @@ export class AuthConstruct implements FW24Construct {
             this.createUserPoolAutorizer(userPool, userPoolName, this.authConstructConfig.useAsDefaultAuthorizer);
         }
 
-        this.fw24.set("userPoolID", userPool.userPoolId, userPoolName);
-        this.fw24.set("userPoolClientID", userPoolClient.userPoolClientId, userPoolName);
+        this.fw24.setEnvironmentVariable("userPoolID", userPool.userPoolId, userPoolName);
+        this.fw24.setEnvironmentVariable("userPoolClientID", userPoolClient.userPoolClientId, userPoolName);
 
     }
 
@@ -236,7 +236,7 @@ export class AuthConstruct implements FW24Construct {
 
         // create user pool groups
         if (this.authConstructConfig.groups) {
-            this.fw24.set('Groups', this.authConstructConfig.groups.map(group => group.name), 'cognito');
+            this.fw24.setEnvironmentVariable('Groups', this.authConstructConfig.groups.map(group => group.name), 'cognito');
             //this.fw24.set('AutoUserSignupGroups', this.authConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString(), userPoolName);
             for (const group of this.authConstructConfig.groups) {
                 // create a role for the group
@@ -246,8 +246,8 @@ export class AuthConstruct implements FW24Construct {
                     policyFilePaths,
                 }) as Role;
 
-                this.fw24.set('Role', role, `cognito_${group.name}`);
-                this.fw24.set('Routes', group.routes, `cognito_${group.name}`);
+                this.fw24.setEnvironmentVariable('Role', role, `cognito_${group.name}`);
+                this.fw24.setEnvironmentVariable('Routes', group.routes, `cognito_${group.name}`);
 
                 new CfnUserPoolGroup(this.mainStack, `${userPoolName}-${group.name}-group`, {
                     groupName: group.name,
@@ -304,7 +304,7 @@ export class AuthConstruct implements FW24Construct {
         }) as Role;
 
         // if no groups are defined all policies are added to the default authenticated role
-        this.fw24.set('Role', authenticatedRole, `cognito_default`);
+        this.fw24.setEnvironmentVariable('Role', authenticatedRole, `cognito_default`);
 
         roleAttachment.roles = {};
         roleAttachment.roles.authenticated = authenticatedRole.roleArn;
@@ -320,7 +320,7 @@ export class AuthConstruct implements FW24Construct {
                 userPool.addTrigger(trigger.trigger, lambdaTrigger);
             }
         }
-        this.fw24.set("identityPoolID", identityPool.ref, userPoolName);
+        this.fw24.setEnvironmentVariable("identityPoolID", identityPool.ref, userPoolName);
         if(useAsDefaultAuthorizer !== false){
             this.fw24.getConfig().defaultAuthorizationType = 'AWS_IAM';
             this.logger.info("Default Authorizer set to AWS_IAM");
