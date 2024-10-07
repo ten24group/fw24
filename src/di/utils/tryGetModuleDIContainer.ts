@@ -39,5 +39,5 @@ export function tryGetModuleDIContainer(moduleClass: Function) {
 		throw new Error(`Invalid 'providedBy': [${moduleClass.name}] option. The module has been imported by multiple other modules ${childContainerIdentifiers}, please specify a particular container instead of module-class`);
 	}
 
-	return parentModuleMetadata.container.proxies!.entries().next().value[ 1 ];
+	return parentModuleMetadata.container.proxies!.entries().next().value![ 1 ];
 }

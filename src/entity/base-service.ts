@@ -1124,7 +1124,7 @@ export function makeEntityAccessPatternsSchema<S extends EntitySchema<any, any, 
 
     // make sure there's a primary access pattern;
     if(!accessPatterns.has('primary')){
-        accessPatterns.set('primary', accessPatterns.values().next().value);
+        accessPatterns.set('primary', accessPatterns.values().next().value!);
     }
 
     return accessPatterns;
