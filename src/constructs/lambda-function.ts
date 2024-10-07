@@ -288,7 +288,6 @@ export class LambdaFunction extends Construct {
     if( !('LOG_LEVEL' in props.environmentVariables) ){
       props.environmentVariables['LOG_LEVEL'] = fw24.getEnvironmentVariable('LOG_LEVEL');
     }
-    debugger;
 
     // Set environment variables
     for (const [key, value] of Object.entries(props.environmentVariables)) {
