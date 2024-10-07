@@ -15,9 +15,6 @@ const logLevels: any = {
 };
 
 const logLevel = logLevels[(process.env.LOG_LEVEL || 'info').toLowerCase()];
-console.error("logLevel:::::", logLevel);
-
-export const DefaultLogger: ILogger = new Logger();
 
 export const createLogger = (_options: string | Function | ISettingsParam<ILogObj>) => {
     
@@ -44,6 +41,8 @@ export const createLogger = (_options: string | Function | ISettingsParam<ILogOb
     
     return logger;
 }
+
+export const DefaultLogger: ILogger = createLogger('[DefaultLogger]');
 
 export {
     LogDuration
