@@ -11,6 +11,7 @@ import { AbstractLambdaHandler } from "../core/runtime/abstract-lambda-handler";
 import { setupDIModule } from "../di/utils/setupDIModule";
 import { DefaultLogger } from "../logging";
 import { ENV_KEYS } from "../const";
+import { resolveEnvValueFor } from "../utils/env";
 
 export type CommonLambdaHandlerOptions = {
 
@@ -83,7 +84,7 @@ export function tryImportingEntryPackages(name = getCallingModule(3)?.path ) {
   DefaultLogger.info(`tryImportingEntryPackages: called for ${name}`);
 
   try {
-		const entryPackageNames = process.env[ENV_KEYS.ENTRY_PACKAGES];
+		const entryPackageNames = resolveEnvValueFor({key: ENV_KEYS.ENTRY_PACKAGES});
 
 		DefaultLogger.info('tryImportingEntryPackages: entryPackageNames', entryPackageNames);
 

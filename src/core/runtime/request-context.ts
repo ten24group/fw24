@@ -2,6 +2,8 @@ import { parseValueToCorrectTypes } from '../../utils/parse';
 import { DefaultLogger } from '../../logging';
 import { Request } from '../../interfaces/request';
 import { APIGatewayEvent, Context } from "aws-lambda";
+import { resolveEnvValueFor } from '../../utils/env';
+import { ENV_KEYS } from '../../const';
 
 export class RequestContext implements Request {
 
@@ -49,7 +51,7 @@ export class RequestContext implements Request {
 
         // Check for Debug-mode
         this.debugMode = false;
-        const debugPassword = process.env.DEBUG_PASSWORD ?? true;
+        const debugPassword = resolveEnvValueFor({key: ENV_KEYS.DEBUG_PASSWORD}) ?? true;
         if(this.queryStringParameters?.debug == debugPassword){
             this.debugMode = true;
             delete this.queryStringParameters.debug;

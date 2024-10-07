@@ -7,14 +7,14 @@ import { APIController } from '../core/runtime/api-gateway-controller';
 import { Delete, Get, Patch, Post } from '../decorators/method';
 import { createLogger } from '../logging';
 import { safeParseInt } from '../utils/parse';
-import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, merge, toSlug } from '../utils';
+import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, merge, resolveEnvValueFor, toSlug } from '../utils';
 import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
 import { randomUUID } from 'crypto';
 import { getSignedUrlForFileUpload } from '../client/s3';
+import { ENV_KEYS } from '../const';
 
 type seconds = number;
-export const FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY = 'FILES_BUCKET_CUSTOM_DOMAIN';
-export const FILES_BUCKET_CUSTOM_DOMAIN_VALUE = process.env[FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY] ?? '';
+
 export type GetSignedUrlForFileUploadSchema = { 
 	fileName: string, 
 	bucketName: string, 
@@ -108,7 +108,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			expiresIn,
 			bucketName,
 			contentType,
-			customDomain: FILES_BUCKET_CUSTOM_DOMAIN_VALUE
+			customDomain: resolveEnvValueFor({key: ENV_KEYS.FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY}) ?? ''
 		};
 
 		this.logger.info(`getSignedUrlForFileUpload::`, options);
