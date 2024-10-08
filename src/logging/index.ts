@@ -46,4 +46,4 @@ export const DefaultLogger: ILogger = createLogger('[DefaultLogger]');
 
 export {
     LogDuration
-} from '../decorators/LogDuration';
+} from '../decorators/log-duration';

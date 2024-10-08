@@ -177,7 +177,7 @@ export class APIConstruct implements FW24Construct {
         }
 
         // if the controller does not want to override the application/module entry packages and include them as well
-        if( !('override' in entryPackages) || entryPackages.override === false){
+        if( !entryPackages.override){
             const moduleEntryPackages = ownerModule?.getLambdaEntryPackages() || [];
             const appEntryPackages = this.fw24.getLambdaEntryPackages();
             entryPackages.packageNames = [

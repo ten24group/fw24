@@ -32,6 +32,9 @@ export class Fw24 {
     private topics = new Map<string, ITopic>();
     private modules = new Map<string, IFw24Module>();
 
+    private readonly globalLambdaLayerNames = new Set<string>();
+    private readonly globalLambdaEntryPackages = new Set<string>();
+
     private constructor() {}
 
     static getInstance(): Fw24 {
@@ -60,9 +63,37 @@ export class Fw24 {
     }
 
     getLambdaEntryPackages(): string[] {
-        return this.config.lambdaEntryPackages || [];
+        return this.config.lambdaEntryPackages || Array.from(this.globalLambdaEntryPackages);
     }
-    
+
+    addGlobalLambdaEntryPackage(packageName: string){
+        this.globalLambdaEntryPackages.add(packageName);
+    }
+
+    hasGlobalLambdaEntryPackage(packageName: string){
+        return this.globalLambdaEntryPackages.has(packageName);
+    }
+
+    removeGlobalLambdaEntryPackage(packageName: string){
+        this.globalLambdaEntryPackages.delete(packageName);
+    }
+
+    getGlobalLambdaLayerNames(){
+        return this.globalLambdaLayerNames;
+    }
+
+    addGlobalLambdaLayerNames(layerName: string){
+        this.globalLambdaLayerNames.add(layerName);
+    }
+
+    hasGlobalLambdaLayerNames(layerName: string){
+        return this.globalLambdaLayerNames.has(layerName);
+    }
+
+    removeGlobalLambdaLayerNames(layerName: string){
+        this.globalLambdaLayerNames.delete(layerName);
+    }
+
     addStack(name: string, stack: any): Fw24 {
         this.logger.debug("addStack:", {name} );
         this.stacks[name] = stack;

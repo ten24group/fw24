@@ -3,8 +3,21 @@ import type { LayerVersionProps } from 'aws-cdk-lib/aws-lambda';
 import type { BuildOptions } from 'esbuild';
 
 export type LayerEntryOptions = {
-    layerName?: string,
+    /**
+     * specify the layer version props for aws.
+     */
     props?: LayerVersionProps,
+    /**
+     * specify the layer name, defaults to the name of the file.
+     */
+    layerName?: string,
+    /**
+     * specifies that this layer is not a global layer and the function/s that want to use this layer will specify it's name in their options.
+     */
+    notGlobal?: boolean,
+    /**
+     * specify esbuild options for this layer.
+     */
     buildOptions?: BuildOptions
 }
 
@@ -16,10 +29,10 @@ export type LayerEntryOptions = {
 export function LayerEntry( options: LayerEntryOptions = {} ) {
     return function (target: Function) {
 
-        let { layerName, props={}, buildOptions={} } = options;
+        let { layerName, props={}, buildOptions={}, notGlobal=false } = options;
         
-        Reflect.set(target, 'isLayerEntry', true);
         Reflect.set(target, 'layerName', layerName);
+        Reflect.set(target, 'notGlobal', notGlobal);
         Reflect.set(target, 'layerProps', props);
 
         if(!buildOptions.external){

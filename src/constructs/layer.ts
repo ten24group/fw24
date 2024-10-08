@@ -8,6 +8,7 @@ import { Architecture, Code, LayerVersion, LayerVersionProps, Runtime } from 'aw
 import { basename as pathBaseName, resolve as pathResolve, join as pathJoin, extname as pathExtname } from 'path';
 import { existsSync, mkdirSync, readdirSync, statSync, rmSync, lstatSync, copyFileSync } from 'fs';
 import { build, BuildOptions } from 'esbuild';
+import { LayerEntry } from "../decorators";
 
 
 /**
@@ -198,19 +199,23 @@ export class LayerConstruct implements FW24Construct {
         
         const moduleExports = await import(file);
 
-        const layerDescriptorName = Object.keys(moduleExports).find((key) => {
+        const foundLayerDescriptorName = Object.keys(moduleExports).find((key) => {
             const exported = moduleExports[key];
             if (typeof exported === 'function' && isLayerEntry(exported)) {
                 return exported;
             }
         });
-
-        if (!layerDescriptorName) {
-            this.logger.warn(`No LayerEntry found in file ${file}. [Ignoring].`);
-            return;
+  
+        if(!foundLayerDescriptorName){
+            this.logger.warn(`No LayerEntry found in file ${file}. Will use Default options.`);
         }
 
-        const layerDescriptor = moduleExports[layerDescriptorName];
+        LayerEntry()
+        class EmptyLayerDescriptor {}
+
+        // if no layer descriptor found in the file, create an empty class which will use default options
+        const layerDescriptor = foundLayerDescriptorName ? moduleExports[foundLayerDescriptorName] : EmptyLayerDescriptor;
+
         const buildOptions = getLayerBuildOptions(layerDescriptor) || {};
 
         const fileBaseName = pathBaseName(file, pathExtname(file));
@@ -225,7 +230,15 @@ export class LayerConstruct implements FW24Construct {
         const layerImportPath = pathJoin('/opt', configuredOutputPath, fileBaseName, 'index.js');
         // put it into fw24's config so it can be added to the lambda's environment variables
         this.logger.info('layerImportPath', layerImportPath);
+
         this.fw24.setEnvironmentVariable(layerName, layerImportPath, 'layerImportPath');
+
+        if(isGlobalLayer(layerDescriptor)){
+            // collect global layers for lambda
+            this.fw24.addGlobalLambdaLayerNames(layerName);
+            // collect global entry-packages for lambdas
+            this.fw24.addGlobalLambdaEntryPackage(`env:layerImportPath:${layerName}`);
+        }
 
         const layerProps = getLayerProps(layerDescriptor);
 
@@ -285,19 +298,23 @@ function scanDirectory(directory: string): string[] {
     return files;
 }
 
-function isLayerEntry(target: any): boolean {
-    return Reflect.get(target, 'isLayerEntry') === true;
+function isLayerEntry(target: Function): boolean {
+    return !!getLayerName(target);
 }
 
-function getLayerName(target: any) {
+function isGlobalLayer(target: Function): boolean {
+    return !Reflect.get(target, 'notGlobal');
+}
+
+function getLayerName(target: Function) {
     return Reflect.get(target, 'layerName');
 }
 
-function getLayerBuildOptions(target: any): BuildOptions | undefined {
+function getLayerBuildOptions(target: Function): BuildOptions | undefined {
     return Reflect.get(target, 'buildOptions');
 }
 
-export function getLayerProps(target: any): LayerVersionProps | undefined {
+export function getLayerProps(target: Function): LayerVersionProps | undefined {
     return Reflect.get(target, 'layerProps');
 }
 

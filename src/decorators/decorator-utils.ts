@@ -86,30 +86,31 @@ export function tryImportingEntryPackages(name = getCallingModule(3)?.path ) {
   try {
 		const entryPackageNames = resolveEnvValueFor({key: ENV_KEYS.ENTRY_PACKAGES});
 
+		if (!entryPackageNames) {
+			DefaultLogger.info(`Controller ${name} is not configured to import any entry-package`);
+			return;
+		}
+
 		DefaultLogger.info('tryImportingEntryPackages: entryPackageNames', entryPackageNames);
 
-		if (entryPackageNames) {
-			const packageNamesArray = entryPackageNames.split(',').map(pkg => pkg.trim()); // Split and trim package names
+		const packageNamesArray = entryPackageNames.split(',').map(pkg => pkg.trim()); // Split and trim package names
 
-			DefaultLogger.info(`tryImportingEntryPackages: Controller ${name} is configured to import entry-packages: ${packageNamesArray.join(', ')}`);
+		DefaultLogger.info(`tryImportingEntryPackages: Controller ${name} is configured to import entry-packages: ${packageNamesArray.join(', ')}`);
 
-			packageNamesArray.forEach((entryPackageName) => {
-				try {
-					DefaultLogger.info("trying to import entry", {entryPackageName});
-					const entry = require(entryPackageName);
-					// call the default export if available
-					entry.default && typeof entry.default === 'function' && entry.default(); 
-					DefaultLogger.info(`Controller ${name} successfully imported entry-package: ${entryPackageName}`);
-				} catch (error) {
-					DefaultLogger.error(`Controller ${name} failed to import entry-package: ${entryPackageName}`, error);
-				}
-			});
-
-		} else {
-			DefaultLogger.info(`Controller ${name} is not configured to import any entry-package`);
-		}
+		packageNamesArray.forEach((entryPackageName) => {
+			try {
+				DefaultLogger.info("trying to import entry", {entryPackageName});
+				const entry = require(entryPackageName);
+				// call the default export if available
+				entry.default && typeof entry.default === 'function' && entry.default(); 
+				DefaultLogger.info(`Controller ${name} successfully imported entry-package: ${entryPackageName}`);
+			} catch (error) {
+				DefaultLogger.error(`Controller ${name} failed to import entry-package: ${entryPackageName}`, error);
+			}
+		});
+		
 	} catch(e){
-		console.error("Error importing entry packages in controller.ts", e);
+		DefaultLogger.error("Error importing entry packages in controller.ts", e);
 	}
 }
 

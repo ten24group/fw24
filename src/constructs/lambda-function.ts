@@ -238,20 +238,32 @@ export class LambdaFunction extends Construct {
     let additionalProps: any = {
       entry: props.entry,
     }
+
+    // collect the names of the layers provided in default config if any or else the global layers;
+    const defaultLayers = defaultProps?.layers ?? Array.from(fw24.getGlobalLambdaLayerNames());
     
     // resolve layer names to actual layer arns
-    const layers = [ ...(defaultProps?.layers ?? []), ...(props.functionProps?.layers ?? [])] as Array<string | ILayerVersion>;
-    const resolvedLayers = layers.map( layerName => {
-      if(typeof layerName === 'string'){
+    const layers = [ 
+      ...defaultLayers, 
+      // collect the names of the layers provided in function config if any;
+      ...(props.functionProps?.layers ?? [])
+    ] as Array<string | ILayerVersion>;
 
+    // remove duplicates
+    const deDupLayers = Array.from(new Set(layers));
+
+    // map layers to actual layer objects
+    const resolvedLayers = deDupLayers.map( layerName => {
+      if(typeof layerName === 'string'){
         return LayerVersion.fromLayerVersionArn(this, `${id}-${layerName}-Layer`, fw24.getEnvironmentVariable(layerName, 'layer') );
       }
+
       return layerName;
     })
     
+    // make sure to add fw24 layer
     additionalProps.layers = [
       ...resolvedLayers,
-      // Use fw24 layer
       LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, fw24.getEnvironmentVariable('fw24', 'layer'))
     ];
 
