@@ -6,6 +6,10 @@ export * from './parse';
 export * from './serialize';
 export * from './types';
 
+export * from './metadata';
+export * from './keys';
+export * from './env';
+
 export function getValueByPath(obj: any, path: string): any {
     if (typeof path !== 'string') {
         throw new Error('Path must be a string');

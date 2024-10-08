@@ -96,7 +96,7 @@ export class MailerConstruct implements FW24Construct {
                 ...this.mailerConstructConfig.queueProps,
             },
             lambdaFunctionProps: {
-                entry: join(__dirname, "../core/mail-processor.js"),
+                entry: join(__dirname, "../core/runtime/mail-processor.js"),
                 policies: [
                     {
                         actions: [
@@ -187,7 +187,7 @@ export class MailerConstruct implements FW24Construct {
                 const sesTemplate = new CfnTemplate(this.mainStack, templateIdentifier, {
                     template: template,
                 });
-                this.fw24.set(templateName, sesTemplate.getAtt("TemplateName"), "templateName_");
+                this.fw24.setEnvironmentVariable(templateName, sesTemplate.getAtt("TemplateName"), "templateName_");
             } catch (err) {
                 this.logger.error("registerTemplates: Error registering template err: ", err);
             }

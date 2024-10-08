@@ -1,4 +1,4 @@
-import { Route } from "./route";
+import type { Route } from "./route";
 
 interface HandlerDescriptor {
     handlerClass: any; // The Handler/Controller class itself

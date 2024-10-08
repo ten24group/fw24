@@ -1,7 +1,9 @@
-import { Item, WhereAttributes, WhereOperations } from "electrodb";
+import type { Item, WhereAttributes, WhereOperations } from "electrodb";
+import type { EntitySchema, HydrateOptionForRelation, HydrateOptionsMapForEntity } from "./base-entity";
+import type { AttributeFilter, EntityFilter, EntityFilterCriteria, FilterCriteria, FilterGroup } from './query-types';
+
+import { isAttributeFilter, isComplexFilterValue, isEntityFilter, isFilterGroup } from "./query-types";
 import { createLogger } from "../logging";
-import { EntitySchema, HydrateOptionForRelation, HydrateOptionsMapForEntity, NonRelationalAttributes, Relation, RelationIdentifiers } from "./base-entity";
-import { AttributeFilter, EntityFilter, EntityFilterCriteria, EntitySelections, FilterCriteria, FilterGroup, isAttributeFilter, isComplexFilterValue, isEntityFilter, isFilterGroup } from './query-types';
 
 import {
     parse as parseQueryString,
@@ -175,7 +177,6 @@ export function attributeFilterToExpression<
         let filterVal = filters[filterKey as keyof typeof filters];
 
         if(isComplexFilterValue(filterVal)){
-            console.log("isComplexFilterOperatorValue ", filterVal);
             // TODO: handle `expression` filter values
             filterVal = filterVal?.valType == 'propRef' ? name(filterVal.val) : filterVal.val;
         }
