@@ -221,8 +221,7 @@ export class BucketConstruct implements FW24Construct {
 
                 if(trigger.destination === 'queue' && trigger.queueName) {
                     // add event notification to the bucket for each event
-                    const queueId = bucketConfig.bucketName + "-" + trigger.destination + "-" + trigger.queueName;
-                    const queueInstance = this.fw24.get(trigger.queueName, 'queue');
+                    const queueInstance = this.fw24.getEnvironmentVariable(trigger.queueName, 'queue');
                     if(queueInstance && queueInstance !== null){
                         this.logger.debug(":::Creating queue for the trigger event: ", trigger.events.toString());
                         trigger.events.forEach(bucketEvent => {
@@ -238,11 +237,14 @@ export class BucketConstruct implements FW24Construct {
         if(cfnDistributionConfig && cfnDistributionConfig.domainName && cfnDistributionConfig.domainName.length > 0){
 
             this.logger.debug("Creating bucket domain: ", cfnDistributionConfig.domainName);
+
             const certificateConstruct = new CertificateConstruct({
                 domainName: cfnDistributionConfig.domainName,
                 certificateArn: cfnDistributionConfig.certificateArn
             });
+
             certificateConstruct.construct();
+            
             const certificate = certificateConstruct.output[OutputType.CERTIFICATE][cfnDistributionConfig.domainName];
 
             // create a cloudfront distribution for the bucket

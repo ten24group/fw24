@@ -1,7 +1,11 @@
-import { EntityQuery } from './query-types';
-import { Entity, EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, createSchema, Attribute } from "electrodb";
-import { BaseEntityService } from "./base-service";
-import { Narrow, OmitNever, Paths, ValueOf, Writable } from "../utils/types";
+import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem } from "electrodb";
+import { createSchema, Entity } from "electrodb";
+
+import type { EntityQuery } from './query-types';
+import type { BaseEntityService } from "./base-service";
+import type { OmitNever, Paths, Writable } from "../utils/types";
+
+
 
 /**
  *  ElectroDB entity  examples
@@ -475,6 +479,10 @@ export function createElectroDBEntity<S extends EntitySchema<any, any, any>>(opt
 export type EntityTypeFromSchema<TSchema> = TSchema extends EntitySchema<infer A, infer F, infer C> 
     ? Entity<A, F, C, TSchema> 
     : never;
+
+export type EntityResponseItemTypeFromSchema<TSchema> = TSchema extends EntitySchema<infer A, infer F, infer C> 
+  ? ResponseItem<A, F, C, TSchema>
+  : never;
 
 
 export type EntityRecordTypeFromSchema<Sch extends EntitySchema<any, any, any>> = EntityItem<EntityTypeFromSchema<Sch>>;

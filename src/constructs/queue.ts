@@ -100,17 +100,17 @@ export class QueueConstruct implements FW24Construct {
 
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
-            console.log("SQS stack: construct: app has modules ", Array.from(modules.keys()));
+            this.logger.debug("SQS stack: construct: app has modules ", Array.from(modules.keys()));
             for (const [, module] of modules) {
                 const basePath = module.getBasePath();
                 const queuesDirectory = module.getQueuesDirectory();
                 if(queuesDirectory != ''){
-                    console.log("Load queues from module base-path: ", basePath);
+                    this.logger.debug("Load queues from module base-path: ", basePath);
                     await Helper.registerQueuesFromModule(module, this.registerQueue);
                 }
             }
         } else {
-            console.log("SQS stack: construct: app has no modules ");
+            this.logger.debug("SQS stack: construct: app has no modules ");
         }
     }
 

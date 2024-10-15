@@ -3,6 +3,7 @@ export * from './auth';
 export * from './bucket';
 export * from './dynamodb';
 export * from './layer';
+export * from './di-layer';
 export * from './mailer';
 export * from './queue';
 export * from './scheduler';

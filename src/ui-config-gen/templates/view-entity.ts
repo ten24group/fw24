@@ -1,7 +1,7 @@
 import {  Schema } from "electrodb";
-import { EntitySchema, TIOSchemaAttribute, TIOSchemaAttributesMap } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttribute, TIOSchemaAttributesMap } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
-import { formatEntityAttributesForDetail, formatEntityAttributesForFormOrDetail } from "./util";
+import { formatEntityAttributesForDetail } from "./util";
 
 export type ViewEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string,
@@ -10,7 +10,8 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
 }
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
-    options: ViewEntityPageOptions<S>
+    options: ViewEntityPageOptions<S>,
+    entityService: BaseEntityService<S>
 ) => {
 
     const{ entityName } = options;
@@ -18,7 +19,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     const entityNamePascalCase = pascalCase(entityName);
     
 
-    const detailsPageConfig = makeViewEntityDetailConfig(options);
+    const detailsPageConfig = makeViewEntityDetailConfig(options, entityService);
 
     return {
         pageTitle:  `${entityNamePascalCase} Details`,
@@ -35,7 +36,8 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 };
 
 export function makeViewEntityDetailConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> (
-    options: ViewEntityPageOptions<S>
+    options: ViewEntityPageOptions<S>,
+    entityService: BaseEntityService<S>
 ){
 
     const{ entityName, properties } = options;
@@ -51,7 +53,7 @@ export function makeViewEntityDetailConfig<S extends EntitySchema<string, string
         propertiesConfig: [] as any[],
     }
 
-    const formattedProps = formatEntityAttributesForDetail(Array.from(properties.values()));
+    const formattedProps = formatEntityAttributesForDetail(Array.from(properties.values()), entityService);
 
     detailsPageConfig.propertiesConfig.push(...formattedProps);
 

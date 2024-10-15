@@ -5,3 +5,4 @@ export * from "./request";
 export * from "./response";
 export * from "./route";
 export * from "./construct";
+export * from "./di";

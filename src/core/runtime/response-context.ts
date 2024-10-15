@@ -1,4 +1,4 @@
-import { Response } from '../interfaces/response';
+import { Response } from '../../interfaces/response';
 
 export class ResponseContext implements Response {
     public headers: any = {};
