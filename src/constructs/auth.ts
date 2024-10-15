@@ -187,8 +187,8 @@ export class AuthConstruct implements FW24Construct {
         if(this.authConstructConfig.groups || this.authConstructConfig.policyFilePaths || this.fw24.getConfig().defaultAuthorizationType == 'AWS_IAM') {
             this.createIdentityPoolAuthorizer(userPool, userPoolClient, userPoolName, this.authConstructConfig.useAsDefaultAuthorizer);
         } else {
-            // user pool base authentification
-            this.createUserPoolAutorizer(userPool, userPoolName, this.authConstructConfig.useAsDefaultAuthorizer);
+            // user pool base authentication
+            this.createUserPoolAuthorizer(userPool, userPoolName, this.authConstructConfig.useAsDefaultAuthorizer);
         }
 
         this.fw24.setEnvironmentVariable("userPoolID", userPool.userPoolId, userPoolName);
@@ -196,7 +196,7 @@ export class AuthConstruct implements FW24Construct {
 
     }
 
-    private createUserPoolAutorizer(userPool: UserPool, userPoolName: string, useAsDefaultAuthorizer: boolean) {
+    private createUserPoolAuthorizer(userPool: UserPool, userPoolName: string, useAsDefaultAuthorizer: boolean) {
         // cognito authorizer 
         const userPoolAuthorizer = new CognitoUserPoolsAuthorizer(this.mainStack, `${userPoolName}-Authorizer`, {
             cognitoUserPools: [userPool],

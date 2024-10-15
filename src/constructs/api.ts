@@ -380,6 +380,11 @@ export class APIConstruct implements FW24Construct {
             if(isString(defaultAuthorizerGroups)) {
                 defaultAuthorizerGroups = defaultAuthorizerGroups.split(',');
             }
+
+            if(!defaultAuthorizerGroups.length && this.fw24.getConfig().defaultAdminGroups){
+                defaultAuthorizerGroups = this.fw24.getConfig().defaultAdminGroups;
+            }
+            
             // resolve the group names from fw24-scope if it's a template
             // when the value is like ["env:xxx:group1","env:xxx:group2"] ==> ["group1-resolved", "group2-resolved"]
             defaultAuthorizerGroups = (defaultAuthorizerGroups as Array<string>).map(this.fw24.tryResolveEnvKeyTemplate);

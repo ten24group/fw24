@@ -17,6 +17,7 @@ export interface IApplicationConfig {
         disableAccountVerification?: boolean;
     };
     defaultAuthorizationType?: any;
+    defaultAdminGroups?: string[];
     environment?: string; // local, dev, prod
     environmentVariables?: Record<string, string>;
     logRetentionDays?: number;
