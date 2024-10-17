@@ -141,13 +141,34 @@ export class QueueLambda extends Construct {
     const fw24 = Fw24.getInstance();
     
     let props = { ...QueueLambdaFunctionPropDefaults, ...queueLambdaProps };
-
-    // get the dlq from fw24 or create a new dlq
-    let dlq: Queue = fw24.get(props.queueName, 'dlq') || fw24.get(props.queueName+'_dlq', 'queue') || fw24.get('dlq_default');
     
-    if(!dlq){
-      dlq = new Queue(this, "default-dlq", {});
-      fw24.set('dlq_default', dlq);
+    // dlq props
+    let dlqProps = {};
+    //check if dlq already exists
+    const existingDLQ : Queue = fw24.get(props.queueName, 'dlq') || fw24.get(props.queueName+'_dlq', 'queue')
+    //if it does, assign it to the queue
+    if( existingDLQ ) {
+      dlqProps = {
+        deadLetterQueue: {
+          maxReceiveCount: 3,
+          queue: existingDLQ,
+        }
+      }
+    } else if( !props.queueName.endsWith("dlq") ) { //if queue itself is a dlq don't assign default dlq
+      //set default dlq
+      let defaultDLQ = fw24.get('dlq_default');
+      if(!defaultDLQ ){
+        //create default dlq
+        defaultDLQ = new Queue(this, "default-dlq", {});
+        fw24.set('dlq_default', defaultDLQ);
+      }
+      //assign default dlq
+      dlqProps = {
+        deadLetterQueue: {
+          maxReceiveCount: 3,
+          queue: defaultDLQ,
+        }
+      }
     }
 
     // set the timeouts
@@ -158,10 +179,7 @@ export class QueueLambda extends Construct {
 
     // set the default dlq with option to override
     props.queueProps = {
-      deadLetterQueue: {
-        maxReceiveCount: 3,
-        queue: dlq,
-      },
+      ...dlqProps,
       ...props.queueProps,
       ...timeoutProps,
     }
