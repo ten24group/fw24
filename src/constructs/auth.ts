@@ -20,6 +20,21 @@ import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/co
 import { createLogger, LogDuration } from "../logging";
 import { Helper } from "../core";
 
+export type TriggerType = 
+    | 'CUSTOM_MESSAGE'
+    | 'PRE_SIGN_UP'
+    | 'POST_CONFIRMATION'
+    | 'PRE_TOKEN_GENERATION'
+    | 'USER_MIGRATION'
+    | 'DEFINE_AUTH_CHALLENGE'
+    | 'CREATE_AUTH_CHALLENGE'
+    | 'POST_AUTHENTICATION'
+    | 'PRE_AUTHENTICATION'
+    | 'PRE_TOKEN_GENERATION_CONFIG'
+    | 'VERIFY_AUTH_CHALLENGE_RESPONSE'
+    | 'CUSTOM_EMAIL_SENDER'
+    | 'CUSTOM_SMS_SENDER';
+
 /**
  * Configuration interface for the AuthConstruct.
  */
@@ -47,7 +62,7 @@ export interface IAuthConstructConfig {
         /**
          * The user pool operation that triggers the function.
          */
-        trigger: UserPoolOperation;
+        trigger: UserPoolOperation | TriggerType;
         /**
          * Configuration for the Lambda function.
          */
@@ -124,7 +139,6 @@ const AuthConstructConfigDefaults: IAuthConstructConfig = {
     }
 }
 
-
 export class AuthConstruct implements FW24Construct {
     readonly logger = createLogger(AuthConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
@@ -170,6 +184,8 @@ export class AuthConstruct implements FW24Construct {
             ...userPoolConfig,
             userPoolName: this.createUniqueUserPoolName(userPoolName),
         });
+        // verificationMessageConfiguration
+        
         this.fw24.setConstructOutput(this, userPoolName, userPool, OutputType.USERPOOL);
 
         const userPoolClientConfig: UserPoolClientProps = {
@@ -317,7 +333,7 @@ export class AuthConstruct implements FW24Construct {
                 const lambdaTrigger = new LambdaFunction(this.mainStack, `${userPoolName}-${trigger.trigger}-lambdaFunction`, {
                     ...trigger.functionProps,
                 }) as NodejsFunction;
-                userPool.addTrigger(trigger.trigger, lambdaTrigger);
+                userPool.addTrigger( this.mapTriggerType(trigger.trigger), lambdaTrigger);
             }
         }
         this.fw24.setEnvironmentVariable("identityPoolID", identityPool.ref, userPoolName);
@@ -325,6 +341,31 @@ export class AuthConstruct implements FW24Construct {
             this.fw24.getConfig().defaultAuthorizationType = 'AWS_IAM';
             this.logger.info("Default Authorizer set to AWS_IAM");
         }
+    }
+
+    private mapTriggerType(triggerType: TriggerType | UserPoolOperation): UserPoolOperation {
+        
+        if( triggerType instanceof UserPoolOperation){
+            return triggerType;
+        }
+        
+        const triggerMapping: { [key in TriggerType]: UserPoolOperation } = {
+            CUSTOM_MESSAGE: UserPoolOperation.CUSTOM_MESSAGE,
+            PRE_SIGN_UP: UserPoolOperation.PRE_SIGN_UP,
+            POST_CONFIRMATION: UserPoolOperation.POST_CONFIRMATION,
+            PRE_TOKEN_GENERATION: UserPoolOperation.PRE_TOKEN_GENERATION,
+            USER_MIGRATION: UserPoolOperation.USER_MIGRATION,
+            DEFINE_AUTH_CHALLENGE: UserPoolOperation.DEFINE_AUTH_CHALLENGE,
+            CREATE_AUTH_CHALLENGE: UserPoolOperation.CREATE_AUTH_CHALLENGE,
+            POST_AUTHENTICATION: UserPoolOperation.POST_AUTHENTICATION,
+            PRE_AUTHENTICATION: UserPoolOperation.PRE_AUTHENTICATION,
+            PRE_TOKEN_GENERATION_CONFIG: UserPoolOperation.PRE_TOKEN_GENERATION_CONFIG,
+            VERIFY_AUTH_CHALLENGE_RESPONSE: UserPoolOperation.VERIFY_AUTH_CHALLENGE_RESPONSE,
+            CUSTOM_EMAIL_SENDER: UserPoolOperation.CUSTOM_EMAIL_SENDER,
+            CUSTOM_SMS_SENDER: UserPoolOperation.CUSTOM_SMS_SENDER,
+        };
+
+        return triggerMapping[triggerType];
     }
 
     private createUniqueUserPoolName(userPoolName: string) {

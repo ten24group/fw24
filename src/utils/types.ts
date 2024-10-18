@@ -88,6 +88,9 @@ export type PrettyPrint<A, Seen = never> = If<
     : A
 >
 
+export type ArrayElement<ArrayType extends readonly unknown[] | undefined> = 
+  ArrayType extends readonly (infer ElementType)[] ? ElementType : never;
+
    
 export type AnyClass = new (...args: any[]) => any;
 
