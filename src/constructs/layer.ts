@@ -68,7 +68,10 @@ export interface IBuildAndPackageConfig {
     /**
      * Configurable output path for the package.
      */ 
-    packagePath?: string; 
+    packagePath?: string;
+
+    
+    notGlobal?: boolean;
 }
 
 /**
@@ -210,7 +213,7 @@ export class LayerConstruct implements FW24Construct {
             this.logger.warn(`No LayerEntry found in file ${file}. Will use Default options.`);
         }
 
-        LayerEntry()
+        LayerEntry({ notGlobal: layerConfig.notGlobal ?? false })
         class EmptyLayerDescriptor {}
 
         // if no layer descriptor found in the file, create an empty class which will use default options
