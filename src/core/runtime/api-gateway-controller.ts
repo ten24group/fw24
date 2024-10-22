@@ -1,15 +1,15 @@
-import { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
-import { Request } from "../interfaces/request";
-import { Response } from "../interfaces/response";
-import { Route } from "../interfaces/route";
-import { createLogger } from "../logging";
-import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule } from "../validation";
+import type { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
+import type { Request, Response, Route } from "../../interfaces";
+import { Controller, IControllerConfig } from "../../decorators";
+import { Get, RouteMethods } from "../../decorators/method";
+import { createLogger } from "../../logging";
+import { getCircularReplacer } from "../../utils";
+import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule } from "../../validation";
+import { isHttpRequestValidationRule, isInputValidationRule } from "../../validation/utils";
+import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
-import { isHttpRequestValidationRule, isInputValidationRule } from "../validation/utils";
-import { getCircularReplacer } from "../utils";
-import { Get, RouteMethods } from "../decorators/method";
-import { Controller, IControllerConfig } from "../decorators";
+
 
 /**
  * Creates an API handler without defining a class
@@ -44,11 +44,11 @@ export function createApiHandler(
 
     const {name, path = '', method = Get, ...controllerConfig} = options;
 
-    @Controller(name, controllerConfig)
+    @Controller(name, { ...controllerConfig, autoExportLambdaHandler: false })
     class ControllerDescriptor{
         @method(path)
         async inlineHandler(){
-            // placeholder function
+            // placeholder function only used for routing metadata
         }
     }
 
@@ -63,16 +63,9 @@ export function createApiHandler(
 /**
  * Base controller class for handling API Gateway events.
  */
-abstract class APIController {
+abstract class APIController extends AbstractLambdaHandler {
   readonly logger = createLogger(APIController.name);
   protected validator: IValidator = DefaultValidator;
-
-  /**
-   * Binds the LambdaHandler method to the instance of the class.
-   */
-  constructor() {
-    this.LambdaHandler = this.LambdaHandler.bind(this)
-  }
 
   abstract initialize(event: APIGatewayEvent, context: Context): Promise<void>;
 
@@ -159,8 +152,8 @@ abstract class APIController {
       if (controllerResponse instanceof ResponseContext) {
         this.logger.debug("LambdaHandler Response:", JSON.stringify(controllerResponse, null, 2));
         return this.handleResponse({
+          ...controllerResponse,
           statusCode: controllerResponse.statusCode || 500,
-          body: controllerResponse.body,
         });
       }
     } catch (err) {
@@ -171,10 +164,7 @@ abstract class APIController {
 
     this.logger.debug("LambdaHandler Default Response:", JSON.stringify(responseContext, null, 2));
     // Return the finalized API Gateway response
-    return this.handleResponse({
-      statusCode: responseContext.statusCode,
-      body: requestContext.body,
-    });
+    return this.handleResponse(responseContext);
   }
 
   /**
@@ -228,11 +218,7 @@ abstract class APIController {
     
     const result: any = {
       message: err.message,
-    }
-
-    if(req.debugMode){
-      result.req = req;
-      result.errors = [err];
+      ...(req.debugMode && { stack: err.stack, req })
     }
     
     return this.handleResponse({
@@ -258,15 +244,6 @@ abstract class APIController {
     res.headers["Access-Control-Allow-Origin"] = res.headers["Access-Control-Allow-Origin"] ||  "*";
 
     return res;
-  }
-
-  /**
-   * Creates a new instance of the controller and returns its LambdaHandler method.
-   * @returns The LambdaHandler method of the controller.
-   */
-  static CreateHandler( constructorFunc: { new (): APIController} ) {
-    const controller = new constructorFunc();
-    return controller.LambdaHandler;
   }
 }
 

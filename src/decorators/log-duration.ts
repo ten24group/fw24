@@ -1,6 +1,3 @@
-import { Route } from "../interfaces/route";
-
-
 export const LogDuration = () => {
   
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {

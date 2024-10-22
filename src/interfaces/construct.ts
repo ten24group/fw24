@@ -1,14 +1,15 @@
-import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-import { Fw24 } from "../core/fw24";
-import { Bucket } from "aws-cdk-lib/aws-s3";
-import { Queue } from "aws-cdk-lib/aws-sqs";
-import { Role } from "aws-cdk-lib/aws-iam";
-import { Topic } from "aws-cdk-lib/aws-sns";
-import { Vpc, ISubnet, ISecurityGroup} from "aws-cdk-lib/aws-ec2";
-import { LayerVersion } from "aws-cdk-lib/aws-lambda";
-import { CfnIdentityPool, UserPool, UserPoolClient } from "aws-cdk-lib/aws-cognito";
-import { CloudFrontWebDistribution } from "aws-cdk-lib/aws-cloudfront";
-import { ICertificate } from "aws-cdk-lib/aws-certificatemanager";
+import type { ICertificate } from "aws-cdk-lib/aws-certificatemanager";
+import type { CloudFrontWebDistribution } from "aws-cdk-lib/aws-cloudfront";
+import type { CfnIdentityPool, UserPool, UserPoolClient } from "aws-cdk-lib/aws-cognito";
+import type { ISecurityGroup, ISubnet, Vpc } from "aws-cdk-lib/aws-ec2";
+import type { Role } from "aws-cdk-lib/aws-iam";
+import type { LayerVersion } from "aws-cdk-lib/aws-lambda";
+import type { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import type { Bucket } from "aws-cdk-lib/aws-s3";
+import type { Topic } from "aws-cdk-lib/aws-sns";
+import type { Queue } from "aws-cdk-lib/aws-sqs";
+
+import type { Fw24 } from "../core/fw24";
 
 export interface FW24Construct {
     name: string;

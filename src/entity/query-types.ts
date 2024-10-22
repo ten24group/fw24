@@ -1,5 +1,5 @@
-import { ExclusiveUnion, Narrow, Paths, ValueOf, isArray, isArrayOfType, isBoolean, isEmpty, isEmptyObject, isObject, isString } from "../utils";
-import { EntitySchema, HydrateOptionForEntity, NonRelationalAttributes, Relation, RelationalAttributes } from "./base-entity";
+import { ExclusiveUnion, ValueOf, isArray, isArrayOfType, isBoolean, isEmpty, isObject, isString } from "../utils";
+import { EntitySchema, HydrateOptionForEntity, } from "./base-entity";
 
 
 export type Pagination = {

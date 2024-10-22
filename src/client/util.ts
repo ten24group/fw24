@@ -1,6 +1,8 @@
+import { resolveEnvValueFor } from "../utils";
+
 export const Environment = {
-    emailQueueUrl: process.env.EMAIL_QUEUE_URL || '',
-    queueUrl: (queueName: string) => process.env[queueName + '_queueUrl'] || '',
-    topicArn: (topicName: string) => process.env[topicName + '_topicArn'] || '',
-    bucketName: (bucketName: string) => process.env['bucket_' + bucketName] || ''
+    emailQueueUrl: resolveEnvValueFor({key: 'EMAIL_QUEUE_URL'}) || '',
+    queueUrl: (queueName: string) => resolveEnvValueFor({ key: queueName, suffix: 'queueUrl'}) || '',
+    topicArn: (topicName: string) => resolveEnvValueFor({ key: topicName, suffix: 'topicArn'}) || '',
+    bucketName: (bucketName: string) => resolveEnvValueFor({ key: bucketName, prefix: 'bucket' }) || ''
 }

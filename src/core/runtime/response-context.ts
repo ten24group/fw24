@@ -1,9 +1,10 @@
-import { Response } from '../interfaces/response';
+import { Response } from '../../interfaces/response';
 
 export class ResponseContext implements Response {
     public headers: any = {};
     public body: string = '';
     public statusCode: number = 200;
+    public isBase64Encoded: boolean = false;
 
     send(body:string): Response {
         this.body = body;

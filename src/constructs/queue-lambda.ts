@@ -145,7 +145,7 @@ export class QueueLambda extends Construct {
     // dlq props
     let dlqProps = {};
     //check if dlq already exists
-    const existingDLQ : Queue = fw24.get(props.queueName, 'dlq') || fw24.get(props.queueName+'_dlq', 'queue')
+    const existingDLQ : Queue = fw24.getEnvironmentVariable(props.queueName, 'dlq') || fw24.getEnvironmentVariable(props.queueName+'_dlq', 'queue')
     //if it does, assign it to the queue
     if( existingDLQ ) {
       dlqProps = {
@@ -156,11 +156,11 @@ export class QueueLambda extends Construct {
       }
     } else if( !props.queueName.endsWith("dlq") ) { //if queue itself is a dlq don't assign default dlq
       //set default dlq
-      let defaultDLQ = fw24.get('dlq_default');
+      let defaultDLQ = fw24.getEnvironmentVariable('dlq_default');
       if(!defaultDLQ ){
         //create default dlq
         defaultDLQ = new Queue(this, "default-dlq", {});
-        fw24.set('dlq_default', defaultDLQ);
+        fw24.getEnvironmentVariable('dlq_default', defaultDLQ);
       }
       //assign default dlq
       dlqProps = {
@@ -188,10 +188,10 @@ export class QueueLambda extends Construct {
       ...props.queueProps,
     }) as Queue;
 
-    fw24.set(props.queueName, queue.queueName, "queueName");
-    this.logger?.debug(" Queue Name set in fw24 scope : ", props.queueName, " :", fw24.get(props.queueName, 'queueName'));
+    fw24.setEnvironmentVariable(props.queueName, queue.queueName, "queueName");
+    this.logger?.debug(" Queue Name set in fw24 scope : ", props.queueName, " :", fw24.getEnvironmentVariable(props.queueName, 'queueName'));
 
-    fw24.set(props.queueName, queue, "queue");
+    fw24.setEnvironmentVariable(props.queueName, queue, "queue");
 
     if(props.lambdaFunctionProps){
       const queueFunction = new LambdaFunction(this, `${id}-lambda`, { ...props.lambdaFunctionProps }) as NodejsFunction;
@@ -216,7 +216,7 @@ export class QueueLambda extends Construct {
       const topicName = typeof topic === 'string' ? topic : topic.name;
       const filters = typeof topic === 'string' ? [] : topic.filters;
 
-      const topicArn = fw24.getArn('sns', fw24.get(topicName, 'topicName'));
+      const topicArn = fw24.getArn('sns', fw24.getEnvironmentVariable(topicName, 'topicName'));
       const topicInstance = Topic.fromTopicArn(this, topicName+id+'-topic', topicArn);
       // TODO: add ability to filter messages
       topicInstance.addSubscription(new SqsSubscription(queue));
