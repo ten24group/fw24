@@ -31,6 +31,8 @@ export type CommonLambdaHandlerOptions = {
 	 */
 	functionTimeout?: number;
 
+	processorArchitecture?: 'x86_64' | 'arm_64';
+
 	/**
 	 * Specifies additional properties for the controller function.
 	 */

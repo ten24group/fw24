@@ -65,6 +65,8 @@ export interface LambdaFunctionProps {
    */
   functionTimeout?: number;
 
+  processorArchitecture ?: 'x86_64' | 'arm_64';
+
   /**
    * Additional properties for the Node.js Lambda function.
    */
@@ -280,6 +282,10 @@ export class LambdaFunction extends Construct {
     additionalProps.logGroup = logGroup;
     if(props.functionTimeout){
       additionalProps.timeout = Duration.seconds(props.functionTimeout);
+    }
+
+    if(props.processorArchitecture){
+      additionalProps.architecture = props.processorArchitecture === 'x86_64' ? Architecture.X86_64 : Architecture.ARM_64;
     }
 
     // Create the Node.js function
