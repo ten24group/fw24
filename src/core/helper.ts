@@ -3,6 +3,8 @@ import { resolve, join, relative } from "path";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { IFw24Module } from "./runtime/module";
 import { createLogger, LogDuration } from "../logging";
+import { QueueProps } from "aws-cdk-lib/aws-sqs";
+import { isString } from "../utils";
 
 
 
@@ -86,6 +88,26 @@ export class Helper {
         );
 
         return sourceFilePaths;
+    }
+
+    static isFifoQueueProps(props: QueueProps){
+        if (props.fifo) {
+            return true;
+        }
+        if (props.deduplicationScope) { 
+            return true; 
+        }
+        if (props.fifoThroughputLimit) { 
+            return true; 
+        }
+        if (props.contentBasedDeduplication) { 
+            return true; 
+        }
+        if (props.queueName && isString(props.queueName) && props.queueName.endsWith('.fifo')) { 
+            return true; 
+        }
+
+        return false;
     }
 
     static async registerHandlers(path: string, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void, files: string[]=[]) {

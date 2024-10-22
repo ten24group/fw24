@@ -4,11 +4,12 @@ import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
 import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
-import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
+import { SqsEventSource, SqsEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { SqsSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import { Fw24 } from "../core/fw24";
 import { ILogger, createLogger } from "../logging";
+import { Helper } from "../core";
 
 /**
  * Represents the properties for a QueueLambdaFunction.
@@ -112,7 +113,7 @@ const QueueLambdaFunctionPropDefaults : QueueLambdaFunctionProps = {
  *   receiveMessageWaitTimeSeconds: 10,
  *   retentionPeriodDays: 7,
  *   queueProps: {
- *     fifo: true,
+ *     fifo: false,
  *     encryption: QueueEncryption.KMS,
  *   },
  *   lambdaFunctionProps: {
@@ -140,13 +141,34 @@ export class QueueLambda extends Construct {
     const fw24 = Fw24.getInstance();
     
     let props = { ...QueueLambdaFunctionPropDefaults, ...queueLambdaProps };
-
-    // get the dlq from fw24 or create a new dlq
-    let dlq: Queue = fw24.getEnvironmentVariable(props.queueName, 'dlq') || fw24.getEnvironmentVariable(props.queueName+'_dlq', 'queue') || fw24.getEnvironmentVariable('dlq_default');
     
-    if(!dlq){
-      dlq = new Queue(this, "default-dlq", {});
-      fw24.setEnvironmentVariable('dlq_default', dlq);
+    // dlq props
+    let dlqProps = {};
+    //check if dlq already exists
+    const existingDLQ : Queue = fw24.getEnvironmentVariable(props.queueName, 'dlq') || fw24.getEnvironmentVariable(props.queueName+'_dlq', 'queue')
+    //if it does, assign it to the queue
+    if( existingDLQ ) {
+      dlqProps = {
+        deadLetterQueue: {
+          maxReceiveCount: 3,
+          queue: existingDLQ,
+        }
+      }
+    } else if( !props.queueName.endsWith("dlq") ) { //if queue itself is a dlq don't assign default dlq
+      //set default dlq
+      let defaultDLQ = fw24.getEnvironmentVariable('dlq_default');
+      if(!defaultDLQ ){
+        //create default dlq
+        defaultDLQ = new Queue(this, "default-dlq", {});
+        fw24.getEnvironmentVariable('dlq_default', defaultDLQ);
+      }
+      //assign default dlq
+      dlqProps = {
+        deadLetterQueue: {
+          maxReceiveCount: 3,
+          queue: defaultDLQ,
+        }
+      }
     }
 
     // set the timeouts
@@ -157,10 +179,7 @@ export class QueueLambda extends Construct {
 
     // set the default dlq with option to override
     props.queueProps = {
-      deadLetterQueue: {
-        maxReceiveCount: 3,
-        queue: dlq,
-      },
+      ...dlqProps,
       ...props.queueProps,
       ...timeoutProps,
     }
@@ -176,13 +195,20 @@ export class QueueLambda extends Construct {
 
     if(props.lambdaFunctionProps){
       const queueFunction = new LambdaFunction(this, `${id}-lambda`, { ...props.lambdaFunctionProps }) as NodejsFunction;
-
+      
+      const isFifoQueue = Helper.isFifoQueueProps({ 
+        ...(props.queueProps || {}), 
+        queueName: props.queueName 
+      });
+      
+      const eventSourceProps: SqsEventSourceProps =  isFifoQueue ? {} : {
+        batchSize: props.sqsEventSourceProps?.batchSize ?? 1,
+        maxBatchingWindow: props.sqsEventSourceProps?.maxBatchingWindow ?? Duration.seconds(5),
+        reportBatchItemFailures: props.sqsEventSourceProps?.reportBatchItemFailures ?? true,
+      };
+      
       // add event source to lambda function
-      queueFunction.addEventSource(new SqsEventSource(queue, {
-        batchSize: props.sqsEventSourceProps?.batchSize || 1,
-        maxBatchingWindow: props.sqsEventSourceProps?.maxBatchingWindow || Duration.seconds(5),
-        reportBatchItemFailures: props.sqsEventSourceProps?.reportBatchItemFailures || true,
-      }));
+      queueFunction.addEventSource(new SqsEventSource(queue, eventSourceProps));
     }
 
     // subscribe the queue to SNS topic

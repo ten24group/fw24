@@ -7,11 +7,19 @@ const sqsClient = new SQSClient({});
  * @param message
  */
 export const sendQueueMessage = async (queueUrl: string, message: any) => {
+    
+    //check if message group ID is provided
+    const { messageGroupID = "" } = message;
+    const messageGroupPayload = messageGroupID !== "" ? {
+        MessageGroupId : messageGroupID,
+    } : {}
 
-    const sqsCommand = new SendMessageCommand({ 
+    const queuePayload = { 
         QueueUrl: queueUrl, 
-        MessageBody: JSON.stringify(message) 
-    });
+        MessageBody: JSON.stringify(message),
+        ...messageGroupPayload
+    }
+    const sqsCommand = new SendMessageCommand({...queuePayload});
 
     const result = await sqsClient.send(sqsCommand);
     return result;
