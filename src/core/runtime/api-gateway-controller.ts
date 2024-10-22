@@ -152,8 +152,8 @@ abstract class APIController extends AbstractLambdaHandler {
       if (controllerResponse instanceof ResponseContext) {
         this.logger.debug("LambdaHandler Response:", JSON.stringify(controllerResponse, null, 2));
         return this.handleResponse({
+          ...controllerResponse,
           statusCode: controllerResponse.statusCode || 500,
-          body: controllerResponse.body,
         });
       }
     } catch (err) {
@@ -164,10 +164,7 @@ abstract class APIController extends AbstractLambdaHandler {
 
     this.logger.debug("LambdaHandler Default Response:", JSON.stringify(responseContext, null, 2));
     // Return the finalized API Gateway response
-    return this.handleResponse({
-      statusCode: responseContext.statusCode,
-      body: requestContext.body,
-    });
+    return this.handleResponse(responseContext);
   }
 
   /**
