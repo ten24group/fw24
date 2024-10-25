@@ -1,5 +1,5 @@
-import { readdirSync } from "fs";
-import { resolve, join, relative } from "path";
+import { readdirSync, existsSync } from "fs";
+import { resolve, join, relative,  } from "path";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { IFw24Module } from "./runtime/module";
 import { createLogger, LogDuration } from "../logging";
@@ -34,9 +34,18 @@ export class Helper {
 
         // TODO: support for controller path prefix [ e.g. module-name/controller-path ]
 
-        Helper.logger.info("registerControllersFromModule::: module-controllers-path: " + controllersPath);
+        // make sure that the controller path exists
+        if( existsSync(controllersPath)){
+            
+            Helper.logger.info("registerControllersFromModule::: module-controllers-path: " + controllersPath);
 
-        Helper.registerHandlers(controllersPath, handlerRegistrar);
+            Helper.registerHandlers(controllersPath, handlerRegistrar);
+            
+        } else {
+
+            Helper.logger.info("registerControllersFromModule::: module-controllers-path does not exist: " + controllersPath);
+        }
+
     }
 
     static async registerQueuesFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
