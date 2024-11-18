@@ -217,6 +217,94 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     return entity as CreateEntityResponse<S>;
 }
 
+
+/**
+ * Represents the arguments for creating-OR-updating an entity.
+ * @template Sch - The entity schema type.
+ * @template OpsSchema - The input schemas for entity operations.
+ */
+export interface UpsertEntityArgs<
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> extends BaseEntityCrudArgs<Sch> {
+    /**
+     * The data for creating the entity.
+     */
+    data: OpsSchema['upsert'];
+}
+
+export type UpsertEntityResponse<Sch extends EntitySchema<any, any, any>> = {
+   data ?: EntityResponseItemTypeFromSchema<Sch>
+}
+
+/**
+ * Creates an entity using the provided options.
+ * 
+ * @param options - The options for creating-OR-updating the entity.
+ * @returns The created entity.
+ * @throws Error if no data is provided for upsert operation, validation fails, or authorization fails.
+ */
+export async function upsertEntity<S extends EntitySchema<any, any, any>>(options : UpsertEntityArgs<S>): Promise<UpsertEntityResponse<S>> {
+    const { 
+        data,
+        entityName,
+        entityService, 
+        
+        actor,
+        tenant,
+        
+        crudType = 'upsert',
+        logger = createLogger('CRUD-service:upsertEntity'),
+        validator = DefaultValidator,
+        authorizer = Authorizer.Default,
+        auditLogger = Auditor.Default,
+        eventDispatcher = EventDispatcher.Default,
+
+    } = options;
+
+    logger.debug(`Called EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data);
+    
+    if(!data){
+        throw new Error("No data provided for upsert operation");
+    }
+
+    // pre events
+    // await eventDispatcher?.dispatch({ event: 'beforeUpsert', context: arguments });
+
+    // validate
+    const validation = await validator.validateEntity({
+        operationName: crudType,
+        entityName,
+        entityValidations: entityService.getEntityValidations(),
+        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+        input: data,
+        actor: actor,
+    });
+
+    if(!validation.pass){
+        throw new Error("Validation failed for upsert: " + JSON.stringify({ cause: validation }));
+    }
+
+    // authorize the actor 
+    // const authorization = await authorizer.authorize({ entityName, crudType, data, actor, tenant });
+    // if(!authorization.pass){
+    //     throw new Error("Authorization failed for upsert: " + { cause: authorization });
+    // }
+
+    const entity = await entityService.getRepository().upsert(data as any).go();
+
+    // post events
+    // await eventDispatcher?.dispatch({ event: 'afterUpsert', context: {...arguments, entity} });
+
+    // create audit
+    // auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
+
+    // return entity;
+    logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data, entity.data);
+
+    return entity as UpsertEntityResponse<S>;
+}
+
 /**
  * Represents the arguments for listing entities.
  * @template Sch - The entity schema type.

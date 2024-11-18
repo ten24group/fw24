@@ -1,13 +1,13 @@
 import type { EntityConfiguration } from "electrodb";
 import { DIContainer } from "../di";
 import type { EntityInputValidations, EntityValidations } from "../validation";
-import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema } from "./base-entity";
+import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
 import type { EntityQuery, EntitySelections } from "./query-types";
 
 import { createLogger } from "../logging";
 import { JsonSerializer, camelCase, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
-import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
+import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
 import { addFilterGroupToEntityFilterCriteria, inferRelationshipsForEntitySelections, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 import { IDIContainer } from "../interfaces";
 
@@ -762,6 +762,27 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         }
 
         const entity =  await createEntity<S>({
+            data: payload, 
+            entityName: this.getEntityName(),
+            entityService: this,
+        });
+
+        return entity;
+    }
+
+    /**
+     * Creates-OR-Updates an entity.
+     * NOTE: 
+     *   - This method does not check for uniqueness of the attributes, neither create the slug automatically.
+     *   - It's the responsibility of the caller to ensure the read ony attributes are not provided if the record is being upsert.
+     * 
+     * @param payload - The payload for creating-OR-updating the entity.
+     * @returns The created-OR-updated entity.
+     */
+    public async upsert(payload: UpsertEntityItemTypeFromSchema<S>) {
+        this.logger.debug(`Called ~ upsert ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
+
+        const entity =  await upsertEntity<S>({
             data: payload, 
             entityName: this.getEntityName(),
             entityService: this,

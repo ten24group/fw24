@@ -114,6 +114,7 @@ export namespace User {
               list: "list",
               create: "create",
               update: "update",
+              upsert: "upsert",
               delete: "delete",
               query: "query",
               duplicate: "duplicate",
