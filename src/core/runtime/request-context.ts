@@ -52,7 +52,7 @@ export class RequestContext implements Request {
         
         const contentType = this.getHeader('content-type');
 
-        this.body = this.parseBody(event.body, contentType);
+        this.body = this.parseBody(event.body, contentType, this.isBase64Encoded);
     }
 
     private parseQueryStringParameters(params: RecordWithOptionalValues): RecordWithOptionalValues {
@@ -78,12 +78,17 @@ export class RequestContext implements Request {
         return false;
     }
 
-    private parseBody(body: string | null, contentType: string): any {
+    private parseBody(body: string | null, contentType: string, isBase64Encoded: boolean): any {
         this._logger.debug("Parsing the event body...", body, contentType);
        
         if (!body) return null;
 
         if (contentType == 'application/x-www-form-urlencoded') {
+
+            if(isBase64Encoded) {
+                body = Buffer.from(body, 'base64').toString('utf8');
+            }
+
             return body.split('&').reduce((acc: any, param) => {
                 const [key, value] = param.split('=');
                 acc[key] = value;
@@ -92,6 +97,12 @@ export class RequestContext implements Request {
         }
 
         if (contentType == 'application/json') {
+            
+            if(isBase64Encoded) {
+                this._logger.info("Decoding the base64 encoded body...");
+                body = Buffer.from(body, 'base64').toString('utf8');
+            }
+
             try {
                 return JSON.parse(body);
             } catch (e) {
