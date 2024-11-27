@@ -1,122 +1,150 @@
 import { parseValueToCorrectTypes } from '../../utils/parse';
-import { DefaultLogger } from '../../logging';
+import { createLogger, ILogger } from '../../logging';
 import { Request } from '../../interfaces/request';
 import { APIGatewayEvent, Context } from "aws-lambda";
 import { resolveEnvValueFor } from '../../utils/env';
 import { ENV_KEYS } from '../../const';
 
+type RecordWithOptionalValues = Record<string, any>;
+
 export class RequestContext implements Request {
 
+    private readonly _logger: ILogger;
 
-    public event: APIGatewayEvent;
-    public context: Context;
-    public resource: any;
     public body: any;
-    public path: string;
-    public queryStringParameters: any;
-    public headers: any;
-    public requestContext: any;
-    public stageVariables: any;
-    public pathParameters: any;
-    public isBase64Encoded: boolean;
-    public httpMethod: string;
+    public context: Context;
     public debugMode: boolean;
+    public event: APIGatewayEvent;
+    public headers: RecordWithOptionalValues;
+    public httpMethod: string;
+    public isBase64Encoded: boolean;
+    public path: string;
+    public pathParameters: RecordWithOptionalValues;
+    public queryStringParameters: RecordWithOptionalValues;
+    public requestContext: any;
+    public resource: any;
+    public stageVariables: any;
     
-
     constructor(event: APIGatewayEvent, context: Context) {
+        event = event || {};
+
         this.event = event;
-        this.context = context;
-        this.resource = event.resource;
-        //this.body = event.body;
+
+        this._logger = createLogger({ name: `RequestContext: [${this.event.path}]` });
+
         this.path = event.path;
-        this.queryStringParameters = event.queryStringParameters;
-        this.headers = event.headers || {};
-        this.requestContext = event.requestContext;
-        this.stageVariables = event.stageVariables;
-        this.pathParameters = event.pathParameters;
-        this.isBase64Encoded = event.isBase64Encoded;
+        this.context = context;
+    
+        this.resource = event.resource;
         this.httpMethod = event.httpMethod;
 
-        if(this.queryStringParameters && typeof this.queryStringParameters === 'object' ){
-            // Parse the URL-query-params from string to the correct types
-            this.queryStringParameters = Object.keys(this.queryStringParameters)
-            .reduce((obj: any, key) => {
-                obj[key] = parseValueToCorrectTypes( this.queryStringParameters[key] );
-                return obj;
+        this.requestContext = event.requestContext;
+        this.stageVariables = event.stageVariables;
+
+        this.isBase64Encoded = event.isBase64Encoded;
+
+        this.pathParameters = event.pathParameters || {};
+        this.queryStringParameters =  this.parseQueryStringParameters( event.queryStringParameters || {});
+        
+        this.debugMode = this.checkDebugMode(this.queryStringParameters);
+        
+        this.headers = this.parseHeaders(event.headers || {});
+        
+        const contentType = this.getHeader('content-type');
+
+        this.body = this.parseBody(event.body, contentType);
+    }
+
+    private parseQueryStringParameters(params: RecordWithOptionalValues): RecordWithOptionalValues {
+        return Object.keys(params).reduce((acc: any, key) => {
+            acc[key] = parseValueToCorrectTypes(params[key]);
+            return acc;
+        }, {});
+    }
+
+    private parseHeaders(headers: RecordWithOptionalValues): RecordWithOptionalValues {
+        return Object.keys(headers).reduce((acc: any, key) => {
+            acc[key.toLowerCase()] = headers[key].toLowerCase();
+            return acc;
+        }, {});
+    }
+
+    private checkDebugMode(params: RecordWithOptionalValues): boolean {
+        const debugPassword = resolveEnvValueFor({ key: ENV_KEYS.DEBUG_PASSWORD }) ?? true;
+        if (params?.debug === debugPassword) {
+            delete params.debug;
+            return true;
+        }
+        return false;
+    }
+
+    private parseBody(body: string | null, contentType: string): any {
+        this._logger.debug("Parsing the event body...", body, contentType);
+       
+        if (!body) return null;
+
+        if (contentType == 'application/x-www-form-urlencoded') {
+            return body.split('&').reduce((acc: any, param) => {
+                const [key, value] = param.split('=');
+                acc[key] = value;
+                return acc;
             }, {});
-
-        // } else {
-        //     DefaultLogger.info(`this.queryStringParameters ${this.queryStringParameters} is not a valid object`);
         }
 
-        // Check for Debug-mode
-        this.debugMode = false;
-        const debugPassword = resolveEnvValueFor({key: ENV_KEYS.DEBUG_PASSWORD}) ?? true;
-        if(this.queryStringParameters?.debug == debugPassword){
-            this.debugMode = true;
-            delete this.queryStringParameters.debug;
-        }
-
-        // Parse the request body
-
-        if (event.body) {
-            
-            const contentType = event.headers['Content-Type'] || event.headers['content-type']; // some clients sent it all small-cases; will require a better solution
-
-            // application/x-www-form-urlencoded
-            if (contentType === 'application/x-www-form-urlencoded') {
-                this.body = {};
-                event.body.split('&').forEach((param) => {
-                    const [key, value] = param.split('=');
-                    this.body[key] = value;
-                });
-            }
-            //application/json
-            else if (contentType === 'application/json') {
-                try{
-                    this.body = JSON.parse(event.body);
-                }catch(e){
-                    DefaultLogger.error("::RequestContext:: Error in parsing the event body...", event.body);
-                    this.body = event.body;
-                }
-            }
-            //multipart/form-data
-            else if (contentType === 'multipart/form-data') {
-                // TODO: parse multipart/form-data
-                this.body = event.body;
-            }else{
-                this.body = event.body;
+        if (contentType == 'application/json') {
+            try {
+                return JSON.parse(body);
+            } catch (e) {
+                this._logger.error("Error in parsing the event body...", body);
+                return body;
             }
         }
+
+        if (contentType == 'multipart/form-data') {
+            // TODO: parse multipart/form-data
+            // return body;
+        }
+
+        return body;
     }
 
-    get(key: string): any {
-        if (this.pathParameters && this.pathParameters[key]) {
-            return this.pathParameters[key];
-        }
-        if (this.queryStringParameters && this.queryStringParameters[key]) {
-            return this.queryStringParameters[key];
-        }
-        if (this.body && this.body[key]) {
-            return this.body[key];
-        }
+    getParam(key: string): any {
+        return this.pathParameters[key] || this.queryStringParameters[key] || this.body[key];
     }
 
-    param(key: string): any {
-        if (this.pathParameters && this.pathParameters[key]) {
-            return this.pathParameters[key];
-        }
+    hasParam(key: string): boolean {
+        return !!(this.pathParameters[key] || this.queryStringParameters[key] || this.body[key]);
     }
 
-    query(key: string): any {
-        if (this.queryStringParameters && this.queryStringParameters[key]) {
-            return this.queryStringParameters[key];
-        }
+    getPathParam(key: string): any {
+        return this.pathParameters[key];
     }
 
-    post(key: string): any {
-        if (this.body && this.body[key]) {
-            return this.body[key];
-        }
+    hasPathParam(key: string): boolean {
+        return !!this.pathParameters[key];
+    }
+
+    getQueryParam(key: string): any {
+        return this.queryStringParameters[key];
+    }
+
+    hasQueryParam(key: string): boolean {
+        return !!this.queryStringParameters[key];
+    }
+
+    getHeader(key: string): any {
+        return this.headers[key];
+    }
+
+    hasHeader(key: string): boolean {
+        return !!this.headers[key];
+    }
+
+    getBodyParam(key: string): any {
+        return this.body[key];
+    }
+
+    hasBodyParam(key: string): boolean {
+        return !!this.body[key];
     }
 }
