@@ -3,6 +3,7 @@ import { DIContainer } from ".";
 import type { DIModuleOptions, IDIContainer, ClassConstructor, DepIdentifier, ProviderOptions, ParameterInjectMetadata, PropertyInjectMetadata, InjectOptions } from "../interfaces";
 import { type ILogger, createLogger } from "../logging";
 import { compareProviderOptions } from "../utils/di";
+import { isClassConstructor } from "../utils";
 
 export const DI_MODULE_METADATA_KEY = 'DI_MODULE';
 export const ON_INIT_HOOK_METADATA_KEY = 'ON_INIT_HOOK';
@@ -17,7 +18,7 @@ export class DIModuleMetadata implements DIModuleOptions {
     container: IDIContainer;
     imports: ClassConstructor[];
     exports: DepIdentifier[];
-    providers: ProviderOptions<any>[];
+    providers: Array<ProviderOptions<any>>;
     providedBy?: IDIContainer | 'ROOT' | ClassConstructor;
 
     constructor(options: DIModuleOptions) {
@@ -25,7 +26,14 @@ export class DIModuleMetadata implements DIModuleOptions {
         this.container = options.container;
         this.imports = options.imports || [];
         this.exports = options.exports || [];
-        this.providers = options.providers || [];
+        
+        this.providers = (options.providers || []).map(p => {
+            if(isClassConstructor(p)){
+                return { provide: p, useClass: p };
+            }
+            return p;
+        });
+
         this.providedBy = options.providedBy;
         this.logger = createLogger(`DIModuleMetadata[${this.identifier}]`);
     }
@@ -76,12 +84,19 @@ export class DIModuleMetadata implements DIModuleOptions {
         }
 
         if (options.providers !== undefined) {
+
             options.providers.forEach(providerOptions => {
+
+                if(isClassConstructor(providerOptions)){
+                    providerOptions = { provide: providerOptions, useClass: providerOptions };
+                }
+
                 if (!this.hasProvider(providerOptions)) {
                     this.providers.push(providerOptions);
                     if (this.container) {
                         this.container.register(providerOptions);
                     }
+                    
                 } else {
                     this.logger.info(`Provider ${providerOptions.provide} is already registered`);
                 }

@@ -87,7 +87,7 @@ export type DIModuleOptions = {
     /**
      * Providers to be registered in the module's container; these providers are only available to the module's children and can shadow/override providers in parent hierarchy by specifying priority and other criteria [but only for the Injectable/s in itself and it's children].
      */
-    providers ?: ProviderOptions<any>[];
+    providers ?: Array<ProviderOptions<any> | ClassConstructor<any>>;
 	/**
 	 * Specifies the parent DI-container or parent Module to register this module in or auto-resolve the container instance from.
 	 * you don't need to specify this unless you are creating a separate module and want to use that module as the parent of this controller/module.

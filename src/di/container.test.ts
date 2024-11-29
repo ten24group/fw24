@@ -983,6 +983,34 @@ describe('DIContainer', () => {
             expect(instance2).toBeInstanceOf(TestClassA);
         });
 
+        it('register a provider as a class reference', () => {
+
+            class TestClass {}
+
+            class TestClass2 {
+                constructor(
+                    @Inject(TestClass) public test: TestClass
+                ) {}
+            }
+
+            @DIModule({
+                providers: [TestClass, TestClass2],
+                exports: [TestClass]
+            })
+            class TestModule {}
+
+            const {container: moduleContainer} = container.module(TestModule);
+
+            const instance = moduleContainer.resolve(TestClass2);
+            expect(instance).toBeInstanceOf(TestClass2);
+            expect(instance.test).toBeInstanceOf(TestClass);
+
+
+            const instance1 = container.resolve(TestClass);
+            expect(instance1).toBeInstanceOf(TestClass);
+
+        })
+
         it('imports an empty module without errors', () => {
             class TestModule {}
             registerModuleMetadata(TestModule, { imports: [], exports: [], providers: [] });
