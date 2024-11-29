@@ -42,7 +42,7 @@ export const createLogger = (_options: string | Function | ISettingsParam<ILogOb
     return logger;
 }
 
-export const DefaultLogger: ILogger = createLogger('[DefaultLogger]');
+export const DefaultLogger: ILogger = createLogger('[*]');
 
 export {
     LogDuration

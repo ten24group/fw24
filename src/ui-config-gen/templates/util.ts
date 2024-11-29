@@ -38,7 +38,7 @@ export function formatEntityAttributeForFormOrDetail(
                 modalPageConfig: formConfig
             }
         } else {
-            DefaultLogger.warn(`Could not find related-entity-service for entity [${entityName}] in ${entityService.constructor.name}`);
+            DefaultLogger.warn(`formatEntityAttributeForFormOrDetail: Could not find related-entity-service for entity [${entityName}] in ${entityService.constructor.name}`);
         }
     }
     

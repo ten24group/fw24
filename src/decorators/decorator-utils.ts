@@ -82,22 +82,16 @@ export type CommonLambdaHandlerOptions = {
 	module?: RegisterDIModuleMetadataOptions
 }
 
-export function tryImportingEntryPackages(name = getCallingModule(3)?.path ) {
-  DefaultLogger.info(`tryImportingEntryPackages: called for ${name}`);
+export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3)?.path ) {
 
   try {
 		const entryPackageNames = resolveEnvValueFor({key: ENV_KEYS.ENTRY_PACKAGES});
 
 		if (!entryPackageNames) {
-			DefaultLogger.info(`Controller ${name} is not configured to import any entry-package`);
 			return;
 		}
 
-		DefaultLogger.info('tryImportingEntryPackages: entryPackageNames', entryPackageNames);
-
 		const packageNamesArray = entryPackageNames.split(',').map(pkg => pkg.trim()); // Split and trim package names
-
-		DefaultLogger.info(`tryImportingEntryPackages: Controller ${name} is configured to import entry-packages: ${packageNamesArray.join(', ')}`);
 
 		packageNamesArray.forEach((entryPackageName) => {
 			try {
@@ -105,14 +99,13 @@ export function tryImportingEntryPackages(name = getCallingModule(3)?.path ) {
 				const entry = require(entryPackageName);
 				// call the default export if available
 				entry.default && typeof entry.default === 'function' && entry.default(); 
-				DefaultLogger.info(`Controller ${name} successfully imported entry-package: ${entryPackageName}`);
+				DefaultLogger.info(`Controller[${controllerName}]: successfully imported entry-package: ${entryPackageName}`);
 			} catch (error) {
-				DefaultLogger.error(`Controller ${name} failed to import entry-package: ${entryPackageName}`, error);
+				DefaultLogger.error(`Controller[${controllerName}]: failed to import entry-package: ${entryPackageName}`, error);
 			}
 		});
-		
 	} catch(e){
-		DefaultLogger.error("Error importing entry packages in controller.ts", e);
+		DefaultLogger.error(`Controller[${controllerName}]: Error importing entry packages in controller.ts`, e);
 	}
 }
 
@@ -171,10 +164,10 @@ export function exportHandler(handler: any, handlerName: string = 'handler', cal
         if (!callingModule.exports.hasOwnProperty(handlerName)) {
             callingModule.exports[handlerName] = handler;
         } else {
-            console.warn(`Handler '${handlerName}' already exists in calling module: ${callingModule.filename}`);
+            DefaultLogger.warn(`exportHandler: Handler '${handlerName}' already exists in calling module: ${callingModule.filename}`);
         }
     } else {
-        console.warn('Could not find calling module');
+        DefaultLogger.warn('exportHandler: Could not find calling module');
     }
 }
 

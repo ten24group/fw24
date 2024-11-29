@@ -1,5 +1,5 @@
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
-import { resolveAndExportHandler, setupDI, tryImportingEntryPackages } from "./decorator-utils";
+import { resolveAndExportHandler, setupDI, tryImportingEntryPackagesFor } from "./decorator-utils";
 
 /**
  * Represents the configuration for a task.
@@ -27,7 +27,7 @@ export type ITaskConfig = CommonLambdaHandlerOptions & {
  */
 export function Task(taskName: string, taskConfig: ITaskConfig) {
 	return function <T extends { new (...args: any[]): {} }>(target: T) {
-		tryImportingEntryPackages(taskName);
+		tryImportingEntryPackagesFor(taskName);
 
 		// Default autoExportLambdaHandler to true if undefined
 		taskConfig.autoExportLambdaHandler = taskConfig.autoExportLambdaHandler ?? true;

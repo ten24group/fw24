@@ -348,7 +348,7 @@ async function bundleWithEsbuild(entryFile: string, outputFile: string, buildOpt
         entryPoints: [entryFile],
     };
 
-    DefaultLogger.info(`Bundling ${entryFile} into ${outputFile} with options:`, defaultOptions);
+    DefaultLogger.info(`bundleWithEsbuild: Bundling ${entryFile} into ${outputFile} with options:`, defaultOptions);
     await build(defaultOptions);
 }
 
@@ -359,8 +359,8 @@ async function bundleWithEsbuild(entryFile: string, outputFile: string, buildOpt
 function cleanupDirectory(directory: string) {
     try {
         rmSync(directory, { recursive: true, force: true });
-        DefaultLogger.info(`Cleaned up temporary directory: ${directory}`);
+        DefaultLogger.info(`bundleWithEsbuild: Cleaned up temporary directory: ${directory}`);
     } catch (error) {
-        DefaultLogger.error(`Failed to clean up directory ${directory}:`, error);
+        DefaultLogger.error(`bundleWithEsbuild: Failed to clean up directory ${directory}:`, error);
     }
 }

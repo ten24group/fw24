@@ -1,7 +1,7 @@
 import { makeDIToken } from "./utils";
 import { DIContainer } from ".";
 import type { DIModuleOptions, IDIContainer, ClassConstructor, DepIdentifier, ProviderOptions, ParameterInjectMetadata, PropertyInjectMetadata, InjectOptions } from "../interfaces";
-import { DefaultLogger, type ILogger, createLogger } from "../logging";
+import { type ILogger, createLogger } from "../logging";
 import { compareProviderOptions } from "../utils/di";
 
 export const DI_MODULE_METADATA_KEY = 'DI_MODULE';
@@ -145,36 +145,14 @@ export class DIModuleMetadata implements DIModuleOptions {
 }
 
 export function registerModuleMetadata(target: any, options: RegisterDIModuleMetadataOptions) {
-    DefaultLogger.info('CALLED: registerModuleMetadata with', {
-        target, 
-        options: {
-            exports: options.exports, 
-            imports: options.imports, 
-            providers: options.providers, 
-            providedBy: options.providedBy
-        },
-    });
 
     const newOptions = { ...options, identifier: makeDIToken(target) } as DIModuleOptions
 
     let moduleMetadata = DIContainer.DIMetadataStore.getPropertyMetadata<DIModuleMetadata>(target.name, DI_MODULE_METADATA_KEY); 
     
     if(moduleMetadata){
-
-        DefaultLogger.info('moduleMetadata exists, updating metadata', {
-            ...moduleMetadata, 
-            container: newOptions.container?.containerId,
-            logger: !!(moduleMetadata as any).logger
-        }, {
-            ...newOptions, 
-            container: newOptions.container?.containerId
-        });
-
         moduleMetadata.updateMetadata(newOptions);
-
     } else {
-
-        DefaultLogger.info('moduleMetadata does not exist, creating new metadata', newOptions);
         moduleMetadata = new DIModuleMetadata(newOptions);
     }
     
