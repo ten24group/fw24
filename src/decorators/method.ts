@@ -1,5 +1,5 @@
-import { Route } from "../interfaces/route";
-import { HttpRequestValidations, InputValidationRule } from "../validation";
+import type { Route } from "../interfaces/route";
+import type { HttpRequestValidations, InputValidationRule } from "../validation";
 
 // function InjectParams(
 //   target: any,

@@ -116,10 +116,14 @@ export class Validator implements IValidator {
         };
 
         for(const key in rules){
+
             const thisRule = rules[key];
             if(!thisRule){ continue; }
 
-            const validationRes = await this.testComplexValidationRule<any>(thisRule, input?.[key] );                    
+            const thisVal = input ? input[key] : undefined;
+
+            const validationRes = await this.testComplexValidationRule<any>(thisRule, thisVal );                    
+            
             result.pass = result.pass && validationRes.pass;
 
             if(collectErrors && validationRes.errors && validationRes.errors.length){

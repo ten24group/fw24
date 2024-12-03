@@ -1,21 +1,20 @@
-import { APIController } from '../core/api-gateway-controller';
-import { Request } from '../interfaces/request';
-import { Response } from '../interfaces/response';
+import type { Request, Response } from '../interfaces';
+import type { EntitySchema, EntityIdentifiersTypeFromSchema } from './base-entity';
+import type { BaseEntityService } from './base-service';
+import type { EntityFilterCriteria } from './query-types';
+
+import { APIController } from '../core/runtime/api-gateway-controller';
 import { Delete, Get, Patch, Post } from '../decorators/method';
-import { BaseEntityService } from './base-service';
-import { defaultMetaContainer } from './entity-metadata-container';
-import { EntityIdentifiersTypeFromSchema, EntitySchema } from './base-entity';
 import { createLogger } from '../logging';
 import { safeParseInt } from '../utils/parse';
-import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, merge, toSlug } from '../utils';
+import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, merge, resolveEnvValueFor, toSlug } from '../utils';
 import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
-import { EntityFilterCriteria } from './query-types';
 import { randomUUID } from 'crypto';
 import { getSignedUrlForFileUpload } from '../client/s3';
+import { ENV_KEYS } from '../const';
 
 type seconds = number;
-export const FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY = 'FILES_BUCKET_CUSTOM_DOMAIN';
-export const FILES_BUCKET_CUSTOM_DOMAIN_VALUE = process.env[FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY] ?? '';
+
 export type GetSignedUrlForFileUploadSchema = { 
 	fileName: string, 
 	bucketName: string, 
@@ -28,7 +27,7 @@ export type GetSignedUrlForFileUploadSchema = {
  * Abstract base class for entity controllers.
  * @template Sch - The entity schema type.
  */
-export abstract class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIController {
+export class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIController {
 	
 	readonly logger = createLogger(BaseEntityController.name);
 
@@ -36,16 +35,10 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
      * Creates an instance of BaseEntityController.
      * @param {string} entityName - The name of the entity.
      */
-    constructor(protected readonly entityName: string) {
+    constructor(protected readonly entityName: string, protected readonly entityService: BaseEntityService<Sch>) {
         super();
         this.entityName = entityName;
     }
-
-    /**
-     * Initializes the dependency injection for the entity controller.
-     * @returns {Promise<void>} A promise that resolves when the dependency injection is initialized.
-     */
-    abstract initDI(): Promise<void>;
 
     /**
      * Initializes the entity controller.
@@ -55,10 +48,6 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
      * @returns {Promise<void>} A promise that resolves when the initialization is complete.
      */
     async initialize(event: any, context: any): Promise<void> {
-        await this.initDI();
-
-        // TODO: rest of the init setup
-		
 		this.logger.debug(`BaseEntityController.initialize - done: ${event} ${context}`);
     }
 
@@ -68,7 +57,7 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
      * @returns {S} The entity service.
      */
     public getEntityService<S extends BaseEntityService<Sch>>(): S {
-        return defaultMetaContainer.getEntityServiceByEntityName<S>(this.entityName);
+        return this.entityService as S;
     }
 
 	/**
@@ -119,7 +108,7 @@ export abstract class BaseEntityController<Sch extends EntitySchema<any, any, an
 			expiresIn,
 			bucketName,
 			contentType,
-			customDomain: FILES_BUCKET_CUSTOM_DOMAIN_VALUE
+			customDomain: resolveEnvValueFor({key: ENV_KEYS.FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY}) ?? ''
 		};
 
 		this.logger.info(`getSignedUrlForFileUpload::`, options);

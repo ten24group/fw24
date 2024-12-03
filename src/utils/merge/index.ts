@@ -90,18 +90,22 @@ interface WithValue<T> {
     value: T;
 }
 
+function isNonMergeableObject(obj: any): boolean {
+  return ![ Object, Array, Map, Set ].includes(obj?.constructor);
+}
+
 const isObject = (obj: unknown): obj is MergeableObject =>
 	Object.prototype.toString.call(obj) === "[object Object]";
 const isArray = (obj: unknown): obj is MergeableArray => Array.isArray(obj);
 const isMap = (obj: unknown): obj is MergeableMap => !!obj && Object.getPrototypeOf(obj) === Map.prototype;
 const isSet = (obj: unknown): obj is MergeableSet => !!obj && Object.getPrototypeOf(obj) === Set.prototype;
 const isNullable = (obj: unknown): obj is Nullable => obj === null || obj === undefined;
-const isMergeable = (obj: unknown): obj is Mergeable => isObject(obj) || isArray(obj) || isMap(obj) || isSet(obj);
+const isMergeable = (obj: unknown): obj is Mergeable => (isObject(obj) && ! isNonMergeableObject(obj)) || isArray(obj) || isMap(obj) || isSet(obj);
 const getType = (obj: unknown): MergeableType => {
-	if (isObject(obj)) { return MergeableType.Object; }
 	if (isArray(obj)) { return MergeableType.Array; }
 	if (isMap(obj)) { return MergeableType.Map; }
 	if (isSet(obj)) { return MergeableType.Set; }
+	if (isObject(obj) && !isNonMergeableObject(obj)) { return MergeableType.Object; }
 	if (isNullable(obj)) { return MergeableType.Nullable; }
 	return MergeableType.NonMergeable;
 };

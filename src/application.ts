@@ -2,12 +2,11 @@ import { App, Stack } from "aws-cdk-lib";
 import { Fw24 } from "./core/fw24";
 import { IApplicationConfig } from "./interfaces/config";
 import { FW24Construct } from "./interfaces/construct";
-import { IFw24Module } from "./core/module";
+import { IFw24Module } from "./core/runtime/module";
 import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
 import { ILogger, LogDuration, createLogger } from "./logging";
 import { LayerConstruct } from "./constructs";
 import { randomUUID } from 'crypto';
-
 
 export class Application {
     readonly logger: ILogger;
@@ -30,8 +29,14 @@ export class Application {
         
         if (config.environmentVariables) {
             Object.entries(config.environmentVariables).forEach(([key, value]) => {
-                this.fw24.set(key, value);
+                this.fw24.setEnvironmentVariable(key, value);
             })
+        }
+
+        // ensure there's a log-level set in the fw24 scope so that the constructs can ask for this value
+        // this's only the global value, and can be overridden by each lambda function.
+        if(!this.fw24.hasEnvironmentVariable('LOG_LEVEL')){
+            this.fw24.setEnvironmentVariable('LOG_LEVEL', process.env.LOG_LEVEL || 'INFO' );
         }
 
         this.constructs = new Map();
@@ -79,7 +84,7 @@ export class Application {
         this.logger.info("Building fw24 layer...");
         const fw24Layer = new LayerConstruct([{
             layerName: 'fw24',
-            layerDirectory: './dist/layer'
+            sourcePath: './dist/layer'
         }]);
         fw24Layer.construct();
 
@@ -95,7 +100,7 @@ export class Application {
 
         await this.constructAllResources()
         
-        console.log('All construct resource creation completed');
+        this.logger.info('All construct resource creation completed');
     }
     
 
@@ -109,7 +114,6 @@ export class Application {
         }
         this.constructs.set(constructName, construct);
     }
-
 
     private processModules(){
         for (const [moduleName, module] of this.modules) {

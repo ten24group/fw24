@@ -1,38 +1,46 @@
-import { 
-    AuthorizationType, 
-    AwsIntegration, 
-    Cors, 
+import type {
+    AuthorizationType,
     CorsOptions,
-    EndpointType,
-    IResource, 
-    Integration, 
-    LambdaIntegration, 
-    MethodOptions, 
-    RestApi, 
-    RestApiProps 
+    IResource,
+    MethodOptions,
+    RestApiProps
 } from "aws-cdk-lib/aws-apigateway";
 
-import { Stack, CfnOutput, RemovalPolicy } from "aws-cdk-lib";
-import { Helper } from "../core/helper";
-import { createLogger } from "../logging";
-import { LambdaFunction } from "./lambda-function";
-import { Fw24 } from "../core/fw24";
-import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
-import Mutable from "../types/mutable";
-import HandlerDescriptor from "../interfaces/handler-descriptor";
-import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import {
+    AwsIntegration,
+    Cors,
+    LambdaIntegration,
+    RestApi,
+} from "aws-cdk-lib/aws-apigateway";
 
+import { CfnOutput, RemovalPolicy, Stack } from "aws-cdk-lib";
+
+import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import { RetentionDays } from "aws-cdk-lib/aws-logs";
+import { Topic } from "aws-cdk-lib/aws-sns";
+import { Queue } from "aws-cdk-lib/aws-sqs";
+
+import type { IFw24Module } from "../core/";
+import type HandlerDescriptor from "../interfaces/handler-descriptor";
+
+import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import { Fw24 } from "../core/fw24";
+import { Helper } from "../core/helper";
+import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
+import { createLogger } from "../logging";
+import Mutable from "../types/mutable";
+import { LambdaFunction } from "./lambda-function";
+
+import { IControllerConfig } from "../decorators/controller";
+import { ENV_KEYS } from "../fw24";
+import { isArray, isString } from "../utils";
+import { AuthConstruct } from "./auth";
+import { CertificateConstruct } from "./certificate";
+import { DynamoDBConstruct } from "./dynamodb";
+import { LayerConstruct } from "./layer";
 import { MailerConstruct } from "./mailer";
 import { QueueConstruct } from "./queue";
 import { TopicConstruct } from "./topic";
-import { DynamoDBConstruct } from "./dynamodb";
-import { AuthConstruct } from "./auth";
-import { IControllerConfig } from "../decorators/controller";
-import { RetentionDays } from "aws-cdk-lib/aws-logs";
-import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
-import { Queue } from "aws-cdk-lib/aws-sqs";
-import { Topic } from "aws-cdk-lib/aws-sns";
-import { CertificateConstruct } from "./certificate";
 
 /**
  * Represents the configuration options for an API construct.
@@ -87,7 +95,7 @@ export class APIConstruct implements FW24Construct {
     
     name: string = APIConstruct.name;
     // array of type of stacks that this stack is dependent on
-    dependencies: string[] = [MailerConstruct.name, DynamoDBConstruct.name, AuthConstruct.name, QueueConstruct.name, TopicConstruct.name];
+    dependencies: string[] = [MailerConstruct.name, DynamoDBConstruct.name, AuthConstruct.name, QueueConstruct.name, TopicConstruct.name, LayerConstruct.name];
     output!: FW24ConstructOutput;
 
     api!: RestApi;
@@ -130,39 +138,75 @@ export class APIConstruct implements FW24Construct {
         // add the api to the framework
         this.fw24.addStack("api", this.api);
 
-       this.registerControllers();
+       await this.registerControllers();
     }
 
-    private registerControllers() {
+    private async registerControllers() {
          // sets the default controllers directory if not defined
         const controllersDirectory = this.apiConstructConfig.controllersDirectory || "./src/controllers";
 
         // register the controllers
-        Helper.registerHandlers(controllersDirectory, this.registerController);
+        await Helper.registerHandlers(controllersDirectory, this.registerController);
 
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
             this.logger.debug("API-gateway stack: construct: app has modules ", Array.from(modules.keys()));
             for (const [, module] of modules) {
                 const basePath = module.getBasePath();
+                
                 this.logger.debug("Load controllers from module base-path: ", basePath);
-                Helper.registerControllersFromModule(module, this.registerController);
+                
+                Helper.registerControllersFromModule(
+                    module,                     
+                    (desc: HandlerDescriptor) => this.registerController(desc, module)
+                );
             }
         } else {
             this.logger.debug("API-gateway stack: construct: app has NO modules ");
         }
     }
 
+    private prepareEntryPackages(controllerConfig: IControllerConfig, ownerModule?: IFw24Module): string[] {
+        let entryPackages = controllerConfig.entryPackages || [];
+        
+        if(isArray(entryPackages)){
+            entryPackages = {
+                override: false,
+                packageNames: entryPackages
+            }
+        }
+
+        // if the controller does not want to override the application/module entry packages and include them as well
+        if( !entryPackages.override){
+            const moduleEntryPackages = ownerModule?.getLambdaEntryPackages() || [];
+            const appEntryPackages = this.fw24.getLambdaEntryPackages();
+            entryPackages.packageNames = [
+                ...entryPackages.packageNames,
+                ...moduleEntryPackages,
+                ...appEntryPackages
+            ];
+        }
+
+        return entryPackages.packageNames.map(this.fw24.tryResolveEnvKeyTemplate);
+    }
+
+
     // register a single controller
-    private registerController = (controllerInfo: HandlerDescriptor) => {
+    private registerController = (controllerInfo: HandlerDescriptor, ownerModule?: IFw24Module) => {
 
         const { handlerClass, filePath, fileName } = controllerInfo;
+        // TODO: no need to create na instance of the controller class
+        // use metadata from the class prototype
         const handlerInstance = new handlerClass();
         const controllerName = handlerInstance.controllerName;
         const controllerConfig: IControllerConfig = handlerInstance?.controllerConfig || {};
         controllerInfo.routes = handlerInstance.routes;
 
         this.logger.info(`Registering controller ${controllerName} from ${filePath}/${fileName}`);
+
+        // prepare the entry packages for the controller's lambda function
+        const entryPackages = this.prepareEntryPackages(controllerConfig, ownerModule);
+        controllerConfig.entryPackages = entryPackages;
 
         // create the api resource for the controller if it doesn't exist
         const controllerResource = this.getOrCreateControllerResource(controllerName);
@@ -275,14 +319,24 @@ export class APIConstruct implements FW24Construct {
         return this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
     }
 
-    private createLambdaFunction = (controllerName: string, filePath: string, fileName: string, controllerConfig: any): NodejsFunction => {
+    private createLambdaFunction = (controllerName: string, filePath: string, fileName: string, controllerConfig: IControllerConfig): NodejsFunction => {
         const functionProps = {...this.apiConstructConfig.functionProps, ...controllerConfig?.functionProps};
+        
+        const envVariables = this.fw24.resolveEnvVariables(controllerConfig.env);
+       
+        // do not override the entry packages if already set
+        if( !(ENV_KEYS.ENTRY_PACKAGES in envVariables) && controllerConfig.entryPackages){
+            envVariables[ENV_KEYS.ENTRY_PACKAGES] = (controllerConfig.entryPackages as Array<string>).join(',');
+        }
+
         return new LambdaFunction(this.mainStack, controllerName + "-controller", {
             entry: filePath + "/" + fileName,
-            environmentVariables: this.fw24.resolveEnvVariables(controllerConfig.env),
+            environmentVariables: envVariables,
+            policies: controllerConfig?.policies,
             resourceAccess: controllerConfig?.resourceAccess,
             allowSendEmail: true,
             functionTimeout: controllerConfig?.functionTimeout,
+            processorArchitecture: controllerConfig?.processorArchitecture,
             functionProps: functionProps,
             logRetentionDays: controllerConfig.logRetentionDays,
             logRemovalPolicy: controllerConfig.logRemovalPolicy,
@@ -312,6 +366,33 @@ export class APIConstruct implements FW24Construct {
 
         if(!defaultAuthorizerType && this.fw24.getConfig().defaultAuthorizationType) {
             defaultAuthorizerType = this.fw24.getConfig().defaultAuthorizationType;
+        }
+
+        if(defaultAuthorizerGroups){
+
+            // if the value for the groups is a template string, 
+            // resolve it [when the application want to allow multiple user groups to have access]
+            // when the value is like "env:xxx:group1" ==> "group1-resolved" || "group1,group2" || "env:xxx:group1,env:xxx:group2"
+            if(isString(defaultAuthorizerGroups)) {
+                defaultAuthorizerGroups = this.fw24.tryResolveEnvKeyTemplate(defaultAuthorizerGroups)
+            }
+            // now if the resolved value is again a string, split it by comma
+            // when the value is like "group1,group2" ==> ["group1", "group2"]
+            if(isString(defaultAuthorizerGroups)) {
+                defaultAuthorizerGroups = defaultAuthorizerGroups.split(',');
+            }
+
+            if(!defaultAuthorizerGroups.length && this.fw24.getConfig().defaultAdminGroups){
+                defaultAuthorizerGroups = this.fw24.getConfig().defaultAdminGroups;
+            }
+            
+            // resolve the group names from fw24-scope if it's a template
+            // when the value is like ["env:xxx:group1","env:xxx:group2"] ==> ["group1-resolved", "group2-resolved"]
+            defaultAuthorizerGroups = (defaultAuthorizerGroups as Array<string>).map(this.fw24.tryResolveEnvKeyTemplate);
+    
+            // flat-map the groups if they resolved group values are again comma separated
+            // when the resolved value is like ["a,b", "c,d"] ==> ["a", "b", "c", "d"]
+            defaultAuthorizerGroups = (defaultAuthorizerGroups as Array<string>).flatMap((group: string) => group.split(','));
         }
     
         return { defaultAuthorizerName, defaultAuthorizerType, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig };
@@ -370,7 +451,7 @@ export class APIConstruct implements FW24Construct {
         const integrationRole = new Role(this.mainStack, controllerName + "-sqs-integration-role", {
             assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
         });
-        const queueInstance: Queue = this.fw24.get(queueName,'queue');
+        const queueInstance: Queue = this.fw24.getEnvironmentVariable(queueName,'queue');
         queueInstance.grantSendMessages(integrationRole);
         return new AwsIntegration({
             service: "sqs",
@@ -403,7 +484,7 @@ export class APIConstruct implements FW24Construct {
         const integrationRole = new Role(this.mainStack, controllerName + "-sns-integration-role", {
             assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
         });
-        const topicInstance: Topic = this.fw24.get(topicName, 'topic');
+        const topicInstance: Topic = this.fw24.getEnvironmentVariable(topicName, 'topic');
         topicInstance.grantPublish(integrationRole);
         return new AwsIntegration({
             service: "sns",

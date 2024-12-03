@@ -14,10 +14,13 @@ const logLevels: any = {
     "fatal": 6,
 };
 
-const logLevel = logLevels[process.env.LOG_LEVEL || 'info'];
-export const DefaultLogger: ILogger = new Logger();
+const logLevel = logLevels[(process.env.LOG_LEVEL || 'info').toLowerCase()];
 
-export const createLogger = (_options: string | ISettingsParam<ILogObj>) => {
+export const createLogger = (_options: string | Function | ISettingsParam<ILogObj>) => {
+    
+    if(typeof _options == 'function'){
+        _options = _options.name;
+    }
     if (typeof _options == 'string') {
         _options = { name: _options, minLevel: logLevel};
     }
@@ -30,10 +33,17 @@ export const createLogger = (_options: string | ISettingsParam<ILogObj>) => {
         _options.prettyLogTimeZone = 'local';
     }
 
-    const logger = new Logger(_options);
+    const logger = new Logger({
+        ..._options, 
+        // ensure min log level is always there
+        minLevel: _options.minLevel ?? logLevel 
+    });
+    
     return logger;
 }
 
+export const DefaultLogger: ILogger = createLogger('[*]');
+
 export {
     LogDuration
-} from '../decorators/LogDuration';
+} from '../decorators/log-duration';

@@ -1,6 +1,6 @@
 import { Environment } from './util'
 import { sendQueueMessage } from './sqs'
-import { IEmailMessage } from '../core/mail-processor'
+import { IEmailMessage } from '../core/runtime/mail-processor'
 
 export const sendMail = async (emailMessage: IEmailMessage, templateData?: any) => {
     

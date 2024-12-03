@@ -1,17 +1,31 @@
-import { APIGatewayEvent, Context } from "aws-lambda";
-/* TODO: refactor this and make easier to access the data */
+import type { APIGatewayEvent, Context } from "aws-lambda";
 export interface Request {
     event: APIGatewayEvent;
     context: Context;
     resource: any;
     body: any;
     path: string;
-    queryStringParameters: any;
-    headers: any;
+    queryStringParameters: Record<string, any>;
+    headers: Record<string, any>;
     requestContext: any;
     stageVariables: any;
-    pathParameters: any;
+    pathParameters: Record<string, any>;
     isBase64Encoded: boolean;
     httpMethod: string;
     debugMode?: boolean;
+
+    getParam(key: string): any;
+    hasParam(key: string): boolean;
+
+    getHeader(key: string): any;
+    hasHeader(key: string): boolean;
+    
+    getPathParam(key: string): any;
+    hasPathParam(key: string): boolean;
+    
+    getQueryParam(key: string): any;
+    hasQueryParam(key: string): boolean;
+    
+    getBodyParam(key: string): any;
+    hasBodyParam(key: string): boolean;
 }

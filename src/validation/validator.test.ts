@@ -183,7 +183,7 @@ describe('Validator', () => {
         pathParameters: {
           id: '123'
         }
-      } as Request;
+      } as unknown as Request;
       const validations: HttpRequestValidations = {
         param: {
           id: { required: true }  

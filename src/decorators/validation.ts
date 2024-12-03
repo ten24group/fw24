@@ -1,5 +1,5 @@
-import { Route } from "../interfaces/route";
-import { InputValidationRule, HttpRequestValidations } from "../validation";
+import type { Route } from "../interfaces/route";
+import type { InputValidationRule, HttpRequestValidations } from "../validation";
 
 /**
  * Decorator function for adding validations to a route.

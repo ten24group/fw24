@@ -1,5 +1,8 @@
-import { RemovalPolicy } from "aws-cdk-lib";
-import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import type { RemovalPolicy } from "aws-cdk-lib";
+import type { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import type { DIContainer } from "../di/container";
+import type { ILayerVersion } from "aws-cdk-lib/aws-lambda";
+import { IDIContainer } from "./di";
 
 export interface IApplicationConfig {
     name?: string;
@@ -14,10 +17,15 @@ export interface IApplicationConfig {
         disableAccountVerification?: boolean;
     };
     defaultAuthorizationType?: any;
+    defaultAdminGroups?: string[];
     environment?: string; // local, dev, prod
     environmentVariables?: Record<string, string>;
     logRetentionDays?: number;
     logRemovalPolicy?: RemovalPolicy;
-    functionProps?: NodejsFunctionProps
+    functionProps?: Omit<NodejsFunctionProps, 'layers'> & {
+		readonly layers?: Array<ILayerVersion | string>;
+	}
+    appDIContainer?: IDIContainer;
+    lambdaEntryPackages?: string[];
 }
 
