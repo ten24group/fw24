@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-beta.1](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.14...v0.1.1-beta.1) (2024-12-03)
+
+
+### Features
+
+* support for registering classes as the providers in DI modules ([0db879f](https://github.com/ten24group/fw24/commit/0db879f5d4936a89ddb855ecb8919e10240774b5))
+
+
+### Bug Fixes
+
+* API-controller response not returning user-definied headers and stuff ([9740dc7](https://github.com/ten24group/fw24/commit/9740dc7f165502c30fb279c78c071a5f22a9553e))
+* bugs due to circular imports ([466bf2f](https://github.com/ten24group/fw24/commit/466bf2f3827b16278efdff56272557044ac9e2ab))
+* DIModule export and types ([8b969b5](https://github.com/ten24group/fw24/commit/8b969b51a454784406283039fe8ea88cd69e9eba))
+* env-keys related issues ([f20813e](https://github.com/ten24group/fw24/commit/f20813ebcff33f160066d8ca534ad6af5e65cd5c))
+* hard error in MailerConstruct due to the changed path of 'mail-processor.js' ([8e015d5](https://github.com/ten24group/fw24/commit/8e015d5bba2f3dc4f9cdb28678d5ecc5182d8174))
+* hard error when module does not have the controllers DIR ([eec0aab](https://github.com/ten24group/fw24/commit/eec0aab60d8792a05a0d521ab700350f1c7fd9bb))
+* issue in hasChildContainerById and support for logging child contailers ([945a103](https://github.com/ten24group/fw24/commit/945a10305d416851e34259461dbf12697160620c))
+* issue in parsing the request headers and body ([4517446](https://github.com/ten24group/fw24/commit/451744660a6bf39c75e4372c2e52ef687141e8cb))
+* issue with core logic to find related entity service ([5cd63e1](https://github.com/ten24group/fw24/commit/5cd63e1ce45e3ecd53b2e3f6f5c4df42195a4f64))
+* issues with DI system with entry layers; restructured how providers and modules are registered and how DI-metadata is managed ([c8a0eaa](https://github.com/ten24group/fw24/commit/c8a0eaa09c29cc82229cf8b869a00072db3a6879))
+* issues with fall-back DI setup ([0f5a627](https://github.com/ten24group/fw24/commit/0f5a627e00246ebe0cc5d913f59d99ae1493c07d))
+* layer layer bundle size ([4b85b52](https://github.com/ten24group/fw24/commit/4b85b52703fa237e3d31f2a179cabc5d5e2016a0))
+* log-level not working for DefaultLogger ([dbe2d61](https://github.com/ten24group/fw24/commit/dbe2d6164661a653b35cc3b40fb364235fe39455))
+* merge object util to not merge objects of user defined classes ([c4241c4](https://github.com/ten24group/fw24/commit/c4241c496096fc023d3e10a52e9e75422c47f191))
+* parsing the request body not handling base-64 encoded json for post requests ([a791751](https://github.com/ten24group/fw24/commit/a791751f0862c4c43e8f4ad9b29839e0cf5790d7))
+* providedBy option for DI modules, and hierarchial proxy container management ([452d9b8](https://github.com/ten24group/fw24/commit/452d9b86e5e8ccb18715a51be0ac56b49b037bb9))
+* special-char in project-name causing errors ([b3fbc49](https://github.com/ten24group/fw24/commit/b3fbc495a0b238a6df24bb29de348240c7aaa531))
+* support for logging and the abitlty to set log-level per lambda ([8e25c6c](https://github.com/ten24group/fw24/commit/8e25c6c1b09d4de9559b63b309cd61ed20da988c))
+* type in extractDefaultAuthorizer ([ff6d879](https://github.com/ten24group/fw24/commit/ff6d8790624dbf63106d97fb2bb4238486cec445))
+
+### [0.1.1-alpha.14](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.13...v0.1.1-alpha.14) (2024-10-17)
+
+### [0.1.1-alpha.13](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.12...v0.1.1-alpha.13) (2024-10-04)
+
+
+### Bug Fixes
+
+* custom domain logic in S3 client's getSignedUrlForFileUpload ([27fdc2b](https://github.com/ten24group/fw24/commit/27fdc2be418adabf33ea9487bc0cbc7e6d41c9a6))
+* QueueLambda to not add any batching stuff when it's used for a fifo queue ([bc5d0f2](https://github.com/ten24group/fw24/commit/bc5d0f26a5ffaf6c6cbbbec545b10a80a95357fe))
+
+### [0.1.1-alpha.12](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.11...v0.1.1-alpha.12) (2024-08-16)
+
 ### [0.1.1-alpha.11](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.10...v0.1.1-alpha.11) (2024-07-22)
 
 
