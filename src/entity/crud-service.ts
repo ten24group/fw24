@@ -1,13 +1,12 @@
-import { defaultMetaContainer } from ".";
+import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
+import type { EntityQuery } from "./query-types";
 import { Auditor } from "../audit";
 import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
 import { isEmptyObject, removeEmpty } from "../utils";
-import { DefaultValidator, IValidator } from "../validation";
-import { EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
+import { DefaultValidator, type IValidator } from "../validation";
 import { entityFilterCriteriaToExpression } from "./query";
-import { EntityQuery, Pagination } from "./query-types";
 
 /**
  * 
@@ -32,7 +31,7 @@ import { EntityQuery, Pagination } from "./query-types";
 
 export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     entityName: string;
-    entityService?: EntityServiceTypeFromSchema<S>;
+    entityService: EntityServiceTypeFromSchema<S>;
 
     crudType?: keyof TDefaultEntityOperations;
     actor?: any; // todo: define actor context: [ User+Tenant OR System on behalf of some User+Tenant] trying to perform the operation
@@ -78,7 +77,7 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
         id,
         attributes,
         entityName, 
-        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+        entityService, 
         
         actor,
         tenant,
@@ -146,6 +145,10 @@ export interface CreateEntityArgs<
     data: OpsSchema['create'];
 }
 
+export type CreateEntityResponse<Sch extends EntitySchema<any, any, any>> = {
+   data ?: EntityResponseItemTypeFromSchema<Sch>
+}
+
 /**
  * Creates an entity using the provided options.
  * 
@@ -153,12 +156,11 @@ export interface CreateEntityArgs<
  * @returns The created entity.
  * @throws Error if no data is provided for create operation, validation fails, or authorization fails.
  */
-export async function createEntity<S extends EntitySchema<any, any, any>>(options : CreateEntityArgs<S>) {
+export async function createEntity<S extends EntitySchema<any, any, any>>(options : CreateEntityArgs<S>): Promise<CreateEntityResponse<S>> {
     const { 
         data,
-        entityName, 
-        
-        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+        entityName,
+        entityService, 
         
         actor,
         tenant,
@@ -212,7 +214,95 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data, entity.data);
 
-    return entity;
+    return entity as CreateEntityResponse<S>;
+}
+
+
+/**
+ * Represents the arguments for creating-OR-updating an entity.
+ * @template Sch - The entity schema type.
+ * @template OpsSchema - The input schemas for entity operations.
+ */
+export interface UpsertEntityArgs<
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> extends BaseEntityCrudArgs<Sch> {
+    /**
+     * The data for creating the entity.
+     */
+    data: OpsSchema['upsert'];
+}
+
+export type UpsertEntityResponse<Sch extends EntitySchema<any, any, any>> = {
+   data ?: EntityResponseItemTypeFromSchema<Sch>
+}
+
+/**
+ * Creates an entity using the provided options.
+ * 
+ * @param options - The options for creating-OR-updating the entity.
+ * @returns The created entity.
+ * @throws Error if no data is provided for upsert operation, validation fails, or authorization fails.
+ */
+export async function upsertEntity<S extends EntitySchema<any, any, any>>(options : UpsertEntityArgs<S>): Promise<UpsertEntityResponse<S>> {
+    const { 
+        data,
+        entityName,
+        entityService, 
+        
+        actor,
+        tenant,
+        
+        crudType = 'upsert',
+        logger = createLogger('CRUD-service:upsertEntity'),
+        validator = DefaultValidator,
+        authorizer = Authorizer.Default,
+        auditLogger = Auditor.Default,
+        eventDispatcher = EventDispatcher.Default,
+
+    } = options;
+
+    logger.debug(`Called EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data);
+    
+    if(!data){
+        throw new Error("No data provided for upsert operation");
+    }
+
+    // pre events
+    // await eventDispatcher?.dispatch({ event: 'beforeUpsert', context: arguments });
+
+    // validate
+    const validation = await validator.validateEntity({
+        operationName: crudType,
+        entityName,
+        entityValidations: entityService.getEntityValidations(),
+        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+        input: data,
+        actor: actor,
+    });
+
+    if(!validation.pass){
+        throw new Error("Validation failed for upsert: " + JSON.stringify({ cause: validation }));
+    }
+
+    // authorize the actor 
+    // const authorization = await authorizer.authorize({ entityName, crudType, data, actor, tenant });
+    // if(!authorization.pass){
+    //     throw new Error("Authorization failed for upsert: " + { cause: authorization });
+    // }
+
+    const entity = await entityService.getRepository().upsert(data as any).go();
+
+    // post events
+    // await eventDispatcher?.dispatch({ event: 'afterUpsert', context: {...arguments, entity} });
+
+    // create audit
+    // auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
+
+    // return entity;
+    logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data, entity.data);
+
+    return entity as UpsertEntityResponse<S>;
 }
 
 /**
@@ -233,7 +323,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
 
     const { 
         entityName, 
-        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+        entityService, 
 
         actor,
         tenant,
@@ -293,7 +383,7 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>( option
 
     const { 
         entityName, 
-        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+        entityService, 
 
         actor,
         tenant,
@@ -378,7 +468,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         data,
         entityName, 
 
-        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+        entityService, 
 
         actor,
         tenant,
@@ -462,7 +552,7 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>( optio
     const { 
         id,
         entityName, 
-        entityService = defaultMetaContainer.getEntityServiceByEntityName<EntityServiceTypeFromSchema<S>>(entityName), 
+        entityService, 
 
         actor,
         tenant,

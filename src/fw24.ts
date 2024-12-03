@@ -12,3 +12,5 @@ export * from './logging';
 export * from './client';
 export * from './validation';
 export * from './utils';
+export * from './di';
+export * from './const';

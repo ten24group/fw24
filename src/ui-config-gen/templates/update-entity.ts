@@ -1,4 +1,4 @@
-import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
 import { formatEntityAttributesForUpdate } from "./util";
 
@@ -9,14 +9,15 @@ export type UpdateEntityPageOptions<S extends EntitySchema<string, string, strin
 };
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
-    options: UpdateEntityPageOptions<S>
+    options: UpdateEntityPageOptions<S>,
+    entityService: BaseEntityService<S>
 ) => {
 
     const{ entityName } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
 
-    const formPageConfig = makeUpdateEntityFormConfig(options);
+    const formPageConfig = makeUpdateEntityFormConfig(options, entityService);
 
     return {
         pageTitle:  `Update ${entityNamePascalCase}`,
@@ -65,7 +66,8 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 };
 
 export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> (
-    options: UpdateEntityPageOptions<S>
+    options: UpdateEntityPageOptions<S>,
+    entityService: BaseEntityService<S>
 ){
 
     const{ entityName, properties } = options;
@@ -87,7 +89,7 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
         propertiesConfig: [] as any[],
     }
 
-    const formattedProps = formatEntityAttributesForUpdate(Array.from(properties.values()));
+    const formattedProps = formatEntityAttributesForUpdate(Array.from(properties.values()), entityService);
 
     formPageConfig.propertiesConfig.push(...formattedProps);
 

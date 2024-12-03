@@ -1,12 +1,15 @@
-import { EntityConfiguration } from "electrodb";
+import type { EntityConfiguration } from "electrodb";
+import { DIContainer } from "../di";
+import type { EntityInputValidations, EntityValidations } from "../validation";
+import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
+import type { EntityQuery, EntitySelections } from "./query-types";
+
 import { createLogger } from "../logging";
-import { JsonSerializer, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
-import { EntityInputValidations, EntityValidations } from "../validation";
-import { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, createElectroDBEntity } from "./base-entity";
-import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity } from "./crud-service";
-import { EntityQuery, EntitySelections } from "./query-types";
+import { JsonSerializer, camelCase, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
+import { createElectroDBEntity } from "./base-entity";
+import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
 import { addFilterGroupToEntityFilterCriteria, inferRelationshipsForEntitySelections, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
-import { defaultMetaContainer } from "./entity-metadata-container";
+import { IDIContainer } from "../interfaces";
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
@@ -46,7 +49,7 @@ export function getAttributeNameBy(schema: EntitySchema<any, any, any>, spec: Sp
 
 export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
-    readonly logger = createLogger(BaseEntityService.name);
+    readonly logger = createLogger(BaseEntityService);
 
     protected entityRepository ?: EntityRepositoryTypeFromSchema<S>;
     protected entityOpsDefaultIoSchema ?: ReturnType<typeof this.makeOpsDefaultIOSchema<S>>;
@@ -54,8 +57,25 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     constructor(
         protected readonly schema: S,
         protected readonly entityConfigurations: EntityConfiguration,
+        protected readonly diContainer: IDIContainer = DIContainer.ROOT,
     ){
         return this;
+    }
+
+    getRelatedEntityServiceDIToken(relatedEntityName: string){
+        return `${pascalCase(camelCase(relatedEntityName))}Service`;
+    }
+
+    getEntityServiceByEntityName<T extends EntitySchema<any, any, any>>(relatedEntityName: string){
+        return this.diContainer.resolve<BaseEntityService<T>>(
+            this.getRelatedEntityServiceDIToken(relatedEntityName)
+        );
+    }
+
+    hasEntityServiceByEntityName(relatedEntityName: string){
+        return this.diContainer.has(
+            this.getRelatedEntityServiceDIToken(relatedEntityName)
+        );
     }
 
     /**
@@ -261,8 +281,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 	// }
 
 	const defaultAccessPattern = accessPatterns.get('primary');
-    
-    // TODO: add schema for the rest fo the secondary access-patterns
+        
+        // TODO: add schema for the rest fo the secondary access-patterns
 
 	return {
 		get: {
@@ -417,7 +437,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         relations: Array<[relatedAttributeName: string, options: HydrateOptionForRelation<any>]>, 
         rootEntityRecords: Array<{ [x: string]: any; }>
     ) {
-        this.logger.info(`called 'hydrateRecords' for entity: ${this.getEntityName()}`, {relations, rootEntityRecords});
+        this.logger.info(`called 'hydrateRecords' for entity: ${this.getEntityName()}`);
         await Promise.all( relations?.map( async ([relatedAttributeName, options]) => {
             await this.hydrateSingleRelation(rootEntityRecords, relatedAttributeName, options);
         }));
@@ -425,16 +445,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
     private async hydrateSingleRelation(rootEntityRecords: any[], relatedAttributeName: string, options: HydrateOptionForRelation<any>){
         this.logger.info(`called 'hydrateSingleRelation' relation: ${relatedAttributeName} for entity: ${this.getEntityName()}`, {
-            rootEntityRecords,
             options
         });
 
         const relatedEntityName = options.entityName;
 
         // Get related entity service
-        const relatedEntityService = defaultMetaContainer.getEntityServiceByEntityName(relatedEntityName) as BaseEntityService<any>;
+        const relatedEntityService = this.getEntityServiceByEntityName(relatedEntityName);
         if(!relatedEntityService){
-            throw new Error(`No service found in the 'defaultMetaContainer' for relationship: ${relatedAttributeName}(${relatedEntityName}); please make sure service or factory has been registered in the 'defaultMetaContainer'`);
+            throw new Error(`No service found for relationship: ${relatedAttributeName}(${relatedEntityName}); please make sure service has been registered in the required 'di-container'`);
         }
 
         // Get relation metadata
@@ -465,8 +484,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             const isToManyRelation = Array.isArray(entityData[relatedAttributeName]);
 
             const identifiersDataBatch = isToManyRelation ? entityData[relatedAttributeName] : [ entityData[relatedAttributeName] ];
-
-            this.logger.info('IdentifiersDataBatch:, entityData:, relatedAttributeName: ', {identifiersDataBatch, isToManyRelation, entityData, relatedAttributeName});
 
             const identifiersBatch = identifiersDataBatch.map( (identifiersData: any) => {
                 if(!identifiersData){
@@ -526,7 +543,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
         // Merge related entities
         identifiersToSourceEntityDictionary.forEach( (identifiersBatch, sourceEntityData ) => {
-            this.logger.info('in identifiersToSourceEntityDictionary loop: sourceEntityData, identifiersBatch', {sourceEntityData, identifiersBatch})
             const relatedRecords = identifiersBatch.map( (identifiers: any) => {
                 return relatedEntities?.find( (relatedEntityData: any) => {
                     return Object.entries(identifiers).every( ([target, value]) =>
@@ -604,8 +620,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
                 await this.hydrateRecords(relationalAttributes as any, [entity.data]);
             }
 		}
-
-        this.logger.info(`Completed ~ get ~ entityName: ${this.getEntityName()}: `, {identifiers, entity});
 
         return entity?.data;
     }
@@ -748,6 +762,27 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         }
 
         const entity =  await createEntity<S>({
+            data: payload, 
+            entityName: this.getEntityName(),
+            entityService: this,
+        });
+
+        return entity;
+    }
+
+    /**
+     * Creates-OR-Updates an entity.
+     * NOTE: 
+     *   - This method does not check for uniqueness of the attributes, neither create the slug automatically.
+     *   - It's the responsibility of the caller to ensure the read ony attributes are not provided if the record is being upsert.
+     * 
+     * @param payload - The payload for creating-OR-updating the entity.
+     * @returns The created-OR-updated entity.
+     */
+    public async upsert(payload: UpsertEntityItemTypeFromSchema<S>) {
+        this.logger.debug(`Called ~ upsert ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
+
+        const entity =  await upsertEntity<S>({
             data: payload, 
             entityName: this.getEntityName(),
             entityService: this,
@@ -1019,6 +1054,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         const deletedEntity =  await deleteEntity<S>({
             id: identifiers,
             entityName: this.getEntityName(),  
+            entityService: this,
         });
 
         return deletedEntity;
@@ -1109,7 +1145,7 @@ export function makeEntityAccessPatternsSchema<S extends EntitySchema<any, any, 
 
     // make sure there's a primary access pattern;
     if(!accessPatterns.has('primary')){
-        accessPatterns.set('primary', accessPatterns.values().next().value);
+        accessPatterns.set('primary', accessPatterns.values().next().value!);
     }
 
     return accessPatterns;

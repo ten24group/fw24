@@ -104,6 +104,10 @@ export function isFunction(payload: any): payload is AnyFunction {
     return typeof payload === 'function'
 }
 
+export function isClassConstructor(payload: any): payload is AnyClass {
+    return isFunction(payload) && payload.prototype
+}
+
 export function isBlob(payload: any): payload is Blob {
     return getType(payload) === 'Blob'
 }

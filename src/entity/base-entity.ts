@@ -1,7 +1,11 @@
-import { EntityQuery } from './query-types';
-import { Entity, EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, createSchema, Attribute } from "electrodb";
-import { BaseEntityService } from "./base-service";
-import { Narrow, OmitNever, Paths, ValueOf, Writable } from "../utils/types";
+import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem, UpsertItem } from "electrodb";
+import { createSchema, Entity } from "electrodb";
+
+import type { EntityQuery } from './query-types';
+import type { BaseEntityService } from "./base-service";
+import type { OmitNever, Paths, Writable } from "../utils/types";
+
+
 
 /**
  *  ElectroDB entity  examples
@@ -366,6 +370,7 @@ export const DefaultEntityOperations = {
     list: "list",
     query: "query",
     create: "create",
+    upsert: "upsert",
     update: "update",
     delete: "delete",
     duplicate: "duplicate",
@@ -384,6 +389,7 @@ Sch extends EntitySchema<any, any, any>,
     readonly [opName in keyof Sch['model']['entityOperations']] 
         : opName extends 'get'        ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
         : opName extends 'create'     ? CreateEntityItemTypeFromSchema<Sch>
+        : opName extends 'upsert'     ? UpsertEntityItemTypeFromSchema<Sch>
         : opName extends 'update'     ? UpdateEntityItemTypeFromSchema<Sch>
         : opName extends 'delete'     ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
         : opName extends 'duplicate'  ? EntityIdentifiersTypeFromSchema<Sch>
@@ -476,6 +482,15 @@ export type EntityTypeFromSchema<TSchema> = TSchema extends EntitySchema<infer A
     ? Entity<A, F, C, TSchema> 
     : never;
 
+export type EntityResponseItemTypeFromSchema<TSchema> = TSchema extends EntitySchema<infer A, infer F, infer C> 
+  ? ResponseItem<A, F, C, TSchema>
+  : never;
+
+
+export type UpsertEntityItem<E extends Entity<any, any, any, any>> =
+  E extends Entity<infer A, infer F, infer C, infer S>
+    ? UpsertItem<A, F, C, S>
+    : never;
 
 export type EntityRecordTypeFromSchema<Sch extends EntitySchema<any, any, any>> = EntityItem<EntityTypeFromSchema<Sch>>;
 
@@ -487,6 +502,9 @@ export type EntityIdentifiersTypeFromSchema<TSchema extends EntitySchema<any, an
 
 // Create entity
 export type CreateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<CreateEntityItem<EntityTypeFromSchema<TSchema>>>;
+
+// Upsert entity
+export type UpsertEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<UpsertEntityItem<EntityTypeFromSchema<TSchema>>>;
 
 // Update entity
 export type UpdateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any> > = Writable<UpdateEntityItem<EntityTypeFromSchema<TSchema>>>;

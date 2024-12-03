@@ -1,14 +1,13 @@
-import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
-import { ILambdaEnvConfig } from "../interfaces/lambda-env";
-import { IFunctionResourceAccess } from "../constructs/lambda-function";
-import { RemovalPolicy } from "aws-cdk-lib";
-import { RetentionDays } from "aws-cdk-lib/aws-logs";
-import { AuthorizerTypeMetadata } from "./authorizer";
+
+import type { ILambdaEnvConfig } from "../interfaces/lambda-env";
+import type { AuthorizerTypeMetadata } from "./authorizer";
+import type { CommonLambdaHandlerOptions } from "./decorator-utils";
+import { resolveAndExportHandler, setupDI, tryImportingEntryPackagesFor } from "./decorator-utils";
 
 /**
  * Represents the configuration options for a controller.
  */
-export interface IControllerConfig {
+export type IControllerConfig = CommonLambdaHandlerOptions & {
 	/**
 	 * Specifies the authorizer for the controller.
 	 * It can be an array of authorizer objects, a single authorizer object, or a string.
@@ -19,35 +18,9 @@ export interface IControllerConfig {
 		| string;
 
 	/**
-	 * Defines the resources that the controller needs access to.
-	 */
-	resourceAccess?: IFunctionResourceAccess;
-
-	/**
 	 * Specifies the environment configurations for the controller.
 	 */
 	env?: Array<ILambdaEnvConfig>;
-
-	/**
-	 * Specifies the timeout for the controller function in seconds.
-	 * Use this timeout to avoid importing the duration class from aws-cdk-lib.
-	 */
-	functionTimeout?: number;
-
-	/**
-	 * Specifies additional properties for the controller function.
-	 */
-	functionProps?: NodejsFunctionProps;
-
-	/**
-	 * Specifies the number of days to retain the controller function's logs.
-	 */
-	logRetentionDays?: RetentionDays;
-
-	/**
-	 * Specifies the removal policy for the controller function's logs.
-	 */
-	logRemovalPolicy?: RemovalPolicy;
 
 	/**
      * Specifies the target for the API
@@ -65,21 +38,45 @@ export interface IControllerConfig {
  * @returns A class decorator function.
  */
 export function Controller(controllerName: string, controllerConfig: IControllerConfig = {}) {
+	
+	
 	return function <T extends { new (...args: any[]): {} }>(target: T) {
-		return class extends target {
+		tryImportingEntryPackagesFor();
+
+		// Default autoExportLambdaHandler to true if undefined
+		controllerConfig.autoExportLambdaHandler = controllerConfig.autoExportLambdaHandler ?? true;
+
+		// Create an extended class that includes additional setup
+		class ExtendedTarget extends target {
 			constructor(...args: any[]) {
 				super(...args);
-				// set the controller name
+
+				// Set the controller name
 				Reflect.set(this, 'controllerName', controllerName.toLowerCase());
 
-				// initialize the default controller config
+				// Initialize the default controller config
 				const defaultConfig: IControllerConfig = {
 					env: []
 				};
-				
-				// set the controller config
-				Reflect.set(this, 'controllerConfig', { ...defaultConfig, ...controllerConfig});
+
+				// Set the controller config
+				Reflect.set(this, 'controllerConfig', { ...defaultConfig, ...controllerConfig });
 			}
-		};
+		}
+
+		// Preserve the original class name
+		Object.defineProperty(ExtendedTarget, 'name', { value: target.name });
+
+		const container = setupDI({
+			target: ExtendedTarget,
+			module: controllerConfig.module || {},
+			fallbackToRootContainer: controllerConfig.autoExportLambdaHandler
+		});
+		
+		if (controllerConfig.autoExportLambdaHandler) {
+			resolveAndExportHandler(ExtendedTarget, container);
+		}
+
+		return ExtendedTarget;
 	};
 }

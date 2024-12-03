@@ -1,11 +1,15 @@
-import { TIOSchemaAttribute, defaultMetaContainer, isSelectFieldMetadata } from "../../entity";
+import { BaseEntityService, TIOSchemaAttribute, isSelectFieldMetadata } from "../../entity";
+import { DefaultLogger } from "../../logging";
 import { pascalCase } from "../../utils";
 import { makeCreateEntityFormConfig } from "./create-entity";
 import { makeViewEntityListConfig } from "./list-entity";
-import { makeUpdateEntityFormConfig } from "./update-entity";
 import { makeViewEntityDetailConfig } from "./view-entity";
 
-export function formatEntityAttributeForFormOrDetail(thisProp: TIOSchemaAttribute, type: 'create' | 'update' | 'detail' ) {
+export function formatEntityAttributeForFormOrDetail(
+    thisProp: TIOSchemaAttribute, 
+    type: 'create' | 'update' | 'detail',
+    entityService: BaseEntityService<any>
+) {
     const formatted: any =  {
         ...thisProp,
         label:          thisProp.name,
@@ -18,21 +22,23 @@ export function formatEntityAttributeForFormOrDetail(thisProp: TIOSchemaAttribut
         
         const {entityName} = thisProp.addNewOption;
 
-        if(entityName && defaultMetaContainer.hasEntityServiceByEntityName(entityName)){
-            const entityService = defaultMetaContainer.getEntityServiceByEntityName(entityName);
-            const entitySchema = entityService.getEntitySchema();
-            const defaultIoSchema = entityService.getOpsDefaultIOSchema();
+        if(entityName && entityService.hasEntityServiceByEntityName(entityName)){
+            const relatedEntityService = entityService.getEntityServiceByEntityName(entityName);
+            const relatedEntitySchema = relatedEntityService.getEntitySchema();
+            const relDefaultIoSchema = relatedEntityService.getOpsDefaultIOSchema();
 
             let formConfig = makeCreateEntityFormConfig({
                 entityName,
-                properties: defaultIoSchema.create.input,
-                entityNamePlural: entitySchema.model.entityNamePlural,
-            });
+                properties: relDefaultIoSchema.create.input,
+                entityNamePlural: relatedEntitySchema.model.entityNamePlural,
+            }, relatedEntityService);
 
             formatted['addNewOption'] = {
                 modalType: 'form',
                 modalPageConfig: formConfig
             }
+        } else {
+            DefaultLogger.warn(`formatEntityAttributeForFormOrDetail: Could not find related-entity-service for entity [${entityName}] in ${entityService.constructor.name}`);
         }
     }
     
@@ -40,18 +46,18 @@ export function formatEntityAttributeForFormOrDetail(thisProp: TIOSchemaAttribut
         
         const entityName = thisProp.relation.entity;
 
-        if(defaultMetaContainer.hasEntityServiceByEntityName(entityName)){
-            const entityService = defaultMetaContainer.getEntityServiceByEntityName(entityName);
-            const entitySchema = entityService.getEntitySchema();
-            const defaultIoSchema = entityService.getOpsDefaultIOSchema();
+        if(entityService.hasEntityServiceByEntityName(entityName)){
+            const relatedEntityService = entityService.getEntityServiceByEntityName(entityName);
+            const relatedEntitySchema = relatedEntityService.getEntitySchema();
+            const relDefaultIoSchema = relatedEntityService.getOpsDefaultIOSchema();
 
             if(thisProp.relation.type.endsWith('to-one')){
 
                 const modalPageConfig = makeViewEntityDetailConfig({
                     entityName,
-                    properties: defaultIoSchema.update.input,
-                    entityNamePlural: entitySchema.model.entityNamePlural,
-                });
+                    properties: relDefaultIoSchema.update.input,
+                    entityNamePlural: relatedEntitySchema.model.entityNamePlural,
+                }, relatedEntityService);
 
                 formatted['openInModal'] = {
                     modalType: 'details',
@@ -61,8 +67,8 @@ export function formatEntityAttributeForFormOrDetail(thisProp: TIOSchemaAttribut
 
                 const modalPageConfig = makeViewEntityListConfig({
                     entityName,
-                    properties: defaultIoSchema.update.input,
-                    entityNamePlural: entitySchema.model.entityNamePlural,
+                    properties: relDefaultIoSchema.update.input,
+                    entityNamePlural: relatedEntitySchema.model.entityNamePlural,
                 });
                 
                 formatted['openInModal'] = {
@@ -75,11 +81,11 @@ export function formatEntityAttributeForFormOrDetail(thisProp: TIOSchemaAttribut
 
     const items = (thisProp as any).items;
     if(thisProp.type === 'map'){
-        formatted['properties'] =  formatEntityAttributesForFormOrDetail(thisProp.properties ?? [], type);
+        formatted['properties'] =  formatEntityAttributesForFormOrDetail(thisProp.properties ?? [], type, entityService);
     } else if(thisProp.type === 'list' && items?.type === 'map'){
         formatted['items'] = {
             ...formatted['items'],
-            properties: formatEntityAttributesForFormOrDetail(items.properties ?? [], type)
+            properties: formatEntityAttributesForFormOrDetail(items.properties ?? [], type, entityService)
         }
     }
 
@@ -88,38 +94,42 @@ export function formatEntityAttributeForFormOrDetail(thisProp: TIOSchemaAttribut
     return formatted;
 }
 
-export function formatEntityAttributesForFormOrDetail( properties: TIOSchemaAttribute[], type: 'create' | 'update' | 'detail' ) {
+export function formatEntityAttributesForFormOrDetail( 
+    properties: TIOSchemaAttribute[], 
+    type: 'create' | 'update' | 'detail',
+    entityService: BaseEntityService<any>
+) {
     
     if(type === 'create'){
-        return formatEntityAttributesForCreate(properties);
+        return formatEntityAttributesForCreate(properties, entityService);
     } 
 
     if(type === 'update'){
-        return formatEntityAttributesForUpdate(properties);
+        return formatEntityAttributesForUpdate(properties, entityService);
     } 
 
     if(type === 'detail'){
-        return formatEntityAttributesForDetail(properties);
+        return formatEntityAttributesForDetail(properties, entityService);
     }
     throw (`Invalid type [${type}] provided to formatEntityAttributesForFormOrDetail`);
 }
 
-export function formatEntityAttributesForCreate( properties: TIOSchemaAttribute[]) {
+export function formatEntityAttributesForCreate( properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
     return properties
         .filter( prop => prop && prop.isCreatable )
-        .map( (att) => formatEntityAttributeForFormOrDetail(att, 'create') );
+        .map( (att) => formatEntityAttributeForFormOrDetail(att, 'create', entityService) );
 }
 
-export function formatEntityAttributesForUpdate( properties: TIOSchemaAttribute[]) {
+export function formatEntityAttributesForUpdate( properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
     return properties
         .filter( prop => prop && prop.isEditable )
-        .map( (att) => formatEntityAttributeForFormOrDetail(att, 'update') );
+        .map( (att) => formatEntityAttributeForFormOrDetail(att, 'update', entityService) );
 }
 
-export function formatEntityAttributesForDetail( properties: TIOSchemaAttribute[]) {
+export function formatEntityAttributesForDetail( properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
     return properties
         .filter( prop => prop && prop.isVisible )
-        .map( (att) => formatEntityAttributeForFormOrDetail(att, 'detail') );
+        .map( (att) => formatEntityAttributeForFormOrDetail(att, 'detail', entityService) );
 }
 
 export type ListingPropConfig = {

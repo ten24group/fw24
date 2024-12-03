@@ -1,9 +1,9 @@
-import { Route } from "../interfaces/route";
+import type { Route } from "../interfaces/route";
 
 export type AuthorizerTypeMetadata = { 
   type?: string; 
   name?: string; 
-  groups?: string[]; 
+  groups?: string[] | string; 
   requireRouteInGroupConfig?: boolean 
 };
 
