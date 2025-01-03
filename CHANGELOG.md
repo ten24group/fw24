@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-beta.3](https://github.com/ten24group/fw24/compare/v0.1.1-beta.2...v0.1.1-beta.3) (2025-01-03)
+
+
+### Bug Fixes
+
+* types for env in task and queue decorators ([f910eea](https://github.com/ten24group/fw24/commit/f910eea11e30790109de5c5455fa8a982e5af75d))
+
 ### [0.1.1-beta.2](https://github.com/ten24group/fw24/compare/v0.1.1-beta.1...v0.1.1-beta.2) (2024-12-10)
 
 ### [0.1.1-beta.1](https://github.com/ten24group/fw24/compare/v0.1.1-alpha.14...v0.1.1-beta.1) (2024-12-03)
