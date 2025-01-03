@@ -1,3 +1,4 @@
+import type { ILambdaEnvConfig } from "../interfaces";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
 import { resolveAndExportHandler, setupDI, tryImportingEntryPackagesFor } from "./decorator-utils";
 
@@ -13,10 +14,7 @@ export type ITaskConfig = CommonLambdaHandlerOptions & {
 	/**
 	 * The environment configuration for the task.
 	 */
-	env?: {
-		name: string;
-	};
-
+	env?: Array<ILambdaEnvConfig>;
 }
 
 /**
