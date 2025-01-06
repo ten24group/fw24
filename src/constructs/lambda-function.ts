@@ -462,7 +462,7 @@ export class LambdaFunction extends Construct {
       // Add environment variable for the queue url
       addEnvironmentKeyValueForFunction({
         fn,
-        key: `${queueName}_topicArn`,
+        key: `${queueName}_queueUrl`,
         value: queueInstance.queueUrl
       })
     });
