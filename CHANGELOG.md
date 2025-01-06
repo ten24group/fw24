@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-beta.4](https://github.com/ten24group/fw24/compare/v0.1.1-beta.3...v0.1.1-beta.4) (2025-01-06)
+
+
+### Bug Fixes
+
+* type in lambda resource access for queues ([0aa2c4a](https://github.com/ten24group/fw24/commit/0aa2c4a70b036ac86e34060fc9aabedb5446e592))
+
 ### [0.1.1-beta.3](https://github.com/ten24group/fw24/compare/v0.1.1-beta.2...v0.1.1-beta.3) (2025-01-03)
 
 
