@@ -18,7 +18,7 @@ export interface IMailerConstructConfig {
     /**
      * The domain for the mailer.
      */
-    domain: string;
+    domain?: string;
 
     /**
      * Optional SES options.
@@ -83,9 +83,11 @@ export class MailerConstruct implements FW24Construct {
         this.mainStack = this.fw24.getStack("main");
 
         // create identity
-        const identity = new EmailIdentity(this.mainStack, `${this.fw24.appName}-ses-identity`, {
-            identity: Identity.domain(this.mailerConstructConfig.domain),
-        });
+        if(this.mailerConstructConfig.domain !== undefined && this.mailerConstructConfig.domain !== "") {
+            const identity = new EmailIdentity(this.mainStack, `${this.fw24.appName}-ses-identity`, {
+                identity: Identity.domain(this.mailerConstructConfig.domain),
+            });
+        }
 
         // create main queue
         const queue = new QueueLambda(this.mainStack, `${this.fw24.appName}-mail-queue`, {
