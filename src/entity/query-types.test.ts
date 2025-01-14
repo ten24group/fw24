@@ -1,12 +1,13 @@
-import { And, Narrow, Paths, PrettyPrint } from '../utils/types';
+import { Narrow } from '../utils/types';
 
 import { describe, expect, it } from '@jest/globals';
 import { EntityFilterCriteria, EntityQuery, FilterGroup } from './query-types';
 import { randomUUID } from 'crypto';
 import { DefaultEntityOperations, EntityAttribute, EntitySchema, EntityAttributePaths, createElectroDBEntity, createEntityRelation, createEntitySchema } from './base-entity';
-import { entityFilterCriteriaToExpression, inferRelationshipsForEntitySelections, parseEntityAttributePaths, parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
-import { createCustomAttribute } from 'electrodb';
-import { type } from 'os';
+import { entityFilterCriteriaToExpression, parseEntityAttributePaths } from './query';
+import { DIContainer } from '../di';
+import { BaseEntityService } from './base-service';
+import { Service } from '../decorators/service';
 namespace User {
 
   export const createUserSchema = () => createEntitySchema({
@@ -96,10 +97,18 @@ namespace User {
 
   export type TUserSchema = ReturnType<typeof createUserSchema>
 
+
   export const schema = createUserSchema();
   export const entity = createElectroDBEntity({schema: schema, entityConfigurations: {
     table: 'xxxx'
   }});
+
+  @Service({forEntity: schema.model.entity})
+  class UserService extends BaseEntityService<User.TUserSchema> {
+    constructor(){
+      super(User.schema, null as any, DIContainer.ROOT);
+    }
+  }
 
   export const createUserSchema2 = () => createEntitySchema({
     model: {
@@ -132,8 +141,8 @@ namespace User {
         required: true,
         readOnly: true,
         default: () => 'xxx-yyy-zzz', // TODO: have some global logic drive this value
-        relation: createEntityRelation({
-          entity: schema,
+        relation: createEntityRelation<TUserSchema>({
+          entityName: 'user',
           type: 'many-to-one',
           attributes: ['userId', 'updatedAt', 'createdAt'],
           identifiers: [{
@@ -215,6 +224,13 @@ namespace User {
   export type TUserSchema2 = ReturnType<typeof createUserSchema2>;
   export const userSch2 = createUserSchema2();
 
+  @Service({forEntity: userSch2.model.entity})
+  class User2Service extends BaseEntityService<User.TUserSchema2> {
+    constructor(){
+      super(User.userSch2, null as any, DIContainer.ROOT);
+    }
+  }
+
   export const createGroupSchema = () => createEntitySchema({
     model: {
       version: '1',
@@ -235,8 +251,8 @@ namespace User {
         required: true,
         readOnly: true,
         default: () => 'xxx-yyy-zzz', // TODO: have some global logic drive this value
-        relation: createEntityRelation({
-          entity: userSch2,
+        relation: createEntityRelation<TUserSchema2>({
+          entityName: 'user2',
           type: 'many-to-one',
           identifiers: [{
             source: 'admin',
@@ -291,6 +307,14 @@ namespace User {
 
   export type TGroupSchema = ReturnType<typeof createGroupSchema>;
   export const groupSch = createGroupSchema();
+
+
+@Service({forEntity: groupSch.model.entity})
+class GroupService extends BaseEntityService<User.TGroupSchema> {
+  constructor(){
+    super(User.groupSch, null as any, DIContainer.ROOT);
+  }
+}
 
   export function createEntityAttribute<A extends EntityAttribute>(att: A): A {
     return att;
@@ -649,13 +673,38 @@ describe('query', () => {
 });
 
 
+
 describe('parseEntityAttributePaths', () => {
   it('should transform array to nested object', () => {
+
     const array = ['name', 'groupId', 'admin', 'admin.firstName', 'admin.lastName', 'admin.tenant' ,'admin.tenant.firstName', 'admin.tenant.lastName'];
 
     const result = parseEntityAttributePaths(array);
 
-    const inferred =  inferRelationshipsForEntitySelections(User.groupSch, result);
+    DIContainer.ROOT.register({
+      useValue: User.groupSch,
+      type: 'schema',
+      forEntity: User.groupSch.model.entity,
+      provide: User.groupSch.model.entity+ 'Schema'
+    })
+
+    DIContainer.ROOT.register({
+      useValue: User.schema,
+      type: 'schema',
+      forEntity: User.schema.model.entity,
+      provide: User.schema.model.entity+ 'Schema'
+    })
+
+    DIContainer.ROOT.register({
+      useValue: User.userSch2,
+      type: 'schema',
+      forEntity: User.userSch2.model.entity,
+      provide: User.userSch2.model.entity+ 'Schema'
+    })
+
+    const entityService = DIContainer.ROOT.resolveEntityService(User.groupSch.model.entity) as any;
+
+    const inferred =  entityService.inferRelationshipsForEntitySelections(User.groupSch, result);
     
     const expected = {
         name: true,

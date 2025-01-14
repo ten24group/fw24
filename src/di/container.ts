@@ -33,6 +33,7 @@ import { applyMiddlewares, applyMiddlewaresAsync, filterAndSortProviders, flatte
 import { getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPropertyDependenciesMetadata, } from './metadata';
 
 import { DI_TOKENS } from '../const';
+import { camelCase, pascalCase } from '../utils/cases';
 
 export class DIContainer implements IDIContainer {
 
@@ -279,7 +280,7 @@ export class DIContainer implements IDIContainer {
 
             const exported = providers.map(provider => {
                 const { _container, _provider, _id } = provider;
-                const { condition, provide, priority, override, singleton, tags, type } = _provider;
+                const { condition, provide, priority, override, singleton, tags, type, forEntity } = _provider;
 
                 return {
                     _provider: {
@@ -291,6 +292,7 @@ export class DIContainer implements IDIContainer {
                         singleton,
                         tags,
                         type,
+                        forEntity,
                     },
                     _id,
                     _container: this
@@ -520,6 +522,7 @@ export class DIContainer implements IDIContainer {
             token?: string,
             tags?: string[],
             type?: ProviderOptions['type'], 
+            forEntity?: ProviderOptions['forEntity'], 
             priority?: PriorityCriteria,
             allProvidersFromChildContainers?: boolean
         }
@@ -543,6 +546,10 @@ export class DIContainer implements IDIContainer {
 
             if (criteria?.type) {
                 pathProviders = pathProviders.filter(p => p._provider.type === criteria.type);
+            }
+
+            if(criteria?.forEntity){
+                pathProviders = pathProviders.filter(p => p._provider.forEntity === criteria.forEntity)
             }
 
             pathProviders.forEach(provider => { 
@@ -577,6 +584,10 @@ export class DIContainer implements IDIContainer {
 
                 if (criteria?.type) {
                     childExportedProviders = childExportedProviders.filter(p => p._provider.type === criteria.type);
+                }
+
+                if(criteria?.forEntity){
+                    childExportedProviders = childExportedProviders.filter(p => p._provider.forEntity === criteria.forEntity)
                 }
 
                 childExportedProviders.forEach(provider => {
@@ -850,6 +861,7 @@ export class DIContainer implements IDIContainer {
             tags?: string[];
             type?: ProviderOptions['type'],
             priority?: PriorityCriteria;
+            forEntity?: ProviderOptions['forEntity'],
             allProvidersFromChildContainers?: boolean
         } 
     ): boolean {
@@ -862,6 +874,94 @@ export class DIContainer implements IDIContainer {
         });
 
         return bestProviders.length > 0;
+    }
+
+    makeEntityServiceDIToken(entityName: string){
+        return `${pascalCase(camelCase(entityName))}Service`
+    }
+
+    hasEntityService(
+        entityName: DepIdentifier, 
+        criteria?: {
+            tags?: string[];
+            priority?: PriorityCriteria;
+            allProvidersFromChildContainers?: boolean
+        } 
+    ): boolean {
+
+        const bestProviders = this.collectBestProvidersFor<any>({
+            ...criteria,
+            type: 'service',
+            forEntity: entityName,
+        });
+
+        return bestProviders.length > 0;
+    }
+
+    resolveEntityService<T, Async extends boolean = false>(
+        entityName: DepIdentifier, 
+        criteria?: {
+            tags?: string[];
+            priority?: PriorityCriteria;
+            allProvidersFromChildContainers?: boolean
+        },
+        async: Async = false as Async
+    ): Async extends true ? Promise<T> : T {
+
+        const bestProviders = this.collectBestProvidersFor<any>({
+            ...criteria,
+            type: 'service',
+            forEntity: entityName,
+        });
+        
+        if (bestProviders.length === 0) {
+            throw new Error(`No Entity-Service provider found for entity- ${entityName}. DIContainer[${this.containerId}]`);
+        }
+        const options = bestProviders[0];
+        
+        return this.resolveProviderValue<T, Async>(options, new Set(), async);
+    }
+
+    hasEntitySchema(
+        entityName: DepIdentifier, 
+        criteria?: {
+            tags?: string[];
+            priority?: PriorityCriteria;
+            allProvidersFromChildContainers?: boolean
+        } 
+    ): boolean {
+
+        const bestProviders = this.collectBestProvidersFor<any>({
+            ...criteria,
+            type: 'schema',
+            forEntity: entityName,
+        });
+
+        return bestProviders.length > 0;
+    }
+
+    resolveEntitySchema<T, Async extends boolean = false>(
+        entityName: DepIdentifier, 
+        criteria?: {
+            tags?: string[];
+            priority?: PriorityCriteria;
+            allProvidersFromChildContainers?: boolean
+        },
+        async: Async = false as Async
+    ): Async extends true ? Promise<T> : T {
+
+        const bestProviders = this.collectBestProvidersFor<any>({
+            ...criteria,
+            type: 'schema',
+            forEntity: entityName,
+        });
+        
+        if (bestProviders.length === 0) {
+            throw new Error(`No Entity-Schema provider found for entity- ${entityName}. DIContainer[${this.containerId}]`);
+        }
+        const options = bestProviders[0];
+        
+        return this.resolveProviderValue<T, Async>(options, new Set(), async);
     }
 
     clear(clearChildContainers = true) {
