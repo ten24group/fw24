@@ -1,35 +1,89 @@
-import type { ClassConstructor, DepIdentifier, IDIContainer,  } from '../interfaces/di';
-import { BaseEntityService } from '../entity';
-import { createLogger, ILogger } from '../logging';
-import { DI_TOKENS } from '../const';
-import { Inject, InjectContainer } from '../di/decorators';
 import { EntityConfiguration } from 'electrodb';
+import { DI_TOKENS } from '../const';
+import { Inject, InjectContainer, OnInit } from '../di/decorators';
+import { BaseEntityService } from '../entity';
+import type { ClassConstructor, DepIdentifier, IDIContainer, ProviderOptions, } from '../interfaces/di';
+import { createLogger, DefaultLogger, ILogger } from '../logging';
 import { camelCase, pascalCase } from '../utils/cases';
-import { Service } from '.';
+import type { OmitAnyKeys } from '../utils/types';
+import { Service } from './service';
 
-import { tryRegisterInjectable, InjectableOptions } from '../di/utils/tryRegisterInjectable';
+import { DIContainer } from '../di/container';
+import { getModuleMetadata } from '../di/metadata';
 
-export type SchemaInjectableOptions = InjectableOptions & {
+export type EntitySchemaProviderOptions = OmitAnyKeys<ProviderOptions<any>, 'provide' | 'useClass' | 'useConfig' | 'useExisting'> & {
     forEntity: DepIdentifier<any>;
-    doNotAutoRegisterEntityService?: boolean
+    providedIn?: 'ROOT' | DIContainer | ClassConstructor;
+    doNotAutoRegisterEntityService?: boolean;
 };
 
-function makeEntityServiceDIToken(entityName: string){
-    return `${pascalCase(camelCase(entityName))}Service[Gen]`
+function makeAutoGenEntityServiceName(entityName: string){
+    return `${pascalCase(camelCase(entityName))}Service[AutoGen]`
 }
 
-export function registerEntitySchema(target: ClassConstructor, options: SchemaInjectableOptions){
+export function registerEntitySchema(options: EntitySchemaProviderOptions){
     
-    tryRegisterInjectable(target, {
+    const entitySchemaToken = `${options.forEntity}Schema`;
+
+    const optionsCopy = {
         ...options,
-        type: 'schema'
-    });
+        type: 'schema',
+        provide: entitySchemaToken,
+    } as ProviderOptions<any>
+
+    let container: IDIContainer | undefined;
+    let diContainerHasBeenInitialized = true;
+
+    if(!options.providedIn || options.providedIn === 'ROOT'){
+        container = DIContainer.ROOT;
+    } else if(options.providedIn instanceof DIContainer){
+        container = options.providedIn!;
+    } else if(typeof options.providedIn === 'function') {
+
+        // Check if the providedIn is a class constructor
+        const moduleMetadata = getModuleMetadata(options.providedIn);
+        
+        if (!moduleMetadata) {
+            throw new Error(
+                `Invalid providedIn option. No module metadata found for ${options.providedIn.name}; ensure the class is decorated with @DIModule({...}).`
+            );
+        }
+
+        moduleMetadata.addProvider(optionsCopy);
+        
+        diContainerHasBeenInitialized = !!moduleMetadata.container;
+
+        container = moduleMetadata.container;
+    }
+
+    if(container){
+        
+        try {
+            container.register(optionsCopy);
+        } catch (error) {
+            DefaultLogger.error(`registerEntitySchema:: Error registering ${options.forEntity} schema with container:`, container);
+            throw error;
+        }
+
+    } else if(diContainerHasBeenInitialized) {
+
+        throw new Error(
+            `Invalid providedIn option; no container could be resolved. Ensure it is either 'ROOT' or an instance of DI-container or a class decorated with @DIModule({...}).`
+        );
+    }
 
     if(options.doNotAutoRegisterEntityService){
         return;
     }
 
-    @Service({forEntity: options.forEntity, priority: -1})
+    const entityServiceName = makeAutoGenEntityServiceName(String(options.forEntity));
+
+    @Service({
+        priority: -1, 
+        provide: entityServiceName,
+        forEntity: options.forEntity, 
+        providedIn: options.providedIn, 
+    })
     class DefaultEntityService extends BaseEntityService<any> {
         readonly logger: ILogger = createLogger(DefaultEntityService);
 
@@ -37,14 +91,16 @@ export function registerEntitySchema(target: ClassConstructor, options: SchemaIn
             @Inject(DI_TOKENS.DYNAMO_ENTITY_CONFIGURATIONS)
             readonly entityConfiguration: EntityConfiguration,
 
+            @Inject(entitySchemaToken) readonly schema: any,
+
             @InjectContainer()
             readonly container: IDIContainer,
         ) {
-            const schema = container.resolveEntitySchema(options.forEntity);
             super(schema, entityConfiguration, container);
         }
+        
     }
-    
-    Object.defineProperty(DefaultEntityService, 'name', { value: makeEntityServiceDIToken(String(options.forEntity)) });
+
+    Object.defineProperty(DefaultEntityService, 'name', { value: entityServiceName });
 
 }
