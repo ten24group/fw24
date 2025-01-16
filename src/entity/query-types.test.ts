@@ -6,8 +6,8 @@ import { randomUUID } from 'crypto';
 import { DefaultEntityOperations, EntityAttribute, EntitySchema, EntityAttributePaths, createElectroDBEntity, createEntityRelation, createEntitySchema } from './base-entity';
 import { entityFilterCriteriaToExpression, parseEntityAttributePaths } from './query';
 import { DIContainer } from '../di';
-import { BaseEntityService } from './base-service';
-import { Service } from '../decorators/service';
+import { DI_TOKENS } from '../const';
+import { registerEntitySchema } from '../decorators';
 namespace User {
 
   export const createUserSchema = () => createEntitySchema({
@@ -103,12 +103,12 @@ namespace User {
     table: 'xxxx'
   }});
 
-  @Service({forEntity: schema.model.entity})
-  class UserService extends BaseEntityService<User.TUserSchema> {
-    constructor(){
-      super(User.schema, null as any, DIContainer.ROOT);
-    }
-  }
+  // @Service({forEntity: schema.model.entity})
+  // class UserService extends BaseEntityService<User.TUserSchema> {
+  //   constructor(){
+  //     super(User.schema, null as any, DIContainer.ROOT);
+  //   }
+  // }
 
   export const createUserSchema2 = () => createEntitySchema({
     model: {
@@ -224,13 +224,6 @@ namespace User {
   export type TUserSchema2 = ReturnType<typeof createUserSchema2>;
   export const userSch2 = createUserSchema2();
 
-  @Service({forEntity: userSch2.model.entity})
-  class User2Service extends BaseEntityService<User.TUserSchema2> {
-    constructor(){
-      super(User.userSch2, null as any, DIContainer.ROOT);
-    }
-  }
-
   export const createGroupSchema = () => createEntitySchema({
     model: {
       version: '1',
@@ -309,12 +302,12 @@ namespace User {
   export const groupSch = createGroupSchema();
 
 
-@Service({forEntity: groupSch.model.entity})
-class GroupService extends BaseEntityService<User.TGroupSchema> {
-  constructor(){
-    super(User.groupSch, null as any, DIContainer.ROOT);
-  }
-}
+// @Service({forEntity: groupSch.model.entity})
+// class GroupService extends BaseEntityService<User.TGroupSchema> {
+//   constructor(){
+//     super(User.groupSch, null as any, DIContainer.ROOT);
+//   }
+// }
 
   export function createEntityAttribute<A extends EntityAttribute>(att: A): A {
     return att;
@@ -681,25 +674,43 @@ describe('parseEntityAttributePaths', () => {
 
     const result = parseEntityAttributePaths(array);
 
+    // DIContainer.ROOT.register({
+    //   useValue: User.groupSch,
+    //   type: 'schema',
+    //   forEntity: User.groupSch.model.entity,
+    //   provide: User.groupSch.model.entity+ 'Schema'
+    // })
+
+    // DIContainer.ROOT.register({
+    //   useValue: User.schema,
+    //   type: 'schema',
+    //   forEntity: User.schema.model.entity,
+    //   provide: User.schema.model.entity+ 'Schema'
+    // })
+
+    // DIContainer.ROOT.register({
+    //   useValue: User.userSch2,
+    //   type: 'schema',
+    //   forEntity: User.userSch2.model.entity,
+    //   provide: User.userSch2.model.entity+ 'Schema'
+    // })
+
     DIContainer.ROOT.register({
-      useValue: User.groupSch,
-      type: 'schema',
+      useValue: {},
+      provide: DI_TOKENS.DYNAMO_ENTITY_CONFIGURATIONS
+    });
+
+    registerEntitySchema({
       forEntity: User.groupSch.model.entity,
-      provide: User.groupSch.model.entity+ 'Schema'
+      useValue: User.groupSch,
     })
-
-    DIContainer.ROOT.register({
-      useValue: User.schema,
-      type: 'schema',
-      forEntity: User.schema.model.entity,
-      provide: User.schema.model.entity+ 'Schema'
-    })
-
-    DIContainer.ROOT.register({
-      useValue: User.userSch2,
-      type: 'schema',
+    registerEntitySchema({
       forEntity: User.userSch2.model.entity,
-      provide: User.userSch2.model.entity+ 'Schema'
+      useValue: User.userSch2,
+    })
+    registerEntitySchema({
+      forEntity: User.schema.model.entity,
+      useValue: User.schema,
     })
 
     const entityService = DIContainer.ROOT.resolveEntityService(User.groupSch.model.entity) as any;

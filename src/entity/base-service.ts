@@ -1065,57 +1065,95 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
     }
 
     /**
-     * Infers relationships between entities based on the provided schema and object.
+     * Infers relationships between entities based on the provided schema and selection-paths.
      * @param schema The entity schema.
-     * @param paths The object containing attribute values.
-     * @returns The inferred relationships as a HydrateOptionsMapForEntity.
+     * @param paths The parsed selection paths from e.g. parseEntityAttributePaths().
+     * @param pathKey The current "path" string representing how we arrived here (defaults to the entity name).
+     * @param visitedPaths A set of path-strings visited so far in this recursion chain (prevents cycles).
+     * @param maxDepth Maximum recursion depth (optional).
      */
     inferRelationshipsForEntitySelections<E extends EntitySchema<any, any, any>>(
         schema: E,
         paths: ParsedEntityAttributePaths,
+        pathKey: string = schema.model.entity,
+        visitedPaths: Set<string> = new Set<string>(),
+        maxDepth = 5
     ): HydrateOptionsMapForEntity<E> {
-    
-        this.logger.debug('Called inferRelationshipsForEntitySelections', { paths });
-    
+
+        this.logger.debug('inferRelationshipsForEntitySelections', { pathKey, paths });
+
+        // If we exceed max depth, we skip expansions
+        if (maxDepth <= 0) {
+            this.logger.warn(`Max recursion depth reached at pathKey="${pathKey}"`);
+            return {} as HydrateOptionsMapForEntity<E>;
+        }
+
         const inferred: any = {};
-    
+
+        // Loop over each attribute in the entity schema
         Object.entries(schema.attributes).forEach(([attributeName, attributeMeta]) => {
             const attVal = paths[attributeName];
-    
             if (!attVal) {
+                // Not selected in the user's attributes
                 return;
             }
-    
+
             const isRelational = !!attributeMeta.relation;
-    
-            // For non-relational attributes, or relational attributes without any nested attributes info, just set the value to true
-            if (!isRelational || !isObject(attVal)) {
+            
+            // If not relational or the user just put { [attributeName]: true }, store it directly
+            if (!isRelational || typeof attVal !== 'object') {
                 inferred[attributeName] = attVal;
                 return;
             }
-    
-            // For relational attributes, set the entity name, relation type, identifiers, and attributes.
-            // Attributes for the related entity can contain further nested relationships; hence we infer the metadata recursively.
-            const relationMeta = attributeMeta.relation!;        
-            this.logger.debug('inferRelationshipsForEntitySelections relationMeta', { attVal });
-    
+
+            // It's a relational attribute; prepare to recurse
+            const relationMeta = attributeMeta.relation!;
+            const nextEntityName = relationMeta.entityName;
+
+            // Build a new "path" string to detect cycles (e.g. "User.groups.Group.members.User")
+            const newPath = `${pathKey}.${attributeName}.${nextEntityName}`;
+
+            // Check if we've already visited this path, if so => skip expansions for this attribute only
+            if (visitedPaths.has(newPath)) {
+                this.logger.warn(`Skipping cyc relation expansions for: ${newPath}`);
+                inferred[attributeName] = {
+                    entityName: nextEntityName,
+                    skippedDueToCycle: true,
+                };
+                return;
+            }
+
+            // Mark this path as visited
+            visitedPaths.add(newPath);
+
+            // Recurse to the related entity's schema
+            const relatedEntitySchema = this.diContainer.resolveEntitySchema<EntitySchema<any, any, any>>(nextEntityName);
+            
+            // Build the "meta" object that we store
             const meta: HydrateOptionForRelation = {
-                entityName: relationMeta.entityName,
+                entityName: nextEntityName,
                 relationType: relationMeta.type,
-                identifiers: isFunction(relationMeta.identifiers) ? relationMeta.identifiers() : relationMeta.identifiers,
+                identifiers: isFunction(relationMeta.identifiers)
+                    ? relationMeta.identifiers()
+                    : relationMeta.identifiers,
                 attributes: {},
             };
-    
-            const relatedEntitySchema = this.diContainer.resolveEntitySchema<EntitySchema<any, any, any>>(relationMeta.entityName);
-    
+
+            // Recurse to expand child's relationships
             meta.attributes = this.inferRelationshipsForEntitySelections(
                 relatedEntitySchema,
                 attVal.attributes || relationMeta.attributes,
+                newPath,
+                visitedPaths,
+                maxDepth - 1
             );
-    
-            inferred[attributeName] = meta
+
+            inferred[attributeName] = meta;
+
+            // Remove this path so siblings can also expand it if needed
+            visitedPaths.delete(newPath);
         });
-    
+
         return inferred;
     }
 
