@@ -62,20 +62,20 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return this;
     }
 
-    getRelatedEntityServiceDIToken(relatedEntityName: string){
-        return `${pascalCase(camelCase(relatedEntityName))}Service`;
-    }
-
     getEntityServiceByEntityName<T extends EntitySchema<any, any, any>>(relatedEntityName: string){
-        return this.diContainer.resolve<BaseEntityService<T>>(
-            this.getRelatedEntityServiceDIToken(relatedEntityName)
-        );
+        return this.diContainer.resolveEntityService<BaseEntityService<T>>(relatedEntityName);
     }
 
     hasEntityServiceByEntityName(relatedEntityName: string){
-        return this.diContainer.has(
-            this.getRelatedEntityServiceDIToken(relatedEntityName)
-        );
+        return this.diContainer.hasEntityService(relatedEntityName);
+    }
+
+    getEntitySchemaByEntityName<T extends EntitySchema<any, any, any>>(relatedEntityName: string){
+        return this.diContainer.resolveEntitySchema<T>(relatedEntityName);
+    }
+
+    hasEntitySchemaByEntityName(relatedEntityName: string){
+        return this.diContainer.hasEntitySchema(relatedEntityName);
     }
 
     /**
@@ -722,15 +722,17 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      */
     public async create(payload: CreateEntityItemTypeFromSchema<S>) {
         this.logger.debug(`Called ~ create ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
+        
+        const payloadCopy = { ...payload }
 
         const schema = this.getEntitySchema();
         const entitySlugAttribute = getAttributeNameBy(schema, 'slug') || '';
         const entityNameAttribute = getAttributeNameBy(schema, 'name') || '';
 
         // auto generate slug if it's not provided and entity has a name
-        if(entitySlugAttribute && !(entitySlugAttribute in payload)){
-            if(entityNameAttribute && (entityNameAttribute in payload)){
-                payload[entitySlugAttribute as keyof typeof payload] = toSlug(payload[entityNameAttribute]) as any;
+        if(entitySlugAttribute && !(entitySlugAttribute in payloadCopy)){
+            if(entityNameAttribute && (entityNameAttribute in payloadCopy)){
+                payloadCopy[entitySlugAttribute as keyof typeof payloadCopy] = toSlug(payloadCopy[entityNameAttribute]) as any;
             }
         }
 
@@ -743,11 +745,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
             // Prepare uniqueness checks for all unique fields
             for (const { name } of uniqueFields) {
-                if ( name! in payload ) {
-                    let value = payload[name!];
+                if ( name! in payloadCopy ) {
+                    let value = payloadCopy[name!];
                     // Push a function that performs the uniqueness check into the array
                     uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
-                        payloadToUpdate: payload,
+                        payloadToUpdate: payloadCopy,
                         attributeName: name!,
                         attributeValue: value,
                         maxAttemptsForCreatingUniqueAttributeValue,
@@ -766,7 +768,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         }
 
         const entity =  await createEntity<S>({
-            data: payload, 
+            data: payloadCopy, 
             entityName: this.getEntityName(),
             entityService: this,
         });
@@ -1100,8 +1102,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
             const isRelational = !!attributeMeta.relation;
             
-            // If not relational or the user just put { [attributeName]: true }, store it directly
-            if (!isRelational || typeof attVal !== 'object') {
+            if (!isRelational) {
                 inferred[attributeName] = attVal;
                 return;
             }
@@ -1127,7 +1128,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             visitedPaths.add(newPath);
 
             // Recurse to the related entity's schema
-            const relatedEntitySchema = this.diContainer.resolveEntitySchema<EntitySchema<any, any, any>>(nextEntityName);
+            const relatedEntitySchema = this.getEntitySchemaByEntityName<EntitySchema<any, any, any>>(nextEntityName);
+            const relatedEntityService = this.getEntityServiceByEntityName<EntitySchema<any, any, any>>(nextEntityName);
             
             // Build the "meta" object that we store
             const meta: HydrateOptionForRelation = {
@@ -1138,12 +1140,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
                     : relationMeta.identifiers,
                 attributes: {},
             };
+            const pathSelectionAttributes = isObject(attVal) ? attVal.attributes : undefined; // provided by the user 
+            const relationSelectionAttributes = relationMeta.attributes; // defined in the relation definition
+            const relatedEntityDefaultSelectionAttributes = relatedEntityService.getDefaultSerializationAttributeNames(); // auto gen by framework
 
             // Recurse to expand child's relationships
             meta.attributes = this.inferRelationshipsForEntitySelections(
                 relatedEntitySchema,
-                attVal.attributes || relationMeta.attributes,
-                newPath,
+                (pathSelectionAttributes || relationSelectionAttributes || relatedEntityDefaultSelectionAttributes) as any,
+                nextEntityName,
                 visitedPaths,
                 maxDepth - 1
             );

@@ -840,7 +840,6 @@ export class DIContainer implements IDIContainer {
 
         const dependencies = getPropertyDependenciesMetadata(instance.constructor as ClassConstructor);
 
-
         for (const dep of dependencies) {
             const propertyValue = (() => {
                 try {

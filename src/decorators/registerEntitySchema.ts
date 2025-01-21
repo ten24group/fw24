@@ -13,7 +13,7 @@ import { getModuleMetadata } from '../di/metadata';
 
 export type EntitySchemaProviderOptions = OmitAnyKeys<ProviderOptions<any>, 'provide' | 'useClass' | 'useConfig' | 'useExisting'> & {
     forEntity: DepIdentifier<any>;
-    providedIn?: 'ROOT' | DIContainer | ClassConstructor;
+    providedIn?: 'ROOT' | IDIContainer | ClassConstructor;
     doNotAutoRegisterEntityService?: boolean;
 };
 
@@ -32,7 +32,6 @@ export function registerEntitySchema(options: EntitySchemaProviderOptions){
     } as ProviderOptions<any>
 
     let container: IDIContainer | undefined;
-    let diContainerHasBeenInitialized = true;
 
     if(!options.providedIn || options.providedIn === 'ROOT'){
         container = DIContainer.ROOT;
@@ -51,56 +50,55 @@ export function registerEntitySchema(options: EntitySchemaProviderOptions){
 
         moduleMetadata.addProvider(optionsCopy);
         
-        diContainerHasBeenInitialized = !!moduleMetadata.container;
-
         container = moduleMetadata.container;
     }
 
-    if(container){
-        
-        try {
-            container.register(optionsCopy);
-        } catch (error) {
-            DefaultLogger.error(`registerEntitySchema:: Error registering ${options.forEntity} schema with container:`, container);
-            throw error;
-        }
-
-    } else if(diContainerHasBeenInitialized) {
-
+    if(!container){
         throw new Error(
             `Invalid providedIn option; no container could be resolved. Ensure it is either 'ROOT' or an instance of DI-container or a class decorated with @DIModule({...}).`
         );
+    }
+
+    try {
+        container.register(optionsCopy);
+    } catch (error) {
+        DefaultLogger.error(`registerEntitySchema:: Error registering ${options.forEntity} schema with container:`, container);
+        throw error;
     }
 
     if(options.doNotAutoRegisterEntityService){
         return;
     }
 
-    const entityServiceName = makeAutoGenEntityServiceName(String(options.forEntity));
-
-    @Service({
-        priority: -1, 
-        provide: entityServiceName,
-        forEntity: options.forEntity, 
-        providedIn: options.providedIn, 
-    })
-    class DefaultEntityService extends BaseEntityService<any> {
-        readonly logger: ILogger = createLogger(DefaultEntityService);
-
-        constructor(
-            @Inject(DI_TOKENS.DYNAMO_ENTITY_CONFIGURATIONS)
-            readonly entityConfiguration: EntityConfiguration,
-
-            @Inject(entitySchemaToken) readonly schema: any,
-
-            @InjectContainer()
-            readonly container: IDIContainer,
-        ) {
-            super(schema, entityConfiguration, container);
-        }
+    class AutoGenEntityService extends BaseEntityService<any> {
+        readonly logger: ILogger = createLogger(AutoGenEntityService);
         
+        constructor(
+            readonly entityConfiguration: EntityConfiguration,
+            readonly schema: any,
+            readonly diContainer: IDIContainer,
+        ) {
+            super(schema, entityConfiguration, diContainer);
+        }
     }
+    const entityServiceName = makeAutoGenEntityServiceName(String(optionsCopy.forEntity));
+    Object.defineProperty(AutoGenEntityService, 'name', { value: entityServiceName });
 
-    Object.defineProperty(DefaultEntityService, 'name', { value: entityServiceName });
+    try {
+        container.register({
+            priority: -1, 
+            type: 'service',
+            provide: AutoGenEntityService,
+            forEntity: optionsCopy.forEntity,
 
+            deps: [DI_TOKENS.DYNAMO_ENTITY_CONFIGURATIONS, entitySchemaToken, DIContainer],
+            useFactory: (config: EntityConfiguration, schema: any, diContainer: IDIContainer ) => {
+                const service = new AutoGenEntityService(config, schema, diContainer );
+                return service;
+            },
+        })
+    } catch (error) {
+        DefaultLogger.error(`registerEntitySchema:: Error registering ${options.forEntity} default-service with container:`, container);
+        throw error;
+    }
 }

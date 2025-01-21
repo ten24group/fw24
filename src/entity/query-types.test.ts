@@ -1,13 +1,15 @@
 import { Narrow } from '../utils/types';
 
 import { describe, expect, it } from '@jest/globals';
-import { EntityFilterCriteria, EntityQuery, FilterGroup } from './query-types';
+import { EntityFilterCriteria, EntityQuery, FilterGroup, ParsedEntityAttributePaths } from './query-types';
 import { randomUUID } from 'crypto';
-import { DefaultEntityOperations, EntityAttribute, EntitySchema, EntityAttributePaths, createElectroDBEntity, createEntityRelation, createEntitySchema } from './base-entity';
+import { DefaultEntityOperations, EntityAttribute, EntitySchema, EntityAttributePaths, createElectroDBEntity, createEntityRelation, createEntitySchema, HydrateOptionForRelation, RelToRelatedEntity, EntityTypeFromSchema } from './base-entity';
 import { entityFilterCriteriaToExpression, parseEntityAttributePaths } from './query';
 import { DIContainer } from '../di';
 import { DI_TOKENS } from '../const';
 import { registerEntitySchema } from '../decorators';
+import { BaseEntityService } from './base-service';
+import { IDIContainer } from '../interfaces';
 namespace User {
 
   export const createUserSchema = () => createEntitySchema({
@@ -665,8 +667,6 @@ describe('query', () => {
 
 });
 
-
-
 describe('parseEntityAttributePaths', () => {
   it('should transform array to nested object', () => {
 
@@ -745,4 +745,225 @@ describe('parseEntityAttributePaths', () => {
     expect(inferred).toEqual(expected);
 
   });
+});
+
+
+describe('inferRelationshipsForEntitySelections - path-based cycle detection', () => {
+
+  const userSchemaMock = createEntitySchema({
+    model: {
+      entity: 'User',
+      entityNamePlural: 'Users',
+      entityOperations: DefaultEntityOperations,
+      service: 'xxx',
+      version: '1',
+    },
+    attributes: {
+      userId: { type: 'string' }, // non-relational
+      name: { type: 'string' },
+      group: {
+        type: 'any',
+        // A relational attribute referencing Group
+        relation: {
+          entityName: 'Group',
+          type: 'many-to-one',
+          identifiers: [{ source: 'groupId', target: 'groupId' }],
+          attributes: { groupId: true, title: true } // or something
+        }
+      },
+    },
+    indexes: {
+      primary: {
+        pk: {
+          field: 'pk',
+          composite: ['userId'],
+        },
+        sk: {
+          field: 'sk',
+          composite: [],
+        },
+      }
+    }
+  } as const);
+
+  const groupSchemaMock = createEntitySchema({
+    model: {
+      entity: 'Group',
+      entityNamePlural: 'Groups',
+      entityOperations: DefaultEntityOperations,
+      service: 'xxx',
+      version: '1',
+    },
+    attributes: {
+      groupId: { type: 'string' },
+      title: { type: 'string' },
+      members: {
+        type: 'any',
+        // references user
+        relation: {
+          entityName: 'User',
+          type: 'one-to-many',
+          identifiers: [{ source: 'members', target: 'userId' }],
+          attributes: { userId: true, name: true, group: true } // can recursively point back
+        }
+      }
+    },
+    indexes: {
+      primary: {
+        pk: {
+          field: 'pk',
+          composite: ['groupId'],
+        },
+        sk: {
+          field: 'sk',
+          composite: [],
+        },
+      }
+    }
+  });
+
+  let diContainer: IDIContainer;
+
+  beforeEach( () => {
+
+    diContainer = DIContainer.ROOT.createChildContainer('CC-for-inferRelationshipsForEntitySelections');
+
+    diContainer.register({
+      useValue: {},
+      provide: DI_TOKENS.DYNAMO_ENTITY_CONFIGURATIONS
+    });
+
+    registerEntitySchema({
+      forEntity: userSchemaMock.model.entity,
+      useValue: userSchemaMock,
+      providedIn: diContainer,
+    })
+
+    registerEntitySchema({
+      forEntity: groupSchemaMock.model.entity,
+      useValue: groupSchemaMock,
+      providedIn: diContainer,
+    })
+    
+  })
+
+  it('should handle non-relational attributes only (no recursion)', () => {
+    const parsed = parseEntityAttributePaths(['userId', 'name']);
+    const userService = diContainer.resolveEntityService<BaseEntityService<typeof userSchemaMock>>(userSchemaMock.model.entity);
+    const result = userService.inferRelationshipsForEntitySelections(
+      userSchemaMock,
+      parsed
+    );
+    // We expect it to just copy them over
+    expect(result).toEqual({
+      userId: true,
+      name: true
+    });
+  });
+
+  it('should expand single-level relation normally', () => {
+    const parsed = parseEntityAttributePaths(['userId', 'group', 'group.members']);
+    const userService = diContainer.resolveEntityService<BaseEntityService<typeof userSchemaMock>>(userSchemaMock.model.entity);
+    const result = userService.inferRelationshipsForEntitySelections(
+      userSchemaMock,
+      parsed
+    ) as any;
+    // We expect 'group' to expand into the relation structure referencing Group
+    expect(result.group).toBeDefined();
+    expect((result.group).relationType).toBe('many-to-one');
+    expect((result.group).attributes).toHaveProperty('members'); // etc.
+  });
+
+  it('should skip expansions if cycle is detected (User->Group->User)', () => {
+    // path: 'group.members.group.members...' leads to a cycle
+    // We'll request deep expansions
+    const parsed = parseEntityAttributePaths([
+      'group',
+      'group.members', 
+      'group.members.group', 
+      'group.members.group.members' 
+      // and so on
+    ]);
+    const userService = diContainer.resolveEntityService<BaseEntityService<typeof userSchemaMock>>(userSchemaMock.model.entity);
+    const result = userService.inferRelationshipsForEntitySelections(
+      userSchemaMock,
+      parsed
+    );
+
+    // We expect that once it cycles back to "User" from "Group.members" -> "User" -> "group",
+    // it will skip expansions on that cyc attribute
+    const grp = result.group as any;
+    expect(grp).toMatchObject({
+      entityName: 'Group',
+      attributes: expect.any(Object)
+    });
+    const mem = (grp.attributes as any).members;
+    expect(mem).toMatchObject({
+      entityName: 'User',
+      attributes: expect.any(Object)
+    });
+    // Then we see if mem.attributes.group was expanded or skipped
+    // If cycle was detected, we either see a `skippedDueToCycle` or minimal object
+    if (mem.attributes.group.skippedDueToCycle) {
+      expect(mem.attributes.group.skippedDueToCycle).toBe(true);
+    } else {
+      // Or if your code sets something else
+      throw new Error(`Cycle not detected where expected`);
+    }
+  });
+
+  it('should continue hydrating sibling attributes even if one attribute is cyc', () => {
+    // Suppose we ask for userId, name, group, group.members
+    // The cycle is in "group.members.group...", but "userId" is unaffected
+    const parsed = parseEntityAttributePaths(['userId', 'group', 'group.members', 'group.members.group']);
+    const userService = diContainer.resolveEntityService<BaseEntityService<typeof userSchemaMock>>(userSchemaMock.model.entity);
+    const result = userService.inferRelationshipsForEntitySelections(userSchemaMock, parsed) as any;
+
+    // "userId" must be present
+    expect(result.userId).toBe(true);
+
+    // "group" expansions
+    expect(result.group.entityName).toBe('Group');
+    expect(result.group.attributes).toHaveProperty('members');
+    // members expansions
+    expect(result.group.attributes.members.entityName).toBe('User');
+
+    // the cyc recursion is "group.members.group"
+    // This should be a partial skip
+    const cyc = result.group.attributes.members.attributes.group;
+    expect(cyc).toHaveProperty('skippedDueToCycle', true);
+
+    // But sibling attributes (like userId) are still expanded
+    // e.g. "members.attributes.userId" or "members.attributes.name" if we had them in the parse
+  });
+
+  it('should respect maxDepth if recursion is too deep', () => {
+    // We'll do a big chain: user->group->members->group->members->group...
+    const parsed = parseEntityAttributePaths([
+      'group', 
+      'group.members',
+      'group.members.group',
+      'group.members.group.members',
+      'group.members.group.members.group', // and so forth
+    ]);
+    const userService = diContainer.resolveEntityService<BaseEntityService<typeof userSchemaMock>>(userSchemaMock.model.entity);
+    const result = userService.inferRelationshipsForEntitySelections(
+      userSchemaMock,
+      parsed,
+      'User',     // initial path
+      new Set(),  // fresh visited
+      3           // small maxDepth
+    );
+    // After depth=3, expansions should skip
+    // e.g. at path depth 4 or more
+    const grp = result.group as any;
+    expect(grp.attributes.members).toBeDefined();
+    // members => user, user => group => should skip expansions beyond that depth
+    const maybeSkipped = grp.attributes.members.attributes.group;
+    expect(maybeSkipped).toMatchObject({
+      entityName: 'Group',
+      skippedDueToCycle: true
+    });
+  });
+
 });
