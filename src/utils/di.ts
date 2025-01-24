@@ -38,7 +38,8 @@ export function compareProviderOptions(a: BaseProviderOptions, b: BaseProviderOp
             a.condition?.toString() === b.condition?.toString() &&
             a.override === b.override &&
             a.provide === b.provide &&
-            a.type === b.type
+            a.type === b.type &&
+            a.forEntity === b.forEntity
         )
     ){
         return false;

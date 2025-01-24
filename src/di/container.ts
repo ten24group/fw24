@@ -33,6 +33,7 @@ import { applyMiddlewares, applyMiddlewaresAsync, filterAndSortProviders, flatte
 import { getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPropertyDependenciesMetadata, } from './metadata';
 
 import { DI_TOKENS } from '../const';
+import { camelCase, pascalCase } from '../utils/cases';
 
 export class DIContainer implements IDIContainer {
 
@@ -279,7 +280,7 @@ export class DIContainer implements IDIContainer {
 
             const exported = providers.map(provider => {
                 const { _container, _provider, _id } = provider;
-                const { condition, provide, priority, override, singleton, tags, type } = _provider;
+                const { condition, provide, priority, override, singleton, tags, type, forEntity } = _provider;
 
                 return {
                     _provider: {
@@ -291,6 +292,7 @@ export class DIContainer implements IDIContainer {
                         singleton,
                         tags,
                         type,
+                        forEntity,
                     },
                     _id,
                     _container: this
@@ -379,23 +381,27 @@ export class DIContainer implements IDIContainer {
         currentProvider._token = token;
 
         const tokenProviders = this.providers.get(token) || [];
+        
+        const areBothValuesEqual = <T>(value1: T | null | undefined, value2: T | null | undefined): boolean => {
+            return (value1 == null && value2 == null) || (value1 !== null && value1 !== undefined && value1 === value2);
+        }
 
-        // if token providers already has a provider with same priority and tags, log warning and replace it
+        const areBothArraysEqual = <T>(arr1: T[] | null | undefined, arr2: T[] | null | undefined): boolean => {
+            if (arr1 == null && arr2 == null) return true;
+            if (arr1 == null || arr2 == null || arr1.length !== arr2.length) return false;
+            return [...arr1].sort().every((value, index) => value === arr2.slice().sort()[index]);
+        }
+
+        // if token providers already has a provider with same priority, type, forEntity and tags, log warning and replace it
         const existingProvider = tokenProviders.find(({_provider: existingProvider}) => {
             return existingProvider.priority === currentProvider.priority
-            && (
-                // maybe be make it configurable to compare tags...
-                (!existingProvider.tags?.length && !currentProvider.tags?.length) 
-                || 
-                (
-                    // compare array items are the same
-                    existingProvider.tags?.every((tag, index) => tag == currentProvider.tags?.[index])
-                )
-            )
+            && areBothValuesEqual(existingProvider.type, currentProvider.type)
+            && areBothArraysEqual(existingProvider.tags, currentProvider.tags) // ! maybe be make it configurable to compare tags...
+            && areBothValuesEqual(existingProvider.forEntity, currentProvider.forEntity)
         });
 
         if(existingProvider){
-            this.logger.warn(`Provider for ${token} with same priority and tags already exists, replacing it.`);
+            this.logger.warn(`Provider for ${token} with same priority, type, forEntity and tags already exists, replacing it.`);
             const index = tokenProviders.indexOf(existingProvider);
             // delete the existing provider
             tokenProviders.splice(index, 1);
@@ -520,6 +526,7 @@ export class DIContainer implements IDIContainer {
             token?: string,
             tags?: string[],
             type?: ProviderOptions['type'], 
+            forEntity?: ProviderOptions['forEntity'], 
             priority?: PriorityCriteria,
             allProvidersFromChildContainers?: boolean
         }
@@ -543,6 +550,10 @@ export class DIContainer implements IDIContainer {
 
             if (criteria?.type) {
                 pathProviders = pathProviders.filter(p => p._provider.type === criteria.type);
+            }
+
+            if(criteria?.forEntity){
+                pathProviders = pathProviders.filter(p => p._provider.forEntity === criteria.forEntity)
             }
 
             pathProviders.forEach(provider => { 
@@ -577,6 +588,10 @@ export class DIContainer implements IDIContainer {
 
                 if (criteria?.type) {
                     childExportedProviders = childExportedProviders.filter(p => p._provider.type === criteria.type);
+                }
+
+                if(criteria?.forEntity){
+                    childExportedProviders = childExportedProviders.filter(p => p._provider.forEntity === criteria.forEntity)
                 }
 
                 childExportedProviders.forEach(provider => {
@@ -825,7 +840,6 @@ export class DIContainer implements IDIContainer {
 
         const dependencies = getPropertyDependenciesMetadata(instance.constructor as ClassConstructor);
 
-
         for (const dep of dependencies) {
             const propertyValue = (() => {
                 try {
@@ -850,6 +864,7 @@ export class DIContainer implements IDIContainer {
             tags?: string[];
             type?: ProviderOptions['type'],
             priority?: PriorityCriteria;
+            forEntity?: ProviderOptions['forEntity'],
             allProvidersFromChildContainers?: boolean
         } 
     ): boolean {
@@ -862,6 +877,90 @@ export class DIContainer implements IDIContainer {
         });
 
         return bestProviders.length > 0;
+    }
+
+    hasEntityService(
+        entityName: DepIdentifier, 
+        criteria?: {
+            tags?: string[];
+            priority?: PriorityCriteria;
+            allProvidersFromChildContainers?: boolean
+        } 
+    ): boolean {
+
+        const bestProviders = this.collectBestProvidersFor<any>({
+            ...criteria,
+            type: 'service',
+            forEntity: entityName,
+        });
+
+        return bestProviders.length > 0;
+    }
+
+    resolveEntityService<T, Async extends boolean = false>(
+        entityName: DepIdentifier, 
+        criteria?: {
+            tags?: string[];
+            priority?: PriorityCriteria;
+            allProvidersFromChildContainers?: boolean
+        },
+        async: Async = false as Async
+    ): Async extends true ? Promise<T> : T {
+
+        const bestProviders = this.collectBestProvidersFor<any>({
+            ...criteria,
+            type: 'service',
+            forEntity: entityName,
+        });
+        
+        if (bestProviders.length === 0) {
+            throw new Error(`No Entity-Service provider found for entity- ${entityName}. DIContainer[${this.containerId}]`);
+        }
+        const options = bestProviders[0];
+        
+        return this.resolveProviderValue<T, Async>(options, new Set(), async);
+    }
+
+    hasEntitySchema(
+        entityName: DepIdentifier, 
+        criteria?: {
+            tags?: string[];
+            priority?: PriorityCriteria;
+            allProvidersFromChildContainers?: boolean
+        } 
+    ): boolean {
+
+        const bestProviders = this.collectBestProvidersFor<any>({
+            ...criteria,
+            type: 'schema',
+            forEntity: entityName,
+        });
+
+        return bestProviders.length > 0;
+    }
+
+    resolveEntitySchema<T, Async extends boolean = false>(
+        entityName: DepIdentifier, 
+        criteria?: {
+            tags?: string[];
+            priority?: PriorityCriteria;
+            allProvidersFromChildContainers?: boolean
+        },
+        async: Async = false as Async
+    ): Async extends true ? Promise<T> : T {
+
+        const bestProviders = this.collectBestProvidersFor<any>({
+            ...criteria,
+            type: 'schema',
+            forEntity: entityName,
+        });
+        
+        if (bestProviders.length === 0) {
+            throw new Error(`No Entity-Schema provider found for entity- ${entityName}. DIContainer[${this.containerId}]`);
+        }
+        const options = bestProviders[0];
+        
+        return this.resolveProviderValue<T, Async>(options, new Set(), async);
     }
 
     clear(clearChildContainers = true) {

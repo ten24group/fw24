@@ -10,6 +10,7 @@ export type BaseProviderOptions = {
     type?: 'config' | 'service' | 'schema' | 'controller' | 'module' | 'unknown';
     singleton?: boolean;
     priority?: number;
+    forEntity?: DepIdentifier<any>;
     tags?: string[]; // Tags for additional filtering
     condition?: () => boolean;
     override?: boolean; // Indicates if this provider should explicitly override others
@@ -143,8 +144,33 @@ export interface IDIContainer {
         tags?: string[];
         type?: ProviderOptions['type'],
         priority?: PriorityCriteria;
+        forEntity?: ProviderOptions['forEntity'],
         allProvidersFromChildContainers?: boolean
     }): boolean;
+
+    hasEntityService(entityName: DepIdentifier, criteria?: {
+        tags?: string[];
+        priority?: PriorityCriteria;
+        allProvidersFromChildContainers?: boolean;
+    }): boolean
+
+    resolveEntityService<T, Async extends boolean = false>(entityName: DepIdentifier, criteria?: {
+        tags?: string[];
+        priority?: PriorityCriteria;
+        allProvidersFromChildContainers?: boolean;
+    }, async?: Async): Async extends true ? Promise<T> : T
+
+    hasEntitySchema(entityName: DepIdentifier, criteria?: {
+        tags?: string[];
+        priority?: PriorityCriteria;
+        allProvidersFromChildContainers?: boolean;
+    }): boolean
+
+    resolveEntitySchema<T, Async extends boolean = false>(entityName: DepIdentifier, criteria?: {
+        tags?: string[];
+        priority?: PriorityCriteria;
+        allProvidersFromChildContainers?: boolean;
+    }, async?: Async): Async extends true ? Promise<T> : T
 
     collectBestProvidersFor<T>(
         criteria: {
@@ -152,6 +178,7 @@ export interface IDIContainer {
             tags?: string[],
             type?: ProviderOptions['type'], 
             priority?: PriorityCriteria,
+            forEntity?: ProviderOptions['forEntity'],
             allProvidersFromChildContainers?: boolean
         }
     ): InternalProviderOptions<T>[];

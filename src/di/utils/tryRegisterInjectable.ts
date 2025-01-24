@@ -6,7 +6,7 @@ import { DefaultLogger } from '../../logging';
 
 
 export type InjectableOptions = PartialBy<BaseProviderOptions, 'provide'> & {
-    providedIn?: 'ROOT' | DIContainer | ClassConstructor;
+    providedIn?: 'ROOT' | IDIContainer | ClassConstructor;
 };
 
 export function tryRegisterInjectable(target: ClassConstructor, options: InjectableOptions){

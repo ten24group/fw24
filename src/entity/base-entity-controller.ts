@@ -29,7 +29,7 @@ export type GetSignedUrlForFileUploadSchema = {
  */
 export class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIController {
 	
-	readonly logger = createLogger(BaseEntityController.name);
+	readonly logger = createLogger(BaseEntityController);
 
     /**
      * Creates an instance of BaseEntityController.

@@ -1,14 +1,14 @@
 import type { EntityConfiguration } from "electrodb";
 import { DIContainer } from "../di";
 import type { EntityInputValidations, EntityValidations } from "../validation";
-import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
-import type { EntityQuery, EntitySelections } from "./query-types";
+import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
+import type { EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 
 import { createLogger } from "../logging";
-import { JsonSerializer, camelCase, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
+import { JsonSerializer, camelCase, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
-import { addFilterGroupToEntityFilterCriteria, inferRelationshipsForEntitySelections, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
+import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 import { IDIContainer } from "../interfaces";
 
 export type ExtractEntityIdentifiersContext = {
@@ -62,20 +62,20 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return this;
     }
 
-    getRelatedEntityServiceDIToken(relatedEntityName: string){
-        return `${pascalCase(camelCase(relatedEntityName))}Service`;
-    }
-
     getEntityServiceByEntityName<T extends EntitySchema<any, any, any>>(relatedEntityName: string){
-        return this.diContainer.resolve<BaseEntityService<T>>(
-            this.getRelatedEntityServiceDIToken(relatedEntityName)
-        );
+        return this.diContainer.resolveEntityService<BaseEntityService<T>>(relatedEntityName);
     }
 
     hasEntityServiceByEntityName(relatedEntityName: string){
-        return this.diContainer.has(
-            this.getRelatedEntityServiceDIToken(relatedEntityName)
-        );
+        return this.diContainer.hasEntityService(relatedEntityName);
+    }
+
+    getEntitySchemaByEntityName<T extends EntitySchema<any, any, any>>(relatedEntityName: string){
+        return this.diContainer.resolveEntitySchema<T>(relatedEntityName);
+    }
+
+    hasEntitySchemaByEntityName(relatedEntityName: string){
+        return this.diContainer.hasEntitySchema(relatedEntityName);
     }
 
     /**
@@ -472,6 +472,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             target: relationPrimaryIdentifierName
         }
 
+        if(isFunction(relationMetadata.identifiers)){
+            relationMetadata.identifiers = relationMetadata.identifiers()
+        }
+
         const identifierMappings = Array.isArray(relationMetadata.identifiers) ? relationMetadata.identifiers : [ relationMetadata.identifiers ]
 
         // Create a dictionary to map related-entity-identifiers to the 
@@ -525,8 +529,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
         // ensure all the identifier attributes are part of the selections
         Object.keys(uniqueRelationIdentifiersBatch[0]).forEach( (key: string) => {
-            if(Array.isArray(options.attributes) && !options.attributes.includes(key)){
-                options.attributes.push(key);
+            if(Array.isArray(options.attributes) && !(options.attributes as Array<string>).includes(key)){
+                (options.attributes as Array<string>).push(key);
             } else if(isObject(options.attributes) && !( key in options.attributes) ){
                 options.attributes = {
                     ...options.attributes,
@@ -583,7 +587,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         if(Array.isArray(formattedSelections)){
             const parsedOptions = parseEntityAttributePaths(formattedSelections as string[] );
 
-            formattedSelections = inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
+            formattedSelections = this.inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
         }
 
         this.logger.info(`Formatted selections for entity: ${this.getEntityName()}`, formattedSelections);
@@ -718,15 +722,17 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      */
     public async create(payload: CreateEntityItemTypeFromSchema<S>) {
         this.logger.debug(`Called ~ create ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
+        
+        const payloadCopy = { ...payload }
 
         const schema = this.getEntitySchema();
         const entitySlugAttribute = getAttributeNameBy(schema, 'slug') || '';
         const entityNameAttribute = getAttributeNameBy(schema, 'name') || '';
 
         // auto generate slug if it's not provided and entity has a name
-        if(entitySlugAttribute && !(entitySlugAttribute in payload)){
-            if(entityNameAttribute && (entityNameAttribute in payload)){
-                payload[entitySlugAttribute as keyof typeof payload] = toSlug(payload[entityNameAttribute]) as any;
+        if(entitySlugAttribute && !(entitySlugAttribute in payloadCopy)){
+            if(entityNameAttribute && (entityNameAttribute in payloadCopy)){
+                payloadCopy[entitySlugAttribute as keyof typeof payloadCopy] = toSlug(payloadCopy[entityNameAttribute]) as any;
             }
         }
 
@@ -739,11 +745,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
             // Prepare uniqueness checks for all unique fields
             for (const { name } of uniqueFields) {
-                if ( name! in payload ) {
-                    let value = payload[name!];
+                if ( name! in payloadCopy ) {
+                    let value = payloadCopy[name!];
                     // Push a function that performs the uniqueness check into the array
                     uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
-                        payloadToUpdate: payload,
+                        payloadToUpdate: payloadCopy,
                         attributeName: name!,
                         attributeValue: value,
                         maxAttemptsForCreatingUniqueAttributeValue,
@@ -762,7 +768,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         }
 
         const entity =  await createEntity<S>({
-            data: payload, 
+            data: payloadCopy, 
             entityName: this.getEntityName(),
             entityService: this,
         });
@@ -872,7 +878,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         // for listing API attributes would be an array
         if(Array.isArray(query.attributes)){
             const parsedOptions = parseEntityAttributePaths(query.attributes as string[] );
-            query.attributes = inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
+            query.attributes = this.inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
         }
         
         if(query.search){
@@ -938,10 +944,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         if(Array.isArray(selectAttributes)){
             // parse the list of dot-separated attribute-identifiers paths and ensure all the required metadata is there
             const parsedOptions = parseEntityAttributePaths(selectAttributes as string[] );
-            selectAttributes = inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
+            selectAttributes = this.inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
         } else {
             // ensure all the provided select attributes has required metadata all the way down to the leaf level
-            selectAttributes = inferRelationshipsForEntitySelections(this.getEntitySchema(), selectAttributes);
+            selectAttributes = this.inferRelationshipsForEntitySelections(this.getEntitySchema(), selectAttributes);
         }
 
         if(query.search){
@@ -1060,6 +1066,102 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return deletedEntity;
     }
 
+    /**
+     * Infers relationships between entities based on the provided schema and selection-paths.
+     * @param schema The entity schema.
+     * @param paths The parsed selection paths from e.g. parseEntityAttributePaths().
+     * @param pathKey The current "path" string representing how we arrived here (defaults to the entity name).
+     * @param visitedPaths A set of path-strings visited so far in this recursion chain (prevents cycles).
+     * @param maxDepth Maximum recursion depth (optional).
+     */
+    inferRelationshipsForEntitySelections<E extends EntitySchema<any, any, any>>(
+        schema: E,
+        paths: ParsedEntityAttributePaths,
+        pathKey: string = schema.model.entity,
+        visitedPaths: Set<string> = new Set<string>(),
+        maxDepth = 5
+    ): HydrateOptionsMapForEntity<E> {
+
+        this.logger.debug('inferRelationshipsForEntitySelections', { pathKey, paths });
+
+        // If we exceed max depth, we skip expansions
+        if (maxDepth <= 0) {
+            this.logger.warn(`Max recursion depth reached at pathKey="${pathKey}"`);
+            return {} as HydrateOptionsMapForEntity<E>;
+        }
+
+        const inferred: any = {};
+
+        // Loop over each attribute in the entity schema
+        Object.entries(schema.attributes).forEach(([attributeName, attributeMeta]) => {
+            const attVal = paths[attributeName];
+            if (!attVal) {
+                // Not selected in the user's attributes
+                return;
+            }
+
+            const isRelational = !!attributeMeta.relation;
+            
+            if (!isRelational) {
+                inferred[attributeName] = attVal;
+                return;
+            }
+
+            // It's a relational attribute; prepare to recurse
+            const relationMeta = attributeMeta.relation!;
+            const nextEntityName = relationMeta.entityName;
+
+            // Build a new "path" string to detect cycles (e.g. "User.groups.Group.members.User")
+            const newPath = `${pathKey}.${attributeName}.${nextEntityName}`;
+
+            // Check if we've already visited this path, if so => skip expansions for this attribute only
+            if (visitedPaths.has(newPath)) {
+                this.logger.warn(`Skipping cyc relation expansions for: ${newPath}`);
+                inferred[attributeName] = {
+                    entityName: nextEntityName,
+                    skippedDueToCycle: true,
+                };
+                return;
+            }
+
+            // Mark this path as visited
+            visitedPaths.add(newPath);
+
+            // Recurse to the related entity's schema
+            const relatedEntitySchema = this.getEntitySchemaByEntityName<EntitySchema<any, any, any>>(nextEntityName);
+            const relatedEntityService = this.getEntityServiceByEntityName<EntitySchema<any, any, any>>(nextEntityName);
+            
+            // Build the "meta" object that we store
+            const meta: HydrateOptionForRelation = {
+                entityName: nextEntityName,
+                relationType: relationMeta.type,
+                identifiers: isFunction(relationMeta.identifiers)
+                    ? relationMeta.identifiers()
+                    : relationMeta.identifiers,
+                attributes: {},
+            };
+            const pathSelectionAttributes = isObject(attVal) ? attVal.attributes : undefined; // provided by the user 
+            const relationSelectionAttributes = relationMeta.attributes; // defined in the relation definition
+            const relatedEntityDefaultSelectionAttributes = relatedEntityService.getDefaultSerializationAttributeNames(); // auto gen by framework
+
+            // Recurse to expand child's relationships
+            meta.attributes = this.inferRelationshipsForEntitySelections(
+                relatedEntitySchema,
+                (pathSelectionAttributes || relationSelectionAttributes || relatedEntityDefaultSelectionAttributes) as any,
+                nextEntityName,
+                visitedPaths,
+                maxDepth - 1
+            );
+
+            inferred[attributeName] = meta;
+
+            // Remove this path so siblings can also expand it if needed
+            visitedPaths.delete(newPath);
+        });
+
+        return inferred;
+    }
+
 }
 
 export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAttribute): Partial<EntityAttribute> & { 
@@ -1068,10 +1170,11 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
     properties?: TIOSchemaAttribute[]
 } {
 
-    const {  name, validations, required, relation, default: defaultValue, get: getter, set: setter, watch, ...restMeta  } = att;
+    const { name, validations, required, relation, default: defaultValue, get: _getter, set: _setter, watch, ...restMeta  } = att;
 
-    const { entity: relatedEntity, ...restRelation } = relation || {};
-    const relationMeta = relatedEntity ? {...restRelation, entity: relatedEntity?.model?.entity} : undefined;
+    const { entityName: relatedEntityName, ...restRelation } = relation || {};
+
+    const relationMeta = relatedEntityName ? {...restRelation, entity: relatedEntityName} : undefined;
 
     const {items, type, properties, addNewOption, ...restRestMeta} = restMeta as any;
 
