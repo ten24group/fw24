@@ -1,12 +1,10 @@
 import { EntityConfiguration } from 'electrodb';
 import { DI_TOKENS } from '../const';
-import { Inject, InjectContainer, OnInit } from '../di/decorators';
 import { BaseEntityService } from '../entity';
 import type { ClassConstructor, DepIdentifier, IDIContainer, ProviderOptions, } from '../interfaces/di';
 import { createLogger, DefaultLogger, ILogger } from '../logging';
 import { camelCase, pascalCase } from '../utils/cases';
 import type { OmitAnyKeys } from '../utils/types';
-import { Service } from './service';
 
 import { DIContainer } from '../di/container';
 import { getModuleMetadata } from '../di/metadata';
