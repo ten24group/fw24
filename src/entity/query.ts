@@ -1,81 +1,19 @@
 import type { Item, WhereAttributes, WhereOperations } from "electrodb";
-import type { EntitySchema, HydrateOptionForRelation, HydrateOptionsMapForEntity } from "./base-entity";
-import type { AttributeFilter, EntityFilter, EntityFilterCriteria, FilterCriteria, FilterGroup } from './query-types';
+import type { EntitySchema } from "./base-entity";
+import type { AttributeFilter, EntityFilter, EntityFilterCriteria, FilterCriteria, FilterGroup, ParsedEntityAttributePaths } from './query-types';
 
-import { isAttributeFilter, isComplexFilterValue, isEntityFilter, isFilterGroup } from "./query-types";
 import { createLogger } from "../logging";
+import { isAttributeFilter, isComplexFilterValue, isEntityFilter, isFilterGroup } from "./query-types";
 
 import {
     parse as parseQueryString,
     stringify as stringifyQueryParams,
 } from 'qs';
 
-import { isEmpty, isEmptyObject, isObject, parseValueToCorrectTypes } from '../utils';
+import { isObject, parseValueToCorrectTypes } from '../utils';
 
 const logger = createLogger('EntityQuery');
 
-/**
- * Infers relationships between entities based on the provided schema and object.
- * @param schema The entity schema.
- * @param paths The object containing attribute values.
- * @returns The inferred relationships as a HydrateOptionsMapForEntity.
- */
-export function inferRelationshipsForEntitySelections<E extends EntitySchema<any, any, any>>(
-    schema: E,
-    paths: ParsedEntityAttributePaths,
-): HydrateOptionsMapForEntity<E> {
-
-    logger.debug('Called inferRelationshipsForEntitySelections', { paths });
-
-    const inferred: any = {};
-
-    Object.entries(schema.attributes).forEach(([attributeName, attributeMeta]) => {
-        const attVal = paths[attributeName];
-
-        if (!attVal) {
-            return;
-        }
-
-        const isRelational = !!attributeMeta.relation;
-
-        // For non-relational attributes, or relational attributes without any nested attributes info, just set the value to true
-        if (!isRelational || !isObject(attVal)) {
-            inferred[attributeName] = attVal;
-            return;
-        }
-
-        // For relational attributes, set the entity name, relation type, identifiers, and attributes.
-        // Attributes for the related entity can contain further nested relationships; hence we infer the metadata recursively.
-        const relationMeta = attributeMeta.relation!;
-        const relatedEntity = relationMeta.entity as EntitySchema<any, any, any>;
-
-        logger.debug('inferRelationshipsForEntitySelections relationMeta', { attVal });
-
-        const meta: HydrateOptionForRelation = {
-            entityName: relatedEntity.model.entity,
-            relationType: relationMeta.type,
-            identifiers: relationMeta.identifiers,
-            attributes: {},
-        };
-
-        meta.attributes = inferRelationshipsForEntitySelections(
-            relatedEntity,
-            attVal.attributes || relationMeta.attributes,
-        );
-
-        inferred[attributeName] = meta
-    });
-
-    return inferred;
-}
-
-type ParsedEntityAttributePaths = {
-    [key: string]: boolean | { attributes: ParsedEntityAttributePaths };
-};
-
-type ParsedEntityAttributePathsWithRelationMeta = {
-    [key: string]: boolean | HydrateOptionForRelation;
-};
 /**
  * Parses the given array of entity attribute paths into a structured format.
  * @param paths - The array of entity attribute paths.

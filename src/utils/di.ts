@@ -1,4 +1,5 @@
-import type { AliasProviderOptions, BaseProviderOptions, ClassProviderOptions, ConfigProviderOptions, FactoryProviderOptions, ValueProviderOptions } from "../interfaces/di";
+import type { AliasProviderOptions, BaseProviderOptions, ClassProviderOptions, ComplexDependencyIdentifier, ConfigProviderOptions, FactoryProviderOptions, ValueProviderOptions } from "../interfaces/di";
+import { camelCase, pascalCase } from "./cases";
 
 export function isClassProviderOptions<T>(options: BaseProviderOptions): options is ClassProviderOptions<T> {
     return (options as ClassProviderOptions<T>).useClass !== undefined;
@@ -6,6 +7,10 @@ export function isClassProviderOptions<T>(options: BaseProviderOptions): options
 
 export function isFactoryProviderOptions<T>(options: BaseProviderOptions): options is FactoryProviderOptions<T> {
     return (options as FactoryProviderOptions<T>).useFactory !== undefined;
+}
+
+export function isComplexDependencyIdentifier<T>(options: any): options is ComplexDependencyIdentifier<T> {
+    return ( typeof options == 'object' && options.hasOwnProperty('token') )
 }
 
 export function isValueProviderOptions<T>(options: BaseProviderOptions): options is ValueProviderOptions<T> {
@@ -38,7 +43,8 @@ export function compareProviderOptions(a: BaseProviderOptions, b: BaseProviderOp
             a.condition?.toString() === b.condition?.toString() &&
             a.override === b.override &&
             a.provide === b.provide &&
-            a.type === b.type
+            a.type === b.type &&
+            a.forEntity === b.forEntity
         )
     ){
         return false;
@@ -61,4 +67,12 @@ export function compareProviderOptions(a: BaseProviderOptions, b: BaseProviderOp
     }
 
     return false;
+}
+
+export function makeEntityServiceToken(entityName: string){
+    return `${pascalCase(camelCase(entityName))}Service`
+}
+
+export function makeEntitySchemaTokenName(entityName: string){
+    return `${pascalCase(camelCase(entityName))}Service`
 }

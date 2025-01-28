@@ -44,7 +44,7 @@ export function formatEntityAttributeForFormOrDetail(
     
     if(thisProp.relation && type === 'detail'){
         
-        const entityName = thisProp.relation.entity;
+        const entityName = thisProp.relation.entityName;
 
         if(entityService.hasEntityServiceByEntityName(entityName)){
             const relatedEntityService = entityService.getEntityServiceByEntityName(entityName);
