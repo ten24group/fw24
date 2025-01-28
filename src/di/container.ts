@@ -8,6 +8,7 @@ import {
     BaseProviderOptions,
     ClassConstructor,
     ClassProviderOptions,
+    ComplexDependencyIdentifier,
     ConfigProviderOptions,
     DepIdentifier,
     FactoryProviderOptions,
@@ -23,6 +24,7 @@ import {
 import {
     isAliasProviderOptions,
     isClassProviderOptions,
+    isComplexDependencyIdentifier,
     isConfigProviderOptions,
     isFactoryProviderOptions,
     isValueProviderOptions,
@@ -33,7 +35,12 @@ import { applyMiddlewares, applyMiddlewaresAsync, filterAndSortProviders, flatte
 import { getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPropertyDependenciesMetadata, } from './metadata';
 
 import { DI_TOKENS } from '../const';
-import { camelCase, pascalCase } from '../utils/cases';
+
+class NoProviderFoundError extends Error {
+    constructor(token: string, container: IDIContainer){
+        super(`No provider found for ${token}. DIContainer[${container.containerId}]`)
+    }
+}
 
 export class DIContainer implements IDIContainer {
 
@@ -526,8 +533,8 @@ export class DIContainer implements IDIContainer {
             token?: string,
             tags?: string[],
             type?: ProviderOptions['type'], 
-            forEntity?: ProviderOptions['forEntity'], 
             priority?: PriorityCriteria,
+            forEntity?: ProviderOptions['forEntity'], 
             allProvidersFromChildContainers?: boolean
         }
     ): InternalProviderOptions<T>[] {
@@ -621,8 +628,10 @@ export class DIContainer implements IDIContainer {
     resolve<T, Async extends boolean = false>(
         dependencyToken: DepIdentifier<T>,
         criteria?: {
-            priority?: PriorityCriteria;
             tags?: string[];
+            type?: ProviderOptions['type'], 
+            priority?: PriorityCriteria;
+            forEntity?: ProviderOptions['forEntity'], 
             allProvidersFromChildContainers?: boolean
         },
         path: Set<Token> = new Set(),
@@ -630,6 +639,7 @@ export class DIContainer implements IDIContainer {
     ): Async extends true ? Promise<T> : T {
 
         const token = this.createToken(dependencyToken);
+        criteria = criteria ?? {};
 
         // if token is `DIContainer` return the current container
         if( DI_TOKENS.DI_CONTAINER === token || this.createToken(DIContainer) === token){
@@ -642,7 +652,7 @@ export class DIContainer implements IDIContainer {
         });
         
         if (bestProviders.length === 0) {
-            throw new Error(`No provider found for ${token}. DIContainer[${this.containerId}]`);
+            throw new NoProviderFoundError(token, this);
         }
         const options = bestProviders[0];
         
@@ -717,7 +727,7 @@ export class DIContainer implements IDIContainer {
 
         if(isAliasProviderOptions(provider)){
             return this.resolve(provider.useExisting, {}, path, async);
-        } 
+        }
 
         if (isClassProviderOptions(provider)) {
 
@@ -725,7 +735,7 @@ export class DIContainer implements IDIContainer {
                 async ? this.createClassInstance<T, true>(options, path, true) 
                 : this.createClassInstance(options, path)
             ) as Async extends true ? Promise<T> : T;
-        } 
+        }
         
         if (isFactoryProviderOptions(provider)) {
 
@@ -733,11 +743,11 @@ export class DIContainer implements IDIContainer {
                 async ? this.createFactoryInstanceAsync<T>(provider, path) 
                 : this.createFactoryInstance(provider, path)
             ) as Async extends true ? Promise<T> : T;
-        } 
+        }
         
         if (isValueProviderOptions(provider)) {
             return provider.useValue as Async extends true ? Promise<T> : T;
-        } 
+        }
         
         if (isConfigProviderOptions(provider)){
             return provider.useConfig as Async extends true ? Promise<T> : T;
@@ -783,7 +793,7 @@ export class DIContainer implements IDIContainer {
     }
 
     private createFactoryInstance<T>(options: FactoryProviderOptions<T>, path: Set<Token>): T {
-        const dependencies = (options.deps || []).map(dep => this.resolve(dep, {}, path));
+        const dependencies = (options.deps || []).map(dep => this.resolveDependency(dep, path));
         return options.useFactory(...dependencies);
     }
 
@@ -797,23 +807,57 @@ export class DIContainer implements IDIContainer {
         }
     }
 
+    private resolveDependency<T, Async extends boolean = false>(
+        dep: DepIdentifier | ComplexDependencyIdentifier, 
+        path: Set<Token>,
+        async: Async = false as Async
+    ): Async extends true ? Promise<T> : T{
+
+        let normalizedDep = dep;
+
+        if(!isComplexDependencyIdentifier(normalizedDep)){
+            normalizedDep = { token: normalizedDep } as ComplexDependencyIdentifier;
+        }
+
+        try {
+    
+            if(normalizedDep.isConfig){
+                return this.resolveConfig(normalizedDep.token as string, normalizedDep) as Async extends true ? Promise<T> : T;
+            }
+
+            if(normalizedDep.forEntity){
+                if(normalizedDep.type == 'schema'){
+                    return this.resolveEntitySchema(normalizedDep.forEntity, normalizedDep, async)
+                }
+                if(normalizedDep.type == 'service'){
+                    return this.resolveEntityService(normalizedDep.forEntity, normalizedDep, async)
+                }
+                throw new Error(`Invalid dependency criteria ${JSON.stringify(normalizedDep)}`)
+            }
+    
+            return this.resolve<T, Async>(normalizedDep.token, normalizedDep, path, async)
+
+        } catch(e) {
+
+            if(
+                e instanceof NoProviderFoundError 
+                && 
+                (normalizedDep.isOptional || normalizedDep.defaultValue !== undefined)
+            ){
+                this.logger.info(`No provider found for ${JSON.stringify(dep)}`, {path})
+                return normalizedDep.defaultValue ?? undefined;
+            }
+            
+            throw e;
+            
+        }
+    }
+
     private resolveDependencies<T extends ClassConstructor>(target: T, path: Set<Token>): any[] {
         
         const injectMetadata = getConstructorDependenciesMetadata(target);
 
-        return injectMetadata.map(dep => {
-
-            try {
-                if(dep.isConfig){
-                    return this.resolveConfig(dep.token, {});
-                } else {
-                    return this.resolve(dep.token, {}, path);
-                }
-            } catch (error) {
-                if (dep.isOptional) return dep.defaultValue !== undefined ? dep.defaultValue : undefined;
-                throw error;
-            }
-        });
+        return injectMetadata.map(dep => this.resolveDependency(dep, path));
     }
 
     private initializeInstance<T>(instance: T): void {
@@ -841,14 +885,7 @@ export class DIContainer implements IDIContainer {
         const dependencies = getPropertyDependenciesMetadata(instance.constructor as ClassConstructor);
 
         for (const dep of dependencies) {
-            const propertyValue = (() => {
-                try {
-                    return this.resolve(dep.token);
-                } catch (error) {
-                    if (dep.isOptional) return undefined;
-                    throw error;
-                }
-            })();
+            const propertyValue = this.resolveDependency(dep, new Set())
 
             Object.defineProperty(instance, dep.propertyKey, {
                 value: propertyValue,
@@ -980,10 +1017,14 @@ export class DIContainer implements IDIContainer {
     async resolveAsync<T>( 
         dependencyToken: DepIdentifier<T>, 
         criteria?: {
-            priority?: PriorityCriteria;
             tags?: string[];
+            type?: ProviderOptions['type'], 
+            priority?: PriorityCriteria;
+            forEntity?: ProviderOptions['forEntity'], 
+            allProvidersFromChildContainers?: boolean
         },
-        path?: Set<Token>){
+        path?: Set<Token>
+    ){
         return await this.resolve<T, true>(dependencyToken, criteria, path, true);
     }
     
@@ -1014,18 +1055,7 @@ export class DIContainer implements IDIContainer {
 
         const injectMetadata = getConstructorDependenciesMetadata(target);
 
-        return await Promise.all(injectMetadata.map(async dep => {
-            try {
-                if(dep.isConfig){
-                    return Promise.resolve(this.resolveConfig(dep.token, {}));
-                } else {
-                    return await this.resolveAsync(dep.token, {}, path);
-                }
-            } catch (error) {
-                if (dep.isOptional) return dep.defaultValue !== undefined ? dep.defaultValue : undefined;
-                throw error;
-            }
-        }));
+        return await Promise.all(injectMetadata.map(async dep => await this.resolveDependency(dep, path, true) ));
     }
 
     private async initializeInstanceAsync<T>(instance: T): Promise<void> {
@@ -1048,7 +1078,9 @@ export class DIContainer implements IDIContainer {
     }
 
     private async createFactoryInstanceAsync<T>(options: FactoryProviderOptions<T>, path: Set<Token>): Promise<T> {
-        const dependencies = await Promise.all((options.deps || []).map(dep => this.resolveAsync(dep, {}, path)));
+        const dependencies = await Promise.all((options.deps || []).map( async (dep) => {
+            return await this.resolveDependency(dep, path, true);
+        }));
         return options.useFactory(...dependencies);
     }
 
@@ -1058,14 +1090,7 @@ export class DIContainer implements IDIContainer {
         const dependencies = getPropertyDependenciesMetadata(instance.constructor as ClassConstructor);
 
         for (const dep of dependencies) {
-            const propertyValue = await (async () => {
-                try {
-                    return await this.resolveAsync(dep.token);
-                } catch (error) {
-                    if (dep.isOptional) return undefined;
-                    throw error;
-                }
-            })();
+            const propertyValue = await this.resolveDependency(dep, new Set(), true)
 
             Object.defineProperty(instance, dep.propertyKey, {
                 value: propertyValue,

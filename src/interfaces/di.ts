@@ -4,6 +4,36 @@ export type Token = string;
 export type DepIdentifier<T = any> = string | Function | ClassConstructor<T>;
 export type ClassConstructor<T extends any = any> = new (...args: any[]) => T;
 
+export type PriorityCriteria =
+  | { greaterThan: number }
+  | { lessThan: number }
+  | { eq: number }
+  | { between: [number, number] };
+
+
+export type InjectOptions<T extends unknown = unknown> = {
+    isOptional?: boolean;
+    isConfig?: boolean;
+    defaultValue?: T;
+    tags?: string[];
+    type?: ProviderOptions['type'], 
+    priority?: PriorityCriteria;
+    forEntity?: ProviderOptions['forEntity'],
+};
+
+export type ParameterInjectMetadata<T extends unknown = unknown> = InjectOptions<T> & {
+    token: Token;
+};
+
+export type PropertyInjectMetadata<T extends unknown = unknown> = InjectOptions<T> & {
+    token: Token;
+    propertyKey: string | symbol;
+};
+
+export type ComplexDependencyIdentifier<T=any> = InjectOptions<T> & {
+    token: DepIdentifier, 
+} 
+
 export type BaseProviderOptions = {
     _token?: Token;
     provide: DepIdentifier<any>;
@@ -21,7 +51,7 @@ export interface ClassProviderOptions<T = ClassConstructor<any>> extends BasePro
 }
 
 export interface FactoryProviderOptions<T = any> extends BaseProviderOptions {
-    deps?: DepIdentifier[];
+    deps?: Array<DepIdentifier | ComplexDependencyIdentifier>;
     useFactory: (...args: any[]) => T;
 }
 
@@ -96,27 +126,6 @@ export type DIModuleOptions = {
 	 */
 	providedBy ?: IDIContainer | 'ROOT' | ClassConstructor;
 }
-
-export type InjectOptions<T extends unknown = unknown> = {
-    isOptional?: boolean;
-    isConfig?: boolean;
-    defaultValue?: T
-};
-
-export type ParameterInjectMetadata<T extends unknown = unknown> = InjectOptions<T> & {
-    token: Token;
-};
-
-export type PropertyInjectMetadata<T extends unknown = unknown> = InjectOptions<T> & {
-    token: Token;
-    propertyKey: string | symbol;
-};
-
-export type PriorityCriteria =
-  | { greaterThan: number }
-  | { lessThan: number }
-  | { eq: number }
-  | { between: [number, number] };
   
 export interface InjectableOptions extends PartialBy<BaseProviderOptions, 'provide'> {
     providedIn?: 'ROOT' | ClassConstructor;
@@ -193,7 +202,9 @@ export interface IDIContainer {
         dependencyToken: DepIdentifier<T>,
         criteria?: {
             tags?: string[];
+            type?: ProviderOptions['type'],
             priority?: PriorityCriteria;
+            forEntity?: ProviderOptions['forEntity'],
             allProvidersFromChildContainers?: boolean;
         },
         path?: Set<Token>,
@@ -208,8 +219,10 @@ export interface IDIContainer {
 
     resolveAsync<T>(dependencyToken: DepIdentifier<T>, criteria?: {
         tags?: string[];
+        type?: ProviderOptions['type'],
         priority?: PriorityCriteria;
-        allProvidersFromChildContainers?: boolean;
+        forEntity?: ProviderOptions['forEntity'],
+        allProvidersFromChildContainers?: boolean
     }, path?: Set<Token>): Promise<T>;
 
     resolveProviderValue<T, Async extends boolean = false>(

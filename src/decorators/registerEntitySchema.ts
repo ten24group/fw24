@@ -1,6 +1,6 @@
 import { EntityConfiguration } from 'electrodb';
 import { DI_TOKENS } from '../const';
-import { BaseEntityService } from '../entity';
+import { BaseEntityService, EntitySchema } from '../entity';
 import type { ClassConstructor, DepIdentifier, IDIContainer, ProviderOptions, } from '../interfaces/di';
 import { createLogger, DefaultLogger, ILogger } from '../logging';
 import { camelCase, pascalCase } from '../utils/cases';
@@ -19,7 +19,7 @@ function makeAutoGenEntityServiceName(entityName: string){
     return `${pascalCase(camelCase(entityName))}Service[AutoGen]`
 }
 
-export function registerEntitySchema(options: EntitySchemaProviderOptions){
+export function registerEntitySchema<T extends EntitySchema<any, any, any>>(options: EntitySchemaProviderOptions & { forEntity: T['model']['entity']}){
     
     const entitySchemaToken = `${options.forEntity}Schema`;
 

@@ -30,12 +30,14 @@ export type GetSignedUrlForFileUploadSchema = {
 export class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIController {
 	
 	readonly logger = createLogger(BaseEntityController);
+	protected readonly entityName: string;
 
     /**
      * Creates an instance of BaseEntityController.
+     * @param {BaseEntityService<Sch>} entityService - The entity-service.
      * @param {string} entityName - The name of the entity.
      */
-    constructor(protected readonly entityName: string, protected readonly entityService: BaseEntityService<Sch>) {
+    constructor(protected readonly entityService: BaseEntityService<Sch>, entityName = entityService.getEntityName()) {
         super();
         this.entityName = entityName;
     }
