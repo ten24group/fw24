@@ -85,7 +85,7 @@ export function InjectEntitySchema<T>(entityName: string, options: Omit<InjectOp
         const schemaToken = makeEntitySchemaTokenName(entityName);
         const normalizedOptions: InjectOptions<T> = { 
             ...options,
-            type: 'service',
+            type: 'schema',
             forEntity: entityName 
         }
 
