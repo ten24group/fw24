@@ -5,7 +5,6 @@ import type { EntityFilterCriteria } from './query-types';
 
 import { APIController } from '../core/runtime/api-gateway-controller';
 import { Delete, Get, Patch, Post } from '../decorators/method';
-import { createLogger } from '../logging';
 import { safeParseInt } from '../utils/parse';
 import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, merge, resolveEnvValueFor, toSlug } from '../utils';
 import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
@@ -29,18 +28,21 @@ export type GetSignedUrlForFileUploadSchema = {
  */
 export class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIController {
 	
-	readonly logger = createLogger(BaseEntityController);
-	protected readonly entityName: string;
+	private entityName: string;
 
     /**
      * Creates an instance of BaseEntityController.
      * @param {BaseEntityService<Sch>} entityService - The entity-service.
      * @param {string} entityName - The name of the entity.
      */
-    constructor(protected readonly entityService: BaseEntityService<Sch>, entityName = entityService.getEntityName()) {
+    constructor(protected readonly entityService: BaseEntityService<Sch>, entityName = entityService?.getEntityName()) {
         super();
         this.entityName = entityName;
     }
+
+	protected getEntityName(){
+		return this.entityName || this.getEntityService()?.getEntityName();
+	}
 
     /**
      * Initializes the entity controller.
@@ -73,7 +75,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const createdEntity = await this.getEntityService().create(req.body);
 
 		const result: any = {
-			[camelCase(this.entityName)]: createdEntity,
+			[camelCase(this.getEntityName())]: createdEntity,
 			message: "Created successfully"
 		};
 		if (req.debugMode) {
@@ -140,7 +142,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const duplicateEntity = await service.duplicate(identifiers);
 
 		const result: any = {
-			[camelCase(this.entityName)]: duplicateEntity,
+			[camelCase(this.getEntityName())]: duplicateEntity,
 		};
 
 		if (req.debugMode) {
@@ -166,7 +168,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const entity = await this.getEntityService().get({identifiers, selections});
 
 		const result: any = {
-			[camelCase(this.entityName)]: entity,
+			[camelCase(this.getEntityName())]: entity,
 		};
 
 		if (req.debugMode) {
@@ -281,7 +283,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const updatedEntity = await this.getEntityService().update(identifiers as any, req.body);
 
 		const result: any = {
-			[camelCase(this.entityName)]: updatedEntity,
+			[camelCase(this.getEntityName())]: updatedEntity,
 			message: "Updated successfully"
 		};
 		if (req.debugMode) {
@@ -306,7 +308,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const deletedEntity = await this.getEntityService().delete(identifiers);
 
 		const result: any = {
-			[camelCase(this.entityName)]: deletedEntity,
+			[camelCase(this.getEntityName())]: deletedEntity,
 			message: "Deleted successfully"
 		};
 
