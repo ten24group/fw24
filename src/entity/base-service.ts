@@ -49,7 +49,7 @@ export function getAttributeNameBy(schema: EntitySchema<any, any, any>, spec: Sp
 
 export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
-    readonly logger = createLogger(BaseEntityService);
+    readonly logger = createLogger(this.constructor.name);
 
     protected entityRepository ?: EntityRepositoryTypeFromSchema<S>;
     protected entityOpsDefaultIoSchema ?: ReturnType<typeof this.makeOpsDefaultIOSchema<S>>;
@@ -1174,7 +1174,7 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
 
     const { entityName: relatedEntityName, ...restRelation } = relation || {};
 
-    const relationMeta = relatedEntityName ? {...restRelation, entity: relatedEntityName} : undefined;
+    const relationMeta = relatedEntityName ? {...restRelation, entityName: relatedEntityName} : undefined;
 
     const {items, type, properties, addNewOption, ...restRestMeta} = restMeta as any;
 
