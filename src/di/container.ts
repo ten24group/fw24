@@ -925,10 +925,13 @@ export class DIContainer implements IDIContainer {
         } 
     ): boolean {
 
+        const { tags, priority, allProvidersFromChildContainers } = criteria ?? {};
         const bestProviders = this.collectBestProvidersFor<any>({
-            ...criteria,
+            tags, 
             type: 'service',
+            priority, 
             forEntity: entityName,
+            allProvidersFromChildContainers,
         });
 
         return bestProviders.length > 0;
@@ -943,11 +946,14 @@ export class DIContainer implements IDIContainer {
         },
         async: Async = false as Async
     ): Async extends true ? Promise<T> : T {
-
+        
+        const { tags, priority, allProvidersFromChildContainers } = criteria ?? {};
         const bestProviders = this.collectBestProvidersFor<any>({
-            ...criteria,
+            tags, 
             type: 'service',
+            priority, 
             forEntity: entityName,
+            allProvidersFromChildContainers,
         });
         
         if (bestProviders.length === 0) {
@@ -967,10 +973,13 @@ export class DIContainer implements IDIContainer {
         } 
     ): boolean {
 
+        const { tags, priority, allProvidersFromChildContainers } = criteria ?? {};
         const bestProviders = this.collectBestProvidersFor<any>({
-            ...criteria,
+            tags, 
             type: 'schema',
+            priority, 
             forEntity: entityName,
+            allProvidersFromChildContainers,
         });
 
         return bestProviders.length > 0;
@@ -986,10 +995,13 @@ export class DIContainer implements IDIContainer {
         async: Async = false as Async
     ): Async extends true ? Promise<T> : T {
 
+        const { tags, priority, allProvidersFromChildContainers } = criteria ?? {};
         const bestProviders = this.collectBestProvidersFor<any>({
-            ...criteria,
+            tags, 
             type: 'schema',
+            priority, 
             forEntity: entityName,
+            allProvidersFromChildContainers,
         });
         
         if (bestProviders.length === 0) {
