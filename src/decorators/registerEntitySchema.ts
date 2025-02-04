@@ -15,8 +15,8 @@ export type EntitySchemaProviderOptions = OmitAnyKeys<ProviderOptions<any>, 'pro
     doNotAutoRegisterEntityService?: boolean;
 };
 
-function makeAutoGenEntityServiceName(entityName: string){
-    return `${pascalCase(camelCase(entityName))}Service[AutoGen]`
+function makeEntityServiceName(entityName: string){
+    return `${pascalCase(camelCase(entityName))}Service`
 }
 
 export function registerEntitySchema<T extends EntitySchema<any, any, any>>(options: EntitySchemaProviderOptions & { forEntity: T['model']['entity']}){
@@ -68,9 +68,7 @@ export function registerEntitySchema<T extends EntitySchema<any, any, any>>(opti
         return;
     }
 
-    class AutoGenEntityService extends BaseEntityService<any> {
-        readonly logger: ILogger = createLogger(AutoGenEntityService);
-        
+    class AutoGenEntityService extends BaseEntityService<any> {        
         constructor(
             readonly entityConfiguration: EntityConfiguration,
             readonly schema: any,
@@ -79,7 +77,7 @@ export function registerEntitySchema<T extends EntitySchema<any, any, any>>(opti
             super(schema, entityConfiguration, diContainer);
         }
     }
-    const entityServiceName = makeAutoGenEntityServiceName(String(optionsCopy.forEntity));
+    const entityServiceName = makeEntityServiceName(String(optionsCopy.forEntity));
     Object.defineProperty(AutoGenEntityService, 'name', { value: entityServiceName });
 
     try {
