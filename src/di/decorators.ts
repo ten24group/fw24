@@ -83,22 +83,28 @@ export function InjectEntitySchema<T>(entityName: string, options: Omit<InjectOp
     return (target: any, propertyKey: string | symbol | undefined, parameterIndex?: number) => {
         
         const schemaToken = makeEntitySchemaTokenName(entityName);
+        const normalizedOptions: InjectOptions<T> = { 
+            ...options,
+            type: 'service',
+            forEntity: entityName 
+        }
 
         if (typeof parameterIndex === 'number') {
 
-            registerConstructorDependency(target.prototype.constructor, parameterIndex, schemaToken, { ...options });
+            registerConstructorDependency(
+                target.prototype.constructor, 
+                parameterIndex,
+                schemaToken,
+                normalizedOptions
+            );
 
         } else if (propertyKey !== undefined) {
 
             registerPropertyDependency(
-                target.constructor as ClassConstructor, 
+                target.constructor, 
                 propertyKey, 
                 schemaToken, 
-                { 
-                    ...options, 
-                    type: 'schema',
-                    forEntity: entityName 
-                }
+                normalizedOptions
             );
         }
     };
@@ -110,21 +116,28 @@ export function InjectEntityService<T>(entityName: string, options: Omit<InjectO
         
         const serviceToken = makeEntityServiceToken(entityName);
 
+        const normalizedOptions: InjectOptions<T> = { 
+            ...options,
+            type: 'service',
+            forEntity: entityName 
+        }
+
         if (typeof parameterIndex === 'number') {
 
-            registerConstructorDependency(target.prototype.constructor, parameterIndex, serviceToken, { ...options });
+            registerConstructorDependency(
+                target.prototype.constructor, 
+                parameterIndex, 
+                serviceToken, 
+                normalizedOptions
+            );
 
         } else if (propertyKey !== undefined) {
 
             registerPropertyDependency(
-                target.constructor as ClassConstructor, 
+                target.constructor, 
                 propertyKey, 
                 serviceToken, 
-                { 
-                    ...options, 
-                    type: 'service',
-                    forEntity: entityName 
-                }
+                normalizedOptions
             );
         }
     };
