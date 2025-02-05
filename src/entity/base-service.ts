@@ -149,7 +149,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         return isBatchInput ? identifiersBatch : identifiersBatch[0];
     };
 
-    public getEntityName(): S['model']['entity'] { return this.schema.model.entity; }
+    public getEntityName(): S['model']['entity'] { return this.getEntitySchema().model.entity; }
     
     public getEntitySchema(): S { return this.schema;}
     
@@ -456,8 +456,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             throw new Error(`No service found for relationship: ${relatedAttributeName}(${relatedEntityName}); please make sure service has been registered in the required 'di-container'`);
         }
 
+        const schema = this.getEntitySchema();
+
         // Get relation metadata
-        const relationAttributeMetadata = this.schema?.attributes && this.schema.attributes[relatedAttributeName as keyof typeof this.schema.attributes] as EntityAttribute;
+        const relationAttributeMetadata = schema?.attributes && schema.attributes[relatedAttributeName as keyof typeof schema.attributes] as EntityAttribute;
+        
         if(!relationAttributeMetadata || !relationAttributeMetadata?.relation){
             this.logger.warn(`No metadata found for relationship: ${relatedAttributeName}`, relationAttributeMetadata);
             return;
