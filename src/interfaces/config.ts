@@ -27,5 +27,6 @@ export interface IApplicationConfig {
 	}
     appDIContainer?: IDIContainer;
     lambdaEntryPackages?: string[];
+    stackNames?: string[];
 }
 

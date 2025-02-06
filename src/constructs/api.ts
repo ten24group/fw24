@@ -41,11 +41,12 @@ import { LayerConstruct } from "./layer";
 import { MailerConstruct } from "./mailer";
 import { QueueConstruct } from "./queue";
 import { TopicConstruct } from "./topic";
+import { IConstructConfig } from "../interfaces/construct-config";
 
 /**
  * Represents the configuration options for an API construct.
  */
-export interface IAPIConstructConfig {
+export interface IAPIConstructConfig extends IConstructConfig {
     /**
      * Specifies the CORS configuration for the API.
      * It can be a boolean value, a single string, or an array of strings.

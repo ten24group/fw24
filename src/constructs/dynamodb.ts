@@ -4,11 +4,12 @@ import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import { createLogger, LogDuration } from "../logging";
 import { ensureNoSpecialChars, ensureSuffix } from "../utils/keys";
+import { IConstructConfig } from "../interfaces/construct-config";
 
 /**
  * Represents the configuration for a DynamoDB table.
  */
-export interface IDynamoDBConfig {
+export interface IDynamoDBConfig extends IConstructConfig {
     table: {
         /**
          * The name of the DynamoDB table.
@@ -69,7 +70,7 @@ export class DynamoDBConstruct implements FW24Construct {
     @LogDuration()
     public async construct() {        
         const fw24 = Fw24.getInstance();
-        const mainStack = fw24.getStack("main");
+        const mainStack = fw24.getStack(this.dynamoDBConfig.stackName || "main");
         const appQualifiedTableName = ensureNoSpecialChars(ensureSuffix(this.dynamoDBConfig.table.name, `table`));
 
         this.logger.debug("appQualifiedTableName:", appQualifiedTableName);
