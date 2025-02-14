@@ -13,7 +13,7 @@ import {
     RestApi,
 } from "aws-cdk-lib/aws-apigateway";
 
-import { CfnOutput, RemovalPolicy, Stack } from "aws-cdk-lib";
+import { CfnOutput, Duration, RemovalPolicy, Stack } from "aws-cdk-lib";
 
 import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
@@ -92,6 +92,11 @@ export interface IAPIConstructConfig extends IConstructConfig {
      * Specifies if each controller should be created in a separate stack.
      */
     stackPerController?: boolean;
+
+    /**
+     * API Gateway Lambda integration timeout in seconds.
+     */
+    integrationTimeout?: number;
 
 }
 
@@ -244,7 +249,9 @@ export class APIConstruct implements FW24Construct {
             const controllerLambda = this.createLambdaFunction(controllerName, filePath, fileName, controllerConfig);
             this.fw24.setConstructOutput(this, controllerName, controllerLambda, OutputType.FUNCTION);
 
-            controllerIntegration = new LambdaIntegration(controllerLambda);
+            controllerIntegration = new LambdaIntegration(controllerLambda, {
+                timeout: Duration.seconds(this.apiConstructConfig.integrationTimeout || 29),
+            });
         } 
 
         const { defaultAuthorizerName, defaultAuthorizerType, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig } = this.extractDefaultAuthorizer(controllerConfig);
