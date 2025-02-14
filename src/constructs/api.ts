@@ -88,6 +88,11 @@ export interface IAPIConstructConfig extends IConstructConfig {
      */
     certificateArn?: string;
 
+    /**
+     * Specifies if each controller should be created in a separate stack.
+     */
+    stackPerController?: boolean;
+
 }
 
 export class APIConstruct implements FW24Construct {
@@ -133,13 +138,31 @@ export class APIConstruct implements FW24Construct {
         }
         this.logger.debug("Creating API Gateway... ");
         // get the main stack from the framework
-        this.mainStack = this.fw24.getStack("main");
+        this.mainStack = this.fw24.getStack(this.apiConstructConfig.stackName || "main");
         // create the api gateway
         this.api = new RestApi(this.mainStack,  `${this.fw24.appName}-api`, paramsApi);
         // add the api to the framework
         this.fw24.addStack("api", this.api);
 
        await this.registerControllers();
+    }
+
+    private getStack = (controllerName: string): Stack => {
+        let currentStack: Stack = this.mainStack;
+    
+        if (controllerName && this.apiConstructConfig.stackPerController && this.apiConstructConfig.stackPerController === true) {
+            currentStack = this.fw24.getStack(controllerName);
+            if (!currentStack) {
+                currentStack = new Stack(this.fw24.getApp(), `${this.fw24.appName}-api-${controllerName}-stack`, {
+                    env: {
+                        account: this.mainStack.account,
+                        region: this.mainStack.region
+                    }
+                })
+                this.fw24.addStack(controllerName, currentStack);
+            }
+        }
+        return currentStack;
     }
 
     private async registerControllers() {
@@ -317,6 +340,15 @@ export class APIConstruct implements FW24Construct {
     }
 
     private getOrCreateControllerResource = (controllerName: string): IResource => {
+        if(this.apiConstructConfig.stackPerController){
+            let currentStack = this.getStack(controllerName);
+            this.logger.debug(`Creating controller resource for ${controllerName} in a separate stack ${currentStack.stackName}`);
+            let restAPI = RestApi.fromRestApiAttributes(currentStack, `${this.fw24.appName}-${controllerName}-api`, {
+                restApiId: this.api.restApiId,
+                rootResourceId: this.api.restApiRootResourceId
+            });
+            return restAPI.root.getResource(controllerName) ?? restAPI.root.addResource(controllerName);
+        }
         return this.api.root.getResource(controllerName) ?? this.api.root.addResource(controllerName);
     }
 
@@ -330,7 +362,7 @@ export class APIConstruct implements FW24Construct {
             envVariables[ENV_KEYS.ENTRY_PACKAGES] = (controllerConfig.entryPackages as Array<string>).join(',');
         }
 
-        return new LambdaFunction(this.mainStack, controllerName + "-controller", {
+        return new LambdaFunction(this.getStack(controllerName), controllerName + "-controller", {
             entry: filePath + "/" + fileName,
             environmentVariables: envVariables,
             policies: controllerConfig?.policies,
@@ -449,7 +481,7 @@ export class APIConstruct implements FW24Construct {
     }
 
     private createSQSIntegration = (queueName: string, controllerName: string): AwsIntegration => {
-        const integrationRole = new Role(this.mainStack, controllerName + "-sqs-integration-role", {
+        const integrationRole = new Role(this.getStack(controllerName), controllerName + "-sqs-integration-role", {
             assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
         });
         const queueInstance: Queue = this.fw24.getEnvironmentVariable(queueName,'queue');
@@ -482,7 +514,7 @@ export class APIConstruct implements FW24Construct {
     }
 
     private createSNSIntegration = (topicName: string, controllerName: string): AwsIntegration => {
-        const integrationRole = new Role(this.mainStack, controllerName + "-sns-integration-role", {
+        const integrationRole = new Role(this.getStack(controllerName), controllerName + "-sns-integration-role", {
             assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
         });
         const topicInstance: Topic = this.fw24.getEnvironmentVariable(topicName, 'topic');
@@ -515,7 +547,7 @@ export class APIConstruct implements FW24Construct {
     }
 
     private outputApiEndpoint = (controllerName: string, controllerResource: IResource) => {
-        new CfnOutput(this.mainStack, `Endpoint${controllerName}`, {
+        new CfnOutput(this.getStack(controllerName), `Endpoint${controllerName}`, {
             value: this.api.url + controllerResource.path.slice(1),
             description: "API Gateway Endpoint for " + controllerName,
         });

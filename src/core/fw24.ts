@@ -12,6 +12,7 @@ import { createLogger } from '../logging';
 import { Helper } from './helper';
 import { type IFw24Module } from './runtime/module';
 import { ensureNoSpecialChars, ensureValidEnvKey } from '../utils/keys';
+import { App } from 'aws-cdk-lib';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
@@ -20,6 +21,7 @@ export class Fw24 {
     emailProvider: any;
     
     private config: IApplicationConfig = {};
+    private app: any;
     private stacks: any = {};
     private environmentVariables: Record<string, any> = {};
     private policyStatements =  new Map<string, PolicyStatementProps | PolicyStatement>();
@@ -43,6 +45,14 @@ export class Fw24 {
         }
 
         return Fw24.instance;
+    }
+
+    setApp(app: App) {
+        this.app = app;
+    }
+
+    getApp(): App {
+        return this.app;
     }
 
     setConfig(config: IApplicationConfig) {

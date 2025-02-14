@@ -44,6 +44,8 @@ export class Application {
 
         // initialize the main stack
         const app = new App();
+        this.fw24.setApp(app);
+        
         // create the stacks based on names or default to main-stack
         if(!config.stackNames || config.stackNames.length === 0){
             config.stackNames = ['main'];
