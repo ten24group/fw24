@@ -1,4 +1,4 @@
-import { CfnOutput } from "aws-cdk-lib";
+import { CfnOutput, Stack } from "aws-cdk-lib";
 
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
@@ -9,12 +9,13 @@ import { basename as pathBaseName, resolve as pathResolve, join as pathJoin, ext
 import { existsSync, mkdirSync, readdirSync, statSync, rmSync, lstatSync, copyFileSync } from 'fs';
 import { build, BuildOptions } from 'esbuild';
 import { LayerEntry } from "../decorators";
+import { IConstructConfig } from "../interfaces/construct-config";
 
 
 /**
  * Configuration for the PACKAGE_DIRECTORY mode.
  */
-export interface IPackageDirectoryConfig {
+export interface IPackageDirectoryConfig extends IConstructConfig {
     /**
      * The name of the layer.
      */
@@ -39,7 +40,7 @@ export interface IPackageDirectoryConfig {
 /**
  * Configuration for the BUILD_AND_PACKAGE mode.
  */
-export interface IBuildAndPackageConfig {
+export interface IBuildAndPackageConfig extends IConstructConfig {
     /**
      * The source path of the layer, which can be a directory or a file.
      */
@@ -90,6 +91,8 @@ export class LayerConstruct implements FW24Construct {
     dependencies: string[] = [];
     output!: FW24ConstructOutput;
 
+    mainStack!: Stack;
+
     /**
      * Creates a new LayerConstruct instance.
      * @param config - The configuration for the LayerConstruct.
@@ -133,15 +136,15 @@ export class LayerConstruct implements FW24Construct {
 
     @LogDuration()
     public async construct() {
-        const mainStack = this.fw24.getStack('main');
-
         await Promise.all(this.config.map(async (layerConfig) => {
+            this.mainStack = this.fw24.getStack(layerConfig.stackName || 'layer') || this.fw24.getStack('main');
+
             this.logger.debug("Processing layer:", layerConfig);
 
             if (layerConfig.mode === 'PACKAGE_DIRECTORY') {
-                await this.packageDirectory(layerConfig, mainStack);
+                await this.packageDirectory(layerConfig);
             } else if (layerConfig.mode === 'BUILD_AND_PACKAGE') {
-                await this.scanAndPackageFiles(layerConfig, mainStack);
+                await this.scanAndPackageFiles(layerConfig);
             } else {
                 throw new Error(`Invalid mode for layer ${layerConfig}`);
             }
@@ -153,7 +156,7 @@ export class LayerConstruct implements FW24Construct {
      * @param layerConfig - The configuration for the layer.
      * @param mainStack - The main stack for deploying resources.
      */
-    private async packageDirectory(layerConfig: IPackageDirectoryConfig, mainStack: any) {
+    private async packageDirectory(layerConfig: IPackageDirectoryConfig) {
         const defaultLayerProps: LayerVersionProps = {
             layerVersionName: layerConfig.layerName,
             compatibleRuntimes: [Runtime.NODEJS_18_X],
@@ -161,17 +164,18 @@ export class LayerConstruct implements FW24Construct {
             compatibleArchitectures: [Architecture.ARM_64],
         };
         
-        const layer = new LayerVersion(mainStack, layerConfig.layerName + '-layer', {
+        const layer = new LayerVersion(this.mainStack, layerConfig.layerName + '-layer', {
             ...defaultLayerProps,
             ...layerConfig.layerProps,
         });
         
-        this.fw24.setConstructOutput(this, layerConfig.layerName, layer, OutputType.LAYER);
-        this.fw24.setEnvironmentVariable(layerConfig.layerName, layer.layerVersionArn, "layer");
+        this.fw24.setConstructOutput(this, layerConfig.layerName, layer, OutputType.LAYER, 'layerVersionArn');
+        // this.fw24.setEnvironmentVariable(layerConfig.layerName, layer.layerVersionArn, "layer");
 
-        new CfnOutput(mainStack, layerConfig.layerName + 'LayerArn', {
-            value: layer.layerVersionArn,
-        });
+        // new CfnOutput(this.mainStack, layerConfig.layerName + 'LayerArn', {
+        //     value: layer.layerVersionArn,
+        // });
+
     }
 
     /**
@@ -179,7 +183,7 @@ export class LayerConstruct implements FW24Construct {
      * @param layerConfig - The configuration for the layer.
      * @param mainStack - The main stack for deploying resources.
      */
-    private async scanAndPackageFiles(layerConfig: IBuildAndPackageConfig, mainStack: any) {
+    private async scanAndPackageFiles(layerConfig: IBuildAndPackageConfig) {
         const distDirectory = layerConfig.distDirectory || pathJoin(__dirname, '../../dist');
         const sourceDirectoryOrFileName = pathResolve(layerConfig.sourcePath);
         const tsFiles = lstatSync(sourceDirectoryOrFileName).isDirectory()
@@ -187,7 +191,7 @@ export class LayerConstruct implements FW24Construct {
             : [sourceDirectoryOrFileName];
 
         await Promise.all(tsFiles.map(async (file) => {
-            await this.tryCreateLayerForFile(file, distDirectory, mainStack, layerConfig);
+            await this.tryCreateLayerForFile(file, distDirectory, layerConfig);
         }));
     }
 
@@ -198,7 +202,7 @@ export class LayerConstruct implements FW24Construct {
      * @param mainStack - The main stack for deploying resources.
      * @param layerConfig - The configuration for the layer.
      */
-    private async tryCreateLayerForFile(file: string, distDirectory: string, mainStack: any, layerConfig: IBuildAndPackageConfig) {
+    private async tryCreateLayerForFile(file: string, distDirectory: string, layerConfig: IBuildAndPackageConfig) {
         
         const moduleExports = await import(file);
 
@@ -258,18 +262,18 @@ export class LayerConstruct implements FW24Construct {
             compatibleArchitectures: [Architecture.ARM_64],
         };
 
-        const layer = new LayerVersion(mainStack, layerName + '-layer', {
+        const layer = new LayerVersion(this.mainStack, layerName + '-layer', {
             ...defaultLayerProps,
             ...layerConfig.layerProps,
             ...layerProps, // the layerProps from the decorator take precedence
         });
 
-        this.fw24.setConstructOutput(this, layerName, layer, OutputType.LAYER);
-        this.fw24.setEnvironmentVariable(layerName, layer.layerVersionArn, "layer");
+        this.fw24.setConstructOutput(this, layerName, layer, OutputType.LAYER, 'layerVersionArn');
+        // this.fw24.setEnvironmentVariable(layerName, layer.layerVersionArn, "layer");
 
-        new CfnOutput(mainStack, layerName + 'LayerArn', {
-            value: layer.layerVersionArn,
-        });
+        // new CfnOutput(this.mainStack, layerName + 'LayerArn', {
+        //     value: layer.layerVersionArn,
+        // });
 
         // Clean up the temporary output directory if configured
         if (layerConfig.clearOutputDir) {
@@ -348,7 +352,7 @@ async function bundleWithEsbuild(entryFile: string, outputFile: string, buildOpt
         entryPoints: [entryFile],
     };
 
-    DefaultLogger.info(`bundleWithEsbuild: Bundling ${entryFile} into ${outputFile} with options:`, defaultOptions);
+    DefaultLogger.debug(`bundleWithEsbuild: Bundling ${entryFile} into ${outputFile} with options:`, defaultOptions);
     await build(defaultOptions);
 }
 

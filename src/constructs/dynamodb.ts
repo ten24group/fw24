@@ -5,6 +5,7 @@ import { Fw24 } from "../core/fw24";
 import { createLogger, LogDuration } from "../logging";
 import { ensureNoSpecialChars, ensureSuffix } from "../utils/keys";
 import { IConstructConfig } from "../interfaces/construct-config";
+import { Stack } from "aws-cdk-lib";
 
 /**
  * Represents the configuration for a DynamoDB table.
@@ -53,6 +54,8 @@ export class DynamoDBConstruct implements FW24Construct {
     dependencies: string[] = [];
     output!: FW24ConstructOutput;
 
+    mainStack!: Stack;
+
     /**
      * Constructs a new instance of the DynamoDB class.
      * @param dynamoDBConfig The configuration object for DynamoDB.
@@ -70,13 +73,13 @@ export class DynamoDBConstruct implements FW24Construct {
     @LogDuration()
     public async construct() {        
         const fw24 = Fw24.getInstance();
-        const mainStack = fw24.getStack(this.dynamoDBConfig.stackName || "main");
+        this.mainStack = fw24.getStack(this.dynamoDBConfig.stackName || "main");
         const appQualifiedTableName = ensureNoSpecialChars(ensureSuffix(this.dynamoDBConfig.table.name, `table`));
 
         this.logger.debug("appQualifiedTableName:", appQualifiedTableName);
 
         // See https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_dynamodb-readme.html
-        const tableInstance = new TableV2(mainStack, appQualifiedTableName, this.dynamoDBConfig.table.props);
+        const tableInstance = new TableV2(this.mainStack, appQualifiedTableName, this.dynamoDBConfig.table.props);
 
         // Register the table instance as a global container
         fw24.addDynamoTable(appQualifiedTableName, tableInstance);

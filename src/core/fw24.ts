@@ -12,7 +12,8 @@ import { createLogger } from '../logging';
 import { Helper } from './helper';
 import { type IFw24Module } from './runtime/module';
 import { ensureNoSpecialChars, ensureValidEnvKey } from '../utils/keys';
-import { App } from 'aws-cdk-lib';
+import { App, CfnOutput, Fn, Stack } from 'aws-cdk-lib';
+import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
@@ -23,6 +24,7 @@ export class Fw24 {
     private config: IApplicationConfig = {};
     private app: any;
     private stacks: any = {};
+    private apis: any = {};
     private environmentVariables: Record<string, any> = {};
     private policyStatements =  new Map<string, PolicyStatementProps | PolicyStatement>();
     private defaultCognitoAuthorizer: IAuthorizer | undefined;
@@ -112,6 +114,16 @@ export class Fw24 {
 
     getStack(name: string): any {
         return this.stacks[name];
+    }
+
+    addAPI(name: string, api: any): Fw24 {
+        this.logger.debug("addAPI:", {name} );
+        this.apis[name] = api;
+        return this;
+    }
+
+    getAPI(name: string): any {
+        return this.apis[name];
     }
 
     addModule(name: string, module: IFw24Module) {
@@ -212,7 +224,42 @@ export class Fw24 {
         this.environmentVariables[ensureValidEnvKey(name, prefix)] = value;
     }
 
-    getEnvironmentVariable(name: string, prefix: string = ''): any {
+    getEnvironmentVariable(name: string, prefix: string = '', scope?: any): any {
+        // if lookup is for construct output (based on prefix being one of the output types)
+        // and the application has multiple stacks, then look for value in the stack export
+        // if the scope is defined and is a stack and the output is from the same stack, then return the value
+        
+        if(prefix && this.config.stackNames && this.config.stackNames.length > 1){
+            const isPrefixOutputType = Object.values(OutputType).includes(prefix as OutputType);
+            if(isPrefixOutputType){
+                // Access the value from stack import
+                // const key = `ExportOutput:${prefix}_${name}`;
+                // const exportKeyName = this.getEnvironmentVariable(key);
+                // if(exportKeyName){
+                //     const stackName = exportKeyName.split(':')[0];
+                //     if(scope && scope.stackName === stackName){
+                //         return this.environmentVariables[ensureValidEnvKey(name, prefix)];
+                //     }
+                //     this.logger.info(`Importing value from stack: ${stackName} for key: ${key} in scope: ${scope.stackName}`);
+                //     // import the key from the stack
+                //     return Fn.importValue(exportKeyName);
+                // }
+                // Access the value from SSM
+                const ssmKey = this.getEnvironmentVariable(name, `SSM:${prefix}`);
+                if(ssmKey){
+                    const stackName = ssmKey.split('/')[1];
+                    if(scope && scope.stackName === stackName){
+                        this.logger.info(`Using SSM value for key: ${ssmKey} from environment variable.`);
+                        return this.environmentVariables[ensureValidEnvKey(name, prefix)];
+                    }
+                    this.logger.info(`Importing SSM value for key: ${ssmKey}`);
+                    // retrive key from ssm
+                    const ssmValue = StringParameter.valueForStringParameter(scope, ssmKey);
+                    return ssmValue;
+                }
+            }
+        }
+
         return this.environmentVariables[ensureValidEnvKey(name, prefix)];
     }
 
@@ -265,7 +312,7 @@ export class Fw24 {
         return this.policyStatements.has(ensureValidEnvKey(policyName, prefix));
     }
     
-    setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType) {
+    setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType, exportValueKey?: string) {
         this.logger.debug(`setConstructOutput: ${construct.name}`, {outputType, key});
         if(outputType){
             construct.output = {
@@ -276,6 +323,31 @@ export class Fw24 {
                 }
             }
             this.setEnvironmentVariable(key, value, `${construct.name}_${outputType}`);
+
+            // in case of object reference, export the output to be used in other stacks
+            let outputValue = value;
+            if(typeof value === 'object' && exportValueKey){
+                outputValue = value[exportValueKey];
+            } else if(typeof value === 'object' && exportValueKey === undefined){
+                return;
+            }
+            const exportKey = `${outputType}${key}`;
+            this.setEnvironmentVariable(key, `${construct.mainStack.stackName}:${exportKey}`, `ExportOutput:${construct.name}_${outputType}`);
+            // keep without construct name as well for backward compatibility
+            this.setEnvironmentVariable(key, `${construct.mainStack.stackName}:${exportKey}`, `ExportOutput:${outputType}`);
+            new CfnOutput(construct.mainStack, exportKey, {
+                value: outputValue,
+                exportName: `${construct.mainStack.stackName}:${exportKey}`,
+            });
+
+            // SSM parameter store for the output
+            const ssmKey = `/${construct.mainStack.stackName}/${outputType}/${key}/${exportValueKey}`;
+            this.setEnvironmentVariable(key, ssmKey, `SSM:${outputType}`);
+            new StringParameter(construct.mainStack, `SSM${outputType}${key}`, {
+                parameterName: ssmKey,
+                stringValue: outputValue,
+            });
+
         } else {
             construct.output = {
                 ...construct.output,

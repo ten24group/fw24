@@ -194,7 +194,7 @@ export class QueueLambda extends Construct {
     fw24.setEnvironmentVariable(props.queueName, queue, "queue");
 
     if(props.lambdaFunctionProps){
-      const queueFunction = new LambdaFunction(this, `${id}-lambda`, { ...props.lambdaFunctionProps }) as NodejsFunction;
+      const queueFunction = new LambdaFunction(scope, `${id}-lambda`, { ...props.lambdaFunctionProps }) as NodejsFunction;
       
       const isFifoQueue = Helper.isFifoQueueProps({ 
         ...(props.queueProps || {}), 
