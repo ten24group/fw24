@@ -1,4 +1,4 @@
-import { CfnOutput } from "aws-cdk-lib";
+import { CfnOutput, Stack } from "aws-cdk-lib";
 import { Topic, TopicProps } from 'aws-cdk-lib/aws-sns';
 import { EmailSubscription, SmsSubscription } from 'aws-cdk-lib/aws-sns-subscriptions';
 
@@ -28,6 +28,8 @@ export class TopicConstruct implements FW24Construct {
     dependencies: string[] = [];
     output!: FW24ConstructOutput;
 
+    mainStack!: Stack;
+
     constructor(private topicConstructConfig: ITopicConstructConfig[]) {
         Helper.hydrateConfig(topicConstructConfig,'SNS');
     }
@@ -36,12 +38,12 @@ export class TopicConstruct implements FW24Construct {
     public async construct() {
         this.logger.debug("construct: ");
 
-        const mainStack = this.fw24.getStack('main');
+        this.mainStack = this.fw24.getStack('main');
 
         this.topicConstructConfig.forEach( ( topicConfig: ITopicConstructConfig ) => {
             this.logger.debug("Creating topic: ", topicConfig.topicName);
 
-            const topic = new Topic(mainStack, topicConfig.topicName + '-topic', {
+            const topic = new Topic(this.mainStack, topicConfig.topicName + '-topic', {
                 ...topicConfig.topicProps
             });
             this.fw24.setConstructOutput(this, topicConfig.topicName, topic, OutputType.TOPIC);
@@ -64,7 +66,7 @@ export class TopicConstruct implements FW24Construct {
                 }
             }
 
-            new CfnOutput(mainStack, topicConfig.topicName + 'Output', {
+            new CfnOutput(this.mainStack, topicConfig.topicName + 'Output', {
                 value: topic.topicName,
             });
         });

@@ -28,6 +28,11 @@ export type IControllerConfig = CommonLambdaHandlerOptions & {
      * @default "function"
      */
     target?: string;
+
+	/**
+	 * Specifies a stackname to be used in a multi-stack environment.
+	 */
+	stackName?: string;
 }
 
 /**

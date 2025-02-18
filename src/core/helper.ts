@@ -1,10 +1,11 @@
-import { readdirSync, existsSync } from "fs";
+import { readdirSync, existsSync, readFile, readFileSync } from "fs";
 import { resolve, join, relative,  } from "path";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { IFw24Module } from "./runtime/module";
 import { createLogger, LogDuration } from "../logging";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
 import { isString } from "../utils";
+import { createHash } from "crypto";
 
 
 
@@ -139,14 +140,19 @@ export class Helper {
             try {
                 // Dynamically import the controller file
                 const module = await import(join(handlerDirectory, handlerPath));
+                const fileBuffer = readFileSync(join(handlerDirectory, handlerPath));
+                const moduleHash = createHash('md5').update(JSON.stringify(fileBuffer)).digest('hex');
+                Helper.logger.debug("Registering Lambda Handlers moduleHash: ", {moduleHash});
 
                 // Find and instantiate controller classes
                 for (const exportedItem of Object.values(module)) {
                     if (typeof exportedItem === "function" && exportedItem.name !== "handler") {
+
                         const currentHandler: HandlerDescriptor = {
                             handlerClass: exportedItem,
                             fileName: handlerPath,
                             filePath: handlerDirectory,
+                            handlerHash: moduleHash
                         };
 
                         Helper.logger.debug("Registering Lambda Handlers registering currentHandler: ", {handlerPath, handlerDirectory});

@@ -19,6 +19,7 @@ import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { createLogger, LogDuration } from "../logging";
 import { Helper } from "../core";
+import { IConstructConfig } from "../interfaces/construct-config";
 
 export type TriggerType = 
     | 'CUSTOM_MESSAGE'
@@ -38,7 +39,7 @@ export type TriggerType =
 /**
  * Configuration interface for the AuthConstruct.
  */
-export interface IAuthConstructConfig {
+export interface IAuthConstructConfig extends IConstructConfig {
     /**
      * Configuration for the User Pool.
      */
@@ -168,7 +169,7 @@ export class AuthConstruct implements FW24Construct {
     public async construct() {
         this.logger.debug("construct");
 
-        this.mainStack = this.fw24.getStack("main");
+        this.mainStack = this.fw24.getStack(this.authConstructConfig.stackName || "main");
 
         const userPoolConfig = {...AuthConstructConfigDefaults.userPool?.props, ...this.authConstructConfig.userPool?.props};
         const userPoolName = this.authConstructConfig.userPool?.props?.userPoolName || 'default';

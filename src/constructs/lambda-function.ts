@@ -257,7 +257,7 @@ export class LambdaFunction extends Construct {
     // map layers to actual layer objects
     const resolvedLayers = deDupLayers.map( layerName => {
       if(typeof layerName === 'string'){
-        return LayerVersion.fromLayerVersionArn(this, `${id}-${layerName}-Layer`, fw24.getEnvironmentVariable(layerName, 'layer') );
+        return LayerVersion.fromLayerVersionArn(this, `${id}-${layerName}-Layer`, fw24.getEnvironmentVariable(layerName, 'layer', scope) );
       }
 
       return layerName;
@@ -266,7 +266,7 @@ export class LambdaFunction extends Construct {
     // make sure to add fw24 layer
     additionalProps.layers = [
       ...resolvedLayers,
-      LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, fw24.getEnvironmentVariable('fw24', 'layer'))
+      LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, fw24.getEnvironmentVariable('fw24', 'layer', scope))
     ];
 
     additionalProps.bundling = {

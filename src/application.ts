@@ -12,7 +12,7 @@ export class Application {
     readonly logger: ILogger;
     mainStack!: Stack;
 
-    private readonly fw24: Fw24;
+    public readonly fw24: Fw24;
     private readonly constructs: Map<string, FW24Construct>;
     private readonly modules: Map<string, IFw24Module>;
     private processedConstructs: Map<string, Promise<void>> = new Map();
@@ -44,13 +44,22 @@ export class Application {
 
         // initialize the main stack
         const app = new App();
-        this.mainStack = new Stack(app, `${config.name}-stack`, {
-            env: {
-                account: config.account,
-                region: config.region
-            }
-        })
-        this.fw24.addStack("main", this.mainStack);
+        this.fw24.setApp(app);
+        
+        // create the stacks based on names or default to main-stack
+        if(!config.stackNames || config.stackNames.length === 0){
+            config.stackNames = ['main'];
+        }
+        for(const stackName of config.stackNames){
+            this.mainStack = new Stack(app, `${config.name}-${stackName}-stack`, {
+                env: {
+                    account: config.account,
+                    region: config.region
+                }
+            })
+            this.fw24.addStack(stackName, this.mainStack);
+        }
+
     }
 
     public use(construct: FW24Construct): Application {
