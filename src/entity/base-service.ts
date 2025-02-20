@@ -437,14 +437,14 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         relations: Array<[relatedAttributeName: string, options: HydrateOptionForRelation<any>]>, 
         rootEntityRecords: Array<{ [x: string]: any; }>
     ) {
-        this.logger.info(`called 'hydrateRecords' for entity: ${this.getEntityName()}`);
+        this.logger.debug(`called 'hydrateRecords' for entity: ${this.getEntityName()}`);
         await Promise.all( relations?.map( async ([relatedAttributeName, options]) => {
             await this.hydrateSingleRelation(rootEntityRecords, relatedAttributeName, options);
         }));
 	}
 
     private async hydrateSingleRelation(rootEntityRecords: any[], relatedAttributeName: string, options: HydrateOptionForRelation<any>){
-        this.logger.info(`called 'hydrateSingleRelation' relation: ${relatedAttributeName} for entity: ${this.getEntityName()}`, {
+        this.logger.debug(`called 'hydrateSingleRelation' relation: ${relatedAttributeName} for entity: ${this.getEntityName()}`, {
             options
         });
 
@@ -580,7 +580,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         
         const {identifiers, selections} = options;
 
-        this.logger.info(`Called ~ get ~ entityName: ${this.getEntityName()}: `, {identifiers, attributes: selections});
+        this.logger.debug(`Called ~ get ~ entityName: ${this.getEntityName()}: `, {identifiers, attributes: selections});
         
         let formattedSelections = selections;
         if(!selections){
@@ -593,7 +593,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             formattedSelections = this.inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
         }
 
-        this.logger.info(`Formatted selections for entity: ${this.getEntityName()}`, formattedSelections);
+        this.logger.debug(`Formatted selections for entity: ${this.getEntityName()}`, formattedSelections);
 
         const requiredSelectAttributes = Object.entries(formattedSelections as any).reduce((acc, [attName, options]) => {
             acc.push(attName);
@@ -615,7 +615,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             entityService: this,
         });
 
-        this.logger.info(`Retrieved entity: ${this.getEntityName()}`, JsonSerializer.stringify(entity));
+        this.logger.debug(`Retrieved entity: ${this.getEntityName()}`, JsonSerializer.stringify(entity));
 
 		if(!!formattedSelections && entity?.data){
 
@@ -686,7 +686,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         }
     ) {
 
-        this.logger.info(`Called ~ isUniqueAttributeValue ~ entityName: ${this.getEntityName()} ~ attributeName: ${attributeName} ~ attributeValue: ${attributeValue}`);
+        this.logger.debug(`Called ~ isUniqueAttributeValue ~ entityName: ${this.getEntityName()} ~ attributeName: ${attributeName} ~ attributeValue: ${attributeValue}`);
         
         const query = this.getRepository().match({
             [attributeName]: attributeValue
@@ -701,7 +701,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
         const entity = await  query.go();
 
-        this.logger.info(`isUniqueAttributeValue ~ entityName: ${this.getEntityName()} ~ attributeName: ${attributeName} ~ attributeValue: ${attributeValue} ~ entity:`, entity);
+        this.logger.debug(`isUniqueAttributeValue ~ entityName: ${this.getEntityName()} ~ attributeName: ${attributeName} ~ attributeValue: ${attributeValue} ~ entity:`, entity);
 
         return entity.data?.length === 0;
     }

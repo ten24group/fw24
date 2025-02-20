@@ -38,7 +38,6 @@ const logger = createLogger('EntityQuery');
  * ```
  */
 export function parseEntityAttributePaths(paths: string[]): ParsedEntityAttributePaths {
-    logger.info('parseEntityAttributePaths', { paths });
 
     type ParsedAttributePaths = {
         [key: string]: boolean | ParsedAttributePaths;

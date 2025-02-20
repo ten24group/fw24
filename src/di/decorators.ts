@@ -21,7 +21,7 @@ export function DIModule(options: RegisterDIModuleMetadataOptions = {}): ClassDe
             setupDIModule({
                 target: constructor as ClassConstructor, 
                 module: options,
-                fallbackToRootContainer: false
+                fallbackToRootContainer: true
             });
         }
     };
