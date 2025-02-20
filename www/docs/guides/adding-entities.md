@@ -183,13 +183,12 @@ This is where you write your business logic; the `BaseEntityService` provides de
 This is where you write you create/override the API's for your entity the `BaseEntityController` provides default implementation for CRUD APIs [get, create, update, list, delete, query].
 
 ```ts
-    import { Controller, defaultMetaContainer, BaseEntityController, ILogger, createLogger } from '@ten24group/fw24';
+    import { Controller, defaultMetaContainer, BaseEntityController, ILogger } from '@ten24group/fw24';
     import { Book } from '../entities/book';
     import { BookService } from '../services/book';
 
     @Controller('book', { resourceAccess: { tables: ['my-table'] } })
     export class BookController extends BaseEntityController<Book.BookSchemaType> {
-        readonly logger: ILogger = createLogger('BookController');
         
         constructor() {
             super('book');

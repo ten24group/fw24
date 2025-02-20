@@ -137,6 +137,17 @@ export class EntityUIConfigGen{
             const dirServiceTokens = await this.scanServicesFromDirectory(dir);
             dirServiceTokens.forEach( token => scannedServices.add(token));
         }
+
+        // get all container registered services to make sure auto-gen entity-services are also included
+        this.uiGenDIContainer.collectBestProvidersFor({
+            type: 'service',
+            allProvidersFromChildContainers: true
+        }).filter( opt => {
+            // make sure to collect only the entity service providers
+            return !!opt._provider.forEntity
+        }).forEach( opt => {
+            scannedServices.add(opt._provider.provide as Function);
+        })
                 
         // resolve all services
         const resolvedServices = new Map<string, BaseEntityService<any>>();

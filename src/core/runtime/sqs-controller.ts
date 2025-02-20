@@ -1,12 +1,10 @@
 import { SQSEvent, Context } from "aws-lambda";
-import { createLogger } from "../../logging";
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 
 /**
  * Base class for handling SQS events.
  */
 abstract class QueueController extends AbstractLambdaHandler {
-  readonly logger = createLogger(QueueController.name);
 
   abstract initialize(event: SQSEvent, context: Context): Promise<any>;
 

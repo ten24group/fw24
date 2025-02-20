@@ -1,6 +1,6 @@
 import type { ILambdaEnvConfig } from "../interfaces";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
-import { resolveAndExportHandler, setupDI, tryImportingEntryPackagesFor } from "./decorator-utils";
+import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor } from "./decorator-utils";
 
 /**
  * Represents the configuration for a task.
@@ -24,7 +24,7 @@ export type ITaskConfig = CommonLambdaHandlerOptions & {
  * @returns A class decorator function.
  */
 export function Task(taskName: string, taskConfig: ITaskConfig) {
-	return function <T extends { new (...args: any[]): {} }>(target: T) {
+	return function <T extends { new(...args: any[]): {} }>(target: T) {
 		tryImportingEntryPackagesFor(taskName);
 
 		// Default autoExportLambdaHandler to true if undefined
@@ -43,7 +43,7 @@ export function Task(taskName: string, taskConfig: ITaskConfig) {
 		// Preserve the original class name
 		Object.defineProperty(ExtendedTarget, 'name', { value: target.name });
 
-		const container = setupDI({
+		const container = setupDIModuleForController({
 			target: ExtendedTarget,
 			module: taskConfig.module || {},
 			fallbackToRootContainer: taskConfig.autoExportLambdaHandler
