@@ -2,7 +2,7 @@ import { Construct } from "constructs";
 import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import { PolicyStatement, type PolicyStatementProps } from "aws-cdk-lib/aws-iam";
 import { Runtime, Architecture, LayerVersion, ApplicationLogLevel, LoggingFormat, ILayerVersion } from "aws-cdk-lib/aws-lambda";
-import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
+import { ITableV2, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Fw24 } from "../core/fw24";
 import { Bucket } from "aws-cdk-lib/aws-s3";
@@ -373,8 +373,8 @@ export class LambdaFunction extends Construct {
 
       const access = typeof table === 'string' ? ['readwrite'] : table.access || ['readwrite'];
       // Get the DynamoDB table based on the controller config
-      const tableInstance: TableV2 = fw24.getDynamoTable(appQualifiedTableName);
-      
+      const tableInstance: ITableV2 = TableV2.fromTableName(this, `${id}-${tableName}-table`, fw24.getEnvironmentVariable(appQualifiedTableName,'table'));
+
       // Add the table name to the lambda environment      
       addEnvironmentKeyValueForFunction({
         fn,

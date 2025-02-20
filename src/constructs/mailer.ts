@@ -10,11 +10,12 @@ import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import { QueueLambda } from "./queue-lambda";
 import { createLogger, LogDuration } from "../logging";
+import { IConstructConfig } from "../interfaces/construct-config";
 
 /**
  * Represents the configuration for the Mailer construct.
  */
-export interface IMailerConstructConfig {
+export interface IMailerConstructConfig extends IConstructConfig {
     /**
      * The domain for the mailer.
      */
@@ -80,7 +81,7 @@ export class MailerConstruct implements FW24Construct {
     @LogDuration()
     public async construct() {
         // make the main stack available to the class
-        this.mainStack = this.fw24.getStack("main");
+        this.mainStack = this.fw24.getStack(this.mailerConstructConfig.stackName || "main");
 
         // create identity
         if(this.mailerConstructConfig.domain !== undefined && this.mailerConstructConfig.domain !== "") {

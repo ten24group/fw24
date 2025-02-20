@@ -1,6 +1,6 @@
 import { TablePropsV2, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 
-import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import { createLogger, LogDuration } from "../logging";
 import { ensureNoSpecialChars, ensureSuffix } from "../utils/keys";
@@ -80,6 +80,9 @@ export class DynamoDBConstruct implements FW24Construct {
 
         // See https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_dynamodb-readme.html
         const tableInstance = new TableV2(this.mainStack, appQualifiedTableName, this.dynamoDBConfig.table.props);
+
+        // Output the table instance
+        this.fw24.setConstructOutput(this, appQualifiedTableName, tableInstance, OutputType.TABLE, 'tableName');
 
         // Register the table instance as a global container
         fw24.addDynamoTable(appQualifiedTableName, tableInstance);

@@ -356,14 +356,18 @@ export class APIConstruct implements FW24Construct {
         // if the API is imported, then create deployment and add method as dependency
         // This is needed because imported API does not propogate CORS settings to the methods
         if (this.apiConstructConfig.multiStack && this.apiConstructConfig.multiStack === true) {
+            this.logger.debug(`Creating deployment for controller ${controllerName} with hash ${controllerHash}`);
             const deployment = new Deployment(this.getStack(controllerStackName), `deployment-${controllerHash}`, {
                 api: this.getAPI(controllerStackName),
                 stageName: stageName,
             });
 
             for (const method of methods) {
+                this.logger.debug(`Adding method dependency ${method.httpMethod} ${method.resource.path} to deployment`);
                 deployment.node.addDependency(method)
             }
+
+
 
         }
 
