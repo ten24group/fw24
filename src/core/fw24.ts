@@ -232,30 +232,34 @@ export class Fw24 {
         if(prefix && this.config.stackNames && this.config.stackNames.length > 1){
             const isPrefixOutputType = Object.values(OutputType).includes(prefix as OutputType);
             if(isPrefixOutputType){
-                // Access the value from stack import
-                // const key = `ExportOutput:${prefix}_${name}`;
-                // const exportKeyName = this.getEnvironmentVariable(key);
-                // if(exportKeyName){
-                //     const stackName = exportKeyName.split(':')[0];
-                //     if(scope && scope.stackName === stackName){
-                //         return this.environmentVariables[ensureValidEnvKey(name, prefix)];
-                //     }
-                //     this.logger.info(`Importing value from stack: ${stackName} for key: ${key} in scope: ${scope.stackName}`);
-                //     // import the key from the stack
-                //     return Fn.importValue(exportKeyName);
-                // }
-                // Access the value from SSM
-                const ssmKey = this.getEnvironmentVariable(name, `SSM:${prefix}`);
+                // Check for SSM parameter reference
+                const ssmKey = this.environmentVariables[ensureValidEnvKey(name, `SSM:${prefix}`)];
                 if(ssmKey){
                     const stackName = ssmKey.split('/')[1];
-                    if(scope && scope.stackName === stackName){
-                        this.logger.info(`Using SSM value for key: ${ssmKey} from environment variable.`);
+                    
+                    // Use direct reference if in same stack
+                    if(scope && scope instanceof Stack && scope.stackName === stackName){
+                        this.logger.info(`Using direct value for key: ${ssmKey} in same stack`);
                         return this.environmentVariables[ensureValidEnvKey(name, prefix)];
                     }
-                    this.logger.info(`Importing SSM value for key: ${ssmKey}`);
-                    // retrive key from ssm
-                    const ssmValue = StringParameter.valueForStringParameter(scope, ssmKey);
-                    return ssmValue;
+
+                    // Add cross-stack dependency
+                    if(scope && scope instanceof Stack){
+                        const sourceStack = this.stacks[stackName];
+                        if(sourceStack){
+                            scope.addDependency(sourceStack);
+                            this.logger.info(`Added dependency from ${scope.stackName} to ${stackName} for SSM key: ${ssmKey}`);
+                        }
+                    }
+
+                    try {
+                        this.logger.info(`Attempting to import SSM value for key: ${ssmKey}`);
+                        return StringParameter.valueForStringParameter(scope, ssmKey);
+                    } catch (error) {
+                        this.logger.error(error);
+                        this.logger.warn(`SSM parameter ${ssmKey} not found during build - this is expected during first deployment`);
+                        return this.environmentVariables[ensureValidEnvKey(name, prefix)];
+                    }
                 }
             }
         }
@@ -331,19 +335,25 @@ export class Fw24 {
             } else if(typeof value === 'object' && exportValueKey === undefined){
                 return;
             }
-            const exportKey = `${outputType}${key}`;
+
+            // Create CloudFormation export with valid naming
+            const sanitizedKey = ensureValidEnvKey(key, '', '', true);
+            const exportKey = `${outputType}${sanitizedKey}`;
+            const stackExportName = `${construct.mainStack.stackName}-${exportKey}`;
+
             this.setEnvironmentVariable(key, `${construct.mainStack.stackName}:${exportKey}`, `ExportOutput:${construct.name}_${outputType}`);
             // keep without construct name as well for backward compatibility
             this.setEnvironmentVariable(key, `${construct.mainStack.stackName}:${exportKey}`, `ExportOutput:${outputType}`);
+            
             new CfnOutput(construct.mainStack, exportKey, {
                 value: outputValue,
-                exportName: `${construct.mainStack.stackName}:${exportKey}`,
+                exportName: stackExportName,
             });
 
-            // SSM parameter store for the output
-            const ssmKey = `/${construct.mainStack.stackName}/${outputType}/${key}/${exportValueKey}`;
+            // Store SSM parameter for cross-stack reference
+            const ssmKey = `/${construct.mainStack.stackName}/${outputType}/${sanitizedKey}/${exportValueKey}`;
             this.setEnvironmentVariable(key, ssmKey, `SSM:${outputType}`);
-            new StringParameter(construct.mainStack, `SSM${outputType}${key}`, {
+            new StringParameter(construct.mainStack, `SSM${outputType}${sanitizedKey}`, {
                 parameterName: ssmKey,
                 stringValue: outputValue,
             });
