@@ -188,10 +188,10 @@ export class QueueLambda extends Construct {
       ...props.queueProps,
     }) as Queue;
 
-    fw24.setEnvironmentVariable(props.queueName, queue.queueName, "queueName");
-    this.logger?.debug(" Queue Name set in fw24 scope : ", props.queueName, " :", fw24.getEnvironmentVariable(props.queueName, 'queueName'));
+    // fw24.setEnvironmentVariable(props.queueName, queue.queueName, "queueName");
+    // this.logger?.debug(" Queue Name set in fw24 scope : ", props.queueName, " :", fw24.getEnvironmentVariable(props.queueName, 'queueName'));
 
-    fw24.setEnvironmentVariable(props.queueName, queue, "queue");
+    // fw24.setEnvironmentVariable(props.queueName, queue, "queue");
 
     if(props.lambdaFunctionProps){
       const queueFunction = new LambdaFunction(scope, `${id}-lambda`, { ...props.lambdaFunctionProps }) as NodejsFunction;

@@ -352,8 +352,9 @@ export class LambdaFunction extends Construct {
 
     // If we are using SES, then we need to add the email queue url to the environment
     if(props.allowSendEmail && fw24.emailProvider instanceof MailerConstruct){
-      this.logger?.debug(":GET emailQueue Name from fw24 scope : ", fw24.getEnvironmentVariable('emailQueue', 'queueName'), id);
-      let emailQueue = fw24.getQueueByName('emailQueue');
+      const emailQueueName = fw24.getEnvironmentVariable('emailQueue', 'queue', scope);
+      const emailQueue = Queue.fromQueueArn(this, `${id}-${emailQueueName}-queue`, fw24.getArn('sqs', emailQueueName));
+
       emailQueue.grantSendMessages(fn);
       addEnvironmentKeyValueForFunction({
         fn,
@@ -433,6 +434,7 @@ export class LambdaFunction extends Construct {
       
     });
 
+    // Logic for adding SQS queue access to the controller
     props.resourceAccess?.queues?.forEach( ( queue: any ) => {
       let queueName = typeof queue === 'string' ? queue : queue.name;
 
@@ -441,8 +443,7 @@ export class LambdaFunction extends Construct {
 
       const access = typeof queue === 'string' ? ['send'] : queue.access || ['send'];
 
-      this.logger?.debug(":GET Queue Name from fw24 scope : ", queueName, " :", fw24.getEnvironmentVariable(queueName, 'queueName'));
-      const queueArn = fw24.getArn('sqs', fw24.getEnvironmentVariable(queueName, 'queueName'));
+      const queueArn = fw24.getArn('sqs', fw24.getEnvironmentVariable(queueName, 'queue', scope));
       const queueInstance = Queue.fromQueueArn(this, queueName+id+'-queue', queueArn);
       // Grant the lambda function access to the queue
       access.forEach( (accessType: string) => {

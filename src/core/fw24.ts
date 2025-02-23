@@ -164,19 +164,6 @@ export class Fw24 {
         return `arn:aws:${type}:${this.config.region}:${this.stacks['main'].account}:${name}`;
     }
 
-    getQueueByName(name: string): IQueue {
-
-        if( !this.queues.has(name) ){
-            // get full queue name
-            const queueName = this.getEnvironmentVariable(name, 'queueName');
-            const queueArn = this.getArn('sqs', queueName);
-            const queue = Queue.fromQueueArn(this.stacks['main'], queueName, queueArn);
-            this.queues.set(name, queue);            
-        }
-
-        return this.queues.get(name)!;
-    }
-
     setCognitoAuthorizer(name: string, authorizer: IAuthorizer, defaultAuthorizer: boolean = false) {
         this.logger.debug("setCognitoAuthorizer: ", {name, authorizer: authorizer.authorizerId, defaultAuthorizer} );
 

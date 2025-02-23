@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, existsSync } from "fs";
 import { resolve, join } from "path";
 
 import { Helper } from "../core/helper";
-import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import { QueueLambda } from "./queue-lambda";
 import { createLogger, LogDuration } from "../logging";
@@ -128,11 +128,8 @@ export class MailerConstruct implements FW24Construct {
         // register the templates
         this.registerTemplates(this.mailerConstructConfig.templatesDirectory);
 
-        // print queue url
-        new CfnOutput(this.mainStack, "mail-queue-url", {
-            value: queue.queueUrl,
-            exportName: `${this.fw24.appName}-mail-queue`,
-        });
+        // Set queue URL as construct output for cross-stack reference
+        this.fw24.setConstructOutput(this, 'emailQueue', queue, OutputType.QUEUE, 'queueName');
     }
 
     /**
