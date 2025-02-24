@@ -477,7 +477,7 @@ export class LambdaFunction extends Construct {
 
       const access = typeof topic === 'string' ? ['publish'] : topic.access || ['publish'];
 
-      const topicArn = fw24.getArn('sns', fw24.getEnvironmentVariable(topicName, 'topicName'));
+      const topicArn = fw24.getArn('sns', fw24.getEnvironmentVariable(topicName, 'topic', scope));
       const topicInstance = Topic.fromTopicArn(this, topicName+id+'-topic', topicArn);
       // Grant the lambda function access to the topic
       access.forEach( (accessType: string) => {

@@ -226,7 +226,7 @@ export class Fw24 {
                     
                     // Use direct reference if in same stack
                     if(scope && scope instanceof Stack && scope.stackName === stackName){
-                        this.logger.info(`Using direct value for key: ${ssmKey} in same stack`);
+                        this.logger.debug(`Using direct value for key: ${ssmKey} in same stack`);
                         return this.environmentVariables[ensureValidEnvKey(name, prefix)];
                     }
 
@@ -235,12 +235,12 @@ export class Fw24 {
                         const sourceStack = this.stacks[stackName];
                         if(sourceStack){
                             scope.addDependency(sourceStack);
-                            this.logger.info(`Added dependency from ${scope.stackName} to ${stackName} for SSM key: ${ssmKey}`);
+                            this.logger.debug(`Added dependency from ${scope.stackName} to ${stackName} for SSM key: ${ssmKey}`);
                         }
                     }
 
                     try {
-                        this.logger.info(`Attempting to import SSM value for key: ${ssmKey}`);
+                        this.logger.debug(`Attempting to import SSM value for key: ${ssmKey}`);
                         return StringParameter.valueForStringParameter(scope, ssmKey);
                     } catch (error) {
                         this.logger.error(error);
