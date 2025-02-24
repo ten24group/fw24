@@ -22,9 +22,9 @@
         "dist"
     ],
     "scripts": {
-        "fw24:watch": "tsc -w",
-        "fw24:build": "tsc",
-        "fw24:release": "npm run fw24:build && standard-version --prerelease beta && git push --follow-tags && npm publish",
+        "watch": "tsc -w",
+        "build": "tsc",
+        "release": "npm run build && standard-version --prerelease beta && git push --follow-tags && npm publish",
         "layer:build": "esbuild --bundle --platform=node --sourcemap ./src/layer/fw24.ts --outdir=dist/layer/nodejs/node_modules",
         "layer:release": "npm run layer:build && cdk deploy"
     },
