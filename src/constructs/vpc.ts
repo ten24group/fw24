@@ -46,7 +46,7 @@ export class VpcConstruct implements FW24Construct {
     }
 
     public async construct() {
-        this.mainStack = this.fw24.getStack(this.vpcConstructConfig.stackName || 'main');
+        this.mainStack = this.fw24.getStack(this.vpcConstructConfig.stackName);
 
         const vpc = new Vpc(this.mainStack, this.fw24.appName+'-vpc', {
             vpcName: this.vpcConstructConfig.vpcName || this.fw24.appName + '-vpc',

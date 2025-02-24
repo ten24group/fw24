@@ -73,7 +73,7 @@ export class DynamoDBConstruct implements FW24Construct {
     @LogDuration()
     public async construct() {        
         const fw24 = Fw24.getInstance();
-        this.mainStack = fw24.getStack(this.dynamoDBConfig.stackName || "main");
+        this.mainStack = fw24.getStack(this.dynamoDBConfig.stackName);
         const appQualifiedTableName = ensureNoSpecialChars(ensureSuffix(this.dynamoDBConfig.table.name, `table`));
 
         this.logger.debug("appQualifiedTableName:", appQualifiedTableName);

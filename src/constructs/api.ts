@@ -95,11 +95,6 @@ export interface IAPIConstructConfig extends IConstructConfig {
     certificateArn?: string;
 
     /**
-     * Specifies if each controller should be created in a separate stack.
-     */
-    multiStack?: boolean;
-
-    /**
      * API Gateway Lambda integration timeout in seconds.
      */
     integrationTimeout?: number;
@@ -148,48 +143,28 @@ export class APIConstruct implements FW24Construct {
             };
         }
         // for multistack application, set deploy to false
-        if (this.apiConstructConfig.multiStack && this.apiConstructConfig.multiStack === true) {
+        if (this.fw24.getConfig().multiStack && this.fw24.getConfig().multiStack === true) {
             paramsApi.deploy = false;
             delete paramsApi.deployOptions;
         }
         this.logger.debug("Creating API Gateway... ");
         // get the main stack from the framework
-        this.mainStack = this.fw24.getStack(this.apiConstructConfig.stackName || "main");
+        this.mainStack = this.fw24.getStack(this.apiConstructConfig.stackName);
         // create the api gateway
         this.api = new RestApi(this.mainStack,  `${this.fw24.appName}-api`, {
             ...paramsApi,
         });
-        // add the api to the framework
-        this.fw24.addStack("api", this.api);
 
        await this.registerControllers();
-    }
-
-    private getStack = (stackName: string): Stack => {
-        let currentStack: Stack = this.mainStack;
-    
-        if (stackName && this.apiConstructConfig.multiStack && this.apiConstructConfig.multiStack === true) {
-            currentStack = this.fw24.getStack(stackName);
-            if (!currentStack) {
-                currentStack = new Stack(this.fw24.getApp(), `${this.fw24.appName}-api-${stackName}-stack`, {
-                    env: {
-                        account: this.mainStack.account,
-                        region: this.mainStack.region
-                    }
-                })
-                this.fw24.addStack(stackName, currentStack);
-            }
-        }
-        return currentStack;
     }
 
     private getAPI = (stackName: string): any => {
         let currentAPI: any = this.api;
     
-        if (stackName && this.apiConstructConfig.multiStack && this.apiConstructConfig.multiStack === true) {
+        if (stackName && this.fw24.getConfig().multiStack && this.fw24.getConfig().multiStack === true) {
             currentAPI = this.fw24.getAPI(stackName);
             if(!currentAPI){
-                const currentStack = this.getStack(stackName);
+                const currentStack = this.fw24.getStack(stackName);
                 currentAPI = RestApi.fromRestApiAttributes(currentStack, `${this.fw24.appName}-${stackName}-api`, {
                     restApiId: this.api.restApiId,
                     rootResourceId: this.api.restApiRootResourceId,
@@ -355,9 +330,9 @@ export class APIConstruct implements FW24Construct {
 
         // if the API is imported, then create deployment and add method as dependency
         // This is needed because imported API does not propogate CORS settings to the methods
-        if (this.apiConstructConfig.multiStack && this.apiConstructConfig.multiStack === true) {
+        if (this.fw24.getConfig().multiStack && this.fw24.getConfig().multiStack === true) {
             this.logger.debug(`Creating deployment for controller ${controllerName} with hash ${controllerHash}`);
-            const deployment = new Deployment(this.getStack(controllerStackName), `deployment-${controllerHash}`, {
+            const deployment = new Deployment(this.fw24.getStack(controllerStackName), `deployment-${controllerHash}`, {
                 api: this.getAPI(controllerStackName),
                 stageName: stageName,
             });
@@ -406,7 +381,7 @@ export class APIConstruct implements FW24Construct {
         let controllerResource = restAPI.root.getResource(controllerName);
         if(!controllerResource){
             controllerResource = restAPI.root.addResource(controllerName);
-            if(this.apiConstructConfig.multiStack && this.apiConstructConfig.multiStack === true){
+            if(this.fw24.getConfig().multiStack && this.fw24.getConfig().multiStack === true){
                 controllerResource.addCorsPreflight(this.getCorsPreflightOptions());
             }
         }
@@ -424,7 +399,7 @@ export class APIConstruct implements FW24Construct {
             envVariables[ENV_KEYS.ENTRY_PACKAGES] = (controllerConfig.entryPackages as Array<string>).join(',');
         }
 
-        return new LambdaFunction(this.getStack(controllerStackName), controllerName + "-controller", {
+        return new LambdaFunction(this.fw24.getStack(controllerStackName), controllerName + "-controller", {
             entry: filePath + "/" + fileName,
             environmentVariables: envVariables,
             policies: controllerConfig?.policies,
@@ -504,7 +479,7 @@ export class APIConstruct implements FW24Construct {
             let childResource = currentResource.getResource(pathPart);
             if (!childResource) {
                 childResource = currentResource.addResource(pathPart);
-                if(this.apiConstructConfig.multiStack && this.apiConstructConfig.multiStack === true){
+                if(this.fw24.getConfig().multiStack && this.fw24.getConfig().multiStack === true){
                     childResource.addCorsPreflight(this.getCorsPreflightOptions());
                 }
             }
@@ -546,7 +521,7 @@ export class APIConstruct implements FW24Construct {
     }
 
     private createSQSIntegration = (queueName: string, controllerName: string, controllerStackName: string): AwsIntegration => {
-        const integrationRole = new Role(this.getStack(controllerStackName), controllerName + "-sqs-integration-role", {
+        const integrationRole = new Role(this.fw24.getStack(controllerStackName), controllerName + "-sqs-integration-role", {
             assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
         });
         const queueInstance: Queue = this.fw24.getEnvironmentVariable(queueName,'queue');
@@ -579,7 +554,7 @@ export class APIConstruct implements FW24Construct {
     }
 
     private createSNSIntegration = (topicName: string, controllerName: string, controllerStackName: string): AwsIntegration => {
-        const integrationRole = new Role(this.getStack(controllerStackName), controllerName + "-sns-integration-role", {
+        const integrationRole = new Role(this.fw24.getStack(controllerStackName), controllerName + "-sns-integration-role", {
             assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
         });
         const topicInstance: Topic = this.fw24.getEnvironmentVariable(topicName, 'topic');
@@ -612,8 +587,8 @@ export class APIConstruct implements FW24Construct {
     }
 
     private outputApiEndpoint = (controllerName: string, controllerResource: IResource, stageName: string, controllerStackName: string) => {
-        new CfnOutput(this.getStack(controllerStackName), `Endpoint${controllerName}`, {
-            value: 'https://' + this.getAPI(controllerStackName).restApiId + '.execute-api.' + this.getStack(controllerStackName).region + '.amazonaws.com/' + stageName + '/' + controllerResource.path.slice(1),
+        new CfnOutput(this.fw24.getStack(controllerStackName), `Endpoint${controllerName}`, {
+            value: 'https://' + this.getAPI(controllerStackName).restApiId + '.execute-api.' + this.fw24.getStack(controllerStackName).region + '.amazonaws.com/' + stageName + '/' + controllerResource.path.slice(1),
             description: "API Gateway Endpoint for " + controllerName,
         });
     }

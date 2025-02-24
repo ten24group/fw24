@@ -61,7 +61,7 @@ export class SchedulerConstruct implements FW24Construct {
     @LogDuration()
     public async construct() {
         // make the main stack available to the class
-        this.mainStack = this.fw24.getStack(this.schedulerConstructConfig.stackName || "main");
+        this.mainStack = this.fw24.getStack(this.schedulerConstructConfig.stackName);
         // sets the default tasks directory if not defined
         if(this.schedulerConstructConfig.tasksDirectory === undefined || this.schedulerConstructConfig.tasksDirectory === ""){
             this.schedulerConstructConfig.tasksDirectory = "./src/tasks";

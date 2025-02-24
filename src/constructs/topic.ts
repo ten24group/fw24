@@ -41,7 +41,7 @@ export class TopicConstruct implements FW24Construct {
 
         this.topicConstructConfig.forEach( ( topicConfig: ITopicConstructConfig ) => {
             this.logger.debug("Creating topic: ", topicConfig.topicName);
-            this.mainStack = this.fw24.getStack(topicConfig.stackName || this.stackName || "main");
+            this.mainStack = this.fw24.getStack(topicConfig.stackName || this.stackName);
 
             const topic = new Topic(this.mainStack, topicConfig.topicName + '-topic', {
                 ...topicConfig.topicProps

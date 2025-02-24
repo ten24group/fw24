@@ -137,7 +137,7 @@ export class LayerConstruct implements FW24Construct {
     @LogDuration()
     public async construct() {
         await Promise.all(this.config.map(async (layerConfig) => {
-            this.mainStack = this.fw24.getStack(layerConfig.stackName || 'layer') || this.fw24.getStack('main');
+            this.mainStack = this.fw24.getStack(layerConfig.stackName || this.fw24.getConfig().layerStackName);
 
             this.logger.debug("Processing layer:", layerConfig);
 
@@ -170,11 +170,6 @@ export class LayerConstruct implements FW24Construct {
         });
         
         this.fw24.setConstructOutput(this, layerConfig.layerName, layer, OutputType.LAYER, 'layerVersionArn');
-        // this.fw24.setEnvironmentVariable(layerConfig.layerName, layer.layerVersionArn, "layer");
-
-        // new CfnOutput(this.mainStack, layerConfig.layerName + 'LayerArn', {
-        //     value: layer.layerVersionArn,
-        // });
 
     }
 

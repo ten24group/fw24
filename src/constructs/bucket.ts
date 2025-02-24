@@ -154,7 +154,7 @@ export class BucketConstruct implements FW24Construct {
         // make the main stack available to the class
         this.appConfig = this.fw24.getConfig();
         // get the main stack from the framework
-        this.mainStack = this.fw24.getStack(this.stackName || "main");
+        this.mainStack = this.fw24.getStack(this.stackName);
         // create the buckets
         this.bucketConstructConfig.forEach( ( bucketConfig: IBucketConstructConfig ) => {
             this.createBucket(bucketConfig);

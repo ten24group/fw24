@@ -27,6 +27,8 @@ export interface IApplicationConfig {
 	}
     appDIContainer?: IDIContainer;
     lambdaEntryPackages?: string[];
-    stackNames?: string[];
+    defaultStackName?: string;
+    layerStackName?: string;
+    multiStack?: boolean;
 }
 

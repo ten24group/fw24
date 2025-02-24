@@ -112,8 +112,30 @@ export class Fw24 {
         return this;
     }
 
-    getStack(name: string): any {
-        return this.stacks[name];
+    getStack(name?: string): any {
+        let stackName: string | undefined = name;
+        if(!stackName || !this.config.multiStack) {
+            stackName = this.getDefaultStackName();
+        }
+        if(this.stacks[stackName] === undefined) {
+            // create a new stack
+            this.stacks[stackName] = new Stack(this.app, `${this.appName}-${stackName}-stack`, {
+                env: {
+                    account: this.config.account,
+                    region: this.config.region
+                }
+            });
+            // make all stacks dependent on the layer stack
+            const layerStack = this.getStack(this.config.layerStackName);
+            if(layerStack) {
+                this.stacks[stackName].addDependency(layerStack);
+            }
+        }
+        return this.stacks[stackName];
+    }
+
+    public getDefaultStackName(): string {
+        return this.config.defaultStackName || 'main';
     }
 
     addAPI(name: string, api: any): Fw24 {
@@ -216,7 +238,7 @@ export class Fw24 {
         // and the application has multiple stacks, then look for value in the stack export
         // if the scope is defined and is a stack and the output is from the same stack, then return the value
         
-        if(prefix && this.config.stackNames && this.config.stackNames.length > 1){
+        if(prefix && this.config.multiStack && this.config.multiStack === true){
             const isPrefixOutputType = Object.values(OutputType).includes(prefix as OutputType);
             if(isPrefixOutputType){
                 // Check for SSM parameter reference

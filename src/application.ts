@@ -46,20 +46,6 @@ export class Application {
         const app = new App();
         this.fw24.setApp(app);
         
-        // create the stacks based on names or default to main-stack
-        if(!config.stackNames || config.stackNames.length === 0){
-            config.stackNames = ['main'];
-        }
-        for(const stackName of config.stackNames){
-            this.mainStack = new Stack(app, `${config.name}-${stackName}-stack`, {
-                env: {
-                    account: config.account,
-                    region: config.region
-                }
-            })
-            this.fw24.addStack(stackName, this.mainStack);
-        }
-
     }
 
     public use(construct: FW24Construct): Application {
