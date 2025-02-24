@@ -4,11 +4,12 @@ import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/co
 import { LogDuration, createLogger } from "../logging";
 import { CfnOutput, Stack } from "aws-cdk-lib";
 import { Certificate, CertificateValidation, ICertificate } from "aws-cdk-lib/aws-certificatemanager";
+import { IConstructConfig } from "../interfaces/construct-config";
 
 /**
  * Represents the configuration for a certificate construct.
  */
-export interface ICertificateConstructConfig {
+export interface ICertificateConstructConfig extends IConstructConfig {
     domainName: string;
     certificateArn?: string;
 }
@@ -28,7 +29,7 @@ export class CertificateConstruct implements FW24Construct {
     }
 
     public async construct() {
-        this.mainStack = this.fw24.getStack('main');
+        this.mainStack = this.fw24.getStack(this.certificateConstructConfig.stackName || 'main');
 
         let certificate: any;
         if (this.certificateConstructConfig.certificateArn){
@@ -39,7 +40,7 @@ export class CertificateConstruct implements FW24Construct {
                 validation: CertificateValidation.fromDns(),
             });
         } 
-        this.fw24.setConstructOutput(this, this.certificateConstructConfig.domainName, certificate, OutputType.CERTIFICATE);
+        this.fw24.setConstructOutput(this, this.certificateConstructConfig.domainName, certificate, OutputType.CERTIFICATE, 'certificateArn');
 
     }
 }   
