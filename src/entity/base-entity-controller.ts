@@ -6,7 +6,7 @@ import type { EntityFilterCriteria } from './query-types';
 import { APIController } from '../core/runtime/api-gateway-controller';
 import { Delete, Get, Patch, Post } from '../decorators/method';
 import { safeParseInt } from '../utils/parse';
-import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, merge, resolveEnvValueFor, toSlug } from '../utils';
+import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, isString, merge, resolveEnvValueFor, toSlug } from '../utils';
 import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
 import { randomUUID } from 'crypto';
 import { getSignedUrlForFileUpload } from '../client/s3';
@@ -20,6 +20,7 @@ export type GetSignedUrlForFileUploadSchema = {
 	expiresIn?: seconds, // default to 15*60 seconds
 	fileNamePrefix?: string,
 	contentType?: string // default to */*
+	metadata?: Record<string, string> | string
 };
 
 /**
@@ -99,7 +100,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	})
 	async getSignedUrlForFileUpload(req: Request, res: Response) {
 
-		let { bucketName, fileName, expiresIn = 15 * 60, fileNamePrefix = "", contentType = "*/*" } = req.queryStringParameters as GetSignedUrlForFileUploadSchema ?? {};
+		let { bucketName, fileName, expiresIn = 15 * 60, fileNamePrefix = "", contentType = "*/*", metadata } = req.queryStringParameters as GetSignedUrlForFileUploadSchema ?? {};
 
 		const nameParts = fileName.split('.');
 		const fileExtension = nameParts.pop();
@@ -107,8 +108,13 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		// ensure it's unique
 		fileName = `${fileNamePrefix}${toSlug(nameParts.join('.'))}-${randomUUID()}.${fileExtension}`;
 
+		if (metadata && isString(metadata) && isJsonString(metadata)) {
+			metadata = JSON.parse(metadata);
+		}
+
 		const options = {
 			fileName,
+			metadata: metadata as Record<string, string>,
 			expiresIn,
 			bucketName,
 			contentType,
