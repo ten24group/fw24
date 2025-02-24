@@ -9,11 +9,12 @@ import { LogDuration, createLogger } from "../logging";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LambdaFunction } from "./lambda-function";
 import { Rule, Schedule } from "aws-cdk-lib/aws-events";
+import { IConstructConfig } from "../interfaces/construct-config";
 
 /**
  * Represents the configuration for the Scheduler construct.
  */
-export interface ISchedulerConstructConfig {
+export interface ISchedulerConstructConfig extends IConstructConfig {
     /**
      * The directory where the tasks are located.
      */
@@ -60,7 +61,7 @@ export class SchedulerConstruct implements FW24Construct {
     @LogDuration()
     public async construct() {
         // make the main stack available to the class
-        this.mainStack = this.fw24.getStack("main");
+        this.mainStack = this.fw24.getStack(this.schedulerConstructConfig.stackName || "main");
         // sets the default tasks directory if not defined
         if(this.schedulerConstructConfig.tasksDirectory === undefined || this.schedulerConstructConfig.tasksDirectory === ""){
             this.schedulerConstructConfig.tasksDirectory = "./src/tasks";
