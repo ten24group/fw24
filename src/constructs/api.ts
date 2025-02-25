@@ -394,7 +394,7 @@ export class APIConstruct implements FW24Construct {
     private createLambdaFunction = (controllerName: string, filePath: string, fileName: string, controllerConfig: IControllerConfig, controllerStackName: string): NodejsFunction => {
         const functionProps = {...this.apiConstructConfig.functionProps, ...controllerConfig?.functionProps};
         
-        const envVariables = this.fw24.resolveEnvVariables(controllerConfig.env);
+        const envVariables = this.fw24.resolveEnvVariables(controllerConfig.env, this.fw24.getStack(controllerStackName));
        
         // do not override the entry packages if already set
         if( !(ENV_KEYS.ENTRY_PACKAGES in envVariables) && controllerConfig.entryPackages){

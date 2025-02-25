@@ -238,41 +238,44 @@ export class Fw24 {
         // and the application has multiple stacks, then look for value in the stack export
         // if the scope is defined and is a stack and the output is from the same stack, then return the value
         
-        if(prefix && this.config.multiStack && this.config.multiStack === true){
-            const isPrefixOutputType = Object.values(OutputType).includes(prefix as OutputType);
+        if(prefix.length > 0 && this.config.multiStack && this.config.multiStack === true){
+            const isPrefixOutputType = Object.values(OutputType).includes(prefix.split('_')[0] as OutputType);
             if(isPrefixOutputType){
                 // Check for SSM parameter reference
                 // make sure the key is specified as qualified key i.e. key_exportValueKey
-                if(!name.includes('_')){
+                // it is possible that the key is not qualified if the prefix has output type and key name. ie. prefix: userpool_authmodule, key: userPoolId
+                if(!name.includes('_') && !prefix.includes('_')){
                     throw new Error(`Environment variable ${name} is not a qualified key. Please specify as key_exportValueKey. e.g. restAPI_restApiId`);
                 }
                 const ssmKey = this.environmentVariables[ensureValidEnvKey(name, `SSM:${prefix}`)];
+                
                 if(ssmKey){
                     const stackName = ssmKey.split('/')[1];
                     
-                    // Use direct reference if in same stack
-                    if(scope && scope instanceof Stack && scope.stackName === stackName){
-                        this.logger.debug(`Using direct value for key: ${ssmKey} in same stack`);
-                        return this.environmentVariables[ensureValidEnvKey(name, prefix)];
-                    }
-
-                    // Add cross-stack dependency
                     if(scope && scope instanceof Stack){
-                        const sourceStack = this.stacks[stackName];
-                        if(sourceStack){
-                            scope.addDependency(sourceStack);
-                            this.logger.debug(`Added dependency from ${scope.stackName} to ${stackName} for SSM key: ${ssmKey}`);
+                        // Use direct reference if in same stack
+                        if(scope.stackName === stackName){
+                            this.logger.debug(`Using direct value for key: ${ssmKey} in same stack`);
+                            return this.environmentVariables[ensureValidEnvKey(name, prefix)];
+                        } else {
+                            // Add cross-stack dependency
+                            const sourceStack = this.stacks[stackName];
+                            if(sourceStack){
+                                scope.addDependency(sourceStack);
+                                this.logger.debug(`Added dependency from ${scope.stackName} to ${stackName} for SSM key: ${ssmKey}`);
+                            }
+                        }
+                        try {
+                            this.logger.debug(`Attempting to import SSM value for key: ${ssmKey}`);
+                            return StringParameter.valueForStringParameter(scope, ssmKey);
+                        } catch (error) {
+                            this.logger.error(error);
+                            this.logger.warn(`SSM parameter ${ssmKey} not found during build - this is expected during first deployment`);
+                            return this.environmentVariables[ensureValidEnvKey(name, prefix)];
                         }
                     }
-
-                    try {
-                        this.logger.debug(`Attempting to import SSM value for key: ${ssmKey}`);
-                        return StringParameter.valueForStringParameter(scope, ssmKey);
-                    } catch (error) {
-                        this.logger.error(error);
-                        this.logger.warn(`SSM parameter ${ssmKey} not found during build - this is expected during first deployment`);
-                        return this.environmentVariables[ensureValidEnvKey(name, prefix)];
-                    }
+                } else {
+                    this.logger.warn(`No SSM key found in environment variables for key: ${ensureValidEnvKey(name, `SSM:${prefix}`)}, using direct reference`);
                 }
             }
         }
@@ -284,10 +287,10 @@ export class Fw24 {
         return ( ensureValidEnvKey(name, prefix) in this.environmentVariables);
     }
 
-    resolveEnvVariables = (env: ILambdaEnvConfig[] = []) => {
+    resolveEnvVariables = (env: ILambdaEnvConfig[] = [], scope?: any) => {
         const resolved: any = {};
         for (const envConfig of env ) {
-            const value = envConfig.value ?? this.getEnvironmentVariable(envConfig.name, envConfig.prefix);
+            const value = envConfig.value ?? this.getEnvironmentVariable(envConfig.name, envConfig.prefix, scope);
             if (value) {
                 resolved[envConfig.exportName ?? envConfig.name] = value;
             } else {
@@ -329,7 +332,11 @@ export class Fw24 {
         return this.policyStatements.has(ensureValidEnvKey(policyName, prefix));
     }
     
-    setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType, exportValueKey?: string) {
+    // set the output of a construct
+    // if exportValueAlias is not provided, the export value key will be used as the environment variable key. i.e when using custom resource like CfnIdentityPool 
+    // the output is the reference to the custom resource. The reference is not the physical id of the custom resource, but a logical id
+    // that is resolved to the physical id at runtime. In this case, the exportValueAlias is the key name of the custom resource.
+    setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType, exportValueKey?: string, exportValueAlias?: string) {
         this.logger.debug(`setConstructOutput: ${construct.name}`, {outputType, key});
         if(outputType){
             construct.output = {
@@ -353,7 +360,7 @@ export class Fw24 {
 
             // Create CloudFormation export with valid naming
             const sanitizedKey = ensureValidEnvKey(key, '', '', true);
-            const exportKey = `${outputType}${sanitizedKey}${exportValueKey}`;
+            const exportKey = `${outputType}${sanitizedKey}${exportValueAlias || exportValueKey}`;
             const stackExportName = `${construct.mainStack.stackName}-${exportKey}`;
 
             new CfnOutput(construct.mainStack, exportKey, {
@@ -362,9 +369,9 @@ export class Fw24 {
             });
 
             // Store SSM parameter for cross-stack reference
-            const ssmKey = `/${construct.mainStack.stackName}/${outputType}/${sanitizedKey}/${exportValueKey}`;
-            this.setEnvironmentVariable(`${key}_${exportValueKey}`, ssmKey, `SSM:${outputType}`);
-            new StringParameter(construct.mainStack, `SSM${outputType}${sanitizedKey}${exportValueKey}`, {
+            const ssmKey = `/${construct.mainStack.stackName}/${outputType}/${sanitizedKey}/${exportValueAlias || exportValueKey}`;
+            this.setEnvironmentVariable(`${key}_${exportValueAlias || exportValueKey}`, ssmKey, `SSM:${outputType}`);
+            new StringParameter(construct.mainStack, `SSM${outputType}${sanitizedKey}${exportValueAlias || exportValueKey}`, {
                 parameterName: ssmKey,
                 stringValue: outputValue,
             });

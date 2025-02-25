@@ -27,7 +27,7 @@ export class Helper {
     static async registerControllersFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
         const basePath = module.getBasePath();
 
-        Helper.logger.info("registerControllersFromModule::: base-path: " + basePath);
+        Helper.logger.debug("registerControllersFromModule::: base-path: " + basePath);
 
         // relative path from the place where the script is getting executed i.e index.ts in app-root
         const relativePath = relative('./', basePath); 
@@ -38,13 +38,13 @@ export class Helper {
         // make sure that the controller path exists
         if( existsSync(controllersPath)){
             
-            Helper.logger.info("registerControllersFromModule::: module-controllers-path: " + controllersPath);
+            Helper.logger.debug("registerControllersFromModule::: module-controllers-path: " + controllersPath);
 
             Helper.registerHandlers(controllersPath, handlerRegistrar);
             
         } else {
 
-            Helper.logger.info("registerControllersFromModule::: module-controllers-path does not exist: " + controllersPath);
+            Helper.logger.warn("registerControllersFromModule::: module-controllers-path does not exist: " + controllersPath);
         }
 
     }
@@ -52,14 +52,14 @@ export class Helper {
     static async registerQueuesFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
         const basePath = module.getBasePath();
 
-        Helper.logger.info("registerQueuesFromModule::: base-path: " + basePath);
+        Helper.logger.debug("registerQueuesFromModule::: base-path: " + basePath);
 
         // relative path from the place where the script is getting executed i.e index.ts in app-root
         const relativePath = relative('./', basePath); 
         const queuesPath = resolve(relativePath, module.getQueuesDirectory());
         const handlersPath = module.getQueueFileNames();
 
-        Helper.logger.info("registerQueuesFromModule::: module-queues-path: " + queuesPath);
+        Helper.logger.debug("registerQueuesFromModule::: module-queues-path: " + queuesPath);
 
         Helper.registerHandlers(queuesPath, handlerRegistrar, handlersPath);
     }
@@ -67,14 +67,14 @@ export class Helper {
     static async registerTasksFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
         const basePath = module.getBasePath();
 
-        Helper.logger.info("registerTasksFromModule::: base-path: " + basePath);
+        Helper.logger.debug("registerTasksFromModule::: base-path: " + basePath);
 
         // relative path from the place where the script is getting executed i.e index.ts in app-root
         const relativePath = relative('./', basePath); 
         const tasksPath = resolve(relativePath, module.getTasksDirectory());
         const handlersPath = module.getTaskFileNames();
 
-        Helper.logger.info("registerTasksFromModule::: module-tasks-path: " + tasksPath);
+        Helper.logger.debug("registerTasksFromModule::: module-tasks-path: " + tasksPath);
 
         Helper.registerHandlers(tasksPath, handlerRegistrar, handlersPath);
     }

@@ -187,7 +187,7 @@ export class AuthConstruct implements FW24Construct {
         });
         // verificationMessageConfiguration
         
-        this.fw24.setConstructOutput(this, userPoolName, userPool, OutputType.USERPOOL);
+        this.fw24.setConstructOutput(this, userPoolName, userPool, OutputType.USERPOOL, 'userPoolId');
 
         const userPoolClientConfig: UserPoolClientProps = {
             userPool: userPool,
@@ -198,7 +198,7 @@ export class AuthConstruct implements FW24Construct {
         const userPoolClient = new UserPoolClient(this.mainStack, `${userPoolName}-userPoolclient`, {
             ...userPoolClientConfig
         });
-        this.fw24.setConstructOutput(this, userPoolName, userPoolClient, OutputType.USERPOOLCLIENT);
+        this.fw24.setConstructOutput(this, userPoolName, userPoolClient, OutputType.USERPOOLCLIENT, 'userPoolClientId');
 
         // Identity pool based authentication
         if(this.authConstructConfig.groups || this.authConstructConfig.policyFilePaths || this.fw24.getConfig().defaultAuthorizationType == 'AWS_IAM') {
@@ -207,9 +207,6 @@ export class AuthConstruct implements FW24Construct {
             // user pool base authentication
             this.createUserPoolAuthorizer(userPool, userPoolName, this.authConstructConfig.useAsDefaultAuthorizer);
         }
-
-        this.fw24.setEnvironmentVariable("userPoolID", userPool.userPoolId, userPoolName);
-        this.fw24.setEnvironmentVariable("userPoolClientID", userPoolClient.userPoolClientId, userPoolName);
 
     }
 
@@ -243,7 +240,7 @@ export class AuthConstruct implements FW24Construct {
                 providerName: userPool.userPoolProviderName,
             }],
         });
-        this.fw24.setConstructOutput(this, userPoolName, identityPool, OutputType.IDENTITYPOOL);
+        this.fw24.setConstructOutput(this, userPoolName, identityPool, OutputType.IDENTITYPOOL, 'ref', 'identityPoolId');
 
         // configure identity pool role attachment
         const identityProvider = userPool.userPoolProviderName + ':' + userPoolClient.userPoolClientId;
@@ -337,7 +334,7 @@ export class AuthConstruct implements FW24Construct {
                 userPool.addTrigger( this.mapTriggerType(trigger.trigger), lambdaTrigger);
             }
         }
-        this.fw24.setEnvironmentVariable("identityPoolID", identityPool.ref, userPoolName);
+
         if(useAsDefaultAuthorizer !== false){
             this.fw24.getConfig().defaultAuthorizationType = 'AWS_IAM';
             this.logger.info("Default Authorizer set to AWS_IAM");
