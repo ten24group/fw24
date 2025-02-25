@@ -138,6 +138,14 @@ export class Fw24 {
         return this.config.defaultStackName || 'main';
     }
 
+    public useMultiStackSetup = (currentStackName?: string, resourceStack?: Stack): boolean => {
+        return (
+            !(resourceStack?.stackName.endsWith(currentStackName+'-stack') || resourceStack?.stackName === currentStackName)
+            && this.getConfig().multiStack 
+            && this.getConfig().multiStack === true
+        ) || false;
+    }
+
     addAPI(name: string, api: any): Fw24 {
         this.logger.debug("addAPI:", {name} );
         this.apis[name] = api;
@@ -173,17 +181,11 @@ export class Fw24 {
     }
 
     getUniqueName(name: string) {
-        if(this.stacks['main'] === undefined) {
-            throw new Error('Main stack not found');
-        }
-        return `${name}-${this.config.name}-${this.config.environment || 'env'}-${this.stacks['main'].account}`;
+        return `${name}-${this.config.name}-${this.config.environment || 'env'}-${this.config.account}`;
     }
 
     getArn(type:string, name: string): string {
-        if(this.stacks['main'] === undefined) {
-            throw new Error('Main stack not found');
-        }
-        return `arn:aws:${type}:${this.config.region}:${this.stacks['main'].account}:${name}`;
+        return `arn:aws:${type}:${this.config.region}:${this.config.account}:${name}`;
     }
 
     setCognitoAuthorizer(name: string, authorizer: IAuthorizer, defaultAuthorizer: boolean = false) {
@@ -238,7 +240,7 @@ export class Fw24 {
         // and the application has multiple stacks, then look for value in the stack export
         // if the scope is defined and is a stack and the output is from the same stack, then return the value
         
-        if(prefix.length > 0 && this.config.multiStack && this.config.multiStack === true){
+        if(prefix.length > 0 && scope && scope instanceof Stack && this.useMultiStackSetup()){
             const isPrefixOutputType = Object.values(OutputType).includes(prefix.split('_')[0] as OutputType);
             if(isPrefixOutputType){
                 // Check for SSM parameter reference
@@ -251,19 +253,13 @@ export class Fw24 {
                 
                 if(ssmKey){
                     const stackName = ssmKey.split('/')[1];
-                    
-                    if(scope && scope instanceof Stack){
-                        // Use direct reference if in same stack
-                        if(scope.stackName === stackName){
-                            this.logger.debug(`Using direct value for key: ${ssmKey} in same stack`);
-                            return this.environmentVariables[ensureValidEnvKey(name, prefix)];
-                        } else {
-                            // Add cross-stack dependency
-                            const sourceStack = this.stacks[stackName];
-                            if(sourceStack){
-                                scope.addDependency(sourceStack);
-                                this.logger.debug(`Added dependency from ${scope.stackName} to ${stackName} for SSM key: ${ssmKey}`);
-                            }
+                    this.logger.debug(`Checking if multi-stack setup should be used for environment variable: ${ensureValidEnvKey(name, prefix)} in stack: ${stackName} called from stack: ${scope.stackName} - ${this.useMultiStackSetup(stackName, scope)}`);
+                    if(this.useMultiStackSetup(stackName, scope)){
+                        // Add cross-stack dependency
+                        const sourceStack = this.stacks[stackName];
+                        if(sourceStack){
+                            scope.addDependency(sourceStack);
+                            this.logger.debug(`Added dependency from ${scope.stackName} to ${stackName} for SSM key: ${ssmKey}`);
                         }
                         try {
                             this.logger.debug(`Attempting to import SSM value for key: ${ssmKey}`);
@@ -367,14 +363,19 @@ export class Fw24 {
                 value: outputValue,
                 exportName: stackExportName,
             });
-
+            
+            // set the environment variable for the direct reference
+            this.setEnvironmentVariable(`${key}_${exportValueAlias || exportValueKey}`, outputValue, outputType);
             // Store SSM parameter for cross-stack reference
-            const ssmKey = `/${construct.mainStack.stackName}/${outputType}/${sanitizedKey}/${exportValueAlias || exportValueKey}`;
-            this.setEnvironmentVariable(`${key}_${exportValueAlias || exportValueKey}`, ssmKey, `SSM:${outputType}`);
-            new StringParameter(construct.mainStack, `SSM${outputType}${sanitizedKey}${exportValueAlias || exportValueKey}`, {
-                parameterName: ssmKey,
-                stringValue: outputValue,
-            });
+            if(this.useMultiStackSetup()){
+                const ssmKey = `/${construct.mainStack.stackName}/${outputType}/${sanitizedKey}/${exportValueAlias || exportValueKey}`;
+                // set the environment variable for the cross-stack reference using SSM parameter
+                this.setEnvironmentVariable(`${key}_${exportValueAlias || exportValueKey}`, ssmKey, `SSM:${outputType}`);
+                new StringParameter(construct.mainStack, `SSM${outputType}${sanitizedKey}${exportValueAlias || exportValueKey}`, {
+                    parameterName: ssmKey,
+                    stringValue: outputValue,
+                });
+            }
 
         } else {
             construct.output = {

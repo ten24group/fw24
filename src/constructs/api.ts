@@ -48,6 +48,7 @@ import { MailerConstruct } from "./mailer";
 import { QueueConstruct } from "./queue";
 import { TopicConstruct } from "./topic";
 import { IConstructConfig } from "../interfaces/construct-config";
+import { createHash } from "crypto";
 
 /**
  * Represents the configuration options for an API construct.
@@ -113,7 +114,8 @@ export class APIConstruct implements FW24Construct {
     api!: RestApi;
     mainStack!: Stack;
 
-    private resources = new Map<string, IResource>();
+    private resources: IResource[] = [];
+    private controllerStacks = new Map<string, {methods: Method[], resources: IResource[], controllersHash: string[]}>();
 
     // default constructor to initialize the stack configuration
     constructor(private apiConstructConfig: IAPIConstructConfig) {
@@ -145,7 +147,7 @@ export class APIConstruct implements FW24Construct {
             };
         }
         // for multistack application, set deploy to false
-        if (this.fw24.getConfig().multiStack && this.fw24.getConfig().multiStack === true) {
+        if (this.fw24.useMultiStackSetup()) {
             paramsApi.deploy = false;
             delete paramsApi.deployOptions;
         }
@@ -159,13 +161,19 @@ export class APIConstruct implements FW24Construct {
         this.fw24.setConstructOutput(this, 'restAPI', this.api, OutputType.API,'restApiId');
         this.fw24.setConstructOutput(this, 'restAPI', this.api, OutputType.API,'restApiRootResourceId');
 
-       await this.registerControllers();
+        await this.registerControllers();
+
+        // if multi-stack setup, then create one deployment per controller stack
+        if(this.fw24.useMultiStackSetup()){
+            this.createDeployment();
+        }
     }
 
     private getAPI = (stackName: string): any => {
         let currentAPI: any = this.api;
-    
-        if (stackName && this.fw24.getConfig().multiStack && this.fw24.getConfig().multiStack === true) {
+        
+        // if the stack is not the main stack and its a multi-stack application, then import the API
+        if (this.fw24.useMultiStackSetup(stackName, this.mainStack)) {
             currentAPI = this.fw24.getAPI(stackName);
             if(!currentAPI){
                 const currentStack = this.fw24.getStack(stackName);
@@ -249,6 +257,7 @@ export class APIConstruct implements FW24Construct {
         controllerConfig.entryPackages = entryPackages;
 
         let methods: Method[] = [];
+        this.resources = [];
 
         // create the api resource for the controller if it doesn't exist
         const controllerResource = this.getOrCreateControllerResource(controllerName, controllerStackName);
@@ -271,7 +280,6 @@ export class APIConstruct implements FW24Construct {
 
         this.logger.debug(`Register Controller ~ Default Authorizer: name: ${defaultAuthorizerName} - type: ${defaultAuthorizerType} - groups: ${defaultAuthorizerGroups}`);
         
-        const stageName = this.apiConstructConfig.apiOptions?.deployOptions?.stageName || 'prod';
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             this.logger.debug(`Registering route ${route.httpMethod} ${route.path}`);
             const routeTarget = route.target || controllerTarget;
@@ -332,10 +340,32 @@ export class APIConstruct implements FW24Construct {
             }
         }
 
-        // if the API is imported, then create deployment and add method and resource as dependency
-        // This is needed because imported API does not propogate CORS settings to the methods
-        if (this.fw24.getConfig().multiStack && this.fw24.getConfig().multiStack === true) {
-            this.logger.debug(`Creating deployment for controller ${controllerName} with hash ${controllerHash}`);
+        
+        // keep track of the controller stacks with methods and resources in a multi-stack setup to create one deployment per controller stack
+        if(this.fw24.useMultiStackSetup()){
+            this.controllerStacks.set(controllerStackName, {
+                methods: [...methods], 
+                resources: [...this.resources],
+                controllersHash: [...controllerHash]
+            });    
+        }
+
+        // output the api endpoint
+        this.outputApiEndpoint(controllerName, controllerResource, this.getStageName(), controllerStackName);
+    }
+
+    private getStageName = () => {
+        return this.apiConstructConfig.apiOptions?.deployOptions?.stageName || 'prod';
+    }
+
+    // if the API is imported, then create one deployment per controller stack and add method and resource as dependency
+    // This is needed because imported API does not propogate CORS settings to the methods
+    private createDeployment = () => {
+
+        const stageName = this.getStageName();
+        for (const [controllerStackName, {methods, resources, controllersHash}] of this.controllerStacks.entries()) {
+            const controllerHash = createHash('md5').update(JSON.stringify(controllersHash)).digest('hex');
+            this.logger.debug(`Creating deployment for controller stack ${controllerStackName} with hash ${controllerHash}`);
             const deployment = new Deployment(this.fw24.getStack(controllerStackName), `deployment-${controllerHash}`, {
                 api: this.getAPI(controllerStackName),
                 stageName: stageName,
@@ -347,15 +377,11 @@ export class APIConstruct implements FW24Construct {
             }
 
             // add dependecy on all resources for this controller
-            for (const resource of Array.from(this.resources.values()).filter(r => r.path.startsWith('/' + controllerName))) {
+            for (const resource of resources) {
                 this.logger.debug(`Adding resource dependency ${resource.path} to deployment`);
                 deployment.node.addDependency(resource);
             }
-
         }
-
-        // output the api endpoint
-        this.outputApiEndpoint(controllerName, controllerResource, stageName, controllerStackName);
     }
 
     private getCorsPreflightOptions(): CorsOptions {
@@ -389,9 +415,8 @@ export class APIConstruct implements FW24Construct {
         let controllerResource = restAPI.root.getResource(controllerName);
         if(!controllerResource){
             controllerResource = restAPI.root.addResource(controllerName);
-            if(this.fw24.getConfig().multiStack && this.fw24.getConfig().multiStack === true){
+            if(this.fw24.useMultiStackSetup(controllerStackName, this.mainStack)){
                 controllerResource.addCorsPreflight(this.getCorsPreflightOptions());
-                // this.resources.set(controllerName, controllerResource);
             }
         }
         
@@ -488,9 +513,9 @@ export class APIConstruct implements FW24Construct {
             let childResource = currentResource.getResource(pathPart);
             if (!childResource) {
                 childResource = currentResource.addResource(pathPart);
-                if(this.fw24.getConfig().multiStack && this.fw24.getConfig().multiStack === true){
+                if(this.fw24.useMultiStackSetup(parentResource.stack.stackName, this.mainStack)){
                     childResource.addCorsPreflight(this.getCorsPreflightOptions());
-                    this.resources.set(parentResource.path + path, childResource);
+                    this.resources.push(childResource);
                 }
             }
             currentResource = childResource;
