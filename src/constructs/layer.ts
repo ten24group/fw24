@@ -264,11 +264,6 @@ export class LayerConstruct implements FW24Construct {
         });
 
         this.fw24.setConstructOutput(this, layerName, layer, OutputType.LAYER, 'layerVersionArn');
-        // this.fw24.setEnvironmentVariable(layerName, layer.layerVersionArn, "layer");
-
-        // new CfnOutput(this.mainStack, layerName + 'LayerArn', {
-        //     value: layer.layerVersionArn,
-        // });
 
         // Clean up the temporary output directory if configured
         if (layerConfig.clearOutputDir) {
