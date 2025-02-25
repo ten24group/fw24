@@ -242,6 +242,10 @@ export class Fw24 {
             const isPrefixOutputType = Object.values(OutputType).includes(prefix as OutputType);
             if(isPrefixOutputType){
                 // Check for SSM parameter reference
+                // make sure the key is specified as qualified key i.e. key_exportValueKey
+                if(!name.includes('_')){
+                    throw new Error(`Environment variable ${name} is not a qualified key. Please specify as key_exportValueKey. e.g. restAPI_restApiId`);
+                }
                 const ssmKey = this.environmentVariables[ensureValidEnvKey(name, `SSM:${prefix}`)];
                 if(ssmKey){
                     const stackName = ssmKey.split('/')[1];
@@ -343,17 +347,15 @@ export class Fw24 {
                 outputValue = value[exportValueKey];
             } else if(typeof value === 'object' && exportValueKey === undefined){
                 return;
+            } else if(typeof value !== 'object'){
+                return;
             }
 
             // Create CloudFormation export with valid naming
             const sanitizedKey = ensureValidEnvKey(key, '', '', true);
-            const exportKey = `${outputType}${sanitizedKey}`;
+            const exportKey = `${outputType}${sanitizedKey}${exportValueKey}`;
             const stackExportName = `${construct.mainStack.stackName}-${exportKey}`;
 
-            this.setEnvironmentVariable(key, `${construct.mainStack.stackName}:${exportKey}`, `ExportOutput:${construct.name}_${outputType}`);
-            // keep without construct name as well for backward compatibility
-            this.setEnvironmentVariable(key, `${construct.mainStack.stackName}:${exportKey}`, `ExportOutput:${outputType}`);
-            
             new CfnOutput(construct.mainStack, exportKey, {
                 value: outputValue,
                 exportName: stackExportName,
@@ -361,8 +363,8 @@ export class Fw24 {
 
             // Store SSM parameter for cross-stack reference
             const ssmKey = `/${construct.mainStack.stackName}/${outputType}/${sanitizedKey}/${exportValueKey}`;
-            this.setEnvironmentVariable(key, ssmKey, `SSM:${outputType}`);
-            new StringParameter(construct.mainStack, `SSM${outputType}${sanitizedKey}`, {
+            this.setEnvironmentVariable(`${key}_${exportValueKey}`, ssmKey, `SSM:${outputType}`);
+            new StringParameter(construct.mainStack, `SSM${outputType}${sanitizedKey}${exportValueKey}`, {
                 parameterName: ssmKey,
                 stringValue: outputValue,
             });

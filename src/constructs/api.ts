@@ -154,6 +154,8 @@ export class APIConstruct implements FW24Construct {
         this.api = new RestApi(this.mainStack,  `${this.fw24.appName}-api`, {
             ...paramsApi,
         });
+        this.fw24.setConstructOutput(this, 'restAPI', this.api, OutputType.API,'restApiId');
+        this.fw24.setConstructOutput(this, 'restAPI', this.api, OutputType.API,'restApiRootResourceId');
 
        await this.registerControllers();
     }
@@ -166,8 +168,8 @@ export class APIConstruct implements FW24Construct {
             if(!currentAPI){
                 const currentStack = this.fw24.getStack(stackName);
                 currentAPI = RestApi.fromRestApiAttributes(currentStack, `${this.fw24.appName}-${stackName}-api`, {
-                    restApiId: this.api.restApiId,
-                    rootResourceId: this.api.restApiRootResourceId,
+                    restApiId: this.fw24.getEnvironmentVariable('restAPI_restApiId', 'api', currentStack),
+                    rootResourceId: this.fw24.getEnvironmentVariable('restAPI_restApiRootResourceId', 'api', currentStack),
                 });
                 this.fw24.addAPI(stackName, currentAPI);
             }

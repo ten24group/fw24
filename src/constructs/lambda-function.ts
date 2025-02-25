@@ -257,7 +257,7 @@ export class LambdaFunction extends Construct {
     // map layers to actual layer objects
     const resolvedLayers = deDupLayers.map( layerName => {
       if(typeof layerName === 'string'){
-        return LayerVersion.fromLayerVersionArn(this, `${id}-${layerName}-Layer`, fw24.getEnvironmentVariable(layerName, 'layer', scope) );
+        return LayerVersion.fromLayerVersionArn(this, `${id}-${layerName}-Layer`, fw24.getEnvironmentVariable(layerName+'_layerVersionArn', 'layer', scope) );
       }
 
       return layerName;
@@ -266,7 +266,7 @@ export class LambdaFunction extends Construct {
     // make sure to add fw24 layer
     additionalProps.layers = [
       ...resolvedLayers,
-      LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, fw24.getEnvironmentVariable('fw24', 'layer', scope))
+      LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, fw24.getEnvironmentVariable('fw24_layerVersionArn', 'layer', scope))
     ];
 
     additionalProps.bundling = {
@@ -352,7 +352,7 @@ export class LambdaFunction extends Construct {
 
     // If we are using SES, then we need to add the email queue url to the environment
     if(props.allowSendEmail && fw24.emailProvider instanceof MailerConstruct){
-      const emailQueueName = fw24.getEnvironmentVariable('emailQueue', 'queue', scope);
+      const emailQueueName = fw24.getEnvironmentVariable('emailQueue_queueName', 'queue', scope);
       const emailQueue = Queue.fromQueueArn(this, `${id}-${emailQueueName}-queue`, fw24.getArn('sqs', emailQueueName));
 
       emailQueue.grantSendMessages(fn);
@@ -374,7 +374,7 @@ export class LambdaFunction extends Construct {
 
       const access = typeof table === 'string' ? ['readwrite'] : table.access || ['readwrite'];
       // Get the DynamoDB table based on the controller config
-      const tableInstance: ITableV2 = TableV2.fromTableName(this, `${id}-${tableName}-table`, fw24.getEnvironmentVariable(appQualifiedTableName,'table', scope));
+      const tableInstance: ITableV2 = TableV2.fromTableName(this, `${id}-${tableName}-table`, fw24.getEnvironmentVariable(appQualifiedTableName+'_tableName', 'table', scope));
 
       // Add the table name to the lambda environment      
       addEnvironmentKeyValueForFunction({
@@ -443,7 +443,7 @@ export class LambdaFunction extends Construct {
 
       const access = typeof queue === 'string' ? ['send'] : queue.access || ['send'];
 
-      const queueArn = fw24.getArn('sqs', fw24.getEnvironmentVariable(queueName, 'queue', scope));
+      const queueArn = fw24.getArn('sqs', fw24.getEnvironmentVariable(queueName+'_queueName', 'queue', scope));
       const queueInstance = Queue.fromQueueArn(this, queueName+id+'-queue', queueArn);
       // Grant the lambda function access to the queue
       access.forEach( (accessType: string) => {
@@ -477,7 +477,7 @@ export class LambdaFunction extends Construct {
 
       const access = typeof topic === 'string' ? ['publish'] : topic.access || ['publish'];
 
-      const topicArn = fw24.getArn('sns', fw24.getEnvironmentVariable(topicName, 'topic', scope));
+      const topicArn = fw24.getArn('sns', fw24.getEnvironmentVariable(topicName+'_topicName', 'topic', scope));
       const topicInstance = Topic.fromTopicArn(this, topicName+id+'-topic', topicArn);
       // Grant the lambda function access to the topic
       access.forEach( (accessType: string) => {
