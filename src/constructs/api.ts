@@ -113,6 +113,8 @@ export class APIConstruct implements FW24Construct {
     api!: RestApi;
     mainStack!: Stack;
 
+    private resources = new Map<string, IResource>();
+
     // default constructor to initialize the stack configuration
     constructor(private apiConstructConfig: IAPIConstructConfig) {
         // hydrate the config object with environment variables ex: APIGATEWAY_CONTROLLERS
@@ -330,7 +332,7 @@ export class APIConstruct implements FW24Construct {
             }
         }
 
-        // if the API is imported, then create deployment and add method as dependency
+        // if the API is imported, then create deployment and add method and resource as dependency
         // This is needed because imported API does not propogate CORS settings to the methods
         if (this.fw24.getConfig().multiStack && this.fw24.getConfig().multiStack === true) {
             this.logger.debug(`Creating deployment for controller ${controllerName} with hash ${controllerHash}`);
@@ -344,7 +346,11 @@ export class APIConstruct implements FW24Construct {
                 deployment.node.addDependency(method)
             }
 
-
+            // add dependecy on all resources for this controller
+            for (const resource of Array.from(this.resources.values()).filter(r => r.path.startsWith('/' + controllerName))) {
+                this.logger.debug(`Adding resource dependency ${resource.path} to deployment`);
+                deployment.node.addDependency(resource);
+            }
 
         }
 
@@ -385,6 +391,7 @@ export class APIConstruct implements FW24Construct {
             controllerResource = restAPI.root.addResource(controllerName);
             if(this.fw24.getConfig().multiStack && this.fw24.getConfig().multiStack === true){
                 controllerResource.addCorsPreflight(this.getCorsPreflightOptions());
+                // this.resources.set(controllerName, controllerResource);
             }
         }
         
@@ -483,6 +490,7 @@ export class APIConstruct implements FW24Construct {
                 childResource = currentResource.addResource(pathPart);
                 if(this.fw24.getConfig().multiStack && this.fw24.getConfig().multiStack === true){
                     childResource.addCorsPreflight(this.getCorsPreflightOptions());
+                    this.resources.set(parentResource.path + path, childResource);
                 }
             }
             currentResource = childResource;
