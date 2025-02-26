@@ -12,7 +12,7 @@ import { createLogger } from '../logging';
 import { Helper } from './helper';
 import { type IFw24Module } from './runtime/module';
 import { ensureNoSpecialChars, ensureValidEnvKey } from '../utils/keys';
-import { App, CfnOutput, Fn, Stack } from 'aws-cdk-lib';
+import { App, CfnOutput, Fn, NestedStack, Stack } from 'aws-cdk-lib';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 
 export class Fw24 {
@@ -24,7 +24,7 @@ export class Fw24 {
     private config: IApplicationConfig = {};
     private app: any;
     private stacks: any = {};
-    private apis: any = {};
+    private apis: { [apiConstructName: string]: { [name: string]: any } } = {};
     private environmentVariables: Record<string, any> = {};
     private policyStatements =  new Map<string, PolicyStatementProps | PolicyStatement>();
     private defaultCognitoAuthorizer: IAuthorizer | undefined;
@@ -112,53 +112,96 @@ export class Fw24 {
         return this;
     }
 
-    getStack(name?: string): any {
-        let stackName: string | undefined = name;
-        if(!stackName || !this.config.multiStack) {
+    /**
+     * Get a stack by name. If the stack does not exist, create it.
+     * 
+     * @param name - The name of the stack to get.
+     * @param parentStackName - The name of the parent stack.
+     * @returns The stack.
+     */
+    getStack(name?: string, parentStackName?: string): any {
+        let stackName: string = name ? name : this.getDefaultStackName();
+        // don't allow nested stacks if multiStack is true, multistack is used for creating independent stacks
+        if(this.config.multiStack && parentStackName) {
+            throw new Error('Nested stacks are not allowed when multiStack is true. Please use multiStack: false or remove the parentStackName parameter.');
+        }
+        // if the stack does not exist and multiStack is false and parentStackName is not provided, then use the default stack name
+        if(this.stacks[stackName] === undefined && !(this.config.multiStack || parentStackName)) {
             stackName = this.getDefaultStackName();
         }
+        this.logger.debug("Getting Stack With Name:", {stackName});
         if(this.stacks[stackName] === undefined) {
-            // create a new stack
-            this.stacks[stackName] = new Stack(this.app, `${this.appName}-${stackName}-stack`, {
-                env: {
-                    account: this.config.account,
-                    region: this.config.region
+            if(parentStackName) {
+                // create a new nested stack
+                this.stacks[stackName] = new NestedStack(this.getStack(parentStackName), stackName);
+                this.logger.debug("Created nested stack:", {stackName, parentStackName});
+            } else {
+                // create a new stack
+                this.stacks[stackName] = new Stack(this.app, `${this.appName}-${stackName}-stack`, {
+                    env: {
+                        account: this.config.account,
+                        region: this.config.region
+                    }
+                });
+                // make all stacks dependent on the layer stack
+                const layerStack = this.getStack(this.config.layerStackName);
+                if(layerStack) {
+                    this.stacks[stackName].addDependency(layerStack);
                 }
-            });
-            // make all stacks dependent on the layer stack
-            const layerStack = this.getStack(this.config.layerStackName);
-            if(layerStack) {
-                this.stacks[stackName].addDependency(layerStack);
+                this.logger.debug("Created stack:", {stackName});
             }
         }
         return this.stacks[stackName];
     }
 
-    public getDefaultStackName(): string {
+    getDefaultStackName(): string {
         return this.config.defaultStackName || 'main';
     }
 
-    public useMultiStackSetup = (currentStackName?: string, resourceStack?: Stack): boolean => {
+    useMultiStackSetup = (currentStackName?: string, resourceStack?: Stack): boolean => {
         return (
-            (
+            this.getConfig().multiStack 
+            && this.getConfig().multiStack === true
+            && (
                 // if resource stack is not provided, then only check if multi-stack is enabled
                 !resourceStack ||
                 // if resource stack is provided, then check if it is a different stack than the current stack
                 !(resourceStack?.stackName.endsWith(currentStackName+'-stack') || resourceStack?.stackName === currentStackName)
             )
-            && this.getConfig().multiStack 
-            && this.getConfig().multiStack === true
         ) || false;
     }
 
-    addAPI(name: string, api: any): Fw24 {
+    addAPI(apiConstructName: string, name: string, api: any, isImported: boolean = false): Fw24 {
+        // Initialize the apiConstructName object if it doesn't exist
+        if (!this.apis[apiConstructName]) {
+            this.apis[apiConstructName] = {};
+        }
         this.logger.debug("addAPI:", {name} );
-        this.apis[name] = api;
+        this.apis[apiConstructName][name] = {api: api, isImported: isImported};
         return this;
     }
 
-    getAPI(name: string): any {
-        return this.apis[name];
+    getAPI(apiConstructName: string, name: string): any {
+        // Check if API exists for the given name and stack
+        if (!this.apis[apiConstructName] || !this.apis[apiConstructName][name]) {
+            this.logger.debug(`API not found: construct name ${apiConstructName} and name ${name}`);
+            return undefined;
+        }
+        return this.apis[apiConstructName][name];
+    }
+
+    getAPIs(apiConstructName: string): any {
+        return this.apis[apiConstructName];
+    }
+
+    hasImportedAPI(apiConstructName: string): boolean {
+        if (!this.apis[apiConstructName]) {
+            return false;
+        }
+        
+        // Check if any API in any stack is marked as imported
+        return Object.values(this.apis[apiConstructName])
+            .some(api => api.isImported === true);
     }
 
     addModule(name: string, module: IFw24Module) {

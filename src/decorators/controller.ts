@@ -33,6 +33,11 @@ export type IControllerConfig = CommonLambdaHandlerOptions & {
 	 * Specifies a stackname to be used in a multi-stack environment.
 	 */
 	stackName?: string;
+
+	/**
+	 * Specifies a parent stackname to be used in a nested-stack environment.
+	 */
+	parentStackName?: string;
 }
 
 /**

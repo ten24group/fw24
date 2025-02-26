@@ -169,7 +169,7 @@ export class AuthConstruct implements FW24Construct {
     public async construct() {
         this.logger.debug("construct");
 
-        this.mainStack = this.fw24.getStack(this.authConstructConfig.stackName);
+        this.mainStack = this.fw24.getStack(this.authConstructConfig.stackName, this.authConstructConfig.parentStackName);
 
         const userPoolConfig = {...AuthConstructConfigDefaults.userPool?.props, ...this.authConstructConfig.userPool?.props};
         const userPoolName = this.authConstructConfig.userPool?.props?.userPoolName || 'default';

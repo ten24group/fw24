@@ -19,7 +19,7 @@ import {
     Stage
 } from "aws-cdk-lib/aws-apigateway";
 
-import { CfnOutput, Duration, RemovalPolicy, Stack } from "aws-cdk-lib";
+import { CfnOutput, Duration, NestedStack, RemovalPolicy, Stack } from "aws-cdk-lib";
 
 import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
@@ -48,7 +48,7 @@ import { MailerConstruct } from "./mailer";
 import { QueueConstruct } from "./queue";
 import { TopicConstruct } from "./topic";
 import { IConstructConfig } from "../interfaces/construct-config";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 
 /**
  * Represents the configuration options for an API construct.
@@ -100,6 +100,21 @@ export interface IAPIConstructConfig extends IConstructConfig {
      */
     integrationTimeout?: number;
 
+    /**
+     * The parent stack name for the Controllers.
+     */
+    controllerParentStackName?: string;
+
+    /**
+     * Set to false if you want to skip creation of controllers resources and methods
+     * This will delete all the controllers resources and methods from the API
+     */
+    skipControllers?: boolean;
+
+    /**
+     * Force a deployment of the API when using imported APIs
+     */
+    forceDeployment?: boolean;
 }
 
 export class APIConstruct implements FW24Construct {
@@ -153,37 +168,46 @@ export class APIConstruct implements FW24Construct {
         }
         this.logger.debug("Creating API Gateway... ");
         // get the main stack from the framework
-        this.mainStack = this.fw24.getStack(this.apiConstructConfig.stackName);
+        this.mainStack = this.fw24.getStack(this.apiConstructConfig.stackName, this.apiConstructConfig.parentStackName);
         // create the api gateway
         this.api = new RestApi(this.mainStack,  `${this.fw24.appName}-api`, {
             ...paramsApi,
         });
+        this.fw24.addAPI(this.name, 'root', this.api, false);
         this.fw24.setConstructOutput(this, 'restAPI', this.api, OutputType.API,'restApiId');
         this.fw24.setConstructOutput(this, 'restAPI', this.api, OutputType.API,'restApiRootResourceId');
 
+        if(this.apiConstructConfig.skipControllers){
+            return;
+        }
+
         await this.registerControllers();
 
-        // if multi-stack setup, then create one deployment per controller stack
-        if(this.fw24.useMultiStackSetup()){
-            this.createDeployment();
+        // if multi/nested-stack setup, then create one deployment per controller stack
+        this.logger.info(`API-gateway construct: ${this.name} has imported APIs: ${this.fw24.hasImportedAPI(this.name)}`);
+        if(this.fw24.hasImportedAPI(this.name)){
+            await this.createDeployment();
         }
     }
 
     private getAPI = (stackName: string): any => {
-        let currentAPI: any = this.api;
+        let currentAPI: any = this.fw24.getAPI(this.name, 'root');
         
-        // if the stack is not the main stack and its a multi-stack application, then import the API
-        if (this.fw24.useMultiStackSetup(stackName, this.mainStack)) {
-            currentAPI = this.fw24.getAPI(stackName);
+        // if the stack is not the main stack and its a multi-stack application or a nested stack, then import the API
+        const currentStack = this.fw24.getStack(stackName);
+        this.logger.debug(`Current Stack: ${currentStack.stackName} is nested stack: ${currentStack instanceof NestedStack}`);
+        if (this.fw24.useMultiStackSetup(stackName, this.mainStack) || currentStack instanceof NestedStack) {
+            currentAPI = this.fw24.getAPI(this.name, stackName);
             if(!currentAPI){
-                const currentStack = this.fw24.getStack(stackName);
-                currentAPI = RestApi.fromRestApiAttributes(currentStack, `${this.fw24.appName}-${stackName}-api`, {
+                const importedAPI = RestApi.fromRestApiAttributes(currentStack, `${this.fw24.appName}-${stackName}-api`, {
                     restApiId: this.fw24.getEnvironmentVariable('restAPI_restApiId', 'api', currentStack),
                     rootResourceId: this.fw24.getEnvironmentVariable('restAPI_restApiRootResourceId', 'api', currentStack),
                 });
-                this.fw24.addAPI(stackName, currentAPI);
+                this.fw24.addAPI(this.name, stackName, importedAPI, true);
+                currentAPI = this.fw24.getAPI(this.name, stackName);
             }
         }
+        
         return currentAPI;
     }
 
@@ -248,6 +272,9 @@ export class APIConstruct implements FW24Construct {
         const controllerHash = handlerHash;
         const controllerConfig: IControllerConfig = handlerInstance?.controllerConfig || {};
         const controllerStackName = controllerConfig.stackName || controllerName;
+        const parentStackName = controllerConfig.parentStackName || this.apiConstructConfig.controllerParentStackName;
+        // make sure the controller stack exists
+        this.fw24.getStack(controllerStackName, parentStackName);
         controllerInfo.routes = handlerInstance.routes;
 
         this.logger.info(`Registering controller ${controllerName} from ${filePath}/${fileName}`);
@@ -283,7 +310,7 @@ export class APIConstruct implements FW24Construct {
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             this.logger.debug(`Registering route ${route.httpMethod} ${route.path}`);
             const routeTarget = route.target || controllerTarget;
-            const currentResource = this.getOrCreateRouteResource(controllerResource, route.path);
+            const currentResource = this.getOrCreateRouteResource(controllerResource, route.path, controllerStackName);
             const { routeAuthorizerName, routeAuthorizerType, routeAuthorizerGroups, routeRequireRouteInGroupConfig } = this.extractRouteAuthorizer(route, defaultAuthorizerType, defaultAuthorizerName, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig);            
             this.logger.debug(`Registering route Authorizer: ${routeAuthorizerName} - ${routeAuthorizerType} - ${routeAuthorizerGroups}`);
             let methodOptions = this.createMethodOptions(route, routeAuthorizerType, routeAuthorizerName);
@@ -342,7 +369,7 @@ export class APIConstruct implements FW24Construct {
 
         
         // keep track of the controller stacks with methods and resources in a multi-stack setup to create one deployment per controller stack
-        if(this.fw24.useMultiStackSetup()){
+        if(this.fw24.hasImportedAPI(this.name)){
             this.controllerStacks.set(controllerStackName, {
                 methods: [...methods], 
                 resources: [...this.resources],
@@ -360,14 +387,19 @@ export class APIConstruct implements FW24Construct {
 
     // if the API is imported, then create one deployment per controller stack and add method and resource as dependency
     // This is needed because imported API does not propogate CORS settings to the methods
-    private createDeployment = () => {
+    private async createDeployment() {
 
         const stageName = this.getStageName();
         for (const [controllerStackName, {methods, resources, controllersHash}] of this.controllerStacks.entries()) {
+            // TODO: add better logic to force a deployment when there is a change in framework code
+            if(this.apiConstructConfig.forceDeployment){
+                controllersHash.push(randomUUID());
+            }
+
             const controllerHash = createHash('md5').update(JSON.stringify(controllersHash)).digest('hex');
             this.logger.debug(`Creating deployment for controller stack ${controllerStackName} with hash ${controllerHash}`);
             const deployment = new Deployment(this.fw24.getStack(controllerStackName), `deployment-${controllerHash}`, {
-                api: this.getAPI(controllerStackName),
+                api: this.getAPI(controllerStackName).api,
                 stageName: stageName,
             });
 
@@ -412,10 +444,10 @@ export class APIConstruct implements FW24Construct {
 
     private getOrCreateControllerResource = (controllerName: string, controllerStackName: string): IResource => {
         let restAPI = this.getAPI(controllerStackName);
-        let controllerResource = restAPI.root.getResource(controllerName);
+        let controllerResource = restAPI.api.root.getResource(controllerName);
         if(!controllerResource){
-            controllerResource = restAPI.root.addResource(controllerName);
-            if(this.fw24.useMultiStackSetup(controllerStackName, this.mainStack)){
+            controllerResource = restAPI.api.root.addResource(controllerName);
+            if(restAPI.isImported){
                 controllerResource.addCorsPreflight(this.getCorsPreflightOptions());
             }
         }
@@ -502,8 +534,9 @@ export class APIConstruct implements FW24Construct {
         return { defaultAuthorizerName, defaultAuthorizerType, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig };
     }
 
-    private getOrCreateRouteResource = (parentResource: IResource, path: string): IResource => {
+    private getOrCreateRouteResource = (parentResource: IResource, path: string, controllerStackName: string): IResource => {
         let currentResource: IResource = parentResource;
+        const restAPI = this.getAPI(controllerStackName);
     
         for (const pathPart of path.split("/")) {
             if (pathPart === "") {
@@ -513,7 +546,7 @@ export class APIConstruct implements FW24Construct {
             let childResource = currentResource.getResource(pathPart);
             if (!childResource) {
                 childResource = currentResource.addResource(pathPart);
-                if(this.fw24.useMultiStackSetup(parentResource.stack.stackName, this.mainStack)){
+                if(restAPI.isImported){
                     childResource.addCorsPreflight(this.getCorsPreflightOptions());
                     this.resources.push(childResource);
                 }
@@ -623,7 +656,7 @@ export class APIConstruct implements FW24Construct {
 
     private outputApiEndpoint = (controllerName: string, controllerResource: IResource, stageName: string, controllerStackName: string) => {
         new CfnOutput(this.fw24.getStack(controllerStackName), `Endpoint${controllerName}`, {
-            value: 'https://' + this.getAPI(controllerStackName).restApiId + '.execute-api.' + this.fw24.getStack(controllerStackName).region + '.amazonaws.com/' + stageName + '/' + controllerResource.path.slice(1),
+            value: 'https://' + this.getAPI(controllerStackName).api.restApiId + '.execute-api.' + this.fw24.getStack(controllerStackName).region + '.amazonaws.com/' + stageName + '/' + controllerResource.path.slice(1),
             description: "API Gateway Endpoint for " + controllerName,
         });
     }

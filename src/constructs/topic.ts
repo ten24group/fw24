@@ -31,7 +31,7 @@ export class TopicConstruct implements FW24Construct {
 
     mainStack!: Stack;
 
-    constructor(private topicConstructConfig: ITopicConstructConfig[], private stackName?: string) {
+    constructor(private topicConstructConfig: ITopicConstructConfig[], private stackName?: string, private parentStackName?: string) {
         Helper.hydrateConfig(topicConstructConfig,'SNS');
     }
 
@@ -41,7 +41,7 @@ export class TopicConstruct implements FW24Construct {
 
         this.topicConstructConfig.forEach( ( topicConfig: ITopicConstructConfig ) => {
             this.logger.debug("Creating topic: ", topicConfig.topicName);
-            this.mainStack = this.fw24.getStack(topicConfig.stackName || this.stackName);
+            this.mainStack = this.fw24.getStack(topicConfig.stackName || this.stackName, topicConfig.parentStackName);
 
             const topic = new Topic(this.mainStack, topicConfig.topicName + '-topic', {
                 ...topicConfig.topicProps

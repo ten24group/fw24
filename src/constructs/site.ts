@@ -6,11 +6,12 @@ import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { Helper } from "../core/helper";
 import { createLogger } from "../logging";
+import { IConstructConfig } from "../interfaces/construct-config";
 
 /**
  * Represents the configuration for the site construct.
  */
-export interface ISiteConstructConfig {
+export interface ISiteConstructConfig extends IConstructConfig {
     /**
      * The name of the application.
      */
@@ -81,7 +82,7 @@ export class SiteConstruct implements FW24Construct{
         this.logger.debug(' construct for:', this.siteConstructConfig.appName);
         const fw24 = Fw24.getInstance();
         // get the main stack from the framework
-        this.mainStack = fw24.getStack('main');
+        this.mainStack = fw24.getStack(this.siteConstructConfig.stackName, this.siteConstructConfig.parentStackName);
         // create the stack prefix
         const stackPrefix = `${fw24.appName}-${this.siteConstructConfig.appName}`;
         // create the amplify app

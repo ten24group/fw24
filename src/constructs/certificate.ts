@@ -29,7 +29,7 @@ export class CertificateConstruct implements FW24Construct {
     }
 
     public async construct() {
-        this.mainStack = this.fw24.getStack(this.certificateConstructConfig.stackName);
+        this.mainStack = this.fw24.getStack(this.certificateConstructConfig.stackName, this.certificateConstructConfig.parentStackName);
 
         let certificate: any;
         if (this.certificateConstructConfig.certificateArn){

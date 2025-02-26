@@ -89,7 +89,7 @@ export class QueueConstruct implements FW24Construct {
     @LogDuration()
     public async construct() {
         // make the main stack available to the class
-        this.mainStack = this.fw24.getStack(this.queueConstructConfig.stackName);
+        this.mainStack = this.fw24.getStack(this.queueConstructConfig.stackName, this.queueConstructConfig.parentStackName);
         // make the fw24 instance available to the class
         // sets the default queues directory if not defined
         if(this.queueConstructConfig.queuesDirectory === undefined || this.queueConstructConfig.queuesDirectory === ""){

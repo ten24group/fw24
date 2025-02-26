@@ -137,7 +137,7 @@ export class LayerConstruct implements FW24Construct {
     @LogDuration()
     public async construct() {
         await Promise.all(this.config.map(async (layerConfig) => {
-            this.mainStack = this.fw24.getStack(layerConfig.stackName || this.fw24.getConfig().layerStackName);
+            this.mainStack = this.fw24.getStack(layerConfig.stackName || this.fw24.getConfig().layerStackName, layerConfig.parentStackName);
 
             this.logger.debug("Processing layer:", layerConfig);
 

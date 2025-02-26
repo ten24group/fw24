@@ -145,7 +145,7 @@ export class BucketConstruct implements FW24Construct {
     mainStack!: Stack;
 
     // default constructor to initialize the stack configuration
-    constructor(private bucketConstructConfig: IBucketConstructConfig[], private stackName?: string) {
+    constructor(private bucketConstructConfig: IBucketConstructConfig[], private stackName?: string, private parentStackName?: string) {
         Helper.hydrateConfig(bucketConstructConfig,'S3');
     }
 
@@ -153,10 +153,9 @@ export class BucketConstruct implements FW24Construct {
     public async construct() {
         // make the main stack available to the class
         this.appConfig = this.fw24.getConfig();
-        // get the main stack from the framework
-        this.mainStack = this.fw24.getStack(this.stackName);
         // create the buckets
         this.bucketConstructConfig.forEach( ( bucketConfig: IBucketConstructConfig ) => {
+            this.mainStack = this.fw24.getStack(bucketConfig.stackName || this.stackName, bucketConfig.parentStackName || this.parentStackName);
             this.createBucket(bucketConfig);
         });
     }

@@ -81,7 +81,7 @@ export class MailerConstruct implements FW24Construct {
     @LogDuration()
     public async construct() {
         // make the main stack available to the class
-        this.mainStack = this.fw24.getStack(this.mailerConstructConfig.stackName);
+        this.mainStack = this.fw24.getStack(this.mailerConstructConfig.stackName, this.mailerConstructConfig.parentStackName);
 
         // create identity
         if(this.mailerConstructConfig.domain !== undefined && this.mailerConstructConfig.domain !== "") {
