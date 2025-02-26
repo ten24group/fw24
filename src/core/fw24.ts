@@ -140,7 +140,12 @@ export class Fw24 {
 
     public useMultiStackSetup = (currentStackName?: string, resourceStack?: Stack): boolean => {
         return (
-            !(resourceStack?.stackName.endsWith(currentStackName+'-stack') || resourceStack?.stackName === currentStackName)
+            (
+                // if resource stack is not provided, then only check if multi-stack is enabled
+                !resourceStack ||
+                // if resource stack is provided, then check if it is a different stack than the current stack
+                !(resourceStack?.stackName.endsWith(currentStackName+'-stack') || resourceStack?.stackName === currentStackName)
+            )
             && this.getConfig().multiStack 
             && this.getConfig().multiStack === true
         ) || false;
@@ -266,8 +271,6 @@ export class Fw24 {
                             return StringParameter.valueForStringParameter(scope, ssmKey);
                         } catch (error) {
                             this.logger.error(error);
-                            this.logger.warn(`SSM parameter ${ssmKey} not found during build - this is expected during first deployment`);
-                            return this.environmentVariables[ensureValidEnvKey(name, prefix)];
                         }
                     }
                 } else {
@@ -367,6 +370,7 @@ export class Fw24 {
             // set the environment variable for the direct reference
             this.setEnvironmentVariable(`${key}_${exportValueAlias || exportValueKey}`, outputValue, outputType);
             // Store SSM parameter for cross-stack reference
+            this.logger.debug(`useMultiStackSetup: ${this.useMultiStackSetup()}`);
             if(this.useMultiStackSetup()){
                 const ssmKey = `/${construct.mainStack.stackName}/${outputType}/${sanitizedKey}/${exportValueAlias || exportValueKey}`;
                 // set the environment variable for the cross-stack reference using SSM parameter
