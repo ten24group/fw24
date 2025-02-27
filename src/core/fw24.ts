@@ -136,8 +136,13 @@ export class Fw24 {
                 this.stacks[stackName] = new NestedStack(this.getStack(parentStackName), stackName);
                 this.logger.debug("Created nested stack:", {stackName, parentStackName});
             } else {
+                let stackID = `${this.appName}-${stackName}-stack`;
+                // backwards compatibility for old stack names
+                if(stackName === 'premultistack'){
+                    stackID = `${this.appName}-stack`;
+                }
                 // create a new stack
-                this.stacks[stackName] = new Stack(this.app, `${this.appName}-${stackName}-stack`, {
+                this.stacks[stackName] = new Stack(this.app, stackID, {
                     env: {
                         account: this.config.account,
                         region: this.config.region
