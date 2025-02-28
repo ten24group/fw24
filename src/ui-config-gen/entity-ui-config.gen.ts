@@ -39,7 +39,7 @@ export class EntityUIConfigGen{
 
         const services = await this.scanAndLoadServices(serviceDirectories);
 
-        this.logger.info(`Ui-config-gen::: Process::: all-services: `, Array.from(services.keys()));
+        this.logger.debug(`Ui-config-gen::: Process::: all-services: `, Array.from(services.keys()));
 
         let menuIndex = 1;
         // generate UI configs
@@ -115,11 +115,11 @@ export class EntityUIConfigGen{
         const serviceDirectories = [pathResolve('./src/services/')];
 
         if(fw24.hasModules()){
-            this.logger.info(`Ui-config-gen::: Process::: app has modules: `, Array.from(fw24.getModules().keys()));
+            this.logger.debug(`Ui-config-gen::: Process::: app has modules: `, Array.from(fw24.getModules().keys()));
             for(const [, module] of fw24.getModules()){
                 const moduleServicesPath = pathJoin(module.getBasePath(), module.getServicesDirectory());
-                this.logger.info(`Ui-config-gen::: Process::: moduleServicesPath: `, moduleServicesPath);
-                this.logger.info(`Ui-config-gen::: Process::: res-moduleServicesPath: `, pathResolve(moduleServicesPath) );
+                this.logger.debug(`Ui-config-gen::: Process::: moduleServicesPath: `, moduleServicesPath);
+                this.logger.debug(`Ui-config-gen::: Process::: res-moduleServicesPath: `, pathResolve(moduleServicesPath) );
                 serviceDirectories.push(pathResolve(moduleServicesPath));
             }
         }
@@ -133,7 +133,7 @@ export class EntityUIConfigGen{
         const scannedServices = new Set<Function>();
         
         for( const dir of serviceDirectories){
-            this.logger.info(`Ui-config-gen::: Process::: loading services from DIR: `, dir);
+            this.logger.debug(`Ui-config-gen::: Process::: loading services from DIR: `, dir);
             const dirServiceTokens = await this.scanServicesFromDirectory(dir);
             dirServiceTokens.forEach( token => scannedServices.add(token));
         }
@@ -157,9 +157,9 @@ export class EntityUIConfigGen{
                 allProvidersFromChildContainers: true
             }) as BaseEntityService<any>;
 
-            this.logger.info(`resolved service for entity: ${service.getEntityName()}`);
+            this.logger.debug(`resolved service for entity: ${service.getEntityName()}`);
 
-            this.logger.info(`Ui-config-gen::: Process::: loaded services from entity: `, service.getEntityName());
+            this.logger.debug(`Ui-config-gen::: Process::: loaded services from entity: `, service.getEntityName());
             resolvedServices.set(service.getEntityName(), service);
         })
 
@@ -179,7 +179,7 @@ export class EntityUIConfigGen{
         const servicePaths = Helper.scanTSSourceFilesFrom(servicesDir);
     
         for (const servicePath of servicePaths) {
-            this.logger.info(`trying to load servicePath: ${servicePath}`);
+            this.logger.debug(`trying to load servicePath: ${servicePath}`);
     
             try {
                 // Dynamically import the service file
@@ -199,15 +199,15 @@ export class EntityUIConfigGen{
                             allProvidersFromChildContainers: true
                         })){
                             scannedServices.add(exportedItem);
-                            this.logger.info(`scanServicesFromDirectory: registering service: ${exportedItem.name}`);
+                            this.logger.debug(`scanServicesFromDirectory: registering service: ${exportedItem.name}`);
                             continue;
                         }
 
-                        this.logger.info(`scanServicesFromDirectory: no provider could be found for service: ${exportedItem.name}`);
+                        this.logger.debug(`scanServicesFromDirectory: no provider could be found for service: ${exportedItem.name}`);
 
                     } else {
 
-                        this.logger.info(`scanServicesFromDirectory: SKIP: exportedItem is not a service class: ${(exportedItem as any)?.name ? (exportedItem as any).name : exportedItem}`);
+                        this.logger.debug(`scanServicesFromDirectory: SKIP: exportedItem is not a service class: ${(exportedItem as any)?.name ? (exportedItem as any).name : exportedItem}`);
                     }
                 }
             } catch (e){
@@ -220,33 +220,33 @@ export class EntityUIConfigGen{
 
     @LogDuration()
     async writeToFiles(menuConfig: any, entitiesConfig: any, authConfig: any, dashboardConfig: any){
-        this.logger.info("Called writeToFiles:::::: ");
+        this.logger.debug("Called writeToFiles:::::: ");
         const genDirectoryPath = pathResolve('./gen/');
         if (!existsSync(genDirectoryPath)){
-            this.logger.info(`Gen DIR does not exists, creating: ${genDirectoryPath}`, );
+            this.logger.debug(`Gen DIR does not exists, creating: ${genDirectoryPath}`, );
             mkdirSync(genDirectoryPath);
         }
     
         const configDirectoryPath = pathResolve(pathJoin(genDirectoryPath, 'config'));
         if (!existsSync(configDirectoryPath)){
-            this.logger.info(`Config DIR does not exists, creating: ${configDirectoryPath}`);
+            this.logger.debug(`Config DIR does not exists, creating: ${configDirectoryPath}`);
             mkdirSync(configDirectoryPath);
         }
     
         const menuConfigFilePath = pathJoin(configDirectoryPath, 'menu.json');
-        this.logger.info(`writing menu-config.. into: ${menuConfigFilePath}`);
+        this.logger.debug(`writing menu-config.. into: ${menuConfigFilePath}`);
         writeFileSync(menuConfigFilePath, JSON.stringify(menuConfig, null, 2));
     
         const entitiesConfigFilePath = pathJoin(configDirectoryPath, 'entities.json');
-        this.logger.info(`writing entities-config.. into: ${entitiesConfigFilePath}`,);
+        this.logger.debug(`writing entities-config.. into: ${entitiesConfigFilePath}`,);
         writeFileSync(entitiesConfigFilePath, JSON.stringify(entitiesConfig, null, 2));
 
         const authConfigFilePath = pathJoin(configDirectoryPath, 'auth.json');
-        this.logger.info(`writing auth-config.. into: ${authConfigFilePath}`,);
+        this.logger.debug(`writing auth-config.. into: ${authConfigFilePath}`,);
         writeFileSync(authConfigFilePath, JSON.stringify(authConfig, null, 2));
 
         const dashboardConfigFilePath = pathJoin(configDirectoryPath, 'dashboard.json');
-        this.logger.info(`writing dashboard-config.. into: ${dashboardConfigFilePath}`,);
+        this.logger.debug(`writing dashboard-config.. into: ${dashboardConfigFilePath}`,);
         writeFileSync(dashboardConfigFilePath, JSON.stringify(dashboardConfig, null, 2));
         
     }

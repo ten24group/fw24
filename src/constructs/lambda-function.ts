@@ -2,7 +2,7 @@ import { Construct } from "constructs";
 import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import { PolicyStatement, type PolicyStatementProps } from "aws-cdk-lib/aws-iam";
 import { Runtime, Architecture, LayerVersion, ApplicationLogLevel, LoggingFormat, ILayerVersion } from "aws-cdk-lib/aws-lambda";
-import { TableV2 } from "aws-cdk-lib/aws-dynamodb";
+import { ITableV2, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Fw24 } from "../core/fw24";
 import { Bucket } from "aws-cdk-lib/aws-s3";
@@ -257,7 +257,7 @@ export class LambdaFunction extends Construct {
     // map layers to actual layer objects
     const resolvedLayers = deDupLayers.map( layerName => {
       if(typeof layerName === 'string'){
-        return LayerVersion.fromLayerVersionArn(this, `${id}-${layerName}-Layer`, fw24.getEnvironmentVariable(layerName, 'layer') );
+        return LayerVersion.fromLayerVersionArn(this, `${id}-${layerName}-Layer`, fw24.getEnvironmentVariable(layerName+'_layerVersionArn', 'layer', scope) );
       }
 
       return layerName;
@@ -266,7 +266,7 @@ export class LambdaFunction extends Construct {
     // make sure to add fw24 layer
     additionalProps.layers = [
       ...resolvedLayers,
-      LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, fw24.getEnvironmentVariable('fw24', 'layer'))
+      LayerVersion.fromLayerVersionArn(this,  `${id}-Fw24CoreLayer`, fw24.getEnvironmentVariable('fw24_layerVersionArn', 'layer', scope))
     ];
 
     additionalProps.bundling = {
@@ -352,8 +352,9 @@ export class LambdaFunction extends Construct {
 
     // If we are using SES, then we need to add the email queue url to the environment
     if(props.allowSendEmail && fw24.emailProvider instanceof MailerConstruct){
-      this.logger?.debug(":GET emailQueue Name from fw24 scope : ", fw24.getEnvironmentVariable('emailQueue', 'queueName'), id);
-      let emailQueue = fw24.getQueueByName('emailQueue');
+      const emailQueueName = fw24.getEnvironmentVariable('emailQueue_queueName', 'queue', scope);
+      const emailQueue = Queue.fromQueueArn(this, `${id}-${emailQueueName}-queue`, fw24.getArn('sqs', emailQueueName));
+
       emailQueue.grantSendMessages(fn);
       addEnvironmentKeyValueForFunction({
         fn,
@@ -373,8 +374,8 @@ export class LambdaFunction extends Construct {
 
       const access = typeof table === 'string' ? ['readwrite'] : table.access || ['readwrite'];
       // Get the DynamoDB table based on the controller config
-      const tableInstance: TableV2 = fw24.getDynamoTable(appQualifiedTableName);
-      
+      const tableInstance: ITableV2 = TableV2.fromTableName(this, `${id}-${tableName}-table`, fw24.getEnvironmentVariable(appQualifiedTableName+'_tableName', 'table', scope));
+
       // Add the table name to the lambda environment      
       addEnvironmentKeyValueForFunction({
         fn,
@@ -433,6 +434,7 @@ export class LambdaFunction extends Construct {
       
     });
 
+    // Logic for adding SQS queue access to the controller
     props.resourceAccess?.queues?.forEach( ( queue: any ) => {
       let queueName = typeof queue === 'string' ? queue : queue.name;
 
@@ -441,8 +443,7 @@ export class LambdaFunction extends Construct {
 
       const access = typeof queue === 'string' ? ['send'] : queue.access || ['send'];
 
-      this.logger?.debug(":GET Queue Name from fw24 scope : ", queueName, " :", fw24.getEnvironmentVariable(queueName, 'queueName'));
-      const queueArn = fw24.getArn('sqs', fw24.getEnvironmentVariable(queueName, 'queueName'));
+      const queueArn = fw24.getArn('sqs', fw24.getEnvironmentVariable(queueName+'_queueName', 'queue', scope));
       const queueInstance = Queue.fromQueueArn(this, queueName+id+'-queue', queueArn);
       // Grant the lambda function access to the queue
       access.forEach( (accessType: string) => {
@@ -476,7 +477,7 @@ export class LambdaFunction extends Construct {
 
       const access = typeof topic === 'string' ? ['publish'] : topic.access || ['publish'];
 
-      const topicArn = fw24.getArn('sns', fw24.getEnvironmentVariable(topicName, 'topicName'));
+      const topicArn = fw24.getArn('sns', fw24.getEnvironmentVariable(topicName+'_topicName', 'topic', scope));
       const topicInstance = Topic.fromTopicArn(this, topicName+id+'-topic', topicArn);
       // Grant the lambda function access to the topic
       access.forEach( (accessType: string) => {

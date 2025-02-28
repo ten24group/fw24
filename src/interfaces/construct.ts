@@ -10,6 +10,7 @@ import type { Topic } from "aws-cdk-lib/aws-sns";
 import type { Queue } from "aws-cdk-lib/aws-sqs";
 
 import type { Fw24 } from "../core/fw24";
+import { Stack } from "aws-cdk-lib";
 
 export interface FW24Construct {
     name: string;
@@ -20,6 +21,7 @@ export interface FW24Construct {
     // convention for output is to use the resource and name as the key
     // e.g. output: bucket.[bucketName] = bucket; function.[functionName] = function
     output: FW24ConstructOutput;
+    mainStack: Stack
 }
 
 export interface FW24ConstructOutput extends Record<string, any>{
