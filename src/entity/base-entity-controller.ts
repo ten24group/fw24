@@ -5,7 +5,6 @@ import type { EntityFilterCriteria } from './query-types';
 
 import { APIController } from '../core/runtime/api-gateway-controller';
 import { Delete, Get, Patch, Post } from '../decorators/method';
-import { createLogger } from '../logging';
 import { safeParseInt } from '../utils/parse';
 import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, isString, merge, resolveEnvValueFor, toSlug } from '../utils';
 import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
@@ -30,15 +29,20 @@ export type GetSignedUrlForFileUploadSchema = {
  */
 export class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIController {
 
-	readonly logger = createLogger(BaseEntityController.name);
+	private entityName: string;
 
 	/**
 	 * Creates an instance of BaseEntityController.
+	 * @param {BaseEntityService<Sch>} entityService - The entity-service.
 	 * @param {string} entityName - The name of the entity.
 	 */
-	constructor(protected readonly entityName: string, protected readonly entityService: BaseEntityService<Sch>) {
+	constructor(protected readonly entityService: BaseEntityService<Sch>, entityName = entityService?.getEntityName()) {
 		super();
 		this.entityName = entityName;
+	}
+
+	protected getEntityName() {
+		return this.entityName || this.getEntityService()?.getEntityName();
 	}
 
 	/**
@@ -72,7 +76,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const createdEntity = await this.getEntityService().create(req.body);
 
 		const result: any = {
-			[ camelCase(this.entityName) ]: createdEntity,
+			[ camelCase(this.getEntityName()) ]: createdEntity,
 			message: "Created successfully"
 		};
 		if (req.debugMode) {
@@ -144,7 +148,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const duplicateEntity = await service.duplicate(identifiers);
 
 		const result: any = {
-			[ camelCase(this.entityName) ]: duplicateEntity,
+			[ camelCase(this.getEntityName()) ]: duplicateEntity,
 		};
 
 		if (req.debugMode) {
@@ -170,7 +174,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const entity = await this.getEntityService().get({ identifiers, selections });
 
 		const result: any = {
-			[ camelCase(this.entityName) ]: entity,
+			[ camelCase(this.getEntityName()) ]: entity,
 		};
 
 		if (req.debugMode) {
@@ -190,7 +194,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	@Get('')
 	async list(req: Request, res: Response): Promise<Response> {
 		const data = req.queryStringParameters;
-		this.logger.info(`list - data:`, data);
+		this.logger.debug(`list - data:`, data);
 
 		const {
 			order,
@@ -206,14 +210,14 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		let parsedFilters = {};
 
 		if (!isObject(filters)) {
-			this.logger.warn(`filters is not an object: need to parse the filters query string`, filters);
+			this.logger.info(`filters is not an object: need to parse the filters query string`, filters);
 
 			if (isJsonString(filters)) {
-				this.logger.info(`found JSON string filters parsing`, filters);
+				this.logger.debug(`found JSON string filters parsing`, filters);
 				parsedFilters = JSON.parse(filters);
 			} else {
 				// TODO: parse filters query string
-				this.logger.warn(`filters is not an object: need to parse the filters query string`, filters);
+				this.logger.warn(`filters is not an JSON: need to parse the filters query string`, filters);
 			}
 		} else {
 			this.logger.info(`filters is a parsed object`, filters);
@@ -221,13 +225,13 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		}
 
 		if (restOfQueryParamsWithoutFilters && !isEmptyObject(restOfQueryParamsWithoutFilters)) {
-			this.logger.info(`found not empty restOfQueryParamsWithoutFilters:`, restOfQueryParamsWithoutFilters);
+			this.logger.debug(`found not empty restOfQueryParamsWithoutFilters:`, restOfQueryParamsWithoutFilters);
 
 			const parsedQueryParams = parseUrlQueryStringParameters(restOfQueryParamsWithoutFilters);
-			this.logger.info(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
+			this.logger.debug(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
 
 			const parsedQueryParamFilters = queryStringParamsToFilterGroup(parsedQueryParams);
-			this.logger.info(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
+			this.logger.debug(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
 
 			parsedFilters = merge([ parsedFilters, parsedQueryParamFilters ]) ?? {};
 		}
@@ -240,7 +244,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			pages: pages === 'all' ? 'all' as const : safeParseInt(pages, 1).value,
 		}
 
-		this.logger.info(`parsed pagination`, pagination);
+		this.logger.debug(`parsed pagination`, pagination);
 
 		const query = {
 			filters: deepCopy(parsedFilters) as EntityFilterCriteria<Sch>,
@@ -285,7 +289,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const updatedEntity = await this.getEntityService().update(identifiers as any, req.body);
 
 		const result: any = {
-			[ camelCase(this.entityName) ]: updatedEntity,
+			[ camelCase(this.getEntityName()) ]: updatedEntity,
 			message: "Updated successfully"
 		};
 		if (req.debugMode) {
@@ -310,7 +314,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const deletedEntity = await this.getEntityService().delete(identifiers);
 
 		const result: any = {
-			[ camelCase(this.entityName) ]: deletedEntity,
+			[ camelCase(this.getEntityName()) ]: deletedEntity,
 			message: "Deleted successfully"
 		};
 
@@ -330,7 +334,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	@Post('/query')
 	async query(req: Request, res: Response): Promise<Response> {
 		const query = req.body;
-		this.logger.info(`query - query:`, query);
+		this.logger.debug(`query - query:`, query);
 
 		const inputQuery = deepCopy(query);
 

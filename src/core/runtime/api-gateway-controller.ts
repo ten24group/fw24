@@ -64,7 +64,7 @@ export function createApiHandler(
  * Base controller class for handling API Gateway events.
  */
 abstract class APIController extends AbstractLambdaHandler {
-  readonly logger = createLogger(APIController.name);
+
   protected validator: IValidator = DefaultValidator;
 
   abstract initialize(event: APIGatewayEvent, context: Context): Promise<void>;
