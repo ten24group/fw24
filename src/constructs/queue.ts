@@ -11,11 +11,12 @@ import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { LogDuration, createLogger } from "../logging";
 import { DynamoDBConstruct } from "./dynamodb";
 import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import { IConstructConfig } from "../interfaces/construct-config";
 
 /**
  * Represents the configuration for a queue construct.
  */
-export interface IQueueConstructConfig {
+export interface IQueueConstructConfig extends IConstructConfig {
     /**
      * The directory where queues are stored.
      */
@@ -88,7 +89,7 @@ export class QueueConstruct implements FW24Construct {
     @LogDuration()
     public async construct() {
         // make the main stack available to the class
-        this.mainStack = this.fw24.getStack("main");
+        this.mainStack = this.fw24.getStack(this.queueConstructConfig.stackName, this.queueConstructConfig.parentStackName);
         // make the fw24 instance available to the class
         // sets the default queues directory if not defined
         if(this.queueConstructConfig.queuesDirectory === undefined || this.queueConstructConfig.queuesDirectory === ""){
@@ -145,12 +146,7 @@ export class QueueConstruct implements FW24Construct {
                 logRetentionDays: queueConfig?.logRetentionDays,
             }
         }) as Queue;
-        this.fw24.setConstructOutput(this, queueName, queue, OutputType.QUEUE);
-
-        // output the api endpoint
-        new CfnOutput(this.mainStack, `SQS-${queueName}`, {
-            value: queue.queueUrl,
-            description: "Queue URL for " + queueName,
-        });
+        
+        this.fw24.setConstructOutput(this, queueName, queue, OutputType.QUEUE, 'queueName');
     }
 }

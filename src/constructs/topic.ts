@@ -1,4 +1,4 @@
-import { CfnOutput } from "aws-cdk-lib";
+import { CfnOutput, Stack } from "aws-cdk-lib";
 import { Topic, TopicProps } from 'aws-cdk-lib/aws-sns';
 import { EmailSubscription, SmsSubscription } from 'aws-cdk-lib/aws-sns-subscriptions';
 
@@ -6,12 +6,13 @@ import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { LogDuration, createLogger } from "../logging";
+import { IConstructConfig } from "../interfaces/construct-config";
 
 
 /**
  * Represents the configuration for a topic construct.
  */
-export interface ITopicConstructConfig {
+export interface ITopicConstructConfig extends IConstructConfig {
     topicName: string;
     topicProps?: TopicProps;
     notificationProps?: {
@@ -28,7 +29,9 @@ export class TopicConstruct implements FW24Construct {
     dependencies: string[] = [];
     output!: FW24ConstructOutput;
 
-    constructor(private topicConstructConfig: ITopicConstructConfig[]) {
+    mainStack!: Stack;
+
+    constructor(private topicConstructConfig: ITopicConstructConfig[], private stackName?: string, private parentStackName?: string) {
         Helper.hydrateConfig(topicConstructConfig,'SNS');
     }
 
@@ -36,12 +39,11 @@ export class TopicConstruct implements FW24Construct {
     public async construct() {
         this.logger.debug("construct: ");
 
-        const mainStack = this.fw24.getStack('main');
-
         this.topicConstructConfig.forEach( ( topicConfig: ITopicConstructConfig ) => {
             this.logger.debug("Creating topic: ", topicConfig.topicName);
+            this.mainStack = this.fw24.getStack(topicConfig.stackName || this.stackName, topicConfig.parentStackName);
 
-            const topic = new Topic(mainStack, topicConfig.topicName + '-topic', {
+            const topic = new Topic(this.mainStack, topicConfig.topicName + '-topic', {
                 ...topicConfig.topicProps
             });
             this.fw24.setConstructOutput(this, topicConfig.topicName, topic, OutputType.TOPIC);
@@ -64,9 +66,7 @@ export class TopicConstruct implements FW24Construct {
                 }
             }
 
-            new CfnOutput(mainStack, topicConfig.topicName + 'Output', {
-                value: topic.topicName,
-            });
+            this.fw24.setConstructOutput(this, topicConfig.topicName, topic, OutputType.TOPIC, 'topicName');
         });
     }
 }   

@@ -136,7 +136,7 @@ export namespace User {
             readOnly: true,
             default: () => 'xxx-yyy-zzz', // TODO: have some global logic drive this value
             relation: createEntityRelation({
-              entity: userSch1,
+              entityName: userSch1.model.entity,
               type: 'many-to-one',
               attributes: ['userId', 'updatedAt', 'createdAt'],
               identifiers: [{
@@ -238,7 +238,7 @@ export namespace User {
             readOnly: true,
             default: () => 'xxx-yyy-zzz', // TODO: have some global logic drive this value
             relation: createEntityRelation({
-              entity: userSch2,
+              entityName: userSch2.model.entity,
               type: 'many-to-one',
               identifiers: [{
                 source: 'adminId',

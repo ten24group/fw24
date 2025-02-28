@@ -1,4 +1,4 @@
-import { SecretValue, CfnOutput } from "aws-cdk-lib";
+import { SecretValue, CfnOutput, Stack } from "aws-cdk-lib";
 import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
 import { App, Branch, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha';
 
@@ -6,11 +6,12 @@ import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { Helper } from "../core/helper";
 import { createLogger } from "../logging";
+import { IConstructConfig } from "../interfaces/construct-config";
 
 /**
  * Represents the configuration for the site construct.
  */
-export interface ISiteConstructConfig {
+export interface ISiteConstructConfig extends IConstructConfig {
     /**
      * The name of the application.
      */
@@ -67,6 +68,8 @@ export class SiteConstruct implements FW24Construct{
     dependencies: string[] = [];
     output!: FW24ConstructOutput;
 
+    mainStack!: Stack;
+
     // default constructor to initialize the stack configuration
     constructor(private siteConstructConfig: ISiteConstructConfig){
         // hydrate the config object with environment variables ex: AMPLIFY_GITHUB_OWNER
@@ -79,11 +82,11 @@ export class SiteConstruct implements FW24Construct{
         this.logger.debug(' construct for:', this.siteConstructConfig.appName);
         const fw24 = Fw24.getInstance();
         // get the main stack from the framework
-        const mainStack = fw24.getStack('main');
+        this.mainStack = fw24.getStack(this.siteConstructConfig.stackName, this.siteConstructConfig.parentStackName);
         // create the stack prefix
         const stackPrefix = `${fw24.appName}-${this.siteConstructConfig.appName}`;
         // create the amplify app
-        const amplifyApp = new App(mainStack, `${stackPrefix}-amplify`, {
+        const amplifyApp = new App(this.mainStack, `${stackPrefix}-amplify`, {
             appName: `${this.siteConstructConfig.appName}`,
             buildSpec: BuildSpec.fromObject(this.siteConstructConfig.buildSpec),
             sourceCodeProvider: new GitHubSourceCodeProvider({
@@ -112,7 +115,7 @@ export class SiteConstruct implements FW24Construct{
         // add the stack to the framework
         fw24.addStack('amplify', amplifyApp);
         // add the amplify url to the main stack outputs
-        new CfnOutput(mainStack, `${stackPrefix}-amplify-url`, {
+        new CfnOutput(this.mainStack, `${stackPrefix}-amplify-url`, {
             value: `https://${this.siteConstructConfig.githubBranch}.${amplifyApp.appId}.amplifyapp.com`
         });
     }

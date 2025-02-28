@@ -22,17 +22,24 @@ export function ensureSuffix(key: string, suffix: string = '') {
     return key;
 }
 
-export function ensureValidEnvKey(key: string, prefix = '', suffix = ''){
-        
+export function ensureValidEnvKey(key: string, prefix = '', suffix = '', forExport = false) {
     key = ensurePrefix(key, prefix);
-    
     key = ensureSuffix(key, suffix);
-
+    
+    // For CloudFormation exports, convert underscores to hyphens
+    if (forExport) {
+        return ensureNoSpecialChars(key, true).toUpperCase();
+    }
+    
+    // For Lambda env vars, keep underscores (default behavior)
     return ensureNoSpecialChars(key).toUpperCase();
 }
 
-export function ensureNoSpecialChars(val: string){
-    // * encode/special characters in key to make them friendly for aws Lambda env
-    // replace all non-alphanumeric characters with underscore
+export function ensureNoSpecialChars(val: string, forExport = false) {
+    if (forExport) {
+        // For CloudFormation exports: replace underscores and special chars with hyphens
+        return val.replace(/[^a-zA-Z0-9\-]/g, '-');
+    }
+    // For Lambda env vars: replace special chars (except underscores) with underscores
     return val.replace(/[^a-zA-Z0-9_]/g, '_');
 }

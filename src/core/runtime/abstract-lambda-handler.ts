@@ -1,7 +1,7 @@
 import { createLogger } from "../../logging";
 
 export abstract class AbstractLambdaHandler {
-  readonly logger = createLogger(AbstractLambdaHandler.name);
+  readonly logger = createLogger(this.constructor.name);
 
   /**
    * Binds the LambdaHandler method to the instance of the class.
