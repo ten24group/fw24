@@ -7,7 +7,8 @@ import {
     UserPoolProps, 
     UserPoolOperation,
     VerificationEmailStyle,
-    UserPoolClientProps, 
+    UserPoolClientProps,
+    UserPoolClientOptions, 
 } from "aws-cdk-lib/aws-cognito";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
@@ -50,7 +51,7 @@ export interface IAuthConstructConfig extends IConstructConfig {
      * Configuration for the User Pool Client.
      */
     userPoolClient?: {
-        props: any;
+        props: UserPoolClientOptions;
     };
     /**
      * Array of file paths for policy files.
