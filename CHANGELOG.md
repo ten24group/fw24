@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-beta.7](https://github.com/ten24group/fw24/compare/v0.1.1-beta.4...v0.1.1-beta.7) (2025-02-28)
+
+
+### Bug Fixes
+
+* base-entity-controller's dependency on entity name when services are injected lazily ([286feb3](https://github.com/ten24group/fw24/commit/286feb338ba2a197d8aa11aea5348dcf7c17c71e))
+* base-entity-service inferRelationshipsForEntitySelections to handle circular relation, and Fix: issues in registerEntitySchema ([b03fa55](https://github.com/ten24group/fw24/commit/b03fa554b549fff68564744de52c2e1bd9eb4661))
+* compilation issue in ui-config-gen ([eec6891](https://github.com/ten24group/fw24/commit/eec6891aad82254e5e45cd1e6ac4d2a16fd8dc53))
+* DI-container's registerProvider function to consider the provider type and entity ([c9e26d3](https://github.com/ten24group/fw24/commit/c9e26d3e365841675617c89ca0f5ccc9c68faccf))
+* hard-error when env-key value is missing ([cd1e2f1](https://github.com/ten24group/fw24/commit/cd1e2f1d97e70632af64da50dfd9d2795328ceb9))
+* InjectEntitySchema/Service decorators not registering right metadata and leading ro error ([3f01c05](https://github.com/ten24group/fw24/commit/3f01c05e4896e5de10436f4a78997cac02ad9252))
+* resolveEntitySchema/Service methods not working properly due to token mismatch, even though token shouldn't matter in these methods ([ecad272](https://github.com/ten24group/fw24/commit/ecad27231c0cd541e2110c318414e485b9c46b61))
+* type in @InjectEntitySchema ([f242852](https://github.com/ten24group/fw24/commit/f24285215a3c5d19a815e7d40204e4689f9d5c9b))
+* wrong key in relation metadata in BaseEntityService: entityAttributeToIOSchemaAttribute leading to errors ([32b5a4a](https://github.com/ten24group/fw24/commit/32b5a4acad3e89bf98e3bbc7e55ca00d4653bb31))
+
 ### [0.1.1-beta.6](https://github.com/ten24group/fw24/compare/v0.1.1-beta.4...v0.1.1-beta.6) (2025-02-28)
 
 

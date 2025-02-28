@@ -1,7 +1,7 @@
 {
     "name": "@ten24group/fw24",
     "description": "A modern, serverless, framework to launch software products quickly and scale seamlessly",
-    "version": "0.1.1-beta.6",
+    "version": "0.1.1-beta.7",
     "main": "./dist/package/fw24.js",
     "types": "./dist/package/fw24.d.ts",
     "repository": {
