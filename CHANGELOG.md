@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-beta.8](https://github.com/ten24group/fw24/compare/v0.1.1-beta.7...v0.1.1-beta.8) (2025-02-28)
+
 ### [0.1.1-beta.7](https://github.com/ten24group/fw24/compare/v0.1.1-beta.4...v0.1.1-beta.7) (2025-02-28)
 
 
@@ -46,6 +48,7 @@ All notable changes to this project will be documented in this file. See [standa
 * resolveEntitySchema/Service methods not working properly due to token mismatch, even though token shouldn't matter in these methods ([ecad272](https://github.com/ten24group/fw24/commit/ecad27231c0cd541e2110c318414e485b9c46b61))
 * type in @InjectEntitySchema ([f242852](https://github.com/ten24group/fw24/commit/f24285215a3c5d19a815e7d40204e4689f9d5c9b))
 * wrong key in relation metadata in BaseEntityService: entityAttributeToIOSchemaAttribute leading to errors ([32b5a4a](https://github.com/ten24group/fw24/commit/32b5a4acad3e89bf98e3bbc7e55ca00d4653bb31))
+### [0.1.1-beta.6](https://github.com/ten24group/fw24/compare/v0.1.1-beta.5...v0.1.1-beta.6) (2025-02-21)
 
 ### [0.1.1-beta.4](https://github.com/ten24group/fw24/compare/v0.1.1-beta.3...v0.1.1-beta.4) (2025-01-06)
 
