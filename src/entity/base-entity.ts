@@ -62,7 +62,7 @@ export type HydrateOptionForRelation<Rel extends Relation<any>=any> = {
 }
 
 
-export type RelationIdentifier<E extends EntitySchema<any, any, any, any> = any> = { source?: string, target: keyof E['attributes'] };
+export type RelationIdentifier<E extends EntitySchema<any, any, any, any> = any> = { source: string, target: keyof E['attributes'] };
 export type RelationIdentifiers<E extends EntitySchema<any, any, any, any> = any> = RelationIdentifier<E> | Array<RelationIdentifier<E>>
 /**
  * Creates an entity relation and infers the type based on the provided relation.
@@ -90,7 +90,7 @@ export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
      * The type of the relation.
      * Possible values: 'one-to-one', 'one-to-many', 'many-to-one', 'many-to-many'.
      */
-    type: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many';
+    type: 'one-to-many' | 'many-to-one'; // 'one-to-one' | 'many-to-many';
 
     /**
      * Identifiers to load the related entity.
@@ -99,7 +99,7 @@ export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
      * The values can be a string representing the related entity attribute or an array of strings.
      * 
      */
-    identifiers?: RelationIdentifiers<E> | (() => RelationIdentifiers<E>);
+    identifiers: RelationIdentifiers<E> | (() => RelationIdentifiers<E>);
 
     // set this to true in entity-definition to auto-hydrate this relation
     hydrate ?: boolean;

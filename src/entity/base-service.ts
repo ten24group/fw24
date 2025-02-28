@@ -1,7 +1,7 @@
 import type { EntityConfiguration } from "electrodb";
 import { DIContainer } from "../di";
 import type { EntityInputValidations, EntityValidations } from "../validation";
-import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
+import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
 import type { EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 
 import { createLogger } from "../logging";
@@ -328,9 +328,19 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
      * 
      * @returns {Array<string>} An array of default serialization attribute names.
      */
-    public getDefaultSerializationAttributeNames(): EntitySelections<S>{
+    public getDefaultSerializationAttributeNames(): EntitySelections<S> {
         const defaultOutputSchemaAttributesMap = this.getOpsDefaultIOSchema().get.output;
-        return Array.from( defaultOutputSchemaAttributesMap.keys() ) as EntitySelections<S>;
+
+        const attributes: any = {};
+        defaultOutputSchemaAttributesMap.forEach((val, key) => {
+            if (!val.relation || val.relation.hydrate) {
+                attributes[ key ] = true
+            }
+        });
+        
+        return attributes as EntitySelections<S>;
+
+        //  return Array.from( defaultOutputSchemaAttributesMap.keys() ) as EntitySelections<S>;
     }
 
     /**
@@ -448,7 +458,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             options
         });
 
-        const relatedEntityName = options.entityName;
+        const { entityName: relatedEntityName, relationType, identifiers } = options;
+
+        if(!identifiers){
+            throw(`No Identifiers:[${relationType}:${relatedEntityName}] provided`);
+        }
+
+        if(relationType == 'one-to-one' || relationType == 'many-to-many'){
+            throw(`RelationType:[${relationType}:${relatedEntityName}] in not supported by hydration, use one of [many-to-one, one-to-many] ot manually hydrate'`)
+        }
 
         // Get related entity service
         const relatedEntityService = this.getEntityServiceByEntityName(relatedEntityName);
@@ -456,118 +474,218 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
             throw new Error(`No service found for relationship: ${relatedAttributeName}(${relatedEntityName}); please make sure service has been registered in the required 'di-container'`);
         }
 
-        const schema = this.getEntitySchema();
-
-        // Get relation metadata
-        const relationAttributeMetadata = schema?.attributes && schema.attributes[relatedAttributeName as keyof typeof schema.attributes] as EntityAttribute;
+        // Get relation's metadata
+        const currentEntitySchema = this.getEntitySchema();
+        const relationAttributeMetadata = currentEntitySchema.attributes[relatedAttributeName as any] as EntityAttribute;
         
         if(!relationAttributeMetadata || !relationAttributeMetadata?.relation){
-            this.logger.warn(`No metadata found for relationship: ${relatedAttributeName}`, relationAttributeMetadata);
-            return;
-        }
-        // make a copy to make sure not to override anything
-        const relationMetadata = {...relationAttributeMetadata.relation};
-
-        // Get relation identifiers batch
-        const relationPrimaryIdentifierName = relatedEntityService.getEntityPrimaryIdPropertyName() as string;
-        relationMetadata.identifiers = relationMetadata.identifiers || { 
-            source: relationPrimaryIdentifierName,
-            target: relationPrimaryIdentifierName
+            const message = `No metadata found for relationship: ${relatedAttributeName}`
+            this.logger.warn(message, relationAttributeMetadata);
+            throw(message);
         }
 
-        if(isFunction(relationMetadata.identifiers)){
-            relationMetadata.identifiers = relationMetadata.identifiers()
+        // relation identifiers mapping
+        const identifierMappings: RelationIdentifier<any>[] = Array.isArray(identifiers) ? identifiers : [ identifiers! ];
+
+        // Decide logic based on relationType
+        if (relationType === 'many-to-one') {
+            /**
+             * MANY-TO-ONE:
+             * -------------
+             * The "rootEntityRecords" are the CHILD items, each storing the parent's
+             * composite key in some fields. We gather all those parent keys, do a batch
+             * retrieval from the parent entity, then attach the single matching parent
+             * record into childRecord[relatedAttributeName].
+            */
+            await this.hydrateManyToOne(
+                rootEntityRecords,
+                relatedAttributeName,
+                identifierMappings,
+                options.attributes,
+                relatedEntityService
+            );
+        } else if (relationType === 'one-to-many') {
+            /**
+             * ONE-TO-MANY:
+             * -------------
+             * The "rootEntityRecords" are the PARENT items. Each parent can have multiple
+             * child items. The child table records each store the parent's key. 
+             * So we do a query per parent and then .
+             */
+            await this.hydrateOneToMany(
+                rootEntityRecords,
+                relatedAttributeName,
+                identifierMappings,
+                options.attributes,
+                relatedEntityService
+            );
         }
+    }
+    
+    private async hydrateManyToOne(
+        childRecords: any[],
+        parentAttributeName: string,
+        identifierMappings: RelationIdentifier<any>[],
+        parentAttributesToHydrate: HydrateOptionForEntity<any> | undefined,
+        parentService: BaseEntityService<any>
+    ) {
 
-        const identifierMappings = Array.isArray(relationMetadata.identifiers) ? relationMetadata.identifiers : [ relationMetadata.identifiers ]
-
-        // Create a dictionary to map related-entity-identifiers to the 
-        // map of [sourceEntityData, identifiers]
-        const identifiersToSourceEntityDictionary = new Map<any, any>();
-
-        // Create relationIdentifiersBatch to fetch all related entities in one single query
-        const relationIdentifiersBatch = rootEntityRecords.flatMap( entityData => {
-            
-            const isToManyRelation = Array.isArray(entityData[relatedAttributeName]);
-
-            const identifiersDataBatch = isToManyRelation ? entityData[relatedAttributeName] : [ entityData[relatedAttributeName] ];
-
-            const identifiersBatch = identifiersDataBatch.map( (identifiersData: any) => {
-                if(!identifiersData){
-                    return;
-                }
-
-                const identifiers = identifierMappings.reduce((acc: any, identifierMapping) => {
-                    const { source, target } = identifierMapping;
-
-                    const identifierVal = isObject(identifiersData) && identifiersData ? getValueByPath(identifiersData, source!) : identifiersData;
-                    
-                    if(identifierVal) { 
-                        acc[target] = identifierVal;
-                    }
-                    
-                    return acc;
-
-                }, {} as { [key: string]: any });
-
-                return identifiers;
-
-            })
-            .filter( (identifiers: any) => !!identifiers);
-
-            identifiersToSourceEntityDictionary.set(entityData, identifiersBatch);
-
-            return identifiersBatch;
-        });
-
-        // remove duplicates from relationIdentifiersBatch array
-        const uniqueRelationIdentifiersBatch = Array.from(
-            // create a set of stringified identifiers to remove duplicates
-            new Set( 
-                relationIdentifiersBatch.map(i => JSON.stringify(i)) 
-            )
-        )
-        // convert back to array of identifiers
-        .map(i => JSON.parse(i));
-
-        // ensure all the identifier attributes are part of the selections
-        Object.keys(uniqueRelationIdentifiersBatch[0]).forEach( (key: string) => {
-            if(Array.isArray(options.attributes) && !(options.attributes as Array<string>).includes(key)){
-                (options.attributes as Array<string>).push(key);
-            } else if(isObject(options.attributes) && !( key in options.attributes) ){
-                options.attributes = {
-                    ...options.attributes,
-                    [key]: true
-                }
+        // for each parent create a children batch
+        const parentIdentifiersToChildrenMap = new Map<string, any[]>();
+      
+        for (const child of childRecords) {
+            if (!child) continue;
+        
+            // Build a parent key object. E.g. { orgId: child.orgId, userId: child.userId } for 2-attr PK
+            const parentKeyObj: Record<string, any> = {};
+            for (const { source, target } of identifierMappings) {
+                
+                const val = getValueByPath(child, source);
+                if (val == null) continue;
+                
+                parentKeyObj[target as string] = val;
             }
-        });
-
-        // Fetch related entities
-        const relatedEntities = await relatedEntityService.get({
-            identifiers: uniqueRelationIdentifiersBatch,
-            selections: options.attributes,
-        });
-
-        // Merge related entities
-        identifiersToSourceEntityDictionary.forEach( (identifiersBatch, sourceEntityData ) => {
-            const relatedRecords = identifiersBatch.map( (identifiers: any) => {
-                return relatedEntities?.find( (relatedEntityData: any) => {
-                    return Object.entries(identifiers).every( ([target, value]) =>
-                        ( target in relatedEntityData ) && relatedEntityData[target] === value
-                    )
-                })
-            });
-
-            const isToManyRelation = Array.isArray(sourceEntityData[relatedAttributeName]);
-            
-            if(!isToManyRelation && relatedRecords.length > 0){
-                sourceEntityData[relatedAttributeName] = relatedRecords[0];
-            } else {
-                sourceEntityData[relatedAttributeName] = relatedRecords;
+        
+            // If partial or empty, skip
+            if (Object.keys(parentKeyObj).length === 0) {
+                child[parentAttributeName] = null;
+                continue;
             }
+        
+            const keyStr = JSON.stringify(parentKeyObj);
+            if (!parentIdentifiersToChildrenMap.has(keyStr)) {
+                parentIdentifiersToChildrenMap.set(keyStr, []);
+            }
+            parentIdentifiersToChildrenMap.get(keyStr)!.push(child);
+        }
+      
+        if (parentIdentifiersToChildrenMap.size === 0) return;
+      
+        // Create a parent-identifiers-batch for fetching
+        const parentIdentifiersBatch: Array<Record<string, any>> = [];
+        for (const k of parentIdentifiersToChildrenMap.keys()) {
+            parentIdentifiersBatch.push(JSON.parse(k));
+        }
+    
+        const fetchedParents = await parentService.get({
+          identifiers: parentIdentifiersBatch,
+          selections: parentAttributesToHydrate,
         });
+      
+        // If "get()" returns a single item convert it into an array.
+        const parentsArray = Array.isArray(fetchedParents) ? fetchedParents : [fetchedParents];
+      
+        // Make a dictionary from { <keyStr> => parentRecord }
+        const parentDict = new Map<string, any>();
+        for (const p of parentsArray) {
+            if (!p) {
+                continue;
+            }
+            // Rebuild the "composite key" from the parent's record
+            const keyObj: Record<string, any> = {};
+            for (const { target } of identifierMappings) {
+                if (p[target] == null) {
+                    // If some attribute is missing, skip
+                    continue;
+                }
+                keyObj[target as string] = p[target];
+            }
+            const kStr = JSON.stringify(keyObj);
+            parentDict.set(kStr, p);
+        }
+      
+        // Attach each parent's data to the child
+        for (const [kStr, children] of parentIdentifiersToChildrenMap.entries()) {
+          const foundParent = parentDict.get(kStr) ?? null;
+          for (const c of children) {
+            c[parentAttributeName] = foundParent;
+          }
+        }
     }
 
+    private async hydrateOneToMany(
+        parentRecords: any[],
+        childAttributeName: string,
+        identifierMappings: RelationIdentifier<any>[],
+        childAttributesToHydrate: HydrateOptionForEntity<any> | undefined,
+        childService: BaseEntityService<any>
+    ) {
+
+        const parentKeyStrToParents = new Map<string, any[]>();
+        
+        for (const parent of parentRecords) {
+            if (!parent) continue;
+        
+            // Build a "child index" key from the parent's fields. For example, 
+            // if the child GSI has { pk: 'tenantId', sk: 'accountId' }, 
+            // we fill { tenantId: parent.tenantId, accountId: parent.accountId }.
+            const childKeyObj: Record<string, any> = {};
+                for (const { source, target } of identifierMappings) {
+                if (parent[source] != null) {
+                    childKeyObj[target as string] = parent[source];
+                }
+            }
+        
+            // If we have no valid composite key, no children can be fetched
+            if (Object.keys(childKeyObj).length === 0) {
+                parent[childAttributeName] = [];
+                continue;
+            }
+        
+            const keyStr = JSON.stringify(childKeyObj);
+            if (!parentKeyStrToParents.has(keyStr)) {
+                parentKeyStrToParents.set(keyStr, []);
+            }
+            parentKeyStrToParents.get(keyStr)!.push(parent);
+        }
+        
+        // If no parent has a valid key, we're done
+        if (parentKeyStrToParents.size === 0) {
+            return;
+        }
+        
+        // For each unique parentKeyObj, do a childService query/list in parallel.
+        const promises: Array<Promise<any>> = [];
+        const parentKeys: string[] = [];
+        
+        for (const [keyStr] of parentKeyStrToParents.entries()) {
+            
+            const childKeyObj = JSON.parse(keyStr);
+            
+            parentKeys.push(keyStr);
+
+            const filters: Record<string, any> = {};
+            for (const [childField, val] of Object.entries(childKeyObj)) {
+                filters[childField] = { eq: val };
+            }
+        
+            promises.push(
+                childService.list({
+                    filters,
+                    attributes: childAttributesToHydrate,
+                })
+            );
+        }
+        
+        const results = await Promise.all(promises);
+        
+        // For each result, map children back to the correct-parent(s)
+        const parentKeyStrToChildren: Record<string, any[]> = {};
+        for (let i = 0; i < results.length; i++) {
+            const { data: childItems } = results[i];
+            const keyStr = parentKeys[i];
+            parentKeyStrToChildren[keyStr] = childItems ?? [];
+        }
+        
+        // Attach to parents
+        for (const [keyStr, parents] of parentKeyStrToParents.entries()) {
+            const childArray = parentKeyStrToChildren[keyStr] ?? [];
+            for (const p of parents) {
+                p[childAttributeName] = childArray;
+            }
+        }
+    }
+          
     /**
      * Retrieves an entity by its identifiers.
      * 
