@@ -12,6 +12,8 @@ import { createLogger } from '../logging';
 import { Helper } from './helper';
 import { type IFw24Module } from './runtime/module';
 import { ensureNoSpecialChars, ensureValidEnvKey } from '../utils/keys';
+import { App, CfnOutput, Fn, NestedStack, Stack } from 'aws-cdk-lib';
+import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
@@ -20,7 +22,9 @@ export class Fw24 {
     emailProvider: any;
     
     private config: IApplicationConfig = {};
+    private app: any;
     private stacks: any = {};
+    private apis: { [apiConstructName: string]: { [name: string]: any } } = {};
     private environmentVariables: Record<string, any> = {};
     private policyStatements =  new Map<string, PolicyStatementProps | PolicyStatement>();
     private defaultCognitoAuthorizer: IAuthorizer | undefined;
@@ -43,6 +47,14 @@ export class Fw24 {
         }
 
         return Fw24.instance;
+    }
+
+    setApp(app: App) {
+        this.app = app;
+    }
+
+    getApp(): App {
+        return this.app;
     }
 
     setConfig(config: IApplicationConfig) {
@@ -100,8 +112,101 @@ export class Fw24 {
         return this;
     }
 
-    getStack(name: string): any {
-        return this.stacks[name];
+    /**
+     * Get a stack by name. If the stack does not exist, create it.
+     * 
+     * @param name - The name of the stack to get.
+     * @param parentStackName - The name of the parent stack.
+     * @returns The stack.
+     */
+    getStack(name?: string, parentStackName?: string): any {
+        let stackName: string = name ? name : this.getDefaultStackName();
+        // don't allow nested stacks if multiStack is true, multistack is used for creating independent stacks
+        if(this.config.multiStack && parentStackName) {
+            throw new Error('Nested stacks are not allowed when multiStack is true. Please use multiStack: false or remove the parentStackName parameter.');
+        }
+        // if the stack does not exist and multiStack is false and parentStackName is not provided, then use the default stack name
+        if(this.stacks[stackName] === undefined && !(this.config.multiStack || parentStackName)) {
+            stackName = this.getDefaultStackName();
+        }
+        this.logger.debug("Getting Stack With Name:", {stackName});
+        if(this.stacks[stackName] === undefined) {
+            if(parentStackName) {
+                // create a new nested stack
+                this.stacks[stackName] = new NestedStack(this.getStack(parentStackName), stackName);
+                this.logger.debug("Created nested stack:", {stackName, parentStackName});
+            } else {
+                let stackID = `${this.appName}-${stackName}-stack`;
+                // backwards compatibility for old stack names
+                if(stackName === 'premultistack'){
+                    stackID = `${this.appName}-stack`;
+                }
+                // create a new stack
+                this.stacks[stackName] = new Stack(this.app, stackID, {
+                    env: {
+                        account: this.config.account,
+                        region: this.config.region
+                    }
+                });
+                // make all stacks dependent on the layer stack
+                const layerStack = this.getStack(this.config.layerStackName);
+                if(layerStack) {
+                    this.stacks[stackName].addDependency(layerStack);
+                }
+                this.logger.debug("Created stack:", {stackName});
+            }
+        }
+        return this.stacks[stackName];
+    }
+
+    getDefaultStackName(): string {
+        return this.config.defaultStackName || 'main';
+    }
+
+    useMultiStackSetup = (currentStackName?: string, resourceStack?: Stack): boolean => {
+        return (
+            this.getConfig().multiStack 
+            && this.getConfig().multiStack === true
+            && (
+                // if resource stack is not provided, then only check if multi-stack is enabled
+                !resourceStack ||
+                // if resource stack is provided, then check if it is a different stack than the current stack
+                !(resourceStack?.stackName.endsWith(currentStackName+'-stack') || resourceStack?.stackName === currentStackName)
+            )
+        ) || false;
+    }
+
+    addAPI(apiConstructName: string, name: string, api: any, isImported: boolean = false): Fw24 {
+        // Initialize the apiConstructName object if it doesn't exist
+        if (!this.apis[apiConstructName]) {
+            this.apis[apiConstructName] = {};
+        }
+        this.logger.debug("addAPI:", {name} );
+        this.apis[apiConstructName][name] = {api: api, isImported: isImported};
+        return this;
+    }
+
+    getAPI(apiConstructName: string, name: string): any {
+        // Check if API exists for the given name and stack
+        if (!this.apis[apiConstructName] || !this.apis[apiConstructName][name]) {
+            this.logger.debug(`API not found: construct name ${apiConstructName} and name ${name}`);
+            return undefined;
+        }
+        return this.apis[apiConstructName][name];
+    }
+
+    getAPIs(apiConstructName: string): any {
+        return this.apis[apiConstructName];
+    }
+
+    hasImportedAPI(apiConstructName: string): boolean {
+        if (!this.apis[apiConstructName]) {
+            return false;
+        }
+        
+        // Check if any API in any stack is marked as imported
+        return Object.values(this.apis[apiConstructName])
+            .some(api => api.isImported === true);
     }
 
     addModule(name: string, module: IFw24Module) {
@@ -129,30 +234,11 @@ export class Fw24 {
     }
 
     getUniqueName(name: string) {
-        if(this.stacks['main'] === undefined) {
-            throw new Error('Main stack not found');
-        }
-        return `${name}-${this.config.name}-${this.config.environment || 'env'}-${this.stacks['main'].account}`;
+        return `${name}-${this.config.name}-${this.config.environment || 'env'}-${this.config.account}`;
     }
 
     getArn(type:string, name: string): string {
-        if(this.stacks['main'] === undefined) {
-            throw new Error('Main stack not found');
-        }
-        return `arn:aws:${type}:${this.config.region}:${this.stacks['main'].account}:${name}`;
-    }
-
-    getQueueByName(name: string): IQueue {
-
-        if( !this.queues.has(name) ){
-            // get full queue name
-            const queueName = this.getEnvironmentVariable(name, 'queueName');
-            const queueArn = this.getArn('sqs', queueName);
-            const queue = Queue.fromQueueArn(this.stacks['main'], queueName, queueArn);
-            this.queues.set(name, queue);            
-        }
-
-        return this.queues.get(name)!;
+        return `arn:aws:${type}:${this.config.region}:${this.config.account}:${name}`;
     }
 
     setCognitoAuthorizer(name: string, authorizer: IAuthorizer, defaultAuthorizer: boolean = false) {
@@ -202,7 +288,45 @@ export class Fw24 {
         this.environmentVariables[ensureValidEnvKey(name, prefix)] = value;
     }
 
-    getEnvironmentVariable(name: string, prefix: string = ''): any {
+    getEnvironmentVariable(name: string, prefix: string = '', scope?: any): any {
+        // if lookup is for construct output (based on prefix being one of the output types)
+        // and the application has multiple stacks, then look for value in the stack export
+        // if the scope is defined and is a stack and the output is from the same stack, then return the value
+        
+        if(prefix.length > 0 && scope && scope instanceof Stack && this.useMultiStackSetup()){
+            const isPrefixOutputType = Object.values(OutputType).includes(prefix.split('_')[0] as OutputType);
+            if(isPrefixOutputType){
+                // Check for SSM parameter reference
+                // make sure the key is specified as qualified key i.e. key_exportValueKey
+                // it is possible that the key is not qualified if the prefix has output type and key name. ie. prefix: userpool_authmodule, key: userPoolId
+                if(!name.includes('_') && !prefix.includes('_')){
+                    throw new Error(`Environment variable ${name} is not a qualified key. Please specify as key_exportValueKey. e.g. restAPI_restApiId`);
+                }
+                const ssmKey = this.environmentVariables[ensureValidEnvKey(name, `SSM:${prefix}`)];
+                
+                if(ssmKey){
+                    const stackName = ssmKey.split('/')[1];
+                    this.logger.debug(`Checking if multi-stack setup should be used for environment variable: ${ensureValidEnvKey(name, prefix)} in stack: ${stackName} called from stack: ${scope.stackName} - ${this.useMultiStackSetup(stackName, scope)}`);
+                    if(this.useMultiStackSetup(stackName, scope)){
+                        // Add cross-stack dependency
+                        const sourceStack = this.stacks[stackName];
+                        if(sourceStack){
+                            scope.addDependency(sourceStack);
+                            this.logger.debug(`Added dependency from ${scope.stackName} to ${stackName} for SSM key: ${ssmKey}`);
+                        }
+                        try {
+                            this.logger.debug(`Attempting to import SSM value for key: ${ssmKey}`);
+                            return StringParameter.valueForStringParameter(scope, ssmKey);
+                        } catch (error) {
+                            this.logger.error(error);
+                        }
+                    }
+                } else {
+                    this.logger.warn(`No SSM key found in environment variables for key: ${ensureValidEnvKey(name, `SSM:${prefix}`)}, using direct reference`);
+                }
+            }
+        }
+
         return this.environmentVariables[ensureValidEnvKey(name, prefix)];
     }
 
@@ -210,10 +334,10 @@ export class Fw24 {
         return ( ensureValidEnvKey(name, prefix) in this.environmentVariables);
     }
 
-    resolveEnvVariables = (env: ILambdaEnvConfig[] = []) => {
+    resolveEnvVariables = (env: ILambdaEnvConfig[] = [], scope?: any) => {
         const resolved: any = {};
         for (const envConfig of env ) {
-            const value = envConfig.value ?? this.getEnvironmentVariable(envConfig.name, envConfig.prefix);
+            const value = envConfig.value ?? this.getEnvironmentVariable(envConfig.name, envConfig.prefix, scope);
             if (value) {
                 resolved[envConfig.exportName ?? envConfig.name] = value;
             } else {
@@ -255,7 +379,11 @@ export class Fw24 {
         return this.policyStatements.has(ensureValidEnvKey(policyName, prefix));
     }
     
-    setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType) {
+    // set the output of a construct
+    // if exportValueAlias is not provided, the export value key will be used as the environment variable key. i.e when using custom resource like CfnIdentityPool 
+    // the output is the reference to the custom resource. The reference is not the physical id of the custom resource, but a logical id
+    // that is resolved to the physical id at runtime. In this case, the exportValueAlias is the key name of the custom resource.
+    setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType, exportValueKey?: string, exportValueAlias?: string) {
         this.logger.debug(`setConstructOutput: ${construct.name}`, {outputType, key});
         if(outputType){
             construct.output = {
@@ -266,6 +394,41 @@ export class Fw24 {
                 }
             }
             this.setEnvironmentVariable(key, value, `${construct.name}_${outputType}`);
+
+            // in case of object reference, export the output to be used in other stacks
+            let outputValue = value;
+            if(typeof value === 'object' && exportValueKey){
+                outputValue = value[exportValueKey];
+            } else if(typeof value === 'object' && exportValueKey === undefined){
+                return;
+            } else if(typeof value !== 'object'){
+                return;
+            }
+
+            // Create CloudFormation export with valid naming
+            const sanitizedKey = ensureValidEnvKey(key, '', '', true);
+            const exportKey = `${outputType}${sanitizedKey}${exportValueAlias || exportValueKey}`;
+            const stackExportName = `${construct.mainStack.stackName}-${exportKey}`;
+
+            new CfnOutput(construct.mainStack, exportKey, {
+                value: outputValue,
+                exportName: stackExportName,
+            });
+            
+            // set the environment variable for the direct reference
+            this.setEnvironmentVariable(`${key}_${exportValueAlias || exportValueKey}`, outputValue, outputType);
+            // Store SSM parameter for cross-stack reference
+            this.logger.debug(`useMultiStackSetup: ${this.useMultiStackSetup()}`);
+            if(this.useMultiStackSetup()){
+                const ssmKey = `/${construct.mainStack.stackName}/${outputType}/${sanitizedKey}/${exportValueAlias || exportValueKey}`;
+                // set the environment variable for the cross-stack reference using SSM parameter
+                this.setEnvironmentVariable(`${key}_${exportValueAlias || exportValueKey}`, ssmKey, `SSM:${outputType}`);
+                new StringParameter(construct.mainStack, `SSM${outputType}${sanitizedKey}${exportValueAlias || exportValueKey}`, {
+                    parameterName: ssmKey,
+                    stringValue: outputValue,
+                });
+            }
+
         } else {
             construct.output = {
                 ...construct.output,
