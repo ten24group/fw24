@@ -128,7 +128,6 @@ const AuthConstructConfigDefaults: IAuthConstructConfig = {
                 tempPasswordValidity: Duration.days(3),
             },
             removalPolicy: RemovalPolicy.RETAIN,
-
         }
     },
     userPoolClient: {
