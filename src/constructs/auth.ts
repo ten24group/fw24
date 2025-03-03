@@ -8,7 +8,11 @@ import {
     UserPoolOperation,
     VerificationEmailStyle,
     UserPoolClientProps,
-    UserPoolClientOptions, 
+    UserPoolClientOptions,
+    UserPoolIdentityProviderGoogle,
+    UserPoolIdentityProviderFacebook,
+    UserPoolDomain,
+    ProviderAttribute,
 } from "aws-cdk-lib/aws-cognito";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
@@ -21,6 +25,7 @@ import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/co
 import { createLogger, LogDuration } from "../logging";
 import { Helper } from "../core";
 import { IConstructConfig } from "../interfaces/construct-config";
+import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
 
 export type TriggerType = 
     | 'CUSTOM_MESSAGE'
@@ -38,6 +43,54 @@ export type TriggerType =
     | 'CUSTOM_SMS_SENDER';
 
 /**
+ * Configuration interface for social identity providers.
+ */
+export interface ISocialProviderConfig {
+    /**
+     * OAuth client ID for the social provider
+     */
+    clientId: string;
+    /**
+     * OAuth client secret for the social provider
+     */
+    clientSecret: string;
+    /**
+     * Optional OAuth scopes to request
+     */
+    scopes?: string[];
+    /**
+     * Optional attribute mapping from provider to Cognito
+     */
+    attributeMapping?: {
+        [key: string]: string;
+    };
+}
+
+/**
+ * Configuration for the Cognito domain
+ */
+export interface IDomainConfig {
+    /**
+     * The domain prefix for Cognito hosted UI.
+     * If using a custom domain, this is ignored.
+     */
+    cognitoDomainPrefix?: string;
+    /**
+     * Configuration for a custom domain
+     */
+    customDomain?: {
+        /**
+         * The domain name to use (e.g. 'auth.example.com')
+         */
+        domainName: string;
+        /**
+         * The ARN of an existing ACM certificate for the domain
+         */
+        certificateArn: string;
+    };
+}
+
+/**
  * Configuration interface for the AuthConstruct.
  */
 export interface IAuthConstructConfig extends IConstructConfig {
@@ -46,6 +99,25 @@ export interface IAuthConstructConfig extends IConstructConfig {
      */
     userPool?: {
         props: UserPoolProps;
+        /**
+         * Domain configuration for the user pool.
+         * Required for social sign-in and hosted UI features.
+         */
+        domain?: IDomainConfig;
+        /**
+         * Configuration for social identity providers.
+         * When configured, OAuth flows are automatically enabled with appropriate settings.
+         */
+        socialProviders?: {
+            /**
+             * Google identity provider configuration
+             */
+            google?: ISocialProviderConfig;
+            /**
+             * Facebook identity provider configuration
+             */
+            facebook?: ISocialProviderConfig;
+        };
     };
     /**
      * Configuration for the User Pool Client.
@@ -104,7 +176,6 @@ export interface IAuthConstructConfig extends IConstructConfig {
      */
     useAsDefaultAuthorizer?: boolean;
 }
-
 
 const AuthConstructConfigDefaults: IAuthConstructConfig = {
     userPool: {
@@ -185,19 +256,23 @@ export class AuthConstruct implements FW24Construct {
             ...userPoolConfig,
             userPoolName: this.createUniqueUserPoolName(userPoolName),
         });
-        // verificationMessageConfiguration
+
+        // Configure domain if specified or if social providers are enabled
+        this.configureDomain(userPool, userPoolName);
         
         this.fw24.setConstructOutput(this, userPoolName, userPool, OutputType.USERPOOL, 'userPoolId');
 
         const userPoolClientConfig: UserPoolClientProps = {
             userPool: userPool,
             ...AuthConstructConfigDefaults.userPoolClient?.props, 
-            ...this.authConstructConfig.userPoolClient?.props
+            ...this.authConstructConfig.userPoolClient?.props,
         };
 
-        const userPoolClient = new UserPoolClient(this.mainStack, `${userPoolName}-userPoolclient`, {
-            ...userPoolClientConfig
-        });
+        const userPoolClient = new UserPoolClient(this.mainStack, `${userPoolName}-userPoolclient`, userPoolClientConfig);
+
+        // Configure social providers if specified
+        this.configureSocialProviders(userPool, userPoolClient, userPoolName);
+
         this.fw24.setConstructOutput(this, userPoolName, userPoolClient, OutputType.USERPOOLCLIENT, 'userPoolClientId');
 
         // Identity pool based authentication
@@ -368,5 +443,91 @@ export class AuthConstruct implements FW24Construct {
 
     private createUniqueUserPoolName(userPoolName: string) {
         return `${this.fw24.appName}-${userPoolName}`;
+    }
+
+    private configureSocialProviders(userPool: UserPool, userPoolClient: UserPoolClient, userPoolName: string) {
+        if (!this.authConstructConfig.userPool?.socialProviders) {
+            return;
+        }
+
+        let supportedIdentityProviders = '';
+        // Configure Google provider if specified
+        if (this.authConstructConfig.userPool?.socialProviders?.google) {
+            const { clientId, clientSecret, scopes, attributeMapping } = this.authConstructConfig.userPool.socialProviders.google;
+
+            const googleProvider = new UserPoolIdentityProviderGoogle(this.mainStack, 'GoogleProvider', {
+                userPool: userPool,
+                clientId: clientId,
+                clientSecret: clientSecret,
+                scopes: scopes || ['email', 'profile', 'openid'],
+                attributeMapping: attributeMapping || {
+                    email: ProviderAttribute.GOOGLE_EMAIL,
+                }
+            });
+
+            userPoolClient.node.addDependency(googleProvider);
+            supportedIdentityProviders += 'Google,';
+        }
+
+        // Configure Facebook provider if specified
+        if (this.authConstructConfig.userPool?.socialProviders?.facebook) {
+            const { clientId, clientSecret, scopes, attributeMapping } = this.authConstructConfig.userPool.socialProviders.facebook;
+            
+            const facebookProvider = new UserPoolIdentityProviderFacebook(this.mainStack, 'FacebookProvider', {
+                userPool,
+                clientId,
+                clientSecret,
+                scopes: scopes || ['email', 'public_profile'],
+                attributeMapping: attributeMapping || {
+                    email: ProviderAttribute.FACEBOOK_EMAIL,
+                }
+            });
+
+            userPoolClient.node.addDependency(facebookProvider);
+            supportedIdentityProviders += 'Facebook,';
+        }
+
+        this.fw24.setEnvironmentVariable('supportedIdentityProviders', supportedIdentityProviders, `userpool_${userPoolName}`);
+    }
+
+    private configureDomain(userPool: UserPool, userPoolName: string): void {
+        // Skip domain configuration if not needed
+        if (!this.authConstructConfig.userPool?.domain && !this.authConstructConfig.userPool?.socialProviders) {
+            return;
+        }
+
+        const domainConfig = this.authConstructConfig.userPool?.domain;
+        let domain: UserPoolDomain;
+        let domainUrl: string;
+
+        if (domainConfig?.customDomain) {
+            // Configure custom domain
+            const { domainName, certificateArn } = domainConfig.customDomain;
+            domain = new UserPoolDomain(this.mainStack, `${userPoolName}-domain`, {
+                userPool,
+                customDomain: {
+                    domainName,
+                    certificate: Certificate.fromCertificateArn(this.mainStack, `${userPoolName}-cert`, certificateArn),
+                },
+            });
+
+            domainUrl = domainName;
+        } else {
+            // Use Cognito domain
+            const domainPrefix = domainConfig?.cognitoDomainPrefix || 
+                               `${this.fw24.appName}-${userPoolName}-${this.fw24.getConfig().account}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+            
+            domain = new UserPoolDomain(this.mainStack, `${userPoolName}-domain`, {
+                userPool,
+                cognitoDomain: {
+                    domainPrefix,
+                },
+            });
+
+            domainUrl = `${domainPrefix}.auth.${this.fw24.getConfig().region}.amazoncognito.com`;
+        }
+
+        // Set the domain URL as a environment variable
+        this.fw24.setEnvironmentVariable('authDomain', domainUrl, `userpool_${userPoolName}`);
     }
 }
