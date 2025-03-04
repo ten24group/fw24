@@ -48,52 +48,57 @@ export class EntityUIConfigGen{
             const entitySchema = service.getEntitySchema();
             const entityDefaultOpsSchema = service.getOpsDefaultIOSchema();
 
-            const createConfig = MakeCreateEntityConfig({
-                entityName,
-                entityNamePlural: entitySchema.model.entityNamePlural,
-                properties: entityDefaultOpsSchema.create.input
-            }, service);
-
-            const updateConfig = MakeUpdateEntityConfig({
-                entityName,
-                entityNamePlural: entitySchema.model.entityNamePlural,
-                properties: entityDefaultOpsSchema.update.input
-            }, service);
-
-            const listConfig = MakeListEntityConfig({
-                entityName,
-                entityNamePlural: entitySchema.model.entityNamePlural,
-                properties: entityDefaultOpsSchema.list.output
-            });
-
-            const viewConfig = MakeViewEntityConfig({
-                entityName,
-                entityNamePlural: entitySchema.model.entityNamePlural,
-                properties: entityDefaultOpsSchema.get.output
-            }, service);
-
-            // this.logger.info(`Created entityCrudConfig for entity: ${entityName}.`, {createConfig, updateConfig, listConfig, viewConfig})
-
-            entityConfigs[`list-${entityName.toLowerCase()}`] = listConfig;
-            entityConfigs[`create-${entityName.toLowerCase()}`] = createConfig;
-            entityConfigs[`edit-${entityName.toLowerCase()}`] = updateConfig;
-            entityConfigs[`view-${entityName.toLowerCase()}`] = viewConfig;
-
-            // skip if entity is not to be included in menu
-            if(entitySchema.model.excludeFromAdminMenu){ 
-                return;
+            if(!entitySchema.model.excludeFromAdminCreate){
+                const createConfig = MakeCreateEntityConfig({
+                    entityName,
+                    entityNamePlural: entitySchema.model.entityNamePlural,
+                    properties: entityDefaultOpsSchema.create.input
+                }, service);
+                entityConfigs[`create-${entityName.toLowerCase()}`] = createConfig;
             }
 
-            const menuConfig = MakeEntityMenuConfig({
-                entityName,
-                entityNamePlural: entitySchema.model.entityNamePlural,
-                icon: entitySchema.model.entityMenuIcon || 'appStore',
-                menuIndex: menuIndex++
-            });
+            if(!entitySchema.model.excludeFromAdminUpdate){
+                const updateConfig = MakeUpdateEntityConfig({
+                    entityName,
+                    entityNamePlural: entitySchema.model.entityNamePlural,
+                    properties: entityDefaultOpsSchema.update.input
+                }, service);
+                entityConfigs[`edit-${entityName.toLowerCase()}`] = updateConfig;
+            }
 
-            // this.logger.info(`Created menuConfig for entity: ${entityName}.`, {menuConfig})
+            if(!entitySchema.model.excludeFromAdminList){
+                const listConfig = MakeListEntityConfig({
+                    entityName,
+                    entityNamePlural: entitySchema.model.entityNamePlural,
+                    properties: entityDefaultOpsSchema.list.output,
+                    excludeFromAdminCreate: entitySchema.model.excludeFromAdminCreate,
+                    excludeFromAdminUpdate: entitySchema.model.excludeFromAdminUpdate,
+                    excludeFromAdminDelete: entitySchema.model.excludeFromAdminDelete,
+                    excludeFromAdminDetail: entitySchema.model.excludeFromAdminDetail
+                });
+                entityConfigs[`list-${entityName.toLowerCase()}`] = listConfig;
+            }
 
-            menuConfigs.push(menuConfig);
+            if(!entitySchema.model.excludeFromAdminDetail){
+                const viewConfig = MakeViewEntityConfig({
+                    entityName,
+                    entityNamePlural: entitySchema.model.entityNamePlural,
+                    properties: entityDefaultOpsSchema.get.output
+                }, service);
+                entityConfigs[`view-${entityName.toLowerCase()}`] = viewConfig;
+            }
+
+            if(!entitySchema.model.excludeFromAdminMenu){ 
+                const menuConfig = MakeEntityMenuConfig({
+                    entityName,
+                    entityNamePlural: entitySchema.model.entityNamePlural,
+                    icon: entitySchema.model.entityMenuIcon || 'appStore',
+                    menuIndex: menuIndex++
+                });
+        
+                menuConfigs.push(menuConfig);
+            }
+
         });
 
         const authConfigOptions = Fw24.getInstance().getConfig().uiConfigGenOptions || {};

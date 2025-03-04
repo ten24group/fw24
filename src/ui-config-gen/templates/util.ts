@@ -69,6 +69,9 @@ export function formatEntityAttributeForFormOrDetail(
                     entityName,
                     properties: relDefaultIoSchema.update.input,
                     entityNamePlural: relatedEntitySchema.model.entityNamePlural,
+                    excludeFromAdminUpdate: relatedEntitySchema.model.excludeFromAdminUpdate,
+                    excludeFromAdminDelete: relatedEntitySchema.model.excludeFromAdminDelete,
+                    excludeFromAdminDetail: relatedEntitySchema.model.excludeFromAdminDetail
                 });
                 
                 formatted['openInModal'] = {
@@ -140,7 +143,15 @@ export type ListingPropConfig = {
     actions?: any[]
 };
 
-export function formatEntityAttributesForList( entityName: string, properties: TIOSchemaAttribute[]) {
+export function formatEntityAttributesForList( entityName: string, properties: TIOSchemaAttribute[], {
+    excludeFromAdminUpdate,
+    excludeFromAdminDelete,
+    excludeFromAdminDetail
+}: {
+    excludeFromAdminUpdate?: boolean,
+    excludeFromAdminDelete?: boolean,
+    excludeFromAdminDetail?: boolean,
+}) {
 
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
@@ -158,12 +169,17 @@ export function formatEntityAttributesForList( entityName: string, properties: T
 
         if(prop.isIdentifier){
 
-            propConfig.actions = [
-                {
+            const actions = [];
+
+            if(!excludeFromAdminUpdate){
+                actions.push({
                     icon: 'edit',
                     url: `/edit-${entityNameLower}`
-                },
-                {
+                });
+            }
+
+            if(!excludeFromAdminDelete){
+                actions.push({
                     icon: 'delete',
                     openInModal: true,
                     modalConfig: {
@@ -179,12 +195,17 @@ export function formatEntityAttributesForList( entityName: string, properties: T
                         },
                         submitSuccessRedirect: `/list-${entityNameLower}`
                     }
-                },
-                {
-                    icon: `view`,
+                });
+            }
+
+            if(!excludeFromAdminDetail){
+                actions.push({
+                    icon: 'view',
                     url: `/view-${entityNameLower}`
-                }
-            ];
+                });
+            }
+
+            propConfig.actions = actions;
         }
 
         return propConfig;
