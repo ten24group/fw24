@@ -1,5 +1,5 @@
 import { ExclusiveUnion, ValueOf, isArray, isArrayOfType, isBoolean, isEmpty, isObject, isString } from "../utils";
-import { EntitySchema, HydrateOptionForEntity, } from "./base-entity";
+import { EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, } from "./base-entity";
 
 
 export type Pagination = {
@@ -483,3 +483,11 @@ export function isArrayOfObjectOfStringKeysAndBooleanValues(payload: any ): payl
         return isObject(item) && Object.entries(item).every(([key, value]) => isString(key) && isBoolean(value));
     });
 }
+
+export type ParsedEntityAttributePaths = {
+    [key: string]: boolean | { attributes: ParsedEntityAttributePaths };
+};
+
+export type ParsedEntityAttributePathsWithRelationMeta = {
+    [key: string]: boolean | HydrateOptionForRelation;
+};

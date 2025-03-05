@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Command } from "@smithy/smithy-client";
 import { MetadataBearer, RequestPresigningArguments } from "@smithy/types";
@@ -7,7 +7,7 @@ import { MetadataBearer, RequestPresigningArguments } from "@smithy/types";
 export const defaultS3Client = new S3Client();
 
 export const uploadFile = async (fileName: string, contents: any, bucketName: string) => {
-    
+
     const uploadCommand = new PutObjectCommand({
         Bucket: bucketName,
         Key: fileName,
@@ -19,7 +19,7 @@ export const uploadFile = async (fileName: string, contents: any, bucketName: st
 }
 
 export const deleteFile = async (fileName: string, bucketName: string) => {
-    
+
     const deleteCommand = new DeleteObjectCommand({
         Bucket: bucketName,
         Key: fileName,
@@ -29,35 +29,60 @@ export const deleteFile = async (fileName: string, bucketName: string) => {
     return result;
 }
 
-export const getSignedUrlForCommand = async <InputTypesUnion extends object, InputType extends InputTypesUnion, OutputType extends MetadataBearer = MetadataBearer>( 
-    command: Command<InputType, OutputType, any, InputTypesUnion, MetadataBearer>, 
+export const getFile = async (fileName: string, bucketName: string) => {
+
+    const deleteCommand = new GetObjectCommand({
+        Bucket: bucketName,
+        Key: fileName,
+    });
+
+    const result = await defaultS3Client.send(deleteCommand);
+    return result;
+}
+
+export const getFileMetadata = async (fileName: string, bucketName: string) => {
+
+    const headCommand = new HeadObjectCommand({
+        Bucket: bucketName,
+        Key: fileName,
+    });
+
+    const result = await defaultS3Client.send(headCommand)
+
+    return result;
+}
+
+export const getSignedUrlForCommand = async <InputTypesUnion extends object, InputType extends InputTypesUnion, OutputType extends MetadataBearer = MetadataBearer>(
+    command: Command<InputType, OutputType, any, InputTypesUnion, MetadataBearer>,
     options: RequestPresigningArguments = { expiresIn: 15 * 60 },
     client: S3Client = defaultS3Client,
-) => {  
+) => {
     return await getSignedUrl(client, command as any, options);
 }
 
 export type SignedUrlForFileUploadOptions = {
-    fileName: string, 
-    bucketName: string, 
-    contentType?: string, 
+    fileName: string,
+    bucketName: string,
+    contentType?: string,
     expiresIn?: number,
     customDomain?: string,
+    metadata?: Record<string, string>
 };
 
-export const getSignedUrlForFileUpload = async ({ bucketName, fileName, contentType, expiresIn = 15 * 60, customDomain }: SignedUrlForFileUploadOptions ) => {
+export const getSignedUrlForFileUpload = async ({ bucketName, fileName, contentType, expiresIn = 15 * 60, customDomain, metadata }: SignedUrlForFileUploadOptions) => {
 
-    const command = new PutObjectCommand({ 
-        Bucket: bucketName, 
-        Key: fileName, 
-        ContentType: contentType 
+    const command = new PutObjectCommand({
+        Bucket: bucketName,
+        Key: fileName,
+        ContentType: contentType,
+        Metadata: metadata,
     });
 
-    const signedUrl = await getSignedUrlForCommand(command, {expiresIn});
+    const signedUrl = await getSignedUrlForCommand(command, { expiresIn });
 
-    console.warn("getSignedUrlForFileUpload:", {signedUrl, customDomain});
+    console.info("getSignedUrlForFileUpload:", { signedUrl, customDomain });
 
-    if(!customDomain){
+    if (!customDomain) {
         return signedUrl;
     }
 

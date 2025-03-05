@@ -2,7 +2,7 @@ import type { QueueProps } from "aws-cdk-lib/aws-sqs";
 import type { IQueueSubscriptions } from "../constructs/queue-lambda";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
 import type { ILambdaEnvConfig } from "../interfaces";
-import { resolveAndExportHandler, setupDI, tryImportingEntryPackagesFor } from "./decorator-utils";
+import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor } from "./decorator-utils";
 
 /**
  * Configuration options for the queue.
@@ -10,7 +10,7 @@ import { resolveAndExportHandler, setupDI, tryImportingEntryPackagesFor } from "
 /**
  * Represents the configuration options for a queue.
  */
-export type IQueueConfig = CommonLambdaHandlerOptions &  {
+export type IQueueConfig = CommonLambdaHandlerOptions & {
 	/**
 	 * The properties of the queue.
 	 */
@@ -49,13 +49,13 @@ export type IQueueConfig = CommonLambdaHandlerOptions &  {
  * @returns A class decorator function.
  */
 export function Queue(queueName: string, queueConfig: IQueueConfig = {}) {
-	return function <T extends { new (...args: any[]): {} }>(target: T) {
+	return function <T extends { new(...args: any[]): {} }>(target: T) {
 		tryImportingEntryPackagesFor(queueName);
 
 		// Default autoExportLambdaHandler to true if undefined
 		queueConfig.autoExportLambdaHandler = queueConfig.autoExportLambdaHandler ?? true;
 
-		
+
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {
 			constructor(...args: any[]) {
@@ -68,7 +68,7 @@ export function Queue(queueName: string, queueConfig: IQueueConfig = {}) {
 		// Preserve the original class name
 		Object.defineProperty(ExtendedTarget, 'name', { value: target.name });
 
-		const container = setupDI({
+		const container = setupDIModuleForController({
 			target: ExtendedTarget,
 			module: queueConfig.module || {},
 			fallbackToRootContainer: queueConfig.autoExportLambdaHandler
