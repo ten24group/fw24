@@ -93,7 +93,9 @@ export class EntityUIConfigGen{
                     entityName,
                     entityNamePlural: entitySchema.model.entityNamePlural,
                     icon: entitySchema.model.entityMenuIcon || 'appStore',
-                    menuIndex: menuIndex++
+                    menuIndex: menuIndex++,
+                    excludeFromAdminList: entitySchema.model.excludeFromAdminList,
+                    excludeFromAdminCreate: entitySchema.model.excludeFromAdminCreate,
                 });
         
                 menuConfigs.push(menuConfig);
