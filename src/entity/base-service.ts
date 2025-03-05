@@ -454,7 +454,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 	}
 
     private async hydrateSingleRelation(rootEntityRecords: any[], relatedAttributeName: string, options: HydrateOptionForRelation<any>){
-        this.logger.debug(`called 'hydrateSingleRelation' relation: ${relatedAttributeName} for entity: ${this.getEntityName()}`, {
+        this.logger.info(`called 'hydrateSingleRelation' relation: ${relatedAttributeName} for entity: ${this.getEntityName()}`, {
             options
         });
 
@@ -529,6 +529,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         parentAttributesToHydrate: HydrateOptionForEntity<any> | undefined,
         parentService: BaseEntityService<any>
     ) {
+        this.logger.info(`called 'hydrateManyToOne' relation: ${parentAttributeName} for entity: ${this.getEntityName()}`, {
+            parentAttributesToHydrate,
+        });
 
         // for each parent create a children batch
         const parentIdentifiersToChildrenMap = new Map<string, any[]>();
@@ -610,6 +613,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         childAttributesToHydrate: HydrateOptionForEntity<any> | undefined,
         childService: BaseEntityService<any>
     ) {
+
+        this.logger.info(`called 'hydrateOneToMany' relation: ${childAttributeName} for entity: ${this.getEntityName()}`, {
+            childAttributesToHydrate,
+        });
 
         const parentKeyStrToParents = new Map<string, any[]>();
         
