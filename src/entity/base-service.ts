@@ -5,7 +5,7 @@ import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiers
 import type { EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 
 import { createLogger } from "../logging";
-import { JsonSerializer, camelCase, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
+import { JsonSerializer, camelCase, getValueByPath, isArray, isBoolean, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
@@ -332,10 +332,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         const defaultOutputSchemaAttributesMap = this.getOpsDefaultIOSchema().get.output;
 
         const attributes: any = {};
-        defaultOutputSchemaAttributesMap.forEach((val, key) => {
-            if (!val.relation || val.relation.hydrate) {
-                attributes[ key ] = true
-            }
+        defaultOutputSchemaAttributesMap.forEach((_, key) => {
+            // if (!val.relation || val.relation.hydrate) {
+            // }
+            attributes[ key ] = true
         });
         
         return attributes as EntitySelections<S>;
@@ -1230,7 +1230,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
             const isRelational = !!attributeMeta.relation;
             
-            if (!isRelational) {
+            // If the attribute is not relational or the value is a boolean, we can infer the attribute
+            if (!isRelational || isBoolean(attVal)) {
                 inferred[attributeName] = attVal;
                 return;
             }
@@ -1314,12 +1315,12 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         relation: relationMeta as any,
         defaultValue,
         validations: validations || required ? ['required'] : [],
-        isVisible: !('isVisible' in att) || att.isVisible,
-        isEditable: !('isEditable' in att) || att.isEditable,
-        isListable: !('isListable' in att) || att.isListable,
-        isCreatable: !('isCreatable' in att) || att.isCreatable,
-        isFilterable: !('isFilterable' in att) || att.isFilterable,
-        isSearchable: !('isSearchable' in att) || att.isSearchable,
+        isVisible: !('isVisible' in att) ? true : att.isVisible,
+        isEditable: !('isEditable' in att) ? true : att.isEditable,
+        isListable: !('isListable' in att) ? true : att.isListable,
+        isCreatable: !('isCreatable' in att) ? true : att.isCreatable,
+        isFilterable: !('isFilterable' in att) ? true : att.isFilterable,
+        isSearchable: !('isSearchable' in att) ? true : att.isSearchable,
     }
 
     if(addNewOption){

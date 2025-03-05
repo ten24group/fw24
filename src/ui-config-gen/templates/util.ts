@@ -119,19 +119,19 @@ export function formatEntityAttributesForFormOrDetail(
 
 export function formatEntityAttributesForCreate( properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
     return properties
-        .filter( prop => prop && prop.isCreatable )
+        .filter( prop => prop && (!prop.hasOwnProperty('isCreatable') || prop.isCreatable) )
         .map( (att) => formatEntityAttributeForFormOrDetail(att, 'create', entityService) );
 }
 
 export function formatEntityAttributesForUpdate( properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
     return properties
-        .filter( prop => prop && prop.isEditable )
+        .filter( prop => prop && (!prop.hasOwnProperty('isEditable') || prop.isEditable) )
         .map( (att) => formatEntityAttributeForFormOrDetail(att, 'update', entityService) );
 }
 
 export function formatEntityAttributesForDetail( properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
     return properties
-        .filter( prop => prop && prop.isVisible )
+        .filter( prop => prop && (!prop.hasOwnProperty('isVisible') || prop.isVisible) )
         .map( (att) => formatEntityAttributeForFormOrDetail(att, 'detail', entityService) );
 }
 
