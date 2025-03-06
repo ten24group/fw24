@@ -473,7 +473,7 @@ export class APIConstruct implements FW24Construct {
             policies: controllerConfig?.policies,
             resourceAccess: controllerConfig?.resourceAccess,
             allowSendEmail: true,
-            functionTimeout: controllerConfig?.functionTimeout,
+            functionTimeout: controllerConfig?.functionTimeout || this.fw24.getConfig().functionTimeout,
             processorArchitecture: controllerConfig?.processorArchitecture,
             functionProps: functionProps,
             logRetentionDays: controllerConfig.logRetentionDays,

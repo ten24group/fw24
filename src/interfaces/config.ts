@@ -25,6 +25,11 @@ export interface IApplicationConfig {
     functionProps?: Omit<NodejsFunctionProps, 'layers'> & {
 		readonly layers?: Array<ILayerVersion | string>;
 	}
+    /**
+     * The timeout duration for the Lambda function in seconds.
+     * Use this timeout to avoid importing the duration class from aws-cdk-lib.
+     */
+    functionTimeout?: number;
     appDIContainer?: IDIContainer;
     lambdaEntryPackages?: string[];
     defaultStackName?: string;

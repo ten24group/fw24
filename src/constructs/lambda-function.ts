@@ -313,12 +313,16 @@ export class LambdaFunction extends Construct {
       let envKey = key;
       // If key is prefixed with fw24_, access environment variables from fw24 scope
       if(value?.startsWith('fw24_')){
-        // Last part of the key is the environment variable name in fw24 scope
-        let fw24Key = key.split('_').pop() || '';
-        // If the key has 3 parts then the second part is the scope name
-        let prefix = key.split('_').length == 3 ? key.split('_')[1] : '';
-        envValue = fw24.getEnvironmentVariable(fw24Key, prefix);
-        this.logger?.debug(`:GET environment variable from fw24 scope : ${fw24Key} : ${envValue}`, id);
+        // Split the key into parts
+        const parts = value.split('_');
+        // Remove 'fw24' from the beginning
+        parts.shift();
+        // Last part is the environment variable name
+        const fw24Key = parts.join('_');
+        // If we have 2 or more parts, the first part is the scope name
+        const prefix = parts.length >= 2 ? parts[0] : '';
+        envValue = fw24.getEnvironmentVariable(fw24Key, prefix, scope);
+        this.logger?.debug(`:GET environment variable from fw24 scope : ${value} : ${prefix} : ${fw24Key} : ${envValue}`, id);
       }
       
       this.logger?.debug(`:SET environment variable [${envKey} : ${envValue}]`, id);
