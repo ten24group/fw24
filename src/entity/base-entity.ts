@@ -5,8 +5,6 @@ import type { EntityQuery } from './query-types';
 import type { BaseEntityService } from "./base-service";
 import type { OmitNever, Paths, Writable } from "../utils/types";
 
-
-
 /**
  *  ElectroDB entity  examples
  * 
@@ -353,13 +351,20 @@ export interface EntitySchema<
 > extends Schema<A, F, C>{
     readonly model: Schema<A, F, C>['model'] & {
         readonly entityNamePlural: string;
-        readonly entityOperations: Opp; 
+        readonly entityOperations: Opp;
         readonly entityMenuIcon ?: string, // default is 'appStore'
         readonly entityNameAttribute ?: string, // default is 'name'
         readonly entitySlugAttribute ?: string, // default is 'slug'
         readonly entityImageAttribute ?: string, // default is 'image'
-        readonly excludeFromAdminMenu ?: boolean, // default is true
         readonly entityDescriptionAttribute ?: string, // default is 'description'
+
+        readonly excludeFromAdminMenu ?: boolean, // default is false
+        readonly excludeFromAdminList ?: boolean, // default is false
+        readonly excludeFromAdminDetail ?: boolean, // default is false
+        readonly excludeFromAdminCreate ?: boolean, // default is false
+        readonly excludeFromAdminUpdate ?: boolean, // default is false
+        readonly excludeFromAdminDelete ?: boolean, // default is false
+        readonly excludeFromAdminDuplicate ?: boolean, // default is false
     };
     readonly attributes: {
         readonly [a in A]: EntityAttribute;
