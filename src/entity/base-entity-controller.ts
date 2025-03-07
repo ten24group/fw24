@@ -11,6 +11,8 @@ import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from '.
 import { randomUUID } from 'crypto';
 import { getSignedUrlForFileUpload } from '../client/s3';
 import { ENV_KEYS } from '../const';
+import { NotFoundError } from '../errors';
+import { EntityValidationError } from './errors';
 
 type seconds = number;
 
@@ -73,17 +75,24 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 */
 	@Post('')
 	async create(req: Request, res: Response): Promise<Response> {
-		const createdEntity = await this.getEntityService().create(req.body);
+		try {
+			const createdEntity = await this.getEntityService().create(req.body);
 
-		const result: any = {
-			[ camelCase(this.getEntityName()) ]: createdEntity,
-			message: "Created successfully"
-		};
-		if (req.debugMode) {
-			result.req = req;
+			const result: any = {
+				[ camelCase(this.getEntityName()) ]: createdEntity,
+				message: "Created successfully"
+			};
+			if (req.debugMode) {
+				result.req = req;
+			}
+
+			return res.json(result);
+		} catch (error: any) {
+			if (error instanceof EntityValidationError) {
+				throw error;
+			}
+			throw new Error(`Failed to create ${this.getEntityName()}: ${error.message}`);
 		}
-
-		return res.json(result);
 	}
 
 	@Get('/getSignedUrlForFileUpload', {
@@ -167,22 +176,32 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 */
 	@Get('/{id}')
 	async find(req: Request, res: Response): Promise<Response> {
-		// prepare the identifiers
-		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
-		const selections = req.queryStringParameters?.attributes?.split?.(',');
+		try {
+			const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
+			const selections = req.queryStringParameters?.attributes?.split?.(',');
 
-		const entity = await this.getEntityService().get({ identifiers, selections });
+			const entity = await this.getEntityService().get({ identifiers, selections });
 
-		const result: any = {
-			[ camelCase(this.getEntityName()) ]: entity,
-		};
+			if (!entity) {
+				throw new NotFoundError(this.getEntityName(), undefined, req);
+			}
 
-		if (req.debugMode) {
-			result.req = req;
-			result.identifiers = identifiers;
+			const result: any = {
+				[ camelCase(this.getEntityName()) ]: entity,
+			};
+
+			if (req.debugMode) {
+				result.req = req;
+				result.identifiers = identifiers;
+			}
+
+			return res.json(result);
+		} catch (error: any) {
+			if (error instanceof NotFoundError || error instanceof EntityValidationError) {
+				throw error;
+			}
+			throw new Error(`Failed to find ${this.getEntityName()}: ${error.message}`);
 		}
-
-		return res.json(result);
 	}
 
 	/**
@@ -283,21 +302,32 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 */
 	@Patch('/{id}')
 	async update(req: Request, res: Response): Promise<Response> {
-		// prepare the identifiers
-		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
+		try {
+			const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
+			const entity = await this.getEntityService().get({ identifiers });
 
-		const updatedEntity = await this.getEntityService().update(identifiers as any, req.body);
+			if (!entity) {
+				throw new NotFoundError(this.getEntityName(), undefined, req);
+			}
 
-		const result: any = {
-			[ camelCase(this.getEntityName()) ]: updatedEntity,
-			message: "Updated successfully"
-		};
-		if (req.debugMode) {
-			result.req = req;
-			result.identifiers = identifiers;
+			const updatedEntity = await this.getEntityService().update(identifiers as any, req.body);
+
+			const result: any = {
+				[ camelCase(this.getEntityName()) ]: updatedEntity,
+				message: "Updated successfully"
+			};
+			if (req.debugMode) {
+				result.req = req;
+				result.identifiers = identifiers;
+			}
+
+			return res.json(result);
+		} catch (error: any) {
+			if (error instanceof NotFoundError || error instanceof EntityValidationError) {
+				throw error;
+			}
+			throw new Error(`Failed to update ${this.getEntityName()}: ${error.message}`);
 		}
-
-		return res.json(result);
 	}
 
 	/**
@@ -308,21 +338,32 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 */
 	@Delete('/{id}')
 	async delete(req: Request, res: Response): Promise<Response> {
-		// prepare the identifiers
-		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
+		try {
+			const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
+			const entity = await this.getEntityService().get({ identifiers });
 
-		const deletedEntity = await this.getEntityService().delete(identifiers);
+			if (!entity) {
+				throw new NotFoundError(this.getEntityName(), undefined, req);
+			}
 
-		const result: any = {
-			[ camelCase(this.getEntityName()) ]: deletedEntity,
-			message: "Deleted successfully"
-		};
+			const deletedEntity = await this.getEntityService().delete(identifiers);
 
-		if (req.debugMode) {
-			result.req = req;
+			const result: any = {
+				[ camelCase(this.getEntityName()) ]: deletedEntity,
+				message: "Deleted successfully"
+			};
+
+			if (req.debugMode) {
+				result.req = req;
+			}
+
+			return res.json(result);
+		} catch (error: any) {
+			if (error instanceof NotFoundError || error instanceof EntityValidationError) {
+				throw error;
+			}
+			throw new Error(`Failed to delete ${this.getEntityName()}: ${error.message}`);
 		}
-
-		return res.json(result);
 	}
 
 	/**
