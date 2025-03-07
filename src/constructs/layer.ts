@@ -6,10 +6,11 @@ import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/co
 import { DefaultLogger, LogDuration, createLogger } from "../logging";
 import { Architecture, Code, LayerVersion, LayerVersionProps, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { basename as pathBaseName, resolve as pathResolve, join as pathJoin, extname as pathExtname } from 'path';
-import { existsSync, mkdirSync, readdirSync, statSync, rmSync, lstatSync, copyFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, statSync, rmSync, lstatSync, copyFileSync, renameSync, readFileSync } from 'fs';
 import { build, BuildOptions } from 'esbuild';
 import { LayerEntry } from "../decorators";
 import { IConstructConfig } from "../interfaces/construct-config";
+import { createHash } from "crypto";
 
 
 /**
@@ -226,7 +227,36 @@ export class LayerConstruct implements FW24Construct {
     
         const outputDir = pathJoin(distDirectory, layerName, configuredOutputPath, fileBaseName);
         const bundleDir = pathJoin(distDirectory, layerName);
-        const outputFile = pathJoin(outputDir, 'index.js');
+
+        const tempDir = pathJoin(distDirectory, 'layers_temp', layerName);
+        const tempOutputDir = pathJoin(tempDir, configuredOutputPath, fileBaseName);
+        const tempOutputFile = pathJoin(tempOutputDir, 'index.js');
+
+        // Ensure temp directory exists
+        if (!existsSync(tempOutputDir)) {
+            mkdirSync(tempOutputDir, { recursive: true });
+        }
+
+        // Build to temporary directory first
+        await bundleWithEsbuild(file, tempOutputFile, buildOptions);
+
+        // Check if output directory exists and compare contents
+        const shouldUpdateOutput = !existsSync(outputDir) || !areDirectoriesIdentical(tempOutputDir, outputDir);
+
+        if (shouldUpdateOutput) {
+            this.logger.info(`Content changed for layer ${layerName}, updating output`);
+            
+            // Clean existing output if it exists
+            if (existsSync(outputDir)) {
+                rmSync(outputDir, { recursive: true });
+            }
+            
+            // Move contents from temp to output
+            moveDirectoryContents(tempOutputDir, outputDir);
+
+        } else {
+            this.logger.warn(`No changes detected for layer ${layerName}, keeping existing code`);
+        }
 
         // this is the path that will be used in the layer import statement
         const layerImportPath = pathJoin('/opt', configuredOutputPath, fileBaseName, 'index.js');
@@ -243,12 +273,6 @@ export class LayerConstruct implements FW24Construct {
         }
 
         const layerProps = getLayerProps(layerDescriptor);
-
-        if (!existsSync(outputDir)) {
-            mkdirSync(outputDir, { recursive: true });
-        }
-
-        await bundleWithEsbuild(file, outputFile, buildOptions);
 
         const defaultLayerProps: LayerVersionProps = {
             layerVersionName: layerName,
@@ -344,6 +368,71 @@ async function bundleWithEsbuild(entryFile: string, outputFile: string, buildOpt
 
     DefaultLogger.debug(`bundleWithEsbuild: Bundling ${entryFile} into ${outputFile} with options:`, defaultOptions);
     await build(defaultOptions);
+}
+
+/**
+ * Calculates hash of a file's contents
+ */
+function calculateFileHash(filePath: string): string {
+    const content = readFileSync(filePath);
+    return createHash('sha256').update(content).digest('hex');
+}
+
+/**
+ * Compare two directories and check if their contents are identical
+ */
+function areDirectoriesIdentical(dir1: string, dir2: string): boolean {
+    if (!existsSync(dir1) || !existsSync(dir2)) return false;
+
+    try {
+        const files1 = readdirSync(dir1, { recursive: true }) as string[];
+        const files2 = readdirSync(dir2, { recursive: true }) as string[];
+
+        if (files1.length !== files2.length) return false;
+
+        return files1.every(file => {
+            const file1Path = pathJoin(dir1, file);
+            const file2Path = pathJoin(dir2, file);
+
+            if (!existsSync(file2Path)) return false;
+            
+            const stat1 = lstatSync(file1Path);
+            const stat2 = lstatSync(file2Path);
+
+            if (stat1.isDirectory() !== stat2.isDirectory()) return false;
+            if (stat1.isDirectory()) return true;
+
+            return calculateFileHash(file1Path) === calculateFileHash(file2Path);
+        });
+    } catch (error) {
+        return false;
+    }
+}
+
+/**
+ * Move directory contents from source to target
+ */
+function moveDirectoryContents(sourceDir: string, targetDir: string) {
+    if (!existsSync(targetDir)) {
+        mkdirSync(targetDir, { recursive: true });
+    }
+
+    const files = readdirSync(sourceDir, { recursive: true }) as string[];
+    files.forEach(file => {
+        const sourcePath = pathJoin(sourceDir, file);
+        const targetPath = pathJoin(targetDir, file);
+
+        if (lstatSync(sourcePath).isDirectory()) {
+            if (!existsSync(targetPath)) {
+                mkdirSync(targetPath, { recursive: true });
+            }
+        } else {
+            if (existsSync(targetPath)) {
+                rmSync(targetPath);
+            }
+            renameSync(sourcePath, targetPath);
+        }
+    });
 }
 
 /**

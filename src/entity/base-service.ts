@@ -5,7 +5,7 @@ import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiers
 import type { EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 
 import { createLogger } from "../logging";
-import { JsonSerializer, camelCase, getValueByPath, isArray, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
+import { JsonSerializer, camelCase, getValueByPath, isArray, isBoolean, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
@@ -332,10 +332,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         const defaultOutputSchemaAttributesMap = this.getOpsDefaultIOSchema().get.output;
 
         const attributes: any = {};
-        defaultOutputSchemaAttributesMap.forEach((val, key) => {
-            if (!val.relation || val.relation.hydrate) {
-                attributes[ key ] = true
-            }
+        defaultOutputSchemaAttributesMap.forEach((_, key) => {
+            // if (!val.relation || val.relation.hydrate) {
+            // }
+            attributes[ key ] = true
         });
         
         return attributes as EntitySelections<S>;
@@ -454,7 +454,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 	}
 
     private async hydrateSingleRelation(rootEntityRecords: any[], relatedAttributeName: string, options: HydrateOptionForRelation<any>){
-        this.logger.debug(`called 'hydrateSingleRelation' relation: ${relatedAttributeName} for entity: ${this.getEntityName()}`, {
+        this.logger.info(`called 'hydrateSingleRelation' relation: ${relatedAttributeName} for entity: ${this.getEntityName()}`, {
             options
         });
 
@@ -529,6 +529,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         parentAttributesToHydrate: HydrateOptionForEntity<any> | undefined,
         parentService: BaseEntityService<any>
     ) {
+        this.logger.info(`called 'hydrateManyToOne' relation: ${parentAttributeName} for entity: ${this.getEntityName()}`, {
+            parentAttributesToHydrate,
+        });
 
         // for each parent create a children batch
         const parentIdentifiersToChildrenMap = new Map<string, any[]>();
@@ -610,6 +613,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
         childAttributesToHydrate: HydrateOptionForEntity<any> | undefined,
         childService: BaseEntityService<any>
     ) {
+
+        this.logger.info(`called 'hydrateOneToMany' relation: ${childAttributeName} for entity: ${this.getEntityName()}`, {
+            childAttributesToHydrate,
+        });
 
         const parentKeyStrToParents = new Map<string, any[]>();
         
@@ -1223,7 +1230,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>>{
 
             const isRelational = !!attributeMeta.relation;
             
-            if (!isRelational) {
+            // If the attribute is not relational or the value is a boolean, we can infer the attribute
+            if (!isRelational || isBoolean(attVal)) {
                 inferred[attributeName] = attVal;
                 return;
             }
@@ -1307,12 +1315,12 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         relation: relationMeta as any,
         defaultValue,
         validations: validations || required ? ['required'] : [],
-        isVisible: !('isVisible' in att) || att.isVisible,
-        isEditable: !('isEditable' in att) || att.isEditable,
-        isListable: !('isListable' in att) || att.isListable,
-        isCreatable: !('isCreatable' in att) || att.isCreatable,
-        isFilterable: !('isFilterable' in att) || att.isFilterable,
-        isSearchable: !('isSearchable' in att) || att.isSearchable,
+        isVisible: !('isVisible' in att) ? true : att.isVisible,
+        isEditable: !('isEditable' in att) ? true : att.isEditable,
+        isListable: !('isListable' in att) ? true : att.isListable,
+        isCreatable: !('isCreatable' in att) ? true : att.isCreatable,
+        isFilterable: !('isFilterable' in att) ? true : att.isFilterable,
+        isSearchable: !('isSearchable' in att) ? true : att.isSearchable,
     }
 
     if(addNewOption){
