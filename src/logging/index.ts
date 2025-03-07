@@ -36,7 +36,8 @@ export const createLogger = (_options: string | Function | ISettingsParam<ILogOb
     const logger = new Logger({
         ..._options, 
         // ensure min log level is always there
-        minLevel: _options.minLevel ?? logLevel 
+        minLevel: _options.minLevel ?? logLevel ,
+        stylePrettyLogs: false
     });
     
     return logger;
