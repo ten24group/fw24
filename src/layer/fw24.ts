@@ -9,3 +9,4 @@ export * from './../validation';
 export * from './../utils';
 export * from './../di';
 export * from '../const/';
+export * from '../errors';

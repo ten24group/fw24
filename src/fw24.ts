@@ -14,3 +14,6 @@ export * from './validation';
 export * from './utils';
 export * from './di';
 export * from './const';
+
+// Errors
+export * from './errors';
