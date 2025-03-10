@@ -34,9 +34,24 @@ export const createLogger = (_options: string | Function | ISettingsParam<ILogOb
     }
 
     const logger = new Logger({
+        stylePrettyLogs: false,
+        maskValuesOfKeys: ['password', 'confirmPassword', 'secret', 'token', 'apiKey', 'accessToken', 'refreshToken', 'clientSecret', 'clientId', 'clientToken', 'clientCode', 'clientKey', 'clientSecret', 'clientId', 'clientToken', 'clientCode', 'clientKey'],
+        maskValuesOfKeysCaseInsensitive: true,
+        maskValuesRegEx: [
+            /password\s*:\s*([^\s]+)/gi,
+            /confirmPassword\s*:\s*([^\s]+)/gi,
+            /secret\s*:\s*([^\s]+)/gi,
+            /token\s*:\s*([^\s]+)/gi,
+            /apiKey\s*:\s*([^\s]+)/gi,
+            /accessToken\s*:\s*([^\s]+)/gi,
+            /refreshToken\s*:\s*([^\s]+)/gi,
+            /clientSecret\s*:\s*([^\s]+)/gi,
+            /clientId\s*:\s*([^\s]+)/gi,
+            /clientToken\s*:\s*([^\s]+)/gi, 
+        ],
         ..._options, 
         // ensure min log level is always there
-        minLevel: _options.minLevel ?? logLevel 
+        minLevel: _options.minLevel ?? logLevel ,
     });
     
     return logger;

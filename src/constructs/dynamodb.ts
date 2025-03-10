@@ -83,6 +83,7 @@ export class DynamoDBConstruct implements FW24Construct {
 
         // Output the table instance
         this.fw24.setConstructOutput(this, appQualifiedTableName, tableInstance, OutputType.TABLE, 'tableName');
+        this.fw24.setEnvironmentVariable(appQualifiedTableName, tableInstance.tableName, `${OutputType.TABLE}`);
 
         // Register the table instance as a global container
         fw24.addDynamoTable(appQualifiedTableName, tableInstance);

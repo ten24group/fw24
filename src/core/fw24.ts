@@ -394,6 +394,7 @@ export class Fw24 {
                 }
             }
             this.setEnvironmentVariable(key, value, `${construct.name}_${outputType}`);
+            this.logger.debug(`setEnvironmentVariable: ${key}`, {prefix: `${construct.name}_${outputType}`});
 
             // in case of object reference, export the output to be used in other stacks
             let outputValue = value;

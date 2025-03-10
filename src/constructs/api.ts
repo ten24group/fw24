@@ -12,7 +12,6 @@ import {
     AwsIntegration,
     Cors,
     Deployment,
-    LambdaIntegration,
     RestApi,
     IRestApi,
     MethodLoggingLevel,
@@ -36,6 +35,7 @@ import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/co
 import { createLogger } from "../logging";
 import Mutable from "../types/mutable";
 import { LambdaFunction } from "./lambda-function";
+import { LambdaIntegration } from "./lambda-integration";
 
 import { IControllerConfig } from "../decorators/controller";
 import { ENV_KEYS } from "../fw24";
@@ -299,6 +299,8 @@ export class APIConstruct implements FW24Construct {
             this.fw24.setConstructOutput(this, controllerName, controllerLambda, OutputType.FUNCTION);
 
             controllerIntegration = new LambdaIntegration(controllerLambda, {
+                restApi: this.getAPI(controllerStackName).api,
+                path: controllerName,
                 timeout: Duration.seconds(this.apiConstructConfig.integrationTimeout || 29),
             });
         } 
@@ -471,7 +473,7 @@ export class APIConstruct implements FW24Construct {
             policies: controllerConfig?.policies,
             resourceAccess: controllerConfig?.resourceAccess,
             allowSendEmail: true,
-            functionTimeout: controllerConfig?.functionTimeout,
+            functionTimeout: controllerConfig?.functionTimeout || this.fw24.getConfig().functionTimeout,
             processorArchitecture: controllerConfig?.processorArchitecture,
             functionProps: functionProps,
             logRetentionDays: controllerConfig.logRetentionDays,
