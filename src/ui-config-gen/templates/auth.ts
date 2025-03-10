@@ -1,4 +1,3 @@
-
 export default (
     options: {
         authEndpoint?: string,
@@ -155,6 +154,33 @@ export default (
             ]
         };              
     }
+
+    // Add configuration for new password required challenge
+    config['/set-new-password'] = {
+        apiConfig: {
+            apiUrl: `/${authEndpoint}/setNewPassword`,
+            apiMethod: "POST"
+        },
+        pageType: "form",
+        propertiesConfig: [
+            {
+                column: "newPassword",
+                label: "New Password",
+                fieldType: "password",
+                placeholder: "Enter your new password",
+                validations: ["required"],
+                helpText: "Please set a new password for your account"
+            },
+            {
+                column: "confirmNewPassword",
+                label: "Confirm New Password",
+                fieldType: "password",
+                placeholder: "Confirm your new password",
+                validations: ["required", "match:newPassword"],
+                helpText: "Re-enter your new password"
+            }
+        ]
+    };
 
     return config;
 }
