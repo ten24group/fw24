@@ -130,6 +130,7 @@ export class APIConstruct implements FW24Construct {
     mainStack!: Stack;
 
     private resources: IResource[] = [];
+    private methods: Method[] = [];
     private controllerStacks = new Map<string, {methods: Method[], resources: IResource[], controllersHash: string[]}>();
 
     // default constructor to initialize the stack configuration
@@ -283,9 +284,8 @@ export class APIConstruct implements FW24Construct {
         const entryPackages = this.prepareEntryPackages(controllerConfig, ownerModule);
         controllerConfig.entryPackages = entryPackages;
 
-        let methods: Method[] = [];
         this.resources = [];
-
+        this.methods = [];
         // create the api resource for the controller if it doesn't exist
         const controllerResource = this.getOrCreateControllerResource(controllerName, controllerStackName);
 
@@ -354,7 +354,7 @@ export class APIConstruct implements FW24Construct {
             }
 
             const method = currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);
-            methods.push(method);
+            this.methods.push(method);
 
             // if authorizer is AWS_IAM, then add the route to the policy
             if(routeAuthorizerType === 'AWS_IAM') {
@@ -373,7 +373,7 @@ export class APIConstruct implements FW24Construct {
         // keep track of the controller stacks with methods and resources in a multi-stack setup to create one deployment per controller stack
         if(this.fw24.hasImportedAPI(this.name)){
             this.controllerStacks.set(controllerStackName, {
-                methods: [...methods], 
+                methods: [...this.methods], 
                 resources: [...this.resources],
                 controllersHash: [...controllerHash]
             });    
@@ -446,11 +446,12 @@ export class APIConstruct implements FW24Construct {
 
     private getOrCreateControllerResource = (controllerName: string, controllerStackName: string): IResource => {
         let restAPI = this.getAPI(controllerStackName);
-        let controllerResource = restAPI.api.root.getResource(controllerName);
+        let controllerResource = restAPI.api.root.getResource(controllerName) as IResource;
         if(!controllerResource){
-            controllerResource = restAPI.api.root.addResource(controllerName);
+            controllerResource = restAPI.api.root.addResource(controllerName) as IResource;
             if(restAPI.isImported){
-                controllerResource.addCorsPreflight(this.getCorsPreflightOptions());
+                const corsPreflightMethod = controllerResource.addCorsPreflight(this.getCorsPreflightOptions());
+                this.methods.push(corsPreflightMethod);
             }
         }
         
@@ -549,8 +550,8 @@ export class APIConstruct implements FW24Construct {
             if (!childResource) {
                 childResource = currentResource.addResource(pathPart);
                 if(restAPI.isImported){
-                    childResource.addCorsPreflight(this.getCorsPreflightOptions());
-                    this.resources.push(childResource);
+                    const corsPreflightMethod = childResource.addCorsPreflight(this.getCorsPreflightOptions());
+                    this.methods.push(corsPreflightMethod);
                 }
             }
             currentResource = childResource;
