@@ -11,8 +11,16 @@ export const errorHandlerService = ErrorHandlerService.getInstance();
 // Create error handler middleware for controllers
 export const createErrorHandler = (options: ErrorHandlerOptions = {}) => {
     return (error: any, req: Request, res: Response) => {
+
         const context: ErrorHandlerContext = { error, request: req, response: res, options };
+
         const result = errorHandlerService.handleError(context);
-        return res.status(result.statusCode).json(result.body);
+
+        const resultBody = {
+            ...result.body,
+            stack: req.debugMode ? error.stack : undefined
+        };
+
+        return res.status(result.statusCode).json(resultBody);
     };
 };

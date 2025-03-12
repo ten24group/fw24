@@ -212,7 +212,11 @@ abstract class APIController extends AbstractLambdaHandler {
   protected errorHandler?: ControllerErrorHandler;
   protected getErrorHandler(): ControllerErrorHandler {
     if (!this.errorHandler) {
-      this.errorHandler = createErrorHandler();
+      this.errorHandler = createErrorHandler({
+        includeStack: true,
+        logErrors: true,
+        logRequestDetails: true
+      });
     }
     return this.errorHandler;
   }
@@ -225,11 +229,7 @@ abstract class APIController extends AbstractLambdaHandler {
    */
   protected handleException(req: Request, err: Error, res: Response): APIGatewayProxyResult {
     const errorResponse = this.getErrorHandler()(err, req, res);
-
-    return {
-      statusCode: errorResponse.statusCode,
-      body: JSON.stringify(errorResponse.body, getCircularReplacer())
-    };
+    return this.handleResponse(errorResponse);
   }
 
   protected handleResponse(res: APIGatewayProxyResult): APIGatewayProxyResult {
