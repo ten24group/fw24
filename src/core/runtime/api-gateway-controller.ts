@@ -212,11 +212,7 @@ abstract class APIController extends AbstractLambdaHandler {
   protected errorHandler?: ControllerErrorHandler;
   protected getErrorHandler(): ControllerErrorHandler {
     if (!this.errorHandler) {
-      this.errorHandler = createErrorHandler({
-        includeStack: true,
-        logErrors: true,
-        logRequestDetails: true
-      });
+      this.errorHandler = createErrorHandler();
     }
     return this.errorHandler;
   }
