@@ -13,6 +13,7 @@ import { getSignedUrlForFileUpload } from '../client/s3';
 import { ENV_KEYS } from '../const';
 import { NotFoundError } from '../errors';
 import { EntityValidationError } from './errors';
+import { createErrorHandler } from '../errors/handlers';
 
 type seconds = number;
 
@@ -41,6 +42,21 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	constructor(protected readonly entityService: BaseEntityService<Sch>, entityName = entityService?.getEntityName()) {
 		super();
 		this.entityName = entityName;
+
+		// Set error handler options from controller config
+		const errorHandlerOptions = Reflect.get(this, 'errorHandlerOptions') as {
+			includeStack?: boolean;
+			logErrors?: boolean;
+			logRequestDetails?: boolean;
+		} | undefined;
+
+		if (errorHandlerOptions) {
+			this.errorHandler = createErrorHandler({
+				includeStack: errorHandlerOptions.includeStack,
+				logErrors: errorHandlerOptions.logErrors,
+				logRequestDetails: errorHandlerOptions.logRequestDetails
+			});
+		}
 	}
 
 	protected getEntityName() {
