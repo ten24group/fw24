@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-beta.11](https://github.com/ten24group/fw24/compare/v0.1.1-beta.10...v0.1.1-beta.11) (2025-03-12)
+
+
+### Bug Fixes
+
+* error handling ([dbcd8d5](https://github.com/ten24group/fw24/commit/dbcd8d5cd131321eb468c468bdbc0f4e23b7f15c))
+
 ### [0.1.1-beta.10](https://github.com/ten24group/fw24/compare/v0.1.1-beta.9...v0.1.1-beta.10) (2025-03-10)
 
 
