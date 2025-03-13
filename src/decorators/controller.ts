@@ -1,4 +1,3 @@
-
 import type { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import type { AuthorizerTypeMetadata } from "./authorizer";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
@@ -38,6 +37,15 @@ export type IControllerConfig = CommonLambdaHandlerOptions & {
 	 * Specifies a parent stackname to be used in a nested-stack environment.
 	 */
 	parentStackName?: string;
+
+	/**
+	 * Specifies the options for the error handler.
+	 */
+	errorHandlerOptions?: {
+		includeStack?: boolean;
+		logErrors?: boolean;
+		logRequestDetails?: boolean;
+	};
 }
 
 /**
@@ -71,6 +79,9 @@ export function Controller(controllerName: string, controllerConfig: IController
 
 				// Set the controller config
 				Reflect.set(this, 'controllerConfig', { ...defaultConfig, ...controllerConfig });
+
+				// Set the error handler options
+				Reflect.set(this, 'errorHandlerOptions', controllerConfig.errorHandlerOptions || {});
 			}
 		}
 

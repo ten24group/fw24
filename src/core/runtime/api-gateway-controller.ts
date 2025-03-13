@@ -225,11 +225,7 @@ abstract class APIController extends AbstractLambdaHandler {
    */
   protected handleException(req: Request, err: Error, res: Response): APIGatewayProxyResult {
     const errorResponse = this.getErrorHandler()(err, req, res);
-
-    return {
-      statusCode: errorResponse.statusCode,
-      body: JSON.stringify(errorResponse.body, getCircularReplacer())
-    };
+    return this.handleResponse(errorResponse);
   }
 
   protected handleResponse(res: APIGatewayProxyResult): APIGatewayProxyResult {

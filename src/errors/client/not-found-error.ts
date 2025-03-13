@@ -11,16 +11,21 @@ export class NotFoundError extends ClientError {
             { resource },
             request
         );
+
         this.name = 'NotFoundError';
     }
 
     handle(context: ErrorHandlerContext): ErrorHandlerResult {
+
         return {
             statusCode: HttpStatusCode.NOT_FOUND,
             body: this.createErrorResponse(
                 HttpStatusCode.NOT_FOUND,
                 'Resource Not Found',
-                { message: this.message, ...this.details },
+                {
+                    message: this.message,
+                    ...this.details
+                },
                 context.options.includeStack
             )
         };
