@@ -130,6 +130,7 @@ export class APIConstruct implements FW24Construct {
     mainStack!: Stack;
 
     private resources: IResource[] = [];
+    private methods: Method[] = [];
     private controllerStacks = new Map<string, {methods: Method[], resources: IResource[], controllersHash: string[]}>();
 
     // default constructor to initialize the stack configuration
@@ -185,8 +186,10 @@ export class APIConstruct implements FW24Construct {
 
         // if multi/nested-stack setup, then create one deployment per controller stack
         this.logger.info(`API-gateway construct: ${this.name} has imported APIs: ${this.fw24.hasImportedAPI(this.name)}`);
-        if(this.fw24.hasImportedAPI(this.name)){
-            await this.createDeployment();
+        if(this.fw24.hasImportedAPI(this.name) && this.fw24.useMultiStackSetup()){
+            await this.createDeployments();
+        } else if(this.fw24.hasImportedAPI(this.name)) {
+            await this.createSingleDeployment();
         }
     }
 
@@ -283,9 +286,8 @@ export class APIConstruct implements FW24Construct {
         const entryPackages = this.prepareEntryPackages(controllerConfig, ownerModule);
         controllerConfig.entryPackages = entryPackages;
 
-        let methods: Method[] = [];
         this.resources = [];
-
+        this.methods = [];
         // create the api resource for the controller if it doesn't exist
         const controllerResource = this.getOrCreateControllerResource(controllerName, controllerStackName);
 
@@ -354,7 +356,7 @@ export class APIConstruct implements FW24Construct {
             }
 
             const method = currentResource.addMethod(route.httpMethod, controllerIntegration, methodOptions);
-            methods.push(method);
+            this.methods.push(method);
 
             // if authorizer is AWS_IAM, then add the route to the policy
             if(routeAuthorizerType === 'AWS_IAM') {
@@ -373,7 +375,7 @@ export class APIConstruct implements FW24Construct {
         // keep track of the controller stacks with methods and resources in a multi-stack setup to create one deployment per controller stack
         if(this.fw24.hasImportedAPI(this.name)){
             this.controllerStacks.set(controllerStackName, {
-                methods: [...methods], 
+                methods: [...this.methods], 
                 resources: [...this.resources],
                 controllersHash: [...controllerHash]
             });    
@@ -389,7 +391,7 @@ export class APIConstruct implements FW24Construct {
 
     // if the API is imported, then create one deployment per controller stack and add method and resource as dependency
     // This is needed because imported API does not propogate CORS settings to the methods
-    private async createDeployment() {
+    private async createDeployments() {
 
         const stageName = this.getStageName();
         for (const [controllerStackName, {methods, resources, controllersHash}] of this.controllerStacks.entries()) {
@@ -411,6 +413,35 @@ export class APIConstruct implements FW24Construct {
             }
 
             // add dependecy on all resources for this controller
+            for (const resource of resources) {
+                this.logger.debug(`Adding resource dependency ${resource.path} to deployment`);
+                deployment.node.addDependency(resource);
+            }
+
+        }
+    }
+
+    // if the api is imported and it's not a multi-stack setup, then create a single deployment for all controllers
+    // Single deployment is needed to avoid simultation deployment which causes error on API Gateway
+    private async createSingleDeployment() {
+        const stageName = this.getStageName();
+        if(this.apiConstructConfig.forceDeployment){
+            this.controllerStacks.forEach(c => c.controllersHash.push(randomUUID()));
+        }
+        // create the name from all the controller hash values combined as a single hash and add dependency on all the controllers
+        const deploymentName = `deployment-${createHash('md5').update(Array.from(this.controllerStacks.values()).map(c => c.controllersHash).join('-')).digest('hex')}`;
+
+        const deployment = new Deployment(this.fw24.getStack(this.name), deploymentName, {
+            api: this.api,
+            stageName: stageName,
+        });
+
+        for (const [controllerStackName, {methods, resources, controllersHash}] of this.controllerStacks.entries()) {
+            for (const method of methods) {
+                this.logger.debug(`Adding method dependency ${method.httpMethod} ${method.resource.path} to deployment`);
+                deployment.node.addDependency(method)
+            }
+
             for (const resource of resources) {
                 this.logger.debug(`Adding resource dependency ${resource.path} to deployment`);
                 deployment.node.addDependency(resource);
@@ -446,11 +477,12 @@ export class APIConstruct implements FW24Construct {
 
     private getOrCreateControllerResource = (controllerName: string, controllerStackName: string): IResource => {
         let restAPI = this.getAPI(controllerStackName);
-        let controllerResource = restAPI.api.root.getResource(controllerName);
+        let controllerResource = restAPI.api.root.getResource(controllerName) as IResource;
         if(!controllerResource){
-            controllerResource = restAPI.api.root.addResource(controllerName);
+            controllerResource = restAPI.api.root.addResource(controllerName) as IResource;
             if(restAPI.isImported){
-                controllerResource.addCorsPreflight(this.getCorsPreflightOptions());
+                const corsPreflightMethod = controllerResource.addCorsPreflight(this.getCorsPreflightOptions());
+                this.methods.push(corsPreflightMethod);
             }
         }
         
@@ -549,7 +581,8 @@ export class APIConstruct implements FW24Construct {
             if (!childResource) {
                 childResource = currentResource.addResource(pathPart);
                 if(restAPI.isImported){
-                    childResource.addCorsPreflight(this.getCorsPreflightOptions());
+                    const corsPreflightMethod = childResource.addCorsPreflight(this.getCorsPreflightOptions());
+                    this.methods.push(corsPreflightMethod);
                     this.resources.push(childResource);
                 }
             }
