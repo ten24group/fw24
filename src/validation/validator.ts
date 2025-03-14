@@ -16,6 +16,8 @@ import { extractOpValidationFromEntityValidations, isComplexValidationValue, isC
 */
 export class Validator implements IValidator {
     readonly logger = createLogger(Validator.name);
+    private readonly DEFAULT_MAX_STRING_LENGTH = 1000000; // 1M chars
+    private readonly DEFAULT_MAX_ARRAY_LENGTH = 10000; // 10K items
 
     /**
      * Validates input data against a set of validation rules with criteria.
@@ -79,7 +81,7 @@ export class Validator implements IValidator {
                 if (collectErrors && res.errors?.length) {
                     res.errors.forEach(err => {
                         err.messageIds = makeEntityValidationMessageIds(entityName, ruleType, key, err.messageIds ?? []);
-                        err.path = err.path ?? []; ``
+                        err.path = err.path ?? [];
                         err.path.push(key);
                         err.path.push(ruleType);
                         err[ 'message' ] = makeValidationErrorMessage(err, overriddenErrorMessages);
@@ -105,6 +107,9 @@ export class Validator implements IValidator {
         rules?: InputValidationRule<I>,
         collectErrors: boolean = true
     ): Promise<InputValidationResult<I>> {
+        if (!rules) {
+            return { pass: true, errors: {} };
+        }
 
         const result: InputValidationResult<I> = {
             pass: true,
@@ -112,14 +117,36 @@ export class Validator implements IValidator {
         };
 
         for (const key in rules) {
-
             const thisRule = rules[ key ];
             if (!thisRule) { continue; }
 
             const thisVal = input ? input[ key ] : undefined;
 
-            const validationRes = await this.testComplexValidationRule<any>(thisRule, thisVal);
+            // Add safety check for extremely large values
+            if (thisVal !== undefined) {
+                if (typeof thisVal === 'string' && thisVal.length > this.DEFAULT_MAX_STRING_LENGTH) {
+                    result.pass = false;
+                    if (collectErrors) {
+                        result.errors![ key ] = [ {
+                            messageIds: [ 'validation.error.string.toolong' ],
+                            customMessage: `String exceeds maximum length of ${this.DEFAULT_MAX_STRING_LENGTH} characters`
+                        } ];
+                    }
+                    continue;
+                }
+                if (Array.isArray(thisVal) && thisVal.length > this.DEFAULT_MAX_ARRAY_LENGTH) {
+                    result.pass = false;
+                    if (collectErrors) {
+                        result.errors![ key ] = [ {
+                            messageIds: [ 'validation.error.array.toolong' ],
+                            customMessage: `Array exceeds maximum length of ${this.DEFAULT_MAX_ARRAY_LENGTH} items`
+                        } ];
+                    }
+                    continue;
+                }
+            }
 
+            const validationRes = await this.testComplexValidationRule<any>(thisRule, thisVal);
             result.pass = result.pass && validationRes.pass;
 
             if (collectErrors && validationRes.errors && validationRes.errors.length) {
@@ -550,121 +577,121 @@ export class Validator implements IValidator {
         validationValue: TValidationValue<any>,
         val: any
     ): Promise<TestValidationResult> {
-
         const result: TestValidationResult = {
             pass: true,
             received: [ val ],
             expected: [ validationName, validationValue ],
-        }
+        };
 
-        if (validationName === 'required') {
+        try {
+            switch (validationName) {
+                case 'required':
+                    result.pass = (val !== undefined && val !== null);
+                    break;
 
-            result.pass = (val !== undefined && val !== null);
+                case 'minLength':
+                    result.pass = val && val.length >= validationValue;
+                    result.received = [ val, val?.length || 0 ];
+                    break;
 
-        } else if (validationName === 'minLength') {
+                case 'maxLength':
+                    result.pass = val && val.length <= validationValue;
+                    result.received = [ val, val?.length || 0 ];
+                    break;
 
-            result.pass = val && val.length >= validationValue;
-            result.received = [ val, val?.length || 0 ];
+                case 'pattern':
+                    result.pass = val && validationValue.test(String(val));
+                    break;
 
-        } else if (validationName === 'maxLength') {
+                case 'eq':
+                    result.pass = val === validationValue;
+                    break;
 
-            result.pass = val && val.length <= validationValue;
-            result.received = [ val, val?.length || 0 ];
+                case 'neq':
+                    result.pass = val !== validationValue;
+                    break;
 
-        } else if (validationName === 'pattern') {
+                case 'gt':
+                    result.pass = Number(val) > Number(validationValue);
+                    break;
 
-            result.pass = val && validationValue.test(val as unknown as string);
+                case 'gte':
+                    result.pass = Number(val) >= Number(validationValue);
+                    break;
 
-        } else if (validationName === 'eq') {
+                case 'lt':
+                    result.pass = Number(val) < Number(validationValue);
+                    break;
 
-            result.pass = val === validationValue;
+                case 'lte':
+                    result.pass = Number(val) <= Number(validationValue);
+                    break;
 
-        } else if (validationName === 'neq') {
+                case 'inList':
+                    result.pass = Array.isArray(validationValue) && validationValue.includes(val);
+                    break;
 
-            result.pass = val !== validationValue;
+                case 'notInList':
+                    result.pass = Array.isArray(validationValue) && !validationValue.includes(val);
+                    break;
 
-        } else if (validationName === 'gt') {
+                case 'unique':
+                    result.pass = isUnique(val);
+                    break;
 
-            result.pass = val > validationValue;
+                case 'custom':
+                    if (typeof validationValue !== 'function') {
+                        this.logger.warn(new Error(`Invalid custom validation rule: ${JSON.stringify({ [ validationName ]: validationValue })}`));
+                        result.pass = false;
+                    } else {
+                        result.pass = await validationValue(val);
+                    }
+                    break;
 
-        } else if (validationName === 'gte') {
+                case 'datatype':
+                    result.pass = await this.validateDataType(validationValue, val);
+                    break;
 
-            result.pass = val >= validationValue;
-
-        } else if (validationName === 'lt') {
-
-            result.pass = val < validationValue;
-
-        } else if (validationName === 'lte') {
-
-            result.pass = val <= validationValue;
-
-        } else if (validationName === 'inList') {
-
-            result.pass = validationValue.includes(val);
-
-        } else if (validationName === 'notInList') {
-
-            result.pass = !validationValue.includes(val);
-
-        } else if (validationName === 'unique') {
-
-            result.pass = isUnique(val);
-
-        } else if (validationName === 'custom') {
-
-            if (typeof validationValue !== 'function') {
-                this.logger.warn(new Error(`Invalid custom validation rule: ${{ [ validationName ]: validationValue }}`));
-                result.pass = false;
-            } else {
-                result.pass = await validationValue(val);
+                default:
+                    this.logger.warn(`Unknown validation type: ${validationName}`);
+                    result.pass = false;
             }
-
-        } if (validationName === 'datatype') {
-
-            if (validationValue === 'number') {
-
-                result.pass = isNumericString(val);
-
-            } else if (validationValue === 'email') {
-
-                result.pass = isEmail(val);
-
-            } else if (validationValue === 'ip') {
-
-                result.pass = isIP(val);
-
-            } else if (validationValue === 'ipv4') {
-
-                result.pass = isIPv4(val);
-
-            } else if (validationValue === 'ipv6') {
-
-                result.pass = isIPv6(val);
-
-            } else if (validationValue === 'uuid') {
-
-                result.pass = isUUID(val);
-
-            } else if (validationValue === 'json') {
-
-                result.pass = isJsonString(val);
-
-            } else if (validationValue === 'date') {
-
-                result.pass = isDateString(val);
-
-            } else if (validationValue === 'httpUrl') {
-
-                result.pass = isHttpUrlString(val);
-
-            } else if (typeof val !== validationValue) {
-
-                result.pass = false;
-            }
+        } catch (error) {
+            this.logger.error('Validation error:', error);
+            result.pass = false;
+            result.error = error instanceof Error ? error.message : 'Unknown validation error';
         }
 
         return result;
+    }
+
+    private async validateDataType(type: string, val: any): Promise<boolean> {
+        if (val === undefined || val === null) {
+            return false;
+        }
+
+        switch (type) {
+            case 'number':
+                return isNumericString(val);
+            case 'email':
+                return isEmail(val);
+            case 'ip':
+                return isIP(val);
+            case 'ipv4':
+                return isIPv4(val);
+            case 'ipv6':
+                return isIPv6(val);
+            case 'uuid':
+                return isUUID(val);
+            case 'json':
+                return isJsonString(val);
+            case 'date':
+                return isDateString(val);
+            case 'httpUrl':
+                return isHttpUrlString(val);
+            default:
+                return typeof val === type;
+        }
     }
 }
 
