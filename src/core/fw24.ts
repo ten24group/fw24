@@ -17,19 +17,19 @@ import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
-    
+
     appName: string = "fw24";
     emailProvider: any;
-    
+
     private config: IApplicationConfig = {};
     private app: any;
     private stacks: any = {};
-    private apis: { [apiConstructName: string]: { [name: string]: any } } = {};
+    private apis: { [ apiConstructName: string ]: { [ name: string ]: any } } = {};
     private environmentVariables: Record<string, any> = {};
-    private policyStatements =  new Map<string, PolicyStatementProps | PolicyStatement>();
+    private policyStatements = new Map<string, PolicyStatementProps | PolicyStatement>();
     private defaultCognitoAuthorizer: IAuthorizer | undefined;
-    private cognitoAuthorizers: { [key: string]: IAuthorizer } = {};
-    private dynamoTables: { [key: string]: TableV2 } = {};
+    private cognitoAuthorizers: { [ key: string ]: IAuthorizer } = {};
+    private dynamoTables: { [ key: string ]: TableV2 } = {};
     private static instance: Fw24;
 
     private queues = new Map<string, IQueue>();
@@ -39,7 +39,7 @@ export class Fw24 {
     private readonly globalLambdaLayerNames = new Set<string>();
     private readonly globalLambdaEntryPackages = new Set<string>();
 
-    private constructor() {}
+    private constructor() { }
 
     static getInstance(): Fw24 {
         if (!Fw24.instance) {
@@ -78,37 +78,37 @@ export class Fw24 {
         return this.config.lambdaEntryPackages || Array.from(this.globalLambdaEntryPackages);
     }
 
-    addGlobalLambdaEntryPackage(packageName: string){
+    addGlobalLambdaEntryPackage(packageName: string) {
         this.globalLambdaEntryPackages.add(packageName);
     }
 
-    hasGlobalLambdaEntryPackage(packageName: string){
+    hasGlobalLambdaEntryPackage(packageName: string) {
         return this.globalLambdaEntryPackages.has(packageName);
     }
 
-    removeGlobalLambdaEntryPackage(packageName: string){
+    removeGlobalLambdaEntryPackage(packageName: string) {
         this.globalLambdaEntryPackages.delete(packageName);
     }
 
-    getGlobalLambdaLayerNames(){
+    getGlobalLambdaLayerNames() {
         return this.globalLambdaLayerNames;
     }
 
-    addGlobalLambdaLayerNames(layerName: string){
+    addGlobalLambdaLayerNames(layerName: string) {
         this.globalLambdaLayerNames.add(layerName);
     }
 
-    hasGlobalLambdaLayerNames(layerName: string){
+    hasGlobalLambdaLayerNames(layerName: string) {
         return this.globalLambdaLayerNames.has(layerName);
     }
 
-    removeGlobalLambdaLayerNames(layerName: string){
+    removeGlobalLambdaLayerNames(layerName: string) {
         this.globalLambdaLayerNames.delete(layerName);
     }
 
     addStack(name: string, stack: any): Fw24 {
-        this.logger.debug("addStack:", {name} );
-        this.stacks[name] = stack;
+        this.logger.debug("addStack:", { name });
+        this.stacks[ name ] = stack;
         return this;
     }
 
@@ -122,27 +122,27 @@ export class Fw24 {
     getStack(name?: string, parentStackName?: string): any {
         let stackName: string = name ? name : this.getDefaultStackName();
         // don't allow nested stacks if multiStack is true, multistack is used for creating independent stacks
-        if(this.config.multiStack && parentStackName) {
+        if (this.config.multiStack && parentStackName) {
             throw new Error('Nested stacks are not allowed when multiStack is true. Please use multiStack: false or remove the parentStackName parameter.');
         }
         // if the stack does not exist and multiStack is false and parentStackName is not provided, then use the default stack name
-        if(this.stacks[stackName] === undefined && !(this.config.multiStack || parentStackName)) {
+        if (this.stacks[ stackName ] === undefined && !(this.config.multiStack || parentStackName)) {
             stackName = this.getDefaultStackName();
         }
-        this.logger.debug("Getting Stack With Name:", {stackName});
-        if(this.stacks[stackName] === undefined) {
-            if(parentStackName) {
+        this.logger.debug("Getting Stack With Name:", { stackName });
+        if (this.stacks[ stackName ] === undefined) {
+            if (parentStackName) {
                 // create a new nested stack
-                this.stacks[stackName] = new NestedStack(this.getStack(parentStackName), stackName);
-                this.logger.debug("Created nested stack:", {stackName, parentStackName});
+                this.stacks[ stackName ] = new NestedStack(this.getStack(parentStackName), stackName);
+                this.logger.debug("Created nested stack:", { stackName, parentStackName });
             } else {
                 let stackID = `${this.appName}-${stackName}-stack`;
                 // backwards compatibility for old stack names
-                if(stackName === 'premultistack'){
+                if (stackName === 'premultistack') {
                     stackID = `${this.appName}-stack`;
                 }
                 // create a new stack
-                this.stacks[stackName] = new Stack(this.app, stackID, {
+                this.stacks[ stackName ] = new Stack(this.app, stackID, {
                     env: {
                         account: this.config.account,
                         region: this.config.region
@@ -150,13 +150,13 @@ export class Fw24 {
                 });
                 // make all stacks dependent on the layer stack
                 const layerStack = this.getStack(this.config.layerStackName);
-                if(layerStack) {
-                    this.stacks[stackName].addDependency(layerStack);
+                if (layerStack) {
+                    this.stacks[ stackName ].addDependency(layerStack);
                 }
-                this.logger.debug("Created stack:", {stackName});
+                this.logger.debug("Created stack:", { stackName });
             }
         }
-        return this.stacks[stackName];
+        return this.stacks[ stackName ];
     }
 
     getDefaultStackName(): string {
@@ -165,61 +165,61 @@ export class Fw24 {
 
     useMultiStackSetup = (currentStackName?: string, resourceStack?: Stack): boolean => {
         return (
-            this.getConfig().multiStack 
+            this.getConfig().multiStack
             && this.getConfig().multiStack === true
             && (
                 // if resource stack is not provided, then only check if multi-stack is enabled
                 !resourceStack ||
                 // if resource stack is provided, then check if it is a different stack than the current stack
-                !(resourceStack?.stackName.endsWith(currentStackName+'-stack') || resourceStack?.stackName === currentStackName)
+                !(resourceStack?.stackName.endsWith(currentStackName + '-stack') || resourceStack?.stackName === currentStackName)
             )
         ) || false;
     }
 
     addAPI(apiConstructName: string, name: string, api: any, isImported: boolean = false): Fw24 {
         // Initialize the apiConstructName object if it doesn't exist
-        if (!this.apis[apiConstructName]) {
-            this.apis[apiConstructName] = {};
+        if (!this.apis[ apiConstructName ]) {
+            this.apis[ apiConstructName ] = {};
         }
-        this.logger.debug("addAPI:", {name} );
-        this.apis[apiConstructName][name] = {api: api, isImported: isImported};
+        this.logger.debug("addAPI:", { name });
+        this.apis[ apiConstructName ][ name ] = { api: api, isImported: isImported };
         return this;
     }
 
     getAPI(apiConstructName: string, name: string): any {
         // Check if API exists for the given name and stack
-        if (!this.apis[apiConstructName] || !this.apis[apiConstructName][name]) {
+        if (!this.apis[ apiConstructName ] || !this.apis[ apiConstructName ][ name ]) {
             this.logger.debug(`API not found: construct name ${apiConstructName} and name ${name}`);
             return undefined;
         }
-        return this.apis[apiConstructName][name];
+        return this.apis[ apiConstructName ][ name ];
     }
 
     getAPIs(apiConstructName: string): any {
-        return this.apis[apiConstructName];
+        return this.apis[ apiConstructName ];
     }
 
     hasImportedAPI(apiConstructName: string): boolean {
-        if (!this.apis[apiConstructName]) {
+        if (!this.apis[ apiConstructName ]) {
             return false;
         }
-        
+
         // Check if any API in any stack is marked as imported
-        return Object.values(this.apis[apiConstructName])
+        return Object.values(this.apis[ apiConstructName ])
             .some(api => api.isImported === true);
     }
 
     addModule(name: string, module: IFw24Module) {
-        this.logger.debug("addModule:", {name, module: module.getBasePath()} );
+        this.logger.debug("addModule:", { name, module: module.getBasePath() });
 
         // collect all exported policies from this module
-        for(const [policyName, policy] of module.getExportedPolicies() ){
+        for (const [ policyName, policy ] of module.getExportedPolicies()) {
             this.setPolicy(policyName, policy, module.getName());
         }
 
         // add all exported static env values into the FW24 scope
-        for( const [envName, envValue] of module.getExportedEnvironmentVariables() ){
-            this.setEnvironmentVariable( envName, envValue, module.getName() );
+        for (const [ envName, envValue ] of module.getExportedEnvironmentVariables()) {
+            this.setEnvironmentVariable(envName, envValue, module.getName());
         }
 
         this.modules.set(name, module);
@@ -237,40 +237,40 @@ export class Fw24 {
         return `${name}-${this.config.name}-${this.config.environment || 'env'}-${this.config.account}`;
     }
 
-    getArn(type:string, name: string): string {
+    getArn(type: string, name: string): string {
         return `arn:aws:${type}:${this.config.region}:${this.config.account}:${name}`;
     }
 
     setCognitoAuthorizer(name: string, authorizer: IAuthorizer, defaultAuthorizer: boolean = false) {
-        this.logger.debug("setCognitoAuthorizer: ", {name, authorizer: authorizer.authorizerId, defaultAuthorizer} );
+        this.logger.debug("setCognitoAuthorizer: ", { name, authorizer: authorizer.authorizerId, defaultAuthorizer });
 
-        this.cognitoAuthorizers[name] = authorizer;
+        this.cognitoAuthorizers[ name ] = authorizer;
         // If this authorizer is the default, set it as the default authorizer
-        if(defaultAuthorizer !== false) {
+        if (defaultAuthorizer !== false) {
             this.defaultCognitoAuthorizer = authorizer;
         }
     }
 
     getCognitoAuthorizer(name?: string): IAuthorizer | undefined {
-        this.logger.info("getCognitoAuthorizer: ", {name});
+        this.logger.info("getCognitoAuthorizer: ", { name });
         // If no name is provided and no default authorizer is set, throw an error
-        if(name === undefined && this.defaultCognitoAuthorizer === undefined) {
+        if (name === undefined && this.defaultCognitoAuthorizer === undefined) {
             throw new Error('No Authorizer exists for cognito user pools. For policy based authentication, use AWS_IAM authoriser.');
         }
         // If no name is provided, return the default authorizer
-        if(name === undefined) {
+        if (name === undefined) {
             return this.defaultCognitoAuthorizer;
         }
         // if authorizer with name is not found, throw an error
-        if(this.cognitoAuthorizers[name] === undefined) {
+        if (this.cognitoAuthorizers[ name ] === undefined) {
             throw new Error(`Authorizer with name: ${name} not found`);
         }
         // If a name is provided, return the authorizer with that name
-        return this.cognitoAuthorizers[name];
+        return this.cognitoAuthorizers[ name ];
     }
 
     getAuthorizer(authorizationType: string, name?: string): IAuthorizer | undefined {
-        if(authorizationType === "COGNITO_USER_POOLS") {
+        if (authorizationType === "COGNITO_USER_POOLS") {
             return this.getCognitoAuthorizer(name);
         }
         return undefined;
@@ -285,32 +285,32 @@ export class Fw24 {
     }
 
     setEnvironmentVariable(name: string, value: any, prefix: string = '') {
-        this.environmentVariables[ensureValidEnvKey(name, prefix)] = value;
+        this.environmentVariables[ ensureValidEnvKey(name, prefix) ] = value;
     }
 
     getEnvironmentVariable(name: string, prefix: string = '', scope?: any): any {
         // if lookup is for construct output (based on prefix being one of the output types)
         // and the application has multiple stacks, then look for value in the stack export
         // if the scope is defined and is a stack and the output is from the same stack, then return the value
-        
-        if(prefix.length > 0 && scope && scope instanceof Stack && this.useMultiStackSetup()){
-            const isPrefixOutputType = Object.values(OutputType).includes(prefix.split('_')[0] as OutputType);
-            if(isPrefixOutputType){
+
+        if (prefix.length > 0 && scope && scope instanceof Stack && this.useMultiStackSetup()) {
+            const isPrefixOutputType = Object.values(OutputType).includes(prefix.split('_')[ 0 ] as OutputType);
+            if (isPrefixOutputType) {
                 // Check for SSM parameter reference
                 // make sure the key is specified as qualified key i.e. key_exportValueKey
                 // it is possible that the key is not qualified if the prefix has output type and key name. ie. prefix: userpool_authmodule, key: userPoolId
-                if(!name.includes('_') && !prefix.includes('_')){
+                if (!name.includes('_') && !prefix.includes('_')) {
                     throw new Error(`Environment variable ${name} is not a qualified key. Please specify as key_exportValueKey. e.g. restAPI_restApiId`);
                 }
-                const ssmKey = this.environmentVariables[ensureValidEnvKey(name, `SSM:${prefix}`)];
-                
-                if(ssmKey){
-                    const stackName = ssmKey.split('/')[1];
+                const ssmKey = this.environmentVariables[ ensureValidEnvKey(name, `SSM:${prefix}`) ];
+
+                if (ssmKey) {
+                    const stackName = ssmKey.split('/')[ 1 ];
                     this.logger.debug(`Checking if multi-stack setup should be used for environment variable: ${ensureValidEnvKey(name, prefix)} in stack: ${stackName} called from stack: ${scope.stackName} - ${this.useMultiStackSetup(stackName, scope)}`);
-                    if(this.useMultiStackSetup(stackName, scope)){
+                    if (this.useMultiStackSetup(stackName, scope)) {
                         // Add cross-stack dependency
-                        const sourceStack = this.stacks[stackName];
-                        if(sourceStack){
+                        const sourceStack = this.stacks[ stackName ];
+                        if (sourceStack) {
                             scope.addDependency(sourceStack);
                             this.logger.debug(`Added dependency from ${scope.stackName} to ${stackName} for SSM key: ${ssmKey}`);
                         }
@@ -327,19 +327,19 @@ export class Fw24 {
             }
         }
 
-        return this.environmentVariables[ensureValidEnvKey(name, prefix)];
+        return this.environmentVariables[ ensureValidEnvKey(name, prefix) ];
     }
 
-    hasEnvironmentVariable(name: string, prefix: string = ''): boolean{
-        return ( ensureValidEnvKey(name, prefix) in this.environmentVariables);
+    hasEnvironmentVariable(name: string, prefix: string = ''): boolean {
+        return (ensureValidEnvKey(name, prefix) in this.environmentVariables);
     }
 
     resolveEnvVariables = (env: ILambdaEnvConfig[] = [], scope?: any) => {
         const resolved: any = {};
-        for (const envConfig of env ) {
+        for (const envConfig of env) {
             const value = envConfig.value ?? this.getEnvironmentVariable(envConfig.name, envConfig.prefix, scope);
             if (value) {
-                resolved[envConfig.exportName ?? envConfig.name] = value;
+                resolved[ envConfig.exportName ?? envConfig.name ] = value;
             } else {
                 this.logger.warn(`Environment variable [prefix: ${envConfig.prefix}] ${envConfig.name} not found in the environment variables.`);
             }
@@ -347,7 +347,7 @@ export class Fw24 {
         return resolved;
     }
 
-    
+
     /**
      * Resolves the value for the given template from the Fw24-scope env if it follows the conventions like `env:xxx:yyy`, `env:yyy`.
      * 
@@ -356,14 +356,14 @@ export class Fw24 {
      * @returns The resolved value for the key.
      */
     tryResolveEnvKeyTemplate = (keyTemplate: string) => {
-      if(keyTemplate.startsWith('env:')){
-        // env:userModule:Users_Table_name => ['env', 'userModule', 'Users_Table_name'];
-        const parts = keyTemplate.split(':'); 
-        
-        // get the actual value from the fw24 scope ==> fw24.get('Users_Table_name', 'userModule');
-        keyTemplate = parts.length === 3 ? this.getEnvironmentVariable(parts[2], parts[1]) : this.getEnvironmentVariable(parts[1]);
-      }
-      return keyTemplate;
+        if (keyTemplate.startsWith('env:')) {
+            // env:userModule:Users_Table_name => ['env', 'userModule', 'Users_Table_name'];
+            const parts = keyTemplate.split(':');
+
+            // get the actual value from the fw24 scope ==> fw24.get('Users_Table_name', 'userModule');
+            keyTemplate = parts.length === 3 ? this.getEnvironmentVariable(parts[ 2 ], parts[ 1 ]) : this.getEnvironmentVariable(parts[ 1 ]);
+        }
+        return keyTemplate;
     }
 
     setPolicy(policyName: string, value: PolicyStatementProps | PolicyStatement, prefix: string = '') {
@@ -375,34 +375,34 @@ export class Fw24 {
         return this.policyStatements.get(ensureValidEnvKey(policyName, prefix));
     }
 
-    hasPolicy(policyName: string, prefix: string = ''): boolean{
+    hasPolicy(policyName: string, prefix: string = ''): boolean {
         return this.policyStatements.has(ensureValidEnvKey(policyName, prefix));
     }
-    
+
     // set the output of a construct
     // if exportValueAlias is not provided, the export value key will be used as the environment variable key. i.e when using custom resource like CfnIdentityPool 
     // the output is the reference to the custom resource. The reference is not the physical id of the custom resource, but a logical id
     // that is resolved to the physical id at runtime. In this case, the exportValueAlias is the key name of the custom resource.
     setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType, exportValueKey?: string, exportValueAlias?: string) {
-        this.logger.debug(`setConstructOutput: ${construct.name}`, {outputType, key});
-        if(outputType){
+        this.logger.debug(`setConstructOutput: ${construct.name}`, { outputType, key });
+        if (outputType) {
             construct.output = {
                 ...construct.output,
-                [outputType]: {
-                    ...construct.output?.[outputType],
-                    [key]: value
+                [ outputType ]: {
+                    ...construct.output?.[ outputType ],
+                    [ key ]: value
                 }
             }
             this.setEnvironmentVariable(key, value, `${construct.name}_${outputType}`);
-            this.logger.debug(`setEnvironmentVariable: ${key}`, {prefix: `${construct.name}_${outputType}`});
+            this.logger.debug(`setEnvironmentVariable: ${key}`, { prefix: `${construct.name}_${outputType}` });
 
             // in case of object reference, export the output to be used in other stacks
             let outputValue = value;
-            if(typeof value === 'object' && exportValueKey){
-                outputValue = value[exportValueKey];
-            } else if(typeof value === 'object' && exportValueKey === undefined){
+            if (typeof value === 'object' && exportValueKey) {
+                outputValue = value[ exportValueKey ];
+            } else if (typeof value === 'object' && exportValueKey === undefined) {
                 return;
-            } else if(typeof value !== 'object'){
+            } else if (typeof value !== 'object') {
                 return;
             }
 
@@ -415,12 +415,12 @@ export class Fw24 {
                 value: outputValue,
                 exportName: stackExportName,
             });
-            
+
             // set the environment variable for the direct reference
             this.setEnvironmentVariable(`${key}_${exportValueAlias || exportValueKey}`, outputValue, outputType);
             // Store SSM parameter for cross-stack reference
             this.logger.debug(`useMultiStackSetup: ${this.useMultiStackSetup()}`);
-            if(this.useMultiStackSetup()){
+            if (this.useMultiStackSetup()) {
                 const ssmKey = `/${construct.mainStack.stackName}/${outputType}/${sanitizedKey}/${exportValueAlias || exportValueKey}`;
                 // set the environment variable for the cross-stack reference using SSM parameter
                 this.setEnvironmentVariable(`${key}_${exportValueAlias || exportValueKey}`, ssmKey, `SSM:${outputType}`);
@@ -433,7 +433,7 @@ export class Fw24 {
         } else {
             construct.output = {
                 ...construct.output,
-                [key]: value
+                [ key ]: value
             }
             this.setEnvironmentVariable(key, value, construct.name);
         }
@@ -441,32 +441,32 @@ export class Fw24 {
 
     addDynamoTable(name: string, table: TableV2) {
         name = ensureNoSpecialChars(name);
-        this.logger.debug("addDynamoTable:", {name} );
-        this.dynamoTables[name] = table;
+        this.logger.debug("addDynamoTable:", { name });
+        this.dynamoTables[ name ] = table;
     }
 
-    getDynamoTable(name: string): TableV2{
-        return this.dynamoTables[ensureNoSpecialChars(name)];
+    getDynamoTable(name: string): TableV2 {
+        return this.dynamoTables[ ensureNoSpecialChars(name) ];
     }
 
     addRouteToRolePolicy(route: string, groups: string[], requireRouteInGroupConfig: boolean = false) {
-        if(!groups || groups.length === 0) {
+        if (!groups || groups.length === 0) {
             groups = this.getEnvironmentVariable('Groups', 'cognito');
-            if(!groups) {
+            if (!groups) {
                 this.logger.warn(`No groups defined. Adding route: ${route} to role policy for default authenticated role.`);
-                groups = ['default'];
+                groups = [ 'default' ];
             }
         }
         let routeAddedToGroupPolicy = false;
         for (const groupName of groups) {
             // if requireRouteInGroupConfig is true, check if the route is in the group config
-            if(requireRouteInGroupConfig && (!this.getEnvironmentVariable('Routes', 'cognito_' + groupName) || !this.getEnvironmentVariable('Routes', 'cognito_' + groupName).includes(route))) {
+            if (requireRouteInGroupConfig && (!this.getEnvironmentVariable('Routes', 'cognito_' + groupName) || !this.getEnvironmentVariable('Routes', 'cognito_' + groupName).includes(route))) {
                 continue;
             }
             // get role
-            this.logger.debug("addRouteToRolePolicy:", {route, groupName});
+            this.logger.debug("addRouteToRolePolicy:", { route, groupName });
             const role: Role = this.getEnvironmentVariable('Role', 'cognito_' + groupName);
-            if(!role) {
+            if (!role) {
                 this.logger.error(`Role not found for group: ${groupName}. Role is required to add route: ${route} to role policy. Please make sure you have a group defined in your config with the name: ${groupName}.`);
                 return;
             }
@@ -474,7 +474,7 @@ export class Fw24 {
             role.addToPolicy(this.getRoutePolicyStatement(route));
             routeAddedToGroupPolicy = true;
         }
-        if(!routeAddedToGroupPolicy) {
+        if (!routeAddedToGroupPolicy) {
             this.logger.error(`Route ${route} not found in any group config. Please add the route to a group config to secure access.`);
         }
     }
@@ -483,11 +483,11 @@ export class Fw24 {
         // write the policy statement
         const statement = new PolicyStatement({
             effect: Effect.ALLOW,
-            actions: ['execute-api:Invoke'],
-            resources: [`arn:aws:execute-api:*:*:*/*/*/${route}`],
+            actions: [ 'execute-api:Invoke' ],
+            resources: [ `arn:aws:execute-api:*:*:*/*/*/${route}` ],
         });
 
-        this.logger.debug("RoutePolicyStatement:", {route, statement});
+        this.logger.debug("RoutePolicyStatement:", { route, statement });
 
         return statement;
     }
