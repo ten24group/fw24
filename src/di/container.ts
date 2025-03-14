@@ -35,10 +35,66 @@ import { applyMiddlewares, applyMiddlewaresAsync, filterAndSortProviders, flatte
 import { getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPropertyDependenciesMetadata, } from './metadata';
 
 import { DI_TOKENS } from '../const';
+import { FrameworkError } from '../errors';
 
-class NoProviderFoundError extends Error {
+export class NoProviderFoundError extends FrameworkError {
     constructor(token: string, container: IDIContainer, criteria: any = {}) {
-        super(`No provider found for ${token} | DIContainer[${container.containerId}] | Criteria[${JSON.stringify(criteria)}]`);
+        super(`No provider found for ${token}`, { criteria, container: container.containerId });
+    }
+}
+
+// Define custom error classes
+class ModuleMetadataError extends FrameworkError {
+    constructor(moduleName: string, containerId: string) {
+        super(`Module ${moduleName} does not have any metadata, make sure it's decorated with @DIModule(). DIContainer[${containerId}]`);
+    }
+}
+
+class NothingToExportError extends FrameworkError {
+    constructor(token: string, containerId: string) {
+        super(`Nothing To export; No providers found for ${token}. DIContainer[${containerId}]`);
+    }
+}
+
+class ProviderConfigurationError extends FrameworkError {
+    constructor(providerId: string, containerId: string) {
+        super(`Provider for '${providerId}' is not correctly configured. DIContainer[${containerId}]`);
+    }
+}
+
+class CircularDependencyError extends FrameworkError {
+    constructor(path: string[], containerId: string) {
+        super(`Circular dependency detected: ${path.join(' -> ')}. DIContainer[${containerId}]`);
+    }
+}
+
+class InitializationMethodError extends FrameworkError {
+    constructor(instanceName: string, errorMessage: string, containerId: string) {
+        super(`Initialization method failed for ${instanceName}: ${errorMessage}. DIContainer[${containerId}]`);
+    }
+}
+
+class InvalidDependencyCriteriaError extends FrameworkError {
+    constructor(criteria: any) {
+        super(`Invalid dependency criteria ${JSON.stringify(criteria)}`);
+    }
+}
+
+class InitializationMethodTypeError extends FrameworkError {
+    constructor(initMethod: string, instanceName: string, containerId: string) {
+        super(`Initialization method ${initMethod} is not a function on ${instanceName}. DIContainer[${containerId}]`);
+    }
+}
+
+class NoEntityServiceProviderError extends FrameworkError {
+    constructor(entityName: string, containerId: string) {
+        super(`No Entity-Service provider found for entity- ${entityName}. DIContainer[${containerId}]`);
+    }
+}
+
+class NoEntitySchemaProviderError extends FrameworkError {
+    constructor(entityName: string, containerId: string) {
+        super(`No Entity-Schema provider found for entity- ${entityName}. DIContainer[${containerId}]`);
     }
 }
 
@@ -229,7 +285,7 @@ export class DIContainer implements IDIContainer {
         const moduleMeta = getModuleMetadata(target);
 
         if (!moduleMeta) {
-            throw new Error(`Module ${target.name} does not have any metadata, make sure it's decorated with @DIModule(). DIContainer[${this.containerId}]`);
+            throw new ModuleMetadataError(target.name, this.containerId);
         }
 
         const { imports = [], exports = [], providers = [], identifier } = moduleMeta;
@@ -238,7 +294,7 @@ export class DIContainer implements IDIContainer {
         if (!moduleMeta.hasContainer()) {
 
             const moduleContainer = new DIContainer(undefined, identifier);
-            this.logger.info(`Module ${moduleMeta.identifier} metadata does not have a container, assigning one.`, { id: moduleContainer.containerId });
+            // this.logger.info(`Module ${moduleMeta.identifier} metadata does not have a container, assigning one.`, { id: moduleContainer.containerId });
 
             moduleMeta.setContainer(moduleContainer);
 
@@ -324,7 +380,7 @@ export class DIContainer implements IDIContainer {
         }
 
         if (!foundProvidersForToken) {
-            throw new Error(`Nothing To export; No providers found for ${token}. DIContainer[${this.containerId}]`);
+            throw new NothingToExportError(token, this.containerId);
         }
     }
 
@@ -408,10 +464,13 @@ export class DIContainer implements IDIContainer {
         });
 
         if (existingProvider) {
-            this.logger.warn(`Provider for ${token} with same priority, type, forEntity and tags already exists, replacing it. | Options[${JSON.stringify(options)}]`);
-            const index = tokenProviders.indexOf(existingProvider);
+            // const index = tokenProviders.indexOf(existingProvider);
             // delete the existing provider
-            tokenProviders.splice(index, 1);
+            // tokenProviders.splice(index, 1);
+
+            // DO NOT replace the existing provider, just log a warning
+            // this.logger.warn(`Provider for ${token} with same priority, type, forEntity and tags already exists, replacing it. | Options[${JSON.stringify(options)}]`);
+            return;
         }
 
         const internalProviderOptions = {
@@ -568,7 +627,7 @@ export class DIContainer implements IDIContainer {
             pathProviders.forEach(provider => {
 
                 if (bestProviders.has(provider._id)) {
-                    this.logger.info(`Provider with id ${provider._id} already exists in best-providers, skipping it. | Criteria: [${criteriaString}]`);
+                    // this.logger.info(`Provider with id ${provider._id} already exists in best-providers, skipping it. | Criteria: [${criteriaString}]`);
                     return;
                 }
 
@@ -606,7 +665,7 @@ export class DIContainer implements IDIContainer {
                 childExportedProviders.forEach(provider => {
 
                     if (bestProviders.has(provider._id)) {
-                        this.logger.info(`Provider with id ${provider._id} already exists in best-providers, skipping exported-provider from child container: ${child.containerId} | Criteria: [${criteriaString}]`);
+                        // this.logger.info(`Provider with id ${provider._id} already exists in best-providers, skipping exported-provider from child container: ${child.containerId} | Criteria: [${criteriaString}]`);
                         return;
                     }
 
@@ -683,7 +742,7 @@ export class DIContainer implements IDIContainer {
         }
 
         if (path.has(_id)) {
-            throw new Error(`Circular dependency detected: ${Array.from(path).join(' -> ')} -> ${_id}. DIContainer[${this.containerId}]`);
+            throw new CircularDependencyError(Array.from(path), this.containerId);
         }
 
         path.add(_id);
@@ -756,7 +815,7 @@ export class DIContainer implements IDIContainer {
             return provider.useConfig as Async extends true ? Promise<T> : T;
         }
 
-        throw new Error(`Provider for '${_id}' is not correctly configured. DIContainer[${this.containerId}]`);
+        throw new ProviderConfigurationError(_id, this.containerId);
     }
 
     private createClassInstance<T, Async extends boolean = false>(
@@ -835,7 +894,7 @@ export class DIContainer implements IDIContainer {
                 if (normalizedDep.type == 'service') {
                     return this.resolveEntityService(normalizedDep.forEntity, normalizedDep, async)
                 }
-                throw new Error(`Invalid dependency criteria ${JSON.stringify(normalizedDep)}`)
+                throw new InvalidDependencyCriteriaError(JSON.stringify(normalizedDep));
             }
 
             return this.resolve<T, Async>(normalizedDep.token, normalizedDep, path, async)
@@ -847,12 +906,11 @@ export class DIContainer implements IDIContainer {
                 &&
                 (normalizedDep.isOptional || normalizedDep.defaultValue !== undefined)
             ) {
-                this.logger.info(`No provider found for ${JSON.stringify(dep)}`, { path })
+                // this.logger.info(`No provider found for ${JSON.stringify(dep)}`, { path })
                 return normalizedDep.defaultValue ?? undefined;
             }
 
             throw e;
-
         }
     }
 
@@ -874,10 +932,10 @@ export class DIContainer implements IDIContainer {
                 try {
                     theInitMethod();
                 } catch (error: any) {
-                    throw new Error(`Initialization method failed for ${instance.constructor.name}: ${error.message}. DIContainer[${this.containerId}]`);
+                    throw new InitializationMethodError(instance.constructor.name, error.message, this.containerId);
                 }
             } else {
-                throw new Error(`Initialization method ${String(initMethod)} is not a function on ${instance.constructor.name}. DIContainer[${this.containerId}]`);
+                throw new InitializationMethodTypeError(String(initMethod), instance.constructor.name, this.containerId);
             }
         }
     }
@@ -960,7 +1018,7 @@ export class DIContainer implements IDIContainer {
         });
 
         if (bestProviders.length === 0) {
-            throw new Error(`No Entity-Service provider found for entity- ${entityName}. DIContainer[${this.containerId}]`);
+            throw new NoEntityServiceProviderError(String(entityName), this.containerId);
         }
         const options = bestProviders[ 0 ];
 
@@ -1008,7 +1066,7 @@ export class DIContainer implements IDIContainer {
         });
 
         if (bestProviders.length === 0) {
-            throw new Error(`No Entity-Schema provider found for entity- ${entityName}. DIContainer[${this.containerId}]`);
+            throw new NoEntitySchemaProviderError(String(entityName), this.containerId);
         }
         const options = bestProviders[ 0 ];
 
@@ -1084,10 +1142,10 @@ export class DIContainer implements IDIContainer {
                 try {
                     await theInitMethod();
                 } catch (error: any) {
-                    throw new Error(`Initialization method failed for ${instance.constructor.name}: ${error.message}. DIContainer[${this.containerId}]`);
+                    throw new InitializationMethodError(instance.constructor.name, error.message, this.containerId);
                 }
             } else {
-                throw new Error(`Initialization method ${String(initMethod)} is not a function on ${instance.constructor.name}. DIContainer[${this.containerId}]`);
+                throw new InitializationMethodTypeError(String(initMethod), instance.constructor.name, this.containerId);
             }
         }
     }
@@ -1127,7 +1185,7 @@ export class DIContainer implements IDIContainer {
             allProvidersFromChildContainers,
         });
 
-        this.logger.warn(`Parent Container Id, [Parent: ${this.parent?.containerId}]`);
+        this.logger.info(`Parent Container Id, [Parent: ${this.parent?.containerId}]`);
 
         for (const ip of internalProviders) {
             let filtered = {
