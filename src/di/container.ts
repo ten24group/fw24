@@ -30,73 +30,41 @@ import {
     isValueProviderOptions,
 } from './../utils/di';
 
-import { applyMiddlewares, applyMiddlewaresAsync, filterAndSortProviders, flattenConfig, getPathValue, hasConstructor, makeDIToken, matchesPattern, setPathValue, stripDITokenNamespace, validateProviderOptions } from './utils';
+import {
+    applyMiddlewares,
+    applyMiddlewaresAsync,
+    filterAndSortProviders,
+    flattenConfig,
+    getPathValue,
+    hasConstructor,
+    makeDIToken,
+    matchesPattern,
+    setPathValue,
+    stripDITokenNamespace,
+    validateProviderOptions
+} from './utils';
 
-import { getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPropertyDependenciesMetadata, } from './metadata';
+import {
+    getConstructorDependenciesMetadata,
+    getModuleMetadata,
+    getOnInitHookMetadata,
+    getPropertyDependenciesMetadata,
+} from './metadata';
 
 import { DI_TOKENS } from '../const';
-import { FrameworkError } from '../errors';
 
-export class NoProviderFoundError extends FrameworkError {
-    constructor(token: string, container: IDIContainer, criteria: any = {}) {
-        super(`No provider found for ${token}`, { criteria, container: container.containerId });
-    }
-}
-
-// Define custom error classes
-class ModuleMetadataError extends FrameworkError {
-    constructor(moduleName: string, containerId: string) {
-        super(`Module ${moduleName} does not have any metadata, make sure it's decorated with @DIModule(). DIContainer[${containerId}]`);
-    }
-}
-
-class NothingToExportError extends FrameworkError {
-    constructor(token: string, containerId: string) {
-        super(`Nothing To export; No providers found for ${token}. DIContainer[${containerId}]`);
-    }
-}
-
-class ProviderConfigurationError extends FrameworkError {
-    constructor(providerId: string, containerId: string) {
-        super(`Provider for '${providerId}' is not correctly configured. DIContainer[${containerId}]`);
-    }
-}
-
-class CircularDependencyError extends FrameworkError {
-    constructor(path: string[], containerId: string) {
-        super(`Circular dependency detected: ${path.join(' -> ')}. DIContainer[${containerId}]`);
-    }
-}
-
-class InitializationMethodError extends FrameworkError {
-    constructor(instanceName: string, errorMessage: string, containerId: string) {
-        super(`Initialization method failed for ${instanceName}: ${errorMessage}. DIContainer[${containerId}]`);
-    }
-}
-
-class InvalidDependencyCriteriaError extends FrameworkError {
-    constructor(criteria: any) {
-        super(`Invalid dependency criteria ${JSON.stringify(criteria)}`);
-    }
-}
-
-class InitializationMethodTypeError extends FrameworkError {
-    constructor(initMethod: string, instanceName: string, containerId: string) {
-        super(`Initialization method ${initMethod} is not a function on ${instanceName}. DIContainer[${containerId}]`);
-    }
-}
-
-class NoEntityServiceProviderError extends FrameworkError {
-    constructor(entityName: string, containerId: string) {
-        super(`No Entity-Service provider found for entity- ${entityName}. DIContainer[${containerId}]`);
-    }
-}
-
-class NoEntitySchemaProviderError extends FrameworkError {
-    constructor(entityName: string, containerId: string) {
-        super(`No Entity-Schema provider found for entity- ${entityName}. DIContainer[${containerId}]`);
-    }
-}
+import {
+    CircularDependencyError,
+    InitializationMethodError,
+    InitializationMethodTypeError,
+    InvalidDependencyCriteriaError,
+    ModuleMetadataError,
+    NoEntitySchemaProviderError,
+    NoEntityServiceProviderError,
+    NoProviderFoundError,
+    NothingToExportError,
+    ProviderConfigurationError
+} from './errors';
 
 export class DIContainer implements IDIContainer {
 

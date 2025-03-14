@@ -18,6 +18,8 @@ export * from './client/forbidden-error';
 export * from './client/not-found-error';
 
 export * from './server/internal-server-error';
+export * from './server/validation-failed-error';
+export * from './server/invalid-http-request-validation-rule-error';
 
 // Export entity-specific errors
 export * from '../entity/errors';

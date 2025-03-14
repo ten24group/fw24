@@ -708,60 +708,52 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      */
 
     public async get(options: GetOptions<S>) {
-        try {
-            const { identifiers, selections } = options;
+        const { identifiers, selections } = options;
 
-            this.logger.debug(`Called ~ get ~ entityName: ${this.getEntityName()}: `, { identifiers, attributes: selections });
 
-            let formattedSelections = selections;
-            if (!selections) {
-                formattedSelections = this.getDefaultSerializationAttributeNames()
-            }
-
-            if (Array.isArray(formattedSelections)) {
-                const parsedOptions = parseEntityAttributePaths(formattedSelections as string[]);
-                formattedSelections = this.inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
-            }
-
-            this.logger.debug(`Formatted selections for entity: ${this.getEntityName()}`, formattedSelections);
-
-            const requiredSelectAttributes = Object.entries(formattedSelections as any).reduce((acc, [ attName, options ]) => {
-                acc.push(attName);
-                if (isObject(options) && options.identifiers) {
-                    const identifiers: Array<RelationIdentifier<any>> = Array.isArray(options.identifiers) ? options.identifiers : [ options.identifiers ];
-                    const topKeys = identifiers.map(identifier => identifier.source?.split?.('.')?.[ 0 ]).filter(key => !!key) as string[];
-                    acc.push(...topKeys);
-                }
-                return acc;
-            }, [] as string[]);
-
-            const uniqueSelectionAttributes = [ ...new Set(requiredSelectAttributes) ]
-
-            const entity = await getEntity<S>({
-                id: identifiers,
-                attributes: uniqueSelectionAttributes,
-                entityName: this.getEntityName(),
-                entityService: this,
-            });
-
-            this.logger.debug(`Retrieved entity: ${this.getEntityName()}`, JsonSerializer.stringify(entity));
-
-            if (!!formattedSelections && entity?.data) {
-                const relationalAttributes = Object.entries(formattedSelections)?.map(([ attributeName, options ]) => [ attributeName, options ])
-                    .filter(([ , options ]) => isObject(options));
-
-                if (relationalAttributes.length) {
-                    await this.hydrateRecords(relationalAttributes as any, [ entity.data ]);
-                }
-            }
-
-            return entity?.data;
-        } catch (error: any) {
-            if (error instanceof EntityValidationError) {
-                throw error;
-            }
-            throw new DatabaseError(`Failed to get ${this.getEntityName()}: ${error.message}`);
+        let formattedSelections = selections;
+        if (!selections) {
+            formattedSelections = this.getDefaultSerializationAttributeNames()
         }
+
+        if (Array.isArray(formattedSelections)) {
+            const parsedOptions = parseEntityAttributePaths(formattedSelections as string[]);
+            formattedSelections = this.inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
+        }
+
+        this.logger.debug(`Formatted selections for entity: ${this.getEntityName()}`, formattedSelections);
+
+        const requiredSelectAttributes = Object.entries(formattedSelections as any).reduce((acc, [ attName, options ]) => {
+            acc.push(attName);
+            if (isObject(options) && options.identifiers) {
+                const identifiers: Array<RelationIdentifier<any>> = Array.isArray(options.identifiers) ? options.identifiers : [ options.identifiers ];
+                const topKeys = identifiers.map(identifier => identifier.source?.split?.('.')?.[ 0 ]).filter(key => !!key) as string[];
+                acc.push(...topKeys);
+            }
+            return acc;
+        }, [] as string[]);
+
+        const uniqueSelectionAttributes = [ ...new Set(requiredSelectAttributes) ]
+
+        const entity = await getEntity<S>({
+            id: identifiers,
+            attributes: uniqueSelectionAttributes,
+            entityName: this.getEntityName(),
+            entityService: this,
+        });
+
+        this.logger.debug(`Retrieved entity: ${this.getEntityName()}`, JsonSerializer.stringify(entity));
+
+        if (!!formattedSelections && entity?.data) {
+            const relationalAttributes = Object.entries(formattedSelections)?.map(([ attributeName, options ]) => [ attributeName, options ])
+                .filter(([ , options ]) => isObject(options));
+
+            if (relationalAttributes.length) {
+                await this.hydrateRecords(relationalAttributes as any, [ entity.data ]);
+            }
+        }
+
+        return entity?.data;
     }
 
 
@@ -857,60 +849,58 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @returns The created entity.
      */
     public async create(payload: CreateEntityItemTypeFromSchema<S>) {
-        try {
-            this.logger.debug(`Called ~ create ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
 
-            const payloadCopy = { ...payload }
+        const payloadCopy = { ...payload }
 
-            const schema = this.getEntitySchema();
-            const entitySlugAttribute = getAttributeNameBy(schema, 'slug') || '';
-            const entityNameAttribute = getAttributeNameBy(schema, 'name') || '';
+        const schema = this.getEntitySchema();
+        const entitySlugAttribute = getAttributeNameBy(schema, 'slug') || '';
+        const entityNameAttribute = getAttributeNameBy(schema, 'name') || '';
 
-            if (entitySlugAttribute && !(entitySlugAttribute in payloadCopy)) {
-                if (entityNameAttribute && (entityNameAttribute in payloadCopy)) {
-                    payloadCopy[ entitySlugAttribute as keyof typeof payloadCopy ] = toSlug(payloadCopy[ entityNameAttribute ]) as any;
-                }
+        if (entitySlugAttribute && !(entitySlugAttribute in payloadCopy)) {
+            if (entityNameAttribute && (entityNameAttribute in payloadCopy)) {
+                payloadCopy[ entitySlugAttribute as keyof typeof payloadCopy ] = toSlug(payloadCopy[ entityNameAttribute ]) as any;
             }
-
-            const uniqueFields = this.getUniqueAttributes();
-            const skipCheckingAttributesUniqueness = false;
-            const maxAttemptsForCreatingUniqueAttributeValue = 5;
-
-            if (!skipCheckingAttributesUniqueness && uniqueFields.length) {
-                let uniquenessChecks = [];
-
-                for (const { name } of uniqueFields) {
-                    if (name! in payloadCopy) {
-                        let value = payloadCopy[ name! ];
-                        uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
-                            payloadToUpdate: payloadCopy,
-                            attributeName: name!,
-                            attributeValue: value,
-                            maxAttemptsForCreatingUniqueAttributeValue,
-                        }));
-                    }
-                }
-
-                const checkResults = await Promise.all(uniquenessChecks.map(check => check()));
-
-                if (checkResults.includes(false)) {
-                    throw new EntityValidationError("Unable to ensure uniqueness for one or more fields.");
-                }
-            }
-
-            const entity = await createEntity<S>({
-                data: payloadCopy,
-                entityName: this.getEntityName(),
-                entityService: this,
-            });
-
-            return entity;
-        } catch (error: any) {
-            if (error instanceof EntityValidationError) {
-                throw error;
-            }
-            throw new DatabaseError(`Failed to create ${this.getEntityName()}: ${error.message}`);
         }
+
+        const uniqueFields = this.getUniqueAttributes();
+        const skipCheckingAttributesUniqueness = false;
+        const maxAttemptsForCreatingUniqueAttributeValue = 5;
+
+        if (!skipCheckingAttributesUniqueness && uniqueFields.length) {
+            let uniquenessChecks = [];
+
+            for (const { name } of uniqueFields) {
+                if (name! in payloadCopy) {
+                    let value = payloadCopy[ name! ];
+                    uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
+                        payloadToUpdate: payloadCopy,
+                        attributeName: name!,
+                        attributeValue: value,
+                        maxAttemptsForCreatingUniqueAttributeValue,
+                    }));
+                }
+            }
+
+            const checkResults = await Promise.all(uniquenessChecks.map(check => check()));
+
+            if (checkResults.includes(false)) {
+                const uniqueFieldsPath = uniqueFields.map(field => field.name!) ?? [];
+
+                throw new EntityValidationError([ {
+                    message: "Unable to ensure uniqueness for one or more fields.",
+                    path: uniqueFieldsPath,
+                    expected: [ 'unique', uniqueFields ],
+                } ]);
+            }
+        }
+
+        const entity = await createEntity<S>({
+            data: payloadCopy,
+            entityName: this.getEntityName(),
+            entityService: this,
+        });
+
+        return entity;
     }
 
     /**
@@ -1133,55 +1123,53 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @returns The updated entity.
      */
     public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>) {
-        try {
-            this.logger.debug(`Called ~ update ~ entityName: ${this.getEntityName()} ~ identifiers:, data:`, identifiers, data);
 
-            const uniqueFields = this.getUniqueAttributes();
-            const skipCheckingAttributesUniqueness = false;
-            const maxAttemptsForCreatingUniqueAttributeValue = 5;
+        const uniqueFields = this.getUniqueAttributes();
+        const skipCheckingAttributesUniqueness = false;
+        const maxAttemptsForCreatingUniqueAttributeValue = 5;
 
-            if (!skipCheckingAttributesUniqueness && uniqueFields.length) {
-                let uniquenessChecks = [];
+        if (!skipCheckingAttributesUniqueness && uniqueFields.length) {
+            let uniquenessChecks = [];
 
-                for (const { name, readOnly } of uniqueFields) {
-                    if (readOnly) {
-                        delete data[ name as keyof typeof data ];
-                        continue;
-                    }
-
-                    if (name! in data) {
-                        let value = data[ name as keyof typeof data ];
-                        uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
-                            payloadToUpdate: data,
-                            attributeName: name!,
-                            attributeValue: value,
-                            maxAttemptsForCreatingUniqueAttributeValue,
-                            ignoredEntityIdentifiers: identifiers,
-                        }));
-                    }
+            for (const { name, readOnly } of uniqueFields) {
+                if (readOnly) {
+                    delete data[ name as keyof typeof data ];
+                    continue;
                 }
 
-                const checkResults = await Promise.all(uniquenessChecks.map(check => check()));
-
-                if (checkResults.includes(false)) {
-                    throw new EntityValidationError("Unable to ensure uniqueness for one or more fields.");
+                if (name! in data) {
+                    let value = data[ name as keyof typeof data ];
+                    uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
+                        payloadToUpdate: data,
+                        attributeName: name!,
+                        attributeValue: value,
+                        maxAttemptsForCreatingUniqueAttributeValue,
+                        ignoredEntityIdentifiers: identifiers,
+                    }));
                 }
             }
 
-            const updatedEntity = await updateEntity<S>({
-                id: identifiers,
-                data: data,
-                entityName: this.getEntityName(),
-                entityService: this,
-            });
+            const checkResults = await Promise.all(uniquenessChecks.map(check => check()));
 
-            return updatedEntity;
-        } catch (error: any) {
-            if (error instanceof EntityValidationError) {
-                throw error;
+            if (checkResults.includes(false)) {
+                const uniqueFieldsPath = uniqueFields.map(field => field.name!) ?? [];
+
+                throw new EntityValidationError([ {
+                    message: "Unable to ensure uniqueness for one or more fields.",
+                    path: uniqueFieldsPath,
+                    expected: [ 'unique', uniqueFields ],
+                } ]);
             }
-            throw new DatabaseError(`Failed to update ${this.getEntityName()}: ${error.message}`);
         }
+
+        const updatedEntity = await updateEntity<S>({
+            id: identifiers,
+            data: data,
+            entityName: this.getEntityName(),
+            entityService: this,
+        });
+
+        return updatedEntity;
     }
 
     /**
