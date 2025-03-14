@@ -5,7 +5,7 @@ import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiers
 import type { EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 
 import { createLogger } from "../logging";
-import { JsonSerializer, camelCase, getValueByPath, isArray, isBoolean, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
+import { JsonSerializer, getValueByPath, isArray, isBoolean, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
 import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
@@ -544,10 +544,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             const parentKeyObj: Record<string, any> = {};
             for (const { source, target } of identifierMappings) {
 
-                const val = getValueByPath(child, source);
-                if (val == null) continue;
+                try {
+                    const val = getValueByPath(child, source);
+                    if (val == null) continue;
 
-                parentKeyObj[ target as string ] = val;
+                    parentKeyObj[ target as string ] = val;
+
+                } catch (error) {
+                    this.logger.error(`Error getting value for path: ${source}`, { error });
+                }
             }
 
             // If partial or empty, skip
