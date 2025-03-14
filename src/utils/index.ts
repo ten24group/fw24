@@ -1,4 +1,4 @@
-import { ErrorHandlerContext, ErrorHandlerResult, HttpStatusCode, ServerError } from '../errors';
+import { FrameworkError } from '../errors';
 
 export * from './cases';
 export * from './datatypes';
@@ -12,9 +12,9 @@ export * from './metadata';
 export * from './keys';
 export * from './env';
 
-export class ValueByPathError extends ServerError {
+export class ValueByPathError extends FrameworkError {
     constructor(message: string, details?: Record<string, any>) {
-        super(HttpStatusCode.INTERNAL_SERVER_ERROR, message, {
+        super(message, {
             ...details,
             errorType: 'ValueByPathError',
             timestamp: new Date().toISOString()
