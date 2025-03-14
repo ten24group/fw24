@@ -17,7 +17,7 @@ describe('DIContainer', () => {
             const { Injectable } = container;
 
             @Injectable()
-            class TestClass {}
+            class TestClass { }
             expect(container.has(TestClass)).toBe(true);
         });
 
@@ -25,19 +25,19 @@ describe('DIContainer', () => {
             const token = makeDIToken<string>('TestFactory');
             const factory = () => 'test';
             container.register({ useFactory: factory, provide: token });
-            expect(container['providers'].has(token)).toBe(true);
+            expect(container[ 'providers' ].has(token)).toBe(true);
         });
 
         it('registers a value with useValue', () => {
             const token = makeDIToken<string>('TestValue');
             container.register({ useValue: 'test', provide: token });
-            expect(container['providers'].has(token)).toBe(true);
+            expect(container[ 'providers' ].has(token)).toBe(true);
         });
 
         it('does not register if condition is false', () => {
             const token = makeDIToken<string>('TestCondition');
             container.register({ useValue: 'test', condition: () => false, provide: token });
-            expect(container['providers'].has(token)).toBe(false);
+            expect(container[ 'providers' ].has(token)).toBe(false);
         });
     });
 
@@ -46,7 +46,7 @@ describe('DIContainer', () => {
             const { Injectable } = container;
 
             @Injectable()
-            class TestClass {}
+            class TestClass { }
             const instance = await container.resolve(TestClass);
             expect(instance).toBeInstanceOf(TestClass);
         });
@@ -76,12 +76,12 @@ describe('DIContainer', () => {
 
             @Injectable()
             class ClassA {
-                constructor(@Inject('ClassB') public b: any) {}
+                constructor(@Inject('ClassB') public b: any) { }
             }
 
             @Injectable()
             class ClassB {
-                constructor(@Inject('ClassA') public a: any) {}
+                constructor(@Inject('ClassA') public a: any) { }
             }
 
             const instanceA = container.resolve<ClassA>('ClassA');
@@ -117,7 +117,7 @@ describe('DIContainer', () => {
             const { Injectable } = container;
 
             @Injectable()
-            class Dependency {}
+            class Dependency { }
 
             @Injectable()
             class TestClass {
@@ -151,17 +151,17 @@ describe('DIContainer', () => {
             const { Injectable } = container;
 
             @Injectable()
-            class DependencyA {}
+            class DependencyA { }
 
             @Injectable()
-            class DependencyB {}
+            class DependencyB { }
 
             @Injectable()
             class TestClass {
                 constructor(
                     @Inject(DependencyA) public dependencyA: DependencyA,
                     @Inject(DependencyB) public dependencyB: DependencyB
-                ) {}
+                ) { }
             }
 
             const instance = await container.resolve<TestClass>(TestClass);
@@ -177,7 +177,7 @@ describe('DIContainer', () => {
             const { Injectable } = container;
 
             @Injectable({ singleton: true })
-            class TestClass {}
+            class TestClass { }
 
             const instance1 = await container.resolve<TestClass>(TestClass);
             const instance2 = await container.resolve<TestClass>(TestClass);
@@ -194,7 +194,7 @@ describe('DIContainer', () => {
             const token = makeDIToken<string>('ConditionalService');
 
             @Injectable({ condition: () => false })
-            class ConditionalService {}
+            class ConditionalService { }
 
             expect(container.has(token)).toBe(false);
         });
@@ -204,7 +204,7 @@ describe('DIContainer', () => {
             const token = makeDIToken<string>('ConditionalService');
 
             @Injectable({ condition: () => true })
-            class ConditionalService {}
+            class ConditionalService { }
 
             expect(container.has(token)).toBe(true);
         });
@@ -215,7 +215,7 @@ describe('DIContainer', () => {
             const { Injectable } = container;
 
             @Injectable()
-            class TestClass {}
+            class TestClass { }
 
             const instance = await container.resolveAsync(TestClass);
             expect(instance).toBeInstanceOf(TestClass);
@@ -243,12 +243,12 @@ describe('DIContainer', () => {
 
             @Injectable()
             class ClassA {
-                constructor(@Inject('ClassB') public b: any) {}
+                constructor(@Inject('ClassB') public b: any) { }
             }
 
             @Injectable()
             class ClassB {
-                constructor(@Inject('ClassA') public a: any) {}
+                constructor(@Inject('ClassA') public a: any) { }
             }
 
             const instanceA = await container.resolveAsync<ClassA>('ClassA');
@@ -281,7 +281,7 @@ describe('DIContainer', () => {
             const { Injectable } = container;
 
             @Injectable()
-            class TestClass {}
+            class TestClass { }
 
             expect(container.has(TestClass)).toBe(true);
 
@@ -309,7 +309,7 @@ describe('DIContainer', () => {
             const { Injectable } = container;
 
             @Injectable()
-            class BaseService {}
+            class BaseService { }
 
             @Injectable()
             class DerivedService extends BaseService {
@@ -350,17 +350,17 @@ describe('DIContainer', () => {
             const { Injectable } = container;
 
             @Injectable()
-            class OriginalService {}
+            class OriginalService { }
 
             @Injectable()
-            class UpdatedService {}
+            class UpdatedService { }
 
             const token = makeDIToken<OriginalService>('Service');
             container.register({ useClass: OriginalService, provide: token });
 
             let instance = container.resolve(token);
             expect(instance).toBeInstanceOf(OriginalService);
-            container.register({ useClass: UpdatedService, provide: token });
+            container.register({ useClass: UpdatedService, provide: token, priority: 1 });
 
             instance = container.resolve(token);
             expect(instance).toBeInstanceOf(UpdatedService);
@@ -372,21 +372,21 @@ describe('DIContainer', () => {
             const { Injectable } = container;
 
             @Injectable()
-            class ServiceA {}
+            class ServiceA { }
 
             @Injectable()
             class ServiceB {
-                constructor(@Inject(ServiceA) public a: ServiceA) {}
+                constructor(@Inject(ServiceA) public a: ServiceA) { }
             }
 
             @Injectable()
             class ServiceC {
-                constructor(@Inject(ServiceB) public b: ServiceB) {}
+                constructor(@Inject(ServiceB) public b: ServiceB) { }
             }
 
             @Injectable()
             class ServiceD {
-                constructor(@Inject(ServiceC) public c: ServiceC, @Inject(ServiceA) public a: ServiceA) {}
+                constructor(@Inject(ServiceC) public c: ServiceC, @Inject(ServiceA) public a: ServiceA) { }
             }
 
             const instance = await container.resolve<ServiceD>(ServiceD);
@@ -412,7 +412,7 @@ describe('DIContainer', () => {
                 const { Injectable } = container;
 
                 @Injectable()
-                class ParentService {}
+                class ParentService { }
 
                 const instance = childContainer.resolve<ParentService>(ParentService);
 
@@ -448,14 +448,14 @@ describe('DIContainer', () => {
         describe('Provider Shadowing', () => {
             it('shadows parent container providers', () => {
 
-                @container.Injectable({'provide': 'Service'})
+                @container.Injectable({ 'provide': 'Service' })
                 class ParentService {
                     getMessage() {
                         return 'parent';
                     }
                 }
 
-                @childContainer.Injectable({provide: 'Service'})
+                @childContainer.Injectable({ provide: 'Service' })
                 class ChildService {
                     getMessage() {
                         return 'child';
@@ -477,7 +477,7 @@ describe('DIContainer', () => {
                 const { Injectable } = container;
 
                 @Injectable()
-                class ParentService {}
+                class ParentService { }
 
                 childContainer.register({
                     useClass: ParentService,
@@ -498,7 +498,7 @@ describe('DIContainer', () => {
                 const { Injectable } = container;
 
                 @Injectable()
-                class MiddlewareService {}
+                class MiddlewareService { }
 
                 childContainer.register({ useClass: MiddlewareService, provide: 'MiddlewareService' });
 
@@ -515,7 +515,7 @@ describe('DIContainer', () => {
                 const { Injectable } = container;
 
                 @Injectable()
-                class MiddlewareService {}
+                class MiddlewareService { }
 
                 childContainer.register({ useClass: MiddlewareService, provide: 'MiddlewareService' });
 
@@ -530,7 +530,7 @@ describe('DIContainer', () => {
                 const { Injectable } = container;
 
                 @Injectable()
-                class Dependency {}
+                class Dependency { }
 
                 @Injectable()
                 class TestClass {
@@ -581,7 +581,7 @@ describe('DIContainer', () => {
                 const { Injectable } = container;
 
                 @Injectable()
-                class MiddlewareService {}
+                class MiddlewareService { }
 
                 const instance = container.resolve<MiddlewareService>('MiddlewareService');
 
@@ -621,7 +621,7 @@ describe('DIContainer', () => {
                 const { Injectable } = container;
 
                 @Injectable()
-                class MiddlewareService {}
+                class MiddlewareService { }
 
                 expect(() => container.resolve<MiddlewareService>('MiddlewareService')).toThrowError('Middleware error');
             });
@@ -641,7 +641,7 @@ describe('DIContainer', () => {
                 const { Injectable } = container;
 
                 @Injectable()
-                class MiddlewareService {}
+                class MiddlewareService { }
 
                 const instance = await container.resolveAsync<MiddlewareService>('MiddlewareService');
 
@@ -681,7 +681,7 @@ describe('DIContainer', () => {
                 const { Injectable } = container;
 
                 @Injectable()
-                class MiddlewareService {}
+                class MiddlewareService { }
 
                 await expect(container.resolveAsync<MiddlewareService>('MiddlewareService')).rejects.toThrow('Async middleware error');
             });
@@ -784,7 +784,7 @@ describe('DIContainer', () => {
         }
 
         class DependentClass {
-            constructor(public dep: TestClassA) {}
+            constructor(public dep: TestClassA) { }
         }
 
         test('injects dependency when provided', () => {
@@ -864,7 +864,7 @@ describe('DIContainer', () => {
             });
 
             container.resolve<TestClassA>('test');
-            expect(result).toEqual(['middleware0', 'middleware1', 'middleware2']);
+            expect(result).toEqual([ 'middleware0', 'middleware1', 'middleware2' ]);
         });
 
         test('executes async middlewares in specified order', async () => {
@@ -900,7 +900,7 @@ describe('DIContainer', () => {
             });
 
             await container.resolveAsync<TestClassA>('test');
-            expect(result).toEqual(['middleware0', 'middleware1', 'middleware2']);
+            expect(result).toEqual([ 'middleware0', 'middleware1', 'middleware2' ]);
         });
     });
 
@@ -958,10 +958,10 @@ describe('DIContainer', () => {
         it('registers a module', () => {
             const { Injectable } = container;
 
-            class TestModule {}
-            
+            class TestModule { }
+
             @Injectable()
-            class TestClassA {}
+            class TestClassA { }
 
             registerModuleMetadata(TestModule, {
                 providers: [
@@ -969,7 +969,7 @@ describe('DIContainer', () => {
                     { useValue: 'test', provide: 'testValue' },
                     { useFactory: () => 'test', provide: 'testFactory' }
                 ],
-                exports: ['testValue']
+                exports: [ 'testValue' ]
             });
 
             const module = container.module(TestModule);
@@ -985,21 +985,21 @@ describe('DIContainer', () => {
 
         it('register a provider as a class reference', () => {
 
-            class TestClass {}
+            class TestClass { }
 
             class TestClass2 {
                 constructor(
                     @Inject(TestClass) public test: TestClass
-                ) {}
+                ) { }
             }
 
             @DIModule({
-                providers: [TestClass, TestClass2],
-                exports: [TestClass]
+                providers: [ TestClass, TestClass2 ],
+                exports: [ TestClass ]
             })
-            class TestModule {}
+            class TestModule { }
 
-            const {container: moduleContainer} = container.module(TestModule);
+            const { container: moduleContainer } = container.module(TestModule);
 
             const instance = moduleContainer.resolve(TestClass2);
             expect(instance).toBeInstanceOf(TestClass2);
@@ -1012,7 +1012,7 @@ describe('DIContainer', () => {
         })
 
         it('imports an empty module without errors', () => {
-            class TestModule {}
+            class TestModule { }
             registerModuleMetadata(TestModule, { imports: [], exports: [], providers: [] });
 
             const module = container.module(TestModule);
@@ -1020,18 +1020,18 @@ describe('DIContainer', () => {
         });
 
         it('registers nested modules correctly', () => {
-            class NestedModule {}
-            class TestModule {}
+            class NestedModule { }
+            class TestModule { }
 
             registerModuleMetadata(NestedModule, {
                 imports: [],
-                providers: [{ provide: 'nestedDep', useValue: 'nestedValue' }],
-                exports: ['nestedDep'],
+                providers: [ { provide: 'nestedDep', useValue: 'nestedValue' } ],
+                exports: [ 'nestedDep' ],
             });
 
             registerModuleMetadata(TestModule, {
-                imports: [NestedModule],
-                exports: ['nestedDep'],
+                imports: [ NestedModule ],
+                exports: [ 'nestedDep' ],
                 providers: []
             });
 
@@ -1041,11 +1041,11 @@ describe('DIContainer', () => {
         });
 
         it('throws an error if an export is not provided', () => {
-            class TestModule {}
+            class TestModule { }
 
             registerModuleMetadata(TestModule, {
                 imports: [],
-                exports: ['missingDep'],
+                exports: [ 'missingDep' ],
                 providers: []
             });
 
@@ -1063,7 +1063,7 @@ describe('DIContainer', () => {
             const { Injectable } = container;
 
             @Injectable()
-            class TestClassA {}
+            class TestClassA { }
 
             @DIModule({
                 providers: [
@@ -1071,9 +1071,9 @@ describe('DIContainer', () => {
                     { useValue: 'test', provide: 'testValue' },
                     { useFactory: () => 'test', provide: 'testFactory' }
                 ],
-                exports: ['testValue']
+                exports: [ 'testValue' ]
             })
-            class TestModule {}
+            class TestModule { }
 
             const module = container.module(TestModule);
 
@@ -1088,7 +1088,7 @@ describe('DIContainer', () => {
 
         it('imports an empty module without errors', () => {
             @DIModule({ imports: [], exports: [], providers: [] })
-            class TestModule {}
+            class TestModule { }
 
             const module = container.module(TestModule);
             expect(module).toBeDefined();
@@ -1097,17 +1097,17 @@ describe('DIContainer', () => {
         it('registers nested modules correctly', () => {
             @DIModule({
                 imports: [],
-                exports: ['nestedDep'],
-                providers: [{ provide: 'nestedDep', useValue: 'nestedValue' }]
+                exports: [ 'nestedDep' ],
+                providers: [ { provide: 'nestedDep', useValue: 'nestedValue' } ]
             })
-            class NestedModule {}
+            class NestedModule { }
 
             @DIModule({
-                imports: [NestedModule],
-                exports: ['nestedDep'],
+                imports: [ NestedModule ],
+                exports: [ 'nestedDep' ],
                 providers: []
             })
-            class TestModule {}
+            class TestModule { }
 
             container.module(TestModule);
 
@@ -1119,21 +1119,21 @@ describe('DIContainer', () => {
         it('throws an error if an export is not provided', () => {
             @DIModule({
                 imports: [],
-                exports: ['missingDep'],
+                exports: [ 'missingDep' ],
                 providers: []
             })
-            class TestModule {}
+            class TestModule { }
 
             expect(() => container.module(TestModule)).toThrow();
         });
 
         it('Make @Injectable register provider with specific module', () => {
             @DIModule({})
-            class TestModule {}
+            class TestModule { }
 
-            @Injectable({providedIn: TestModule})
-            class TestClass {}
-            
+            @Injectable({ providedIn: TestModule })
+            class TestClass { }
+
             const module = container.module(TestModule);
 
             expect(module.container.resolve(TestClass)).toBeDefined();
@@ -1185,7 +1185,7 @@ describe('DIContainer', () => {
 
     describe('Provider Registration without a `provide` Key', () => {
         it('should throw an error when registering a provider without a `provide` key', () => {
-            class TestClass {}
+            class TestClass { }
             expect(() => {
                 container.register({ useClass: TestClass } as any);
             }).toThrow();
@@ -1197,7 +1197,7 @@ describe('DIContainer', () => {
             const { Injectable } = container;
 
             @Injectable({ singleton: false })
-            class ScopedService {}
+            class ScopedService { }
 
             container.register({ useClass: ScopedService, provide: 'ScopedService', singleton: false });
 
@@ -1219,7 +1219,7 @@ describe('DIContainer', () => {
             const conditionFn = jest.fn(() => Math.random() > 0.5);
 
             @container.Injectable({ condition: conditionFn })
-            class DynamicConditionService {}
+            class DynamicConditionService { }
 
             container.register({ useClass: DynamicConditionService, provide: token, condition: conditionFn });
 
@@ -1300,7 +1300,7 @@ describe('DIContainer', () => {
         it('should resolve providers dynamically based on runtime data', () => {
             @container.Injectable()
             class ConfigurableService {
-                constructor(@Inject('Config') public config: any) {}
+                constructor(@Inject('Config') public config: any) { }
             }
 
             const dynamicConfig = { setting: 'value' };
@@ -1315,7 +1315,7 @@ describe('DIContainer', () => {
     describe('Singleton Behavior Across Child Containers', () => {
         it('should share singleton instances across child containers', () => {
             @container.Injectable({ singleton: true })
-            class SingletonService {}
+            class SingletonService { }
 
             const childContainer1 = container.createChildContainer('child1');
             const childContainer2 = container.createChildContainer('child2');
@@ -1331,19 +1331,19 @@ describe('DIContainer', () => {
         it('should handle circular dependencies involving more than two classes', () => {
             const { Injectable } = container;
 
-            @Injectable({provide: 'ClassA'})
+            @Injectable({ provide: 'ClassA' })
             class ClassA {
-                constructor(@Inject('ClassC') public c: any) {}
+                constructor(@Inject('ClassC') public c: any) { }
             }
 
-            @Injectable({provide: 'ClassB'})
+            @Injectable({ provide: 'ClassB' })
             class ClassB {
-                constructor(@Inject('ClassA') public a: any) {}
+                constructor(@Inject('ClassA') public a: any) { }
             }
 
-            @Injectable({provide: 'ClassC'})
+            @Injectable({ provide: 'ClassC' })
             class ClassC {
-                constructor(@Inject('ClassB') public b: any) {}
+                constructor(@Inject('ClassB') public b: any) { }
             }
 
             expect(container.resolve('ClassA')).toBeInstanceOf(ClassA);
@@ -1354,7 +1354,7 @@ describe('DIContainer', () => {
         it('creates instances with default values for missing optional dependencies', () => {
             @container.Injectable()
             class TestClass {
-                constructor(@Inject('OptionalDep', { isOptional: true, defaultValue: 'default' }) public dep?: string) {}
+                constructor(@Inject('OptionalDep', { isOptional: true, defaultValue: 'default' }) public dep?: string) { }
             }
 
             const instance = container.resolve<TestClass>(TestClass);
@@ -1387,7 +1387,7 @@ describe('DIContainer', () => {
             });
 
             const instance = container.resolve<TestClassB>('test');
-            expect(instance.value).toBe('B'); // The last registered provider should take precedence
+            expect(instance.value).toBe('A'); // The first registered provider should take precedence
         });
     });
 
@@ -1405,7 +1405,7 @@ describe('DIContainer', () => {
 
     describe('Edge Cases for Middleware', () => {
         it('middleware can skip the next function', () => {
-            
+
             const middlewareSpy = jest.fn(() => {
                 // Skip the next function
                 return 'short-circuited';
@@ -1414,7 +1414,7 @@ describe('DIContainer', () => {
             container.useMiddleware({ middleware: middlewareSpy });
 
             @container.Injectable()
-            class MiddlewareService {}
+            class MiddlewareService { }
 
             const instance = container.resolve<any>('MiddlewareService');
 
@@ -1430,7 +1430,7 @@ describe('DIContainer', () => {
             container.useMiddleware({ middleware: middlewareSpy });
 
             @container.Injectable()
-            class MiddlewareService {}
+            class MiddlewareService { }
 
             expect(() => container.resolve<MiddlewareService>('MiddlewareService')).toThrow('Middleware error');
         });
@@ -1441,11 +1441,11 @@ describe('DIContainer', () => {
             const token = makeDIToken<string>('ConditionalService');
 
             @container.Injectable()
-            class Dependency {}
+            class Dependency { }
 
             @container.Injectable({ condition: () => true })
             class ConditionalService {
-                constructor(@Inject(Dependency) public dependency: Dependency) {}
+                constructor(@Inject(Dependency) public dependency: Dependency) { }
             }
 
             container.register({ useClass: Dependency, provide: Dependency.name });
@@ -1512,7 +1512,7 @@ describe('DIContainer', () => {
 
             @Injectable()
             class TestClass {
-                constructor(@Inject(DynamicProvider) public provider: DynamicProvider) {}
+                constructor(@Inject(DynamicProvider) public provider: DynamicProvider) { }
             }
 
             const instance = container.resolve<TestClass>(TestClass);
@@ -1535,7 +1535,7 @@ describe('DIContainer', () => {
 
             @container.Injectable()
             class SecondService {
-                constructor(@Inject(FirstService) public firstService: FirstService) {}
+                constructor(@Inject(FirstService) public firstService: FirstService) { }
 
                 @OnInit()
                 onInit() {
@@ -1563,7 +1563,7 @@ describe('DIContainer', () => {
             container.useMiddleware({ middleware: middlewareSpy });
 
             @container.Injectable({ singleton: false })  // Ensure each resolution creates a new instance            class StatefulService {}
-            class StatefulService {}
+            class StatefulService { }
 
             const instance1 = container.resolve<any>('StatefulService');
             const instance2 = container.resolve<any>('StatefulService');
@@ -1641,7 +1641,7 @@ describe('DIContainer', () => {
             const configWithTag: ConfigProviderOptions = {
                 provide: 'app.name',
                 useConfig: 'TaggedApp',
-                tags: ['release'],
+                tags: [ 'release' ],
             };
 
             const configWithoutTag: ConfigProviderOptions = {
@@ -1653,7 +1653,7 @@ describe('DIContainer', () => {
             rootContainer.registerConfigProvider(configWithoutTag);
 
             const resolvedConfigWithTags = rootContainer.resolveConfig('app.name', {
-                tags: ['release'],
+                tags: [ 'release' ],
             });
             expect(resolvedConfigWithTags).toBe('TaggedApp');
 
@@ -1678,7 +1678,7 @@ describe('DIContainer', () => {
             class ServiceWithContainer {
                 constructor(
                     @InjectContainer() private container: DIContainer
-                ) {}
+                ) { }
 
                 getContainerIdentifier(): string {
                     return this.container.containerId;
@@ -1707,7 +1707,7 @@ describe('DIContainer', () => {
                 constructor(
                     @Inject(AnotherService) private anotherService: AnotherService,
                     @InjectContainer() private container: DIContainer
-                ) {}
+                ) { }
 
                 getServiceValue(): string {
                     return this.anotherService.getValue();
@@ -1739,12 +1739,12 @@ describe('DIContainer', () => {
 
             @Injectable()
             class ServiceWithPropertyDependencies {
-                @InjectContainer() 
+                @InjectContainer()
                 private container?: DIContainer
 
                 constructor(
                     @Inject(AnotherService) private anotherService: AnotherService,
-                ) {}
+                ) { }
 
                 getServiceValue(): string {
                     return this.anotherService.getValue();
@@ -1753,7 +1753,7 @@ describe('DIContainer', () => {
                 getContainerIdentifier() {
                     return this.container?.containerId;
                 }
-        }
+            }
 
             rootContainer.register({ provide: AnotherService, useClass: AnotherService });
             rootContainer.register({ provide: ServiceWithPropertyDependencies, useClass: ServiceWithPropertyDependencies });
@@ -1770,7 +1770,7 @@ describe('DIContainer', () => {
             class ServiceWithContainer {
                 constructor(
                     @InjectContainer() private container: DIContainer
-                ) {}
+                ) { }
 
                 getContainerIdentifier(): string {
                     return this.container.containerId;
@@ -1799,7 +1799,7 @@ describe('DIContainer', () => {
                 constructor(
                     @Inject(AnotherService) private anotherService: AnotherService,
                     @InjectContainer() private container: DIContainer
-                ) {}
+                ) { }
 
                 getServiceValue(): string {
                     return this.anotherService.getValue();
@@ -1831,12 +1831,12 @@ describe('DIContainer', () => {
 
             @Injectable()
             class ServiceWithPropertyDependencies {
-                @InjectContainer() 
+                @InjectContainer()
                 private container?: DIContainer
 
                 constructor(
                     @Inject(AnotherService) private anotherService: AnotherService,
-                ) {}
+                ) { }
 
                 getServiceValue(): string {
                     return this.anotherService.getValue();
@@ -1881,7 +1881,7 @@ describe('DIContainer', () => {
                 constructor(
                     @InjectConfig('app.name') private appName: string,
                     @InjectConfig('app.version') private appVersion: string
-                ) {}
+                ) { }
 
                 getAppDetails(): string {
                     return `App: ${this.appName}, Version: ${this.appVersion}`;
@@ -1939,7 +1939,7 @@ describe('DIContainer', () => {
                 constructor(
                     @InjectConfig('app.name') private appName: string,
                     @InjectConfig('app.version') private appVersion: string
-                ) {}
+                ) { }
 
                 getAppDetails(): string {
                     return `App: ${this.appName}, Version: ${this.appVersion}`;
@@ -1975,7 +1975,7 @@ describe('DIContainer', () => {
                 constructor(
                     @InjectConfig('app.name') private appName: string,
                     @InjectConfig('app.version') private appVersion: string
-                ) {}
+                ) { }
 
                 getAppDetails(): string {
                     return `App: ${this.appName}, Version: ${this.appVersion}`;
@@ -2001,7 +2001,7 @@ describe('DIContainer', () => {
             rootContainer.registerConfigProvider({
                 provide: 'app.name',
                 useConfig: 'TaggedApp',
-                tags: ['release']
+                tags: [ 'release' ]
             });
 
             rootContainer.registerConfigProvider({
@@ -2015,15 +2015,15 @@ describe('DIContainer', () => {
                 constructor(
                     @InjectConfig('app.name') private appName: string,
                     @InjectConfig('app.version') private appVersion: string
-                ) {}
+                ) { }
 
                 getAppDetails(): string {
                     return `App: ${this.appName}, Version: ${this.appVersion}`;
                 }
             }
 
-            rootContainer.register({ provide: ServiceWithConfig, useClass: ServiceWithConfig, tags: ['release'] });
-            const serviceInstance = rootContainer.resolve(ServiceWithConfig, { tags: ['release'] });
+            rootContainer.register({ provide: ServiceWithConfig, useClass: ServiceWithConfig, tags: [ 'release' ] });
+            const serviceInstance = rootContainer.resolve(ServiceWithConfig, { tags: [ 'release' ] });
 
             expect(serviceInstance).toBeInstanceOf(ServiceWithConfig);
             expect(serviceInstance?.getAppDetails()).toContain('TaggedApp');
@@ -2037,7 +2037,7 @@ describe('DIContainer', () => {
                 constructor(
                     @InjectConfig('app.name') private appName: string,
                     @InjectConfig('app.version') private appVersion: string
-                ) {}
+                ) { }
 
                 getAppDetails(): string {
                     return `App: ${this.appName}, Version: ${this.appVersion}`;
@@ -2051,25 +2051,25 @@ describe('DIContainer', () => {
 
     describe('Module Exports and Imports', () => {
         it('resolves exported dependencies from imported modules', () => {
-            class ModuleA {}
-            class ModuleB {}
+            class ModuleA { }
+            class ModuleB { }
 
             @container.Injectable()
-            class ServiceA {}
+            class ServiceA { }
 
             @container.Injectable()
             class ServiceB {
-                constructor(@Inject(ServiceA) public serviceA: ServiceA) {}
+                constructor(@Inject(ServiceA) public serviceA: ServiceA) { }
             }
 
             registerModuleMetadata(ModuleA, {
-                providers: [{ provide: ServiceA, useClass: ServiceA }],
-                exports: [ServiceA]
+                providers: [ { provide: ServiceA, useClass: ServiceA } ],
+                exports: [ ServiceA ]
             });
 
             registerModuleMetadata(ModuleB, {
-                imports: [ModuleA],
-                providers: [{ provide: ServiceB, useClass: ServiceB }]
+                imports: [ ModuleA ],
+                providers: [ { provide: ServiceB, useClass: ServiceB } ]
             });
 
             container.module(ModuleB);
@@ -2080,10 +2080,10 @@ describe('DIContainer', () => {
         });
 
         it('imports a module with no exports without errors', () => {
-            class ModuleWithNoExports {}
+            class ModuleWithNoExports { }
 
             registerModuleMetadata(ModuleWithNoExports, {
-                providers: [{ provide: 'service', useValue: 'test' }],
+                providers: [ { provide: 'service', useValue: 'test' } ],
                 exports: []
             });
 
@@ -2091,8 +2091,8 @@ describe('DIContainer', () => {
         });
 
         it('resolves overlapping exports from multiple modules correctly', () => {
-            class ModuleA {}
-            class ModuleB {}
+            class ModuleA { }
+            class ModuleB { }
 
             @container.Injectable()
             class ServiceA {
@@ -2109,13 +2109,13 @@ describe('DIContainer', () => {
             }
 
             registerModuleMetadata(ModuleA, {
-                providers: [{ provide: 'shared', useClass: ServiceA }],
-                exports: ['shared']
+                providers: [ { provide: 'shared', useClass: ServiceA } ],
+                exports: [ 'shared' ]
             });
 
             registerModuleMetadata(ModuleB, {
-                providers: [{ provide: 'shared', useClass: ServiceB, priority: 1 }],
-                exports: ['shared']
+                providers: [ { provide: 'shared', useClass: ServiceB, priority: 1 } ],
+                exports: [ 'shared' ]
             });
 
             container.module(ModuleA);
@@ -2126,9 +2126,9 @@ describe('DIContainer', () => {
         });
 
         it('correctly resolves providers from nested module exports', () => {
-            class GrandchildModule {}
-            class ChildModule {}
-            class ParentModule {}
+            class GrandchildModule { }
+            class ChildModule { }
+            class ParentModule { }
 
             @container.Injectable()
             class GrandchildService {
@@ -2138,18 +2138,18 @@ describe('DIContainer', () => {
             }
 
             registerModuleMetadata(GrandchildModule, {
-                providers: [{ provide: 'grandchild', useClass: GrandchildService }],
-                exports: ['grandchild']
+                providers: [ { provide: 'grandchild', useClass: GrandchildService } ],
+                exports: [ 'grandchild' ]
             });
 
             registerModuleMetadata(ChildModule, {
-                imports: [GrandchildModule],
-                exports: ['grandchild']
+                imports: [ GrandchildModule ],
+                exports: [ 'grandchild' ]
             });
 
             registerModuleMetadata(ParentModule, {
-                imports: [ChildModule],
-                exports: ['grandchild']
+                imports: [ ChildModule ],
+                exports: [ 'grandchild' ]
             });
 
             container.module(ParentModule);

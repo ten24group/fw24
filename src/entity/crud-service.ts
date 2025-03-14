@@ -7,6 +7,7 @@ import { ILogger, createLogger } from "../logging";
 import { isEmptyObject, removeEmpty } from "../utils";
 import { DefaultValidator, type IValidator } from "../validation";
 import { entityFilterCriteriaToExpression } from "./query";
+import { EntityValidationError } from "./errors/validation-error";
 
 /**
  * 
@@ -38,12 +39,11 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     tenant?: any; // todo: define tenant context
 
     logger?: ILogger;
-    validator?: IValidator;        // todo: define validator signature
+    validator?: IValidator;
     authorizer?: Authorizer.IAuthorizer;        // todo: define authorizer signature
     auditLogger?: Auditor.IAuditor;       // todo: define audit logger signature
     eventDispatcher?: EventDispatcher.IEventDispatcher;  // todo define event dispatcher signature
 
-    // input/output OR serializer/sanitizer ?: any; // todo: define serializer/sanitizer signature [maybe it should be the part of entity-model or controller]
     // telemetry
 }
 
@@ -59,7 +59,7 @@ export interface GetEntityArgs<
     /**
      * The ID of the entity to retrieve.
      */
-    id: OpsSchema['get'];
+    id: OpsSchema[ 'get' ];
     /**
      * Optional array of attributes to include in the retrieved entity.
      */
@@ -71,27 +71,27 @@ export interface GetEntityArgs<
  * @param options - The options for retrieving the entity.
  * @returns The retrieved entity.
  */
-export async function getEntity<S extends EntitySchema<any, any, any>>( options: GetEntityArgs<S>){
+export async function getEntity<S extends EntitySchema<any, any, any>>(options: GetEntityArgs<S>) {
 
-    const { 
+    const {
         id,
         attributes,
-        entityName, 
-        entityService, 
-        
+        entityName,
+        entityService,
+
         actor,
         tenant,
-        
+
         crudType = 'get',
         logger = createLogger('CRUD-service:getEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
         auditLogger = Auditor.Default,
         eventDispatcher = EventDispatcher.Default,
-            
+
     } = options;
 
-    logger.debug(`Called EntityCrud ~ getEntity ~ entityName: ${entityName}:`, {id, attributes});
+    logger.debug(`Called EntityCrud ~ getEntity ~ entityName: ${entityName}:`, { id, attributes });
 
     // await eventDispatcher.dispatch({event: 'beforeGet', context: arguments });
 
@@ -103,7 +103,7 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
     //     throw new Error("Authorization failed for get: " + { cause: authorization });
     // }
 
-    
+
     // // validate
     const validation = await validator.validateEntity({
         operationName: crudType,
@@ -114,11 +114,11 @@ export async function getEntity<S extends EntitySchema<any, any, any>>( options:
         actor: actor
     });
 
-    if(!validation.pass){
-        throw new Error("Validation failed for get: " + JSON.stringify({ cause: validation }));
+    if (!validation.pass) {
+        throw new EntityValidationError(validation.errors);
     }
 
-    const entity = await entityService.getRepository().get(identifiers).go({attributes});
+    const entity = await entityService.getRepository().get(identifiers).go({ attributes });
 
     // await eventDispatcher.dispatch({event: 'afterGet', context: arguments});
 
@@ -142,11 +142,11 @@ export interface CreateEntityArgs<
     /**
      * The data for creating the entity.
      */
-    data: OpsSchema['create'];
+    data: OpsSchema[ 'create' ];
 }
 
 export type CreateEntityResponse<Sch extends EntitySchema<any, any, any>> = {
-   data ?: EntityResponseItemTypeFromSchema<Sch>
+    data?: EntityResponseItemTypeFromSchema<Sch>
 }
 
 /**
@@ -156,15 +156,15 @@ export type CreateEntityResponse<Sch extends EntitySchema<any, any, any>> = {
  * @returns The created entity.
  * @throws Error if no data is provided for create operation, validation fails, or authorization fails.
  */
-export async function createEntity<S extends EntitySchema<any, any, any>>(options : CreateEntityArgs<S>): Promise<CreateEntityResponse<S>> {
-    const { 
+export async function createEntity<S extends EntitySchema<any, any, any>>(options: CreateEntityArgs<S>): Promise<CreateEntityResponse<S>> {
+    const {
         data,
         entityName,
-        entityService, 
-        
+        entityService,
+
         actor,
         tenant,
-        
+
         crudType = 'create',
         logger = createLogger('CRUD-service:createEntity'),
         validator = DefaultValidator,
@@ -175,8 +175,8 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     } = options;
 
     logger.debug(`Called EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data);
-    
-    if(!data){
+
+    if (!data) {
         throw new Error("No data provided for create operation");
     }
 
@@ -193,8 +193,8 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
         actor: actor,
     });
 
-    if(!validation.pass){
-        throw new Error("Validation failed for create: " + JSON.stringify({ cause: validation }));
+    if (!validation.pass) {
+        throw new EntityValidationError(validation.errors);
     }
 
     // authorize the actor 
@@ -230,11 +230,11 @@ export interface UpsertEntityArgs<
     /**
      * The data for creating the entity.
      */
-    data: OpsSchema['upsert'];
+    data: OpsSchema[ 'upsert' ];
 }
 
 export type UpsertEntityResponse<Sch extends EntitySchema<any, any, any>> = {
-   data ?: EntityResponseItemTypeFromSchema<Sch>
+    data?: EntityResponseItemTypeFromSchema<Sch>
 }
 
 /**
@@ -244,15 +244,15 @@ export type UpsertEntityResponse<Sch extends EntitySchema<any, any, any>> = {
  * @returns The created entity.
  * @throws Error if no data is provided for upsert operation, validation fails, or authorization fails.
  */
-export async function upsertEntity<S extends EntitySchema<any, any, any>>(options : UpsertEntityArgs<S>): Promise<UpsertEntityResponse<S>> {
-    const { 
+export async function upsertEntity<S extends EntitySchema<any, any, any>>(options: UpsertEntityArgs<S>): Promise<UpsertEntityResponse<S>> {
+    const {
         data,
         entityName,
-        entityService, 
-        
+        entityService,
+
         actor,
         tenant,
-        
+
         crudType = 'upsert',
         logger = createLogger('CRUD-service:upsertEntity'),
         validator = DefaultValidator,
@@ -263,8 +263,8 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
     } = options;
 
     logger.debug(`Called EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data);
-    
-    if(!data){
+
+    if (!data) {
         throw new Error("No data provided for upsert operation");
     }
 
@@ -281,8 +281,8 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
         actor: actor,
     });
 
-    if(!validation.pass){
-        throw new Error("Validation failed for upsert: " + JSON.stringify({ cause: validation }));
+    if (!validation.pass) {
+        throw new EntityValidationError(validation.errors);
     }
 
     // authorize the actor 
@@ -309,7 +309,7 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
  * Represents the arguments for listing entities.
  * @template Sch - The entity schema type.
  */
-export interface ListEntityArgs<Sch extends EntitySchema<any, any, any> > extends BaseEntityCrudArgs<Sch> {
+export interface ListEntityArgs<Sch extends EntitySchema<any, any, any>> extends BaseEntityCrudArgs<Sch> {
     query: EntityQuery<Sch>
 }
 
@@ -319,11 +319,11 @@ export interface ListEntityArgs<Sch extends EntitySchema<any, any, any> > extend
  * @param options - The options for listing entities.
  * @returns A promise that resolves to an array of entities.
  */
-export async function listEntity<S extends EntitySchema<any, any, any>>( options: ListEntityArgs<S>){
+export async function listEntity<S extends EntitySchema<any, any, any>>(options: ListEntityArgs<S>) {
 
-    const { 
-        entityName, 
-        entityService, 
+    const {
+        entityName,
+        entityService,
 
         actor,
         tenant,
@@ -337,9 +337,9 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
         query = {},
     } = options;
 
-    const { 
-        filters, 
-        pagination= { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined }, 
+    const {
+        filters,
+        pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined },
     } = query;
 
     logger.debug(`Called EntityCrud ~ listEntity ~ entityName: ${entityName} ~ filters+paging:`);
@@ -354,10 +354,10 @@ export async function listEntity<S extends EntitySchema<any, any, any>>( options
 
     const dbQuery = entityService.getRepository().match({});
 
-    if(filters && !isEmptyObject(filters)){
+    if (filters && !isEmptyObject(filters)) {
         dbQuery.where((attr, op) => entityFilterCriteriaToExpression(filters, attr, op))
     }
-    
+
     const entities = await dbQuery.go(removeEmpty(pagination));
 
     // await eventDispatcher.dispatch({ event: 'afterList', context: arguments });
@@ -379,11 +379,11 @@ export interface QueryEntityArgs<Sch extends EntitySchema<any, any, any>> extend
  * @param options - The options for the query.
  * @returns A promise that resolves to the result of the query.
  */
-export async function queryEntity<S extends EntitySchema<any, any, any>>( options: QueryEntityArgs<S>){
+export async function queryEntity<S extends EntitySchema<any, any, any>>(options: QueryEntityArgs<S>) {
 
-    const { 
-        entityName, 
-        entityService, 
+    const {
+        entityName,
+        entityService,
 
         actor,
         tenant,
@@ -398,9 +398,9 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>( option
 
     } = options;
 
-    const { 
-        filters = {}, 
-        pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined } 
+    const {
+        filters = {},
+        pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined }
     } = query;
 
     logger.debug(`Called EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
@@ -415,10 +415,10 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>( option
 
     const dbQuery = entityService.getRepository().match({});
 
-    if(filters && !isEmptyObject(filters)){
+    if (filters && !isEmptyObject(filters)) {
         dbQuery.where((attr, op) => entityFilterCriteriaToExpression(filters, attr, op))
     }
-    
+
     const entities = await dbQuery.go(removeEmpty(pagination));
 
     // await eventDispatcher.dispatch({ event: 'afterQuery', context: arguments });
@@ -443,11 +443,11 @@ export interface UpdateEntityArgs<
     /**
      * The Identifiers of the entity to update.
      */
-    id: OpsSchema['get'];
+    id: OpsSchema[ 'get' ];
     /**
      * The data to update the entity with.
      */
-    data: OpsSchema['update'];
+    data: OpsSchema[ 'update' ];
     /**
      * Optional conditions for the update operation.
      */
@@ -462,13 +462,13 @@ export interface UpdateEntityArgs<
  * @returns {Promise<Entity>} - A promise that resolves to the updated entity.
  * @throws {Error} - If no data is provided for the update operation, or if validation or authorization fails.
  */
-export async function updateEntity<S extends EntitySchema<any, any, any>>(options : UpdateEntityArgs<S>) {
-    const { 
+export async function updateEntity<S extends EntitySchema<any, any, any>>(options: UpdateEntityArgs<S>) {
+    const {
         id,
         data,
-        entityName, 
+        entityName,
 
-        entityService, 
+        entityService,
 
         actor,
         tenant,
@@ -483,8 +483,8 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     } = options;
 
     logger.debug(`Called EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, data);
-    
-    if(!data){
+
+    if (!data) {
         throw new Error("No data provided for update operation");
     }
 
@@ -501,9 +501,9 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         actor: actor
     });
 
-    // if(!validation.pass){
-    //     throw new Error("Validation failed for update: " + JSON.stringify({ cause: validation }));
-    // }
+    if (!validation.pass) {
+        throw new EntityValidationError(validation.errors);
+    }
 
     const identifiers = entityService.extractEntityIdentifiers(id);
 
@@ -539,7 +539,7 @@ export interface DeleteEntityArgs<
     /**
      * The ID of the entity to be deleted.
      */
-    id: OpsSchema['delete'];
+    id: OpsSchema[ 'delete' ];
 }
 
 /**
@@ -547,12 +547,12 @@ export interface DeleteEntityArgs<
  * @param options - The options for deleting the entity.
  * @returns The deleted entity.
  */
-export async function deleteEntity<S extends EntitySchema<any, any, any>>( options: DeleteEntityArgs<S>){
+export async function deleteEntity<S extends EntitySchema<any, any, any>>(options: DeleteEntityArgs<S>) {
 
-    const { 
+    const {
         id,
-        entityName, 
-        entityService, 
+        entityName,
+        entityService,
 
         actor,
         tenant,
@@ -563,7 +563,7 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>( optio
         authorizer = Authorizer.Default,
         auditLogger = Auditor.Default,
         eventDispatcher = EventDispatcher.Default,
-            
+
     } = options;
 
     logger.debug(`Called EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
@@ -588,8 +588,8 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>( optio
         actor: actor
     });
 
-    if(!validation.pass){
-        throw new Error("Validation failed for delete: " + JSON.stringify({ cause: validation }));
+    if (!validation.pass) {
+        throw new EntityValidationError(validation.errors);
     }
 
     const entity = await entityService.getRepository().delete(identifiers).go();

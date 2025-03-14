@@ -8,7 +8,7 @@ import { isHttpRequestValidationRule, isInputValidationRule } from "../../valida
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
-import { createErrorHandler } from "../../errors";
+import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErrorHandler } from "../../errors/";
 
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 
@@ -89,7 +89,7 @@ abstract class APIController extends AbstractLambdaHandler {
     }
 
     if (!isHttpRequestValidationRule(validationRules)) {
-      throw (new Error("Invalid http-request validation rule"));
+      throw new InvalidHttpRequestValidationRuleError(validationRules);
     }
 
     return this.validator.validateHttpRequest({
@@ -127,13 +127,7 @@ abstract class APIController extends AbstractLambdaHandler {
         const validationResult = await this.validate(requestContext, route.validations);
 
         if (!validationResult.pass) {
-          return this.handleResponse({
-            statusCode: 400,
-            body: JSON.stringify({
-              message: 'Validation failed!!!',
-              errors: validationResult.errors
-            }),
-          });
+          throw new ValidationFailedError(validationResult.errors);
         }
 
       } else {
