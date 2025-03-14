@@ -16,7 +16,7 @@ import {
 } from "aws-cdk-lib/aws-cognito";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
-import { Role, User } from "aws-cdk-lib/aws-iam";
+import { PolicyStatement, PolicyStatementProps, Role, User } from "aws-cdk-lib/aws-iam";
 import { Duration, RemovalPolicy, Stack } from "aws-cdk-lib";
 import { CognitoAuthRole } from "./cognito-auth-role";
 import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
@@ -126,6 +126,10 @@ export interface IAuthConstructConfig extends IConstructConfig {
         props: UserPoolClientOptions;
     };
     /**
+     * Array of policies to attach to the default authenticated role.
+     */
+    policies?: Array<PolicyStatementProps | PolicyStatement>;
+    /**
      * Array of file paths for policy files.
      */
     policyFilePaths?: string[];
@@ -154,6 +158,10 @@ export interface IAuthConstructConfig extends IConstructConfig {
          * The precedence of the group.
          */
         precedence?: number;
+        /**
+         * Array of policies to attach to the group.
+         */
+        policies?: Array<PolicyStatementProps | PolicyStatement>;
         /**
          * Array of file paths for policy files specific to this group.
          */
@@ -331,8 +339,9 @@ export class AuthConstruct implements FW24Construct {
                 // create a role for the group
                 const policyFilePaths = group.policyFilePaths;
                 const role = new CognitoAuthRole(this.mainStack, `${userPoolName}-${group.name}-CognitoAuthRole`, {
-                    identityPool,
-                    policyFilePaths,
+                    identityPool: identityPool,
+                    policyFilePaths: policyFilePaths,
+                    policies: group.policies,
                 }) as Role;
 
                 this.fw24.setEnvironmentVariable('Role', role, `cognito_${group.name}`);
@@ -388,8 +397,9 @@ export class AuthConstruct implements FW24Construct {
         // IAM role for authenticated users if no groups are defined
         const policyFilePaths = this.authConstructConfig.policyFilePaths;
         const authenticatedRole = new CognitoAuthRole(this.mainStack, `${userPoolName}-CognitoAuthRole`, {
-            identityPool,
-            policyFilePaths
+            identityPool: identityPool,
+            policyFilePaths: policyFilePaths,
+            policies: this.authConstructConfig.policies,
         }) as Role;
 
         // if no groups are defined all policies are added to the default authenticated role
