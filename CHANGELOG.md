@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-beta.11](https://github.com/ten24group/fw24/compare/v0.1.1-beta.10...v0.1.1-beta.11) (2025-03-12)
+
+
+### Bug Fixes
+
+* error handling ([dbcd8d5](https://github.com/ten24group/fw24/commit/dbcd8d5cd131321eb468c468bdbc0f4e23b7f15c))
+
+### [0.1.1-beta.10](https://github.com/ten24group/fw24/compare/v0.1.1-beta.9...v0.1.1-beta.10) (2025-03-10)
+
+
+### Bug Fixes
+
+* entity-attributes nit showing up in UI ([101d822](https://github.com/ten24group/fw24/commit/101d82216c4b944da9b985a9a326081cbbe75ba2))
+* logic to resolve environmentVariables for lambdas ([8c14759](https://github.com/ten24group/fw24/commit/8c147590f622e406554982161f5c37ca0a369f48))
+
 ### [0.1.1-beta.9](https://github.com/ten24group/fw24/compare/v0.1.1-beta.7...v0.1.1-beta.9) (2025-02-28)
 
 ### [0.1.1-beta.6](https://github.com/ten24group/fw24/compare/v0.1.1-beta.5...v0.1.1-beta.6) (2025-02-21)
