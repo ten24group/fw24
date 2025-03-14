@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-beta.12](https://github.com/ten24group/fw24/compare/v0.1.1-beta.11...v0.1.1-beta.12) (2025-03-14)
+
+
+### Bug Fixes
+
+* failing fw24 tests ([deb2fa3](https://github.com/ten24group/fw24/commit/deb2fa34271db41e1d441fb5bce413869c3c993b))
+* failing-test for inferRelationshipsForEntitySelections ([0cbeb62](https://github.com/ten24group/fw24/commit/0cbeb62ba1508d73c025d37aacb7165693218742))
+
 ### [0.1.1-beta.11](https://github.com/ten24group/fw24/compare/v0.1.1-beta.10...v0.1.1-beta.11) (2025-03-12)
 
 
