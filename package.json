@@ -64,5 +64,10 @@
     },
     "peerDependencies": {
         "electrodb": "^3.0.1"
+    },
+    "overrides": {
+        "@smithy/core": "^3.0.0",
+        "@smithy/smithy-client": "^3.5.0",
+        "@smithy/types": "^3.7.2"
     }
 }
