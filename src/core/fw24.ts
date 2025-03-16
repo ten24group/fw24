@@ -14,6 +14,7 @@ import { type IFw24Module } from './runtime/module';
 import { ensureNoSpecialChars, ensureValidEnvKey } from '../utils/keys';
 import { App, CfnOutput, Fn, NestedStack, Stack } from 'aws-cdk-lib';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
+import { IAuditor } from '../audit';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
@@ -38,6 +39,8 @@ export class Fw24 {
 
     private readonly globalLambdaLayerNames = new Set<string>();
     private readonly globalLambdaEntryPackages = new Set<string>();
+
+    private auditors = new Map<string, IAuditor>();
 
     private constructor() { }
 
@@ -490,6 +493,15 @@ export class Fw24 {
         this.logger.debug("RoutePolicyStatement:", { route, statement });
 
         return statement;
+    }
+
+    setAuditor(entityName: string, auditor: IAuditor) {
+        this.logger.debug("setAuditor:", { entityName });
+        this.auditors.set(entityName, auditor);
+    }
+
+    getAuditor(entityName: string): IAuditor | undefined {
+        return this.auditors.get(entityName);
     }
 
 }

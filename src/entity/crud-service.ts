@@ -1,6 +1,6 @@
 import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
 import type { EntityQuery } from "./query-types";
-import { Auditor } from "../audit";
+import { Auditor, getAuditor } from "../audit";
 import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
@@ -66,6 +66,12 @@ export interface GetEntityArgs<
     attributes?: Array<string>;
 }
 
+function getEntityAuditor<S extends EntitySchema<any, any, any>>(entityService: EntityServiceTypeFromSchema<S>): Auditor.IAuditor {
+    const schema = entityService.getEntitySchema();
+    const tableName = '';
+    return getAuditor(tableName);
+}
+
 /**
  * Retrieves an entity based on the provided options.
  * @param options - The options for retrieving the entity.
@@ -86,7 +92,7 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
         logger = createLogger('CRUD-service:getEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = Auditor.Default,
+        auditLogger = getEntityAuditor(entityService),
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -169,7 +175,7 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:createEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = Auditor.Default,
+        auditLogger = getEntityAuditor(entityService),
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -209,7 +215,14 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     // await eventDispatcher?.dispatch({ event: 'afterCreate', context: {...arguments, entity} });
 
     // create audit
-    // auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
+    auditLogger.audit({ 
+        entityName, 
+        crudType, 
+        data, 
+        entity: entity.data, 
+        actor, 
+        tenant
+    });
 
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data, entity.data);
@@ -257,7 +270,7 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:upsertEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = Auditor.Default,
+        auditLogger = getEntityAuditor(entityService),
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -297,7 +310,7 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
     // await eventDispatcher?.dispatch({ event: 'afterUpsert', context: {...arguments, entity} });
 
     // create audit
-    // auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
+    auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
 
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data, entity.data);
@@ -331,7 +344,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
         crudType = 'list',
         logger = createLogger('CRUD-service:listEntity'),
         authorizer = Authorizer.Default,
-        auditLogger = Auditor.Default,
+        auditLogger = getEntityAuditor(entityService),
         eventDispatcher = EventDispatcher.Default,
 
         query = {},
@@ -391,7 +404,7 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
         crudType = 'query',
         logger = createLogger('CRUD-service:queryEntity'),
         authorizer = Authorizer.Default,
-        auditLogger = Auditor.Default,
+        auditLogger = getEntityAuditor(entityService),
         eventDispatcher = EventDispatcher.Default,
 
         query = {}
@@ -477,7 +490,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:updateEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = Auditor.Default,
+        auditLogger = getEntityAuditor(entityService),
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -518,8 +531,16 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     // // post events
     // await eventDispatcher?.dispatch({ event: 'afterUpdate', context: {...arguments, entity} });
 
-    // // create audit
-    // auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
+    // create audit
+    auditLogger.audit({ 
+        entityName, 
+        crudType, 
+        data, 
+        entity: entity.data, 
+        actor, 
+        tenant,
+        identifiers
+    });
 
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, data, entity.data);
@@ -561,7 +582,7 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:deleteEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = Auditor.Default,
+        auditLogger = getEntityAuditor(entityService),
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -597,12 +618,20 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
     // await eventDispatcher.dispatch({event: 'afterDelete', context: arguments});
 
     // create audit
-    // auditLogger.audit({entityName, crudType, identifiers, entity, actor, tenant});
+    auditLogger.audit({
+        entityName, 
+        crudType, 
+        identifiers, 
+        entity: entity.data, 
+        actor, 
+        tenant
+    });
 
     logger.debug(`Completed EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
 
     return entity;
 }
+
 
 // export class EntityCrudService<S extends Schema<any, any, any>>{
 
