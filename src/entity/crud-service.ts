@@ -68,7 +68,7 @@ export interface GetEntityArgs<
 
 function getEntityAuditor<S extends EntitySchema<any, any, any>>(entityService: EntityServiceTypeFromSchema<S>): Auditor.IAuditor {
     const schema = entityService.getEntitySchema();
-    const tableName = '';
+    const tableName = 'default';
     return getAuditor(tableName);
 }
 
@@ -275,7 +275,7 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
 
     } = options;
 
-    logger.debug(`Called EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data);
+    logger.info(`Called EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data);
 
     if (!data) {
         throw new Error("No data provided for upsert operation");
@@ -313,7 +313,7 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
     auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
 
     // return entity;
-    logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data, entity.data);
+    logger.info(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data, entity.data);
 
     return entity as UpsertEntityResponse<S>;
 }
@@ -495,7 +495,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
 
     } = options;
 
-    logger.debug(`Called EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, data);
+    logger.info(`Called EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, data);
 
     if (!data) {
         throw new Error("No data provided for update operation");
@@ -543,7 +543,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     });
 
     // return entity;
-    logger.debug(`Completed EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, data, entity.data);
+    logger.info(`Completed EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, data, entity.data);
 
     return entity;
 }
@@ -587,7 +587,7 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
 
     } = options;
 
-    logger.debug(`Called EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
+    logger.info(`Called EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
 
     // await eventDispatcher.dispatch({event: 'beforeDelete', context: arguments });
 
@@ -627,7 +627,7 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
         tenant
     });
 
-    logger.debug(`Completed EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
+    logger.info(`Completed EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
 
     return entity;
 }

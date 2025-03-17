@@ -108,14 +108,15 @@ export class CloudWatchAuditor implements IAuditor {
     constructor(config: AuditConfig) {
         this.enabled = config.enabled ?? false;
         this.client = new CloudWatchLogs({ region: config.cloudwatchOptions?.region || this.fw24.getConfig().region });
-        this.logGroupName = config.cloudwatchOptions?.logGroupName || `/audit/${this.fw24.getConfig().name}/${config.tableName}`;
+        this.logGroupName = config.cloudwatchOptions?.logGroupName || `/audit/${this.fw24.getConfig().name}`;
         // create log group if it doesn't exist
-        this.client.createLogGroup({
-            logGroupName: this.logGroupName
-        });
+        // this.client.createLogGroup({
+        //     logGroupName: this.logGroupName
+        // });
     }
 
     async audit(options: AuditOptions): Promise<void> {
+        this.logger.info('audit', options);
         // If explicitly disabled for this operation or globally disabled, skip logging
         if (options.enabled === false || this.enabled === false) {
             return;
@@ -127,6 +128,7 @@ export class CloudWatchAuditor implements IAuditor {
         };
 
         try {
+            this.logger.info('putLogEvents', auditEntry);
             await this.client.putLogEvents({
                 logGroupName: this.logGroupName,
                 // Monthly streams with entity name
@@ -205,7 +207,8 @@ export function createAuditor(config: AuditConfig): IAuditor {
 
     // Store the auditor in the fw24 instance using the table name as the key
     const fw24 = Fw24.getInstance();
-    const tableName = config.tableName!;
+    // const tableName = config.tableName!;
+    const tableName = 'default';
     fw24.setAuditor(tableName, auditor);
     return auditor;
 }
