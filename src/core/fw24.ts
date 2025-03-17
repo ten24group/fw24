@@ -14,7 +14,6 @@ import { type IFw24Module } from './runtime/module';
 import { ensureNoSpecialChars, ensureValidEnvKey } from '../utils/keys';
 import { App, CfnOutput, Fn, NestedStack, Stack } from 'aws-cdk-lib';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
-import { IAuditor } from '../audit';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
@@ -27,6 +26,7 @@ export class Fw24 {
     private stacks: any = {};
     private apis: { [ apiConstructName: string ]: { [ name: string ]: any } } = {};
     private environmentVariables: Record<string, any> = {};
+    private globalEnvironmentVariables: string[] = [];
     private policyStatements = new Map<string, PolicyStatementProps | PolicyStatement>();
     private defaultCognitoAuthorizer: IAuthorizer | undefined;
     private cognitoAuthorizers: { [ key: string ]: IAuthorizer } = {};
@@ -39,8 +39,6 @@ export class Fw24 {
 
     private readonly globalLambdaLayerNames = new Set<string>();
     private readonly globalLambdaEntryPackages = new Set<string>();
-
-    private auditors = new Map<string, IAuditor>();
 
     private constructor() { }
 
@@ -369,6 +367,21 @@ export class Fw24 {
         return keyTemplate;
     }
 
+    /**
+     * Set a global environment variable. This variable will be available to all lambda functions.
+     * @param name The name of the environment variable.
+     * @param value The value of the environment variable.
+     */
+    setGlobalEnvironmentVariable(name: string, value: any) {
+        this.logger.debug("setGlobalEnvironmentVariable:", name, value);
+        this.setEnvironmentVariable(name, value, '');
+        this.globalEnvironmentVariables.push(ensureValidEnvKey(name, ''));
+    }
+
+    getGlobalEnvironmentVariables(): string[] {
+        return this.globalEnvironmentVariables;
+    }
+
     setPolicy(policyName: string, value: PolicyStatementProps | PolicyStatement, prefix: string = '') {
         this.logger.debug("setPolicy:", prefix, policyName, value);
         this.policyStatements.set(ensureValidEnvKey(policyName, prefix), value);
@@ -493,15 +506,6 @@ export class Fw24 {
         this.logger.debug("RoutePolicyStatement:", { route, statement });
 
         return statement;
-    }
-
-    setAuditor(entityName: string, auditor: IAuditor) {
-        this.logger.debug("setAuditor:", { entityName });
-        this.auditors.set(entityName, auditor);
-    }
-
-    getAuditor(entityName: string): IAuditor | undefined {
-        return this.auditors.get(entityName);
     }
 
 }

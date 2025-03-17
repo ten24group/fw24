@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import {
     DefaultEntityOperations,
     createEntitySchema,
-} from '../entity';
+} from '../../entity';
 
 export const createAuditSchema = () => createEntitySchema({
     model: {

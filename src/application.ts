@@ -7,6 +7,7 @@ import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
 import { ILogger, LogDuration, createLogger } from "./logging";
 import { LayerConstruct } from "./constructs";
 import { randomUUID } from 'crypto';
+import { AuditHandler } from "./audit/config/audit-handler";
 
 export class Application {
     readonly logger: ILogger;
@@ -96,6 +97,11 @@ export class Application {
         await this.constructAllResources()
         
         this.logger.info('All construct resource creation completed');
+
+        if(this.fw24.getConfig().audit){
+            this.logger.info('Setting up auditor...');
+            new AuditHandler();
+        }
     }
     
 

@@ -1,6 +1,6 @@
 import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
 import type { EntityQuery } from "./query-types";
-import { Auditor, getAuditor } from "../audit";
+import { IAuditor, NullAuditor } from "../audit";
 import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
@@ -41,7 +41,7 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     logger?: ILogger;
     validator?: IValidator;
     authorizer?: Authorizer.IAuthorizer;        // todo: define authorizer signature
-    auditLogger?: Auditor.IAuditor;       // todo: define audit logger signature
+    auditLogger?: IAuditor;       // todo: define audit logger signature
     eventDispatcher?: EventDispatcher.IEventDispatcher;  // todo define event dispatcher signature
 
     // telemetry
@@ -66,12 +66,6 @@ export interface GetEntityArgs<
     attributes?: Array<string>;
 }
 
-function getEntityAuditor<S extends EntitySchema<any, any, any>>(entityService: EntityServiceTypeFromSchema<S>): Auditor.IAuditor {
-    const schema = entityService.getEntitySchema();
-    const tableName = 'default';
-    return getAuditor(tableName);
-}
-
 /**
  * Retrieves an entity based on the provided options.
  * @param options - The options for retrieving the entity.
@@ -92,7 +86,7 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
         logger = createLogger('CRUD-service:getEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = getEntityAuditor(entityService),
+        auditLogger = NullAuditor,
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -175,7 +169,7 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:createEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = getEntityAuditor(entityService),
+        auditLogger = NullAuditor,
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -270,7 +264,7 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:upsertEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = getEntityAuditor(entityService),
+        auditLogger = NullAuditor,
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -344,7 +338,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
         crudType = 'list',
         logger = createLogger('CRUD-service:listEntity'),
         authorizer = Authorizer.Default,
-        auditLogger = getEntityAuditor(entityService),
+        auditLogger = NullAuditor,
         eventDispatcher = EventDispatcher.Default,
 
         query = {},
@@ -404,7 +398,7 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
         crudType = 'query',
         logger = createLogger('CRUD-service:queryEntity'),
         authorizer = Authorizer.Default,
-        auditLogger = getEntityAuditor(entityService),
+        auditLogger = NullAuditor,
         eventDispatcher = EventDispatcher.Default,
 
         query = {}
@@ -490,7 +484,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:updateEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = getEntityAuditor(entityService),
+        auditLogger = NullAuditor,
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -582,7 +576,7 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:deleteEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = getEntityAuditor(entityService),
+        auditLogger = NullAuditor,
         eventDispatcher = EventDispatcher.Default,
 
     } = options;

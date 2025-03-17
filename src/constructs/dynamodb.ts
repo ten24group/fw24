@@ -6,7 +6,6 @@ import { createLogger, LogDuration } from "../logging";
 import { ensureNoSpecialChars, ensureSuffix } from "../utils/keys";
 import { IConstructConfig } from "../interfaces/construct-config";
 import { Stack } from "aws-cdk-lib";
-import { AuditConfig, Auditor } from "../audit";
 
 /**
  * Represents the configuration for a DynamoDB table.
@@ -22,10 +21,6 @@ export interface IDynamoDBConfig extends IConstructConfig {
          */
         props: TablePropsV2;
     };
-    /**
-     * Audit configuration for the table.
-     */
-    audit?: AuditConfig;
 }
 
 /**
@@ -41,13 +36,6 @@ export interface IDynamoDBConfig extends IConstructConfig {
  *       sortKey: { name: 'timestamp', type: 'NUMBER' },
  *       billingMode: 'PAY_PER_REQUEST',
  *       removalPolicy: cdk.RemovalPolicy.DESTROY
- *     }
- *   },
- *   audit: {
- *     enabled: true,
- *     type: 'dynamodb',
- *     options: {
- *       tableName: 'myAuditTable'
  *     }
  *   }
  * };
@@ -99,11 +87,5 @@ export class DynamoDBConstruct implements FW24Construct {
 
         // Register the table instance as a global container
         fw24.addDynamoTable(appQualifiedTableName, tableInstance);
-
-        // Set audit configuration in the global container
-        if (this.dynamoDBConfig.audit?.enabled) {
-            this.dynamoDBConfig.audit.tableName = tableInstance.tableName;
-            Auditor.createAuditor(this.dynamoDBConfig.audit);
-        }
     }
 }

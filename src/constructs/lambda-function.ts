@@ -373,6 +373,15 @@ export class LambdaFunction extends Construct {
       });
     }
 
+    // Add global environment variables to the function
+    fw24.getGlobalEnvironmentVariables().forEach(envKey => {
+      addEnvironmentKeyValueForFunction({
+        fn,
+        key: envKey,
+        value: fw24.getEnvironmentVariable(envKey)
+      });
+    });
+    
     // Logic for adding DynamoDB table access to the controller
     props.resourceAccess?.tables?.forEach((table: any) => {
       let tableName = typeof table === 'string' ? table : table.name;
