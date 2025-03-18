@@ -3,7 +3,7 @@ import type { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import type { DIContainer } from "../di/container";
 import type { ILayerVersion } from "aws-cdk-lib/aws-lambda";
 import { IDIContainer } from "./di";
-import { AuditConfig } from "../audit/config/audit-handler";
+
 export interface IApplicationConfig {
     name?: string;
     region?: string;
@@ -35,6 +35,5 @@ export interface IApplicationConfig {
     defaultStackName?: string;
     layerStackName?: string;
     multiStack?: boolean;
-    audit?: AuditConfig;
 }
 

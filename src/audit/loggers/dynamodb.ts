@@ -1,13 +1,11 @@
 import { createLogger } from '../../logging';
-import { createAuditSchema } from '../schema/dynamodb';
-import { AuditorConfig, AuditOptions, IAuditor } from '../interfaces';
+import { AuditLoggerConfig, AuditOptions, IAuditLogger } from '../interfaces';
 
-export class DynamoDbAuditor implements IAuditor {
-    private logger = createLogger('DynamoDbAuditor');
-    private schema = createAuditSchema();
+export class DynamoDbAuditLogger implements IAuditLogger {
+    private logger = createLogger('DynamoDbAuditLogger');
     private enabled: boolean;
 
-    constructor(config: AuditorConfig) {
+    constructor(config: AuditLoggerConfig) {
         this.enabled = config.enabled ?? false;
     }
 
@@ -20,7 +18,7 @@ export class DynamoDbAuditor implements IAuditor {
         const timestamp = new Date();
         const auditEntry = {
             timestamp: timestamp.toISOString(),
-            ...options,
+            ...options.auditEntry,
         };
 
         try {

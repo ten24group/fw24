@@ -7,10 +7,10 @@ import {
 export const createAuditSchema = () => createEntitySchema({
     model: {
         version: '1',
-        entity: 'audit',
-        entityNamePlural: 'audits',
+        entity: 'auditLog',
+        entityNamePlural: 'auditLogs',
         entityOperations: DefaultEntityOperations,
-        service: 'audit'
+        service: 'auditLog'
     },
     attributes: {
         auditId: {
@@ -28,7 +28,7 @@ export const createAuditSchema = () => createEntitySchema({
             required: true,
             isEditable: false,
         },
-        crudType: {
+        eventType: {
             type: 'string',
             required: true,
             isEditable: false,

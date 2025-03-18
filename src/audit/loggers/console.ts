@@ -1,11 +1,11 @@
 import { createLogger } from '../../logging';
-import { AuditorConfig, AuditOptions, IAuditor } from '../interfaces';
+import { AuditLoggerConfig, AuditOptions, IAuditLogger } from '../interfaces';
 
-export class ConsoleAuditor implements IAuditor {
-    private logger = createLogger('ConsoleAuditor');
+export class ConsoleAuditLogger implements IAuditLogger {
+    private logger = createLogger('ConsoleAuditLogger');
     private enabled: boolean;
 
-    constructor(config?: AuditorConfig) {
+    constructor(config?: AuditLoggerConfig) {
         this.enabled = config?.enabled ?? false;
     }
 
@@ -17,7 +17,7 @@ export class ConsoleAuditor implements IAuditor {
 
         const auditEntry = {
             timestamp: new Date().toISOString(),
-            ...options
+            ...options.auditEntry
         };
         this.logger.info('Audit Log:', auditEntry);
     }

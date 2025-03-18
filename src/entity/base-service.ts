@@ -11,7 +11,6 @@ import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateE
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 import { IDIContainer } from "../interfaces";
 import { DatabaseError, EntityValidationError } from './errors';
-import { Auditor } from "../audit";
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
@@ -741,7 +740,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             attributes: uniqueSelectionAttributes,
             entityName: this.getEntityName(),
             entityService: this,
-            auditLogger: Auditor.create(),
         });
 
         this.logger.debug(`Retrieved entity: ${this.getEntityName()}`, JsonSerializer.stringify(entity));
@@ -900,7 +898,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             data: payloadCopy,
             entityName: this.getEntityName(),
             entityService: this,
-            auditLogger: Auditor.create(),
         });
 
         return entity;
@@ -922,7 +919,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             data: payload,
             entityName: this.getEntityName(),
             entityService: this,
-            auditLogger: Auditor.create(),
         });
 
         return entity;
@@ -1036,7 +1032,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             query,
             entityName: this.getEntityName(),
             entityService: this,
-            auditLogger: Auditor.create(),
         });
 
         entities.data = this.serializeRecords(entities.data, query.attributes);
@@ -1101,7 +1096,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             query,
             entityName: this.getEntityName(),
             entityService: this,
-            auditLogger: Auditor.create(),
         });
 
         entities.data = this.serializeRecords(entities.data, selectAttributes);
@@ -1173,7 +1167,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             data: data,
             entityName: this.getEntityName(),
             entityService: this,
-            auditLogger: Auditor.create(),
         });
 
         return updatedEntity;
@@ -1193,7 +1186,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 id: identifiers,
                 entityName: this.getEntityName(),
                 entityService: this,
-                auditLogger: Auditor.create(),
             });
 
             return deletedEntity;

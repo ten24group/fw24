@@ -1,4 +1,10 @@
-export type AuditLoggerType = 'console' | 'cloudwatch' | 'dynamodb' | 'custom';
+export enum AuditLoggerType {
+    CONSOLE = 'console',
+    CLOUDWATCH = 'cloudwatch',
+    DYNAMODB = 'dynamodb',
+    CUSTOM = 'custom',
+    DUMMY = 'dummy'
+}
 
 /**
  * Environment variable keys used for audit configuration
@@ -8,7 +14,7 @@ export interface AuditEnvKeys {
     TYPE: 'AUDIT_TYPE';
     LOG_GROUP_NAME: 'AUDIT_LOG_GROUP_NAME';
     REGION: 'AUDIT_REGION';
-    TABLE_NAME: 'AUDIT_TABLE_NAME';
+    AUDIT_TABLE_NAME: 'AUDIT_TABLE_NAME';
 }
 
 /**
@@ -19,13 +25,13 @@ export const AUDIT_ENV_KEYS: AuditEnvKeys = {
     TYPE: 'AUDIT_TYPE',
     LOG_GROUP_NAME: 'AUDIT_LOG_GROUP_NAME',
     REGION: 'AUDIT_REGION',
-    TABLE_NAME: 'AUDIT_TABLE_NAME'
+    AUDIT_TABLE_NAME: 'AUDIT_TABLE_NAME'
 } as const;
 
 
-export interface AuditorConfig {
-    enabled: boolean;
+export interface AuditLoggerConfig {
     type: AuditLoggerType;
+    enabled?: boolean;
     logGroupName?: string;
     region?: string;
 }
@@ -36,8 +42,13 @@ export interface AuditOptions {
      * If not provided, the auditor's configuration will be used.
      */
     enabled?: boolean;
-    entityName: string;
-    crudType: string;
+    auditEntry?: AuditEntry;
+}
+
+export interface AuditEntry {
+    timestamp?: string;
+    entityName?: string;
+    eventType?: string;
     data?: any;
     entity?: any;
     actor?: any;
@@ -45,6 +56,6 @@ export interface AuditOptions {
     identifiers?: any;
 }
 
-export interface IAuditor {
+export interface IAuditLogger {
     audit(options: AuditOptions): Promise<void>;
 } 

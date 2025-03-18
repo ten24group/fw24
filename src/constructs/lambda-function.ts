@@ -12,7 +12,7 @@ import { Topic } from "aws-cdk-lib/aws-sns";
 import { createLogger, ILogger } from "../logging";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { ensureNoSpecialChars, ensureSuffix, ensureValidEnvKey } from "../utils/keys";
-
+import { DynamoEventSource, DynamoEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
 export type TPolicyStatementOrProps = PolicyStatement | PolicyStatementProps;
 export type TImportedPolicy = { name: string, isOptional?: boolean, prefix?: string };
 

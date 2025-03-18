@@ -1,14 +1,14 @@
 import { CloudWatchLogs, ResourceNotFoundException } from '@aws-sdk/client-cloudwatch-logs';
 import { createLogger } from '../../logging';
-import { AuditorConfig, AuditOptions, IAuditor } from '../interfaces';
+import { AuditLoggerConfig, AuditOptions, IAuditLogger } from '../interfaces';
 
-export class CloudWatchAuditor implements IAuditor {
+export class CloudWatchAuditLogger implements IAuditLogger {
     private client: CloudWatchLogs;
     private logGroupName: string;
-    private logger = createLogger('CloudWatchAuditor');
+    private logger = createLogger('CloudWatchAuditLogger');
     private enabled: boolean;
 
-    constructor(config: AuditorConfig) {
+    constructor(config: AuditLoggerConfig) {
         this.enabled = config.enabled ?? false;
         this.client = new CloudWatchLogs({ region: config.region });
         this.logGroupName = config.logGroupName!;
@@ -23,7 +23,7 @@ export class CloudWatchAuditor implements IAuditor {
 
         const auditEntry = {
             timestamp: new Date().toISOString(),
-            ...options
+            ...options.auditEntry
         };
 
         // Create a new log stream name for each month
