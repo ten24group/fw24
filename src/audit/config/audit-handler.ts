@@ -1,7 +1,8 @@
 import { Fw24 } from '../../core/fw24';
 import { LogGroup } from 'aws-cdk-lib/aws-logs';
-import { AuditLoggerType, IAuditor } from '../interfaces';
+import { AUDIT_ENV_KEYS, AuditLoggerType, IAuditor } from '../interfaces';
 import { LogGroupProps } from "aws-cdk-lib/aws-logs";
+import { createLogger } from '../../logging';
 
 /**
  * Configuration for audit logging.
@@ -55,7 +56,7 @@ export interface AuditConfig {
 export class AuditHandler {
     private static instance: AuditHandler;
     private fw24: Fw24 = Fw24.getInstance();
-
+    private logger = createLogger(AuditHandler.name);
     constructor() {
         this.setup();
     }
@@ -84,9 +85,10 @@ export class AuditHandler {
     }
 
     private setupCloudWatchAudit(config: AuditConfig): void {
-        // Create a CloudWatch Log Group if it doesn't exist
-        const logGroupName = this.fw24.getEnvironmentVariable('AUDIT_CLOUDWATCH_LOG_GROUP', 'audit');
-        new LogGroup(this.fw24.getStack(), logGroupName, {
+        const logGroupName = this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.LOG_GROUP_NAME);
+        this.logger.info(`Setting up CloudWatch audit log group with name ${logGroupName}`);
+        new LogGroup(this.fw24.getStack(), this.fw24.appName + '-audit-log-group', {
+            logGroupName: logGroupName,
             ...config.cloudwatchOptions?.logGroupOptions
         });
     }
@@ -96,19 +98,19 @@ export class AuditHandler {
     }
 
     private setupAuditEnvironmentVariables(config: AuditConfig): void {
-        this.fw24.setGlobalEnvironmentVariable('AUDIT_ENABLED', config.enabled?.toString() || 'false');
-        this.fw24.setGlobalEnvironmentVariable('AUDIT_TYPE', config.type || 'console');
+        this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.ENABLED, config.enabled?.toString() || 'false');
+        this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.TYPE, config.type || 'console');
         
-        if (config.dynamodbOptions?.tableName) {
-            this.fw24.setGlobalEnvironmentVariable('AUDIT_TABLE_NAME', config.dynamodbOptions.tableName);
+        if (config.type === 'dynamodb') {
+            this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.TABLE_NAME, config.dynamodbOptions?.tableName);
         }
 
-        if (config.cloudwatchOptions) {
-            this.fw24.setGlobalEnvironmentVariable('AUDIT_CLOUDWATCH_LOG_GROUP', 
-                config.cloudwatchOptions.logGroupName || `/audit/${this.fw24.getConfig().name}`
+        if (config.type === 'cloudwatch') {
+            this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.LOG_GROUP_NAME, 
+                config.cloudwatchOptions?.logGroupName || `/audit/logs/${this.fw24.getConfig().name}`
             );
-            this.fw24.setGlobalEnvironmentVariable('AUDIT_CLOUDWATCH_REGION', 
-                config.cloudwatchOptions.region || this.fw24.getConfig().region
+            this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.REGION, 
+                config.cloudwatchOptions?.region || this.fw24.getConfig().region
             );
         }
 

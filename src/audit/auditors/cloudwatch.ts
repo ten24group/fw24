@@ -1,4 +1,4 @@
-import { CloudWatchLogs } from '@aws-sdk/client-cloudwatch-logs';
+import { CloudWatchLogs, ResourceNotFoundException } from '@aws-sdk/client-cloudwatch-logs';
 import { createLogger } from '../../logging';
 import { AuditorConfig, AuditOptions, IAuditor } from '../interfaces';
 
@@ -15,7 +15,7 @@ export class CloudWatchAuditor implements IAuditor {
     }
 
     async audit(options: AuditOptions): Promise<void> {
-        this.logger.info('audit', options);
+        this.logger.debug('audit', options);
         // If explicitly disabled for this operation or globally disabled, skip logging
         if (options.enabled === false || this.enabled === false) {
             return;
@@ -26,20 +26,37 @@ export class CloudWatchAuditor implements IAuditor {
             ...options
         };
 
+        // Create a new log stream name for each month
+        const date = new Date();
+        const logStreamName = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        
         try {
-            this.logger.info('putLogEvents', auditEntry);
-            await this.client.putLogEvents({
-                logGroupName: this.logGroupName,
-                // Monthly streams with entity name
-                logStreamName: `${options.entityName}-${new Date().toISOString().split('T')[0]}`,
-                logEvents: [{
-                    timestamp: Date.now(),
-                    message: JSON.stringify(auditEntry)
-                }]
-            });
+            this.logger.debug('putLogEvents', auditEntry);
+            await this.addLogEvents(logStreamName, auditEntry);
         } catch (error) {
-            this.logger.error('Failed to write to CloudWatch:', error);
-            throw error;
+            if(error instanceof ResourceNotFoundException) {
+                await this.client.createLogStream({
+                    logGroupName: this.logGroupName,
+                    logStreamName
+                });
+                try {
+                    await this.addLogEvents(logStreamName, auditEntry);
+                } catch (error) {
+                    this.logger.error('Failed to write to CloudWatch:', error);
+                    throw error;
+                }
+            }
         }
+    }
+
+    private async addLogEvents(logStreamName: string, auditEntry: any) {
+        await this.client.putLogEvents({
+            logGroupName: this.logGroupName,
+            logStreamName,
+            logEvents: [{
+                timestamp: Date.now(),
+                message: JSON.stringify(auditEntry)
+            }]
+        });
     }
 } 

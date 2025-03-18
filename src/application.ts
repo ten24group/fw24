@@ -94,14 +94,14 @@ export class Application {
             await uiConfigGen.run();
         }
 
-        await this.constructAllResources()
-        
-        this.logger.info('All construct resource creation completed');
-
         if(this.fw24.getConfig().audit){
             this.logger.info('Setting up auditor...');
             new AuditHandler();
         }
+
+        await this.constructAllResources()
+        
+        this.logger.info('All construct resource creation completed');
     }
     
 

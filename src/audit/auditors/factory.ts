@@ -1,14 +1,15 @@
-import { AuditorConfig, AuditLoggerType, IAuditor } from '../interfaces';
+import { AuditorConfig, AuditLoggerType, IAuditor, AUDIT_ENV_KEYS } from '../interfaces';
 import { ConsoleAuditor } from './console';
 import { CloudWatchAuditor } from './cloudwatch';
 import { DynamoDbAuditor } from './dynamodb';
-import { resolveEnvValueFor } from '../../utils';
 import { DummyAuditor } from './dummy';
+import { resolveEnvValueFor } from '../../utils';
+import { createLogger } from '../../logging';
 
 export class AuditorFactory {
     private static instance: AuditorFactory;
     private auditorCache: Map<string, IAuditor> = new Map();
-
+    private logger = createLogger(AuditorFactory.name);
     private constructor() {}
 
     public static getInstance(): AuditorFactory {
@@ -18,44 +19,60 @@ export class AuditorFactory {
         return AuditorFactory.instance;
     }
 
-    public create(): IAuditor {
-        const enabled = resolveEnvValueFor({ key: 'AUDIT_ENABLED' }) === 'true';
-        const type = resolveEnvValueFor({ key: 'AUDIT_TYPE' }) as AuditLoggerType || 'console';
-        const logGroupName = resolveEnvValueFor({ key: 'AUDIT_CLOUDWATCH_LOG_GROUP' });
-        const region = resolveEnvValueFor({ key: 'AUDIT_CLOUDWATCH_REGION' });
+    /**
+     * Get the default auditor configuration based on environment variables
+     */
+    private getDefaultConfig(): AuditorConfig {
+        return {
+            enabled: resolveEnvValueFor({ key: AUDIT_ENV_KEYS.ENABLED }) === 'true',
+            type: (resolveEnvValueFor({ key: AUDIT_ENV_KEYS.TYPE }) as AuditLoggerType) || 'console',
+            logGroupName: resolveEnvValueFor({ key: AUDIT_ENV_KEYS.LOG_GROUP_NAME }),
+            region: resolveEnvValueFor({ key: AUDIT_ENV_KEYS.REGION }),
+        };
+    }
 
-        const config: AuditorConfig = {
-            enabled,
-            type,
-            logGroupName,
-            region
+    /**
+     * Create an auditor instance. If no configuration is provided, uses environment variables.
+     * If no environment variables are set, defaults to console auditor.
+     */
+    public create(config?: AuditorConfig): IAuditor {
+
+        const effectiveConfig = {
+            ...this.getDefaultConfig(),
+            ...config
         };
 
-        const cacheKey = this.getCacheKey(config);
+        this.logger.debug('Creating auditor', effectiveConfig);
+
+        // Return cached instance if available
+        const cacheKey = this.getCacheKey(effectiveConfig);
         if (this.auditorCache.has(cacheKey)) {
             return this.auditorCache.get(cacheKey)!;
         }
 
         let auditor: IAuditor;
-
-        // if not enabled, return a dummy auditor
-        if (!enabled) { 
+        
+        // If auditing is disabled, return dummy auditor
+        if (!effectiveConfig.enabled) {
             auditor = new DummyAuditor();
         } else {
-            switch (type) {
+            switch (effectiveConfig.type) {
                 case 'cloudwatch':
-                    auditor = new CloudWatchAuditor(config);
-                break;
-            case 'dynamodb':
-                auditor = new DynamoDbAuditor(config);
-                break;
-            case 'console':
-            default:
-                auditor = new ConsoleAuditor(config);
+                    auditor = new CloudWatchAuditor(effectiveConfig);
+                    break;
+                case 'dynamodb':
+                    auditor = new DynamoDbAuditor(effectiveConfig);
+                    break;
+                case 'custom':
+                    throw new Error('Custom logger not implemented yet');
+                case 'console':
+                default:
+                    auditor = new ConsoleAuditor(effectiveConfig);
                     break;
             }
         }
 
+        // Cache the instance
         this.auditorCache.set(cacheKey, auditor);
         return auditor;
     }
@@ -63,7 +80,8 @@ export class AuditorFactory {
     private getCacheKey(config: AuditorConfig): string {
         return `${config.type}`;
     }
-} 
+}
 
 export const Auditor = AuditorFactory.getInstance();
-export const NullAuditor: IAuditor = new DummyAuditor();
+export const DefaultAuditor = Auditor.create();
+export const NullAuditor = Auditor.create({ enabled: false, type: 'console' });

@@ -1,8 +1,14 @@
-import { IAuditor } from "../interfaces";
+import { IAuditor, AuditOptions } from "../interfaces";
 
-// Dummy Auditor Implementation
+/**
+ * A no-op auditor implementation that does nothing.
+ * Used as a fallback when auditing is disabled.
+ */
 export class DummyAuditor implements IAuditor {
-    async audit(): Promise<void> {
+    constructor() {}
+
+    async audit(options: AuditOptions): Promise<void> {
+        options;
         // Do nothing
     }
 }
