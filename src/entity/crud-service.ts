@@ -1,6 +1,6 @@
 import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
 import type { EntityQuery } from "./query-types";
-import { AuditEntry, IAuditLogger, NullAuditLogger } from "../audit";
+import { IAuditLogger, NullAuditLogger } from "../audit";
 import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
