@@ -93,3 +93,5 @@ export const createAuditSchema = () => createEntitySchema({
         }
     }
 }); 
+
+export type AuditSchemaType = ReturnType<typeof createAuditSchema>;

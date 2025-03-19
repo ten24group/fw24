@@ -13,6 +13,8 @@ import { StartingPosition } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import path from "path";
 import { LambdaFunction } from "./lambda-function";
+import { registerEntitySchema } from "../decorators";
+import { createAuditSchema, AuditSchemaType } from "../audit/schema/dynamodb";
 
 /**
  * Represents the configuration for a DynamoDB table.
@@ -225,8 +227,12 @@ export class DynamoDBConstruct implements FW24Construct {
         // Configure the audit logging table
         const auditTableName = this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME);
         this.logger.debug(`Setting up DynamoDB audit logging table with name ${auditTableName}`, config);
-        const entitySchemaFile = path.join(__dirname, '../audit/schema/dynamodb.json');
         // TODO: Implement the creation of the audit logging table
+        registerEntitySchema<AuditSchemaType>({
+            forEntity: 'auditLog',
+            providedIn: "ROOT",
+            useFactory: createAuditSchema,
+        });
     }
 
     private setupCloudWatchAuditor(config: AuditConfig): void {

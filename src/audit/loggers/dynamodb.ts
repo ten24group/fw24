@@ -1,5 +1,7 @@
+import { BaseEntityService } from '../../entity';
 import { createLogger } from '../../logging';
 import { AuditLoggerConfig, AuditOptions, IAuditLogger } from '../interfaces';
+import { AuditSchemaType } from '../schema/dynamodb';
 
 export class DynamoDbAuditLogger implements IAuditLogger {
     private logger = createLogger('DynamoDbAuditLogger');
@@ -23,7 +25,8 @@ export class DynamoDbAuditLogger implements IAuditLogger {
 
         try {
             // TODO: Implement DynamoDB write using the schema
-            // await this.schema.create(auditEntry).go();
+            // const auditService = BaseEntityService<AuditSchemaType>;
+            // await auditService.create({auditEntry});
         } catch (error) {
             this.logger.error('Failed to write to DynamoDB:', error);
             throw error;
