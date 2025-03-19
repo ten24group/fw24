@@ -85,10 +85,10 @@ export type CommonLambdaHandlerOptions = {
 export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3)?.path) {
 
 	try {
-		DefaultLogger.info("trying to import entry-packages for", { controllerName });
+		DefaultLogger.debug("trying to import entry-packages for", { controllerName });
 		const entryPackageNames = resolveEnvValueFor({ key: ENV_KEYS.ENTRY_PACKAGES });
 
-		DefaultLogger.info("Entry-package-names", { entryPackageNames });
+		DefaultLogger.debug("Entry-package-names", { entryPackageNames });
 		if (!entryPackageNames) {
 			return;
 		}
@@ -97,11 +97,11 @@ export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3
 
 		packageNamesArray.forEach((entryPackageName) => {
 			try {
-				DefaultLogger.info("trying to import entry", { entryPackageName });
+				DefaultLogger.debug("trying to import entry", { entryPackageName });
 				const entry = require(entryPackageName);
 				// call the default export if available
 				entry.default && typeof entry.default === 'function' && entry.default();
-				DefaultLogger.info(`Controller[${controllerName}]: successfully imported entry-package: ${entryPackageName}`);
+				DefaultLogger.debug(`Controller[${controllerName}]: successfully imported entry-package: ${entryPackageName}`);
 			} catch (error) {
 				DefaultLogger.error(`Controller[${controllerName}]: failed to import entry-package: ${entryPackageName}`, error);
 			}

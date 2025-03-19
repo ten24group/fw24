@@ -1,4 +1,4 @@
-import { DynamoDBStreamEvent, DynamoDBRecord } from 'aws-lambda';
+import { DynamoDBStreamEvent, DynamoDBRecord, SQSEvent, SQSRecord } from 'aws-lambda';
 import { DynamoDB, AttributeValue } from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { createLogger } from '../../logging';
@@ -16,6 +16,44 @@ const EVENT_TYPE_MAP = {
     MODIFY: 'update',
     REMOVE: 'delete'
 } as const;
+
+/**
+ * Extracts DynamoDB records from either a DynamoDB stream event or an SQS event
+ */
+function extractDynamoDBRecords(event: DynamoDBStreamEvent | SQSEvent): DynamoDBRecord[] {
+    // Type guard for SQS events
+    const isSQSEvent = (event: DynamoDBStreamEvent | SQSEvent): event is SQSEvent => {
+        return 'Records' in event && event.Records[0]?.eventSource === 'aws:sqs';
+    };
+
+    if (isSQSEvent(event)) {
+        // Handle SQS event
+        return event.Records.reduce<DynamoDBRecord[]>((acc, record) => {
+            try {
+                const body = JSON.parse(record.body);
+                const message = JSON.parse(body.Message);
+                
+                // Create a DynamoDB record from the message
+                const dynamoRecord: DynamoDBRecord = {
+                    eventID: message.message.eventID,
+                    eventName: message.message.eventName as "INSERT" | "MODIFY" | "REMOVE",
+                    eventSource: message.message.eventSource,
+                    eventVersion: '1.0',
+                    awsRegion: record.awsRegion,
+                    dynamodb: message.message.dynamodb
+                };
+                
+                acc.push(dynamoRecord);
+            } catch (error) {
+                logger.error('Error parsing SQS message', { error, record });
+            }
+            return acc;
+        }, []);
+    }
+
+    // Handle direct DynamoDB stream event
+    return event.Records;
+}
 
 /**
  * Simple value comparison helper
@@ -217,17 +255,20 @@ function getChangedProperties(
 }
 
 /**
- * Processes a DynamoDB Stream event and writes audit records to the audit log table
+ * Main handler function that processes both DynamoDB Stream and SQS events
  */
-export const handler = async (event: DynamoDBStreamEvent): Promise<void> => {
-    logger.info('Processing DynamoDB Stream event', { event });
+export const handler = async (event: DynamoDBStreamEvent | SQSEvent): Promise<void> => {
+    logger.debug('Processing event', { event });
 
     try {
-        // Process each record in the stream
-        const auditPromises = event.Records.map(record => processStreamRecord(record));
+        // Extract DynamoDB records from either event type
+        const records = extractDynamoDBRecords(event);
+        logger.debug('Extracted records', { records });
+        // Process each record
+        const auditPromises = records.map(record => processStreamRecord(record));
         await Promise.all(auditPromises);
     } catch (error) {
-        logger.error('Error processing stream records', error);
+        logger.error('Error processing records', error);
         throw error;
     }
 };

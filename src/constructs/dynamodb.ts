@@ -1,21 +1,25 @@
 import { TablePropsV2, TableV2 } from "aws-cdk-lib/aws-dynamodb";
+import { TopicProps } from "aws-cdk-lib/aws-sns";
+import { DynamoEventSource, DynamoEventSourceProps, SqsEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
+import { LogGroup, LogGroupProps, RetentionDays } from "aws-cdk-lib/aws-logs";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import { StartingPosition } from "aws-cdk-lib/aws-lambda";
+import { RemovalPolicy, Stack } from "aws-cdk-lib";
+import { join } from "path";
+import { Duration } from "aws-cdk-lib";
 
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import { createLogger, LogDuration } from "../logging";
 import { ensureNoSpecialChars, ensureSuffix } from "../utils/keys";
 import { IConstructConfig } from "../interfaces/construct-config";
-import { RemovalPolicy, Stack } from "aws-cdk-lib";
-import { DynamoEventSource, DynamoEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
-import { LogGroup, LogGroupProps, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { AuditLoggerType, AUDIT_ENV_KEYS, IAuditLogger } from "../audit/interfaces";
-import { StartingPosition } from "aws-cdk-lib/aws-lambda";
-import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-import path from "path";
-import { LambdaFunction } from "./lambda-function";
 import { registerEntitySchema } from "../decorators";
 import { createAuditSchema, AuditSchemaType } from "../audit/schema/dynamodb";
-
+import { TopicConstruct, ITopicConstructConfig } from "./topic";
+import { LambdaFunction } from "./lambda-function";
+import { QueueLambda } from "./queue-lambda";
+import { QueueProps } from "aws-cdk-lib/aws-sqs";
 /**
  * Represents the configuration for a DynamoDB table.
  */
@@ -29,6 +33,32 @@ export interface IDynamoDBConfig extends IConstructConfig {
          * The properties for the DynamoDB table.
          */
         props: TablePropsV2;
+        /**
+         * Stream processing configuration
+         */
+        stream?: {
+            /**
+             * Enable stream processing
+             */
+            enabled?: boolean;
+            /**
+             * SNS topic configuration for stream events
+             */
+            topic?: {
+                /**
+                 * Topic name. Defaults to {tableName}-stream
+                 */
+                name?: string;
+                /**
+                 * Topic properties
+                 */
+                props?: TopicProps;
+            };
+            /**
+             * Stream processor Lambda configuration
+             */
+            processor?: DynamoEventSourceProps;
+        };
         /**
          * Audit configuration for the DynamoDB table.
          */
@@ -102,14 +132,17 @@ export interface AuditConfig extends IConstructConfig {
          */
         auditTableName?: string;
         /**
-         * Event source properties for DynamoDB table
-         */
-        eventSourceProps?: DynamoEventSourceProps;
-        /**
          * TTL in seconds for DynamoDB records
          */
         ttl?: number;
-        
+        /**
+         * Audit queue properties
+         */
+        queueProps?: QueueProps;
+        /**
+         * SQS event source properties
+         */
+        sqsEventSourceProps?: SqsEventSourceProps;
     };
 }
 
@@ -155,22 +188,114 @@ export class DynamoDBConstruct implements FW24Construct {
         // Register the table instance as a global container
         fw24.addDynamoTable(appQualifiedTableName, tableInstance);
 
-        if (this.dynamoDBConfig.table.audit) {
-            this.setupAudit(this.dynamoDBConfig.table.audit, tableInstance);
+        // Setup stream processing if enabled or audit is enabled and stream ARN exists
+        if (
+            (this.dynamoDBConfig.table.stream?.enabled == undefined 
+                || this.dynamoDBConfig.table.stream?.enabled 
+                || this.dynamoDBConfig.table.audit?.enabled) 
+            && tableInstance.tableStreamArn) {
+            this.setupStreamProcessing(tableInstance);
+        }
+
+        if (this.dynamoDBConfig.table.audit?.enabled) {
+            this.setupAuditProcessing(this.dynamoDBConfig.table.audit, tableInstance);
         }
     }
 
-    private async setupAudit(config: AuditConfig, tableInstance: TableV2) {
-        if (!config.enabled) {
-            return;
-        }
+    private getStreamTopicName(): string {
+        return `${this.dynamoDBConfig.table.name}-stream`;
+    }
+
+    private setupStreamProcessing(tableInstance: TableV2): void {
+        const streamConfig = this.dynamoDBConfig.table.stream || {};
+        
+        // Create SNS topic for stream events
+        const topicName = streamConfig.topic?.name || this.getStreamTopicName();
+        const isFifo = streamConfig.topic?.props?.fifo ?? false;
+        const streamTopicConfig: ITopicConstructConfig[] = [{
+            topicName,
+            topicProps: {
+                displayName: `Stream events for ${this.dynamoDBConfig.table.name}`,
+                fifo: isFifo,
+                ...streamConfig.topic?.props
+            }
+        }];
+
+        new TopicConstruct(streamTopicConfig).construct();
+
+        // Create Lambda to process stream and publish to SNS
+        const streamProcessor = new LambdaFunction(this.mainStack, `${this.fw24.appName}-stream-processor`, {
+            entry: join(__dirname, '../core/runtime/dynamodb-stream-processor.js'),
+            environmentVariables: {
+                TOPIC_NAME: topicName,
+                TOPIC_TYPE: isFifo ? 'fifo' : 'standard'
+            },
+            resourceAccess: {
+                topics: [{
+                    name: topicName,
+                    access: ['publish']
+                }]
+            }
+        }) as NodejsFunction;
+
+        // Grant permissions and add event source
+        tableInstance.grantStreamRead(streamProcessor);
+        streamProcessor.addEventSource(new DynamoEventSource(tableInstance, {
+            ...streamConfig.processor,
+            startingPosition: streamConfig.processor?.startingPosition ?? StartingPosition.LATEST,
+            batchSize: streamConfig.processor?.batchSize ?? 5,
+            bisectBatchOnError: streamConfig.processor?.bisectBatchOnError ?? true,
+            retryAttempts: streamConfig.processor?.retryAttempts ?? 3
+        }));
+
+        this.logger.info('Stream processing setup completed for table:', this.dynamoDBConfig.table.name);
+    }
+
+    private async setupAuditProcessing(config: AuditConfig, tableInstance: TableV2) {
         // Set audit configuration in environment variables for lambda functions
         this.setupAuditEnvironmentVariables(config);
 
-        // Setup DynamoDB stream reader lambda function
-        this.setupDynamoDBStream(config, tableInstance);
+        // Create QueueLambda for processing audit events from the stream topic
+        if (tableInstance.tableStreamArn) {
+            let resourceAccess: any = {};
+            
+            if (config.type === AuditLoggerType.DYNAMODB) {
+                resourceAccess = {
+                    tables: [{
+                        name: this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME),
+                        access: ['readwrite']
+                    }]
+                };
+            }
 
-        // handle setup for various audit types
+            new QueueLambda(this.mainStack, `${this.fw24.appName}-entity-audit-queue`, {
+                queueName: `${this.dynamoDBConfig.table.name}-entity-audit`,
+                lambdaFunctionProps: {
+                    entry: join(__dirname, '../audit/function/dynamodb-stream-logging.js'),
+                    resourceAccess: resourceAccess,
+                    environmentVariables: {
+                        AUDIT_ENABLED: config.enabled?.toString() || 'false',
+                        AUDIT_TYPE: config.type || AuditLoggerType.CLOUDWATCH
+                    }
+                },
+                queueProps: {
+                    ...config.dynamodbstreamOptions?.queueProps
+                },
+                subscriptions: {
+                    topics: [{
+                        name: this.getStreamTopicName(),
+                        filters: []
+                    }]
+                },
+                sqsEventSourceProps: {
+                    batchSize: config.dynamodbstreamOptions?.sqsEventSourceProps?.batchSize || 5,
+                    maxBatchingWindow: config.dynamodbstreamOptions?.sqsEventSourceProps?.maxBatchingWindow || Duration.seconds(5),
+                    reportBatchItemFailures: config.dynamodbstreamOptions?.sqsEventSourceProps?.reportBatchItemFailures || true
+                }
+            });
+        }
+
+        // Handle setup for various audit types
         switch (config.type) {
             case AuditLoggerType.DYNAMODB:
                 this.setupDynamoDBAuditor(config);
@@ -183,44 +308,6 @@ export class DynamoDBConstruct implements FW24Construct {
                 this.setupCloudWatchAuditor(config);
                 break;
         }
-    }
-
-    private setupDynamoDBStream(config: AuditConfig, tableInstance: TableV2): void {
-
-        if(!tableInstance.tableStreamArn) {
-            throw new Error('Table ' + this.dynamoDBConfig.table.name + ' does not have a stream enabled');
-        }
-
-        this.logger.info('Setting up DynamoDB stream reader lambda function for table ', this.dynamoDBConfig.table.name);   
-
-        let resourceAccess: any = {};
-        if(config.type === AuditLoggerType.DYNAMODB) {
-            resourceAccess = {
-                tables: [
-                    {
-                    name: this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME),
-                    access: ['readwrite']
-                }
-            ]   
-            }
-        }
-
-        const streamReader = new LambdaFunction(this.mainStack, this.fw24.appName + '-audit-stream-reader', {
-            entry: path.join(__dirname, '../audit/function/dynamodbstream.js'),
-            resourceAccess: resourceAccess
-        }) as NodejsFunction;
-
-        const eventSourceProps: DynamoEventSourceProps = {
-            ...config.dynamodbstreamOptions?.eventSourceProps,
-            startingPosition: config.dynamodbstreamOptions?.eventSourceProps?.startingPosition || StartingPosition.LATEST,
-            batchSize: config.dynamodbstreamOptions?.eventSourceProps?.batchSize || 5,
-            bisectBatchOnError: config.dynamodbstreamOptions?.eventSourceProps?.bisectBatchOnError || true,
-            retryAttempts: config.dynamodbstreamOptions?.eventSourceProps?.retryAttempts || 3,
-        };
-
-        tableInstance.grantStreamRead(streamReader);
-        streamReader.addEventSource(new DynamoEventSource(tableInstance, eventSourceProps));
-        
     }
 
     private setupDynamoDBAuditor(config: AuditConfig): void {

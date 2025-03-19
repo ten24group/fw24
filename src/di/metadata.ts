@@ -65,7 +65,7 @@ export class DIModuleMetadata implements DIModuleOptions {
                         this.container.module(module);
                     }
                 } else {
-                    this.logger.info(`Module ${module.name} is already imported`);
+                    this.logger.debug(`Module ${module.name} is already imported`);
                 }
             });
         }
@@ -78,9 +78,9 @@ export class DIModuleMetadata implements DIModuleOptions {
                         this.container.exportProvidersFor(provide);
                     }
                 } else {
-                    this.logger.info(`Provider ${provide} is already exported`);
+                    this.logger.debug(`Provider ${provide} is already exported`);
                 }
-            });
+            }); 
         }
 
         if (options.providers !== undefined) {
@@ -98,7 +98,7 @@ export class DIModuleMetadata implements DIModuleOptions {
                     }
                     
                 } else {
-                    this.logger.info(`Provider ${providerOptions.provide} is already registered`);
+                    this.logger.debug(`Provider ${providerOptions.provide} is already registered`);
                 }
             });
         }
