@@ -4,7 +4,7 @@ import {
     createEntitySchema,
 } from '../../entity';
 
-export const createAuditSchema = () => createEntitySchema({
+export const auditSchema = createEntitySchema({
     model: {
         version: '1',
         entity: 'auditLog',
@@ -40,12 +40,9 @@ export const createAuditSchema = () => createEntitySchema({
             default: () => new Date().toISOString()
         },
         data: {
-            type: 'map',
+            type: 'any',
             required: false,
             isEditable: false,
-            properties: {
-                '*': { type: 'any' }
-            }
         },
         entity: {
             type: 'map',
@@ -76,22 +73,22 @@ export const createAuditSchema = () => createEntitySchema({
             required: false,
             isEditable: false,
             properties: {
-                '*': { type: 'any' }
+                'id': { type: 'string' }
             }
         }
     },
     indexes: {
         primary: {
             pk: {
-                field: 'auditId',
-                composite: []
+                field: 'pk',
+                composite: [ 'auditId' ]
             },
             sk: {
-                field: 'timestamp',
-                composite: []
+                field: 'sk',
+                composite: [ ]
             }
         }
     }
 }); 
 
-export type AuditSchemaType = ReturnType<typeof createAuditSchema>;
+export type AuditSchemaType = typeof auditSchema;

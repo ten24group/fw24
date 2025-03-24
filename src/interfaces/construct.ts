@@ -8,6 +8,10 @@ import type { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import type { Bucket } from "aws-cdk-lib/aws-s3";
 import type { Topic } from "aws-cdk-lib/aws-sns";
 import type { Queue } from "aws-cdk-lib/aws-sqs";
+import type { FargateService, ICluster } from "aws-cdk-lib/aws-ecs";
+import type { ApplicationLoadBalancer } from "aws-cdk-lib/aws-elasticloadbalancingv2";
+import type { Service } from "aws-cdk-lib/aws-servicediscovery";
+import type { FileSystem } from "aws-cdk-lib/aws-efs";
 
 import type { Fw24 } from "../core/fw24";
 import { Stack } from "aws-cdk-lib";
@@ -43,6 +47,11 @@ export interface FW24ConstructOutput extends Record<string, any>{
     [OutputType.SECURITYGROUP]: Record<string,ISecurityGroup>;
     [OutputType.CLOUDFRONTWEBDISTRIBUTION]: Record<string,CloudFrontWebDistribution>;
     [OutputType.CERTIFICATE]: Record<string,ICertificate>;
+    [OutputType.SERVICE]: Record<string,FargateService>;
+    [OutputType.LOADBALANCER]: Record<string,ApplicationLoadBalancer>;
+    [OutputType.SERVICE_DISCOVERY]: Record<string,Service>;
+    [OutputType.CLUSTER]: Record<string,ICluster>;
+    [OutputType.EFS]: Record<string,FileSystem>;
     [key: string]: any;
 }
 
@@ -65,4 +74,9 @@ export enum OutputType   {
     SECURITYGROUP = 'securitygroup',
     CLOUDFRONTWEBDISTRIBUTION = 'cloudfrontwebdistribution',
     CERTIFICATE = 'certificate',
+    SERVICE = 'service',
+    LOADBALANCER = 'loadbalancer',
+    SERVICE_DISCOVERY = 'servicediscovery',
+    CLUSTER = 'cluster',
+    EFS = 'efs'
 }

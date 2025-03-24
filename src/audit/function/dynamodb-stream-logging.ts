@@ -301,6 +301,9 @@ async function processStreamRecord(record: DynamoDBRecord): Promise<void> {
     if (!entityName) {
         logger.warn('No entity name found in record', { record });
         return;
+    } else if (entityName === 'auditLog') {
+        logger.info('Skipping audit log', { record });
+        return;
     }
 
     // Get only the changed properties
@@ -321,7 +324,7 @@ async function processStreamRecord(record: DynamoDBRecord): Promise<void> {
         identifiers: {
             id: (newImage?.id || oldImage?.id) as string
         },
-        actor: newImage?.updatedBy || 'Unknown'
+        actor: newImage?.updatedBy
     };
 
     const envType = resolveEnvValueFor({ key: AUDIT_ENV_KEYS.TYPE }) || AuditLoggerType.CLOUDWATCH;
