@@ -1,3 +1,7 @@
+---
+sidebar_position: 7
+---
+
 # DynamoDB Streams and Audit Logging
 
 FW24 provides built-in support for DynamoDB streams and audit logging capabilities. This feature allows you to track changes to your DynamoDB tables and process them in real-time.

@@ -1,4 +1,4 @@
-# Fargate Construct
+# Fargate
 
 The Fargate Construct provides a high-level abstraction for deploying containerized applications on AWS ECS Fargate. It handles the complexities of container deployment, load balancing, service discovery, and auto-scaling.
 
