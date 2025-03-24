@@ -49,7 +49,7 @@ import { QueueConstruct } from "./queue";
 import { TopicConstruct } from "./topic";
 import { IConstructConfig } from "../interfaces/construct-config";
 import { createHash, randomUUID } from "crypto";
-
+import { VpcConstruct } from "./vpc";
 /**
  * Represents the configuration options for an API construct.
  */
@@ -123,7 +123,7 @@ export class APIConstruct implements FW24Construct {
     
     name: string = APIConstruct.name;
     // array of type of stacks that this stack is dependent on
-    dependencies: string[] = [MailerConstruct.name, DynamoDBConstruct.name, AuthConstruct.name, QueueConstruct.name, TopicConstruct.name, LayerConstruct.name];
+    dependencies: string[] = [VpcConstruct.name, MailerConstruct.name, DynamoDBConstruct.name, AuthConstruct.name, QueueConstruct.name, TopicConstruct.name, LayerConstruct.name];
     output!: FW24ConstructOutput;
 
     api!: RestApi;

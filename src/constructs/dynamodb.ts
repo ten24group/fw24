@@ -14,8 +14,6 @@ import { createLogger, LogDuration } from "../logging";
 import { ensureNoSpecialChars, ensureSuffix } from "../utils/keys";
 import { IConstructConfig } from "../interfaces/construct-config";
 import { AuditLoggerType, AUDIT_ENV_KEYS, IAuditLogger } from "../audit/interfaces";
-import { registerEntitySchema } from "../decorators";
-import { createAuditSchema, AuditSchemaType } from "../audit/schema/dynamodb";
 import { TopicConstruct, ITopicConstructConfig } from "./topic";
 import { LambdaFunction } from "./lambda-function";
 import { QueueLambda } from "./queue-lambda";
@@ -258,6 +256,7 @@ export class DynamoDBConstruct implements FW24Construct {
         // Create QueueLambda for processing audit events from the stream topic
         if (tableInstance.tableStreamArn) {
             let resourceAccess: any = {};
+            let environmentVariables: any = {};
             
             if (config.type === AuditLoggerType.DYNAMODB) {
                 resourceAccess = {
@@ -265,6 +264,9 @@ export class DynamoDBConstruct implements FW24Construct {
                         name: this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME),
                         access: ['readwrite']
                     }]
+                };
+                environmentVariables = {
+                    AUDIT_TABLE_NAME: this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME)
                 };
             }
 
@@ -275,7 +277,8 @@ export class DynamoDBConstruct implements FW24Construct {
                     resourceAccess: resourceAccess,
                     environmentVariables: {
                         AUDIT_ENABLED: config.enabled?.toString() || 'false',
-                        AUDIT_TYPE: config.type || AuditLoggerType.CLOUDWATCH
+                        AUDIT_TYPE: config.type || AuditLoggerType.CLOUDWATCH,
+                        ...environmentVariables
                     }
                 },
                 queueProps: {
@@ -314,12 +317,6 @@ export class DynamoDBConstruct implements FW24Construct {
         // Configure the audit logging table
         const auditTableName = this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME);
         this.logger.debug(`Setting up DynamoDB audit logging table with name ${auditTableName}`, config);
-        // TODO: Implement the creation of the audit logging table
-        registerEntitySchema<AuditSchemaType>({
-            forEntity: 'auditLog',
-            providedIn: "ROOT",
-            useFactory: createAuditSchema,
-        });
     }
 
     private setupCloudWatchAuditor(config: AuditConfig): void {

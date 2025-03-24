@@ -14,6 +14,8 @@ import { type IFw24Module } from './runtime/module';
 import { ensureNoSpecialChars, ensureValidEnvKey } from '../utils/keys';
 import { App, CfnOutput, Fn, NestedStack, Stack } from 'aws-cdk-lib';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
+import { Vpc } from 'aws-cdk-lib/aws-ec2';
+import { IHostedZone, HostedZone } from 'aws-cdk-lib/aws-route53';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
@@ -22,8 +24,8 @@ export class Fw24 {
     emailProvider: any;
 
     private config: IApplicationConfig = {};
-    private app: any;
-    private stacks: any = {};
+    private app!: App;
+    private stacks: Record<string, Stack> = {};
     private apis: { [ apiConstructName: string ]: { [ name: string ]: any } } = {};
     private environmentVariables: Record<string, any> = {};
     private globalEnvironmentVariables: string[] = [];
@@ -36,11 +38,12 @@ export class Fw24 {
     private queues = new Map<string, IQueue>();
     private topics = new Map<string, ITopic>();
     private modules = new Map<string, IFw24Module>();
+    private constructs = new Map<string, FW24Construct>();
 
     private readonly globalLambdaLayerNames = new Set<string>();
     private readonly globalLambdaEntryPackages = new Set<string>();
 
-    private constructor() { }
+    private constructor() {} // Empty constructor as App is set via setApp()
 
     static getInstance(): Fw24 {
         if (!Fw24.instance) {
@@ -506,6 +509,35 @@ export class Fw24 {
         this.logger.debug("RoutePolicyStatement:", { route, statement });
 
         return statement;
+    }
+
+    public getConstructOutput<T>(type: OutputType, name: string): T | undefined {
+        // Look through all constructs to find the output
+        for (const construct of this.constructs.values()) {
+            if (construct.output?.[type]?.[name]) {
+                return construct.output[type][name] as T;
+            }
+        }
+        return undefined;
+    }
+
+    public addConstruct(construct: FW24Construct) {
+        this.constructs.set(construct.name, construct);
+    }
+
+    public getVpc(vpcName: string): Vpc {
+        const vpc = this.getConstructOutput<Vpc>(OutputType.VPC, vpcName);
+        if (!vpc) {
+            throw new Error(`VPC ${vpcName} not found`);
+        }
+        return vpc;
+    }
+
+    public getHostedZone(domainName: string): IHostedZone {
+        // Look up the hosted zone by domain name
+        return HostedZone.fromLookup(this.app, `${domainName}-zone`, {
+            domainName,
+        });
     }
 
 }

@@ -16,6 +16,8 @@ import { Certificate, CertificateValidation } from "aws-cdk-lib/aws-certificatem
 import { CloudFrontWebDistribution, ViewerCertificate, SecurityPolicyProtocol, SSLMethod } from "aws-cdk-lib/aws-cloudfront";
 import { CertificateConstruct } from "./certificate";
 import { IConstructConfig } from "../interfaces/construct-config";
+import { VpcConstruct } from "./vpc";
+import { MailerConstruct } from "./mailer";
 
 /**
  * Represents the configuration for a bucket construct.
@@ -138,7 +140,7 @@ export class BucketConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = BucketConstruct.name;
-    dependencies: string[] = [QueueConstruct.name];
+    dependencies: string[] = [VpcConstruct.name, MailerConstruct.name, QueueConstruct.name];
     output!: FW24ConstructOutput;
 
     appConfig: IApplicationConfig | undefined;

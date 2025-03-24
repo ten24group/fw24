@@ -26,6 +26,8 @@ import { createLogger, LogDuration } from "../logging";
 import { Helper } from "../core";
 import { IConstructConfig } from "../interfaces/construct-config";
 import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
+import { VpcConstruct } from "./vpc";
+import { MailerConstruct } from "./mailer";
 
 export type TriggerType = 
     | 'CUSTOM_MESSAGE'
@@ -224,7 +226,7 @@ export class AuthConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = AuthConstruct.name;
-    dependencies: string[] = [];
+    dependencies: string[] = [VpcConstruct.name, MailerConstruct.name];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;

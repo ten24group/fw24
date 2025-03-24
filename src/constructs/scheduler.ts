@@ -10,6 +10,7 @@ import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-node
 import { LambdaFunction } from "./lambda-function";
 import { Rule, Schedule } from "aws-cdk-lib/aws-events";
 import { IConstructConfig } from "../interfaces/construct-config";
+import { VpcConstruct } from "./vpc";
 
 /**
  * Represents the configuration for the Scheduler construct.
@@ -47,7 +48,7 @@ export class SchedulerConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
     
     name: string = SchedulerConstruct.name;
-    dependencies: string[] = [];
+    dependencies: string[] = [VpcConstruct.name];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;

@@ -53,6 +53,21 @@ export const handler = async (event: DynamoDBStreamEvent): Promise<void> => {
             // Get FIFO properties if enabled
             const fifoProps = getFifoProperties(record);
 
+            // Check if this is a DynamoDB event and if it's an audit log
+            if (record.eventSource === 'aws:dynamodb') {
+                const newImage = record.dynamodb?.NewImage;
+                const oldImage = record.dynamodb?.OldImage;
+                const entityName = ((newImage?.__edb_e__ || oldImage?.__edb_e__) as { S?: string })?.S;
+                logger.info('Stream entity name', entityName);
+                
+                // Skip processing only audit log records
+                if (entityName === 'auditLog') {
+                    logger.debug('Skipping audit log record', { eventID: record.eventID });
+                    return Promise.resolve();
+                }
+            }
+
+            // Continue processing for all non-audit records
             const message = {
                 eventID: record.eventID,
                 eventName: record.eventName,
