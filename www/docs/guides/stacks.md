@@ -1,3 +1,7 @@
+---
+sidebar_position: 8
+---
+
 # Stack Management in FW24
 
 FW24 provides basic stack management capabilities through the Application configuration.

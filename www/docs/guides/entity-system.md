@@ -1,3 +1,7 @@
+---
+sidebar_position: 6
+---
+
 # Entity System
 
 The fw24 Entity System provides a powerful, convention-based CRUD system for DynamoDB with TypeScript support. It automatically handles table creation, relationships, validation, and more.
