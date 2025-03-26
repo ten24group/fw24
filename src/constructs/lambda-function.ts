@@ -12,7 +12,6 @@ import { Topic } from "aws-cdk-lib/aws-sns";
 import { createLogger, ILogger } from "../logging";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { ensureNoSpecialChars, ensureSuffix, ensureValidEnvKey } from "../utils/keys";
-
 export type TPolicyStatementOrProps = PolicyStatement | PolicyStatementProps;
 export type TImportedPolicy = { name: string, isOptional?: boolean, prefix?: string };
 
@@ -340,6 +339,15 @@ export class LambdaFunction extends Construct {
       });
     }
 
+    // Add global environment variables to the function
+    fw24.getGlobalEnvironmentVariables().forEach(envKey => {
+      addEnvironmentKeyValueForFunction({
+        fn,
+        key: envKey,
+        value: fw24.getEnvironmentVariable(envKey)
+      });
+    });
+
     // Attach policies to the function
     (props.policies ?? []).forEach(policy => {
 
@@ -520,6 +528,5 @@ function addEnvironmentKeyValueForFunction(options: {
   const { fn, key, value, prefix = '', suffix = '' } = options;
 
   const envKey = ensureValidEnvKey(key, prefix, suffix);
-
   fn.addEnvironment(envKey, value);
 }

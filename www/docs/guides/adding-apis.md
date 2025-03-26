@@ -160,3 +160,114 @@ The `BaseEntityController` provides a set of pre-defined API endpoints for perfo
 - `DELETE /:entity/:id` - to delete a specific entity by its Identifiers.
 - `GET /:entity`  - to retrieve a list of entities, supports pagination, filtering and term-search.
 - `POST /:entity/query` - to fetch a list of entity using advance filters; supports pagination, term-search.
+
+## Queue Controllers and Webhooks
+
+FW24 provides a powerful integration between API Gateway and SQS through the `QueueController` base class, primarily designed for implementing robust webhooks. This integration allows you to create webhook endpoints that can handle failures gracefully and support automatic retries through SQS.
+
+### Creating a Webhook Controller
+
+To create a webhook endpoint that uses SQS for message processing, you can use the `@Controller` decorator with the `target` option and define your queues using the `@Queue` decorator:
+
+```ts
+import { APIController, Controller, Post, Queue } from '@ten24group/fw24';
+
+@Controller('webhook', {
+    authorizer: 'NONE',
+    target: ''  // Default target type
+})
+export class Webhook extends APIController {
+    async initialize() {
+        return Promise.resolve();
+    }
+
+    @Post('/mywebhook', {
+        target: 'queue'  // This endpoint will integrate with SQS
+    })
+    myWebhook() {
+        // The method can be empty as the request will be automatically
+        // forwarded to SQS by API Gateway
+    }
+
+    @Post('/mytopic', {
+        target: 'topic'  // This endpoint will integrate with SNS
+    })
+    myTopic() {
+        // The method can be empty as the request will be automatically
+        // forwarded to SNS by API Gateway
+    }
+}
+
+export const handler = Webhook.CreateHandler(Webhook);
+```
+
+### How It Works
+
+1. **API Gateway Integration**:
+   - When a request hits your webhook endpoint, API Gateway automatically forwards it to an SQS queue
+   - The integration is configured through the `target: 'queue'` option in the route decorator
+   - No Lambda function is invoked for the initial request, making it highly efficient
+
+2. **Message Processing**:
+   - Messages in the queue are processed by a Lambda function using the `QueueController`
+   - The controller handles batches of messages and provides retry capabilities
+   - Failed messages can be automatically retried based on your SQS configuration
+
+### Processing Webhook Messages
+
+Create a queue processor to handle the webhook messages:
+
+```ts
+import { SQSEvent, Context } from "aws-lambda";
+import { QueueController } from "@ten24group/fw24";
+
+@Queue('mywebhook')  // Process messages from the 'myqueue1' queue
+export class WebhookProcessor extends QueueController {
+    async initialize(event: SQSEvent, context: Context): Promise<void> {
+        // Set up any necessary resources for webhook processing
+        return Promise.resolve();
+    }
+
+    async process(event: SQSEvent, context: Context): Promise<void> {
+        for (const record of event.Records) {
+            try {
+                // The webhook payload is in the message body
+                const webhookData = JSON.parse(record.body);
+                await this.processWebhook(webhookData);
+                
+                this.logger.info("Webhook processed successfully", {
+                    messageId: record.messageId
+                });
+            } catch (error) {
+                this.logger.error("Webhook processing failed", {
+                    messageId: record.messageId,
+                    error: error.message
+                });
+                // The message will be retried based on your SQS configuration
+                throw error;
+            }
+        }
+    }
+
+    private async processWebhook(webhookData: any): Promise<void> {
+        // Implement your webhook processing logic here
+    }
+}
+```
+
+### Benefits of Queue-Based Webhooks
+
+1. **Reliability**:
+   - Automatic retries for failed webhook processing
+   - Dead-letter queues (DLQ) for handling persistent failures
+   - No data loss even if processing fails
+
+2. **Scalability**:
+   - Handle high volumes of webhook calls efficiently
+   - API Gateway responds immediately while processing happens asynchronously
+   - SQS automatically scales to handle incoming load
+
+3. **Monitoring and Debugging**:
+   - Built-in logging for webhook processing
+   - CloudWatch metrics for queue length and processing failures
+   - Message retention for troubleshooting

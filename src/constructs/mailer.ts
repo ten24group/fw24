@@ -11,6 +11,7 @@ import { Fw24 } from "../core/fw24";
 import { QueueLambda } from "./queue-lambda";
 import { createLogger, LogDuration } from "../logging";
 import { IConstructConfig } from "../interfaces/construct-config";
+import { VpcConstruct } from "./vpc";
 
 /**
  * Represents the configuration for the Mailer construct.
@@ -45,7 +46,7 @@ export class MailerConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = MailerConstruct.name;
-    dependencies: string[] = [];
+    dependencies: string[] = [VpcConstruct.name];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;

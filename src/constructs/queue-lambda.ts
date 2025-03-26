@@ -156,11 +156,16 @@ export class QueueLambda extends Construct {
       }
     } else if( !props.queueName.endsWith("dlq") ) { //if queue itself is a dlq don't assign default dlq
       //set default dlq
-      let defaultDLQ = fw24.getEnvironmentVariable('dlq_default');
+      const isFifoQueue = props.queueProps?.fifo || props.queueName.endsWith('.fifo') || props.queueProps?.contentBasedDeduplication;
+      let defaultDLQ = isFifoQueue ? fw24.getEnvironmentVariable('dlq_default_fifo') : fw24.getEnvironmentVariable('dlq_default');
+
       if(!defaultDLQ ){
+        const dlqName = isFifoQueue ? 'default-dlq-fifo' : 'default-dlq';
         //create default dlq
-        defaultDLQ = new Queue(this, "default-dlq", {});
-        fw24.getEnvironmentVariable('dlq_default', defaultDLQ);
+        defaultDLQ = new Queue(this, dlqName, {
+          fifo: isFifoQueue
+        });
+        fw24.getEnvironmentVariable(dlqName.replace('default-', '_'), defaultDLQ);
       }
       //assign default dlq
       dlqProps = {

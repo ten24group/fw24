@@ -122,7 +122,7 @@ abstract class APIController extends AbstractLambdaHandler {
       const route = this.findMatchingRoute(requestContext);
 
       if (route?.validations) {
-        this.logger.info("Validation rules found for route:", route);
+        this.logger.debug("Validation rules found for route:", route);
 
         const validationResult = await this.validate(requestContext, route.validations);
 
@@ -131,7 +131,7 @@ abstract class APIController extends AbstractLambdaHandler {
         }
 
       } else {
-        this.logger.info("No validation rules found for route:", route);
+        this.logger.debug("No validation rules found for route:", route);
       }
 
       const routeFunction = this.getRouteFunction(route);

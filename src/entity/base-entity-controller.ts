@@ -139,7 +139,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			customDomain: resolveEnvValueFor({ key: ENV_KEYS.FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY }) ?? ''
 		};
 
-		this.logger.info(`getSignedUrlForFileUpload::`, options);
+		this.logger.debug(`getSignedUrlForFileUpload::`, options);
 
 		const signedUploadURL = await getSignedUrlForFileUpload(options);
 
@@ -231,7 +231,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		let parsedFilters = {};
 
 		if (!isObject(filters)) {
-			this.logger.info(`filters is not an object: need to parse the filters query string`, filters);
+			this.logger.debug(`filters is not an object: need to parse the filters query string`, filters);
 
 			if (isJsonString(filters)) {
 				this.logger.debug(`found JSON string filters parsing`, filters);
@@ -241,7 +241,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 				this.logger.warn(`filters is not an JSON: need to parse the filters query string`, filters);
 			}
 		} else {
-			this.logger.info(`filters is a parsed object`, filters);
+			this.logger.debug(`filters is a parsed object`, filters);
 			parsedFilters = filters;
 		}
 

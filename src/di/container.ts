@@ -1143,7 +1143,7 @@ export class DIContainer implements IDIContainer {
 
     logChildContainers() {
         for (const container of this.childContainers) {
-            console.info(`Child Container: ${container.containerId}`);
+            this.logger.debug(`Child Container: ${container.containerId}`);
             container.logChildContainers();
         }
     }
@@ -1153,7 +1153,7 @@ export class DIContainer implements IDIContainer {
             allProvidersFromChildContainers,
         });
 
-        this.logger.info(`Parent Container Id, [Parent: ${this.parent?.containerId}]`);
+        this.logger.debug(`Parent Container Id, [Parent: ${this.parent?.containerId}]`);
 
         for (const ip of internalProviders) {
             let filtered = {
@@ -1165,13 +1165,13 @@ export class DIContainer implements IDIContainer {
                     provide: (ip._provider.provide as any).name ? (ip._provider.provide as any).name : ip._provider.provide
                 }
             };
-            console.info(`Provider: [${ip._container.containerId}] - ${ip._provider._token}:`, { options: filtered });
+            this.logger.debug(`Provider: [${ip._container.containerId}] - ${ip._provider._token}:`, { options: filtered });
         }
     }
 
     logCache() {
         for (const [ token, instance ] of this.cache.entries()) {
-            console.info(`Cache: [${this.containerId}] - ${token}:`, instance);
+            this.logger.debug(`Cache: [${this.containerId}] - ${token}:`, instance);
         }
         this.parent?.logCache();
     }

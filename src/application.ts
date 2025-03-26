@@ -108,6 +108,7 @@ export class Application {
             constructName = newConstructName;
         }
         this.constructs.set(constructName, construct);
+        this.fw24.addConstruct(construct);
     }
 
     private processModules(){

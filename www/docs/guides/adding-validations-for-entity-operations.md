@@ -136,12 +136,12 @@ For each validation error message, the framework calculates multiple message key
 ### Adding a custom error-message
 
 You can provide your custom error message or error message ID in validation rules. Error messages can have several placeholders, such as `{key}`, `{path}`, `{validationName}`, `{validationValue}`, `{received}`, and `{refinedReceived}`.
-    - {key}:  then key in for which the validation-rule is defined
-    - {path}:  then path for the key e.g ['body', 'password'], ['param', 'bookId']
-    - {validationName}: the name of the validation e.g 'eq', 'inList' etc
-    - {validationValue}: the value for the validation in the validation-rule e.g. { minLength: 10 } ==> 10
-    - {received}: the value received by the validation engine
-    - {refinedReceived}: the calculated value by the validation engine; e.g for `minLength` validation the engine will calculate the length of the input
+    - `{key}`:  then key in for which the validation-rule is defined
+    - `{path}`:  then path for the key e.g ['body', 'password'], ['param', 'bookId']
+    - `{validationName}`: the name of the validation e.g 'eq', 'inList' etc
+    - `{validationValue}`: the value for the validation in the validation-rule e.g. `{ minLength: 10 } ==> 10`
+    - `{received}`: the value received by the validation engine
+    - `{refinedReceived}`: the calculated value by the validation engine; e.g for `minLength` validation the engine will calculate the length of the input
 
 ```ts
     type EmailAndPassword = {

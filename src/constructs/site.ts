@@ -7,6 +7,7 @@ import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { Helper } from "../core/helper";
 import { createLogger } from "../logging";
 import { IConstructConfig } from "../interfaces/construct-config";
+import { VpcConstruct } from "./vpc";
 
 /**
  * Represents the configuration for the site construct.
@@ -65,7 +66,7 @@ export class SiteConstruct implements FW24Construct{
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = SiteConstruct.name;
-    dependencies: string[] = [];
+    dependencies: string[] = [VpcConstruct.name];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;
