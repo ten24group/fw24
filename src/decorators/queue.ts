@@ -3,7 +3,6 @@ import type { IQueueSubscriptions } from "../constructs/queue-lambda";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
 import type { ILambdaEnvConfig } from "../interfaces";
 import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor } from "./decorator-utils";
-import { Duration } from "aws-cdk-lib";
 
 /**
  * Configuration options for the queue.
