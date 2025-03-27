@@ -1,4 +1,4 @@
-import { CfnOutput, Stack } from "aws-cdk-lib";
+import { CfnOutput, Duration, Stack } from "aws-cdk-lib";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Helper } from "../core/helper";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
@@ -136,12 +136,17 @@ export class QueueConstruct implements FW24Construct {
             visibilityTimeoutSeconds: queueConfig?.visibilityTimeoutSeconds,
             receiveMessageWaitTimeSeconds: queueConfig?.receiveMessageWaitTimeSeconds,
             retentionPeriodDays: queueConfig?.retentionPeriodDays,
+            sqsEventSourceProps: {
+                maxBatchingWindow: Duration.seconds(queueConfig?.maxBatchingWindowSeconds ?? 5),
+                ...queueConfig?.sqsEventSourceProps,
+            },
             subscriptions: queueConfig?.subscriptions,            
             lambdaFunctionProps: {
                 entry: queueInfo.filePath + "/" + queueInfo.fileName,
                 environmentVariables: this.fw24.resolveEnvVariables(queueConfig.env),
                 resourceAccess: queueConfig?.resourceAccess,
                 functionTimeout: queueConfig?.functionTimeout,
+                policies: queueConfig?.policies,
                 functionProps: {...this.queueConstructConfig.functionProps, ...queueConfig?.functionProps},
                 logRemovalPolicy: queueConfig?.logRemovalPolicy,
                 logRetentionDays: queueConfig?.logRetentionDays,

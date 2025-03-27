@@ -498,7 +498,7 @@ export class APIConstruct implements FW24Construct {
         if( !(ENV_KEYS.ENTRY_PACKAGES in envVariables) && controllerConfig.entryPackages){
             envVariables[ENV_KEYS.ENTRY_PACKAGES] = (controllerConfig.entryPackages as Array<string>).join(',');
         }
-
+        
         return new LambdaFunction(this.fw24.getStack(controllerStackName), controllerName + "-controller", {
             entry: filePath + "/" + fileName,
             environmentVariables: envVariables,
@@ -624,10 +624,12 @@ export class APIConstruct implements FW24Construct {
     }
 
     private createSQSIntegration = (queueName: string, controllerName: string, controllerStackName: string): AwsIntegration => {
-        const integrationRole = new Role(this.fw24.getStack(controllerStackName), controllerName + "-sqs-integration-role", {
+        this.logger.debug(`Creating SQS integration for queue ${queueName} in controller ${controllerName} in stack ${controllerStackName}`);
+        const integrationRole = new Role(this.fw24.getStack(controllerStackName),  `${controllerName}-${queueName}-sqs-integration-role`, {
             assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
         });
-        const queueInstance: Queue = this.fw24.getEnvironmentVariable(queueName,'queue');
+        const queueArn = this.fw24.getArn('sqs', this.fw24.getEnvironmentVariable(queueName + '_queueName', 'queue', this.fw24.getStack(controllerStackName)));
+        const queueInstance = Queue.fromQueueArn(this.fw24.getStack(controllerStackName), `${controllerName}-${queueName}-queue`, queueArn);
         queueInstance.grantSendMessages(integrationRole);
         return new AwsIntegration({
             service: "sqs",
@@ -657,10 +659,11 @@ export class APIConstruct implements FW24Construct {
     }
 
     private createSNSIntegration = (topicName: string, controllerName: string, controllerStackName: string): AwsIntegration => {
-        const integrationRole = new Role(this.fw24.getStack(controllerStackName), controllerName + "-sns-integration-role", {
+        const integrationRole = new Role(this.fw24.getStack(controllerStackName), `${controllerName}-${topicName}-sns-integration-role`, {
             assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
         });
-        const topicInstance: Topic = this.fw24.getEnvironmentVariable(topicName, 'topic');
+        const topicArn = this.fw24.getArn('sns', this.fw24.getEnvironmentVariable(topicName + '_topicName', 'topic', this.fw24.getStack(controllerStackName)));
+        const topicInstance = Topic.fromTopicArn(this.fw24.getStack(controllerStackName), `${controllerName}-${topicName}-topic`, topicArn);
         topicInstance.grantPublish(integrationRole);
         return new AwsIntegration({
             service: "sns",

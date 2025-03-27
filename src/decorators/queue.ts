@@ -3,6 +3,7 @@ import type { IQueueSubscriptions } from "../constructs/queue-lambda";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
 import type { ILambdaEnvConfig } from "../interfaces";
 import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor } from "./decorator-utils";
+import { Duration } from "aws-cdk-lib";
 
 /**
  * Configuration options for the queue.
@@ -15,6 +16,26 @@ export type IQueueConfig = CommonLambdaHandlerOptions & {
 	 * The properties of the queue.
 	 */
 	queueProps?: QueueProps;
+
+	/**
+	 * The properties for the SQS event source.
+	 */
+	sqsEventSourceProps?: {
+		/**
+		 * The number of messages to retrieve from the queue in a single batch.
+		 */
+		batchSize?: number;
+
+		/**
+		 * The maximum amount of time to wait before triggering a batch of messages.
+		 */
+		maxBatchingWindowSeconds?: number;
+
+		/**
+		 * Whether to report failures for individual batch items.
+		 */
+		reportBatchItemFailures?: boolean;
+	};
 
 	/**
 	 * The visibility timeout for the messages in the queue, in seconds.

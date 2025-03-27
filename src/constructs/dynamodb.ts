@@ -188,8 +188,7 @@ export class DynamoDBConstruct implements FW24Construct {
 
         // Setup stream processing if enabled or audit is enabled and stream ARN exists
         if (
-            (this.dynamoDBConfig.table.stream?.enabled == undefined 
-                || this.dynamoDBConfig.table.stream?.enabled 
+            (this.dynamoDBConfig.table.stream?.enabled 
                 || this.dynamoDBConfig.table.audit?.enabled) 
             && tableInstance.tableStreamArn) {
             this.setupStreamProcessing(tableInstance);
