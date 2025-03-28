@@ -51,8 +51,7 @@ import { IConstructConfig } from "../interfaces/construct-config";
 import { createHash, randomUUID } from "crypto";
 import { VpcConstruct } from "./vpc";
 import { ApiKey, UsagePlan, Period } from "aws-cdk-lib/aws-apigateway";
-import { RequestValidator } from "aws-cdk-lib/aws-apigateway";
-import { join } from "path";
+
 /**
  * Represents the configuration options for an API construct.
  */
@@ -197,7 +196,6 @@ export class APIConstruct implements FW24Construct {
 
     api!: RestApi;
     mainStack!: Stack;
-    requestValidator: RequestValidator | undefined;
     usagePlans: Map<string, { plan: UsagePlan; name: string }> = new Map();
     apiKeys: Map<string, ApiKey[]> = new Map();
     keyValues: Map<string, ApiKey> = new Map();
