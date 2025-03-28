@@ -46,6 +46,12 @@ export type IControllerConfig = CommonLambdaHandlerOptions & {
 		logErrors?: boolean;
 		logRequestDetails?: boolean;
 	};
+
+	/**
+	 * Whether to require an API key for this controller
+	 * @default false
+	 */
+	requireApiKey?: boolean;
 }
 
 /**

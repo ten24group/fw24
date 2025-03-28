@@ -4,7 +4,7 @@ import type { IDIContainer } from "../../interfaces/di";
 import { DefaultLogger } from "../../logging";
 
 export function tryGetModuleDIContainer(moduleClass: Function) {
-	DefaultLogger.warn(`Called:: tryGetModuleDIContainer for [${moduleClass.name}]`);
+	DefaultLogger.debug(`Called:: tryGetModuleDIContainer for [${moduleClass.name}]`);
 
 	const parentModuleMetadata = getModuleMetadata(moduleClass);
 
