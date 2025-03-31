@@ -714,10 +714,16 @@ export class APIConstruct implements FW24Construct {
             requestParameters['method.request.header.x-api-key'] = true;
         }
 
+        // If the authorizer is JWT, convert it to CUSTOM
+        const authorizer = this.fw24.getAuthorizer(routeAuthorizerType, routeAuthorizerName);
+        if (routeAuthorizerType === 'JWT') {
+            routeAuthorizerType = 'CUSTOM';
+        }
+
         return {
             requestParameters,
-            authorizationType: routeAuthorizerType.replace('JWT', 'CUSTOM') as AuthorizationType,
-            authorizer: this.fw24.getAuthorizer(routeAuthorizerType, routeAuthorizerName),
+            authorizationType: routeAuthorizerType as AuthorizationType,
+            authorizer: authorizer,
             apiKeyRequired: controllerConfig.requireApiKey || false
         };
     }

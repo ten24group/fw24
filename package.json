@@ -64,7 +64,8 @@
         "tslog": "^4.9.3"
     },
     "peerDependencies": {
-        "electrodb": "^3.0.1"
+        "electrodb": "^3.0.1",
+        "aws-cdk-lib": "^2.181.0"
     },
     "overrides": {
         "@smithy/core": "^3.0.0",
