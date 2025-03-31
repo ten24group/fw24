@@ -15,7 +15,7 @@ import {
     ProviderAttribute,
 } from "aws-cdk-lib/aws-cognito";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
+import { CognitoUserPoolsAuthorizer, TokenAuthorizer } from "aws-cdk-lib/aws-apigateway";
 import { PolicyStatement, PolicyStatementProps, Role, User } from "aws-cdk-lib/aws-iam";
 import { Duration, RemovalPolicy, Stack } from "aws-cdk-lib";
 import { CognitoAuthRole } from "./cognito-auth-role";
@@ -185,6 +185,13 @@ export interface IAuthConstructConfig extends IConstructConfig {
      * Flag indicating whether to use this AuthConstruct as the default authorizer.
      */
     useAsDefaultAuthorizer?: boolean;
+    /**
+     * Configuration for a custom Lambda authorizer.
+     */
+    customAuthorizer?: {
+        type: string;
+        functionProps: LambdaFunctionProps;
+    };
 }
 
 const AuthConstructConfigDefaults: IAuthConstructConfig = {
@@ -251,6 +258,11 @@ export class AuthConstruct implements FW24Construct {
         this.logger.debug("construct");
 
         this.mainStack = this.fw24.getStack(this.authConstructConfig.stackName, this.authConstructConfig.parentStackName);
+
+        if (this.authConstructConfig.customAuthorizer?.type === 'jwt') {
+            await this.createLambdaAuthorizer(this.authConstructConfig.useAsDefaultAuthorizer || false);
+            return;
+        }
 
         const userPoolConfig = {...AuthConstructConfigDefaults.userPool?.props, ...this.authConstructConfig.userPool?.props};
         const userPoolName = this.authConstructConfig.userPool?.props?.userPoolName || 'default';
@@ -541,5 +553,24 @@ export class AuthConstruct implements FW24Construct {
 
         // Set the domain URL as a environment variable
         this.fw24.setEnvironmentVariable('authDomain', domainUrl, `userpool_${userPoolName}`);
+    }
+
+    private async createLambdaAuthorizer(useAsDefaultAuthorizer: boolean): Promise<void> {
+        if (!this.authConstructConfig.customAuthorizer) {
+            return;
+        }
+
+        const authorizerFunction = new LambdaFunction(this.mainStack, `${this.authConstructConfig.customAuthorizer.type}-CustomAuthorizer`, {
+            ...this.authConstructConfig.customAuthorizer.functionProps,
+        });
+
+        const authorizer = new TokenAuthorizer(this.mainStack, `${this.authConstructConfig.customAuthorizer.type}-TokenAuthorizer`, {
+            handler: authorizerFunction as NodejsFunction,
+            identitySource: 'method.request.header.Authorization',
+        });
+        this.fw24.setJwtAuthorizer(authorizer, useAsDefaultAuthorizer);
+
+        this.fw24.setConstructOutput(this, this.authConstructConfig.customAuthorizer.type, authorizer, OutputType.AUTHORIZER);
+        
     }
 }

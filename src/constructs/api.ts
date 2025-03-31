@@ -716,7 +716,7 @@ export class APIConstruct implements FW24Construct {
 
         return {
             requestParameters,
-            authorizationType: routeAuthorizerType as AuthorizationType,
+            authorizationType: routeAuthorizerType.replace('JWT', 'CUSTOM') as AuthorizationType,
             authorizer: this.fw24.getAuthorizer(routeAuthorizerType, routeAuthorizerName),
             apiKeyRequired: controllerConfig.requireApiKey || false
         };

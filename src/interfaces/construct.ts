@@ -12,10 +12,10 @@ import type { FargateService, ICluster } from "aws-cdk-lib/aws-ecs";
 import type { ApplicationLoadBalancer } from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import type { Service } from "aws-cdk-lib/aws-servicediscovery";
 import type { FileSystem } from "aws-cdk-lib/aws-efs";
+import type { IAuthorizer } from "aws-cdk-lib/aws-apigateway";
 
 import type { Fw24 } from "../core/fw24";
 import { Stack } from "aws-cdk-lib";
-
 export interface FW24Construct {
     name: string;
     dependencies: string[];
@@ -52,6 +52,7 @@ export interface FW24ConstructOutput extends Record<string, any>{
     [OutputType.SERVICE_DISCOVERY]: Record<string,Service>;
     [OutputType.CLUSTER]: Record<string,ICluster>;
     [OutputType.EFS]: Record<string,FileSystem>;
+    [OutputType.AUTHORIZER]: Record<string,IAuthorizer>;
     [key: string]: any;
 }
 
@@ -78,5 +79,6 @@ export enum OutputType   {
     LOADBALANCER = 'loadbalancer',
     SERVICE_DISCOVERY = 'servicediscovery',
     CLUSTER = 'cluster',
-    EFS = 'efs'
+    EFS = 'efs',
+    AUTHORIZER = 'authorizer'
 }
