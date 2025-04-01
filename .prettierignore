@@ -1,0 +1,11 @@
+dist
+node_modules
+coverage
+.git
+.DS_Store
+*.log
+*.lock
+package-lock.json
+.env
+www
+lib 
