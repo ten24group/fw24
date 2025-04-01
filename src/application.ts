@@ -119,7 +119,7 @@ export class Application {
 
     private constructAllResources() {
         const allConstructs = Array.from(this.constructs.keys()).map(constructName => this.constructResources(constructName));
-        return Promise.allSettled(allConstructs);
+        return Promise.all(allConstructs);
     }
 
     async constructResources(constructName: string): Promise<void> {
@@ -138,15 +138,17 @@ export class Application {
         await this.waitForDependencies(construct.dependencies, constructName);
 
         this.resourceConstructCurrentConcurrency++;
-        const constructCompletionPromise = construct.construct()
-            .then(() => {
+        const constructCompletionPromise = (async () => {
+            try {
+                await construct.construct();
+                this.logger.info(`Successfully completed construct ${constructName}`);
+            } catch (error) {
+                this.logger.error(`Failed to construct ${constructName}:`, error);
+                throw error; // Re-throw to ensure deployment fails
+            } finally {
                 this.resourceConstructCurrentConcurrency--;
-            })
-            .catch(error => {
-                console.error(`Error executing construct ${constructName}:`, error);
-                this.resourceConstructCurrentConcurrency--;
-                throw error; // Re-throw to ensure it can be handled or logged by Promise.allSettled
-            });
+            }
+        })();
 
         this.processedConstructs.set(constructName, constructCompletionPromise);
         return constructCompletionPromise;
