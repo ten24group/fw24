@@ -3,20 +3,15 @@ import { ErrorHandlerContext, ErrorHandlerResult } from '../interfaces/error-han
 import { AppError } from './app-error';
 
 export class ClientError extends AppError {
-    constructor(statusCode: number, message: string, details?: Record<string, any>, request?: Request) {
-        super(statusCode, message, details, request);
-        this.name = 'ClientError';
-    }
+  constructor(statusCode: number, message: string, details?: Record<string, any>, request?: Request) {
+    super(statusCode, message, details, request);
+    this.name = 'ClientError';
+  }
 
-    handle(context: ErrorHandlerContext): ErrorHandlerResult {
-        return {
-            statusCode: this.statusCode,
-            body: this.createErrorResponse(
-                this.statusCode,
-                this.message,
-                this.details,
-                context.options.includeStack
-            )
-        };
-    }
-} 
+  handle(context: ErrorHandlerContext): ErrorHandlerResult {
+    return {
+      statusCode: this.statusCode,
+      body: this.createErrorResponse(this.statusCode, this.message, this.details, context.options.includeStack),
+    };
+  }
+}

@@ -5,11 +5,13 @@ export interface IEventDispatcher {
 }
 
 export const Dummy: IEventDispatcher = {
-    dispatch: () => {return Promise.resolve()},
+  dispatch: () => {
+    return Promise.resolve();
+  },
 };
 
 export const Default: IEventDispatcher = {
-    dispatch: async (options: any) => {
-        console.log("Called default-event-dispatcher.dispatch()", options);
-    }
+  dispatch: async (options: any) => {
+    console.log('Called default-event-dispatcher.dispatch()', options);
+  },
 };

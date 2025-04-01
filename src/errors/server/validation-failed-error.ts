@@ -5,38 +5,36 @@ import { ServerError } from '../base/server-error';
 import { type ValidationError } from '../../validation';
 
 interface ValidationErrorDetails {
-    errors: ValidationError[];
-    [ key: string ]: any;
+  errors: ValidationError[];
+  [key: string]: any;
 }
 
 export class ValidationFailedError extends ServerError {
+  constructor(validationErrors: any[] = [], additionalDetails?: Record<string, any>, request?: Request) {
+    const details: ValidationErrorDetails = {
+      errors: validationErrors,
+      ...additionalDetails,
+    };
 
-    constructor(validationErrors: any[] = [], additionalDetails?: Record<string, any>, request?: Request) {
+    super(HttpStatusCode.BAD_REQUEST, 'Validation failed', details, request);
 
-        const details: ValidationErrorDetails = {
-            errors: validationErrors,
-            ...additionalDetails
-        };
+    this.name = 'ValidationFailedError';
+  }
 
-        super(HttpStatusCode.BAD_REQUEST, 'Validation failed', details, request);
-
-        this.name = 'ValidationFailedError';
-    }
-
-    handle(context: ErrorHandlerContext): ErrorHandlerResult {
-        const errorDetails = this.details || {};
-        return {
-            statusCode: HttpStatusCode.BAD_REQUEST,
-            body: this.createErrorResponse(
-                HttpStatusCode.BAD_REQUEST,
-                'Validation Failed',
-                {
-                    message: this.message,
-                    errors: errorDetails.errors,
-                    ...errorDetails
-                },
-                context.options.includeStack
-            )
-        };
-    }
-} 
+  handle(context: ErrorHandlerContext): ErrorHandlerResult {
+    const errorDetails = this.details || {};
+    return {
+      statusCode: HttpStatusCode.BAD_REQUEST,
+      body: this.createErrorResponse(
+        HttpStatusCode.BAD_REQUEST,
+        'Validation Failed',
+        {
+          message: this.message,
+          errors: errorDetails.errors,
+          ...errorDetails,
+        },
+        context.options.includeStack,
+      ),
+    };
+  }
+}

@@ -1,75 +1,93 @@
-import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem, UpsertItem } from "electrodb";
-import { createSchema, Entity } from "electrodb";
+import type {
+  EntityConfiguration,
+  Schema,
+  EntityIdentifiers,
+  CreateEntityItem,
+  UpdateEntityItem,
+  EntityItem,
+  Attribute,
+  ResponseItem,
+  UpsertItem,
+} from 'electrodb';
+import { createSchema, Entity } from 'electrodb';
 
 import type { EntityQuery } from './query-types';
-import type { BaseEntityService } from "./base-service";
-import type { OmitNever, Paths, Writable } from "../utils/types";
+import type { BaseEntityService } from './base-service';
+import type { OmitNever, Paths, Writable } from '../utils/types';
 
 /**
  *  ElectroDB entity  examples
- * 
+ *
  * - https://github.com/nljms/ssia/blob/main/packages/database/storages/PlayerStorage.ts
  * - https://github.com/tywalch/electro-demo/blob/main/netlify/functions/share/ratelimit.ts
  * - https://gist.github.com/tywalch/8040087e0fc886ca5f742aa99b623e1b
  * -- https://medium.com/developing-koan/modeling-graph-relationships-in-dynamodb-c06141612a70
  * - https://gist.github.com/severi/5d181a3e779f41a5e5fce1b7dcd17a89
  * - https://github.com/ikushlianski/family-car-booking-backend/blob/main/services/core/booking/booking.repository.ts
- * 
+ *
  */
 
 /**
  * Represents the options for hydrating an entity.
  * It can be a string representing the entity name,
  * or an object with additional attributes and hydrate options.
-*/
+ */
 export type RelationalAttributes<T extends EntitySchema<any, any, any, any>> = OmitNever<{
-  [K in keyof T['attributes']]: T['attributes'][K]['hidden'] extends true ? never 
-    : PickRelation<T, K> extends never ? never 
-    : PickRelation<T, K>;
-}>
+  [K in keyof T['attributes']]: T['attributes'][K]['hidden'] extends true
+    ? never
+    : PickRelation<T, K> extends never
+      ? never
+      : PickRelation<T, K>;
+}>;
 
 export type NonRelationalAttributes<T extends EntitySchema<any, any, any, any>> = OmitNever<{
-  [K in keyof T['attributes']]: T['attributes'][K]['hidden'] extends true ? never
-  : PickRelation<T, K> extends never ? T['attributes'][K] : never
-}>
+  [K in keyof T['attributes']]: T['attributes'][K]['hidden'] extends true
+    ? never
+    : PickRelation<T, K> extends never
+      ? T['attributes'][K]
+      : never;
+}>;
 
-export type PickRelation<E extends EntitySchema<any, any, any, any>, A extends keyof E['attributes']> = 
-E['attributes'][A]['relation'] extends Relation<infer R> ? Relation<R> : never;
+export type PickRelation<E extends EntitySchema<any, any, any, any>, A extends keyof E['attributes']> =
+  E['attributes'][A]['relation'] extends Relation<infer R> ? Relation<R> : never;
 
 // utility type for prepare all the paths for entity and it's relations
-type _EntityAttributePaths<E extends EntitySchema<any, any, any, any>> = 
-{ [K in keyof NonRelationalAttributes<E>] ?: K } 
-& 
-{ [K in keyof RelationalAttributes<E>] ?: _EntityAttributePaths< RelToRelatedEntity<RelationalAttributes<E>[K]> > }
+type _EntityAttributePaths<E extends EntitySchema<any, any, any, any>> = {
+  [K in keyof NonRelationalAttributes<E>]?: K;
+} & { [K in keyof RelationalAttributes<E>]?: _EntityAttributePaths<RelToRelatedEntity<RelationalAttributes<E>[K]>> };
 // utility type for prepare all the paths for entity and it's relations
 export type EntityAttributePaths<E extends EntitySchema<any, any, any, any>> = Paths<_EntityAttributePaths<E>>;
 
+export type HydrateOptionsMapForEntity<T extends EntitySchema<any, any, any, any>> = {
+  [K in keyof NonRelationalAttributes<T>]?: boolean;
+} & { [K in keyof RelationalAttributes<T>]?: boolean | HydrateOptionForRelation<RelationalAttributes<T>[K]> };
 
-export type HydrateOptionsMapForEntity<T extends EntitySchema<any, any, any, any>> = 
-{ [K in keyof NonRelationalAttributes<T>] ?: boolean; } 
-& 
-{ [K in keyof RelationalAttributes<T>]?: boolean | HydrateOptionForRelation<RelationalAttributes<T>[K]> };
+export type HydrateOptionForEntity<E extends EntitySchema<any, any, any, any>> =
+  | HydrateOptionsMapForEntity<E>
+  | Array<EntityAttributePaths<E>>;
 
-export type HydrateOptionForEntity<E extends EntitySchema<any, any, any, any>> = HydrateOptionsMapForEntity<E> | Array<EntityAttributePaths<E>>;
+export type HydrateOptionForRelation<Rel extends Relation<any> = any> = {
+  entityName?: Rel['entityName'];
+  relationType?: Rel['type'];
+  identifiers?: RelationIdentifiers<RelToRelatedEntity<Rel>['entity']>;
+  attributes: HydrateOptionForEntity<RelToRelatedEntity<Rel>['entity']>;
+};
 
-export type HydrateOptionForRelation<Rel extends Relation<any>=any> = {
-    entityName?: Rel['entityName'],
-    relationType?: Rel['type'],
-    identifiers?: RelationIdentifiers<RelToRelatedEntity<Rel>['entity']>,
-    attributes: HydrateOptionForEntity<RelToRelatedEntity<Rel>['entity']>
-}
-
-
-export type RelationIdentifier<E extends EntitySchema<any, any, any, any> = any> = { source: string, target: keyof E['attributes'] };
-export type RelationIdentifiers<E extends EntitySchema<any, any, any, any> = any> = RelationIdentifier<E> | Array<RelationIdentifier<E>>
+export type RelationIdentifier<E extends EntitySchema<any, any, any, any> = any> = {
+  source: string;
+  target: keyof E['attributes'];
+};
+export type RelationIdentifiers<E extends EntitySchema<any, any, any, any> = any> =
+  | RelationIdentifier<E>
+  | Array<RelationIdentifier<E>>;
 /**
  * Creates an entity relation and infers the type based on the provided relation.
- * 
+ *
  * @param relation - The relation to create.
  * @returns The created relation.
  */
 export function createEntityRelation<E extends EntitySchema<any, any, any, any>>(relation: Relation<E>): Relation<E> {
-    return relation;
+  return relation;
 }
 
 export type RelToRelatedEntity<Rel> = Rel extends Relation<infer E> ? E : never;
@@ -79,85 +97,108 @@ export type RelToRelatedEntity<Rel> = Rel extends Relation<infer E> ? E : never;
  * @template E - The type of the related entity schema.
  */
 export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
-    /**
-     * Represents a relation between entities.
-     */
-    entityName: E['model']['entity'];
+  /**
+   * Represents a relation between entities.
+   */
+  entityName: E['model']['entity'];
 
-    /**
-     * The type of the relation.
-     * Possible values: 'one-to-one', 'one-to-many', 'many-to-one', 'many-to-many'.
-     */
-    type: 'one-to-many' | 'many-to-one'; // 'one-to-one' | 'many-to-many';
+  /**
+   * The type of the relation.
+   * Possible values: 'one-to-one', 'one-to-many', 'many-to-one', 'many-to-many'.
+   */
+  type: 'one-to-many' | 'many-to-one'; // 'one-to-one' | 'many-to-many';
 
-    /**
-     * Identifiers to load the related entity.
-     * These are mappings between source entity attributes and related entity attributes.
-     * The keys for source entities can support paths like 'att1.nestedKey1'.
-     * The values can be a string representing the related entity attribute or an array of strings.
-     * 
-     */
-    identifiers: RelationIdentifiers<E> | (() => RelationIdentifiers<E>);
+  /**
+   * Identifiers to load the related entity.
+   * These are mappings between source entity attributes and related entity attributes.
+   * The keys for source entities can support paths like 'att1.nestedKey1'.
+   * The values can be a string representing the related entity attribute or an array of strings.
+   *
+   */
+  identifiers: RelationIdentifiers<E> | (() => RelationIdentifiers<E>);
 
-    // set this to true in entity-definition to auto-hydrate this relation
-    hydrate ?: boolean;
-    
-    /**
-     * Attributes to load when hydrating this relation and Options for hydrating the relational attributes of of this relation.
-     */
-    attributes?: HydrateOptionForEntity<E>;
+  // set this to true in entity-definition to auto-hydrate this relation
+  hydrate?: boolean;
+
+  /**
+   * Attributes to load when hydrating this relation and Options for hydrating the relational attributes of of this relation.
+   */
+  attributes?: HydrateOptionForEntity<E>;
 };
 
+/**
+ * Type for validation rules that can be applied to entity attributes
+ */
+export type ValidationRule =
+  | { type: 'required'; message?: string }
+  | { type: 'minLength'; value: number; message?: string }
+  | { type: 'maxLength'; value: number; message?: string }
+  | { type: 'min'; value: number; message?: string }
+  | { type: 'max'; value: number; message?: string }
+  | { type: 'pattern'; value: RegExp | string; message?: string }
+  | { type: 'email'; message?: string }
+  | { type: 'url'; message?: string }
+  | { type: 'custom'; validate: (value: any) => boolean | Promise<boolean>; message?: string };
 
 /**
  * Represents an entity attribute.
  */
 export type EntityAttribute = Attribute & {
-    /**
-     * The human readable name of the attribute.
-     */
-    name?: string;
-    
-    /**
-     * Indicates whether the attribute is an identifier.
-     */
-    isIdentifier?: boolean;
+  /**
+   * The human readable name of the attribute.
+   */
+  name?: string;
 
-    /**
-     * Indicates whether the attribute is an identifier.
-     */
-    isUnique?: boolean;
+  /**
+   * Indicates whether the attribute is an identifier.
+   */
+  isIdentifier?: boolean;
 
-    // define a relation with another entity use the type-helper `createEntityRelation` function
-    relation ?: Relation;
+  /**
+   * Indicates whether the attribute is an identifier.
+   */
+  isUnique?: boolean;
 
-    /**
-     * Validations for the attribute.
-     */
-    validations?: any[];
+  // define a relation with another entity use the type-helper `createEntityRelation` function
+  relation?: Relation;
 
-} 
-& FieldMetadata;
+  /**
+   * Validations for the attribute.
+   */
+  validations?: ValidationRule[];
+} & FieldMetadata;
 
-
-export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldMetadata 
-    | TimeFieldMetadata | DateTimeFieldMetadata | BooleanFieldMetadata 
-    | SelectFieldMetadata | RadioFieldMetadata | CheckboxFieldMetadata 
-    | FileFieldMetadata | RangeFieldMetadata | ColorFieldMetadata
-    | ImageFieldMetadata | HiddenFieldMetadata | CustomFieldMetadata 
-    | RatingFieldMetadata | EditorFieldMetadata | CodeEditorFieldMetadata;
+export type FieldMetadata =
+  | TextFieldMetadata
+  | NumberFieldMetadata
+  | DateFieldMetadata
+  | TimeFieldMetadata
+  | DateTimeFieldMetadata
+  | BooleanFieldMetadata
+  | SelectFieldMetadata
+  | RadioFieldMetadata
+  | CheckboxFieldMetadata
+  | FileFieldMetadata
+  | RangeFieldMetadata
+  | ColorFieldMetadata
+  | ImageFieldMetadata
+  | HiddenFieldMetadata
+  | CustomFieldMetadata
+  | RatingFieldMetadata
+  | EditorFieldMetadata
+  | CodeEditorFieldMetadata;
 
 // Metadata for UI
 export interface BaseFieldMetadata {
-    isVisible?: boolean; // if the field is visible or hidden on all detail-pages
-    isListable?: boolean; // if the field is visible in the list view
-    isCreatable?: boolean; // if the field is creatable
-    isEditable?: boolean; // if the field is editable
-    isFilterable?: boolean; // if the field is filterable
-    isSearchable?: boolean; // if the field is searchable
-    placeholder?: string;
-    helpText?: string;
-    tooltip?: string; // maybe this can be inferred from the helpText
+  isVisible?: boolean; // if the field is visible or hidden on all detail-pages
+  isListable?: boolean; // if the field is visible in the list view
+  isCreatable?: boolean; // if the field is creatable
+  isEditable?: boolean; // if the field is editable
+  isFilterable?: boolean; // if the field is filterable
+  isSearchable?: boolean; // if the field is searchable
+  placeholder?: string;
+  helpText?: string;
+  tooltip?: string; // maybe this can be inferred from the helpText
 }
 
 interface TextFieldMetadata extends BaseFieldMetadata {
@@ -179,7 +220,6 @@ interface DateFieldMetadata extends BaseFieldMetadata {
   maxDate?: Date;
   dateFormat?: string; // format to display the date
 }
-
 
 interface TimeFieldMetadata extends BaseFieldMetadata {
   fieldType?: 'time';
@@ -213,49 +253,47 @@ interface SelectFieldMetadata<E extends EntitySchema<any, any, any> = any> exten
   // whether to allow adding new options
   addNewOption?: {
     entityName: string; // entity name to create new option
-  }; 
+  };
 }
 
 // Type guard for SelectFieldMetadata
 export function isSelectFieldMetadata(obj: any): obj is SelectFieldMetadata {
   return (
-    typeof obj === 'object' 
-    && !!obj 
-    && 'options' in obj 
-    && ['select', 'multi-select', 'autocomplete'].includes(obj.fieldType)
+    typeof obj === 'object' &&
+    !!obj &&
+    'options' in obj &&
+    ['select', 'multi-select', 'autocomplete'].includes(obj.fieldType)
   );
 }
 
-
-
-interface RadioFieldMetadata<E extends EntitySchema<any, any, any>=any> extends BaseFieldMetadata {
+interface RadioFieldMetadata<E extends EntitySchema<any, any, any> = any> extends BaseFieldMetadata {
   fieldType?: 'radio';
   options: FieldOptions<E>;
   layout?: 'horizontal' | 'vertical'; // layout of the radio buttons
 }
 
-interface CheckboxFieldMetadata<E extends EntitySchema<any, any, any>=any> extends BaseFieldMetadata {
-    fieldType?: 'checkbox';
-    options: FieldOptions<E>;
-    layout?: 'horizontal' | 'vertical'; // layout of the radio buttons
+interface CheckboxFieldMetadata<E extends EntitySchema<any, any, any> = any> extends BaseFieldMetadata {
+  fieldType?: 'checkbox';
+  options: FieldOptions<E>;
+  layout?: 'horizontal' | 'vertical'; // layout of the radio buttons
 }
 
 interface CommonFileFieldMetadata {
   accept?: string; // file types to accept e.g. "image/*" | "image/png" | "image/jpeg" | "image/gif" | "image/bmp" | "image/webp" | "application/pdf" | "application/msword"
   maxFileSize?: number; // maximum file size in bytes
   fileNamePrefix?: string; // prefix for the file name e.g. 'profile-pic-' | 'documents/' | 'nested/path/to/images/'
-  getSignedUploadUrlAPIConfig?: GetSignedUploadUrlAPIConfig, // API config to get signed upload URL
+  getSignedUploadUrlAPIConfig?: GetSignedUploadUrlAPIConfig; // API config to get signed upload URL
 }
 
 interface FileFieldMetadata extends BaseFieldMetadata, CommonFileFieldMetadata {
   fieldType?: 'file';
 }
 
-interface ImageFieldMetadata extends BaseFieldMetadata,CommonFileFieldMetadata {
+interface ImageFieldMetadata extends BaseFieldMetadata, CommonFileFieldMetadata {
   fieldType?: 'image';
   aspectRatio?: string; // desired aspect ratio for the image
   withImageCrop?: boolean; // whether to allow image cropping at the time of uploading
-  accept?: "image/*" | "image/png" | "image/jpeg" | "image/gif" | "image/bmp" | "image/webp";
+  accept?: 'image/*' | 'image/png' | 'image/jpeg' | 'image/gif' | 'image/bmp' | 'image/webp';
 }
 
 interface RangeFieldMetadata extends BaseFieldMetadata {
@@ -266,7 +304,7 @@ interface RangeFieldMetadata extends BaseFieldMetadata {
   showValue?: boolean; // whether to show the current value
 }
 
-export type GetSignedUploadUrlAPIConfig  = {
+export type GetSignedUploadUrlAPIConfig = {
   apiUrl: string;
   apiMethod: 'GET' | 'POST';
 };
@@ -284,20 +322,20 @@ interface RatingFieldMetadata extends BaseFieldMetadata {
   maxRating?: number; // maximum rating value
 }
 
-interface EditorFieldMetadata extends BaseFieldMetadata,CommonFileFieldMetadata {
-  fieldType?: 'rich-text' | 'wysiwyg';  
+interface EditorFieldMetadata extends BaseFieldMetadata, CommonFileFieldMetadata {
+  fieldType?: 'rich-text' | 'wysiwyg';
 }
 
 interface CodeEditorFieldMetadata extends BaseFieldMetadata {
-  fieldType?: 'code' | 'markdown' | 'json';  
+  fieldType?: 'code' | 'markdown' | 'json';
 }
 
-export type FieldOptions<E extends EntitySchema<any, any, any>=any> = Array<FieldOption> | FieldOptionsAPIConfig<E>;
+export type FieldOptions<E extends EntitySchema<any, any, any> = any> = Array<FieldOption> | FieldOptionsAPIConfig<E>;
 
 export type FieldOption = {
-  value: string,
-  label: string,
-}
+  value: string;
+  label: string;
+};
 
 /**
  * Represents the template for attributes.
@@ -308,32 +346,41 @@ export type FieldOption = {
  *      template: '{att1}-AND-${att2}' // any arbitrary string with placeholders
  * }
  * ```
-*/
+ */
 export type AttributesTemplate = {
-    composite: Array<string>,
-    template: string,
-}
-export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
-    apiMethod: 'GET' | 'POST',
-    apiUrl: string,
-    responseKey: string,
-    query?: EntityQuery<E>,
-    optionMapping?: {
-        label: string | AttributesTemplate, // 
-        value: string | AttributesTemplate, // 
-    },
+  composite: Array<string>;
+  template: string;
+};
+
+/**
+ * Mapping for how field options should be generated from API responses
+ */
+export interface FieldOptionsMapping {
+  label: string | AttributesTemplate;
+  value: string | AttributesTemplate;
+  group?: string; // Optional field for grouping options
 }
 
-export const SpecialAttributeTypes = { 
-  name: 'name', 
-  slug: 'slug', 
-  color: 'color', 
-  image: 'image', 
+export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
+  apiMethod: 'GET' | 'POST';
+  apiUrl: string;
+  responseKey: string;
+  query?: EntityQuery<E>;
+  optionMapping?: FieldOptionsMapping;
+  headers?: Record<string, string>;
+  parameters?: Record<string, string | number | boolean>;
+};
+
+export const SpecialAttributeTypes = {
+  name: 'name',
+  slug: 'slug',
+  color: 'color',
+  image: 'image',
   description: 'description',
 
-  createdAt: 'createdAt', 
-  updatedAt: 'updatedAt', 
-  deletedAt: 'deletedAt' 
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  deletedAt: 'deletedAt',
 };
 
 export type SpecialAttributeType = keyof typeof SpecialAttributeTypes;
@@ -344,83 +391,85 @@ export type SpecialAttributeType = keyof typeof SpecialAttributeTypes;
  * @template Opp - The type of entity operations.
  */
 export interface EntitySchema<
-    A extends string, 
-    F extends string, 
-    C extends string,
-    Opp extends TDefaultEntityOperations = TDefaultEntityOperations
-> extends Schema<A, F, C>{
-    readonly model: Schema<A, F, C>['model'] & {
-        readonly entityNamePlural: string;
-        readonly entityOperations: Opp;
-        readonly entityMenuIcon ?: string, // default is 'appStore'
-        readonly entityNameAttribute ?: string, // default is 'name'
-        readonly entitySlugAttribute ?: string, // default is 'slug'
-        readonly entityImageAttribute ?: string, // default is 'image'
-        readonly entityDescriptionAttribute ?: string, // default is 'description'
+  A extends string,
+  F extends string,
+  C extends string,
+  Opp extends TDefaultEntityOperations = TDefaultEntityOperations,
+> extends Schema<A, F, C> {
+  readonly model: Schema<A, F, C>['model'] & {
+    readonly entityNamePlural: string;
+    readonly entityOperations: Opp;
+    readonly entityMenuIcon?: string; // default is 'appStore'
+    readonly entityNameAttribute?: string; // default is 'name'
+    readonly entitySlugAttribute?: string; // default is 'slug'
+    readonly entityImageAttribute?: string; // default is 'image'
+    readonly entityDescriptionAttribute?: string; // default is 'description'
 
-        readonly excludeFromAdminMenu ?: boolean, // default is false
-        readonly excludeFromAdminList ?: boolean, // default is false
-        readonly excludeFromAdminDetail ?: boolean, // default is false
-        readonly excludeFromAdminCreate ?: boolean, // default is false
-        readonly excludeFromAdminUpdate ?: boolean, // default is false
-        readonly excludeFromAdminDelete ?: boolean, // default is false
-        readonly excludeFromAdminDuplicate ?: boolean, // default is false
-    };
-    readonly attributes: {
-        readonly [a in A]: EntityAttribute;
-    };
+    readonly excludeFromAdminMenu?: boolean; // default is false
+    readonly excludeFromAdminList?: boolean; // default is false
+    readonly excludeFromAdminDetail?: boolean; // default is false
+    readonly excludeFromAdminCreate?: boolean; // default is false
+    readonly excludeFromAdminUpdate?: boolean; // default is false
+    readonly excludeFromAdminDelete?: boolean; // default is false
+    readonly excludeFromAdminDuplicate?: boolean; // default is false
+  };
+  readonly attributes: {
+    readonly [a in A]: EntityAttribute;
+  };
 }
 
 export const DefaultEntityOperations = {
-    get: "get",
-    list: "list",
-    query: "query",
-    create: "create",
-    upsert: "upsert",
-    update: "update",
-    delete: "delete",
-    duplicate: "duplicate",
+  get: 'get',
+  list: 'list',
+  query: 'query',
+  create: 'create',
+  upsert: 'upsert',
+  update: 'update',
+  delete: 'delete',
+  duplicate: 'duplicate',
 };
 
 export type TDefaultEntityOperations = typeof DefaultEntityOperations;
 
 /**
  * Represents the input schemas for entity operations.
- * Extend this type for additional operations's input-schema types 
+ * Extend this type for additional operations's input-schema types
  * @template Sch - The entity schema type.
  */
-export type TEntityOpsInputSchemas<
-Sch extends EntitySchema<any, any, any>,
-> = {
-    readonly [opName in keyof Sch['model']['entityOperations']] 
-        : opName extends 'get'        ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
-        : opName extends 'create'     ? CreateEntityItemTypeFromSchema<Sch>
-        : opName extends 'upsert'     ? UpsertEntityItemTypeFromSchema<Sch>
-        : opName extends 'update'     ? UpdateEntityItemTypeFromSchema<Sch>
-        : opName extends 'delete'     ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
-        : opName extends 'duplicate'  ? EntityIdentifiersTypeFromSchema<Sch>
-        : {}
-}
+export type TEntityOpsInputSchemas<Sch extends EntitySchema<any, any, any>> = {
+  readonly [opName in keyof Sch['model']['entityOperations']]: opName extends 'get'
+    ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
+    : opName extends 'create'
+      ? CreateEntityItemTypeFromSchema<Sch>
+      : opName extends 'upsert'
+        ? UpsertEntityItemTypeFromSchema<Sch>
+        : opName extends 'update'
+          ? UpdateEntityItemTypeFromSchema<Sch>
+          : opName extends 'delete'
+            ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
+            : opName extends 'duplicate'
+              ? EntityIdentifiersTypeFromSchema<Sch>
+              : object;
+};
 
 export type CreateElectroDBEntityOptions<S extends EntitySchema<any, any, any>> = {
-    schema: S,
-    entityConfigurations: EntityConfiguration;
-}
-
+  schema: S;
+  entityConfigurations: EntityConfiguration;
+};
 
 /**
- * This function is used to define an entity schema for DynamoDB based entity, and it used ElectroDB under the hood. 
+ * This function is used to define an entity schema for DynamoDB based entity, and it used ElectroDB under the hood.
  * It takes an object as an argument that describes the model, attributes, and indexes of the entity.
  * the generic params are only for the type inference, and they are not used in the function.
- * 
+ *
  * @param schema - The entity schema configuration.
- * 
+ *
  * @example
  * import { createEntitySchema } from '@ten24Group/fw24'
- * 
+ *
  * const entitySchema = createEntitySchema({
  *   // entity schema configuration
- * 
+ *
  *  // metadata about the entity
  *  model: {
  *      version: '1',
@@ -428,22 +477,22 @@ export type CreateElectroDBEntityOptions<S extends EntitySchema<any, any, any>> 
  *      entityNamePlural: 'Users', // used by auto generated UI
  *      entityOperations: DefaultEntityOperations, // the operations that can be performed on the entity
  *      service: 'users', // ElectroDB service name [logical group of entities]
- *  },   
+ *  },
  * // the attributes for the entity
  *  attributes: {
  *     userId: {
  *      type: 'string',
- *      required: true,  
+ *      required: true,
  *      readOnly: true,
  *      default: () => randomUUID()
  *    },
  *   // ... other attributes
- *  },    
+ *  },
  * // the access patterns for the entity
  *  indexes: {
  *      primary: {
  *          pk: {
- *              field: 'primary_pk',    
+ *              field: 'primary_pk',
  *              composite: ['userId'],
  *          },
  *          sk: {
@@ -452,10 +501,10 @@ export type CreateElectroDBEntityOptions<S extends EntitySchema<any, any, any>> 
  *          }
  *      },
  *      // ... other indexes
- *  },        
+ *  },
  * } as const );
- * 
- * 
+ *
+ *
  */
 export function createEntitySchema<
   A extends string,
@@ -464,39 +513,31 @@ export function createEntitySchema<
   S extends EntitySchema<A, F, C, Ops>,
   Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
 >(schema: S): S {
-    return createSchema(schema);
+  return createSchema(schema);
 }
 
 export function createElectroDBEntity<S extends EntitySchema<any, any, any>>(options: CreateElectroDBEntityOptions<S>) {
-    const { schema, entityConfigurations} = options;
+  const { schema, entityConfigurations } = options;
 
-	const newElectroDbEntity = new Entity(
-        schema, 
-        entityConfigurations
-    );
+  const newElectroDbEntity = new Entity(schema, entityConfigurations);
 
-    return {
-        name:       schema.model.entity,
-        entity:     newElectroDbEntity,
-        schema:     schema,
-        symbol:     Symbol.for(schema.model.entity),
-    }
+  return {
+    name: schema.model.entity,
+    entity: newElectroDbEntity,
+    schema: schema,
+    symbol: Symbol.for(schema.model.entity),
+  };
 }
 
 // Infer types utils
-export type EntityTypeFromSchema<TSchema> = TSchema extends EntitySchema<infer A, infer F, infer C> 
-    ? Entity<A, F, C, TSchema> 
-    : never;
+export type EntityTypeFromSchema<TSchema> =
+  TSchema extends EntitySchema<infer A, infer F, infer C> ? Entity<A, F, C, TSchema> : never;
 
-export type EntityResponseItemTypeFromSchema<TSchema> = TSchema extends EntitySchema<infer A, infer F, infer C> 
-  ? ResponseItem<A, F, C, TSchema>
-  : never;
-
+export type EntityResponseItemTypeFromSchema<TSchema> =
+  TSchema extends EntitySchema<infer A, infer F, infer C> ? ResponseItem<A, F, C, TSchema> : never;
 
 export type UpsertEntityItem<E extends Entity<any, any, any, any>> =
-  E extends Entity<infer A, infer F, infer C, infer S>
-    ? UpsertItem<A, F, C, S>
-    : never;
+  E extends Entity<infer A, infer F, infer C, infer S> ? UpsertItem<A, F, C, S> : never;
 
 export type EntityRecordTypeFromSchema<Sch extends EntitySchema<any, any, any>> = EntityItem<EntityTypeFromSchema<Sch>>;
 
@@ -504,13 +545,21 @@ export type EntityRecordTypeFromSchema<Sch extends EntitySchema<any, any, any>> 
 export type EntityServiceTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = BaseEntityService<TSchema>;
 
 // Entity identifiers
-export type EntityIdentifiersTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<EntityIdentifiers<EntityTypeFromSchema<TSchema>>>;
+export type EntityIdentifiersTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<
+  EntityIdentifiers<EntityTypeFromSchema<TSchema>>
+>;
 
 // Create entity
-export type CreateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<CreateEntityItem<EntityTypeFromSchema<TSchema>>>;
+export type CreateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<
+  CreateEntityItem<EntityTypeFromSchema<TSchema>>
+>;
 
 // Upsert entity
-export type UpsertEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<UpsertEntityItem<EntityTypeFromSchema<TSchema>>>;
+export type UpsertEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<
+  UpsertEntityItem<EntityTypeFromSchema<TSchema>>
+>;
 
 // Update entity
-export type UpdateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any> > = Writable<UpdateEntityItem<EntityTypeFromSchema<TSchema>>>;
+export type UpdateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<
+  UpdateEntityItem<EntityTypeFromSchema<TSchema>>
+>;

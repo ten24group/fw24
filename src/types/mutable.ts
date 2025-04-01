@@ -1,5 +1,5 @@
 type Mutable<Type> = {
-    -readonly [Key in keyof Type]: Type[Key];
+  -readonly [Key in keyof Type]: Type[Key];
 };
 
 export default Mutable;

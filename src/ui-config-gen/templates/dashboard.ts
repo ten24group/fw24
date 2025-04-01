@@ -1,7 +1,7 @@
 export default () => {
-    return {
-        pageTitle:  `Dashboard`,
-        pageType:   "dashboard",
-        breadcrums: [],
-    }
+  return {
+    pageTitle: `Dashboard`,
+    pageType: 'dashboard',
+    breadcrums: [],
+  };
 };

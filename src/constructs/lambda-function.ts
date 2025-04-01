@@ -1,19 +1,26 @@
-import { Construct } from "constructs";
-import { Duration, RemovalPolicy } from "aws-cdk-lib";
-import { PolicyStatement, type PolicyStatementProps } from "aws-cdk-lib/aws-iam";
-import { Runtime, Architecture, LayerVersion, ApplicationLogLevel, LoggingFormat, ILayerVersion } from "aws-cdk-lib/aws-lambda";
-import { ITableV2, TableV2 } from "aws-cdk-lib/aws-dynamodb";
-import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
-import { Fw24 } from "../core/fw24";
-import { Bucket } from "aws-cdk-lib/aws-s3";
-import { MailerConstruct } from "./mailer";
-import { Queue } from "aws-cdk-lib/aws-sqs";
-import { Topic } from "aws-cdk-lib/aws-sns";
-import { createLogger, ILogger } from "../logging";
-import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
-import { ensureNoSpecialChars, ensureSuffix, ensureValidEnvKey } from "../utils/keys";
+import { Construct } from 'constructs';
+import { Duration, RemovalPolicy } from 'aws-cdk-lib';
+import { PolicyStatement, type PolicyStatementProps } from 'aws-cdk-lib/aws-iam';
+import {
+  Runtime,
+  Architecture,
+  LayerVersion,
+  ApplicationLogLevel,
+  LoggingFormat,
+  ILayerVersion,
+} from 'aws-cdk-lib/aws-lambda';
+import { ITableV2, TableV2 } from 'aws-cdk-lib/aws-dynamodb';
+import { NodejsFunction, NodejsFunctionProps } from 'aws-cdk-lib/aws-lambda-nodejs';
+import { Fw24 } from '../core/fw24';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
+import { MailerConstruct } from './mailer';
+import { Queue } from 'aws-cdk-lib/aws-sqs';
+import { Topic } from 'aws-cdk-lib/aws-sns';
+import { createLogger, ILogger } from '../logging';
+import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
+import { ensureNoSpecialChars, ensureSuffix, ensureValidEnvKey } from '../utils/keys';
 export type TPolicyStatementOrProps = PolicyStatement | PolicyStatementProps;
-export type TImportedPolicy = { name: string, isOptional?: boolean, prefix?: string };
+export type TImportedPolicy = { name: string; isOptional?: boolean; prefix?: string };
 
 export function isImportedPolicy(policy: TPolicyStatementOrProps | TImportedPolicy): policy is TImportedPolicy {
   return (policy as TImportedPolicy).name !== undefined;
@@ -36,7 +43,7 @@ export interface LambdaFunctionProps {
   /**
    * The environment variables to set for the Lambda function.
    */
-  environmentVariables?: { [ key: string ]: string };
+  environmentVariables?: { [key: string]: string };
 
   /**
    * The resource access configuration for the Lambda function.
@@ -71,7 +78,7 @@ export interface LambdaFunctionProps {
    */
   functionProps?: Omit<NodejsFunctionProps, 'layers'> & {
     readonly layers?: Array<ILayerVersion | string>;
-  }
+  };
 }
 
 /**
@@ -84,10 +91,12 @@ export interface IFunctionResourceAccess {
    * The access permissions can be 'read', 'write', or 'readwrite'.
    * If no access permissions are specified, the default is 'readwrite'.
    */
-  tables?: Array<{
-    name: string;
-    access?: string[];
-  }> | string[];
+  tables?:
+    | Array<{
+        name: string;
+        access?: string[];
+      }>
+    | string[];
 
   /**
    * Access permissions for buckets.
@@ -95,10 +104,12 @@ export interface IFunctionResourceAccess {
    * The access permissions can be 'read', 'write', or 'readwrite'.
    * If no access permissions are specified, the default is 'readwrite'.
    */
-  buckets?: Array<{
-    name: string;
-    access?: string[];
-  }> | string[];
+  buckets?:
+    | Array<{
+        name: string;
+        access?: string[];
+      }>
+    | string[];
 
   /**
    * Access permissions for topics.
@@ -106,10 +117,12 @@ export interface IFunctionResourceAccess {
    * The access permissions can be 'publish'.
    * If no access permissions are specified, the default is 'publish'.
    */
-  topics?: Array<{
-    name: string;
-    access?: string[];
-  }> | string[];
+  topics?:
+    | Array<{
+        name: string;
+        access?: string[];
+      }>
+    | string[];
 
   /**
    * Access permissions for queues.
@@ -117,12 +130,13 @@ export interface IFunctionResourceAccess {
    * The access permissions can be 'send', 'receive', or 'delete'.
    * If no access permissions are specified, the default is 'send'.
    */
-  queues?: Array<{
-    name: string;
-    access?: string[];
-  }> | string[];
+  queues?:
+    | Array<{
+        name: string;
+        access?: string[];
+      }>
+    | string[];
 }
-
 
 /**
  * Represents a Lambda function construct.
@@ -138,7 +152,7 @@ export interface IFunctionResourceAccess {
  *          "s3:GetObject"
  *         ],
  *         resources: ["arn:aws:s3:::my-bucket/*"],
- *     }, 
+ *     },
  *     {
  *       policy: "authModule:create-user-auth-record",
  *       isOptional: true
@@ -169,7 +183,7 @@ export interface IFunctionResourceAccess {
  * };
  *
  * const lambdaFunction = new LambdaFunction(stack, "MyLambdaFunction", lambdaProps);
- * 
+ *
  * ```
  */
 
@@ -187,12 +201,11 @@ export function formatLogLevel(logLevel?: string) {
       return ApplicationLogLevel.FATAL;
     case 'INFO':
     default:
-      return ApplicationLogLevel.INFO
+      return ApplicationLogLevel.INFO;
   }
 }
 
 export class LambdaFunction extends Construct {
-
   readonly logger?: ILogger = createLogger('LambdaFunction');
 
   /**
@@ -211,34 +224,34 @@ export class LambdaFunction extends Construct {
     let defaultProps: NodejsFunctionProps = {
       runtime: Runtime.NODEJS_18_X,
       architecture: Architecture.ARM_64,
-      handler: "handler",
+      handler: 'handler',
       timeout: Duration.seconds(5),
       memorySize: 128,
       loggingFormat: process.env.LOG_FORMAT?.toLowerCase?.() === 'json' ? LoggingFormat.JSON : LoggingFormat.TEXT,
-      ...fw24.getConfig().functionProps as NodejsFunctionProps,
+      ...(fw24.getConfig().functionProps as NodejsFunctionProps),
     };
 
     //  'Error'  To use ApplicationLogLevel and/or SystemLogLevel you must set LoggingFormat to 'JSON', got 'Text'.
     if (defaultProps.loggingFormat === LoggingFormat.JSON) {
       defaultProps = {
         ...defaultProps,
-        applicationLogLevelV2: formatLogLevel(process.env.LOG_LEVEL)
+        applicationLogLevelV2: formatLogLevel(process.env.LOG_LEVEL),
       };
     }
 
     // Create log group if not provided
     let logGroup = props.functionProps?.logGroup;
     if (!logGroup) {
-      let logRetentionDays = props.logRetentionDays || fw24.getConfig().logRetentionDays || 30;
+      const logRetentionDays = props.logRetentionDays || fw24.getConfig().logRetentionDays || 30;
       logGroup = new LogGroup(this, `${id}-LogGroup`, {
         removalPolicy: props.logRemovalPolicy || fw24.getConfig().logRemovalPolicy || RemovalPolicy.RETAIN,
         retention: parseInt(logRetentionDays.toString()),
       });
     }
 
-    let additionalProps: any = {
+    const additionalProps: any = {
       entry: props.entry,
-    }
+    };
 
     // collect the names of the layers provided in default config if any or else the global layers;
     const defaultLayers = defaultProps?.layers ?? Array.from(fw24.getGlobalLambdaLayerNames());
@@ -247,7 +260,7 @@ export class LambdaFunction extends Construct {
     const layers = [
       ...defaultLayers,
       // collect the names of the layers provided in function config if any;
-      ...(props.functionProps?.layers ?? [])
+      ...(props.functionProps?.layers ?? []),
     ] as Array<string | ILayerVersion>;
 
     // remove duplicates
@@ -256,16 +269,24 @@ export class LambdaFunction extends Construct {
     // map layers to actual layer objects
     const resolvedLayers = deDupLayers.map(layerName => {
       if (typeof layerName === 'string') {
-        return LayerVersion.fromLayerVersionArn(this, `${id}-${layerName}-Layer`, fw24.getEnvironmentVariable(layerName + '_layerVersionArn', 'layer', scope));
+        return LayerVersion.fromLayerVersionArn(
+          this,
+          `${id}-${layerName}-Layer`,
+          fw24.getEnvironmentVariable(layerName + '_layerVersionArn', 'layer', scope),
+        );
       }
 
       return layerName;
-    })
+    });
 
     // make sure to add fw24 layer
     additionalProps.layers = [
       ...resolvedLayers,
-      LayerVersion.fromLayerVersionArn(this, `${id}-Fw24CoreLayer`, fw24.getEnvironmentVariable('fw24_layerVersionArn', 'layer', scope))
+      LayerVersion.fromLayerVersionArn(
+        this,
+        `${id}-Fw24CoreLayer`,
+        fw24.getEnvironmentVariable('fw24_layerVersionArn', 'layer', scope),
+      ),
     ];
 
     additionalProps.bundling = {
@@ -275,7 +296,7 @@ export class LambdaFunction extends Construct {
       externalModules: [
         ...(defaultProps?.bundling?.externalModules ?? []),
         ...(props.functionProps?.bundling?.externalModules ?? []),
-        "@ten24group/fw24"
+        '@ten24group/fw24',
       ],
     };
     additionalProps.logGroup = logGroup;
@@ -284,7 +305,8 @@ export class LambdaFunction extends Construct {
     }
 
     if (props.processorArchitecture) {
-      additionalProps.architecture = props.processorArchitecture === 'x86_64' ? Architecture.X86_64 : Architecture.ARM_64;
+      additionalProps.architecture =
+        props.processorArchitecture === 'x86_64' ? Architecture.X86_64 : Architecture.ARM_64;
     }
 
     // Create the Node.js function
@@ -303,13 +325,13 @@ export class LambdaFunction extends Construct {
 
     // ensure the environment-variables for the lambda always have a log-level
     if (!('LOG_LEVEL' in props.environmentVariables)) {
-      props.environmentVariables[ 'LOG_LEVEL' ] = fw24.getEnvironmentVariable('LOG_LEVEL');
+      props.environmentVariables['LOG_LEVEL'] = fw24.getEnvironmentVariable('LOG_LEVEL');
     }
 
     // Set environment variables
-    for (const [ key, value ] of Object.entries(props.environmentVariables)) {
+    for (const [key, value] of Object.entries(props.environmentVariables)) {
       let envValue = value;
-      let envKey = key;
+      const envKey = key;
       // If key is prefixed with fw24_, access environment variables from fw24 scope
       // keys can have shape like:
       // fw24_xxx (without scope)
@@ -321,7 +343,7 @@ export class LambdaFunction extends Construct {
         const parts = keyWithoutPrefix.split('_');
 
         // Last part is always the environment variable name
-        const envVarName = parts[ parts.length - 1 ];
+        const envVarName = parts[parts.length - 1];
 
         // Everything before the last part is the scope (if any)
         const scope = parts.length > 1 ? parts.slice(0, -1).join('_') : '';
@@ -335,7 +357,7 @@ export class LambdaFunction extends Construct {
       addEnvironmentKeyValueForFunction({
         fn,
         key: envKey,
-        value: envValue
+        value: envValue,
       });
     }
 
@@ -344,15 +366,13 @@ export class LambdaFunction extends Construct {
       addEnvironmentKeyValueForFunction({
         fn,
         key: envKey,
-        value: fw24.getEnvironmentVariable(envKey)
+        value: fw24.getEnvironmentVariable(envKey),
       });
     });
 
     // Attach policies to the function
     (props.policies ?? []).forEach(policy => {
-
       if (isImportedPolicy(policy)) {
-
         if (!policy.isOptional && !fw24.hasPolicy(policy.name, policy.prefix)) {
           throw new Error(`Policy ${policy} not found in fw24 scope`);
         }
@@ -365,7 +385,6 @@ export class LambdaFunction extends Construct {
       }
 
       fn.addToRolePolicy(policy as PolicyStatement);
-
     });
 
     // If we are using SES, then we need to add the email queue url to the environment
@@ -377,7 +396,7 @@ export class LambdaFunction extends Construct {
       addEnvironmentKeyValueForFunction({
         fn,
         key: `EMAIL_QUEUE_URL`,
-        value: emailQueue.queueUrl
+        value: emailQueue.queueUrl,
       });
     }
 
@@ -390,15 +409,19 @@ export class LambdaFunction extends Construct {
 
       const appQualifiedTableName = ensureNoSpecialChars(ensureSuffix(tableName, `table`));
 
-      const access = typeof table === 'string' ? [ 'readwrite' ] : table.access || [ 'readwrite' ];
+      const access = typeof table === 'string' ? ['readwrite'] : table.access || ['readwrite'];
       // Get the DynamoDB table based on the controller config
-      const tableInstance: ITableV2 = TableV2.fromTableName(this, `${id}-${tableName}-table`, fw24.getEnvironmentVariable(appQualifiedTableName + '_tableName', 'table', scope));
+      const tableInstance: ITableV2 = TableV2.fromTableName(
+        this,
+        `${id}-${tableName}-table`,
+        fw24.getEnvironmentVariable(appQualifiedTableName + '_tableName', 'table', scope),
+      );
 
-      // Add the table name to the lambda environment      
+      // Add the table name to the lambda environment
       addEnvironmentKeyValueForFunction({
         fn,
         key: `${appQualifiedTableName}`,
-        value: tableInstance.tableName
+        value: tableInstance.tableName,
       });
 
       // Grant the lambda function read write access to the table
@@ -424,7 +447,7 @@ export class LambdaFunction extends Construct {
       // ensure the placeholder env keys are resolved from the fw24 scope
       bucketName = fw24.tryResolveEnvKeyTemplate(bucketName);
 
-      const access = typeof bucket === 'string' ? [ 'readwrite' ] : bucket.access || [ 'readwrite' ];
+      const access = typeof bucket === 'string' ? ['readwrite'] : bucket.access || ['readwrite'];
 
       const bucketFullName = fw24.getUniqueName(bucketName);
       const bucketInstance: any = Bucket.fromBucketName(this, bucketName + id + '-bucket', bucketFullName);
@@ -447,9 +470,8 @@ export class LambdaFunction extends Construct {
       addEnvironmentKeyValueForFunction({
         fn,
         key: `bucket_${bucketName}`,
-        value: bucketFullName
+        value: bucketFullName,
       });
-
     });
 
     // Logic for adding SQS queue access to the controller
@@ -459,7 +481,7 @@ export class LambdaFunction extends Construct {
       // ensure the placeholder env keys are resolved from the fw24 scope
       queueName = fw24.tryResolveEnvKeyTemplate(queueName);
 
-      const access = typeof queue === 'string' ? [ 'send' ] : queue.access || [ 'send' ];
+      const access = typeof queue === 'string' ? ['send'] : queue.access || ['send'];
 
       const queueArn = fw24.getArn('sqs', fw24.getEnvironmentVariable(queueName + '_queueName', 'queue', scope));
       const queueInstance = Queue.fromQueueArn(this, queueName + id + '-queue', queueArn);
@@ -482,8 +504,8 @@ export class LambdaFunction extends Construct {
       addEnvironmentKeyValueForFunction({
         fn,
         key: `${queueName}_queueUrl`,
-        value: queueInstance.queueUrl
-      })
+        value: queueInstance.queueUrl,
+      });
     });
 
     // Add SNS topic permission
@@ -493,7 +515,7 @@ export class LambdaFunction extends Construct {
       // ensure the placeholder env keys are resolved from the fw24 scope
       topicName = fw24.tryResolveEnvKeyTemplate(topicName);
 
-      const access = typeof topic === 'string' ? [ 'publish' ] : topic.access || [ 'publish' ];
+      const access = typeof topic === 'string' ? ['publish'] : topic.access || ['publish'];
 
       const topicArn = fw24.getArn('sns', fw24.getEnvironmentVariable(topicName + '_topicName', 'topic', scope));
       const topicInstance = Topic.fromTopicArn(this, topicName + id + '-topic', topicArn);
@@ -509,8 +531,8 @@ export class LambdaFunction extends Construct {
       addEnvironmentKeyValueForFunction({
         fn,
         key: `${topicName}_topicArn`,
-        value: topicInstance.topicArn
-      })
+        value: topicInstance.topicArn,
+      });
     });
 
     return fn;
@@ -518,13 +540,12 @@ export class LambdaFunction extends Construct {
 }
 
 function addEnvironmentKeyValueForFunction(options: {
-  fn: NodejsFunction,
-  key: string,
-  value: string,
-  prefix?: string,
-  suffix?: string,
+  fn: NodejsFunction;
+  key: string;
+  value: string;
+  prefix?: string;
+  suffix?: string;
 }) {
-
   const { fn, key, value, prefix = '', suffix = '' } = options;
 
   const envKey = ensureValidEnvKey(key, prefix, suffix);

@@ -1,14 +1,11 @@
 export const LogDuration = () => {
-  
   return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    
-    const cache = new Set<string>;
+    const cache = new Set<string>();
     const method = descriptor.value;
-    
+
     descriptor.value = function (...args: any[]) {
-      
-      let key = `Duration.of.${target.constructor.name}.${String(propertyKey)}_${cache.size}`;
-      
+      const key = `Duration.of.${target.constructor.name}.${String(propertyKey)}_${cache.size}`;
+
       // to handle recursive calls
       cache.add(key);
 
@@ -34,4 +31,4 @@ export const LogDuration = () => {
 
     return descriptor;
   };
-}
+};

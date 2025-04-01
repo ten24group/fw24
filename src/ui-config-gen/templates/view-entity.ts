@@ -1,61 +1,59 @@
-import {  Schema } from "electrodb";
-import { BaseEntityService, EntitySchema, TIOSchemaAttribute, TIOSchemaAttributesMap } from "../../entity";
-import { camelCase, pascalCase } from "../../utils";
-import { formatEntityAttributesForDetail } from "./util";
+import { BaseEntityService, TIOSchemaAttributesMap } from '../../entity';
+import { EntitySchema } from '../../entity/base-entity';
+import { camelCase, pascalCase } from '../../utils';
+import { formatEntityAttributesForDetail } from './util';
 
-export type ViewEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
-    entityName: string,
-    entityNamePlural: string,
-    properties: TIOSchemaAttributesMap<S>,
-}
-
-export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
-    options: ViewEntityPageOptions<S>,
-    entityService: BaseEntityService<S>
-) => {
-
-    const{ entityName } = options;
-    const entityNameLower = entityName.toLowerCase();
-    const entityNamePascalCase = pascalCase(entityName);
-    
-
-    const detailsPageConfig = makeViewEntityDetailConfig(options, entityService);
-
-    return {
-        pageTitle:  `${entityNamePascalCase} Details`,
-        pageType:   'details',
-        breadcrums: [],
-        pageHeaderActions: [
-            {
-                label:  "Back",
-                url:    `/list-${entityNameLower}`
-            }
-        ],
-        detailsPageConfig,
-    };
+export type ViewEntityPageOptions<
+  S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>,
+> = {
+  entityName: string;
+  entityNamePlural: string;
+  properties: TIOSchemaAttributesMap<S>;
 };
 
-export function makeViewEntityDetailConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> (
-    options: ViewEntityPageOptions<S>,
-    entityService: BaseEntityService<S>
-){
+export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
+  options: ViewEntityPageOptions<S>,
+  entityService: BaseEntityService<S>,
+) => {
+  const { entityName } = options;
+  const entityNameLower = entityName.toLowerCase();
+  const entityNamePascalCase = pascalCase(entityName);
 
-    const{ entityName, properties } = options;
-    const entityNameLower = entityName.toLowerCase();
-    const entityNameCamel = camelCase(entityName);
+  const detailsPageConfig = makeViewEntityDetailConfig(options, entityService);
 
-    const detailsPageConfig = {
-        detailApiConfig: {
-            apiMethod: `GET`,
-            responseKey: entityNameCamel,
-            apiUrl: `/${entityNameLower}`,
-        },
-        propertiesConfig: [] as any[],
-    }
+  return {
+    pageTitle: `${entityNamePascalCase} Details`,
+    pageType: 'details',
+    breadcrums: [],
+    pageHeaderActions: [
+      {
+        label: 'Back',
+        url: `/list-${entityNameLower}`,
+      },
+    ],
+    detailsPageConfig,
+  };
+};
 
-    const formattedProps = formatEntityAttributesForDetail(Array.from(properties.values()), entityService);
+export function makeViewEntityDetailConfig<
+  S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>,
+>(options: ViewEntityPageOptions<S>, entityService: BaseEntityService<S>) {
+  const { entityName, properties } = options;
+  const entityNameLower = entityName.toLowerCase();
+  const entityNameCamel = camelCase(entityName);
 
-    detailsPageConfig.propertiesConfig.push(...formattedProps);
+  const detailsPageConfig = {
+    detailApiConfig: {
+      apiMethod: `GET`,
+      responseKey: entityNameCamel,
+      apiUrl: `/${entityNameLower}`,
+    },
+    propertiesConfig: [] as any[],
+  };
 
-    return detailsPageConfig;
+  const formattedProps = formatEntityAttributesForDetail(Array.from(properties.values()), entityService);
+
+  detailsPageConfig.propertiesConfig.push(...formattedProps);
+
+  return detailsPageConfig;
 }

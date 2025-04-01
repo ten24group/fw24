@@ -1,229 +1,236 @@
-import { ExclusiveUnion, ValueOf, isArray, isArrayOfType, isBoolean, isEmpty, isObject, isString } from "../utils";
-import { EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, } from "./base-entity";
-
+import { ExclusiveUnion, ValueOf, isArray, isArrayOfType, isBoolean, isEmpty, isObject, isString } from '../utils';
+import { EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation } from './base-entity';
 
 export type Pagination = {
-    limit?: number;
-    count?: number;
-    pages?: number | 'all';
-    pager?: 'raw' | 'cursor',
-    order?: 'asc' | 'desc';
-    cursor ?: string,
-}
+  limit?: number;
+  count?: number;
+  pages?: number | 'all';
+  pager?: 'raw' | 'cursor';
+  order?: 'asc' | 'desc';
+  cursor?: string;
+};
 
 export type LogicalOperator = 'and' | 'or' | 'not';
 
-export type StringLiteralToType<T> = T extends 'string' ? string 
-    : T extends 'number' ? number 
-    : T extends 'boolean' ? boolean
-    : T extends 'array' ? Array<any>
-    : T extends 'set' ? Array<any>
-    : T extends 'list' ? Array<any>
-    : T extends 'object' ? any
-    : T extends 'map' ? any 
-    : any;
+export type StringLiteralToType<T> = T extends 'string'
+  ? string
+  : T extends 'number'
+    ? number
+    : T extends 'boolean'
+      ? boolean
+      : T extends 'array'
+        ? Array<any>
+        : T extends 'set'
+          ? Array<any>
+          : T extends 'list'
+            ? Array<any>
+            : T extends 'object'
+              ? any
+              : T extends 'map'
+                ? any
+                : any;
 
 /**
  * Represents a complex filter operator value.
  * @template T - The type of the value.
  */
 export type ComplexFilterOperatorValue<T> = {
-    val: T,
-    /**
-     * The type of the value.
-     * - 'literal': The exact value will be used for comparison.
-     * - 'propRef': The comparison is with another property of the same entity, including properties of nested maps (objects) or lists (arrays).
-     * - 'expression': The value needs to be evaluated first, for example [`now()`, `$currentUser`, `$requestId`].
-     * TODO: Add support for evaluating filter expressions and a dictionary of supported expressions/syntax.
-     */
-    valType?: 'literal' | 'propRef' | 'expression',
-    /**
-     * A label to be used by the UI for the filter value. Useful for persisted filter configurations.
-     */
-    valLabel?: any,
-}
+  val: T;
+  /**
+   * The type of the value.
+   * - 'literal': The exact value will be used for comparison.
+   * - 'propRef': The comparison is with another property of the same entity, including properties of nested maps (objects) or lists (arrays).
+   * - 'expression': The value needs to be evaluated first, for example [`now()`, `$currentUser`, `$requestId`].
+   * TODO: Add support for evaluating filter expressions and a dictionary of supported expressions/syntax.
+   */
+  valType?: 'literal' | 'propRef' | 'expression';
+  /**
+   * A label to be used by the UI for the filter value. Useful for persisted filter configurations.
+   */
+  valLabel?: any;
+};
 
 /**
  * Represents a value that can be used as an operator in a filter.
  * It can be either a single value of type T or a complex filter operator value.
  */
-export type FilterOperatorValue<T> = T |  ComplexFilterOperatorValue<T>;
+export type FilterOperatorValue<T> = T | ComplexFilterOperatorValue<T>;
 
 // TODO: narrow available filters based of the type of the attribute  [string, number, date, boolean, complex etc]
 export type FilterOperators<T> = {
+  eq: FilterOperatorValue<T>;
+  neq: FilterOperatorValue<T>;
 
-    'eq': FilterOperatorValue<T>,
-    'neq': FilterOperatorValue<T>,
+  gt: FilterOperatorValue<T>;
+  gte: FilterOperatorValue<T>;
 
-    'gt': FilterOperatorValue<T>,
-    'gte': FilterOperatorValue<T>,
+  lt: FilterOperatorValue<T>;
+  lte: FilterOperatorValue<T>;
 
-    'lt': FilterOperatorValue<T>,
-    'lte': FilterOperatorValue<T>,
-    
-    'in': FilterOperatorValue<Array<T>>,
-    'nin': FilterOperatorValue<Array<T>>,
+  in: FilterOperatorValue<Array<T>>;
+  nin: FilterOperatorValue<Array<T>>;
 
-    'bt': FilterOperatorValue<[ from: T, to: T ]> | FilterOperatorValue<{ from: T, to: T }>,
-    
-    'isNull': FilterOperatorValue<true>, 
-    'isEmpty': FilterOperatorValue<true>, 
-    
-    'contains': FilterOperatorValue<T | Array<T>>,
-    'notContains': FilterOperatorValue<T | Array<T>>,
+  bt: FilterOperatorValue<[from: T, to: T]> | FilterOperatorValue<{ from: T; to: T }>;
 
-    'containsSome': FilterOperatorValue<T | Array<T>>,
-    
-    'like': FilterOperatorValue<T>,
-    'endsWith': FilterOperatorValue<T>,
-    'startsWith': FilterOperatorValue<T>,
-} 
+  isNull: FilterOperatorValue<true>;
+  isEmpty: FilterOperatorValue<true>;
+
+  contains: FilterOperatorValue<T | Array<T>>;
+  notContains: FilterOperatorValue<T | Array<T>>;
+
+  containsSome: FilterOperatorValue<T | Array<T>>;
+
+  like: FilterOperatorValue<T>;
+  endsWith: FilterOperatorValue<T>;
+  startsWith: FilterOperatorValue<T>;
+};
 
 export type FilterOperatorsExtended<T> = FilterOperators<T> & {
+  between: FilterOperators<T>['bt'];
+  bw: FilterOperators<T>['bt'];
+  '><': FilterOperators<T>['bt'];
 
-    'between': FilterOperators<T>['bt'],
-    'bw': FilterOperators<T>['bt'],
-    "><": FilterOperators<T>['bt'],
+  equalTo: FilterOperators<T>['eq'];
+  equal: FilterOperators<T>['eq'];
+  '===': FilterOperators<T>['eq'];
+  '==': FilterOperators<T>['eq'];
 
-    'equalTo': FilterOperators<T>['eq'],
-    'equal': FilterOperators<T>['eq'],
-    '===' : FilterOperators<T>['eq'],
-    '==' : FilterOperators<T>['eq'],
+  notEqualTo: FilterOperators<T>['neq'];
+  notEqual: FilterOperators<T>['neq'];
+  '!==': FilterOperators<T>['neq'];
+  '!=': FilterOperators<T>['neq'];
+  '<>': FilterOperators<T>['neq'];
+  ne: FilterOperators<T>['neq'];
 
-    'notEqualTo': FilterOperators<T>['neq'],
-    'notEqual': FilterOperators<T>['neq'],
-    '!==': FilterOperators<T>['neq'],
-    '!=': FilterOperators<T>['neq'],
-    '<>': FilterOperators<T>['neq'],
-    'ne': FilterOperators<T>['neq'],
+  greaterThan: FilterOperators<T>['gt'];
+  '>': FilterOperators<T>['gt'];
 
-    'greaterThan': FilterOperators<T>['gt'],
-    '>': FilterOperators<T>['gt'],
+  greaterThanOrEqualTo: FilterOperators<T>['gte'];
+  '>=': FilterOperators<T>['gte'];
+  '>==': FilterOperators<T>['gte'];
 
-    'greaterThanOrEqualTo': FilterOperators<T>['gte'],
-    '>=': FilterOperators<T>['gte'],
-    '>==': FilterOperators<T>['gte'],
+  lessThan: FilterOperators<T>['lt'];
+  '<': FilterOperators<T>['lt'];
 
-    'lessThan': FilterOperators<T>['lt'],
-    '<': FilterOperators<T>['lt'],
+  lessThanOrEqualTo: FilterOperators<T>['lte'];
+  '<=': FilterOperators<T>['lte'];
+  '<==': FilterOperators<T>['lte'];
 
-    'lessThanOrEqualTo': FilterOperators<T>['lte'],
-    '<=': FilterOperators<T>['lte'],
-    '<==': FilterOperators<T>['lte'],
+  inList: FilterOperators<T>['in'];
 
-    'inList': FilterOperators<T>['in'],
+  notInList: FilterOperators<T>['nin'];
+  notIn: FilterOperators<T>['nin'];
 
-    'notInList': FilterOperators<T>['nin'],
-    'notIn': FilterOperators<T>['nin'],
+  exists: FilterOperators<T>['isNull'];
 
-    'exists': FilterOperators<T>['isNull'],
+  begins: FilterOperators<T>['startsWith'];
+  beginsWith: FilterOperators<T>['startsWith'];
 
-    'begins': FilterOperators<T>['startsWith'],
-    'beginsWith': FilterOperators<T>['startsWith'],
+  includes: FilterOperators<T>['contains'];
+  includesSome: FilterOperators<T>['containsSome'];
 
-    'includes': FilterOperators<T>['contains'],
-    'includesSome': FilterOperators<T>['containsSome'],
+  has: FilterOperators<T>['contains'];
+  hasSome: FilterOperators<T>['containsSome'];
 
-    'has': FilterOperators<T>['contains'],
-    'hasSome': FilterOperators<T>['containsSome'],
-
-    'notIncludes': FilterOperators<T>['notContains'],
-    'notHas': FilterOperators<T>['notContains'],
-}
+  notIncludes: FilterOperators<T>['notContains'];
+  notHas: FilterOperators<T>['notContains'];
+};
 
 export const allFilterOperators: Array<keyof FilterOperatorsExtended<any>> = [
-    'equalTo',
-    'equal',
-    'eq',
-    '==',
-    '===',
-     
-    'notEqualTo',
-    'notEqual',
-    'neq', 
-    'ne', 
-    '!=', 
-    '!==', 
-    '<>', 
-    
-    'greaterThan',
-    'gt', 
-    '>',
+  'equalTo',
+  'equal',
+  'eq',
+  '==',
+  '===',
 
-    'greaterThanOrEqualTo',
-    'gte', 
-    '>=',
-    '>==',
+  'notEqualTo',
+  'notEqual',
+  'neq',
+  'ne',
+  '!=',
+  '!==',
+  '<>',
 
-    'lessThan',
-    'lt', 
-    '<',
+  'greaterThan',
+  'gt',
+  '>',
 
-    'lessThanOrEqualTo',
-    'lte', 
-    '<=',
-    '<==',
+  'greaterThanOrEqualTo',
+  'gte',
+  '>=',
+  '>==',
 
-    'between', 
-    'bt', 
-    'bw',
-    '><', 
+  'lessThan',
+  'lt',
+  '<',
 
-    'contains', 
-    'includes',
-    'has',
-    'containsSome',
-    'includesSome',
-    'hasSome',
+  'lessThanOrEqualTo',
+  'lte',
+  '<=',
+  '<==',
 
-    'notContains', 
-    'notIncludes',
-    'notHas',
-    
-    'exists', 
-    'isNull',
+  'between',
+  'bt',
+  'bw',
+  '><',
 
-    'isEmpty',
-    
-    'like', 
-    'startsWith',
-    'begins',
-    'beginsWith',
+  'contains',
+  'includes',
+  'has',
+  'containsSome',
+  'includesSome',
+  'hasSome',
 
-    'endsWith',
+  'notContains',
+  'notIncludes',
+  'notHas',
 
-    'inList', 
-    'in', 
+  'exists',
+  'isNull',
 
-    'notInList',
-    'notIn',
-    'nin', 
+  'isEmpty',
+
+  'like',
+  'startsWith',
+  'begins',
+  'beginsWith',
+
+  'endsWith',
+
+  'inList',
+  'in',
+
+  'notInList',
+  'notIn',
+  'nin',
 ] as const;
 
-// Filters supported by ElectroDB 
+// Filters supported by ElectroDB
 // see https://electrodb.dev/en/queries/filters/
 // [eq, ne, gt, gte, lt, lte, between, begins, exists, notExists, contains, notContains, value, name, size, type, field, escape]
 
 // `inList` and `notInList` will be supported by multiple `contains` with OR/AND.
 export type FilterOperatorsForDynamo<T> = Exclude<FilterOperatorsExtended<T>, 'endsWith'>;
 
-export const filterOperatorsForDynamo: Array<keyof FilterOperatorsForDynamo<any>>  = allFilterOperators.filter(op => !['endsWith'].includes(op) );
+export const filterOperatorsForDynamo: Array<keyof FilterOperatorsForDynamo<any>> = allFilterOperators.filter(
+  op => !['endsWith'].includes(op),
+);
 
 export type IdAndLabel = {
-    filterId?: string,
-    filterLabel?: string,
+  filterId?: string;
+  filterLabel?: string;
 };
 
 export type IdAndLabelAndLogicalOp = IdAndLabel & {
-    logicalOp?: LogicalOperator,
-}
+  logicalOp?: LogicalOperator;
+};
 
 /**
  * Represents the filter criteria for a query.
  * @template T - The type of the filter criteria.
- * 
+ *
  * @example
- * { 
+ * {
  *   eq: 'value',
  *   neq: 'value',
  *   gt: 'value',
@@ -231,13 +238,13 @@ export type IdAndLabelAndLogicalOp = IdAndLabel & {
  * }
  */
 export type FilterCriteria<T> = IdAndLabelAndLogicalOp & {
-    [op in keyof FilterOperatorsExtended<T>] ?: FilterOperatorsExtended<StringLiteralToType<T>>[op]
-}
+  [op in keyof FilterOperatorsExtended<T>]?: FilterOperatorsExtended<StringLiteralToType<T>>[op];
+};
 
 /**
  * Represents an attribute filter for an entity.
  * @template E - The entity schema type.
- * 
+ *
  * @example
  * {
  *  attribute: 'name',
@@ -246,17 +253,15 @@ export type FilterCriteria<T> = IdAndLabelAndLogicalOp & {
  *  gt: 'value',
  * }
  */
-export type AttributeFilter<E extends EntitySchema<any, any, any>> = 
-IdAndLabelAndLogicalOp 
-& FilterCriteria<ValueOf<E['attributes']>['type']>
-& { 
-    attribute: keyof E['attributes'] 
-};
+export type AttributeFilter<E extends EntitySchema<any, any, any>> = IdAndLabelAndLogicalOp &
+  FilterCriteria<ValueOf<E['attributes']>['type']> & {
+    attribute: keyof E['attributes'];
+  };
 
 /**
  * Represents a filter for an entity.
  * @template E - The entity schema type.
- * 
+ *
  * @example
  * ```ts
  *   interface UserEntitySchema {
@@ -266,26 +271,26 @@ IdAndLabelAndLogicalOp
  *       name: { type: 'string' },
  *     };
  *   }
- * 
- * 
+ *
+ *
  *   const filter: EntityFilter<UserEntitySchema> = {
  *     id: { eq: '123' },
  *     name: { like: 'John', notLike: 'Doe', logicalOp: 'OR' }, // `name like 'John' OR name not like 'Doe'`
  *     age: { gte: 18 },
  *   };
- *  
+ *
  */
 export type EntityFilter<E extends EntitySchema<any, any, any>> = IdAndLabelAndLogicalOp & {
-    /**
-     * The filter criteria for each attribute of the entity.
-     */
-    [ key in keyof E['attributes'] ] ?: FilterCriteria<E['attributes'][key]['type']>
+  /**
+   * The filter criteria for each attribute of the entity.
+   */
+  [key in keyof E['attributes']]?: FilterCriteria<E['attributes'][key]['type']>;
 };
 
 /**
  * Represents a filter group for querying entities.
  * @template E - The entity schema type.
- * 
+ *
  * @example
  *  {
  *    and: [
@@ -296,7 +301,7 @@ export type EntityFilter<E extends EntitySchema<any, any, any>> = IdAndLabelAndL
  *        gt: 'value',
  *    },
  *    {
- *      or: [{    
+ *      or: [{
  *        attribute: 'name',
  *        eq: 'value',
  *        neq: 'value',
@@ -308,20 +313,16 @@ export type EntityFilter<E extends EntitySchema<any, any, any>> = IdAndLabelAndL
  * ]}
  */
 export type FilterGroup<E extends EntitySchema<any, any, any>> = IdAndLabel & {
-    [op in LogicalOperator] ?: Array< 
-        ExclusiveUnion<
-            EntityFilter<E> 
-            | AttributeFilter<E> 
-            | FilterGroup<E>
-        > 
-    > 
-}
+  [op in LogicalOperator]?: Array<ExclusiveUnion<EntityFilter<E> | AttributeFilter<E> | FilterGroup<E>>>;
+};
 
 /**
  * Represents the criteria for filtering entities.
  * @template E - The entity schema type.
  */
-export type EntityFilterCriteria<E extends EntitySchema<any, any, any>> = ExclusiveUnion< FilterGroup<E> | EntityFilter<E> >;
+export type EntityFilterCriteria<E extends EntitySchema<any, any, any>> = ExclusiveUnion<
+  FilterGroup<E> | EntityFilter<E>
+>;
 
 /**
  * Represents the selection of attributes for an entity.
@@ -335,11 +336,11 @@ export type EntityFilterCriteria<E extends EntitySchema<any, any, any>> = Exclus
  * For relational attributes, the value can also be an object with required metadata like entity-name, identifiers meta for the entity, and further attributes to hydrate in this relation.
  * The entity-name and identifiers meta are not required and will be inferred by the backend.
  * @template E - The entity schema type.
- * 
+ *
  * @example
- * 
+ *
  * ```ts
- * 
+ *
  * interface UserEntitySchema {
  *   attributes: {
  *     name: { type: 'string' };
@@ -348,28 +349,28 @@ export type EntityFilterCriteria<E extends EntitySchema<any, any, any>> = Exclus
  *     posts: { type: 'array',  relation: { entity: PostEntitySchema, type: 'one-to-many' } };
  *   };
  * }
- * 
+ *
  * interface PostEntitySchema {
  *   attributes: {
  *     title: { type: 'string' };
  *     content: { type: 'string' };
  *   };
  * }
- * 
+ *
  * type UserSelections = EntitySelections<UserEntitySchema>;
- * 
+ *
  * // Select specific attributes
  * const selections1: UserSelections = ['name', 'age']; // ['name', 'age']
- * 
+ *
  * // Include specific attributes
  * const selections4: UserSelections = { name: true, age: true }; // { name: true, age: true }
- * 
+ *
  * // Include relation attributes
  * const selections5: UserSelections = { posts: true }; // { posts: true }
- * 
+ *
  * // Include nested attributes
  * const selections6: UserSelections = { 'posts': { identifiers: ['title', 'content'] };
- * 
+ *
  * // Include nested attributes with metadata
  * const selections7: UserSelections = { 'posts': { identifiers: { postId: 'id' }, attributes: ['title'] } }; // { 'posts': { entityName: 'Post', attributeName: 'posts' identifiers: { id: '123-xxx-yyy' }, attributes: ['title'] } }
  * ```
@@ -378,9 +379,9 @@ export type EntitySelections<E extends EntitySchema<any, any, any>> = HydrateOpt
 
 /**
  * Represents a query for retrieving entities of type E.
- * 
+ *
  * @example
- * 
+ *
  * ```ts
  * interface UserEntitySchema {
  *   attributes: {
@@ -388,9 +389,9 @@ export type EntitySelections<E extends EntitySchema<any, any, any>> = HydrateOpt
  *     age: { type: 'number' };
  *   };
  * }
- * 
+ *
  * type UserQuery = EntityQuery<UserEntitySchema>;
- * 
+ *
  * const query: UserQuery = {
  *   attributes: ['name', 'age'], // selection attributes
  *   filters: {
@@ -414,80 +415,85 @@ export type EntitySelections<E extends EntitySchema<any, any, any>> = HydrateOpt
  * @template E - The entity schema type.
  */
 export type EntityQuery<E extends EntitySchema<any, any, any>> = {
-    /**
-     * Specifies the attributes to be selected for the entity.
-     */
-    attributes?: EntitySelections<E>,
-    
-    /**
-     * Specifies the filter criteria for the query.
-     */
-    filters?: EntityFilterCriteria<E>,
-    
-    /**
-     * Specifies the search string or an array of search strings.
-     * Keywords for search can be delimited by [',', ' ', '+'].
-     */
-    search?: string | Array<string>,
+  /**
+   * Specifies the attributes to be selected for the entity.
+   */
+  attributes?: EntitySelections<E>;
 
-    /**
-     * Specifies the list of attributes to search for.
-     */
-    searchAttributes?: Array<string>,
-    
-    /**
-     * Specifies the pagination settings for the query.
-     */
-    pagination?: Pagination,
-}
+  /**
+   * Specifies the filter criteria for the query.
+   */
+  filters?: EntityFilterCriteria<E>;
+
+  /**
+   * Specifies the search string or an array of search strings.
+   * Keywords for search can be delimited by [',', ' ', '+'].
+   */
+  search?: string | Array<string>;
+
+  /**
+   * Specifies the list of attributes to search for.
+   */
+  searchAttributes?: Array<string>;
+
+  /**
+   * Specifies the pagination settings for the query.
+   */
+  pagination?: Pagination;
+};
 
 export function isComplexFilterValue<T>(payload: any): payload is ComplexFilterOperatorValue<T> {
-    return isObject(payload) && payload.hasOwnProperty('val')
+  return isObject(payload) && Object.prototype.hasOwnProperty.call(payload, 'val');
 }
 
 export function isFilterCriteria<T>(payload: any): payload is FilterCriteria<T> {
-    return isObject(payload) 
-    && filterOperatorsForDynamo.some( key => payload.hasOwnProperty(key) )
+  return isObject(payload) && filterOperatorsForDynamo.some(key => Object.prototype.hasOwnProperty.call(payload, key));
 }
 
 export function isAttributeFilter<E extends EntitySchema<any, any, any>>(payload: any): payload is AttributeFilter<E> {
-    return isFilterCriteria(payload) && payload.hasOwnProperty('attribute') 
+  return isFilterCriteria(payload) && Object.prototype.hasOwnProperty.call(payload, 'attribute');
 }
 
 export function isEntityFilter<E extends EntitySchema<any, any, any>>(payload: any): payload is EntityFilter<E> {
-    return isObject(payload)
-    && !isEmpty(payload)
-    && Object.entries(payload)
-    // except these things every other key must represent a filter
-    .filter(([k]) => !['filterId', 'filterLabel', 'logicalOp'].includes(k)) 
-    .every( ([, v]) => isFilterCriteria(v) )
+  return (
+    isObject(payload) &&
+    !isEmpty(payload) &&
+    Object.entries(payload)
+      // except these things every other key must represent a filter
+      .filter(([k]) => !['filterId', 'filterLabel', 'logicalOp'].includes(k))
+      .every(([, v]) => isFilterCriteria(v))
+  );
 }
 
 export function isFilterGroup<E extends EntitySchema<any, any, any>>(payload: any): payload is FilterGroup<E> {
-    return isObject(payload) 
-    && !isEmpty(payload)
-    && ['and', 'or', 'not'].some( 
-        logicalOp => (
-            payload.hasOwnProperty(logicalOp) 
-            && isArray(payload[logicalOp]) 
-            && payload[logicalOp].every( 
-                (f: any) => isAttributeFilter(f) || isFilterGroup(f) || isEntityFilter(f) 
-            )
-        )
-    );
+  return (
+    isObject(payload) &&
+    !isEmpty(payload) &&
+    ['and', 'or', 'not'].some(
+      logicalOp =>
+        Object.prototype.hasOwnProperty.call(payload, logicalOp) &&
+        isArray(payload[logicalOp]) &&
+        payload[logicalOp].every((f: any) => isAttributeFilter(f) || isFilterGroup(f) || isEntityFilter(f)),
+    )
+  );
 }
 
-export type ObjectOfStringKeysAndBooleanValues = {[k:string]: boolean};
-export function isArrayOfObjectOfStringKeysAndBooleanValues(payload: any ): payload is Array<ObjectOfStringKeysAndBooleanValues> {
-    return isArrayOfType<ObjectOfStringKeysAndBooleanValues>(payload, (item: any): item is ObjectOfStringKeysAndBooleanValues => {
-        return isObject(item) && Object.entries(item).every(([key, value]) => isString(key) && isBoolean(value));
-    });
+export type ObjectOfStringKeysAndBooleanValues = { [k: string]: boolean };
+export function isArrayOfObjectOfStringKeysAndBooleanValues(
+  payload: any,
+): payload is Array<ObjectOfStringKeysAndBooleanValues> {
+  return isArrayOfType<ObjectOfStringKeysAndBooleanValues>(
+    payload,
+    (item: any): item is ObjectOfStringKeysAndBooleanValues => {
+      return isObject(item) && Object.entries(item).every(([key, value]) => isString(key) && isBoolean(value));
+    },
+  );
 }
 
 export type ParsedEntityAttributePaths = {
-    [key: string]: boolean | { attributes: ParsedEntityAttributePaths };
+  [key: string]: boolean | { attributes: ParsedEntityAttributePaths };
 };
 
 export type ParsedEntityAttributePathsWithRelationMeta = {
-    [key: string]: boolean | HydrateOptionForRelation;
+  [key: string]: boolean | HydrateOptionForRelation;
 };

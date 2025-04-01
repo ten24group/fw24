@@ -1,75 +1,75 @@
-import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
-import { pascalCase } from "../../utils";
-import { formatEntityAttributesForList } from "./util";
+import { EntitySchema, TIOSchemaAttributesMap } from '../../entity';
+import { pascalCase } from '../../utils';
+import { formatEntityAttributesForList } from './util';
 
 export type ListingPropConfig = {
-    name: string,
-    dataIndex: string,
-    fieldType: string,
-    hidden?: boolean,
-    actions?: any[]
+  name: string;
+  dataIndex: string;
+  fieldType: string;
+  hidden?: boolean;
+  actions?: any[];
 };
 
-export type ListEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
-    entityName: string,
-    entityNamePlural: string,
-    excludeFromAdminCreate?: boolean,
-    excludeFromAdminUpdate?: boolean,
-    excludeFromAdminDelete?: boolean,
-    excludeFromAdminDetail?: boolean,
-    properties: TIOSchemaAttributesMap<S>
-}
+export type ListEntityPageOptions<
+  S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>,
+> = {
+  entityName: string;
+  entityNamePlural: string;
+  excludeFromAdminCreate?: boolean;
+  excludeFromAdminUpdate?: boolean;
+  excludeFromAdminDelete?: boolean;
+  excludeFromAdminDetail?: boolean;
+  properties: TIOSchemaAttributesMap<S>;
+};
 
-export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
-    options: ListEntityPageOptions<S>
+export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
+  options: ListEntityPageOptions<S>,
 ) => {
+  const { entityName } = options;
+  const entityNameLower = entityName.toLowerCase();
+  const entityNamePascalCase = pascalCase(entityName);
 
-    const{ entityName, entityNamePlural, properties } = options;
-    const entityNameLower = entityName.toLowerCase();
-    const entityNamePascalCase = pascalCase(entityName);
+  const listPageConfig = makeViewEntityListConfig(options);
 
-    const listPageConfig = makeViewEntityListConfig(options);
+  const pageHeaderAction = [];
+  if (!options.excludeFromAdminCreate) {
+    pageHeaderAction.push({
+      label: 'Create',
+      url: `/create-${entityNameLower}`,
+    });
+  }
 
-    const pageHeaderAction = [];
-    if(!options.excludeFromAdminCreate){
-        pageHeaderAction.push({
-            label:  "Create",
-            url:    `/create-${entityNameLower}`
-        });
-    }
-
-    return {
-        pageTitle:  `${entityNamePascalCase} Listing`,
-        pageType:   "list",
-        breadcrums: [],
-        pageHeaderActions: pageHeaderAction,
-        listPageConfig
-    };
+  return {
+    pageTitle: `${entityNamePascalCase} Listing`,
+    pageType: 'list',
+    breadcrums: [],
+    pageHeaderActions: pageHeaderAction,
+    listPageConfig,
+  };
 };
 
-export function makeViewEntityListConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> (
-    options: ListEntityPageOptions<S>
-){
+export function makeViewEntityListConfig<
+  S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>,
+>(options: ListEntityPageOptions<S>) {
+  const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail } = options;
+  const entityNameLower = entityName.toLowerCase();
 
-    const{ entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail } = options;
-    const entityNameLower = entityName.toLowerCase();
+  const listPageConfig = {
+    apiConfig: {
+      apiMethod: `GET`,
+      responseKey: 'items',
+      apiUrl: `/${entityNameLower}`,
+    },
+    propertiesConfig: [] as any[],
+  };
 
-    const listPageConfig = {
-        apiConfig: {
-            apiMethod: `GET`,
-            responseKey: 'items',
-            apiUrl: `/${entityNameLower}`,
-        },
-        propertiesConfig: [] as any[],
-    }
+  const formattedProps = formatEntityAttributesForList(entityName, Array.from(properties.values()), {
+    excludeFromAdminUpdate,
+    excludeFromAdminDelete,
+    excludeFromAdminDetail,
+  });
 
-    const formattedProps = formatEntityAttributesForList( entityName, Array.from(properties.values()), {
-        excludeFromAdminUpdate,
-        excludeFromAdminDelete,
-        excludeFromAdminDetail
-    } );
+  listPageConfig.propertiesConfig.push(...formattedProps);
 
-    listPageConfig.propertiesConfig.push(...formattedProps);
-
-    return listPageConfig;
+  return listPageConfig;
 }

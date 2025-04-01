@@ -1,9 +1,9 @@
-import { ensureValidEnvKey } from "./keys";
+import { ensureValidEnvKey } from './keys';
 
-export function resolveEnvValueFor(options: { key: string, prefix?: string, suffix?: string }){
-    const {key, prefix = '', suffix = '', } = options;
-    
-    const validKey = ensureValidEnvKey(key, prefix, suffix);
+export function resolveEnvValueFor(options: { key: string; prefix?: string; suffix?: string }) {
+  const { key, prefix = '', suffix = '' } = options;
 
-    return process.env[ validKey ];
+  const validKey = ensureValidEnvKey(key, prefix, suffix);
+
+  return process.env[validKey];
 }

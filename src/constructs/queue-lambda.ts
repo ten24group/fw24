@@ -1,15 +1,15 @@
-import { Construct } from "constructs";
-import { Duration } from "aws-cdk-lib";
-import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-import { Queue } from "aws-cdk-lib/aws-sqs";
-import { QueueProps } from "aws-cdk-lib/aws-sqs";
-import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
-import { SqsEventSource, SqsEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
-import { Topic } from "aws-cdk-lib/aws-sns";
-import { SqsSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
-import { Fw24 } from "../core/fw24";
-import { ILogger, createLogger } from "../logging";
-import { Helper } from "../core";
+import { Construct } from 'constructs';
+import { Duration } from 'aws-cdk-lib';
+import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
+import { Queue } from 'aws-cdk-lib/aws-sqs';
+import { QueueProps } from 'aws-cdk-lib/aws-sqs';
+import { LambdaFunction, LambdaFunctionProps } from './lambda-function';
+import { SqsEventSource, SqsEventSourceProps } from 'aws-cdk-lib/aws-lambda-event-sources';
+import { Topic } from 'aws-cdk-lib/aws-sns';
+import { SqsSubscription } from 'aws-cdk-lib/aws-sns-subscriptions';
+import { Fw24 } from '../core/fw24';
+import { ILogger, createLogger } from '../logging';
+import { Helper } from '../core';
 
 /**
  * Represents the properties for a QueueLambdaFunction.
@@ -79,22 +79,24 @@ export interface IQueueSubscriptions {
    * An array of topics with their corresponding filters.
    * Each topic has a name and an array of filters.
    */
-  topics: Array<{
-    name: string;
-    filters: string[]; 
-  }> | string[];
+  topics:
+    | Array<{
+        name: string;
+        filters: string[];
+      }>
+    | string[];
 }
 
 /**
  * Default properties for the QueueLambdaFunction.
  */
-const QueueLambdaFunctionPropDefaults : QueueLambdaFunctionProps = {
-  queueName: "",
+const QueueLambdaFunctionPropDefaults: QueueLambdaFunctionProps = {
+  queueName: '',
   queueProps: {
     visibilityTimeout: Duration.seconds(30),
     receiveMessageWaitTime: Duration.seconds(20),
   },
-}
+};
 
 /**
  * @class
@@ -103,7 +105,7 @@ const QueueLambdaFunctionPropDefaults : QueueLambdaFunctionProps = {
  * @param {string} id - The logical ID of the construct.
  * @param {QueueLambdaFunctionProps} queueLambdaProps - The properties for the QueueLambda construct.
  * @returns {Queue} - The created Queue instance.
- * 
+ *
  * @example
  * ```ts
  * // Create a new QueueLambda instance
@@ -132,38 +134,44 @@ const QueueLambdaFunctionPropDefaults : QueueLambdaFunctionProps = {
  * ```
  */
 export class QueueLambda extends Construct {
-  readonly logger ?: ILogger;
+  readonly logger?: ILogger;
 
   constructor(scope: Construct, id: string, queueLambdaProps: QueueLambdaFunctionProps) {
     super(scope, id);
     this.logger = createLogger(`${QueueLambda.name}-${id}`);
 
     const fw24 = Fw24.getInstance();
-    
-    let props = { ...QueueLambdaFunctionPropDefaults, ...queueLambdaProps };
-    
+
+    const props = { ...QueueLambdaFunctionPropDefaults, ...queueLambdaProps };
+
     // dlq props
     let dlqProps = {};
     //check if dlq already exists
-    const existingDLQ : Queue = fw24.getEnvironmentVariable(props.queueName, 'dlq') || fw24.getEnvironmentVariable(props.queueName+'_dlq', 'queue')
+    const existingDLQ: Queue =
+      fw24.getEnvironmentVariable(props.queueName, 'dlq') ||
+      fw24.getEnvironmentVariable(props.queueName + '_dlq', 'queue');
     //if it does, assign it to the queue
-    if( existingDLQ ) {
+    if (existingDLQ) {
       dlqProps = {
         deadLetterQueue: {
           maxReceiveCount: 3,
           queue: existingDLQ,
-        }
-      }
-    } else if( !props.queueName.endsWith("dlq") ) { //if queue itself is a dlq don't assign default dlq
+        },
+      };
+    } else if (!props.queueName.endsWith('dlq')) {
+      //if queue itself is a dlq don't assign default dlq
       //set default dlq
-      const isFifoQueue = props.queueProps?.fifo || props.queueName.endsWith('.fifo') || props.queueProps?.contentBasedDeduplication;
-      let defaultDLQ = isFifoQueue ? fw24.getEnvironmentVariable('dlq_default_fifo') : fw24.getEnvironmentVariable('dlq_default');
+      const isFifoQueue =
+        props.queueProps?.fifo || props.queueName.endsWith('.fifo') || props.queueProps?.contentBasedDeduplication;
+      let defaultDLQ = isFifoQueue
+        ? fw24.getEnvironmentVariable('dlq_default_fifo')
+        : fw24.getEnvironmentVariable('dlq_default');
 
-      if(!defaultDLQ ){
+      if (!defaultDLQ) {
         const dlqName = isFifoQueue ? 'default-dlq-fifo' : 'default-dlq';
         //create default dlq
         defaultDLQ = new Queue(this, dlqName, {
-          fifo: isFifoQueue
+          fifo: isFifoQueue,
         });
         fw24.getEnvironmentVariable(dlqName.replace('default-', '_'), defaultDLQ);
       }
@@ -172,57 +180,63 @@ export class QueueLambda extends Construct {
         deadLetterQueue: {
           maxReceiveCount: 3,
           queue: defaultDLQ,
-        }
-      }
+        },
+      };
     }
 
     // set the timeouts
-    let timeoutProps: any = {};
-    if(props.visibilityTimeoutSeconds) Object.assign(timeoutProps, { visibilityTimeout : Duration.seconds(props.visibilityTimeoutSeconds)});
-    if(props.receiveMessageWaitTimeSeconds) Object.assign(timeoutProps, { receiveMessageWaitTime : Duration.seconds(props.receiveMessageWaitTimeSeconds)});
-    if(props.retentionPeriodDays) Object.assign(timeoutProps, { messageRetentionPeriod : Duration.days(props.retentionPeriodDays)});   
+    const timeoutProps: any = {};
+    if (props.visibilityTimeoutSeconds)
+      Object.assign(timeoutProps, { visibilityTimeout: Duration.seconds(props.visibilityTimeoutSeconds) });
+    if (props.receiveMessageWaitTimeSeconds)
+      Object.assign(timeoutProps, { receiveMessageWaitTime: Duration.seconds(props.receiveMessageWaitTimeSeconds) });
+    if (props.retentionPeriodDays)
+      Object.assign(timeoutProps, { messageRetentionPeriod: Duration.days(props.retentionPeriodDays) });
 
     // set the default dlq with option to override
     props.queueProps = {
       ...dlqProps,
       ...props.queueProps,
       ...timeoutProps,
-    }
+    };
 
     const queue = new Queue(this, id, {
       ...props.queueProps,
     }) as Queue;
 
-    if(props.lambdaFunctionProps){
-      const queueFunction = new LambdaFunction(scope, `${id}-lambda`, { ...props.lambdaFunctionProps }) as NodejsFunction;
-      
-      const isFifoQueue = Helper.isFifoQueueProps({ 
-        ...(props.queueProps || {}), 
-        queueName: props.queueName 
+    if (props.lambdaFunctionProps) {
+      const queueFunction = new LambdaFunction(scope, `${id}-lambda`, {
+        ...props.lambdaFunctionProps,
+      }) as NodejsFunction;
+
+      const isFifoQueue = Helper.isFifoQueueProps({
+        ...(props.queueProps || {}),
+        queueName: props.queueName,
       });
-      
-      const eventSourceProps: SqsEventSourceProps =  isFifoQueue ? {} : {
-        batchSize: props.sqsEventSourceProps?.batchSize ?? 1,
-        maxBatchingWindow: props.sqsEventSourceProps?.maxBatchingWindow ?? Duration.seconds(5),
-        reportBatchItemFailures: props.sqsEventSourceProps?.reportBatchItemFailures ?? true,
-      };
-      
+
+      const eventSourceProps: SqsEventSourceProps = isFifoQueue
+        ? {}
+        : {
+            batchSize: props.sqsEventSourceProps?.batchSize ?? 1,
+            maxBatchingWindow: props.sqsEventSourceProps?.maxBatchingWindow ?? Duration.seconds(5),
+            reportBatchItemFailures: props.sqsEventSourceProps?.reportBatchItemFailures ?? true,
+          };
+
       // add event source to lambda function
       queueFunction.addEventSource(new SqsEventSource(queue, eventSourceProps));
     }
 
     // subscribe the queue to SNS topic
-    props?.subscriptions?.topics?.forEach( ( topic: any) => {
+    props?.subscriptions?.topics?.forEach((topic: any) => {
       const topicName = typeof topic === 'string' ? topic : topic.name;
       const filters = typeof topic === 'string' ? [] : topic.filters;
 
       const topicArn = fw24.getArn('sns', fw24.getEnvironmentVariable(topicName, 'topicName'));
-      const topicInstance = Topic.fromTopicArn(this, topicName+id+'-topic', topicArn);
+      const topicInstance = Topic.fromTopicArn(this, topicName + id + '-topic', topicArn);
       // TODO: add ability to filter messages
       topicInstance.addSubscription(new SqsSubscription(queue));
     });
-    
+
     return queue;
   }
-  
 }

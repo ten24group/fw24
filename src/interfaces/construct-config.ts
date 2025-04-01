@@ -1,5 +1,4 @@
 export interface IConstructConfig {
-    stackName?: string;
-    parentStackName?: string;
+  stackName?: string;
+  parentStackName?: string;
 }
-

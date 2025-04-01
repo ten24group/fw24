@@ -1,4 +1,4 @@
-import { makeDIToken } from "../di/utils";
+import { makeDIToken } from '../di/utils';
 
 // DI TOKENS
 

@@ -1,12 +1,17 @@
 import { describe, expect, it } from '@jest/globals';
-import { extractOpValidationFromEntityValidations, isHttpRequestValidationRule, isInputValidationRule, isValidationRule } from './utils';
+import {
+  extractOpValidationFromEntityValidations,
+  isHttpRequestValidationRule,
+  isInputValidationRule,
+  isValidationRule,
+} from './utils';
 import { EntityValidations } from './types';
 import { TDefaultEntityOperations } from '../entity';
 
 describe('isValidationRule()', () => {
   it('should return true for valid ValidationRule objects', () => {
     const rule = {
-      required: true
+      required: true,
     };
     expect(isValidationRule(rule)).toBe(true);
   });
@@ -19,7 +24,7 @@ describe('isValidationRule()', () => {
   });
 
   it('should return false for objects without valid keys', () => {
-    expect(isValidationRule({foo: 'bar'})).toBe(false);
+    expect(isValidationRule({ foo: 'bar' })).toBe(false);
   });
 });
 
@@ -27,12 +32,12 @@ describe('isValidationRules()', () => {
   it('should return true for valid ValidationRules objects', () => {
     const rules = {
       name: {
-        required: true
+        required: true,
       },
       email: {
         required: true,
-        datatype: 'email'
-      }
+        datatype: 'email',
+      },
     };
     expect(isInputValidationRule(rules)).toBe(true);
   });
@@ -47,9 +52,9 @@ describe('isValidationRules()', () => {
   it('should return false for objects with invalid rules', () => {
     const rules = {
       name: {
-        required: true
+        required: true,
       },
-      email: 'invalid'
+      email: 'invalid',
     };
     expect(isInputValidationRule(rules)).toBe(false);
   });
@@ -60,9 +65,9 @@ describe('isHttpRequestValidationRule()', () => {
     const rule = {
       body: {
         name: {
-          required: true
-        }
-      }
+          required: true,
+        },
+      },
     };
     expect(isHttpRequestValidationRule(rule)).toBe(true);
   });
@@ -70,16 +75,16 @@ describe('isHttpRequestValidationRule()', () => {
   it('should return true for valid HttpRequestValidationRule objects 2', () => {
     const rule = {
       body: {
-        email: { 
+        email: {
           required: true,
           datatype: 'email',
-          maxLength: 40, 
+          maxLength: 40,
         },
         password: {
           datatype: 'string',
-          neq: "Blah"
-        }
-      }
+          neq: 'Blah',
+        },
+      },
     };
     expect(isHttpRequestValidationRule(rule)).toBe(true);
   });
@@ -89,9 +94,9 @@ describe('isHttpRequestValidationRule()', () => {
       query: {
         limit: {
           required: true,
-          datatype: 'number'
-        }  
-      }
+          datatype: 'number',
+        },
+      },
     };
     expect(isHttpRequestValidationRule(rule)).toBe(true);
   });
@@ -101,9 +106,9 @@ describe('isHttpRequestValidationRule()', () => {
       param: {
         id: {
           required: true,
-          datatype: 'uuid'
-        }
-      }
+          datatype: 'uuid',
+        },
+      },
     };
     expect(isHttpRequestValidationRule(rule)).toBe(true);
   });
@@ -113,9 +118,9 @@ describe('isHttpRequestValidationRule()', () => {
       header: {
         'Content-Type': {
           required: true,
-          inList: ['application/json']
-        }
-      }
+          inList: ['application/json'],
+        },
+      },
     };
     expect(isHttpRequestValidationRule(rule)).toBe(true);
   });
@@ -129,14 +134,13 @@ describe('isHttpRequestValidationRule()', () => {
 
   it('should return false for objects without valid sub-rules', () => {
     const rule = {
-      body: 'invalid'  
+      body: 'invalid',
     };
     expect(isHttpRequestValidationRule(rule)).toBe(false);
   });
 });
 
 describe('extractOpValidationFromEntityValidations()', () => {
-
   it('should return empty validations when no entityValidations passed', () => {
     const result = extractOpValidationFromEntityValidations('create', {} as any);
 
@@ -144,60 +148,64 @@ describe('extractOpValidationFromEntityValidations()', () => {
       opValidations: {
         actor: {},
         input: {},
-        record: {}
+        record: {},
       },
-      conditions: undefined
+      conditions: undefined,
     });
   });
 
   it('should extract validations for given op from array', () => {
     const entityValidations: EntityValidations<any, any, any> = {
       actor: {
-        id: [{
-          operations: ['create'],
-          required: true
-        }]  
-      }
+        id: [
+          {
+            operations: ['create'],
+            required: true,
+          },
+        ],
+      },
     };
-    
+
     const result = extractOpValidationFromEntityValidations('create', entityValidations);
 
     expect(result).toEqual({
       opValidations: {
         actor: {
-          id: [{
-            required: true
-          }]
+          id: [
+            {
+              required: true,
+            },
+          ],
         },
         input: {},
-        record: {}
+        record: {},
       },
-      conditions: undefined  
+      conditions: undefined,
     });
   });
 
   it('should only extract validations for given op', () => {
-    const entityValidations: EntityValidations<any, any>  = {
-      // has validations for create and update op  
+    const entityValidations: EntityValidations<any, any> = {
+      // has validations for create and update op
       actor: {
         id: [
-          {operations: ['create'], required: true},
-          {operations: ['update'], required: false}
-        ]
-      }
+          { operations: ['create'], required: true },
+          { operations: ['update'], required: false },
+        ],
+      },
     };
-    
+
     const resultForCreate = extractOpValidationFromEntityValidations('create', entityValidations);
 
     expect(resultForCreate).toEqual({
       opValidations: {
         actor: {
-          id: [{required: true}] 
+          id: [{ required: true }],
         },
         input: {},
-        record: {}
+        record: {},
       },
-      conditions: undefined
+      conditions: undefined,
     });
 
     const resultForUpdate = extractOpValidationFromEntityValidations('update', entityValidations);
@@ -205,45 +213,47 @@ describe('extractOpValidationFromEntityValidations()', () => {
     expect(resultForUpdate).toEqual({
       opValidations: {
         actor: {
-          id: [{required: false}]
+          id: [{ required: false }],
         },
         input: {},
-        record: {}
+        record: {},
       },
-      conditions: undefined
+      conditions: undefined,
     });
   });
 
   it('should handle no matching op validations', () => {
     const entityValidations: EntityValidations<any, any> = {
       actor: {
-        id: [{
-          operations: ['create'],
-          required: true
-        }]
-      }
+        id: [
+          {
+            operations: ['create'],
+            required: true,
+          },
+        ],
+      },
     };
 
-    const result = extractOpValidationFromEntityValidations('read' as keyof TDefaultEntityOperations, entityValidations);
+    const result = extractOpValidationFromEntityValidations(
+      'read' as keyof TDefaultEntityOperations,
+      entityValidations,
+    );
 
     expect(result).toEqual({
       conditions: undefined,
       opValidations: {
         actor: {},
         input: {},
-        record: {}
-      }
+        record: {},
+      },
     });
   });
 
   it('should extract multiple validation rules for a property', () => {
     const entityValidations: EntityValidations<any, any> = {
       actor: {
-        id: [
-          {required: true}, 
-          {datatype: 'string'}
-        ]
-      }
+        id: [{ required: true }, { datatype: 'string' }],
+      },
     };
 
     const result = extractOpValidationFromEntityValidations('update', entityValidations);
@@ -251,15 +261,12 @@ describe('extractOpValidationFromEntityValidations()', () => {
     expect(result).toEqual({
       opValidations: {
         actor: {
-          id: [
-            {required: true}, 
-            {datatype: 'string'} 
-          ]
+          id: [{ required: true }, { datatype: 'string' }],
         },
         input: {},
-        record: {}
+        record: {},
       },
-      conditions: undefined
+      conditions: undefined,
     });
   });
 
@@ -268,20 +275,22 @@ describe('extractOpValidationFromEntityValidations()', () => {
       recordIsNotNew: {
         record: {
           userId: {
-            neq: ''
-          }
-        }
-      }
+            neq: '',
+          },
+        },
+      },
     } as const;
 
     const entityValidations: EntityValidations<any, typeof conditions> = {
       conditions,
       actor: {
-        id: [{
-          operations: [['update', ['recordIsNotNew']]],
-          required: true
-        }]
-      }  
+        id: [
+          {
+            operations: [['update', ['recordIsNotNew']]],
+            required: true,
+          },
+        ],
+      },
     };
 
     const result = extractOpValidationFromEntityValidations('update', entityValidations);
@@ -289,15 +298,17 @@ describe('extractOpValidationFromEntityValidations()', () => {
     expect(result).toEqual({
       opValidations: {
         actor: {
-          id: [{
-            conditions: [ ['recordIsNotNew'], 'all'],
-            required: true
-          }]
+          id: [
+            {
+              conditions: [['recordIsNotNew'], 'all'],
+              required: true,
+            },
+          ],
         },
         input: {},
-        record: {}
+        record: {},
       },
-      conditions
+      conditions,
     });
   });
 
@@ -306,23 +317,25 @@ describe('extractOpValidationFromEntityValidations()', () => {
       recordIsNotNew: {
         record: {
           userId: {
-            neq: ''
-          }
-        }
-      }
+            neq: '',
+          },
+        },
+      },
     } as const;
 
     const entityValidations: EntityValidations<any, typeof conditions> = {
       conditions,
       actor: {
-        id: [{
-          operations: { 
-            //@ts-ignore
-            'update': [{ conditions: ['recordIsNotNew'] }],
+        id: [
+          {
+            operations: {
+              //@ts-ignore
+              update: [{ conditions: ['recordIsNotNew'] }],
+            },
+            required: true,
           },
-          required: true
-        }]
-      }  
+        ],
+      },
     };
 
     const result = extractOpValidationFromEntityValidations('update', entityValidations);
@@ -330,60 +343,66 @@ describe('extractOpValidationFromEntityValidations()', () => {
     expect(result).toEqual({
       opValidations: {
         actor: {
-          id: [{
-            conditions: [ ['recordIsNotNew'], 'all' ],
-            required: true
-          }]
+          id: [
+            {
+              conditions: [['recordIsNotNew'], 'all'],
+              required: true,
+            },
+          ],
         },
         input: {},
-        record: {}
+        record: {},
       },
-      conditions
+      conditions,
     });
   });
 
   it('should extract validation conditions for given op from object', () => {
     const entityValidations: EntityValidations<any, any, any> = {
       actor: {
-        id: [{
-          required: true,
-          operations: {
-            //@ts-ignore
-              create: [{
-                conditions: ['recordIsNotNew', 'recordIsNotNew'],
-                scope: 'any',
-              }],
-            }
-        }]  
-      }
+        id: [
+          {
+            required: true,
+            operations: {
+              //@ts-ignore
+              create: [
+                {
+                  conditions: ['recordIsNotNew', 'recordIsNotNew'],
+                  scope: 'any',
+                },
+              ],
+            },
+          },
+        ],
+      },
     };
-    
+
     const result = extractOpValidationFromEntityValidations('create', entityValidations);
 
     expect(result).toEqual({
       opValidations: {
         actor: {
-          id: [{
-            required: true, 
-            conditions: [['recordIsNotNew', 'recordIsNotNew'], 'any'] 
-          }]
+          id: [
+            {
+              required: true,
+              conditions: [['recordIsNotNew', 'recordIsNotNew'], 'any'],
+            },
+          ],
         },
         input: {},
-        record: {}
+        record: {},
       },
-      conditions: undefined 
+      conditions: undefined,
     });
   });
 
   it('should handle invalid validation rules', () => {
-    const consoleWarn = jest.spyOn(console, 'warn').mockImplementation();
-    
     const entityValidations: EntityValidations<any, any> = {
       actor: {
         id: [
-          {operations: ['update']} // no other validations
-        ]
-      }
+          { operations: ['update'] }, // no other validations
+        ],
+      },
     };
 
     const result = extractOpValidationFromEntityValidations('update', entityValidations);
@@ -391,13 +410,12 @@ describe('extractOpValidationFromEntityValidations()', () => {
     expect(result).toEqual({
       opValidations: {
         actor: {
-          id: [{}]
+          id: [{}],
         },
         input: {},
-        record: {}
+        record: {},
       },
-      conditions: undefined
+      conditions: undefined,
     });
   });
-  
 });

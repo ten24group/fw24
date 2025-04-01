@@ -1,14 +1,13 @@
-import { IAuditLogger, AuditOptions } from "../interfaces";
+import { IAuditLogger, AuditOptions } from '../interfaces';
 
 /**
  * A no-op auditor implementation that does nothing.
  * Used as a fallback when auditing is disabled.
  */
 export class DummyAuditLogger implements IAuditLogger {
-    constructor() {}
+  constructor() {}
 
-    async audit(options: AuditOptions): Promise<void> {
-        options;
-        // Do nothing
-    }
+  async audit(_options: AuditOptions): Promise<void> {
+    // Do nothing
+  }
 }

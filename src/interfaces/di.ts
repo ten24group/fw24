@@ -2,7 +2,7 @@ import { DeepPartial, PartialBy } from '../utils/types';
 
 export type Token = string;
 export type DepIdentifier<T = any> = string | Function | ClassConstructor<T>;
-export type ClassConstructor<T extends any = any> = new (...args: any[]) => T;
+export type ClassConstructor<T = any> = new (...args: any[]) => T;
 
 export type PriorityCriteria =
   | { greaterThan: number }
@@ -10,257 +10,280 @@ export type PriorityCriteria =
   | { eq: number }
   | { between: [number, number] };
 
-
-export type InjectOptions<T extends unknown = unknown> = {
-    isOptional?: boolean;
-    isConfig?: boolean;
-    defaultValue?: T;
-    tags?: string[];
-    type?: ProviderOptions['type'], 
-    priority?: PriorityCriteria;
-    forEntity?: ProviderOptions['forEntity'],
+export type InjectOptions<T = unknown> = {
+  isOptional?: boolean;
+  isConfig?: boolean;
+  defaultValue?: T;
+  tags?: string[];
+  type?: ProviderOptions['type'];
+  priority?: PriorityCriteria;
+  forEntity?: ProviderOptions['forEntity'];
 };
 
-export type ParameterInjectMetadata<T extends unknown = unknown> = InjectOptions<T> & {
-    token: Token;
+export type ParameterInjectMetadata<T = unknown> = InjectOptions<T> & {
+  token: Token;
 };
 
-export type PropertyInjectMetadata<T extends unknown = unknown> = InjectOptions<T> & {
-    token: Token;
-    propertyKey: string | symbol;
+export type PropertyInjectMetadata<T = unknown> = InjectOptions<T> & {
+  token: Token;
+  propertyKey: string | symbol;
 };
 
-export type ComplexDependencyIdentifier<T=any> = InjectOptions<T> & {
-    token: DepIdentifier, 
-} 
+export type ComplexDependencyIdentifier<T = any> = InjectOptions<T> & {
+  token: DepIdentifier;
+};
 
 export type BaseProviderOptions = {
-    _token?: Token;
-    provide: DepIdentifier<any>;
-    type?: 'config' | 'service' | 'schema' | 'controller' | 'module' | 'unknown';
-    singleton?: boolean;
-    priority?: number;
-    forEntity?: DepIdentifier<any>;
-    tags?: string[]; // Tags for additional filtering
-    condition?: () => boolean;
-    override?: boolean; // Indicates if this provider should explicitly override others
-}
+  _token?: Token;
+  provide: DepIdentifier<any>;
+  type?: 'config' | 'service' | 'schema' | 'controller' | 'module' | 'unknown';
+  singleton?: boolean;
+  priority?: number;
+  forEntity?: DepIdentifier<any>;
+  tags?: string[]; // Tags for additional filtering
+  condition?: () => boolean;
+  override?: boolean; // Indicates if this provider should explicitly override others
+};
 
 export interface ClassProviderOptions<T = ClassConstructor<any>> extends BaseProviderOptions {
-    useClass: ClassConstructor<T>;
+  useClass: ClassConstructor<T>;
 }
 
 export interface FactoryProviderOptions<T = any> extends BaseProviderOptions {
-    deps?: Array<DepIdentifier | ComplexDependencyIdentifier>;
-    useFactory: (...args: any[]) => T;
+  deps?: Array<DepIdentifier | ComplexDependencyIdentifier>;
+  useFactory: (...args: any[]) => T;
 }
 
 export interface ValueProviderOptions<T = any> extends BaseProviderOptions {
-    useValue: T;
+  useValue: T;
 }
 
 export interface ConfigProviderOptions<T = any> extends BaseProviderOptions {
-    useConfig: T; // Configuration object
+  useConfig: T; // Configuration object
 }
 
 export interface AliasProviderOptions<T> extends BaseProviderOptions {
-    useExisting: DepIdentifier<T>;
+  useExisting: DepIdentifier<T>;
 }
 
-export type ProviderOptions<T = any> =  
-    | ClassProviderOptions<T> 
-    | FactoryProviderOptions<T> 
-    | ValueProviderOptions<T> 
-    | ConfigProviderOptions<T>
-    | AliasProviderOptions<T>;
+export type ProviderOptions<T = any> =
+  | ClassProviderOptions<T>
+  | FactoryProviderOptions<T>
+  | ValueProviderOptions<T>
+  | ConfigProviderOptions<T>
+  | AliasProviderOptions<T>;
 
 // util type to infer the right provider type from the passed in ProviderOptions
-export type InferProviderType<T> = T extends ClassProviderOptions<infer U> ? U
-    : T extends FactoryProviderOptions<infer U> ? U
-    : T extends ValueProviderOptions<infer U> ? U
-    : T extends ConfigProviderOptions<infer U> ? U
-    : never;
+export type InferProviderType<T> =
+  T extends ClassProviderOptions<infer U>
+    ? U
+    : T extends FactoryProviderOptions<infer U>
+      ? U
+      : T extends ValueProviderOptions<infer U>
+        ? U
+        : T extends ConfigProviderOptions<infer U>
+          ? U
+          : never;
 
 // the stored value of a provider byt the container
 export type InternalProviderOptions<T = any> = {
-    _id: string;
-    _container: IDIContainer; // Reference to the container that registered this provider
-    _provider: ProviderOptions<T>;
-}
-
+  _id: string;
+  _container: IDIContainer; // Reference to the container that registered this provider
+  _provider: ProviderOptions<T>;
+};
 
 export type Middleware<T> = {
-    order?: number;
-    middleware: (next: () => T) => T;
+  order?: number;
+  middleware: (next: () => T) => T;
 };
 export type MiddlewareAsync<T> = {
-    order?: number;
-    middleware: (next: () => Promise<T>) => Promise<T>;
+  order?: number;
+  middleware: (next: () => Promise<T>) => Promise<T>;
 };
 
 export type DIModuleOptions = {
-    /**
-     * The id token for this module, assigned by the framework.
-     */
-    identifier: string;
-    /**
-     * The container instance specific to this module, this's the internal instance and is assigned by the framework.
-     */
-    container: IDIContainer;
-    /**
-     * List of modules to import into this module, the exported providers of the imported modules will be available in this module.
-     */
-    imports?: ClassConstructor[];
-    /**
-     * List of providers to be exported from the module, the exported providers can be used in other modules that import this module, or in the container that registers this module.
-     */
-    exports?: DepIdentifier[];
-    /**
-     * Providers to be registered in the module's container; these providers are only available to the module's children and can shadow/override providers in parent hierarchy by specifying priority and other criteria [but only for the Injectable/s in itself and it's children].
-     */
-    providers ?: Array<ProviderOptions<any> | ClassConstructor<any>>;
-	/**
-	 * Specifies the parent DI-container or parent Module to register this module in or auto-resolve the container instance from.
-	 * you don't need to specify this unless you are creating a separate module and want to use that module as the parent of this controller/module.
-	 * @default: DIContainer.ROOT
-	 */
-	providedBy ?: IDIContainer | 'ROOT' | ClassConstructor;
-}
-  
+  /**
+   * The id token for this module, assigned by the framework.
+   */
+  identifier: string;
+  /**
+   * The container instance specific to this module, this's the internal instance and is assigned by the framework.
+   */
+  container: IDIContainer;
+  /**
+   * List of modules to import into this module, the exported providers of the imported modules will be available in this module.
+   */
+  imports?: ClassConstructor[];
+  /**
+   * List of providers to be exported from the module, the exported providers can be used in other modules that import this module, or in the container that registers this module.
+   */
+  exports?: DepIdentifier[];
+  /**
+   * Providers to be registered in the module's container; these providers are only available to the module's children and can shadow/override providers in parent hierarchy by specifying priority and other criteria [but only for the Injectable/s in itself and it's children].
+   */
+  providers?: Array<ProviderOptions<any> | ClassConstructor<any>>;
+  /**
+   * Specifies the parent DI-container or parent Module to register this module in or auto-resolve the container instance from.
+   * you don't need to specify this unless you are creating a separate module and want to use that module as the parent of this controller/module.
+   * @default: DIContainer.ROOT
+   */
+  providedBy?: IDIContainer | 'ROOT' | ClassConstructor;
+};
+
 export interface InjectableOptions extends PartialBy<BaseProviderOptions, 'provide'> {
-    providedIn?: 'ROOT' | ClassConstructor;
+  providedIn?: 'ROOT' | ClassConstructor;
 }
 
 export interface IDIContainer {
-    containerId: string;
+  containerId: string;
 
-    providers: Map<string, InternalProviderOptions[]>; // Map of providers by token
-    exports: Map<string, InternalProviderOptions[]>; // Map of providers by token
-    parent: IDIContainer | undefined;
-    childContainers: Set<IDIContainer> | undefined;
+  providers: Map<string, InternalProviderOptions[]>; // Map of providers by token
+  exports: Map<string, InternalProviderOptions[]>; // Map of providers by token
+  parent: IDIContainer | undefined;
+  childContainers: Set<IDIContainer> | undefined;
 
-    proxyFor: IDIContainer | undefined;
-    proxies: Set<IDIContainer> | undefined;
+  proxyFor: IDIContainer | undefined;
+  proxies: Set<IDIContainer> | undefined;
 
-    Injectable(options?: PartialBy<BaseProviderOptions, "provide">): ClassDecorator;
+  Injectable(options?: PartialBy<BaseProviderOptions, 'provide'>): ClassDecorator;
 
-    // Method to register a provider
-    register<T>(provider: ProviderOptions<T>): { provide: Token, options: ProviderOptions<T> } | undefined;
+  // Method to register a provider
+  register<T>(provider: ProviderOptions<T>): { provide: Token; options: ProviderOptions<T> } | undefined;
 
-    registerConfigProvider(options: ConfigProviderOptions): void;
+  registerConfigProvider(options: ConfigProviderOptions): void;
 
-    has(dependencyToken: DepIdentifier, criteria?: {
-        tags?: string[];
-        type?: ProviderOptions['type'],
-        priority?: PriorityCriteria;
-        forEntity?: ProviderOptions['forEntity'],
-        allProvidersFromChildContainers?: boolean
-    }): boolean;
+  has(
+    dependencyToken: DepIdentifier,
+    criteria?: {
+      tags?: string[];
+      type?: ProviderOptions['type'];
+      priority?: PriorityCriteria;
+      forEntity?: ProviderOptions['forEntity'];
+      allProvidersFromChildContainers?: boolean;
+    },
+  ): boolean;
 
-    hasEntityService(entityName: DepIdentifier, criteria?: {
-        tags?: string[];
-        priority?: PriorityCriteria;
-        allProvidersFromChildContainers?: boolean;
-    }): boolean
+  hasEntityService(
+    entityName: DepIdentifier,
+    criteria?: {
+      tags?: string[];
+      priority?: PriorityCriteria;
+      allProvidersFromChildContainers?: boolean;
+    },
+  ): boolean;
 
-    resolveEntityService<T, Async extends boolean = false>(entityName: DepIdentifier, criteria?: {
-        tags?: string[];
-        priority?: PriorityCriteria;
-        allProvidersFromChildContainers?: boolean;
-    }, async?: Async): Async extends true ? Promise<T> : T
+  resolveEntityService<T, Async extends boolean = false>(
+    entityName: DepIdentifier,
+    criteria?: {
+      tags?: string[];
+      priority?: PriorityCriteria;
+      allProvidersFromChildContainers?: boolean;
+    },
+    async?: Async,
+  ): Async extends true ? Promise<T> : T;
 
-    hasEntitySchema(entityName: DepIdentifier, criteria?: {
-        tags?: string[];
-        priority?: PriorityCriteria;
-        allProvidersFromChildContainers?: boolean;
-    }): boolean
+  hasEntitySchema(
+    entityName: DepIdentifier,
+    criteria?: {
+      tags?: string[];
+      priority?: PriorityCriteria;
+      allProvidersFromChildContainers?: boolean;
+    },
+  ): boolean;
 
-    resolveEntitySchema<T, Async extends boolean = false>(entityName: DepIdentifier, criteria?: {
-        tags?: string[];
-        priority?: PriorityCriteria;
-        allProvidersFromChildContainers?: boolean;
-    }, async?: Async): Async extends true ? Promise<T> : T
+  resolveEntitySchema<T, Async extends boolean = false>(
+    entityName: DepIdentifier,
+    criteria?: {
+      tags?: string[];
+      priority?: PriorityCriteria;
+      allProvidersFromChildContainers?: boolean;
+    },
+    async?: Async,
+  ): Async extends true ? Promise<T> : T;
 
-    collectBestProvidersFor<T>(
-        criteria: {
-            token?: string,
-            tags?: string[],
-            type?: ProviderOptions['type'], 
-            priority?: PriorityCriteria,
-            forEntity?: ProviderOptions['forEntity'],
-            allProvidersFromChildContainers?: boolean
-        }
-    ): InternalProviderOptions<T>[];
+  collectBestProvidersFor<T>(criteria: {
+    token?: string;
+    tags?: string[];
+    type?: ProviderOptions['type'];
+    priority?: PriorityCriteria;
+    forEntity?: ProviderOptions['forEntity'];
+    allProvidersFromChildContainers?: boolean;
+  }): InternalProviderOptions<T>[];
 
-    clear(clearChildContainers?: boolean): void;
+  clear(clearChildContainers?: boolean): void;
 
-    useMiddleware({ middleware, order }: PartialBy<Middleware<any>, "order">): void;
+  useMiddleware({ middleware, order }: PartialBy<Middleware<any>, 'order'>): void;
 
-    useMiddlewareAsync({ middleware, order }: PartialBy<MiddlewareAsync<any>, "order">): void;
-    
-    resolve<T, Async extends boolean = false>(
-        dependencyToken: DepIdentifier<T>,
-        criteria?: {
-            tags?: string[];
-            type?: ProviderOptions['type'],
-            priority?: PriorityCriteria;
-            forEntity?: ProviderOptions['forEntity'],
-            allProvidersFromChildContainers?: boolean;
-        },
-        path?: Set<Token>,
-        async?: Async
-    ): Async extends true ? Promise<T> : T;
+  useMiddlewareAsync({ middleware, order }: PartialBy<MiddlewareAsync<any>, 'order'>): void;
 
-    resolveConfig<T = any>(query?: string, criteria?: {
-        tags?: string[];
-        priority?: PriorityCriteria;
-        allProvidersFromChildContainers?: boolean;
-    }): DeepPartial<T>
+  resolve<T, Async extends boolean = false>(
+    dependencyToken: DepIdentifier<T>,
+    criteria?: {
+      tags?: string[];
+      type?: ProviderOptions['type'];
+      priority?: PriorityCriteria;
+      forEntity?: ProviderOptions['forEntity'];
+      allProvidersFromChildContainers?: boolean;
+    },
+    path?: Set<Token>,
+    async?: Async,
+  ): Async extends true ? Promise<T> : T;
 
-    resolveAsync<T>(dependencyToken: DepIdentifier<T>, criteria?: {
-        tags?: string[];
-        type?: ProviderOptions['type'],
-        priority?: PriorityCriteria;
-        forEntity?: ProviderOptions['forEntity'],
-        allProvidersFromChildContainers?: boolean
-    }, path?: Set<Token>): Promise<T>;
+  resolveConfig<T = any>(
+    query?: string,
+    criteria?: {
+      tags?: string[];
+      priority?: PriorityCriteria;
+      allProvidersFromChildContainers?: boolean;
+    },
+  ): DeepPartial<T>;
 
-    resolveProviderValue<T, Async extends boolean = false>(
-        options: InternalProviderOptions<T>, 
-        path?: Set<Token>, 
-        async?: Async
-    ): Async extends true ? Promise<T> : T;
+  resolveAsync<T>(
+    dependencyToken: DepIdentifier<T>,
+    criteria?: {
+      tags?: string[];
+      type?: ProviderOptions['type'];
+      priority?: PriorityCriteria;
+      forEntity?: ProviderOptions['forEntity'];
+      allProvidersFromChildContainers?: boolean;
+    },
+    path?: Set<Token>,
+  ): Promise<T>;
 
-    removeProvidersFor(dependencyToken: DepIdentifier): void;
+  resolveProviderValue<T, Async extends boolean = false>(
+    options: InternalProviderOptions<T>,
+    path?: Set<Token>,
+    async?: Async,
+  ): Async extends true ? Promise<T> : T;
 
-    exportProvidersFor<T>(exportedDep: DepIdentifier<T>): void
+  removeProvidersFor(dependencyToken: DepIdentifier): void;
 
-    hasChildContainerById(identifier: string): boolean;
+  exportProvidersFor<T>(exportedDep: DepIdentifier<T>): void;
 
-    removeChildContainerById(identifier: string): void;
-    
-    getChildContainerById(identifier: string): IDIContainer | undefined;
+  hasChildContainerById(identifier: string): boolean;
 
-    createChildContainer(identifier: string): IDIContainer;
+  removeChildContainerById(identifier: string): void;
 
-    module(target: ClassConstructor): {
-        identifier: string,
-        container: IDIContainer
-    };
+  getChildContainerById(identifier: string): IDIContainer | undefined;
 
-    // Method to create a token for a dependency
-    createToken<T>(identifier: DepIdentifier<T>): string;
+  createChildContainer(identifier: string): IDIContainer;
 
-    getClassDependencies(target: ClassConstructor): {
-        propertyDependencies: PropertyInjectMetadata<unknown>[];
-        constructorDependencies: ParameterInjectMetadata<unknown>[];
-    };
+  module(target: ClassConstructor): {
+    identifier: string;
+    container: IDIContainer;
+  };
 
-    logProviders(): void;
+  // Method to create a token for a dependency
+  createToken<T>(identifier: DepIdentifier<T>): string;
 
-    logChildContainers(): void;
+  getClassDependencies(target: ClassConstructor): {
+    propertyDependencies: PropertyInjectMetadata<unknown>[];
+    constructorDependencies: ParameterInjectMetadata<unknown>[];
+  };
 
-    logCache(): void;
+  logProviders(): void;
 
-    
+  logChildContainers(): void;
+
+  logCache(): void;
 }

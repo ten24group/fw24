@@ -1,20 +1,20 @@
-import type { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
-import type { Request, Response, Route } from "../../interfaces";
-import { Controller, IControllerConfig } from "../../decorators";
-import { Get, RouteMethods } from "../../decorators/method";
-import { getCircularReplacer } from "../../utils";
-import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule } from "../../validation";
-import { isHttpRequestValidationRule, isInputValidationRule } from "../../validation/utils";
-import { AbstractLambdaHandler } from "./abstract-lambda-handler";
-import { RequestContext } from "./request-context";
-import { ResponseContext } from "./response-context";
-import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErrorHandler } from "../../errors/";
+import type { APIGatewayEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
+import type { Request, Response, Route } from '../../interfaces';
+import { Controller, IControllerConfig } from '../../decorators';
+import { Get, RouteMethods } from '../../decorators/method';
+import { getCircularReplacer } from '../../utils';
+import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule } from '../../validation';
+import { isHttpRequestValidationRule, isInputValidationRule } from '../../validation/utils';
+import { AbstractLambdaHandler } from './abstract-lambda-handler';
+import { RequestContext } from './request-context';
+import { ResponseContext } from './response-context';
+import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErrorHandler } from '../../errors/';
 
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 
 /**
  * Creates an API handler without defining a class
- * 
+ *
  * @example
  * ```ts
  * export const { handler, descriptor } = createApiHandler(
@@ -36,13 +36,12 @@ export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
  */
 export function createApiHandler(
   options: {
-    name: string,
-    path?: string,
-    method?: RouteMethods,
+    name: string;
+    path?: string;
+    method?: RouteMethods;
   } & IControllerConfig,
   handler: (event: APIGatewayEvent, context: Context) => Promise<APIGatewayProxyResult>,
 ) {
-
   const { name, path = '', method = Get, ...controllerConfig } = options;
 
   @Controller(name, { ...controllerConfig, autoExportLambdaHandler: false })
@@ -57,7 +56,7 @@ export function createApiHandler(
 
   return {
     handler,
-    descriptor: ControllerDescriptor
+    descriptor: ControllerDescriptor,
   };
 }
 
@@ -65,7 +64,6 @@ export function createApiHandler(
  * Base controller class for handling API Gateway events.
  */
 abstract class APIController extends AbstractLambdaHandler {
-
   protected validator: IValidator = DefaultValidator;
 
   abstract initialize(event: APIGatewayEvent, context: Context): Promise<void>;
@@ -75,16 +73,12 @@ abstract class APIController extends AbstractLambdaHandler {
   }
 
   async validate(requestContext: Request, validations: InputValidationRule | HttpRequestValidations) {
-
     let validationRules: HttpRequestValidations = validations;
     if (isInputValidationRule(validations)) {
-      if ([ 'GET', 'DELETE' ].includes(requestContext.httpMethod.toUpperCase())) {
-
-        validationRules = { query: validations }
-
-      } else if ([ 'POST', 'PUT', 'PATCH' ].includes(requestContext.httpMethod.toUpperCase())) {
-
-        validationRules = { body: validations }
+      if (['GET', 'DELETE'].includes(requestContext.httpMethod.toUpperCase())) {
+        validationRules = { query: validations };
+      } else if (['POST', 'PUT', 'PATCH'].includes(requestContext.httpMethod.toUpperCase())) {
+        validationRules = { body: validations };
       }
     }
 
@@ -97,7 +91,7 @@ abstract class APIController extends AbstractLambdaHandler {
       validations: validationRules,
       collectErrors: true,
       verboseErrors: requestContext.debugMode,
-      overriddenErrorMessages: await this.getOverriddenHttpRequestValidationErrorMessages()
+      overriddenErrorMessages: await this.getOverriddenHttpRequestValidationErrorMessages(),
     });
   }
 
@@ -109,7 +103,7 @@ abstract class APIController extends AbstractLambdaHandler {
    * @returns The API Gateway response object.
    */
   async LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult> {
-    this.logger.debug("LambdaHandler Received event:", JSON.stringify(event, null, 2));
+    this.logger.debug('LambdaHandler Received event:', JSON.stringify(event, null, 2));
     // Create request and response objects
     const requestContext: Request = new RequestContext(event, context);
     const responseContext: Response = new ResponseContext();
@@ -122,16 +116,15 @@ abstract class APIController extends AbstractLambdaHandler {
       const route = this.findMatchingRoute(requestContext);
 
       if (route?.validations) {
-        this.logger.debug("Validation rules found for route:", route);
+        this.logger.debug('Validation rules found for route:', route);
 
         const validationResult = await this.validate(requestContext, route.validations);
 
         if (!validationResult.pass) {
           throw new ValidationFailedError(validationResult.errors);
         }
-
       } else {
-        this.logger.debug("No validation rules found for route:", route);
+        this.logger.debug('No validation rules found for route:', route);
       }
 
       const routeFunction = this.getRouteFunction(route);
@@ -145,7 +138,7 @@ abstract class APIController extends AbstractLambdaHandler {
 
       // If the response is an instance of ResponseContext, use its status code and body
       if (controllerResponse instanceof ResponseContext) {
-        this.logger.debug("LambdaHandler Response:", JSON.stringify(controllerResponse, null, 2));
+        this.logger.debug('LambdaHandler Response:', JSON.stringify(controllerResponse, null, 2));
         return this.handleResponse({
           ...controllerResponse,
           statusCode: controllerResponse.statusCode || 500,
@@ -157,7 +150,7 @@ abstract class APIController extends AbstractLambdaHandler {
       return this.handleException(requestContext, err as Error, responseContext);
     }
 
-    this.logger.debug("LambdaHandler Default Response:", JSON.stringify(responseContext, null, 2));
+    this.logger.debug('LambdaHandler Default Response:', JSON.stringify(responseContext, null, 2));
     // Return the finalized API Gateway response
     return this.handleResponse(responseContext);
   }
@@ -168,11 +161,12 @@ abstract class APIController extends AbstractLambdaHandler {
    * @returns The matching route or null if not found.
    */
   private findMatchingRoute(requestData: Request): Route | null {
-    let controller: any = this;
-    var resourceWithoutRoot = '/' + requestData.resource.split('/').slice(2).join('/');
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const controller: any = this;
+    const resourceWithoutRoot = '/' + requestData.resource.split('/').slice(2).join('/');
     this.logger.debug('resourceWithoutRoot: ', resourceWithoutRoot);
     this.logger.debug(`${requestData.httpMethod}|${resourceWithoutRoot}`, controller.routes);
-    return controller.routes[ `${requestData.httpMethod}|${resourceWithoutRoot}` ] || null;
+    return controller.routes[`${requestData.httpMethod}|${resourceWithoutRoot}`] || null;
   }
 
   /**
@@ -186,9 +180,9 @@ abstract class APIController extends AbstractLambdaHandler {
     }
 
     //@ts-ignore
-    const routeFunction = this[ route.functionName ];
+    const routeFunction = this[route.functionName];
 
-    return typeof routeFunction === "function" ? routeFunction : this.handleNotFound.bind(this);
+    return typeof routeFunction === 'function' ? routeFunction : this.handleNotFound.bind(this);
   }
 
   /**
@@ -199,7 +193,7 @@ abstract class APIController extends AbstractLambdaHandler {
   protected handleNotFound(_req: Request): APIGatewayProxyResult {
     return this.handleResponse({
       statusCode: 404,
-      body: JSON.stringify({ message: "No Route Found!" }),
+      body: JSON.stringify({ message: 'No Route Found!' }),
     });
   }
 
@@ -226,17 +220,17 @@ abstract class APIController extends AbstractLambdaHandler {
     res.headers = res.headers || {};
 
     /**
-     * 
+     *
      * From : https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html
-     * 
-     * To enable CORS for the Lambda proxy integration, 
-     * you must add Access-Control-Allow-Origin:domain-name to the output headers. 
+     *
+     * To enable CORS for the Lambda proxy integration,
+     * you must add Access-Control-Allow-Origin:domain-name to the output headers.
      * domain-name can be * for any domain name.
-     * 
+     *
      */
 
     // TODO: control the header using some config
-    res.headers[ "Access-Control-Allow-Origin" ] = res.headers[ "Access-Control-Allow-Origin" ] || "*";
+    res.headers['Access-Control-Allow-Origin'] = res.headers['Access-Control-Allow-Origin'] || '*';
 
     return res;
   }

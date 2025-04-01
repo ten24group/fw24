@@ -1,26 +1,36 @@
-import { EntitySchema, Relation, RelationalAttributes, createEntityRelation, HydrateOptionForEntity } from './../entity/base-entity';
-import { randomUUID } from "crypto";
-import { DefaultEntityOperations, TEntityOpsInputSchemas, createEntitySchema } from "../entity";
-import { EntityOperationsValidation, EntityValidations, InputApplicableConditionsMap, PropertyApplicableEntityOperations, TestComplexValidationRuleResult, TestValidationResult, TestValidationRuleResult, InputValidationRule, EntityInputValidations } from "./types";
-import { Narrow, OmitNever } from "../utils";
+/* eslint-disable @typescript-eslint/no-namespace */
+import { RelationalAttributes, createEntityRelation, HydrateOptionForEntity } from './../entity/base-entity';
+import { randomUUID } from 'crypto';
+import { DefaultEntityOperations, TEntityOpsInputSchemas, createEntitySchema } from '../entity';
+import {
+  EntityOperationsValidation,
+  EntityValidations,
+  InputApplicableConditionsMap,
+  PropertyApplicableEntityOperations,
+  TestComplexValidationRuleResult,
+  TestValidationResult,
+  TestValidationRuleResult,
+  InputValidationRule,
+  EntityInputValidations,
+} from './types';
+import { Narrow, OmitNever } from '../utils';
 
 import { describe, expect, it } from '@jest/globals';
-import { Entity } from 'electrodb';
 
 describe('Validation.types', () => {
   it('should narrow', () => {
-        const a: Narrow<number> = 1;
-        const b: Narrow<number> = 2;
-        const c: Narrow<number> = 3;
-        expect(a).toBe(1);
-        expect(b).toBe(2);
-        expect(c).toBe(3);
-    });
+    const a: Narrow<number> = 1;
+    const b: Narrow<number> = 2;
+    const c: Narrow<number> = 3;
+    expect(a).toBe(1);
+    expect(b).toBe(2);
+    expect(c).toBe(3);
+  });
 });
 
 export namespace User {
-
-    export const createUserSchema = () => createEntitySchema({
+  export const createUserSchema = () =>
+    createEntitySchema({
       model: {
         version: '1',
         entity: 'user',
@@ -33,13 +43,13 @@ export namespace User {
           type: 'string',
           required: true,
           readOnly: true,
-          default: () => randomUUID()
+          default: () => randomUUID(),
         },
         tenantId: {
           type: 'string',
           required: true,
           readOnly: true,
-          default: () => 'xxx-yyy-zzz' // TODO: have some global logic drive this value
+          default: () => 'xxx-yyy-zzz', // TODO: have some global logic drive this value
         },
         firstName: {
           type: 'string',
@@ -58,15 +68,15 @@ export namespace User {
         },
         createdAt: {
           // will be set once at the time of create
-          type: "string",
+          type: 'string',
           readOnly: true,
           required: true,
           default: () => Date.now().toString(),
           set: () => Date.now().toString(),
         },
-        updatedAt:{
-          type: "string",
-          watch: "*", // will be set every time any prop is updated
+        updatedAt: {
+          type: 'string',
+          watch: '*', // will be set every time any prop is updated
           required: true,
           readOnly: true,
           default: () => Date.now().toString(),
@@ -77,7 +87,7 @@ export namespace User {
         primary: {
           pk: {
             field: 'pk',
-            template: "t_${tenantId}#u_${userId}",
+            template: 't_${tenantId}#u_${userId}',
             composite: ['tenantId', 'userId'],
           },
           sk: {
@@ -89,7 +99,7 @@ export namespace User {
           index: 'gsi1',
           pk: {
             field: 'gsi1pk',
-            template: "t_${tenantId}#u_${email}",
+            template: 't_${tenantId}#u_${email}',
             composite: ['tenantId', 'email'],
           },
           sk: {
@@ -100,393 +110,427 @@ export namespace User {
       },
     } as const);
 
-    export type TUserSchema = ReturnType<typeof createUserSchema>
+  export type TUserSchema = ReturnType<typeof createUserSchema>;
 
-    const userSch1 = createUserSchema();
+  const userSch1 = createUserSchema();
 
-    export const createUserSchema2 = () => createEntitySchema({
-        model: {
-          version: '2',
-          entity: 'user2',
-          entityNamePlural: 'Users2',
-          entityOperations: {
-              get: "get",
-              list: "list",
-              create: "create",
-              update: "update",
-              upsert: "upsert",
-              delete: "delete",
-              query: "query",
-              duplicate: "duplicate",
-              xxx: "xxx",
-              yyy: "yyy"
-          },
-          service: 'users', // electro DB service name [logical group of entities]
+  export const createUserSchema2 = () =>
+    createEntitySchema({
+      model: {
+        version: '2',
+        entity: 'user2',
+        entityNamePlural: 'Users2',
+        entityOperations: {
+          get: 'get',
+          list: 'list',
+          create: 'create',
+          update: 'update',
+          upsert: 'upsert',
+          delete: 'delete',
+          query: 'query',
+          duplicate: 'duplicate',
+          xxx: 'xxx',
+          yyy: 'yyy',
         },
-        attributes: {
-          userId: {
-            type: 'string',
-            required: true,
-            readOnly: true,
-            default: () => randomUUID()
-          },
-          tenantId: {
-            type: 'string',
-            required: true,
-            readOnly: true,
-            default: () => 'xxx-yyy-zzz', // TODO: have some global logic drive this value
-            relation: createEntityRelation({
-              entityName: userSch1.model.entity,
-              type: 'many-to-one',
-              attributes: ['userId', 'updatedAt', 'createdAt'],
-              identifiers: [{
+        service: 'users', // electro DB service name [logical group of entities]
+      },
+      attributes: {
+        userId: {
+          type: 'string',
+          required: true,
+          readOnly: true,
+          default: () => randomUUID(),
+        },
+        tenantId: {
+          type: 'string',
+          required: true,
+          readOnly: true,
+          default: () => 'xxx-yyy-zzz', // TODO: have some global logic drive this value
+          relation: createEntityRelation({
+            entityName: userSch1.model.entity,
+            type: 'many-to-one',
+            attributes: ['userId', 'updatedAt', 'createdAt'],
+            identifiers: [
+              {
                 source: 'tenantId',
-                target: 'userId'
-              }],
-            } as const)
+                target: 'userId',
+              },
+            ],
+          } as const),
+        },
+        firstName: {
+          type: 'string',
+          required: true,
+        },
+        lastName: {
+          type: 'string',
+        },
+        status: {
+          type: 'string',
+        },
+        parentId: {
+          type: 'string',
+        },
+        email: {
+          type: 'string',
+          required: true,
+        },
+        password: {
+          type: 'string',
+          required: true,
+        },
+        createdAt: {
+          // will be set once at the time of create
+          type: 'string',
+          readOnly: true,
+          required: true,
+          default: () => Date.now().toString(),
+          set: () => Date.now().toString(),
+        },
+        updatedAt: {
+          type: 'string',
+          watch: '*', // will be set every time any prop is updated
+          required: true,
+          readOnly: true,
+          default: () => Date.now().toString(),
+          set: () => Date.now().toString(),
+        },
+        deletedAt: {
+          type: 'string',
+          readOnly: false,
+        },
+      },
+      indexes: {
+        primary: {
+          pk: {
+            field: 'pk',
+            template: 't_${tenantId}#u_${userId}',
+            composite: ['tenantId', 'userId'],
           },
-          firstName: {
-            type: 'string',
-            required: true,
-          },
-          lastName: {
-            type: 'string',
-          },
-          status: {
-            type: 'string',
-          },
-          parentId: {
-            type: 'string',
-          },
-          email: {
-            type: 'string',
-            required: true,
-          },
-          password: {
-            type: 'string',
-            required: true,
-          },
-          createdAt: {
-            // will be set once at the time of create
-            type: "string",
-            readOnly: true,
-            required: true,
-            default: () => Date.now().toString(),
-            set: () => Date.now().toString(),
-          },
-          updatedAt:{
-            type: "string",
-            watch: "*", // will be set every time any prop is updated
-            required: true,
-            readOnly: true,
-            default: () => Date.now().toString(),
-            set: () => Date.now().toString(),
-          },
-          deletedAt:{
-            type: "string",
-            readOnly: false
+          sk: {
+            field: 'sk',
+            composite: [],
           },
         },
-        indexes: {
-          primary: {
-            pk: {
-              field: 'pk',
-              template: "t_${tenantId}#u_${userId}",
-              composite: ['tenantId', 'userId'],
-            },
-            sk: {
-              field: 'sk',
-              composite: [],
-            },
+        byEmail: {
+          index: 'gsi1',
+          pk: {
+            field: 'gsi1pk',
+            template: 't_${tenantId}#u_${email}',
+            composite: ['tenantId', 'email'],
           },
-          byEmail: {
-            index: 'gsi1',
-            pk: {
-              field: 'gsi1pk',
-              template: "t_${tenantId}#u_${email}",
-              composite: ['tenantId', 'email'],
-            },
-            sk: {
-              field: 'gsi1sk',
-              composite: [],
-            },
+          sk: {
+            field: 'gsi1sk',
+            composite: [],
           },
         },
+      },
     } as const);
 
-    export type TUserSchema2 = ReturnType<typeof createUserSchema2>;
-    export const userSch2 = createUserSchema2();
+  export type TUserSchema2 = ReturnType<typeof createUserSchema2>;
+  export const userSch2 = createUserSchema2();
 
-    export const createGroupSchema = () => createEntitySchema({
-        model: {
-          version: '1',
-          entity: 'group',
-          entityNamePlural: 'Groups',
-          entityOperations: DefaultEntityOperations,
-          service: 'users', // electro DB service name [logical group of entities]
+  export const createGroupSchema = () =>
+    createEntitySchema({
+      model: {
+        version: '1',
+        entity: 'group',
+        entityNamePlural: 'Groups',
+        entityOperations: DefaultEntityOperations,
+        service: 'users', // electro DB service name [logical group of entities]
+      },
+      attributes: {
+        groupId: {
+          type: 'string',
+          required: true,
+          readOnly: true,
+          default: () => randomUUID(),
         },
-        attributes: {
-          groupId: {
-            type: 'string',
-            required: true,
-            readOnly: true,
-            default: () => randomUUID()
-          },
-          adminId: {
-            type: 'string',
-            required: true,
-            readOnly: true,
-            default: () => 'xxx-yyy-zzz', // TODO: have some global logic drive this value
-            relation: createEntityRelation({
-              entityName: userSch2.model.entity,
-              type: 'many-to-one',
-              identifiers: [{
+        adminId: {
+          type: 'string',
+          required: true,
+          readOnly: true,
+          default: () => 'xxx-yyy-zzz', // TODO: have some global logic drive this value
+          relation: createEntityRelation({
+            entityName: userSch2.model.entity,
+            type: 'many-to-one',
+            identifiers: [
+              {
                 source: 'adminId',
-                target: 'userId'
-              }],
-            } as const)
-          },
-          name: {
-            type: 'string',
-            required: true,
-          },
-          createdAt: {
-            // will be set once at the time of create
-            type: "string",
-            readOnly: true,
-            required: true,
-            default: () => Date.now().toString(),
-            set: () => Date.now().toString(),
-          },
-          updatedAt:{
-            type: "string",
-            watch: "*", // will be set every time any prop is updated
-            required: true,
-            readOnly: true,
-            default: () => Date.now().toString(),
-            set: () => Date.now().toString(),
-          }
+                target: 'userId',
+              },
+            ],
+          } as const),
         },
-        indexes: {
-          primary: {
-            pk: {
-              field: 'pk',
-              template: "t_${tenantId}#u_${userId}",
-              composite: ['tenantId', 'userId'],
-            },
-            sk: {
-              field: 'sk',
-              composite: [],
-            },
-          }
+        name: {
+          type: 'string',
+          required: true,
         },
+        createdAt: {
+          // will be set once at the time of create
+          type: 'string',
+          readOnly: true,
+          required: true,
+          default: () => Date.now().toString(),
+          set: () => Date.now().toString(),
+        },
+        updatedAt: {
+          type: 'string',
+          watch: '*', // will be set every time any prop is updated
+          required: true,
+          readOnly: true,
+          default: () => Date.now().toString(),
+          set: () => Date.now().toString(),
+        },
+      },
+      indexes: {
+        primary: {
+          pk: {
+            field: 'pk',
+            template: 't_${tenantId}#u_${userId}',
+            composite: ['tenantId', 'userId'],
+          },
+          sk: {
+            field: 'sk',
+            composite: [],
+          },
+        },
+      },
     } as const);
 
-    export type TGroupSchema = ReturnType<typeof createGroupSchema>;
-    export const groupSch = createGroupSchema();
+  export type TGroupSchema = ReturnType<typeof createGroupSchema>;
+  export const groupSch = createGroupSchema();
 
-    type tt = RelationalAttributes<TUserSchema2>;
-    type tx = Narrow<HydrateOptionForEntity<TUserSchema>>;
+  type tt = RelationalAttributes<TUserSchema2>;
+  type tx = Narrow<HydrateOptionForEntity<TUserSchema>>;
 }
 
-const UserValidationConditions =  {
-    tenantIsXYZ: { actor: {
-        tenantId: { eq: 'xxx-yyy-zzz' }
-    }},
-    inputIsNitin: { input: { 
-        email: { eq: 'nitin@gmail.com' }
-    }},
-    recordIsNotNew: { record: {
-        userId: { neq: '' }
-    }},
+const UserValidationConditions = {
+  tenantIsXYZ: {
+    actor: {
+      tenantId: { eq: 'xxx-yyy-zzz' },
+    },
+  },
+  inputIsNitin: {
+    input: {
+      email: { eq: 'nitin@gmail.com' },
+    },
+  },
+  recordIsNotNew: {
+    record: {
+      userId: { neq: '' },
+    },
+  },
 } as const;
 
-const SignInValidations: InputValidationRule<{email: string, lastName: string, anotherProp: string}> = {
-    lastName: {
-      datatype: 'string',
-      neq: "Blah",
-      custom: (val: string): boolean | Promise<boolean> => {
-        // you can define a custom function to validate the input ['lastName']
-        return !!val;
-      }
+const SignInValidations: InputValidationRule<{ email: string; lastName: string; anotherProp: string }> = {
+  lastName: {
+    datatype: 'string',
+    neq: 'Blah',
+    custom: (val: string): boolean | Promise<boolean> => {
+      // you can define a custom function to validate the input ['lastName']
+      return !!val;
     },
-    anotherProp: {
-      maxLength: 30,
-      pattern: /^[a-z,A-Z]/,
-      // ** standard validator with overridden error-message
-      minLength: {
-        value: 10,
-        message: 'custom error message'
+  },
+  anotherProp: {
+    maxLength: 30,
+    pattern: /^[a-z,A-Z]/,
+    // ** standard validator with overridden error-message
+    minLength: {
+      value: 10,
+      message: 'custom error message',
+    },
+    // ** standard validator with overridden validator-function
+    eq: {
+      validator: (value: string | undefined): Promise<TestValidationResult> => {
+        return Promise.resolve({
+          pass: value !== undefined && value == 'xyz',
+          expected: ['custom', 'whatever'],
+          received: [value],
+          message: 'some error message',
+        });
       },
-      // ** standard validator with overridden validator-function
-      eq: {  
-        validator: (value: string | undefined): Promise<TestValidationResult>  => {
-          return Promise.resolve({
-            pass: value !== undefined && value == 'xyz',
-            expected: ['custom', 'whatever'],
-            received: [value],
-            message: 'some error message'
-          });
-        }
+    },
+    // **  custom validator with a message
+    custom: {
+      message: 'some error message if validator resolves to false',
+      validator: (value): Promise<TestValidationResult> => {
+        return Promise.resolve({
+          pass: value !== undefined,
+          expected: ['datatype', 'email'],
+          received: [value],
+        });
       },
-      // **  custom validator with a message
-      custom: {
-        message: 'some error message if validator resolves to false',
-        validator: (value): Promise<TestValidationResult> => {
-            return Promise.resolve({
-              pass: value !== undefined ,
-              expected: ['datatype', 'email'],
-              received: [value],
-            });
-        }
-      }
-
     },
-    email: {
-      // ** custom validation rule, with it's own validator; all other validations will be ignored here
-      validator: (email: string ): Promise<TestValidationRuleResult> => {
-        const res: TestComplexValidationRuleResult = {
-          pass: !!email,
-          customMessage: "you can return a custom message from the validator as well; and it takes precedence over the error-message defined in the rule(if any)"
-        };
+  },
+  email: {
+    // ** custom validation rule, with it's own validator; all other validations will be ignored here
+    validator: (email: string): Promise<TestValidationRuleResult> => {
+      const res: TestComplexValidationRuleResult = {
+        pass: !!email,
+        customMessage:
+          'you can return a custom message from the validator as well; and it takes precedence over the error-message defined in the rule(if any)',
+      };
 
-        //... your logic to validate the input
+      //... your logic to validate the input
 
-        return Promise.resolve(res);
-      }
+      return Promise.resolve(res);
     },
+  },
 };
 
 const UserOppValidations: EntityOperationsValidation<User.TUserSchema2, typeof UserValidationConditions> = {
-  conditions: UserValidationConditions,  
+  conditions: UserValidationConditions,
   delete: {
     actor: {
-        tenantId: [{ eq: 'xxx-yyy-zzz' }]
+      tenantId: [{ eq: 'xxx-yyy-zzz' }],
     },
     record: {
-        userId: [{ neq: '' }]
+      userId: [{ neq: '' }],
     },
     input: {
-        userId: [{ eq: 'nitin@gmail.com', conditions: [['recordIsNotNew', 'recordIsNotNew'], 'all']  }],
-    }
+      userId: [{ eq: 'nitin@gmail.com', conditions: [['recordIsNotNew', 'recordIsNotNew'], 'all'] }],
+    },
   },
   create: {
-      actor: {
-          tenantId: [{ eq: 'xxx-yyy-zzz' }]
-      },
-      input: {
-          email: [{ eq: 'nitin@gmail.com', conditions: ['tenantIsXYZ'] }]
-      }
+    actor: {
+      tenantId: [{ eq: 'xxx-yyy-zzz' }],
+    },
+    input: {
+      email: [{ eq: 'nitin@gmail.com', conditions: ['tenantIsXYZ'] }],
+    },
   },
   update: {
-      actor: {
-          tenantId: [{ eq: 'xxx-yyy-zzz' }]
-      },
-      input: {
-          email: [{ eq: 'nitin@gmail.com', conditions: ['tenantIsXYZ'] }]
-      },
-      record: {
-          userId: [{ neq: '' }]
-      }
+    actor: {
+      tenantId: [{ eq: 'xxx-yyy-zzz' }],
+    },
+    input: {
+      email: [{ eq: 'nitin@gmail.com', conditions: ['tenantIsXYZ'] }],
+    },
+    record: {
+      userId: [{ neq: '' }],
+    },
   },
-  xxx: {}
-}
+  xxx: {},
+};
 
-
-
-type yy1 = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema>['create']>, typeof UserValidationConditions>>
-type yy  = keyof OmitNever<InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema>>, typeof UserValidationConditions>>
+type yy1 = keyof OmitNever<
+  InputApplicableConditionsMap<
+    Narrow<TEntityOpsInputSchemas<User.TUserSchema>['create']>,
+    typeof UserValidationConditions
+  >
+>;
+type yy = keyof OmitNever<
+  InputApplicableConditionsMap<Narrow<TEntityOpsInputSchemas<User.TUserSchema>>, typeof UserValidationConditions>
+>;
 type cxx = Narrow<TEntityOpsInputSchemas<User.TUserSchema2>>;
-type cc = keyof OmitNever<PropertyApplicableEntityOperations<
-    'userId', 
-    User.TUserSchema, 
-    Narrow<TEntityOpsInputSchemas<User.TUserSchema2>>
->>;
+type cc = keyof OmitNever<
+  PropertyApplicableEntityOperations<'userId', User.TUserSchema, Narrow<TEntityOpsInputSchemas<User.TUserSchema2>>>
+>;
 
 type xpx = cc extends keyof User.TUserSchema2['model']['entityOperations'] ? 'ccc' : '';
 
-interface ppp extends TEntityOpsInputSchemas<User.TUserSchema2>{
+interface ppp extends TEntityOpsInputSchemas<User.TUserSchema2> {
   xxx: {
-    'a': {},
-    b: {}
-  }
+    a: object;
+    b: object;
+  };
 }
 
 type t2 = ppp['xxx'];
 
-type rty = 
-  keyof OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, TEntityOpsInputSchemas<User.TUserSchema2>>> extends 
-  keyof TEntityOpsInputSchemas<User.TUserSchema2>
-  ? keyof OmitNever<PropertyApplicableEntityOperations<'email', User.TUserSchema, TEntityOpsInputSchemas<User.TUserSchema2>>> : never
+type rty = keyof OmitNever<
+  PropertyApplicableEntityOperations<'email', User.TUserSchema, TEntityOpsInputSchemas<User.TUserSchema2>>
+> extends keyof TEntityOpsInputSchemas<User.TUserSchema2>
+  ? keyof OmitNever<
+      PropertyApplicableEntityOperations<'email', User.TUserSchema, TEntityOpsInputSchemas<User.TUserSchema2>>
+    >
+  : never;
 
-conditions: UserValidationConditions;
-
-type ExtendedSchema = Narrow<TEntityOpsInputSchemas<User.TUserSchema2> & {
-    'xxx': {
-        parentId: string;
-        status: number;
-    }
-}>
+type ExtendedSchema = Narrow<
+  TEntityOpsInputSchemas<User.TUserSchema2> & {
+    xxx: {
+      parentId: string;
+      status: number;
+    };
+  }
+>;
 
 const inpVal: EntityInputValidations<User.TUserSchema2, ExtendedSchema> = {
-  firstName: [{
-		operations: ['create', 'update'],
-		required: true,
-		minLength: 2,
-		maxLength: 10,
-		notInList: ['Abc', 'Xyz'],
-	}],
-	password: [{
-		required: true,
-		minLength: 8,
-		operations: ['create']
-	}],
-  parentId: [{
-    operations: [ 'update', 'xxx'],
+  firstName: [
+    {
+      operations: ['create', 'update'],
       required: true,
-      datatype: 'uuid'
-  }]
-}
+      minLength: 2,
+      maxLength: 10,
+      notInList: ['Abc', 'Xyz'],
+    },
+  ],
+  password: [
+    {
+      required: true,
+      minLength: 8,
+      operations: ['create'],
+    },
+  ],
+  parentId: [
+    {
+      operations: ['update', 'xxx'],
+      required: true,
+      datatype: 'uuid',
+    },
+  ],
+};
 
 const UserValidations: EntityValidations<User.TUserSchema2, typeof UserValidationConditions> = {
-    actor: {
-        tenantId: [{
-            eq: 'xxx-yyy-zzz',
-            operations: [
-              'create',
-              'update',
-              'xxx',
-              ['update', ['recordIsNotNew', 'inputIsNitin', 'tenantIsXYZ']],
-              ['update', ['recordIsNotNew', 'inputIsNitin'], 'any'],
-              ['delete', ['recordIsNotNew', 'tenantIsXYZ'], 'all' ]
-            ],
-        }],
-    },
-    input: {
-        email: [{
-            eq: 'nitin@gmail.com',
-            operations: [['create', ['inputIsNitin', 'recordIsNotNew', 'tenantIsXYZ']]],
-        }],
-        userId: [{
-            required: true,
-            operations: [
-              ['create', ['inputIsNitin', 'recordIsNotNew', 'tenantIsXYZ'], 'any' ]
-            ],
-        }],
-        lastName:[{
-            required: true,
-            operations: {
-              create: [{
-                conditions: ['recordIsNotNew', 'recordIsNotNew'],
-                scope: 'any',
-              }],
-            }
-        }]
-    },
-    record: {
-        userId: [{
-            required: true,
-            operations:['xxx']
-        }]
-    }
-}
+  actor: {
+    tenantId: [
+      {
+        eq: 'xxx-yyy-zzz',
+        operations: [
+          'create',
+          'update',
+          'xxx',
+          ['update', ['recordIsNotNew', 'inputIsNitin', 'tenantIsXYZ']],
+          ['update', ['recordIsNotNew', 'inputIsNitin'], 'any'],
+          ['delete', ['recordIsNotNew', 'tenantIsXYZ'], 'all'],
+        ],
+      },
+    ],
+  },
+  input: {
+    email: [
+      {
+        eq: 'nitin@gmail.com',
+        operations: [['create', ['inputIsNitin', 'recordIsNotNew', 'tenantIsXYZ']]],
+      },
+    ],
+    userId: [
+      {
+        required: true,
+        operations: [['create', ['inputIsNitin', 'recordIsNotNew', 'tenantIsXYZ'], 'any']],
+      },
+    ],
+    lastName: [
+      {
+        required: true,
+        operations: {
+          create: [
+            {
+              conditions: ['recordIsNotNew', 'recordIsNotNew'],
+              scope: 'any',
+            },
+          ],
+        },
+      },
+    ],
+  },
+  record: {
+    userId: [
+      {
+        required: true,
+        operations: ['xxx'],
+      },
+    ],
+  },
+};

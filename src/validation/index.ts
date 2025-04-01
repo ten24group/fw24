@@ -1,6 +1,6 @@
-import {Validator} from './validator';
+import { Validator } from './validator';
 
 export * from './validator';
-export * from './types'
+export * from './types';
 
 export const DefaultValidator = new Validator();
