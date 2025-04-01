@@ -30,8 +30,9 @@ export class Fw24 {
     private environmentVariables: Record<string, any> = {};
     private globalEnvironmentVariables: string[] = [];
     private policyStatements = new Map<string, PolicyStatementProps | PolicyStatement>();
-    private defaultCognitoAuthorizer: IAuthorizer | undefined;
+    private defaultAuthorizer: IAuthorizer | undefined;
     private cognitoAuthorizers: { [ key: string ]: IAuthorizer } = {};
+    private jwtAuthorizer: IAuthorizer | undefined;
     private dynamoTables: { [ key: string ]: TableV2 } = {};
     private static instance: Fw24;
 
@@ -251,19 +252,19 @@ export class Fw24 {
         this.cognitoAuthorizers[ name ] = authorizer;
         // If this authorizer is the default, set it as the default authorizer
         if (defaultAuthorizer !== false) {
-            this.defaultCognitoAuthorizer = authorizer;
+            this.defaultAuthorizer = authorizer;
         }
     }
 
     getCognitoAuthorizer(name?: string): IAuthorizer | undefined {
         this.logger.info("getCognitoAuthorizer: ", { name });
         // If no name is provided and no default authorizer is set, throw an error
-        if (name === undefined && this.defaultCognitoAuthorizer === undefined) {
+        if (name === undefined && this.defaultAuthorizer === undefined) {
             throw new Error('No Authorizer exists for cognito user pools. For policy based authentication, use AWS_IAM authoriser.');
         }
         // If no name is provided, return the default authorizer
         if (name === undefined) {
-            return this.defaultCognitoAuthorizer;
+            return this.defaultAuthorizer;
         }
         // if authorizer with name is not found, throw an error
         if (this.cognitoAuthorizers[ name ] === undefined) {
@@ -276,6 +277,9 @@ export class Fw24 {
     getAuthorizer(authorizationType: string, name?: string): IAuthorizer | undefined {
         if (authorizationType === "COGNITO_USER_POOLS") {
             return this.getCognitoAuthorizer(name);
+        }
+        if (authorizationType === "JWT") {
+            return this.getJwtAuthorizer();
         }
         return undefined;
     }
@@ -538,6 +542,19 @@ export class Fw24 {
         return HostedZone.fromLookup(this.app, `${domainName}-zone`, {
             domainName,
         });
+    }
+
+    setJwtAuthorizer(authorizer: IAuthorizer, defaultAuthorizer: boolean = false) {
+        this.logger.debug("setJwtAuthorizer: ", { authorizer: authorizer.authorizerId });
+        this.jwtAuthorizer = authorizer;
+        if (defaultAuthorizer) {
+            this.defaultAuthorizer = authorizer;
+            this.getConfig().defaultAuthorizationType = 'JWT';
+        }
+    }
+
+    getJwtAuthorizer(): IAuthorizer | undefined {
+        return this.jwtAuthorizer;
     }
 
 }

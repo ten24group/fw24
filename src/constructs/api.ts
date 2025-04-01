@@ -50,6 +50,8 @@ import { TopicConstruct } from "./topic";
 import { IConstructConfig } from "../interfaces/construct-config";
 import { createHash, randomUUID } from "crypto";
 import { VpcConstruct } from "./vpc";
+import { ApiKey, UsagePlan, Period } from "aws-cdk-lib/aws-apigateway";
+
 /**
  * Represents the configuration options for an API construct.
  */
@@ -115,6 +117,73 @@ export interface IAPIConstructConfig extends IConstructConfig {
      * Force a deployment of the API when using imported APIs
      */
     forceDeployment?: boolean;
+
+    /**
+     * API key configuration for the API
+     */
+    apiKeyConfig?: {
+        /**
+         * List of valid API keys. If empty, keys will be auto-generated
+         */
+        keys?: string[];
+        /**
+         * Name of the API key (used when auto-generating)
+         */
+        keyName?: string;
+    };
+
+    /**
+     * Usage plan configuration for the API
+     */
+    usagePlans?: IUsagePlanConfig[];
+}
+
+/**
+ * Configuration for API key within a usage plan
+ */
+interface IUsagePlanApiKeyConfig {
+    /**
+     * List of valid API keys. If empty, keys will be auto-generated
+     */
+    keys?: string[];
+    /**
+     * Name prefix for the API keys (used when auto-generating)
+     */
+    keyNamePrefix?: string;
+}
+
+/**
+ * Configuration for a usage plan
+ */
+interface IUsagePlanConfig {
+    /**
+     * Name of the usage plan
+     */
+    name: string;
+    /**
+     * Description of the usage plan
+     */
+    description?: string;
+    /**
+     * Rate limit per second
+     */
+    rateLimit?: number;
+    /**
+     * Burst limit
+     */
+    burstLimit?: number;
+    /**
+     * Quota limit per period
+     */
+    quotaLimit?: number;
+    /**
+     * Quota period
+     */
+    quotaPeriod?: Period;
+    /**
+     * API key configuration for this usage plan
+     */
+    apiKeys?: IUsagePlanApiKeyConfig;
 }
 
 export class APIConstruct implements FW24Construct {
@@ -122,12 +191,14 @@ export class APIConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
     
     name: string = APIConstruct.name;
-    // array of type of stacks that this stack is dependent on
     dependencies: string[] = [VpcConstruct.name, MailerConstruct.name, DynamoDBConstruct.name, AuthConstruct.name, QueueConstruct.name, TopicConstruct.name, LayerConstruct.name];
     output!: FW24ConstructOutput;
 
     api!: RestApi;
     mainStack!: Stack;
+    usagePlans: Map<string, { plan: UsagePlan; name: string }> = new Map();
+    apiKeys: Map<string, ApiKey[]> = new Map();
+    keyValues: Map<string, ApiKey> = new Map();
 
     private resources: IResource[] = [];
     private methods: Method[] = [];
@@ -141,7 +212,6 @@ export class APIConstruct implements FW24Construct {
 
     // construct method to create the stack
     public async construct() {
-
         // set the default api options
         const paramsApi: Mutable<RestApiProps> = {...this.apiConstructConfig.apiOptions || {}};
         // Enable CORS if defined
@@ -174,6 +244,14 @@ export class APIConstruct implements FW24Construct {
         this.api = new RestApi(this.mainStack,  `${this.fw24.appName}-api`, {
             ...paramsApi,
         });
+
+        // Set up usage plans if configured
+        if (this.apiConstructConfig.usagePlans?.length) {
+            for (const planConfig of this.apiConstructConfig.usagePlans) {
+                this.setupUsagePlan(planConfig);
+            }
+        }
+
         this.fw24.addAPI(this.name, 'root', this.api, false);
         this.fw24.setConstructOutput(this, 'restAPI', this.api, OutputType.API,'restApiId');
         this.fw24.setConstructOutput(this, 'restAPI', this.api, OutputType.API,'restApiRootResourceId');
@@ -265,17 +343,23 @@ export class APIConstruct implements FW24Construct {
 
 
     // register a single controller
-    private registerController = (controllerInfo: HandlerDescriptor, ownerModule?: IFw24Module) => {
-
+    private registerController = async (controllerInfo: HandlerDescriptor, ownerModule?: IFw24Module) => {
         const { handlerClass, filePath, fileName, handlerHash } = controllerInfo;
-        // TODO: no need to create na instance of the controller class
-        // use metadata from the class prototype
         const handlerInstance = new handlerClass();
         const controllerName = handlerInstance.controllerName;
-        const controllerHash = handlerHash;
         const controllerConfig: IControllerConfig = handlerInstance?.controllerConfig || {};
         const controllerStackName = controllerConfig.stackName || controllerName;
         const parentStackName = controllerConfig.parentStackName || this.apiConstructConfig.controllerParentStackName;
+
+        // Initialize controller stack info if not exists
+        if (!this.controllerStacks.has(controllerStackName)) {
+            this.controllerStacks.set(controllerStackName, {
+                methods: [],
+                resources: [],
+                controllersHash: []
+            });
+        }
+
         // make sure the controller stack exists
         this.fw24.getStack(controllerStackName, parentStackName);
         controllerInfo.routes = handlerInstance.routes;
@@ -305,19 +389,26 @@ export class APIConstruct implements FW24Construct {
                 path: controllerName,
                 timeout: Duration.seconds(this.apiConstructConfig.integrationTimeout || 29),
             });
-        } 
+        }
 
         const { defaultAuthorizerName, defaultAuthorizerType, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig } = this.extractDefaultAuthorizer(controllerConfig);
 
         this.logger.debug(`Register Controller ~ Default Authorizer: name: ${defaultAuthorizerName} - type: ${defaultAuthorizerType} - groups: ${defaultAuthorizerGroups}`);
-        
+
+        // Set up API key if required
+        if (controllerConfig.requireApiKey) {
+            this.setupUsagePlan(undefined, true);
+        }
+
+        // Set up routes for the controller
         for (const route of Object.values(controllerInfo.routes ?? {})) {
             this.logger.debug(`Registering route ${route.httpMethod} ${route.path}`);
             const routeTarget = route.target || controllerTarget;
             const currentResource = this.getOrCreateRouteResource(controllerResource, route.path, controllerStackName);
             const { routeAuthorizerName, routeAuthorizerType, routeAuthorizerGroups, routeRequireRouteInGroupConfig } = this.extractRouteAuthorizer(route, defaultAuthorizerType, defaultAuthorizerName, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig);            
             this.logger.debug(`Registering route Authorizer: ${routeAuthorizerName} - ${routeAuthorizerType} - ${routeAuthorizerGroups}`);
-            let methodOptions = this.createMethodOptions(route, routeAuthorizerType, routeAuthorizerName);
+            
+            let methodOptions = this.createMethodOptions(route, routeAuthorizerType, routeAuthorizerName, controllerConfig);
             
             if (routeTarget === 'queue') {
                 const queueName = route.path.replace('/', '');
@@ -371,14 +462,14 @@ export class APIConstruct implements FW24Construct {
             }
         }
 
-        
         // keep track of the controller stacks with methods and resources in a multi-stack setup to create one deployment per controller stack
         if(this.fw24.hasImportedAPI(this.name)){
-            this.controllerStacks.set(controllerStackName, {
-                methods: [...this.methods], 
-                resources: [...this.resources],
-                controllersHash: [...controllerHash]
-            });    
+            const stackInfo = this.controllerStacks.get(controllerStackName);
+            if (stackInfo) {
+                stackInfo.methods = [...this.methods];
+                stackInfo.resources = [...this.resources];
+                stackInfo.controllersHash.push(createHash('md5').update(JSON.stringify(controllerConfig)).digest('hex'));
+            }
         }
 
         // output the api endpoint
@@ -610,16 +701,30 @@ export class APIConstruct implements FW24Construct {
         return { routeAuthorizerName, routeAuthorizerType, routeAuthorizerGroups, routeRequireRouteInGroupConfig };
     }
 
-    private createMethodOptions = (route: any, routeAuthorizerType: string, routeAuthorizerName: string | undefined): MethodOptions => {
+    private createMethodOptions = (route: any, routeAuthorizerType: string, routeAuthorizerName: string | undefined, controllerConfig: IControllerConfig): MethodOptions => {
         const requestParameters: { [key: string]: boolean } = {};
-        for (const param of route.parameters) {
+        
+        // Add path parameters
+        for (const param of route.parameters || []) {
             requestParameters[`method.request.path.${param}`] = true;
         }
-    
+
+        // Add API key header requirement if specified
+        if (controllerConfig.requireApiKey) {
+            requestParameters['method.request.header.x-api-key'] = true;
+        }
+
+        // If the authorizer is JWT, convert it to CUSTOM
+        const authorizer = this.fw24.getAuthorizer(routeAuthorizerType, routeAuthorizerName);
+        if (routeAuthorizerType === 'JWT') {
+            routeAuthorizerType = 'CUSTOM';
+        }
+
         return {
             requestParameters,
             authorizationType: routeAuthorizerType as AuthorizationType,
-            authorizer: this.fw24.getAuthorizer(routeAuthorizerType, routeAuthorizerName)
+            authorizer: authorizer,
+            apiKeyRequired: controllerConfig.requireApiKey || false
         };
     }
 
@@ -698,5 +803,92 @@ export class APIConstruct implements FW24Construct {
             description: "API Gateway Endpoint for " + controllerName,
         });
     }
-    
+
+    private setupUsagePlan(planConfig?: IUsagePlanConfig, createKey: boolean = false): { plan: UsagePlan; name: string } {
+        // If no plan config is provided and we need a key, use the first configured plan or create a default one
+        if (!planConfig && createKey) {
+            // Try to use the first configured plan that has API keys
+            const configuredPlan = this.apiConstructConfig.usagePlans?.find(plan => plan.apiKeys);
+            if (configuredPlan) {
+                planConfig = configuredPlan;
+            } else {
+                // If no configured plan with keys exists, create a default plan
+                // Generate a deterministic key based on app name and a fixed identifier
+                const defaultKey = createHash('sha256')
+                    .update(`${this.fw24.appName}-${this.fw24.getConfig().account}-${this.fw24.getConfig().region}-${this.fw24.getConfig().environment}-default-api-key`)
+                    .digest('hex')
+                    .slice(0, 32); // Use first 32 chars for a reasonable key length
+
+                this.logger.warn(`No usage plan with API keys found, creating a default one. This is not recommended for production environments. Please configure a usage plan with API keys for your API.`);
+
+                planConfig = {
+                    name: `${this.fw24.appName}-default-usage-plan`,
+                    description: `Default usage plan for ${this.fw24.appName}`,
+                    apiKeys: {
+                        keys: [defaultKey]
+                    }
+                };
+            }
+        }
+
+        const planName = planConfig?.name || `${this.fw24.appName}-default-usage-plan`;
+        
+        if (!this.usagePlans.has(planName)) {
+            this.logger.info(`Setting up usage plan: ${planName}`);
+            const usagePlan = new UsagePlan(this.mainStack, `${this.fw24.appName}-${planName}-usage-plan`, {
+                name: planName,
+                description: planConfig?.description || `Usage plan for ${this.fw24.appName}`,
+                apiStages: [{
+                    api: this.api,
+                    stage: this.api.deploymentStage
+                }],
+                throttle: {
+                    rateLimit: planConfig?.rateLimit || 10,
+                    burstLimit: planConfig?.burstLimit || 20
+                },
+                quota: {
+                    limit: planConfig?.quotaLimit || 10000,
+                    period: planConfig?.quotaPeriod || Period.MONTH
+                }
+            });
+            this.usagePlans.set(planName, { plan: usagePlan, name: planName });
+            this.apiKeys.set(planName, []);
+
+            // Create API keys if configured for this usage plan
+            if (planConfig?.apiKeys) {
+                this.logger.info(`Creating API keys for usage plan: ${planName}`);
+                const keys = planConfig.apiKeys.keys || [];
+                keys.forEach((key, index) => {
+                    // Use the key name from config if available, otherwise use the prefix or generate a name
+                    const keyName = this.apiConstructConfig.apiKeyConfig?.keyName || 
+                        (planConfig.apiKeys?.keyNamePrefix 
+                            ? `${planConfig.apiKeys.keyNamePrefix}-${index}`
+                            : `${this.fw24.appName}-api-key-${index}`);
+
+                    // Check if key already exists
+                    let existingKey = this.keyValues.get(key);
+                    if (!existingKey) {
+                        existingKey = new ApiKey(this.mainStack, `${this.fw24.appName}-${keyName}-api-key`, {
+                            enabled: true,
+                            description: `API key ${index + 1} for ${this.fw24.appName}`,
+                            value: key
+                        });
+
+                        new CfnOutput(this.mainStack, `${this.fw24.appName}-${keyName}-id`, {
+                            value: existingKey.keyId,
+                            description: `API Key ${index + 1} ID for ${this.fw24.appName}`
+                        });
+
+                        this.keyValues.set(key, existingKey);
+                    }
+
+                    usagePlan.addApiKey(existingKey);
+                    this.apiKeys.get(planName)!.push(existingKey);
+                });
+            }
+        }
+
+        return this.usagePlans.get(planName)!;
+    }
+
 }
