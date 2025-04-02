@@ -2,11 +2,13 @@
  * Tests for JSX implementation in the UI Config Builder
  */
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import UIConfig from '../components/jsx';
-/* eslint-enable @typescript-eslint/no-unused-vars */
 
-import { buildConfig } from '../components/jsx';
+/* @jsx createElement */
+
+
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { createElement, buildConfig } from '../components/jsx';
+/* eslint-enable @typescript-eslint/no-unused-vars */
 import { ConfigObject } from '../types';
 
 // Helper function to create a basic form config for testing

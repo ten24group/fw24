@@ -7,8 +7,7 @@ import { ListPageConfig } from '../types/list-types';
 import { DetailPageConfig } from '../types/detail-types';
 import { MenuConfig } from '../types/menu-types';
 import { PageHeaderAction } from '../types';
-import { PropertyConfig, ConfigObject } from '../types';
-import { ComponentInstance } from '../components';
+import { PropertyConfig, ConfigObject, ComponentInstance } from '../types';
 
 export * from './BaseBuilder';
 export * from './FormBuilder';

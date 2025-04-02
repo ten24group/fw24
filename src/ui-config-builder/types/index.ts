@@ -108,6 +108,13 @@ export interface RelationConfig {
   };
 }
 
+// Component instance type
+export interface ComponentInstance<T = any> {
+  type: string;
+  props: T;
+  children?: Array<ComponentInstance<any> | string>;
+}
+
 // Re-export types from specific type modules
 export * from './common-types';
 export * from './form-types';

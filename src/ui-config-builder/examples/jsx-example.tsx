@@ -6,8 +6,9 @@
  */
 
 // Import the UIConfig JSX factory for JSX syntax to work
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import UIConfig from '../components/jsx';
+import { UIConfig } from '..';
 import { buildConfig } from '../components/jsx';
 
 // Form example with sections and validations

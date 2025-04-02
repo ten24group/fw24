@@ -7,65 +7,25 @@
  * @deprecated Use JSX implementation instead
  */
 
-import { RenderContext } from '../types/common-types';
-import { render } from './jsx';
+import { ComponentInstance, RenderContext } from '../types';
+import { BaseElement } from '../types/element-types';
+import { renderElement } from './ElementFactory';
 
-// Helper type to mimic the Element class from jsx.ts
-interface Element<K extends string> {
-  kind: K;
-  props: Record<string, any>;
-  children: Array<string | Element<any>>;
-  toConfig(): any;
-  findChildrenOfKind<T extends string>(kind: T): Element<T>[];
-  textContent: string;
-}
-
-// Helper for TypeScript to recognize JSX
-export interface JSX {
-  namespace: {
-    [key: string]: any;
+// Create a simple component factory function
+export function createComponent(type: string) {
+  return (props: Record<string, any> = {}, children: any[] = []) => {
+    return { type, props, children };
   };
 }
 
-// Component types
-export type ComponentType = string;
-export type ComponentProps = Record<string, any>;
-
-// Legacy component instance type
-export interface ComponentInstance<T = any> {
-  type: string;
-  props: T;
-  children?: Array<ComponentInstance<any> | string>;
-}
-
-// Legacy component factory function type
-export type Component = (props: ComponentProps, context?: RenderContext) => ComponentInstance;
-
-// Factory for creating components
-function createComponent(type: ComponentType): Component {
-  return (props: ComponentProps = {}, _context?: RenderContext) => {
-    return {
-      type,
-      props,
-      children: [],
-    };
-  };
-}
-
-// Layout Components
+// Create component instances
+export const Form = createComponent('Form');
+export const Field = createComponent('Field');
+export const Section = createComponent('Section');
 export const Layout = createComponent('Layout');
 export const Page = createComponent('Page');
-
-// Form Components
-export const Form = createComponent('Form');
-export const Section = createComponent('Section');
-export const Field = createComponent('Field');
-
-// Data Display Components
 export const DataTable = createComponent('DataTable');
 export const DetailView = createComponent('DetailView');
-
-// Action Components
 export const Action = createComponent('Action');
 export const Button = createComponent('Button');
 
@@ -74,36 +34,32 @@ export const Menu = createComponent('Menu');
 export const MenuItem = createComponent('MenuItem');
 
 // Convert to Element for rendering
-function componentToElement(component: ComponentInstance): Element<string> {
+function componentToElement(component: ComponentInstance): BaseElement {
   return {
     kind: component.type.toLowerCase(),
     props: component.props,
     children: component.children?.map(child => (typeof child === 'string' ? child : componentToElement(child))) || [],
     toConfig() {
-      return render(this);
+      return renderElement(this);
     },
-    findChildrenOfKind<T extends string>(kind: T): Element<T>[] {
-      return this.children.filter((c: any): c is Element<T> => typeof c !== 'string' && c.kind === kind);
+    findChildrenOfKind<T extends string>(kind: T): BaseElement[] {
+      return this.children.filter((c: any): c is BaseElement => typeof c !== 'string' && c.kind === kind);
     },
     get textContent(): string {
       return this.children.filter((c: any): c is string => typeof c === 'string').join('');
     },
-  } as Element<string>;
+  };
 }
 
 // Convert component to config
-export function buildConfig(component: ComponentInstance, context?: RenderContext): any {
+export function buildConfig(component: ComponentInstance): any {
   const element = componentToElement(component);
-  return render(element, context);
+  return renderElement(element);
 }
 
 // Helper to create a complete entity config with JSX
-export function createEntityConfig(
-  entityName: string,
-  component: ComponentInstance,
-  context?: RenderContext,
-): Record<string, any> {
-  const config = buildConfig(component, { ...context, entityName });
+export function createEntityConfig(entityName: string, component: ComponentInstance): Record<string, any> {
+  const config = buildConfig(component);
   return {
     [`${component.props.pageType || 'custom'}-${entityName.toLowerCase()}`]: config,
   };
