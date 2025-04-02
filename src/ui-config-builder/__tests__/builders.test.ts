@@ -2,7 +2,13 @@
  * Tests for Builder Pattern implementation in the UI Config Builder
  */
 
-import { createFormBuilder, createListBuilder, createDetailBuilder, createEntityUIConfig } from '../core';
+import {
+  createFormBuilder,
+  createListBuilder,
+  createDetailBuilder,
+  createEntityUIConfig,
+  createEntityUIConfigFromTemplates,
+} from '../core';
 import { PropertyConfig, FormPageConfig, ListPageConfig, DetailPageConfig, ConfigObject } from '../types';
 import { FormBuilder } from '../core/FormBuilder';
 import { ListBuilder } from '../core/ListBuilder';
@@ -693,18 +699,66 @@ describe('Builder Pattern Implementation', () => {
   });
 
   describe('createEntityUIConfigFromTemplates', () => {
-    it.skip('should create entity UI configurations from templates', () => {
-      // NOTE: This test is skipped because it requires mocking of complex dependencies
-      // In an actual test implementation, we would need to mock:
-      // - createStandardForm, createEditForm from '../templates/form-templates'
-      // - createStandardList from '../templates/list-templates'
-      // - createStandardDetailView from '../templates/detail-templates'
-      // - createEntityConfig from '../components'
-      // Each returning components with 'type' and 'props' properties
-      // The test would verify that:
-      // 1. The template functions are called with the right parameters
-      // 2. The outputted configs have the expected structure
-      // 3. Options like {create: false} correctly omit certain configs
+    it('should create entity UI configurations from templates', () => {
+      // Define test fields
+      const fields = [
+        {
+          id: 'name',
+          name: 'name',
+          type: 'string',
+          fieldType: 'text',
+          label: 'Name',
+          column: 'name',
+        },
+        {
+          id: 'email',
+          name: 'email',
+          type: 'string',
+          fieldType: 'email',
+          label: 'Email',
+          column: 'email',
+        },
+      ];
+
+      // Create configuration
+      const result = createEntityUIConfigFromTemplates('user', { fields });
+
+      // Check for keys that are actually present
+      const expectedKeys = ['form-user', 'list-user', 'detail-user'].sort();
+      expect(Object.keys(result).sort()).toEqual(expectedKeys);
+      expect(result).toHaveProperty('form-user'); // Create and edit use the same form-user key
+      expect(result).toHaveProperty('list-user');
+      expect(result).toHaveProperty('detail-user');
+
+      // Test respecting options to omit certain pages
+      const listOnlyConfig = createEntityUIConfigFromTemplates('user', {
+        fields,
+        create: false,
+        edit: false,
+        view: false,
+        list: true,
+      });
+
+      expect(Object.keys(listOnlyConfig)).toHaveLength(1);
+      expect(listOnlyConfig).toHaveProperty('list-user');
+      expect(listOnlyConfig).not.toHaveProperty('form-user');
+      expect(listOnlyConfig).not.toHaveProperty('detail-user');
+
+      // Test empty fields (should not create configs)
+      const emptyFieldsConfig = createEntityUIConfigFromTemplates('user', { fields: [] });
+      expect(Object.keys(emptyFieldsConfig)).toHaveLength(0);
+
+      // Test with custom configs
+      const customConfigs = {
+        'custom-user': { customKey: 'customValue' },
+      };
+      const withCustomConfig = createEntityUIConfigFromTemplates('user', {
+        fields,
+        customConfigs,
+      });
+
+      expect(withCustomConfig).toHaveProperty('custom-user');
+      expect(withCustomConfig['custom-user']).toEqual({ customKey: 'customValue' });
     });
   });
 
