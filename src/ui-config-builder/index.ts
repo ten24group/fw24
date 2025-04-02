@@ -27,6 +27,10 @@ export {
   createEntityUIConfig,
 } from './core';
 
+// Import this explicitly to avoid circular dependency issues
+import { createEntityUIConfigFromTemplates } from './core';
+export { createEntityUIConfigFromTemplates };
+
 export {
   render,
   buildConfig,

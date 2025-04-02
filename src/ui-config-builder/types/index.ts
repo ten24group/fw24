@@ -3,13 +3,6 @@
  * These types align with the UI24 system's configuration structure
  */
 
-// Re-export for convenience
-export * from './page-types';
-export * from './form-types';
-export * from './list-types';
-export * from './menu-types';
-export * from './common-types';
-
 // Main configuration interface that matches UI24Config
 export interface UIBuilderConfig {
   auth: any;
@@ -111,3 +104,10 @@ export interface RelationConfig {
     target: string;
   };
 }
+
+// Re-export specific type modules
+export * from './form-types';
+export * from './list-types';
+export * from './detail-types';
+export * from './menu-types';
+export * from './common-types';

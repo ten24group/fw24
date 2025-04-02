@@ -54,11 +54,23 @@ export function createEntityUIConfig(
     view?: boolean;
     menu?: boolean;
     menuIcon?: string;
+    customConfigs?: Record<string, any>;
   } = {},
 ) {
-  const { list = true, create = true, edit = true, view = true, menu = true, menuIcon = 'appStore' } = options;
+  const {
+    list = true,
+    create = true,
+    edit = true,
+    view = true,
+    menu = true,
+    menuIcon = 'appStore',
+    customConfigs = {},
+  } = options;
 
-  const result: Record<string, any> = {};
+  const result: Record<string, any> = {
+    ...customConfigs,
+  };
+
   const pascalCaseName = entityName.charAt(0).toUpperCase() + entityName.slice(1);
 
   if (list) {
@@ -97,6 +109,21 @@ export function createEntityUIConfig(
       });
     }
 
+    // Set up edit specifics
+    editBuilder.set('formPageConfig', {
+      ...editBuilder.getConfig().formPageConfig,
+      apiConfig: {
+        apiMethod: 'PATCH',
+        apiUrl: `/${entityName.toLowerCase()}/:id`,
+        responseKey: entityName.toLowerCase(),
+      },
+      detailApiConfig: {
+        apiMethod: 'GET',
+        apiUrl: `/${entityName.toLowerCase()}/:id`,
+        responseKey: entityName.toLowerCase(),
+      },
+    });
+
     result[`edit-${entityName.toLowerCase()}`] = editBuilder.build();
   }
 
@@ -114,7 +141,91 @@ export function createEntityUIConfig(
       viewBuilder.addDefaultEditAction(entityName);
     }
 
+    // Set up view specifics
+    viewBuilder.set('detailPageConfig', {
+      ...viewBuilder.getConfig().detailPageConfig,
+      apiConfig: {
+        apiMethod: 'GET',
+        apiUrl: `/${entityName.toLowerCase()}/:id`,
+        responseKey: entityName.toLowerCase(),
+      },
+    });
+
     result[`view-${entityName.toLowerCase()}`] = viewBuilder.build();
+  }
+
+  return result;
+}
+
+// Import needed modules for createEntityUIConfigFromTemplates
+import { createStandardForm, createEditForm } from '../templates/form-templates';
+import { createStandardList } from '../templates/list-templates';
+import { createStandardDetailView } from '../templates/detail-templates';
+import { createEntityConfig } from '../components';
+
+/**
+ * Create a complete entity UI configuration using JSX templates
+ */
+export function createEntityUIConfigFromTemplates(
+  entityName: string,
+  options: {
+    list?: boolean;
+    create?: boolean;
+    edit?: boolean;
+    view?: boolean;
+    fields?: any[];
+    customConfigs?: Record<string, any>;
+  } = {},
+) {
+  const { list = true, create = true, edit = true, view = true, fields = [], customConfigs = {} } = options;
+
+  const result: Record<string, any> = {
+    ...customConfigs,
+  };
+
+  if (create && fields.length > 0) {
+    const createForm = createStandardForm({
+      entityName,
+      fields,
+      showBackButton: list,
+    });
+
+    const createConfig = createEntityConfig(entityName, createForm);
+    Object.assign(result, createConfig);
+  }
+
+  if (edit && fields.length > 0) {
+    const editForm = createEditForm({
+      entityName,
+      fields,
+      showBackButton: list,
+    });
+
+    const editConfig = createEntityConfig(entityName, editForm);
+    Object.assign(result, editConfig);
+  }
+
+  if (list && fields.length > 0) {
+    const listView = createStandardList({
+      entityName,
+      columns: fields,
+      showCreateButton: create,
+    });
+
+    const listConfig = createEntityConfig(entityName, listView);
+    Object.assign(result, listConfig);
+  }
+
+  if (view && fields.length > 0) {
+    const detailView = createStandardDetailView({
+      entityName,
+      fields,
+      showBackButton: list,
+      showEditButton: edit,
+    });
+
+    const viewConfig = createEntityConfig(entityName, detailView);
+    Object.assign(result, viewConfig);
   }
 
   return result;
