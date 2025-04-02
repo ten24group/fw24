@@ -6,7 +6,7 @@
 
 import { createElement as createFactoryElement, renderElement } from './ElementFactory';
 import { BaseElement } from '../types/element-types';
-import { ConfigObject, RenderContext } from '../types';
+import { ConfigObject } from '../types';
 import { JSXIntrinsicElements } from '../types/jsx-types';
 
 /**

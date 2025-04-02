@@ -2,5 +2,5 @@
 export * from './types';
 
 // Export JSX implementation
-export { default as UIConfig } from './components/jsx';
+export * as UIConfig from './components/jsx';
 export { createElement, buildConfig, render } from './components/jsx';
