@@ -7,6 +7,8 @@ import { ListPageConfig } from '../types/list-types';
 import { DetailPageConfig } from '../types/detail-types';
 import { MenuConfig } from '../types/menu-types';
 import { PageHeaderAction } from '../types';
+import { PropertyConfig, ConfigObject } from '../types';
+import { ComponentInstance } from '../components';
 
 export * from './BaseBuilder';
 export * from './FormBuilder';
@@ -168,7 +170,17 @@ import { createStandardForm, createEditForm } from '../templates/form-templates'
 import { createStandardList } from '../templates/list-templates';
 import { createStandardDetailView } from '../templates/detail-templates';
 import { createEntityConfig } from '../components';
-import { PropertyConfig } from '../types';
+
+// Helper function to wrap a config object in a ComponentInstance
+function wrapAsComponentInstance(pageType: string, config: any): ComponentInstance<any> {
+  return {
+    type: pageType,
+    props: {
+      pageType,
+      ...config,
+    },
+  };
+}
 
 /**
  * Create a complete entity UI configuration using JSX templates
@@ -176,17 +188,17 @@ import { PropertyConfig } from '../types';
 export function createEntityUIConfigFromTemplates(
   entityName: string,
   options: {
-    list?: boolean;
+    fields: PropertyConfig[];
     create?: boolean;
     edit?: boolean;
+    list?: boolean;
     view?: boolean;
-    fields?: PropertyConfig[];
-    customConfigs?: Record<string, Record<string, unknown>>;
-  } = {},
-) {
-  const { list = true, create = true, edit = true, view = true, fields = [], customConfigs = {} } = options;
+    customConfigs?: Record<string, ConfigObject>;
+  },
+): Record<string, ConfigObject> {
+  const { fields = [], create = true, edit = true, list = true, view = true, customConfigs = {} } = options;
 
-  const result: Record<string, Record<string, unknown>> = {
+  const result: Record<string, ConfigObject> = {
     ...customConfigs,
   };
 
@@ -197,7 +209,9 @@ export function createEntityUIConfigFromTemplates(
       showBackButton: list,
     });
 
-    const createConfig = createEntityConfig(entityName, createForm);
+    // Wrap createForm in a ComponentInstance
+    const component = wrapAsComponentInstance('form', createForm);
+    const createConfig = createEntityConfig(entityName, component);
     Object.assign(result, createConfig);
   }
 
@@ -208,7 +222,9 @@ export function createEntityUIConfigFromTemplates(
       showBackButton: list,
     });
 
-    const editConfig = createEntityConfig(entityName, editForm);
+    // Wrap editForm in a ComponentInstance
+    const component = wrapAsComponentInstance('form', editForm);
+    const editConfig = createEntityConfig(entityName, component);
     Object.assign(result, editConfig);
   }
 
@@ -219,7 +235,9 @@ export function createEntityUIConfigFromTemplates(
       showCreateButton: create,
     });
 
-    const listConfig = createEntityConfig(entityName, listView);
+    // Wrap listView in a ComponentInstance
+    const component = wrapAsComponentInstance('list', listView);
+    const listConfig = createEntityConfig(entityName, component);
     Object.assign(result, listConfig);
   }
 
@@ -231,7 +249,9 @@ export function createEntityUIConfigFromTemplates(
       showEditButton: edit,
     });
 
-    const viewConfig = createEntityConfig(entityName, detailView);
+    // Wrap detailView in a ComponentInstance
+    const component = wrapAsComponentInstance('detail', detailView);
+    const viewConfig = createEntityConfig(entityName, component);
     Object.assign(result, viewConfig);
   }
 

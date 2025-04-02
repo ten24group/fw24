@@ -120,10 +120,35 @@ function renderForm(element: Element<'form'>): ConfigObject {
     ...rest
   } = element.props as FormProps;
 
-  // Find field elements
-  const fields = element.children
-    .map(child => (typeof child === 'string' ? null : (child as Element<ElementKind>).toConfig()))
-    .filter(Boolean) as PropertyConfig[];
+  // Process sections and collect all fields
+  const allFields: PropertyConfig[] = [];
+  const sections: ConfigObject[] = [];
+
+  // Process all children
+  const directFields = element.children
+    .filter(child => typeof child !== 'string' && (child as Element<ElementKind>).kind === 'field')
+    .map(child => (child as Element<'field'>).toConfig()) as PropertyConfig[];
+
+  // Add direct fields to allFields
+  allFields.push(...directFields);
+
+  // Process sections
+  element.children
+    .filter(child => typeof child !== 'string' && (child as Element<ElementKind>).kind === 'section')
+    .forEach(section => {
+      const sectionElement = section as Element<'section'>;
+      const sectionConfig = sectionElement.toConfig();
+      sections.push(sectionConfig);
+
+      // Extract fields from the section
+      const sectionFields = sectionElement
+        .findChildrenOfKind('field')
+        .map(field => renderField(field) as PropertyConfig);
+      allFields.push(...sectionFields);
+    });
+
+  // Combine sections and direct fields for the final propertiesConfig
+  const propertiesConfig = [...sections, ...directFields];
 
   return {
     formPageConfig: {
@@ -136,7 +161,9 @@ function renderForm(element: Element<'form'>): ConfigObject {
       formLayout: layout,
       submitSuccessRedirect: submitRedirect,
       ...rest,
-      propertiesConfig: fields,
+      propertiesConfig: propertiesConfig,
+      // Store all fields for reference
+      allFields: allFields,
     },
   };
 }
@@ -205,7 +232,7 @@ function renderDetailView(element: Element<'detailview'>): ConfigObject {
 function renderSection(element: Element<'section'>): ConfigObject {
   const { title, collapsible = false, defaultOpen = true, ...rest } = element.props;
 
-  // Process fields
+  // Process fields - get field IDs for the section
   const fields = element.findChildrenOfKind('field').map(field => field.props.id || field.props.name);
 
   return {
