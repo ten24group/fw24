@@ -5,8 +5,8 @@
  * that will be included in the generated UI configuration.
  */
 
-import { ComponentInstance } from '../types/common-types';
-import { render } from '../components';
+import { JSXElement } from '../types/jsx-types';
+import { render } from '../components/jsx';
 import { MenuItem } from '../types/menu-types';
 
 // Store for registered routes
@@ -14,7 +14,7 @@ type RouteRegistry = Map<
   string,
   {
     path: string;
-    component: ComponentInstance;
+    component: JSXElement | any; // Allow both JSX and legacy components
     menuItem?: MenuItem;
     order?: number;
   }
@@ -28,7 +28,7 @@ const routeRegistry: RouteRegistry = new Map();
  */
 export function registerRoute(
   path: string,
-  component: ComponentInstance,
+  component: any, // Accept any type of component
   options: {
     menuItem?: MenuItem;
     order?: number;
@@ -76,7 +76,21 @@ export function generateRegisteredConfigs(): Record<string, any> {
 
   routeRegistry.forEach((route, path) => {
     const routeKey = path.replace(/^\//, '').replace(/\//g, '-');
-    configs[routeKey] = render(route.component);
+    const component = route.component;
+
+    // Handle different component types
+    if (component) {
+      if (typeof component.toConfig === 'function') {
+        // New JSX component with toConfig method
+        configs[routeKey] = component.toConfig();
+      } else if (typeof component === 'object' && 'type' in component) {
+        // Legacy component instance - use the imported render function
+        configs[routeKey] = render(component);
+      } else {
+        // Already a config object
+        configs[routeKey] = component;
+      }
+    }
   });
 
   return configs;
@@ -95,7 +109,7 @@ export function clearRegisteredRoutes(): void {
 export function registerEntityRoute(
   entityName: string,
   routeType: 'list' | 'create' | 'edit' | 'view' | 'custom',
-  component: ComponentInstance,
+  component: JSXElement | any,
   options: {
     menuItem?: MenuItem;
     order?: number;

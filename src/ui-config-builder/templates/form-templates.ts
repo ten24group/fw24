@@ -1,206 +1,275 @@
 /**
- * Form Templates for UI Config Builder
+ * Form templates for the UI Config Builder
+ *
+ * These templates provide pre-built configurations for common form patterns.
+ * They use the FormBuilder internally for consistency.
  */
 
-import { Form, Field, Action, Page, Section } from '../components';
-import { ComponentInstance } from '../types/common-types';
+import { FormBuilder } from '../core/FormBuilder';
 import { PropertyConfig } from '../types';
 
-/**
- * Create a standard form template
- */
-export function createStandardForm(options: {
+export interface FormTemplateOptions {
   entityName: string;
   title?: string;
   description?: string;
   fields: PropertyConfig[];
-  submitUrl?: string;
-  submitRedirect?: string;
   showBackButton?: boolean;
   backUrl?: string;
-}): ComponentInstance {
-  const {
-    entityName,
-    title = `Create ${entityName}`,
-    description,
-    fields,
-    submitUrl = `/${entityName.toLowerCase()}`,
-    submitRedirect = `/list-${entityName.toLowerCase()}`,
-    showBackButton = true,
-    backUrl = `/list-${entityName.toLowerCase()}`,
-  } = options;
-
-  const actions = [];
-
-  if (showBackButton) {
-    actions.push(
-      Action({
-        label: 'Back',
-        url: backUrl,
-      }),
-    );
-  }
-
-  return Page({
-    title,
-    pageType: 'form',
-    description,
-    actions,
-    children: [
-      Form({
-        url: submitUrl,
-        responseKey: entityName.toLowerCase(),
-        submitRedirect,
-        children: fields.map(field => Field(field)),
-      }),
-    ],
-  });
+  submitRedirect?: string;
+  method?: 'POST' | 'PUT' | 'PATCH';
+  url?: string;
+  responseKey?: string;
 }
 
 /**
- * Create a sectioned form template
+ * Creates a standard form configuration
+ *
+ * This creates a simple form with all fields in a single view.
+ * It uses FormBuilder internally to ensure consistency with the builder pattern.
+ *
+ * @param options Configuration options for the form
+ * @returns A form page configuration
  */
-export function createSectionedForm(options: {
-  entityName: string;
-  title?: string;
-  description?: string;
+export function createStandardForm(options: FormTemplateOptions) {
+  const {
+    entityName,
+    title,
+    description,
+    fields,
+    showBackButton = true,
+    backUrl,
+    submitRedirect,
+    method = 'POST',
+    url,
+    responseKey,
+  } = options;
+
+  const formBuilder = new FormBuilder(entityName);
+
+  // Set basic properties
+  formBuilder.setTitle(title || `Create ${entityName}`);
+
+  if (description) {
+    formBuilder.set('formPageConfig', {
+      ...formBuilder.getConfig().formPageConfig,
+      pageDescription: description,
+    });
+  }
+
+  // Add all fields
+  fields.forEach(field => {
+    formBuilder.addProperty(field);
+  });
+
+  // Add back button if requested
+  if (showBackButton) {
+    formBuilder.addHeaderAction({
+      label: 'Back',
+      url: backUrl || `/list-${entityName.toLowerCase()}`,
+    });
+  }
+
+  // Set API configurations
+  formBuilder.set('formPageConfig', {
+    ...formBuilder.getConfig().formPageConfig,
+    apiConfig: {
+      apiMethod: method,
+      apiUrl: url || `/${entityName.toLowerCase()}`,
+      responseKey: responseKey || entityName.toLowerCase(),
+    },
+  });
+
+  // Set redirect on success
+  if (submitRedirect) {
+    formBuilder.setSubmitSuccessRedirect(submitRedirect);
+  } else {
+    formBuilder.setSubmitSuccessRedirect(`/list-${entityName.toLowerCase()}`);
+  }
+
+  return formBuilder.build();
+}
+
+/**
+ * Creates a sectioned form configuration
+ *
+ * This creates a form with fields organized into collapsible sections.
+ * It uses FormBuilder internally to ensure consistency with the builder pattern.
+ *
+ * @param options Configuration options for the form
+ * @param sections Sections configuration for grouping fields
+ * @returns A form page configuration with sections
+ */
+export function createSectionedForm(
+  options: FormTemplateOptions,
   sections: Array<{
     title: string;
-    key: string;
-    fields: PropertyConfig[];
-    collapsed?: boolean;
-  }>;
-  submitUrl?: string;
-  submitRedirect?: string;
-  showBackButton?: boolean;
-  backUrl?: string;
-}): ComponentInstance {
+    description?: string;
+    fieldIds: string[];
+    collapsible?: boolean;
+    defaultOpen?: boolean;
+  }>,
+) {
   const {
     entityName,
-    title = `Create ${entityName}`,
+    title,
     description,
-    sections,
-    submitUrl = `/${entityName.toLowerCase()}`,
-    submitRedirect = `/list-${entityName.toLowerCase()}`,
+    fields,
     showBackButton = true,
-    backUrl = `/list-${entityName.toLowerCase()}`,
+    backUrl,
+    submitRedirect,
+    method = 'POST',
+    url,
+    responseKey,
   } = options;
 
-  const actions = [];
+  const formBuilder = new FormBuilder(entityName);
 
-  if (showBackButton) {
-    actions.push(
-      Action({
-        label: 'Back',
-        url: backUrl,
-      }),
-    );
+  // Set basic properties
+  formBuilder.setTitle(title || `Create ${entityName}`);
+
+  if (description) {
+    formBuilder.set('formPageConfig', {
+      ...formBuilder.getConfig().formPageConfig,
+      pageDescription: description,
+    });
   }
 
-  return Page({
-    title,
-    pageType: 'form',
-    description,
-    actions,
-    children: [
-      Form({
-        url: submitUrl,
-        responseKey: entityName.toLowerCase(),
-        submitRedirect,
-        children: sections.map(section =>
-          Section({
-            title: section.title,
-            key: section.key,
-            collapsed: section.collapsed,
-            children: section.fields.map(field => Field(field)),
-          }),
-        ),
-      }),
-    ],
+  // Add all fields to maintain the complete field list in the config
+  fields.forEach(field => {
+    formBuilder.addProperty(field);
   });
+
+  // Add sections using the set method
+  const formSections = sections.map(section => {
+    const sectionFields = fields.filter(field => section.fieldIds.includes(field.id));
+
+    return {
+      title: section.title,
+      description: section.description,
+      collapsible: section.collapsible !== false,
+      defaultOpen: section.defaultOpen !== false,
+      fields: sectionFields,
+    };
+  });
+
+  formBuilder.set('formPageConfig', {
+    ...formBuilder.getConfig().formPageConfig,
+    sections: formSections,
+  });
+
+  // Add back button if requested
+  if (showBackButton) {
+    formBuilder.addHeaderAction({
+      label: 'Back',
+      url: backUrl || `/list-${entityName.toLowerCase()}`,
+    });
+  }
+
+  // Set API configurations
+  formBuilder.set('formPageConfig', {
+    ...formBuilder.getConfig().formPageConfig,
+    apiConfig: {
+      apiMethod: method,
+      apiUrl: url || `/${entityName.toLowerCase()}`,
+      responseKey: responseKey || entityName.toLowerCase(),
+    },
+  });
+
+  // Set redirect on success
+  if (submitRedirect) {
+    formBuilder.setSubmitSuccessRedirect(submitRedirect);
+  } else {
+    formBuilder.setSubmitSuccessRedirect(`/list-${entityName.toLowerCase()}`);
+  }
+
+  return formBuilder.build();
 }
 
 /**
- * Create a standard edit form template
+ * Creates an edit form template
+ *
+ * This creates a form for editing an existing entity with appropriate API configurations.
+ * It uses FormBuilder internally to ensure consistency with the builder pattern.
+ *
+ * @param options Configuration options for the form
+ * @returns An edit form page configuration
  */
-export function createEditForm(options: {
-  entityName: string;
-  idField?: string;
-  title?: string;
-  description?: string;
-  fields: PropertyConfig[];
-  submitUrl?: string;
-  detailUrl?: string;
-  submitRedirect?: string;
-  showBackButton?: boolean;
-  backUrl?: string;
-  showDeleteButton?: boolean;
-}): ComponentInstance {
+export function createEditForm(options: FormTemplateOptions) {
   const {
     entityName,
-    idField = 'id',
-    title = `Edit ${entityName}`,
+    title,
     description,
     fields,
-    submitUrl = `/${entityName.toLowerCase()}/:${idField}`,
-    detailUrl = `/${entityName.toLowerCase()}/:${idField}`,
-    submitRedirect = `/list-${entityName.toLowerCase()}`,
     showBackButton = true,
-    backUrl = `/list-${entityName.toLowerCase()}`,
-    showDeleteButton = true,
+    backUrl,
+    submitRedirect,
+    url,
+    responseKey,
   } = options;
 
-  const actions = [];
+  const formBuilder = new FormBuilder(entityName);
 
-  if (showBackButton) {
-    actions.push(
-      Action({
-        label: 'Back',
-        url: backUrl,
-      }),
-    );
+  // Set basic properties
+  formBuilder.setTitle(title || `Edit ${entityName}`);
+
+  if (description) {
+    formBuilder.set('formPageConfig', {
+      ...formBuilder.getConfig().formPageConfig,
+      pageDescription: description,
+    });
   }
 
-  if (showDeleteButton) {
-    actions.push(
-      Action({
-        label: 'Delete',
-        icon: 'delete',
-        openInModal: true,
-        modalConfig: {
-          modalType: 'confirm',
-          modalPageConfig: {
-            title: `Delete ${entityName}`,
-            content: `Are you sure you want to delete this ${entityName}?`,
-          },
-          apiConfig: {
-            apiMethod: 'DELETE',
-            apiUrl: `/${entityName.toLowerCase()}/:${idField}`,
-          },
-          submitSuccessRedirect: `/list-${entityName.toLowerCase()}`,
-        },
-      }),
-    );
-  }
-
-  return Page({
-    title,
-    pageType: 'form',
-    description,
-    actions,
-    children: [
-      Form({
-        method: 'PATCH',
-        url: submitUrl,
-        responseKey: entityName.toLowerCase(),
-        submitRedirect,
-        detailApiConfig: {
-          apiMethod: 'GET',
-          apiUrl: detailUrl,
-          responseKey: entityName.toLowerCase(),
-        },
-        children: fields.map(field => Field(field)),
-      }),
-    ],
+  // Add all fields
+  fields.forEach(field => {
+    formBuilder.addProperty(field);
   });
+
+  // Add back button if requested
+  if (showBackButton) {
+    formBuilder.addHeaderAction({
+      label: 'Back',
+      url: backUrl || `/list-${entityName.toLowerCase()}`,
+    });
+  }
+
+  // Add delete button
+  formBuilder.addHeaderAction({
+    label: 'Delete',
+    icon: 'delete',
+    modalConfig: {
+      modalType: 'confirm',
+      modalPageConfig: {
+        title: `Delete ${entityName}`,
+        content: `Are you sure you want to delete this ${entityName.toLowerCase()}?`,
+      },
+      apiConfig: {
+        apiMethod: 'DELETE',
+        apiUrl: url || `/${entityName.toLowerCase()}/:id`,
+      },
+    },
+  });
+
+  // Set API configurations for update
+  formBuilder.set('formPageConfig', {
+    ...formBuilder.getConfig().formPageConfig,
+    apiConfig: {
+      apiMethod: 'PATCH',
+      apiUrl: url || `/${entityName.toLowerCase()}/:id`,
+      responseKey: responseKey || entityName.toLowerCase(),
+    },
+    detailApiConfig: {
+      apiMethod: 'GET',
+      apiUrl: url || `/${entityName.toLowerCase()}/:id`,
+      responseKey: responseKey || entityName.toLowerCase(),
+    },
+  });
+
+  // Set redirect on success
+  if (submitRedirect) {
+    formBuilder.setSubmitSuccessRedirect(submitRedirect);
+  } else {
+    formBuilder.setSubmitSuccessRedirect(`/list-${entityName.toLowerCase()}`);
+  }
+
+  return formBuilder.build();
 }

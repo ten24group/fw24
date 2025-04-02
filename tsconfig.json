@@ -32,7 +32,9 @@
         "types": [
             "node",
             "jest"
-        ]
+        ],
+        "jsx": "react",
+        "jsxFactory": "UIConfig.createElement"
     },
     "include": [
         "src/"

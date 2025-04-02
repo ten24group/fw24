@@ -1,83 +1,115 @@
 /**
- * JSX-like component system for UI Config Builder
+ * JSX Factory implementation for UI Config Builder
+ *
+ * Based on TypeScript JSX as a typed DSL pattern (see: https://dempfi.com/posts/type-scripts-jsx-as-a-typed-dsl/)
  */
 
-import { ComponentInstance, RenderContext } from '../types/common-types';
+import { flatten } from 'lodash';
+import {
+  FieldProps,
+  FormProps,
+  DataTableProps,
+  DetailViewProps,
+  PageProps,
+  ActionProps,
+  ValidationProps,
+  RenderContext,
+  ConfigObject,
+  PageHeaderAction,
+  PropertyConfig,
+} from '../types';
+import { JSXIntrinsicElements } from '../types/jsx-types';
+
+// Kinds of elements our JSX supports
+type ElementKind = keyof JSXIntrinsicElements;
+
+// Helper to check if something is an Element
+const isElement = (e: unknown): e is Element<ElementKind> =>
+  e !== null && typeof e === 'object' && 'kind' in (e as Record<string, unknown>);
 
 /**
- * Convert JSX-like component representation to UI24 configuration
+ * Element class - the core of our JSX implementation
+ * This follows the pattern from the blog post but adapted to our UI config needs
  */
-export function render(component: ComponentInstance, context?: RenderContext): any {
-  // Import specific renderers based on component type
-  const renderers: Record<string, any> = {
-    Layout: renderLayout,
-    Page: renderPage,
-    Form: renderForm,
-    DataTable: renderDataTable,
-    DetailView: renderDetailView,
-    Section: renderSection,
-    Field: renderField,
-    Action: renderAction,
-    // Add more component renderers as needed
-  };
+class Element<K extends ElementKind> {
+  readonly children: Array<string | Element<ElementKind>>;
 
-  // If this is a known component type, use its renderer
-  if (component.type in renderers) {
-    return renderers[component.type](component, context);
+  constructor(
+    readonly kind: K,
+    readonly props: JSXIntrinsicElements[K],
+    children: Array<string | Element<ElementKind> | undefined | null>,
+  ) {
+    // Filter out null/undefined and flatten nested arrays
+    this.children = flatten(children.filter(Boolean)) as Array<string | Element<ElementKind>>;
   }
 
-  // For unknown components, just return the props
-  return component.props;
-}
+  /**
+   * Convert this Element to a UI config object
+   */
+  toConfig(): ConfigObject {
+    // Based on the element kind, use the appropriate renderer
+    const renderers: Record<string, (element: Element<any>) => ConfigObject> = {
+      page: renderPage,
+      form: renderForm,
+      datatable: renderDataTable,
+      detailview: renderDetailView,
+      section: renderSection,
+      field: renderField,
+      action: renderAction,
+      validation: renderValidation,
+      // Add any other element renderers here
+    };
 
-/**
- * Create a component factory for JSX-like syntax
- */
-export function createElement(type: string, props: Record<string, any> | null, ...children: any[]): ComponentInstance {
-  return {
-    type,
-    props: props || {},
-    children: children.filter(child => child !== null && child !== undefined),
-  };
-}
+    // If we have a renderer for this element type, use it
+    if (this.kind in renderers) {
+      return renderers[this.kind](this);
+    }
 
-/**
- * Render a layout component
- */
-function renderLayout(component: ComponentInstance, context?: RenderContext): any {
-  // Handle layout component
-  const { type, title, ...rest } = component.props;
+    // For unknown elements, just return the props
+    return this.props as unknown as ConfigObject;
+  }
 
-  return {
-    ...rest,
-    children: component.children?.map(child =>
-      typeof child === 'string' ? child : render(child as ComponentInstance, context),
-    ),
-  };
+  /**
+   * Find children of a specific kind
+   */
+  findChildrenOfKind<T extends ElementKind>(kind: T): Element<T>[] {
+    return this.children
+      .filter((child): child is Element<T> => isElement(child) && child.kind === kind)
+      .map(child => child as Element<T>);
+  }
+
+  /**
+   * Get the text content of this element (non-element children)
+   */
+  get textContent(): string {
+    return this.children.filter(child => typeof child === 'string').join('');
+  }
 }
 
 /**
  * Render a page component
  */
-function renderPage(component: ComponentInstance, context?: RenderContext): any {
-  const { type, title, pageType = 'custom', breadcrumbs = [], actions = [], ...rest } = component.props;
+function renderPage(element: Element<'page'>): ConfigObject {
+  const { title, pageType = 'custom', breadcrumbs = [], ...rest } = element.props as PageProps;
+
+  // Find content elements
+  const content = element.children
+    .map(child => (typeof child === 'string' ? child : (child as Element<ElementKind>).toConfig()))
+    .filter(Boolean);
 
   return {
     pageTitle: title,
     pageType,
-    breadcrums: breadcrumbs,
-    pageHeaderActions: actions,
+    breadcrumbs,
     ...rest,
-    content: component.children?.map(child =>
-      typeof child === 'string' ? child : render(child as ComponentInstance, context),
-    ),
+    content,
   };
 }
 
 /**
  * Render a form component
  */
-function renderForm(component: ComponentInstance, context?: RenderContext): any {
+function renderForm(element: Element<'form'>): ConfigObject {
   const {
     method = 'POST',
     url,
@@ -86,11 +118,12 @@ function renderForm(component: ComponentInstance, context?: RenderContext): any 
     layout = 'vertical',
     submitRedirect,
     ...rest
-  } = component.props;
+  } = element.props as FormProps;
 
-  const fields = component.children
-    ?.map(child => (typeof child === 'string' ? null : render(child as ComponentInstance, context)))
-    .filter(Boolean);
+  // Find field elements
+  const fields = element.children
+    .map(child => (typeof child === 'string' ? null : (child as Element<ElementKind>).toConfig()))
+    .filter(Boolean) as PropertyConfig[];
 
   return {
     formPageConfig: {
@@ -111,23 +144,21 @@ function renderForm(component: ComponentInstance, context?: RenderContext): any 
 /**
  * Render a data table component
  */
-function renderDataTable(component: ComponentInstance, context?: RenderContext): any {
+function renderDataTable(element: Element<'datatable'>): ConfigObject {
   const {
     url,
     responseKey = 'items',
-    columns = [],
-    pagination = true,
+    perPage = 10,
     search = true,
-    filters = [],
-    rowActions = [],
+    showFilters = false,
     ...rest
-  } = component.props;
+  } = element.props as DataTableProps;
 
-  // Process child components (columns, actions, etc.)
-  const processedColumns =
-    component.children
-      ?.map(child => (typeof child === 'string' ? null : render(child as ComponentInstance, context)))
-      .filter(Boolean) || [];
+  // Process fields
+  const fields = element.findChildrenOfKind('field').map(field => renderField(field) as PropertyConfig);
+
+  // Process actions
+  const actions = element.findChildrenOfKind('action').map(action => renderAction(action) as PageHeaderAction);
 
   return {
     listPageConfig: {
@@ -136,11 +167,11 @@ function renderDataTable(component: ComponentInstance, context?: RenderContext):
         apiUrl: url,
         responseKey,
       },
-      propertiesConfig: [...columns, ...processedColumns],
-      rowActions,
-      paginationConfig: pagination === true ? { defaultPageSize: 10 } : pagination,
+      propertiesConfig: fields,
+      rowActions: actions,
+      paginationConfig: { defaultPageSize: perPage },
       searchConfig: search === true ? { showSearch: true } : search,
-      filterConfig: { allowedFilters: filters },
+      filterConfig: { showFilters },
       ...rest,
     },
   };
@@ -149,13 +180,11 @@ function renderDataTable(component: ComponentInstance, context?: RenderContext):
 /**
  * Render a detail view component
  */
-function renderDetailView(component: ComponentInstance, context?: RenderContext): any {
-  const { url, responseKey, layout = 'default', ...rest } = component.props;
+function renderDetailView(element: Element<'detailview'>): ConfigObject {
+  const { url, responseKey, ...rest } = element.props as DetailViewProps;
 
-  // Process child components (fields, sections, etc.)
-  const fields = component.children
-    ?.map(child => (typeof child === 'string' ? null : render(child as ComponentInstance, context)))
-    .filter(Boolean);
+  // Process fields
+  const fields = element.findChildrenOfKind('field').map(field => renderField(field) as PropertyConfig);
 
   return {
     detailPageConfig: {
@@ -164,7 +193,6 @@ function renderDetailView(component: ComponentInstance, context?: RenderContext)
         apiUrl: url,
         responseKey,
       },
-      layout,
       ...rest,
       propertiesConfig: fields,
     },
@@ -174,24 +202,17 @@ function renderDetailView(component: ComponentInstance, context?: RenderContext)
 /**
  * Render a section component
  */
-function renderSection(component: ComponentInstance, context?: RenderContext): any {
-  const { title, key, collapsed = false, description, ...rest } = component.props;
+function renderSection(element: Element<'section'>): ConfigObject {
+  const { title, collapsible = false, defaultOpen = true, ...rest } = element.props;
 
-  // Get field IDs from children
-  const fieldIds = component.children
-    ?.map(child => {
-      if (typeof child === 'string') return null;
-      const rendered = render(child as ComponentInstance, context);
-      return rendered?.id;
-    })
-    .filter(Boolean);
+  // Process fields
+  const fields = element.findChildrenOfKind('field').map(field => field.props.id || field.props.name);
 
   return {
     title,
-    key,
-    collapsed,
-    description,
-    fields: fieldIds,
+    collapsed: !defaultOpen,
+    collapsible,
+    fields,
     ...rest,
   };
 }
@@ -199,8 +220,27 @@ function renderSection(component: ComponentInstance, context?: RenderContext): a
 /**
  * Render a field component
  */
-function renderField(component: ComponentInstance, context?: RenderContext): any {
-  const { id, name, type = 'string', fieldType = 'text', label, required = false, ...rest } = component.props;
+function renderField(element: Element<'field'>): ConfigObject {
+  const {
+    id,
+    name,
+    type = 'string',
+    fieldType = 'text',
+    label,
+    required = false,
+    ...rest
+  } = element.props as FieldProps;
+
+  // Process validation elements
+  const validations = element
+    .findChildrenOfKind('validation')
+    .map(validation => renderValidation(validation) as ConfigObject);
+
+  // Process options
+  const options = element.findChildrenOfKind('option').map(option => ({
+    label: option.props.label || String(option.props.value),
+    value: option.props.value,
+  }));
 
   return {
     id,
@@ -208,7 +248,8 @@ function renderField(component: ComponentInstance, context?: RenderContext): any
     type,
     fieldType,
     label: label || name || id,
-    validations: required ? ['required'] : [],
+    validations: required ? [{ required: true }, ...validations] : validations.length ? validations : undefined,
+    options: options.length ? options : undefined,
     ...rest,
     column: id,
   };
@@ -217,16 +258,59 @@ function renderField(component: ComponentInstance, context?: RenderContext): any
 /**
  * Render an action component
  */
-function renderAction(component: ComponentInstance, context?: RenderContext): any {
-  const { label, url, icon, onClick, openInModal, modalConfig, ...rest } = component.props;
+function renderAction(element: Element<'action'>): ConfigObject {
+  const { label, url, icon, type = 'primary', ...rest } = element.props as ActionProps;
 
   return {
     label,
     url,
     icon,
-    onClick,
-    openInModal,
-    modalConfig,
+    type,
     ...rest,
   };
 }
+
+/**
+ * Render a validation component
+ */
+function renderValidation(element: Element<'validation'>): ConfigObject {
+  const { type, message, value } = element.props as ValidationProps;
+
+  return {
+    [type]: value !== undefined ? value : true,
+    message,
+  };
+}
+
+/**
+ * The createElement function that TypeScript compiler will call for JSX expressions
+ * as configured in tsconfig.json with jsxFactory option
+ */
+export function createElement<K extends ElementKind>(
+  type: K,
+  props: JSXIntrinsicElements[K] | null,
+  ...children: any[]
+): Element<K> {
+  return new Element(type, props || ({} as JSXIntrinsicElements[K]), children);
+}
+
+/**
+ * Render a component tree into a configuration object
+ */
+export function render(component: Element<ElementKind>, _context?: RenderContext): ConfigObject {
+  return component.toConfig();
+}
+
+/**
+ * Build a UI configuration from JSX
+ */
+export function buildConfig(jsxElement: JSX.Element): ConfigObject {
+  return (jsxElement as unknown as Element<ElementKind>).toConfig();
+}
+
+// Export the factory function - this is what tsconfig.jsxFactory refers to
+export default {
+  createElement,
+  render,
+  buildConfig,
+};

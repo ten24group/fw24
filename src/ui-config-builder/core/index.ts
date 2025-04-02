@@ -2,6 +2,12 @@
  * Core builders for UI configuration
  */
 
+import { FormPageConfig } from '../types/form-types';
+import { ListPageConfig } from '../types/list-types';
+import { DetailPageConfig } from '../types/detail-types';
+import { MenuConfig } from '../types/menu-types';
+import { PageHeaderAction } from '../types';
+
 export * from './BaseBuilder';
 export * from './FormBuilder';
 export * from './ListBuilder';
@@ -17,28 +23,28 @@ import { MenuBuilder } from './MenuBuilder';
 /**
  * Create a form page builder instance
  */
-export function createFormBuilder(entityName: string, initialConfig?: any) {
+export function createFormBuilder(entityName: string, initialConfig?: Partial<FormPageConfig>) {
   return new FormBuilder(entityName, initialConfig);
 }
 
 /**
  * Create a list page builder instance
  */
-export function createListBuilder(entityName: string, initialConfig?: any) {
+export function createListBuilder(entityName: string, initialConfig?: Partial<ListPageConfig>) {
   return new ListBuilder(entityName, initialConfig);
 }
 
 /**
  * Create a detail page builder instance
  */
-export function createDetailBuilder(entityName: string, initialConfig?: any) {
+export function createDetailBuilder(entityName: string, initialConfig?: Partial<DetailPageConfig>) {
   return new DetailBuilder(entityName, initialConfig);
 }
 
 /**
  * Create a menu builder instance
  */
-export function createMenuBuilder(initialConfig?: any) {
+export function createMenuBuilder(initialConfig?: Partial<MenuConfig>) {
   return new MenuBuilder(initialConfig);
 }
 
@@ -54,7 +60,7 @@ export function createEntityUIConfig(
     view?: boolean;
     menu?: boolean;
     menuIcon?: string;
-    customConfigs?: Record<string, any>;
+    customConfigs?: Record<string, Record<string, unknown>>;
   } = {},
 ) {
   const {
@@ -67,7 +73,7 @@ export function createEntityUIConfig(
     customConfigs = {},
   } = options;
 
-  const result: Record<string, any> = {
+  const result: Record<string, Record<string, unknown>> = {
     ...customConfigs,
   };
 
@@ -162,6 +168,7 @@ import { createStandardForm, createEditForm } from '../templates/form-templates'
 import { createStandardList } from '../templates/list-templates';
 import { createStandardDetailView } from '../templates/detail-templates';
 import { createEntityConfig } from '../components';
+import { PropertyConfig } from '../types';
 
 /**
  * Create a complete entity UI configuration using JSX templates
@@ -173,13 +180,13 @@ export function createEntityUIConfigFromTemplates(
     create?: boolean;
     edit?: boolean;
     view?: boolean;
-    fields?: any[];
-    customConfigs?: Record<string, any>;
+    fields?: PropertyConfig[];
+    customConfigs?: Record<string, Record<string, unknown>>;
   } = {},
 ) {
   const { list = true, create = true, edit = true, view = true, fields = [], customConfigs = {} } = options;
 
-  const result: Record<string, any> = {
+  const result: Record<string, Record<string, unknown>> = {
     ...customConfigs,
   };
 
