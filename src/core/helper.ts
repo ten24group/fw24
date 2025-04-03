@@ -137,35 +137,30 @@ export class Helper {
         // Register the handlers
         for (const handlerPath of handlerPaths) {
             Helper.logger.debug("Registering Lambda Handlers from handlerPath: "+ handlerPath);
-            try {
-                // Dynamically import the controller file
-                const module = await import(join(handlerDirectory, handlerPath));
-                const fileBuffer = readFileSync(join(handlerDirectory, handlerPath));
-                const moduleHash = createHash('md5').update(JSON.stringify(fileBuffer)).digest('hex');
-                Helper.logger.debug("Registering Lambda Handlers moduleHash: ", {moduleHash});
+            // Dynamically import the controller file
+            const module = await import(join(handlerDirectory, handlerPath));
+            const fileBuffer = readFileSync(join(handlerDirectory, handlerPath));
+            const moduleHash = createHash('md5').update(JSON.stringify(fileBuffer)).digest('hex');
+            Helper.logger.debug("Registering Lambda Handlers moduleHash: ", {moduleHash});
 
-                // Find and instantiate controller classes
-                for (const exportedItem of Object.values(module)) {
-                    if (typeof exportedItem === "function" && exportedItem.name !== "handler") {
+            // Find and instantiate controller classes
+            for (const exportedItem of Object.values(module)) {
+                if (typeof exportedItem === "function" && exportedItem.name !== "handler") {
 
-                        const currentHandler: HandlerDescriptor = {
-                            handlerClass: exportedItem,
-                            fileName: handlerPath,
-                            filePath: handlerDirectory,
-                            handlerHash: moduleHash
-                        };
+                    const currentHandler: HandlerDescriptor = {
+                        handlerClass: exportedItem,
+                        fileName: handlerPath,
+                        filePath: handlerDirectory,
+                        handlerHash: moduleHash
+                    };
 
-                        Helper.logger.debug("Registering Lambda Handlers registering currentHandler: ", {handlerPath, handlerDirectory});
+                    Helper.logger.debug("Registering Lambda Handlers registering currentHandler: ", {handlerPath, handlerDirectory});
 
-                        handlerRegistrar(currentHandler);
-                        break;
-                    } else {
-                        Helper.logger.debug("Registering Lambda Handlers ignored exportedItem: ", {exportedItem});
-                    }
+                    handlerRegistrar(currentHandler);
+                    break;
+                } else {
+                    Helper.logger.debug("Registering Lambda Handlers ignored exportedItem: ", {exportedItem});
                 }
-            } catch (err) {
-                Helper.logger.error("Error registering handler: ", {handlerDirectory, handlerPath});
-                Helper.logger.error(err);
             }
         }
     }

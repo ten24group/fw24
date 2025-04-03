@@ -192,6 +192,12 @@ export interface IAuthConstructConfig extends IConstructConfig {
         type: string;
         functionProps: LambdaFunctionProps;
     };
+    /**
+     * How to resolve ambiguous role assignments.
+     * Defaults to "UseDefaultRole" which will use the default authenticated role when there's ambiguity.
+     * Can be set to "Deny" to deny access when there's ambiguity.
+     */
+    ambiguousRoleResolution?: 'UseDefaultRole' | 'Deny';
 }
 
 const AuthConstructConfigDefaults: IAuthConstructConfig = {
@@ -225,7 +231,8 @@ const AuthConstructConfigDefaults: IAuthConstructConfig = {
                 userPassword: true,
             }
         }
-    }
+    },
+    ambiguousRoleResolution: 'Deny'
 }
 
 export class AuthConstruct implements FW24Construct {
@@ -402,7 +409,7 @@ export class AuthConstruct implements FW24Construct {
             roleAttachment.roleMappings = {
                 "userpool": {
                     type: "Token",
-                    ambiguousRoleResolution: "Deny",
+                    ambiguousRoleResolution: this.authConstructConfig.ambiguousRoleResolution,
                     identityProvider: identityProvider,
                 }
             }
