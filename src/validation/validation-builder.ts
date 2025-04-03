@@ -129,7 +129,7 @@ function parseRule(rule: ValidationRule): Record<string, any>[] {
     }
 
     if (key === 'in') {
-      const rule: Record<string, any> = { inList: Array.isArray(value) ? value[0] : value };
+      const rule: Record<string, any> = { inList: Array.isArray(value) && Array.isArray(value[0]) ? value[0] : value };
       if (Array.isArray(value) && value[1]) rule.message = value[1];
       if (operations) rule.operations = operations;
       result.push(rule);
@@ -137,7 +137,9 @@ function parseRule(rule: ValidationRule): Record<string, any>[] {
     }
 
     if (key === 'notIn') {
-      const rule: Record<string, any> = { notInList: Array.isArray(value) ? value[0] : value };
+      const rule: Record<string, any> = {
+        notInList: Array.isArray(value) && Array.isArray(value[0]) ? value[0] : value,
+      };
       if (Array.isArray(value) && value[1]) rule.message = value[1];
       if (operations) rule.operations = operations;
       result.push(rule);
@@ -150,9 +152,9 @@ function parseRule(rule: ValidationRule): Record<string, any>[] {
           const nestedRules = parseRule(conditional.rules);
           for (const nestedRule of nestedRules) {
             const conditionalRule = {
+              ...nestedRule,
               conditional: {
                 condition: conditional.condition,
-                rule: nestedRule,
               },
             };
             result.push(conditionalRule);
@@ -165,7 +167,8 @@ function parseRule(rule: ValidationRule): Record<string, any>[] {
     // Standard rule
     const ruleObj: Record<string, any> = {};
 
-    if (Array.isArray(value)) {
+    if (Array.isArray(value) && !Array.isArray(value[0])) {
+      // Handle direct array format like [10, "message"]
       ruleObj[key] = value[0];
       if (value[1]) ruleObj.message = value[1];
     } else {
@@ -200,7 +203,7 @@ function processPasswordRule(rule: PasswordRule): ValidationRule {
   const minLength =
     typeof rule.minLength === 'number' ? rule.minLength : Array.isArray(rule.minLength) ? rule.minLength[0] : 8;
 
-  result.minLength = [minLength, `Password must be at least ${minLength} characters`];
+  result.minLength = minLength;
 
   // Build pattern for complexity requirements
   if (rule.requireUpper || rule.requireSpecial || rule.requireDigit) {
@@ -223,7 +226,10 @@ function processPasswordRule(rule: PasswordRule): ValidationRule {
     }
 
     pattern += '.+';
-    result.pattern = [new RegExp(pattern), `Password must contain at least one ${requirements.join(', ')}`];
+    result.pattern = new RegExp(pattern);
+    if (!result.message) {
+      result.message = `Password must contain at least one ${requirements.join(', ')}`;
+    }
   }
 
   return result;
@@ -240,12 +246,12 @@ function processNameRule(rule: NameRule): ValidationRule {
 
   if (rule.minLength) {
     const min = typeof rule.minLength === 'number' ? rule.minLength : rule.minLength[0];
-    result.minLength = [min, `Name must be at least ${min} characters`];
+    result.minLength = min;
   }
 
   if (rule.maxLength) {
     const max = typeof rule.maxLength === 'number' ? rule.maxLength : rule.maxLength[0];
-    result.maxLength = [max, `Name must be at most ${max} characters`];
+    result.maxLength = max;
   }
 
   return result;
