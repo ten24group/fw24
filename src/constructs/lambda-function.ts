@@ -392,7 +392,10 @@ export class LambdaFunction extends Construct {
 
       const access = typeof table === 'string' ? [ 'readwrite' ] : table.access || [ 'readwrite' ];
       // Get the DynamoDB table based on the controller config
-      const tableInstance: ITableV2 = TableV2.fromTableName(this, `${id}-${tableName}-table`, fw24.getEnvironmentVariable(appQualifiedTableName + '_tableName', 'table', scope));
+      const tableInstance: ITableV2 = TableV2.fromTableAttributes(this, `${id}-${tableName}-table`, {
+        tableName: fw24.getEnvironmentVariable(appQualifiedTableName + '_tableName', 'table', scope),
+        grantIndexPermissions: true,
+      });
 
       // Add the table name to the lambda environment      
       addEnvironmentKeyValueForFunction({
