@@ -9,7 +9,6 @@ The Validation Builder provides a fluent, type-safe API for defining validations
 - [Multiple Field Validations](#multiple-field-validations)
 - [Operation-Specific Validations](#operation-specific-validations)
 - [Custom Messages](#custom-messages)
-- [Predefined Rule Templates](#predefined-rule-templates)
 - [Conditional Validations](#conditional-validations)
 - [HTTP Validations](#http-validations)
 - [Comparison with Traditional Approach](#comparison-with-traditional-approach)
@@ -118,25 +117,6 @@ entity()
   .build();
 ```
 
-## Predefined Rule Templates
-
-The builder includes predefined templates for common validation patterns:
-
-```typescript
-entity()
-  .addPassword('input', 'password', {
-    minLength: 8,
-    requireSpecial: true,
-    requireUpper: true,
-    requireDigit: true,
-  })
-  .addName('input', 'fullName', {
-    minLength: 2,
-    maxLength: 50,
-  })
-  .build();
-```
-
 ## Conditional Validations
 
 Create complex conditional validations:
@@ -156,6 +136,52 @@ entity()
   })
   .build();
 ```
+
+### Combined Named and Function Conditions
+
+You can mix named conditions and function conditions for more flexibility:
+
+```typescript
+// Define named conditions
+const conditions = {
+  isPremiumUser: {
+    input: {
+      accountType: { eq: 'premium' },
+    },
+  },
+  hasShippingEnabled: {
+    actor: {
+      preferences: { hasPath: 'shipping.enabled' },
+    },
+  },
+};
+
+// Use both named and function conditions
+const validations = entity()
+  .defineConditions(conditions)
+  .add('input', 'shippingAddress', {
+    when: [
+      {
+        // Using a named condition
+        condition: 'isPremiumUser',
+        rules: {
+          required: true,
+        },
+      },
+      {
+        // Using a function condition alongside named conditions
+        condition: (value, data, context) => context.conditionMatches('hasShippingEnabled') && data.hasPhysicalProducts,
+        rules: {
+          minLength: 10,
+          pattern: [/^\d+ .+, .+, [A-Z]{2} \d{5}$/, 'Please enter a valid address format'],
+        },
+      },
+    ],
+  })
+  .build();
+```
+
+This allows you to reuse common conditions while still having the flexibility to create dynamic conditions that can reference other named conditions.
 
 ## HTTP Validations
 
@@ -378,12 +404,6 @@ const validations = entity()
     role: { in: [['admin', 'editor', 'user']] },
   })
 
-  // Add special template fields
-  .addPassword('input', 'password', {
-    minLength: 8,
-    requireSpecial: true,
-  })
-
   .build();
 ```
 
@@ -399,6 +419,36 @@ entity()
       minLength: [8, 'Too short'],
       pattern: [/(?=.*[A-Z])(?=.*\d)/, 'Need uppercase and number'],
     }),
+  })
+  .build();
+```
+
+### Using Named Conditions With Context
+
+```typescript
+// Define named conditions
+const conditions = {
+  isAdminUser: {
+    actor: {
+      role: { eq: 'admin' },
+    },
+  },
+};
+
+// Use conditions with context
+const validations = entity()
+  .defineConditions(conditions)
+  .add('input', 'secretKey', {
+    when: [
+      {
+        // Function condition that references named condition
+        condition: (value, data, context) => !context.conditionMatches('isAdminUser') && data.accessLevel > 5,
+        rules: {
+          required: true,
+          minLength: 12,
+        },
+      },
+    ],
   })
   .build();
 ```
@@ -470,28 +520,7 @@ const validations = entity()
   .build();
 ```
 
-4. Use predefined templates for common patterns:
-
-```typescript
-// Old approach
-const validations = {
-  input: {
-    password: [{ required: true }, { minLength: 8 }, { pattern: /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])/ }],
-  },
-};
-
-// New approach
-const validations = entity()
-  .addPassword('input', 'password', {
-    minLength: 8,
-    requireSpecial: true,
-    requireUpper: true,
-    requireDigit: true,
-  })
-  .build();
-```
-
-5. For HTTP validations, use the `http()` builder:
+4. For HTTP validations, use the `http()` builder:
 
 ```typescript
 // Old approach
@@ -507,6 +536,47 @@ import { http } from './validation-builder';
 const validations = http()
   .body({
     email: { required: true, email: true },
+  })
+  .build();
+```
+
+5. Convert named conditions to the new approach:
+
+```typescript
+// Old approach
+const condition = {
+  isPremium: {
+    input: {
+      accountType: { eq: 'premium' },
+    },
+  },
+};
+
+const validations = {
+  conditions: condition,
+  input: {
+    specialFeature: [{ required: true, conditions: [['isPremium'], 'all'] }],
+  },
+};
+
+// New approach
+const conditions = {
+  isPremium: {
+    input: {
+      accountType: { eq: 'premium' },
+    },
+  },
+};
+
+const validations = entity()
+  .defineConditions(conditions)
+  .add('input', 'specialFeature', {
+    when: [
+      {
+        condition: 'isPremium',
+        rules: { required: true },
+      },
+    ],
   })
   .build();
 ```

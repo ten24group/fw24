@@ -283,20 +283,6 @@ export class EntityValidationBuilder {
   }
 
   /**
-   * Add a password validation rule
-   */
-  addPassword(target: Target, field: string, rule: PasswordRule): EntityValidationBuilder {
-    return this.add(target, field, processPasswordRule(rule));
-  }
-
-  /**
-   * Add a name validation rule
-   */
-  addName(target: Target, field: string, rule: NameRule): EntityValidationBuilder {
-    return this.add(target, field, processNameRule(rule));
-  }
-
-  /**
    * Add validation rules for inputs
    */
   inputs(fields: Record<string, ValidationRule | ((rule: ValidationRule) => ValidationRule)>): EntityValidationBuilder {
