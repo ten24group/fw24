@@ -18,7 +18,7 @@ export interface DetailPageConfig extends PageConfig {
 /**
  * Layout types for detail pages
  */
-export type DetailLayout = 'default' | 'two-column' | 'tabs' | 'sections';
+export type DetailLayout = 'default' | 'two-column' | 'tabs' | 'sections' | 'descriptive';
 
 /**
  * Detail page section configuration

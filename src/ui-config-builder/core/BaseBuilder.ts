@@ -1,12 +1,13 @@
+import { ConfigObject } from '../types';
+
 /**
  * Base class for all UI configuration builders
  * Provides common functionality for building UI configurations
  */
-
-export abstract class BaseBuilder<T> {
+export abstract class BaseBuilder<T extends ConfigObject> {
   protected config: T;
 
-  constructor(initialConfig?: Partial<T>) {
+  constructor(initialConfig: Partial<T>) {
     this.config = { ...initialConfig } as T;
   }
 
@@ -30,6 +31,18 @@ export abstract class BaseBuilder<T> {
    * Should be implemented by child classes
    */
   protected abstract validate(): void;
+
+  /**
+   * Merge configuration objects
+   * @param target Target object
+   * @param source Source object
+   */
+  protected merge(target: object, source: object): object {
+    return {
+      ...target,
+      ...source,
+    };
+  }
 
   /**
    * Extend or replace part of the configuration

@@ -180,7 +180,7 @@ describe('List Templates', () => {
       // Verify basic structure
       expect(list.pageType).toBe('list');
       expect(list.pageTitle).toBe('user List');
-      expect(list.listPageConfig.propertiesConfig).toHaveLength(2);
+      expect(list.listPageConfig.propertiesConfig).toHaveLength(3);
       expect(list.listPageConfig.rowActions).toHaveLength(3); // View, Edit, Delete
 
       // Check for create action

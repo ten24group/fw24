@@ -4,6 +4,8 @@ import { DetailPageConfig, DetailSection, RelatedEntity, DetailLayout } from '..
 
 /**
  * Builder for detail page configurations
+ *
+ * Creates detail view configurations compatible with the UI24 system.
  */
 export class DetailBuilder extends BaseBuilder<DetailPageConfig> {
   constructor(entityName: string, initialConfig?: Partial<DetailPageConfig>) {
@@ -93,7 +95,18 @@ export class DetailBuilder extends BaseBuilder<DetailPageConfig> {
    */
   public addProperty(property: PropertyConfig): this {
     const properties = [...this.config.detailPageConfig.propertiesConfig];
-    properties.push(property);
+
+    // Ensure property has all required fields for UI24
+    const enhancedProperty = {
+      ...property,
+      name: property.name || property.id,
+      fieldType: property.fieldType || property.type || 'text',
+      label: property.label || property.name || property.id,
+      column: property.column || property.name || property.id,
+    };
+
+    properties.push(enhancedProperty);
+
     return this.set('detailPageConfig', {
       ...this.config.detailPageConfig,
       propertiesConfig: properties,
@@ -196,6 +209,18 @@ export class DetailBuilder extends BaseBuilder<DetailPageConfig> {
       icon: 'arrowLeft',
       url: `/list-${entityName.toLowerCase()}`,
     });
+  }
+
+  /**
+   * Build the final configuration with UI24 compatibility adjustments
+   */
+  public build(): DetailPageConfig {
+    // Ensure the configuration has a default layout if not specified
+    if (!this.config.detailPageConfig.layout) {
+      this.config.detailPageConfig.layout = 'descriptive';
+    }
+
+    return super.build();
   }
 
   /**

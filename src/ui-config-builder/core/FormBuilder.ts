@@ -4,6 +4,8 @@ import { FormPageConfig, FormButton, FormSection } from '../types/form-types';
 
 /**
  * Builder for form page configurations
+ *
+ * Directly creates configurations in the format expected by UI24.
  */
 export class FormBuilder extends BaseBuilder<FormPageConfig> {
   constructor(entityName: string, initialConfig?: Partial<FormPageConfig>) {
@@ -126,7 +128,18 @@ export class FormBuilder extends BaseBuilder<FormPageConfig> {
    */
   public addProperty(property: PropertyConfig): this {
     const properties = [...this.config.formPageConfig.propertiesConfig];
-    properties.push(property);
+
+    // Ensure property has all required fields for UI24
+    const enhancedProperty = {
+      ...property,
+      name: property.name || property.id,
+      fieldType: property.fieldType || property.type || 'text',
+      label: property.label || property.name || property.id,
+      column: property.column || property.name || property.id,
+    };
+
+    properties.push(enhancedProperty);
+
     return this.set('formPageConfig', {
       ...this.config.formPageConfig,
       propertiesConfig: properties,
@@ -193,6 +206,18 @@ export class FormBuilder extends BaseBuilder<FormPageConfig> {
       ...this.config.formPageConfig,
       onSubmitHandler: handlerName,
     });
+  }
+
+  /**
+   * Build the final configuration
+   */
+  public build(): FormPageConfig {
+    // Set default form layout if not specified
+    if (!this.config.formPageConfig.formLayout) {
+      this.config.formPageConfig.formLayout = 'horizontal';
+    }
+
+    return super.build();
   }
 
   /**

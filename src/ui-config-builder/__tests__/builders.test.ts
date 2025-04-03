@@ -9,11 +9,10 @@ import {
   createEntityUIConfig,
   createEntityUIConfigFromTemplates,
 } from '../core';
-import { PropertyConfig, FormPageConfig, ListPageConfig, DetailPageConfig, ConfigObject } from '../types';
+import { PropertyConfig, FormPageConfig, ListPageConfig, DetailPageConfig } from '../types';
 import { FormBuilder } from '../core/FormBuilder';
 import { ListBuilder } from '../core/ListBuilder';
 import { DetailBuilder } from '../core/DetailBuilder';
-import * as coreIndex from '../core/index';
 
 // Define more specific types for testing
 interface ApiConfig {
@@ -276,7 +275,10 @@ describe('Builder Pattern Implementation', () => {
 
       // Verify structure
       expect(config).toHaveProperty('pageTitle', 'User Management');
-      expect(config.listPageConfig.propertiesConfig).toHaveLength(1);
+      // Expect 2 properties - the added 'name' property and the automatically added 'actions' column
+      expect(config.listPageConfig.propertiesConfig).toHaveLength(2);
+      // The last property should be the actions column
+      expect(config.listPageConfig.propertiesConfig[1].id).toBe('actions');
       expect(config.listPageConfig.rowActions || []).toHaveLength(1);
       if (config.listPageConfig.rowActions) {
         expect(config.listPageConfig.rowActions[0]).toHaveProperty('label', 'Edit');

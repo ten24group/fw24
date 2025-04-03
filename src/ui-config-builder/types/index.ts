@@ -1,6 +1,6 @@
 /**
  * Core types for the UI Config Builder system
- * These types align with the UI24 system's configuration structure
+ * These types directly match the UI24 system's configuration structure
  */
 
 // Main configuration interface that matches UI24Config
@@ -64,14 +64,18 @@ export interface ApiConfig {
   [key: string]: unknown;
 }
 
-// Field property configuration
+// Field property configuration - directly matching UI24's expected format
 export interface PropertyConfig {
+  // Common fields for all UI systems
   id: string;
   name: string;
+  dataIndex?: string; // For list view columns
   type: string;
   fieldType: string;
   label: string;
   column: string;
+
+  // Visibility and permissions
   isVisible?: boolean;
   isEditable?: boolean;
   isListable?: boolean;
@@ -80,10 +84,17 @@ export interface PropertyConfig {
   isSearchable?: boolean;
   isRequired?: boolean;
   hidden?: boolean;
+
+  // Validation and options
   validations?: Array<Record<string, unknown>>;
   options?: Array<{ label: string; value: string | number }> | ApiOptionConfig;
   description?: string;
+
+  // Relationships
   relation?: RelationConfig;
+  isIdentifier?: boolean;
+
+  // Allow extension for special fields
   [key: string]: unknown;
 }
 

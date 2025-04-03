@@ -11,6 +11,8 @@ import {
 
 /**
  * Builder for list page configurations
+ *
+ * Directly creates configurations in the format expected by UI24.
  */
 export class ListBuilder extends BaseBuilder<ListPageConfig> {
   constructor(entityName: string, initialConfig?: Partial<ListPageConfig>) {
@@ -21,7 +23,7 @@ export class ListBuilder extends BaseBuilder<ListPageConfig> {
         apiConfig: {
           apiMethod: 'GET',
           apiUrl: `/${entityName.toLowerCase()}`,
-          responseKey: 'items',
+          responseKey: 'items', // Standard responseKey used by UI24
         },
         propertiesConfig: [],
       },
@@ -100,7 +102,19 @@ export class ListBuilder extends BaseBuilder<ListPageConfig> {
    */
   public addProperty(property: PropertyConfig): this {
     const properties = [...this.config.listPageConfig.propertiesConfig];
-    properties.push(property);
+
+    // Ensure property has all required fields for UI24
+    const enhancedProperty = {
+      ...property,
+      // If property doesn't have name or dataIndex, set them from id
+      name: property.name || property.id,
+      dataIndex: property.dataIndex || property.column || property.name || property.id,
+      // Other necessary fields
+      fieldType: property.fieldType || property.type || 'text',
+    };
+
+    properties.push(enhancedProperty);
+
     return this.set('listPageConfig', {
       ...this.config.listPageConfig,
       propertiesConfig: properties,
@@ -202,6 +216,7 @@ export class ListBuilder extends BaseBuilder<ListPageConfig> {
       icon: 'delete',
       openInModal: true,
       modalConfig: {
+        modalType: 'confirm',
         title: `Delete ${entityName}`,
         content: `Are you sure you want to delete this ${entityName}?`,
         apiConfig: {
@@ -220,6 +235,54 @@ export class ListBuilder extends BaseBuilder<ListPageConfig> {
     this.addDefaultEditAction(entityName, idField);
     this.addDefaultDeleteAction(entityName, idField);
     return this;
+  }
+
+  /**
+   * Build the final configuration
+   */
+  public build(): ListPageConfig {
+    // Add actions column if needed
+    this.addActionColumn();
+
+    // Set default pagination if not specified
+    if (!this.config.listPageConfig.paginationConfig) {
+      this.config.listPageConfig.paginationConfig = {
+        defaultPageSize: 10,
+        showSizeChanger: true,
+        pageSizeOptions: [10, 20, 50, 100],
+      };
+    }
+
+    return super.build();
+  }
+
+  /**
+   * Add action column for actions if row actions exist
+   */
+  private addActionColumn(): void {
+    if (!this.config.listPageConfig.rowActions || this.config.listPageConfig.rowActions.length === 0) {
+      return;
+    }
+
+    // Check if actions column already exists
+    const hasActionsColumn = this.config.listPageConfig.propertiesConfig.some(
+      prop => prop.name === 'actions' || prop.id === 'actions',
+    );
+
+    if (!hasActionsColumn) {
+      const actionsProperty = {
+        id: 'actions',
+        name: 'actions',
+        type: 'actions',
+        fieldType: 'actions',
+        label: 'Actions',
+        column: 'actions',
+        isListable: true,
+        actions: this.config.listPageConfig.rowActions,
+      };
+
+      this.config.listPageConfig.propertiesConfig.push(actionsProperty);
+    }
   }
 
   /**
