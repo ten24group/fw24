@@ -334,7 +334,7 @@ export function findMatchingIndex(
     const repository = entityService.getRepository();
     const { keys, index, shouldScan } = (repository as any)._findBestIndexKeyMatch(filters);
 
-    logger.info(`Found ElectroDB index: ${index} with ${keys.length} attribute matches for entity: ${entityName} with filters and scan: ${shouldScan} - `, keys, filters);
+    logger.debug(`Found ElectroDB index: ${index} with ${keys.length} attribute matches for entity: ${entityName} with filters and scan: ${shouldScan} - `, keys, filters);
     
     // If we found a matching index, use it
     if (!shouldScan) {
@@ -364,7 +364,7 @@ export function findMatchingIndex(
             }
         }
 
-        logger.info(`Using ElectroDB matched index: ${schemaIndexName} (internal: ${index}) with ${keys.length} attribute matches for entity: ${entityName} with filters:`, indexFilters);
+        logger.debug(`Using ElectroDB matched index: ${schemaIndexName} (internal: ${index}) with ${keys.length} attribute matches for entity: ${entityName} with filters:`, indexFilters);
         return { indexName: schemaIndexName, indexFilters };
     }
 
@@ -374,7 +374,7 @@ export function findMatchingIndex(
         if (indexDef.pk.template && 
             typeof indexDef.pk.template === 'string' && 
             indexDef.pk.template.toLowerCase() === entityName.toLowerCase()) {
-            logger.info(`Using template matching index: ${indexName} for entity: ${entityName}`);
+            logger.debug(`Using template matching index: ${indexName} for entity: ${entityName}`);
             return { 
                 indexName, 
                 indexFilters: {}
@@ -428,7 +428,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
     // Check if we have a filter that matches an index
     const schema = entityService.getEntitySchema();
     const matchResult = findMatchingIndex(schema, filters, entityName, entityService);
-    logger.info(`Match result:`, matchResult);
+    logger.debug(`Match result:`, matchResult);
     // Use the appropriate index if available
     const repository = entityService.getRepository();
     
