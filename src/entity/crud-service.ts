@@ -334,7 +334,7 @@ export function findMatchingIndex(
     const repository = entityService.getRepository();
     const { keys, index, shouldScan } = (repository as any)._findBestIndexKeyMatch(filters);
 
-    logger.debug(`Found ElectroDB index: ${index} with ${keys.length} attribute matches for entity: ${entityName} with filters and scan: ${shouldScan} - `, keys, filters);
+    logger.info(`Found ElectroDB index: ${index} with ${keys.length} attribute matches for entity: ${entityName} with filters and scan: ${shouldScan} - `, keys, filters);
     
     // If we found a matching index, use it
     if (!shouldScan) {
@@ -364,7 +364,7 @@ export function findMatchingIndex(
             }
         }
 
-        logger.debug(`Using ElectroDB matched index: ${schemaIndexName} (internal: ${index}) with ${keys.length} attribute matches for entity: ${entityName} with filters:`, indexFilters);
+        logger.info(`Using ElectroDB matched index: ${schemaIndexName} (internal: ${index}) with ${keys.length} attribute matches for entity: ${entityName} with filters:`, indexFilters);
         return { indexName: schemaIndexName, indexFilters };
     }
 
@@ -374,7 +374,7 @@ export function findMatchingIndex(
         if (indexDef.pk.template && 
             typeof indexDef.pk.template === 'string' && 
             indexDef.pk.template.toLowerCase() === entityName.toLowerCase()) {
-            logger.debug(`Using template matching index: ${indexName} for entity: ${entityName}`);
+            logger.info(`Using template matching index: ${indexName} for entity: ${entityName}`);
             return { 
                 indexName, 
                 indexFilters: {}
@@ -411,6 +411,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
 
     const {
         filters = {},
+        attributes = [],
         pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined },
     } = query;
 
@@ -427,7 +428,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
     // Check if we have a filter that matches an index
     const schema = entityService.getEntitySchema();
     const matchResult = findMatchingIndex(schema, filters, entityName, entityService);
-    logger.debug(`Match result:`, matchResult);
+    logger.info(`Match result:`, matchResult);
     // Use the appropriate index if available
     const repository = entityService.getRepository();
     
@@ -438,13 +439,15 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
         if (filters && !isEmptyObject(filters)) {
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
-        entities = await indexQuery.go(removeEmpty(pagination));
+        entities = await indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination) });
     } else {
         // Use match for full scan
-        const scanQuery = repository.match({});
+        logger.warn(`WARNING: No matching index found for entity: ${entityName}, using match for full scan`, filters);
+        const scanQuery = repository.scan;
         if (filters && !isEmptyObject(filters)) {
             scanQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
+        // TODO: add attributes to scan query
         entities = await scanQuery.go(removeEmpty(pagination));
     }
 
@@ -488,6 +491,7 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
 
     const {
         filters = {},
+        attributes = [],
         pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined }
     } = query;
 
@@ -515,13 +519,15 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
         if (filters && !isEmptyObject(filters)) {
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
-        entities = await indexQuery.go(removeEmpty(pagination));
+        entities = await indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination) });
     } else {
         // Use match for full scan
-        const scanQuery = repository.match({});
+        logger.warn(`WARNING: No matching index found for entity: ${entityName}, using match for full scan`, filters);
+        const scanQuery = repository.scan;
         if (filters && !isEmptyObject(filters)) {
             scanQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
+        // TODO: add attributes to scan query
         entities = await scanQuery.go(removeEmpty(pagination));
     }
 

@@ -1,4 +1,3 @@
-
 import { Logger, ILogObj, ISettingsParam } from "tslog";
 
 export interface ILogger extends Logger<ILogObj> {
@@ -53,6 +52,13 @@ export const createLogger = (_options: string | Function | ISettingsParam<ILogOb
             /clientSecret\s*:\s*([^\s]+)/gi,
             /clientId\s*:\s*([^\s]+)/gi,
             /clientToken\s*:\s*([^\s]+)/gi,
+            /([a-zA-Z0-9_]*key[a-zA-Z0-9_]*)\s*:\s*(?:['"])?([^'"]+)(?:['"])?/gi,
+            /([a-zA-Z0-9_]*token[a-zA-Z0-9_]*)\s*:\s*(?:['"])?([^'"]+)(?:['"])?/gi,
+            /PRIVATE KEY-----\s*([\s\S]*?)(?:-----END|$)/gi,
+            /CERTIFICATE-----\s*([\s\S]*?)(?:-----END|$)/gi,
+            /BEGIN PRIVATE KEY-----\s*([\s\S]*?)(?:-----END|$)/gi,
+            /BEGIN CERTIFICATE-----\s*([\s\S]*?)(?:-----END|$)/gi,
+            /(?:key|privateKey|publicKey|certificate)\s*:\s*([\s\S]*?)(?:\n\s*\n|\n\s*[a-zA-Z]|\n\s*$|$)/gi,
         ],
         ..._options,
         // ensure min log level is always there

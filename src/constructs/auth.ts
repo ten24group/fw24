@@ -409,7 +409,7 @@ export class AuthConstruct implements FW24Construct {
             roleAttachment.roleMappings = {
                 "userpool": {
                     type: "Token",
-                    ambiguousRoleResolution: this.authConstructConfig.ambiguousRoleResolution,
+                    ambiguousRoleResolution: this.authConstructConfig.ambiguousRoleResolution || 'Deny',
                     identityProvider: identityProvider,
                 }
             }
