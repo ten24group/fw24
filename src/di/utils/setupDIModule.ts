@@ -2,6 +2,7 @@ import { type RegisterDIModuleMetadataOptions, registerModuleMetadata } from "..
 import { DIContainer } from "../container";
 import { ClassConstructor, IDIContainer } from "../../interfaces/di";
 import { tryGetModuleDIContainer } from "./tryGetModuleDIContainer";
+import { getBootstrappingContainer } from "../../bootstrap";
 
 /**
  * Sets up Dependency Injection (DI) for a class and returns the DI container.
@@ -23,7 +24,7 @@ export function setupDIModule<T>(
 
 	const providedBy = module.providedBy || (options.fallbackToRootContainer ? DIContainer.ROOT : undefined);
 
-	let resolvingContainer: IDIContainer | undefined;
+	let resolvingContainer: IDIContainer | undefined = getBootstrappingContainer();
 
 	if (providedBy === 'ROOT') {
 

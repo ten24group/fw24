@@ -2,11 +2,12 @@ import { getModuleMetadata } from "../metadata";
 import { DIContainer } from "../container";
 import type { IDIContainer } from "../../interfaces/di";
 import { DefaultLogger } from "../../logging";
-
+import { getBootstrappingContainer } from "../../bootstrap";
 export function tryGetModuleDIContainer(moduleClass: Function) {
 	DefaultLogger.debug(`Called:: tryGetModuleDIContainer for [${moduleClass.name}]`);
 
 	const parentModuleMetadata = getModuleMetadata(moduleClass);
+	const bootstrappingContainer = getBootstrappingContainer();
 
 	if (!parentModuleMetadata) {
 		throw new Error(`Invalid 'providedBy': [${moduleClass.name}] option. Ensure the class is decorated with @DIModule({...} || @Container({ module: {}})).`);
@@ -16,11 +17,11 @@ export function tryGetModuleDIContainer(moduleClass: Function) {
 
 		DefaultLogger.warn(`tryGetModuleDIContainer: No container found in module's metadata: [${moduleClass.name}], this should only happen during build time and when the module is imported into root container via an entry-layer, trying to get the container for this module, from the ROOT `);
 
-		if (DIContainer.ROOT.hasChildContainerById(parentModuleMetadata.identifier)) {
+		if (bootstrappingContainer.hasChildContainerById(parentModuleMetadata.identifier)) {
 
 			DefaultLogger.info(`tryGetModuleDIContainer: child container found in ROOT for module: ${parentModuleMetadata.identifier}`);
 
-			const childContainer = DIContainer.ROOT.getChildContainerById(parentModuleMetadata.identifier) as IDIContainer;
+			const childContainer = bootstrappingContainer.getChildContainerById(parentModuleMetadata.identifier) as IDIContainer;
 
 			// the container in the ROOT will be a proxy, make sure to get the actual container out of the proxy
 			const modulesContainer = childContainer.proxyFor;

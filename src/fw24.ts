@@ -18,3 +18,4 @@ export * from './audit/index';
 
 // Errors
 export * from './errors';
+export * from './bootstrap';

@@ -8,6 +8,7 @@ import type { ClassConstructor, IDIContainer } from "../interfaces/di";
 import type { RegisterDIModuleMetadataOptions } from "../di/metadata";
 
 import { AbstractLambdaHandler } from "../core/runtime/abstract-lambda-handler";
+import { getBootstrappingContainer } from "../bootstrap";
 import { setupDIModule } from "../di/utils/setupDIModule";
 import { DefaultLogger } from "../logging";
 import { ENV_KEYS } from "../const";
@@ -98,9 +99,12 @@ export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3
 		packageNamesArray.forEach((entryPackageName) => {
 			try {
 				DefaultLogger.debug("trying to import entry", { entryPackageName });
+				// eslint-disable-next-line @typescript-eslint/no-require-imports
 				const entry = require(entryPackageName);
 				// call the default export if available
-				entry.default && typeof entry.default === 'function' && entry.default();
+				if (entry.default && typeof entry.default === 'function') {
+					entry.default();
+				}
 				DefaultLogger.debug(`Controller[${controllerName}]: successfully imported entry-package: ${entryPackageName}`);
 			} catch (error) {
 				DefaultLogger.error(`Controller[${controllerName}]: failed to import entry-package: ${entryPackageName}`, error);
@@ -130,11 +134,14 @@ export function setupDIModuleForController<T>(
 }
 
 export function resolveHandler(target: string, container?: IDIContainer) {
-	if (!container) {
+	// Use bootstrapped container if none provided
+	const resolveContainer = container || getBootstrappingContainer();
+
+	if (!resolveContainer) {
 		throw new Error(`Could not setup DI for controller: ${target}. make sure DI is setup correctly`);
 	}
 
-	const instance = container.resolve<AbstractLambdaHandler>(target, { tags: [ '_internal_' ] });
+	const instance = resolveContainer.resolve<AbstractLambdaHandler>(target, { tags: [ '_internal_' ] });
 
 	if (!instance) {
 		throw new Error(`Could not resolve controller: ${target}. make sure DI is setup correctly`);
@@ -163,7 +170,7 @@ export function resolveAndExportHandler(target: Function, container?: IDIContain
 export function exportHandler(handler: any, handlerName: string = 'handler', callingModule = getCallingModule()): void {
 
 	if (callingModule && callingModule.exports) {
-		if (!callingModule.exports.hasOwnProperty(handlerName)) {
+		if (!Object.prototype.hasOwnProperty.call(callingModule.exports, handlerName)) {
 			callingModule.exports[ handlerName ] = handler;
 		} else {
 			DefaultLogger.warn(`exportHandler: Handler '${handlerName}' already exists in calling module: ${callingModule.filename}`);
