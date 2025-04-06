@@ -7,7 +7,7 @@ import type { EntityFilterCriteria, EntityQuery, EntitySelections, ParsedEntityA
 import { createLogger } from "../logging";
 import { JsonSerializer, getValueByPath, isArray, isBoolean, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
-import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
+import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity, UpdateEntityOperators, upsertEntity } from "./crud-service";
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 import { IDIContainer } from "../interfaces";
 import { DatabaseError, EntityValidationError } from './errors';
@@ -1141,9 +1141,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      *
      * @param identifiers - The identifiers of the entity to update.
      * @param data - The updated data for the entity.
+     * @param remove - Optional array of attributes to remove from the entity.
      * @returns The updated entity.
      */
-    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>) {
+    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators) {
 
         const uniqueFields = this.getUniqueAttributes();
         const skipCheckingAttributesUniqueness = false;
@@ -1186,6 +1187,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const updatedEntity = await updateEntity<S>({
             id: identifiers,
             data: data,
+            operators: operators,
             entityName: this.getEntityName(),
             entityService: this,
         });

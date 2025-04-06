@@ -492,12 +492,13 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
     const {
         filters = {},
         attributes = [],
-        pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined }
+        pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined },
+        index: specifiedIndex
     } = query;
 
     logger.debug(`Called EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
-    // await eventDispatcher.dispatch({event: 'beforeQuery', context: arguments });
+    // await eventDispatcher.dispatch({event: 'beforeQuery', context: arguments});
 
     // // authorize the actor
     // const authorization = await authorizer.authorize({entityName, crudType, actor, tenant});
@@ -507,7 +508,9 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
 
     // Check if we have a filter that matches an index
     const schema = entityService.getEntitySchema();
-    const matchResult = findMatchingIndex(schema, filters, entityName, entityService);
+    const matchResult = specifiedIndex 
+        ? { indexName: specifiedIndex.name, indexFilters: specifiedIndex.filters || {} } 
+        : findMatchingIndex(schema, filters, entityName, entityService);
 
     // Use the appropriate index if available
     const repository = entityService.getRepository();
@@ -559,9 +562,17 @@ export interface UpdateEntityArgs<
      */
     data: OpsSchema[ 'update' ];
     /**
+     * Optional attributes for patch operation.
+     */
+    operators?: UpdateEntityOperators;
+    /**
      * Optional conditions for the update operation.
      */
     conditions?: any; // TODO
+}
+
+export interface UpdateEntityOperators {
+    remove?: string[];
 }
 
 /**
@@ -576,13 +587,11 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     const {
         id,
         data,
+        operators,
         entityName,
-
         entityService,
-
         actor,
         tenant,
-
         crudType = 'update',
         logger = createLogger('CRUD-service:updateEntity'),
         validator = DefaultValidator,
@@ -623,7 +632,11 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     //     throw new Error("Authorization failed for update: " + { cause: authorization });
     // }
 
-    const entity = await entityService.getRepository().patch(identifiers).set(data).go();
+    const query = entityService.getRepository().patch(identifiers).set(data);
+    if (operators?.remove) {
+        query.remove(operators.remove as unknown as never[]);
+    }
+    const entity = await query.go();
 
     // // post events
     // await eventDispatcher?.dispatch({ event: 'afterUpdate', context: {...arguments, entity} });
