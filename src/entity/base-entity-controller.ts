@@ -186,9 +186,9 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	@Get('/{id}')
 	async find(req: Request, res: Response): Promise<Response> {
 		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
-		const selections = req.queryStringParameters?.attributes?.split?.(',');
+		const attributes = req.queryStringParameters?.attributes?.split?.(',');
 
-		const entity = await this.getEntityService().get({ identifiers, selections });
+		const entity = await this.getEntityService().get({ identifiers, attributes });
 
 		if (!entity) {
 			throw new NotFoundError(this.getEntityName(), undefined, req);

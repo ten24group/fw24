@@ -411,6 +411,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
 
     const {
         filters = {},
+        attributes = [],
         pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined },
     } = query;
 
@@ -438,13 +439,15 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
         if (filters && !isEmptyObject(filters)) {
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
-        entities = await indexQuery.go(removeEmpty(pagination));
+        entities = await indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination) });
     } else {
         // Use match for full scan
-        const scanQuery = repository.match({});
+        logger.warn(`WARNING: No matching index found for entity: ${entityName}, using match for full scan`, filters);
+        const scanQuery = repository.scan;
         if (filters && !isEmptyObject(filters)) {
             scanQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
+        // TODO: add attributes to scan query
         entities = await scanQuery.go(removeEmpty(pagination));
     }
 
@@ -488,12 +491,14 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
 
     const {
         filters = {},
-        pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined }
+        attributes = [],
+        pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined },
+        index: specifiedIndex
     } = query;
 
     logger.debug(`Called EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
-    // await eventDispatcher.dispatch({event: 'beforeQuery', context: arguments });
+    // await eventDispatcher.dispatch({event: 'beforeQuery', context: arguments});
 
     // // authorize the actor
     // const authorization = await authorizer.authorize({entityName, crudType, actor, tenant});
@@ -503,7 +508,9 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
 
     // Check if we have a filter that matches an index
     const schema = entityService.getEntitySchema();
-    const matchResult = findMatchingIndex(schema, filters, entityName, entityService);
+    const matchResult = specifiedIndex 
+        ? { indexName: specifiedIndex.name, indexFilters: specifiedIndex.filters || {} } 
+        : findMatchingIndex(schema, filters, entityName, entityService);
 
     // Use the appropriate index if available
     const repository = entityService.getRepository();
@@ -515,13 +522,15 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
         if (filters && !isEmptyObject(filters)) {
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
-        entities = await indexQuery.go(removeEmpty(pagination));
+        entities = await indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination) });
     } else {
         // Use match for full scan
-        const scanQuery = repository.match({});
+        logger.warn(`WARNING: No matching index found for entity: ${entityName}, using match for full scan`, filters);
+        const scanQuery = repository.scan;
         if (filters && !isEmptyObject(filters)) {
             scanQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
+        // TODO: add attributes to scan query
         entities = await scanQuery.go(removeEmpty(pagination));
     }
 
@@ -553,9 +562,17 @@ export interface UpdateEntityArgs<
      */
     data: OpsSchema[ 'update' ];
     /**
+     * Optional attributes for patch operation.
+     */
+    operators?: UpdateEntityOperators;
+    /**
      * Optional conditions for the update operation.
      */
     conditions?: any; // TODO
+}
+
+export interface UpdateEntityOperators {
+    remove?: string[];
 }
 
 /**
@@ -570,13 +587,11 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     const {
         id,
         data,
+        operators,
         entityName,
-
         entityService,
-
         actor,
         tenant,
-
         crudType = 'update',
         logger = createLogger('CRUD-service:updateEntity'),
         validator = DefaultValidator,
@@ -617,7 +632,11 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     //     throw new Error("Authorization failed for update: " + { cause: authorization });
     // }
 
-    const entity = await entityService.getRepository().patch(identifiers).set(data).go();
+    const query = entityService.getRepository().patch(identifiers).set(data);
+    if (operators?.remove) {
+        query.remove(operators.remove as unknown as never[]);
+    }
+    const entity = await query.go();
 
     // // post events
     // await eventDispatcher?.dispatch({ event: 'afterUpdate', context: {...arguments, entity} });

@@ -2,12 +2,12 @@ import type { EntityConfiguration } from "electrodb";
 import { DIContainer } from "../di";
 import type { EntityInputValidations, EntityValidations } from "../validation";
 import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
-import type { EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
+import type { EntityFilterCriteria, EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 
 import { createLogger } from "../logging";
 import { JsonSerializer, getValueByPath, isArray, isBoolean, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
-import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
+import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity, UpdateEntityOperators, upsertEntity } from "./crud-service";
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 import { IDIContainer } from "../interfaces";
 import { DatabaseError, EntityValidationError } from './errors';
@@ -19,7 +19,7 @@ export type ExtractEntityIdentifiersContext = {
 
 type GetOptions<S extends EntitySchema<any, any, any>> = {
     identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>,
-    selections?: EntitySelections<S>
+    attributes?: EntitySelections<S>
 }
 
 export function hasAttribute(schema: EntitySchema<any, any, any>, attributeName: string) {
@@ -50,7 +50,7 @@ export function getAttributeNameBy(schema: EntitySchema<any, any, any>, spec: Sp
 
 export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
-    readonly logger = createLogger(this.constructor.name);
+    readonly logger = createLogger(`BaseEntityService:${this.constructor.name}`);
 
     protected entityRepository?: EntityRepositoryTypeFromSchema<S>;
     protected entityOpsDefaultIoSchema?: ReturnType<typeof this.makeOpsDefaultIOSchema<S>>;
@@ -455,7 +455,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
 
     private async hydrateSingleRelation(rootEntityRecords: any[], relatedAttributeName: string, options: HydrateOptionForRelation<any>) {
-        this.logger.info(`called 'hydrateSingleRelation' relation: ${relatedAttributeName} for entity: ${this.getEntityName()}`, {
+        this.logger.debug(`called 'hydrateSingleRelation' relation: ${relatedAttributeName} for entity: ${this.getEntityName()}`, {
             options
         });
 
@@ -530,7 +530,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         parentAttributesToHydrate: HydrateOptionForEntity<any> | undefined,
         parentService: BaseEntityService<any>
     ) {
-        this.logger.info(`called 'hydrateManyToOne' relation: ${parentAttributeName} for entity: ${this.getEntityName()}`, {
+        this.logger.debug(`called 'hydrateManyToOne' relation: ${parentAttributeName} for entity: ${this.getEntityName()}`, {
             parentAttributesToHydrate,
         });
 
@@ -578,7 +578,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         const fetchedParents = await parentService.get({
             identifiers: parentIdentifiersBatch,
-            selections: parentAttributesToHydrate,
+            attributes: parentAttributesToHydrate,
         });
 
         // If "get()" returns a single item convert it into an array.
@@ -620,7 +620,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         childService: BaseEntityService<any>
     ) {
 
-        this.logger.info(`called 'hydrateOneToMany' relation: ${childAttributeName} for entity: ${this.getEntityName()}`, {
+        this.logger.debug(`called 'hydrateOneToMany' relation: ${childAttributeName} for entity: ${this.getEntityName()}`, {
             childAttributesToHydrate,
         });
 
@@ -708,22 +708,22 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      */
 
     public async get(options: GetOptions<S>) {
-        const { identifiers, selections } = options;
+        const { identifiers, attributes } = options;
 
 
-        let formattedSelections = selections;
-        if (!selections) {
-            formattedSelections = this.getDefaultSerializationAttributeNames()
+        let formattedAttributes = attributes;
+        if (!attributes) {
+            formattedAttributes = this.getDefaultSerializationAttributeNames()
         }
 
-        if (Array.isArray(formattedSelections)) {
-            const parsedOptions = parseEntityAttributePaths(formattedSelections as string[]);
-            formattedSelections = this.inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
+        if (Array.isArray(formattedAttributes)) {
+            const parsedOptions = parseEntityAttributePaths(formattedAttributes as string[]);
+            formattedAttributes = this.inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
         }
 
-        this.logger.debug(`Formatted selections for entity: ${this.getEntityName()}`, formattedSelections);
+        this.logger.debug(`Formatted attributes for entity: ${this.getEntityName()}`, formattedAttributes);
 
-        const requiredSelectAttributes = Object.entries(formattedSelections as any).reduce((acc, [ attName, options ]) => {
+        const requiredSelectAttributes = Object.entries(formattedAttributes as any).reduce((acc, [ attName, options ]) => {
             acc.push(attName);
             if (isObject(options) && options.identifiers) {
                 const identifiers: Array<RelationIdentifier<any>> = Array.isArray(options.identifiers) ? options.identifiers : [ options.identifiers ];
@@ -744,8 +744,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         this.logger.debug(`Retrieved entity: ${this.getEntityName()}`, JsonSerializer.stringify(entity));
 
-        if (!!formattedSelections && entity?.data) {
-            const relationalAttributes = Object.entries(formattedSelections)?.map(([ attributeName, options ]) => [ attributeName, options ])
+        if (!!formattedAttributes && entity?.data) {
+            const relationalAttributes = Object.entries(formattedAttributes)?.map(([ attributeName, options ]) => [ attributeName, options ])
                 .filter(([ , options ]) => isObject(options));
 
             if (relationalAttributes.length) {
@@ -813,22 +813,43 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         this.logger.debug(`Called ~ isUniqueAttributeValue ~ entityName: ${this.getEntityName()} ~ attributeName: ${attributeName} ~ attributeValue: ${attributeValue}`);
 
-        const query = this.getRepository().match({
-            [ attributeName ]: attributeValue
-        });
+        // Create filters for the query using the correct structure
+        const filters = {
+            [attributeName]: { eq: attributeValue }
+        } as EntityFilterCriteria<S>;
 
-        // ignore the current entity being updated for uniqueness check of the attribute-value
+        // Determine which attributes to project - only the attribute being checked and ignored entity identifiers
+        const attributesToProject: string[] = [attributeName];
+        
+        // Add ignored entity identifier fields to the projection
         if (ignoredEntityIdentifiers && !isEmptyObjectDeep(ignoredEntityIdentifiers)) {
-            Object.entries(ignoredEntityIdentifiers).forEach(([ key, value ]) => {
-                query.where((attributes, { ne }) => ne(attributes[ key ], value));
+            Object.keys(ignoredEntityIdentifiers).forEach(key => {
+                if (!attributesToProject.includes(key)) {
+                    attributesToProject.push(key);
+                }
             });
         }
 
-        const entity = await query.go();
+        // Use the query method to leverage index selection logic with minimal attribute projection
+        const result = await this.query({
+            filters,
+            attributes: attributesToProject as any,
+            pagination: { count: 1 } // We only need to know if any records exist
+        });
 
-        this.logger.debug(`isUniqueAttributeValue ~ entityName: ${this.getEntityName()} ~ attributeName: ${attributeName} ~ attributeValue: ${attributeValue} ~ entity:`, entity);
+        // If we have ignored entity identifiers, filter the results in memory
+        let entities = result.data || [];
+        if (ignoredEntityIdentifiers && !isEmptyObjectDeep(ignoredEntityIdentifiers)) {
+            entities = entities.filter(entity => {
+                return !Object.entries(ignoredEntityIdentifiers).every(([key, value]) => 
+                    entity[key] === value
+                );
+            });
+        }
 
-        return entity.data?.length === 0;
+        this.logger.debug(`isUniqueAttributeValue ~ entityName: ${this.getEntityName()} ~ attributeName: ${attributeName} ~ attributeValue: ${attributeValue} ~ entity:`, { data: entities });
+
+        return entities.length === 0;
     }
 
     /**
@@ -1120,9 +1141,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      *
      * @param identifiers - The identifiers of the entity to update.
      * @param data - The updated data for the entity.
+     * @param remove - Optional array of attributes to remove from the entity.
      * @returns The updated entity.
      */
-    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>) {
+    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators) {
 
         const uniqueFields = this.getUniqueAttributes();
         const skipCheckingAttributesUniqueness = false;
@@ -1165,6 +1187,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const updatedEntity = await updateEntity<S>({
             id: identifiers,
             data: data,
+            operators: operators,
             entityName: this.getEntityName(),
             entityService: this,
         });
@@ -1191,6 +1214,61 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             return deletedEntity;
         } catch (error: any) {
             throw new DatabaseError(`Failed to delete ${this.getEntityName()}: ${error.message}`);
+        }
+    }
+
+    /**
+     * Rebuilds all indexes for the entity by writing to the primary index.
+     * This method is useful for maintaining data integrity and ensuring indexes are properly updated.
+     * 
+     * @param options - Options for rebuilding the index
+     * @param options.batchSize - The number of items to process in each batch. Defaults to 100.
+     * @returns A promise that resolves when the index rebuild is complete.
+     */
+    public async rebuildIndex(options: { batchSize?: number } = {}): Promise<void> {
+        try {
+            const { batchSize = 100 } = options;
+            const entityName = this.getEntityName();
+            const repository = this.getRepository();
+            
+            this.logger.info(`Starting index rebuild for entity: ${entityName}`);
+            
+            // Get all records from the primary index
+            const allRecords = await repository.scan.go();
+            
+            if (!allRecords.data || allRecords.data.length === 0) {
+                this.logger.info(`No records found for entity: ${entityName}`);
+                return;
+            }
+            
+            this.logger.info(`Found ${allRecords.data.length} records to process for entity: ${entityName}`);
+            
+            // Process records in batches
+            const totalRecords = allRecords.data.length;
+            const totalBatches = Math.ceil(totalRecords / batchSize);
+            
+            for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+                const start = batchIndex * batchSize;
+                const end = Math.min(start + batchSize, totalRecords);
+                const batch = allRecords.data.slice(start, end);
+                
+                this.logger.info(`Processing batch ${batchIndex + 1}/${totalBatches} (${start + 1}-${end} of ${totalRecords} records)`);
+                
+                // Rebuild all indexes by upserting each record to the primary index
+                for (const record of batch) {
+                    try {
+                        // Use upsert to ensure the record is properly indexed
+                        await repository.upsert(record).go();
+                    } catch (error) {
+                        this.logger.error(`Error processing record:`, error);
+                    }
+                }
+            }
+            
+            this.logger.info(`Completed index rebuild for entity: ${entityName}`);
+        } catch (error) {
+            this.logger.error(`Failed to rebuild index for entity: ${this.getEntityName()}`, error);
+            throw new DatabaseError(`Failed to rebuild index for ${this.getEntityName()}: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 

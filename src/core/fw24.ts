@@ -63,7 +63,6 @@ export class Fw24 {
     }
 
     setConfig(config: IApplicationConfig) {
-        this.logger.debug("setConfig:", config);
         this.config = config;
         // Hydrate the config object with environment variables
         Helper.hydrateConfig(this.config);
@@ -510,7 +509,7 @@ export class Fw24 {
             resources: [ `arn:aws:execute-api:*:*:*/*/*/${route}` ],
         });
 
-        this.logger.debug("RoutePolicyStatement:", { route, statement });
+        this.logger.debug("RoutePolicyStatement:", { route });
 
         return statement;
     }
