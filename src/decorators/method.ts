@@ -1,5 +1,6 @@
 import type { Route } from "../interfaces/route";
 import type { HttpRequestValidations, InputValidationRule } from "../validation";
+import { findConstructor, getRoutesKey } from "./decorator-utils";
 
 // function InjectParams(
 //   target: any,
@@ -27,7 +28,7 @@ import type { HttpRequestValidations, InputValidationRule } from "../validation"
 function createRouteDecorator(method: string) {
   return (
     route: string,
-    options ?: {
+    options?: {
       validations?: InputValidationRule | HttpRequestValidations,
       /**
        * Specifies the target for the API
@@ -35,24 +36,50 @@ function createRouteDecorator(method: string) {
        * @default ""
        */
       target?: string;
-    } 
+    }
   ) =>
     (target: any, methodToDecorate: any) => {
+      // Get the constructor using the utility function
+      const constructor = findConstructor(target, methodToDecorate);
+      
+      // If we still don't have a constructor, log an error and return
+      if (!constructor) {
+        console.error('Could not determine constructor for route decorator');
+        return;
+      }
+      
+      // Get the routes key using the utility function
+      const routesKey = getRoutesKey(constructor);
+      
+      // Get existing routes or initialize empty object
+      let routes: Record<string, Route> = Reflect.get(constructor, routesKey) || {};
 
-      const routes: Record<string, Route> = Reflect.get(target, "routes") || {};
+      // If this is a derived class, we need to merge routes from the parent class
+      let currentProto = constructor.prototype;
+      while (currentProto && currentProto.__proto__ && currentProto.__proto__.constructor !== Object) {
+        const parentConstructor = currentProto.__proto__.constructor;
+        const parentRoutesKey = getRoutesKey(parentConstructor);
+        const parentRoutes = Reflect.get(parentConstructor, parentRoutesKey) || {};
+        
+        // Merge parent routes with current routes, giving priority to current routes
+        routes = { ...parentRoutes, ...routes };
+        
+        // Move up the prototype chain
+        currentProto = currentProto.__proto__;
+      }
 
-      if(!route){
-        route = '/'
-      };
+      if (!route) {
+        route = '/';
+      }
 
       if (route && !route.startsWith("/")) {
         route = `/${route}`;
       }
 
-      var parameters: Array<String> = [];
+      const parameters: Array<String> = [];
 
       route.split('/').forEach((param) => {
-        if(param.startsWith('{') && param.endsWith('}')){
+        if (param.startsWith('{') && param.endsWith('}')) {
           parameters.push(param.slice(1, -1));
         }
       });
@@ -70,6 +97,10 @@ function createRouteDecorator(method: string) {
         target: options?.target
       };
 
+      // Store routes on the constructor using the unique symbol
+      Reflect.set(constructor, routesKey, routes);
+      
+      // Also store a reference to the routes on the prototype for backward compatibility
       Reflect.set(target, "routes", routes);
       //InjectParams(target, methodToDecorate, descriptor);
     };

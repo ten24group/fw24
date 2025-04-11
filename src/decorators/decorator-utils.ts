@@ -198,3 +198,46 @@ export function getCallingModule(nthModuleInStack: number = 3): NodeModule | und
 
 	return undefined;
 }
+
+/**
+ * Utility function to find the constructor of a class from a method decorator target.
+ * This ensures consistent constructor access across all decorators.
+ * 
+ * @param target - The target object from the decorator
+ * @param methodToDecorate - The method being decorated
+ * @returns The constructor of the class or undefined if not found
+ */
+export function findConstructor(target: any, methodToDecorate: any): any {
+	// Approach 1: Direct access
+	if (target && target.constructor) {
+		return target.constructor;
+	} 
+	// Approach 2: From prototype
+	else if (target && Object.getPrototypeOf(target) && Object.getPrototypeOf(target).constructor) {
+		return Object.getPrototypeOf(target).constructor;
+	}
+	// Approach 3: From the method itself
+	else if (methodToDecorate && methodToDecorate.constructor) {
+		return methodToDecorate.constructor;
+	}
+	// Approach 4: Last resort - use the target itself if it's a constructor
+	else if (target && typeof target === 'function') {
+		return target;
+	}
+	
+	return undefined;
+}
+
+/**
+ * Utility function to get a unique symbol for a class's routes.
+ * This ensures consistent route storage across all decorators.
+ * 
+ * @param constructor - The constructor of the class
+ * @returns A unique symbol for the class's routes
+ */
+export function getRoutesKey(constructor: any): symbol {
+	// Use a combination of constructor name and a unique identifier to ensure
+	// each class gets its own unique symbol, even when inheritance is involved
+	const uniqueId = constructor.toString().split('\n')[0].trim();
+	return Symbol.for(`routes_${uniqueId}`);
+}
