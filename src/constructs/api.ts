@@ -346,7 +346,6 @@ export class APIConstruct implements FW24Construct {
     private registerController = async (controllerInfo: HandlerDescriptor, ownerModule?: IFw24Module) => {
         const { handlerClass, filePath, fileName, handlerHash } = controllerInfo;
         const handlerInstance = new handlerClass();
-        this.logger.debug('handerinstance',handlerClass,handlerInstance.routes);
         const controllerName = handlerInstance.controllerName;
         const controllerConfig: IControllerConfig = handlerInstance?.controllerConfig || {};
         const controllerStackName = controllerConfig.stackName || controllerName;

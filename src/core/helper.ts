@@ -146,7 +146,7 @@ export class Helper {
             // Find and instantiate controller classes
             for (const exportedItem of Object.values(module)) {
                 if (typeof exportedItem === "function" && exportedItem.name !== "handler") {
-                    Helper.logger.info('handlerdebug',exportedItem,handlerPath,handlerDirectory);
+
                     const currentHandler: HandlerDescriptor = {
                         handlerClass: exportedItem,
                         fileName: handlerPath,
