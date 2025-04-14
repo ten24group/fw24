@@ -131,6 +131,98 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
 }
 
 /**
+ * Represents the arguments for retrieving multiple entities in a batch.
+ * @template Sch - The entity schema type.
+ * @template OpsSchema - The input schemas for entity operations.
+ */
+export interface GetBatchEntityArgs<
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> extends BaseEntityCrudArgs<Sch> {
+    /**
+     * Array of entity IDs to retrieve.
+     */
+    ids: Array<OpsSchema['get']>;
+    /**
+     * Optional array of attributes to include in the retrieved entities.
+     */
+    attributes?: Array<string>;
+    /**
+     * Optional number of concurrent batch operations (default: 1).
+     */
+    concurrent?: number;
+}
+
+/**
+ * Retrieves multiple entities in a batch operation.
+ * @param options - The options for retrieving the entities.
+ * @returns The retrieved entities and any unprocessed items.
+ */
+export async function getBatchEntity<S extends EntitySchema<any, any, any>>(options: GetBatchEntityArgs<S>) {
+    const {
+        ids,
+        attributes,
+        entityName,
+        entityService,
+        concurrent = 1,
+
+        actor,
+        tenant,
+
+        crudType = 'get',
+        logger = createLogger('CRUD-service:getBatchEntity'),
+        validator = DefaultValidator,
+        authorizer = Authorizer.Default,
+        auditLogger = NullAuditLogger,
+        eventDispatcher = EventDispatcher.Default,
+    } = options;
+
+    logger.debug(`Called EntityCrud ~ getBatchEntity ~ entityName: ${entityName}:`, { ids, attributes });
+
+    // Extract identifiers for all items in the batch
+    const identifiersBatch = ids.map(id => entityService.extractEntityIdentifiers(id));
+
+    // Validate each item in the batch
+    const validations = await Promise.all(identifiersBatch.map(async identifiers =>
+        validator.validateEntity({
+            operationName: crudType,
+            entityName,
+            entityValidations: entityService.getEntityValidations(),
+            overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+            input: identifiers,
+            actor: actor
+        })
+    ));
+
+    // Check for validation errors
+    const validationErrors = validations
+        .map((validation, index) => ({ validation, index }))
+        .filter(({ validation }) => !validation.pass);
+
+    if (validationErrors.length > 0) {
+        throw new EntityValidationError(validationErrors.flatMap(({ validation, index }) => 
+            (validation.errors || []).map(error => ({
+                ...error,
+                message: `Item ${index}: ${error.message}`
+            }))
+        ));
+    }
+
+    // Perform batch get operation with concurrency control
+    const result = await entityService.getRepository().get(identifiersBatch).go({ 
+        attributes,
+        concurrent 
+    });
+
+    logger.debug(`Completed EntityCrud ~ getBatchEntity ~ entityName: ${entityName} ~ ids:`, ids);
+
+    return {
+        data: Array.isArray(result.data) ? result.data : (result.data ? [result.data] : []),
+        unprocessed: []  // ElectroDB doesn't support unprocessed items tracking, so we return empty array
+    };
+}
+
+/**
  * Represents the arguments for creating an entity.
  * @template Sch - The entity schema type.
  * @template OpsSchema - The input schemas for entity operations.

@@ -7,7 +7,7 @@ import type { EntityFilterCriteria, EntityQuery, EntitySelections, ParsedEntityA
 import { createLogger } from "../logging";
 import { JsonSerializer, getValueByPath, isArray, isBoolean, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
-import { createEntity, deleteEntity, getEntity, listEntity, queryEntity, updateEntity, UpdateEntityOperators, upsertEntity } from "./crud-service";
+import { createEntity, deleteEntity, getEntity, getBatchEntity, listEntity, queryEntity, updateEntity, UpdateEntityOperators, upsertEntity } from "./crud-service";
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 import { IDIContainer } from "../interfaces";
 import { DatabaseError, EntityValidationError } from './errors';
@@ -756,6 +756,70 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         return entity?.data;
     }
 
+    /**
+     * Retrieves multiple entities by their identifiers in a batch operation.
+     * 
+     * @param options - The options for batch retrieving entities.
+     * @param options.identifiers - Array of entity identifiers to retrieve.
+     * @param options.attributes - Optional array of attribute names to include in the response.
+     * @param options.concurrent - Optional number of concurrent batch operations to perform (default: 1).
+     * @returns A promise that resolves to an object containing the retrieved entities and any unprocessed items.
+     */
+    public async batchGet<S extends EntitySchema<any, any, any>>(options: {
+        identifiers: Array<EntityIdentifiersTypeFromSchema<S>>,
+        attributes?: EntitySelections<S>,
+        concurrent?: number
+    }) {
+        const { identifiers, attributes, concurrent = 1 } = options;
+
+        let formattedAttributes = attributes;
+        if (!attributes) {
+            formattedAttributes = this.getDefaultSerializationAttributeNames()
+        }
+
+        if (Array.isArray(formattedAttributes)) {
+            const parsedOptions = parseEntityAttributePaths(formattedAttributes as string[]);
+            formattedAttributes = this.inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
+        }
+
+        this.logger.debug(`Formatted attributes for batch get on entity: ${this.getEntityName()}`, formattedAttributes);
+
+        const requiredSelectAttributes = Object.entries(formattedAttributes as any).reduce((acc, [ attName, options ]) => {
+            acc.push(attName);
+            if (isObject(options) && options.identifiers) {
+                const identifiers: Array<RelationIdentifier<any>> = Array.isArray(options.identifiers) ? options.identifiers : [ options.identifiers ];
+                const topKeys = identifiers.map(identifier => identifier.source?.split?.('.')?.[ 0 ]).filter(key => !!key) as string[];
+                acc.push(...topKeys);
+            }
+            return acc;
+        }, [] as string[]);
+
+        const uniqueSelectionAttributes = [ ...new Set(requiredSelectAttributes) ];
+
+        const entity = await getBatchEntity<S>({
+            ids: identifiers,
+            attributes: uniqueSelectionAttributes,
+            entityName: this.getEntityName(),
+            entityService: this as any,
+            concurrent
+        });
+
+        this.logger.debug(`Retrieved batch entities: ${this.getEntityName()}`, JsonSerializer.stringify(entity));
+
+        if (!!formattedAttributes && entity?.data) {
+            const relationalAttributes = Object.entries(formattedAttributes)?.map(([ attributeName, options ]) => [ attributeName, options ])
+                .filter(([ , options ]) => isObject(options));
+
+            if (relationalAttributes.length) {
+                await this.hydrateRecords(relationalAttributes as any, entity.data);
+            }
+        }
+
+        return {
+            data: entity?.data || [],
+            unprocessed: entity?.unprocessed || []
+        };
+    }
 
     /**
      * Checks the uniqueness of an attribute value and updates the payload if necessary.
@@ -1368,7 +1432,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         return inferred;
     }
-
 }
 
 export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAttribute): Partial<EntityAttribute> & {
