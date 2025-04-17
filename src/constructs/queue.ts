@@ -136,6 +136,7 @@ export class QueueConstruct implements FW24Construct {
             visibilityTimeoutSeconds: queueConfig?.visibilityTimeoutSeconds,
             receiveMessageWaitTimeSeconds: queueConfig?.receiveMessageWaitTimeSeconds,
             retentionPeriodDays: queueConfig?.retentionPeriodDays,
+            maxReceiveCount: queueConfig?.maxReceiveCount,
             sqsEventSourceProps: {
                 maxBatchingWindow: Duration.seconds(queueConfig?.maxBatchingWindowSeconds ?? 5),
                 ...queueConfig?.sqsEventSourceProps,
@@ -145,7 +146,7 @@ export class QueueConstruct implements FW24Construct {
                 entry: queueInfo.filePath + "/" + queueInfo.fileName,
                 environmentVariables: this.fw24.resolveEnvVariables(queueConfig.env),
                 resourceAccess: queueConfig?.resourceAccess,
-                functionTimeout: queueConfig?.functionTimeout,
+                functionTimeout: queueConfig?.functionTimeout || this.fw24.getConfig().functionTimeout,
                 policies: queueConfig?.policies,
                 functionProps: {...this.queueConstructConfig.functionProps, ...queueConfig?.functionProps},
                 logRemovalPolicy: queueConfig?.logRemovalPolicy,

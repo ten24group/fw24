@@ -41,6 +41,11 @@ interface QueueLambdaFunctionProps {
   retentionPeriodDays?: number;
 
   /**
+   * The number of times a message can be unsuccessfully dequeued before being moved to the dead-letter queue.
+   */
+  maxReceiveCount?: number;
+
+  /**
    * The properties for the SQS event source.
    */
   sqsEventSourceProps?: {
@@ -150,7 +155,7 @@ export class QueueLambda extends Construct {
     if( existingDLQ ) {
       dlqProps = {
         deadLetterQueue: {
-          maxReceiveCount: 3,
+          maxReceiveCount: props.maxReceiveCount ?? 3,
           queue: existingDLQ,
         }
       }
@@ -170,7 +175,7 @@ export class QueueLambda extends Construct {
       //assign default dlq
       dlqProps = {
         deadLetterQueue: {
-          maxReceiveCount: 3,
+          maxReceiveCount: props.maxReceiveCount ?? 3,
           queue: defaultDLQ,
         }
       }

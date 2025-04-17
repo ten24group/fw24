@@ -100,7 +100,7 @@ export class SchedulerConstruct implements FW24Construct {
             entry: taskInfo.filePath + "/" + taskInfo.fileName,
             environmentVariables: this.fw24.resolveEnvVariables(taskConfigEnv),
             allowSendEmail: true,
-            functionTimeout: taskConfig.functionTimeout,
+            functionTimeout: taskConfig.functionTimeout || this.fw24.getConfig().functionTimeout,
             functionProps: {
                 ...taskProps,
             },
