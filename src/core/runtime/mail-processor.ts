@@ -13,11 +13,12 @@ export interface IEmailMessage {
 }
 
 // Initialize SES client
-export const defaultSesClient = new SESv2Client();
 
 export const handler: SQSHandler = async (event: SQSEvent) => {
 
     DefaultLogger.debug('Mail Handler Received event:', event);
+
+    const sesClient = new SESv2Client();
 
     const batchItemFailures: SQSBatchItemFailure[] = [];
 
@@ -30,13 +31,16 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
 
             // check if request is for testing template
             if (templateData && templateData[ 'testRenderEmailTemplate' ]) {
+
                 const command = new TestRenderEmailTemplateCommand({
                     TemplateName: emailMessage.TemplateName,
                     TemplateData: JSON.stringify({ ...emailMessage, ...templateData }),
                 });
 
-                const response = await defaultSesClient.send(command);
+                const response = await sesClient.send(command);
+
                 DefaultLogger.info('Test render response:', response);
+
                 continue;
             }
 
@@ -85,7 +89,10 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
 
             // Send the email
             try {
-                await sendEmailInline(mailParams);
+
+                const command = new SendEmailCommand(mailParams);
+                await sesClient.send(command);
+
             } catch (error) {
                 throw new Error(`Error sending email: ${JSON.stringify(error)}`);
             }
@@ -108,36 +115,3 @@ export const handler: SQSHandler = async (event: SQSEvent) => {
 
     return sqsBatchResponse;
 };
-
-/**
-/**
- * Sends an email using AWS SES (Simple Email Service) with the provided parameters.
- * 
- * @param mailParams - The email parameters including recipients, content, and other email settings.
- *                    Must follow the SendEmailCommandInput interface from AWS SES.
- * 
- * @example
- * ```typescript
- * const mailParams = {
- *   Destination: {
- *     ToAddresses: ['recipient@example.com']
- *   },
- *   Message: {
- *     Body: {
- *       Text: { Data: 'Hello from AWS SES!' }
- *     },
- *     Subject: { Data: 'Test Email' }
- *   },
- *   Source: 'sender@example.com'
- * };
- * 
- * await sendEmailInline(mailParams);
- * ```
- * 
- * @throws Error if the email fails to send
- * @returns Promise<SendEmailCommandOutput>
-*/
-async function sendEmailInline(mailParams: SendEmailCommandInput): Promise<SendEmailCommandOutput> {
-    const command = new SendEmailCommand(mailParams);
-    return await defaultSesClient.send(command);
-}

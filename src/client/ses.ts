@@ -3,7 +3,6 @@ import { sendQueueMessage } from './sqs'
 import { IEmailMessage } from '../core/runtime/mail-processor'
 
 /**
- * @deprecated Use sendMailViaQueue instead. This function will be removed in a future version.
  * Sends an email by queuing it through the mail processing system.
  * This is a facade that queues the email message for asynchronous processing.
  * 
@@ -42,48 +41,6 @@ import { IEmailMessage } from '../core/runtime/mail-processor'
  * ```
  */
 export const sendMail = async (emailMessage: IEmailMessage, templateData?: any) => {
-    return sendMailViaQueue(emailMessage, templateData);
-}
-
-/**
- * Queues an email message for asynchronous processing through the mail system.
- * This function handles both template-based and direct content emails.
- * 
- * @param emailMessage - The email message configuration including recipient, content, and template settings
- * @param templateData - Optional data to be used when rendering the email template
- * @returns Promise with the SQS message send result
- * 
- * @example
- * ```typescript
- * // Send using a template
- * await sendMailViaQueue({
- *   FromEmailAddress: 'sender@example.com',
- *   ToEmailAddress: 'recipient@example.com',
- *   TemplateName: 'welcome-email',
- *   ReplyToEmailAddress: 'support@example.com'
- * }, {
- *   userName: 'John',
- *   activationLink: 'https://example.com/activate'
- * });
- * 
- * // Send with direct content
- * await sendMailViaQueue({
- *   FromEmailAddress: 'sender@example.com',
- *   ToEmailAddress: 'recipient@example.com',
- *   Subject: 'Welcome to our service',
- *   Message: 'Thank you for joining us!'
- * });
- * 
- * // Send with html content
- * await sendMailViaQueue({
- *   FromEmailAddress: 'sender@example.com',
- *   ToEmailAddress: 'recipient@example.com',
- *   Subject: 'Welcome to our service',
- *   HTMLMessage: '<p>Thank you for joining us!</p>'
- * });
- * ```
- */
-export const sendMailViaQueue = async (emailMessage: IEmailMessage, templateData?: any) => {
     // TemplateName or subject and message are required
     if (
         !emailMessage.TemplateName
