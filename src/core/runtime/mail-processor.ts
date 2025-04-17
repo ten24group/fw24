@@ -1,5 +1,5 @@
-import type { SQSHandler, SQSEvent, SQSBatchItemFailure, SQSBatchResponse } from 'aws-lambda';
-import { SESv2Client, SendEmailCommand, SendEmailCommandInput, SendEmailCommandOutput, TestRenderEmailTemplateCommand } from '@aws-sdk/client-sesv2';
+import { SESv2Client, SendEmailCommand, SendEmailCommandInput, TestRenderEmailTemplateCommand } from '@aws-sdk/client-sesv2';
+import type { SQSBatchItemFailure, SQSBatchResponse, SQSEvent, SQSHandler } from 'aws-lambda';
 import { DefaultLogger } from '../../logging';
 
 export interface IEmailMessage {
