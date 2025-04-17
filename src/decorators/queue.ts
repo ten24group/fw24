@@ -52,6 +52,11 @@ export type IQueueConfig = CommonLambdaHandlerOptions & {
 	retentionPeriodDays?: number;
 
 	/**
+	 * The number of times a message can be unsuccessfully dequeued before being moved to the dead-letter queue.
+	 */
+	maxReceiveCount?: number;
+
+	/**
 	 * The environment variables for the queue.
 	 */
 	env?: Array<ILambdaEnvConfig>;
