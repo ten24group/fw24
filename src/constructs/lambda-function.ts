@@ -209,7 +209,7 @@ export class LambdaFunction extends Construct {
 
     // Default properties for the Node.js function
     let defaultProps: NodejsFunctionProps = {
-      runtime: Runtime.NODEJS_18_X,
+      runtime: Runtime.NODEJS_20_X,
       architecture: Architecture.ARM_64,
       handler: "handler",
       timeout: Duration.seconds(5),

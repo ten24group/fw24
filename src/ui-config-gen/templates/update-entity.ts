@@ -5,6 +5,7 @@ import { formatEntityAttributesForUpdate } from "./util";
 export type UpdateEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string,
     entityNamePlural: string,
+    CRUDApiPath?: string,
     properties: TIOSchemaAttributesMap<S>,
 };
 
@@ -70,7 +71,7 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
     entityService: BaseEntityService<S>
 ){
 
-    const{ entityName, properties } = options;
+    const{ entityName, properties, CRUDApiPath } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
 
@@ -78,12 +79,12 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
         apiConfig: {
             apiMethod: `PATCH`,
             responseKey: entityNameCamel,
-            apiUrl: `/${entityNameLower}`,
+            apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
         },
         detailApiConfig: {
             apiMethod: "GET",
             responseKey: entityNameCamel,
-            apiUrl: `/${entityNameLower}`,
+            apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
         },
         formButtons: [ "submit", "reset"],
         propertiesConfig: [] as any[],

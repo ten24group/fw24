@@ -169,7 +169,12 @@ abstract class APIController extends AbstractLambdaHandler {
    */
   private findMatchingRoute(requestData: Request): Route | null {
     let controller: any = this;
-    var resourceWithoutRoot = '/' + requestData.resource.split('/').slice(2).join('/');
+    // find the path parts after the controller name
+    const parts = requestData.resource.split('/').filter(Boolean);
+    const controllerIndex = parts.findIndex((part: string) => part === controller.controllerName);
+    var resourceWithoutRoot = controllerIndex >= 0 && controllerIndex < parts.length - 1 
+      ? '/' + parts.slice(controllerIndex + 1).join('/')
+      : '/';
     this.logger.debug('resourceWithoutRoot: ', resourceWithoutRoot);
     this.logger.debug(`${requestData.httpMethod}|${resourceWithoutRoot}`, controller.routes);
     return controller.routes[ `${requestData.httpMethod}|${resourceWithoutRoot}` ] || null;

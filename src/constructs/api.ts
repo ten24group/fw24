@@ -15,7 +15,8 @@ import {
     RestApi,
     IRestApi,
     MethodLoggingLevel,
-    Stage
+    Stage,
+    ResponseType
 } from "aws-cdk-lib/aws-apigateway";
 
 import { CfnOutput, Duration, NestedStack, RemovalPolicy, Stack } from "aws-cdk-lib";
@@ -245,6 +246,22 @@ export class APIConstruct implements FW24Construct {
             ...paramsApi,
         });
 
+        if(this.apiConstructConfig.cors){
+            const corsOrigins = this.getCorsPreflightOptions().allowOrigins?.join(',')!;
+            this.api.addGatewayResponse('default4xx', {
+                type: ResponseType.DEFAULT_4XX,
+                responseHeaders: {
+                    'Access-Control-Allow-Origin': `'${corsOrigins}'`,
+                }
+            });
+            this.api.addGatewayResponse('default5xx', {
+                type: ResponseType.DEFAULT_5XX,
+                responseHeaders: {
+                    'Access-Control-Allow-Origin': `'${corsOrigins}'`,
+                }
+            });
+        }
+
         // Set up usage plans if configured
         if (this.apiConstructConfig.usagePlans?.length) {
             for (const planConfig of this.apiConstructConfig.usagePlans) {
@@ -345,8 +362,10 @@ export class APIConstruct implements FW24Construct {
     // register a single controller
     private registerController = async (controllerInfo: HandlerDescriptor, ownerModule?: IFw24Module) => {
         const { handlerClass, filePath, fileName, handlerHash } = controllerInfo;
+        // Add the folder path from filename to the controller name
+        const folderPath = fileName.split('/').slice(0, -1).join('/');
         const handlerInstance = new handlerClass();
-        const controllerName = handlerInstance.controllerName;
+        const controllerName = !fileName.includes('/') ? handlerInstance.controllerName : folderPath + '/' + handlerInstance.controllerName;
         const controllerConfig: IControllerConfig = handlerInstance?.controllerConfig || {};
         const controllerStackName = controllerConfig.stackName || controllerName;
         const parentStackName = controllerConfig.parentStackName || this.apiConstructConfig.controllerParentStackName;
@@ -568,13 +587,17 @@ export class APIConstruct implements FW24Construct {
 
     private getOrCreateControllerResource = (controllerName: string, controllerStackName: string): IResource => {
         let restAPI = this.getAPI(controllerStackName);
-        let controllerResource = restAPI.api.root.getResource(controllerName) as IResource;
-        if(!controllerResource){
-            controllerResource = restAPI.api.root.addResource(controllerName) as IResource;
-            if(restAPI.isImported){
-                const corsPreflightMethod = controllerResource.addCorsPreflight(this.getCorsPreflightOptions());
-                this.methods.push(corsPreflightMethod);
+        let controllerResource: IResource = restAPI.api.root;
+        for(const pathPart of controllerName.split('/')){
+            let childResource = controllerResource.getResource(pathPart) as IResource;
+            if(!childResource){
+                childResource = controllerResource.addResource(pathPart) as IResource;
+                if(restAPI.isImported){
+                    const corsPreflightMethod = childResource.addCorsPreflight(this.getCorsPreflightOptions());
+                    this.methods.push(corsPreflightMethod);
+                }
             }
+            controllerResource = childResource;
         }
         
         return controllerResource;

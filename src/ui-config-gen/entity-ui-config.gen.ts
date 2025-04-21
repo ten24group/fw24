@@ -52,6 +52,7 @@ export class EntityUIConfigGen{
                 const createConfig = MakeCreateEntityConfig({
                     entityName,
                     entityNamePlural: entitySchema.model.entityNamePlural,
+                    CRUDApiPath: entitySchema.model.CRUDApiPath,
                     properties: entityDefaultOpsSchema.create.input
                 }, service);
                 entityConfigs[`create-${entityName.toLowerCase()}`] = createConfig;
@@ -61,6 +62,7 @@ export class EntityUIConfigGen{
                 const updateConfig = MakeUpdateEntityConfig({
                     entityName,
                     entityNamePlural: entitySchema.model.entityNamePlural,
+                    CRUDApiPath: entitySchema.model.CRUDApiPath,
                     properties: entityDefaultOpsSchema.update.input
                 }, service);
                 entityConfigs[`edit-${entityName.toLowerCase()}`] = updateConfig;
@@ -71,6 +73,7 @@ export class EntityUIConfigGen{
                     entityName,
                     entityNamePlural: entitySchema.model.entityNamePlural,
                     properties: entityDefaultOpsSchema.list.output,
+                    CRUDApiPath: entitySchema.model.CRUDApiPath,
                     excludeFromAdminCreate: entitySchema.model.excludeFromAdminCreate,
                     excludeFromAdminUpdate: entitySchema.model.excludeFromAdminUpdate,
                     excludeFromAdminDelete: entitySchema.model.excludeFromAdminDelete,
@@ -83,7 +86,8 @@ export class EntityUIConfigGen{
                 const viewConfig = MakeViewEntityConfig({
                     entityName,
                     entityNamePlural: entitySchema.model.entityNamePlural,
-                    properties: entityDefaultOpsSchema.get.output
+                    properties: entityDefaultOpsSchema.get.output,
+                    CRUDApiPath: entitySchema.model.CRUDApiPath,
                 }, service);
                 entityConfigs[`view-${entityName.toLowerCase()}`] = viewConfig;
             }
