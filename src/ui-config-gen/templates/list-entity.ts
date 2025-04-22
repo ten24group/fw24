@@ -17,6 +17,7 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
     excludeFromAdminUpdate?: boolean,
     excludeFromAdminDelete?: boolean,
     excludeFromAdminDetail?: boolean,
+    CRUDApiPath?: string,
     properties: TIOSchemaAttributesMap<S>
 }
 
@@ -51,14 +52,14 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     options: ListEntityPageOptions<S>
 ){
 
-    const{ entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail } = options;
+    const{ entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath } = options;
     const entityNameLower = entityName.toLowerCase();
 
     const listPageConfig = {
         apiConfig: {
             apiMethod: `GET`,
             responseKey: 'items',
-            apiUrl: `/${entityNameLower}`,
+            apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
         },
         propertiesConfig: [] as any[],
     }

@@ -6,6 +6,7 @@ import { formatEntityAttributesForDetail } from "./util";
 export type ViewEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string,
     entityNamePlural: string,
+    CRUDApiPath?: string,
     properties: TIOSchemaAttributesMap<S>,
 }
 
@@ -14,7 +15,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     entityService: BaseEntityService<S>
 ) => {
 
-    const{ entityName } = options;
+    const{ entityName, CRUDApiPath } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
     
@@ -40,7 +41,7 @@ export function makeViewEntityDetailConfig<S extends EntitySchema<string, string
     entityService: BaseEntityService<S>
 ){
 
-    const{ entityName, properties } = options;
+    const{ entityName, properties, CRUDApiPath } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
 
@@ -48,7 +49,7 @@ export function makeViewEntityDetailConfig<S extends EntitySchema<string, string
         detailApiConfig: {
             apiMethod: `GET`,
             responseKey: entityNameCamel,
-            apiUrl: `/${entityNameLower}`,
+            apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
         },
         propertiesConfig: [] as any[],
     }

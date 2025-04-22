@@ -1,4 +1,4 @@
-import { readdirSync, existsSync, readFile, readFileSync } from "fs";
+import { readdirSync, existsSync, readFile, readFileSync, statSync } from "fs";
 import { resolve, join, relative,  } from "path";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { IFw24Module } from "./runtime/module";
@@ -84,7 +84,7 @@ export class Helper {
         // Resolve the absolute path
         const sourceDirectory = resolve(path);
         // Get all the files in the handler directory
-        const allDirFiles = readdirSync(sourceDirectory);
+        const allDirFiles = readdirSync(sourceDirectory, { recursive: true }) as string[];
         // Filter the files to only include TypeScript files
         const sourceFilePaths = allDirFiles.filter((file) => 
             ( 
