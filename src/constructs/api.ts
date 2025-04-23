@@ -4,7 +4,6 @@ import type {
     IResource,
     Method,
     MethodOptions,
-    Resource,
     RestApiProps
 } from "aws-cdk-lib/aws-apigateway";
 
@@ -14,6 +13,7 @@ import {
     Deployment,
     RestApi,
     IRestApi,
+    Resource,
     MethodLoggingLevel,
     Stage,
     ResponseType
@@ -588,13 +588,36 @@ export class APIConstruct implements FW24Construct {
     private getOrCreateControllerResource = (controllerName: string, controllerStackName: string): IResource => {
         let restAPI = this.getAPI(controllerStackName);
         let controllerResource: IResource = restAPI.api.root;
-        for(const pathPart of controllerName.split('/')){
+        const currentStack = this.fw24.getStack(controllerStackName);
+        const pathParts = controllerName.split('/');
+        for(const pathPart of pathParts){
             let childResource = controllerResource.getResource(pathPart) as IResource;
+            // if it's a nested controller, the root resource may not be created in another stack
+            const isNestedController = pathParts.length > 1;
+            if(!childResource && isNestedController && pathPart === pathParts[0]){
+                // try to get the root resource from the fw24 output
+                this.logger.debug(`Getting controller resource for ${pathPart} from fw24 output`);
+                const controllerResourceId = this.fw24.getEnvironmentVariable(`restAPI_controller_${pathPart}_resourceId`, 'resource', currentStack);
+                if(controllerResourceId){
+                    this.logger.debug(`Controller resource for ${pathPart} found in fw24 output: ${controllerResourceId}`);
+                    childResource = Resource.fromResourceAttributes(currentStack, `${this.fw24.appName}-${controllerStackName}-${pathPart}`, {
+                        resourceId: controllerResourceId,
+                        restApi: restAPI.api,
+                        path: '/' + pathPart
+                    });
+                }
+            }
             if(!childResource){
+                // for nested resources add / to the path
+                this.logger.debug(`Creating controller resource for path ${pathPart} under ${controllerResource.path}`);
                 childResource = controllerResource.addResource(pathPart) as IResource;
                 if(restAPI.isImported){
                     const corsPreflightMethod = childResource.addCorsPreflight(this.getCorsPreflightOptions());
                     this.methods.push(corsPreflightMethod);
+                }
+                if(isNestedController && pathPart === pathParts[0]){
+                    this.logger.debug(`Setting output for contorller resource ${controllerStackName} path ${pathPart}`);
+                    this.fw24.setConstructOutput(this, `restAPI_controller_${pathPart}`, childResource, OutputType.RESOURCE, 'resourceId');
                 }
             }
             controllerResource = childResource;
