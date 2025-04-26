@@ -89,7 +89,7 @@ abstract class APIController extends AbstractLambdaHandler {
   }
 
   // Add middleware registration method
-  protected use(middleware: Middleware) {
+  protected useMiddleware(middleware: Middleware) {
     this.middlewares.push(middleware);
   }
 
