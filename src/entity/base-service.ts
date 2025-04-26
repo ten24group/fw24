@@ -879,12 +879,12 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         // Create filters for the query using the correct structure
         const filters = {
-            [attributeName]: { eq: attributeValue }
+            [ attributeName ]: { eq: attributeValue }
         } as EntityFilterCriteria<S>;
 
         // Determine which attributes to project - only the attribute being checked and ignored entity identifiers
-        const attributesToProject: string[] = [attributeName];
-        
+        const attributesToProject: string[] = [ attributeName ];
+
         // Add ignored entity identifier fields to the projection
         if (ignoredEntityIdentifiers && !isEmptyObjectDeep(ignoredEntityIdentifiers)) {
             Object.keys(ignoredEntityIdentifiers).forEach(key => {
@@ -905,8 +905,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         let entities = result.data || [];
         if (ignoredEntityIdentifiers && !isEmptyObjectDeep(ignoredEntityIdentifiers)) {
             entities = entities.filter(entity => {
-                return !Object.entries(ignoredEntityIdentifiers).every(([key, value]) => 
-                    entity[key] === value
+                return !Object.entries(ignoredEntityIdentifiers).every(([ key, value ]) =>
+                    entity[ key ] === value
                 );
             });
         }
@@ -1294,30 +1294,30 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             const { batchSize = 100 } = options;
             const entityName = this.getEntityName();
             const repository = this.getRepository();
-            
+
             this.logger.info(`Starting index rebuild for entity: ${entityName}`);
-            
+
             // Get all records from the primary index
             const allRecords = await repository.scan.go();
-            
+
             if (!allRecords.data || allRecords.data.length === 0) {
                 this.logger.info(`No records found for entity: ${entityName}`);
                 return;
             }
-            
+
             this.logger.info(`Found ${allRecords.data.length} records to process for entity: ${entityName}`);
-            
+
             // Process records in batches
             const totalRecords = allRecords.data.length;
             const totalBatches = Math.ceil(totalRecords / batchSize);
-            
+
             for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
                 const start = batchIndex * batchSize;
                 const end = Math.min(start + batchSize, totalRecords);
                 const batch = allRecords.data.slice(start, end);
-                
+
                 this.logger.info(`Processing batch ${batchIndex + 1}/${totalBatches} (${start + 1}-${end} of ${totalRecords} records)`);
-                
+
                 // Rebuild all indexes by upserting each record to the primary index
                 for (const record of batch) {
                     try {
@@ -1328,7 +1328,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                     }
                 }
             }
-            
+
             this.logger.info(`Completed index rebuild for entity: ${entityName}`);
         } catch (error) {
             this.logger.error(`Failed to rebuild index for entity: ${this.getEntityName()}`, error);

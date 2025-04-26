@@ -136,7 +136,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			expiresIn,
 			bucketName,
 			contentType,
-			customDomain: resolveEnvValueFor({ key: ENV_KEYS.FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY }) ?? ''
+			customDomain: resolveEnvValueFor({ key: ENV_KEYS.FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY, defaultValue: '' })
 		};
 
 		this.logger.debug(`getSignedUrlForFileUpload::`, options);

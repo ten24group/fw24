@@ -24,7 +24,8 @@ export class RequestContext implements Request {
     public requestContext: any;
     public resource: any;
     public stageVariables: any;
-    
+    public requestId: string;
+
     constructor(event: APIGatewayEvent, context: Context) {
         event = event || {};
 
@@ -34,7 +35,7 @@ export class RequestContext implements Request {
 
         this.path = event.path;
         this.context = context;
-    
+
         this.resource = event.resource;
         this.httpMethod = event.httpMethod;
 
@@ -44,12 +45,14 @@ export class RequestContext implements Request {
         this.isBase64Encoded = event.isBase64Encoded;
 
         this.pathParameters = event.pathParameters || {};
-        this.queryStringParameters =  this.parseQueryStringParameters( event.queryStringParameters || {});
-        
+        this.queryStringParameters = this.parseQueryStringParameters(event.queryStringParameters || {});
+
         this.debugMode = this.checkDebugMode(this.queryStringParameters);
-        
+
         this.headers = this.parseHeaders(event.headers || {});
-        
+
+        this.requestId = context.awsRequestId || `req-${Date.now()}`;
+
         const contentType = this.getHeader('content-type');
 
         this.body = this.parseBody(event.body, contentType, this.isBase64Encoded);
@@ -57,14 +60,14 @@ export class RequestContext implements Request {
 
     private parseQueryStringParameters(params: RecordWithOptionalValues): RecordWithOptionalValues {
         return Object.keys(params).reduce((acc: any, key) => {
-            acc[key] = parseValueToCorrectTypes(params[key]);
+            acc[ key ] = parseValueToCorrectTypes(params[ key ]);
             return acc;
         }, {});
     }
 
     private parseHeaders(headers: RecordWithOptionalValues): RecordWithOptionalValues {
         return Object.keys(headers).reduce((acc: any, key) => {
-            acc[key.toLowerCase()] = headers[key].toLowerCase();
+            acc[ key.toLowerCase() ] = headers[ key ].toLowerCase();
             return acc;
         }, {});
     }
@@ -80,25 +83,25 @@ export class RequestContext implements Request {
 
     private parseBody(body: string | null, contentType: string, isBase64Encoded: boolean): any {
         this._logger.debug("Parsing the event body...", body, contentType);
-       
+
         if (!body) return null;
 
         if (contentType == 'application/x-www-form-urlencoded') {
 
-            if(isBase64Encoded) {
+            if (isBase64Encoded) {
                 body = Buffer.from(body, 'base64').toString('utf8');
             }
 
             return body.split('&').reduce((acc: any, param) => {
-                const [key, value] = param.split('=');
-                acc[key] = value;
+                const [ key, value ] = param.split('=');
+                acc[ key ] = value;
                 return acc;
             }, {});
         }
 
-        if (contentType == 'application/json') {
-            
-            if(isBase64Encoded) {
+        if (contentType.startsWith('application/json')) {
+
+            if (isBase64Encoded) {
                 this._logger.info("Decoding the base64 encoded body...");
                 body = Buffer.from(body, 'base64').toString('utf8');
             }
@@ -120,42 +123,42 @@ export class RequestContext implements Request {
     }
 
     getParam(key: string): any {
-        return this.pathParameters[key] || this.queryStringParameters[key] || this.body[key];
+        return this.pathParameters[ key ] || this.queryStringParameters[ key ] || this.body[ key ];
     }
 
     hasParam(key: string): boolean {
-        return !!(this.pathParameters[key] || this.queryStringParameters[key] || this.body[key]);
+        return !!(this.pathParameters[ key ] || this.queryStringParameters[ key ] || this.body[ key ]);
     }
 
     getPathParam(key: string): any {
-        return this.pathParameters[key];
+        return this.pathParameters[ key ];
     }
 
     hasPathParam(key: string): boolean {
-        return !!this.pathParameters[key];
+        return !!this.pathParameters[ key ];
     }
 
     getQueryParam(key: string): any {
-        return this.queryStringParameters[key];
+        return this.queryStringParameters[ key ];
     }
 
     hasQueryParam(key: string): boolean {
-        return !!this.queryStringParameters[key];
+        return !!this.queryStringParameters[ key ];
     }
 
     getHeader(key: string): any {
-        return this.headers[key];
+        return this.headers[ key ];
     }
 
     hasHeader(key: string): boolean {
-        return !!this.headers[key];
+        return !!this.headers[ key ];
     }
 
     getBodyParam(key: string): any {
-        return this.body[key];
+        return this.body[ key ];
     }
 
     hasBodyParam(key: string): boolean {
-        return !!this.body[key];
+        return !!this.body[ key ];
     }
 }
