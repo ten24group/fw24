@@ -1,17 +1,21 @@
 import { parseValueToCorrectTypes } from '../../utils/parse';
 import { createLogger, ILogger } from '../../logging';
 import { Request } from '../../interfaces/request';
-import { APIGatewayEvent, Context } from "aws-lambda";
+import { APIGatewayEvent, Context, APIGatewayProxyEventPathParameters } from "aws-lambda";
 import { resolveEnvValueFor } from '../../utils/env';
 import { ENV_KEYS } from '../../const';
 
 type RecordWithOptionalValues = Record<string, any>;
 
-export class RequestContext implements Request {
+export class RequestContext<
+    TBody extends Record<string, any> = Record<string, any>,
+    TQuery extends Record<string, any> = Record<string, any>,
+    TParams extends APIGatewayProxyEventPathParameters = APIGatewayProxyEventPathParameters
+> implements Request<TBody, TQuery> {
 
     private readonly _logger: ILogger;
 
-    public body: any;
+    public body: TBody;
     public context: Context;
     public debugMode: boolean;
     public event: APIGatewayEvent;
@@ -19,8 +23,8 @@ export class RequestContext implements Request {
     public httpMethod: string;
     public isBase64Encoded: boolean;
     public path: string;
-    public pathParameters: RecordWithOptionalValues;
-    public queryStringParameters: RecordWithOptionalValues;
+    public pathParameters: TParams;
+    public queryStringParameters: TQuery;
     public requestContext: any;
     public resource: any;
     public stageVariables: any;
@@ -44,8 +48,8 @@ export class RequestContext implements Request {
 
         this.isBase64Encoded = event.isBase64Encoded;
 
-        this.pathParameters = event.pathParameters || {};
-        this.queryStringParameters = this.parseQueryStringParameters(event.queryStringParameters || {});
+        this.pathParameters = (event.pathParameters || {}) as TParams;
+        this.queryStringParameters = this.parseQueryStringParameters(event.queryStringParameters || {}) as TQuery;
 
         this.debugMode = this.checkDebugMode(this.queryStringParameters);
 
@@ -55,7 +59,7 @@ export class RequestContext implements Request {
 
         const contentType = this.getHeader('content-type');
 
-        this.body = this.parseBody(event.body, contentType, this.isBase64Encoded);
+        this.body = this.parseBody(event.body, contentType, this.isBase64Encoded) as TBody;
     }
 
     private parseQueryStringParameters(params: RecordWithOptionalValues): RecordWithOptionalValues {
@@ -147,11 +151,12 @@ export class RequestContext implements Request {
     }
 
     getHeader(key: string): any {
-        return this.headers[ key ];
+        const lowerKey = key.toLowerCase();
+        return this.headers[ lowerKey ];
     }
 
     hasHeader(key: string): boolean {
-        return !!this.headers[ key ];
+        return !!this.getHeader(key);
     }
 
     getBodyParam(key: string): any {

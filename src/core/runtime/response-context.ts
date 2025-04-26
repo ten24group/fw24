@@ -1,6 +1,8 @@
 import { Response } from '../../interfaces/response';
 import { APIGatewayProxyResult } from 'aws-lambda';
 import { ResponseConfig, DEFAULT_RESPONSE_CONFIG, mergeResponseConfig } from './response-config';
+import { Readable } from 'stream';
+import { serialize, SerializeOptions } from 'cookie';
 
 export interface RequestMetrics {
     startTime: number;
@@ -28,6 +30,7 @@ export interface CacheOptions {
     private?: boolean;
     noCache?: boolean;
 }
+
 
 export type ResponseContextOptions = {
     timestamp?: string;
@@ -77,10 +80,12 @@ export class ResponseContext implements Response {
     public isBase64Encoded: boolean = false;
 
     private metrics: RequestMetrics;
-    private responseData: any | null = null;
+    private responseData: any | null = {};
     private responseMetadata: ResponseMetadata = {};
     private config: ResponseConfig;
     private debugMode: boolean = false;
+    private cookies: Map<string, string> = new Map();
+    private responseType: 'json' | 'text' | 'html' | 'xml' | 'binary' | null = 'json';
 
     constructor(options: ResponseContextOptions = {}) {
         const {
@@ -94,7 +99,7 @@ export class ResponseContext implements Response {
             isBase64Encoded = false,
             headers = {},
             statusCode = 200,
-            config = {}
+            config = {},
         } = options;
 
         this.config = mergeResponseConfig(config);
@@ -135,23 +140,41 @@ export class ResponseContext implements Response {
 
     // Response Type Helpers
     json<T>(data: T) {
+        this.responseType = 'json';
         this.responseData = data;
         this.headers[ 'Content-Type' ] = 'application/json';
         return this;
     }
 
     text(content: string) {
+        this.responseType = 'text';
         this.body = content;
         this.headers[ 'Content-Type' ] = 'text/plain';
         return this;
     }
 
     binary(data: Buffer | string, contentType?: string) {
+        this.responseType = 'binary';
         this.body = Buffer.isBuffer(data) ? data.toString('base64') : data;
         this.isBase64Encoded = true;
         if (contentType) {
             this.headers[ 'Content-Type' ] = contentType;
         }
+        return this;
+    }
+
+    // Response Type Helpers
+    public html(content: string): this {
+        this.responseType = 'html';
+        this.body = content;
+        this.header('Content-Type', 'text/html');
+        return this;
+    }
+
+    public xml(content: string): this {
+        this.responseType = 'xml';
+        this.body = content;
+        this.header('Content-Type', 'application/xml');
         return this;
     }
 
@@ -209,11 +232,67 @@ export class ResponseContext implements Response {
         return this;
     }
 
+    // Cookie Management
+    public cookie(name: string, value: string, options: SerializeOptions = {}): this {
+        const serialized = serialize(name, value, options);
+        this.cookies.set(name, serialized);
+        return this;
+    }
+
+    public clearCookie(name: string, options: SerializeOptions = {}): this {
+        return this.cookie(name, '', { ...options, expires: new Date(0) });
+    }
+
+    // File Downloads
+    public async download(content: Buffer | Readable | string, filename: string, options: {
+        contentType?: string;
+        contentLength?: number;
+        inline?: boolean;
+    } = {}): Promise<this> {
+        const disposition = options.inline ? 'inline' : 'attachment';
+        this.header('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
+
+        if (options.contentType) {
+            this.header('Content-Type', options.contentType);
+        }
+
+        if (Buffer.isBuffer(content)) {
+            this.body = content.toString('base64');
+            this.isBase64Encoded = true;
+            if (!options.contentLength) {
+                this.header('Content-Length', content.length.toString());
+            }
+        } else if (content instanceof Readable) {
+            const chunks: Buffer[] = [];
+            for await (const chunk of content) {
+                chunks.push(Buffer.from(chunk));
+            }
+            const buffer = Buffer.concat(chunks);
+            this.body = buffer.toString('base64');
+            this.isBase64Encoded = true;
+            if (!options.contentLength) {
+                this.header('Content-Length', buffer.length.toString());
+            }
+        } else {
+            this.body = content;
+            if (!options.contentLength) {
+                this.header('Content-Length', Buffer.byteLength(content).toString());
+            }
+        }
+
+        return this;
+    }
+
     // Build Final Response
     build(): APIGatewayProxyResult {
+        // Add cookies to headers
+        if (this.cookies.size > 0) {
+            const cookieHeader = Array.from(this.cookies.values()).join('; ');
+            this.header('Set-Cookie', cookieHeader);
+        }
 
-        // If we have response data, serialize it with optional envelope
-        if (this.responseData !== null) {
+        // Only process JSON response wrapping if the response type is 'json'
+        if (this.responseType === 'json' && this.responseData !== null) {
             const shouldIncludeMetadata = this.debugMode && this.config.includeMetadataOnDebug;
             const shouldIncludeMetrics = this.config.alwaysIncludeMetrics ||
                 (this.debugMode && this.config.includeMetricsOnDebug);
@@ -232,8 +311,7 @@ export class ResponseContext implements Response {
                 }
             }
 
-            this.body = JSON.stringify(responseBody, null,
-                this.config.prettyPrintJson ? 2 : undefined);
+            this.body = JSON.stringify(responseBody, null, this.config.prettyPrintJson ? 2 : undefined);
         }
 
         return {

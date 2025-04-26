@@ -1,5 +1,7 @@
 import { APIGatewayProxyResult } from 'aws-lambda';
 import { CacheOptions, RequestMetrics, ResponseMetadata } from '../core/runtime/response-context';
+import { Readable } from 'stream';
+import { SerializeOptions } from 'cookie';
 
 
 /**
@@ -40,10 +42,18 @@ export interface Response {
     // Fluent Methods
     json<T>(data: T): this;
     text(content: string): this;
+    html(content: string): this;
+    xml(content: string): this;
     binary(data: Buffer | string, contentType?: string): this;
+    download(content: Buffer | Readable | string, filename: string, options?: {
+        contentType?: string;
+        contentLength?: number;
+        inline?: boolean;
+    }): Promise<this>;
 
     status(code: number): this;
     header(key: string, value: string): this;
+    cookie(name: string, value: string, options?: SerializeOptions): this;
     cors(origin?: string, headers?: string[]): this;
     cache(options: CacheOptions): this;
     redirect(location: string): this;

@@ -1,12 +1,12 @@
 import type { APIGatewayEvent, Context } from "aws-lambda";
-export interface Request {
+export interface Request<TBody = any, TQuery extends Record<string, any> = Record<string, any>> {
     event: APIGatewayEvent;
     requestId: string;
     context: Context;
     resource: any;
-    body: any;
+    body: TBody;
     path: string;
-    queryStringParameters: Record<string, any>;
+    queryStringParameters: TQuery;
     headers: Record<string, any>;
     requestContext: any;
     stageVariables: any;
