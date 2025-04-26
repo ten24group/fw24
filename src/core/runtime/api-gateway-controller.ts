@@ -20,6 +20,16 @@ export interface Middleware {
   onError?: (error: Error, request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
 }
 
+// Global middleware management
+const globalMiddlewares: Middleware[] = [];
+
+export const useMiddleware = (middleware: Middleware) => {
+  globalMiddlewares.push(middleware);
+}
+export const clearMiddlewares = () => {
+  globalMiddlewares.length = 0;
+}
+
 /**
  * Creates an API handler without defining a class
  * 
@@ -73,7 +83,7 @@ export interface APIControllerConfig {
   responseConfig?: Partial<ResponseConfig>;
 }
 
-abstract class APIController extends AbstractLambdaHandler {
+export abstract class APIController extends AbstractLambdaHandler {
   protected validator: IValidator = DefaultValidator;
   protected middlewares: Middleware[] = [];
   protected responseConfig: ResponseConfig;
@@ -94,6 +104,10 @@ abstract class APIController extends AbstractLambdaHandler {
     this.middlewares.push(middleware);
   }
 
+  protected getMiddlewares() {
+    return [ ...globalMiddlewares, ...this.middlewares ];
+  }
+
   // Execute middleware pipeline
   private async executeMiddlewarePipeline(
     phase: 'before' | 'after' | 'onError',
@@ -102,13 +116,17 @@ abstract class APIController extends AbstractLambdaHandler {
     ctx?: ExecutionContext,
     error?: Error
   ): Promise<void> {
-    for (const middleware of this.middlewares) {
+
+    const allMiddlewares = this.getMiddlewares();
+
+    for (const middleware of allMiddlewares) {
       if (phase === 'onError' && middleware.onError && error) {
         await middleware.onError(error, request, response, ctx);
       } else if (phase !== 'onError' && middleware[ phase ]) {
         await middleware[ phase ]!(request, response, ctx);
       }
     }
+
   }
 
   async validate(requestContext: Request, validations: InputValidationRule | HttpRequestValidations, _ctx?: ExecutionContext) {
@@ -290,5 +308,3 @@ abstract class APIController extends AbstractLambdaHandler {
     };
   }
 }
-
-export { APIController };
