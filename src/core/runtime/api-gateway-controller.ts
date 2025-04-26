@@ -9,14 +9,15 @@ import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
 import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErrorHandler } from "../../errors/";
 import { ResponseConfig, mergeResponseConfig } from './response-config';
+import { ExecutionContext } from '../types/execution-context';
 
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 
 // New interfaces for middleware and error handling
 export interface Middleware {
-  before?: (request: Request, response: Response) => Promise<void>;
-  after?: (request: Request, response: Response) => Promise<void>;
-  onError?: (error: Error, request: Request, response: Response) => Promise<void>;
+  before?: (request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
+  after?: (request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
+  onError?: (error: Error, request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
 }
 
 /**
@@ -98,18 +99,19 @@ abstract class APIController extends AbstractLambdaHandler {
     phase: 'before' | 'after' | 'onError',
     request: Request,
     response: Response,
+    ctx?: ExecutionContext,
     error?: Error
   ): Promise<void> {
     for (const middleware of this.middlewares) {
       if (phase === 'onError' && middleware.onError && error) {
-        await middleware.onError(error, request, response);
+        await middleware.onError(error, request, response, ctx);
       } else if (phase !== 'onError' && middleware[ phase ]) {
-        await middleware[ phase ]!(request, response);
+        await middleware[ phase ]!(request, response, ctx);
       }
     }
   }
 
-  async validate(requestContext: Request, validations: InputValidationRule | HttpRequestValidations) {
+  async validate(requestContext: Request, validations: InputValidationRule | HttpRequestValidations, _ctx?: ExecutionContext) {
 
     let validationRules: HttpRequestValidations = validations;
     if (isInputValidationRule(validations)) {
@@ -162,48 +164,47 @@ abstract class APIController extends AbstractLambdaHandler {
   async LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult> {
     this.logger.debug("LambdaHandler Received event:", JSON.stringify(event, null, 2));
 
-    const requestContext: Request = await this.makeRequestContext(event, context);
-    const responseContext: Response = await this.makeResponseContext(requestContext);
-
+    const request = await this.makeRequestContext(event, context);
+    const response = await this.makeResponseContext(request);
     await this.initialize(event, context);
-
+    const ctx = this.buildCtx(event, context, request, response);
     try {
       // Execute before middleware
-      await this.executeMiddlewarePipeline('before', requestContext, responseContext);
+      await this.executeMiddlewarePipeline('before', request, response, ctx);
 
-      const route = this.findMatchingRoute(requestContext);
+      const route = this.findMatchingRoute(request);
 
       if (route?.validations) {
         this.logger.debug("Validation rules found for route:", route);
-        const validationResult = await this.validate(requestContext, route.validations);
+        const validationResult = await this.validate(request, route.validations);
         if (!validationResult.pass) {
           throw new ValidationFailedError(validationResult.errors);
         }
       }
 
       const routeFunction = this.getRouteFunction(route);
-      let controllerResponse: any = routeFunction.call(this, requestContext, responseContext);
-
+      let controllerResponse: any = routeFunction.call(this, request, response, ctx);
       if (controllerResponse instanceof Promise) {
         controllerResponse = await controllerResponse;
       }
 
       // Execute after middleware
-      await this.executeMiddlewarePipeline('after', requestContext, responseContext);
+      await this.executeMiddlewarePipeline('after', request, response, ctx);
 
       // If the controller returned anything (ResponseContext or raw API result), emit that
       if (controllerResponse != null) {
         return this.handleResponse(controllerResponse);
       }
     } catch (err) {
-      this.logger.error('LambdaHandler error: ', err);
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      this.logger.error('LambdaHandler error: ', errorObj);
       // Execute error middleware
-      await this.executeMiddlewarePipeline('onError', requestContext, responseContext, err as Error);
-      return this.handleException(requestContext, err as Error, responseContext);
+      await this.executeMiddlewarePipeline('onError', request, response, ctx, errorObj);
+      return this.handleException(request, errorObj, response);
     }
 
     // Fallback to the in-memory responseContext
-    return responseContext.build();
+    return response.build();
   }
 
   /**
@@ -276,6 +277,17 @@ abstract class APIController extends AbstractLambdaHandler {
       return res.build();
     }
     return res;
+  }
+
+  protected buildCtx(event: APIGatewayEvent, context: Context, request: Request, response: Response): ExecutionContext {
+    return {
+      event,
+      lambdaContext: context,
+      request,
+      response,
+      actor: undefined,
+      debugInfo: {}
+    };
   }
 }
 

@@ -11,6 +11,7 @@ import { createEntity, deleteEntity, getEntity, getBatchEntity, listEntity, quer
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 import { IDIContainer } from "../interfaces";
 import { DatabaseError, EntityValidationError } from './errors';
+import { ExecutionContext } from "../core/types/execution-context";
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
@@ -707,7 +708,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @returns A promise that resolves to the retrieved entity data.
      */
 
-    public async get(options: GetOptions<S>) {
+    public async get(options: GetOptions<S>, _ctx?: ExecutionContext) {
         const { identifiers, attributes } = options;
 
 
@@ -933,7 +934,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param payload - The payload for creating the entity.
      * @returns The created entity.
      */
-    public async create(payload: CreateEntityItemTypeFromSchema<S>) {
+    public async create(payload: CreateEntityItemTypeFromSchema<S>, _ctx?: ExecutionContext) {
 
         const payloadCopy = { ...payload }
 
@@ -1063,9 +1064,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * const entityId = { id: 123, name: 'example' };
      * const duplicatedEntity = await duplicate(entityId);
      */
-    public async duplicate(id: EntityIdentifiersTypeFromSchema<S>) {
+    public async duplicate(id: EntityIdentifiersTypeFromSchema<S>, ctx?: ExecutionContext) {
         const duplicateEventData = await this.makeDuplicateEntityData(id);
-        return await this.create(duplicateEventData);
+        return await this.create(duplicateEventData, ctx);
     }
 
     // TODO: should be part of some config
@@ -1080,7 +1081,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param query - The query object containing filters, search keywords, and attributes.
      * @returns A Promise that resolves to an object containing the list of entities and the original query.
      */
-    public async list(query: EntityQuery<S> = {}) {
+    public async list(query: EntityQuery<S> = {}, _ctx?: ExecutionContext) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
         if (!query.attributes) {
@@ -1146,7 +1147,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param query - The entity query to execute.
      * @returns A promise that resolves to the result of the query.
      */
-    public async query(query: EntityQuery<S>) {
+    public async query(query: EntityQuery<S>, _ctx?: ExecutionContext) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
         const { attributes } = query;
@@ -1208,7 +1209,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param remove - Optional array of attributes to remove from the entity.
      * @returns The updated entity.
      */
-    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators) {
+    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, _ctx?: ExecutionContext) {
 
         const uniqueFields = this.getUniqueAttributes();
         const skipCheckingAttributesUniqueness = false;
@@ -1265,7 +1266,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param identifiers - The identifiers of the entity to be deleted.
      * @returns A promise that resolves to the deleted entity.
      */
-    public async delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>) {
+    public async delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, _ctx?: ExecutionContext) {
         try {
             this.logger.debug(`Called ~ delete ~ entityName: ${this.getEntityName()} ~ identifiers:`, identifiers);
 
