@@ -93,9 +93,9 @@ export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3
 			return;
 		}
 
-		const packageNamesArray = entryPackageNames.split(',').map(pkg => pkg.trim()); // Split and trim package names
+		const packageNamesArray = entryPackageNames.split(',').map((pkg: string) => pkg.trim()); // Split and trim package names
 
-		packageNamesArray.forEach((entryPackageName) => {
+		packageNamesArray.forEach((entryPackageName: string) => {
 			try {
 				DefaultLogger.debug("trying to import entry", { entryPackageName });
 				const entry = require(entryPackageName);
@@ -211,7 +211,7 @@ export function findConstructor(target: any, methodToDecorate: any): any {
 	// Approach 1: Direct access
 	if (target && target.constructor) {
 		return target.constructor;
-	} 
+	}
 	// Approach 2: From prototype
 	else if (target && Object.getPrototypeOf(target) && Object.getPrototypeOf(target).constructor) {
 		return Object.getPrototypeOf(target).constructor;
@@ -224,7 +224,7 @@ export function findConstructor(target: any, methodToDecorate: any): any {
 	else if (target && typeof target === 'function') {
 		return target;
 	}
-	
+
 	return undefined;
 }
 
@@ -238,6 +238,6 @@ export function findConstructor(target: any, methodToDecorate: any): any {
 export function getRoutesKey(constructor: any): symbol {
 	// Use a combination of constructor name and a unique identifier to ensure
 	// each class gets its own unique symbol, even when inheritance is involved
-	const uniqueId = constructor.toString().split('\n')[0].trim();
+	const uniqueId = constructor.toString().split('\n')[ 0 ].trim();
 	return Symbol.for(`routes_${uniqueId}`);
 }

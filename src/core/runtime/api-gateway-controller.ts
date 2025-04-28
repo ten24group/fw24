@@ -2,15 +2,33 @@ import type { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda
 import type { Request, Response, Route } from "../../interfaces";
 import { Controller, IControllerConfig } from "../../decorators";
 import { Get, RouteMethods } from "../../decorators/method";
-import { getCircularReplacer } from "../../utils";
 import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule } from "../../validation";
 import { isHttpRequestValidationRule, isInputValidationRule } from "../../validation/utils";
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
 import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErrorHandler } from "../../errors/";
+import { ResponseConfig, mergeResponseConfig } from './response-config';
+import { ExecutionContext } from '../types/execution-context';
 
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
+
+// New interfaces for middleware and error handling
+export interface Middleware {
+  before?: (request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
+  after?: (request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
+  onError?: (error: Error, request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
+}
+
+// Global middleware management
+const globalMiddlewares: Middleware[] = [];
+
+export const useMiddleware = (middleware: Middleware) => {
+  globalMiddlewares.push(middleware);
+}
+export const clearMiddlewares = () => {
+  globalMiddlewares.length = 0;
+}
 
 /**
  * Creates an API handler without defining a class
@@ -61,12 +79,19 @@ export function createApiHandler(
   };
 }
 
-/**
- * Base controller class for handling API Gateway events.
- */
-abstract class APIController extends AbstractLambdaHandler {
+export interface APIControllerConfig {
+  responseConfig?: Partial<ResponseConfig>;
+}
 
+export abstract class APIController extends AbstractLambdaHandler {
   protected validator: IValidator = DefaultValidator;
+  protected middlewares: Middleware[] = [];
+  protected responseConfig: ResponseConfig;
+
+  constructor(config: APIControllerConfig = {}) {
+    super();
+    this.responseConfig = mergeResponseConfig(config.responseConfig);
+  }
 
   abstract initialize(event: APIGatewayEvent, context: Context): Promise<void>;
 
@@ -74,7 +99,37 @@ abstract class APIController extends AbstractLambdaHandler {
     return Promise.resolve(new Map<string, string>());
   }
 
-  async validate(requestContext: Request, validations: InputValidationRule | HttpRequestValidations) {
+  // Add middleware registration method
+  protected useMiddleware(middleware: Middleware) {
+    this.middlewares.push(middleware);
+  }
+
+  protected getMiddlewares() {
+    return [ ...globalMiddlewares, ...this.middlewares ];
+  }
+
+  // Execute middleware pipeline
+  private async executeMiddlewarePipeline(
+    phase: 'before' | 'after' | 'onError',
+    request: Request,
+    response: Response,
+    ctx?: ExecutionContext,
+    error?: Error
+  ): Promise<void> {
+
+    const allMiddlewares = this.getMiddlewares();
+
+    for (const middleware of allMiddlewares) {
+      if (phase === 'onError' && middleware.onError && error) {
+        await middleware.onError(error, request, response, ctx);
+      } else if (phase !== 'onError' && middleware[ phase ]) {
+        await middleware[ phase ]!(request, response, ctx);
+      }
+    }
+
+  }
+
+  async validate(requestContext: Request, validations: InputValidationRule | HttpRequestValidations, _ctx?: ExecutionContext) {
 
     let validationRules: HttpRequestValidations = validations;
     if (isInputValidationRule(validations)) {
@@ -101,6 +156,22 @@ abstract class APIController extends AbstractLambdaHandler {
     });
   }
 
+  async makeRequestContext(event: APIGatewayEvent, context: Context): Promise<Request> {
+    return new RequestContext(event, context);
+  }
+
+  async makeResponseContext(requestContext: Request): Promise<Response> {
+    return new ResponseContext({
+      traceId: requestContext.requestId,
+      requestId: requestContext.requestId,
+      debugMode: requestContext.debugMode,
+      route: requestContext.path,
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      config: this.responseConfig
+    });
+  }
+
   /**
    * Lambda handler for the controller.
    * Handles incoming API Gateway events.
@@ -110,56 +181,48 @@ abstract class APIController extends AbstractLambdaHandler {
    */
   async LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult> {
     this.logger.debug("LambdaHandler Received event:", JSON.stringify(event, null, 2));
-    // Create request and response objects
-    const requestContext: Request = new RequestContext(event, context);
-    const responseContext: Response = new ResponseContext();
 
-    // hook for the application to initialize it's state, Dependencies, config etc
+    const request = await this.makeRequestContext(event, context);
+    const response = await this.makeResponseContext(request);
     await this.initialize(event, context);
-
+    const ctx = this.buildCtx(event, context, request, response);
     try {
-      // Find the matching route for the received request
-      const route = this.findMatchingRoute(requestContext);
+      // Execute before middleware
+      await this.executeMiddlewarePipeline('before', request, response, ctx);
+
+      const route = this.findMatchingRoute(request);
 
       if (route?.validations) {
         this.logger.debug("Validation rules found for route:", route);
-
-        const validationResult = await this.validate(requestContext, route.validations);
-
+        const validationResult = await this.validate(request, route.validations);
         if (!validationResult.pass) {
           throw new ValidationFailedError(validationResult.errors);
         }
-
-      } else {
-        this.logger.debug("No validation rules found for route:", route);
       }
 
       const routeFunction = this.getRouteFunction(route);
-      // Execute the associated route function
-      let controllerResponse: any = routeFunction.call(this, requestContext, responseContext);
-
-      // Resolve promises, if any
+      let controllerResponse: any = routeFunction.call(this, request, response, ctx);
       if (controllerResponse instanceof Promise) {
         controllerResponse = await controllerResponse;
       }
 
-      // If the response is an instance of ResponseContext, use its status code and body
-      if (controllerResponse instanceof ResponseContext) {
-        this.logger.debug("LambdaHandler Response:", JSON.stringify(controllerResponse, null, 2));
-        return this.handleResponse({
-          ...controllerResponse,
-          statusCode: controllerResponse.statusCode || 500,
-        });
+      // Execute after middleware
+      await this.executeMiddlewarePipeline('after', request, response, ctx);
+
+      // If the controller returned anything (ResponseContext or raw API result), emit that
+      if (controllerResponse != null) {
+        return this.handleResponse(controllerResponse);
       }
     } catch (err) {
-      // If an error occurs, log it and handle with the Exception method
-      this.logger.error('LambdaHandler error: ', err);
-      return this.handleException(requestContext, err as Error, responseContext);
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      this.logger.error('LambdaHandler error: ', errorObj);
+      // Execute error middleware
+      await this.executeMiddlewarePipeline('onError', request, response, ctx, errorObj);
+      return this.handleException(request, errorObj, response);
     }
 
-    this.logger.debug("LambdaHandler Default Response:", JSON.stringify(responseContext, null, 2));
-    // Return the finalized API Gateway response
-    return this.handleResponse(responseContext);
+    // Fallback to the in-memory responseContext
+    return response.build();
   }
 
   /**
@@ -172,7 +235,7 @@ abstract class APIController extends AbstractLambdaHandler {
     // find the path parts after the controller name
     const parts = requestData.resource.split('/').filter(Boolean);
     const controllerIndex = parts.findIndex((part: string) => part === controller.controllerName);
-    var resourceWithoutRoot = controllerIndex >= 0 && controllerIndex < parts.length - 1 
+    var resourceWithoutRoot = controllerIndex >= 0 && controllerIndex < parts.length - 1
       ? '/' + parts.slice(controllerIndex + 1).join('/')
       : '/';
     this.logger.debug('resourceWithoutRoot: ', resourceWithoutRoot);
@@ -227,24 +290,21 @@ abstract class APIController extends AbstractLambdaHandler {
     return this.handleResponse(errorResponse);
   }
 
-  protected handleResponse(res: APIGatewayProxyResult): APIGatewayProxyResult {
-    res.headers = res.headers || {};
-
-    /**
-     * 
-     * From : https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html
-     * 
-     * To enable CORS for the Lambda proxy integration, 
-     * you must add Access-Control-Allow-Origin:domain-name to the output headers. 
-     * domain-name can be * for any domain name.
-     * 
-     */
-
-    // TODO: control the header using some config
-    res.headers[ "Access-Control-Allow-Origin" ] = res.headers[ "Access-Control-Allow-Origin" ] || "*";
-
+  protected handleResponse(res: Response | APIGatewayProxyResult): APIGatewayProxyResult {
+    if (res instanceof ResponseContext) {
+      return res.build();
+    }
     return res;
   }
-}
 
-export { APIController };
+  protected buildCtx(event: APIGatewayEvent, context: Context, request: Request, response: Response): ExecutionContext {
+    return {
+      event,
+      lambdaContext: context,
+      request,
+      response,
+      actor: undefined,
+      debugInfo: {}
+    };
+  }
+}

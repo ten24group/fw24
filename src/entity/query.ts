@@ -458,13 +458,13 @@ export function filterGroupToExpression<
  *  
  *  expect(parsed).to.deep.equal({
  *      user: {
- *      name: 'John',
- *      age: '30',
- *      hobbies: ['reading', 'writing'],
- *      address: {
- *          city: 'New York',
- *          country: 'USA',
- *      },
+ *          name: 'John',
+ *          age: '30',
+ *          hobbies: ['reading', 'writing'],
+ *          address: {
+ *              city: 'New York',
+ *              country: 'USA',
+ *          },
  *      },
  *  });
  * ```

@@ -57,15 +57,17 @@
         "@aws-sdk/client-sqs": "^3.699.0",
         "@aws-sdk/s3-request-presigner": "^3.705.0",
         "@smithy/smithy-client": "^3.5.0",
+        "@types/cookie": "^0.6.0",
         "aws-jwt-verify": "^4.0.1",
         "constructs": "^10.4.2",
+        "cookie": "^1.0.2",
         "qs": "^6.13.1",
         "source-map-support": "^0.5.21",
         "tslog": "^4.9.3"
     },
     "peerDependencies": {
-        "electrodb": "^3.0.1",
-        "aws-cdk-lib": "^2.181.0"
+        "aws-cdk-lib": "^2.181.0",
+        "electrodb": "^3.0.1"
     },
     "overrides": {
         "@smithy/core": "^3.0.0",
