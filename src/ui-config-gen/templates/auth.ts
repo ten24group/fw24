@@ -20,6 +20,10 @@ export default (
     const config: any = {};
 
     if(!disableSignin){
+        const socialProviders = [];
+        if (process.env.GOOGLE_CLIENT_ID) {
+            socialProviders.push({ provider: 'Google', label: 'Login with Google' });
+        }
         config['/login'] = {
             apiConfig: {
                 apiUrl: `/${authEndpoint}/signin`,
@@ -40,7 +44,15 @@ export default (
                     placeholder: "Password",
                     validations: ["required"]
                 }
-            ]
+            ],
+            ...(socialProviders.length > 0 ? {
+                socialConfig: {
+                    providers: socialProviders,
+                    apiUrl: `/${authEndpoint}/getSocialSignInConfig`,
+                    completeSignInUrl: `/${authEndpoint}/completeSocialSignIn`,
+                    redirectUri: process.env.SOCIAL_LOGIN_REDIRECT_URL || ''
+                }
+            } : {})
         };             
     }
 
