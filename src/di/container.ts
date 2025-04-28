@@ -66,6 +66,9 @@ import {
     ProviderConfigurationError
 } from './errors';
 
+import { ISearchEngine } from '../search';
+
+
 export class DIContainer implements IDIContainer {
 
     static readonly DIMetadataStore = new MetadataManager({ namespace: 'fw24:di' });
@@ -167,6 +170,8 @@ export class DIContainer implements IDIContainer {
         }
         return this._rootInstance;
     }
+
+    private searchEngine?: ISearchEngine;
 
     constructor(private parentContainer?: DIContainer, identifier: string = 'ROOT') {
         // to ensure destructuring works correctly
@@ -1174,5 +1179,16 @@ export class DIContainer implements IDIContainer {
             this.logger.debug(`Cache: [${this.containerId}] - ${token}:`, instance);
         }
         this.parent?.logCache();
+    }
+
+    public setSearchEngine(engine: ISearchEngine) {
+        this.searchEngine = engine;
+    }
+
+    public resolveSearchEngine(): ISearchEngine {
+        if (!this.searchEngine) {
+            throw new Error('Search engine not configured. Please call setSearchEngine() first.');
+        }
+        return this.searchEngine;
     }
 }

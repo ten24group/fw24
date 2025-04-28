@@ -61,6 +61,7 @@
         "aws-jwt-verify": "^4.0.1",
         "constructs": "^10.4.2",
         "cookie": "^1.0.2",
+        "meilisearch": "^0.50.0",
         "qs": "^6.13.1",
         "source-map-support": "^0.5.21",
         "tslog": "^4.9.3"

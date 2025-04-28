@@ -1,7 +1,7 @@
 import type { Request, Response } from '../interfaces';
 import type { EntitySchema, EntityIdentifiersTypeFromSchema } from './base-entity';
 import type { BaseEntityService } from './base-service';
-import type { EntityFilterCriteria } from './query-types';
+import type { EntityFilterCriteria, EntityQuery } from './query-types';
 
 import { APIController } from '../core/runtime/api-gateway-controller';
 import { Delete, Get, Patch, Post } from '../decorators/method';
@@ -15,6 +15,8 @@ import { NotFoundError } from '../errors';
 import { EntityValidationError } from './errors';
 import { createErrorHandler } from '../errors/handlers';
 import { ExecutionContext } from '../core/types/execution-context';
+import { SearchResult } from '../search';
+import { EntityRecordTypeFromSchema } from './base-entity';
 
 type seconds = number;
 
@@ -386,4 +388,56 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		return res.json(result);
 	}
 
+	@Post('/search')
+	async search(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const query = req.body;
+		this.logger.debug(`search - query:`, query);
+		const inputQuery = deepCopy(query);
+
+		const results = await this.getEntityService().search(query, ctx);
+
+		const response = {
+			items: results.hits,
+			facets: results.facets,
+			total: results.total,
+			page: results.page,
+			hitsPerPage: results.hitsPerPage
+		};
+
+		if (req.debugMode) {
+			Object.assign(response, {
+				inputQuery,
+				processingTimeMs: results.processingTimeMs
+			});
+		}
+
+		return res.json(response);
+	}
+
+	@Get('/search')
+	async searchGet(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const query = this.parseSearchQuery(req.queryStringParameters || {});
+		return this.search({ ...req, body: query }, res, ctx);
+	}
+
+	protected parseSearchQuery(params: Record<string, any>): EntityQuery<Sch> {
+		const { q, query, attributes, hitsPerPage, page, ...rest } = params;
+
+
+		const parsedQueryParams = parseUrlQueryStringParameters(rest);
+		this.logger.debug(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
+
+		const parsedQueryParamFilters = queryStringParamsToFilterGroup(parsedQueryParams);
+		this.logger.debug(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
+
+		return {
+			search: q || query,
+			filters: parsedQueryParamFilters as EntityFilterCriteria<Sch>,
+			attributes: attributes?.split(','),
+			pagination: {
+				count: parseInt(hitsPerPage, 10) || 20,
+				pages: parseInt(page, 10) || 1
+			}
+		};
+	}
 }

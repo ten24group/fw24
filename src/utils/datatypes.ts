@@ -15,7 +15,7 @@ export function isTypeOf(payload: any, type: string): boolean {
     return getType(payload) === type;
 }
 
-export function isNumeric(payload: any): payload is Number{
+export function isNumeric(payload: any): payload is Number {
     return getType(payload) === 'Number' && !isNaN(payload)
 }
 
@@ -25,7 +25,7 @@ export function isEmail(payload: string): boolean {
 }
 
 export function isUnique(payload: any): boolean {
-    throw(new Error(`isUnique not implemented yet: ${payload}`));
+    throw (new Error(`isUnique not implemented yet: ${payload}`));
 }
 
 export function isIP(payload: any): boolean {
@@ -72,7 +72,7 @@ export function isJsonString(payload: string): payload is string {
 export function isDateString(payload: string): payload is string {
     try {
         return isDate(new Date(payload));
-    } catch (e){
+    } catch (e) {
         return false;
     }
 }
@@ -82,7 +82,7 @@ export function isHttpUrlString(payload: string): payload is string {
     try {
         url = new URL(payload);
     } catch (_) {
-        return false;  
+        return false;
     }
 
     return url?.protocol === "http:" || url?.protocol === "https:";
@@ -106,6 +106,44 @@ export function isFunction(payload: any): payload is AnyFunction {
 
 export function isClassConstructor(payload: any): payload is AnyClass {
     return isFunction(payload) && payload.prototype
+}
+
+export function isSubclassOf(payload: any, superClass: AnyClass): payload is AnyClass {
+    // Handle null/undefined cases
+    if (!payload || !superClass) {
+        return false;
+    }
+
+    // Handle primitive types
+    if (typeof payload !== 'function') {
+        return false;
+    }
+
+    // Ensure superClass is a valid constructor
+    if (typeof superClass !== 'function') {
+        return false;
+    }
+
+    // Check if payload is a constructor
+    if (!isClassConstructor(payload)) {
+        return false;
+    }
+
+    // Don't consider a class as a subclass of itself
+    if (payload === superClass) {
+        return false;
+    }
+
+    // Traverse the prototype chain
+    let proto = payload.prototype;
+    while (proto) {
+        if (proto instanceof superClass) {
+            return true;
+        }
+        proto = Object.getPrototypeOf(proto);
+    }
+
+    return false;
 }
 
 export function isBlob(payload: any): payload is Blob {
@@ -159,15 +197,15 @@ export function isArray(payload: any): payload is Array<any> {
     return getType(payload) === 'Array'
 }
 
-export function isArrayOfType<T>(value: any, evalType: (item: any) => item is T ): value is Array<T> {
+export function isArrayOfType<T>(value: any, evalType: (item: any) => item is T): value is Array<T> {
     return Array.isArray(value) && value.every(item => evalType(item));
 }
 
-export function isArrayOfStrings(payload: any ): payload is string[] {
+export function isArrayOfStrings(payload: any): payload is string[] {
     return isArrayOfType<string>(payload, isString);
 }
 
-export function isEmptyArray(payload: any): boolean{
+export function isEmptyArray(payload: any): boolean {
     return isArray(payload) && payload.length === 0;
 }
 
@@ -176,7 +214,7 @@ export function isNonEmptyArray(payload: any): payload is Array<any> {
 }
 
 export function isEmptyArrayDeep(payload: any): boolean {
-    return isArray(payload) && payload.every( (item: any) => isEmptyDeep(item) );
+    return isArray(payload) && payload.every((item: any) => isEmptyDeep(item));
 }
 
 /**
@@ -197,16 +235,16 @@ export function isObject(payload: any): payload is PlainObject {
     return isPlainObject(payload)
 }
 
-export function isEmptyObject(payload: any): payload is { [K in any]: never } {
+export function isEmptyObject(payload: any): payload is { [ K in any ]: never } {
     return isPlainObject(payload) && Object.keys(payload).length === 0
 }
 
-export function isNonEmptyObject(payload: any): payload is { [K in any]: never } {
+export function isNonEmptyObject(payload: any): payload is { [ K in any ]: never } {
     return isPlainObject(payload) && Object.keys(payload).length > 0
 }
 
 export function isEmptyObjectDeep(payload: any): boolean {
-    return isObject(payload) && Object.keys(payload).every( (key: any) => isEmptyDeep(payload[key]) );
+    return isObject(payload) && Object.keys(payload).every((key: any) => isEmptyDeep(payload[ key ]));
 }
 
 export function isMap(payload: any): payload is Map<any, any> {
@@ -217,12 +255,12 @@ export function isWeakMap(payload: any): payload is WeakMap<any, any> {
     return getType(payload) === 'WeakMap'
 }
 
-export function isEmptyMap(payload: any){
+export function isEmptyMap(payload: any) {
     return isMap(payload) && payload.size === 0;
 }
 
-export function isEmptyMapDeep(payload: any){
-    return isMap(payload) && isEmptyArray( Array.from(payload.values()) );
+export function isEmptyMapDeep(payload: any) {
+    return isMap(payload) && isEmptyArray(Array.from(payload.values()));
 }
 
 export function isSet(payload: any): payload is Set<any> {
@@ -233,44 +271,44 @@ export function isWeakSet(payload: any): payload is WeakSet<any> {
     return getType(payload) === 'WeakSet'
 }
 
-export function isEmptySet(payload: any){
+export function isEmptySet(payload: any) {
     return isSet(payload) && payload.size === 0;
 }
 
-export function isEmptySetDeep(payload: any){
-    return isSet(payload) && isEmptyArray( Array.from(payload.values()) );
+export function isEmptySetDeep(payload: any) {
+    return isSet(payload) && isEmptyArray(Array.from(payload.values()));
 }
 
-export function isComplexValue(payload: any){
+export function isComplexValue(payload: any) {
     return !isPrimitive(payload)
 }
 
-export function isSimpleValue(payload: any){
+export function isSimpleValue(payload: any) {
     return isPrimitive(payload);
 }
 
 export function isNullish(payload: any): payload is Nullish {
-    return isNull(payload) || isUndefined(payload) 
+    return isNull(payload) || isUndefined(payload)
 }
 
-export function isEmptySimpleValue(payload: any): boolean{
-    return isNullish(payload) || isEmptyString(payload) 
+export function isEmptySimpleValue(payload: any): boolean {
+    return isNullish(payload) || isEmptyString(payload)
 }
 
 export function isEmpty(payload: any) {
     return isEmptySimpleValue(payload)
-    || isEmptyMap(payload)
-    || isEmptySet(payload)
-    || isEmptyArray(payload)
-    || isEmptyObject(payload)
+        || isEmptyMap(payload)
+        || isEmptySet(payload)
+        || isEmptyArray(payload)
+        || isEmptyObject(payload)
 }
 
 export function isEmptyDeep(payload: any) {
     return isEmpty(payload)
-    || isEmptyMapDeep(payload)
-    || isEmptySetDeep(payload)
-    || isEmptyArrayDeep(payload)
-    || isEmptyObjectDeep(payload)
+        || isEmptyMapDeep(payload)
+        || isEmptySetDeep(payload)
+        || isEmptyArrayDeep(payload)
+        || isEmptyObjectDeep(payload)
 }
 
 /**
