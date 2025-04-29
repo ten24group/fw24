@@ -39,7 +39,7 @@ export abstract class BaseSearchService<S extends EntitySchema<any, any, any> = 
   }
 
   async deleteFromIndex(entityId: string): Promise<void> {
-    await this.searchEngine.delete([ entityId ]);
+    await this.searchEngine.delete([ entityId ], this.searchConfig.indexName!);
   }
 
   async bulkSync(entities: EntityRecordTypeFromSchema<S>[]): Promise<void> {

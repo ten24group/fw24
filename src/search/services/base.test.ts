@@ -88,6 +88,7 @@ describe('BaseSearchService', () => {
 
       searchConfig = {
         provider: 'meili',
+        indexName: 'test-index',
         settings: {
           searchableAttributes: [ 'title', 'description', 'author.name', 'author.email' ]
         }
@@ -133,6 +134,7 @@ describe('BaseSearchService', () => {
 
       searchConfig = {
         provider: 'meili',
+        indexName: 'test-index',
         settings: {
           searchableAttributes: [ 'title', 'description', 'author.name', 'author.email' ]
         }
@@ -164,6 +166,7 @@ describe('BaseSearchService', () => {
 
       searchConfig = {
         provider: 'meili',
+        indexName: 'test-index',
         settings: {
           searchableAttributes: [ 'title', 'description', 'author.name', 'author.email' ]
         }
@@ -202,6 +205,14 @@ describe('BaseSearchService', () => {
         delete: jest.fn(),
       } as any;
 
+      searchConfig = {
+        provider: 'meili',
+        indexName: 'test-index',
+        settings: {
+          searchableAttributes: [ 'title', 'description', 'author.name', 'author.email' ]
+        }
+      };
+
       service = new TestSearchService(mockEntityService, mockSearchEngine, searchConfig);
     });
 
@@ -210,7 +221,7 @@ describe('BaseSearchService', () => {
 
       await service.deleteFromIndex(entityId);
 
-      expect(mockSearchEngine.delete).toHaveBeenCalledWith([ entityId ]);
+      expect(mockSearchEngine.delete).toHaveBeenCalledWith([ entityId ], searchConfig.indexName!);
     });
   });
 });

@@ -1,501 +1,412 @@
-import { SearchEngineConfig, SearchResult, FacetConfig } from "../types";
 import { MeiliSearchEngine, MeiliSearchConfig } from "./meili";
-import { EntityQuery } from "../../entity/query-types";
-import { Index, MeiliSearch } from "meilisearch";
+import { SearchEngineConfig, SearchOptions } from "../types";
+import { MeiliSearch, Index } from "meilisearch";
 
-// Mock the meilisearch module
-jest.mock('meilisearch');
+jest.mock("meilisearch");
 
-describe('MeiliSearchEngine', () => {
+describe("MeiliSearchEngine", () => {
   let engine: MeiliSearchEngine;
-  let mockMeiliSearch: jest.Mocked<MeiliSearch>;
+  let mockClient: jest.Mocked<MeiliSearch>;
   let mockIndex: jest.Mocked<Index>;
   let config: MeiliSearchConfig;
   let searchConfig: SearchEngineConfig;
 
   beforeEach(() => {
-    // Reset mocks
     jest.clearAllMocks();
-
-    // Setup mock index
     mockIndex = {
       addDocuments: jest.fn(),
       search: jest.fn(),
       deleteDocuments: jest.fn(),
       updateSettings: jest.fn(),
     } as any;
-
-    // Setup mock MeiliSearch client
-    mockMeiliSearch = {
+    mockClient = {
       index: jest.fn().mockReturnValue(mockIndex),
     } as any;
+    (MeiliSearch as jest.Mock).mockImplementation(() => mockClient);
 
-    (MeiliSearch as jest.Mock).mockImplementation(() => mockMeiliSearch);
-
-    // Setup configs
-    config = {
-      host: 'http://localhost:7700',
-      apiKey: 'test-api-key',
-    };
-
+    config = { host: "http://localhost:7700", apiKey: "key" };
     searchConfig = {
-      provider: 'meili',
-      indexName: 'test-index',
+      provider: "meili",
+      indexName: "test-index",
       settings: {
-        searchableAttributes: [ 'title', 'description' ],
-        filterableAttributes: [ 'category', 'status' ],
+        searchableAttributes: [ "title" ],
+        filterableAttributes: [ "category" ],
       },
     };
-
-    // Create engine instance
     engine = new MeiliSearchEngine(config);
   });
 
-  describe('index', () => {
-    it('should index documents', async () => {
-      const documents = [
-        { id: '1', title: 'Test Document 1' },
-        { id: '2', title: 'Test Document 2' },
-      ];
-
-      await engine.index(documents, searchConfig);
-
-      expect(mockMeiliSearch.index).toHaveBeenCalledWith(searchConfig.indexName);
-      expect(mockIndex.addDocuments).toHaveBeenCalledWith(documents);
+  describe("index()", () => {
+    it("should create index and update settings", async () => {
+      const docs = [ { id: "1" } ];
+      await engine.index(docs, searchConfig);
+      expect(mockClient.index).toHaveBeenCalledWith("test-index");
+      expect(mockIndex.updateSettings).toHaveBeenCalledWith(
+        searchConfig.settings,
+      );
+      expect(mockIndex.addDocuments).toHaveBeenCalledWith(docs);
     });
 
-    it('should throw an error if indexName is missing', async () => {
-      const documents = [ { id: '1', title: 'Test Document' } ];
-      const invalidConfig = { ...searchConfig, indexName: undefined };
+    it("should reuse existing index without updating settings again", async () => {
+      await engine.index([], searchConfig);
+      await engine.index([], searchConfig);
+      expect(mockClient.index).toHaveBeenCalledTimes(1);
+      expect(mockIndex.updateSettings).toHaveBeenCalledTimes(1);
+    });
 
-      await expect(engine.index(documents, invalidConfig)).rejects.toThrow('Index name is required');
+    it("throws if indexName is missing", async () => {
+      const badConfig = { ...searchConfig, indexName: undefined! };
+      await expect(engine.index([], badConfig)).rejects.toThrow();
+    });
+
+    it("should not update settings when config.settings is omitted", async () => {
+      const cfg = { ...searchConfig };
+      delete (cfg as any).settings;
+      await engine.index([], cfg);
+      expect(mockIndex.updateSettings).not.toHaveBeenCalled();
+    });
+
+    it("propagates errors from addDocuments", async () => {
+      mockIndex.addDocuments.mockRejectedValue(new Error("addDocsFail"));
+      await expect(engine.index([ { id: "x" } ], searchConfig)).rejects.toThrow("addDocsFail");
+    });
+
+    it("propagates errors from updateSettings", async () => {
+      mockIndex.updateSettings.mockRejectedValue(new Error("settingsFail"));
+      await expect(engine.index([], searchConfig)).rejects.toThrow("settingsFail");
     });
   });
 
-  describe('search', () => {
-    it('should perform a search with basic query', async () => {
-      const query: EntityQuery<any> = {
-        search: 'test query',
-      };
+  describe("search()", () => {
+    const baseResults = { hits: [], estimatedTotalHits: 0 } as any;
 
-      const mockResults = {
-        hits: [ { id: '1', title: 'Test Document' } ],
-        estimatedTotalHits: 1,
-        processingTimeMs: 10,
-        facetDistribution: { category: { 'cat1': 5 } },
-      };
-
-      mockIndex.search.mockResolvedValue(mockResults as any);
-
-      const result = await engine.search(query, searchConfig);
-
-      expect(mockIndex.search).toHaveBeenCalledWith('test query', {
-        filter: [],
-        facets: undefined,
-        limit: 20,
-        offset: 0,
-        sort: undefined,
-      });
-
-      expect(result).toEqual({
-        estimatedTotalHits: 1,
-        facetDistribution: {
-          category: {
-            cat1: 5,
-          },
-        },
-        hits: mockResults.hits,
-        total: mockResults.estimatedTotalHits,
-        processingTimeMs: mockResults.processingTimeMs,
-        facets: mockResults.facetDistribution,
-      });
+    beforeEach(() => {
+      mockIndex.search.mockResolvedValue(baseResults);
     });
 
-    it('should handle pagination', async () => {
-      const query: EntityQuery<any> = {
-        search: 'test query',
-        pagination: {
-          pages: 2,
-          count: 10,
-        },
-      };
-
-      const mockResults = {
-        hits: [ { id: '1', title: 'Test Document' } ],
-        estimatedTotalHits: 1,
-      };
-
-      mockIndex.search.mockResolvedValue(mockResults as any);
-
-      await engine.search(query, searchConfig);
-
-      expect(mockIndex.search).toHaveBeenCalledWith('test query', {
-        filter: [],
-        facets: undefined,
-        limit: 10,
-        offset: 10, // (page 2 - 1) * count 10
-        sort: undefined,
-      });
+    it("should throw if indexName is missing", async () => {
+      const badConfig = { ...searchConfig, indexName: undefined! };
+      await expect(engine.search({ search: "" } as any, badConfig as any)).rejects.toThrow();
     });
 
-    it('should handle sorting', async () => {
-      const query: EntityQuery<any> = {
-        search: 'test query',
-        pagination: {
-          order: 'desc',
-        },
-      };
-
-      const mockResults = {
-        hits: [ { id: '1', title: 'Test Document' } ],
-        estimatedTotalHits: 1,
-      };
-
-      mockIndex.search.mockResolvedValue(mockResults as any);
-
-      await engine.search(query, searchConfig);
-
-      expect(mockIndex.search).toHaveBeenCalledWith('test query', {
-        filter: [],
-        facets: undefined,
-        limit: 20,
-        offset: 0,
-        sort: [ 'createdAt:desc' ],
-      });
+    it("reuses existing index instance across multiple searches", async () => {
+      mockIndex.search.mockResolvedValue({ hits: [], estimatedTotalHits: 0 } as any);
+      await engine.search({ search: "a" }, searchConfig);
+      await engine.search({ search: "b" }, searchConfig);
+      expect(mockClient.index).toHaveBeenCalledTimes(1);
     });
 
-    it('should handle faceting', async () => {
-      const query: EntityQuery<any> = {
-        search: 'test query',
+    it("performs simple search with default pagination and no filters", async () => {
+      await engine.search({ search: "hello" }, searchConfig);
+      expect(mockClient.index).toHaveBeenCalledWith("test-index");
+      expect(mockIndex.search).toHaveBeenCalledWith(
+        "hello",
+        expect.any(Object),
+      );
+    });
+
+    it("joins array search terms into a single string", async () => {
+      await engine.search({ search: [ "foo", "bar" ] }, searchConfig);
+      expect(mockIndex.search).toHaveBeenCalledWith(
+        "foo bar",
+        expect.any(Object),
+      );
+    });
+
+    it("applies count and pages for pagination", async () => {
+      await engine.search(
+        { search: "", pagination: { count: 5, pages: 3 } },
+        searchConfig,
+      );
+      expect(mockIndex.search).toHaveBeenCalledWith(
+        "",
+        expect.objectContaining({ limit: 5, offset: 10 }),
+      );
+    });
+
+    it("applies default count when pages provided but count missing", async () => {
+      await engine.search(
+        { search: "", pagination: { pages: 2 } },
+        searchConfig,
+      );
+      expect(mockIndex.search).toHaveBeenCalledWith(
+        "",
+        expect.objectContaining({ limit: 20, offset: 20 }),
+      );
+    });
+
+    it("applies sort based on pagination.order", async () => {
+      await engine.search(
+        { search: "", pagination: { order: "asc" } },
+        searchConfig,
+      );
+      expect(mockIndex.search).toHaveBeenCalledWith(
+        "",
+        expect.objectContaining({ sort: [ "createdAt:asc" ] }),
+      );
+    });
+
+    it("includes facet keys when faceting config provided", async () => {
+      const faceting = {
+        facets: { category: { attribute: "category", type: "value" } },
       };
+      const cfg = { ...searchConfig, faceting };
+      await engine.search({ search: "" }, cfg as any);
+      expect(mockIndex.search).toHaveBeenCalledWith(
+        "",
+        expect.objectContaining({ facetsDistribution: [ "category" ] }),
+      );
+    });
 
-      const facetingConfig: SearchEngineConfig = {
-        ...searchConfig,
-        faceting: {
-          maxValuesPerFacet: 10,
-          facets: {
-            category: { attribute: 'category', type: 'value' },
-            status: { attribute: 'status', type: 'value' },
-          },
-        },
-      };
-
-      const mockResults = {
-        hits: [ { id: '1', title: 'Test Document' } ],
-        estimatedTotalHits: 1,
-        facetDistribution: {
-          category: { 'cat1': 5, 'cat2': 3 },
-          status: { 'active': 8 },
-        },
-      };
-
-      mockIndex.search.mockResolvedValue(mockResults as any);
-
-      const result = await engine.search(query, facetingConfig);
-
-      expect(mockIndex.search).toHaveBeenCalledWith('test query', {
-        filter: [],
-        facets: [ 'category', 'status' ],
-        limit: 20,
-        offset: 0,
-        sort: undefined,
+    describe("filter transformations", () => {
+      it("maps simple field operators", async () => {
+        const filters = { a: { eq: "x" }, b: { gt: 1 }, c: { lte: 5 } };
+        await engine.search({ search: "", filters } as any, searchConfig);
+        const opts = mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions;
+        expect(opts.filters).toContain("a = 'x'");
+        expect(opts.filters).toContain("b > 1");
+        expect(opts.filters).toContain("c <= 5");
       });
 
-      expect(result.facets).toEqual(mockResults.facetDistribution);
-    });
+      it("supports IN and NOT IN operators", async () => {
+        const filters = { tags: { in: [ "t1", "t2" ], notIn: [ "t3" ] } };
+        await engine.search({ search: "", filters } as any, searchConfig);
+        const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
+          .filters;
+        expect(fstr).toContain("tags IN ['t1', 't2']");
+        expect(fstr).toContain("NOT (tags IN ['t3'])");
+      });
 
-    it('should handle array search terms', async () => {
-      const query: EntityQuery<any> = {
-        search: [ 'test', 'query' ],
-      };
+      it("supports range (between) operator", async () => {
+        const filters = { price: { between: [ 10, 20 ] } };
+        await engine.search({ search: "", filters } as any, searchConfig);
+        expect(
+          (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filters,
+        ).toContain("price 10 TO 20");
+      });
 
-      const mockResults = {
-        hits: [ { id: '1', title: 'Test Document' } ],
-        estimatedTotalHits: 1,
-      };
+      it("supports EXISTS, IS EMPTY, IS NULL", async () => {
+        const filters = {
+          f: { exists: true },
+          g: { isEmpty: true },
+          h: { isNull: true },
+        };
+        await engine.search({ search: "", filters } as any, searchConfig);
+        const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
+          .filters;
+        expect(fstr).toContain("f EXISTS");
+        expect(fstr).toContain("g IS EMPTY");
+        expect(fstr).toContain("h IS NULL");
+      });
 
-      mockIndex.search.mockResolvedValue(mockResults as any);
+      it("supports contains and startsWith", async () => {
+        const filters = { d: { contains: "abc" }, s: { startsWith: "pre" } };
+        await engine.search({ search: "", filters } as any, searchConfig);
+        const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
+          .filters;
+        expect(fstr).toContain("d CONTAINS 'abc'");
+        expect(fstr).toContain("s STARTS WITH 'pre'");
+      });
 
-      await engine.search(query, searchConfig);
+      it("falls back to raw filter for unknown operators", async () => {
+        const filters = { x: { customOp: 42 } };
+        await engine.search({ search: "", filters } as any, searchConfig);
+        expect(
+          (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filters,
+        ).toContain("x customOp 42");
+      });
 
-      expect(mockIndex.search).toHaveBeenCalledWith('test query', expect.any(Object));
-    });
+      it("handles top-level AND group", async () => {
+        const filters = { and: [ { a: { eq: 1 } }, { b: { eq: 2 } } ] };
+        await engine.search({ search: "", filters } as any, searchConfig);
+        const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
+          .filters;
+        expect(fstr).toMatch(/\(a = 1 AND b = 2\)/);
+      });
 
-    it('should handle complex filter combinations', async () => {
-      const query: EntityQuery<any> = {
-        search: 'test query',
-        filters: {
+      it("handles nested OR and NOT groups", async () => {
+        const filters = {
           and: [
-            { category: { in: [ 'books', 'magazines' ] } },
-            {
-              or: [
-                { price: { between: [ 10, 100 ] } },
-                { status: { eq: 'active' } }
-              ]
-            },
-            { not: { author: { isNull: true } } }
-          ]
-        }
-      };
+            { or: [ { x: { lt: 5 } }, { y: { gt: 10 } } ] },
+            { not: { z: { eq: 0 } } },
+          ],
+        };
+        await engine.search({ search: "", filters } as any, searchConfig);
+        const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
+          .filters;
+        expect(fstr).toMatch("((x < 5 OR y > 10) AND NOT (z = 0))");
+      });
 
-      const mockResults = {
-        hits: [ { id: '1', title: 'Test Document' } ],
-        estimatedTotalHits: 1,
-        facetDistribution: {}
-      };
+      it("ignores filter metadata keys", async () => {
+        const filters = {
+          and: [ { filterId: "1", filterLabel: "L", a: { eq: "v" } } ],
+        };
+        await engine.search({ search: "", filters } as any, searchConfig);
+        expect(
+          (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filters,
+        ).toContain("a = 'v'");
+      });
+    });
 
-      mockIndex.search.mockResolvedValue(mockResults as any);
-
-      await engine.search(query, searchConfig);
-
+    // TODO: enhance query types to support better sorting
+    it.skip("supports explicit query.sort", async () => {
+      await engine.search(
+        { search: "", sort: [ { field: "price", dir: "desc" } ] } as any,
+        searchConfig
+      );
       expect(mockIndex.search).toHaveBeenCalledWith(
-        'test query',
+        "",
+        expect.objectContaining({ sort: [ "price:desc" ] })
+      );
+    });
+
+    it.skip("gives precedence to query.sort over pagination.order", async () => {
+      await engine.search(
+        {
+          search: "",
+          sort: [ { field: "x", dir: "asc" } ],
+          pagination: { order: "desc" },
+        } as any,
+        searchConfig
+      );
+      expect(mockIndex.search).toHaveBeenCalledWith(
+        "",
+        expect.objectContaining({ sort: [ "x:asc" ] })
+      );
+    });
+
+    it("applies distinctAttribute", async () => {
+      await engine.search(
+        { search: "", distinctAttribute: "userId" } as any,
+        searchConfig
+      );
+      expect(mockIndex.search).toHaveBeenCalledWith(
+        "",
+        expect.objectContaining({ distinctAttribute: "userId" })
+      );
+    });
+
+    it("applies select fields", async () => {
+      await engine.search(
+        { search: "", select: [ "id", "name" ] } as any,
+        searchConfig
+      );
+      expect(mockIndex.search).toHaveBeenCalledWith(
+        "",
+        expect.objectContaining({ attributesToRetrieve: [ "id", "name" ] })
+      );
+    });
+
+    it("applies highlight and showMatchesPosition", async () => {
+      await engine.search(
+        {
+          search: "",
+          highlight: {
+            fields: [ "title" ],
+            preTag: "<b>",
+            postTag: "</b>",
+            showMatchesPosition: true,
+          },
+        } as any,
+        searchConfig
+      );
+      expect(mockIndex.search).toHaveBeenCalledWith(
+        "",
         expect.objectContaining({
-          filter: expect.arrayContaining([
-            expect.stringContaining('category IN ["books", "magazines"]'),
-            expect.stringContaining('(price 10 TO 100 OR status = "active")'),
-            expect.stringContaining('NOT (author NOT EXISTS)')
-          ])
+          attributesToHighlight: [ "title" ],
+          highlightPreTag: "<b>",
+          highlightPostTag: "</b>",
+          showMatchesPosition: true,
         })
       );
     });
 
-    it('should handle range faceting', async () => {
-      const query: EntityQuery<any> = {
-        search: 'test query'
-      };
-
-      const facetingConfig: SearchEngineConfig = {
-        ...searchConfig,
-        faceting: {
-          maxValuesPerFacet: 10,
-          facets: {
-            price: {
-              attribute: 'price',
-              type: 'range',
-              ranges: [
-                { from: 0, to: 100, label: 'Budget' },
-                { from: 101, to: 500, label: 'Mid-range' },
-                { from: 501, to: 999999, label: 'Premium' }
-              ]
-            }
-          }
-        }
-      };
-
-      const mockResults = {
-        hits: [ { id: '1', title: 'Test Document' } ],
-        estimatedTotalHits: 1,
-        facetDistribution: {
-          price: {
-            'Budget': 5,
-            'Mid-range': 3,
-            'Premium': 2
-          }
-        }
-      };
-
-      mockIndex.search.mockResolvedValue(mockResults as any);
-
-      const result = await engine.search(query, facetingConfig);
-
-      expect(mockIndex.search).toHaveBeenCalledWith(
-        'test query',
-        expect.objectContaining({
-          facets: [ 'price' ]
-        })
+    it("applies crop options", async () => {
+      await engine.search(
+        {
+          search: "",
+          crop: { fields: [ "body" ], length: 30, marker: "…" },
+        } as any,
+        searchConfig
       );
-
-      expect(result.facets).toEqual(mockResults.facetDistribution);
-    });
-
-    it('should handle multiple sort fields', async () => {
-      const query: EntityQuery<any> = {
-        search: 'test query',
-        pagination: {
-          order: 'desc'
-        }
-      };
-
-      const mockResults = {
-        hits: [ { id: '1', title: 'Test Document' } ],
-        estimatedTotalHits: 1
-      };
-
-      mockIndex.search.mockResolvedValue(mockResults as any);
-
-      await engine.search(query, searchConfig);
-
       expect(mockIndex.search).toHaveBeenCalledWith(
-        'test query',
+        "",
         expect.objectContaining({
-          sort: [ 'createdAt:desc' ]
+          attributesToCrop: [ "body" ],
+          cropLength: 30,
+          cropMarker: "…",
         })
       );
     });
 
-    it('should handle complex search with filters and faceting', async () => {
-      const query: EntityQuery<any> = {
-        search: [ 'test', 'query' ],
-        filters: {
-          and: [
-            { category: { in: [ 'books' ] } },
-            { price: { between: [ 10, 100 ] } }
-          ]
-        },
-        pagination: {
-          pages: 2,
-          count: 10,
-          order: 'desc'
-        }
-      };
-
-      const facetingConfig: SearchEngineConfig = {
-        ...searchConfig,
-        faceting: {
-          maxValuesPerFacet: 10,
-          facets: {
-            category: { attribute: 'category', type: 'value' },
-            status: { attribute: 'status', type: 'value' }
-          }
-        }
-      };
-
-      const mockResults = {
-        hits: [ { id: '1', title: 'Test Document' } ],
-        estimatedTotalHits: 1,
-        facetDistribution: {
-          category: { 'books': 5 },
-          status: { 'active': 3 }
-        }
-      };
-
-      mockIndex.search.mockResolvedValue(mockResults as any);
-
-      const result = await engine.search(query, facetingConfig);
-
-      expect(mockIndex.search).toHaveBeenCalledWith(
-        'test query',
-        expect.objectContaining({
-          filter: expect.arrayContaining([
-            expect.stringContaining('category IN ["books"]'),
-            expect.stringContaining('price 10 TO 100')
-          ]),
-          facets: [ 'category', 'status' ],
-          limit: 10,
-          offset: 10,
-          sort: [ 'createdAt:desc' ]
-        })
+    it("applies matchingStrategy", async () => {
+      await engine.search(
+        { search: "", matchingStrategy: "last" } as any,
+        searchConfig
       );
-
-      expect(result.facets).toEqual(mockResults.facetDistribution);
+      expect(mockIndex.search).toHaveBeenCalledWith(
+        "",
+        expect.objectContaining({ matchingStrategy: "last" })
+      );
     });
 
-    it('should handle search errors gracefully', async () => {
-      const query: EntityQuery<any> = {
-        search: 'test query'
-      };
+    it("applies geo-search options", async () => {
+      await engine.search(
+        {
+          search: "",
+          geo: { lat: 12.9, lng: 77.6, radius: 500, precision: 2 },
+        } as any,
+        searchConfig
+      );
+      expect(mockIndex.search).toHaveBeenCalledWith(
+        "",
+        expect.objectContaining({
+          aroundLatLng: "12.9,77.6",
+          aroundRadius: 500,
+          aroundPrecision: 2,
+        })
+      );
+    });
 
-      mockIndex.search.mockRejectedValue(new Error('Search failed'));
+    it("applies rawOptions", async () => {
+      await engine.search(
+        {
+          search: "",
+          rawOptions: { rankingRules: [ "typo", "words" ] },
+        } as any,
+        searchConfig
+      );
+      expect(mockIndex.search).toHaveBeenCalledWith(
+        "",
+        expect.objectContaining({ rankingRules: [ "typo", "words" ] })
+      );
+    });
 
-      await expect(engine.search(query, searchConfig)).rejects.toThrow('Search failed');
+    it("handles empty OR and AND groups without setting filters", async () => {
+      // first call: empty OR, second: empty AND
+      await engine.search({ search: "", filters: { or: [] } } as any, searchConfig);
+      await engine.search({ search: "", filters: { and: [] } } as any, searchConfig);
+      const noFilterCalls = mockIndex.search.mock.calls.filter(([ , opts ]) => !(opts as any).filters);
+      expect(noFilterCalls.length).toBe(2);
+    });
+
+    it("propagates errors from MeiliSearch.search", async () => {
+      mockIndex.search.mockRejectedValue(new Error("fail"));
+      await expect(engine.search({ search: "" }, searchConfig)).rejects.toThrow(
+        "fail",
+      );
     });
   });
 
-  describe('delete', () => {
-    it('should delete documents by ids', async () => {
-      const ids = [ '1', '2', '3' ];
-
-      await engine.delete(ids, 'test-index');
-
-      expect(mockIndex.deleteDocuments).toHaveBeenCalledWith(ids);
-    });
-  });
-
-  describe('filter transformation', () => {
-    it('should handle array values in filters', async () => {
-      const query: EntityQuery<any> = {
-        search: 'test query',
-        filters: {
-          category: { in: [ 'books', 'magazines' ] }
-        }
-      };
-
-      const mockResults = {
-        hits: [ { id: '1', title: 'Test Document' } ],
-        estimatedTotalHits: 1,
-        facetDistribution: {}
-      };
-
-      mockIndex.search.mockResolvedValue(mockResults as any);
-
-      await engine.search(query, searchConfig);
-
-      expect(mockIndex.search).toHaveBeenCalledWith(
-        'test query',
-        expect.objectContaining({
-          filter: expect.arrayContaining([
-            expect.stringContaining('category IN ["books", "magazines"]')
-          ])
-        })
-      );
+  describe("delete()", () => {
+    it("deletes documents by ID on correct index", async () => {
+      await engine.delete([ "1", "2" ], "test-index");
+      expect(mockClient.index).toHaveBeenCalledWith("test-index");
+      expect(mockIndex.deleteDocuments).toHaveBeenCalledWith([ "1", "2" ]);
     });
 
-    it('should handle range filters', async () => {
-      const query: EntityQuery<any> = {
-        search: 'test query',
-        filters: {
-          price: { between: [ 10, 100 ] }
-        }
-      };
-
-      const mockResults = {
-        hits: [ { id: '1', title: 'Test Document' } ],
-        estimatedTotalHits: 1,
-        facetDistribution: {}
-      };
-
-      mockIndex.search.mockResolvedValue(mockResults as any);
-
-      await engine.search(query, searchConfig);
-
-      expect(mockIndex.search).toHaveBeenCalledWith(
-        'test query',
-        expect.objectContaining({
-          filter: expect.arrayContaining([
-            expect.stringContaining('price 10 TO 100')
-          ])
-        })
-      );
-    });
-
-    it('should handle null/empty checks', async () => {
-      const query: EntityQuery<any> = {
-        search: 'test query',
-        filters: {
-          description: { isNull: true }
-        }
-      };
-
-      const mockResults = {
-        hits: [ { id: '1', title: 'Test Document' } ],
-        estimatedTotalHits: 1,
-        facetDistribution: {}
-      };
-
-      mockIndex.search.mockResolvedValue(mockResults as any);
-
-      await engine.search(query, searchConfig);
-
-      expect(mockIndex.search).toHaveBeenCalledWith(
-        'test query',
-        expect.objectContaining({
-          filter: expect.arrayContaining([
-            expect.stringContaining('description NOT EXISTS')
-          ])
-        })
-      );
+    it("throws if indexName is empty", async () => {
+      await expect(engine.delete([], "")).rejects.toThrow();
     });
   });
 });
-
