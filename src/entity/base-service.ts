@@ -68,6 +68,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         try {
             const searchConfig = this.getEntitySchema().model.search;
 
+            // Skip search logic if search is not enabled
+            if (!searchConfig?.enabled) {
+                throw new Error(`Search is not enabled for entity ${this.getEntityName()}.`);
+            }
+
             // Validate search configuration if present
             if (searchConfig) {
                 this.validateSearchConfiguration(searchConfig);
