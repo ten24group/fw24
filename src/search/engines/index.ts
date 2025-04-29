@@ -1,2 +1,2 @@
 export * from './base';
-export * from './meili'; 
+export * from './meili/engine'; 

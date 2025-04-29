@@ -1,9 +1,9 @@
 import { Index, MeiliSearch } from "meilisearch";
-import { EntityQuery } from "../../entity/query-types";
-import { isNumeric } from "../../utils";
-import { SearchEngineConfig, SearchOptions, SearchResult } from "../types";
-import { BaseSearchEngine } from "./base";
-import { QueryBuilder } from "./meili-search-query-builder";
+import { EntityQuery } from "../../../entity/query-types";
+import { isNumeric } from "../../../utils";
+import { SearchEngineConfig, SearchOptions, SearchResult } from "../../types";
+import { BaseSearchEngine } from "../base";
+import { QueryBuilder } from "./query-builder";
 
 export interface MeiliSearchConfig {
   host: string;

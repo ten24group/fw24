@@ -4,7 +4,7 @@ import {
   FilterGroup,
   FilterRaw,
   FilterNot,
-} from "./meili-search-query-builder";
+} from "./query-builder";
 
 describe("MeiliQueryBuilder DSL", () => {
   describe("FilterCondition", () => {

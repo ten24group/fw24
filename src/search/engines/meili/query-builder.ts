@@ -6,7 +6,7 @@
  * https://www.meilisearch.com/docs/learn/filtering_and_sorting/filter_expression_reference
  */
 
-import { isString } from "../../utils/datatypes";
+import { isString } from "../../../utils/datatypes";
 
 export type Operator =
   | "="

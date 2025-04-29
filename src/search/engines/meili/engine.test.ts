@@ -1,5 +1,5 @@
-import { MeiliSearchEngine, MeiliSearchConfig } from "./meili";
-import { SearchEngineConfig, SearchOptions } from "../types";
+import { MeiliSearchEngine, MeiliSearchConfig } from "./engine";
+import { SearchEngineConfig, SearchOptions } from "../../types";
 import { MeiliSearch, Index } from "meilisearch";
 
 jest.mock("meilisearch");
