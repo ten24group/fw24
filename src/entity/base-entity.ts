@@ -160,6 +160,31 @@ export interface BaseFieldMetadata {
     tooltip?: string; // maybe this can be inferred from the helpText
 }
 
+export interface IPageActionItem {
+  label: string;
+  url: string;
+  icon?: string;
+}
+
+export interface IEntityPageAction {
+  label: string;
+  url?: string;
+  icon?: string;
+  type?: 'button' | 'dropdown';
+  items?: IPageActionItem[];
+  openInModal?: boolean;
+  modalConfig?: {
+      modalType: string;
+      modalPageConfig: any;
+      apiConfig?: {
+          apiMethod: string;
+          responseKey: string;
+          apiUrl: string;
+      };
+      submitSuccessRedirect?: string;
+  };
+}
+
 interface TextFieldMetadata extends BaseFieldMetadata {
   fieldType?: 'text' | 'textarea' | 'password';
   maxLength?: number;
@@ -365,6 +390,15 @@ export interface EntitySchema<
         readonly excludeFromAdminUpdate ?: boolean, // default is false
         readonly excludeFromAdminDelete ?: boolean, // default is false
         readonly excludeFromAdminDuplicate ?: boolean, // default is false
+        readonly CRUDApiPath ?: string, // default is ''
+
+        // View page configuration
+        readonly viewPageActions?: IEntityPageAction[],
+        readonly viewPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+
+        // Edit page configuration
+        readonly editPageActions?: IEntityPageAction[],
+        readonly editPageBreadcrumbs?: Array<{ label: string; url?: string }>,
     };
     readonly attributes: {
         readonly [a in A]: EntityAttribute;

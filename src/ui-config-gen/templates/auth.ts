@@ -5,6 +5,7 @@ export default (
         disableSignUp?: boolean,
         disableForgotPassword?: boolean,
         disableAccountVerification?: boolean,
+        signInMethods?: ('EMAIL_PASSWORD' | 'EMAIL_OTP' | 'SMS_OTP' | 'PASSKEY')[],
     }
 ) =>  {
 
@@ -14,6 +15,7 @@ export default (
         disableSignUp,
         disableForgotPassword,
         disableAccountVerification,
+        signInMethods = ['EMAIL_PASSWORD'],
     } = options;
 
     
@@ -30,6 +32,7 @@ export default (
                 apiMethod: "POST"
             },
             pageType: "form",
+            signInMethods: signInMethods,
             propertiesConfig: [
                 {
                     column: "email",
@@ -45,6 +48,11 @@ export default (
                     validations: ["required"]
                 }
             ],
+            authConfig: {
+                initiateAuthUrl: `/${authEndpoint}/initiateAuth`,
+                initiateOtpAuthUrl: `/${authEndpoint}/initiateOtpAuth`,
+                otpResponseUrl: `/${authEndpoint}/respondToOtpChallenge`
+            },
             ...(socialProviders.length > 0 ? {
                 socialConfig: {
                     providers: socialProviders,
@@ -53,7 +61,32 @@ export default (
                     redirectUri: process.env.SOCIAL_LOGIN_REDIRECT_URL || ''
                 }
             } : {})
-        };             
+        };
+        if(signInMethods.includes('EMAIL_OTP')){
+            config['/otp-login'] = {
+                pageType: 'form',
+                propertiesConfig: [
+                {
+                    column: 'email',
+                    label: 'Email Address',
+                    placeholder: 'Email Address',
+                    validations: ['required', 'email']
+                }
+            ]
+            };
+            config['/otp-login/verify'] = {
+                pageType: 'form',
+                propertiesConfig: [
+                    {
+                        column: 'otp',  
+                        label: 'OTP',
+                        placeholder: 'OTP',
+                        validations: ['required']
+                    }
+                ]
+            };
+        }
+        
     }
 
     if(!disableSignUp){
