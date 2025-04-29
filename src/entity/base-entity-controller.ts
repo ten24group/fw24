@@ -417,7 +417,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	@Get('/search')
 	async searchGet(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const query = this.parseSearchQuery(req.queryStringParameters || {});
-		return this.search({ ...req, body: query }, res, ctx);
+		return await this.search({ ...req, body: query }, res, ctx);
 	}
 
 	protected parseSearchQuery(params: Record<string, any>): EntityQuery<Sch> {
