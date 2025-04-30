@@ -16,7 +16,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     entityService: BaseEntityService<S>
 ) => {
 
-    const{ entityName, actions, breadcrumbs } = options;
+    const{ entityName, actions, breadcrumbs, CRUDApiPath } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
 
@@ -24,6 +24,28 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 
     // Default back action
     const defaultActions: IEntityPageAction[] = [
+        {
+            label:  "Back",
+            url:    `/list-${entityNameLower}`
+        },
+        {
+            icon: 'delete',
+            label: `Delete`,
+            openInModal: true,
+            modalConfig: {
+                modalType: 'confirm',
+                modalPageConfig: {
+                    title: `Delete ${entityNamePascalCase}`,
+                    content: `Are you sure you want to delete this ${entityNamePascalCase}?`
+                },
+                apiConfig: {
+                    apiMethod: `DELETE`,
+                    responseKey: entityNameLower,
+                    apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
+                },
+                submitSuccessRedirect: `/list-${entityNameLower}`
+            }
+        },
         {
             icon: 'copy',
             label: `Duplicate`,
@@ -37,14 +59,10 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 apiConfig: {
                     apiMethod: `GET`,
                     responseKey: entityNameLower,
-                    apiUrl: `/${entityNameLower}/duplicate`,
+                    apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}/duplicate`,
                 },
                 submitSuccessRedirect: `/list-${entityNameLower}`
             }
-        },
-        {
-            label:  "Back",
-            url:    `/list-${entityNameLower}`
         }
     ];
 
