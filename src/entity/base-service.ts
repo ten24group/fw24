@@ -389,12 +389,21 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         for (const attName in schema.attributes) {
             const att = schema.attributes[ attName ];
 
-            let isUnique = ('isUnique' in att) ? att.isUnique : att.isIdentifier;
+            // Check for legacy isUnique flag
+            // let isUnique = ('isUnique' in att) ? att.isUnique : att.isIdentifier;
 
-            if (isUnique) {
+            let isUnique = att.isUnique == true;
+            // Check for new ensureUnique and makeUnique flags
+            const hasEnsureUnique = ('ensureUnique' in att) && att.ensureUnique;
+            const hasMakeUnique = ('makeUnique' in att) && att.makeUnique;
+
+            // Include attributes that have isUnique, ensureUnique, or both ensureUnique and makeUnique
+            if (isUnique || hasEnsureUnique) {
                 attributes.push({
                     ...att,
                     isUnique,
+                    ensureUnique: hasEnsureUnique,
+                    makeUnique: hasMakeUnique,
                     name: attName,
                 });
             }
@@ -838,26 +847,58 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             [ key: string ]: any
         }
         maxAttemptsForCreatingUniqueAttributeValue: number,
+        attribute?: EntityAttribute,
     }) {
 
-        const { payloadToUpdate, attributeName, ignoredEntityIdentifiers, maxAttemptsForCreatingUniqueAttributeValue } = options;
+        const { payloadToUpdate, attributeName, ignoredEntityIdentifiers, maxAttemptsForCreatingUniqueAttributeValue, attribute } = options;
         let { attributeValue } = options;
+
+        // If no attribute is provided, try to find it from the schema
+        const att = attribute || this.getEntitySchema().attributes[ attributeName ];
+
+        // Determine the uniqueness behavior based on the attribute flags
+        const isLegacyUnique = ('isUnique' in att) && att.isUnique;
+        const ensureUnique = ('ensureUnique' in att) && att.ensureUnique;
+        const makeUnique = ('makeUnique' in att) && att.makeUnique;
+
+        // If none of the uniqueness flags are set, return true (no uniqueness check needed)
+        if (!isLegacyUnique && !ensureUnique) {
+            return true;
+        }
 
         let isUnique = false;
         let triesCount = 1;
 
-        while (!isUnique && triesCount < maxAttemptsForCreatingUniqueAttributeValue) {
-            isUnique = await this.isUniqueAttributeValue(attributeName, attributeValue, ignoredEntityIdentifiers);
-            if (!isUnique) {
+        // Check if the value is unique
+        isUnique = await this.isUniqueAttributeValue(attributeName, attributeValue, ignoredEntityIdentifiers);
+
+        // If the value is not unique and either:
+        // 1. It's a legacy isUnique attribute, or
+        // 2. It has ensureUnique AND makeUnique flags set
+        // Then try to generate a unique value
+        if (!isUnique && (isLegacyUnique || (ensureUnique && makeUnique))) {
+            while (!isUnique && triesCount < maxAttemptsForCreatingUniqueAttributeValue) {
                 attributeValue = this.generateUniqueValue(attributeValue, triesCount);
+                isUnique = await this.isUniqueAttributeValue(attributeName, attributeValue, ignoredEntityIdentifiers);
+                triesCount++;
             }
-            triesCount++;
         }
 
+        // If the value is unique or we successfully generated a unique value, update the payload
         if (isUnique) {
             payloadToUpdate[ attributeName ] = attributeValue;
         }
 
+        // For ensureUnique without makeUnique, throw an error if the value is not unique
+        if (ensureUnique && !makeUnique && !isUnique) {
+            throw new EntityValidationError([ {
+                message: `Value for ${attributeName} must be unique.`,
+                path: [ attributeName ],
+                expected: [ 'unique', attributeValue ],
+            } ]);
+        }
+
+        // For isUnique or ensureUnique+makeUnique, we return true if we successfully generated a unique value
         return isUnique;
     }
 
@@ -875,16 +916,16 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         }
     ) {
 
-        this.logger.debug(`Called ~ isUniqueAttributeValue ~ entityName: ${this.getEntityName()} ~ attributeName: ${attributeName} ~ attributeValue: ${attributeValue}`);
+        // this.logger.debug(`Called ~ isUniqueAttributeValue ~ entityName: ${this.getEntityName()} ~ attributeName: ${attributeName} ~ attributeValue: ${attributeValue}`);
 
         // Create filters for the query using the correct structure
         const filters = {
-            [attributeName]: { eq: attributeValue }
+            [ attributeName ]: { eq: attributeValue }
         } as EntityFilterCriteria<S>;
 
         // Determine which attributes to project - only the attribute being checked and ignored entity identifiers
-        const attributesToProject: string[] = [attributeName];
-        
+        const attributesToProject: string[] = [ attributeName ];
+
         // Add ignored entity identifier fields to the projection
         if (ignoredEntityIdentifiers && !isEmptyObjectDeep(ignoredEntityIdentifiers)) {
             Object.keys(ignoredEntityIdentifiers).forEach(key => {
@@ -905,13 +946,13 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         let entities = result.data || [];
         if (ignoredEntityIdentifiers && !isEmptyObjectDeep(ignoredEntityIdentifiers)) {
             entities = entities.filter(entity => {
-                return !Object.entries(ignoredEntityIdentifiers).every(([key, value]) => 
-                    entity[key] === value
+                return !Object.entries(ignoredEntityIdentifiers).every(([ key, value ]) =>
+                    entity[ key ] === value
                 );
             });
         }
 
-        this.logger.debug(`isUniqueAttributeValue ~ entityName: ${this.getEntityName()} ~ attributeName: ${attributeName} ~ attributeValue: ${attributeValue} ~ entity:`, { data: entities });
+        // this.logger.debug(`isUniqueAttributeValue ~ entityName: ${this.getEntityName()} ~ attributeName: ${attributeName} ~ attributeValue: ${attributeValue} ~ entity:`, { data: entities });
 
         return entities.length === 0;
     }
@@ -954,14 +995,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         if (!skipCheckingAttributesUniqueness && uniqueFields.length) {
             let uniquenessChecks = [];
 
-            for (const { name } of uniqueFields) {
-                if (name! in payloadCopy) {
-                    let value = payloadCopy[ name! ];
+            for (const att of uniqueFields) {
+                if (att.name! in payloadCopy) {
+                    let value = payloadCopy[ att.name! ];
                     uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
                         payloadToUpdate: payloadCopy,
-                        attributeName: name!,
+                        attributeName: att.name!,
                         attributeValue: value,
                         maxAttemptsForCreatingUniqueAttributeValue,
+                        attribute: att,
                     }));
                 }
             }
@@ -1217,20 +1259,21 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         if (!skipCheckingAttributesUniqueness && uniqueFields.length) {
             let uniquenessChecks = [];
 
-            for (const { name, readOnly } of uniqueFields) {
-                if (readOnly) {
-                    delete data[ name as keyof typeof data ];
+            for (const att of uniqueFields) {
+                if (att.readOnly) {
+                    delete data[ att.name as keyof typeof data ];
                     continue;
                 }
 
-                if (name! in data) {
-                    let value = data[ name as keyof typeof data ];
+                if (att.name! in data) {
+                    let value = data[ att.name as keyof typeof data ];
                     uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
                         payloadToUpdate: data,
-                        attributeName: name!,
+                        attributeName: att.name!,
                         attributeValue: value,
                         maxAttemptsForCreatingUniqueAttributeValue,
                         ignoredEntityIdentifiers: identifiers,
+                        attribute: att,
                     }));
                 }
             }
@@ -1294,30 +1337,30 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             const { batchSize = 100 } = options;
             const entityName = this.getEntityName();
             const repository = this.getRepository();
-            
+
             this.logger.info(`Starting index rebuild for entity: ${entityName}`);
-            
+
             // Get all records from the primary index
             const allRecords = await repository.scan.go();
-            
+
             if (!allRecords.data || allRecords.data.length === 0) {
                 this.logger.info(`No records found for entity: ${entityName}`);
                 return;
             }
-            
+
             this.logger.info(`Found ${allRecords.data.length} records to process for entity: ${entityName}`);
-            
+
             // Process records in batches
             const totalRecords = allRecords.data.length;
             const totalBatches = Math.ceil(totalRecords / batchSize);
-            
+
             for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
                 const start = batchIndex * batchSize;
                 const end = Math.min(start + batchSize, totalRecords);
                 const batch = allRecords.data.slice(start, end);
-                
+
                 this.logger.info(`Processing batch ${batchIndex + 1}/${totalBatches} (${start + 1}-${end} of ${totalRecords} records)`);
-                
+
                 // Rebuild all indexes by upserting each record to the primary index
                 for (const record of batch) {
                     try {
@@ -1328,7 +1371,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                     }
                 }
             }
-            
+
             this.logger.info(`Completed index rebuild for entity: ${entityName}`);
         } catch (error) {
             this.logger.error(`Failed to rebuild index for entity: ${this.getEntityName()}`, error);
@@ -1462,6 +1505,9 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         isCreatable: !('isCreatable' in att) ? true : att.isCreatable,
         isFilterable: !('isFilterable' in att) ? true : att.isFilterable,
         isSearchable: !('isSearchable' in att) ? true : att.isSearchable,
+        isUnique: ('isUnique' in att) ? att.isUnique : undefined,
+        ensureUnique: ('ensureUnique' in att) ? att.ensureUnique : undefined,
+        makeUnique: ('makeUnique' in att) ? att.makeUnique : undefined,
     }
 
     if (addNewOption) {

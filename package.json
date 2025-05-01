@@ -24,6 +24,8 @@
     "scripts": {
         "watch": "tsc -w",
         "build": "tsc",
+        "test": "jest",
+        "test:watch": "jest --watch",
         "release": "npm run build && standard-version --prerelease beta && git push --follow-tags && npm publish",
         "release:BE": "npm run build && standard-version --prerelease beta && git push --follow-tags && npm publish --tag bleeding-edge",
         "layer:build": "esbuild --bundle --platform=node --sourcemap ./src/layer/fw24.ts --outdir=dist/layer/nodejs/node_modules",
