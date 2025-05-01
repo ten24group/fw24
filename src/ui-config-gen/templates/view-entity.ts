@@ -29,6 +29,11 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
             label: "Back",
             url: `/list-${entityNameLower}`,
             icon: "arrow-left"
+        },
+        {
+            label: "Edit",
+            url: `/edit-${entityNameLower}/:id`,
+            icon: "edit",
         }
     ];
 

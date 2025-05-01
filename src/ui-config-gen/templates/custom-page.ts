@@ -57,6 +57,17 @@ export interface ListPageConfig extends BasePageConfig {
                 icon?: string;
                 url?: string;
                 type?: string;
+                openInModal?: boolean;
+                modalConfig?: {
+                    modalType: string;
+                    modalPageConfig: any;
+                    apiConfig?: {
+                        apiMethod: string;
+                        responseKey: string;
+                        apiUrl: string;
+                    };
+                    submitSuccessRedirect?: string;
+                };
             }>;
         }>;
     };
