@@ -1,6 +1,13 @@
 export function toHumanReadableName(input: string) {
-    // capitalize the first char and split on the uppercase chars
-    return input.charAt(0).toUpperCase() + input.slice(1).replace(/([A-Z])/g, " $1");
+    // Replace special characters with space, add space before uppercase, collapse spaces, trim
+    let result = input
+        .replace(/[^a-zA-Z0-9]+/g, ' ')      // replace special chars with space
+        .replace(/([A-Z])/g, ' $1')          // add space before capital letters
+        .replace(/\s+/g, ' ')                // collapse multiple spaces
+        .trim();
+
+    // Capitalize the first character and any character after a space
+    return result.replace(/(^|\s)([a-zA-Z])/g, (_, p1, p2) => p1 + p2.toUpperCase());
 }
 
 export function camelCase(input: string) {

@@ -42,6 +42,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     return {
         pageTitle:  `${entityNamePascalCase} Listing`,
         pageType:   "list",
+        routePattern: undefined,
         breadcrums: [],
         pageHeaderActions: pageHeaderAction,
         listPageConfig
