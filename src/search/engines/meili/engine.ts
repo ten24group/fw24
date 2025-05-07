@@ -19,6 +19,24 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     this.client = new MeiliSearch(config);
   }
 
+  async initIndex(config: SearchIndexConfigExt) {
+    const idx = config.indexName!;
+
+    const index = this.client.index(idx);
+
+    if (index) {
+      return index;
+    }
+
+    const res = await this.client.createIndex(idx);
+
+    if (!res) {
+      throw new Error(`Failed to create index ${idx}`);
+    }
+
+    return res;
+  }
+
   private async getIndex(config: SearchIndexConfigExt): Promise<Index> {
     this.validateConfig(config);
     const idx = config.indexName!;

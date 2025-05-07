@@ -161,26 +161,3 @@ export interface SearchOptions extends Record<string, any> {
   hitsPerPage?: number;
   sort?: string[];
 }
-
-export interface ISearchEngine {
-  /**
-   * Index documents in the search engine
-   * @param documents Documents to index
-   * @param config Search engine configuration
-   */
-  index<T extends Record<string, any>>(documents: T[], config: SearchIndexConfig): Promise<void>;
-
-  /**
-   * Search for documents using SearchEngineQuery options.
-   * @param query Search query
-   * @param config Search engine configuration
-   */
-  search<T>(query: SearchQuery, config: SearchIndexConfig): Promise<SearchResult<T>>;
-
-  /**
-   * Delete documents from index
-   * @param ids Document IDs to delete
-   * @param indexName Index name
-   */
-  delete(ids: string[], indexName: string): Promise<void>;
-} 

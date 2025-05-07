@@ -1,14 +1,15 @@
 import { BaseSearchService } from './base-search-service';
 import { EntitySchema, EntityRecordTypeFromSchema, BaseEntityService } from '../../entity';
-import { ISearchEngine, SearchQuery, SearchResult, EntitySearchQuery } from '../types';
+import { SearchResult, EntitySearchQuery } from '../types';
 import { SearchIndexConfig } from '../types';
 import { ExecutionContext } from '../../core/types/execution-context';
+import { BaseSearchEngine } from '../engines';
 
 export class EntitySearchService<S extends EntitySchema<any, any, any>> extends BaseSearchService {
 
   constructor(
     protected readonly entityService: BaseEntityService<S>,
-    protected readonly searchEngine: ISearchEngine,
+    protected readonly searchEngine: BaseSearchEngine,
   ) {
     super(searchEngine);
   }

@@ -1,9 +1,10 @@
 import { BaseSearchService } from './base-search-service';
 import { BaseEntityService, EntitySchema, EntityQuery, createEntitySchema, DefaultEntityOperations } from '../../entity';
-import { ISearchEngine, SearchIndexConfig, SearchResult } from '../types';
+import { SearchIndexConfig, SearchResult } from '../types';
 import { ExecutionContext } from '../../core/types/execution-context';
 import { APIGatewayEvent, Context } from 'aws-lambda';
 import { Request, Response } from '../../interfaces';
+import { BaseSearchEngine } from '../engines';
 
 
 // Create a test schema
@@ -69,7 +70,7 @@ class TestSearchService extends BaseSearchService {
 
 let service: TestSearchService;
 let mockEntityService: jest.Mocked<BaseEntityService<TestSchema>>;
-let mockSearchEngine: jest.Mocked<ISearchEngine>;
+let mockSearchEngine: jest.Mocked<BaseSearchEngine>;
 let searchConfig: SearchIndexConfig;
 let mockContext: ExecutionContext;
 

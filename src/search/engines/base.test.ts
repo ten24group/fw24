@@ -17,6 +17,10 @@ class TestSearchEngine extends BaseSearchEngine {
   async delete(_ids: string[]): Promise<void> {
     // Implementation not needed for tests
   }
+
+  async initIndex(_config: SearchIndexConfig): Promise<any> {
+    // Implementation not needed for tests
+  }
 }
 
 describe('BaseSearchEngine', () => {

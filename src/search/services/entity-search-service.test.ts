@@ -1,9 +1,9 @@
 import { SearchIndexConfig } from "../types";
 import { EntitySearchService } from "./entity-search-service";
 import { BaseEntityService, createEntitySchema, DefaultEntityOperations, EntitySchema } from '../../entity';
-import { ISearchEngine } from '../types';
 import { APIGatewayEvent, Context } from 'aws-lambda';
 import { Request, Response } from '../../interfaces';
+import { BaseSearchEngine } from "../engines";
 
 // Create a test schema
 const testSchema = createEntitySchema({
@@ -62,7 +62,7 @@ type TestSchema = typeof testSchema;
 describe('EntitySearchService', () => {
   let service: EntitySearchService<TestSchema>;
   let mockEntityService: jest.Mocked<BaseEntityService<TestSchema>>;
-  let mockSearchEngine: jest.Mocked<ISearchEngine>;
+  let mockSearchEngine: jest.Mocked<BaseSearchEngine>;
   let searchConfig: SearchIndexConfig;
   let mockContext: any;
 
@@ -72,7 +72,10 @@ describe('EntitySearchService', () => {
       search: jest.fn(),
       index: jest.fn(),
       delete: jest.fn(),
-    };
+      initIndex: jest.fn(),
+      config: jest.fn(),
+      validateConfig: jest.fn(),
+    } as any;
 
     searchConfig = {
       provider: 'meili',

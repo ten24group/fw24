@@ -147,8 +147,8 @@ export class FilterGroup implements FilterNode {
     }).filter(Boolean);
     if (!parts.length) return "";
     const joined = parts.join(` ${this.connector} `);
-    // Always wrap in parentheses if it's an OR group or has multiple parts
-    return (this.connector === "OR" || parts.length > 1) ? `(${joined})` : joined;
+    // Only wrap in parentheses if it has multiple parts
+    return parts.length > 1 ? `(${joined})` : joined;
   }
 
   clone(): FilterGroup {
@@ -263,7 +263,22 @@ export class QueryBuilder<T = Record<string, any>> {
   orGroup(fn: (qb: QueryBuilder<T>) => void): this {
     const sub = QueryBuilder.create<T>("OR");
     fn(sub);
-    this.addFilterNode(sub.root, "OR");
+
+    // Handle the logic specially for OR groups to ensure proper connector
+    if (this.root.isEmpty) {
+      // If our root is empty, just use the subquery's root
+      this.root = sub.root;
+    } else if (this.root.connector === "OR") {
+      // If current root is already OR, just add the subquery root to it
+      this.root.add(sub.root);
+    } else {
+      // If current root is AND but we need to add with OR, create a new 
+      // root group with OR connector
+      const newRoot = new FilterGroup("OR");
+      newRoot.add(this.root);
+      newRoot.add(sub.root);
+      this.root = newRoot;
+    }
     return this;
   }
 

@@ -1,12 +1,14 @@
 import { createLogger } from '../../logging';
-import { ISearchEngine, SearchIndexConfig, SearchResult, SearchQuery } from '../types';
+import { SearchIndexConfig, SearchResult, SearchQuery } from '../types';
 import { ExecutionContext } from '../../core/types/execution-context';
+import { BaseSearchEngine } from '../engines/base';
+
 
 export class BaseSearchService {
   protected readonly logger = createLogger(`BaseSearchService:${this.constructor.name}`);
 
   constructor(
-    protected readonly searchEngine: ISearchEngine,
+    protected readonly searchEngine: BaseSearchEngine,
     protected readonly searchIndexConfig?: SearchIndexConfig
   ) { }
 
@@ -30,6 +32,11 @@ export class BaseSearchService {
     const results = await this.searchEngine.search(query, searchIndexConfig);
 
     return results;
+  }
+
+  async initSearchIndex() {
+    const searchIndexConfig = this.getSearchIndexConfig();
+    await this.searchEngine.initIndex(searchIndexConfig);
   }
 
   async syncToIndex(entity: Record<string, any>, searchIndexConfig = this.getSearchIndexConfig(), _ctx?: ExecutionContext) {

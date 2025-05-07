@@ -65,8 +65,7 @@ import {
     NothingToExportError,
     ProviderConfigurationError
 } from './errors';
-
-import { ISearchEngine } from '../search';
+import { BaseSearchEngine } from '../search';
 
 
 export class DIContainer implements IDIContainer {
@@ -171,7 +170,7 @@ export class DIContainer implements IDIContainer {
         return this._rootInstance;
     }
 
-    private searchEngine?: ISearchEngine;
+    private searchEngine?: BaseSearchEngine;
 
     constructor(private parentContainer?: DIContainer, identifier: string = 'ROOT') {
         // to ensure destructuring works correctly
@@ -1181,11 +1180,11 @@ export class DIContainer implements IDIContainer {
         this.parent?.logCache();
     }
 
-    public setSearchEngine(engine: ISearchEngine) {
+    public setSearchEngine(engine: BaseSearchEngine) {
         this.searchEngine = engine;
     }
 
-    public resolveSearchEngine(): ISearchEngine {
+    public resolveSearchEngine(): BaseSearchEngine {
         if (!this.searchEngine) {
             throw new Error('Search engine not configured. Please call setSearchEngine() first.');
         }
