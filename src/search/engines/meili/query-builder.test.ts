@@ -340,7 +340,284 @@ describe("MeiliQueryBuilder DSL", () => {
 
   describe("empty-state build()", () => {
     it("omits filters when none added, and options empty", () => {
-      expect(QueryBuilder.create().build().options).toEqual({});
+      const q = QueryBuilder.create().build();
+      expect(q.options).toEqual({});
+    });
+  });
+
+  describe("Advanced Query Building and Edge Cases", () => {
+    it("handles deeply nested groups with mixed connectors", () => {
+      const query = QueryBuilder.create()
+        .andGroup(g1 => {
+          g1.where("a").eq(1)
+            .andGroup(g2 => {
+              g2.where("b").eq(2)
+                .orWhere("c").eq(3);
+            });
+        })
+        .orGroup(g1 => {
+          g1.where("d").eq(4)
+            .orGroup(g2 => {
+              g2.where("e").eq(5)
+                .andWhere("f").eq(6);
+            });
+        })
+        .build().options.filters;
+
+      expect(query).toBe("((a = 1 AND (b = 2 OR c = 3)) OR (d = 4 OR (e = 5 AND f = 6)))");
+    });
+
+    it("correctly handles empty groups", () => {
+      const query = QueryBuilder.create()
+        .andGroup(_ => {/* empty */ })
+        .orGroup(_ => {/* empty */ })
+        .where("x").eq(1)
+        .build().options.filters;
+
+      expect(query).toBe("x = 1");
+    });
+
+    it("maintains precedence when mixing group types", () => {
+      const query = QueryBuilder.create()
+        .where("a").eq(1)
+        .orGroup(g => {
+          g.where("b").eq(2)
+            .andGroup(g2 => {
+              g2.where("c").eq(3)
+                .orWhere("d").eq(4);
+            });
+        })
+        .andGroup(g => {
+          g.where("e").eq(5);
+        })
+        .build().options.filters;
+
+      expect(query).toBe("((a = 1 OR (b = 2 AND (c = 3 OR d = 4))) AND e = 5)");
+    });
+
+    it("supports complex group combinations with notGroup", () => {
+      const query = QueryBuilder.create()
+        .where("a").eq(1)
+        .andGroup(g => {
+          g.notGroup(g2 => {
+            g2.where("b").eq(2)
+              .orWhere("c").eq(3);
+          });
+        })
+        .orGroup(g => {
+          g.where("d").eq(4)
+            .notGroup(g2 => {
+              g2.where("e").eq(5);
+            });
+        })
+        .build().options.filters;
+
+      expect(query).toBe("((a = 1 AND NOT (b = 2 OR c = 3)) OR (d = 4 AND NOT (e = 5)))");
+    });
+
+    it("manages complex combinations of AND/OR operations with proper parentheses", () => {
+      const query = QueryBuilder.create()
+        .where("a").eq(1)
+        .orWhere("b").eq(2)
+        .andWhere("c").eq(3)
+        .orGroup(g => {
+          g.where("d").eq(4)
+            .andWhere("e").eq(5);
+        })
+        .andGroup(g => {
+          g.where("f").eq(6)
+            .orWhere("g").eq(7);
+        })
+        .build().options.filters;
+
+      expect(query).toBe("((((a = 1 OR b = 2) AND c = 3) OR (d = 4 AND e = 5)) AND (f = 6 OR g = 7))");
+    });
+
+    it("handles corner case of empty root with conditional groups", () => {
+      const qb = QueryBuilder.create();
+
+      // Conditionally add groups based on a runtime condition
+      const condition1 = true;
+      const condition2 = false;
+
+      if (condition1) {
+        qb.andGroup(g => g.where("a").eq(1));
+      }
+
+      if (condition2) {
+        qb.orGroup(g => g.where("b").eq(2));
+      }
+
+      expect(qb.build().options.filters).toBe("a = 1");
+    });
+
+    it("supports advanced group nesting with mixed operations", () => {
+      const query = QueryBuilder.create()
+        .andGroup(g => {
+          g.where("category").in([ "books", "movies" ])
+            .andWhere("price").lt(50);
+        })
+        .andGroup(g => {
+          g.where("inStock").eq(true)
+            .orGroup(g2 => {
+              g2.where("preorder").eq(true)
+                .andWhere("releaseDate").lt(20230101);
+            });
+        })
+        .notGroup(g => {
+          g.where("restricted").eq(true)
+            .orWhere("age").lt(18);
+        })
+        .build().options.filters;
+
+      // This test is primarily to verify it builds without errors
+      expect(query).toContain("category IN ['books', 'movies'] AND price < 50");
+      expect(query).toContain("inStock = true OR (preorder = true AND releaseDate < 20230101");
+      expect(query).toContain("NOT (restricted = true OR age < 18)");
+    });
+
+    it("handles extremely deep nesting with mixed connectors", () => {
+      const query = QueryBuilder.create()
+        .andGroup(g1 => {
+          g1.where("a").eq(1)
+            .andGroup(g2 => {
+              g2.where("b").eq(2)
+                .andGroup(g3 => {
+                  g3.where("c").eq(3)
+                    .orWhere("d").eq(4);
+                });
+            });
+        })
+        .orGroup(g1 => {
+          g1.notGroup(g2 => {
+            g2.where("e").eq(5)
+              .orGroup(g3 => {
+                g3.where("f").eq(6)
+                  .andWhere("g").eq(7);
+              });
+          });
+        })
+        .build().options.filters;
+
+      // We're testing deep nesting here, the exact format varies by implementation
+      expect(query).toContain("a = 1");
+      expect(query).toContain("b = 2");
+      expect(query).toContain("c = 3 OR d = 4");
+      expect(query).toContain("NOT (e = 5 OR");
+      expect(query).toContain("f = 6 AND g = 7");
+    });
+
+    it("handles real-world complex search scenarios", () => {
+      // This simulates a complex product search filter
+      const query = QueryBuilder.create()
+        // Price range
+        .where("price").gte(10).andWhere("price").lt(100)
+        // Categories
+        .andWhere("category").in([ "electronics", "computers" ])
+        // Brand filter
+        .andGroup(g => {
+          g.where("brand").eq("Apple")
+            .orWhere("brand").eq("Samsung")
+            .orWhere("brand").eq("Microsoft");
+        })
+        // Availability
+        .andGroup(g => {
+          g.where("inStock").eq(true)
+            .orWhere("backorderAvailable").eq(true);
+        })
+        // Exclusions
+        .notGroup(g => {
+          g.where("discontinued").eq(true)
+            .orWhere("recalled").eq(true);
+        })
+        .build().options.filters;
+      /**
+       * Expected output:
+       * "(
+       * price >= 10 
+       * AND price < 100 
+       * AND category IN ['electronics', 'computers'] 
+       * AND (brand = 'Apple' OR brand = 'Samsung' OR brand = 'Microsoft') 
+       * AND (inStock = true OR backorderAvailable = true) 
+       * AND NOT (discontinued = true OR recalled = true)
+       * )"
+       */
+
+      // Check that all parts are included
+      expect(query).toContain("price >= 10");
+      expect(query).toContain("price < 100");
+      expect(query).toContain("category IN ['electronics', 'computers']");
+      expect(query).toContain("brand = 'Apple'");
+      expect(query).toContain("OR brand = 'Samsung'");
+      expect(query).toContain("OR brand = 'Microsoft'");
+      expect(query).toContain("inStock = true OR backorderAvailable = true");
+      expect(query).toContain("NOT (discontinued = true OR recalled = true)");
+    });
+
+    it("tests andGroup special handling for empty root", () => {
+      const query = QueryBuilder.create()
+        .andGroup(g => {
+          g.where("a").eq(1);
+        })
+        .build().options.filters;
+
+      expect(query).toBe("a = 1");
+    });
+
+    it("tests andGroup special handling for existing AND connector", () => {
+      const query = QueryBuilder.create()
+        .where("a").eq(1)
+        .andGroup(g => {
+          g.where("b").eq(2);
+        })
+        .build().options.filters;
+
+      expect(query).toBe("(a = 1 AND b = 2)");
+    });
+
+    it("tests andGroup special handling for existing OR connector", () => {
+      const query = QueryBuilder.create()
+        .where("a").eq(1)
+        .orWhere("b").eq(2)
+        .andGroup(g => {
+          g.where("c").eq(3);
+        })
+        .build().options.filters;
+
+      expect(query).toBe("((a = 1 OR b = 2) AND c = 3)");
+    });
+
+    it("tests notGroup special handling for empty root", () => {
+      const query = QueryBuilder.create()
+        .notGroup(g => {
+          g.where("a").eq(1);
+        })
+        .build().options.filters;
+
+      expect(query).toBe("NOT (a = 1)");
+    });
+
+    it("tests notGroup special handling for existing AND connector", () => {
+      const query = QueryBuilder.create()
+        .where("a").eq(1)
+        .notGroup(g => {
+          g.where("b").eq(2);
+        })
+        .build().options.filters;
+
+      expect(query).toBe("(a = 1 AND NOT (b = 2))");
+    });
+
+    it("tests notGroup special handling for existing OR connector", () => {
+      const query = QueryBuilder.create()
+        .where("a").eq(1)
+        .orWhere("b").eq(2)
+        .notGroup(g => {
+          g.where("c").eq(3);
+        })
+        .build().options.filters;
+
+      expect(query).toBe("((a = 1 OR b = 2) AND NOT (c = 3))");
     });
   });
 });

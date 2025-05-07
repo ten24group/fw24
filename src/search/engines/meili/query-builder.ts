@@ -250,16 +250,43 @@ export class QueryBuilder<T = Record<string, any>> {
   }
   whereNot = this.notWhere;
 
-  /** Nested AND group */
+  /** 
+   * Creates a nested group of filters joined with AND connector.
+   * @param fn Callback function receiving a new query builder to define the group
+   * @returns This builder instance for chaining
+   */
   group(fn: (qb: QueryBuilder<T>) => void): this {
     const sub = QueryBuilder.create<T>("AND");
     fn(sub);
-    this.addFilterNode(sub.root, "AND");
+
+    // Special handling for AND groups similar to orGroup
+    if (this.root.isEmpty) {
+      // If our root is empty, just use the subquery's root
+      this.root = sub.root;
+    } else if (this.root.connector === "AND") {
+      // If current root is already AND, just add the subquery root to it
+      this.root.add(sub.root);
+    } else {
+      // If current root is OR but we need to add with AND, create a new 
+      // root group with AND connector
+      const newRoot = new FilterGroup("AND");
+      newRoot.add(this.root);
+      newRoot.add(sub.root);
+      this.root = newRoot;
+    }
     return this;
   }
+
+  /** Alias for group() - creates a nested group of filters joined with AND */
   andGroup = this.group;
 
-  /** Nested OR group */
+  /** 
+   * Creates a nested group of filters joined with OR connector.
+   * This handles special logic to ensure OR precedence is maintained correctly.
+   * 
+   * @param fn Callback function receiving a new query builder to define the group
+   * @returns This builder instance for chaining
+   */
   orGroup(fn: (qb: QueryBuilder<T>) => void): this {
     const sub = QueryBuilder.create<T>("OR");
     fn(sub);
@@ -282,11 +309,37 @@ export class QueryBuilder<T = Record<string, any>> {
     return this;
   }
 
-  /** Nested NOT group */
+  /** 
+   * Creates a negated group of filters.
+   * The entire group will be prefixed with NOT.
+   * 
+   * @param fn Callback function receiving a new query builder to define the group
+   * @returns This builder instance for chaining
+   */
   notGroup(fn: (qb: QueryBuilder<T>) => void): this {
-    const sub = new QueryBuilder<T>();
+    // Create a sub-builder with default AND connector
+    const sub = QueryBuilder.create<T>("AND");
     fn(sub);
-    this.addFilterNode(new FilterNot(sub.root), "AND");
+
+    // Wrap the sub-query's filter tree with a FilterNot node
+    const notNode = new FilterNot(sub.root);
+
+    // Handle the integration into the main filter tree
+    if (this.root.isEmpty) {
+      // If root is empty, create a new group with the NOT node
+      this.root = new FilterGroup("AND");
+      this.root.add(notNode);
+    } else if (this.root.connector === "AND") {
+      // If root is already AND, just add the NOT node
+      this.root.add(notNode);
+    } else {
+      // If root is OR, create a new AND group with the NOT node
+      const newRoot = new FilterGroup("AND");
+      newRoot.add(this.root);
+      newRoot.add(notNode);
+      this.root = newRoot;
+    }
+
     return this;
   }
 
