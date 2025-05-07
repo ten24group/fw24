@@ -19,7 +19,7 @@ export type Operator =
   | "CONTAINS"
   | "STARTS WITH";
 
-export type MatchingStrategy = "all" | "last";
+export type MatchingStrategy = "all" | "last" | "frequency";
 
 export interface MeiliSearchOptions {
   // Core search
@@ -28,18 +28,25 @@ export interface MeiliSearchOptions {
   limit?: number;
   offset?: number;
   distinctAttribute?: string;
+  hitsPerPage?: number;
+  page?: number;
+  post_filter?: string;
 
   // Attribute selection
   attributesToRetrieve?: string[];
   attributesToHighlight?: string[];
   attributesToCrop?: string[];
+  attributesToSearchOn?: string[];
 
   // Faceting
   facetFilters?: Array<string | string[]>;
   facetsDistribution?: string[];
+  facets?: string[];
+  facetStats?: boolean;
 
   // Behavior
   matchingStrategy?: MatchingStrategy;
+  locales?: string[];
 
   // Highlight/Crop tags
   highlightPreTag?: string;
@@ -52,6 +59,19 @@ export interface MeiliSearchOptions {
   aroundLatLng?: string;
   aroundRadius?: number;
   aroundPrecision?: number;
+
+  // Hybrid & vector search
+  hybrid?: {
+    semanticRatio?: number;
+    embedder?: string;
+  };
+  vector?: number[];
+  retrieveVectors?: boolean;
+
+  // Ranking & scoring
+  showRankingScore?: boolean;
+  showRankingScoreDetails?: boolean;
+  rankingScoreThreshold?: number;
 
   // Custom options
   [ key: string ]: any;
@@ -185,7 +205,6 @@ export class QueryBuilder<T = Record<string, any>> {
     value: string | number | boolean | Array<any> | Record<string, any>,
   ): FilterRaw {
 
-    debugger;
     let valStr: string;
     if (typeof value === "string") {
       valStr = `'${value.replace(/'/g, "\\'")}'`;
@@ -365,14 +384,69 @@ export class QueryBuilder<T = Record<string, any>> {
     this.options.offset = n;
     return this;
   }
-  page(page: number, size: number): this {
-    this.options.limit = size;
-    this.options.offset = (page - 1) * size;
+
+  /**
+   * Configure pagination with hitsPerPage parameter
+   * This provides exhaustive pagination with total hits and total pages
+   * @param hits Number of hits per page
+   */
+  hitsPerPage(hits: number): this {
+    this.options.hitsPerPage = hits;
     return this;
   }
+
+  /**
+   * Set the page number for pagination
+   * @param pageNum Page number (1-based)
+   * @param size Optional page size, sets limit & offset if hitsPerPage not used
+   */
+  page(pageNum: number, size?: number): this {
+    if (this.options.hitsPerPage !== undefined || size === undefined) {
+      // Use new pagination style with hitsPerPage/page
+      this.options.page = pageNum;
+    } else {
+      // Use legacy limit/offset style pagination
+      this.options.limit = size;
+      this.options.offset = (pageNum - 1) * size;
+    }
+    return this;
+  }
+
   clearPagination(): this {
     delete this.options.limit;
     delete this.options.offset;
+    delete this.options.hitsPerPage;
+    delete this.options.page;
+    return this;
+  }
+
+  /**
+   * Add a post filter to filter search hits after aggregations
+   * This can be used for faceted search to preserve aggregation values
+   * @param filter The filter string or expression
+   */
+  postFilter(filter: string): this {
+    this.options.post_filter = filter;
+    return this;
+  }
+
+  /**
+   * Add a post filter (filtering after search) using a builder
+   * This is useful for faceted search to preserve facet counts while filtering results
+   * @param builderFn Function that configures filter conditions
+   */
+  withPostFilter(builderFn: (qb: QueryBuilder<T>) => void): this {
+    const postFilterBuilder = QueryBuilder.create<T>();
+    builderFn(postFilterBuilder);
+    this.options.post_filter = postFilterBuilder.root.toString();
+    return this;
+  }
+
+  /**
+   * Clear post filter configuration
+   */
+  clearPostFilter(): this {
+    delete this.options.post_filter;
     return this;
   }
 
@@ -396,6 +470,30 @@ export class QueryBuilder<T = Record<string, any>> {
     return this;
   }
 
+  /**
+   * Specify facets to return in the response
+   * @param fields Array of facet fields or ['*'] for all facets
+   */
+  facets(fields: Array<keyof T | string> | [ "*" ]): this {
+    this.options.facets = fields as string[];
+    return this;
+  }
+
+  /**
+   * Enable facet stats in the response
+   * Returns min/max values for numerical facets
+   */
+  facetStats(enabled: boolean = true): this {
+    this.options.facetStats = enabled;
+    return this;
+  }
+
+  clearFacets(): this {
+    delete this.options.facets;
+    delete this.options.facetStats;
+    return this;
+  }
+
   /** Faceting filters */
   facetFilter<K extends keyof T>(field: K, ...vals: T[ K ][]): this {
     const key = String(field);
@@ -412,6 +510,28 @@ export class QueryBuilder<T = Record<string, any>> {
   }
   clearFacetFilters(): this {
     delete this.options.facetFilters;
+    return this;
+  }
+
+  /**
+   * Add a facet filter using a more flexible builder pattern
+   * @param field The facet field to filter on
+   * @param filterFn Function to build filter conditions for this facet
+   * @returns This builder instance for chaining
+   */
+  withFacetFilter<K extends keyof T>(field: K, filterFn: (builder: FacetFilterBuilder<T[ K ]>) => void): this {
+    // Initialize the builder
+    const builder = new FacetFilterBuilder<T[ K ]>(String(field));
+    filterFn(builder);
+
+    // Get the built facet filter
+    const filter = builder.build();
+    if (!filter) return this; // No filters added
+
+    // Add to the facet filters array
+    const arr = this.options.facetFilters || [];
+    arr.push(filter);
+    this.options.facetFilters = arr;
     return this;
   }
 
@@ -432,6 +552,97 @@ export class QueryBuilder<T = Record<string, any>> {
   }
   clearMatchingStrategy(): this {
     delete this.options.matchingStrategy;
+    return this;
+  }
+
+  /**
+   * Specify the locales/languages to search in
+   * @param localeList Array of locale codes (e.g. ["en-US", "fr-FR"])
+   */
+  locales(localeList: string[]): this {
+    this.options.locales = localeList;
+    return this;
+  }
+
+  clearLocales(): this {
+    delete this.options.locales;
+    return this;
+  }
+
+  /** 
+   * Configure hybrid search that combines keyword and semantic search
+   * @param embedder The name of an embedder configured in Meilisearch
+   * @param semanticRatio A number between 0.0 and 1.0 indicating proportion between keyword and semantic results
+   */
+  hybrid(embedder: string, semanticRatio: number = 0.5): this {
+    this.options.hybrid = { embedder, semanticRatio };
+    return this;
+  }
+  clearHybrid(): this {
+    delete this.options.hybrid;
+    return this;
+  }
+
+  /** 
+   * Specify which attributes to search on for this query
+   * @param fields Array of fields to search on, or ["*"] for all fields
+   */
+  attributesToSearchOn(fields: Array<keyof T | string>): this {
+    this.options.attributesToSearchOn = fields as string[];
+    return this;
+  }
+  clearAttributesToSearchOn(): this {
+    delete this.options.attributesToSearchOn;
+    return this;
+  }
+
+  /**
+   * Set a vector for vector search
+   * @param vector Array of numbers representing the embedding vector
+   */
+  vectorSearch(vector: number[]): this {
+    this.options.vector = vector;
+    return this;
+  }
+  retrieveVectors(flag: boolean = true): this {
+    this.options.retrieveVectors = flag;
+    return this;
+  }
+  clearVectorSearch(): this {
+    delete this.options.vector;
+    delete this.options.retrieveVectors;
+    return this;
+  }
+
+  /**
+   * Show ranking score in search results
+   */
+  showRankingScore(flag: boolean = true): this {
+    this.options.showRankingScore = flag;
+    return this;
+  }
+
+  /**
+   * Show detailed ranking score information in search results
+   */
+  showRankingScoreDetails(flag: boolean = true): this {
+    this.options.showRankingScoreDetails = flag;
+    return this;
+  }
+
+  /**
+   * Set a minimum threshold for ranking scores
+   * @param threshold A number between 0.0 and 1.0
+   */
+  rankingScoreThreshold(threshold: number): this {
+    this.options.rankingScoreThreshold = threshold;
+    return this;
+  }
+
+  clearRankingOptions(): this {
+    delete this.options.showRankingScore;
+    delete this.options.showRankingScoreDetails;
+    delete this.options.rankingScoreThreshold;
     return this;
   }
 
@@ -666,4 +877,58 @@ export class ConditionBuilder<T, K extends keyof T> {
   notInList = this.notIn;
   between = this.rangeTo; // convenience if you prefer TO syntax
   notBetween = this.not().rangeTo.bind(this);
+}
+
+/**
+ * Builder for facet filters
+ * Provides type-safe methods for building facet filter expressions
+ */
+export class FacetFilterBuilder<T> {
+  private filters: string[] = [];
+
+  constructor(private field: string) { }
+
+  /**
+   * Add a value to include in this facet filter
+   * @param value The facet value to include
+   */
+  eq(value: T): this {
+    this.filters.push(`${this.field}:${String(value)}`);
+    return this;
+  }
+
+  /**
+   * Add multiple values to include in this facet filter (OR relation)
+   * @param values The facet values to include
+   */
+  in(values: T[]): this {
+    values.forEach(value => this.eq(value));
+    return this;
+  }
+
+  /**
+   * Exclude a specific value from this facet
+   * @param value The facet value to exclude
+   */
+  not(value: T): this {
+    this.filters.push(`NOT ${this.field}:${String(value)}`);
+    return this;
+  }
+
+  /**
+   * Exclude multiple values from this facet (AND NOT relation)
+   * @param values The facet values to exclude
+   */
+  notIn(values: T[]): this {
+    values.forEach(value => this.not(value));
+    return this;
+  }
+
+  /**
+   * Build the facet filter array
+   * @returns Array of facet filter strings or undefined if no filters
+   */
+  build(): string[] | undefined {
+    return this.filters.length > 0 ? this.filters : undefined;
+  }
 }

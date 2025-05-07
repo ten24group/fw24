@@ -81,6 +81,14 @@ export class MeiliSearchEngine extends BaseSearchEngine {
       this.applyFilters(builder, query.filters);
     }
 
+    // ─── Post Filters ────────────────────────────────────────────────────────────────
+    if (query.postFilters) {
+      // Apply post filters (filtering after aggregations)
+      builder.withPostFilter(sub => {
+        this.applyFilters(sub, query.postFilters);
+      });
+    }
+
     // ─── Sorting ───────────────────────────────────────────────────────────────
     if (query.sort) {
       for (const { field, dir } of query.sort) {
@@ -89,11 +97,18 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     }
 
     // ─── Pagination ────────────────────────────────────────────────────────────
-    const pageSize = query.pagination?.limit ?? 20;
-    const pageNum = Number(query.pagination?.page ?? 1);
-    const offset = (pageNum - 1) * pageSize;
-
-    builder.limit(pageSize).offset(offset);
+    if (query.pagination?.usePagination) {
+      // Use page/hitsPerPage pagination for exhaustive results
+      const pageSize = query.pagination?.limit ?? 20;
+      const pageNum = Number(query.pagination?.page ?? 1);
+      builder.hitsPerPage(pageSize).page(pageNum);
+    } else {
+      // Use limit/offset pagination (default, faster)
+      const pageSize = query.pagination?.limit ?? 20;
+      const pageNum = Number(query.pagination?.page ?? 1);
+      const offset = (pageNum - 1) * pageSize;
+      builder.limit(pageSize).offset(offset);
+    }
 
     // ─── Distinct ──────────────────────────────────────────────────────────────
     if (query.distinctAttribute) {
@@ -103,6 +118,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     // ─── Field selection ──────────────────────────────────────────────────────
     if (query.select) {
       builder.select(query.select);
+    }
+
+    // ─── Attributes to search on ───────────────────────────────────────────────
+    if (query.searchAttributes) {
+      builder.attributesToSearchOn(query.searchAttributes);
     }
 
     // ─── Highlighting ─────────────────────────────────────────────────────────
@@ -123,10 +143,18 @@ export class MeiliSearchEngine extends BaseSearchEngine {
       builder.facetFilters(query.facetFilters);
     }
 
+    let returnFacets: string[] = []
+
     if (query.returnFacets) {
-      builder.facetsDistribution(query.returnFacets);
+      returnFacets = query.returnFacets;
     } else if (config.faceting?.facets) {
-      builder.facetsDistribution(Object.keys(config.faceting.facets));
+      returnFacets = Object.keys(config.faceting.facets);
+    }
+
+    if (returnFacets.length > 0) {
+      builder.facetsDistribution(returnFacets);
+      // Enable facet stats for numeric facets
+      builder.facetStats(true);
     }
 
     // ─── Matching strategy ────────────────────────────────────────────────────
@@ -140,6 +168,38 @@ export class MeiliSearchEngine extends BaseSearchEngine {
       builder.around(lat, lng, radius, precision);
     }
 
+    // ─── Ranking Score ─────────────────────────────────────────────────────────
+    if (query.showRankingScore) {
+      builder.showRankingScore(true);
+    }
+
+    if (query.showRankingScoreDetails) {
+      builder.showRankingScoreDetails(true);
+    }
+
+    if (query.rankingScoreThreshold !== undefined) {
+      builder.rankingScoreThreshold(query.rankingScoreThreshold);
+    }
+
+    // ─── Hybrid & Vector Search ───────────────────────────────────────────────
+    if (query.hybrid) {
+      const { embedder, semanticRatio } = query.hybrid;
+      builder.hybrid(embedder, semanticRatio);
+    }
+
+    if (query.vector) {
+      builder.vectorSearch(query.vector);
+
+      if (query.retrieveVectors) {
+        builder.retrieveVectors(true);
+      }
+    }
+
+    // ─── Locales ────────────────────────────────────────────────────────────
+    if (query.locales && query.locales.length > 0) {
+      builder.locales(query.locales);
+    }
+
     // ─── Any custom raw options ───────────────────────────────────────────────
     if (query.rawOptions) {
       for (const [ key, val ] of Object.entries(query.rawOptions)) {
@@ -150,11 +210,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     // ─── Build + execute ──────────────────────────────────────────────────────
     const { q: qParam, options } = builder.build();
     const searchOpts: SearchOptions = {
-      ...options,
-      // ensure limit/offset/sort are set
-      limit: options.limit,
-      offset: options.offset,
-      sort: options.sort,
+      ...options
     };
 
     const results = await index.search(qParam ?? "", searchOpts);
@@ -163,7 +219,16 @@ export class MeiliSearchEngine extends BaseSearchEngine {
       ...results,
       hits: results.hits as T[],
       facets: results.facetDistribution,
-      total: results.estimatedTotalHits,
+      facetStats: results.facetStats,
+      total: results.estimatedTotalHits ?? (results as any).totalHits, // in case of FinitePagination result will have totalHits
+      processingTimeMs: results.processingTimeMs,
+      query: results.query,
+      // Include pagination fields if available
+      ...((results as any).page !== undefined && {
+        page: (results as any).page,
+        hitsPerPage: (results as any).hitsPerPage,
+        totalPages: (results as any).totalPages
+      })
     };
   }
 

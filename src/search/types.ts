@@ -7,6 +7,7 @@ export interface SearchIndexConfig {
   indexName?: string;
   provider?: SearchProvider;
   settings?: {
+    primaryKey?: string;
     searchableAttributes?: string[];
     filterableAttributes?: string[];
     sortableAttributes?: string[];
@@ -49,6 +50,9 @@ export type SearchQuery = {
   /** Filter criteria using the EntityQuery filter DSL. */
   filters?: EntityFilterCriteria<any>;
 
+  /** Post-filter criteria (filtering after aggregations to preserve facet counts) */
+  postFilters?: EntityFilterCriteria<any>;
+
   /** Facet filtering (values to filter on). */
   facetFilters?: Array<string | string[]>;
 
@@ -59,6 +63,8 @@ export type SearchQuery = {
   pagination?: {
     page?: number;
     limit?: number;
+    /** Use page/hitsPerPage pagination for exhaustive results */
+    usePagination?: boolean;
   }
 
   /** Multi-field sorting criteria (field and direction). */
@@ -86,7 +92,31 @@ export type SearchQuery = {
   };
 
   /** Matching strategy for term splitting. */
-  matchingStrategy?: 'all' | 'last';
+  matchingStrategy?: 'all' | 'last' | 'frequency';
+
+  /** Show global ranking score for each document */
+  showRankingScore?: boolean;
+
+  /** Show detailed ranking score information for each document */
+  showRankingScoreDetails?: boolean;
+
+  /** Filter results below a certain ranking score threshold */
+  rankingScoreThreshold?: number;
+
+  /** Configure AI-powered hybrid semantic search */
+  hybrid?: {
+    embedder: string;
+    semanticRatio?: number;
+  };
+
+  /** Custom vector for vector search */
+  vector?: number[];
+
+  /** Return document vector data with search results */
+  retrieveVectors?: boolean;
+
+  /** Specify query languages for better search results */
+  locales?: string[];
 
   /** Geolocation-based search. */
   geo?: {
@@ -146,10 +176,14 @@ export type EntitySearchQuery<E extends EntitySchema<any, any, any, any>> = Sear
 export interface SearchResult<T> {
   hits: T[];
   facets?: Record<string, Record<string, number>>;
+  facetStats?: Record<string, { min: number; max: number }>;
   total: number;
   page?: number;
   hitsPerPage?: number;
+  totalPages?: number;
   processingTimeMs?: number;
+  totalHits?: number;
+  query?: string;
 }
 
 export interface SearchOptions extends Record<string, any> {
