@@ -1,5 +1,5 @@
-import { MeiliSearchEngine, MeiliSearchConfig } from "./engine";
-import { SearchEngineConfig, SearchOptions } from "../../types";
+import { MeiliSearchEngine, ExtendedMeiliSearchClientConfig } from "./engine";
+import { SearchIndexConfig, SearchOptions } from "../../types";
 import { MeiliSearch, Index } from "meilisearch";
 
 jest.mock("meilisearch");
@@ -8,8 +8,8 @@ describe("MeiliSearchEngine", () => {
   let engine: MeiliSearchEngine;
   let mockClient: jest.Mocked<MeiliSearch>;
   let mockIndex: jest.Mocked<Index>;
-  let config: MeiliSearchConfig;
-  let searchConfig: SearchEngineConfig;
+  let config: ExtendedMeiliSearchClientConfig;
+  let searchConfig: SearchIndexConfig;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -26,7 +26,6 @@ describe("MeiliSearchEngine", () => {
 
     config = { host: "http://localhost:7700", apiKey: "key" };
     searchConfig = {
-      provider: "meili",
       indexName: "test-index",
       settings: {
         searchableAttributes: [ "title" ],
@@ -115,7 +114,7 @@ describe("MeiliSearchEngine", () => {
 
     it("applies count and pages for pagination", async () => {
       await engine.search(
-        { search: "", pagination: { count: 5, pages: 3 } },
+        { search: "", pagination: { limit: 5, page: 3 } },
         searchConfig,
       );
       expect(mockIndex.search).toHaveBeenCalledWith(
@@ -126,23 +125,12 @@ describe("MeiliSearchEngine", () => {
 
     it("applies default count when pages provided but count missing", async () => {
       await engine.search(
-        { search: "", pagination: { pages: 2 } },
+        { search: "", pagination: { page: 2 } },
         searchConfig,
       );
       expect(mockIndex.search).toHaveBeenCalledWith(
         "",
         expect.objectContaining({ limit: 20, offset: 20 }),
-      );
-    });
-
-    it("applies sort based on pagination.order", async () => {
-      await engine.search(
-        { search: "", pagination: { order: "asc" } },
-        searchConfig,
-      );
-      expect(mockIndex.search).toHaveBeenCalledWith(
-        "",
-        expect.objectContaining({ sort: [ "createdAt:asc" ] }),
       );
     });
 
@@ -249,7 +237,7 @@ describe("MeiliSearchEngine", () => {
     });
 
     // TODO: enhance query types to support better sorting
-    it.skip("supports explicit query.sort", async () => {
+    it("supports explicit query.sort", async () => {
       await engine.search(
         { search: "", sort: [ { field: "price", dir: "desc" } ] } as any,
         searchConfig
@@ -257,21 +245,6 @@ describe("MeiliSearchEngine", () => {
       expect(mockIndex.search).toHaveBeenCalledWith(
         "",
         expect.objectContaining({ sort: [ "price:desc" ] })
-      );
-    });
-
-    it.skip("gives precedence to query.sort over pagination.order", async () => {
-      await engine.search(
-        {
-          search: "",
-          sort: [ { field: "x", dir: "asc" } ],
-          pagination: { order: "desc" },
-        } as any,
-        searchConfig
-      );
-      expect(mockIndex.search).toHaveBeenCalledWith(
-        "",
-        expect.objectContaining({ sort: [ "x:asc" ] })
       );
     });
 

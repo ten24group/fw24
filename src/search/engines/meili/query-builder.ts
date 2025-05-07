@@ -163,12 +163,16 @@ export class FilterGroup implements FilterNode {
  */
 export class QueryBuilder<T = Record<string, any>> {
   private q?: string;
-  private root: FilterGroup = new FilterGroup("AND");
+  private root: FilterGroup;
   private options: MeiliSearchOptions = {};
 
+  constructor(connector: "AND" | "OR" = "AND") {
+    this.root = new FilterGroup(connector);
+  }
+
   /** Create a new builder */
-  static create<U = Record<string, any>>(): QueryBuilder<U> {
-    return new QueryBuilder<U>();
+  static create<U = Record<string, any>>(connector?: "AND" | "OR"): QueryBuilder<U> {
+    return new QueryBuilder<U>(connector);
   }
 
   /**
@@ -248,7 +252,7 @@ export class QueryBuilder<T = Record<string, any>> {
 
   /** Nested AND group */
   group(fn: (qb: QueryBuilder<T>) => void): this {
-    const sub = new QueryBuilder<T>();
+    const sub = QueryBuilder.create<T>("AND");
     fn(sub);
     this.addFilterNode(sub.root, "AND");
     return this;
@@ -257,8 +261,7 @@ export class QueryBuilder<T = Record<string, any>> {
 
   /** Nested OR group */
   orGroup(fn: (qb: QueryBuilder<T>) => void): this {
-    const sub = new QueryBuilder<T>();
-    sub.root.connector = "OR"; // Explicitly set the connector to OR
+    const sub = QueryBuilder.create<T>("OR");
     fn(sub);
     this.addFilterNode(sub.root, "OR");
     return this;

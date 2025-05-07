@@ -1,2 +1,2 @@
-export * from './base';
-export * from './default'; 
+export * from './base-search-service';
+export * from './entity-search-service'; 

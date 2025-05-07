@@ -1,6 +1,6 @@
-import { BaseSearchService } from './base';
+import { BaseSearchService } from './base-search-service';
 import { BaseEntityService, EntitySchema, EntityQuery, createEntitySchema, DefaultEntityOperations } from '../../entity';
-import { ISearchEngine, SearchEngineConfig, SearchResult } from '../types';
+import { ISearchEngine, SearchIndexConfig, SearchResult } from '../types';
 import { ExecutionContext } from '../../core/types/execution-context';
 import { APIGatewayEvent, Context } from 'aws-lambda';
 import { Request, Response } from '../../interfaces';
@@ -61,7 +61,7 @@ const testSchema = createEntitySchema({
 type TestSchema = typeof testSchema;
 
 // Create a concrete implementation of BaseSearchService for testing
-class TestSearchService extends BaseSearchService<TestSchema> {
+class TestSearchService extends BaseSearchService {
   async transformDocumentForIndexing(entity: any): Promise<Record<string, any>> {
     return { ...entity };
   }
@@ -70,7 +70,7 @@ class TestSearchService extends BaseSearchService<TestSchema> {
 let service: TestSearchService;
 let mockEntityService: jest.Mocked<BaseEntityService<TestSchema>>;
 let mockSearchEngine: jest.Mocked<ISearchEngine>;
-let searchConfig: SearchEngineConfig;
+let searchConfig: SearchIndexConfig;
 let mockContext: ExecutionContext;
 
 describe('BaseSearchService', () => {
@@ -101,7 +101,7 @@ describe('BaseSearchService', () => {
         lambdaContext: {} as Context
       };
 
-      service = new TestSearchService(mockEntityService, mockSearchEngine, searchConfig);
+      service = new TestSearchService(mockSearchEngine, searchConfig);
     });
 
     it('should perform basic search without attributes', async () => {
@@ -116,7 +116,7 @@ describe('BaseSearchService', () => {
 
       mockSearchEngine.search.mockResolvedValue(mockResults);
 
-      const result = await service.search(query, mockContext);
+      const result = await service.search(query, searchConfig, mockContext);
 
       expect(mockSearchEngine.search).toHaveBeenCalledWith(query, searchConfig);
       expect(result).toEqual(mockResults);
@@ -140,7 +140,7 @@ describe('BaseSearchService', () => {
         }
       };
 
-      service = new TestSearchService(mockEntityService, mockSearchEngine, searchConfig);
+      service = new TestSearchService(mockSearchEngine, searchConfig);
     });
 
     it('should index a single document', async () => {
@@ -172,7 +172,7 @@ describe('BaseSearchService', () => {
         }
       };
 
-      service = new TestSearchService(mockEntityService, mockSearchEngine, searchConfig);
+      service = new TestSearchService(mockSearchEngine, searchConfig);
     });
 
     it('should index multiple documents', async () => {
@@ -213,7 +213,7 @@ describe('BaseSearchService', () => {
         }
       };
 
-      service = new TestSearchService(mockEntityService, mockSearchEngine, searchConfig);
+      service = new TestSearchService(mockSearchEngine, searchConfig);
     });
 
     it('should delete a document by id', async () => {

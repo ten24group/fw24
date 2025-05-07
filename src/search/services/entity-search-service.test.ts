@@ -1,7 +1,5 @@
-import { BaseSearchEngine } from "../engines/base";
-
-import { SearchEngineConfig } from "../types";
-import { DefaultSearchService } from "./default";
+import { SearchIndexConfig } from "../types";
+import { EntitySearchService } from "./entity-search-service";
 import { BaseEntityService, createEntitySchema, DefaultEntityOperations, EntitySchema } from '../../entity';
 import { ISearchEngine } from '../types';
 import { APIGatewayEvent, Context } from 'aws-lambda';
@@ -61,19 +59,14 @@ const testSchema = createEntitySchema({
 
 type TestSchema = typeof testSchema;
 
-describe('DefaultSearchService', () => {
-  let service: DefaultSearchService<TestSchema>;
+describe('EntitySearchService', () => {
+  let service: EntitySearchService<TestSchema>;
   let mockEntityService: jest.Mocked<BaseEntityService<TestSchema>>;
   let mockSearchEngine: jest.Mocked<ISearchEngine>;
-  let searchConfig: SearchEngineConfig;
+  let searchConfig: SearchIndexConfig;
   let mockContext: any;
 
   beforeEach(() => {
-    // Setup mocks
-    mockEntityService = {
-      getEntitySchema: jest.fn().mockReturnValue(testSchema),
-      hydrateRecords: jest.fn(),
-    } as any;
 
     mockSearchEngine = {
       search: jest.fn(),
@@ -97,7 +90,14 @@ describe('DefaultSearchService', () => {
       response: {} as Response
     };
 
-    service = new DefaultSearchService(mockEntityService, mockSearchEngine, searchConfig);
+    // Setup mocks
+    mockEntityService = {
+      getEntitySchema: jest.fn().mockReturnValue(testSchema),
+      hydrateRecords: jest.fn(),
+      getSearchIndexConfig: jest.fn().mockReturnValue(searchConfig)
+    } as any;
+
+    service = new EntitySearchService(mockEntityService, mockSearchEngine);
   });
 
   describe('transformDocumentForIndexing', () => {

@@ -12,7 +12,7 @@ import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords,
 import { DepIdentifier, IDIContainer } from "../interfaces";
 import { DatabaseError, EntityValidationError } from './errors';
 import { ExecutionContext } from "../core/types/execution-context";
-import { BaseSearchService, DefaultSearchService } from '../search';
+import { BaseSearchService, EntitySearchService, EntitySearchQuery } from '../search';
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
@@ -63,49 +63,29 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         protected readonly diContainer: IDIContainer = DIContainer.ROOT,
     ) { }
 
-
-    public getSearchService(): BaseSearchService<S> {
+    public getSearchService(): EntitySearchService<S> {
         try {
-            const searchConfig = this.getEntitySchema().model.search;
+            const searchIndexConfig = this.getEntitySchema().model.search;
 
             // Skip search logic if search is not enabled
-            if (!searchConfig?.enabled) {
+            if (!searchIndexConfig?.enabled) {
                 throw new Error(`Search is not enabled for entity ${this.getEntityName()}.`);
             }
 
             // Validate search configuration if present
-            if (searchConfig) {
-                this.validateSearchConfiguration(searchConfig);
+            if (searchIndexConfig) {
+                this.validateSearchConfiguration(searchIndexConfig);
             }
 
-            const searchServiceTokenOrClass = searchConfig?.serviceClass;
+            const searchServiceTokenOrClass = searchIndexConfig?.serviceClass;
 
             // Case 1: DI Container has the service
-            if (searchServiceTokenOrClass && this.diContainer.has(searchServiceTokenOrClass as DepIdentifier<BaseSearchService<any>>)) {
+            if (searchServiceTokenOrClass && this.diContainer.has(searchServiceTokenOrClass as DepIdentifier<EntitySearchService<any>>)) {
                 try {
-                    return this.diContainer.resolve<BaseSearchService<S>>(searchServiceTokenOrClass as DepIdentifier<BaseSearchService<S>>);
+                    return this.diContainer.resolve<EntitySearchService<S>>(searchServiceTokenOrClass as DepIdentifier<EntitySearchService<S>>);
                 } catch (err: any) {
                     this.logger.error('Failed to resolve search service from container:', err);
                     throw new Error(`Failed to resolve search service for entity ${this.getEntityName()}: ${err.message}`);
-                }
-            }
-
-            // Case 2: Service class provided
-            if (isClassConstructor(searchServiceTokenOrClass) &&
-                searchServiceTokenOrClass.prototype instanceof BaseSearchService) {
-                try {
-                    const searchEngine = this.diContainer.resolveSearchEngine();
-                    if (!searchEngine) {
-                        throw new Error('Search engine not found in container');
-                    }
-                    return new searchServiceTokenOrClass(
-                        this,
-                        searchEngine,
-                        searchConfig?.config
-                    );
-                } catch (err: any) {
-                    this.logger.error('Failed to instantiate search service:', err);
-                    throw new Error(`Failed to create search service instance for entity ${this.getEntityName()}: ${err.message}`);
                 }
             }
 
@@ -114,15 +94,35 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 return searchServiceTokenOrClass;
             }
 
-            // Case 4: Default service fallback
-            if (this.diContainer.has(DefaultSearchService)) {
+            // Case 2: Service class provided
+            if (
+                isClassConstructor(searchServiceTokenOrClass) &&
+                searchServiceTokenOrClass.prototype instanceof EntitySearchService
+            ) {
                 try {
-                    return this.diContainer.resolve<BaseSearchService<S>>(DefaultSearchService);
+                    const searchEngine = this.diContainer.resolveSearchEngine();
+                    if (!searchEngine) {
+                        throw new Error('Search engine not found in container');
+                    }
+                    return new (searchServiceTokenOrClass as typeof EntitySearchService)(
+                        this,
+                        searchEngine,
+                    );
                 } catch (err: any) {
-                    this.logger.error('Failed to resolve default search service:', err);
-                    throw new Error(`Failed to resolve default search service: ${err.message}`);
+                    this.logger.error('Failed to instantiate search service:', err);
+                    throw new Error(`Failed to create search service instance for entity ${this.getEntityName()}: ${err.message}`);
                 }
             }
+
+            // // Case 4: Default service fallback
+            // if (this.diContainer.has(DefaultSearchService)) {
+            //     try {
+            //         return this.diContainer.resolve<DefaultSearchService<S>>(DefaultSearchService);
+            //     } catch (err: any) {
+            //         this.logger.error('Failed to resolve default search service:', err);
+            //         throw new Error(`Failed to resolve default search service: ${err.message}`);
+            //     }
+            // }
 
             throw new Error(`No valid search service configuration found for entity: ${this.getEntityName()}`);
         } catch (err: any) {
@@ -1537,10 +1537,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         return inferred;
     }
 
-    public async search(query: EntityQuery<S>, ctx?: ExecutionContext) {
+    public async search(query: EntitySearchQuery<S>, ctx?: ExecutionContext) {
 
         const searchService = this.getSearchService();
-        const results = await searchService.search(query, ctx);
+        const results = await searchService.search(query, undefined, ctx);
         return results;
     }
 }

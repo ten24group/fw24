@@ -185,7 +185,7 @@ describe("MeiliQueryBuilder DSL", () => {
     it("supports nested andGroup, orGroup, and notGroup", () => {
       const f = QueryBuilder.create()
         .andGroup((g) => g.where("x").eq(1).andWhere("y").eq(2))
-        .orGroup((g) => g.where("z").eq(3))
+        .orGroup((g) => { g.where("z").eq(3); })
         .build().options.filters;
       expect(f).toBe("((x = 1 AND y = 2) OR z = 3)");
 

@@ -4,8 +4,8 @@ import { createSchema, Entity } from "electrodb";
 import type { EntityQuery } from './query-types';
 import type { BaseEntityService } from "./base-service";
 import type { OmitNever, Paths, Writable } from "../utils/types";
-import { SearchEngineConfig } from '../search/types';
-import { BaseSearchService } from '../search/services';
+import { SearchIndexConfig } from '../search/types';
+import { EntitySearchService } from '../search/services';
 import { DepIdentifier } from "../interfaces";
 
 /**
@@ -158,6 +158,8 @@ export interface BaseFieldMetadata {
   isEditable?: boolean; // if the field is editable
   isFilterable?: boolean; // if the field is filterable
   isSearchable?: boolean; // if the field is searchable
+  isFacetable?: boolean; // if the field is facetable
+  isSortable?: boolean; // if the field is sortable
   placeholder?: string;
   helpText?: string;
   tooltip?: string; // maybe this can be inferred from the helpText
@@ -406,13 +408,10 @@ export interface EntitySchema<
 
     readonly search?: {
       enabled: boolean;
-      config: SearchEngineConfig;
-      serviceClass?: DepIdentifier<BaseSearchService<any>> | typeof BaseSearchService<any> | BaseSearchService<any>;
+      config: SearchIndexConfig;
+      serviceClass?: DepIdentifier<EntitySearchService<any>> | typeof EntitySearchService | EntitySearchService<any>;
       // Document transformation for indexing
       documentTransformer?: (entity: EntityRecordTypeFromSchema<EntitySchema<A, F, C>>) => Record<string, any>;
-    };
-    readonly attributes: {
-      readonly [ a in A ]: EntityAttribute;
     };
   };
   readonly attributes: {
