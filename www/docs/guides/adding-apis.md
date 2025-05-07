@@ -271,3 +271,65 @@ export class WebhookProcessor extends QueueController {
    - Built-in logging for webhook processing
    - CloudWatch metrics for queue length and processing failures
    - Message retention for troubleshooting
+
+## Nested Controllers
+
+FW24 supports nested controllers, allowing you to organize your API endpoints hierarchically. This is especially useful for grouping endpoints by application sections, such as `admin`, `public`, or role-based areas (e.g., `public`).
+
+### Why Use Nested Controllers?
+- **Separation of concerns:** Group related APIs by section (e.g., all admin APIs under `/admin`, public APIs under `/public`).
+- **Role-based access:** Easily apply different authorization or middleware to different sections.
+- **Cleaner structure:** Your codebase and API routes mirror each other, making maintenance easier.
+
+#### Example Folder Structure
+
+```
+controllers/
+  admin/
+    user.ts
+    system.ts
+    book.ts
+  public/
+    user.ts
+    book.ts
+```
+
+With this structure, all controllers in the `admin` folder will be grouped under the `/admin` API path, and those in `public` under `/public`.
+
+### Key Implementation Detail: CRUDApiPath
+
+When defining an entity that is managed by a nested controller, you **must specify the `CRUDApiPath`** in the entity schema to match the nested path. This ensures that FW24 generates the correct API Gateway routes with the folder name as a prefix.
+
+#### Example Entity Schema
+
+```ts
+export const createUserSchema = () => createEntitySchema({
+  model: {
+    version: '1',
+    entity: 'user',
+    entityNamePlural: 'Users',
+    entityOperations: DefaultEntityOperations,
+    service: 'mainService',
+    CRUDApiPath: '/admin', // Matches the folder/controller path
+    // ...
+  },
+  // ...
+});
+```
+
+### How FW24 Handles Routing
+- FW24 automatically creates API Gateway routes with the folder name as a prefix (e.g., `/section1/resourceA`, `/section2/resourceA`).
+- The generated OpenAPI docs and UI configs will reflect these nested paths.
+- This works for both entity controllers and custom controllers.
+
+### Example: Nested Controller for Admin Section
+
+```ts
+// controllers/admin/user.ts
+import { Controller, BaseEntityController } from '@ten24group/fw24';
+
+@Controller('user') // This will be available at /admin/user
+export class AdminUserController extends BaseEntityController<UserSchemaType> {
+  // ...
+}
+```
