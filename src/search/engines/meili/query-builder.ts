@@ -727,7 +727,7 @@ export class QueryBuilder<T = Record<string, any>> {
   build(): MeiliSearchQuery {
     const opts = { ...this.options };
     const f = this.root.toString();
-    if (f) opts.filters = f;
+    if (f) opts.filter = f;
     return { q: this.q, options: opts };
   }
 
