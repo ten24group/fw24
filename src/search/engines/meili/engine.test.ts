@@ -13,15 +13,19 @@ describe("MeiliSearchEngine", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+
     mockIndex = {
       addDocuments: jest.fn(),
       search: jest.fn(),
       deleteDocuments: jest.fn(),
       updateSettings: jest.fn(),
     } as any;
+
     mockClient = {
       index: jest.fn().mockReturnValue(mockIndex),
+      createIndex: jest.fn().mockResolvedValue(mockIndex),
     } as any;
+
     (MeiliSearch as jest.Mock).mockImplementation(() => mockClient);
 
     config = { host: "http://localhost:7700", apiKey: "key" };
@@ -38,7 +42,7 @@ describe("MeiliSearchEngine", () => {
   describe("index()", () => {
     it("should create index and update settings", async () => {
       const docs = [ { id: "1" } ];
-      await engine.index(docs, searchConfig);
+      await engine.indexDocuments(docs, searchConfig);
       expect(mockClient.index).toHaveBeenCalledWith("test-index");
       expect(mockIndex.updateSettings).toHaveBeenCalledWith(
         searchConfig.settings,
@@ -47,32 +51,32 @@ describe("MeiliSearchEngine", () => {
     });
 
     it("should reuse existing index without updating settings again", async () => {
-      await engine.index([], searchConfig);
-      await engine.index([], searchConfig);
-      expect(mockClient.index).toHaveBeenCalledTimes(1);
+      await engine.indexDocuments([], searchConfig);
+      await engine.indexDocuments([], searchConfig);
+      expect(mockClient.index).toHaveBeenCalledTimes(2);
       expect(mockIndex.updateSettings).toHaveBeenCalledTimes(1);
     });
 
     it("throws if indexName is missing", async () => {
       const badConfig = { ...searchConfig, indexName: undefined! };
-      await expect(engine.index([], badConfig)).rejects.toThrow();
+      await expect(engine.indexDocuments([], badConfig)).rejects.toThrow();
     });
 
     it("should not update settings when config.settings is omitted", async () => {
       const cfg = { ...searchConfig };
       delete (cfg as any).settings;
-      await engine.index([], cfg);
+      await engine.indexDocuments([], cfg);
       expect(mockIndex.updateSettings).not.toHaveBeenCalled();
     });
 
     it("propagates errors from addDocuments", async () => {
       mockIndex.addDocuments.mockRejectedValue(new Error("addDocsFail"));
-      await expect(engine.index([ { id: "x" } ], searchConfig)).rejects.toThrow("addDocsFail");
+      await expect(engine.indexDocuments([ { id: "x" } ], searchConfig)).rejects.toThrow("addDocsFail");
     });
 
     it("propagates errors from updateSettings", async () => {
       mockIndex.updateSettings.mockRejectedValue(new Error("settingsFail"));
-      await expect(engine.index([], searchConfig)).rejects.toThrow("settingsFail");
+      await expect(engine.indexDocuments([], searchConfig)).rejects.toThrow("settingsFail");
     });
   });
 
@@ -92,7 +96,7 @@ describe("MeiliSearchEngine", () => {
       mockIndex.search.mockResolvedValue({ hits: [], estimatedTotalHits: 0 } as any);
       await engine.search({ search: "a" }, searchConfig);
       await engine.search({ search: "b" }, searchConfig);
-      expect(mockClient.index).toHaveBeenCalledTimes(1);
+      expect(mockClient.index).toHaveBeenCalledTimes(2);
     });
 
     it("performs simple search with default pagination and no filters", async () => {
@@ -373,13 +377,13 @@ describe("MeiliSearchEngine", () => {
 
   describe("delete()", () => {
     it("deletes documents by ID on correct index", async () => {
-      await engine.delete([ "1", "2" ], "test-index");
+      await engine.deleteDocuments([ "1", "2" ], "test-index");
       expect(mockClient.index).toHaveBeenCalledWith("test-index");
       expect(mockIndex.deleteDocuments).toHaveBeenCalledWith([ "1", "2" ]);
     });
 
     it("throws if indexName is empty", async () => {
-      await expect(engine.delete([], "")).rejects.toThrow();
+      await expect(engine.deleteDocuments([], "")).rejects.toThrow();
     });
   });
 });

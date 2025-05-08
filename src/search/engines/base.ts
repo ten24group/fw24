@@ -8,9 +8,9 @@ export abstract class BaseSearchEngine {
 
   abstract initIndex(config: SearchIndexConfig): Promise<any>;
 
-  abstract index<T extends Record<string, any>>(documents: T[], config: SearchIndexConfig): Promise<void>;
+  abstract indexDocuments<T extends Record<string, any>>(documents: T[], config: SearchIndexConfig): Promise<any>;
   abstract search<T>(query: SearchQuery, config: SearchIndexConfig): Promise<SearchResult<T>>;
-  abstract delete(ids: string[], indexName: string): Promise<void>;
+  abstract deleteDocuments(ids: string[], indexName: string): Promise<any>;
 
   protected validateConfig(config: SearchIndexConfig): void {
     if (!config.indexName) {

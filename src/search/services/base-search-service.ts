@@ -41,17 +41,17 @@ export class BaseSearchService {
 
   async syncToIndex(entity: Record<string, any>, searchIndexConfig = this.getSearchIndexConfig(), _ctx?: ExecutionContext) {
     const document = await this.transformDocumentForIndexing(entity);
-    await this.searchEngine.index([ document ], searchIndexConfig);
+    await this.searchEngine.indexDocuments([ document ], searchIndexConfig);
   }
 
   async deleteFromIndex(entityId: string, searchIndexConfig = this.getSearchIndexConfig(), _ctx?: ExecutionContext) {
-    await this.searchEngine.delete([ entityId ], searchIndexConfig.indexName!);
+    await this.searchEngine.deleteDocuments([ entityId ], searchIndexConfig.indexName!);
   }
 
   async bulkSync(entities: Record<string, any>[], searchIndexConfig = this.getSearchIndexConfig(), _ctx?: ExecutionContext) {
     const documents = await Promise.all(
       entities.map(entity => this.transformDocumentForIndexing(entity))
     );
-    await this.searchEngine.index(documents, searchIndexConfig);
+    await this.searchEngine.indexDocuments(documents, searchIndexConfig);
   }
 } 
