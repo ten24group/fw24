@@ -1,4 +1,4 @@
-import { CfnOutput, Stack } from "aws-cdk-lib";
+import { CfnOutput, Duration, Stack } from "aws-cdk-lib";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Helper } from "../core/helper";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
@@ -11,11 +11,13 @@ import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { LogDuration, createLogger } from "../logging";
 import { DynamoDBConstruct } from "./dynamodb";
 import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import { IConstructConfig } from "../interfaces/construct-config";
+import { VpcConstruct } from "./vpc";
 
 /**
  * Represents the configuration for a queue construct.
  */
-export interface IQueueConstructConfig {
+export interface IQueueConstructConfig extends IConstructConfig {
     /**
      * The directory where queues are stored.
      */
@@ -68,7 +70,7 @@ export class QueueConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
     
     name: string = QueueConstruct.name;
-    dependencies: string[] = [DynamoDBConstruct.name];
+    dependencies: string[] = [DynamoDBConstruct.name, VpcConstruct.name];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;
@@ -88,7 +90,7 @@ export class QueueConstruct implements FW24Construct {
     @LogDuration()
     public async construct() {
         // make the main stack available to the class
-        this.mainStack = this.fw24.getStack("main");
+        this.mainStack = this.fw24.getStack(this.queueConstructConfig.stackName, this.queueConstructConfig.parentStackName);
         // make the fw24 instance available to the class
         // sets the default queues directory if not defined
         if(this.queueConstructConfig.queuesDirectory === undefined || this.queueConstructConfig.queuesDirectory === ""){
@@ -134,23 +136,24 @@ export class QueueConstruct implements FW24Construct {
             visibilityTimeoutSeconds: queueConfig?.visibilityTimeoutSeconds,
             receiveMessageWaitTimeSeconds: queueConfig?.receiveMessageWaitTimeSeconds,
             retentionPeriodDays: queueConfig?.retentionPeriodDays,
+            maxReceiveCount: queueConfig?.maxReceiveCount,
+            sqsEventSourceProps: {
+                maxBatchingWindow: Duration.seconds(queueConfig?.maxBatchingWindowSeconds ?? 5),
+                ...queueConfig?.sqsEventSourceProps,
+            },
             subscriptions: queueConfig?.subscriptions,            
             lambdaFunctionProps: {
                 entry: queueInfo.filePath + "/" + queueInfo.fileName,
                 environmentVariables: this.fw24.resolveEnvVariables(queueConfig.env),
                 resourceAccess: queueConfig?.resourceAccess,
-                functionTimeout: queueConfig?.functionTimeout,
+                functionTimeout: queueConfig?.functionTimeout || this.fw24.getConfig().functionTimeout,
+                policies: queueConfig?.policies,
                 functionProps: {...this.queueConstructConfig.functionProps, ...queueConfig?.functionProps},
                 logRemovalPolicy: queueConfig?.logRemovalPolicy,
                 logRetentionDays: queueConfig?.logRetentionDays,
             }
         }) as Queue;
-        this.fw24.setConstructOutput(this, queueName, queue, OutputType.QUEUE);
-
-        // output the api endpoint
-        new CfnOutput(this.mainStack, `SQS-${queueName}`, {
-            value: queue.queueUrl,
-            description: "Queue URL for " + queueName,
-        });
+        
+        this.fw24.setConstructOutput(this, queueName, queue, OutputType.QUEUE, 'queueName');
     }
 }

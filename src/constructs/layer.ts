@@ -1,4 +1,4 @@
-import { CfnOutput } from "aws-cdk-lib";
+import { CfnOutput, Stack } from "aws-cdk-lib";
 
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
@@ -6,15 +6,17 @@ import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/co
 import { DefaultLogger, LogDuration, createLogger } from "../logging";
 import { Architecture, Code, LayerVersion, LayerVersionProps, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { basename as pathBaseName, resolve as pathResolve, join as pathJoin, extname as pathExtname } from 'path';
-import { existsSync, mkdirSync, readdirSync, statSync, rmSync, lstatSync, copyFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, statSync, rmSync, lstatSync, copyFileSync, renameSync, readFileSync } from 'fs';
 import { build, BuildOptions } from 'esbuild';
 import { LayerEntry } from "../decorators";
+import { IConstructConfig } from "../interfaces/construct-config";
+import { createHash } from "crypto";
 
 
 /**
  * Configuration for the PACKAGE_DIRECTORY mode.
  */
-export interface IPackageDirectoryConfig {
+export interface IPackageDirectoryConfig extends IConstructConfig {
     /**
      * The name of the layer.
      */
@@ -39,7 +41,7 @@ export interface IPackageDirectoryConfig {
 /**
  * Configuration for the BUILD_AND_PACKAGE mode.
  */
-export interface IBuildAndPackageConfig {
+export interface IBuildAndPackageConfig extends IConstructConfig {
     /**
      * The source path of the layer, which can be a directory or a file.
      */
@@ -90,6 +92,8 @@ export class LayerConstruct implements FW24Construct {
     dependencies: string[] = [];
     output!: FW24ConstructOutput;
 
+    mainStack!: Stack;
+
     /**
      * Creates a new LayerConstruct instance.
      * @param config - The configuration for the LayerConstruct.
@@ -133,15 +137,15 @@ export class LayerConstruct implements FW24Construct {
 
     @LogDuration()
     public async construct() {
-        const mainStack = this.fw24.getStack('main');
-
         await Promise.all(this.config.map(async (layerConfig) => {
+            this.mainStack = this.fw24.getStack(layerConfig.stackName || this.fw24.getConfig().layerStackName, layerConfig.parentStackName);
+
             this.logger.debug("Processing layer:", layerConfig);
 
             if (layerConfig.mode === 'PACKAGE_DIRECTORY') {
-                await this.packageDirectory(layerConfig, mainStack);
+                await this.packageDirectory(layerConfig);
             } else if (layerConfig.mode === 'BUILD_AND_PACKAGE') {
-                await this.scanAndPackageFiles(layerConfig, mainStack);
+                await this.scanAndPackageFiles(layerConfig);
             } else {
                 throw new Error(`Invalid mode for layer ${layerConfig}`);
             }
@@ -153,7 +157,7 @@ export class LayerConstruct implements FW24Construct {
      * @param layerConfig - The configuration for the layer.
      * @param mainStack - The main stack for deploying resources.
      */
-    private async packageDirectory(layerConfig: IPackageDirectoryConfig, mainStack: any) {
+    private async packageDirectory(layerConfig: IPackageDirectoryConfig) {
         const defaultLayerProps: LayerVersionProps = {
             layerVersionName: layerConfig.layerName,
             compatibleRuntimes: [Runtime.NODEJS_18_X],
@@ -161,17 +165,13 @@ export class LayerConstruct implements FW24Construct {
             compatibleArchitectures: [Architecture.ARM_64],
         };
         
-        const layer = new LayerVersion(mainStack, layerConfig.layerName + '-layer', {
+        const layer = new LayerVersion(this.mainStack, layerConfig.layerName + '-layer', {
             ...defaultLayerProps,
             ...layerConfig.layerProps,
         });
         
-        this.fw24.setConstructOutput(this, layerConfig.layerName, layer, OutputType.LAYER);
-        this.fw24.setEnvironmentVariable(layerConfig.layerName, layer.layerVersionArn, "layer");
+        this.fw24.setConstructOutput(this, layerConfig.layerName, layer, OutputType.LAYER, 'layerVersionArn');
 
-        new CfnOutput(mainStack, layerConfig.layerName + 'LayerArn', {
-            value: layer.layerVersionArn,
-        });
     }
 
     /**
@@ -179,7 +179,7 @@ export class LayerConstruct implements FW24Construct {
      * @param layerConfig - The configuration for the layer.
      * @param mainStack - The main stack for deploying resources.
      */
-    private async scanAndPackageFiles(layerConfig: IBuildAndPackageConfig, mainStack: any) {
+    private async scanAndPackageFiles(layerConfig: IBuildAndPackageConfig) {
         const distDirectory = layerConfig.distDirectory || pathJoin(__dirname, '../../dist');
         const sourceDirectoryOrFileName = pathResolve(layerConfig.sourcePath);
         const tsFiles = lstatSync(sourceDirectoryOrFileName).isDirectory()
@@ -187,7 +187,7 @@ export class LayerConstruct implements FW24Construct {
             : [sourceDirectoryOrFileName];
 
         await Promise.all(tsFiles.map(async (file) => {
-            await this.tryCreateLayerForFile(file, distDirectory, mainStack, layerConfig);
+            await this.tryCreateLayerForFile(file, distDirectory, layerConfig);
         }));
     }
 
@@ -198,7 +198,7 @@ export class LayerConstruct implements FW24Construct {
      * @param mainStack - The main stack for deploying resources.
      * @param layerConfig - The configuration for the layer.
      */
-    private async tryCreateLayerForFile(file: string, distDirectory: string, mainStack: any, layerConfig: IBuildAndPackageConfig) {
+    private async tryCreateLayerForFile(file: string, distDirectory: string, layerConfig: IBuildAndPackageConfig) {
         
         const moduleExports = await import(file);
 
@@ -227,7 +227,36 @@ export class LayerConstruct implements FW24Construct {
     
         const outputDir = pathJoin(distDirectory, layerName, configuredOutputPath, fileBaseName);
         const bundleDir = pathJoin(distDirectory, layerName);
-        const outputFile = pathJoin(outputDir, 'index.js');
+
+        const tempDir = pathJoin(distDirectory, 'layers_temp', layerName);
+        const tempOutputDir = pathJoin(tempDir, configuredOutputPath, fileBaseName);
+        const tempOutputFile = pathJoin(tempOutputDir, 'index.js');
+
+        // Ensure temp directory exists
+        if (!existsSync(tempOutputDir)) {
+            mkdirSync(tempOutputDir, { recursive: true });
+        }
+
+        // Build to temporary directory first
+        await bundleWithEsbuild(file, tempOutputFile, buildOptions);
+
+        // Check if output directory exists and compare contents
+        const shouldUpdateOutput = !existsSync(outputDir) || !areDirectoriesIdentical(tempOutputDir, outputDir);
+
+        if (shouldUpdateOutput) {
+            this.logger.info(`Content changed for layer ${layerName}, updating output`);
+            
+            // Clean existing output if it exists
+            if (existsSync(outputDir)) {
+                rmSync(outputDir, { recursive: true });
+            }
+            
+            // Move contents from temp to output
+            moveDirectoryContents(tempOutputDir, outputDir);
+
+        } else {
+            this.logger.warn(`No changes detected for layer ${layerName}, keeping existing code`);
+        }
 
         // this is the path that will be used in the layer import statement
         const layerImportPath = pathJoin('/opt', configuredOutputPath, fileBaseName, 'index.js');
@@ -245,12 +274,6 @@ export class LayerConstruct implements FW24Construct {
 
         const layerProps = getLayerProps(layerDescriptor);
 
-        if (!existsSync(outputDir)) {
-            mkdirSync(outputDir, { recursive: true });
-        }
-
-        await bundleWithEsbuild(file, outputFile, buildOptions);
-
         const defaultLayerProps: LayerVersionProps = {
             layerVersionName: layerName,
             compatibleRuntimes: [Runtime.NODEJS_18_X],
@@ -258,18 +281,13 @@ export class LayerConstruct implements FW24Construct {
             compatibleArchitectures: [Architecture.ARM_64],
         };
 
-        const layer = new LayerVersion(mainStack, layerName + '-layer', {
+        const layer = new LayerVersion(this.mainStack, layerName + '-layer', {
             ...defaultLayerProps,
             ...layerConfig.layerProps,
             ...layerProps, // the layerProps from the decorator take precedence
         });
 
-        this.fw24.setConstructOutput(this, layerName, layer, OutputType.LAYER);
-        this.fw24.setEnvironmentVariable(layerName, layer.layerVersionArn, "layer");
-
-        new CfnOutput(mainStack, layerName + 'LayerArn', {
-            value: layer.layerVersionArn,
-        });
+        this.fw24.setConstructOutput(this, layerName, layer, OutputType.LAYER, 'layerVersionArn');
 
         // Clean up the temporary output directory if configured
         if (layerConfig.clearOutputDir) {
@@ -348,8 +366,73 @@ async function bundleWithEsbuild(entryFile: string, outputFile: string, buildOpt
         entryPoints: [entryFile],
     };
 
-    DefaultLogger.info(`bundleWithEsbuild: Bundling ${entryFile} into ${outputFile} with options:`, defaultOptions);
+    DefaultLogger.debug(`bundleWithEsbuild: Bundling ${entryFile} into ${outputFile} with options:`, defaultOptions);
     await build(defaultOptions);
+}
+
+/**
+ * Calculates hash of a file's contents
+ */
+function calculateFileHash(filePath: string): string {
+    const content = readFileSync(filePath);
+    return createHash('sha256').update(content).digest('hex');
+}
+
+/**
+ * Compare two directories and check if their contents are identical
+ */
+function areDirectoriesIdentical(dir1: string, dir2: string): boolean {
+    if (!existsSync(dir1) || !existsSync(dir2)) return false;
+
+    try {
+        const files1 = readdirSync(dir1, { recursive: true }) as string[];
+        const files2 = readdirSync(dir2, { recursive: true }) as string[];
+
+        if (files1.length !== files2.length) return false;
+
+        return files1.every(file => {
+            const file1Path = pathJoin(dir1, file);
+            const file2Path = pathJoin(dir2, file);
+
+            if (!existsSync(file2Path)) return false;
+            
+            const stat1 = lstatSync(file1Path);
+            const stat2 = lstatSync(file2Path);
+
+            if (stat1.isDirectory() !== stat2.isDirectory()) return false;
+            if (stat1.isDirectory()) return true;
+
+            return calculateFileHash(file1Path) === calculateFileHash(file2Path);
+        });
+    } catch (error) {
+        return false;
+    }
+}
+
+/**
+ * Move directory contents from source to target
+ */
+function moveDirectoryContents(sourceDir: string, targetDir: string) {
+    if (!existsSync(targetDir)) {
+        mkdirSync(targetDir, { recursive: true });
+    }
+
+    const files = readdirSync(sourceDir, { recursive: true }) as string[];
+    files.forEach(file => {
+        const sourcePath = pathJoin(sourceDir, file);
+        const targetPath = pathJoin(targetDir, file);
+
+        if (lstatSync(sourcePath).isDirectory()) {
+            if (!existsSync(targetPath)) {
+                mkdirSync(targetPath, { recursive: true });
+            }
+        } else {
+            if (existsSync(targetPath)) {
+                rmSync(targetPath);
+            }
+            renameSync(sourcePath, targetPath);
+        }
+    });
 }
 
 /**

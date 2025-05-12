@@ -2,7 +2,7 @@ import type { QueueProps } from "aws-cdk-lib/aws-sqs";
 import type { IQueueSubscriptions } from "../constructs/queue-lambda";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
 import type { ILambdaEnvConfig } from "../interfaces";
-import { resolveAndExportHandler, setupDI, tryImportingEntryPackagesFor } from "./decorator-utils";
+import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor } from "./decorator-utils";
 
 /**
  * Configuration options for the queue.
@@ -10,11 +10,31 @@ import { resolveAndExportHandler, setupDI, tryImportingEntryPackagesFor } from "
 /**
  * Represents the configuration options for a queue.
  */
-export type IQueueConfig = CommonLambdaHandlerOptions &  {
+export type IQueueConfig = CommonLambdaHandlerOptions & {
 	/**
 	 * The properties of the queue.
 	 */
 	queueProps?: QueueProps;
+
+	/**
+	 * The properties for the SQS event source.
+	 */
+	sqsEventSourceProps?: {
+		/**
+		 * The number of messages to retrieve from the queue in a single batch.
+		 */
+		batchSize?: number;
+
+		/**
+		 * The maximum amount of time to wait before triggering a batch of messages.
+		 */
+		maxBatchingWindowSeconds?: number;
+
+		/**
+		 * Whether to report failures for individual batch items.
+		 */
+		reportBatchItemFailures?: boolean;
+	};
 
 	/**
 	 * The visibility timeout for the messages in the queue, in seconds.
@@ -30,6 +50,11 @@ export type IQueueConfig = CommonLambdaHandlerOptions &  {
 	 * The number of days for which the messages in the queue are retained.
 	 */
 	retentionPeriodDays?: number;
+
+	/**
+	 * The number of times a message can be unsuccessfully dequeued before being moved to the dead-letter queue.
+	 */
+	maxReceiveCount?: number;
 
 	/**
 	 * The environment variables for the queue.
@@ -49,13 +74,13 @@ export type IQueueConfig = CommonLambdaHandlerOptions &  {
  * @returns A class decorator function.
  */
 export function Queue(queueName: string, queueConfig: IQueueConfig = {}) {
-	return function <T extends { new (...args: any[]): {} }>(target: T) {
+	return function <T extends { new(...args: any[]): {} }>(target: T) {
 		tryImportingEntryPackagesFor(queueName);
 
 		// Default autoExportLambdaHandler to true if undefined
 		queueConfig.autoExportLambdaHandler = queueConfig.autoExportLambdaHandler ?? true;
 
-		
+
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {
 			constructor(...args: any[]) {
@@ -68,7 +93,7 @@ export function Queue(queueName: string, queueConfig: IQueueConfig = {}) {
 		// Preserve the original class name
 		Object.defineProperty(ExtendedTarget, 'name', { value: target.name });
 
-		const container = setupDI({
+		const container = setupDIModuleForController({
 			target: ExtendedTarget,
 			module: queueConfig.module || {},
 			fallbackToRootContainer: queueConfig.autoExportLambdaHandler

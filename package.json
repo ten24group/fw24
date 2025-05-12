@@ -1,7 +1,7 @@
 {
     "name": "@ten24group/fw24",
     "description": "A modern, serverless, framework to launch software products quickly and scale seamlessly",
-    "version": "0.1.1-beta.6",
+    "version": "0.1.1-beta.25",
     "main": "./dist/package/fw24.js",
     "types": "./dist/package/fw24.d.ts",
     "repository": {
@@ -22,9 +22,10 @@
         "dist"
     ],
     "scripts": {
-        "fw24:watch": "tsc -w",
-        "fw24:build": "tsc",
-        "fw24:release": "npm run fw24:build && standard-version --prerelease beta && git push --follow-tags && npm publish",
+        "watch": "tsc -w",
+        "build": "tsc",
+        "release": "npm run build && standard-version --prerelease beta && git push --follow-tags && npm publish",
+        "release:BE": "npm run build && standard-version --prerelease beta && git push --follow-tags && npm publish --tag bleeding-edge",
         "layer:build": "esbuild --bundle --platform=node --sourcemap ./src/layer/fw24.ts --outdir=dist/layer/nodejs/node_modules",
         "layer:release": "npm run layer:build && cdk deploy"
     },
@@ -36,9 +37,8 @@
         "@types/node": "^20.17.9",
         "@types/qs": "^6.9.17",
         "@types/uuid": "^10.0.0",
-        "aws-cdk-lib": "^2.172.0",
+        "aws-cdk-lib": "^2.181.0",
         "electrodb": "*",
-        "esbuild": "^0.24.0",
         "jest": "^29.7.0",
         "standard-version": "^9.5.0",
         "ts-jest": "^29.2.5",
@@ -47,6 +47,7 @@
     },
     "dependencies": {
         "@aws-cdk/aws-amplify-alpha": "^2.131.0-alpha.0",
+        "@aws-sdk/client-cloudwatch-logs": "^3.767.0",
         "@aws-sdk/client-cognito-identity": "^3.699.0",
         "@aws-sdk/client-cognito-identity-provider": "^3.708.0",
         "@aws-sdk/client-s3": "^3.705.0",
@@ -57,11 +58,18 @@
         "@smithy/smithy-client": "^3.5.0",
         "aws-jwt-verify": "^4.0.1",
         "constructs": "^10.4.2",
+        "esbuild": "^0.24.0",
         "qs": "^6.13.1",
         "source-map-support": "^0.5.21",
         "tslog": "^4.9.3"
     },
     "peerDependencies": {
-        "electrodb": "^3.0.1"
+        "electrodb": "^3.0.1",
+        "aws-cdk-lib": "^2.181.0"
+    },
+    "overrides": {
+        "@smithy/core": "^3.0.0",
+        "@smithy/smithy-client": "^3.5.0",
+        "@smithy/types": "^3.7.2"
     }
 }

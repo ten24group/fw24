@@ -5,13 +5,15 @@ import type { EntityFilterCriteria } from './query-types';
 
 import { APIController } from '../core/runtime/api-gateway-controller';
 import { Delete, Get, Patch, Post } from '../decorators/method';
-import { createLogger } from '../logging';
 import { safeParseInt } from '../utils/parse';
 import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, isString, merge, resolveEnvValueFor, toSlug } from '../utils';
 import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
 import { randomUUID } from 'crypto';
 import { getSignedUrlForFileUpload } from '../client/s3';
 import { ENV_KEYS } from '../const';
+import { NotFoundError } from '../errors';
+import { EntityValidationError } from './errors';
+import { createErrorHandler } from '../errors/handlers';
 
 type seconds = number;
 
@@ -30,15 +32,35 @@ export type GetSignedUrlForFileUploadSchema = {
  */
 export class BaseEntityController<Sch extends EntitySchema<any, any, any>> extends APIController {
 
-	readonly logger = createLogger(BaseEntityController.name);
+	private entityName: string;
 
 	/**
 	 * Creates an instance of BaseEntityController.
+	 * @param {BaseEntityService<Sch>} entityService - The entity-service.
 	 * @param {string} entityName - The name of the entity.
 	 */
-	constructor(protected readonly entityName: string, protected readonly entityService: BaseEntityService<Sch>) {
+	constructor(protected readonly entityService: BaseEntityService<Sch>, entityName = entityService?.getEntityName()) {
 		super();
 		this.entityName = entityName;
+
+		// Set error handler options from controller config
+		const errorHandlerOptions = Reflect.get(this, 'errorHandlerOptions') as {
+			includeStack?: boolean;
+			logErrors?: boolean;
+			logRequestDetails?: boolean;
+		} | undefined;
+
+		if (errorHandlerOptions) {
+			this.errorHandler = createErrorHandler({
+				includeStack: errorHandlerOptions.includeStack,
+				logErrors: errorHandlerOptions.logErrors,
+				logRequestDetails: errorHandlerOptions.logRequestDetails
+			});
+		}
+	}
+
+	protected getEntityName() {
+		return this.entityName || this.getEntityService()?.getEntityName();
 	}
 
 	/**
@@ -72,7 +94,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const createdEntity = await this.getEntityService().create(req.body);
 
 		const result: any = {
-			[ camelCase(this.entityName) ]: createdEntity,
+			[ camelCase(this.getEntityName()) ]: createdEntity,
 			message: "Created successfully"
 		};
 		if (req.debugMode) {
@@ -117,7 +139,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			customDomain: resolveEnvValueFor({ key: ENV_KEYS.FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY }) ?? ''
 		};
 
-		this.logger.info(`getSignedUrlForFileUpload::`, options);
+		this.logger.debug(`getSignedUrlForFileUpload::`, options);
 
 		const signedUploadURL = await getSignedUrlForFileUpload(options);
 
@@ -144,7 +166,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const duplicateEntity = await service.duplicate(identifiers);
 
 		const result: any = {
-			[ camelCase(this.entityName) ]: duplicateEntity,
+			[ camelCase(this.getEntityName()) ]: duplicateEntity,
 		};
 
 		if (req.debugMode) {
@@ -163,14 +185,17 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 */
 	@Get('/{id}')
 	async find(req: Request, res: Response): Promise<Response> {
-		// prepare the identifiers
 		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
-		const selections = req.queryStringParameters?.attributes?.split?.(',');
+		const attributes = req.queryStringParameters?.attributes?.split?.(',');
 
-		const entity = await this.getEntityService().get({ identifiers, selections });
+		const entity = await this.getEntityService().get({ identifiers, attributes });
+
+		if (!entity) {
+			throw new NotFoundError(this.getEntityName(), undefined, req);
+		}
 
 		const result: any = {
-			[ camelCase(this.entityName) ]: entity,
+			[ camelCase(this.getEntityName()) ]: entity,
 		};
 
 		if (req.debugMode) {
@@ -190,7 +215,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	@Get('')
 	async list(req: Request, res: Response): Promise<Response> {
 		const data = req.queryStringParameters;
-		this.logger.info(`list - data:`, data);
+		this.logger.debug(`list - data:`, data);
 
 		const {
 			order,
@@ -206,28 +231,28 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		let parsedFilters = {};
 
 		if (!isObject(filters)) {
-			this.logger.warn(`filters is not an object: need to parse the filters query string`, filters);
+			this.logger.debug(`filters is not an object: need to parse the filters query string`, filters);
 
 			if (isJsonString(filters)) {
-				this.logger.info(`found JSON string filters parsing`, filters);
+				this.logger.debug(`found JSON string filters parsing`, filters);
 				parsedFilters = JSON.parse(filters);
 			} else {
 				// TODO: parse filters query string
-				this.logger.warn(`filters is not an object: need to parse the filters query string`, filters);
+				this.logger.warn(`filters is not an JSON: need to parse the filters query string`, filters);
 			}
 		} else {
-			this.logger.info(`filters is a parsed object`, filters);
+			this.logger.debug(`filters is a parsed object`, filters);
 			parsedFilters = filters;
 		}
 
 		if (restOfQueryParamsWithoutFilters && !isEmptyObject(restOfQueryParamsWithoutFilters)) {
-			this.logger.info(`found not empty restOfQueryParamsWithoutFilters:`, restOfQueryParamsWithoutFilters);
+			this.logger.debug(`found not empty restOfQueryParamsWithoutFilters:`, restOfQueryParamsWithoutFilters);
 
 			const parsedQueryParams = parseUrlQueryStringParameters(restOfQueryParamsWithoutFilters);
-			this.logger.info(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
+			this.logger.debug(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
 
 			const parsedQueryParamFilters = queryStringParamsToFilterGroup(parsedQueryParams);
-			this.logger.info(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
+			this.logger.debug(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
 
 			parsedFilters = merge([ parsedFilters, parsedQueryParamFilters ]) ?? {};
 		}
@@ -240,7 +265,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			pages: pages === 'all' ? 'all' as const : safeParseInt(pages, 1).value,
 		}
 
-		this.logger.info(`parsed pagination`, pagination);
+		this.logger.debug(`parsed pagination`, pagination);
 
 		const query = {
 			filters: deepCopy(parsedFilters) as EntityFilterCriteria<Sch>,
@@ -279,13 +304,17 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 */
 	@Patch('/{id}')
 	async update(req: Request, res: Response): Promise<Response> {
-		// prepare the identifiers
 		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
+		const entity = await this.getEntityService().get({ identifiers });
+
+		if (!entity) {
+			throw new NotFoundError(this.getEntityName(), undefined, req);
+		}
 
 		const updatedEntity = await this.getEntityService().update(identifiers as any, req.body);
 
 		const result: any = {
-			[ camelCase(this.entityName) ]: updatedEntity,
+			[ camelCase(this.getEntityName()) ]: updatedEntity,
 			message: "Updated successfully"
 		};
 		if (req.debugMode) {
@@ -304,13 +333,17 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 */
 	@Delete('/{id}')
 	async delete(req: Request, res: Response): Promise<Response> {
-		// prepare the identifiers
 		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
+		const entity = await this.getEntityService().get({ identifiers });
+
+		if (!entity) {
+			throw new NotFoundError(this.getEntityName(), undefined, req);
+		}
 
 		const deletedEntity = await this.getEntityService().delete(identifiers);
 
 		const result: any = {
-			[ camelCase(this.entityName) ]: deletedEntity,
+			[ camelCase(this.getEntityName()) ]: deletedEntity,
 			message: "Deleted successfully"
 		};
 
@@ -330,7 +363,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	@Post('/query')
 	async query(req: Request, res: Response): Promise<Response> {
 		const query = req.body;
-		this.logger.info(`query - query:`, query);
+		this.logger.debug(`query - query:`, query);
 
 		const inputQuery = deepCopy(query);
 

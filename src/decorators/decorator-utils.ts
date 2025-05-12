@@ -74,7 +74,7 @@ export type CommonLambdaHandlerOptions = {
 		override: boolean;
 		packageNames: string[];
 	};
-	
+
 	/**
 	 * Specifies the DI-module options for the controller.
 	 * Under the hood this will create a dedicated module and container for this controller; you can use this option to shadow the providers and configs available in the parent scopes.
@@ -82,11 +82,13 @@ export type CommonLambdaHandlerOptions = {
 	module?: RegisterDIModuleMetadataOptions
 }
 
-export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3)?.path ) {
+export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3)?.path) {
 
-  try {
-		const entryPackageNames = resolveEnvValueFor({key: ENV_KEYS.ENTRY_PACKAGES});
+	try {
+		DefaultLogger.debug("trying to import entry-packages for", { controllerName });
+		const entryPackageNames = resolveEnvValueFor({ key: ENV_KEYS.ENTRY_PACKAGES });
 
+		DefaultLogger.debug("Entry-package-names", { entryPackageNames });
 		if (!entryPackageNames) {
 			return;
 		}
@@ -95,16 +97,16 @@ export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3
 
 		packageNamesArray.forEach((entryPackageName) => {
 			try {
-				DefaultLogger.info("trying to import entry", {entryPackageName});
+				DefaultLogger.debug("trying to import entry", { entryPackageName });
 				const entry = require(entryPackageName);
 				// call the default export if available
-				entry.default && typeof entry.default === 'function' && entry.default(); 
-				DefaultLogger.info(`Controller[${controllerName}]: successfully imported entry-package: ${entryPackageName}`);
+				entry.default && typeof entry.default === 'function' && entry.default();
+				DefaultLogger.debug(`Controller[${controllerName}]: successfully imported entry-package: ${entryPackageName}`);
 			} catch (error) {
 				DefaultLogger.error(`Controller[${controllerName}]: failed to import entry-package: ${entryPackageName}`, error);
 			}
 		});
-	} catch(e){
+	} catch (e) {
 		DefaultLogger.error(`Controller[${controllerName}]: Error importing entry packages in controller.ts`, e);
 	}
 }
@@ -117,7 +119,7 @@ export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3
  * @param fallbackToRootContainer - Whether to use the default DIContainer.ROOT if resolvingContainer is not specified in di options.
  * @returns The DI container used for the setup.
  */
-export function setupDI<T>(
+export function setupDIModuleForController<T>(
 	options: {
 		target: ClassConstructor<T>,
 		module: RegisterDIModuleMetadataOptions,
@@ -128,28 +130,28 @@ export function setupDI<T>(
 }
 
 export function resolveHandler(target: string, container?: IDIContainer) {
-    if(!container){
-        throw new Error(`Could not setup DI for controller: ${target}. make sure DI is setup correctly`);
-    }
+	if (!container) {
+		throw new Error(`Could not setup DI for controller: ${target}. make sure DI is setup correctly`);
+	}
 
-    const instance = container.resolve<AbstractLambdaHandler>(target, { tags: ['_internal_'] });
+	const instance = container.resolve<AbstractLambdaHandler>(target, { tags: [ '_internal_' ] });
 
-    if(!instance){
-        throw new Error(`Could not resolve controller: ${target}. make sure DI is setup correctly`);
-    }
+	if (!instance) {
+		throw new Error(`Could not resolve controller: ${target}. make sure DI is setup correctly`);
+	}
 
-    const handler = instance.LambdaHandler;
+	const handler = instance.LambdaHandler;
 
-    if(!handler){
-        throw new Error(`Could not find LambdaHandler in controller: ${target}. make sure it extends 'AbstractLambdaHandler'`);
-    }
+	if (!handler) {
+		throw new Error(`Could not find LambdaHandler in controller: ${target}. make sure it extends 'AbstractLambdaHandler'`);
+	}
 
-    return handler;
+	return handler;
 }
 
-export function resolveAndExportHandler(target: Function, container?: IDIContainer ) {
-    const handler = resolveHandler(target.name, container);
-    exportHandler(handler, 'handler', getCallingModule(4)); // export into the modules of the file the decorator is used in
+export function resolveAndExportHandler(target: Function, container?: IDIContainer) {
+	const handler = resolveHandler(target.name, container);
+	exportHandler(handler, 'handler', getCallingModule(4)); // export into the `modules` of the file where the `decorator` is used.
 }
 
 /**
@@ -160,15 +162,15 @@ export function resolveAndExportHandler(target: Function, container?: IDIContain
  */
 export function exportHandler(handler: any, handlerName: string = 'handler', callingModule = getCallingModule()): void {
 
-    if (callingModule && callingModule.exports) {
-        if (!callingModule.exports.hasOwnProperty(handlerName)) {
-            callingModule.exports[handlerName] = handler;
-        } else {
-            DefaultLogger.warn(`exportHandler: Handler '${handlerName}' already exists in calling module: ${callingModule.filename}`);
-        }
-    } else {
-        DefaultLogger.warn('exportHandler: Could not find calling module');
-    }
+	if (callingModule && callingModule.exports) {
+		if (!callingModule.exports.hasOwnProperty(handlerName)) {
+			callingModule.exports[ handlerName ] = handler;
+		} else {
+			DefaultLogger.warn(`exportHandler: Handler '${handlerName}' already exists in calling module: ${callingModule.filename}`);
+		}
+	} else {
+		DefaultLogger.warn('exportHandler: Could not find calling module');
+	}
 }
 
 /**
@@ -179,20 +181,63 @@ export function exportHandler(handler: any, handlerName: string = 'handler', cal
  * @returns The nth NodeModule from which the current function was called.
  */
 export function getCallingModule(nthModuleInStack: number = 3): NodeModule | undefined {
-    const originalPrepareStackTrace = Error.prepareStackTrace;
-    Error.prepareStackTrace = (_, stack) => stack;
-    const stack = new Error().stack as any;
-    Error.prepareStackTrace = originalPrepareStackTrace;
+	const originalPrepareStackTrace = Error.prepareStackTrace;
+	Error.prepareStackTrace = (_, stack) => stack;
+	const stack = new Error().stack as any;
+	Error.prepareStackTrace = originalPrepareStackTrace;
 
-    if(stack.length < nthModuleInStack){
-        throw new Error(`Could not find calling module at index: ${nthModuleInStack}`);
-    }
-    
-    if (stack && stack.length > nthModuleInStack) {
-        const caller = stack[nthModuleInStack];
-        const callerFile = caller.getFileName();
-        return require.cache[callerFile];
-    }
+	if (stack.length < nthModuleInStack) {
+		throw new Error(`Could not find calling module at index: ${nthModuleInStack}`);
+	}
 
-    return undefined;
+	if (stack && stack.length > nthModuleInStack) {
+		const caller = stack[ nthModuleInStack ];
+		const callerFile = caller.getFileName();
+		return require.cache[ callerFile ];
+	}
+
+	return undefined;
+}
+
+/**
+ * Utility function to find the constructor of a class from a method decorator target.
+ * This ensures consistent constructor access across all decorators.
+ * 
+ * @param target - The target object from the decorator
+ * @param methodToDecorate - The method being decorated
+ * @returns The constructor of the class or undefined if not found
+ */
+export function findConstructor(target: any, methodToDecorate: any): any {
+	// Approach 1: Direct access
+	if (target && target.constructor) {
+		return target.constructor;
+	} 
+	// Approach 2: From prototype
+	else if (target && Object.getPrototypeOf(target) && Object.getPrototypeOf(target).constructor) {
+		return Object.getPrototypeOf(target).constructor;
+	}
+	// Approach 3: From the method itself
+	else if (methodToDecorate && methodToDecorate.constructor) {
+		return methodToDecorate.constructor;
+	}
+	// Approach 4: Last resort - use the target itself if it's a constructor
+	else if (target && typeof target === 'function') {
+		return target;
+	}
+	
+	return undefined;
+}
+
+/**
+ * Utility function to get a unique symbol for a class's routes.
+ * This ensures consistent route storage across all decorators.
+ * 
+ * @param constructor - The constructor of the class
+ * @returns A unique symbol for the class's routes
+ */
+export function getRoutesKey(constructor: any): symbol {
+	// Use a combination of constructor name and a unique identifier to ensure
+	// each class gets its own unique symbol, even when inheritance is involved
+	const uniqueId = constructor.toString().split('\n')[0].trim();
+	return Symbol.for(`routes_${uniqueId}`);
 }

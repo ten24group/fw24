@@ -9,11 +9,13 @@ import { LogDuration, createLogger } from "../logging";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LambdaFunction } from "./lambda-function";
 import { Rule, Schedule } from "aws-cdk-lib/aws-events";
+import { IConstructConfig } from "../interfaces/construct-config";
+import { VpcConstruct } from "./vpc";
 
 /**
  * Represents the configuration for the Scheduler construct.
  */
-export interface ISchedulerConstructConfig {
+export interface ISchedulerConstructConfig extends IConstructConfig {
     /**
      * The directory where the tasks are located.
      */
@@ -46,7 +48,7 @@ export class SchedulerConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
     
     name: string = SchedulerConstruct.name;
-    dependencies: string[] = [];
+    dependencies: string[] = [VpcConstruct.name];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;
@@ -60,7 +62,7 @@ export class SchedulerConstruct implements FW24Construct {
     @LogDuration()
     public async construct() {
         // make the main stack available to the class
-        this.mainStack = this.fw24.getStack("main");
+        this.mainStack = this.fw24.getStack(this.schedulerConstructConfig.stackName, this.schedulerConstructConfig.parentStackName);
         // sets the default tasks directory if not defined
         if(this.schedulerConstructConfig.tasksDirectory === undefined || this.schedulerConstructConfig.tasksDirectory === ""){
             this.schedulerConstructConfig.tasksDirectory = "./src/tasks";
@@ -98,7 +100,7 @@ export class SchedulerConstruct implements FW24Construct {
             entry: taskInfo.filePath + "/" + taskInfo.fileName,
             environmentVariables: this.fw24.resolveEnvVariables(taskConfigEnv),
             allowSendEmail: true,
-            functionTimeout: taskConfig.functionTimeout,
+            functionTimeout: taskConfig.functionTimeout || this.fw24.getConfig().functionTimeout,
             functionProps: {
                 ...taskProps,
             },

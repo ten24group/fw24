@@ -5,8 +5,6 @@ import type { EntityQuery } from './query-types';
 import type { BaseEntityService } from "./base-service";
 import type { OmitNever, Paths, Writable } from "../utils/types";
 
-
-
 /**
  *  ElectroDB entity  examples
  * 
@@ -42,7 +40,7 @@ E['attributes'][A]['relation'] extends Relation<infer R> ? Relation<R> : never;
 type _EntityAttributePaths<E extends EntitySchema<any, any, any, any>> = 
 { [K in keyof NonRelationalAttributes<E>] ?: K } 
 & 
-{ [K in keyof RelationalAttributes<E>] ?: _EntityAttributePaths<RelationalAttributes<E>[K]['entity'] > }
+{ [K in keyof RelationalAttributes<E>] ?: _EntityAttributePaths< RelToRelatedEntity<RelationalAttributes<E>[K]> > }
 // utility type for prepare all the paths for entity and it's relations
 export type EntityAttributePaths<E extends EntitySchema<any, any, any, any>> = Paths<_EntityAttributePaths<E>>;
 
@@ -55,14 +53,14 @@ export type HydrateOptionsMapForEntity<T extends EntitySchema<any, any, any, any
 export type HydrateOptionForEntity<E extends EntitySchema<any, any, any, any>> = HydrateOptionsMapForEntity<E> | Array<EntityAttributePaths<E>>;
 
 export type HydrateOptionForRelation<Rel extends Relation<any>=any> = {
-    entityName?: Rel['entity']['model']['entity'],
+    entityName?: Rel['entityName'],
     relationType?: Rel['type'],
-    identifiers?: RelationIdentifiers<Rel['entity']>,
-    attributes: HydrateOptionForEntity<Rel['entity']>
+    identifiers?: RelationIdentifiers<RelToRelatedEntity<Rel>['entity']>,
+    attributes: HydrateOptionForEntity<RelToRelatedEntity<Rel>['entity']>
 }
 
 
-export type RelationIdentifier<E extends EntitySchema<any, any, any, any> = any> = { source?: string, target: keyof E['attributes'] };
+export type RelationIdentifier<E extends EntitySchema<any, any, any, any> = any> = { source: string, target: keyof E['attributes'] };
 export type RelationIdentifiers<E extends EntitySchema<any, any, any, any> = any> = RelationIdentifier<E> | Array<RelationIdentifier<E>>
 /**
  * Creates an entity relation and infers the type based on the provided relation.
@@ -74,6 +72,7 @@ export function createEntityRelation<E extends EntitySchema<any, any, any, any>>
     return relation;
 }
 
+export type RelToRelatedEntity<Rel> = Rel extends Relation<infer E> ? E : never;
 /**
  * Represents a relation between entities.
  *
@@ -83,13 +82,13 @@ export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
     /**
      * Represents a relation between entities.
      */
-    entity: E;
+    entityName: E['model']['entity'];
 
     /**
      * The type of the relation.
      * Possible values: 'one-to-one', 'one-to-many', 'many-to-one', 'many-to-many'.
      */
-    type: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many';
+    type: 'one-to-many' | 'many-to-one'; // 'one-to-one' | 'many-to-many';
 
     /**
      * Identifiers to load the related entity.
@@ -98,7 +97,7 @@ export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
      * The values can be a string representing the related entity attribute or an array of strings.
      * 
      */
-    identifiers?: RelationIdentifiers<E>;
+    identifiers: RelationIdentifiers<E> | (() => RelationIdentifiers<E>);
 
     // set this to true in entity-definition to auto-hydrate this relation
     hydrate ?: boolean;
@@ -159,6 +158,31 @@ export interface BaseFieldMetadata {
     placeholder?: string;
     helpText?: string;
     tooltip?: string; // maybe this can be inferred from the helpText
+}
+
+export interface IPageActionItem {
+  label: string;
+  url: string;
+  icon?: string;
+}
+
+export interface IEntityPageAction {
+  label: string;
+  url?: string;
+  icon?: string;
+  type?: 'button' | 'dropdown';
+  items?: IPageActionItem[];
+  openInModal?: boolean;
+  modalConfig?: {
+      modalType: string;
+      modalPageConfig: any;
+      apiConfig?: {
+          apiMethod: string;
+          responseKey: string;
+          apiUrl: string;
+      };
+      submitSuccessRedirect?: string;
+  };
 }
 
 interface TextFieldMetadata extends BaseFieldMetadata {
@@ -352,13 +376,29 @@ export interface EntitySchema<
 > extends Schema<A, F, C>{
     readonly model: Schema<A, F, C>['model'] & {
         readonly entityNamePlural: string;
-        readonly entityOperations: Opp; 
+        readonly entityOperations: Opp;
         readonly entityMenuIcon ?: string, // default is 'appStore'
         readonly entityNameAttribute ?: string, // default is 'name'
         readonly entitySlugAttribute ?: string, // default is 'slug'
         readonly entityImageAttribute ?: string, // default is 'image'
-        readonly excludeFromAdminMenu ?: boolean, // default is true
         readonly entityDescriptionAttribute ?: string, // default is 'description'
+
+        readonly excludeFromAdminMenu ?: boolean, // default is false
+        readonly excludeFromAdminList ?: boolean, // default is false
+        readonly excludeFromAdminDetail ?: boolean, // default is false
+        readonly excludeFromAdminCreate ?: boolean, // default is false
+        readonly excludeFromAdminUpdate ?: boolean, // default is false
+        readonly excludeFromAdminDelete ?: boolean, // default is false
+        readonly excludeFromAdminDuplicate ?: boolean, // default is false
+        readonly CRUDApiPath ?: string, // default is ''
+
+        // View page configuration
+        readonly viewPageActions?: IEntityPageAction[],
+        readonly viewPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+
+        // Edit page configuration
+        readonly editPageActions?: IEntityPageAction[],
+        readonly editPageBreadcrumbs?: Array<{ label: string; url?: string }>,
     };
     readonly attributes: {
         readonly [a in A]: EntityAttribute;

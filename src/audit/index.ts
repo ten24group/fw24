@@ -1,16 +1,6 @@
-export * as Auditor from './';
-
-export interface IAuditor {
-    audit (options: any): Promise<any>;
-}
-
-export const Dummy: IAuditor = {
-    audit: () => { return Promise.resolve() },
-};
-
-
-export const Default: IAuditor = {
-    audit: async (options: any) => {
-        console.log("Called default auditor.audit()", options);
-    }
-};
+export * from './loggers/dummy';
+export * from './loggers/console';
+export * from './loggers/cloudwatch';
+export * from './loggers/dynamodb';
+export * from './loggers/factory';
+export * from './interfaces';

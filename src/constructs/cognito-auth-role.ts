@@ -6,7 +6,7 @@ export class CognitoAuthRole extends Construct {
 
     constructor(scope: Construct, id: string, props: any) {
         super(scope, id);
-        const { identityPool, policyFilePaths } = props;
+        const { identityPool, policyFilePaths, policies } = props;
 
         const role = new Role(this, "CognitoAuthRole", {
             assumedBy: new FederatedPrincipal("cognito-identity.amazonaws.com", {
@@ -31,6 +31,11 @@ export class CognitoAuthRole extends Construct {
                         resources: JSON.parse(policyfile).Resource,
                     })
                 );
+            }
+        }
+        if(policies !== undefined) {
+            for (const policy of policies) {
+                role.addToPolicy(new PolicyStatement(policy));
             }
         }
         return role;

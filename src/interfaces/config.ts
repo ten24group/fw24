@@ -15,6 +15,8 @@ export interface IApplicationConfig {
         disableSignUp?: boolean;
         disableForgotPassword?: boolean;
         disableAccountVerification?: boolean;
+        signInMethods?: ('EMAIL_PASSWORD' | 'EMAIL_OTP' | 'SMS_OTP' | 'PASSKEY')[];
+        customPagesDirectory?: string;
     };
     defaultAuthorizationType?: any;
     defaultAdminGroups?: string[];
@@ -25,7 +27,15 @@ export interface IApplicationConfig {
     functionProps?: Omit<NodejsFunctionProps, 'layers'> & {
 		readonly layers?: Array<ILayerVersion | string>;
 	}
+    /**
+     * The timeout duration for the Lambda function in seconds.
+     * Use this timeout to avoid importing the duration class from aws-cdk-lib.
+     */
+    functionTimeout?: number;
     appDIContainer?: IDIContainer;
     lambdaEntryPackages?: string[];
+    defaultStackName?: string;
+    layerStackName?: string;
+    multiStack?: boolean;
 }
 

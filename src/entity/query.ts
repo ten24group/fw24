@@ -1,81 +1,19 @@
 import type { Item, WhereAttributes, WhereOperations } from "electrodb";
-import type { EntitySchema, HydrateOptionForRelation, HydrateOptionsMapForEntity } from "./base-entity";
-import type { AttributeFilter, EntityFilter, EntityFilterCriteria, FilterCriteria, FilterGroup } from './query-types';
+import type { EntitySchema } from "./base-entity";
+import type { AttributeFilter, EntityFilter, EntityFilterCriteria, FilterCriteria, FilterGroup, ParsedEntityAttributePaths } from './query-types';
 
-import { isAttributeFilter, isComplexFilterValue, isEntityFilter, isFilterGroup } from "./query-types";
 import { createLogger } from "../logging";
+import { isAttributeFilter, isComplexFilterValue, isEntityFilter, isFilterGroup } from "./query-types";
 
 import {
     parse as parseQueryString,
     stringify as stringifyQueryParams,
 } from 'qs';
 
-import { isEmpty, isEmptyObject, isObject, parseValueToCorrectTypes } from '../utils';
+import { isObject, parseValueToCorrectTypes } from '../utils';
 
 const logger = createLogger('EntityQuery');
 
-/**
- * Infers relationships between entities based on the provided schema and object.
- * @param schema The entity schema.
- * @param paths The object containing attribute values.
- * @returns The inferred relationships as a HydrateOptionsMapForEntity.
- */
-export function inferRelationshipsForEntitySelections<E extends EntitySchema<any, any, any>>(
-    schema: E,
-    paths: ParsedEntityAttributePaths,
-): HydrateOptionsMapForEntity<E> {
-
-    logger.debug('Called inferRelationshipsForEntitySelections', { paths });
-
-    const inferred: any = {};
-
-    Object.entries(schema.attributes).forEach(([attributeName, attributeMeta]) => {
-        const attVal = paths[attributeName];
-
-        if (!attVal) {
-            return;
-        }
-
-        const isRelational = !!attributeMeta.relation;
-
-        // For non-relational attributes, or relational attributes without any nested attributes info, just set the value to true
-        if (!isRelational || !isObject(attVal)) {
-            inferred[attributeName] = attVal;
-            return;
-        }
-
-        // For relational attributes, set the entity name, relation type, identifiers, and attributes.
-        // Attributes for the related entity can contain further nested relationships; hence we infer the metadata recursively.
-        const relationMeta = attributeMeta.relation!;
-        const relatedEntity = relationMeta.entity as EntitySchema<any, any, any>;
-
-        logger.debug('inferRelationshipsForEntitySelections relationMeta', { attVal });
-
-        const meta: HydrateOptionForRelation = {
-            entityName: relatedEntity.model.entity,
-            relationType: relationMeta.type,
-            identifiers: relationMeta.identifiers,
-            attributes: {},
-        };
-
-        meta.attributes = inferRelationshipsForEntitySelections(
-            relatedEntity,
-            attVal.attributes || relationMeta.attributes,
-        );
-
-        inferred[attributeName] = meta
-    });
-
-    return inferred;
-}
-
-type ParsedEntityAttributePaths = {
-    [key: string]: boolean | { attributes: ParsedEntityAttributePaths };
-};
-
-type ParsedEntityAttributePathsWithRelationMeta = {
-    [key: string]: boolean | HydrateOptionForRelation;
-};
 /**
  * Parses the given array of entity attribute paths into a structured format.
  * @param paths - The array of entity attribute paths.
@@ -100,46 +38,45 @@ type ParsedEntityAttributePathsWithRelationMeta = {
  * ```
  */
 export function parseEntityAttributePaths(paths: string[]): ParsedEntityAttributePaths {
-    logger.info('parseEntityAttributePaths', { paths });
 
     type ParsedAttributePaths = {
-        [key: string]: boolean | ParsedAttributePaths;
+        [ key: string ]: boolean | ParsedAttributePaths;
     };
 
     const parsed = paths.reduce<ParsedEntityAttributePaths>((acc, path) => {
         const keys = path.split('.');
-        
+
         keys.reduce<ParsedAttributePaths>((obj, key, index) => {
             if (index === keys.length - 1) {
-                if (typeof obj[key] === 'object') {
+                if (typeof obj[ key ] === 'object') {
                     // If the key already exists as an object, do nothing
                 } else {
                     // If the key doesn't exist or is a boolean, set it to true
-                    obj[key] = true;
+                    obj[ key ] = true;
                 }
             } else {
-                if (typeof obj[key] === 'boolean') {
+                if (typeof obj[ key ] === 'boolean') {
                     // If the key already exists as a boolean, convert it to an object
-                    obj[key] = {};
+                    obj[ key ] = {};
                 } else {
                     // If the key doesn't exist, set it to an object
-                    obj[key] = obj[key] || {};
+                    obj[ key ] = obj[ key ] || {};
                 }
             }
 
-            return obj[key] as ParsedAttributePaths;
+            return obj[ key ] as ParsedAttributePaths;
         }, acc);
 
         return acc;
     }, {});
 
-    const format = (obj: ParsedAttributePaths): ParsedEntityAttributePaths  => {
+    const format = (obj: ParsedAttributePaths): ParsedEntityAttributePaths => {
         const res: ParsedEntityAttributePaths = {};
-        Object.entries(obj).forEach(([key, val]) => {
-            if (isObject(val)){
-                res[key] = { attributes: format(val) };
+        Object.entries(obj).forEach(([ key, val ]) => {
+            if (isObject(val)) {
+                res[ key ] = { attributes: format(val) };
             } else {
-                res[key] = true;
+                res[ key ] = true;
             }
         });
         return res;
@@ -149,122 +86,118 @@ export function parseEntityAttributePaths(paths: string[]): ParsedEntityAttribut
 };
 
 export function attributeFilterToExpression<
-  A extends string,
-  F extends string,
-  C extends string,
-  S extends EntitySchema<A, F, C>,
-  I extends Item<A, F, C, S, S["attributes"]>,
-  WAttributes extends WhereAttributes<A, F, C, S, I>,
-  WOperations extends WhereOperations<A, F, C, S, I>,
->(filter: AttributeFilter<any>, attributes: WAttributes, operations: WOperations){
-    
-    logger.info('filterToExpression', {filter});
+    A extends string,
+    F extends string,
+    C extends string,
+    S extends EntitySchema<A, F, C>,
+    I extends Item<A, F, C, S, S[ "attributes" ]>,
+    WAttributes extends WhereAttributes<A, F, C, S, I>,
+    WOperations extends WhereOperations<A, F, C, S, I>,
+>(filter: AttributeFilter<any>, attributes: WAttributes, operations: WOperations) {
 
     const { filterId: id, filterLabel: label, attribute: prop, logicalOp = 'and', ...filters } = filter;
 
-    const attributeRef = attributes[prop as keyof WAttributes];
+    const attributeRef = attributes[ prop as keyof WAttributes ];
 
-    if(!attributeRef){
-        logger.error(`Invalid filter property`, {prop, filter, attributes});
-        throw(`Invalid filter property ${prop?.toString()}`);
+    if (!attributeRef) {
+        logger.error(`Invalid filter property`, { prop, filter, attributes });
+        throw (`Invalid filter property ${prop?.toString()}`);
     }
 
     const filterFragments: Array<string> = [];
     const { eq, ne, gt, gte, lt, lte, between, begins, exists, notExists, contains, notContains, name, size, type } = operations;
 
-    for(const filterKey in filters){
-        
-        let filterVal = filters[filterKey as keyof typeof filters];
+    for (const filterKey in filters) {
 
-        if(isComplexFilterValue(filterVal)){
+        let filterVal = filters[ filterKey as keyof typeof filters ];
+
+        if (isComplexFilterValue(filterVal)) {
             // TODO: handle `expression` filter values
             filterVal = filterVal?.valType == 'propRef' ? name(filterVal.val) : filterVal.val;
         }
 
-        if( ['equalTo', 'equal', 'eq', '==', '==='].includes(filterKey) ){
+        if ([ 'equalTo', 'equal', 'eq', '==', '===' ].includes(filterKey)) {
 
-            filterFragments.push( eq(attributeRef, filterVal));
+            filterFragments.push(eq(attributeRef, filterVal));
 
-        } else if( ['notEqualTo', 'notEqual', 'neq', 'ne', '!=', '!==', '<>' ].includes(filterKey) ){
+        } else if ([ 'notEqualTo', 'notEqual', 'neq', 'ne', '!=', '!==', '<>' ].includes(filterKey)) {
 
-            filterFragments.push( ne(attributeRef, filterVal));
+            filterFragments.push(ne(attributeRef, filterVal));
 
-        } else if( [ 'greaterThen', 'gt', '>'].includes(filterKey) ){
-            
-            filterFragments.push( gt(attributeRef, filterVal));
+        } else if ([ 'greaterThen', 'gt', '>' ].includes(filterKey)) {
 
-        } else if( ['greaterThenOrEqualTo', 'gte', '>=', '>=='].includes(filterKey) ){
-            
-            filterFragments.push( gte(attributeRef, filterVal));
+            filterFragments.push(gt(attributeRef, filterVal));
 
-        } else if( [ 'lessThen', 'lt', '<'].includes(filterKey) ){
-            
-            filterFragments.push( lt(attributeRef, filterVal));
+        } else if ([ 'greaterThenOrEqualTo', 'gte', '>=', '>==' ].includes(filterKey)) {
 
-        } else if( ['lessThenOrEqualTo', 'lte', '<=', '<=='].includes(filterKey) ){
-            
-            filterFragments.push( lte(attributeRef, filterVal));
+            filterFragments.push(gte(attributeRef, filterVal));
 
-        } else if( ['between', 'bt', 'bw', '><'].includes(filterKey) ){
-            filterFragments.push( between(attributeRef, filterVal[0], filterVal[1]));
+        } else if ([ 'lessThen', 'lt', '<' ].includes(filterKey)) {
 
-        } else if( ['like', 'begins', 'startsWith', 'beginsWith' ].includes(filterKey) ){
-            
-            filterFragments.push( begins(attributeRef, filterVal));
+            filterFragments.push(lt(attributeRef, filterVal));
 
-        } else if( ['contains', 'has', 'includes', 'containsSome'].includes(filterKey) ){
-            
-            filterVal = Array.isArray(filterVal) ? filterVal : [filterVal];
+        } else if ([ 'lessThenOrEqualTo', 'lte', '<=', '<==' ].includes(filterKey)) {
+
+            filterFragments.push(lte(attributeRef, filterVal));
+
+        } else if ([ 'between', 'bt', 'bw', '><' ].includes(filterKey)) {
+            filterFragments.push(between(attributeRef, filterVal[ 0 ], filterVal[ 1 ]));
+
+        } else if ([ 'like', 'begins', 'startsWith', 'beginsWith' ].includes(filterKey)) {
+
+            filterFragments.push(begins(attributeRef, filterVal));
+
+        } else if ([ 'contains', 'has', 'includes', 'containsSome' ].includes(filterKey)) {
+
+            filterVal = Array.isArray(filterVal) ? filterVal : [ filterVal ];
             const logicalOpp = filterKey === 'containsSome' ? 'OR' : 'AND';
 
-            const listFilters = filterVal.map( (val: any) => contains(attributeRef, val))
+            const listFilters = filterVal.map((val: any) => contains(attributeRef, val))
 
-            filterFragments.push( makeParenthesesGroup(listFilters, logicalOpp) );
-            
-        } else if( ['notContains', 'notHas', 'notIncludes'].includes(filterKey) ){
+            filterFragments.push(makeParenthesesGroup(listFilters, logicalOpp));
 
-            filterVal = Array.isArray(filterVal)? filterVal : [filterVal];
+        } else if ([ 'notContains', 'notHas', 'notIncludes' ].includes(filterKey)) {
 
-            const listFilters = filterVal.map( (val: any) => notContains(attributeRef, val))
+            filterVal = Array.isArray(filterVal) ? filterVal : [ filterVal ];
 
-            filterFragments.push( makeParenthesesGroup(listFilters, 'AND') );
-                        
-        } else if( ['in', 'inList'].includes(filterKey) ){
+            const listFilters = filterVal.map((val: any) => notContains(attributeRef, val))
 
-            filterVal = Array.isArray(filterVal)? filterVal : [filterVal];
+            filterFragments.push(makeParenthesesGroup(listFilters, 'AND'));
 
-            const listFilters = filterVal.map( (val: any) => eq(attributeRef, val))
+        } else if ([ 'in', 'inList' ].includes(filterKey)) {
 
-            filterFragments.push( makeParenthesesGroup(listFilters, 'OR') );
+            filterVal = Array.isArray(filterVal) ? filterVal : [ filterVal ];
 
-        } else if( ['nin', 'notIn', 'notInList'].includes(filterKey) ){
+            const listFilters = filterVal.map((val: any) => eq(attributeRef, val))
 
-            filterVal = Array.isArray(filterVal)? filterVal : [filterVal];
+            filterFragments.push(makeParenthesesGroup(listFilters, 'OR'));
 
-            const listFilters = filterVal.map( (val: any) => ne(attributeRef, val))
+        } else if ([ 'nin', 'notIn', 'notInList' ].includes(filterKey)) {
 
-            filterFragments.push( makeParenthesesGroup(listFilters, 'AND') );
+            filterVal = Array.isArray(filterVal) ? filterVal : [ filterVal ];
 
-        } else if( ['exists', 'isNull'].includes(filterKey) ){
-            
-            filterFragments.push( filterVal ? exists(attributeRef) : notExists(attributeRef)  );
-            
-        } else if( ['isEmpty'].includes(filterKey) ){
-            
-            filterFragments.push( filterVal ? eq(attributeRef as string, '' as string) : ne(attributeRef as string, '' as string)  );
-            
+            const listFilters = filterVal.map((val: any) => ne(attributeRef, val))
+
+            filterFragments.push(makeParenthesesGroup(listFilters, 'AND'));
+
+        } else if ([ 'exists', 'isNull' ].includes(filterKey)) {
+
+            filterFragments.push(filterVal ? exists(attributeRef) : notExists(attributeRef));
+
+        } else if ([ 'isEmpty' ].includes(filterKey)) {
+
+            filterFragments.push(filterVal ? eq(attributeRef as string, '' as string) : ne(attributeRef as string, '' as string));
+
         }
     }
-    
-    const filterExpression = makeParenthesesGroup(filterFragments, logicalOp);
 
-    logger.info('filterToExpression', {filterFragments, filterExpression});
+    const filterExpression = makeParenthesesGroup(filterFragments, logicalOp);
 
     return filterExpression;
 }
 
-export function makeParenthesesGroup( items: Array<string>, delimiter: string ): string {
-    return items.length > 1 ? '( ' + items.join(` ${delimiter.toUpperCase()} `) + ' )' : items[0];
+export function makeParenthesesGroup(items: Array<string>, delimiter: string): string {
+    return items.length > 1 ? '( ' + items.join(` ${delimiter.toUpperCase()} `) + ' )' : items[ 0 ];
 }
 
 
@@ -311,27 +244,24 @@ export function entityFilterToFilterGroup<
     S extends EntitySchema<A, F, C>
 >(entityFilter: EntityFilter<S>): FilterGroup<S> {
 
-    if(!isEntityFilter(entityFilter)){
+    if (!isEntityFilter(entityFilter)) {
         throw new Error(`invalid entity filter ${entityFilter}`);
     }
 
-    logger.info('entityFilterToFilterGroup', entityFilter);
-    
     const entityFilterGroup: FilterGroup<S> = {};
-    const {filterId, filterLabel: label, logicalOp='and', ...entityPopsFilters} = entityFilter;
+    const { filterId, filterLabel: label, logicalOp = 'and', ...entityPopsFilters } = entityFilter;
 
     entityFilterGroup.filterId = filterId;
     entityFilterGroup.filterLabel = label;
-    
+
     const logicalOpFilters = Object
-    .entries<FilterCriteria<any>>( entityPopsFilters as { [s: string]: FilterCriteria<any>; })
-    .map( ( [ key, val ] ): AttributeFilter<any> => {
-        return {...val, attribute: key };
-    });
+        .entries<FilterCriteria<any>>(entityPopsFilters as { [ s: string ]: FilterCriteria<any>; })
+        .map(([ key, val ]): AttributeFilter<any> => {
+            return { ...val, attribute: key };
+        });
 
-    entityFilterGroup[logicalOp] = logicalOpFilters as any;
+    entityFilterGroup[ logicalOp ] = logicalOpFilters as any;
 
-    logger.info('entityFilterToFilterGroup', entityFilterGroup);
     return entityFilterGroup;
 }
 
@@ -343,28 +273,23 @@ export function entityFilterToFilterGroup<
  * @returns The filter expression.
  */
 export function entityFilterToExpression<
-  A extends string,
-  F extends string,
-  C extends string,
-  S extends EntitySchema<A, F, C>,
-  I extends Item<A, F, C, S, S["attributes"]>,
-  WAttributes extends WhereAttributes<A, F, C, S, I>,
-  WOperations extends WhereOperations<A, F, C, S, I>,
+    A extends string,
+    F extends string,
+    C extends string,
+    S extends EntitySchema<A, F, C>,
+    I extends Item<A, F, C, S, S[ "attributes" ]>,
+    WAttributes extends WhereAttributes<A, F, C, S, I>,
+    WOperations extends WhereOperations<A, F, C, S, I>,
 >(
-    entityFilterCriteria: EntityFilterCriteria<S>, 
-    attributes: WAttributes, 
+    entityFilterCriteria: EntityFilterCriteria<S>,
+    attributes: WAttributes,
     operations: WOperations
-){
-    
-    logger.info('entityFilterToExpression');
+) {
 
     const filterGroup = entityFilterToFilterGroup(entityFilterCriteria);
-    logger.info('entityFilterToExpression', {filterGroup});
 
     const expression = filterGroupToExpression(filterGroup, attributes, operations);
-    
-    logger.info('entityFilterToExpression', {expression});
-    
+
     return expression;
 }
 
@@ -381,7 +306,7 @@ export function entityFilterCriteriaToExpression<
     F extends string,
     C extends string,
     S extends EntitySchema<A, F, C>,
-    I extends Item<A, F, C, S, S["attributes"]>,
+    I extends Item<A, F, C, S, S[ "attributes" ]>,
     WAttributes extends WhereAttributes<A, F, C, S, I>,
     WOperations extends WhereOperations<A, F, C, S, I>,
 >(
@@ -389,15 +314,13 @@ export function entityFilterCriteriaToExpression<
     attributes: WAttributes,
     operations: WOperations
 ) {
-    logger.info('entityFilterCriteriaToExpression', {filterCriteria});
 
     let expression = filterCriteriaOrFilterGroupOrAttributeFilterToExpression({
-        filterCriteria, 
-        attributes, 
+        filterCriteria,
+        attributes,
         operations
     });
 
-    logger.info('entityFilterCriteriaToExpression', { expression});
     return expression;
 }
 
@@ -412,29 +335,29 @@ export function filterCriteriaOrFilterGroupOrAttributeFilterToExpression<
     F extends string,
     C extends string,
     S extends EntitySchema<A, F, C>,
-    I extends Item<A, F, C, S, S["attributes"]>,
+    I extends Item<A, F, C, S, S[ "attributes" ]>,
     WAttributes extends WhereAttributes<A, F, C, S, I>,
     WOperations extends WhereOperations<A, F, C, S, I>,
->(  
+>(
     options: {
-        filterCriteria: EntityFilter<S>, 
-        attributes: WAttributes, 
+        filterCriteria: EntityFilter<S>,
+        attributes: WAttributes,
         operations: WOperations
     }
-){
-    const{ filterCriteria, attributes, operations} = options;
-    
-    if(isEntityFilter(filterCriteria)) {
+) {
+    const { filterCriteria, attributes, operations } = options;
+
+    if (isEntityFilter(filterCriteria)) {
         return entityFilterToExpression(filterCriteria, attributes, operations);
-    } else if(isFilterGroup(filterCriteria)){
+    } else if (isFilterGroup(filterCriteria)) {
         return filterGroupToExpression(filterCriteria, attributes, operations);
-    } else if(isAttributeFilter(filterCriteria)) {
+    } else if (isAttributeFilter(filterCriteria)) {
         return attributeFilterToExpression(filterCriteria, attributes, operations);
     }
 
     const msg = `entityFilters is not a EntityFilterGroup or EntityFilterCriteria or EntityAttributeFilterCriteria`;
 
-    logger.error(`filterCriteriaOrFilterGroupToExpression: ${msg}`, {filterCriteria});
+    logger.error(`filterCriteriaOrFilterGroupToExpression: ${msg}`, { filterCriteria });
 
     throw new Error(`${msg}`);
 }
@@ -447,76 +370,70 @@ export function filterCriteriaOrFilterGroupOrAttributeFilterToExpression<
  * @returns The filter expression string.
  */
 export function filterGroupToExpression<
-  A extends string,
-  F extends string,
-  C extends string,
-  S extends EntitySchema<A, F, C>,
-  I extends Item<A, F, C, S, S["attributes"]>,
-  WAttributes extends WhereAttributes<A, F, C, S, I>,
-  WOperations extends WhereOperations<A, F, C, S, I>,
->(filterGroup: FilterGroup<any>, attributes: WAttributes, operations: WOperations){
-    
-    logger.info('filterGroupToExpression', {filterGroup});
+    A extends string,
+    F extends string,
+    C extends string,
+    S extends EntitySchema<A, F, C>,
+    I extends Item<A, F, C, S, S[ "attributes" ]>,
+    WAttributes extends WhereAttributes<A, F, C, S, I>,
+    WOperations extends WhereOperations<A, F, C, S, I>,
+>(filterGroup: FilterGroup<any>, attributes: WAttributes, operations: WOperations) {
 
-    const {filterId: id, filterLabel: label, and = [], or = [], not = []} = filterGroup;
-    logger.info('filterGroupToExpression', {and, or, id, label, not});
+    const { filterId: id, filterLabel: label, and = [], or = [], not = [] } = filterGroup;
+
     const filterGroupFragments: Array<string> = [];
-    
+
     const andFragments: Array<string> = [];
-    for(const thisFilter of and){
+
+    for (const thisFilter of and) {
         const thisExpression = filterCriteriaOrFilterGroupOrAttributeFilterToExpression({
-            filterCriteria: thisFilter, 
-            attributes, 
+            filterCriteria: thisFilter,
+            attributes,
             operations
         });
-        if(thisExpression.length){
+        if (thisExpression.length) {
             andFragments.push(thisExpression);
         }
     }
-    if(andFragments.length){
+
+    if (andFragments.length) {
         const andExpressions = makeParenthesesGroup(andFragments, 'and');
-        logger.info('filterGroupToExpression', {andExpressions});
-        filterGroupFragments.push( andExpressions );
+        filterGroupFragments.push(andExpressions);
     }
 
     const orFragments: Array<string> = [];
-    for(const thisFilter of or){
+    for (const thisFilter of or) {
         const thisExpression = filterCriteriaOrFilterGroupOrAttributeFilterToExpression({
-            filterCriteria: thisFilter, 
-            attributes, 
+            filterCriteria: thisFilter,
+            attributes,
             operations
         });
-        if(thisExpression.length){
+        if (thisExpression.length) {
             orFragments.push(thisExpression);
         }
     }
-    if(orFragments.length){
+    if (orFragments.length) {
         const orExpressions = makeParenthesesGroup(orFragments, 'or');
-        logger.info('filterGroupToExpression', {orExpressions});
-        filterGroupFragments.push( orExpressions );
+        filterGroupFragments.push(orExpressions);
     }
 
     const notFragments: Array<string> = [];
-    for(const thisFilter of not){
+    for (const thisFilter of not) {
         const thisExpression = filterCriteriaOrFilterGroupOrAttributeFilterToExpression({
-            filterCriteria: thisFilter, 
-            attributes, 
+            filterCriteria: thisFilter,
+            attributes,
             operations
         });
-        if(thisExpression.length){
+        if (thisExpression.length) {
             notFragments.push(thisExpression);
         }
     }
-    if(notFragments.length){
+    if (notFragments.length) {
         const notExpressions = makeParenthesesGroup(notFragments, 'AND NOT');
-        logger.info('filterGroupToExpression', {notExpressions});
-        filterGroupFragments.push( notExpressions );
+        filterGroupFragments.push(notExpressions);
     }
 
-    logger.info('filterGroupToExpression', {filterGroupFragments});
-
-    const filterExpression = makeParenthesesGroup(filterGroupFragments, 'AND');  
-    logger.info('filterGroupToExpression', {filterExpression});
+    const filterExpression = makeParenthesesGroup(filterGroupFragments, 'AND');
 
     return filterExpression;
 }
@@ -552,12 +469,10 @@ export function filterGroupToExpression<
  *  });
  * ```
  */
-export function parseUrlQueryStringParameters(queryStringParameters: {[name: string]: string | undefined}){
-    logger.info('parseUrlQueryStringParameters', {queryStringParameters});
-    
+export function parseUrlQueryStringParameters(queryStringParameters: { [ name: string ]: string | undefined }) {
+
     const queryString = stringifyQueryParams(queryStringParameters);
-    logger.info('parseUrlQueryStringParameters', {queryString});
-    
+
     const parsed = parseQueryString(queryString, {
         delimiter: /[;,&:+]/,
         allowDots: true,
@@ -566,8 +481,7 @@ export function parseUrlQueryStringParameters(queryStringParameters: {[name: str
         duplicates: 'combine',
         allowEmptyArrays: false,
     });
-    
-    logger.info('parseUrlQueryStringParameters', {parsed});
+
     return parsed;
 }
 
@@ -579,7 +493,7 @@ export const PARSE_VALUE_DELIMITERS = /(?:&|,|\+|;|:|\.)+/;
 /**
  * An array of filter keys that can have array values.
  */
-export const FILTER_KEYS_HAVING_ARRAY_VALUES = ['in', 'inList', 'nin', 'notIn', 'notInList', 'contains', 'includes', 'has', 'notContains' ,'notIncludes', 'notHas' ];
+export const FILTER_KEYS_HAVING_ARRAY_VALUES = [ 'in', 'inList', 'nin', 'notIn', 'notInList', 'contains', 'includes', 'has', 'notContains', 'notIncludes', 'notHas' ];
 
 /**
  * Converts a query string parameter into a filter object.
@@ -588,24 +502,21 @@ export const FILTER_KEYS_HAVING_ARRAY_VALUES = ['in', 'inList', 'nin', 'notIn', 
  * @returns The formatted filter object.
  */
 export function makeFilterFromQueryStringParam(paramName: string, paramValue: any) {
-    logger.info('makeFilterFromQueryStringParam', { paramName, paramValue });
 
     /**
      *  { paramName: or,  paramValue: [{ foo: { eq: '1' }}, { foo: { neq: '3' } }] }
      */
-    if (['and', 'or', 'not'].includes(paramName)) {
+    if ([ 'and', 'or', 'not' ].includes(paramName)) {
 
         let formattedGroupVal: Array<any> = [];
 
         paramValue.forEach((item: any) => {
             Object.keys(item).forEach((itemKey: string) => {
-                const itemValue = item[itemKey];
+                const itemValue = item[ itemKey ];
                 const formattedItems = makeFilterFromQueryStringParam(itemKey, itemValue);
                 formattedGroupVal = formattedGroupVal.concat(formattedItems);
             });
         });
-
-        logger.info('makeFilterFromQueryStringParam', { formattedGroupVal });
 
         return formattedGroupVal;
     }
@@ -626,26 +537,23 @@ export function makeFilterFromQueryStringParam(paramName: string, paramValue: an
         }
     */
     Object.keys(paramValue).forEach((key) => {
-        const keyVal = paramValue[key];
+        const keyVal = paramValue[ key ];
         let formattedVal = keyVal;
 
         // parse the values to the right types here
         if (FILTER_KEYS_HAVING_ARRAY_VALUES.includes(key) && typeof keyVal === 'string') {
-            logger.info('Splitting key value', { key, keyVal });
             formattedVal = keyVal.split(PARSE_VALUE_DELIMITERS);
         }
 
         formattedVal = parseValueToCorrectTypes(formattedVal);
 
-        formattedValues[key] = formattedVal;
+        formattedValues[ key ] = formattedVal;
     });
 
     const formattedItemVal = {
         attribute: paramName,
         ...formattedValues
     }
-
-    logger.info('makeFilterFromQueryStringParam', { formattedItemVal });
 
     return formattedItemVal;
 }
@@ -696,8 +604,7 @@ export function makeFilterFromQueryStringParam(paramName: string, paramValue: an
  *  });
  * ```
  */
-export function queryStringParamsToFilterGroup( queryStringParams: {[name: string]: any}){
-    logger.info('queryStringParamsToFilterGroup', {queryStringParams});
+export function queryStringParamsToFilterGroup(queryStringParams: { [ name: string ]: any }) {
 
     const formatted: FilterGroup<any> = {
         filterId: 'queryStringParamsToFilterGroup',
@@ -706,23 +613,22 @@ export function queryStringParamsToFilterGroup( queryStringParams: {[name: strin
         or: [],
     };
 
-    for(let qParamName in queryStringParams){
+    for (let qParamName in queryStringParams) {
 
         let groupName: keyof typeof formatted = 'and';
 
         // then treat it as a filter item
-        if( Object.keys(formatted).includes(qParamName) ){
+        if (Object.keys(formatted).includes(qParamName)) {
             groupName = qParamName as keyof typeof formatted;
         }
 
-        let qParamValue = queryStringParams[qParamName];
+        let qParamValue = queryStringParams[ qParamName ];
 
         const formattedQPVal = makeFilterFromQueryStringParam(qParamName, qParamValue);
 
-        formatted[groupName] = formatted[groupName]!.concat(formattedQPVal) as any;
+        formatted[ groupName ] = formatted[ groupName ]!.concat(formattedQPVal) as any;
     }
 
-    logger.info('queryStringParamsToFilterGroup', {formatted});
 
     return formatted;
 }
@@ -734,17 +640,16 @@ export function queryStringParamsToFilterGroup( queryStringParams: {[name: strin
  * @returns A filter group object.
  */
 export function makeFilterGroupForSearchKeywords<E extends EntitySchema<any, any, any>>(
-    keywords: Array<string>, 
+    keywords: Array<string>,
     attributeNames: Array<string> = []
-): FilterGroup<E>{
-    logger.info('makeFilterGroupForSearchKeywords', {keywords, attributeNames});
+): FilterGroup<E> {
 
     const filterGroup: FilterGroup<E> = {
         filterId: 'keywordSearchFilterGroup',
         or: [],
     };
 
-    attributeNames.forEach( (attributeName) => {
+    attributeNames.forEach((attributeName) => {
         filterGroup!.or!.push({
             attribute: attributeName,
             contains: keywords,
@@ -762,29 +667,28 @@ export function makeFilterGroupForSearchKeywords<E extends EntitySchema<any, any
  * @param {EntityFilterCriteria<E>} [entityFilterCriteria] - The existing entity filter criteria.
  * @returns {EntityFilterCriteria<E>} - The updated entity filter criteria.
  */
-export function addFilterGroupToEntityFilterCriteria<E extends EntitySchema<any, any, any> >(
+export function addFilterGroupToEntityFilterCriteria<E extends EntitySchema<any, any, any>>(
     filterGroup: FilterGroup<E>,
-    entityFilterCriteria?: EntityFilterCriteria<E>, 
+    entityFilterCriteria?: EntityFilterCriteria<E>,
 ): EntityFilterCriteria<E> {
-    logger.info('addFilterGroupToEntityFilterCriteria', {entityFilterCriteria, filterGroup});
 
-    const newFilterCriteria: FilterGroup<E> = isFilterGroup<E>(entityFilterCriteria) 
-    ? { ...entityFilterCriteria } 
-    : { filterId: '_addFilterGroupToEntityFilterCriteria' };
+    const newFilterCriteria: FilterGroup<E> = isFilterGroup<E>(entityFilterCriteria)
+        ? { ...entityFilterCriteria }
+        : { filterId: '_addFilterGroupToEntityFilterCriteria' };
 
     // make sure it has an `and` group
-    newFilterCriteria.and = newFilterCriteria.and || [];  
+    newFilterCriteria.and = newFilterCriteria.and || [];
 
     /** 
      * Spread out the filters to make sure we have a copy of the original filter criteria.
      * Note: A deep copy may make more sense.
      */
 
-    if( isAttributeFilter(entityFilterCriteria) || isEntityFilter(entityFilterCriteria) ){
-        newFilterCriteria.and.push({...entityFilterCriteria});
+    if (isAttributeFilter(entityFilterCriteria) || isEntityFilter(entityFilterCriteria)) {
+        newFilterCriteria.and.push({ ...entityFilterCriteria });
     }
 
-    newFilterCriteria.and.push({...filterGroup} as any);
+    newFilterCriteria.and.push({ ...filterGroup } as any);
 
     return newFilterCriteria as EntityFilterCriteria<E>;
 }

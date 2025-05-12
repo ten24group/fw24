@@ -1,5 +1,5 @@
 import { ExclusiveUnion, ValueOf, isArray, isArrayOfType, isBoolean, isEmpty, isObject, isString } from "../utils";
-import { EntitySchema, HydrateOptionForEntity, } from "./base-entity";
+import { EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, } from "./base-entity";
 
 
 export type Pagination = {
@@ -439,6 +439,23 @@ export type EntityQuery<E extends EntitySchema<any, any, any>> = {
      * Specifies the pagination settings for the query.
      */
     pagination?: Pagination,
+
+    /**
+     * Specifies the index to use for the query.
+     * If not provided, the system will automatically find a matching index based on the filters.
+     */
+    index?: {
+        /**
+         * The name of the index to use.
+         */
+        name: string,
+        
+        /**
+         * The filters to use with the index.
+         * These filters should match the key attributes of the index.
+         */
+        filters?: Record<string, any>
+    }
 }
 
 export function isComplexFilterValue<T>(payload: any): payload is ComplexFilterOperatorValue<T> {
@@ -483,3 +500,11 @@ export function isArrayOfObjectOfStringKeysAndBooleanValues(payload: any ): payl
         return isObject(item) && Object.entries(item).every(([key, value]) => isString(key) && isBoolean(value));
     });
 }
+
+export type ParsedEntityAttributePaths = {
+    [key: string]: boolean | { attributes: ParsedEntityAttributePaths };
+};
+
+export type ParsedEntityAttributePathsWithRelationMeta = {
+    [key: string]: boolean | HydrateOptionForRelation;
+};

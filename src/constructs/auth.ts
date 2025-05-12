@@ -7,11 +7,16 @@ import {
     UserPoolProps, 
     UserPoolOperation,
     VerificationEmailStyle,
-    UserPoolClientProps, 
+    UserPoolClientProps,
+    UserPoolClientOptions,
+    UserPoolIdentityProviderGoogle,
+    UserPoolIdentityProviderFacebook,
+    UserPoolDomain,
+    ProviderAttribute,
 } from "aws-cdk-lib/aws-cognito";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-import { CognitoUserPoolsAuthorizer } from "aws-cdk-lib/aws-apigateway";
-import { Role, User } from "aws-cdk-lib/aws-iam";
+import { CognitoUserPoolsAuthorizer, TokenAuthorizer } from "aws-cdk-lib/aws-apigateway";
+import { PolicyStatement, PolicyStatementProps, Role, User } from "aws-cdk-lib/aws-iam";
 import { Duration, RemovalPolicy, Stack } from "aws-cdk-lib";
 import { CognitoAuthRole } from "./cognito-auth-role";
 import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
@@ -19,6 +24,10 @@ import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { createLogger, LogDuration } from "../logging";
 import { Helper } from "../core";
+import { IConstructConfig } from "../interfaces/construct-config";
+import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
+import { VpcConstruct } from "./vpc";
+import { MailerConstruct } from "./mailer";
 
 export type TriggerType = 
     | 'CUSTOM_MESSAGE'
@@ -36,21 +45,92 @@ export type TriggerType =
     | 'CUSTOM_SMS_SENDER';
 
 /**
+ * Configuration interface for social identity providers.
+ */
+export interface ISocialProviderConfig {
+    /**
+     * OAuth client ID for the social provider
+     */
+    clientId: string;
+    /**
+     * OAuth client secret for the social provider
+     */
+    clientSecret: string;
+    /**
+     * Optional OAuth scopes to request
+     */
+    scopes?: string[];
+    /**
+     * Optional attribute mapping from provider to Cognito
+     */
+    attributeMapping?: {
+        [key: string]: string;
+    };
+}
+
+/**
+ * Configuration for the Cognito domain
+ */
+export interface IDomainConfig {
+    /**
+     * The domain prefix for Cognito hosted UI.
+     * If using a custom domain, this is ignored.
+     */
+    cognitoDomainPrefix?: string;
+    /**
+     * Configuration for a custom domain
+     */
+    customDomain?: {
+        /**
+         * The domain name to use (e.g. 'auth.example.com')
+         */
+        domainName: string;
+        /**
+         * The ARN of an existing ACM certificate for the domain
+         */
+        certificateArn: string;
+    };
+}
+
+/**
  * Configuration interface for the AuthConstruct.
  */
-export interface IAuthConstructConfig {
+export interface IAuthConstructConfig extends IConstructConfig {
     /**
      * Configuration for the User Pool.
      */
     userPool?: {
         props: UserPoolProps;
+        /**
+         * Domain configuration for the user pool.
+         * Required for social sign-in and hosted UI features.
+         */
+        domain?: IDomainConfig;
+        /**
+         * Configuration for social identity providers.
+         * When configured, OAuth flows are automatically enabled with appropriate settings.
+         */
+        socialProviders?: {
+            /**
+             * Google identity provider configuration
+             */
+            google?: ISocialProviderConfig;
+            /**
+             * Facebook identity provider configuration
+             */
+            facebook?: ISocialProviderConfig;
+        };
     };
     /**
      * Configuration for the User Pool Client.
      */
     userPoolClient?: {
-        props: any;
+        props: UserPoolClientOptions;
     };
+    /**
+     * Array of policies to attach to the default authenticated role.
+     */
+    policies?: Array<PolicyStatementProps | PolicyStatement>;
     /**
      * Array of file paths for policy files.
      */
@@ -81,6 +161,10 @@ export interface IAuthConstructConfig {
          */
         precedence?: number;
         /**
+         * Array of policies to attach to the group.
+         */
+        policies?: Array<PolicyStatementProps | PolicyStatement>;
+        /**
          * Array of file paths for policy files specific to this group.
          */
         policyFilePaths?: string[];
@@ -101,8 +185,20 @@ export interface IAuthConstructConfig {
      * Flag indicating whether to use this AuthConstruct as the default authorizer.
      */
     useAsDefaultAuthorizer?: boolean;
+    /**
+     * Configuration for a custom Lambda authorizer.
+     */
+    customAuthorizer?: {
+        type: string;
+        functionProps: LambdaFunctionProps;
+    };
+    /**
+     * How to resolve ambiguous role assignments.
+     * Defaults to "UseDefaultRole" which will use the default authenticated role when there's ambiguity.
+     * Can be set to "Deny" to deny access when there's ambiguity.
+     */
+    ambiguousRoleResolution?: 'UseDefaultRole' | 'Deny';
 }
-
 
 const AuthConstructConfigDefaults: IAuthConstructConfig = {
     userPool: {
@@ -126,7 +222,6 @@ const AuthConstructConfigDefaults: IAuthConstructConfig = {
                 tempPasswordValidity: Duration.days(3),
             },
             removalPolicy: RemovalPolicy.RETAIN,
-
         }
     },
     userPoolClient: {
@@ -136,7 +231,8 @@ const AuthConstructConfigDefaults: IAuthConstructConfig = {
                 userPassword: true,
             }
         }
-    }
+    },
+    ambiguousRoleResolution: 'Deny'
 }
 
 export class AuthConstruct implements FW24Construct {
@@ -144,7 +240,7 @@ export class AuthConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = AuthConstruct.name;
-    dependencies: string[] = [];
+    dependencies: string[] = [VpcConstruct.name, MailerConstruct.name];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;
@@ -168,7 +264,12 @@ export class AuthConstruct implements FW24Construct {
     public async construct() {
         this.logger.debug("construct");
 
-        this.mainStack = this.fw24.getStack("main");
+        this.mainStack = this.fw24.getStack(this.authConstructConfig.stackName, this.authConstructConfig.parentStackName);
+
+        if (this.authConstructConfig.customAuthorizer?.type === 'jwt') {
+            await this.createLambdaAuthorizer(this.authConstructConfig.useAsDefaultAuthorizer || false);
+            return;
+        }
 
         const userPoolConfig = {...AuthConstructConfigDefaults.userPool?.props, ...this.authConstructConfig.userPool?.props};
         const userPoolName = this.authConstructConfig.userPool?.props?.userPoolName || 'default';
@@ -184,20 +285,24 @@ export class AuthConstruct implements FW24Construct {
             ...userPoolConfig,
             userPoolName: this.createUniqueUserPoolName(userPoolName),
         });
-        // verificationMessageConfiguration
+
+        // Configure domain if specified or if social providers are enabled
+        this.configureDomain(userPool, userPoolName);
         
-        this.fw24.setConstructOutput(this, userPoolName, userPool, OutputType.USERPOOL);
+        this.fw24.setConstructOutput(this, userPoolName, userPool, OutputType.USERPOOL, 'userPoolId');
 
         const userPoolClientConfig: UserPoolClientProps = {
             userPool: userPool,
             ...AuthConstructConfigDefaults.userPoolClient?.props, 
-            ...this.authConstructConfig.userPoolClient?.props
+            ...this.authConstructConfig.userPoolClient?.props,
         };
 
-        const userPoolClient = new UserPoolClient(this.mainStack, `${userPoolName}-userPoolclient`, {
-            ...userPoolClientConfig
-        });
-        this.fw24.setConstructOutput(this, userPoolName, userPoolClient, OutputType.USERPOOLCLIENT);
+        const userPoolClient = new UserPoolClient(this.mainStack, `${userPoolName}-userPoolclient`, userPoolClientConfig);
+
+        // Configure social providers if specified
+        this.configureSocialProviders(userPool, userPoolClient, userPoolName);
+
+        this.fw24.setConstructOutput(this, userPoolName, userPoolClient, OutputType.USERPOOLCLIENT, 'userPoolClientId');
 
         // Identity pool based authentication
         if(this.authConstructConfig.groups || this.authConstructConfig.policyFilePaths || this.fw24.getConfig().defaultAuthorizationType == 'AWS_IAM') {
@@ -206,9 +311,6 @@ export class AuthConstruct implements FW24Construct {
             // user pool base authentication
             this.createUserPoolAuthorizer(userPool, userPoolName, this.authConstructConfig.useAsDefaultAuthorizer);
         }
-
-        this.fw24.setEnvironmentVariable("userPoolID", userPool.userPoolId, userPoolName);
-        this.fw24.setEnvironmentVariable("userPoolClientID", userPoolClient.userPoolClientId, userPoolName);
 
     }
 
@@ -242,7 +344,7 @@ export class AuthConstruct implements FW24Construct {
                 providerName: userPool.userPoolProviderName,
             }],
         });
-        this.fw24.setConstructOutput(this, userPoolName, identityPool, OutputType.IDENTITYPOOL);
+        this.fw24.setConstructOutput(this, userPoolName, identityPool, OutputType.IDENTITYPOOL, 'ref', 'identityPoolId');
 
         // configure identity pool role attachment
         const identityProvider = userPool.userPoolProviderName + ':' + userPoolClient.userPoolClientId;
@@ -252,14 +354,17 @@ export class AuthConstruct implements FW24Construct {
 
         // create user pool groups
         if (this.authConstructConfig.groups) {
-            this.fw24.setEnvironmentVariable('Groups', this.authConstructConfig.groups.map(group => group.name), 'cognito');
+            const groupNames = this.authConstructConfig.groups.map(group => group.name);
+            this.fw24.setEnvironmentVariable('Groups', groupNames, 'cognito');
+            this.fw24.setEnvironmentVariable('authGroups', groupNames.join(','), `userpool_${userPoolName}`);
             //this.fw24.set('AutoUserSignupGroups', this.authConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString(), userPoolName);
             for (const group of this.authConstructConfig.groups) {
                 // create a role for the group
                 const policyFilePaths = group.policyFilePaths;
                 const role = new CognitoAuthRole(this.mainStack, `${userPoolName}-${group.name}-CognitoAuthRole`, {
-                    identityPool,
-                    policyFilePaths,
+                    identityPool: identityPool,
+                    policyFilePaths: policyFilePaths,
+                    policies: group.policies,
                 }) as Role;
 
                 this.fw24.setEnvironmentVariable('Role', role, `cognito_${group.name}`);
@@ -306,7 +411,7 @@ export class AuthConstruct implements FW24Construct {
             roleAttachment.roleMappings = {
                 "userpool": {
                     type: "Token",
-                    ambiguousRoleResolution: "Deny",
+                    ambiguousRoleResolution: this.authConstructConfig.ambiguousRoleResolution || 'Deny',
                     identityProvider: identityProvider,
                 }
             }
@@ -315,8 +420,9 @@ export class AuthConstruct implements FW24Construct {
         // IAM role for authenticated users if no groups are defined
         const policyFilePaths = this.authConstructConfig.policyFilePaths;
         const authenticatedRole = new CognitoAuthRole(this.mainStack, `${userPoolName}-CognitoAuthRole`, {
-            identityPool,
-            policyFilePaths
+            identityPool: identityPool,
+            policyFilePaths: policyFilePaths,
+            policies: this.authConstructConfig.policies,
         }) as Role;
 
         // if no groups are defined all policies are added to the default authenticated role
@@ -336,7 +442,7 @@ export class AuthConstruct implements FW24Construct {
                 userPool.addTrigger( this.mapTriggerType(trigger.trigger), lambdaTrigger);
             }
         }
-        this.fw24.setEnvironmentVariable("identityPoolID", identityPool.ref, userPoolName);
+
         if(useAsDefaultAuthorizer !== false){
             this.fw24.getConfig().defaultAuthorizationType = 'AWS_IAM';
             this.logger.info("Default Authorizer set to AWS_IAM");
@@ -370,5 +476,110 @@ export class AuthConstruct implements FW24Construct {
 
     private createUniqueUserPoolName(userPoolName: string) {
         return `${this.fw24.appName}-${userPoolName}`;
+    }
+
+    private configureSocialProviders(userPool: UserPool, userPoolClient: UserPoolClient, userPoolName: string) {
+        if (!this.authConstructConfig.userPool?.socialProviders) {
+            return;
+        }
+
+        let supportedIdentityProviders = '';
+        // Configure Google provider if specified
+        if (this.authConstructConfig.userPool?.socialProviders?.google) {
+            const { clientId, clientSecret, scopes, attributeMapping } = this.authConstructConfig.userPool.socialProviders.google;
+
+            const googleProvider = new UserPoolIdentityProviderGoogle(this.mainStack, 'GoogleProvider', {
+                userPool: userPool,
+                clientId: clientId,
+                clientSecret: clientSecret,
+                scopes: scopes || ['email', 'profile', 'openid'],
+                attributeMapping: attributeMapping || {
+                    email: ProviderAttribute.GOOGLE_EMAIL,
+                }
+            });
+
+            userPoolClient.node.addDependency(googleProvider);
+            supportedIdentityProviders += 'Google,';
+        }
+
+        // Configure Facebook provider if specified
+        if (this.authConstructConfig.userPool?.socialProviders?.facebook) {
+            const { clientId, clientSecret, scopes, attributeMapping } = this.authConstructConfig.userPool.socialProviders.facebook;
+            
+            const facebookProvider = new UserPoolIdentityProviderFacebook(this.mainStack, 'FacebookProvider', {
+                userPool,
+                clientId,
+                clientSecret,
+                scopes: scopes || ['email', 'public_profile'],
+                attributeMapping: attributeMapping || {
+                    email: ProviderAttribute.FACEBOOK_EMAIL,
+                }
+            });
+
+            userPoolClient.node.addDependency(facebookProvider);
+            supportedIdentityProviders += 'Facebook,';
+        }
+
+        this.fw24.setEnvironmentVariable('supportedIdentityProviders', supportedIdentityProviders, `userpool_${userPoolName}`);
+    }
+
+    private configureDomain(userPool: UserPool, userPoolName: string): void {
+        // Skip domain configuration if not needed
+        if (!this.authConstructConfig.userPool?.domain && !this.authConstructConfig.userPool?.socialProviders) {
+            return;
+        }
+
+        const domainConfig = this.authConstructConfig.userPool?.domain;
+        let domain: UserPoolDomain;
+        let domainUrl: string;
+
+        if (domainConfig?.customDomain) {
+            // Configure custom domain
+            const { domainName, certificateArn } = domainConfig.customDomain;
+            domain = new UserPoolDomain(this.mainStack, `${userPoolName}-domain`, {
+                userPool,
+                customDomain: {
+                    domainName,
+                    certificate: Certificate.fromCertificateArn(this.mainStack, `${userPoolName}-cert`, certificateArn),
+                },
+            });
+
+            domainUrl = domainName;
+        } else {
+            // Use Cognito domain
+            const domainPrefix = domainConfig?.cognitoDomainPrefix || 
+                               `${this.fw24.appName}-${userPoolName}-${this.fw24.getConfig().account}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+            
+            domain = new UserPoolDomain(this.mainStack, `${userPoolName}-domain`, {
+                userPool,
+                cognitoDomain: {
+                    domainPrefix,
+                },
+            });
+
+            domainUrl = `${domainPrefix}.auth.${this.fw24.getConfig().region}.amazoncognito.com`;
+        }
+
+        // Set the domain URL as a environment variable
+        this.fw24.setEnvironmentVariable('authDomain', domainUrl, `userpool_${userPoolName}`);
+    }
+
+    private async createLambdaAuthorizer(useAsDefaultAuthorizer: boolean): Promise<void> {
+        if (!this.authConstructConfig.customAuthorizer) {
+            return;
+        }
+
+        const authorizerFunction = new LambdaFunction(this.mainStack, `${this.authConstructConfig.customAuthorizer.type}-CustomAuthorizer`, {
+            ...this.authConstructConfig.customAuthorizer.functionProps,
+        });
+
+        const authorizer = new TokenAuthorizer(this.mainStack, `${this.authConstructConfig.customAuthorizer.type}-TokenAuthorizer`, {
+            handler: authorizerFunction as NodejsFunction,
+            identitySource: 'method.request.header.Authorization',
+        });
+        this.fw24.setJwtAuthorizer(authorizer, useAsDefaultAuthorizer);
+
+        this.fw24.setConstructOutput(this, this.authConstructConfig.customAuthorizer.type, authorizer, OutputType.AUTHORIZER);
+        
     }
 }

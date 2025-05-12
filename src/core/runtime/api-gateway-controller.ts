@@ -2,14 +2,15 @@ import type { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda
 import type { Request, Response, Route } from "../../interfaces";
 import { Controller, IControllerConfig } from "../../decorators";
 import { Get, RouteMethods } from "../../decorators/method";
-import { createLogger } from "../../logging";
 import { getCircularReplacer } from "../../utils";
 import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule } from "../../validation";
 import { isHttpRequestValidationRule, isInputValidationRule } from "../../validation/utils";
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
+import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErrorHandler } from "../../errors/";
 
+export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 
 /**
  * Creates an API handler without defining a class
@@ -33,67 +34,67 @@ import { ResponseContext } from "./response-context";
  * @param handler - The handler function for the API handler.
  * @returns An object containing the handler function and the controller descriptor.
  */
-export function createApiHandler( 
-    options: { 
-        name: string, 
-        path?: string, 
-        method?: RouteMethods, 
-    } & IControllerConfig,
-    handler: (event: APIGatewayEvent, context: Context) => Promise<APIGatewayProxyResult>,
+export function createApiHandler(
+  options: {
+    name: string,
+    path?: string,
+    method?: RouteMethods,
+  } & IControllerConfig,
+  handler: (event: APIGatewayEvent, context: Context) => Promise<APIGatewayProxyResult>,
 ) {
 
-    const {name, path = '', method = Get, ...controllerConfig} = options;
+  const { name, path = '', method = Get, ...controllerConfig } = options;
 
-    @Controller(name, { ...controllerConfig, autoExportLambdaHandler: false })
-    class ControllerDescriptor{
-        @method(path)
-        async inlineHandler(){
-            // placeholder function only used for routing metadata
-        }
+  @Controller(name, { ...controllerConfig, autoExportLambdaHandler: false })
+  class ControllerDescriptor {
+    @method(path)
+    async inlineHandler() {
+      // placeholder function only used for routing metadata
     }
+  }
 
-    Object.defineProperty(handler, 'name', { value: 'handler' });
-    
-    return { 
-        handler, 
-        descriptor: ControllerDescriptor
-    };
+  Object.defineProperty(handler, 'name', { value: 'handler' });
+
+  return {
+    handler,
+    descriptor: ControllerDescriptor
+  };
 }
 
 /**
  * Base controller class for handling API Gateway events.
  */
 abstract class APIController extends AbstractLambdaHandler {
-  readonly logger = createLogger(APIController.name);
+
   protected validator: IValidator = DefaultValidator;
 
   abstract initialize(event: APIGatewayEvent, context: Context): Promise<void>;
 
   protected async getOverriddenHttpRequestValidationErrorMessages() {
-      return Promise.resolve( new Map<string, string>());
+    return Promise.resolve(new Map<string, string>());
   }
 
-  async validate( requestContext: Request, validations: InputValidationRule | HttpRequestValidations ){
+  async validate(requestContext: Request, validations: InputValidationRule | HttpRequestValidations) {
 
     let validationRules: HttpRequestValidations = validations;
-    if(isInputValidationRule(validations)){
-      if( ['GET', 'DELETE'].includes( requestContext.httpMethod.toUpperCase()) ){
+    if (isInputValidationRule(validations)) {
+      if ([ 'GET', 'DELETE' ].includes(requestContext.httpMethod.toUpperCase())) {
 
-          validationRules = { query: validations }
+        validationRules = { query: validations }
 
-      } else if( ['POST', 'PUT', 'PATCH'].includes( requestContext.httpMethod.toUpperCase()) ){
+      } else if ([ 'POST', 'PUT', 'PATCH' ].includes(requestContext.httpMethod.toUpperCase())) {
 
         validationRules = { body: validations }
       }
     }
-    
-    if(!isHttpRequestValidationRule(validationRules)){
-      throw (new Error("Invalid http-request validation rule"));
+
+    if (!isHttpRequestValidationRule(validationRules)) {
+      throw new InvalidHttpRequestValidationRuleError(validationRules);
     }
 
     return this.validator.validateHttpRequest({
-      requestContext, 
-      validations: validationRules, 
+      requestContext,
+      validations: validationRules,
       collectErrors: true,
       verboseErrors: requestContext.debugMode,
       overriddenErrorMessages: await this.getOverriddenHttpRequestValidationErrorMessages()
@@ -120,23 +121,17 @@ abstract class APIController extends AbstractLambdaHandler {
       // Find the matching route for the received request
       const route = this.findMatchingRoute(requestContext);
 
-      if(route?.validations){
-        this.logger.info("Validation rules found for route:", route);
-        
+      if (route?.validations) {
+        this.logger.debug("Validation rules found for route:", route);
+
         const validationResult = await this.validate(requestContext, route.validations);
-        
-        if(!validationResult.pass){
-          return this.handleResponse({
-            statusCode: 400,
-            body: JSON.stringify({
-              message: 'Validation failed!!!',
-              errors: validationResult.errors 
-            }),
-          });
+
+        if (!validationResult.pass) {
+          throw new ValidationFailedError(validationResult.errors);
         }
-        
+
       } else {
-        this.logger.info("No validation rules found for route:", route);
+        this.logger.debug("No validation rules found for route:", route);
       }
 
       const routeFunction = this.getRouteFunction(route);
@@ -159,7 +154,7 @@ abstract class APIController extends AbstractLambdaHandler {
     } catch (err) {
       // If an error occurs, log it and handle with the Exception method
       this.logger.error('LambdaHandler error: ', err);
-      return this.handleException(requestContext, err as Error);
+      return this.handleException(requestContext, err as Error, responseContext);
     }
 
     this.logger.debug("LambdaHandler Default Response:", JSON.stringify(responseContext, null, 2));
@@ -174,10 +169,15 @@ abstract class APIController extends AbstractLambdaHandler {
    */
   private findMatchingRoute(requestData: Request): Route | null {
     let controller: any = this;
-    var resourceWithoutRoot = '/' + requestData.resource.split('/').slice(2).join('/');
+    // find the path parts after the controller name
+    const parts = requestData.resource.split('/').filter(Boolean);
+    const controllerIndex = parts.findIndex((part: string) => part === controller.controllerName);
+    var resourceWithoutRoot = controllerIndex >= 0 && controllerIndex < parts.length - 1 
+      ? '/' + parts.slice(controllerIndex + 1).join('/')
+      : '/';
     this.logger.debug('resourceWithoutRoot: ', resourceWithoutRoot);
-    this.logger.debug(`${requestData.httpMethod}|${resourceWithoutRoot}`,controller.routes);
-    return controller.routes[`${requestData.httpMethod}|${resourceWithoutRoot}`] || null;
+    this.logger.debug(`${requestData.httpMethod}|${resourceWithoutRoot}`, controller.routes);
+    return controller.routes[ `${requestData.httpMethod}|${resourceWithoutRoot}` ] || null;
   }
 
   /**
@@ -191,7 +191,7 @@ abstract class APIController extends AbstractLambdaHandler {
     }
 
     //@ts-ignore
-    const routeFunction = this[route.functionName];
+    const routeFunction = this[ route.functionName ];
 
     return typeof routeFunction === "function" ? routeFunction : this.handleNotFound.bind(this);
   }
@@ -201,11 +201,19 @@ abstract class APIController extends AbstractLambdaHandler {
    * @param _req - The request object.
    * @returns The response object with a 404 status code.
    */
-  private handleNotFound(_req: Request): APIGatewayProxyResult {
+  protected handleNotFound(_req: Request): APIGatewayProxyResult {
     return this.handleResponse({
       statusCode: 404,
-      body: JSON.stringify({ message: "Not Found" }),
+      body: JSON.stringify({ message: "No Route Found!" }),
     });
+  }
+
+  protected errorHandler?: ControllerErrorHandler;
+  protected getErrorHandler(): ControllerErrorHandler {
+    if (!this.errorHandler) {
+      this.errorHandler = createErrorHandler();
+    }
+    return this.errorHandler;
   }
 
   /**
@@ -214,20 +222,12 @@ abstract class APIController extends AbstractLambdaHandler {
    * @param err - The error object.
    * @returns The response object with a 500 status code.
    */
-  private handleException(req: Request, err: Error): APIGatewayProxyResult {
-    
-    const result: any = {
-      message: err.message,
-      ...(req.debugMode && { stack: err.stack, req })
-    }
-    
-    return this.handleResponse({
-      statusCode: 500,
-      body: JSON.stringify(result, getCircularReplacer()),
-    });
+  protected handleException(req: Request, err: Error, res: Response): APIGatewayProxyResult {
+    const errorResponse = this.getErrorHandler()(err, req, res);
+    return this.handleResponse(errorResponse);
   }
 
-  private handleResponse(res: APIGatewayProxyResult): APIGatewayProxyResult {
+  protected handleResponse(res: APIGatewayProxyResult): APIGatewayProxyResult {
     res.headers = res.headers || {};
 
     /**
@@ -239,9 +239,9 @@ abstract class APIController extends AbstractLambdaHandler {
      * domain-name can be * for any domain name.
      * 
      */
-    
+
     // TODO: control the header using some config
-    res.headers["Access-Control-Allow-Origin"] = res.headers["Access-Control-Allow-Origin"] ||  "*";
+    res.headers[ "Access-Control-Allow-Origin" ] = res.headers[ "Access-Control-Allow-Origin" ] || "*";
 
     return res;
   }

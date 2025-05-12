@@ -6,15 +6,17 @@ import { readdirSync, readFileSync, existsSync } from "fs";
 import { resolve, join } from "path";
 
 import { Helper } from "../core/helper";
-import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
+import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import { QueueLambda } from "./queue-lambda";
 import { createLogger, LogDuration } from "../logging";
+import { IConstructConfig } from "../interfaces/construct-config";
+import { VpcConstruct } from "./vpc";
 
 /**
  * Represents the configuration for the Mailer construct.
  */
-export interface IMailerConstructConfig {
+export interface IMailerConstructConfig extends IConstructConfig {
     /**
      * The domain for the mailer.
      */
@@ -44,7 +46,7 @@ export class MailerConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = MailerConstruct.name;
-    dependencies: string[] = [];
+    dependencies: string[] = [VpcConstruct.name];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;
@@ -80,7 +82,7 @@ export class MailerConstruct implements FW24Construct {
     @LogDuration()
     public async construct() {
         // make the main stack available to the class
-        this.mainStack = this.fw24.getStack("main");
+        this.mainStack = this.fw24.getStack(this.mailerConstructConfig.stackName, this.mailerConstructConfig.parentStackName);
 
         // create identity
         if(this.mailerConstructConfig.domain !== undefined && this.mailerConstructConfig.domain !== "") {
@@ -127,11 +129,8 @@ export class MailerConstruct implements FW24Construct {
         // register the templates
         this.registerTemplates(this.mailerConstructConfig.templatesDirectory);
 
-        // print queue url
-        new CfnOutput(this.mainStack, "mail-queue-url", {
-            value: queue.queueUrl,
-            exportName: `${this.fw24.appName}-mail-queue`,
-        });
+        // Set queue URL as construct output for cross-stack reference
+        this.fw24.setConstructOutput(this, 'emailQueue', queue, OutputType.QUEUE, 'queueName');
     }
 
     /**

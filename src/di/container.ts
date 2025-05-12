@@ -8,6 +8,7 @@ import {
     BaseProviderOptions,
     ClassConstructor,
     ClassProviderOptions,
+    ComplexDependencyIdentifier,
     ConfigProviderOptions,
     DepIdentifier,
     FactoryProviderOptions,
@@ -23,20 +24,51 @@ import {
 import {
     isAliasProviderOptions,
     isClassProviderOptions,
+    isComplexDependencyIdentifier,
     isConfigProviderOptions,
     isFactoryProviderOptions,
     isValueProviderOptions,
 } from './../utils/di';
 
-import { applyMiddlewares, applyMiddlewaresAsync, filterAndSortProviders, flattenConfig, getPathValue, hasConstructor, makeDIToken, matchesPattern, setPathValue, stripDITokenNamespace, validateProviderOptions } from './utils';
+import {
+    applyMiddlewares,
+    applyMiddlewaresAsync,
+    filterAndSortProviders,
+    flattenConfig,
+    getPathValue,
+    hasConstructor,
+    makeDIToken,
+    matchesPattern,
+    setPathValue,
+    stripDITokenNamespace,
+    validateProviderOptions
+} from './utils';
 
-import { getConstructorDependenciesMetadata, getModuleMetadata, getOnInitHookMetadata, getPropertyDependenciesMetadata, } from './metadata';
+import {
+    getConstructorDependenciesMetadata,
+    getModuleMetadata,
+    getOnInitHookMetadata,
+    getPropertyDependenciesMetadata,
+} from './metadata';
 
 import { DI_TOKENS } from '../const';
 
+import {
+    CircularDependencyError,
+    InitializationMethodError,
+    InitializationMethodTypeError,
+    InvalidDependencyCriteriaError,
+    ModuleMetadataError,
+    NoEntitySchemaProviderError,
+    NoEntityServiceProviderError,
+    NoProviderFoundError,
+    NothingToExportError,
+    ProviderConfigurationError
+} from './errors';
+
 export class DIContainer implements IDIContainer {
 
-    static readonly DIMetadataStore = new MetadataManager({namespace: 'fw24:di'});
+    static readonly DIMetadataStore = new MetadataManager({ namespace: 'fw24:di' });
 
     public readonly containerId: string;
     private readonly logger: ILogger;
@@ -46,11 +78,11 @@ export class DIContainer implements IDIContainer {
     private _resolving = new Map<string, any>();
     protected get resolving(): Map<string, any> {
 
-        if(this.proxyFor){
+        if (this.proxyFor) {
             return this.proxyFor.resolving;
         }
 
-        if(!this._resolving){
+        if (!this._resolving) {
             this._resolving = new Map<string, any>();
         }
         return this._resolving;
@@ -59,11 +91,11 @@ export class DIContainer implements IDIContainer {
     private _cache = new Map<string, any>();
     protected get cache(): Map<string, any> {
 
-        if(this.proxyFor){
+        if (this.proxyFor) {
             return this.proxyFor.cache;
         }
 
-        if(!this._cache){
+        if (!this._cache) {
             this._cache = new Map<string, any>();
         }
         return this._cache;
@@ -72,11 +104,11 @@ export class DIContainer implements IDIContainer {
     private _providers: Map<string, InternalProviderOptions[]> | undefined;
     get providers(): Map<string, InternalProviderOptions[]> {
 
-        if(this.proxyFor){
+        if (this.proxyFor) {
             return this.proxyFor.providers;
         }
 
-        if(!this._providers){
+        if (!this._providers) {
             this._providers = new Map<string, InternalProviderOptions[]>();
         }
         return this._providers
@@ -85,11 +117,11 @@ export class DIContainer implements IDIContainer {
     private _exports: Map<string, InternalProviderOptions[]> | undefined;
     get exports(): Map<string, InternalProviderOptions[]> {
 
-        if(this.proxyFor){
+        if (this.proxyFor) {
             return this.proxyFor.exports;
         }
 
-        if(!this._exports){
+        if (!this._exports) {
             this._exports = new Map<string, InternalProviderOptions[]>();
         }
         return this._exports
@@ -105,11 +137,11 @@ export class DIContainer implements IDIContainer {
     private _childContainers: Set<DIContainer> | undefined;
     get childContainers(): Set<DIContainer> {
 
-        if(this.proxyFor){
+        if (this.proxyFor) {
             return this.proxyFor.childContainers;
         }
 
-        if(!this._childContainers){
+        if (!this._childContainers) {
             this._childContainers = new Set<DIContainer>();
         }
         return this._childContainers
@@ -118,11 +150,11 @@ export class DIContainer implements IDIContainer {
     private _proxies: Set<DIContainer> | undefined;
     get proxies(): Set<DIContainer> {
 
-        if(this.proxyFor){
+        if (this.proxyFor) {
             return this.proxyFor.proxies;
         }
 
-        if(!this._proxies){
+        if (!this._proxies) {
             this._proxies = new Set<DIContainer>();
         }
         return this._proxies
@@ -135,7 +167,7 @@ export class DIContainer implements IDIContainer {
         }
         return this._rootInstance;
     }
-    
+
     constructor(private parentContainer?: DIContainer, identifier: string = 'ROOT') {
         // to ensure destructuring works correctly
         this.Injectable = this.Injectable.bind(this);
@@ -144,9 +176,9 @@ export class DIContainer implements IDIContainer {
     }
 
     Injectable(options: PartialBy<BaseProviderOptions, 'provide'> = {}) {
-        return Injectable({...options, providedIn: this});
+        return Injectable({ ...options, providedIn: this });
     }
-    
+
     createChildContainer(identifier: string): DIContainer {
         const child = new DIContainer(this, identifier);
         this.childContainers.add(child);
@@ -162,19 +194,19 @@ export class DIContainer implements IDIContainer {
         const proxyContainerId = this.createChildContainerProxyIdentifier(parentContainer);
 
         // make sure to remove old proxy from the importing module if exists
-        if(parentContainer.hasChildContainerById(proxyContainerId)){
-            
+        if (parentContainer.hasChildContainerById(proxyContainerId)) {
+
             this.logger.warn(`Found old proxy container: [${proxyContainerId}] in parent: [${parentContainer.containerId}]; replacing it`);
-            
+
             const oldProxyContainer = parentContainer.getChildContainerById(proxyContainerId);
-            
+
             parentContainer.removeChildContainerById(proxyContainerId);
 
             this.proxies.delete(oldProxyContainer);
         }
-        
+
         const newProxyContainer = parentContainer.createChildContainer(proxyContainerId);
-        
+
         newProxyContainer.proxyFor = this;
 
         this.proxies.add(newProxyContainer);
@@ -184,13 +216,13 @@ export class DIContainer implements IDIContainer {
 
     hasChildContainerById(identifier: string): boolean {
         let found = Array.from(this.childContainers).some(
-            element => element.containerId.startsWith(identifier) 
+            element => element.containerId.startsWith(identifier)
         );
 
-        if(!found && this.childContainers.size > 0){
-            found = Array.from(this.childContainers).some(cc => cc.hasChildContainerById(identifier) );
+        if (!found && this.childContainers.size > 0) {
+            found = Array.from(this.childContainers).some(cc => cc.hasChildContainerById(identifier));
         }
-        
+
         return found;
     }
 
@@ -216,22 +248,22 @@ export class DIContainer implements IDIContainer {
         return foundContainer;
     }
 
-    module(target: ClassConstructor){
+    module(target: ClassConstructor) {
 
         const moduleMeta = getModuleMetadata(target);
 
-        if(!moduleMeta){
-            throw new Error(`Module ${target.name} does not have any metadata, make sure it's decorated with @DIModule(). DIContainer[${this.containerId}]`);
+        if (!moduleMeta) {
+            throw new ModuleMetadataError(target.name, this.containerId);
         }
 
         const { imports = [], exports = [], providers = [], identifier } = moduleMeta;
 
         // if there's no container in the module metadata, create the main container for the module
-        if(!moduleMeta.container){
+        if (!moduleMeta.hasContainer()) {
 
-            const moduleContainer = new DIContainer(undefined, identifier); 
-            this.logger.info(`Module ${moduleMeta.identifier} metadata does not have a container, assigning one.`, { id: moduleContainer.containerId });
-            
+            const moduleContainer = new DIContainer(undefined, identifier);
+            // this.logger.info(`Module ${moduleMeta.identifier} metadata does not have a container, assigning one.`, { id: moduleContainer.containerId });
+
             moduleMeta.setContainer(moduleContainer);
 
             // make sure all the module providers are loaded into the module's container's providers
@@ -239,20 +271,20 @@ export class DIContainer implements IDIContainer {
                 moduleContainer.register(provider);
             }
             // and make sure all the module exports are also loaded into the module's container's providers
-            for( const importedModule of imports) {
+            for (const importedModule of imports) {
                 moduleContainer.module(importedModule);
             }
-    
+
             // load all the export from this module into the current container
-            for( const exportedDep of exports) {
+            for (const exportedDep of exports) {
                 moduleContainer.exportProvidersFor(exportedDep);
             }
 
             // TODO: module lifecycle hooks
         }
-        
+
         const moduleProxyContainer = (moduleMeta.container as DIContainer).addProxyContainerIn(this);
-        
+
         return {
             identifier,
             container: moduleProxyContainer
@@ -270,16 +302,16 @@ export class DIContainer implements IDIContainer {
             .flatMap(child => child.exports.get(token) || []);
 
         // Combine available providers and child exported providers
-        const allProviders = [...availableProviders, ...childExportedProviders];
+        const allProviders = [ ...availableProviders, ...childExportedProviders ];
 
         // Nested function to map and export providers
         const mapAndExportProviders = (providers: InternalProviderOptions[], targetToken: string) => {
-            
+
             foundProvidersForToken = true;
 
             const exported = providers.map(provider => {
                 const { _container, _provider, _id } = provider;
-                const { condition, provide, priority, override, singleton, tags, type } = _provider;
+                const { condition, provide, priority, override, singleton, tags, type, forEntity } = _provider;
 
                 return {
                     _provider: {
@@ -291,6 +323,7 @@ export class DIContainer implements IDIContainer {
                         singleton,
                         tags,
                         type,
+                        forEntity,
                     },
                     _id,
                     _container: this
@@ -299,23 +332,23 @@ export class DIContainer implements IDIContainer {
 
             // Merge or set these exported providers under their respective keys
             const existingExports = this.exports.get(targetToken) || [];
-            this.exports.set(targetToken, [...existingExports, ...exported]);
+            this.exports.set(targetToken, [ ...existingExports, ...exported ]);
         };
 
-        if(allProviders.length > 0){
+        if (allProviders.length > 0) {
             // Export the standard and config providers directly matching the token
             mapAndExportProviders(allProviders, token);
         }
 
         // Find all config providers whose keys start with the token and export them
-        for (const [configKey, configProviders] of this.providers.entries()) {
+        for (const [ configKey, configProviders ] of this.providers.entries()) {
             if (configKey.startsWith(token) && configProviders.some(p => p._provider.type === 'config')) {
                 mapAndExportProviders(configProviders, configKey);
             }
         }
-        
-        if(!foundProvidersForToken){
-            throw new Error(`Nothing To export; No providers found for ${token}. DIContainer[${this.containerId}]`);
+
+        if (!foundProvidersForToken) {
+            throw new NothingToExportError(token, this.containerId);
         }
     }
 
@@ -357,11 +390,11 @@ export class DIContainer implements IDIContainer {
 
     registerConfigProvider(options: ConfigProviderOptions) {
         const { useConfig, provide: provide, ...rest } = options;
-        
+
         let provideToken = stripDITokenNamespace(this.createToken(provide));
         const flattenedEntries = flattenConfig(useConfig, provideToken);
 
-        for (const [configPath, value] of flattenedEntries) {            
+        for (const [ configPath, value ] of flattenedEntries) {
             this.registerProvider({
                 _provider: {
                     ...rest,
@@ -380,25 +413,32 @@ export class DIContainer implements IDIContainer {
 
         const tokenProviders = this.providers.get(token) || [];
 
-        // if token providers already has a provider with same priority and tags, log warning and replace it
-        const existingProvider = tokenProviders.find(({_provider: existingProvider}) => {
+        const areBothValuesEqual = <T>(value1: T | null | undefined, value2: T | null | undefined): boolean => {
+            return (value1 == null && value2 == null) || (value1 !== null && value1 !== undefined && value1 === value2);
+        }
+
+        const areBothArraysEqual = <T>(arr1: T[] | null | undefined, arr2: T[] | null | undefined): boolean => {
+            if (arr1 == null && arr2 == null) return true;
+            if (arr1 == null || arr2 == null || arr1.length !== arr2.length) return false;
+            return [ ...arr1 ].sort().every((value, index) => value === arr2.slice().sort()[ index ]);
+        }
+
+        // if token providers already has a provider with same priority, type, forEntity and tags, log warning and replace it
+        const existingProvider = tokenProviders.find(({ _provider: existingProvider }) => {
             return existingProvider.priority === currentProvider.priority
-            && (
-                // maybe be make it configurable to compare tags...
-                (!existingProvider.tags?.length && !currentProvider.tags?.length) 
-                || 
-                (
-                    // compare array items are the same
-                    existingProvider.tags?.every((tag, index) => tag == currentProvider.tags?.[index])
-                )
-            )
+                && areBothValuesEqual(existingProvider.type, currentProvider.type)
+                && areBothArraysEqual(existingProvider.tags, currentProvider.tags) // ! maybe be make it configurable to compare tags...
+                && areBothValuesEqual(existingProvider.forEntity, currentProvider.forEntity)
         });
 
-        if(existingProvider){
-            this.logger.warn(`Provider for ${token} with same priority and tags already exists, replacing it.`);
-            const index = tokenProviders.indexOf(existingProvider);
+        if (existingProvider) {
+            // const index = tokenProviders.indexOf(existingProvider);
             // delete the existing provider
-            tokenProviders.splice(index, 1);
+            // tokenProviders.splice(index, 1);
+
+            // DO NOT replace the existing provider, just log a warning
+            // this.logger.warn(`Provider for ${token} with same priority, type, forEntity and tags already exists, replacing it. | Options[${JSON.stringify(options)}]`);
+            return;
         }
 
         const internalProviderOptions = {
@@ -479,7 +519,7 @@ export class DIContainer implements IDIContainer {
 
     // Resolve values for all matching paths using the best provider from the hierarchy based on criteria
     private resolveConfigPaths(
-        paths: Set<string>, 
+        paths: Set<string>,
         criteria?: {
             priority?: PriorityCriteria;
             tags?: string[];
@@ -495,17 +535,17 @@ export class DIContainer implements IDIContainer {
             }
 
             // Assume the highest-priority provider's value is the desired one
-            const bestProvider = providers[0]._provider as ConfigProviderOptions<any>;
-            return bestProvider.useConfig 
+            const bestProvider = providers[ 0 ]._provider as ConfigProviderOptions<any>;
+            return bestProvider.useConfig
         }
 
         paths.forEach((path) => {
             const bestProviders = this.collectBestProvidersFor<ConfigProviderOptions>({
-                ...criteria, 
-                token: path, 
+                ...criteria,
+                token: path,
                 type: 'config'
             });
-            
+
             const resolvedValue = reduceProviders(bestProviders);
 
             resolvedValues.set(path, resolvedValue);
@@ -519,41 +559,48 @@ export class DIContainer implements IDIContainer {
         criteria: {
             token?: string,
             tags?: string[],
-            type?: ProviderOptions['type'], 
+            type?: ProviderOptions[ 'type' ],
             priority?: PriorityCriteria,
+            forEntity?: ProviderOptions[ 'forEntity' ],
             allProvidersFromChildContainers?: boolean
         }
     ): InternalProviderOptions<T>[] {
-        const bestProviders =  new Map<string, InternalProviderOptions<T>>();
+        const bestProviders = new Map<string, InternalProviderOptions<T>>();
 
         let current: DIContainer | undefined = this;
         let allProvidersFromChildContainers = criteria.allProvidersFromChildContainers || false;
 
         const visitedContainers = new Set<DIContainer>();
 
+        const criteriaString = JSON.stringify(criteria);
+
         while (current) {
             if (visitedContainers.has(current)) {
-                throw new Error('Circular reference detected in container hierarchy. DIContainer[${this.containerId}]');
+                throw new Error(`Circular reference detected in container hierarchy. DIContainer[${this.containerId}] | Criteria: [${criteriaString}]`);
             }
             visitedContainers.add(current);
 
-            let pathProviders = criteria.token 
-                ? current.providers.get(criteria.token) || [] 
+            let pathProviders = criteria.token
+                ? current.providers.get(criteria.token) || []
                 : Array.from(current.providers.values()).flat();
 
             if (criteria?.type) {
                 pathProviders = pathProviders.filter(p => p._provider.type === criteria.type);
             }
 
-            pathProviders.forEach(provider => { 
+            if (criteria?.forEntity) {
+                pathProviders = pathProviders.filter(p => p._provider.forEntity === criteria.forEntity)
+            }
 
-                if(bestProviders.has(provider._id)){
-                    this.logger.info(`Provider with id ${provider._id} already exists in best-providers, skipping it.`);
+            pathProviders.forEach(provider => {
+
+                if (bestProviders.has(provider._id)) {
+                    // this.logger.info(`Provider with id ${provider._id} already exists in best-providers, skipping it. | Criteria: [${criteriaString}]`);
                     return;
                 }
 
                 bestProviders.set(provider._id, {
-                    ...provider, 
+                    ...provider,
                     // when it's a proxy container make sure the provider has it's reference for resolving it later,
                     // that way the provider is resolved using the right hierarchy
                     _container: current as DIContainer
@@ -564,7 +611,7 @@ export class DIContainer implements IDIContainer {
             current.childContainers.forEach(child => {
 
                 // as we're moving from child to parent, make sure to skip over the visited containers
-                if(visitedContainers.has(child)){
+                if (visitedContainers.has(child)) {
                     return;
                 } else {
                     visitedContainers.add(child);
@@ -572,24 +619,28 @@ export class DIContainer implements IDIContainer {
 
                 const childProviders = allProvidersFromChildContainers ? child.providers : child.exports;
 
-                let childExportedProviders = criteria.token ? (childProviders.get(criteria.token) || []) 
+                let childExportedProviders = criteria.token ? (childProviders.get(criteria.token) || [])
                     : Array.from(childProviders.values()).flat();
 
                 if (criteria?.type) {
                     childExportedProviders = childExportedProviders.filter(p => p._provider.type === criteria.type);
                 }
 
+                if (criteria?.forEntity) {
+                    childExportedProviders = childExportedProviders.filter(p => p._provider.forEntity === criteria.forEntity)
+                }
+
                 childExportedProviders.forEach(provider => {
 
-                    if(bestProviders.has(provider._id)){
-                        this.logger.info(`Provider with id ${provider._id} already exists in best-providers, skipping exported-provider from child container: ${child.containerId}`);
+                    if (bestProviders.has(provider._id)) {
+                        // this.logger.info(`Provider with id ${provider._id} already exists in best-providers, skipping exported-provider from child container: ${child.containerId} | Criteria: [${criteriaString}]`);
                         return;
                     }
 
-                    bestProviders.set(provider._id, { 
-                        ...provider, 
+                    bestProviders.set(provider._id, {
+                        ...provider,
                         // when it's a proxy container make sure the provider has it's reference for resolving it later,
-                        _container: child 
+                        _container: child
                     });
 
                 });
@@ -606,8 +657,10 @@ export class DIContainer implements IDIContainer {
     resolve<T, Async extends boolean = false>(
         dependencyToken: DepIdentifier<T>,
         criteria?: {
-            priority?: PriorityCriteria;
             tags?: string[];
+            type?: ProviderOptions[ 'type' ],
+            priority?: PriorityCriteria;
+            forEntity?: ProviderOptions[ 'forEntity' ],
             allProvidersFromChildContainers?: boolean
         },
         path: Set<Token> = new Set(),
@@ -615,22 +668,24 @@ export class DIContainer implements IDIContainer {
     ): Async extends true ? Promise<T> : T {
 
         const token = this.createToken(dependencyToken);
+        criteria = criteria ?? {};
 
         // if token is `DIContainer` return the current container
-        if( DI_TOKENS.DI_CONTAINER === token || this.createToken(DIContainer) === token){
-            return (async ? Promise.resolve(this) : this ) as Async extends true ? Promise<T> : T;
+        if (DI_TOKENS.DI_CONTAINER === token || this.createToken(DIContainer) === token) {
+            return (async ? Promise.resolve(this) : this) as Async extends true ? Promise<T> : T;
         }
-        
+
         const bestProviders = this.collectBestProvidersFor<T>({
             ...criteria,
             token,
         });
-        
+
         if (bestProviders.length === 0) {
-            throw new Error(`No provider found for ${token}. DIContainer[${this.containerId}]`);
+            this.logProviders(true);
+            throw new NoProviderFoundError(token, this, criteria);
         }
-        const options = bestProviders[0];
-        
+        const options = bestProviders[ 0 ];
+
         return this.resolveProviderValue<T, Async>(options, path, async);
     }
 
@@ -642,10 +697,10 @@ export class DIContainer implements IDIContainer {
 
         const { _id, _container, _provider: provider } = options;
 
-        if ( _container !== this ){
+        if (_container !== this) {
             return (_container as DIContainer).resolveProviderValue(options, path, async);
         }
-        
+
         if (provider.singleton && this.cache.has(_id)) {
             return this.cache.get(_id);
         }
@@ -655,12 +710,12 @@ export class DIContainer implements IDIContainer {
         }
 
         if (path.has(_id)) {
-            throw new Error(`Circular dependency detected: ${Array.from(path).join(' -> ')} -> ${_id}. DIContainer[${this.containerId}]`);
+            throw new CircularDependencyError(Array.from(path), this.containerId);
         }
 
         path.add(_id);
 
-        if(async){
+        if (async) {
             return applyMiddlewaresAsync(
                 this.asyncMiddlewares,
                 () => this.createAndCacheInstanceAsync<T>(options, path)
@@ -673,7 +728,7 @@ export class DIContainer implements IDIContainer {
         ) as Async extends true ? Promise<T> : T;
     }
 
-    private createAndCacheInstance<T>(options: InternalProviderOptions<T>, path: Set<Token> ): T {
+    private createAndCacheInstance<T>(options: InternalProviderOptions<T>, path: Set<Token>): T {
 
         const { _id, _provider: provider } = options;
 
@@ -693,46 +748,46 @@ export class DIContainer implements IDIContainer {
     }
 
     private createInstance<T, Async extends boolean = false>(
-        options: InternalProviderOptions<T>, 
-        path: Set<Token>, 
+        options: InternalProviderOptions<T>,
+        path: Set<Token>,
         async: Async = false as Async
     ): Async extends true ? Promise<T> : T {
 
         const { _id, _provider: provider } = options;
 
-        if(isAliasProviderOptions(provider)){
+        if (isAliasProviderOptions(provider)) {
             return this.resolve(provider.useExisting, {}, path, async);
-        } 
+        }
 
         if (isClassProviderOptions(provider)) {
 
-            return ( 
-                async ? this.createClassInstance<T, true>(options, path, true) 
-                : this.createClassInstance(options, path)
+            return (
+                async ? this.createClassInstance<T, true>(options, path, true)
+                    : this.createClassInstance(options, path)
             ) as Async extends true ? Promise<T> : T;
-        } 
-        
+        }
+
         if (isFactoryProviderOptions(provider)) {
 
-            return ( 
-                async ? this.createFactoryInstanceAsync<T>(provider, path) 
-                : this.createFactoryInstance(provider, path)
+            return (
+                async ? this.createFactoryInstanceAsync<T>(provider, path)
+                    : this.createFactoryInstance(provider, path)
             ) as Async extends true ? Promise<T> : T;
-        } 
-        
+        }
+
         if (isValueProviderOptions(provider)) {
             return provider.useValue as Async extends true ? Promise<T> : T;
-        } 
-        
-        if (isConfigProviderOptions(provider)){
-            return provider.useConfig as Async extends true ? Promise<T> : T;
-        } 
+        }
 
-        throw new Error(`Provider for '${_id}' is not correctly configured. DIContainer[${this.containerId}]`);
+        if (isConfigProviderOptions(provider)) {
+            return provider.useConfig as Async extends true ? Promise<T> : T;
+        }
+
+        throw new ProviderConfigurationError(_id, this.containerId);
     }
 
     private createClassInstance<T, Async extends boolean = false>(
-        options: InternalProviderOptions<T>, 
+        options: InternalProviderOptions<T>,
         path: Set<Token>,
         async: Async = false as Async
     ): Async extends true ? Promise<T> : T {
@@ -750,8 +805,8 @@ export class DIContainer implements IDIContainer {
         this.resolving.set(_id, instancePlaceholder);
 
 
-        if(async){
-            this.resolveDependenciesAsync(useClass, path) .then(dependencies => {
+        if (async) {
+            this.resolveDependenciesAsync(useClass, path).then(dependencies => {
                 const actualInstance = new useClass(...dependencies);
                 Object.assign(instancePlaceholder as any, actualInstance);
                 this.resolving.set(_id, actualInstance);
@@ -768,7 +823,7 @@ export class DIContainer implements IDIContainer {
     }
 
     private createFactoryInstance<T>(options: FactoryProviderOptions<T>, path: Set<Token>): T {
-        const dependencies = (options.deps || []).map(dep => this.resolve(dep, {}, path));
+        const dependencies = (options.deps || []).map(dep => this.resolveDependency(dep, path));
         return options.useFactory(...dependencies);
     }
 
@@ -782,23 +837,56 @@ export class DIContainer implements IDIContainer {
         }
     }
 
+    private resolveDependency<T, Async extends boolean = false>(
+        dep: DepIdentifier | ComplexDependencyIdentifier,
+        path: Set<Token>,
+        async: Async = false as Async
+    ): Async extends true ? Promise<T> : T {
+
+        let normalizedDep = dep;
+
+        if (!isComplexDependencyIdentifier(normalizedDep)) {
+            normalizedDep = { token: normalizedDep } as ComplexDependencyIdentifier;
+        }
+
+        try {
+
+            if (normalizedDep.isConfig) {
+                return this.resolveConfig(normalizedDep.token as string, normalizedDep) as Async extends true ? Promise<T> : T;
+            }
+
+            if (normalizedDep.forEntity) {
+                if (normalizedDep.type == 'schema') {
+                    return this.resolveEntitySchema(normalizedDep.forEntity, normalizedDep, async)
+                }
+                if (normalizedDep.type == 'service') {
+                    return this.resolveEntityService(normalizedDep.forEntity, normalizedDep, async)
+                }
+                throw new InvalidDependencyCriteriaError(JSON.stringify(normalizedDep));
+            }
+
+            return this.resolve<T, Async>(normalizedDep.token, normalizedDep, path, async)
+
+        } catch (e) {
+
+            if (
+                e instanceof NoProviderFoundError
+                &&
+                (normalizedDep.isOptional || normalizedDep.defaultValue !== undefined)
+            ) {
+                // this.logger.info(`No provider found for ${JSON.stringify(dep)}`, { path })
+                return normalizedDep.defaultValue ?? undefined;
+            }
+
+            throw e;
+        }
+    }
+
     private resolveDependencies<T extends ClassConstructor>(target: T, path: Set<Token>): any[] {
-        
+
         const injectMetadata = getConstructorDependenciesMetadata(target);
 
-        return injectMetadata.map(dep => {
-
-            try {
-                if(dep.isConfig){
-                    return this.resolveConfig(dep.token, {});
-                } else {
-                    return this.resolve(dep.token, {}, path);
-                }
-            } catch (error) {
-                if (dep.isOptional) return dep.defaultValue !== undefined ? dep.defaultValue : undefined;
-                throw error;
-            }
-        });
+        return injectMetadata.map(dep => this.resolveDependency(dep, path));
     }
 
     private initializeInstance<T>(instance: T): void {
@@ -807,15 +895,15 @@ export class DIContainer implements IDIContainer {
         const initMethod = getOnInitHookMetadata(instance.constructor as ClassConstructor);
 
         if (initMethod) {
-            const theInitMethod = instance[initMethod as keyof typeof instance] as Function;
+            const theInitMethod = instance[ initMethod as keyof typeof instance ] as Function;
             if (typeof theInitMethod === 'function') {
                 try {
                     theInitMethod();
                 } catch (error: any) {
-                    throw new Error(`Initialization method failed for ${instance.constructor.name}: ${error.message}. DIContainer[${this.containerId}]`);
+                    throw new InitializationMethodError(instance.constructor.name, error.message, this.containerId);
                 }
             } else {
-                throw new Error(`Initialization method ${String(initMethod)} is not a function on ${instance.constructor.name}. DIContainer[${this.containerId}]`);
+                throw new InitializationMethodTypeError(String(initMethod), instance.constructor.name, this.containerId);
             }
         }
     }
@@ -825,16 +913,8 @@ export class DIContainer implements IDIContainer {
 
         const dependencies = getPropertyDependenciesMetadata(instance.constructor as ClassConstructor);
 
-
         for (const dep of dependencies) {
-            const propertyValue = (() => {
-                try {
-                    return this.resolve(dep.token);
-                } catch (error) {
-                    if (dep.isOptional) return undefined;
-                    throw error;
-                }
-            })();
+            const propertyValue = this.resolveDependency(dep, new Set())
 
             Object.defineProperty(instance, dep.propertyKey, {
                 value: propertyValue,
@@ -845,13 +925,14 @@ export class DIContainer implements IDIContainer {
     }
 
     has(
-        dependencyToken: DepIdentifier, 
+        dependencyToken: DepIdentifier,
         criteria?: {
             tags?: string[];
-            type?: ProviderOptions['type'],
+            type?: ProviderOptions[ 'type' ],
             priority?: PriorityCriteria;
+            forEntity?: ProviderOptions[ 'forEntity' ],
             allProvidersFromChildContainers?: boolean
-        } 
+        }
     ): boolean {
 
         const token = this.createToken(dependencyToken);
@@ -864,30 +945,130 @@ export class DIContainer implements IDIContainer {
         return bestProviders.length > 0;
     }
 
+    hasEntityService(
+        entityName: DepIdentifier,
+        criteria?: {
+            tags?: string[];
+            priority?: PriorityCriteria;
+            allProvidersFromChildContainers?: boolean
+        }
+    ): boolean {
+
+        const { tags, priority, allProvidersFromChildContainers } = criteria ?? {};
+        const bestProviders = this.collectBestProvidersFor<any>({
+            tags,
+            type: 'service',
+            priority,
+            forEntity: entityName,
+            allProvidersFromChildContainers,
+        });
+
+        return bestProviders.length > 0;
+    }
+
+    resolveEntityService<T, Async extends boolean = false>(
+        entityName: DepIdentifier,
+        criteria?: {
+            tags?: string[];
+            priority?: PriorityCriteria;
+            allProvidersFromChildContainers?: boolean
+        },
+        async: Async = false as Async
+    ): Async extends true ? Promise<T> : T {
+
+        const { tags, priority, allProvidersFromChildContainers } = criteria ?? {};
+        const bestProviders = this.collectBestProvidersFor<any>({
+            tags,
+            type: 'service',
+            priority,
+            forEntity: entityName,
+            allProvidersFromChildContainers,
+        });
+
+        if (bestProviders.length === 0) {
+            throw new NoEntityServiceProviderError(String(entityName), this.containerId);
+        }
+        const options = bestProviders[ 0 ];
+
+        return this.resolveProviderValue<T, Async>(options, new Set(), async);
+    }
+
+    hasEntitySchema(
+        entityName: DepIdentifier,
+        criteria?: {
+            tags?: string[];
+            priority?: PriorityCriteria;
+            allProvidersFromChildContainers?: boolean
+        }
+    ): boolean {
+
+        const { tags, priority, allProvidersFromChildContainers } = criteria ?? {};
+        const bestProviders = this.collectBestProvidersFor<any>({
+            tags,
+            type: 'schema',
+            priority,
+            forEntity: entityName,
+            allProvidersFromChildContainers,
+        });
+
+        return bestProviders.length > 0;
+    }
+
+    resolveEntitySchema<T, Async extends boolean = false>(
+        entityName: DepIdentifier,
+        criteria?: {
+            tags?: string[];
+            priority?: PriorityCriteria;
+            allProvidersFromChildContainers?: boolean
+        },
+        async: Async = false as Async
+    ): Async extends true ? Promise<T> : T {
+
+        const { tags, priority, allProvidersFromChildContainers } = criteria ?? {};
+        const bestProviders = this.collectBestProvidersFor<any>({
+            tags,
+            type: 'schema',
+            priority,
+            forEntity: entityName,
+            allProvidersFromChildContainers,
+        });
+
+        if (bestProviders.length === 0) {
+            throw new NoEntitySchemaProviderError(String(entityName), this.containerId);
+        }
+        const options = bestProviders[ 0 ];
+
+        return this.resolveProviderValue<T, Async>(options, new Set(), async);
+    }
+
     clear(clearChildContainers = true) {
         this.providers.clear();
         this.cache.clear();
         this.resolving.clear();
-        if(clearChildContainers){
+        if (clearChildContainers) {
             this.childContainers.forEach(container => container.clear());
         }
     }
 
-    useMiddleware({middleware, order = 1}: PartialBy<Middleware<any>, 'order' >) {
+    useMiddleware({ middleware, order = 1 }: PartialBy<Middleware<any>, 'order'>) {
         this.middlewares.push({ middleware, order });
-        this.middlewares.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) );
+        this.middlewares.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     }
 
-    async resolveAsync<T>( 
-        dependencyToken: DepIdentifier<T>, 
+    async resolveAsync<T>(
+        dependencyToken: DepIdentifier<T>,
         criteria?: {
-            priority?: PriorityCriteria;
             tags?: string[];
+            type?: ProviderOptions[ 'type' ],
+            priority?: PriorityCriteria;
+            forEntity?: ProviderOptions[ 'forEntity' ],
+            allProvidersFromChildContainers?: boolean
         },
-        path?: Set<Token>){
+        path?: Set<Token>
+    ) {
         return await this.resolve<T, true>(dependencyToken, criteria, path, true);
     }
-    
+
     private async createAndCacheInstanceAsync<T>(options: InternalProviderOptions<T>, path: Set<Token>): Promise<T> {
         const { _id, _provider: provider } = options;
 
@@ -900,13 +1081,13 @@ export class DIContainer implements IDIContainer {
 
         await this.injectPropertiesAsync(instance);
         await this.initializeInstanceAsync(instance);
-        
+
         path.delete(_id);
 
         return instance;
     }
 
-    useMiddlewareAsync({middleware, order = 1}: PartialBy<MiddlewareAsync<any>, 'order'> ) {
+    useMiddlewareAsync({ middleware, order = 1 }: PartialBy<MiddlewareAsync<any>, 'order'>) {
         this.asyncMiddlewares.push({ middleware, order });
         this.asyncMiddlewares.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     }
@@ -915,18 +1096,7 @@ export class DIContainer implements IDIContainer {
 
         const injectMetadata = getConstructorDependenciesMetadata(target);
 
-        return await Promise.all(injectMetadata.map(async dep => {
-            try {
-                if(dep.isConfig){
-                    return Promise.resolve(this.resolveConfig(dep.token, {}));
-                } else {
-                    return await this.resolveAsync(dep.token, {}, path);
-                }
-            } catch (error) {
-                if (dep.isOptional) return dep.defaultValue !== undefined ? dep.defaultValue : undefined;
-                throw error;
-            }
-        }));
+        return await Promise.all(injectMetadata.map(async dep => await this.resolveDependency(dep, path, true)));
     }
 
     private async initializeInstanceAsync<T>(instance: T): Promise<void> {
@@ -935,21 +1105,23 @@ export class DIContainer implements IDIContainer {
         const initMethod = getOnInitHookMetadata(instance.constructor as ClassConstructor);
 
         if (initMethod) {
-            const theInitMethod = instance[initMethod as keyof typeof instance] as Function;
+            const theInitMethod = instance[ initMethod as keyof typeof instance ] as Function;
             if (typeof theInitMethod === 'function') {
                 try {
                     await theInitMethod();
                 } catch (error: any) {
-                    throw new Error(`Initialization method failed for ${instance.constructor.name}: ${error.message}. DIContainer[${this.containerId}]`);
+                    throw new InitializationMethodError(instance.constructor.name, error.message, this.containerId);
                 }
             } else {
-                throw new Error(`Initialization method ${String(initMethod)} is not a function on ${instance.constructor.name}. DIContainer[${this.containerId}]`);
+                throw new InitializationMethodTypeError(String(initMethod), instance.constructor.name, this.containerId);
             }
         }
     }
 
     private async createFactoryInstanceAsync<T>(options: FactoryProviderOptions<T>, path: Set<Token>): Promise<T> {
-        const dependencies = await Promise.all((options.deps || []).map(dep => this.resolveAsync(dep, {}, path)));
+        const dependencies = await Promise.all((options.deps || []).map(async (dep) => {
+            return await this.resolveDependency(dep, path, true);
+        }));
         return options.useFactory(...dependencies);
     }
 
@@ -959,14 +1131,7 @@ export class DIContainer implements IDIContainer {
         const dependencies = getPropertyDependenciesMetadata(instance.constructor as ClassConstructor);
 
         for (const dep of dependencies) {
-            const propertyValue = await (async () => {
-                try {
-                    return await this.resolveAsync(dep.token);
-                } catch (error) {
-                    if (dep.isOptional) return undefined;
-                    throw error;
-                }
-            })();
+            const propertyValue = await this.resolveDependency(dep, new Set(), true)
 
             Object.defineProperty(instance, dep.propertyKey, {
                 value: propertyValue,
@@ -976,17 +1141,19 @@ export class DIContainer implements IDIContainer {
         }
     }
 
-    logChildContainers(){
+    logChildContainers() {
         for (const container of this.childContainers) {
-            console.info(`Child Container: ${container.containerId}`);
+            this.logger.debug(`Child Container: ${container.containerId}`);
             container.logChildContainers();
         }
     }
 
-    logProviders(allProvidersFromChildContainers=true) {
+    logProviders(allProvidersFromChildContainers = true) {
         const internalProviders = this.collectBestProvidersFor<any>({
             allProvidersFromChildContainers,
         });
+
+        this.logger.debug(`Parent Container Id, [Parent: ${this.parent?.containerId}]`);
 
         for (const ip of internalProviders) {
             let filtered = {
@@ -994,17 +1161,17 @@ export class DIContainer implements IDIContainer {
                 _container: ip._container.containerId,
                 _provider: {
                     ...ip._provider,
-                    useClass: (ip._provider as any)?.useClass?.name, 
-                    provide: (ip._provider.provide as any).name ? (ip._provider.provide as any).name : ip._provider.provide 
+                    useClass: (ip._provider as any)?.useClass?.name,
+                    provide: (ip._provider.provide as any).name ? (ip._provider.provide as any).name : ip._provider.provide
                 }
             };
-            console.info(`Provider: [${ip._container.containerId}] - ${ip._provider._token}:`, {options: filtered});
+            this.logger.debug(`Provider: [${ip._container.containerId}] - ${ip._provider._token}:`, { options: filtered });
         }
     }
 
     logCache() {
-        for (const [token, instance] of this.cache.entries()) {
-            console.info(`Cache: [${this.containerId}] - ${token}:`, instance);
+        for (const [ token, instance ] of this.cache.entries()) {
+            this.logger.debug(`Cache: [${this.containerId}] - ${token}:`, instance);
         }
         this.parent?.logCache();
     }

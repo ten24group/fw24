@@ -9,90 +9,91 @@ export type CustomMessageOrMessageId = {
 }
 
 export type ValidationExpectedAndReceived = {
-    expected ?: [validationName: string, validationValue: any],
-    received ?: [received: any, refinedReceived?: any],
+    expected?: [ validationName: string, validationValue: any ],
+    received?: [ received: any, refinedReceived?: any ],
 }
 
-export type TestValidationResult = {
-    pass: boolean
-} & ValidationExpectedAndReceived;
+export interface TestValidationResult extends ValidationExpectedAndReceived {
+    pass: boolean;
+    error?: string;
+}
 
 export type TestComplexValidationResult = TestValidationResult & CustomMessageOrMessageId;
 
 
 export type ValidationError = {
-    message ?: string,
-    messageIds ?: Array<string>,
-    path ?: Array<string>,
+    message?: string,
+    messageIds?: Array<string>,
+    path?: Array<string>,
 } & CustomMessageOrMessageId & ValidationExpectedAndReceived;
 
 export type TestValidationRuleResult = {
-    pass: boolean, 
-    errors ?: Array<ValidationError>
+    pass: boolean,
+    errors?: Array<ValidationError>
 };
 
 export type TestComplexValidationRuleResult = TestValidationRuleResult & CustomMessageOrMessageId;
 
 export type InputValidationErrors<I extends InputType = InputType> = {
-    [K in keyof I] ?: Array<ValidationError>
+    [ K in keyof I ]?: Array<ValidationError>
 };
 
 export type InputValidationResult<I extends InputType = InputType> = {
-    pass: boolean, 
-    errors ?: InputValidationErrors<I>
+    pass: boolean,
+    errors?: InputValidationErrors<I>
 };
 
 export interface ValidatorResult {
     pass: boolean;
-    errors ?: Array<ValidationError>,
+    errors?: Array<ValidationError>,
 }
 
 export type OpValidatorOptions<
-    Sch extends EntitySchema<any, any, any>, 
-    OpName extends keyof Sch['model']['entityOperations'],
-    ConditionsMap extends MapOfValidationCondition<any, any>, 
+    Sch extends EntitySchema<any, any, any>,
+    OpName extends keyof Sch[ 'model' ][ 'entityOperations' ],
+    ConditionsMap extends MapOfValidationCondition<any, any>,
     OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
 > = {
     readonly operationName: OpName,
-    readonly entityName: Sch['model']['entity'],
+    readonly entityName: Sch[ 'model' ][ 'entity' ],
     readonly entityValidations?: EntityValidations<Sch, ConditionsMap, OpsInpSch> | EntityInputValidations<Sch, OpsInpSch>,
     readonly input?: InputType,
     readonly actor?: Actor,
-    readonly record?: RecordType, 
-    readonly collectErrors ?: boolean,
-    readonly verboseErrors ?: boolean,
-    readonly overriddenErrorMessages ?: Map<string, string>
+    readonly record?: RecordType,
+    readonly collectErrors?: boolean,
+    readonly verboseErrors?: boolean,
+    readonly overriddenErrorMessages?: Map<string, string>
 }
 
 
 export type ValidateHttpRequestOptions<
-    Header extends InputType = InputType, 
+    Header extends InputType = InputType,
     Body extends InputType = InputType,
     Param extends InputType = InputType,
     Query extends InputType = InputType,
 > = {
-    readonly validations: HttpRequestValidations<Header, Body, Param, Query>, 
-    readonly requestContext: Request, 
-    readonly collectErrors ?: boolean,
-    readonly verboseErrors ?: boolean,
-    readonly overriddenErrorMessages ?: Map<string, string>,
+    readonly validations: HttpRequestValidations<Header, Body, Param, Query>,
+    readonly requestContext: Request,
+    readonly collectErrors?: boolean,
+    readonly verboseErrors?: boolean,
+    readonly overriddenErrorMessages?: Map<string, string>,
 }
 export interface IValidator {
     validateEntity<
-        Sch extends EntitySchema<any, any, any>, 
-        OpName extends keyof Sch['model']['entityOperations'],
-        ConditionsMap extends MapOfValidationCondition<any, any>, 
+        Sch extends EntitySchema<any, any, any>,
+        OpName extends keyof Sch[ 'model' ][ 'entityOperations' ],
+        ConditionsMap extends MapOfValidationCondition<any, any>,
         OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
-    >(options: OpValidatorOptions< Sch, OpName, ConditionsMap, OpsInpSch> ): Promise<ValidatorResult>;
+    >(options: OpValidatorOptions<Sch, OpName, ConditionsMap, OpsInpSch>): Promise<ValidatorResult>;
 
     validateInput<I extends InputType>(
         input: I | undefined,
-        rules?: InputValidationRule<I>, 
+        rules?: InputValidationRule<I>,
         collectErrors?: boolean,
     ): Promise<InputValidationResult<I>>;
 
     validateHttpRequest<
-        Header extends InputType = InputType, 
+        Header extends InputType = InputType,
         Body extends InputType = InputType,
         Param extends InputType = InputType,
         Query extends InputType = InputType,
@@ -107,18 +108,18 @@ export interface IValidator {
  * An actor represents a user or entity performing an action in the system.
 */
 export type Actor = {
-	// 'role': string,
-	// 'userId': string,
-	// 'tenantId': string,
-    [key: string]: any,
+    // 'role': string,
+    // 'userId': string,
+    // 'tenantId': string,
+    [ key: string ]: any,
 }
 
 export type InputType = {
-    readonly [key: string]: any,
+    readonly [ key: string ]: any,
 }
 
 export type RecordType = {
-    readonly [key: string]: any,
+    readonly [ key: string ]: any,
 }
 
 // export type TValidationValue<T = unknown > = T;
@@ -126,7 +127,7 @@ export type RecordType = {
  * Represents a validation value that can be either of type T or a complex validation value.
  * @template T - The type of the validation value.
  */
-export type TValidationValue<T > = T | TComplexValidationValue<T>;
+export type TValidationValue<T> = T | TComplexValidationValue<T>;
 
 /**
  * Represents a complex validation value with an optional message or message ID.
@@ -166,21 +167,21 @@ export type TComplexValidationValueWithValidator<T> = {
 export type TComplexValidationValue<T> = TComplexValidationValueWithMessage<T> | TComplexValidationValueWithValidator<T>
 
 export type Validations<T> = {
-	readonly 'minLength' ?: number,
-    readonly 'maxLength' ?: number,
-    readonly 'required' ?: boolean,
-    readonly 'pattern' ?: RegExp,
-    readonly 'datatype' ?: 'string' | 'number' | 'boolean' | 'array' | 'object' | 'null' | 'email' | 'ip' | 'ipv4' | 'ipv6' | 'httpUrl' | 'uuid' | 'json' | 'date',
-    readonly 'unique' ?: boolean,
-    readonly 'eq' ?: T,
-    readonly 'neq' ?: T,
-    readonly 'gt' ?: T,
-    readonly 'gte' ?: T,
-    readonly 'lt' ?: T,
-    readonly 'lte' ?: T,
-    readonly 'inList' ?: Array<T>,
-    readonly 'notInList' ?: Array<T>,
-    readonly 'custom' ?: (inputValue: T, ctx?: any) => boolean | Promise<boolean>,
+    readonly 'minLength'?: number,
+    readonly 'maxLength'?: number,
+    readonly 'required'?: boolean,
+    readonly 'pattern'?: RegExp,
+    readonly 'datatype'?: 'string' | 'number' | 'boolean' | 'array' | 'object' | 'null' | 'email' | 'ip' | 'ipv4' | 'ipv6' | 'httpUrl' | 'uuid' | 'json' | 'date',
+    readonly 'unique'?: boolean,
+    readonly 'eq'?: T,
+    readonly 'neq'?: T,
+    readonly 'gt'?: T,
+    readonly 'gte'?: T,
+    readonly 'lt'?: T,
+    readonly 'lte'?: T,
+    readonly 'inList'?: Array<T>,
+    readonly 'notInList'?: Array<T>,
+    readonly 'custom'?: (inputValue: T, ctx?: any) => boolean | Promise<boolean>,
 }
 
 export const Validation_Keys: Array<keyof Validations<any>> = [
@@ -193,7 +194,7 @@ export const Validation_Keys: Array<keyof Validations<any>> = [
  */
 export type ValidationRule<T> = {
     // TODO: narrow validation rules by type like ['string', 'number', 'boolean' etc]
-    readonly [V in keyof Validations<T>] ?: TValidationValue<Validations<T>[V]>;
+    readonly [ V in keyof Validations<T> ]?: TValidationValue<Validations<T>[ V ]>;
 }
 
 /**
@@ -223,7 +224,7 @@ export type ComplexValidationRule<T> = ValidationRule<T> & {
  * @template Input - The input type for which the validation rule is defined.
  */
 export type InputValidationRule<Input extends InputType = InputType> = {
-    [K in keyof Input] ?: ValidationRule<Input[K]> | ComplexValidationRule<Input[K]>;
+    [ K in keyof Input ]?: ValidationRule<Input[ K ]> | ComplexValidationRule<Input[ K ]>;
 }
 
 export type ConditionsAndScopeTuple = [ conditions: string[], scope: string ];
@@ -235,16 +236,16 @@ export type ConditionsAndScopeTuple = [ conditions: string[], scope: string ];
  * @template Param - The type of the request parameters.
  * @template Query - The type of the request query parameters.
  */
-export type HttpRequestValidations< 
-    Header extends InputType = InputType, 
+export type HttpRequestValidations<
+    Header extends InputType = InputType,
     Body extends InputType = InputType,
     Param extends InputType = InputType,
     Query extends InputType = InputType,
 > = {
-    readonly body ?: InputValidationRule<Body>,
-    readonly query ?: InputValidationRule<Query>,
-    readonly param ?: InputValidationRule<Param>,
-    readonly header ?: InputValidationRule<Header>,
+    readonly body?: InputValidationRule<Body>,
+    readonly query?: InputValidationRule<Query>,
+    readonly param?: InputValidationRule<Param>,
+    readonly header?: InputValidationRule<Header>,
 }
 
 
@@ -279,21 +280,21 @@ export type MapOfValidationCondition<I extends InputType = InputType, R extends 
  * 
  */
 export type EntityOperationValidationRuleForInput<
-    Input, 
+    Input,
     Sch extends EntitySchema<any, any, any>,
     ConditionsMap extends MapOfValidationCondition<any, any>,
-    OpsKeys extends keyof Sch['model']['entityOperations'],
+    OpsKeys extends keyof Sch[ 'model' ][ 'entityOperations' ],
     OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
 > = {
-    readonly operations ?: Narrow<
-    Array< OpsKeys | ValueOf<{ readonly [OppName in OpsKeys]: OperationConditionsTuple<Sch, ConditionsMap, OppName, OpsInpSch> }>>
-    |
-    {
-        readonly [OppName in OpsKeys] ?: [{
-            conditions: Array<keyof OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[OppName]>, OmitNever<ConditionsMap>>> >,
-            scope ?: 'all' | 'any' | 'none' /* default: [all] all conditions must be satisfied */
-        }]
-    }>,
+    readonly operations?: Narrow<
+        Array<OpsKeys | ValueOf<{ readonly [ OppName in OpsKeys ]: OperationConditionsTuple<Sch, ConditionsMap, OppName, OpsInpSch> }>>
+        |
+        {
+            readonly [ OppName in OpsKeys ]?: [ {
+                conditions: Array<keyof OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[ OppName ]>, OmitNever<ConditionsMap>>>>,
+                scope?: 'all' | 'any' | 'none' /* default: [all] all conditions must be satisfied */
+            } ]
+        }>,
 
 } & ValidationRule<Input>;
 
@@ -309,22 +310,22 @@ export type EntityOperationValidationRuleForInput<
 export type OperationConditionsTuple<
     Sch extends EntitySchema<any, any, any>,
     ConditionsMap extends MapOfValidationCondition<any, any>,
-    OppName extends keyof Sch['model']['entityOperations'],
+    OppName extends keyof Sch[ 'model' ][ 'entityOperations' ],
     OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
-> = [ 
-    op: OppName, 
-    /** 
-     * An array of condition names.
-     * Example: ['xxx', 'yyyy']
-     */
-    conditions ?: Array<keyof OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[OppName]>, OmitNever<ConditionsMap>>> >,
-    /**
-     * The scope of the conditions.
-     * Possible values: 'all', 'any', 'none'
-     * Default: 'all' (all conditions must be satisfied)
-     */
-    scope ?: 'all' | 'any' | 'none',
-]
+> = [
+        op: OppName,
+        /** 
+         * An array of condition names.
+         * Example: ['xxx', 'yyyy']
+         */
+        conditions?: Array<keyof OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[ OppName ]>, OmitNever<ConditionsMap>>>>,
+        /**
+         * The scope of the conditions.
+         * Possible values: 'all', 'any', 'none'
+         * Default: 'all' (all conditions must be satisfied)
+         */
+        scope?: 'all' | 'any' | 'none',
+    ]
 
 /**
  * Represents the conditional applicability of the validation-rule to the specific operation.
@@ -337,15 +338,15 @@ export type OperationConditionsTuple<
 export type OperationConditions<
     Sch extends EntitySchema<any, any, any>,
     ConditionsMap extends MapOfValidationCondition<any, any>,
-    OppName extends keyof Sch['model']['entityOperations'],
+    OppName extends keyof Sch[ 'model' ][ 'entityOperations' ],
     OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
 > = {
     /**
      * Array of condition names that must be satisfied for the validation-rule to be applicable for operation.
      * By default, all conditions must be satisfied.
      */
-    conditions: Array<keyof OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[OppName]>, OmitNever<ConditionsMap>>> >,
-    
+    conditions: Array<keyof OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[ OppName ]>, OmitNever<ConditionsMap>>>>,
+
     /**
      * The scope of the conditions.
      * - 'all': All conditions must be satisfied.
@@ -357,20 +358,20 @@ export type OperationConditions<
 
 
 export type InputApplicableCondition<Inp extends InputType, C extends EntityValidationCondition<any, any>> = {
-  
-  readonly actor: C['actor'] extends undefined ? void : C['actor'],
-  readonly record: C['record'] extends undefined ? void : C['record'],
-  
-  readonly input: C['input'] extends undefined 
-    ? void 
-    : keyof C['input'] extends keyof Inp
-      ? C['input']
-      : void,
+
+    readonly actor: C[ 'actor' ] extends undefined ? void : C[ 'actor' ],
+    readonly record: C[ 'record' ] extends undefined ? void : C[ 'record' ],
+
+    readonly input: C[ 'input' ] extends undefined
+    ? void
+    : keyof C[ 'input' ] extends keyof Inp
+    ? C[ 'input' ]
+    : void,
 };
 
-export type InputApplicableConditionsMap<Inp extends InputType, ConditionsMap extends MapOfValidationCondition<any, any> > = OmitNever<{
-  readonly [ConditionName in keyof ConditionsMap]: InputApplicableCondition<Inp, ConditionsMap[ConditionName]> extends ConditionsMap[ConditionName]
-    ? ConditionsMap[ConditionName]
+export type InputApplicableConditionsMap<Inp extends InputType, ConditionsMap extends MapOfValidationCondition<any, any>> = OmitNever<{
+    readonly [ ConditionName in keyof ConditionsMap ]: InputApplicableCondition<Inp, ConditionsMap[ ConditionName ]> extends ConditionsMap[ ConditionName ]
+    ? ConditionsMap[ ConditionName ]
     : never;
 }>
 
@@ -387,10 +388,10 @@ export type ConditionalValidationRule<T, ConditionsMap extends MapOfValidationCo
      * - If specified as an array, all conditions in the array must be satisfied.
      * - If specified as a tuple, the first element is an array of conditions and the second element is a string specifying how the conditions must be satisfied ('all', 'any', or 'none').
      */
-    readonly conditions ?: 
-        Array<keyof ConditionsMap>
-        | 
-        [ Array<keyof ConditionsMap>, 'all' | 'any' | 'none'],
+    readonly conditions?:
+    Array<keyof ConditionsMap>
+    |
+    [ Array<keyof ConditionsMap>, 'all' | 'any' | 'none' ],
 } & ComplexValidationRule<T>;
 
 /**
@@ -399,15 +400,15 @@ export type ConditionalValidationRule<T, ConditionsMap extends MapOfValidationCo
  * @template R - The record type.
  * @template C - The map of validation conditions.
  */
-export type EntityOperationValidation<I extends InputType, R extends RecordType, C extends MapOfValidationCondition<I, R> > = {
-    readonly actor ?: {
-        [K in keyof Actor]?: ConditionalValidationRule<Actor[K], C>[];
+export type EntityOperationValidation<I extends InputType, R extends RecordType, C extends MapOfValidationCondition<I, R>> = {
+    readonly actor?: {
+        [ K in keyof Actor ]?: ConditionalValidationRule<Actor[ K ], C>[];
     },
-    readonly input ?: {
-        [K in keyof I] ?: ConditionalValidationRule<I[K], C>[];
+    readonly input?: {
+        [ K in keyof I ]?: ConditionalValidationRule<I[ K ], C>[];
     },
-    readonly record ?: {
-        [K in keyof R] ?: ConditionalValidationRule<R[K], C>[];
+    readonly record?: {
+        [ K in keyof R ]?: ConditionalValidationRule<R[ K ], C>[];
     },
 }
 
@@ -426,11 +427,11 @@ export type EntityOperationsValidation<
     /**
      * Represents the validation for each entity operation.
      */
-    readonly [oppName in keyof OpsInpSch] ?: EntityOperationValidation<
-        Narrow<OpsInpSch[oppName]>, // operation input schema
+    readonly [ oppName in keyof OpsInpSch ]?: EntityOperationValidation<
+        Narrow<OpsInpSch[ oppName ]>, // operation input schema
         EntityRecordTypeFromSchema<Sch>, // entity record type
         // filter out the conditions that require any additional prop which isn't provided in the input
-        OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[oppName]>, ConditionsMap>>
+        OmitNever<InputApplicableConditionsMap<Narrow<OpsInpSch[ oppName ]>, ConditionsMap>>
     >
 } & {
     /**
@@ -439,35 +440,35 @@ export type EntityOperationsValidation<
     readonly conditions?: MapOfValidationCondition<any, EntityRecordTypeFromSchema<Sch>>
 }>
 
-export type EntityValidations< 
-    Sch extends EntitySchema<any, any, any, any>, 
-    ConditionsMap extends MapOfValidationCondition<any, any> = any, 
+export type EntityValidations<
+    Sch extends EntitySchema<any, any, any, any>,
+    ConditionsMap extends MapOfValidationCondition<any, any> = any,
     OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
 > = Narrow<{
-    readonly actor ?: {
-        [ActorKey in keyof Actor] ?: Narrow<
+    readonly actor?: {
+        [ ActorKey in keyof Actor ]?: Narrow<
             EntityOperationValidationRuleForInput<
-                Actor[ActorKey], 
-                Sch, 
-                ConditionsMap, 
+                Actor[ ActorKey ],
+                Sch,
+                ConditionsMap,
                 keyof OpsInpSch
             >
         >[];
     },
-    readonly record ?: {
-        [RecordKey in keyof EntityRecordTypeFromSchema<Sch>] ?: Narrow<
+    readonly record?: {
+        [ RecordKey in keyof EntityRecordTypeFromSchema<Sch> ]?: Narrow<
             EntityOperationValidationRuleForInput<
-                EntityRecordTypeFromSchema<Sch>[RecordKey], 
-                Sch, 
-                ConditionsMap, 
+                EntityRecordTypeFromSchema<Sch>[ RecordKey ],
+                Sch,
+                ConditionsMap,
                 keyof OpsInpSch
             >
         >[];
     },
     readonly input?: {
-        [Prop in keyof EntityRecordTypeFromSchema<Sch>] ?: Array<
+        [ Prop in keyof EntityRecordTypeFromSchema<Sch> ]?: Array<
             EntityOperationValidationRuleForInput<
-                EntityRecordTypeFromSchema<Sch>[Prop], 
+                EntityRecordTypeFromSchema<Sch>[ Prop ],
                 Sch,
                 ConditionsMap,
                 keyof PropertyApplicableEntityOperations<Prop, Sch, OpsInpSch>
@@ -488,19 +489,19 @@ export type EntityInputValidations<
     Sch extends EntitySchema<any, any, any, any>,
     OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
 > = {
-    [Prop in keyof EntityRecordTypeFromSchema<Sch>] ?: Array< 
-        ValidationRule<EntityRecordTypeFromSchema<Sch>[Prop]> 
-        & {
-            readonly operations: Array<keyof PropertyApplicableEntityOperations<Prop, Sch, OpsInpSch>>
-        }
-    >
-}
+        [ Prop in keyof EntityRecordTypeFromSchema<Sch> ]?: Array<
+            ValidationRule<EntityRecordTypeFromSchema<Sch>[ Prop ]>
+            & {
+                readonly operations: Array<keyof PropertyApplicableEntityOperations<Prop, Sch, OpsInpSch>>
+            }
+        >
+    }
 
 
 export type PropertyApplicableEntityOperations<
-  Prop, 
-  Sch extends EntitySchema<any, any, any, any>, 
-  OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
+    Prop,
+    Sch extends EntitySchema<any, any, any, any>,
+    OpsInpSch extends EntityOperationsInputSchemas<Sch> = EntityOperationsInputSchemas<Sch>,
 > = OmitNever<{
-  [OppName in keyof Sch['model']['entityOperations']]: Prop extends keyof OpsInpSch[OppName] ? OpsInpSch[OppName] : never;
+    [ OppName in keyof Sch[ 'model' ][ 'entityOperations' ] ]: Prop extends keyof OpsInpSch[ OppName ] ? OpsInpSch[ OppName ] : never;
 }>

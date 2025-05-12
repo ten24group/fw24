@@ -5,10 +5,10 @@ import MakeListEntityConfig from './templates/list-entity';
 import MakeViewEntityConfig from './templates/view-entity';
 import MakeEntityMenuConfig from './templates/entity-menu';
 import { BaseEntityService, EntitySchema } from '../entity';
+import { makeCustomPageConfig, CustomPageOptions, ListPageConfig, FormPageConfig, DetailsPageConfig } from './templates/custom-page';
 
 import MakeAuthConfig from './templates/auth';
 import MakeDashboardConfig from './templates/dashboard';
-
 
 import {existsSync, mkdirSync, writeFileSync} from "fs";
 import {
@@ -26,6 +26,92 @@ export class EntityUIConfigGen{
     // while scanning and loading stuff
     readonly uiGenDIContainer = Fw24.getInstance().getAppDIContainer();
 
+    private customPages: Map<string, CustomPageOptions> = new Map();
+
+    @LogDuration()
+    async scanCustomPages() {
+        const fw24 = Fw24.getInstance();
+        const config = fw24.getConfig();
+        const customPagesDir = config.uiConfigGenOptions?.customPagesDirectory || 'custom-pages';
+        
+        const customPagesDirectories = [pathResolve(`./src/${customPagesDir}/`)];
+        
+        if(fw24.hasModules()){
+            for(const [, module] of fw24.getModules()){
+                const moduleCustomPagesPath = pathJoin(module.getBasePath(), customPagesDir);
+                customPagesDirectories.push(pathResolve(moduleCustomPagesPath));
+            }
+        }
+
+        for(const dir of customPagesDirectories){
+            if(!existsSync(dir)){
+                this.logger.debug(`Custom pages directory does not exist: ${dir}`);
+                continue;
+            }
+
+            const customPageFiles = Helper.scanTSSourceFilesFrom(dir);
+            
+            for(const file of customPageFiles){
+                try {
+                    const module = await import(pathJoin(dir, file));
+                    for(const [key, value] of Object.entries(module)){
+                        if(this.isValidCustomPageConfig(value)){
+                            const pageName = this.getPageNameFromConfig(value);
+                            if(pageName){
+                                this.registerCustomPage(value);
+                                this.logger.debug(`Registered custom page: ${pageName}`);
+                            }
+                        }
+                    }
+                } catch(e){
+                    this.logger.error(`Error loading custom page from ${file}:`, e);
+                }
+            }
+        }
+    }
+
+    private isValidCustomPageConfig(value: unknown): value is CustomPageOptions {
+        if(!value || typeof value !== 'object') return false;
+        
+        const config = value as Record<string, unknown>;
+        if(!('pageType' in config) || !('pageTitle' in config)) return false;
+
+        const pageType = config.pageType;
+        if(pageType === 'list') {
+            return 'listPageConfig' in config;
+        } else if(pageType === 'form') {
+            return 'formPageConfig' in config;
+        } else if(pageType === 'details') {
+            return 'detailsPageConfig' in config;
+        }
+        return false;
+    }
+
+    private getPageNameFromConfig(config: CustomPageOptions): string | null {
+        switch(config.pageType){
+            case 'list':
+                return `list-${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+            case 'form':
+                return config.pageTitle.toLowerCase().includes('add') 
+                    ? `create-${config.pageTitle.toLowerCase().replace(/\s+/g, '-').replace('add-', '')}`
+                    : `edit-${config.pageTitle.toLowerCase().replace(/\s+/g, '-').replace('edit-', '')}`;
+            case 'details':
+                return `view-${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Register a custom page. Supports optional routePattern for dynamic routes (e.g., /author/:authorId/books)
+     */
+    registerCustomPage(options: CustomPageOptions) {
+        const pageName = this.getPageNameFromConfig(options);
+        if(pageName){
+            this.customPages.set(pageName, options);
+        }
+    }
+
     async run(){
         this.process();
     }
@@ -39,7 +125,10 @@ export class EntityUIConfigGen{
 
         const services = await this.scanAndLoadServices(serviceDirectories);
 
-        this.logger.info(`Ui-config-gen::: Process::: all-services: `, Array.from(services.keys()));
+        // Scan and load custom pages
+        await this.scanCustomPages();
+
+        this.logger.debug(`Ui-config-gen::: Process::: all-services: `, Array.from(services.keys()));
 
         let menuIndex = 1;
         // generate UI configs
@@ -48,53 +137,74 @@ export class EntityUIConfigGen{
             const entitySchema = service.getEntitySchema();
             const entityDefaultOpsSchema = service.getOpsDefaultIOSchema();
 
-            const createConfig = MakeCreateEntityConfig({
-                entityName,
-                entityNamePlural: entitySchema.model.entityNamePlural,
-                properties: entityDefaultOpsSchema.create.input
-            }, service);
-
-            const updateConfig = MakeUpdateEntityConfig({
-                entityName,
-                entityNamePlural: entitySchema.model.entityNamePlural,
-                properties: entityDefaultOpsSchema.update.input
-            }, service);
-
-            const listConfig = MakeListEntityConfig({
-                entityName,
-                entityNamePlural: entitySchema.model.entityNamePlural,
-                properties: entityDefaultOpsSchema.list.output
-            });
-
-            const viewConfig = MakeViewEntityConfig({
-                entityName,
-                entityNamePlural: entitySchema.model.entityNamePlural,
-                properties: entityDefaultOpsSchema.get.output
-            }, service);
-
-            // this.logger.info(`Created entityCrudConfig for entity: ${entityName}.`, {createConfig, updateConfig, listConfig, viewConfig})
-
-            entityConfigs[`list-${entityName.toLowerCase()}`] = listConfig;
-            entityConfigs[`create-${entityName.toLowerCase()}`] = createConfig;
-            entityConfigs[`edit-${entityName.toLowerCase()}`] = updateConfig;
-            entityConfigs[`view-${entityName.toLowerCase()}`] = viewConfig;
-
-            // skip if entity is not to be included in menu
-            if(entitySchema.model.excludeFromAdminMenu){ 
-                return;
+            if(!entitySchema.model.excludeFromAdminCreate){
+                const createConfig = MakeCreateEntityConfig({
+                    entityName,
+                    entityNamePlural: entitySchema.model.entityNamePlural,
+                    CRUDApiPath: entitySchema.model.CRUDApiPath,
+                    properties: entityDefaultOpsSchema.create.input
+                }, service);
+                entityConfigs[`create-${entityName.toLowerCase()}`] = createConfig;
             }
 
-            const menuConfig = MakeEntityMenuConfig({
-                entityName,
-                entityNamePlural: entitySchema.model.entityNamePlural,
-                icon: entitySchema.model.entityMenuIcon || 'appStore',
-                menuIndex: menuIndex++
-            });
+            if(!entitySchema.model.excludeFromAdminUpdate){
+                const updateConfig = MakeUpdateEntityConfig({
+                    entityName,
+                    entityNamePlural: entitySchema.model.entityNamePlural,
+                    CRUDApiPath: entitySchema.model.CRUDApiPath,
+                    properties: entityDefaultOpsSchema.update.input,
+                    actions: entitySchema.model.editPageActions,
+                    breadcrumbs: entitySchema.model.editPageBreadcrumbs,
+                }, service);
+                entityConfigs[`edit-${entityName.toLowerCase()}`] = updateConfig;
+            }
 
-            // this.logger.info(`Created menuConfig for entity: ${entityName}.`, {menuConfig})
+            if(!entitySchema.model.excludeFromAdminList){
+                const listConfig = MakeListEntityConfig({
+                    entityName,
+                    entityNamePlural: entitySchema.model.entityNamePlural,
+                    properties: entityDefaultOpsSchema.list.output,
+                    CRUDApiPath: entitySchema.model.CRUDApiPath,
+                    excludeFromAdminCreate: entitySchema.model.excludeFromAdminCreate,
+                    excludeFromAdminUpdate: entitySchema.model.excludeFromAdminUpdate,
+                    excludeFromAdminDelete: entitySchema.model.excludeFromAdminDelete,
+                    excludeFromAdminDetail: entitySchema.model.excludeFromAdminDetail
+                });
+                entityConfigs[`list-${entityName.toLowerCase()}`] = listConfig;
+            }
 
-            menuConfigs.push(menuConfig);
+            if(!entitySchema.model.excludeFromAdminDetail){
+                const viewConfig = MakeViewEntityConfig({
+                    entityName,
+                    entityNamePlural: entitySchema.model.entityNamePlural,
+                    properties: entityDefaultOpsSchema.get.output,
+                    CRUDApiPath: entitySchema.model.CRUDApiPath,
+                    actions: entitySchema.model.viewPageActions,
+                    breadcrumbs: entitySchema.model.viewPageBreadcrumbs,
+                }, service);
+                entityConfigs[`view-${entityName.toLowerCase()}`] = viewConfig;
+            }
+
+            if(!entitySchema.model.excludeFromAdminMenu){ 
+                const menuConfig = MakeEntityMenuConfig({
+                    entityName,
+                    entityNamePlural: entitySchema.model.entityNamePlural,
+                    icon: entitySchema.model.entityMenuIcon || 'appStore',
+                    menuIndex: menuIndex++,
+                    excludeFromAdminList: entitySchema.model.excludeFromAdminList,
+                    excludeFromAdminCreate: entitySchema.model.excludeFromAdminCreate,
+                });
+        
+                menuConfigs.push(menuConfig);
+            }
+
         });
+
+        // Process custom pages
+        for (const [pageName, options] of this.customPages) {
+            const customConfig = makeCustomPageConfig(options);
+            entityConfigs[pageName] = customConfig;
+        }
 
         const authConfigOptions = Fw24.getInstance().getConfig().uiConfigGenOptions || {};
 
@@ -115,11 +225,11 @@ export class EntityUIConfigGen{
         const serviceDirectories = [pathResolve('./src/services/')];
 
         if(fw24.hasModules()){
-            this.logger.info(`Ui-config-gen::: Process::: app has modules: `, Array.from(fw24.getModules().keys()));
+            this.logger.debug(`Ui-config-gen::: Process::: app has modules: `, Array.from(fw24.getModules().keys()));
             for(const [, module] of fw24.getModules()){
                 const moduleServicesPath = pathJoin(module.getBasePath(), module.getServicesDirectory());
-                this.logger.info(`Ui-config-gen::: Process::: moduleServicesPath: `, moduleServicesPath);
-                this.logger.info(`Ui-config-gen::: Process::: res-moduleServicesPath: `, pathResolve(moduleServicesPath) );
+                this.logger.debug(`Ui-config-gen::: Process::: moduleServicesPath: `, moduleServicesPath);
+                this.logger.debug(`Ui-config-gen::: Process::: res-moduleServicesPath: `, pathResolve(moduleServicesPath) );
                 serviceDirectories.push(pathResolve(moduleServicesPath));
             }
         }
@@ -133,10 +243,21 @@ export class EntityUIConfigGen{
         const scannedServices = new Set<Function>();
         
         for( const dir of serviceDirectories){
-            this.logger.info(`Ui-config-gen::: Process::: loading services from DIR: `, dir);
+            this.logger.debug(`Ui-config-gen::: Process::: loading services from DIR: `, dir);
             const dirServiceTokens = await this.scanServicesFromDirectory(dir);
             dirServiceTokens.forEach( token => scannedServices.add(token));
         }
+
+        // get all container registered services to make sure auto-gen entity-services are also included
+        this.uiGenDIContainer.collectBestProvidersFor({
+            type: 'service',
+            allProvidersFromChildContainers: true
+        }).filter( opt => {
+            // make sure to collect only the entity service providers
+            return !!opt._provider.forEntity
+        }).forEach( opt => {
+            scannedServices.add(opt._provider.provide as Function);
+        })
                 
         // resolve all services
         const resolvedServices = new Map<string, BaseEntityService<any>>();
@@ -146,9 +267,9 @@ export class EntityUIConfigGen{
                 allProvidersFromChildContainers: true
             }) as BaseEntityService<any>;
 
-            this.logger.info(`resolved service for entity: ${service.getEntityName()}`);
+            this.logger.debug(`resolved service for entity: ${service.getEntityName()}`);
 
-            this.logger.info(`Ui-config-gen::: Process::: loaded services from entity: `, service.getEntityName());
+            this.logger.debug(`Ui-config-gen::: Process::: loaded services from entity: `, service.getEntityName());
             resolvedServices.set(service.getEntityName(), service);
         })
 
@@ -168,7 +289,7 @@ export class EntityUIConfigGen{
         const servicePaths = Helper.scanTSSourceFilesFrom(servicesDir);
     
         for (const servicePath of servicePaths) {
-            this.logger.info(`trying to load servicePath: ${servicePath}`);
+            this.logger.debug(`trying to load servicePath: ${servicePath}`);
     
             try {
                 // Dynamically import the service file
@@ -188,15 +309,15 @@ export class EntityUIConfigGen{
                             allProvidersFromChildContainers: true
                         })){
                             scannedServices.add(exportedItem);
-                            this.logger.info(`scanServicesFromDirectory: registering service: ${exportedItem.name}`);
+                            this.logger.debug(`scanServicesFromDirectory: registering service: ${exportedItem.name}`);
                             continue;
                         }
 
-                        this.logger.info(`scanServicesFromDirectory: no provider could be found for service: ${exportedItem.name}`);
+                        this.logger.debug(`scanServicesFromDirectory: no provider could be found for service: ${exportedItem.name}`);
 
                     } else {
 
-                        this.logger.info(`scanServicesFromDirectory: SKIP: exportedItem is not a service class: ${(exportedItem as any)?.name ? (exportedItem as any).name : exportedItem}`);
+                        this.logger.debug(`scanServicesFromDirectory: SKIP: exportedItem is not a service class: ${(exportedItem as any)?.name ? (exportedItem as any).name : exportedItem}`);
                     }
                 }
             } catch (e){
@@ -209,33 +330,33 @@ export class EntityUIConfigGen{
 
     @LogDuration()
     async writeToFiles(menuConfig: any, entitiesConfig: any, authConfig: any, dashboardConfig: any){
-        this.logger.info("Called writeToFiles:::::: ");
+        this.logger.debug("Called writeToFiles:::::: ");
         const genDirectoryPath = pathResolve('./gen/');
         if (!existsSync(genDirectoryPath)){
-            this.logger.info(`Gen DIR does not exists, creating: ${genDirectoryPath}`, );
+            this.logger.debug(`Gen DIR does not exists, creating: ${genDirectoryPath}`, );
             mkdirSync(genDirectoryPath);
         }
     
         const configDirectoryPath = pathResolve(pathJoin(genDirectoryPath, 'config'));
         if (!existsSync(configDirectoryPath)){
-            this.logger.info(`Config DIR does not exists, creating: ${configDirectoryPath}`);
+            this.logger.debug(`Config DIR does not exists, creating: ${configDirectoryPath}`);
             mkdirSync(configDirectoryPath);
         }
     
         const menuConfigFilePath = pathJoin(configDirectoryPath, 'menu.json');
-        this.logger.info(`writing menu-config.. into: ${menuConfigFilePath}`);
+        this.logger.debug(`writing menu-config.. into: ${menuConfigFilePath}`);
         writeFileSync(menuConfigFilePath, JSON.stringify(menuConfig, null, 2));
     
         const entitiesConfigFilePath = pathJoin(configDirectoryPath, 'entities.json');
-        this.logger.info(`writing entities-config.. into: ${entitiesConfigFilePath}`,);
+        this.logger.debug(`writing entities-config.. into: ${entitiesConfigFilePath}`,);
         writeFileSync(entitiesConfigFilePath, JSON.stringify(entitiesConfig, null, 2));
 
         const authConfigFilePath = pathJoin(configDirectoryPath, 'auth.json');
-        this.logger.info(`writing auth-config.. into: ${authConfigFilePath}`,);
+        this.logger.debug(`writing auth-config.. into: ${authConfigFilePath}`,);
         writeFileSync(authConfigFilePath, JSON.stringify(authConfig, null, 2));
 
         const dashboardConfigFilePath = pathJoin(configDirectoryPath, 'dashboard.json');
-        this.logger.info(`writing dashboard-config.. into: ${dashboardConfigFilePath}`,);
+        this.logger.debug(`writing dashboard-config.. into: ${dashboardConfigFilePath}`,);
         writeFileSync(dashboardConfigFilePath, JSON.stringify(dashboardConfig, null, 2));
         
     }

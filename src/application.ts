@@ -12,7 +12,7 @@ export class Application {
     readonly logger: ILogger;
     mainStack!: Stack;
 
-    private readonly fw24: Fw24;
+    public readonly fw24: Fw24;
     private readonly constructs: Map<string, FW24Construct>;
     private readonly modules: Map<string, IFw24Module>;
     private processedConstructs: Map<string, Promise<void>> = new Map();
@@ -44,13 +44,8 @@ export class Application {
 
         // initialize the main stack
         const app = new App();
-        this.mainStack = new Stack(app, `${config.name}-stack`, {
-            env: {
-                account: config.account,
-                region: config.region
-            }
-        })
-        this.fw24.addStack("main", this.mainStack);
+        this.fw24.setApp(app);
+        
     }
 
     public use(construct: FW24Construct): Application {
@@ -113,6 +108,7 @@ export class Application {
             constructName = newConstructName;
         }
         this.constructs.set(constructName, construct);
+        this.fw24.addConstruct(construct);
     }
 
     private processModules(){
@@ -123,7 +119,7 @@ export class Application {
 
     private constructAllResources() {
         const allConstructs = Array.from(this.constructs.keys()).map(constructName => this.constructResources(constructName));
-        return Promise.allSettled(allConstructs);
+        return Promise.all(allConstructs);
     }
 
     async constructResources(constructName: string): Promise<void> {
@@ -142,15 +138,17 @@ export class Application {
         await this.waitForDependencies(construct.dependencies, constructName);
 
         this.resourceConstructCurrentConcurrency++;
-        const constructCompletionPromise = construct.construct()
-            .then(() => {
+        const constructCompletionPromise = (async () => {
+            try {
+                await construct.construct();
+                this.logger.info(`Successfully completed construct ${constructName}`);
+            } catch (error) {
+                this.logger.error(`Failed to construct ${constructName}:`, error);
+                throw error; // Re-throw to ensure deployment fails
+            } finally {
                 this.resourceConstructCurrentConcurrency--;
-            })
-            .catch(error => {
-                console.error(`Error executing construct ${constructName}:`, error);
-                this.resourceConstructCurrentConcurrency--;
-                throw error; // Re-throw to ensure it can be handled or logged by Promise.allSettled
-            });
+            }
+        })();
 
         this.processedConstructs.set(constructName, constructCompletionPromise);
         return constructCompletionPromise;

@@ -1,10 +1,11 @@
-import { readdirSync, existsSync } from "fs";
+import { readdirSync, existsSync, readFile, readFileSync, statSync } from "fs";
 import { resolve, join, relative,  } from "path";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { IFw24Module } from "./runtime/module";
 import { createLogger, LogDuration } from "../logging";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
 import { isString } from "../utils";
+import { createHash } from "crypto";
 
 
 
@@ -26,7 +27,7 @@ export class Helper {
     static async registerControllersFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
         const basePath = module.getBasePath();
 
-        Helper.logger.info("registerControllersFromModule::: base-path: " + basePath);
+        Helper.logger.debug("registerControllersFromModule::: base-path: " + basePath);
 
         // relative path from the place where the script is getting executed i.e index.ts in app-root
         const relativePath = relative('./', basePath); 
@@ -37,13 +38,13 @@ export class Helper {
         // make sure that the controller path exists
         if( existsSync(controllersPath)){
             
-            Helper.logger.info("registerControllersFromModule::: module-controllers-path: " + controllersPath);
+            Helper.logger.debug("registerControllersFromModule::: module-controllers-path: " + controllersPath);
 
             Helper.registerHandlers(controllersPath, handlerRegistrar);
             
         } else {
 
-            Helper.logger.info("registerControllersFromModule::: module-controllers-path does not exist: " + controllersPath);
+            Helper.logger.warn("registerControllersFromModule::: module-controllers-path does not exist: " + controllersPath);
         }
 
     }
@@ -51,14 +52,14 @@ export class Helper {
     static async registerQueuesFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
         const basePath = module.getBasePath();
 
-        Helper.logger.info("registerQueuesFromModule::: base-path: " + basePath);
+        Helper.logger.debug("registerQueuesFromModule::: base-path: " + basePath);
 
         // relative path from the place where the script is getting executed i.e index.ts in app-root
         const relativePath = relative('./', basePath); 
         const queuesPath = resolve(relativePath, module.getQueuesDirectory());
         const handlersPath = module.getQueueFileNames();
 
-        Helper.logger.info("registerQueuesFromModule::: module-queues-path: " + queuesPath);
+        Helper.logger.debug("registerQueuesFromModule::: module-queues-path: " + queuesPath);
 
         Helper.registerHandlers(queuesPath, handlerRegistrar, handlersPath);
     }
@@ -66,14 +67,14 @@ export class Helper {
     static async registerTasksFromModule(module: IFw24Module, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void){
         const basePath = module.getBasePath();
 
-        Helper.logger.info("registerTasksFromModule::: base-path: " + basePath);
+        Helper.logger.debug("registerTasksFromModule::: base-path: " + basePath);
 
         // relative path from the place where the script is getting executed i.e index.ts in app-root
         const relativePath = relative('./', basePath); 
         const tasksPath = resolve(relativePath, module.getTasksDirectory());
         const handlersPath = module.getTaskFileNames();
 
-        Helper.logger.info("registerTasksFromModule::: module-tasks-path: " + tasksPath);
+        Helper.logger.debug("registerTasksFromModule::: module-tasks-path: " + tasksPath);
 
         Helper.registerHandlers(tasksPath, handlerRegistrar, handlersPath);
     }
@@ -83,7 +84,7 @@ export class Helper {
         // Resolve the absolute path
         const sourceDirectory = resolve(path);
         // Get all the files in the handler directory
-        const allDirFiles = readdirSync(sourceDirectory);
+        const allDirFiles = readdirSync(sourceDirectory, { recursive: true }) as string[];
         // Filter the files to only include TypeScript files
         const sourceFilePaths = allDirFiles.filter((file) => 
             ( 
@@ -136,30 +137,30 @@ export class Helper {
         // Register the handlers
         for (const handlerPath of handlerPaths) {
             Helper.logger.debug("Registering Lambda Handlers from handlerPath: "+ handlerPath);
-            try {
-                // Dynamically import the controller file
-                const module = await import(join(handlerDirectory, handlerPath));
+            // Dynamically import the controller file
+            const module = await import(join(handlerDirectory, handlerPath));
+            const fileBuffer = readFileSync(join(handlerDirectory, handlerPath));
+            const moduleHash = createHash('md5').update(JSON.stringify(fileBuffer)).digest('hex');
+            Helper.logger.debug("Registering Lambda Handlers moduleHash: ", {moduleHash});
 
-                // Find and instantiate controller classes
-                for (const exportedItem of Object.values(module)) {
-                    if (typeof exportedItem === "function" && exportedItem.name !== "handler") {
-                        const currentHandler: HandlerDescriptor = {
-                            handlerClass: exportedItem,
-                            fileName: handlerPath,
-                            filePath: handlerDirectory,
-                        };
+            // Find and instantiate controller classes
+            for (const exportedItem of Object.values(module)) {
+                if (typeof exportedItem === "function" && exportedItem.name !== "handler") {
 
-                        Helper.logger.debug("Registering Lambda Handlers registering currentHandler: ", {handlerPath, handlerDirectory});
+                    const currentHandler: HandlerDescriptor = {
+                        handlerClass: exportedItem,
+                        fileName: handlerPath,
+                        filePath: handlerDirectory,
+                        handlerHash: moduleHash
+                    };
 
-                        handlerRegistrar(currentHandler);
-                        break;
-                    } else {
-                        Helper.logger.debug("Registering Lambda Handlers ignored exportedItem: ", {exportedItem});
-                    }
+                    Helper.logger.debug("Registering Lambda Handlers registering currentHandler: ", {handlerPath, handlerDirectory});
+
+                    handlerRegistrar(currentHandler);
+                    break;
+                } else {
+                    Helper.logger.debug("Registering Lambda Handlers ignored exportedItem: ", {exportedItem});
                 }
-            } catch (err) {
-                Helper.logger.error("Error registering handler: ", {handlerDirectory, handlerPath});
-                Helper.logger.error(err);
             }
         }
     }

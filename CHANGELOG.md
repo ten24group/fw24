@@ -2,9 +2,108 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.1-beta.25](https://github.com/ten24group/fw24/compare/v0.1.1-beta.24...v0.1.1-beta.25) (2025-05-09)
+
+### [0.1.1-beta.24](https://github.com/ten24group/fw24/compare/v0.1.1-beta.23...v0.1.1-beta.24) (2025-05-01)
+
+### [0.1.1-beta.23](https://github.com/ten24group/fw24/compare/v0.1.1-beta.22...v0.1.1-beta.23) (2025-04-30)
+
+### [0.1.1-beta.22](https://github.com/ten24group/fw24/compare/v0.1.1-beta.21...v0.1.1-beta.22) (2025-04-29)
+
+### [0.1.1-beta.21](https://github.com/ten24group/fw24/compare/v0.1.1-beta.20...v0.1.1-beta.21) (2025-04-28)
+
+### [0.1.1-beta.20](https://github.com/ten24group/fw24/compare/v0.1.1-beta.19...v0.1.1-beta.20) (2025-04-23)
+
+### [0.1.1-beta.19](https://github.com/ten24group/fw24/compare/v0.1.1-beta.18...v0.1.1-beta.19) (2025-04-22)
+
+### [0.1.1-beta.18](https://github.com/ten24group/fw24/compare/v0.1.1-beta.17...v0.1.1-beta.18) (2025-04-17)
+
+### [0.1.1-beta.17](https://github.com/ten24group/fw24/compare/v0.1.1-beta.16...v0.1.1-beta.17) (2025-04-14)
+
+### [0.1.1-beta.16](https://github.com/ten24group/fw24/compare/v0.1.1-beta.15...v0.1.1-beta.16) (2025-04-07)
+
+### [0.1.1-beta.15](https://github.com/ten24group/fw24/compare/v0.1.1-beta.14...v0.1.1-beta.15) (2025-04-01)
+
+### [0.1.1-beta.14](https://github.com/ten24group/fw24/compare/v0.1.1-beta.13...v0.1.1-beta.14) (2025-03-28)
+
+### [0.1.1-beta.13](https://github.com/ten24group/fw24/compare/v0.1.1-beta.12...v0.1.1-beta.13) (2025-03-26)
+
+### [0.1.1-beta.12](https://github.com/ten24group/fw24/compare/v0.1.1-beta.11...v0.1.1-beta.12) (2025-03-14)
+
+
+### Bug Fixes
+
+* failing fw24 tests ([deb2fa3](https://github.com/ten24group/fw24/commit/deb2fa34271db41e1d441fb5bce413869c3c993b))
+* failing-test for inferRelationshipsForEntitySelections ([0cbeb62](https://github.com/ten24group/fw24/commit/0cbeb62ba1508d73c025d37aacb7165693218742))
+
+### [0.1.1-beta.11](https://github.com/ten24group/fw24/compare/v0.1.1-beta.10...v0.1.1-beta.11) (2025-03-12)
+
+
+### Bug Fixes
+
+* error handling ([dbcd8d5](https://github.com/ten24group/fw24/commit/dbcd8d5cd131321eb468c468bdbc0f4e23b7f15c))
+
+### [0.1.1-beta.10](https://github.com/ten24group/fw24/compare/v0.1.1-beta.9...v0.1.1-beta.10) (2025-03-10)
+
+
+### Bug Fixes
+
+* entity-attributes nit showing up in UI ([101d822](https://github.com/ten24group/fw24/commit/101d82216c4b944da9b985a9a326081cbbe75ba2))
+* logic to resolve environmentVariables for lambdas ([8c14759](https://github.com/ten24group/fw24/commit/8c147590f622e406554982161f5c37ca0a369f48))
+
+### [0.1.1-beta.9](https://github.com/ten24group/fw24/compare/v0.1.1-beta.7...v0.1.1-beta.9) (2025-02-28)
+
 ### [0.1.1-beta.6](https://github.com/ten24group/fw24/compare/v0.1.1-beta.5...v0.1.1-beta.6) (2025-02-21)
 
 ### [0.1.1-beta.5](https://github.com/ten24group/fw24/compare/v0.1.1-beta.4...v0.1.1-beta.5) (2025-02-06)
+
+### [0.1.1-beta.8](https://github.com/ten24group/fw24/compare/v0.1.1-beta.7...v0.1.1-beta.8) (2025-02-28)
+
+### [0.1.1-beta.7](https://github.com/ten24group/fw24/compare/v0.1.1-beta.4...v0.1.1-beta.7) (2025-02-28)
+
+
+### Bug Fixes
+
+* base-entity-controller's dependency on entity name when services are injected lazily ([286feb3](https://github.com/ten24group/fw24/commit/286feb338ba2a197d8aa11aea5348dcf7c17c71e))
+* base-entity-service inferRelationshipsForEntitySelections to handle circular relation, and Fix: issues in registerEntitySchema ([b03fa55](https://github.com/ten24group/fw24/commit/b03fa554b549fff68564744de52c2e1bd9eb4661))
+* compilation issue in ui-config-gen ([eec6891](https://github.com/ten24group/fw24/commit/eec6891aad82254e5e45cd1e6ac4d2a16fd8dc53))
+* DI-container's registerProvider function to consider the provider type and entity ([c9e26d3](https://github.com/ten24group/fw24/commit/c9e26d3e365841675617c89ca0f5ccc9c68faccf))
+* hard-error when env-key value is missing ([cd1e2f1](https://github.com/ten24group/fw24/commit/cd1e2f1d97e70632af64da50dfd9d2795328ceb9))
+* InjectEntitySchema/Service decorators not registering right metadata and leading ro error ([3f01c05](https://github.com/ten24group/fw24/commit/3f01c05e4896e5de10436f4a78997cac02ad9252))
+* resolveEntitySchema/Service methods not working properly due to token mismatch, even though token shouldn't matter in these methods ([ecad272](https://github.com/ten24group/fw24/commit/ecad27231c0cd541e2110c318414e485b9c46b61))
+* type in @InjectEntitySchema ([f242852](https://github.com/ten24group/fw24/commit/f24285215a3c5d19a815e7d40204e4689f9d5c9b))
+* wrong key in relation metadata in BaseEntityService: entityAttributeToIOSchemaAttribute leading to errors ([32b5a4a](https://github.com/ten24group/fw24/commit/32b5a4acad3e89bf98e3bbc7e55ca00d4653bb31))
+
+### [0.1.1-beta.6](https://github.com/ten24group/fw24/compare/v0.1.1-beta.4...v0.1.1-beta.6) (2025-02-28)
+
+
+### Bug Fixes
+
+* base-entity-controller's dependency on entity name when services are injected lazily ([286feb3](https://github.com/ten24group/fw24/commit/286feb338ba2a197d8aa11aea5348dcf7c17c71e))
+* base-entity-service inferRelationshipsForEntitySelections to handle circular relation, and Fix: issues in registerEntitySchema ([b03fa55](https://github.com/ten24group/fw24/commit/b03fa554b549fff68564744de52c2e1bd9eb4661))
+* compilation issue in ui-config-gen ([eec6891](https://github.com/ten24group/fw24/commit/eec6891aad82254e5e45cd1e6ac4d2a16fd8dc53))
+* DI-container's registerProvider function to consider the provider type and entity ([c9e26d3](https://github.com/ten24group/fw24/commit/c9e26d3e365841675617c89ca0f5ccc9c68faccf))
+* hard-error when env-key value is missing ([cd1e2f1](https://github.com/ten24group/fw24/commit/cd1e2f1d97e70632af64da50dfd9d2795328ceb9))
+* InjectEntitySchema/Service decorators not registering right metadata and leading ro error ([3f01c05](https://github.com/ten24group/fw24/commit/3f01c05e4896e5de10436f4a78997cac02ad9252))
+* resolveEntitySchema/Service methods not working properly due to token mismatch, even though token shouldn't matter in these methods ([ecad272](https://github.com/ten24group/fw24/commit/ecad27231c0cd541e2110c318414e485b9c46b61))
+* type in @InjectEntitySchema ([f242852](https://github.com/ten24group/fw24/commit/f24285215a3c5d19a815e7d40204e4689f9d5c9b))
+* wrong key in relation metadata in BaseEntityService: entityAttributeToIOSchemaAttribute leading to errors ([32b5a4a](https://github.com/ten24group/fw24/commit/32b5a4acad3e89bf98e3bbc7e55ca00d4653bb31))
+
+### [0.1.1-beta.5](https://github.com/ten24group/fw24/compare/v0.1.1-beta.4...v0.1.1-beta.5) (2025-02-28)
+
+
+### Bug Fixes
+
+* base-entity-controller's dependency on entity name when services are injected lazily ([286feb3](https://github.com/ten24group/fw24/commit/286feb338ba2a197d8aa11aea5348dcf7c17c71e))
+* base-entity-service inferRelationshipsForEntitySelections to handle circular relation, and Fix: issues in registerEntitySchema ([b03fa55](https://github.com/ten24group/fw24/commit/b03fa554b549fff68564744de52c2e1bd9eb4661))
+* compilation issue in ui-config-gen ([eec6891](https://github.com/ten24group/fw24/commit/eec6891aad82254e5e45cd1e6ac4d2a16fd8dc53))
+* DI-container's registerProvider function to consider the provider type and entity ([c9e26d3](https://github.com/ten24group/fw24/commit/c9e26d3e365841675617c89ca0f5ccc9c68faccf))
+* hard-error when env-key value is missing ([cd1e2f1](https://github.com/ten24group/fw24/commit/cd1e2f1d97e70632af64da50dfd9d2795328ceb9))
+* InjectEntitySchema/Service decorators not registering right metadata and leading ro error ([3f01c05](https://github.com/ten24group/fw24/commit/3f01c05e4896e5de10436f4a78997cac02ad9252))
+* resolveEntitySchema/Service methods not working properly due to token mismatch, even though token shouldn't matter in these methods ([ecad272](https://github.com/ten24group/fw24/commit/ecad27231c0cd541e2110c318414e485b9c46b61))
+* type in @InjectEntitySchema ([f242852](https://github.com/ten24group/fw24/commit/f24285215a3c5d19a815e7d40204e4689f9d5c9b))
+* wrong key in relation metadata in BaseEntityService: entityAttributeToIOSchemaAttribute leading to errors ([32b5a4a](https://github.com/ten24group/fw24/commit/32b5a4acad3e89bf98e3bbc7e55ca00d4653bb31))
+### [0.1.1-beta.6](https://github.com/ten24group/fw24/compare/v0.1.1-beta.5...v0.1.1-beta.6) (2025-02-21)
 
 ### [0.1.1-beta.4](https://github.com/ten24group/fw24/compare/v0.1.1-beta.3...v0.1.1-beta.4) (2025-01-06)
 

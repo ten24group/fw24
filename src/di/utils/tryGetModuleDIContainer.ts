@@ -4,22 +4,32 @@ import type { IDIContainer } from "../../interfaces/di";
 import { DefaultLogger } from "../../logging";
 
 export function tryGetModuleDIContainer(moduleClass: Function) {
+	DefaultLogger.debug(`Called:: tryGetModuleDIContainer for [${moduleClass.name}]`);
+
 	const parentModuleMetadata = getModuleMetadata(moduleClass);
 
 	if (!parentModuleMetadata) {
 		throw new Error(`Invalid 'providedBy': [${moduleClass.name}] option. Ensure the class is decorated with @DIModule({...} || @Container({ module: {}})).`);
 	}
 
-	if (!parentModuleMetadata.container) {
-		
+	if (!parentModuleMetadata.hasContainer()) {
+
 		DefaultLogger.warn(`tryGetModuleDIContainer: No container found in module's metadata: [${moduleClass.name}], this should only happen during build time and when the module is imported into root container via an entry-layer, trying to get the container for this module, from the ROOT `);
 
 		if (DIContainer.ROOT.hasChildContainerById(parentModuleMetadata.identifier)) {
-			
+
 			DefaultLogger.info(`tryGetModuleDIContainer: child container found in ROOT for module: ${parentModuleMetadata.identifier}`);
-			const container = DIContainer.ROOT.getChildContainerById(parentModuleMetadata.identifier) as IDIContainer;
+
+			const childContainer = DIContainer.ROOT.getChildContainerById(parentModuleMetadata.identifier) as IDIContainer;
+
 			// the container in the ROOT will be a proxy, make sure to get the actual container out of the proxy
-			parentModuleMetadata.setContainer(container.proxyFor!);
+			const modulesContainer = childContainer.proxyFor;
+
+			if (!modulesContainer) {
+				throw new Error(`Container: [${childContainer.containerId}] does not have a ref to the real container`);
+			}
+
+			parentModuleMetadata.setContainer(modulesContainer);
 
 		} else {
 

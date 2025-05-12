@@ -15,11 +15,14 @@ import { QueueConstruct } from "./queue";
 import { Certificate, CertificateValidation } from "aws-cdk-lib/aws-certificatemanager";
 import { CloudFrontWebDistribution, ViewerCertificate, SecurityPolicyProtocol, SSLMethod } from "aws-cdk-lib/aws-cloudfront";
 import { CertificateConstruct } from "./certificate";
+import { IConstructConfig } from "../interfaces/construct-config";
+import { VpcConstruct } from "./vpc";
+import { MailerConstruct } from "./mailer";
 
 /**
  * Represents the configuration for a bucket construct.
  */
-export interface IBucketConstructConfig {
+export interface IBucketConstructConfig extends IConstructConfig {
     /**
      * The name of the bucket.
      */
@@ -137,14 +140,14 @@ export class BucketConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = BucketConstruct.name;
-    dependencies: string[] = [QueueConstruct.name];
+    dependencies: string[] = [VpcConstruct.name, MailerConstruct.name, QueueConstruct.name];
     output!: FW24ConstructOutput;
 
     appConfig: IApplicationConfig | undefined;
     mainStack!: Stack;
 
     // default constructor to initialize the stack configuration
-    constructor(private bucketConstructConfig: IBucketConstructConfig[]) {
+    constructor(private bucketConstructConfig: IBucketConstructConfig[], private stackName?: string, private parentStackName?: string) {
         Helper.hydrateConfig(bucketConstructConfig,'S3');
     }
 
@@ -152,10 +155,9 @@ export class BucketConstruct implements FW24Construct {
     public async construct() {
         // make the main stack available to the class
         this.appConfig = this.fw24.getConfig();
-        // get the main stack from the framework
-        this.mainStack = this.fw24.getStack("main");
         // create the buckets
         this.bucketConstructConfig.forEach( ( bucketConfig: IBucketConstructConfig ) => {
+            this.mainStack = this.fw24.getStack(bucketConfig.stackName || this.stackName, bucketConfig.parentStackName || this.parentStackName);
             this.createBucket(bucketConfig);
         });
     }

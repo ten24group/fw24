@@ -13,6 +13,11 @@ export type ListingPropConfig = {
 export type ListEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string,
     entityNamePlural: string,
+    excludeFromAdminCreate?: boolean,
+    excludeFromAdminUpdate?: boolean,
+    excludeFromAdminDelete?: boolean,
+    excludeFromAdminDetail?: boolean,
+    CRUDApiPath?: string,
     properties: TIOSchemaAttributesMap<S>
 }
 
@@ -26,16 +31,20 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 
     const listPageConfig = makeViewEntityListConfig(options);
 
+    const pageHeaderAction = [];
+    if(!options.excludeFromAdminCreate){
+        pageHeaderAction.push({
+            label:  "Create",
+            url:    `/create-${entityNameLower}`
+        });
+    }
+
     return {
         pageTitle:  `${entityNamePascalCase} Listing`,
         pageType:   "list",
+        routePattern: undefined,
         breadcrums: [],
-        pageHeaderActions: [
-            {
-                label:  "Create",
-                url:    `/create-${entityNameLower}`
-            }
-        ],
+        pageHeaderActions: pageHeaderAction,
         listPageConfig
     };
 };
@@ -44,19 +53,23 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     options: ListEntityPageOptions<S>
 ){
 
-    const{ entityName, properties } = options;
+    const{ entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath } = options;
     const entityNameLower = entityName.toLowerCase();
 
     const listPageConfig = {
         apiConfig: {
             apiMethod: `GET`,
             responseKey: 'items',
-            apiUrl: `/${entityNameLower}`,
+            apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
         },
         propertiesConfig: [] as any[],
     }
 
-    const formattedProps = formatEntityAttributesForList( entityName, Array.from(properties.values()) );
+    const formattedProps = formatEntityAttributesForList( entityName, Array.from(properties.values()), {
+        excludeFromAdminUpdate,
+        excludeFromAdminDelete,
+        excludeFromAdminDetail
+    } );
 
     listPageConfig.propertiesConfig.push(...formattedProps);
 

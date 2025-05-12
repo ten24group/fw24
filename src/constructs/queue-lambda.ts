@@ -41,6 +41,11 @@ interface QueueLambdaFunctionProps {
   retentionPeriodDays?: number;
 
   /**
+   * The number of times a message can be unsuccessfully dequeued before being moved to the dead-letter queue.
+   */
+  maxReceiveCount?: number;
+
+  /**
    * The properties for the SQS event source.
    */
   sqsEventSourceProps?: {
@@ -150,22 +155,27 @@ export class QueueLambda extends Construct {
     if( existingDLQ ) {
       dlqProps = {
         deadLetterQueue: {
-          maxReceiveCount: 3,
+          maxReceiveCount: props.maxReceiveCount ?? 3,
           queue: existingDLQ,
         }
       }
     } else if( !props.queueName.endsWith("dlq") ) { //if queue itself is a dlq don't assign default dlq
       //set default dlq
-      let defaultDLQ = fw24.getEnvironmentVariable('dlq_default');
+      const isFifoQueue = props.queueProps?.fifo || props.queueName.endsWith('.fifo') || props.queueProps?.contentBasedDeduplication;
+      let defaultDLQ = isFifoQueue ? fw24.getEnvironmentVariable('dlq_default_fifo') : fw24.getEnvironmentVariable('dlq_default');
+
       if(!defaultDLQ ){
+        const dlqName = isFifoQueue ? 'default-dlq-fifo' : 'default-dlq';
         //create default dlq
-        defaultDLQ = new Queue(this, "default-dlq", {});
-        fw24.getEnvironmentVariable('dlq_default', defaultDLQ);
+        defaultDLQ = new Queue(this, dlqName, {
+          fifo: isFifoQueue
+        });
+        fw24.getEnvironmentVariable(dlqName.replace('default-', '_'), defaultDLQ);
       }
       //assign default dlq
       dlqProps = {
         deadLetterQueue: {
-          maxReceiveCount: 3,
+          maxReceiveCount: props.maxReceiveCount ?? 3,
           queue: defaultDLQ,
         }
       }
@@ -188,13 +198,8 @@ export class QueueLambda extends Construct {
       ...props.queueProps,
     }) as Queue;
 
-    fw24.setEnvironmentVariable(props.queueName, queue.queueName, "queueName");
-    this.logger?.debug(" Queue Name set in fw24 scope : ", props.queueName, " :", fw24.getEnvironmentVariable(props.queueName, 'queueName'));
-
-    fw24.setEnvironmentVariable(props.queueName, queue, "queue");
-
     if(props.lambdaFunctionProps){
-      const queueFunction = new LambdaFunction(this, `${id}-lambda`, { ...props.lambdaFunctionProps }) as NodejsFunction;
+      const queueFunction = new LambdaFunction(scope, `${id}-lambda`, { ...props.lambdaFunctionProps }) as NodejsFunction;
       
       const isFifoQueue = Helper.isFifoQueueProps({ 
         ...(props.queueProps || {}), 
