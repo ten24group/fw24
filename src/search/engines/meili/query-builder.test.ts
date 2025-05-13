@@ -97,7 +97,7 @@ describe("MeiliQueryBuilder DSL", () => {
       expect(helper.toString()).toBe("x = 'val'");
       const f = QueryBuilder.create()
         .filterConditionRaw("x", "=", "test")
-        .build().options.filters;
+        .build().options.filter;
       expect(f).toBe("x = 'test'");
     });
   });
@@ -117,7 +117,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .lt(5)
         .andWhere("f")
         .lte(6);
-      expect(qb.build().options.filters).toBe(
+      expect(qb.build().options.filter).toBe(
         "(a = 1 AND b != 2 AND c > 3 AND d >= 4 AND e < 5 AND f <= 6)",
       );
     });
@@ -128,7 +128,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .in([ "a", "b" ])
         .andWhere("ids")
         .notIn([ 1, 2 ])
-        .build().options.filters;
+        .build().options.filter;
       expect(f).toBe("(tags IN ['a', 'b'] AND NOT (ids IN [1, 2]))");
     });
 
@@ -139,7 +139,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .andWhere("m")
         .not()
         .rangeTo(4, 6)
-        .build().options.filters;
+        .build().options.filter;
       expect(f).toBe("(n 1 TO 3 AND NOT (m 4 TO 6))");
     });
 
@@ -157,7 +157,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .isNull()
         .andWhere("k")
         .isNotNull()
-        .build().options.filters;
+        .build().options.filter;
       expect(f).toBe(
         "(f EXISTS AND NOT (g EXISTS) AND h IS EMPTY AND NOT (i IS EMPTY) AND j IS NULL AND NOT (k IS NULL))",
       );
@@ -169,7 +169,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .contains("foo")
         .orWhere("title")
         .startsWith("bar")
-        .build().options.filters;
+        .build().options.filter;
       expect(f).toBe("(desc CONTAINS 'foo' OR title STARTS WITH 'bar')");
     });
 
@@ -178,7 +178,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .where("a")
         .eq(1)
         .filterRaw("custom < 5", "OR")
-        .build().options.filters;
+        .build().options.filter;
       expect(f).toBe("(a = 1 OR custom < 5)");
     });
 
@@ -186,24 +186,24 @@ describe("MeiliQueryBuilder DSL", () => {
       const f = QueryBuilder.create()
         .andGroup((g) => g.where("x").eq(1).andWhere("y").eq(2))
         .orGroup((g) => { g.where("z").eq(3); })
-        .build().options.filters;
+        .build().options.filter;
       expect(f).toBe("((x = 1 AND y = 2) OR z = 3)");
 
       const nf = QueryBuilder.create()
         .notGroup((g) => g.where("x").eq(1).andWhere("y").eq(2))
-        .build().options.filters;
+        .build().options.filter;
       expect(nf).toBe("NOT (x = 1 AND y = 2)");
     });
 
     it("omits parentheses for single-child groups", () => {
       const a = QueryBuilder.create()
         .andGroup((g) => g.where("a").eq(5))
-        .build().options.filters;
+        .build().options.filter;
       expect(a).toBe("a = 5");
 
       const b = QueryBuilder.create()
         .orGroup((g) => g.where("b").eq(6))
-        .build().options.filters;
+        .build().options.filter;
       expect(b).toBe("b = 6");
     });
 
@@ -213,7 +213,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .equals(false)
         .andWhere("status")
         .notEqual("ok")
-        .build().options.filters;
+        .build().options.filter;
       expect(f).toBe("(NOT (active = false) AND status != 'ok')");
     });
   });
@@ -259,11 +259,11 @@ describe("MeiliQueryBuilder DSL", () => {
       expect(qb.build().options.facetFilters).toBeUndefined();
     });
 
-    it("facetsDistribution and clearFacetsDistribution", () => {
-      const qb = QueryBuilder.create().facetsDistribution([ "a", "b" ]);
-      expect(qb.build().options.facetsDistribution).toEqual([ "a", "b" ]);
-      qb.clearFacetsDistribution();
-      expect(qb.build().options.facetsDistribution).toBeUndefined();
+    it("facets and clearFacets", () => {
+      const qb = QueryBuilder.create().facets([ "a", "b" ]);
+      expect(qb.build().options.facets).toEqual([ "a", "b" ]);
+      qb.clearFacets();
+      expect(qb.build().options.facets).toBeUndefined();
     });
 
     it("matchingStrategy and clearMatchingStrategy", () => {
@@ -322,7 +322,7 @@ describe("MeiliQueryBuilder DSL", () => {
       expect(() => JSON.parse(str)).not.toThrow();
       const obj = JSON.parse(str);
       expect(obj).toHaveProperty("q", "hi");
-      expect(obj.options).toHaveProperty("filters", "a = 1");
+      expect(obj.options).toHaveProperty("filter", "a = 1");
     });
   });
 
@@ -331,9 +331,9 @@ describe("MeiliQueryBuilder DSL", () => {
       const qb1 = QueryBuilder.create().where("u").eq(100).limit(2);
       const qb2 = qb1.clone();
       qb2.where("v").eq(200).clearPagination();
-      expect(qb1.build().options.filters).toBe("u = 100");
+      expect(qb1.build().options.filter).toBe("u = 100");
       expect(qb1.build().options.limit).toBe(2);
-      expect(qb2.build().options.filters).toBe("(u = 100 AND v = 200)");
+      expect(qb2.build().options.filter).toBe("(u = 100 AND v = 200)");
       expect(qb2.build().options.limit).toBeUndefined();
     });
   });
@@ -362,7 +362,7 @@ describe("MeiliQueryBuilder DSL", () => {
                 .andWhere("f").eq(6);
             });
         })
-        .build().options.filters;
+        .build().options.filter;
 
       expect(query).toBe("((a = 1 AND (b = 2 OR c = 3)) OR (d = 4 OR (e = 5 AND f = 6)))");
     });
@@ -372,7 +372,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .andGroup(_ => {/* empty */ })
         .orGroup(_ => {/* empty */ })
         .where("x").eq(1)
-        .build().options.filters;
+        .build().options.filter;
 
       expect(query).toBe("x = 1");
     });
@@ -390,7 +390,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .andGroup(g => {
           g.where("e").eq(5);
         })
-        .build().options.filters;
+        .build().options.filter;
 
       expect(query).toBe("((a = 1 OR (b = 2 AND (c = 3 OR d = 4))) AND e = 5)");
     });
@@ -410,7 +410,7 @@ describe("MeiliQueryBuilder DSL", () => {
               g2.where("e").eq(5);
             });
         })
-        .build().options.filters;
+        .build().options.filter;
 
       expect(query).toBe("((a = 1 AND NOT (b = 2 OR c = 3)) OR (d = 4 AND NOT (e = 5)))");
     });
@@ -428,7 +428,7 @@ describe("MeiliQueryBuilder DSL", () => {
           g.where("f").eq(6)
             .orWhere("g").eq(7);
         })
-        .build().options.filters;
+        .build().options.filter;
 
       expect(query).toBe("((((a = 1 OR b = 2) AND c = 3) OR (d = 4 AND e = 5)) AND (f = 6 OR g = 7))");
     });
@@ -448,7 +448,7 @@ describe("MeiliQueryBuilder DSL", () => {
         qb.orGroup(g => g.where("b").eq(2));
       }
 
-      expect(qb.build().options.filters).toBe("a = 1");
+      expect(qb.build().options.filter).toBe("a = 1");
     });
 
     it("supports advanced group nesting with mixed operations", () => {
@@ -468,7 +468,7 @@ describe("MeiliQueryBuilder DSL", () => {
           g.where("restricted").eq(true)
             .orWhere("age").lt(18);
         })
-        .build().options.filters;
+        .build().options.filter;
 
       // This test is primarily to verify it builds without errors
       expect(query).toContain("category IN ['books', 'movies'] AND price < 50");
@@ -497,7 +497,7 @@ describe("MeiliQueryBuilder DSL", () => {
               });
           });
         })
-        .build().options.filters;
+        .build().options.filter;
 
       // We're testing deep nesting here, the exact format varies by implementation
       expect(query).toContain("a = 1");
@@ -530,7 +530,7 @@ describe("MeiliQueryBuilder DSL", () => {
           g.where("discontinued").eq(true)
             .orWhere("recalled").eq(true);
         })
-        .build().options.filters;
+        .build().options.filter;
       /**
        * Expected output:
        * "(
@@ -559,7 +559,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .andGroup(g => {
           g.where("a").eq(1);
         })
-        .build().options.filters;
+        .build().options.filter;
 
       expect(query).toBe("a = 1");
     });
@@ -570,7 +570,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .andGroup(g => {
           g.where("b").eq(2);
         })
-        .build().options.filters;
+        .build().options.filter;
 
       expect(query).toBe("(a = 1 AND b = 2)");
     });
@@ -582,7 +582,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .andGroup(g => {
           g.where("c").eq(3);
         })
-        .build().options.filters;
+        .build().options.filter;
 
       expect(query).toBe("((a = 1 OR b = 2) AND c = 3)");
     });
@@ -592,7 +592,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .notGroup(g => {
           g.where("a").eq(1);
         })
-        .build().options.filters;
+        .build().options.filter;
 
       expect(query).toBe("NOT (a = 1)");
     });
@@ -603,7 +603,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .notGroup(g => {
           g.where("b").eq(2);
         })
-        .build().options.filters;
+        .build().options.filter;
 
       expect(query).toBe("(a = 1 AND NOT (b = 2))");
     });
@@ -615,7 +615,7 @@ describe("MeiliQueryBuilder DSL", () => {
         .notGroup(g => {
           g.where("c").eq(3);
         })
-        .build().options.filters;
+        .build().options.filter;
 
       expect(query).toBe("((a = 1 OR b = 2) AND NOT (c = 3))");
     });
