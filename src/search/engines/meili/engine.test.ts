@@ -146,7 +146,7 @@ describe("MeiliSearchEngine", () => {
       await engine.search({ search: "" }, cfg as any);
       expect(mockIndex.search).toHaveBeenCalledWith(
         "",
-        expect.objectContaining({ facetsDistribution: [ "category" ] }),
+        expect.objectContaining({ facets: [ "category" ] }),
       );
     });
 
@@ -155,16 +155,16 @@ describe("MeiliSearchEngine", () => {
         const filters = { a: { eq: "x" }, b: { gt: 1 }, c: { lte: 5 } };
         await engine.search({ search: "", filters } as any, searchConfig);
         const opts = mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions;
-        expect(opts.filters).toContain("a = 'x'");
-        expect(opts.filters).toContain("b > 1");
-        expect(opts.filters).toContain("c <= 5");
+        expect(opts.filter).toContain("a = 'x'");
+        expect(opts.filter).toContain("b > 1");
+        expect(opts.filter).toContain("c <= 5");
       });
 
       it("supports IN and NOT IN operators", async () => {
         const filters = { tags: { in: [ "t1", "t2" ], notIn: [ "t3" ] } };
         await engine.search({ search: "", filters } as any, searchConfig);
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
-          .filters;
+          .filter;
         expect(fstr).toContain("tags IN ['t1', 't2']");
         expect(fstr).toContain("NOT (tags IN ['t3'])");
       });
@@ -173,7 +173,7 @@ describe("MeiliSearchEngine", () => {
         const filters = { price: { between: [ 10, 20 ] } };
         await engine.search({ search: "", filters } as any, searchConfig);
         expect(
-          (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filters,
+          (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filter,
         ).toContain("price 10 TO 20");
       });
 
@@ -185,7 +185,7 @@ describe("MeiliSearchEngine", () => {
         };
         await engine.search({ search: "", filters } as any, searchConfig);
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
-          .filters;
+          .filter;
         expect(fstr).toContain("f EXISTS");
         expect(fstr).toContain("g IS EMPTY");
         expect(fstr).toContain("h IS NULL");
@@ -195,7 +195,7 @@ describe("MeiliSearchEngine", () => {
         const filters = { d: { contains: "abc" }, s: { startsWith: "pre" } };
         await engine.search({ search: "", filters } as any, searchConfig);
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
-          .filters;
+          .filter;
         expect(fstr).toContain("d CONTAINS 'abc'");
         expect(fstr).toContain("s STARTS WITH 'pre'");
       });
@@ -204,7 +204,7 @@ describe("MeiliSearchEngine", () => {
         const filters = { x: { customOp: 42 } };
         await engine.search({ search: "", filters } as any, searchConfig);
         expect(
-          (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filters,
+          (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filter,
         ).toContain("x customOp 42");
       });
 
@@ -212,20 +212,25 @@ describe("MeiliSearchEngine", () => {
         const filters = { and: [ { a: { eq: 1 } }, { b: { eq: 2 } } ] };
         await engine.search({ search: "", filters } as any, searchConfig);
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
-          .filters;
+          .filter;
         expect(fstr).toMatch(/\(a = 1 AND b = 2\)/);
       });
 
       it("handles nested OR and NOT groups", async () => {
         const filters = {
           and: [
-            { or: [ { x: { lt: 5 } }, { y: { gt: 10 } } ] },
+            {
+              or: [
+                { x: { lt: 5 } },
+                { y: { gt: 10 } }
+              ]
+            },
             { not: { z: { eq: 0 } } },
           ],
         };
         await engine.search({ search: "", filters } as any, searchConfig);
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
-          .filters;
+          .filter;
         expect(fstr).toMatch("((x < 5 OR y > 10) AND NOT (z = 0))");
       });
 
@@ -235,7 +240,7 @@ describe("MeiliSearchEngine", () => {
         };
         await engine.search({ search: "", filters } as any, searchConfig);
         expect(
-          (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filters,
+          (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filter,
         ).toContain("a = 'v'");
       });
     });
@@ -363,7 +368,7 @@ describe("MeiliSearchEngine", () => {
       // first call: empty OR, second: empty AND
       await engine.search({ search: "", filters: { or: [] } } as any, searchConfig);
       await engine.search({ search: "", filters: { and: [] } } as any, searchConfig);
-      const noFilterCalls = mockIndex.search.mock.calls.filter(([ , opts ]) => !(opts as any).filters);
+      const noFilterCalls = mockIndex.search.mock.calls.filter(([ , opts ]) => !(opts as any).filter);
       expect(noFilterCalls.length).toBe(2);
     });
 
