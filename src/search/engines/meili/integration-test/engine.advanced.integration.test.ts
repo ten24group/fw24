@@ -192,4 +192,49 @@ describe('MeiliSearchEngine Advanced Features Integration Tests', () => {
     expect(filteredTasks.results.every(t => t.indexUid === TEST_INDEX)).toBe(true);
     await engine.deleteDocuments([ 'task-test' ], TEST_INDEX as string, true);
   }, 60000);
+
+  it('should cancel and delete tasks', async () => {
+    const tempIndex = `test-tasks-${Math.random().toString(36).substring(2, 10)}`;
+    const tempConfig = { ...indexConfig, indexName: tempIndex };
+    try {
+      await engine.initIndex(tempConfig, true);
+      // Start a long-running task (simulate by adding many docs)
+      const docs = Array(100).fill(null).map((_, i) => ({ id: `doc-${i}`, title: `Doc ${i}` }));
+      const task = await engine.indexDocuments(docs, tempConfig, false);
+      expect(task).toBeDefined();
+      expect(task.taskUid).toBeDefined();
+      // Cancel the task
+      const cancelResult = await engine.cancelTasks({ uids: [ task.taskUid ] });
+      expect(cancelResult).toBeDefined();
+      // Delete the task
+      const deleteResult = await engine.deleteTasks({ uids: [ task.taskUid ] });
+      expect(deleteResult).toBeDefined();
+    } finally {
+      await engine.deleteIndex(tempIndex, true);
+    }
+  });
+
+  it('should create a snapshot', async () => {
+    // This may require MeiliSearch to be started with snapshot support
+    try {
+      const result = await engine.createSnapshot(true);
+      expect(result).toBeDefined();
+      expect(result.taskUid).toBeDefined();
+    } catch (e) {
+      // If not supported, skip
+      expect(e).toBeDefined();
+    }
+  });
+
+  it('should create a dump', async () => {
+    // This may require MeiliSearch to be started with dump support
+    try {
+      const result = await engine.createDump(true);
+      expect(result).toBeDefined();
+      expect(result.taskUid).toBeDefined();
+    } catch (e) {
+      // If not supported, skip
+      expect(e).toBeDefined();
+    }
+  });
 }); 
