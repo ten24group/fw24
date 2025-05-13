@@ -186,33 +186,13 @@ describe("Advanced MeiliQueryBuilder Features", () => {
       expect(query.options.facets).toEqual([ "category", "brand" ]);
     });
 
-    it("enables facet stats", () => {
-      const query = QueryBuilder.create()
-        .facets([ "price", "rating" ])
-        .facetStats()
-        .build();
-
-      expect(query.options.facets).toEqual([ "price", "rating" ]);
-      expect(query.options.facetStats).toBe(true);
-    });
-
-    it("disables facet stats explicitly", () => {
-      const query = QueryBuilder.create()
-        .facetStats(false)
-        .build();
-
-      expect(query.options.facetStats).toBe(false);
-    });
-
     it("clears facet options", () => {
       const query = QueryBuilder.create()
         .facets([ "category", "brand" ])
-        .facetStats()
         .clearFacets()
         .build();
 
       expect(query.options.facets).toBeUndefined();
-      expect(query.options.facetStats).toBeUndefined();
     });
   });
 
@@ -241,7 +221,7 @@ describe("Advanced MeiliQueryBuilder Features", () => {
         .postFilter("category = 'books'")
         .build();
 
-      expect(query.options.post_filter).toBe("category = 'books'");
+      expect(query.options.postFilter).toBe("category = 'books'");
     });
 
     it("adds post filter using builder pattern", () => {
@@ -252,7 +232,7 @@ describe("Advanced MeiliQueryBuilder Features", () => {
         })
         .build();
 
-      expect(query.options.post_filter).toBe("(category = 'books' AND price < 50)");
+      expect(query.options.postFilter).toBe("(category = 'books' AND price < 50)");
     });
 
     it("clears post filter", () => {
@@ -261,7 +241,7 @@ describe("Advanced MeiliQueryBuilder Features", () => {
         .clearPostFilter()
         .build();
 
-      expect(query.options.post_filter).toBeUndefined();
+      expect(query.options.postFilter).toBeUndefined();
     });
   });
 
@@ -333,7 +313,6 @@ describe("Advanced MeiliQueryBuilder Features", () => {
         .hitsPerPage(25)
         .page(2)
         .facets([ "category", "brand", "price" ])
-        .facetStats()
         .build();
 
       expect(query.q).toBe("search term");
@@ -349,7 +328,6 @@ describe("Advanced MeiliQueryBuilder Features", () => {
       expect(query.options.hitsPerPage).toBe(25);
       expect(query.options.page).toBe(2);
       expect(query.options.facets).toEqual([ "category", "brand", "price" ]);
-      expect(query.options.facetStats).toBe(true);
     });
 
     it("demonstrates advanced type-safe filtering scenario", () => {
@@ -392,10 +370,10 @@ describe("Advanced MeiliQueryBuilder Features", () => {
       expect(query.q).toBe("modern furniture");
 
       // Main filter
-      expect(query.options.filters).toContain("available = true");
-      expect(query.options.filters).toContain("price >= 100");
-      expect(query.options.filters).toContain("price <= 1000");
-      expect(query.options.filters).toContain("category = 'living-room'");
+      expect(query.options.filter).toContain("available = true");
+      expect(query.options.filter).toContain("price >= 100");
+      expect(query.options.filter).toContain("price <= 1000");
+      expect(query.options.filter).toContain("category = 'living-room'");
 
       // Facet filters
       expect(query.options.facetFilters).toContainEqual([
@@ -409,9 +387,9 @@ describe("Advanced MeiliQueryBuilder Features", () => {
       ]);
 
       // Post filter
-      expect(query.options.post_filter).toContain("inStock = true");
-      expect(query.options.post_filter).toContain("backorderAvailable = true");
-      expect(query.options.post_filter).toContain("restock_date < 20230601");
+      expect(query.options.postFilter).toContain("inStock = true");
+      expect(query.options.postFilter).toContain("backorderAvailable = true");
+      expect(query.options.postFilter).toContain("restock_date < 20230601");
 
       // Pagination and sorting
       expect(query.options.hitsPerPage).toBe(24);

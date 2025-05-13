@@ -243,9 +243,77 @@ describe("MeiliSearchEngine", () => {
           (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filter,
         ).toContain("a = 'v'");
       });
+
+      it("handles multiple nested AND/OR/NOT groups", async () => {
+        const filters = {
+          and: [
+            { or: [ { a: { eq: 1 } }, { b: { eq: 2 } } ] },
+            { not: { c: { gt: 3 } } },
+            { d: { lte: 4 } },
+            { or: [ { e: { neq: 5 } }, { not: { f: { in: [ 6, 7 ] } } } ] },
+          ],
+        };
+        await engine.search({ search: "", filters } as any, searchConfig);
+        const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filter;
+        expect(fstr).toMatch(
+          /\(\(a = 1 OR b = 2\) AND NOT \(c > 3\) AND d <= 4 AND \(e != 5 OR NOT \(f IN \[6, 7\]\)\)\)/
+        );
+      });
+
+      it("handles deeply nested groups with all logical operators", async () => {
+        const filters = {
+          or: [
+            {
+              and: [
+                { x: { lt: 10 } },
+                { not: { y: { eq: 20 } } },
+                {
+                  or: [
+                    { z: { gte: 30 } },
+                    { w: { lte: 40 } },
+                  ],
+                },
+              ],
+            },
+            { not: { v: { neq: 50 } } },
+          ],
+        };
+        await engine.search({ search: "", filters } as any, searchConfig);
+        const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filter;
+        expect(fstr).toMatch(
+          /\(\(x < 10 AND NOT \(y = 20\) AND \(z >= 30 OR w <= 40\)\) OR NOT \(v != 50\)\)/
+        );
+      });
+
+      it("handles NOT of an AND group", async () => {
+        const filters = {
+          not: {
+            and: [
+              { a: { eq: 1 } },
+              { b: { eq: 2 } },
+            ],
+          },
+        };
+        await engine.search({ search: "", filters } as any, searchConfig);
+        const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filter;
+        expect(fstr).toMatch("NOT (a = 1 AND b = 2)");
+      });
+
+      it("handles NOT of an OR group", async () => {
+        const filters = {
+          not: {
+            or: [
+              { a: { eq: 1 } },
+              { b: { eq: 2 } },
+            ],
+          },
+        };
+        await engine.search({ search: "", filters } as any, searchConfig);
+        const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filter;
+        expect(fstr).toMatch("NOT (a = 1 OR b = 2)");
+      });
     });
 
-    // TODO: enhance query types to support better sorting
     it("supports explicit query.sort", async () => {
       await engine.search(
         { search: "", sort: [ { field: "price", dir: "desc" } ] } as any,

@@ -720,46 +720,38 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     if (filters.and) {
       qb.andGroup(sub => {
         for (const clause of [].concat(filters.and)) {
-          this.applyFilters(sub, clause);
+          sub.andGroup(sub2 => this.applyFilters(sub2, clause));
         }
       });
       return;
     }
     if (filters.or) {
-      // Create a direct OR relation between all the clauses
-      const orClauses = [].concat(filters.or);
-      if (orClauses.length === 0) {
-        return; // Empty OR, nothing to do
-      }
-
-      // Handle the first clause with regular where
-      this.applyFilters(qb, orClauses[ 0 ]);
-
-      // Handle subsequent clauses with orWhere to ensure OR relation
-      for (let i = 1; i < orClauses.length; i++) {
-        // Create new builder for each OR clause
-        const orBuilder = QueryBuilder.create();
-        this.applyFilters(orBuilder, orClauses[ i ]);
-
-        // Add as raw filter with OR connector
-        const orFilter = orBuilder.build().options.filters;
-        if (orFilter) {
-          qb.filterRaw(orFilter, "OR");
-        }
-      }
-      return;
-    }
-    if (filters.not) {
-      // 'not' can be a single object or array
-      qb.notGroup(sub => {
-        const negs = Array.isArray(filters.not)
-          ? filters.not
-          : [ filters.not ];
-        for (const clause of negs) {
-          this.applyFilters(sub, clause);
+      qb.orGroup(sub => {
+        for (const clause of [].concat(filters.or)) {
+          sub.orGroup(sub2 => this.applyFilters(sub2, clause));
         }
       });
       return;
+    }
+    if (filters.not) {
+
+      qb.notGroup(sub => {
+        for (const clause of [].concat(filters.not)) {
+          sub.andGroup(sub2 => this.applyFilters(sub2, clause));
+        }
+      });
+      return;
+
+      // // 'not' can be a single object or array
+      // qb.notGroup(sub => {
+      //   const negs = Array.isArray(filters.not)
+      //     ? filters.not
+      //     : [ filters.not ];
+      //   for (const clause of negs) {
+      //     this.applyFilters(sub, clause);
+      //   }
+      // });
+      // return;
     }
 
     // 2) Leaf filter: an object mapping field -> operator object

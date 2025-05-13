@@ -39,6 +39,7 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
 
   it('should get index settings', async () => {
     const settings = await engine.getIndexSettings(TEST_INDEX as string);
+    await pollForSetting(engine, TEST_INDEX!, 'searchableAttributes', [ 'title', 'content', 'tags' ]);
     expect(settings).toBeDefined();
     expect(settings.searchableAttributes).toEqual([ 'title', 'content', 'tags' ]);
     expect(settings.filterableAttributes).toEqual([ 'category', 'tags', 'price', 'status' ]);
@@ -57,8 +58,10 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
   }, 60000);
 
   it('should create and configure a new index with settings', async () => {
+    const tempIndex = `test-custom-settings-${Math.random().toString(36).substring(2, 10)}`;
+
     const settingsIndexConfig = {
-      indexName: TEST_SETTINGS_INDEX,
+      indexName: tempIndex,
       primaryKey: 'id',
       settings: {
         searchableAttributes: [ 'title' ],
@@ -71,15 +74,19 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
     };
     try {
       const index = await engine.initIndex(settingsIndexConfig, true);
-      await pollForSetting(engine, TEST_SETTINGS_INDEX, 'searchableAttributes', [ 'title' ]);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      await pollForSetting(engine, tempIndex, 'searchableAttributes', [ 'title' ]);
+
       expect(index).toBeDefined();
-      const settings = await engine.getIndexSettings(TEST_SETTINGS_INDEX);
+      const settings = await engine.getIndexSettings(tempIndex);
+
       expect(settings.searchableAttributes).toEqual([ 'title' ]);
       expect(settings.filterableAttributes).toEqual([ 'category' ]);
       expect(settings.sortableAttributes).toEqual([ 'createdAt' ]);
     } finally {
       try {
-        await engine.deleteIndex(TEST_SETTINGS_INDEX, true);
+        await engine.deleteIndex(tempIndex, true);
       } catch { }
     }
   }, 60000);
@@ -89,6 +96,7 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
     const tempConfig = { ...indexConfig, indexName: tempIndex };
     try {
       await engine.initIndex(tempConfig, true);
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       await engine.updateSearchableAttributes(tempIndex, [ 'title' ], true);
       await pollForSetting(engine, tempIndex, 'searchableAttributes', [ 'title' ]);
@@ -109,6 +117,7 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
     const tempConfig = { ...indexConfig, indexName: tempIndex };
     try {
       await engine.initIndex(tempConfig, true);
+      await new Promise(resolve => setTimeout(resolve, 1000));
       await engine.updateDisplayedAttributes(tempIndex, [ 'id', 'title' ], true);
       await pollForSetting(engine, tempIndex, 'displayedAttributes', [ 'id', 'title' ]);
 
@@ -143,7 +152,7 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
     const tempConfig = { ...indexConfig, indexName: tempIndex };
     try {
       await engine.initIndex(tempConfig, true);
-
+      await new Promise(resolve => setTimeout(resolve, 1000));
       const rules = [ 'words', 'typo', 'proximity', 'attribute', 'sort', 'exactness' ];
       await engine.updateRankingRules(tempIndex, rules, true);
       await pollForSetting(engine, tempIndex, 'rankingRules', rules);

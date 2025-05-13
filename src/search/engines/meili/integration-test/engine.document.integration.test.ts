@@ -136,7 +136,14 @@ describe('MeiliSearchEngine Document Operations Integration Tests', () => {
 
   it('should delete documents by filter', async () => {
     const tempIndex = `test-delete-filter-${Math.random().toString(36).substring(2, 10)}`;
-    const tempConfig = { ...indexConfig, indexName: tempIndex };
+    const tempConfig = {
+      ...indexConfig,
+      settings: {
+        ...(indexConfig.settings || {}),
+        filterableAttributes: [ ...(indexConfig.settings?.filterableAttributes || []), 'group' ]
+      },
+      indexName: tempIndex
+    };
     try {
       await engine.initIndex(tempConfig, true);
       await engine.indexDocuments([
@@ -147,8 +154,10 @@ describe('MeiliSearchEngine Document Operations Integration Tests', () => {
 
       await pollForDocument(engine, tempConfig, '1');
 
+      // make sure the attribute is filterable
       await engine.deleteDocumentsByFilter("group = 'A'", tempIndex, true);
-      await pollForDocumentAbsence(engine, tempConfig, '1');
+
+      await pollForDocumentAbsence(engine, tempConfig, '1', 40);
 
       const docs = await engine.getDocuments(tempIndex);
       expect(docs.length).toBe(1);
