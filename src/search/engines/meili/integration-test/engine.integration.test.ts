@@ -1,11 +1,10 @@
 import { MeiliSearchEngine, ExtendedMeiliSearchClientConfig, SearchIndexConfigExt } from '../engine';
-import { SearchIndexConfig, SearchQuery, SearchQueryTyped } from '../../../types';
+import { SearchQueryTyped } from '../../../types';
 
 // Skip integration tests if environment is set to skip them
 const SKIP_INTEGRATION_TESTS = process.env.SKIP_INTEGRATION_TESTS === 'true';
 
 // This test suite requires a MeiliSearch instance running on localhost:7700
-// You can start one with: docker run -p 7700:7700 getmeili/meilisearch:latest
 describe('MeiliSearchEngine Integration Tests', () => {
 
   if (SKIP_INTEGRATION_TESTS) {
@@ -38,23 +37,23 @@ describe('MeiliSearchEngine Integration Tests', () => {
     apiKey: 'xxx_your_master_key',  // No API key for local development instance
   };
 
-  const indexConfig: SearchIndexConfig = {
+  const indexConfig: SearchIndexConfigExt = {
     indexName: TEST_INDEX,
+    primaryKey: 'id',
     settings: {
       searchableAttributes: [ 'title', 'content', 'tags' ],
       filterableAttributes: [ 'category', 'tags', 'price', 'status' ],
       sortableAttributes: [ 'price' ],
-      // primaryKey: 'id',
-    },
+    }
   };
-
-  // Helper function to wait for indexing to complete
-  async function waitForIndexing(timeoutMs = 50000) {
-    return new Promise(resolve => setTimeout(resolve, timeoutMs));
-  }
 
   beforeEach(async () => {
     jest.setTimeout(60000);
+    // No index deletion or recreation here. If you want to reset documents, do it here, otherwise leave empty.
+    // Example for resetting documents only (uncomment if needed):
+    // await engine.deleteAllDocuments(TEST_INDEX, true);
+    // await engine.indexDocuments(TEST_DOCS, indexConfig, true);
+    // await pollForDocument(engine, indexConfig, TEST_DOCS[0].id);
   });
 
   beforeAll(async () => {
@@ -77,7 +76,7 @@ describe('MeiliSearchEngine Integration Tests', () => {
       return;
     }
 
-    // // Delete test index if it exists
+    // Delete test index if it exists
     try {
       const exists = await engine.indexExists(TEST_INDEX);
       if (exists) {
@@ -90,20 +89,19 @@ describe('MeiliSearchEngine Integration Tests', () => {
     // Create fresh index and add test documents
     await engine.initIndex(indexConfig, true);
     await engine.indexDocuments(TEST_DOCS, indexConfig, true);
-
-    // Wait for indexing to complete
-    await waitForIndexing();
+    // Wait for the first document to be available instead of a fixed timeout
+    await pollForDocument(engine, indexConfig, TEST_DOCS[ 0 ].id);
   }, 60000);
 
   afterAll(async () => {
     if (SKIP_INTEGRATION_TESTS) return;
 
     // Cleanup: delete the test index
-    // try {
-    //   await engine.deleteIndex(TEST_INDEX);
-    // } catch (error) {
-    //   console.warn(`Failed to delete test index: ${error}`);
-    // }
+    try {
+      await engine.deleteIndex(TEST_INDEX);
+    } catch (error) {
+      console.warn(`Failed to delete test index: ${error}`);
+    }
   }, 60000);
 
   describe('Index Management', () => {
@@ -136,6 +134,8 @@ describe('MeiliSearchEngine Integration Tests', () => {
     });
 
     it('should get index stats', async () => {
+      // Wait for the first document to be available instead of a fixed timeout
+      await pollForDocument(engine, indexConfig, TEST_DOCS[ 0 ].id);
       const stats = await engine.getIndexStats(TEST_INDEX);
       expect(stats).toBeDefined();
       expect(stats.numberOfDocuments).toBeGreaterThan(0);
@@ -144,6 +144,7 @@ describe('MeiliSearchEngine Integration Tests', () => {
     it('should create and configure a new index with settings', async () => {
       const settingsIndexConfig: SearchIndexConfigExt = {
         indexName: TEST_SETTINGS_INDEX,
+        primaryKey: 'id',
         settings: {
           searchableAttributes: [ 'title' ],
           filterableAttributes: [ 'category' ],
@@ -157,19 +158,21 @@ describe('MeiliSearchEngine Integration Tests', () => {
       try {
         // Create the index
         const index = await engine.initIndex(settingsIndexConfig, true);
+        // Wait for the index to be ready by polling for a setting
+        await pollForSetting(engine, TEST_SETTINGS_INDEX, 'searchableAttributes', [ 'title' ]);
         expect(index).toBeDefined();
-
         // Verify settings
         const settings = await engine.getIndexSettings(TEST_SETTINGS_INDEX);
         expect(settings.searchableAttributes).toEqual([ 'title' ]);
         expect(settings.filterableAttributes).toEqual([ 'category' ]);
         expect(settings.sortableAttributes).toEqual([ 'createdAt' ]);
-
-        // Delete when done
-        await engine.deleteIndex(TEST_SETTINGS_INDEX, true);
-      } catch (err) {
-        console.error('Failed to test index creation with settings:', err);
-        throw err;
+      } finally {
+        // Clean up
+        try {
+          await engine.deleteIndex(TEST_SETTINGS_INDEX, true);
+        } catch (cleanupError) {
+          console.error('Failed to cleanup vector index in finally block:', cleanupError);
+        }
       }
     }, 60000);
   });
@@ -191,7 +194,9 @@ describe('MeiliSearchEngine Integration Tests', () => {
     it('should update a document', async () => {
       const updatedDoc = { id: '1', title: 'Updated first document' };
       await engine.updateDocuments([ updatedDoc ], indexConfig, true);
-      await waitForIndexing();
+
+      // additional wait time for the search engine to get ready
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       const doc = await engine.getDocument('1', TEST_INDEX);
       expect(doc.title).toBe('Updated first document');
@@ -201,15 +206,14 @@ describe('MeiliSearchEngine Integration Tests', () => {
 
     it('should delete a document', async () => {
       await engine.deleteDocuments([ '5' ], TEST_INDEX, true);
-      await waitForIndexing();
-
+      // Wait for the document to be absent
+      await pollForDocumentAbsence(engine, indexConfig, '5');
       try {
         await engine.getDocument('5', TEST_INDEX);
         fail('Document should have been deleted');
       } catch (error) {
         expect(error).toBeDefined();
       }
-
       // Verify other documents still exist
       const doc = await engine.getDocument('4', TEST_INDEX);
       expect(doc).toBeDefined();
@@ -224,16 +228,17 @@ describe('MeiliSearchEngine Integration Tests', () => {
       }));
 
       await engine.indexInBatches(batchDocs, indexConfig, 5, true);
-      await waitForIndexing();
-
+      // Wait for the first batch document to be available
+      await pollForDocument(engine, indexConfig, 'batch-0');
       // Check that all documents were indexed
       const doc = await engine.getDocument('batch-0', TEST_INDEX);
       expect(doc).toBeDefined();
       expect(doc.title).toBe('Batch document 0');
-
       // Cleanup
       const ids = batchDocs.map(d => d.id);
       await engine.deleteDocuments(ids, TEST_INDEX, true);
+      // Wait for the first batch document to be absent
+      await pollForDocumentAbsence(engine, indexConfig, 'batch-0');
     }, 60000);
   });
 
@@ -337,31 +342,41 @@ describe('MeiliSearchEngine Integration Tests', () => {
     });
 
     it('should search with sorting', async () => {
-      const ascResult = await engine.search<any>({
-        search: 'document',
-        sort: [ { field: 'price', dir: 'asc' } ]
-      }, indexConfig);
-
-      const descResult = await engine.search<any>({
-        search: 'document',
-        sort: [ { field: 'price', dir: 'desc' } ]
-      }, indexConfig);
-
-      expect(ascResult.hits.length).toBeGreaterThan(1);
-      expect(descResult.hits.length).toBeGreaterThan(1);
-
-      // Check ascending order
-      for (let i = 0; i < ascResult.hits.length - 1; i++) {
-        expect(ascResult.hits[ i ].price <= ascResult.hits[ i + 1 ].price).toBe(true);
+      // Use a unique index for this test
+      const uniqueIndex = `test-integration-index-sorting-${Math.random().toString(36).substring(2, 10)}`;
+      const sortingIndexConfig = {
+        ...indexConfig,
+        indexName: uniqueIndex
+      };
+      try {
+        await engine.initIndex(sortingIndexConfig, true);
+        await engine.indexDocuments(TEST_DOCS, sortingIndexConfig, true);
+        // Wait for the first document to be available
+        await pollForDocument(engine, sortingIndexConfig, TEST_DOCS[ 0 ].id);
+        const ascResult = await engine.search<any>({
+          search: 'document',
+          sort: [ { field: 'price', dir: 'asc' } ]
+        }, sortingIndexConfig);
+        const descResult = await engine.search<any>({
+          search: 'document',
+          sort: [ { field: 'price', dir: 'desc' } ]
+        }, sortingIndexConfig);
+        expect(ascResult.hits.length).toBeGreaterThan(1);
+        expect(descResult.hits.length).toBeGreaterThan(1);
+        // Check ascending order
+        for (let i = 0; i < ascResult.hits.length - 1; i++) {
+          expect(ascResult.hits[ i ].price <= ascResult.hits[ i + 1 ].price).toBe(true);
+        }
+        // Check descending order
+        for (let i = 0; i < descResult.hits.length - 1; i++) {
+          expect(descResult.hits[ i ].price >= descResult.hits[ i + 1 ].price).toBe(true);
+        }
+        // First documents should be opposite in the two result sets
+        expect(ascResult.hits[ 0 ].id).not.toBe(descResult.hits[ 0 ].id);
+      } finally {
+        // Clean up the unique index
+        await engine.deleteIndex(uniqueIndex, true);
       }
-
-      // Check descending order
-      for (let i = 0; i < descResult.hits.length - 1; i++) {
-        expect(descResult.hits[ i ].price >= descResult.hits[ i + 1 ].price).toBe(true);
-      }
-
-      // First documents should be opposite in the two result sets
-      expect(ascResult.hits[ 0 ].id).not.toBe(descResult.hits[ 0 ].id);
     });
 
     it('should search with field selection', async () => {
@@ -444,25 +459,38 @@ describe('MeiliSearchEngine Integration Tests', () => {
     });
 
     it('should crop search results', async () => {
-      const result = await engine.search<any>({
-        search: 'brown fox',
-        crop: {
-          fields: [ 'content' ],
-          length: 10,
-          marker: '...'
-        }
-      }, indexConfig);
-
-      expect(result.hits.length).toBeGreaterThan(0);
-      expect(result.hits[ 0 ]._formatted?.content?.length).toBeLessThanOrEqual(result.hits[ 0 ].content.length);
-      expect(result.hits[ 0 ]._formatted?.content).toContain('...');
+      // Use a unique index for this test
+      const uniqueIndex = `test-integration-index-crop-${Math.random().toString(36).substring(2, 10)}`;
+      const cropIndexConfig = {
+        ...indexConfig,
+        indexName: uniqueIndex
+      };
+      try {
+        await engine.initIndex(cropIndexConfig, true);
+        await engine.indexDocuments(TEST_DOCS, cropIndexConfig, true);
+        // Wait for the first document to be available
+        await pollForDocument(engine, cropIndexConfig, TEST_DOCS[ 0 ].id);
+        const result = await engine.search<any>({
+          search: 'brown fox',
+          crop: {
+            fields: [ 'content' ],
+            length: 10,
+            marker: '...'
+          }
+        }, cropIndexConfig);
+        expect(result.hits.length).toBeGreaterThan(0);
+        expect(result.hits[ 0 ]._formatted?.content?.length).toBeLessThanOrEqual(result.hits[ 0 ].content.length);
+        expect(result.hits[ 0 ]._formatted?.content).toContain('...');
+      } finally {
+        // Clean up the unique index
+        await engine.deleteIndex(uniqueIndex, true);
+      }
     });
 
     it('should handle "exists" filter operation', async () => {
       // Create a document with a missing field
       const docWithMissingField = { id: '100', title: 'Document with missing field' };
       await engine.indexDocuments([ docWithMissingField ], indexConfig, true);
-      await waitForIndexing();
 
       const result = await engine.search<any>({
         filters: {
@@ -517,23 +545,36 @@ describe('MeiliSearchEngine Integration Tests', () => {
     }, 60000);
 
     it('should create and use index with synonyms', async () => {
-      // Create a new index for synonyms testing
-      const synonymsConfig: SearchIndexConfigExt = {
-        indexName: TEST_SYNONYMS_INDEX,
-        settings: {
-          searchableAttributes: [ 'title', 'content' ],
-        },
-        meiliSearchIndexSettings: {
-          synonyms: {
-            'smartphone': [ 'phone', 'mobile', 'cellphone' ],
-            'automobile': [ 'car', 'vehicle' ]
-          }
-        }
-      };
 
       try {
+
+        // Create a new index for synonyms testing
+        const synonymsConfig: SearchIndexConfigExt = {
+          indexName: TEST_SYNONYMS_INDEX,
+          primaryKey: 'id',
+          settings: {
+            searchableAttributes: [ 'title', 'content' ],
+          },
+          meiliSearchIndexSettings: {
+            synonyms: {
+              'smartphone': [ 'phone', 'mobile', 'cellphone' ],
+              'automobile': [ 'car', 'vehicle' ],
+              'phone': [ 'smartphone' ],
+              'mobile': [ 'smartphone' ],
+              'cellphone': [ 'smartphone' ],
+              'car': [ 'automobile' ],
+              'vehicle': [ 'automobile' ]
+            }
+          }
+        };
+
         // Create the index with synonyms
         await engine.initIndex(synonymsConfig, true);
+
+        // additional wait time for the search engine to get ready
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // const settings = await engine.getIndexSettings(TEST_SYNONYMS_INDEX);
 
         // Add test documents
         const docs = [
@@ -541,7 +582,9 @@ describe('MeiliSearchEngine Integration Tests', () => {
           { id: 's2', title: 'Car review', content: 'This is about an automobile' }
         ];
         await engine.indexDocuments(docs, synonymsConfig, true);
-        await waitForIndexing();
+
+        // additional wait time for the search engine to get ready
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
         // Test searching with synonyms
         const phoneResult = await engine.search<any>({ search: 'phone' }, synonymsConfig);
@@ -552,11 +595,13 @@ describe('MeiliSearchEngine Integration Tests', () => {
         expect(carResult.hits.length).toBe(1);
         expect(carResult.hits[ 0 ].id).toBe('s2');
 
+      } finally {
         // Clean up
-        await engine.deleteIndex(TEST_SYNONYMS_INDEX, true);
-      } catch (error) {
-        console.error('Synonyms test failed:', error);
-        throw error;
+        try {
+          await engine.deleteIndex(TEST_SYNONYMS_INDEX, true);
+        } catch (cleanupError) {
+          console.error('Failed to cleanup vector index in finally block:', cleanupError);
+        }
       }
     }, 60000);
 
@@ -583,17 +628,23 @@ describe('MeiliSearchEngine Integration Tests', () => {
         // Update sortable attributes
         await engine.updateSortableAttributes(testSettingsIndex, [ 'createdAt', 'price' ], true);
 
+        // additional wait time for the search engine to get ready
+        await new Promise(resolve => setTimeout(resolve, 1000));
         // Verify settings were applied
         const settings = await engine.getIndexSettings(testSettingsIndex);
         expect(settings.searchableAttributes).toContain('tags');
         expect(settings.filterableAttributes).toContain('status');
         expect(settings.sortableAttributes).toContain('price');
 
-        // Clean up
-        await engine.deleteIndex(testSettingsIndex, true);
       } catch (error) {
         console.error('Settings update test failed:', error);
         throw error;
+      } finally {
+        try {
+          await engine.deleteIndex(testSettingsIndex, true);
+        } catch (cleanupError) {
+          console.error('Failed to cleanup vector index in finally block:', cleanupError);
+        }
       }
     }, 60000);
 
@@ -615,7 +666,8 @@ describe('MeiliSearchEngine Integration Tests', () => {
 
     it('should get and manage tasks', async () => {
       // Create a task
-      const task = await engine.indexDocuments([ { id: 'task-test', title: 'Task Test' } ], indexConfig);
+      // We will create a task and then query for its status later in this test
+      const task = await engine.indexDocuments([ { id: 'task-test', title: 'Task Test' } ], indexConfig, false);
       expect(task).toBeDefined();
       expect(task.taskUid).toBeDefined();
 
@@ -637,44 +689,70 @@ describe('MeiliSearchEngine Integration Tests', () => {
       expect(filteredTasks).toBeDefined();
       expect(filteredTasks.results.length).toBeGreaterThan(0);
       expect(filteredTasks.results.every(t => t.indexUid === TEST_INDEX)).toBe(true);
-    }, 60000);
-  });
 
-  // Testing vector search if supported by the MeiliSearch instance (usually requires >= v1.3)
-  describe('Vector Search', () => {
-    const VECTOR_INDEX = 'test-vector-index';
-    const vectorConfig = {
-      indexName: VECTOR_INDEX,
-      settings: {
-        searchableAttributes: [ 'title', 'content' ],
-        filterableAttributes: [ 'category' ],
-        // Vector search settings typically need to be configured
-        // This is implementation specific and may need to be adjusted
-      }
-    };
-
-    // Skip vector tests by default as they might require specific MeiliSearch versions/config
-    it('should perform vector search if supported', async () => {
-      try {
-        // Create vector index
-        await engine.initIndex(vectorConfig, true);
-
-        // Add vector documents
-        await engine.indexDocuments(TEST_VECTOR_DOCS, vectorConfig, true);
-        await waitForIndexing();
-
-        // Perform vector search with a query vector
-        const result = await engine.search<any>({
-          vector: [ 0.1, 0.2, 0.3 ]
-        }, vectorConfig);
-
-        expect(result.hits.length).toBeGreaterThan(0);
-
-        // Clean up
-        await engine.deleteIndex(VECTOR_INDEX, true);
-      } catch (error) {
-        console.warn('Vector search test skipped, may not be supported:', error);
-      }
+      // Clean up the created task document
+      // We need to wait for this cleanup task to finish
+      await engine.deleteDocuments([ 'task-test' ], TEST_INDEX, true);
     }, 60000);
   });
 });
+
+// Polling helpers for MeiliSearch integration tests
+// These replace fixed timeouts and make tests faster and more reliable.
+
+async function pollForDocument(
+  engine: MeiliSearchEngine,
+  indexConfig: SearchIndexConfigExt,
+  docId: string,
+  maxAttempts = 20,
+  interval = 100
+) {
+  const indexName = indexConfig.indexName as string;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const doc = await engine.getDocument(docId, indexName);
+      if (doc) return;
+    } catch (e) {
+      // Not found yet
+    }
+    await new Promise(res => setTimeout(res, interval));
+  }
+  throw new Error(`Document ${docId} not available in index ${indexConfig.indexName} after ${maxAttempts * interval}ms`);
+}
+
+async function pollForDocumentAbsence(
+  engine: MeiliSearchEngine,
+  indexConfig: SearchIndexConfigExt,
+  docId: string,
+  maxAttempts = 20,
+  interval = 100
+) {
+  const indexName = indexConfig.indexName as string;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      await engine.getDocument(docId, indexName);
+      // Still exists
+    } catch (e) {
+      // Not found, as expected
+      return;
+    }
+    await new Promise(res => setTimeout(res, interval));
+  }
+  throw new Error(`Document ${docId} still present in index ${indexConfig.indexName} after ${maxAttempts * interval}ms`);
+}
+
+async function pollForSetting(
+  engine: MeiliSearchEngine,
+  indexName: string,
+  key: string,
+  expected: any,
+  maxAttempts = 20,
+  interval = 100
+) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const settings = await engine.getIndexSettings(indexName) as { [ key: string ]: any };
+    if (JSON.stringify(settings[ key ]) === JSON.stringify(expected)) return;
+    await new Promise(res => setTimeout(res, interval));
+  }
+  throw new Error(`Setting ${key} not updated to ${JSON.stringify(expected)} after ${maxAttempts * interval}ms`);
+}

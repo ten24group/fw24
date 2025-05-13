@@ -30,7 +30,7 @@ export interface MeiliSearchOptions {
   distinctAttribute?: string;
   hitsPerPage?: number;
   page?: number;
-  post_filter?: string;
+  postFilter?: string;
 
   // Attribute selection
   attributesToRetrieve?: string[];
@@ -40,9 +40,7 @@ export interface MeiliSearchOptions {
 
   // Faceting
   facetFilters?: Array<string | string[]>;
-  facetsDistribution?: string[];
   facets?: string[];
-  facetStats?: boolean;
 
   // Behavior
   matchingStrategy?: MatchingStrategy;
@@ -426,7 +424,7 @@ export class QueryBuilder<T = Record<string, any>> {
    * @param filter The filter string or expression
    */
   postFilter(filter: string): this {
-    this.options.post_filter = filter;
+    this.options.postFilter = filter;
     return this;
   }
 
@@ -438,7 +436,7 @@ export class QueryBuilder<T = Record<string, any>> {
   withPostFilter(builderFn: (qb: QueryBuilder<T>) => void): this {
     const postFilterBuilder = QueryBuilder.create<T>();
     builderFn(postFilterBuilder);
-    this.options.post_filter = postFilterBuilder.root.toString();
+    this.options.postFilter = postFilterBuilder.root.toString();
     return this;
   }
 
@@ -446,7 +444,7 @@ export class QueryBuilder<T = Record<string, any>> {
    * Clear post filter configuration
    */
   clearPostFilter(): this {
-    delete this.options.post_filter;
+    delete this.options.postFilter;
     return this;
   }
 
@@ -479,18 +477,8 @@ export class QueryBuilder<T = Record<string, any>> {
     return this;
   }
 
-  /**
-   * Enable facet stats in the response
-   * Returns min/max values for numerical facets
-   */
-  facetStats(enabled: boolean = true): this {
-    this.options.facetStats = enabled;
-    return this;
-  }
-
   clearFacets(): this {
     delete this.options.facets;
-    delete this.options.facetStats;
     return this;
   }
 
@@ -532,16 +520,6 @@ export class QueryBuilder<T = Record<string, any>> {
     const arr = this.options.facetFilters || [];
     arr.push(filter);
     this.options.facetFilters = arr;
-    return this;
-  }
-
-  /** Facets distribution */
-  facetsDistribution(fields: Array<keyof T | string>): this {
-    this.options.facetsDistribution = fields as string[];
-    return this;
-  }
-  clearFacetsDistribution(): this {
-    delete this.options.facetsDistribution;
     return this;
   }
 

@@ -39,9 +39,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
 
     // Create the index with primaryKey if specified
     const createOptions: { primaryKey?: string } = {};
-    if (config.settings && 'primaryKey' in config.settings) {
-      createOptions.primaryKey = config.settings.primaryKey as string;
-    }
+    createOptions.primaryKey = config.primaryKey ? config.primaryKey as string : 'id';
 
     const task = await this.client.createIndex(idx, createOptions);
     if (!task) {
@@ -51,15 +49,15 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     // Wait for the task to complete
     if (waitForTask) {
       await this.waitForTask(task.taskUid);
+    }
 
-      // Apply settings if provided
-      if (config.settings || config.meiliSearchIndexSettings) {
-        const indexSettings = {
-          ...config.settings,
-          ...config.meiliSearchIndexSettings,
-        };
-        await this.updateIndexSettings(idx, indexSettings);
-      }
+    // Apply settings if provided
+    if (config.settings || config.meiliSearchIndexSettings) {
+      const indexSettings = {
+        ...config.settings,
+        ...config.meiliSearchIndexSettings,
+      };
+      await this.updateIndexSettings(idx, indexSettings);
     }
 
     const index = this.client.index(idx);
@@ -78,13 +76,6 @@ export class MeiliSearchEngine extends BaseSearchEngine {
       this.indices.set(idx, index);
     }
     return this.indices.get(idx)!;
-  }
-
-  /**
-   * Get index by name
-   */
-  getIndexByName(indexName: string): Index {
-    return this.client.index(indexName);
   }
 
   /**
@@ -114,7 +105,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Get index stats
    */
   async getIndexStats(indexName: string) {
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     return await index.getStats();
   }
 
@@ -140,7 +131,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Update index settings
    */
   async updateIndexSettings(indexName: string, settings: MeiliSearchIndexSettings, waitForTask: boolean = false) {
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     const task = await index.updateSettings(settings);
     if (waitForTask) {
       await this.waitForTask(task.taskUid);
@@ -151,7 +142,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Reset index settings to default
    */
   async resetIndexSettings(indexName: string, waitForTask: boolean = false) {
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     const task = await index.resetSettings();
     if (waitForTask) {
       await this.waitForTask(task.taskUid);
@@ -162,7 +153,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Get index settings
    */
   async getIndexSettings(indexName: string): Promise<MeiliSearchIndexSettings> {
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     return await index.getSettings();
   }
 
@@ -170,7 +161,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Update filterable attributes for an index
    */
   async updateFilterableAttributes(indexName: string, attributes: string[], waitForTask: boolean = false) {
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     const task = await index.updateFilterableAttributes(attributes);
     if (waitForTask) {
       await this.waitForTask(task.taskUid);
@@ -181,7 +172,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Update sortable attributes for an index
    */
   async updateSortableAttributes(indexName: string, attributes: string[], waitForTask: boolean = false) {
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     const task = await index.updateSortableAttributes(attributes);
     if (waitForTask) {
       await this.waitForTask(task.taskUid);
@@ -192,7 +183,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Update searchable attributes for an index
    */
   async updateSearchableAttributes(indexName: string, attributes: string[], waitForTask: boolean = false) {
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     const task = await index.updateSearchableAttributes(attributes);
     if (waitForTask) {
       await this.waitForTask(task.taskUid);
@@ -203,7 +194,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Update displayed attributes for an index
    */
   async updateDisplayedAttributes(indexName: string, attributes: string[], waitForTask: boolean = false) {
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     const task = await index.updateDisplayedAttributes(attributes);
     if (waitForTask) {
       await this.waitForTask(task.taskUid);
@@ -214,7 +205,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Update synonyms for an index
    */
   async updateSynonyms(indexName: string, synonyms: Record<string, string[]>, waitForTask: boolean = false) {
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     const task = await index.updateSynonyms(synonyms);
     if (waitForTask) {
       await this.waitForTask(task.taskUid);
@@ -225,7 +216,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Update stop words for an index
    */
   async updateStopWords(indexName: string, stopWords: string[], waitForTask: boolean = false) {
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     const task = await index.updateStopWords(stopWords);
     if (waitForTask) {
       await this.waitForTask(task.taskUid);
@@ -236,7 +227,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Update ranking rules for an index
    */
   async updateRankingRules(indexName: string, rankingRules: string[], waitForTask: boolean = false) {
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     const task = await index.updateRankingRules(rankingRules);
     if (waitForTask) {
       await this.waitForTask(task.taskUid);
@@ -391,7 +382,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Get a document by ID
    */
   async getDocument<T extends RecordAny>(id: string, indexName: string): Promise<T> {
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     return await index.getDocument<T>(id);
   }
 
@@ -399,7 +390,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Get documents with filtering options
    */
   async getDocuments<T extends RecordAny>(indexName: string, options?: DocumentsQuery<T>): Promise<T[]> {
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     const result = await index.getDocuments<T>(options);
     return result.results;
   }
@@ -411,7 +402,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     if (!indexName) {
       throw new Error("Index name is required for delete operation");
     }
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     const task = await index.deleteDocuments(ids);
     if (waitForTask) {
       await this.waitForTask(task.taskUid);
@@ -423,7 +414,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Delete all documents in an index
    */
   async deleteAllDocuments(indexName: string, waitForTask: boolean = false) {
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     const task = await index.deleteAllDocuments();
     if (waitForTask) {
       await this.waitForTask(task.taskUid);
@@ -438,7 +429,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     if (!indexName) {
       throw new Error("Index name is required for deleteByFilter operation");
     }
-    const index = this.client.index(indexName);
+    const index = await this.getIndex({ indexName });
     const task = await index.deleteDocuments({ filter });
     if (waitForTask) {
       await this.waitForTask(task.taskUid);
@@ -629,9 +620,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     }
 
     if (returnFacets.length > 0) {
-      builder.facetsDistribution(returnFacets);
-      // Enable facet stats for numeric facets
-      builder.facetStats(true);
+      builder.facets(returnFacets);
     }
 
     // ─── Matching strategy ────────────────────────────────────────────────────
@@ -717,7 +706,13 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     query: string;
     searchParams?: Record<string, any>;
   }>) {
-    return await this.client.multiSearch({ queries });
+    // Map the input queries to the format expected by the MeiliSearch client
+    const meiliQueries = queries.map(q => ({
+      indexUid: q.indexUid,
+      q: q.query, // MeiliSearch client expects 'q' instead of 'query'
+      ...q.searchParams, // Spread any additional search parameters
+    }));
+    return await this.client.multiSearch({ queries: meiliQueries });
   }
 
   protected applyFilters(qb: QueryBuilder<any>, filters: any) {

@@ -6,8 +6,8 @@ export type SearchProvider = 'meili' | 'elasticsearch' | 'algolia';
 export interface SearchIndexConfig {
   indexName?: string;
   provider?: SearchProvider;
+  primaryKey?: string;
   settings?: {
-    primaryKey?: string;
     searchableAttributes?: string[];
     filterableAttributes?: string[];
     sortableAttributes?: string[];
