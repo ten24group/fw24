@@ -1,7 +1,7 @@
 import { Narrow } from '../utils/types';
 
 import { describe, expect, it } from '@jest/globals';
-import { EntityFilterCriteria, EntityQuery, FilterGroup, ParsedEntityAttributePaths } from './query-types';
+import { EntityFilterCriteria, EntityQuery, EntityFilterGroup, ParsedEntityAttributePaths } from './query-types';
 import { randomUUID } from 'crypto';
 import { DefaultEntityOperations, EntityAttribute, EntitySchema, EntityAttributePaths, createElectroDBEntity, createEntityRelation, createEntitySchema, HydrateOptionForRelation, RelToRelatedEntity, EntityTypeFromSchema } from './base-entity';
 import { entityFilterCriteriaToExpression, parseEntityAttributePaths } from './query';
@@ -421,7 +421,7 @@ namespace User {
   }
 }
 
-const testFilter: FilterGroup<any> = {
+const testFilter: EntityFilterGroup<any> = {
   or: [ {
     attribute: 'lastName',
     eq: 'someName',
@@ -638,13 +638,13 @@ describe('query', () => {
             "and": [
               {
                 "attribute": "lastName",
-                "eq": "Author Name 002"
+                "eq": "Author Name 002",
               },
               {
                 "attribute": "firstName",
                 "neq": "Book Name 000"
               }
-            ]
+            ],
           },
           {
             "attribute": "firstName",

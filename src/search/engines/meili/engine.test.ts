@@ -88,12 +88,12 @@ describe("MeiliSearchEngine", () => {
     });
 
     it("should throw if indexName is missing", async () => {
-      const badConfig = { ...searchConfig, indexName: undefined! };
-      await expect(engine.search({ search: "" } as any, badConfig as any)).rejects.toThrow();
+      const badConfig = { ...searchConfig, indexName: undefined };
+      await expect(engine.search({ search: "" }, badConfig)).rejects.toThrow();
     });
 
     it("reuses existing index instance across multiple searches", async () => {
-      mockIndex.search.mockResolvedValue({ hits: [], estimatedTotalHits: 0 } as any);
+      mockIndex.search.mockResolvedValue({ hits: [], estimatedTotalHits: 0 });
       await engine.search({ search: "a" }, searchConfig);
       await engine.search({ search: "b" }, searchConfig);
       expect(mockClient.index).toHaveBeenCalledTimes(2);
@@ -141,9 +141,9 @@ describe("MeiliSearchEngine", () => {
     it("includes facet keys when faceting config provided", async () => {
       const faceting = {
         facets: { category: { attribute: "category", type: "value" } },
-      };
+      } as const;
       const cfg = { ...searchConfig, faceting };
-      await engine.search({ search: "" }, cfg as any);
+      await engine.search({ search: "" }, cfg);
       expect(mockIndex.search).toHaveBeenCalledWith(
         "",
         expect.objectContaining({ facets: [ "category" ] }),
@@ -153,7 +153,7 @@ describe("MeiliSearchEngine", () => {
     describe("filter transformations", () => {
       it("maps simple field operators", async () => {
         const filters = { a: { eq: "x" }, b: { gt: 1 }, c: { lte: 5 } };
-        await engine.search({ search: "", filters } as any, searchConfig);
+        await engine.search({ search: "", filters }, searchConfig);
         const opts = mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions;
         expect(opts.filter).toContain("a = 'x'");
         expect(opts.filter).toContain("b > 1");
@@ -162,7 +162,7 @@ describe("MeiliSearchEngine", () => {
 
       it("supports IN and NOT IN operators", async () => {
         const filters = { tags: { in: [ "t1", "t2" ], notIn: [ "t3" ] } };
-        await engine.search({ search: "", filters } as any, searchConfig);
+        await engine.search({ search: "", filters }, searchConfig);
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
           .filter;
         expect(fstr).toContain("tags IN ['t1', 't2']");
@@ -170,20 +170,26 @@ describe("MeiliSearchEngine", () => {
       });
 
       it("supports range (between) operator", async () => {
-        const filters = { price: { between: [ 10, 20 ] } };
-        await engine.search({ search: "", filters } as any, searchConfig);
+        const filters = { price: { between: { from: 10, to: 20 } } };
+        await engine.search({ search: "", filters }, searchConfig);
         expect(
           (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filter,
         ).toContain("price 10 TO 20");
       });
 
       it("supports EXISTS, IS EMPTY, IS NULL", async () => {
-        const filters = {
-          f: { exists: true },
-          g: { isEmpty: true },
-          h: { isNull: true },
-        };
-        await engine.search({ search: "", filters } as any, searchConfig);
+        await engine.search(
+          {
+            search: "",
+            filters: {
+              f: { exists: true },
+              g: { isEmpty: true },
+              h: { isNull: true },
+            },
+          },
+          searchConfig
+        );
+
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
           .filter;
         expect(fstr).toContain("f EXISTS");
@@ -193,7 +199,7 @@ describe("MeiliSearchEngine", () => {
 
       it("supports contains and startsWith", async () => {
         const filters = { d: { contains: "abc" }, s: { startsWith: "pre" } };
-        await engine.search({ search: "", filters } as any, searchConfig);
+        await engine.search({ search: "", filters }, searchConfig);
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
           .filter;
         expect(fstr).toContain("d CONTAINS 'abc'");
@@ -210,7 +216,7 @@ describe("MeiliSearchEngine", () => {
 
       it("handles top-level AND group", async () => {
         const filters = { and: [ { a: { eq: 1 } }, { b: { eq: 2 } } ] };
-        await engine.search({ search: "", filters } as any, searchConfig);
+        await engine.search({ search: "", filters }, searchConfig);
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
           .filter;
         expect(fstr).toMatch(/\(a = 1 AND b = 2\)/);
@@ -228,7 +234,7 @@ describe("MeiliSearchEngine", () => {
             { not: { z: { eq: 0 } } },
           ],
         };
-        await engine.search({ search: "", filters } as any, searchConfig);
+        await engine.search({ search: "", filters }, searchConfig);
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions)
           .filter;
         expect(fstr).toMatch("((x < 5 OR y > 10) AND NOT (z = 0))");
@@ -238,7 +244,7 @@ describe("MeiliSearchEngine", () => {
         const filters = {
           and: [ { filterId: "1", filterLabel: "L", a: { eq: "v" } } ],
         };
-        await engine.search({ search: "", filters } as any, searchConfig);
+        await engine.search({ search: "", filters }, searchConfig);
         expect(
           (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filter,
         ).toContain("a = 'v'");
@@ -253,7 +259,7 @@ describe("MeiliSearchEngine", () => {
             { or: [ { e: { neq: 5 } }, { not: { f: { in: [ 6, 7 ] } } } ] },
           ],
         };
-        await engine.search({ search: "", filters } as any, searchConfig);
+        await engine.search({ search: "", filters }, searchConfig);
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filter;
         expect(fstr).toMatch(
           /\(\(a = 1 OR b = 2\) AND NOT \(c > 3\) AND d <= 4 AND \(e != 5 OR NOT \(f IN \[6, 7\]\)\)\)/
@@ -278,7 +284,7 @@ describe("MeiliSearchEngine", () => {
             { not: { v: { neq: 50 } } },
           ],
         };
-        await engine.search({ search: "", filters } as any, searchConfig);
+        await engine.search({ search: "", filters }, searchConfig);
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filter;
         expect(fstr).toMatch(
           /\(\(x < 10 AND NOT \(y = 20\) AND \(z >= 30 OR w <= 40\)\) OR NOT \(v != 50\)\)/
@@ -287,28 +293,28 @@ describe("MeiliSearchEngine", () => {
 
       it("handles NOT of an AND group", async () => {
         const filters = {
-          not: {
+          not: [ {
             and: [
               { a: { eq: 1 } },
               { b: { eq: 2 } },
             ],
-          },
+          } ],
         };
-        await engine.search({ search: "", filters } as any, searchConfig);
+        await engine.search({ search: "", filters }, searchConfig);
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filter;
         expect(fstr).toMatch("NOT (a = 1 AND b = 2)");
       });
 
       it("handles NOT of an OR group", async () => {
         const filters = {
-          not: {
+          not: [ {
             or: [
               { a: { eq: 1 } },
               { b: { eq: 2 } },
             ],
-          },
+          } ],
         };
-        await engine.search({ search: "", filters } as any, searchConfig);
+        await engine.search({ search: "", filters }, searchConfig);
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchOptions).filter;
         expect(fstr).toMatch("NOT (a = 1 OR b = 2)");
       });
@@ -316,7 +322,7 @@ describe("MeiliSearchEngine", () => {
 
     it("supports explicit query.sort", async () => {
       await engine.search(
-        { search: "", sort: [ { field: "price", dir: "desc" } ] } as any,
+        { search: "", sort: [ { field: "price", dir: "desc" } ] },
         searchConfig
       );
       expect(mockIndex.search).toHaveBeenCalledWith(
@@ -327,7 +333,7 @@ describe("MeiliSearchEngine", () => {
 
     it("applies distinctAttribute", async () => {
       await engine.search(
-        { search: "", distinctAttribute: "userId" } as any,
+        { search: "", distinctAttribute: "userId" },
         searchConfig
       );
       expect(mockIndex.search).toHaveBeenCalledWith(
@@ -338,7 +344,7 @@ describe("MeiliSearchEngine", () => {
 
     it("applies select fields", async () => {
       await engine.search(
-        { search: "", select: [ "id", "name" ] } as any,
+        { search: "", select: [ "id", "name" ] },
         searchConfig
       );
       expect(mockIndex.search).toHaveBeenCalledWith(
@@ -357,7 +363,7 @@ describe("MeiliSearchEngine", () => {
             postTag: "</b>",
             showMatchesPosition: true,
           },
-        } as any,
+        },
         searchConfig
       );
       expect(mockIndex.search).toHaveBeenCalledWith(
@@ -376,7 +382,7 @@ describe("MeiliSearchEngine", () => {
         {
           search: "",
           crop: { fields: [ "body" ], length: 30, marker: "…" },
-        } as any,
+        },
         searchConfig
       );
       expect(mockIndex.search).toHaveBeenCalledWith(
@@ -391,7 +397,7 @@ describe("MeiliSearchEngine", () => {
 
     it("applies matchingStrategy", async () => {
       await engine.search(
-        { search: "", matchingStrategy: "last" } as any,
+        { search: "", matchingStrategy: "last" },
         searchConfig
       );
       expect(mockIndex.search).toHaveBeenCalledWith(
@@ -405,7 +411,7 @@ describe("MeiliSearchEngine", () => {
         {
           search: "",
           geo: { lat: 12.9, lng: 77.6, radius: 500, precision: 2 },
-        } as any,
+        },
         searchConfig
       );
       expect(mockIndex.search).toHaveBeenCalledWith(
@@ -423,7 +429,7 @@ describe("MeiliSearchEngine", () => {
         {
           search: "",
           rawOptions: { rankingRules: [ "typo", "words" ] },
-        } as any,
+        },
         searchConfig
       );
       expect(mockIndex.search).toHaveBeenCalledWith(
@@ -434,8 +440,8 @@ describe("MeiliSearchEngine", () => {
 
     it("handles empty OR and AND groups without setting filters", async () => {
       // first call: empty OR, second: empty AND
-      await engine.search({ search: "", filters: { or: [] } } as any, searchConfig);
-      await engine.search({ search: "", filters: { and: [] } } as any, searchConfig);
+      await engine.search({ search: "", filters: { or: [] } }, searchConfig);
+      await engine.search({ search: "", filters: { and: [] } }, searchConfig);
       const noFilterCalls = mockIndex.search.mock.calls.filter(([ , opts ]) => !(opts as any).filter);
       expect(noFilterCalls.length).toBe(2);
     });

@@ -158,7 +158,6 @@ export interface BaseFieldMetadata {
   isEditable?: boolean; // if the field is editable
   isFilterable?: boolean; // if the field is filterable
   isSearchable?: boolean; // if the field is searchable
-  isFacetable?: boolean; // if the field is facetable
   isSortable?: boolean; // if the field is sortable
   placeholder?: string;
   helpText?: string;

@@ -1,9 +1,9 @@
 import { MeiliSearchEngine } from '../engine';
 import { config, indexConfig, TEST_DOCS, pollForDocument, pollForSetting } from './testUtils';
 
-const TEST_INDEX = indexConfig.indexName;
-const TEST_SYNONYMS_INDEX = 'test-synonyms-index';
-const TEST_SETTINGS_INDEX = 'test-settings-updates';
+const TEST_INDEX = indexConfig.indexName + '-advanced';
+const TEST_SYNONYMS_INDEX = 'test-synonyms-index-advanced';
+const TEST_SETTINGS_INDEX = 'test-settings-updates-advanced';
 
 describe('MeiliSearchEngine Advanced Features Integration Tests', () => {
   let engine: MeiliSearchEngine;
@@ -147,6 +147,8 @@ describe('MeiliSearchEngine Advanced Features Integration Tests', () => {
     };
     try {
       await engine.initIndex(settingsConfig, true);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       await engine.updateSearchableAttributes(TEST_SETTINGS_INDEX, [ 'title', 'content', 'tags' ], true);
       await engine.updateFilterableAttributes(TEST_SETTINGS_INDEX, [ 'category', 'status' ], true);
       await engine.updateSortableAttributes(TEST_SETTINGS_INDEX, [ 'createdAt', 'price' ], true);

@@ -1,10 +1,11 @@
+import { ValueOf } from './../utils/types';
 
 import { randomUUID } from 'crypto';
 import {
   createElectroDBEntity, createEntityRelation, createEntitySchema,
   DefaultEntityOperations, EntityAttribute, EntitySchema
 } from '../entity/base-entity';
-import { EntitySearchQuery, InferEntitySearchIndexConfig } from './types';
+import { EntitySearchQuery, ExtractEntityAttributesOfType, ExtractEntityFilterableAttributes, ExtractEntitySearchableAttributes, ExtractEntitySelectableAttributes, ExtractEntitySortableAttributes, InferEntitySearchFilterCriteria, InferEntitySearchIndexConfig } from './types';
 
 namespace User {
 
@@ -15,12 +16,21 @@ namespace User {
       entityNamePlural: 'Users',
       entityOperations: DefaultEntityOperations,
       service: 'users', // electro DB service name [logical group of entities]
+      search: {
+        enabled: true,
+        config: {
+          settings: {
+            searchableAttributes: [ 'firstName', 'lastName' ],
+          }
+        }
+      }
     },
     attributes: {
       userId: {
         type: 'string',
         required: true,
         readOnly: true,
+        isSearchable: false,
         default: () => randomUUID()
       },
       tenantId: {
@@ -42,6 +52,7 @@ namespace User {
       },
       password: {
         type: 'string',
+        isFilterable: false,
         hidden: true,
         required: true,
       },
@@ -116,13 +127,22 @@ namespace User {
     searchableAttributes: [ 'firstName', 'lastName' ],
     filterableAttributes: [ 'tenantId' ],
     sortableAttributes: [ 'createdAt' ],
-    facetAttributes: [ 'tenantId' ],
     selectableAttributes: [ 'userId', 'firstName', 'lastName', 'email' ],
   }
 
   type yy = xx[ 'sortableAttributes' ][ number ]
 
   type etsq = EntitySearchQuery<TUserSchema>
+
+  type sCnf = InferEntitySearchIndexConfig<TUserSchema>;
+
+  type cf = Extract<ValueOf<sCnf[ 'filterableAttributes' ]>, string>
+
+  type sSarch = ExtractEntitySearchableAttributes<TUserSchema>
+  type sFilter = ExtractEntityFilterableAttributes<TUserSchema>
+  type sFilter2 = ExtractEntitySortableAttributes<TUserSchema>
+  type sFilter3 = ExtractEntitySelectableAttributes<TUserSchema>
+
 
   const x: EntitySearchQuery<TUserSchema> = {
     search: 'test',
@@ -132,9 +152,34 @@ namespace User {
     facets: [ 'tenantId' ],
     facetFilters: [ "tenantId:xxx-yyy-zzz" ],
     filters: {
-      tenantId: {
-        equalTo: 'xxx-yyy-zzz'
-      }
+      and: [
+        {
+          tenantId: {
+            equalTo: 'xxx-yyy-zzz'
+          }
+        },
+        {
+          deletedAt: {
+            exists: true
+          }
+        },
+        {
+          or: [
+            {
+              firstName: {
+                contains: 'test'
+              },
+            },
+            {
+              not: [ {
+                firstName: {
+                  contains: 'test'
+                }
+              } ]
+            }
+          ]
+        }
+      ]
     },
     pagination: {
       page: 1,

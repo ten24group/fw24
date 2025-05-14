@@ -715,43 +715,35 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     return await this.client.multiSearch({ queries: meiliQueries });
   }
 
-  protected applyFilters(qb: QueryBuilder<any>, filters: any) {
+  protected applyFilters(qb: QueryBuilder<any>, filters: SearchQuery[ 'filters' ]) {
+    if (!filters) return;
+
     // 1) Group filters
     if (filters.and) {
       qb.andGroup(sub => {
-        for (const clause of [].concat(filters.and)) {
+        for (const clause of [].concat(filters.and as [])) {
           sub.andGroup(sub2 => this.applyFilters(sub2, clause));
         }
       });
       return;
     }
+
     if (filters.or) {
       qb.orGroup(sub => {
-        for (const clause of [].concat(filters.or)) {
+        for (const clause of [].concat(filters.or as [])) {
           sub.orGroup(sub2 => this.applyFilters(sub2, clause));
         }
       });
       return;
     }
-    if (filters.not) {
 
+    if (filters.not) {
       qb.notGroup(sub => {
-        for (const clause of [].concat(filters.not)) {
+        for (const clause of [].concat(filters.not as [])) {
           sub.andGroup(sub2 => this.applyFilters(sub2, clause));
         }
       });
       return;
-
-      // // 'not' can be a single object or array
-      // qb.notGroup(sub => {
-      //   const negs = Array.isArray(filters.not)
-      //     ? filters.not
-      //     : [ filters.not ];
-      //   for (const clause of negs) {
-      //     this.applyFilters(sub, clause);
-      //   }
-      // });
-      // return;
     }
 
     // 2) Leaf filter: an object mapping field -> operator object

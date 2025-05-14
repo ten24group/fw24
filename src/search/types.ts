@@ -1,6 +1,8 @@
+import { BaseFieldMetadata, EntityAttribute } from './../entity/base-entity';
 import { ValueOf } from './../../dist/package/utils/types.d';
 import { EntitySchema } from '../entity/base-entity';
-import type { EntityFilterCriteria } from '../entity/query-types';
+import type { EntityFilterCriteria, GenericFilterCriteria, GenericFilterGroup, TypedFilterCriteria } from '../entity/query-types';
+import { OmitNever } from '../utils';
 export type SearchProvider = 'meili' | 'elasticsearch' | 'algolia';
 
 export interface SearchIndexConfig {
@@ -11,7 +13,6 @@ export interface SearchIndexConfig {
     searchableAttributes?: string[];
     filterableAttributes?: string[];
     sortableAttributes?: string[];
-    facetableAttributes?: string[];
   };
   faceting?: {
     maxValuesPerFacet?: number;
@@ -36,10 +37,12 @@ export type SearchIndexConfigSettings = NonNullable<SearchIndexConfig[ 'settings
   selectableAttributes: string[];
 };
 
+// Default filter type: allow field-based filters for string keys
+
 /**
  * Defines all query options for search engines: full-text, filters, pagination, sorting, faceting, etc.
  */
-export type SearchQuery = {
+export type SearchQuery<F = GenericFilterCriteria> = {
   indexName?: string;
   /** Text or terms to search for (full-text). */
   search?: string | string[];
@@ -48,10 +51,10 @@ export type SearchQuery = {
   searchAttributes?: Array<string>;
 
   /** Filter criteria using the EntityQuery filter DSL. */
-  filters?: EntityFilterCriteria<any>;
+  filters?: F;
 
   /** Post-filter criteria (filtering after aggregations to preserve facet counts) */
-  postFilters?: EntityFilterCriteria<any>;
+  postFilters?: F;
 
   /** Facet filtering (values to filter on). */
   facetFilters?: Array<string | string[]>;
@@ -130,15 +133,21 @@ export type SearchQuery = {
   rawOptions?: Record<string, any>;
 };
 
+export type InferEntitySearchFilterCriteria<E extends SearchIndexConfigSettings> = GenericFilterCriteria<{
+  [ K in Extract<ValueOf<E[ 'filterableAttributes' ]>, string> ]: any
+}>;
+
 
 /**
  * Generic extension of SearchEngineQuery that integrates with search configuration.
  * It omits overlapping keys from SearchEngineQuery and replaces them with ones
  * constrained by the provided config T.
  */
-export type SearchQueryTyped<T extends SearchIndexConfigSettings> = Omit<SearchQuery, 'searchAttributes' | 'sort' | 'select' | 'distinctAttribute' | 'facets'> & {
+export type SearchQueryTyped<T extends SearchIndexConfigSettings> = Omit<SearchQuery, 'searchAttributes' | 'sort' | 'select' | 'distinctAttribute' | 'facets' | 'filters'> & {
   /** Allowed search attributes derived from entity metadata. */
   searchAttributes?: T[ 'searchableAttributes' ];
+
+  filters?: InferEntitySearchFilterCriteria<T>;
 
   /** Field selection restricted to available selectable attributes. */
   select?: T[ 'selectableAttributes' ];
@@ -146,23 +155,61 @@ export type SearchQueryTyped<T extends SearchIndexConfigSettings> = Omit<SearchQ
   distinctAttribute?: T[ 'selectableAttributes' ][ number ];
 
   /** Facet distribution is restricted to the facet attributes from the entity metadata. */
-  facets?: T[ 'facetableAttributes' ];
+  facets?: T[ 'filterableAttributes' ];
 
   /** Sorting limited to the sortable attributes from the entity metadata. */
   sort?: Array<{ field: Extract<ValueOf<T[ 'sortableAttributes' ]>, string>; dir: 'asc' | 'desc' }>;
 };
 
+// check if the entity modal had search config defined: use the searchable attributes form there
+// else collect entity attributes which wither have isSearchable not defined or to true
+// make sure the searchable attributes have length > 0 else fallback to entity-attributes
+// make sure to ignore any attributes marked as isSearchable: false
+export type ExtractEntitySearchableAttributes<E extends EntitySchema<any, any, any, any>> =
+  ExtractEntitySearchConfigAttributesOfType<'searchableAttributes', E> extends never ?
+  ExtractEntityAttributesOfType<'isSearchable', E>
+  : ExtractEntitySearchConfigAttributesOfType<'searchableAttributes', E>;
+
+export type ExtractEntityFilterableAttributes<E extends EntitySchema<any, any, any, any>> =
+  ExtractEntitySearchConfigAttributesOfType<'filterableAttributes', E> extends never ?
+  ExtractEntityAttributesOfType<'isFilterable', E>
+  : ExtractEntitySearchConfigAttributesOfType<'filterableAttributes', E>;
+
+export type ExtractEntitySortableAttributes<E extends EntitySchema<any, any, any, any>> =
+  ExtractEntitySearchConfigAttributesOfType<'sortableAttributes', E> extends never ?
+  ExtractEntityAttributesOfType<'isSortable', E>
+  : ExtractEntitySearchConfigAttributesOfType<'sortableAttributes', E>;
+
+export type ExtractEntitySelectableAttributes<E extends EntitySchema<any, any, any, any>> =
+  ExtractEntitySearchConfigAttributesOfType<'selectableAttributes', E> extends never ?
+  ExtractEntityAttributesOfType<'isListable', E>
+  : ExtractEntitySearchConfigAttributesOfType<'selectableAttributes', E>;
+
+export type ExtractEntityAttributesOfType<T extends keyof BaseFieldMetadata, E extends EntitySchema<any, any, any, any>> = Extract<
+  keyof OmitNever<{
+    [ K in keyof E[ 'attributes' ] ]: E[ 'attributes' ][ K ][ T ] extends false ? never : K
+  }>
+  , string>
+
+type ExtractEntitySearchConfigAttributesOfType<T extends keyof SearchIndexConfigSettings, E extends EntitySchema<any, any, any, any>> =
+  E[ 'model' ][ 'search' ] extends {
+    config: {
+      settings: {
+        [ K in T ]: string[];
+      }
+    }
+  }
+  ? Extract<ValueOf<E[ 'model' ][ 'search' ][ 'config' ][ 'settings' ][ T ]>, string>
+  : never;
+
 /**
- * Infers an EntitySearchConfig from an entity schema E.
- * TODO: improve this to be able to use other entity-metadata to infer what attributes are allowed for search, sorting, filtering, etc.
- * will need to be able to use metadata like isSearchable, isSortable, isFilterable, isFacetable, etc.
- */
+* Infers an EntitySearchConfig from an entity schema E.
+*/
 export type InferEntitySearchIndexConfig<E extends EntitySchema<any, any, any, any>> = {
-  searchableAttributes: Array<Extract<keyof E[ 'attributes' ], string>>;
-  filterableAttributes: Array<Extract<keyof E[ 'attributes' ], string>>;
-  sortableAttributes: Array<Extract<keyof E[ 'attributes' ], string>>;
-  facetAttributes: Array<Extract<keyof E[ 'attributes' ], string>>;
-  selectableAttributes: Array<Extract<keyof E[ 'attributes' ], string>>;
+  searchableAttributes: Array<ExtractEntitySearchableAttributes<E>>;
+  filterableAttributes: Array<ExtractEntityFilterableAttributes<E>>;
+  sortableAttributes: Array<ExtractEntitySortableAttributes<E>>;
+  selectableAttributes: Array<ExtractEntitySelectableAttributes<E>>;
 };
 
 /**
@@ -170,8 +217,8 @@ export type InferEntitySearchIndexConfig<E extends EntitySchema<any, any, any, a
  * It derives the search configuration from the entity schema E using InferEntitySearchConfig,
  * and returns a SearchEngineQueryExt with those settings.
  */
-export type EntitySearchQuery<E extends EntitySchema<any, any, any, any>> = SearchQueryTyped<InferEntitySearchIndexConfig<E>>;
-
+export type EntitySearchQuery<E extends EntitySchema<any, any, any, any>> =
+  SearchQueryTyped<InferEntitySearchIndexConfig<E>>;
 
 export interface SearchResult<T> {
   hits: T[];

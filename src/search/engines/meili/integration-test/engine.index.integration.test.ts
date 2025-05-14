@@ -1,8 +1,7 @@
 import { MeiliSearchEngine } from '../engine';
 import { config, indexConfig, pollForSetting } from './testUtils';
 
-const TEST_INDEX = indexConfig.indexName;
-const TEST_SETTINGS_INDEX = 'test-settings-index';
+const TEST_INDEX = indexConfig.indexName + '-indexing';
 
 describe('MeiliSearchEngine Index Management Integration Tests', () => {
   let engine: MeiliSearchEngine;
@@ -14,7 +13,9 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
       const exists = await engine.indexExists(TEST_INDEX as string);
       if (exists) await engine.deleteIndex(TEST_INDEX as string, true);
     } catch { }
+
     await engine.initIndex({ ...indexConfig, indexName: TEST_INDEX as string }, true);
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }, 60000);
 
   afterAll(async () => {

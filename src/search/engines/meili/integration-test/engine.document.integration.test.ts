@@ -1,7 +1,7 @@
 import { MeiliSearchEngine } from '../engine';
 import { config, indexConfig, TEST_DOCS, pollForDocument, pollForDocumentAbsence } from './testUtils';
 
-const TEST_INDEX = indexConfig.indexName;
+const TEST_INDEX = indexConfig.indexName + '-document';
 
 describe('MeiliSearchEngine Document Operations Integration Tests', () => {
   let engine: MeiliSearchEngine;
