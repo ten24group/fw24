@@ -15,7 +15,7 @@ export class EntitySearchService<S extends EntitySchema<any, any, any>> extends 
   }
 
   protected getEntitySearchConfig() {
-    return this.entityService.getEntitySchema().model.search;
+    return this.entityService.getEntitySearchConfig();
   }
 
   protected getSearchIndexConfig() {
@@ -24,7 +24,7 @@ export class EntitySearchService<S extends EntitySchema<any, any, any>> extends 
       throw new Error('Search config not found');
     }
 
-    return searchConfig.config;
+    return searchConfig.indexConfig;
   }
 
   async search(query: EntitySearchQuery<S>, searchIndexConfig = this.getSearchIndexConfig(), ctx?: ExecutionContext): Promise<SearchResult<any>> {
@@ -49,23 +49,9 @@ export class EntitySearchService<S extends EntitySchema<any, any, any>> extends 
 
     // Use schema-defined transformer if available
     if (searchConfig?.documentTransformer) {
-      return searchConfig.documentTransformer(entity);
+      return await searchConfig.documentTransformer(entity);
     }
 
-    // Default transformation
-    const document: Record<string, any> = { ...entity };
-
-    // Handle searchable relations if defined
-    const searchableRelations = searchConfig?.config.settings?.searchableAttributes
-      ?.filter(attr => attr.includes('.')) || [];
-
-    for (const relation of searchableRelations) {
-      const [ relationName, field ] = relation.split('.');
-      if (entity[ relationName ]) {
-        document[ relation ] = entity[ relationName ][ field ];
-      }
-    }
-
-    return document;
+    return super.transformDocumentForIndexing(entity);
   }
 } 

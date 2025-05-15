@@ -407,10 +407,10 @@ export interface EntitySchema<
 
     readonly search?: {
       enabled: boolean;
-      config: SearchIndexConfig;
+      indexConfig: SearchIndexConfig;
       serviceClass?: DepIdentifier<EntitySearchService<any>> | typeof EntitySearchService | EntitySearchService<any>;
       // Document transformation for indexing
-      documentTransformer?: (entity: EntityRecordTypeFromSchema<EntitySchema<A, F, C>>) => Record<string, any>;
+      documentTransformer?: (entity: EntityRecordTypeFromSchema<EntitySchema<A, F, C>>) => Promise<Record<string, any>>;
     };
   };
   readonly attributes: {

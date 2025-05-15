@@ -12,6 +12,10 @@ export class BaseSearchService {
     protected readonly searchIndexConfig?: SearchIndexConfig
   ) { }
 
+  public getEngine() {
+    return this.searchEngine;
+  }
+
   protected getSearchIndexConfig(): SearchIndexConfig {
     if (!this.searchIndexConfig) {
       throw new Error('Search index config not found');
@@ -20,13 +24,16 @@ export class BaseSearchService {
   }
 
   async transformDocumentForIndexing(entity: Record<string, any>): Promise<Record<string, any>> {
-    return Promise.resolve(entity);
+    // Default transformation
+    const document: Record<string, any> = { ...entity };
+    return Promise.resolve(document);
   }
 
   async search(
     query: SearchQuery,
     searchIndexConfig = this.getSearchIndexConfig(),
-    _ctx?: ExecutionContext): Promise<SearchResult<any>> {
+    _ctx?: ExecutionContext
+  ): Promise<SearchResult<any>> {
     this.logger.debug('Executing search:', query);
 
     const results = await this.searchEngine.search(query, searchIndexConfig);

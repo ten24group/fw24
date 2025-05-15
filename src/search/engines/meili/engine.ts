@@ -6,6 +6,59 @@ import { QueryBuilder } from "./query-builder";
 export interface ExtendedMeiliSearchClientConfig extends MeiliSearchClientConfig {
 }
 
+
+/**
+ * 
+ * Default configurations in meili-search
+ * 
+ * {
+  "displayedAttributes": [
+    "*"
+  ],
+  "searchableAttributes": [
+    "*"
+  ],
+  "filterableAttributes": [],
+  "sortableAttributes": [],
+  "rankingRules":
+  [
+    "words",
+    "typo",
+    "proximity",
+    "attribute",
+    "sort",
+    "exactness"
+  ],
+  "stopWords": [],
+  "nonSeparatorTokens": [],
+  "separatorTokens": [],
+  "dictionary": [],
+  "synonyms": {},
+  "distinctAttribute": null,
+  "typoTolerance": {
+    "enabled": true,
+    "minWordSizeForTypos": {
+      "oneTypo": 5,
+      "twoTypos": 9
+    },
+    "disableOnWords": [],
+    "disableOnAttributes": []
+  },
+  "faceting": {
+    "maxValuesPerFacet": 100
+  },
+  "pagination": {
+    "maxTotalHits": 1000
+  },
+  "proximityPrecision": "byWord",
+  "facetSearch": true,
+  "prefixSearch": "indexingTime",
+  "searchCutoffMs": null,
+  "embedders": {}
+}
+ * 
+ */
+
 export interface SearchIndexConfigExt extends SearchIndexConfig {
   meiliSearchIndexSettings?: MeiliSearchIndexSettings
 }

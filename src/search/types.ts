@@ -33,7 +33,7 @@ export interface FacetConfig {
 /**
  * Configuration derived from entity metadata regarding available attributes for search.
  */
-export type SearchIndexConfigSettings = NonNullable<SearchIndexConfig[ 'settings' ]> & {
+export type SearchIndexSettings = NonNullable<SearchIndexConfig[ 'settings' ]> & {
   selectableAttributes: string[];
 };
 
@@ -43,7 +43,6 @@ export type SearchIndexConfigSettings = NonNullable<SearchIndexConfig[ 'settings
  * Defines all query options for search engines: full-text, filters, pagination, sorting, faceting, etc.
  */
 export type SearchQuery<F = GenericFilterCriteria> = {
-  indexName?: string;
   /** Text or terms to search for (full-text). */
   search?: string | string[];
 
@@ -133,7 +132,7 @@ export type SearchQuery<F = GenericFilterCriteria> = {
   rawOptions?: Record<string, any>;
 };
 
-export type InferEntitySearchFilterCriteria<E extends SearchIndexConfigSettings> = GenericFilterCriteria<{
+export type InferIndexSearchFilterCriteria<E extends SearchIndexSettings> = GenericFilterCriteria<{
   [ K in Extract<ValueOf<E[ 'filterableAttributes' ]>, string> ]: any
 }>;
 
@@ -143,14 +142,17 @@ export type InferEntitySearchFilterCriteria<E extends SearchIndexConfigSettings>
  * It omits overlapping keys from SearchEngineQuery and replaces them with ones
  * constrained by the provided config T.
  */
-export type SearchQueryTyped<T extends SearchIndexConfigSettings> = Omit<SearchQuery, 'searchAttributes' | 'sort' | 'select' | 'distinctAttribute' | 'facets' | 'filters'> & {
+export type SearchQueryTyped<T extends SearchIndexSettings> = Omit<SearchQuery, 'searchAttributes' | 'sort' | 'select' | 'distinctAttribute' | 'facets' | 'filters' | 'postFilters'> & {
   /** Allowed search attributes derived from entity metadata. */
   searchAttributes?: T[ 'searchableAttributes' ];
 
-  filters?: InferEntitySearchFilterCriteria<T>;
+  filters?: InferIndexSearchFilterCriteria<T>;
+
+  postFilters?: InferIndexSearchFilterCriteria<T>;
 
   /** Field selection restricted to available selectable attributes. */
   select?: T[ 'selectableAttributes' ];
+
   /** Distinct attribute must be one of the selectable attributes. */
   distinctAttribute?: T[ 'selectableAttributes' ][ number ];
 
@@ -191,15 +193,15 @@ export type ExtractEntityAttributesOfType<T extends keyof BaseFieldMetadata, E e
   }>
   , string>
 
-type ExtractEntitySearchConfigAttributesOfType<T extends keyof SearchIndexConfigSettings, E extends EntitySchema<any, any, any, any>> =
+type ExtractEntitySearchConfigAttributesOfType<T extends keyof SearchIndexSettings, E extends EntitySchema<any, any, any, any>> =
   E[ 'model' ][ 'search' ] extends {
-    config: {
+    indexConfig: {
       settings: {
         [ K in T ]: string[];
       }
     }
   }
-  ? Extract<ValueOf<E[ 'model' ][ 'search' ][ 'config' ][ 'settings' ][ T ]>, string>
+  ? Extract<ValueOf<E[ 'model' ][ 'search' ][ 'indexConfig' ][ 'settings' ][ T ]>, string>
   : never;
 
 /**

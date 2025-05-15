@@ -5,7 +5,7 @@ import {
   createElectroDBEntity, createEntityRelation, createEntitySchema,
   DefaultEntityOperations, EntityAttribute, EntitySchema
 } from '../entity/base-entity';
-import { EntitySearchQuery, ExtractEntityAttributesOfType, ExtractEntityFilterableAttributes, ExtractEntitySearchableAttributes, ExtractEntitySelectableAttributes, ExtractEntitySortableAttributes, InferEntitySearchFilterCriteria, InferEntitySearchIndexConfig } from './types';
+import { EntitySearchQuery, ExtractEntityAttributesOfType, ExtractEntityFilterableAttributes, ExtractEntitySearchableAttributes, ExtractEntitySelectableAttributes, ExtractEntitySortableAttributes, InferIndexSearchFilterCriteria, InferEntitySearchIndexConfig } from './types';
 
 namespace User {
 
@@ -208,7 +208,6 @@ namespace User {
     },
     returnFacets: [ 'tenantId' ],
     searchAttributes: [ 'firstName', 'lastName' ],
-    indexName: 'userIdxxxx',
   }
 
 }

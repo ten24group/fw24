@@ -7,9 +7,12 @@ export abstract class BaseSearchEngine {
   constructor(protected readonly config: Record<string, any>) { }
 
   abstract initIndex(config: SearchIndexConfig): Promise<any>;
+  abstract indexExists(indexName: string): Promise<boolean>;
+  abstract deleteIndex(indexName: string): Promise<any>;
+
+  abstract search<T>(query: SearchQuery, config: SearchIndexConfig): Promise<SearchResult<T>>;
 
   abstract indexDocuments<T extends Record<string, any>>(documents: T[], config: SearchIndexConfig): Promise<any>;
-  abstract search<T>(query: SearchQuery, config: SearchIndexConfig): Promise<SearchResult<T>>;
   abstract deleteDocuments(ids: string[], indexName: string): Promise<any>;
 
   protected validateConfig(config: SearchIndexConfig): void {

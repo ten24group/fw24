@@ -1,5 +1,5 @@
 import type { EntityConfiguration } from "electrodb";
-import { DIContainer } from "../di";
+import { DIContainer, OnInit } from "../di";
 import type { EntityInputValidations, EntityValidations } from "../validation";
 import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
 import type { EntityFilterCriteria, EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
@@ -12,7 +12,8 @@ import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords,
 import { DepIdentifier, IDIContainer } from "../interfaces";
 import { DatabaseError, EntityValidationError } from './errors';
 import { ExecutionContext } from "../core/types/execution-context";
-import { BaseSearchService, EntitySearchService, EntitySearchQuery } from '../search';
+import { BaseSearchService, EntitySearchService, EntitySearchQuery, SearchIndexConfig } from '../search';
+import { EntitySchemaValidator } from "./entity-schema-validator";
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
@@ -63,41 +64,73 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         protected readonly diContainer: IDIContainer = DIContainer.ROOT,
     ) { }
 
+    protected makeEntityIndexName(schema: EntitySchema<any, any, any>, ctx?: ExecutionContext<any>) {
+        const tenantId = ctx?.actor?.tenantId || '';
+        const applicationId = ctx?.actor?.applicationId || '';
+        const environmentId = ctx?.actor?.environmentId || '';
+        const entityName = schema.model.entity;
+        // const version = schema.model.version;
+
+        // ten24-backend-dev-user;
+        return [ tenantId, applicationId, environmentId, entityName ].filter(Boolean).join('-').toLowerCase();
+    }
+
+    public getEntitySearchConfig(ctx?: ExecutionContext<any>) {
+
+        const schema = this.getEntitySchema();
+
+        const searchConfig = schema.model.search || {
+            enabled: true,
+            indexConfig: {}
+        };
+
+        searchConfig.serviceClass = searchConfig.serviceClass || EntitySearchService;
+        searchConfig.indexConfig.indexName = searchConfig.indexConfig.indexName || this.makeEntityIndexName(schema, ctx);
+        searchConfig.indexConfig.primaryKey = searchConfig.indexConfig.primaryKey || this.getEntityPrimaryIdPropertyName();
+
+        return searchConfig;
+    }
+
     public getSearchService(): EntitySearchService<S> {
         try {
-            const searchIndexConfig = this.getEntitySchema().model.search;
+            const searchConfig = this.getEntitySearchConfig();
 
             // Skip search logic if search is not enabled
-            if (!searchIndexConfig?.enabled) {
+            if (!searchConfig?.enabled) {
                 throw new Error(`Search is not enabled for entity ${this.getEntityName()}.`);
             }
 
             // Validate search configuration if present
-            if (searchIndexConfig) {
-                this.validateSearchConfiguration(searchIndexConfig);
+            if (searchConfig) {
+                this.validateSearchConfig(searchConfig);
             }
 
-            const searchServiceTokenOrClass = searchIndexConfig?.serviceClass;
+            const searchServiceTokenOrClass = searchConfig?.serviceClass;
 
             // Case 1: DI Container has the service
             if (searchServiceTokenOrClass && this.diContainer.has(searchServiceTokenOrClass as DepIdentifier<EntitySearchService<any>>)) {
                 try {
                     return this.diContainer.resolve<EntitySearchService<S>>(searchServiceTokenOrClass as DepIdentifier<EntitySearchService<S>>);
                 } catch (err: any) {
+                    debugger;
                     this.logger.error('Failed to resolve search service from container:', err);
                     throw new Error(`Failed to resolve search service for entity ${this.getEntityName()}: ${err.message}`);
                 }
             }
 
-            // Case 3: Service instance provided
+            // Case 2: Service instance provided
             if (searchServiceTokenOrClass instanceof BaseSearchService) {
                 return searchServiceTokenOrClass;
             }
 
-            // Case 2: Service class provided
+            // Case 3: Service class provided
             if (
                 isClassConstructor(searchServiceTokenOrClass) &&
-                searchServiceTokenOrClass.prototype instanceof EntitySearchService
+                (
+                    searchServiceTokenOrClass === EntitySearchService
+                    ||
+                    searchServiceTokenOrClass.prototype instanceof EntitySearchService
+                )
             ) {
                 try {
                     const searchEngine = this.diContainer.resolveSearchEngine();
@@ -114,33 +147,24 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 }
             }
 
-            // // Case 4: Default service fallback
-            // if (this.diContainer.has(DefaultSearchService)) {
-            //     try {
-            //         return this.diContainer.resolve<DefaultSearchService<S>>(DefaultSearchService);
-            //     } catch (err: any) {
-            //         this.logger.error('Failed to resolve default search service:', err);
-            //         throw new Error(`Failed to resolve default search service: ${err.message}`);
-            //     }
-            // }
-
-            throw new Error(`No valid search service configuration found for entity: ${this.getEntityName()}`);
+            throw new Error(`No valid search-service-configuration found for entity: ${this.getEntityName()}`);
         } catch (err: any) {
             this.logger.error('Error in getSearchService:', err);
             throw new Error(`Search service initialization failed for entity ${this.getEntityName()}: ${err.message}`);
         }
     }
 
-    private validateSearchConfiguration(searchConfig: any) {
-        if (!searchConfig.config) {
+    private validateSearchConfig(searchConfig: EntitySchema<any, any, any>[ 'model' ][ 'search' ]) {
+
+        if (!searchConfig) {
+            throw new Error('Search configuration is required');
+        }
+
+        if (!searchConfig.indexConfig) {
             throw new Error('Search configuration must include a config object');
         }
 
-        const { config } = searchConfig;
-
-        if (!config.provider) {
-            throw new Error('Search configuration must specify a provider');
-        }
+        const { indexConfig: config } = searchConfig;
 
         if (!config.indexName) {
             throw new Error('Search configuration must specify an indexName');
@@ -165,6 +189,14 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 throw new Error(`Invalid filterable attributes: ${invalidAttributes.join(', ')}`);
             }
         }
+    }
+
+    public validateEntitySchema() {
+        const validator = new EntitySchemaValidator(this.diContainer);
+        validator.validateSchema(
+            this.getEntitySchema(),
+            this.entityConfigurations
+        );
     }
 
     getEntityServiceByEntityName<T extends EntitySchema<any, any, any>>(relatedEntityName: string) {
