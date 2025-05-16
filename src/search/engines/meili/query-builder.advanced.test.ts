@@ -257,16 +257,6 @@ describe("Advanced MeiliQueryBuilder Features", () => {
             .orWhere("category").eq("office")
             .orWhere("category").eq("bedroom");
         })
-        // Facet filtering with type-safety
-        .withFacetFilter("brand", b => {
-          b.in([ "Herman Miller", "Steelcase", "IKEA" ]);
-        })
-        .withFacetFilter("color", b => {
-          b.eq("black").eq("white").eq("natural");
-        })
-        .withFacetFilter("rating", b => {
-          b.not("1").not("2"); // Exclude low-rated products
-        })
         // Configure pagination and sorting
         .hitsPerPage(24)
         .page(1)

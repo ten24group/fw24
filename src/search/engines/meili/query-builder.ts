@@ -399,28 +399,6 @@ export class QueryBuilder<T = Record<string, any>> {
     return this;
   }
 
-  /**
-   * Add a facet filter using a more flexible builder pattern
-   * @param field The facet field to filter on
-   * @param filterFn Function to build filter conditions for this facet
-   * @returns This builder instance for chaining
-   */
-  withFacetFilter<K extends keyof T>(field: K, filterFn: (builder: FacetFilterBuilder<T[ K ]>) => void): this {
-    // Initialize the builder
-    const builder = new FacetFilterBuilder<T[ K ]>(String(field));
-    filterFn(builder);
-
-    // Get the built facet filter
-    const filter = builder.build();
-    if (!filter) return this; // No filters added
-
-    // Add to the facet filters array
-    const arr = this.options.facets || [];
-    arr.push(...filter);
-    this.options.facets = arr;
-    return this;
-  }
-
   /** Matching strategy */
   matchingStrategy(ms: MatchingStrategy): this {
     this.options.matchingStrategy = ms;
@@ -786,58 +764,4 @@ export class ConditionBuilder<T, K extends keyof T> {
   notInList = this.notIn;
   between = this.rangeTo; // convenience if you prefer TO syntax
   notBetween = this.not().rangeTo.bind(this);
-}
-
-/**
- * Builder for facet filters
- * Provides type-safe methods for building facet filter expressions
- */
-export class FacetFilterBuilder<T> {
-  private filters: string[] = [];
-
-  constructor(private field: string) { }
-
-  /**
-   * Add a value to include in this facet filter
-   * @param value The facet value to include
-   */
-  eq(value: T): this {
-    this.filters.push(`${this.field}:${String(value)}`);
-    return this;
-  }
-
-  /**
-   * Add multiple values to include in this facet filter (OR relation)
-   * @param values The facet values to include
-   */
-  in(values: T[]): this {
-    values.forEach(value => this.eq(value));
-    return this;
-  }
-
-  /**
-   * Exclude a specific value from this facet
-   * @param value The facet value to exclude
-   */
-  not(value: T): this {
-    this.filters.push(`NOT ${this.field}:${String(value)}`);
-    return this;
-  }
-
-  /**
-   * Exclude multiple values from this facet (AND NOT relation)
-   * @param values The facet values to exclude
-   */
-  notIn(values: T[]): this {
-    values.forEach(value => this.not(value));
-    return this;
-  }
-
-  /**
-   * Build the facet filter array
-   * @returns Array of facet filter strings or undefined if no filters
-   */
-  build(): string[] | undefined {
-    return this.filters.length > 0 ? this.filters : undefined;
-  }
 }
