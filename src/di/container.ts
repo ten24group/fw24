@@ -902,7 +902,7 @@ export class DIContainer implements IDIContainer {
             const theInitMethod = instance[ initMethod as keyof typeof instance ] as Function;
             if (typeof theInitMethod === 'function') {
                 try {
-                    theInitMethod();
+                    theInitMethod.call(instance);  // Bind 'this' context to the instance
                 } catch (error: any) {
                     throw new InitializationMethodError(instance.constructor.name, error.message, this.containerId);
                 }
@@ -1112,7 +1112,7 @@ export class DIContainer implements IDIContainer {
             const theInitMethod = instance[ initMethod as keyof typeof instance ] as Function;
             if (typeof theInitMethod === 'function') {
                 try {
-                    await theInitMethod();
+                    await theInitMethod.call(instance);  // Bind 'this' context to the instance
                 } catch (error: any) {
                     throw new InitializationMethodError(instance.constructor.name, error.message, this.containerId);
                 }
