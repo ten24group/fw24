@@ -31,16 +31,16 @@ export class EntitySearchService<S extends EntitySchema<any, any, any>> extends 
     return super.search(query, searchIndexConfig, ctx);
   }
 
-  async syncToIndex(entity: EntityRecordTypeFromSchema<S>, searchIndexConfig = this.getSearchIndexConfig(), ctx?: ExecutionContext): Promise<void> {
-    return super.syncToIndex(entity, searchIndexConfig, ctx);
+  async syncToIndex(entity: EntityRecordTypeFromSchema<S>, searchIndexConfig = this.getSearchIndexConfig(), ctx?: ExecutionContext, synchronous?: boolean): Promise<void> {
+    return super.syncToIndex(entity, searchIndexConfig, ctx, synchronous);
   }
 
-  async deleteFromIndex(entityId: string, searchIndexConfig = this.getSearchIndexConfig(), ctx?: ExecutionContext): Promise<void> {
-    return super.deleteFromIndex(entityId, searchIndexConfig, ctx);
+  async deleteFromIndex(entityId: string, searchIndexConfig = this.getSearchIndexConfig(), ctx?: ExecutionContext, synchronous?: boolean): Promise<void> {
+    return super.deleteFromIndex(entityId, searchIndexConfig, ctx, synchronous);
   }
 
-  async bulkSync(entities: EntityRecordTypeFromSchema<S>[], searchIndexConfig = this.getSearchIndexConfig(), ctx?: ExecutionContext): Promise<void> {
-    return super.bulkSync(entities, searchIndexConfig, ctx);
+  async bulkSync(entities: EntityRecordTypeFromSchema<S>[], searchIndexConfig = this.getSearchIndexConfig(), ctx?: ExecutionContext, synchronous?: boolean): Promise<void> {
+    return super.bulkSync(entities, searchIndexConfig, ctx, synchronous);
   }
 
   // extends EntitySchema<any, any, any> = EntitySchema<any, any, any>

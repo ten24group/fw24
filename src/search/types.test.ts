@@ -18,7 +18,8 @@ namespace User {
       service: 'users', // electro DB service name [logical group of entities]
       search: {
         enabled: true,
-        config: {
+        indexConfig: {
+          name: 'userIdxxxx',
           settings: {
             searchableAttributes: [ 'firstName', 'lastName' ],
           }
@@ -148,9 +149,8 @@ namespace User {
     search: 'test',
     sort: [ { field: 'createdAt', dir: 'asc' } ],
     select: [ 'userId', 'firstName', 'lastName', 'email' ],
-    distinctAttribute: 'userId',
+    distinct: 'userId',
     facets: [ 'tenantId' ],
-    facetFilters: [ "tenantId:xxx-yyy-zzz" ],
     filters: {
       and: [
         {
@@ -185,9 +185,6 @@ namespace User {
       page: 1,
       limit: 10
     },
-    rawOptions: {
-      highlight: true
-    },
     crop: {
       fields: [ 'firstName', 'lastName' ],
       length: 10,
@@ -206,7 +203,6 @@ namespace User {
       postTag: '</b>',
       showMatchesPosition: true
     },
-    returnFacets: [ 'tenantId' ],
     searchAttributes: [ 'firstName', 'lastName' ],
   }
 

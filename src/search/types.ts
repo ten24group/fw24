@@ -34,7 +34,7 @@ export interface FacetConfig {
  * Configuration derived from entity metadata regarding available attributes for search.
  */
 export type SearchIndexSettings = NonNullable<SearchIndexConfig[ 'settings' ]> & {
-  selectableAttributes: string[];
+  selectableAttributes?: string[];
 };
 
 // Default filter type: allow field-based filters for string keys
@@ -52,14 +52,8 @@ export type SearchQuery<F = GenericFilterCriteria> = {
   /** Filter criteria using the EntityQuery filter DSL. */
   filters?: F;
 
-  /** Post-filter criteria (filtering after aggregations to preserve facet counts) */
-  postFilters?: F;
-
-  /** Facet filtering (values to filter on). */
-  facetFilters?: Array<string | string[]>;
-
   /** Request facet distribution for given attributes. */
-  returnFacets?: Array<string>;
+  facets?: Array<string>;
 
   /** Pagination settings: page and limit. */
   pagination?: {
@@ -76,7 +70,7 @@ export type SearchQuery<F = GenericFilterCriteria> = {
   select?: Array<string>;
 
   /** Return distinct results on a given attribute. */
-  distinctAttribute?: string;
+  distinct?: string;
 
   /** Highlight matching terms in given fields. */
   highlight?: {
@@ -120,17 +114,30 @@ export type SearchQuery<F = GenericFilterCriteria> = {
   /** Specify query languages for better search results */
   locales?: string[];
 
-  /** Geolocation-based search. */
-  geo?: {
-    lat: number;
-    lng: number;
-    radius?: number;
-    precision?: number;
+  /** Configuration for filtering results by geographic radius. */
+  geoRadiusFilter?: {
+    center: GeoPoint;
+    distanceInMeters: number;
   };
 
-  /** Any engine-specific raw query options. */
-  rawOptions?: Record<string, any>;
+  /** Configuration for filtering results by geographic bounding box. */
+  geoBoundingBoxFilter?: {
+    topLeft: GeoPoint;
+    bottomRight: GeoPoint;
+  };
+
+  /** Configuration for sorting results by geographic proximity. */
+  geoSort?: {
+    point: GeoPoint;
+    direction?: "asc" | "desc";
+  };
 };
+
+/** Represents a geographic point with latitude and longitude. */
+export interface GeoPoint {
+  lat: number;
+  lng: number;
+}
 
 export type InferIndexSearchFilterCriteria<E extends SearchIndexSettings> = GenericFilterCriteria<{
   [ K in Extract<ValueOf<E[ 'filterableAttributes' ]>, string> ]: any
@@ -142,24 +149,19 @@ export type InferIndexSearchFilterCriteria<E extends SearchIndexSettings> = Gene
  * It omits overlapping keys from SearchEngineQuery and replaces them with ones
  * constrained by the provided config T.
  */
-export type SearchQueryTyped<T extends SearchIndexSettings> = Omit<SearchQuery, 'searchAttributes' | 'sort' | 'select' | 'distinctAttribute' | 'facets' | 'filters' | 'postFilters'> & {
+export type SearchQueryTyped<T extends SearchIndexSettings> = Omit<SearchQuery, 'searchAttributes' | 'sort' | 'select' | 'distinct' | 'facets' | 'filters'> & {
   /** Allowed search attributes derived from entity metadata. */
   searchAttributes?: T[ 'searchableAttributes' ];
 
   filters?: InferIndexSearchFilterCriteria<T>;
 
-  postFilters?: InferIndexSearchFilterCriteria<T>;
-
-  /** Field selection restricted to available selectable attributes. */
-  select?: T[ 'selectableAttributes' ];
-
-  /** Distinct attribute must be one of the selectable attributes. */
-  distinctAttribute?: T[ 'selectableAttributes' ][ number ];
-
-  /** Facet distribution is restricted to the facet attributes from the entity metadata. */
   facets?: T[ 'filterableAttributes' ];
 
-  /** Sorting limited to the sortable attributes from the entity metadata. */
+  /** Field selection restricted to available selectable attributes. */
+  select?: Extract<ValueOf<T[ 'selectableAttributes' ]>, string>[];
+  /** Distinct attribute must be one of the selectable attributes. */
+  distinct?: Extract<ValueOf<T[ 'selectableAttributes' ]>, string>;
+
   sort?: Array<{ field: Extract<ValueOf<T[ 'sortableAttributes' ]>, string>; dir: 'asc' | 'desc' }>;
 };
 
@@ -233,14 +235,4 @@ export interface SearchResult<T> {
   processingTimeMs?: number;
   totalHits?: number;
   query?: string;
-}
-
-export interface SearchOptions extends Record<string, any> {
-  filter?: string | string[];
-  facets?: string[];
-  limit?: number;
-  offset?: number;
-  page?: number;
-  hitsPerPage?: number;
-  sort?: string[];
 }

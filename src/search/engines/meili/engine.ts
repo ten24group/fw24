@@ -1,5 +1,5 @@
-import { DeleteOrCancelTasksQuery, DocumentsQuery, EnqueuedTask, Index, IndexSwap, Key, KeyCreation, MeiliSearch, Config as MeiliSearchClientConfig, Settings as MeiliSearchIndexSettings, RecordAny, Task, TasksOrBatchesQuery, TaskStatus } from "meilisearch";
-import { SearchIndexConfig, SearchOptions, SearchQuery, SearchResult } from "../../types";
+import { DeleteOrCancelTasksQuery, DocumentsQuery, EnqueuedTask, SearchParams, Index, IndexSwap, Key, KeyCreation, MeiliSearch, Config as MeiliSearchClientConfig, Settings as MeiliSearchIndexSettings, RecordAny, Task, TasksOrBatchesQuery, TaskStatus } from "meilisearch";
+import { SearchIndexConfig, SearchQuery, SearchResult } from "../../types";
 import { BaseSearchEngine } from "../base";
 import { QueryBuilder } from "./query-builder";
 
@@ -76,7 +76,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Creates a new index with the provided configuration
    */
-  async initIndex(config: SearchIndexConfigExt, waitForTask: boolean = false) {
+  async initIndex(config: SearchIndexConfigExt, synchronous: boolean = false) {
     this.validateConfig(config);
     const idx = config.indexName!;
 
@@ -100,7 +100,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     }
 
     // Wait for the task to complete
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
 
@@ -110,7 +110,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
         ...config.settings,
         ...config.meiliSearchIndexSettings,
       };
-      await this.updateIndexSettings(idx, indexSettings);
+      await this.updateIndexSettings(idx, indexSettings, synchronous);
     }
 
     const index = this.client.index(idx);
@@ -172,9 +172,9 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Delete an index
    */
-  async deleteIndex(indexName: string, waitForTask: boolean = false) {
+  async deleteIndex(indexName: string, synchronous: boolean = false) {
     const task = await this.client.deleteIndex(indexName);
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
     this.indices.delete(indexName);
@@ -183,10 +183,10 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Update index settings
    */
-  async updateIndexSettings(indexName: string, settings: MeiliSearchIndexSettings, waitForTask: boolean = false) {
+  async updateIndexSettings(indexName: string, settings: MeiliSearchIndexSettings, synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
     const task = await index.updateSettings(settings);
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
   }
@@ -194,10 +194,10 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Reset index settings to default
    */
-  async resetIndexSettings(indexName: string, waitForTask: boolean = false) {
+  async resetIndexSettings(indexName: string, synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
     const task = await index.resetSettings();
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
   }
@@ -213,10 +213,10 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Update filterable attributes for an index
    */
-  async updateFilterableAttributes(indexName: string, attributes: string[], waitForTask: boolean = false) {
+  async updateFilterableAttributes(indexName: string, attributes: string[], synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
     const task = await index.updateFilterableAttributes(attributes);
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
   }
@@ -224,10 +224,10 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Update sortable attributes for an index
    */
-  async updateSortableAttributes(indexName: string, attributes: string[], waitForTask: boolean = false) {
+  async updateSortableAttributes(indexName: string, attributes: string[], synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
     const task = await index.updateSortableAttributes(attributes);
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
   }
@@ -235,10 +235,10 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Update searchable attributes for an index
    */
-  async updateSearchableAttributes(indexName: string, attributes: string[], waitForTask: boolean = false) {
+  async updateSearchableAttributes(indexName: string, attributes: string[], synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
     const task = await index.updateSearchableAttributes(attributes);
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
   }
@@ -246,10 +246,10 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Update displayed attributes for an index
    */
-  async updateDisplayedAttributes(indexName: string, attributes: string[], waitForTask: boolean = false) {
+  async updateDisplayedAttributes(indexName: string, attributes: string[], synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
     const task = await index.updateDisplayedAttributes(attributes);
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
   }
@@ -257,10 +257,10 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Update synonyms for an index
    */
-  async updateSynonyms(indexName: string, synonyms: Record<string, string[]>, waitForTask: boolean = false) {
+  async updateSynonyms(indexName: string, synonyms: Record<string, string[]>, synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
     const task = await index.updateSynonyms(synonyms);
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
   }
@@ -268,10 +268,10 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Update stop words for an index
    */
-  async updateStopWords(indexName: string, stopWords: string[], waitForTask: boolean = false) {
+  async updateStopWords(indexName: string, stopWords: string[], synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
     const task = await index.updateStopWords(stopWords);
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
   }
@@ -279,10 +279,10 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Update ranking rules for an index
    */
-  async updateRankingRules(indexName: string, rankingRules: string[], waitForTask: boolean = false) {
+  async updateRankingRules(indexName: string, rankingRules: string[], synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
     const task = await index.updateRankingRules(rankingRules);
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
   }
@@ -290,9 +290,9 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Swap two indexes
    */
-  async swapIndexes(indexSwaps: IndexSwap[], waitForTask: boolean = false) {
+  async swapIndexes(indexSwaps: IndexSwap[], synchronous: boolean = false) {
     const task = await this.client.swapIndexes(indexSwaps);
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
   }
@@ -365,11 +365,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   async indexDocuments<T extends Record<string, any>>(
     docs: T[],
     config: SearchIndexConfig,
-    waitForTask: boolean = false
+    synchronous: boolean = false
   ) {
     const index = await this.getIndex(config);
     const task = await index.addDocuments(docs);
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
     return task;
@@ -382,14 +382,14 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     docs: T[],
     config: SearchIndexConfig,
     batchSize: number = 1000,
-    waitForTask: boolean = false
+    synchronous: boolean = false
   ) {
     const index = await this.getIndex(config);
 
     for (let i = 0; i < docs.length; i += batchSize) {
       const batch = docs.slice(i, i + batchSize);
       const task = await index.addDocuments(batch);
-      if (waitForTask) {
+      if (synchronous) {
         await this.waitForTask(task.taskUid);
       }
     }
@@ -401,11 +401,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   async updateDocuments<T extends Record<string, any>>(
     docs: T[],
     config: SearchIndexConfig,
-    waitForTask: boolean = false
+    synchronous: boolean = false
   ) {
     const index = await this.getIndex(config);
     const task = await index.updateDocuments(docs);
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
     return task;
@@ -418,14 +418,14 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     docs: T[],
     config: SearchIndexConfig,
     batchSize: number = 1000,
-    waitForTask: boolean = false
+    synchronous: boolean = false
   ) {
     const index = await this.getIndex(config);
 
     for (let i = 0; i < docs.length; i += batchSize) {
       const batch = docs.slice(i, i + batchSize);
       const task = await index.updateDocuments(batch);
-      if (waitForTask) {
+      if (synchronous) {
         await this.waitForTask(task.taskUid);
       }
     }
@@ -451,13 +451,13 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Delete documents by ID
    */
-  async deleteDocuments(ids: string[], indexName: string, waitForTask: boolean = false) {
+  async deleteDocuments(ids: string[], indexName: string, synchronous: boolean = false) {
     if (!indexName) {
       throw new Error("Index name is required for delete operation");
     }
     const index = await this.getIndex({ indexName });
     const task = await index.deleteDocuments(ids);
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
     return task;
@@ -466,10 +466,10 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Delete all documents in an index
    */
-  async deleteAllDocuments(indexName: string, waitForTask: boolean = false) {
+  async deleteAllDocuments(indexName: string, synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
     const task = await index.deleteAllDocuments();
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
     return task;
@@ -478,13 +478,20 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Delete documents by filter
    */
-  async deleteDocumentsByFilter(filter: string, indexName: string, waitForTask: boolean = false) {
+  async deleteDocumentsByFilter(filter: SearchQuery[ 'filters' ], indexName: string, synchronous: boolean = false) {
     if (!indexName) {
       throw new Error("Index name is required for deleteByFilter operation");
     }
+
     const index = await this.getIndex({ indexName });
-    const task = await index.deleteDocuments({ filter });
-    if (waitForTask) {
+
+    const builder = QueryBuilder.create<any>();
+    this.applyFilters(builder, filter);
+    const { options } = builder.build();
+
+    const task = await index.deleteDocuments({ filter: options.filter! });
+
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
     return task;
@@ -493,9 +500,9 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Create a snapshot
    */
-  async createSnapshot(waitForTask: boolean = false): Promise<EnqueuedTask> {
+  async createSnapshot(synchronous: boolean = false): Promise<EnqueuedTask> {
     const task = await this.client.createSnapshot();
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
     return task;
@@ -504,9 +511,9 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Create a dump
    */
-  async createDump(waitForTask: boolean = false): Promise<EnqueuedTask> {
+  async createDump(synchronous: boolean = false): Promise<EnqueuedTask> {
     const task = await this.client.createDump();
-    if (waitForTask) {
+    if (synchronous) {
       await this.waitForTask(task.taskUid);
     }
     return task;
@@ -550,8 +557,8 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Check server health
    */
-  async health() {
-    return await this.client.health();
+  async health<T extends any>(): Promise<T> {
+    return await this.client.health() as T;
   }
 
   /**
@@ -602,14 +609,6 @@ export class MeiliSearchEngine extends BaseSearchEngine {
       this.applyFilters(builder, query.filters);
     }
 
-    // ─── Post Filters ────────────────────────────────────────────────────────────────
-    if (query.postFilters) {
-      // Apply post filters (filtering after aggregations)
-      builder.withPostFilter(sub => {
-        this.applyFilters(sub, query.postFilters);
-      });
-    }
-
     // ─── Sorting ───────────────────────────────────────────────────────────────
     if (query.sort) {
       for (const { field, dir } of query.sort) {
@@ -632,8 +631,8 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     }
 
     // ─── Distinct ──────────────────────────────────────────────────────────────
-    if (query.distinctAttribute) {
-      builder.distinct(query.distinctAttribute);
+    if (query.distinct) {
+      builder.distinct(query.distinct);
     }
 
     // ─── Field selection ──────────────────────────────────────────────────────
@@ -660,20 +659,8 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     }
 
     // ─── Faceting ──────────────────────────────────────────────────────────────
-    if (query.facetFilters) {
-      builder.facetFilters(query.facetFilters);
-    }
-
-    let returnFacets: string[] = []
-
-    if (query.returnFacets) {
-      returnFacets = query.returnFacets;
-    } else if (config.faceting?.facets) {
-      returnFacets = Object.keys(config.faceting.facets);
-    }
-
-    if (returnFacets.length > 0) {
-      builder.facets(returnFacets);
+    if (query.facets) {
+      builder.facets(query.facets);
     }
 
     // ─── Matching strategy ────────────────────────────────────────────────────
@@ -682,9 +669,19 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     }
 
     // ─── Geo-search ───────────────────────────────────────────────────────────
-    if (query.geo) {
-      const { lat, lng, radius, precision } = query.geo;
-      builder.around(lat, lng, radius, precision);
+    if (query.geoRadiusFilter) {
+      const { center, distanceInMeters } = query.geoRadiusFilter;
+      builder.geoRadius(center.lat, center.lng, distanceInMeters);
+    }
+
+    if (query.geoBoundingBoxFilter) {
+      const { topLeft, bottomRight } = query.geoBoundingBoxFilter;
+      builder.geoBoundingBox(topLeft, bottomRight);
+    }
+
+    if (query.geoSort) {
+      const { point, direction } = query.geoSort;
+      builder.sortByGeoPoint(point.lat, point.lng, direction);
     }
 
     // ─── Ranking Score ─────────────────────────────────────────────────────────
@@ -719,16 +716,10 @@ export class MeiliSearchEngine extends BaseSearchEngine {
       builder.locales(query.locales);
     }
 
-    // ─── Any custom raw options ───────────────────────────────────────────────
-    if (query.rawOptions) {
-      for (const [ key, val ] of Object.entries(query.rawOptions)) {
-        builder.rawOption(key, val);
-      }
-    }
 
     // ─── Build + execute ──────────────────────────────────────────────────────
     const { q: qParam, options } = builder.build();
-    const searchOpts: SearchOptions = {
+    const searchOpts: SearchParams = {
       ...options
     };
 
@@ -754,18 +745,20 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Perform a multi-search query
    */
-  async multiSearch(queries: Array<{
+  async multiSearch<T extends any>(queries: Array<{
     indexUid: string;
     query: string;
     searchParams?: Record<string, any>;
   }>) {
+
     // Map the input queries to the format expected by the MeiliSearch client
     const meiliQueries = queries.map(q => ({
       indexUid: q.indexUid,
       q: q.query, // MeiliSearch client expects 'q' instead of 'query'
       ...q.searchParams, // Spread any additional search parameters
     }));
-    return await this.client.multiSearch({ queries: meiliQueries });
+
+    return await this.client.multiSearch({ queries: meiliQueries }) as T;
   }
 
   protected applyFilters(qb: QueryBuilder<any>, filters: SearchQuery[ 'filters' ]) {

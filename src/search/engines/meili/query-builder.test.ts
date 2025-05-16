@@ -237,27 +237,14 @@ describe("MeiliQueryBuilder DSL", () => {
 
     it("distinct, select, and their clears", () => {
       const qb = QueryBuilder.create().distinct("id").select([ "id", "name" ]);
-      expect(qb.build().options.distinctAttribute).toBe("id");
+      expect(qb.build().options.distinct).toBe("id");
       expect(qb.build().options.attributesToRetrieve).toEqual([ "id", "name" ]);
       qb.clearDistinct().clearSelect();
-      expect(qb.build().options.distinctAttribute).toBeUndefined();
+      expect(qb.build().options.distinct).toBeUndefined();
       expect(qb.build().options.attributesToRetrieve).toBeUndefined();
     });
 
-    it("facetFilter, facetFilters setter, clearFacetFilters", () => {
-      const fb1 = QueryBuilder.create().facetFilter("cat", "a", "b").build()
-        .options.facetFilters;
-      expect(fb1).toEqual([ [ "cat:a", "cat:b" ] ]);
 
-      const fb2 = QueryBuilder.create()
-        .facetFilters([ "x", [ "y", "z" ] ])
-        .build().options.facetFilters;
-      expect(fb2).toEqual([ "x", [ "y", "z" ] ]);
-
-      const qb = QueryBuilder.create().facetFilter("k", "v");
-      qb.clearFacetFilters();
-      expect(qb.build().options.facetFilters).toBeUndefined();
-    });
 
     it("facets and clearFacets", () => {
       const qb = QueryBuilder.create().facets([ "a", "b" ]);
@@ -291,23 +278,6 @@ describe("MeiliQueryBuilder DSL", () => {
       expect(qb.build().options.cropLength).toBe(15);
       qb.clearCrop();
       expect(qb.build().options.attributesToCrop).toBeUndefined();
-    });
-
-    it("around and clearGeo", () => {
-      const qb = QueryBuilder.create().around(1, 2, 3, 4);
-      const o = qb.build().options;
-      expect(o.aroundLatLng).toBe("1,2");
-      expect(o.aroundRadius).toBe(3);
-      expect(o.aroundPrecision).toBe(4);
-      qb.clearGeo();
-      expect(qb.build().options.aroundLatLng).toBeUndefined();
-    });
-
-    it("rawOption and clearAllOptions", () => {
-      const qb = QueryBuilder.create().rawOption("x", 9);
-      expect(qb.build().options.x).toBe(9);
-      qb.clearAllOptions();
-      expect(qb.build().options).toEqual({});
     });
   });
 

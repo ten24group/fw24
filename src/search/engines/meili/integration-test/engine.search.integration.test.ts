@@ -146,7 +146,7 @@ describe('MeiliSearchEngine Search Operations Integration Tests', () => {
         }
       }
     };
-    const result = await engine.search<any>({ search: 'document', returnFacets: [ 'category', 'status' ] }, facetConfig);
+    const result = await engine.search<any>({ search: 'document', facets: [ 'category', 'status' ] }, facetConfig);
     expect(result.facets).toBeDefined();
     expect(result.facets?.category).toBeDefined();
     expect(result.facets?.status).toBeDefined();
@@ -158,7 +158,7 @@ describe('MeiliSearchEngine Search Operations Integration Tests', () => {
       { indexUid: TEST_INDEX as string, query: 'document', searchParams: { limit: 2 } },
       { indexUid: TEST_INDEX as string, query: 'special', searchParams: { filter: 'category = tutorial' } }
     ];
-    const result = await engine.multiSearch(queries);
+    const result = await engine.multiSearch<any>(queries);
     expect(result).toBeDefined();
     expect(result.results.length).toBe(2);
     expect(result.results[ 0 ].hits.length).toBeLessThanOrEqual(2);

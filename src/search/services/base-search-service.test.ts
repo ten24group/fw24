@@ -17,10 +17,10 @@ const testSchema = createEntitySchema({
     entityOperations: DefaultEntityOperations,
     search: {
       enabled: true,
-      config: {
+      indexConfig: {
         provider: 'meili',
         settings: {
-          searchableAttributes: [ 'title', 'description', 'author.name', 'author.email' ]
+          searchableAttributes: [ 'title', 'description' ]
         }
       },
       documentTransformer: (entity: any) => ({
@@ -79,6 +79,7 @@ describe('BaseSearchService', () => {
     beforeEach(() => {
       mockEntityService = {
         hydrateRecords: jest.fn(),
+        getEntitySearchConfig: jest.fn().mockReturnValue(searchConfig)
       } as any;
 
       mockSearchEngine = {
@@ -87,13 +88,7 @@ describe('BaseSearchService', () => {
         deleteDocuments: jest.fn(),
       } as any;
 
-      searchConfig = {
-        provider: 'meili',
-        indexName: 'test-index',
-        settings: {
-          searchableAttributes: [ 'title', 'description', 'author.name', 'author.email' ]
-        }
-      };
+      searchConfig = testSchema.model.search.indexConfig;
 
       mockContext = {
         request: {} as Request,
@@ -153,7 +148,7 @@ describe('BaseSearchService', () => {
       await service.syncToIndex(entity);
 
       expect(service.transformDocumentForIndexing).toHaveBeenCalledWith(entity);
-      expect(mockSearchEngine.indexDocuments).toHaveBeenCalledWith([ transformedDoc ], searchConfig);
+      expect(mockSearchEngine.indexDocuments).toHaveBeenCalledWith([ transformedDoc ], searchConfig, undefined);
     });
   });
 
@@ -194,7 +189,7 @@ describe('BaseSearchService', () => {
       await service.bulkSync(entities);
 
       expect(service.transformDocumentForIndexing).toHaveBeenCalledTimes(2);
-      expect(mockSearchEngine.indexDocuments).toHaveBeenCalledWith(transformedDocs, searchConfig);
+      expect(mockSearchEngine.indexDocuments).toHaveBeenCalledWith(transformedDocs, searchConfig, undefined);
     });
   });
 
@@ -222,7 +217,7 @@ describe('BaseSearchService', () => {
 
       await service.deleteFromIndex(entityId);
 
-      expect(mockSearchEngine.deleteDocuments).toHaveBeenCalledWith([ entityId ], searchConfig.indexName!);
+      expect(mockSearchEngine.deleteDocuments).toHaveBeenCalledWith([ entityId ], searchConfig.indexName!, undefined);
     });
   });
 });

@@ -15,7 +15,7 @@ const testSchema = createEntitySchema({
     entityOperations: DefaultEntityOperations,
     search: {
       enabled: true,
-      config: {
+      indexConfig: {
         provider: 'meili',
         settings: {
           searchableAttributes: [ 'title', 'description', 'author.name', 'author.email' ]
@@ -97,7 +97,7 @@ describe('EntitySearchService', () => {
     mockEntityService = {
       getEntitySchema: jest.fn().mockReturnValue(testSchema),
       hydrateRecords: jest.fn(),
-      getSearchIndexConfig: jest.fn().mockReturnValue(searchConfig)
+      getEntitySearchConfig: jest.fn().mockReturnValue(testSchema.model.search)
     } as any;
 
     service = new EntitySearchService(mockEntityService, mockSearchEngine);
@@ -106,7 +106,9 @@ describe('EntitySearchService', () => {
   describe('transformDocumentForIndexing', () => {
     it('should use schema-defined transformer if available', async () => {
       const entity = { id: 1, title: 'Test Document' };
-      const schema = { ...testSchema };
+      const schema = {
+        ...testSchema,
+      };
 
       mockEntityService.getEntitySchema.mockReturnValue(schema);
 

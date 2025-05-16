@@ -6,6 +6,7 @@
  * https://www.meilisearch.com/docs/learn/filtering_and_sorting/filter_expression_reference
  */
 
+import { ExtraRequestInit, SearchParams } from "meilisearch";
 import { isString } from "../../../utils/datatypes";
 
 export type Operator =
@@ -21,63 +22,9 @@ export type Operator =
 
 export type MatchingStrategy = "all" | "last" | "frequency";
 
-export interface MeiliSearchOptions {
-  // Core search
-  filters?: string;
-  sort?: string[];
-  limit?: number;
-  offset?: number;
-  distinctAttribute?: string;
-  hitsPerPage?: number;
-  page?: number;
-  postFilter?: string;
-
-  // Attribute selection
-  attributesToRetrieve?: string[];
-  attributesToHighlight?: string[];
-  attributesToCrop?: string[];
-  attributesToSearchOn?: string[];
-
-  // Faceting
-  facetFilters?: Array<string | string[]>;
-  facets?: string[];
-
-  // Behavior
-  matchingStrategy?: MatchingStrategy;
-  locales?: string[];
-
-  // Highlight/Crop tags
-  highlightPreTag?: string;
-  highlightPostTag?: string;
-  cropLength?: number;
-  cropMarker?: string;
-  showMatchesPosition?: boolean;
-
-  // Geolocation search
-  aroundLatLng?: string;
-  aroundRadius?: number;
-  aroundPrecision?: number;
-
-  // Hybrid & vector search
-  hybrid?: {
-    semanticRatio?: number;
-    embedder?: string;
-  };
-  vector?: number[];
-  retrieveVectors?: boolean;
-
-  // Ranking & scoring
-  showRankingScore?: boolean;
-  showRankingScoreDetails?: boolean;
-  rankingScoreThreshold?: number;
-
-  // Custom options
-  [ key: string ]: any;
-}
-
 export interface MeiliSearchQuery {
   q?: string;
-  options: MeiliSearchOptions;
+  options: SearchParams;
 }
 
 /** FilterNode AST interface */
@@ -182,7 +129,7 @@ export class FilterGroup implements FilterNode {
 export class QueryBuilder<T = Record<string, any>> {
   private q?: string;
   private root: FilterGroup;
-  private options: MeiliSearchOptions = {};
+  private options: SearchParams = {};
 
   constructor(connector: "AND" | "OR" = "AND") {
     this.root = new FilterGroup(connector);
@@ -418,43 +365,13 @@ export class QueryBuilder<T = Record<string, any>> {
     return this;
   }
 
-  /**
-   * Add a post filter to filter search hits after aggregations
-   * This can be used for faceted search to preserve aggregation values
-   * @param filter The filter string or expression
-   */
-  postFilter(filter: string): this {
-    this.options.postFilter = filter;
-    return this;
-  }
-
-  /**
-   * Add a post filter (filtering after search) using a builder
-   * This is useful for faceted search to preserve facet counts while filtering results
-   * @param builderFn Function that configures filter conditions
-   */
-  withPostFilter(builderFn: (qb: QueryBuilder<T>) => void): this {
-    const postFilterBuilder = QueryBuilder.create<T>();
-    builderFn(postFilterBuilder);
-    this.options.postFilter = postFilterBuilder.root.toString();
-    return this;
-  }
-
-  /**
-   * Clear post filter configuration
-   */
-  clearPostFilter(): this {
-    delete this.options.postFilter;
-    return this;
-  }
-
   /** Distinct attribute */
   distinct(field: keyof T | string): this {
-    this.options.distinctAttribute = String(field);
+    this.options.distinct = String(field);
     return this;
   }
   clearDistinct(): this {
-    delete this.options.distinctAttribute;
+    delete this.options.distinct;
     return this;
   }
 
@@ -482,25 +399,6 @@ export class QueryBuilder<T = Record<string, any>> {
     return this;
   }
 
-  /** Faceting filters */
-  facetFilter<K extends keyof T>(field: K, ...vals: T[ K ][]): this {
-    const key = String(field);
-    // reuse existing array or start fresh
-    const arr = this.options.facetFilters || [];
-    const f = vals.map((v) => `${key}:${String(v)}`);
-    arr.push(f);
-    this.options.facetFilters = arr;
-    return this;
-  }
-  facetFilters(filters: Array<string | string[]>): this {
-    this.options.facetFilters = filters;
-    return this;
-  }
-  clearFacetFilters(): this {
-    delete this.options.facetFilters;
-    return this;
-  }
-
   /**
    * Add a facet filter using a more flexible builder pattern
    * @param field The facet field to filter on
@@ -517,9 +415,9 @@ export class QueryBuilder<T = Record<string, any>> {
     if (!filter) return this; // No filters added
 
     // Add to the facet filters array
-    const arr = this.options.facetFilters || [];
-    arr.push(filter);
-    this.options.facetFilters = arr;
+    const arr = this.options.facets || [];
+    arr.push(...filter);
+    this.options.facets = arr;
     return this;
   }
 
@@ -661,26 +559,6 @@ export class QueryBuilder<T = Record<string, any>> {
     return this;
   }
 
-  /** Geolocation search */
-  around(lat: number, lng: number, radius?: number, precision?: number): this {
-    this.options.aroundLatLng = `${lat},${lng}`;
-    if (radius !== undefined) this.options.aroundRadius = radius;
-    if (precision !== undefined) this.options.aroundPrecision = precision;
-    return this;
-  }
-  clearGeo(): this {
-    delete this.options.aroundLatLng;
-    delete this.options.aroundRadius;
-    delete this.options.aroundPrecision;
-    return this;
-  }
-
-  /** Raw option setter */
-  rawOption(key: string, value: any): this {
-    this.options[ key ] = value;
-    return this;
-  }
-
   /** Clear filters or all options */
   clearFilters(): this {
     this.root = new FilterGroup("AND");
@@ -732,6 +610,59 @@ export class QueryBuilder<T = Record<string, any>> {
       grp.add(this.root).add(node);
       this.root = grp;
     }
+  }
+
+  /**
+   * Filter results within a radius of a geographic point.
+   * Requires `_geo` to be in `filterableAttributes`.
+   * @param lat Latitude of the center point.
+   * @param lng Longitude of the center point.
+   * @param distanceInMeters Radius in meters.
+   * @param connector How to connect this filter ("AND" or "OR").
+   */
+  geoRadius(
+    lat: number,
+    lng: number,
+    distanceInMeters: number,
+    connector: "AND" | "OR" = "AND",
+  ): this {
+    const rawFilter = `_geoRadius(${lat}, ${lng}, ${distanceInMeters})`;
+    this.addFilterNode(new FilterRaw(rawFilter), connector);
+    return this;
+  }
+
+  /**
+   * Filter results within a geographic bounding box.
+   * Requires `_geo` to be in `filterableAttributes`.
+   * @param topLeft Object with lat and lng for the top-left corner.
+   * @param bottomRight Object with lat and lng for the bottom-right corner.
+   * @param connector How to connect this filter ("AND" or "OR").
+   */
+  geoBoundingBox(
+    topLeft: { lat: number; lng: number },
+    bottomRight: { lat: number; lng: number },
+    connector: "AND" | "OR" = "AND",
+  ): this {
+    const rawFilter = `_geoBoundingBox([${topLeft.lat}, ${topLeft.lng}], [${bottomRight.lat}, ${bottomRight.lng}])`;
+    this.addFilterNode(new FilterRaw(rawFilter), connector);
+    return this;
+  }
+
+  /**
+   * Sort results by distance from a geographic point.
+   * Requires `_geo` to be in `sortableAttributes`.
+   * @param lat Latitude of the reference point.
+   * @param lng Longitude of the reference point.
+   * @param dir Sort direction ("asc" or "desc").
+   */
+  sortByGeoPoint(
+    lat: number,
+    lng: number,
+    dir: "asc" | "desc" = "asc",
+  ): this {
+    const sortRule = `_geoPoint(${lat}, ${lng}):${dir}`;
+    this.options.sort = [ ...(this.options.sort || []), sortRule ];
+    return this;
   }
 }
 

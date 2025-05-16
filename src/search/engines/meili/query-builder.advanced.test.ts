@@ -215,91 +215,6 @@ describe("Advanced MeiliQueryBuilder Features", () => {
     });
   });
 
-  describe("Post Filter", () => {
-    it("adds post filter", () => {
-      const query = QueryBuilder.create()
-        .postFilter("category = 'books'")
-        .build();
-
-      expect(query.options.postFilter).toBe("category = 'books'");
-    });
-
-    it("adds post filter using builder pattern", () => {
-      const query = QueryBuilder.create()
-        .withPostFilter(qb => {
-          qb.where("category").eq("books")
-            .andWhere("price").lt(50);
-        })
-        .build();
-
-      expect(query.options.postFilter).toBe("(category = 'books' AND price < 50)");
-    });
-
-    it("clears post filter", () => {
-      const query = QueryBuilder.create()
-        .postFilter("category = 'books'")
-        .clearPostFilter()
-        .build();
-
-      expect(query.options.postFilter).toBeUndefined();
-    });
-  });
-
-  describe("Type-safe Facet Filtering", () => {
-    it("adds facet filters using builder pattern", () => {
-      const query = QueryBuilder.create()
-        .withFacetFilter("category", builder => {
-          builder.eq("books").eq("magazines");
-        })
-        .build();
-
-      expect(query.options.facetFilters).toEqual([
-        [ "category:books", "category:magazines" ]
-      ]);
-    });
-
-    it("adds multiple facet filters with different fields", () => {
-      const query = QueryBuilder.create()
-        .withFacetFilter("category", b => b.eq("books"))
-        .withFacetFilter("author", b => b.eq("John Doe"))
-        .build();
-
-      expect(query.options.facetFilters).toEqual([
-        [ "category:books" ],
-        [ "author:John Doe" ]
-      ]);
-    });
-
-    it("supports negated facet filters", () => {
-      const query = QueryBuilder.create()
-        .withFacetFilter("category", b => {
-          b.eq("books").not("magazines");
-        })
-        .build();
-
-      expect(query.options.facetFilters).toEqual([
-        [ "category:books", "NOT category:magazines" ]
-      ]);
-    });
-
-    it("supports in() and notIn() for multiple values", () => {
-      const query = QueryBuilder.create()
-        .withFacetFilter("category", b => {
-          b.in([ "books", "magazines" ]).notIn([ "comics", "newspapers" ]);
-        })
-        .build();
-
-      expect(query.options.facetFilters).toEqual([
-        [
-          "category:books",
-          "category:magazines",
-          "NOT category:comics",
-          "NOT category:newspapers"
-        ]
-      ]);
-    });
-  });
-
   describe("Combined Features", () => {
     it("combines multiple advanced features", () => {
       const query = QueryBuilder.create()
@@ -352,14 +267,6 @@ describe("Advanced MeiliQueryBuilder Features", () => {
         .withFacetFilter("rating", b => {
           b.not("1").not("2"); // Exclude low-rated products
         })
-        // Post filter (applied after search to preserve facet counts)
-        .withPostFilter(qb => {
-          qb.where("inStock").eq(true)
-            .orGroup(g => {
-              g.where("backorderAvailable").eq(true)
-                .andWhere("restock_date").lt(20230601);
-            });
-        })
         // Configure pagination and sorting
         .hitsPerPage(24)
         .page(1)
@@ -374,22 +281,6 @@ describe("Advanced MeiliQueryBuilder Features", () => {
       expect(query.options.filter).toContain("price >= 100");
       expect(query.options.filter).toContain("price <= 1000");
       expect(query.options.filter).toContain("category = 'living-room'");
-
-      // Facet filters
-      expect(query.options.facetFilters).toContainEqual([
-        "brand:Herman Miller", "brand:Steelcase", "brand:IKEA"
-      ]);
-      expect(query.options.facetFilters).toContainEqual([
-        "color:black", "color:white", "color:natural"
-      ]);
-      expect(query.options.facetFilters).toContainEqual([
-        "NOT rating:1", "NOT rating:2"
-      ]);
-
-      // Post filter
-      expect(query.options.postFilter).toContain("inStock = true");
-      expect(query.options.postFilter).toContain("backorderAvailable = true");
-      expect(query.options.postFilter).toContain("restock_date < 20230601");
 
       // Pagination and sorting
       expect(query.options.hitsPerPage).toBe(24);

@@ -155,7 +155,7 @@ describe('MeiliSearchEngine Document Operations Integration Tests', () => {
       await pollForDocument(engine, tempConfig, '1');
 
       // make sure the attribute is filterable
-      await engine.deleteDocumentsByFilter("group = 'A'", tempIndex, true);
+      await engine.deleteDocumentsByFilter({ group: { eq: 'A' } }, tempIndex, true);
 
       await pollForDocumentAbsence(engine, tempConfig, '1', 40);
 
