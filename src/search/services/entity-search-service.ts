@@ -1,0 +1,57 @@
+import { BaseSearchService } from './base-search-service';
+import { EntitySchema, EntityRecordTypeFromSchema, BaseEntityService } from '../../entity';
+import { SearchResult, EntitySearchQuery } from '../types';
+import { SearchIndexConfig } from '../types';
+import { ExecutionContext } from '../../core/types/execution-context';
+import { BaseSearchEngine } from '../engines';
+
+export class EntitySearchService<S extends EntitySchema<any, any, any>> extends BaseSearchService {
+
+  constructor(
+    protected readonly entityService: BaseEntityService<S>,
+    protected readonly searchEngine: BaseSearchEngine,
+  ) {
+    super(searchEngine);
+  }
+
+  protected getEntitySearchConfig() {
+    return this.entityService.getEntitySearchConfig();
+  }
+
+  protected getSearchIndexConfig() {
+    const searchConfig = this.getEntitySearchConfig();
+    if (!searchConfig) {
+      throw new Error('Search config not found');
+    }
+
+    return searchConfig.indexConfig;
+  }
+
+  async search(query: EntitySearchQuery<S>, searchIndexConfig = this.getSearchIndexConfig(), ctx?: ExecutionContext): Promise<SearchResult<any>> {
+    return super.search(query, searchIndexConfig, ctx);
+  }
+
+  async syncToIndex(entity: EntityRecordTypeFromSchema<S>, searchIndexConfig = this.getSearchIndexConfig(), ctx?: ExecutionContext, synchronous?: boolean): Promise<void> {
+    return super.syncToIndex(entity, searchIndexConfig, ctx, synchronous);
+  }
+
+  async deleteFromIndex(entityId: string, searchIndexConfig = this.getSearchIndexConfig(), ctx?: ExecutionContext, synchronous?: boolean): Promise<void> {
+    return super.deleteFromIndex(entityId, searchIndexConfig, ctx, synchronous);
+  }
+
+  async bulkSync(entities: EntityRecordTypeFromSchema<S>[], searchIndexConfig = this.getSearchIndexConfig(), ctx?: ExecutionContext, synchronous?: boolean): Promise<void> {
+    return super.bulkSync(entities, searchIndexConfig, ctx, synchronous);
+  }
+
+  // extends EntitySchema<any, any, any> = EntitySchema<any, any, any>
+  async transformDocumentForIndexing(entity: EntityRecordTypeFromSchema<S>): Promise<Record<string, any>> {
+    const searchConfig = this.getEntitySearchConfig();
+
+    // Use schema-defined transformer if available
+    if (searchConfig?.documentTransformer) {
+      return await searchConfig.documentTransformer(entity);
+    }
+
+    return super.transformDocumentForIndexing(entity);
+  }
+} 

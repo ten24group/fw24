@@ -1,0 +1,26 @@
+version: '3.7'
+services:
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    volumes:
+      - ./data.ms:/data.ms
+    ports:
+      - "7700:7700"
+    environment:
+      MEILI_MASTER_KEY: xxx_your_master_key # Replace with your actual master key
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  # meilisearch-ui:
+  #   image: riccoxie/meilisearch-ui:latest
+  #   ports:
+  #     - "24900:24900"
+  #     - "4173:4173"
+  #   environment:
+  #     SINGLETON_MODE: "true"
+  #     SINGLETON_HOST: "http://localhost:7700"
+  #     SINGLETON_API_KEY: "xxx_your_master_key" # Use the same key as Meilisearch
+  #   depends_on:
+  #     - meilisearch

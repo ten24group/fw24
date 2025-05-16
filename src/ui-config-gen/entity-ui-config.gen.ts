@@ -5,10 +5,10 @@ import MakeListEntityConfig from './templates/list-entity';
 import MakeViewEntityConfig from './templates/view-entity';
 import MakeEntityMenuConfig from './templates/entity-menu';
 import { BaseEntityService, EntitySchema } from '../entity';
+import { makeCustomPageConfig, CustomPageOptions, ListPageConfig, FormPageConfig, DetailsPageConfig } from './templates/custom-page';
 
 import MakeAuthConfig from './templates/auth';
 import MakeDashboardConfig from './templates/dashboard';
-
 
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import {
@@ -26,6 +26,92 @@ export class EntityUIConfigGen {
     // while scanning and loading stuff
     readonly uiGenDIContainer = Fw24.getInstance().getAppDIContainer();
 
+    private customPages: Map<string, CustomPageOptions> = new Map();
+
+    @LogDuration()
+    async scanCustomPages() {
+        const fw24 = Fw24.getInstance();
+        const config = fw24.getConfig();
+        const customPagesDir = config.uiConfigGenOptions?.customPagesDirectory || 'custom-pages';
+
+        const customPagesDirectories = [ pathResolve(`./src/${customPagesDir}/`) ];
+
+        if (fw24.hasModules()) {
+            for (const [ , module ] of fw24.getModules()) {
+                const moduleCustomPagesPath = pathJoin(module.getBasePath(), customPagesDir);
+                customPagesDirectories.push(pathResolve(moduleCustomPagesPath));
+            }
+        }
+
+        for (const dir of customPagesDirectories) {
+            if (!existsSync(dir)) {
+                this.logger.debug(`Custom pages directory does not exist: ${dir}`);
+                continue;
+            }
+
+            const customPageFiles = Helper.scanTSSourceFilesFrom(dir);
+
+            for (const file of customPageFiles) {
+                try {
+                    const module = await import(pathJoin(dir, file));
+                    for (const [ key, value ] of Object.entries(module)) {
+                        if (this.isValidCustomPageConfig(value)) {
+                            const pageName = this.getPageNameFromConfig(value);
+                            if (pageName) {
+                                this.registerCustomPage(value);
+                                this.logger.debug(`Registered custom page: ${pageName}`);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    this.logger.error(`Error loading custom page from ${file}:`, e);
+                }
+            }
+        }
+    }
+
+    private isValidCustomPageConfig(value: unknown): value is CustomPageOptions {
+        if (!value || typeof value !== 'object') return false;
+
+        const config = value as Record<string, unknown>;
+        if (!('pageType' in config) || !('pageTitle' in config)) return false;
+
+        const pageType = config.pageType;
+        if (pageType === 'list') {
+            return 'listPageConfig' in config;
+        } else if (pageType === 'form') {
+            return 'formPageConfig' in config;
+        } else if (pageType === 'details') {
+            return 'detailsPageConfig' in config;
+        }
+        return false;
+    }
+
+    private getPageNameFromConfig(config: CustomPageOptions): string | null {
+        switch (config.pageType) {
+            case 'list':
+                return `list-${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+            case 'form':
+                return config.pageTitle.toLowerCase().includes('add')
+                    ? `create-${config.pageTitle.toLowerCase().replace(/\s+/g, '-').replace('add-', '')}`
+                    : `edit-${config.pageTitle.toLowerCase().replace(/\s+/g, '-').replace('edit-', '')}`;
+            case 'details':
+                return `view-${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Register a custom page. Supports optional routePattern for dynamic routes (e.g., /author/:authorId/books)
+     */
+    registerCustomPage(options: CustomPageOptions) {
+        const pageName = this.getPageNameFromConfig(options);
+        if (pageName) {
+            this.customPages.set(pageName, options);
+        }
+    }
+
     async run() {
         this.process();
     }
@@ -38,6 +124,10 @@ export class EntityUIConfigGen {
         const serviceDirectories = this.prepareServicesDirectories();
 
         const services = await this.scanAndLoadServices(serviceDirectories);
+
+        // Scan and load custom pages
+        await this.scanCustomPages();
+
         this.logger.debug(`Ui-config-gen::: Process::: all-services: `, Array.from(services.keys()));
 
         let menuIndex = 1;
@@ -62,7 +152,9 @@ export class EntityUIConfigGen {
                     entityName,
                     entityNamePlural: entitySchema.model.entityNamePlural,
                     CRUDApiPath: entitySchema.model.CRUDApiPath,
-                    properties: entityDefaultOpsSchema.update.input
+                    properties: entityDefaultOpsSchema.update.input,
+                    actions: entitySchema.model.editPageActions,
+                    breadcrumbs: entitySchema.model.editPageBreadcrumbs,
                 }, service);
                 entityConfigs[ `edit-${entityName.toLowerCase()}` ] = updateConfig;
             }
@@ -87,6 +179,8 @@ export class EntityUIConfigGen {
                     entityNamePlural: entitySchema.model.entityNamePlural,
                     properties: entityDefaultOpsSchema.get.output,
                     CRUDApiPath: entitySchema.model.CRUDApiPath,
+                    actions: entitySchema.model.viewPageActions,
+                    breadcrumbs: entitySchema.model.viewPageBreadcrumbs,
                 }, service);
                 entityConfigs[ `view-${entityName.toLowerCase()}` ] = viewConfig;
             }
@@ -105,6 +199,12 @@ export class EntityUIConfigGen {
             }
 
         });
+
+        // Process custom pages
+        for (const [ pageName, options ] of this.customPages) {
+            const customConfig = makeCustomPageConfig(options);
+            entityConfigs[ pageName ] = customConfig;
+        }
 
         const authConfigOptions = Fw24.getInstance().getConfig().uiConfigGenOptions || {};
 

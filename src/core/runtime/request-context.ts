@@ -57,7 +57,7 @@ export class RequestContext<
 
         this.requestId = context.awsRequestId || `req-${Date.now()}`;
 
-        const contentType = this.getHeader('content-type');
+        const contentType = this.getHeader('content-type') || 'application/json';
 
         this.body = this.parseBody(event.body, contentType, this.isBase64Encoded) as TBody;
     }
@@ -88,7 +88,7 @@ export class RequestContext<
     private parseBody(body: string | null, contentType: string, isBase64Encoded: boolean): any {
         this._logger.debug("Parsing the event body...", body, contentType);
 
-        if (!body) return null;
+        if (!body || !contentType) return null;
 
         if (contentType == 'application/x-www-form-urlencoded') {
 

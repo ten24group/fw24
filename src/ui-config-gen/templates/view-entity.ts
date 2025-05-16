@@ -2,36 +2,49 @@ import {  Schema } from "electrodb";
 import { BaseEntityService, EntitySchema, TIOSchemaAttribute, TIOSchemaAttributesMap } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
 import { formatEntityAttributesForDetail } from "./util";
+import { IEntityPageAction } from "../../entity/base-entity";
 
 export type ViewEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
-    entityName: string,
-    entityNamePlural: string,
-    CRUDApiPath?: string,
-    properties: TIOSchemaAttributesMap<S>,
+    entityName: string;
+    entityNamePlural: string;
+    CRUDApiPath?: string;
+    properties: TIOSchemaAttributesMap<S>;
+    actions?: IEntityPageAction[];
+    breadcrumbs?: Array<{ label: string; url?: string }>;
 }
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
     options: ViewEntityPageOptions<S>,
     entityService: BaseEntityService<S>
 ) => {
-
-    const{ entityName, CRUDApiPath } = options;
+    const { entityName, CRUDApiPath, actions, breadcrumbs } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
-    
 
     const detailsPageConfig = makeViewEntityDetailConfig(options, entityService);
 
+    // Default back action
+    const defaultActions: IEntityPageAction[] = [
+        {
+            label: "Back",
+            url: `/list-${entityNameLower}`,
+            icon: "arrow-left"
+        },
+        {
+            label: "Edit",
+            url: `/edit-${entityNameLower}/:id`,
+            icon: "edit",
+        }
+    ];
+
+    // Combine default actions with custom actions
+    const pageHeaderActions = [...defaultActions, ...(actions || [])];
+
     return {
-        pageTitle:  `${entityNamePascalCase} Details`,
-        pageType:   'details',
-        breadcrums: [],
-        pageHeaderActions: [
-            {
-                label:  "Back",
-                url:    `/list-${entityNameLower}`
-            }
-        ],
+        pageTitle: `${entityNamePascalCase} Details`,
+        pageType: 'details',
+        breadcrumbs: breadcrumbs || [],
+        pageHeaderActions,
         detailsPageConfig,
     };
 };

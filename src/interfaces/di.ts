@@ -1,3 +1,4 @@
+import { ISearchEngine } from '../search';
 import { DeepPartial, PartialBy } from '../utils/types';
 
 export type Token = string;
@@ -5,10 +6,10 @@ export type DepIdentifier<T = any> = string | Function | ClassConstructor<T>;
 export type ClassConstructor<T extends any = any> = new (...args: any[]) => T;
 
 export type PriorityCriteria =
-  | { greaterThan: number }
-  | { lessThan: number }
-  | { eq: number }
-  | { between: [number, number] };
+    | { greaterThan: number }
+    | { lessThan: number }
+    | { eq: number }
+    | { between: [ number, number ] };
 
 
 export type InjectOptions<T extends unknown = unknown> = {
@@ -16,9 +17,9 @@ export type InjectOptions<T extends unknown = unknown> = {
     isConfig?: boolean;
     defaultValue?: T;
     tags?: string[];
-    type?: ProviderOptions['type'], 
+    type?: ProviderOptions[ 'type' ],
     priority?: PriorityCriteria;
-    forEntity?: ProviderOptions['forEntity'],
+    forEntity?: ProviderOptions[ 'forEntity' ],
 };
 
 export type ParameterInjectMetadata<T extends unknown = unknown> = InjectOptions<T> & {
@@ -30,9 +31,9 @@ export type PropertyInjectMetadata<T extends unknown = unknown> = InjectOptions<
     propertyKey: string | symbol;
 };
 
-export type ComplexDependencyIdentifier<T=any> = InjectOptions<T> & {
-    token: DepIdentifier, 
-} 
+export type ComplexDependencyIdentifier<T = any> = InjectOptions<T> & {
+    token: DepIdentifier,
+}
 
 export type BaseProviderOptions = {
     _token?: Token;
@@ -67,10 +68,10 @@ export interface AliasProviderOptions<T> extends BaseProviderOptions {
     useExisting: DepIdentifier<T>;
 }
 
-export type ProviderOptions<T = any> =  
-    | ClassProviderOptions<T> 
-    | FactoryProviderOptions<T> 
-    | ValueProviderOptions<T> 
+export type ProviderOptions<T = any> =
+    | ClassProviderOptions<T>
+    | FactoryProviderOptions<T>
+    | ValueProviderOptions<T>
     | ConfigProviderOptions<T>
     | AliasProviderOptions<T>;
 
@@ -118,15 +119,15 @@ export type DIModuleOptions = {
     /**
      * Providers to be registered in the module's container; these providers are only available to the module's children and can shadow/override providers in parent hierarchy by specifying priority and other criteria [but only for the Injectable/s in itself and it's children].
      */
-    providers ?: Array<ProviderOptions<any> | ClassConstructor<any>>;
-	/**
-	 * Specifies the parent DI-container or parent Module to register this module in or auto-resolve the container instance from.
-	 * you don't need to specify this unless you are creating a separate module and want to use that module as the parent of this controller/module.
-	 * @default: DIContainer.ROOT
-	 */
-	providedBy ?: IDIContainer | 'ROOT' | ClassConstructor;
+    providers?: Array<ProviderOptions<any> | ClassConstructor<any>>;
+    /**
+     * Specifies the parent DI-container or parent Module to register this module in or auto-resolve the container instance from.
+     * you don't need to specify this unless you are creating a separate module and want to use that module as the parent of this controller/module.
+     * @default: DIContainer.ROOT
+     */
+    providedBy?: IDIContainer | 'ROOT' | ClassConstructor;
 }
-  
+
 export interface InjectableOptions extends PartialBy<BaseProviderOptions, 'provide'> {
     providedIn?: 'ROOT' | ClassConstructor;
 }
@@ -151,9 +152,9 @@ export interface IDIContainer {
 
     has(dependencyToken: DepIdentifier, criteria?: {
         tags?: string[];
-        type?: ProviderOptions['type'],
+        type?: ProviderOptions[ 'type' ],
         priority?: PriorityCriteria;
-        forEntity?: ProviderOptions['forEntity'],
+        forEntity?: ProviderOptions[ 'forEntity' ],
         allProvidersFromChildContainers?: boolean
     }): boolean;
 
@@ -181,13 +182,26 @@ export interface IDIContainer {
         allProvidersFromChildContainers?: boolean;
     }, async?: Async): Async extends true ? Promise<T> : T
 
+    /**
+   * Sets the search engine implementation to be used.
+   * @param engine The search engine implementation
+   */
+    setSearchEngine(engine: ISearchEngine): void;
+
+    /**
+     * Resolves the configured search engine.
+     * @throws Error if no search engine is configured
+     */
+    resolveSearchEngine(): ISearchEngine;
+
+
     collectBestProvidersFor<T>(
         criteria: {
             token?: string,
             tags?: string[],
-            type?: ProviderOptions['type'], 
+            type?: ProviderOptions[ 'type' ],
             priority?: PriorityCriteria,
-            forEntity?: ProviderOptions['forEntity'],
+            forEntity?: ProviderOptions[ 'forEntity' ],
             allProvidersFromChildContainers?: boolean
         }
     ): InternalProviderOptions<T>[];
@@ -197,14 +211,14 @@ export interface IDIContainer {
     useMiddleware({ middleware, order }: PartialBy<Middleware<any>, "order">): void;
 
     useMiddlewareAsync({ middleware, order }: PartialBy<MiddlewareAsync<any>, "order">): void;
-    
+
     resolve<T, Async extends boolean = false>(
         dependencyToken: DepIdentifier<T>,
         criteria?: {
             tags?: string[];
-            type?: ProviderOptions['type'],
+            type?: ProviderOptions[ 'type' ],
             priority?: PriorityCriteria;
-            forEntity?: ProviderOptions['forEntity'],
+            forEntity?: ProviderOptions[ 'forEntity' ],
             allProvidersFromChildContainers?: boolean;
         },
         path?: Set<Token>,
@@ -219,15 +233,15 @@ export interface IDIContainer {
 
     resolveAsync<T>(dependencyToken: DepIdentifier<T>, criteria?: {
         tags?: string[];
-        type?: ProviderOptions['type'],
+        type?: ProviderOptions[ 'type' ],
         priority?: PriorityCriteria;
-        forEntity?: ProviderOptions['forEntity'],
+        forEntity?: ProviderOptions[ 'forEntity' ],
         allProvidersFromChildContainers?: boolean
     }, path?: Set<Token>): Promise<T>;
 
     resolveProviderValue<T, Async extends boolean = false>(
-        options: InternalProviderOptions<T>, 
-        path?: Set<Token>, 
+        options: InternalProviderOptions<T>,
+        path?: Set<Token>,
         async?: Async
     ): Async extends true ? Promise<T> : T;
 
@@ -238,7 +252,7 @@ export interface IDIContainer {
     hasChildContainerById(identifier: string): boolean;
 
     removeChildContainerById(identifier: string): void;
-    
+
     getChildContainerById(identifier: string): IDIContainer | undefined;
 
     createChildContainer(identifier: string): IDIContainer;
@@ -262,5 +276,5 @@ export interface IDIContainer {
 
     logCache(): void;
 
-    
+
 }

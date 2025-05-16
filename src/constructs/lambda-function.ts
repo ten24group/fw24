@@ -315,7 +315,7 @@ export class LambdaFunction extends Construct {
       // fw24_xxx (without scope)
       // fw24_AuthModule_xxx (with scope: AuthModule)
       // fw24_UserPool_AuthModule_userPoolId (with scope: UserPool_AuthModule)
-      if (value?.startsWith('fw24_')) {
+      if (value && value.startsWith('fw24_')) {
         // Remove fw24_ prefix
         const keyWithoutPrefix = value.replace('fw24_', '');
         const parts = keyWithoutPrefix.split('_');
