@@ -533,7 +533,7 @@ export class AuthConstruct implements FW24Construct {
         let domain: UserPoolDomain;
         let domainUrl: string;
 
-        if (domainConfig?.customDomain) {
+        if (domainConfig?.customDomain && domainConfig.customDomain.domainName.length > 0) {
             // Configure custom domain
             const { domainName, certificateArn } = domainConfig.customDomain;
             domain = new UserPoolDomain(this.mainStack, `${userPoolName}-domain`, {

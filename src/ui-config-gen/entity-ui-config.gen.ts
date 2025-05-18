@@ -155,6 +155,7 @@ export class EntityUIConfigGen{
                     properties: entityDefaultOpsSchema.update.input,
                     actions: entitySchema.model.editPageActions,
                     breadcrumbs: entitySchema.model.editPageBreadcrumbs,
+                    columnsConfig: entitySchema.model.editPageColumnsConfig,
                 }, service);
                 entityConfigs[`edit-${entityName.toLowerCase()}`] = updateConfig;
             }
@@ -181,6 +182,7 @@ export class EntityUIConfigGen{
                     CRUDApiPath: entitySchema.model.CRUDApiPath,
                     actions: entitySchema.model.viewPageActions,
                     breadcrumbs: entitySchema.model.viewPageBreadcrumbs,
+                    columnsConfig: entitySchema.model.viewPageColumnsConfig,
                 }, service);
                 entityConfigs[`view-${entityName.toLowerCase()}`] = viewConfig;
             }
