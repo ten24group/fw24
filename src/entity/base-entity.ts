@@ -185,6 +185,15 @@ export interface IEntityPageAction {
   };
 }
 
+export interface IEntityPageColumn {
+  sortOrder: number;
+  fields: string[];
+}
+
+export interface IEntityPageColumnConfig {
+  columns: IEntityPageColumn[];
+}
+
 interface TextFieldMetadata extends BaseFieldMetadata {
   fieldType?: 'text' | 'textarea' | 'password';
   maxLength?: number;
@@ -395,10 +404,12 @@ export interface EntitySchema<
         // View page configuration
         readonly viewPageActions?: IEntityPageAction[],
         readonly viewPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+        readonly viewPageColumnsConfig?: IEntityPageColumnConfig,
 
         // Edit page configuration
         readonly editPageActions?: IEntityPageAction[],
         readonly editPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+        readonly editPageColumnsConfig?: IEntityPageColumnConfig,
     };
     readonly attributes: {
         readonly [a in A]: EntityAttribute;

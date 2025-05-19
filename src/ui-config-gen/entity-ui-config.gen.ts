@@ -5,7 +5,7 @@ import MakeListEntityConfig from './templates/list-entity';
 import MakeViewEntityConfig from './templates/view-entity';
 import MakeEntityMenuConfig from './templates/entity-menu';
 import { BaseEntityService, EntitySchema } from '../entity';
-import { makeCustomPageConfig, CustomPageOptions, ListPageConfig, FormPageConfig, DetailsPageConfig } from './templates/custom-page';
+import { makeCustomPageConfig, CustomPageOptions, ListPageConfig, FormPageConfig, DetailsPageConfig, DashboardPageConfig } from './templates/custom-page';
 
 import MakeAuthConfig from './templates/auth';
 import MakeDashboardConfig from './templates/dashboard';
@@ -59,7 +59,7 @@ export class EntityUIConfigGen{
                             const pageName = this.getPageNameFromConfig(value);
                             if(pageName){
                                 this.registerCustomPage(value);
-                                this.logger.debug(`Registered custom page: ${pageName}`);
+                                this.logger.info(`Registered custom page: ${pageName}`);
                             }
                         }
                     }
@@ -75,7 +75,6 @@ export class EntityUIConfigGen{
         
         const config = value as Record<string, unknown>;
         if(!('pageType' in config) || !('pageTitle' in config)) return false;
-
         const pageType = config.pageType;
         if(pageType === 'list') {
             return 'listPageConfig' in config;
@@ -83,6 +82,8 @@ export class EntityUIConfigGen{
             return 'formPageConfig' in config;
         } else if(pageType === 'details') {
             return 'detailsPageConfig' in config;
+        } else if(pageType === 'dashboard') {
+            return 'dashboardPageConfig' in config;
         }
         return false;
     }
@@ -97,6 +98,8 @@ export class EntityUIConfigGen{
                     : `edit-${config.pageTitle.toLowerCase().replace(/\s+/g, '-').replace('edit-', '')}`;
             case 'details':
                 return `view-${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+            case 'dashboard':
+                return `${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
             default:
                 return null;
         }
@@ -155,6 +158,7 @@ export class EntityUIConfigGen{
                     properties: entityDefaultOpsSchema.update.input,
                     actions: entitySchema.model.editPageActions,
                     breadcrumbs: entitySchema.model.editPageBreadcrumbs,
+                    columnsConfig: entitySchema.model.editPageColumnsConfig,
                 }, service);
                 entityConfigs[`edit-${entityName.toLowerCase()}`] = updateConfig;
             }
@@ -181,6 +185,7 @@ export class EntityUIConfigGen{
                     CRUDApiPath: entitySchema.model.CRUDApiPath,
                     actions: entitySchema.model.viewPageActions,
                     breadcrumbs: entitySchema.model.viewPageBreadcrumbs,
+                    columnsConfig: entitySchema.model.viewPageColumnsConfig,
                 }, service);
                 entityConfigs[`view-${entityName.toLowerCase()}`] = viewConfig;
             }
@@ -202,6 +207,10 @@ export class EntityUIConfigGen{
 
         // Process custom pages
         for (const [pageName, options] of this.customPages) {
+            // skip the default dashboard page
+            if (pageName === 'dashboard') {
+                continue;
+            }
             const customConfig = makeCustomPageConfig(options);
             entityConfigs[pageName] = customConfig;
         }
@@ -213,7 +222,17 @@ export class EntityUIConfigGen{
             authEndpoint: authConfigOptions.authEndpoint || 'mauth' 
         });
 
-        const dashboardConfig = MakeDashboardConfig();
+        // Look for a dashboard custom page
+        let dashboardConfig: DashboardPageConfig | any = null;
+        for (const [, options] of this.customPages) {
+            if (options.pageType === 'dashboard' && options.pageTitle.toLowerCase() === 'dashboard') {
+                dashboardConfig = options;
+                break;
+            }
+        }
+        if (!dashboardConfig) {
+            dashboardConfig = MakeDashboardConfig();
+        }
 
         await this.writeToFiles(menuConfigs, entityConfigs, authConfigs, dashboardConfig);
     }

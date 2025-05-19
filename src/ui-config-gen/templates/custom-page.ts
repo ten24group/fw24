@@ -1,6 +1,6 @@
 import { EntitySchema } from "../../entity";
 import { IPageActionItem } from "../../entity/base-entity";
-export type PageType = "list" | "form" | "details" | "custom";
+export type PageType = "list" | "form" | "details" | "custom" | "dashboard";
 
 export interface BasePageConfig {
     pageTitle: string;
@@ -25,6 +25,30 @@ export interface BasePageConfig {
             submitSuccessRedirect?: string;
         };
     }>;
+}
+
+// Dashboard widget type for type safety
+export interface DashboardWidgetConfig {
+    type: 'stat' | 'chart' | 'list';
+    title?: string;
+    colSpan?: number;
+    maxWidth?: number | string;
+    width?: number | string;
+    dataConfig?: any;
+    options?: any;
+    showTimePeriodSelector?: boolean;
+    defaultTimePeriod?: { period: string; range?: [string, string] };
+    timezone?: string;
+}
+
+export interface DashboardPageConfig extends BasePageConfig {
+    pageType: "dashboard";
+    dashboardPageConfig: {
+        showTimePeriodSelector?: boolean;
+        defaultTimePeriod?: { period: string; range?: [string, string] };
+        widgets: DashboardWidgetConfig[];
+        timezone?: string;
+    }
 }
 
 export interface ListPageConfig extends BasePageConfig {
@@ -146,7 +170,7 @@ export interface DetailsPageConfig extends BasePageConfig {
     };
 }
 
-export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageConfig;
+export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageConfig | DashboardPageConfig;
 
 export function makeCustomPageConfig(options: CustomPageOptions) {
     const baseConfig = {
@@ -173,6 +197,11 @@ export function makeCustomPageConfig(options: CustomPageOptions) {
             return {
                 ...baseConfig,
                 detailsPageConfig: options.detailsPageConfig
+            };
+        case "dashboard":
+            return {
+                ...baseConfig,
+                dashboardPageConfig: options.dashboardPageConfig
             };
         default:
             return baseConfig;
