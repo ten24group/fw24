@@ -14,6 +14,7 @@ import { DatabaseError, EntityValidationError } from './errors';
 import { ExecutionContext } from "../core/types/execution-context";
 import { BaseSearchService, EntitySearchService, EntitySearchQuery, SearchIndexConfig } from '../search';
 import { EntitySchemaValidator } from "./entity-schema-validator";
+import { indexConfig } from "../search/engines/meili/integration-test/testUtils";
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
@@ -87,6 +88,22 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         searchConfig.serviceClass = searchConfig.serviceClass || EntitySearchService;
         searchConfig.indexConfig.indexName = searchConfig.indexConfig.indexName || this.makeEntityIndexName(schema, ctx);
         searchConfig.indexConfig.primaryKey = searchConfig.indexConfig.primaryKey || this.getEntityPrimaryIdPropertyName();
+
+        const entitySearchableAttributes = this.getSearchableAttributeNames();
+        const entityFilterableAttributes = this.getFilterableAttributeNames();
+
+        searchConfig.indexConfig.settings = {
+            ...(searchConfig.indexConfig.settings || {}),
+            searchableAttributes: [
+                ...(searchConfig.indexConfig.settings?.searchableAttributes || entitySearchableAttributes),
+            ],
+            filterableAttributes: [
+                ...(searchConfig.indexConfig.settings?.filterableAttributes || entityFilterableAttributes),
+            ],
+            sortableAttributes: [
+                ...(searchConfig.indexConfig.settings?.sortableAttributes || entityFilterableAttributes),
+            ],
+        }
 
         return searchConfig;
     }

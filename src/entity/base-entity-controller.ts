@@ -15,7 +15,7 @@ import { NotFoundError } from '../errors';
 import { EntityValidationError } from './errors';
 import { createErrorHandler } from '../errors/handlers';
 import { ExecutionContext } from '../core/types/execution-context';
-import { SearchResult } from '../search';
+import { EntitySearchQuery, SearchResult } from '../search';
 import { EntityRecordTypeFromSchema } from './base-entity';
 
 type seconds = number;
@@ -73,8 +73,8 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 * @param {any} context - The context object.
 	 * @returns {Promise<void>} A promise that resolves when the initialization is complete.
 	 */
-	async initialize(event: any, context: any): Promise<void> {
-		this.logger.debug(`BaseEntityController.initialize - done: ${event} ${context}`);
+	async initialize(_event: any, _context: any): Promise<void> {
+		// this.logger.debug(`BaseEntityController.initialize - done: ${event} ${context}`);
 	}
 
 	/**
@@ -142,7 +142,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			customDomain: resolveEnvValueFor({ key: ENV_KEYS.FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY, defaultValue: '' })
 		};
 
-		this.logger.debug(`getSignedUrlForFileUpload::`, options);
+		// this.logger.debug(`getSignedUrlForFileUpload::`, options);
 
 		const signedUploadURL = await getSignedUrlForFileUpload(options);
 
@@ -218,7 +218,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	@Get('')
 	async list(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const data = req.queryStringParameters;
-		this.logger.debug(`list - data:`, data);
+		// this.logger.debug(`list - data:`, data);
 
 		const {
 			order,
@@ -234,28 +234,28 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		let parsedFilters = {};
 
 		if (!isObject(filters)) {
-			this.logger.debug(`filters is not an object: need to parse the filters query string`, filters);
+			// this.logger.debug(`filters is not an object: need to parse the filters query string`, filters);
 
 			if (isJsonString(filters)) {
-				this.logger.debug(`found JSON string filters parsing`, filters);
+				// this.logger.debug(`found JSON string filters parsing`, filters);
 				parsedFilters = JSON.parse(filters);
 			} else {
 				// TODO: parse filters query string
 				this.logger.warn(`filters is not an JSON: need to parse the filters query string`, filters);
 			}
 		} else {
-			this.logger.debug(`filters is a parsed object`, filters);
+			// this.logger.debug(`filters is a parsed object`, filters);
 			parsedFilters = filters;
 		}
 
 		if (restOfQueryParamsWithoutFilters && !isEmptyObject(restOfQueryParamsWithoutFilters)) {
-			this.logger.debug(`found not empty restOfQueryParamsWithoutFilters:`, restOfQueryParamsWithoutFilters);
+			// this.logger.debug(`found not empty restOfQueryParamsWithoutFilters:`, restOfQueryParamsWithoutFilters);
 
 			const parsedQueryParams = parseUrlQueryStringParameters(restOfQueryParamsWithoutFilters);
-			this.logger.debug(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
+			// this.logger.debug(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
 
 			const parsedQueryParamFilters = queryStringParamsToFilterGroup(parsedQueryParams);
-			this.logger.debug(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
+			// this.logger.debug(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
 
 			parsedFilters = merge([ parsedFilters, parsedQueryParamFilters ]) ?? {};
 		}
@@ -366,7 +366,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	@Post('/query')
 	async query(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const query = req.body;
-		this.logger.debug(`query - query:`, query);
+		// this.logger.debug(`query - query:`, query);
 
 		const inputQuery = deepCopy(query);
 
@@ -391,8 +391,8 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	@Post('/search')
 	async search(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const query = req.body;
-		this.logger.debug(`search - query:`, query);
-		const inputQuery = deepCopy(query);
+
+		const inputQuery = deepCopy(query) as EntitySearchQuery<Sch>;
 
 		const results = await this.getEntityService().search(query, ctx);
 
@@ -425,10 +425,10 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 
 		const parsedQueryParams = parseUrlQueryStringParameters(rest);
-		this.logger.debug(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
+		// this.logger.debug(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
 
 		const parsedQueryParamFilters = queryStringParamsToFilterGroup(parsedQueryParams);
-		this.logger.debug(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
+		// this.logger.debug(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
 
 		return {
 			search: q || query,
