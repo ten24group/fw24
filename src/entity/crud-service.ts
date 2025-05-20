@@ -798,7 +798,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     const identifiers = entityService.extractEntityIdentifiers(id);
 
     // authorize the actor 
-    // const authorization = await authorizer.authorize({ entityName, crudType, identifiers: singleEntityIdentifiers, data, actor, tenant });
+    // const authorization = await authorizer.authorize({ entityName, crudType, identifiers, data, actor, tenant });
     // if(!authorization.pass){
     //     throw new Error("Authorization failed for update: " + { cause: authorization });
     // }
