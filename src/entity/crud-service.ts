@@ -689,7 +689,6 @@ async function prepareCompositeAttributesForUpdate<S extends EntitySchema<any, a
     args: PrepareCompositeAttributesArgs<S>
 ): Promise<Record<string, any>> {
     const {
-        entityName,
         entityService,
         identifiers,
         data,
@@ -705,18 +704,16 @@ async function prepareCompositeAttributesForUpdate<S extends EntitySchema<any, a
         return {}; // No composite attributes needed
     }
 
+    // only include what's not already in data or identifiers
     requiredCompositeAttributes.forEach(attr => {
-        if (dataAsRecord.hasOwnProperty(attr)) {
-            compositeKeyValues[ attr ] = dataAsRecord[ attr ];
-        } else if (identifiers.hasOwnProperty(attr)) {
-            compositeKeyValues[ attr ] = identifiers[ attr ];
-        } else {
+        if (!dataAsRecord.hasOwnProperty(attr) && !identifiers.hasOwnProperty(attr)) {
             attributesToFetch.add(attr);
         }
     });
 
     if (attributesToFetch.size > 0) {
-        logger.debug(`[${entityName}] Need to fetch attributes for composite keys:`, Array.from(attributesToFetch));
+        logger.info(`Need to fetch attributes for composite keys:`, Array.from(attributesToFetch));
+
         try {
             const existingRecordContainer = await entityService.getRepository()
                 .get(identifiers)
@@ -724,53 +721,28 @@ async function prepareCompositeAttributesForUpdate<S extends EntitySchema<any, a
 
             const existingRecordData = existingRecordContainer.data as Record<string, any> | undefined;
 
-            if (existingRecordData) {
+            if (!existingRecordData) {
+
+                logger.warn(`No existing record found for composite keys:`, Array.from(attributesToFetch));
+
+            } else {
+
                 attributesToFetch.forEach(attr => {
                     if (existingRecordData.hasOwnProperty(attr)) {
                         compositeKeyValues[ attr ] = existingRecordData[ attr ];
                     } else {
-                        logger.warn(`[${entityName}] Composite key attribute "${attr}" (ID: ${JSON.stringify(identifiers)}) was not found in payload, identifiers, or existing record.`);
+                        logger.warn(`Composite key attribute "${attr}" (ID: ${JSON.stringify(identifiers)}) was not found in payload, identifiers, or existing record.`);
                     }
                 });
-            } else {
-                logger.warn(`[${entityName}] Entity (ID: ${JSON.stringify(identifiers)}) not found while fetching for composite keys. If creating a new item, all composite attributes must be in 'id' or 'data'.`);
-                // For an update, if the item doesn't exist, ElectroDB patch might create it.
-                // We must ensure all *required* composite attributes are present if it's a create-via-patch.
-                const missingForPotentialCreate: string[] = [];
-                attributesToFetch.forEach(attr => {
-                    // If it was supposed to be fetched but wasn't found, and isn't already in compositeKeyValues
-                    if (!compositeKeyValues.hasOwnProperty(attr)) {
-                        missingForPotentialCreate.push(attr);
-                    }
-                });
-                if (missingForPotentialCreate.length > 0) {
-                    const message = `[${entityName}] CRITICAL: Cannot reliably form composite keys for potential new item (ID: ${JSON.stringify(identifiers)}). Missing attributes that could not be fetched: ${missingForPotentialCreate.join(', ')}. Ensure these are in 'id' or 'data' if this update might create the item.`;
-                    logger.error(message);
-                    throw new EntityValidationError(missingForPotentialCreate.map(attr => ({
-                        property: attr,
-                        message: `Required composite key attribute "${attr}" is missing for potential new item and could not be fetched.`,
-                        constraints: {}
-                    })));
-                }
+
             }
         } catch (error) {
-            logger.error(`[${entityName}] Error fetching attributes for composite keys (ID: ${JSON.stringify(identifiers)}):`, error);
+            logger.error(`Error fetching attributes for composite keys (ID: ${JSON.stringify(identifiers)}):`, error);
             throw error;
         }
     }
 
-    // Final check for any remaining missing composite attributes
-    const finalMissingComposites = Array.from(requiredCompositeAttributes).filter(attr => !compositeKeyValues.hasOwnProperty(attr));
-    if (finalMissingComposites.length > 0) {
-        const errorMessage = `[${entityName}] Cannot proceed with update (ID: ${JSON.stringify(identifiers)}). The following required composite key attributes are still missing: ${finalMissingComposites.join(', ')}.`;
-        logger.error(errorMessage);
-        throw new EntityValidationError(finalMissingComposites.map(attr => ({
-            property: attr,
-            message: `Required composite key attribute "${attr}" is missing and could not be resolved.`,
-            constraints: {}
-        })));
-    }
-    logger.debug(`[${entityName}] Prepared composite key values:`, compositeKeyValues);
+    logger.debug(`Prepared composite key values:`, compositeKeyValues);
     return compositeKeyValues;
 }
 
@@ -855,15 +827,30 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
 
     if (allReferencedCompositeAttributes.size > 0) {
         if (compositeKeyData && typeof compositeKeyData === 'object') {
-            logger.info(`[${entityName}] Using provided compositeKeyData for update.`, compositeKeyData);
+
+            logger.info(`Using provided compositeKeyData for update.`, compositeKeyData);
+
             finalCompositeKeyValuesForElectroDB = compositeKeyData;
-            // Optional: Validate if provided compositeKeyData covers all allReferencedCompositeAttributes
-            const missingFromProvided = Array.from(allReferencedCompositeAttributes).filter(attr => !finalCompositeKeyValuesForElectroDB.hasOwnProperty(attr));
+
+            // Check if provided compositeKeyData covers all allReferencedCompositeAttributes
+            const missingFromProvided = Array.from(allReferencedCompositeAttributes).filter(attr => {
+                return (
+                    !data.hasOwnProperty(attr)
+                    &&
+                    !identifiers.hasOwnProperty(attr)
+                    &&
+                    !finalCompositeKeyValuesForElectroDB.hasOwnProperty(attr)
+                );
+            });
+
             if (missingFromProvided.length > 0) {
-                logger.warn(`[${entityName}] Provided compositeKeyData is missing some required composite attributes: ${missingFromProvided.join(', ')}. Update may fail if these are needed by ElectroDB.`);
+                logger.warn(`Provided compositeKeyData is missing some required composite attributes: ${missingFromProvided.join(', ')}. Update may fail if these are needed by ElectroDB.`);
             }
+
         } else {
-            logger.info(`[${entityName}] No compositeKeyData provided, preparing composite attributes internally. Required:`, Array.from(allReferencedCompositeAttributes));
+
+            logger.info(`No compositeKeyData provided, preparing composite attributes internally. Required:`, Array.from(allReferencedCompositeAttributes));
+
             finalCompositeKeyValuesForElectroDB = await prepareCompositeAttributesForUpdate({
                 entityName,
                 entityService,
@@ -873,16 +860,16 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
                 logger,
             });
         }
+
     } else {
-        logger.info(`[${entityName}] No composite attributes defined in schema or needed for this update.`);
+        logger.info(`No composite attributes defined in schema or needed for this update.`);
     }
     // --- End Composite Key Handling ---
-
 
     const query = entityService.getRepository().patch(identifiers).set(data);
 
     if (Object.keys(finalCompositeKeyValuesForElectroDB).length > 0) {
-        logger.info(`[${entityName}] Using composite values for ElectroDB patch:`, finalCompositeKeyValuesForElectroDB);
+        logger.info(`Using composite values for ElectroDB patch:`, finalCompositeKeyValuesForElectroDB);
         query.composite(finalCompositeKeyValuesForElectroDB);
     }
 
