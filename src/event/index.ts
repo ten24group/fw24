@@ -1,15 +1,7 @@
-export * as EventDispatcher from './';
+import { EventDispatcher } from './dispatcher';
 
-export interface IEventDispatcher {
-  dispatch(options: any): Promise<void>;
-}
+export { IEventDispatcher } from './dispatcher';
 
-export const Dummy: IEventDispatcher = {
-    dispatch: () => {return Promise.resolve()},
-};
+export const Default = new EventDispatcher();
 
-export const Default: IEventDispatcher = {
-    dispatch: async (options: any) => {
-        console.log("Called default-event-dispatcher.dispatch()", options);
-    }
-};
+export * as EventDispatcher from '.';
