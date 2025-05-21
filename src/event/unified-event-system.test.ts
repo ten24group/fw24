@@ -129,6 +129,42 @@ describe('Unified Event System', () => {
       expect(handlerPhase).toHaveBeenCalledTimes(1);
       expect(handlerGlobalStructured).toHaveBeenCalledTimes(1);
     });
+
+    it('should call all relevant wildcard and exact match listeners for a single structured event', async () => {
+      const eventToDispatch: IEventPayload = {
+        type: { entity: 'Product', operation: 'update', phase: 'post', customFlag: 'urgent' },
+        data: { productId: 'prod-123' },
+        timestamp: new Date(),
+      };
+
+      const handlerStar: jest.Mock<void, [ IEventPayload ]> = jest.fn();
+      const handlerGlobalStruct: jest.Mock<void, [ IEventPayload ]> = jest.fn();
+      const handlerEntity: jest.Mock<void, [ IEventPayload ]> = jest.fn();
+      const handlerPhase: jest.Mock<void, [ IEventPayload ]> = jest.fn();
+      const handlerEntityPhase: jest.Mock<void, [ IEventPayload ]> = jest.fn();
+      const handlerExact: jest.Mock<void, [ IEventPayload ]> = jest.fn();
+
+      dispatcher.on('*', handlerStar); // Universal string wildcard
+      dispatcher.on({}, handlerGlobalStruct); // Global structured wildcard
+      dispatcher.on({ entity: 'Product' }, handlerEntity); // Partial match on entity
+      dispatcher.on({ phase: 'post' }, handlerPhase); // Partial match on phase
+      dispatcher.on({ entity: 'Product', phase: 'post' }, handlerEntityPhase); // More specific partial match
+      dispatcher.on(eventToDispatch.type as StructuredEventMatcher, handlerExact); // Exact match
+
+      // A non-matching listener
+      const handlerNonMatching: jest.Mock<void, [ IEventPayload ]> = jest.fn();
+      dispatcher.on({ entity: 'Order' }, handlerNonMatching);
+
+      await dispatcher.dispatch(eventToDispatch);
+
+      expect(handlerStar).toHaveBeenCalledTimes(1);
+      expect(handlerGlobalStruct).toHaveBeenCalledTimes(1);
+      expect(handlerEntity).toHaveBeenCalledTimes(1);
+      expect(handlerPhase).toHaveBeenCalledTimes(1);
+      expect(handlerEntityPhase).toHaveBeenCalledTimes(1);
+      expect(handlerExact).toHaveBeenCalledTimes(1);
+      expect(handlerNonMatching).not.toHaveBeenCalled();
+    });
   });
 
   describe('@OnEvent Decorator and Auto-Registration', () => {

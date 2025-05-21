@@ -3,10 +3,22 @@ import { getMatcherKey, STRUCTURED_EVENT_WILDCARD_KEY } from './event-utils';
 import { getGlobalListenerMetadata } from './decorator';
 import { createLogger } from '../logging';
 
+/**
+ * The EventDispatcher is the central hub for the event system.
+ * It manages listener registration, event dispatching, and synchronous/asynchronous handler execution.
+ * - Synchronous listener errors are logged to `logger.error`.
+ * - Asynchronous listener invocation issues and errors during promise execution (caught by `awaitAsyncHandlers`)
+ *   are logged using an internal logger instance (`this.logger`).
+ * It can auto-register listeners decorated with `@OnEvent`.
+ */
 export class EventDispatcher implements IEventDispatcher {
   private readonly logger = createLogger(this.constructor.name);
   private syncListeners: Map<string, Set<EventHandler>> = new Map();
   private asyncListeners: Map<string, Set<EventHandler>> = new Map();
+  /**
+   * Stores promises from dispatched asynchronous handlers, keyed by the event matcher string.
+   * This allows `awaitAsyncHandlers` to wait for their completion.
+   */
   private asyncHandlersPromises: Map<string, Set<Promise<void>>> = new Map();
 
   /**
@@ -90,6 +102,27 @@ export class EventDispatcher implements IEventDispatcher {
     this._unregister(matcher, handler, true);
   }
 
+  /**
+   * Dispatches an event to all matching listeners.
+   *
+   * 1. Ensures the event payload has a timestamp.
+   * 2. Collects all synchronous and asynchronous handlers that match the event's `type`:
+   *    - Handlers registered with the universal wildcard (`'*'`).
+   *    - For string event types: handlers registered with the exact string.
+   *    - For structured event types:
+   *        - Handlers registered with an exact `StructuredEventMatcher`.
+   *        - Handlers registered with `StructuredEventMatcher`s that are subsets of the event's type.
+   *        - Handlers registered with the structured wildcard (`{}`).
+   * 3. Executes all collected synchronous handlers sequentially. Any error thrown by a synchronous handler
+   *    is caught and logged to `logger.error`. The dispatcher continues to execute other synchronous handlers.
+   * 4. Invokes all collected asynchronous handlers (fire-and-forget style from the perspective of the `dispatch` call).
+   *    - If an async handler returns a `Promise`, it's added to the `this.asyncHandlersPromises` map for later settlement by `awaitAsyncHandlers()`.
+   *    - If an async handler returns a non-Promise value, a warning is logged via `this.logger.warn`.
+   *    - Errors during the immediate invocation of an async handler (e.g., if the handler is not a function) are logged via `this.logger.error`.
+   *
+   * @template P - The type of the event data in the payload.
+   * @param eventPayload - The event object to dispatch.
+   */
   async dispatch<P = any>(eventPayload: IEventPayload<P>): Promise<void> {
     if (!eventPayload.timestamp) {
       eventPayload.timestamp = new Date(); // Ensure timestamp is set
@@ -141,7 +174,7 @@ export class EventDispatcher implements IEventDispatcher {
       addHandlersForKey(STRUCTURED_EVENT_WILDCARD_KEY);
 
     } else {
-      console.warn('Event dispatch called with invalid event type:', eventMatcher);
+      this.logger.warn('Event dispatch called with invalid event type:', eventMatcher);
       return;
     }
 
@@ -150,7 +183,7 @@ export class EventDispatcher implements IEventDispatcher {
       try {
         await handler(eventPayload);
       } catch (error) {
-        console.error('Error in synchronous event listener:', {
+        this.logger.error('Error in synchronous event listener:', {
           eventMatcher: eventPayload.type,
           handler: handler.name || 'anonymous',
           error,
@@ -191,6 +224,16 @@ export class EventDispatcher implements IEventDispatcher {
     }
   }
 
+  /**
+   * Awaits the completion of all asynchronous event handler promises that were initiated by previous `dispatch` calls.
+   *
+   * This method iterates through all promises stored in `this.asyncHandlersPromises`.
+   * For each promise, it awaits its settlement.
+   * - If a promise rejects, the error is caught and logged using `this.logger.error` (including the event key associated with the promise).
+   *   The dispatcher continues to await other promises.
+   * - After attempting to await all promises, `this.asyncHandlersPromises` is cleared.
+   * This is crucial in environments like AWS Lambda to ensure all background tasks complete before the function exits.
+   */
   async awaitAsyncHandlers(): Promise<void> {
 
     const promises = Array.from(this.asyncHandlersPromises.entries()).flatMap(([ k, p ]) => Array.from(p).map(p => [ k, p ]));
