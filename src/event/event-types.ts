@@ -3,9 +3,13 @@
  * All properties are optional. An absent property means it matches any value for that dimension.
  */
 export type StructuredEventMatcher = {
-  phase?: 'pre' | 'post' | 'fail' | 'success' | string; // Lifecycle phase or custom string
-  operation?: 'create' | 'update' | 'delete' | 'get' | 'list' | 'query' | 'upsert' | 'validate' | string; // Action or custom string
+  phase?: 'pre' | 'post' | string; // Lifecycle phase or custom string
+  operation?: 'create' | 'update' | 'delete' | 'get' | 'list' | 'query' | 'upsert' | 'validate' | 'duplicate' | string; // Action or custom string
   entity?: string;    // Specific entity type like 'User', 'Order', or a category like 'customer-related'
+
+  subPhase?: 'validate' | 'duplicate' | string; // Sub-phase within the operation
+  successFail?: 'success' | 'fail' | string; // if the phase/operation was successful or not
+
   customType?: string;// For uniquely identifying custom structured events, or a general category
 
   // Allows for future extension with more specific dimensions without breaking changes.
@@ -45,4 +49,16 @@ export interface IEventPayload<TData = any> {
 
   /** Optional context, like user/tenant information, request details, etc. */
   context?: Record<string, any>;
-} 
+}
+
+// Type for the handler function stored in the maps
+export type EventHandler = (payload: IEventPayload<any>) => void | Promise<void>;
+
+
+export interface IEventDispatcher {
+  dispatch<P = any>(eventPayload: IEventPayload<P>): Promise<void>;
+  on(matcher: EventMatcher, handler: EventHandler): void;
+  onAsync(matcher: EventMatcher, handler: EventHandler): void;
+  off(matcher: EventMatcher, handler: EventHandler): void;
+  awaitAsyncHandlers(): Promise<void>;
+}

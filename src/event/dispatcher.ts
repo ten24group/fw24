@@ -1,22 +1,13 @@
-import type { EventMatcher, IEventPayload, StructuredEventMatcher } from './event-types';
+import type { EventHandler, EventMatcher, IEventDispatcher, IEventPayload, StructuredEventMatcher } from './event-types';
 import { getMatcherKey, STRUCTURED_EVENT_WILDCARD_KEY } from './event-utils';
-import { getGlobalListenerMetadata, ListenerMethodMetadata } from './decorator';
-
-// Type for the handler function stored in the maps
-type EventHandler = (payload: IEventPayload<any>) => void | Promise<void>;
-
-
-export interface IEventDispatcher {
-  dispatch<P = any>(eventPayload: IEventPayload<P>): Promise<void>;
-  on(matcher: EventMatcher, handler: EventHandler): void;
-  onAsync(matcher: EventMatcher, handler: EventHandler): void;
-  off(matcher: EventMatcher, handler: EventHandler): void;
-}
+import { getGlobalListenerMetadata } from './decorator';
+import { createLogger } from '../logging';
 
 export class EventDispatcher implements IEventDispatcher {
+  private readonly logger = createLogger(this.constructor.name);
   private syncListeners: Map<string, Set<EventHandler>> = new Map();
   private asyncListeners: Map<string, Set<EventHandler>> = new Map();
-  private static instances: Map<any, EventDispatcher> = new Map(); // For singleton behavior per class instance for listeners
+  private asyncHandlersPromises: Map<string, Set<Promise<void>>> = new Map();
 
   /**
    * Creates or retrieves an EventDispatcher instance.
@@ -169,14 +160,29 @@ export class EventDispatcher implements IEventDispatcher {
 
     // Execute asynchronous listeners (fire-and-forget)
     for (const handler of collectedAsyncHandlers) {
+
       try {
-        // TODO: This is a hack to get the event dispatcher to work with the async handlers.
-        // We should find a better way to do this.
-        handler(eventPayload); // Intentionally not awaited
+        const promise = handler(eventPayload);
+
+        if (promise instanceof Promise) {
+
+          const promises = this.asyncHandlersPromises.get(getMatcherKey(eventPayload.type)) || new Set();
+          promises.add(promise);
+
+          this.asyncHandlersPromises.set(getMatcherKey(eventPayload.type), promises);
+
+        } else {
+
+          this.logger.warn('Async handler returned a non-promise value:', {
+            eventMatcher: eventPayload.type,
+            handler: handler.name || 'anonymous',
+            value: promise,
+          });
+        }
       } catch (error) {
         // This catch might not always work for unhandled promise rejections within the async handler
         // Proper error handling within the async listeners themselves is crucial.
-        console.error('Error invoking asynchronous event listener:', {
+        this.logger.error('Error invoking asynchronous event listener:', {
           eventMatcher: eventPayload.type,
           handler: handler.name || 'anonymous',
           error,
@@ -184,4 +190,31 @@ export class EventDispatcher implements IEventDispatcher {
       }
     }
   }
-} 
+
+  async awaitAsyncHandlers(): Promise<void> {
+
+    const promises = Array.from(this.asyncHandlersPromises.entries()).flatMap(([ k, p ]) => Array.from(p).map(p => [ k, p ]));
+
+    try {
+      // ensure each handler runs separately and does not affect other handlers
+      for (const [ key, promise ] of promises) {
+        try {
+          await promise;
+        } catch (error) {
+          this.logger.error('Error awaiting asynchronous event listener: for key', {
+            key: key,
+            error,
+          });
+        }
+      }
+    } catch (error) {
+      this.logger.error('Error awaiting asynchronous event listeners:', {
+        error,
+      });
+    }
+
+    this.asyncHandlersPromises.clear();
+  }
+}
+
+export const defaultEventDispatcher = new EventDispatcher();

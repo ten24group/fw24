@@ -1,7 +1,6 @@
 import type { EventMatcher, StructuredEventMatcher } from './event-types';
 
 const STRUCTURED_MATCHER_KEY_SEPARATOR = '|';
-const STRUCTURED_MATCHER_KV_SEPARATOR = ':';
 
 export const STRUCTURED_EVENT_WILDCARD_KEY = '__STRUCTURED_WILDCARD__';
 
@@ -21,7 +20,7 @@ export function getMatcherKey(matcher: EventMatcher): string {
   }
 
   if (typeof matcher === 'object' && matcher !== null) {
-    const keys = Object.keys(matcher).sort();
+    const keys = Object.keys(matcher).sort() as Array<keyof StructuredEventMatcher>;
     if (keys.length === 0) {
       return STRUCTURED_EVENT_WILDCARD_KEY;
     }

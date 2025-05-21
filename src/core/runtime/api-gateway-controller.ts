@@ -9,6 +9,7 @@ import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
 import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErrorHandler } from "../../errors/";
+import { defaultEventDispatcher } from "../../event";
 
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 
@@ -155,6 +156,10 @@ abstract class APIController extends AbstractLambdaHandler {
       // If an error occurs, log it and handle with the Exception method
       this.logger.error('LambdaHandler error: ', err);
       return this.handleException(requestContext, err as Error, responseContext);
+
+    } finally {
+      // ensure all async event handlers are awaited
+      await defaultEventDispatcher.awaitAsyncHandlers();
     }
 
     this.logger.debug("LambdaHandler Default Response:", JSON.stringify(responseContext, null, 2));
@@ -172,7 +177,7 @@ abstract class APIController extends AbstractLambdaHandler {
     // find the path parts after the controller name
     const parts = requestData.resource.split('/').filter(Boolean);
     const controllerIndex = parts.findIndex((part: string) => part === controller.controllerName);
-    var resourceWithoutRoot = controllerIndex >= 0 && controllerIndex < parts.length - 1 
+    var resourceWithoutRoot = controllerIndex >= 0 && controllerIndex < parts.length - 1
       ? '/' + parts.slice(controllerIndex + 1).join('/')
       : '/';
     this.logger.debug('resourceWithoutRoot: ', resourceWithoutRoot);

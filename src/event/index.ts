@@ -1,7 +1,4 @@
-import { EventDispatcher } from './dispatcher';
-
-export { IEventDispatcher } from './dispatcher';
-
-export const Default = new EventDispatcher();
-
-export * as EventDispatcher from '.';
+export * from './decorator';
+export * from './dispatcher';
+export * from './event-types';
+export * from './event-utils';

@@ -1,13 +1,13 @@
 import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas, EntityTypeFromSchema } from "./base-entity";
 import type { EntityQuery } from "./query-types";
-import { IAuditLogger, NullAuditLogger } from "../audit";
 import { Authorizer } from "../authorize";
-import { EventDispatcher } from "../event";
+import { defaultEventDispatcher, EventDispatcher, IEventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
 import { isEmptyObject, removeEmpty } from "../utils";
 import { DefaultValidator, type IValidator } from "../validation";
 import { entityFilterCriteriaToExpression } from "./query";
 import { EntityValidationError } from "./errors/validation-error";
+import { createEntityEventDispatcher } from "./entity-events";
 
 /**
  * 
@@ -41,8 +41,7 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     logger?: ILogger;
     validator?: IValidator;
     authorizer?: Authorizer.IAuthorizer;        // todo: define authorizer signature
-    auditLogger?: IAuditLogger;       // todo: define audit logger signature
-    eventDispatcher?: EventDispatcher.IEventDispatcher;  // todo define event dispatcher signature
+    eventDispatcher?: IEventDispatcher;
 
     // telemetry
 }
@@ -86,16 +85,25 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
         logger = createLogger('CRUD-service:getEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
-        eventDispatcher = EventDispatcher.Default,
+        eventDispatcher = defaultEventDispatcher,
 
     } = options;
 
     logger.debug(`Called EntityCrud ~ getEntity ~ entityName: ${entityName}:`, { id, attributes });
 
-    // await eventDispatcher.dispatch({event: 'beforeGet', context: arguments });
-
     const identifiers = entityService.extractEntityIdentifiers(id);
+
+    const opDispatcher = createEntityEventDispatcher({
+        operation: crudType,
+        entity: entityName,
+        dispatcher: eventDispatcher,
+        context: { actor, tenant }
+    });
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        data: { identifiers, attributes },
+    });
 
     // authorize the actor
     // const authorization = await authorizer.authorize({entityName, crudType, identifiers, actor, tenant});
@@ -103,27 +111,43 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
     //     throw new Error("Authorization failed for get: " + { cause: authorization });
     // }
 
+    const entityValidations = entityService.getEntityValidations();
+    const overriddenErrorMessages = await entityService.getOverriddenEntityValidationErrorMessages();
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        subPhase: 'validate',
+        data: { identifiers, attributes, entityValidations, overriddenErrorMessages },
+    });
 
     // // validate
-    const validation = await validator.validateEntity({
+    const validationResult = await validator.validateEntity({
         operationName: crudType,
         entityName,
-        entityValidations: entityService.getEntityValidations(),
-        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+        entityValidations,
+        overriddenErrorMessages,
         input: identifiers,
         actor: actor
     });
 
-    if (!validation.pass) {
-        throw new EntityValidationError(validation.errors);
+    await opDispatcher.dispatch({
+        phase: 'post',
+        subPhase: 'validate',
+        successFail: validationResult.pass ? 'success' : 'fail',
+        data: { identifiers, attributes, entityValidations, overriddenErrorMessages, validationResult },
+    });
+
+    if (!validationResult.pass) {
+        throw new EntityValidationError(validationResult.errors);
     }
 
     const entity = await entityService.getRepository().get(identifiers).go({ attributes });
 
-    // await eventDispatcher.dispatch({event: 'afterGet', context: arguments});
 
-    // create audit
-    // auditLogger.audit({entityName, crudType, identifiers, entity, actor, tenant});
+    await opDispatcher.dispatch({
+        phase: 'post',
+        data: { identifiers, attributes, entity },
+    });
 
     logger.debug(`Completed EntityCrud ~ getEntity ~ entityName: ${entityName} ~ id:`, id);
 
@@ -173,8 +197,7 @@ export async function getBatchEntity<S extends EntitySchema<any, any, any>>(opti
         logger = createLogger('CRUD-service:getBatchEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
-        eventDispatcher = EventDispatcher.Default,
+        eventDispatcher = defaultEventDispatcher,
     } = options;
 
     logger.debug(`Called EntityCrud ~ getBatchEntity ~ entityName: ${entityName}:`, { ids, attributes });
@@ -182,13 +205,34 @@ export async function getBatchEntity<S extends EntitySchema<any, any, any>>(opti
     // Extract identifiers for all items in the batch
     const identifiersBatch = ids.map(id => entityService.extractEntityIdentifiers(id));
 
+    const opDispatcher = createEntityEventDispatcher({
+        operation: crudType,
+        entity: entityName,
+        dispatcher: eventDispatcher,
+        context: { actor, tenant }
+    });
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        data: { identifiers: identifiersBatch, attributes },
+    });
+
+    const entityValidations = entityService.getEntityValidations();
+    const overriddenErrorMessages = await entityService.getOverriddenEntityValidationErrorMessages();
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        subPhase: 'validate',
+        data: { identifiers: identifiersBatch, attributes, entityValidations, overriddenErrorMessages },
+    });
+
     // Validate each item in the batch
     const validations = await Promise.all(identifiersBatch.map(async identifiers =>
         validator.validateEntity({
             operationName: crudType,
             entityName,
-            entityValidations: entityService.getEntityValidations(),
-            overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+            entityValidations,
+            overriddenErrorMessages,
             input: identifiers,
             actor: actor
         })
@@ -198,6 +242,13 @@ export async function getBatchEntity<S extends EntitySchema<any, any, any>>(opti
     const validationErrors = validations
         .map((validation, index) => ({ validation, index }))
         .filter(({ validation }) => !validation.pass);
+
+    await opDispatcher.dispatch({
+        phase: 'post',
+        subPhase: 'validate',
+        successFail: validationErrors.length > 0 ? 'fail' : 'success',
+        data: { identifiers: identifiersBatch, attributes, entityValidations, overriddenErrorMessages, validationErrors },
+    });
 
     if (validationErrors.length > 0) {
         throw new EntityValidationError(validationErrors.flatMap(({ validation, index }) =>
@@ -212,6 +263,11 @@ export async function getBatchEntity<S extends EntitySchema<any, any, any>>(opti
     const result = await entityService.getRepository().get(identifiersBatch).go({
         attributes,
         concurrent
+    });
+
+    await opDispatcher.dispatch({
+        phase: 'post',
+        data: { identifiers: identifiersBatch, attributes, result },
     });
 
     logger.debug(`Completed EntityCrud ~ getBatchEntity ~ entityName: ${entityName} ~ ids:`, ids);
@@ -261,33 +317,57 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:createEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
-        eventDispatcher = EventDispatcher.Default,
+        eventDispatcher = defaultEventDispatcher,
 
     } = options;
 
     logger.debug(`Called EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data);
 
+    const opDispatcher = createEntityEventDispatcher({
+        operation: crudType,
+        entity: entityName,
+        dispatcher: eventDispatcher,
+        context: { actor, tenant }
+    });
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        data: { data },
+    });
+
+    const entityValidations = entityService.getEntityValidations();
+    const overriddenErrorMessages = await entityService.getOverriddenEntityValidationErrorMessages();
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        subPhase: 'validate',
+        data: { data, entityValidations, overriddenErrorMessages },
+    });
+
     if (!data) {
         throw new Error("No data provided for create operation");
     }
 
-    // pre events
-    // await eventDispatcher?.dispatch({ event: 'beforeCreate', context: arguments });
-
     // validate
-    const validation = await validator.validateEntity({
+    const validationResult = await validator.validateEntity({
         operationName: crudType,
         entityName,
-        entityValidations: entityService.getEntityValidations(),
-        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+        entityValidations,
+        overriddenErrorMessages,
         input: data,
         actor: actor,
     });
 
-    if (!validation.pass) {
-        throw new EntityValidationError(validation.errors);
+    if (!validationResult.pass) {
+        throw new EntityValidationError(validationResult.errors);
     }
+
+    await opDispatcher.dispatch({
+        phase: 'post',
+        subPhase: 'validate',
+        successFail: validationResult.pass ? 'success' : 'fail',
+        data: { data, entityValidations, overriddenErrorMessages, validationResult },
+    });
 
     // authorize the actor 
     // const authorization = await authorizer.authorize({ entityName, crudType, data, actor, tenant });
@@ -297,11 +377,10 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
 
     const entity = await entityService.getRepository().create(data).go();
 
-    // post events
-    // await eventDispatcher?.dispatch({ event: 'afterCreate', context: {...arguments, entity} });
-
-    // create audit
-    // auditLogger.audit({});
+    await opDispatcher.dispatch({
+        phase: 'post',
+        data: { data, entity },
+    });
 
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data, entity.data);
@@ -349,33 +428,57 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:upsertEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
-        eventDispatcher = EventDispatcher.Default,
+        eventDispatcher = defaultEventDispatcher,
 
     } = options;
 
     logger.debug(`Called EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data);
 
+    const opDispatcher = createEntityEventDispatcher({
+        operation: crudType,
+        entity: entityName,
+        dispatcher: eventDispatcher,
+        context: { actor, tenant }
+    });
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        data: { data },
+    });
+
+    const entityValidations = entityService.getEntityValidations();
+    const overriddenErrorMessages = await entityService.getOverriddenEntityValidationErrorMessages();
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        subPhase: 'validate',
+        data: { data, entityValidations, overriddenErrorMessages },
+    });
+
     if (!data) {
         throw new Error("No data provided for upsert operation");
     }
 
-    // pre events
-    // await eventDispatcher?.dispatch({ event: 'beforeUpsert', context: arguments });
-
     // validate
-    const validation = await validator.validateEntity({
+    const validationResult = await validator.validateEntity({
         operationName: crudType,
         entityName,
-        entityValidations: entityService.getEntityValidations(),
-        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+        entityValidations,
+        overriddenErrorMessages,
         input: data,
         actor: actor,
     });
 
-    if (!validation.pass) {
-        throw new EntityValidationError(validation.errors);
+    if (!validationResult.pass) {
+        throw new EntityValidationError(validationResult.errors);
     }
+
+    await opDispatcher.dispatch({
+        phase: 'post',
+        subPhase: 'validate',
+        successFail: validationResult.pass ? 'success' : 'fail',
+        data: { data, entityValidations, overriddenErrorMessages, validationResult },
+    });
 
     // authorize the actor 
     // const authorization = await authorizer.authorize({ entityName, crudType, data, actor, tenant });
@@ -385,11 +488,10 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
 
     const entity = await entityService.getRepository().upsert(data as any).go();
 
-    // post events
-    // await eventDispatcher?.dispatch({ event: 'afterUpsert', context: {...arguments, entity} });
-
-    // create audit
-    // auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
+    await opDispatcher.dispatch({
+        phase: 'post',
+        data: { data, entity },
+    });
 
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data, entity.data);
@@ -495,8 +597,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
         crudType = 'list',
         logger = createLogger('CRUD-service:listEntity'),
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
-        eventDispatcher = EventDispatcher.Default,
+        eventDispatcher = defaultEventDispatcher,
 
         query = {},
     } = options;
@@ -510,7 +611,17 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
 
     logger.debug(`Called EntityCrud ~ listEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
-    // await eventDispatcher.dispatch({event: 'beforeList', context: arguments });
+    const opDispatcher = createEntityEventDispatcher({
+        operation: crudType,
+        entity: entityName,
+        dispatcher: eventDispatcher,
+        context: { actor, tenant }
+    });
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        data: { query },
+    });
 
     // authorize the actor
     // const authorization = await authorizer.authorize({entityName, crudType, actor, tenant});
@@ -547,10 +658,10 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
         entities = await scanQuery.go(removeEmpty(pagination));
     }
 
-    // await eventDispatcher.dispatch({ event: 'afterList', context: arguments });
-
-    // create audit
-    // auditLogger.audit({ entityName, crudType, entities, actor, tenant });
+    await opDispatcher.dispatch({
+        phase: 'post',
+        data: { query, entities },
+    });
 
     logger.debug(`Completed EntityCrud ~ listEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
@@ -578,8 +689,7 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
         crudType = 'query',
         logger = createLogger('CRUD-service:queryEntity'),
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
-        eventDispatcher = EventDispatcher.Default,
+        eventDispatcher = defaultEventDispatcher,
 
         query = {}
 
@@ -594,7 +704,17 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
 
     logger.debug(`Called EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
-    // await eventDispatcher.dispatch({event: 'beforeQuery', context: arguments});
+    const opDispatcher = createEntityEventDispatcher({
+        operation: crudType,
+        entity: entityName,
+        dispatcher: eventDispatcher,
+        context: { actor, tenant }
+    });
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        data: { query },
+    });
 
     // // authorize the actor
     // const authorization = await authorizer.authorize({entityName, crudType, actor, tenant});
@@ -630,10 +750,10 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
         entities = await scanQuery.go(removeEmpty(pagination));
     }
 
-    // await eventDispatcher.dispatch({ event: 'afterQuery', context: arguments });
-
-    // // create audit
-    // auditLogger.audit({ entityName, crudType, entities, actor, tenant });
+    await opDispatcher.dispatch({
+        phase: 'post',
+        data: { query, entities },
+    });
 
     logger.debug(`Completed EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
@@ -795,35 +915,59 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:updateEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
-        eventDispatcher = EventDispatcher.Default,
+        eventDispatcher = defaultEventDispatcher,
         compositeKeyData,
     } = options;
 
     logger.debug(`Called EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, { data, providedCompositeKeyData: compositeKeyData });
 
+    const identifiers = entityService.extractEntityIdentifiers(id);
+
+    const opDispatcher = createEntityEventDispatcher({
+        operation: crudType,
+        entity: entityName,
+        dispatcher: eventDispatcher,
+        context: { actor, tenant }
+    });
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        data: { data, identifiers },
+    });
+
     if (!data) {
         throw new Error("No data provided for update operation");
     }
 
-    // pre events
-    // await eventDispatcher?.dispatch({ event: 'beforeUpdate', context: arguments });
+    const entityValidations = entityService.getEntityValidations();
+    const overriddenErrorMessages = await entityService.getOverriddenEntityValidationErrorMessages();
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        subPhase: 'validate',
+        data: { data, entityValidations, overriddenErrorMessages },
+    });
 
     // validate
-    const validation = await validator.validateEntity({
+    const validationResult = await validator.validateEntity({
         operationName: crudType,
         entityName,
-        entityValidations: entityService.getEntityValidations(),
-        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+        entityValidations,
+        overriddenErrorMessages,
         input: data,
         actor: actor
     });
 
-    if (!validation.pass) {
-        throw new EntityValidationError(validation.errors);
-    }
+    await opDispatcher.dispatch({
+        phase: 'post',
+        subPhase: 'validate',
+        successFail: validationResult.pass ? 'success' : 'fail',
+        data: { data, identifiers, validationResult, },
+    });
 
-    const identifiers = entityService.extractEntityIdentifiers(id);
+    if (!validationResult.pass) {
+        throw new EntityValidationError(validationResult.errors);
+    }
 
     // authorize the actor 
     // const authorization = await authorizer.authorize({ entityName, crudType, identifiers: singleEntityIdentifiers, data, actor, tenant });
@@ -850,6 +994,12 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
             }
         }
     }
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        subPhase: 'compositeKey',
+        data: { data, identifiers, allReferencedCompositeAttributes },
+    });
 
     let finalCompositeKeyValuesForElectroDB: Record<string, any> = {};
 
@@ -878,7 +1028,6 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     }
     // --- End Composite Key Handling ---
 
-
     const query = entityService.getRepository().patch(identifiers).set(data);
 
     if (Object.keys(finalCompositeKeyValuesForElectroDB).length > 0) {
@@ -886,14 +1035,22 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         query.composite(finalCompositeKeyValuesForElectroDB);
     }
 
+    await opDispatcher.dispatch({
+        phase: 'post',
+        subPhase: 'compositeKey',
+        data: { data, identifiers, allReferencedCompositeAttributes, finalCompositeKeyValuesForElectroDB },
+    });
+
     if (operators?.remove) {
         query.remove(operators.remove as any);
     }
 
     const entity = await query.go();
 
-    // // post events
-    // await eventDispatcher?.dispatch({ event: 'afterUpdate', context: {...arguments, entity} });
+    await opDispatcher.dispatch({
+        phase: 'post',
+        data: { data, identifiers, entity },
+    });
 
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, data, entity.data);
@@ -935,16 +1092,25 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:deleteEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
-        eventDispatcher = EventDispatcher.Default,
+        eventDispatcher = defaultEventDispatcher,
 
     } = options;
 
     logger.debug(`Called EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
 
-    // await eventDispatcher.dispatch({event: 'beforeDelete', context: arguments });
-
     const identifiers = entityService.extractEntityIdentifiers(id);
+
+    const opDispatcher = createEntityEventDispatcher({
+        operation: crudType,
+        entity: entityName,
+        dispatcher: eventDispatcher,
+        context: { actor, tenant }
+    });
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        data: { identifiers },
+    });
 
     // authorize the actor
     // const authorization = await authorizer.authorize({entityName, crudType, identifiers, actor, tenant});
@@ -952,26 +1118,42 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
     //     throw new Error("Authorization failed for delete: " + { cause: authorization });
     // }
 
+    const entityValidations = entityService.getEntityValidations();
+    const overriddenErrorMessages = await entityService.getOverriddenEntityValidationErrorMessages();
+
+    await opDispatcher.dispatch({
+        phase: 'pre',
+        subPhase: 'validate',
+        data: { identifiers, entityValidations, overriddenErrorMessages },
+    });
+
     // validate
-    const validation = await validator.validateEntity({
+    const validationResult = await validator.validateEntity({
         operationName: crudType,
         entityName,
-        entityValidations: entityService.getEntityValidations(),
-        overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+        entityValidations,
+        overriddenErrorMessages,
         input: identifiers,
         actor: actor
     });
 
-    if (!validation.pass) {
-        throw new EntityValidationError(validation.errors);
+    await opDispatcher.dispatch({
+        phase: 'post',
+        subPhase: 'validate',
+        successFail: validationResult.pass ? 'success' : 'fail',
+        data: { identifiers, entityValidations, overriddenErrorMessages, validationResult },
+    });
+
+    if (!validationResult.pass) {
+        throw new EntityValidationError(validationResult.errors);
     }
 
     const entity = await entityService.getRepository().delete(identifiers).go();
 
-    // await eventDispatcher.dispatch({event: 'afterDelete', context: arguments});
-
-    // create audit
-    // auditLogger.audit({ entityName, crudType, data: identifiers, entity: entity.data, actor, tenant });
+    await opDispatcher.dispatch({
+        phase: 'post',
+        data: { identifiers, entity },
+    });
 
     logger.debug(`Completed EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
 
