@@ -4,6 +4,8 @@ import { BaseSearchEngine } from "../base";
 import { QueryBuilder } from "./query-builder";
 import { applyFilters } from "./utils/applyFIlters";
 import { buildMeiliSearchQuery } from "./utils/buildSearchQuery";
+import { SearchEngineConnectionError, SearchEngineError, SearchIndexError, SearchQueryError } from "../../errors";
+
 export interface ExtendedMeiliSearchClientConfig extends MeiliSearchClientConfig {
 }
 
@@ -25,46 +27,51 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Creates a new index with the provided configuration
    */
   async initIndex(config: SearchIndexConfigExt, synchronous: boolean = false) {
-    this.validateConfig(config);
-    const idx = config.indexName!;
-
-    // Check if index exists
     try {
-      const exists = await this.indexExists(idx);
-      if (exists) {
-        return this.client.index(idx);
+      this.validateConfig(config);
+      const idx = config.indexName!;
+
+      // Check if index exists
+      try {
+        const exists = await this.indexExists(idx);
+        if (exists) {
+          return this.client.index(idx);
+        }
+      } catch (error: any) {
+        throw new SearchIndexError(`Failed to check index existence: ${idx}`, { error });
       }
-    } catch (err) {
-      // this.logger.error(`Failed to check if index ${idx} exists: ${err}`);
-      // this.logger.warn(`Continuing with creation of index ${idx}`);
+
+      // Create the index with primaryKey if specified
+      const createOptions: { primaryKey?: string } = {};
+      createOptions.primaryKey = config.primaryKey ? config.primaryKey as string : 'id';
+
+      const task = await this.client.createIndex(idx, createOptions);
+      if (!task) {
+        throw new SearchIndexError(`Failed to create index ${idx}`);
+      }
+
+      // Wait for the task to complete
+      if (synchronous) {
+        await this.waitForTask(task.taskUid);
+      }
+
+      // Apply settings if provided
+      if (config.settings || config.meiliSearchIndexSettings) {
+        const indexSettings = {
+          ...config.settings,
+          ...config.meiliSearchIndexSettings,
+        };
+        await this.updateIndexSettings(idx, indexSettings, synchronous);
+      }
+
+      const index = this.client.index(idx);
+      return index;
+    } catch (error: any) {
+      if (error instanceof SearchIndexError) {
+        throw error;
+      }
+      throw new SearchEngineError(`Failed to initialize index: ${error.message}`, { error });
     }
-
-    // Create the index with primaryKey if specified
-    const createOptions: { primaryKey?: string } = {};
-    createOptions.primaryKey = config.primaryKey ? config.primaryKey as string : 'id';
-
-    const task = await this.client.createIndex(idx, createOptions);
-    if (!task) {
-      throw new Error(`Failed to create index ${idx}`);
-    }
-
-    // Wait for the task to complete
-    if (synchronous) {
-      await this.waitForTask(task.taskUid);
-    }
-
-    // Apply settings if provided
-    if (config.settings || config.meiliSearchIndexSettings) {
-      const indexSettings = {
-        ...config.settings,
-        ...config.meiliSearchIndexSettings,
-      };
-      await this.updateIndexSettings(idx, indexSettings, synchronous);
-    }
-
-    const index = this.client.index(idx);
-
-    return index;
   }
 
   /**
@@ -257,25 +264,22 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     while (!!status && status !== 'succeeded' && status !== 'canceled') {
       // Check for timeout
       if (Date.now() - startTime > timeoutMs) {
-        throw new Error(`Task ${taskId} timed out after ${timeoutMs}ms`);
+        throw new SearchEngineError(`Task ${taskId} timed out after ${timeoutMs}ms`);
       }
 
       // Get task status
       try {
-        // Use index.getTask to get a single task
         const task = await this.client.tasks.getTask(taskId);
         status = task.status as TaskStatus;
 
         if (status === 'failed') {
-          throw new Error(`Task ${taskId} failed: ${JSON.stringify(task.error)}`);
+          throw new SearchEngineError(`Task ${taskId} failed: ${JSON.stringify(task.error)}`);
         }
-      } catch (err) {
-        console.error(`Error checking task status: ${err}`);
-        throw err;
+      } catch (error: any) {
+        throw new SearchEngineConnectionError(`Failed to check task status: ${error.message}`, { taskId, error });
       }
 
       if (status !== 'succeeded') {
-        // Wait before checking again
         await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
@@ -481,33 +485,35 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     query: SearchQuery,
     config: SearchIndexConfig,
   ): Promise<SearchResult<T>> {
+    try {
+      const index = await this.getIndex(config);
+      const meiliSearchQuery = buildMeiliSearchQuery(query);
+      const { q: qParam, options } = meiliSearchQuery;
 
-    const index = await this.getIndex(config);
+      const results = await index.search(qParam ?? "", {
+        ...options
+      });
 
-    // ─── Build + execute ──────────────────────────────────────────────────────
-    const meiliSearchQuery = buildMeiliSearchQuery(query);
-
-    const { q: qParam, options } = meiliSearchQuery;
-
-    const results = await index.search(qParam ?? "", {
-      ...options
-    });
-
-    return {
-      ...results,
-      hits: results.hits as T[],
-      facets: results.facetDistribution,
-      facetStats: results.facetStats,
-      total: results.estimatedTotalHits ?? (results as any).totalHits, // in case of FinitePagination result will have totalHits
-      processingTimeMs: results.processingTimeMs,
-      query: results.query,
-      // Include pagination fields if available
-      ...((results as any).page !== undefined && {
-        page: (results as any).page,
-        hitsPerPage: (results as any).hitsPerPage,
-        totalPages: (results as any).totalPages
-      })
-    };
+      return {
+        ...results,
+        hits: results.hits as T[],
+        facets: results.facetDistribution,
+        facetStats: results.facetStats,
+        total: results.estimatedTotalHits ?? (results as any).totalHits,
+        processingTimeMs: results.processingTimeMs,
+        query: results.query,
+        ...((results as any).page !== undefined && {
+          page: (results as any).page,
+          hitsPerPage: (results as any).hitsPerPage,
+          totalPages: (results as any).totalPages
+        })
+      };
+    } catch (error: any) {
+      if (error instanceof SearchQueryError) {
+        throw error;
+      }
+      throw new SearchEngineError(`Search operation failed: ${error.message}`, { error });
+    }
   }
 
   /**
@@ -529,4 +535,9 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     return await this.client.multiSearch({ queries: meiliQueries }) as T;
   }
 
+  protected validateConfig(config: SearchIndexConfig): void {
+    if (!config.indexName) {
+      throw new SearchQueryError('Index name is required');
+    }
+  }
 }

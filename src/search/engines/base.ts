@@ -1,5 +1,6 @@
 import { SearchIndexConfig, SearchResult, SearchQuery } from '../types';
 import { createLogger } from '../../logging';
+import { SearchQueryError } from '../errors';
 
 export abstract class BaseSearchEngine {
   protected readonly logger = createLogger(`BaseSearchEngine:${this.constructor.name}`);
@@ -39,7 +40,7 @@ export abstract class BaseSearchEngine {
 
   protected validateConfig(config: SearchIndexConfig): void {
     if (!config.indexName) {
-      throw new Error('Index name is required');
+      throw new SearchQueryError('Index name is required');
     }
   }
 } 

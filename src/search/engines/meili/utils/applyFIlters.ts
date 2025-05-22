@@ -2,6 +2,7 @@ import { QueryBuilder } from "../query-builder";
 import { SearchQuery } from "../../../types";
 import { isAttributeFilter, isGenericFilterGroup, isGenericTypedFilter, AttributeFilter, GenericTypedFilter, GenericFilterGroup } from "../../../../entity/query-types";
 import { createLogger } from "../../../../logging";
+import { SearchQueryError } from "../../../errors";
 
 const logger = createLogger('MeiliSearchApplyFilters');
 
@@ -17,9 +18,9 @@ export function applyFilters(qb: QueryBuilder<any>, filters: SearchQuery[ 'filte
   } else if (isAttributeFilter(filters)) {
     applyAttributeFilter(qb, filters);
   } else {
-    const msg = `filters are not valid`;
+    const msg = `Invalid filter format`;
     logger.error(`applyFilters: ${msg}`, { filters });
-    throw new Error(msg);
+    throw new SearchQueryError(msg, { filters });
   }
 }
 
