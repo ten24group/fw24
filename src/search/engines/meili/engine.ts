@@ -1,8 +1,7 @@
-import { DeleteOrCancelTasksQuery, DocumentsQuery, EnqueuedTask, SearchParams, Index, IndexSwap, Key, KeyCreation, MeiliSearch, Config as MeiliSearchClientConfig, Settings as MeiliSearchIndexSettings, RecordAny, Task, TasksOrBatchesQuery, TaskStatus } from "meilisearch";
+import { DocumentsQuery, EnqueuedTask, Index, IndexSwap, MeiliSearch, Config as MeiliSearchClientConfig, Settings as MeiliSearchIndexSettings, RecordAny, TaskStatus } from "meilisearch";
 import { SearchIndexConfig, SearchQuery, SearchResult } from "../../types";
 import { BaseSearchEngine } from "../base";
 import { QueryBuilder } from "./query-builder";
-import { createLogger } from "../../../logging";
 import { applyFilters } from "./utils/applyFIlters";
 import { buildMeiliSearchQuery } from "./utils/buildSearchQuery";
 export interface ExtendedMeiliSearchClientConfig extends MeiliSearchClientConfig {
@@ -36,8 +35,8 @@ export class MeiliSearchEngine extends BaseSearchEngine {
         return this.client.index(idx);
       }
     } catch (err) {
-      this.logger.error(`Failed to check if index ${idx} exists: ${err}`);
-      this.logger.warn(`Continuing with creation of index ${idx}`);
+      // this.logger.error(`Failed to check if index ${idx} exists: ${err}`);
+      // this.logger.warn(`Continuing with creation of index ${idx}`);
     }
 
     // Create the index with primaryKey if specified
@@ -89,7 +88,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
       await this.client.getIndex(indexName);
       return true;
     } catch (err) {
-      this.logger.error(`Failed to check if index ${indexName} exists: ${err}`);
+      // this.logger.error(`Failed to check if index ${indexName} exists: ${err}`);
       return false;
     }
   }

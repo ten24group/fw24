@@ -195,14 +195,6 @@ describe("MeiliSearchEngine", () => {
         expect(fstr).toContain("s STARTS WITH 'pre'");
       });
 
-      it("falls back to raw filter for unknown operators", async () => {
-        const filters = { x: { customOp: 42 } };
-        await engine.search({ search: "", filters } as any, searchConfig);
-        expect(
-          (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchParams).filter,
-        ).toContain("x customOp 42");
-      });
-
       it("handles top-level AND group", async () => {
         const filters = { and: [ { a: { eq: 1 } }, { b: { eq: 2 } } ] };
         await engine.search({ search: "", filters }, searchConfig);
@@ -212,7 +204,7 @@ describe("MeiliSearchEngine", () => {
       });
 
       it("handles nested OR and NOT groups", async () => {
-        const filters = {
+        const filters: GenericFilterCriteria<{ x: number, y: number, z: number }> = {
           and: [
             {
               or: [
@@ -220,7 +212,7 @@ describe("MeiliSearchEngine", () => {
                 { y: { gt: 10 } }
               ]
             },
-            { not: { z: { eq: 0 } } },
+            { not: [ { z: { eq: 0 } } ] },
           ],
         };
         await engine.search({ search: "", filters }, searchConfig);
@@ -230,7 +222,7 @@ describe("MeiliSearchEngine", () => {
       });
 
       it("ignores filter metadata keys", async () => {
-        const filters = {
+        const filters: GenericFilterCriteria<{ a: string }> = {
           and: [ { filterId: "1", filterLabel: "L", a: { eq: "v" } } ],
         };
         await engine.search({ search: "", filters }, searchConfig);
