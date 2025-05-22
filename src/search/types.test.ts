@@ -154,30 +154,18 @@ namespace User {
     filters: {
       and: [
         {
+          logicalOp: 'and',
           tenantId: {
-            equalTo: 'xxx-yyy-zzz'
+            eq: 'xxx-yyy-zzz'
+          },
+          userId: {
+            eq: 'xxx-yyy-zzz'
           }
         },
         {
-          deletedAt: {
-            exists: true
+          firstName: {
+            contains: 'test'
           }
-        },
-        {
-          or: [
-            {
-              firstName: {
-                contains: 'test'
-              },
-            },
-            {
-              not: [ {
-                firstName: {
-                  contains: 'test'
-                }
-              } ]
-            }
-          ]
         }
       ]
     },
@@ -191,11 +179,29 @@ namespace User {
       marker: '...'
     },
     matchingStrategy: 'all',
-    geo: {
-      lat: 12.345678,
-      lng: 98.765432,
-      radius: 100,
-      precision: 10
+    geoBoundingBoxFilter: {
+      bottomRight: {
+        lat: 12.345678,
+        lng: 98.765432,
+      },
+      topLeft: {
+        lat: 12.345678,
+        lng: 98.765432,
+      },
+    },
+    geoRadiusFilter: {
+      center: {
+        lat: 12.345678,
+        lng: 98.765432,
+      },
+      distanceInMeters: 100,
+    },
+    geoSort: {
+      point: {
+        lat: 12.345678,
+        lng: 98.765432,
+      },
+      direction: 'asc',
     },
     highlight: {
       fields: [ 'firstName', 'lastName' ],

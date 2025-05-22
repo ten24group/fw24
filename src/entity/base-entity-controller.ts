@@ -1,7 +1,7 @@
 import type { Request, Response } from '../interfaces';
 import type { EntitySchema, EntityIdentifiersTypeFromSchema } from './base-entity';
 import type { BaseEntityService } from './base-service';
-import type { EntityFilterCriteria, EntityQuery } from './query-types';
+import type { EntityFilterCriteria, EntityQuery, GenericFilterCriteria, TypedFilterCriteria } from './query-types';
 
 import { APIController } from '../core/runtime/api-gateway-controller';
 import { Delete, Get, Patch, Post } from '../decorators/method';
@@ -420,23 +420,57 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		return await this.search({ ...req, body: query }, res, ctx);
 	}
 
-	protected parseSearchQuery(params: Record<string, any>): EntityQuery<Sch> {
-		const { q, query, attributes, hitsPerPage, page, ...rest } = params;
+	protected parseSearchQuery(params: Record<string, any>): EntitySearchQuery<Sch> {
+		const { q, query, attributes: attributesParam, hitsPerPage, page, facets: facetsParam, sort: sortParam, ...rest } = params;
 
+
+		let parsedSelect: string[] | undefined = undefined;
+		if (isString(attributesParam)) {
+			parsedSelect = attributesParam.split(',');
+		} else if (Array.isArray(attributesParam)) {
+			parsedSelect = attributesParam.filter(attr => typeof attr === 'string');
+		}
+
+		let parsedFacets: string[] | undefined = undefined;
+		if (isString(facetsParam)) {
+			parsedFacets = facetsParam.split(',');
+		} else if (Array.isArray(facetsParam)) {
+			parsedFacets = facetsParam.filter(facet => typeof facet === 'string');
+		}
+
+		let parsedSort: EntitySearchQuery<Sch>[ 'sort' ] | undefined;
+		let tempSort: { field: string, dir: 'asc' | 'desc' }[] | undefined;
+
+		if (isString(sortParam)) {
+			tempSort = sortParam.split(',')
+				.map(s => {
+					const [ field, dirInput ] = s.split(':');
+					const dir = dirInput?.toLowerCase() === 'desc' ? 'desc' : 'asc';
+					return { field, dir };
+				});
+		} else if (Array.isArray(sortParam)) {
+			tempSort = sortParam
+				.filter(s => s && typeof s.field === 'string')
+				.map(s => ({ field: s.field, dir: s.dir?.toLowerCase() === 'desc' ? 'desc' : 'asc' } as const));
+		}
+
+		if (tempSort?.length) {
+			parsedSort = tempSort as EntitySearchQuery<Sch>[ 'sort' ];
+		}
 
 		const parsedQueryParams = parseUrlQueryStringParameters(rest);
-		// this.logger.debug(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
-
 		const parsedQueryParamFilters = queryStringParamsToFilterGroup(parsedQueryParams);
-		// this.logger.debug(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
+		const finalFilters = parsedQueryParamFilters as EntitySearchQuery<Sch>[ 'filters' ];
 
 		return {
 			search: q || query,
-			filters: parsedQueryParamFilters as EntityFilterCriteria<Sch>,
-			attributes: attributes?.split(','),
+			filters: finalFilters,
+			select: (parsedSelect?.length ? parsedSelect : undefined) as EntitySearchQuery<Sch>[ 'select' ],
+			facets: (parsedFacets?.length ? parsedFacets : undefined) as EntitySearchQuery<Sch>[ 'facets' ],
+			sort: parsedSort,
 			pagination: {
-				count: parseInt(hitsPerPage, 10) || 20,
-				pages: parseInt(page, 10) || 1
+				limit: parseInt(hitsPerPage, 10) || 20,
+				page: parseInt(page, 10) || 1
 			}
 		};
 	}

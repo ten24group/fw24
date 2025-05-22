@@ -2,62 +2,11 @@ import { DeleteOrCancelTasksQuery, DocumentsQuery, EnqueuedTask, SearchParams, I
 import { SearchIndexConfig, SearchQuery, SearchResult } from "../../types";
 import { BaseSearchEngine } from "../base";
 import { QueryBuilder } from "./query-builder";
-
+import { createLogger } from "../../../logging";
+import { applyFilters } from "./utils/applyFIlters";
+import { buildMeiliSearchQuery } from "./utils/buildSearchQuery";
 export interface ExtendedMeiliSearchClientConfig extends MeiliSearchClientConfig {
 }
-
-
-/**
- * 
- * Default configurations in meili-search
- * 
- * {
-  "displayedAttributes": [
-    "*"
-  ],
-  "searchableAttributes": [
-    "*"
-  ],
-  "filterableAttributes": [],
-  "sortableAttributes": [],
-  "rankingRules":
-  [
-    "words",
-    "typo",
-    "proximity",
-    "attribute",
-    "sort",
-    "exactness"
-  ],
-  "stopWords": [],
-  "nonSeparatorTokens": [],
-  "separatorTokens": [],
-  "dictionary": [],
-  "synonyms": {},
-  "distinctAttribute": null,
-  "typoTolerance": {
-    "enabled": true,
-    "minWordSizeForTypos": {
-      "oneTypo": 5,
-      "twoTypos": 9
-    },
-    "disableOnWords": [],
-    "disableOnAttributes": []
-  },
-  "faceting": {
-    "maxValuesPerFacet": 100
-  },
-  "pagination": {
-    "maxTotalHits": 1000
-  },
-  "proximityPrecision": "byWord",
-  "facetSearch": true,
-  "prefixSearch": "indexingTime",
-  "searchCutoffMs": null,
-  "embedders": {}
-}
- * 
- */
 
 export interface SearchIndexConfigExt extends SearchIndexConfig {
   meiliSearchIndexSettings?: MeiliSearchIndexSettings
@@ -87,7 +36,8 @@ export class MeiliSearchEngine extends BaseSearchEngine {
         return this.client.index(idx);
       }
     } catch (err) {
-      // Continue with creation
+      this.logger.error(`Failed to check if index ${idx} exists: ${err}`);
+      this.logger.warn(`Continuing with creation of index ${idx}`);
     }
 
     // Create the index with primaryKey if specified
@@ -139,6 +89,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
       await this.client.getIndex(indexName);
       return true;
     } catch (err) {
+      this.logger.error(`Failed to check if index ${indexName} exists: ${err}`);
       return false;
     }
   }
@@ -332,34 +283,6 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   }
 
   /**
-   * Get tasks with filtering options (using client interface)
-   */
-  async getTasks(params?: TasksOrBatchesQuery) {
-    return await this.client.tasks.getTasks(params);
-  }
-
-  /**
-   * Get a specific task by ID
-   */
-  async getTask(taskId: number): Promise<Task> {
-    return await this.client.tasks.getTask(taskId);
-  }
-
-  /**
-   * Cancel tasks based on filter criteria
-   */
-  async cancelTasks(params: DeleteOrCancelTasksQuery): Promise<EnqueuedTask> {
-    return await this.client.tasks.cancelTasks(params);
-  }
-
-  /**
-   * Delete tasks based on filter criteria
-   */
-  async deleteTasks(params: DeleteOrCancelTasksQuery): Promise<EnqueuedTask> {
-    return await this.client.tasks.deleteTasks(params);
-  }
-
-  /**
    * Add or replace documents in an index
    */
   async indexDocuments<T extends Record<string, any>>(
@@ -486,7 +409,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     const index = await this.getIndex({ indexName });
 
     const builder = QueryBuilder.create<any>();
-    this.applyFilters(builder, filter);
+    applyFilters(builder, filter);
     const { options } = builder.build();
 
     const task = await index.deleteDocuments({ filter: options.filter! });
@@ -517,41 +440,6 @@ export class MeiliSearchEngine extends BaseSearchEngine {
       await this.waitForTask(task.taskUid);
     }
     return task;
-  }
-
-  /**
-   * Get keys
-   */
-  async getKeys() {
-    return await this.client.getKeys();
-  }
-
-  /**
-   * Get a key by ID
-   */
-  async getKey(keyId: string): Promise<Key> {
-    return await this.client.getKey(keyId);
-  }
-
-  /**
-   * Create a key
-   */
-  async createKey(keyCreation: KeyCreation): Promise<Key> {
-    return await this.client.createKey(keyCreation);
-  }
-
-  /**
-   * Update a key
-   */
-  async updateKey(keyId: string, keyUpdate: Partial<KeyCreation>): Promise<Key> {
-    return await this.client.updateKey(keyId, keyUpdate);
-  }
-
-  /**
-   * Delete a key
-   */
-  async deleteKey(keyId: string) {
-    return await this.client.deleteKey(keyId);
   }
 
   /**
@@ -596,134 +484,15 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   ): Promise<SearchResult<T>> {
 
     const index = await this.getIndex(config);
-    const builder = QueryBuilder.create<T>();
-
-    // ─── Full-text search ───────────────────────────────────────────────────────
-    const phrase = Array.isArray(query.search)
-      ? query.search.join(" ")
-      : query.search ?? "";
-    builder.text(phrase);
-
-    // ─── Filters ────────────────────────────────────────────────────────────────
-    if (query.filters) {
-      this.applyFilters(builder, query.filters);
-    }
-
-    // ─── Sorting ───────────────────────────────────────────────────────────────
-    if (query.sort) {
-      for (const { field, dir } of query.sort) {
-        builder.sort(field, dir);
-      }
-    }
-
-    // ─── Pagination ────────────────────────────────────────────────────────────
-    if (query.pagination?.usePagination) {
-      // Use page/hitsPerPage pagination for exhaustive results
-      const pageSize = query.pagination?.limit ?? 20;
-      const pageNum = Number(query.pagination?.page ?? 1);
-      builder.hitsPerPage(pageSize).page(pageNum);
-    } else {
-      // Use limit/offset pagination (default, faster)
-      const pageSize = query.pagination?.limit ?? 20;
-      const pageNum = Number(query.pagination?.page ?? 1);
-      const offset = (pageNum - 1) * pageSize;
-      builder.limit(pageSize).offset(offset);
-    }
-
-    // ─── Distinct ──────────────────────────────────────────────────────────────
-    if (query.distinct) {
-      builder.distinct(query.distinct);
-    }
-
-    // ─── Field selection ──────────────────────────────────────────────────────
-    if (query.select) {
-      builder.select(query.select);
-    }
-
-    // ─── Attributes to search on ───────────────────────────────────────────────
-    if (query.searchAttributes) {
-      builder.attributesToSearchOn(query.searchAttributes);
-    }
-
-    // ─── Highlighting ─────────────────────────────────────────────────────────
-    if (query.highlight) {
-      const { fields, preTag, postTag, showMatchesPosition } = query.highlight;
-      builder.highlight(fields, preTag, postTag);
-      if (showMatchesPosition) builder.showMatchesPosition();
-    }
-
-    // ─── Cropping ──────────────────────────────────────────────────────────────
-    if (query.crop) {
-      const { fields, length, marker } = query.crop;
-      builder.crop(fields, length, marker);
-    }
-
-    // ─── Faceting ──────────────────────────────────────────────────────────────
-    if (query.facets) {
-      builder.facets(query.facets);
-    }
-
-    // ─── Matching strategy ────────────────────────────────────────────────────
-    if (query.matchingStrategy) {
-      builder.matchingStrategy(query.matchingStrategy);
-    }
-
-    // ─── Geo-search ───────────────────────────────────────────────────────────
-    if (query.geoRadiusFilter) {
-      const { center, distanceInMeters } = query.geoRadiusFilter;
-      builder.geoRadius(center.lat, center.lng, distanceInMeters);
-    }
-
-    if (query.geoBoundingBoxFilter) {
-      const { topLeft, bottomRight } = query.geoBoundingBoxFilter;
-      builder.geoBoundingBox(topLeft, bottomRight);
-    }
-
-    if (query.geoSort) {
-      const { point, direction } = query.geoSort;
-      builder.sortByGeoPoint(point.lat, point.lng, direction);
-    }
-
-    // ─── Ranking Score ─────────────────────────────────────────────────────────
-    if (query.showRankingScore) {
-      builder.showRankingScore(true);
-    }
-
-    if (query.showRankingScoreDetails) {
-      builder.showRankingScoreDetails(true);
-    }
-
-    if (query.rankingScoreThreshold !== undefined) {
-      builder.rankingScoreThreshold(query.rankingScoreThreshold);
-    }
-
-    // ─── Hybrid & Vector Search ───────────────────────────────────────────────
-    if (query.hybrid) {
-      const { embedder, semanticRatio } = query.hybrid;
-      builder.hybrid(embedder, semanticRatio);
-    }
-
-    if (query.vector) {
-      builder.vectorSearch(query.vector);
-
-      if (query.retrieveVectors) {
-        builder.retrieveVectors(true);
-      }
-    }
-
-    // ─── Locales ────────────────────────────────────────────────────────────
-    if (query.locales && query.locales.length > 0) {
-      builder.locales(query.locales);
-    }
-
 
     // ─── Build + execute ──────────────────────────────────────────────────────
-    const { q: qParam, options } = builder.build();
-    const searchOpts: SearchParams = {
-      ...options
-    };
+    const meiliSearchQuery = buildMeiliSearchQuery(query);
 
-    const results = await index.search(qParam ?? "", searchOpts);
+    const { q: qParam, options } = meiliSearchQuery;
+
+    const results = await index.search(qParam ?? "", {
+      ...options
+    });
 
     return {
       ...results,
@@ -761,86 +530,4 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     return await this.client.multiSearch({ queries: meiliQueries }) as T;
   }
 
-  protected applyFilters(qb: QueryBuilder<any>, filters: SearchQuery[ 'filters' ]) {
-    if (!filters) return;
-
-    // 1) Group filters
-    if (filters.and) {
-      qb.andGroup(sub => {
-        for (const clause of [].concat(filters.and as [])) {
-          sub.andGroup(sub2 => this.applyFilters(sub2, clause));
-        }
-      });
-      return;
-    }
-
-    if (filters.or) {
-      qb.orGroup(sub => {
-        for (const clause of [].concat(filters.or as [])) {
-          sub.orGroup(sub2 => this.applyFilters(sub2, clause));
-        }
-      });
-      return;
-    }
-
-    if (filters.not) {
-      qb.notGroup(sub => {
-        for (const clause of [].concat(filters.not as [])) {
-          sub.andGroup(sub2 => this.applyFilters(sub2, clause));
-        }
-      });
-      return;
-    }
-
-    // 2) Leaf filter: an object mapping field -> operator object
-    //    (ignoring metadata keys)
-    for (const [ field, criteria ] of Object.entries(filters)) {
-      if ([ 'filterId', 'filterLabel', 'logicalOp' ].includes(field)) continue;
-
-      // If it's a primitive, treat as eq
-      if (
-        typeof criteria !== 'object' ||
-        criteria === null ||
-        Array.isArray(criteria)
-      ) {
-        qb.where(field).eq(criteria as any);
-        continue;
-      }
-
-      // It's an object of operators:
-      for (const [ op, rawVal ] of Object.entries(criteria)) {
-        const val = (rawVal && (rawVal as any).val != null)
-          ? (rawVal as any).val
-          : rawVal;
-
-        switch (op) {
-          case 'eq': qb.where(field).eq(val); break;
-          case 'neq': qb.where(field).neq(val); break;
-          case 'gt': qb.where(field).gt(Number(val)); break;
-          case 'gte': qb.where(field).gte(Number(val)); break;
-          case 'lt': qb.where(field).lt(Number(val)); break;
-          case 'lte': qb.where(field).lte(Number(val)); break;
-          case 'in': qb.where(field).in([].concat(val)); break;
-          case 'notIn': qb.where(field).notIn([].concat(val)); break;
-          case 'between':
-            // support both [min,max] and {from,to}
-            const [ min, max ] = Array.isArray(val)
-              ? val
-              : [ (val as any).from, (val as any).to ];
-            qb.where(field).rangeTo(Number(min), Number(max));
-            break;
-          case 'exists': qb.where(field).exists(); break;
-          case 'isEmpty': qb.where(field).isEmpty(); break;
-          case 'isNull': qb.where(field).isNull(); break;
-          case 'contains': qb.where(field).contains(String(val)); break;
-          case 'startsWith':
-            qb.where(field).startsWith(String(val));
-            break;
-          default:
-            // unknown -> raw
-            qb.filterRaw(`${field} ${op} ${JSON.stringify(val)}`);
-        }
-      }
-    }
-  }
 }

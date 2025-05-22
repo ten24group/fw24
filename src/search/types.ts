@@ -1,7 +1,7 @@
-import { BaseFieldMetadata, EntityAttribute } from './../entity/base-entity';
+import { BaseFieldMetadata } from './../entity/base-entity';
 import { ValueOf } from './../../dist/package/utils/types.d';
 import { EntitySchema } from '../entity/base-entity';
-import type { EntityFilterCriteria, GenericFilterCriteria, GenericFilterGroup, TypedFilterCriteria } from '../entity/query-types';
+import type { GenericFilterCriteria } from '../entity/query-types';
 import { OmitNever } from '../utils';
 export type SearchProvider = 'meili' | 'elasticsearch' | 'algolia';
 

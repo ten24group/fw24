@@ -619,7 +619,32 @@ const groupsQuery3: EntityQuery<User.TGroupSchema> = {
   attributes: [ 'name', 'groupId', 'admin', 'admin.firstName', 'admin.lastName', 'admin.tenant.firstName', 'admin.tenant.lastName' ],
   pagination: {
     count: 20,
+  },
+  filters: {
+    name: {
+      eq: 'test',
+      "!=": 'test2',
+      "inList": [ 'test3', 'test4' ],
+      logicalOp: 'not',
+    },
+    admin: {
+      eq: '123'
+    }
   }
+
+
+  // {
+  //   or: [
+  //     {
+  //       attribute: 'admin',
+  //       eq: '123'
+  //     },
+  //     {
+  //       attribute: 'name',
+  //       eq: 'test'
+  //     }
+  //   ]
+  // }
 }
 
 

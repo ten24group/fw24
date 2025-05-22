@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { parseEntityAttributePaths, parseUrlQueryStringParameters, queryStringParamsToFilterGroup, makeParenthesesGroup, attributeFilterToExpression, entityFilterToExpression, filterGroupToExpression, makeFilterGroupForSearchKeywords, addFilterGroupToEntityFilterCriteria } from './query';
+import { parseEntityAttributePaths, parseUrlQueryStringParameters, queryStringParamsToFilterGroup, makeParenthesesGroup, attributeFilterToExpression, entityFilterToExpression, filterGroupToExpression, makeFilterGroupForSearchKeywords } from './query';
 
 import { entityFilterToFilterGroup } from './query';
 import { EntityFilter } from './query-types';
@@ -147,7 +147,6 @@ describe('query-test', () => {
             expect(result).toEqual(expected);
         });
     });
-
 
     describe('parseUrlQueryStringParameters', () => {
 
@@ -297,6 +296,22 @@ describe('query-test', () => {
 
         });
 
+        it('should handle simple status query parameter correctly', () => {
+            const queryParams = { status: 'inactive' };
+            const result = queryStringParamsToFilterGroup(queryParams);
+
+            expect(result).toEqual({
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [
+                    {
+                        attribute: 'status',
+                        eq: 'inactive'
+                    }
+                ],
+                not: [],
+                or: []
+            });
+        });
 
     });
 

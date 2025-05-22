@@ -3,7 +3,7 @@ import type { EntitySchema } from "./base-entity";
 import type { EntityAttributeFilter, EntityFilter, EntityFilterCriteria, TypedFilterCriteria, EntityFilterGroup, ParsedEntityAttributePaths } from './query-types';
 
 import { createLogger } from "../logging";
-import { isAttributeFilter, isComplexFilterValue, isEntityFilter, isFilterGroup } from "./query-types";
+import { isAttributeFilter, isComplexFilterValue, isEntityFilter, isEntityFilterGroup } from "./query-types";
 
 import {
     parse as parseQueryString,
@@ -267,7 +267,7 @@ export function entityFilterToFilterGroup<
 
 /**
  * Converts the entity filter criteria into a filter expression.
- * @param entityFilterCriteria The entity filter criteria to convert.
+ * @param entityFilter The entity filter to convert.
  * @param attributes The attributes for the filter expression.
  * @param operations The operations for the filter expression.
  * @returns The filter expression.
@@ -281,12 +281,12 @@ export function entityFilterToExpression<
     WAttributes extends WhereAttributes<A, F, C, S, I>,
     WOperations extends WhereOperations<A, F, C, S, I>,
 >(
-    entityFilterCriteria: EntityFilterCriteria<S>,
+    entityFilter: EntityFilter<S>,
     attributes: WAttributes,
     operations: WOperations
 ) {
 
-    const filterGroup = entityFilterToFilterGroup(entityFilterCriteria);
+    const filterGroup = entityFilterToFilterGroup(entityFilter);
 
     const expression = filterGroupToExpression(filterGroup, attributes, operations);
 
@@ -340,7 +340,7 @@ export function filterCriteriaOrFilterGroupOrAttributeFilterToExpression<
     WOperations extends WhereOperations<A, F, C, S, I>,
 >(
     options: {
-        filterCriteria: EntityFilter<S>,
+        filterCriteria: EntityFilterCriteria<S>,
         attributes: WAttributes,
         operations: WOperations
     }
@@ -349,7 +349,7 @@ export function filterCriteriaOrFilterGroupOrAttributeFilterToExpression<
 
     if (isEntityFilter(filterCriteria)) {
         return entityFilterToExpression(filterCriteria, attributes, operations);
-    } else if (isFilterGroup(filterCriteria)) {
+    } else if (isEntityFilterGroup(filterCriteria)) {
         return filterGroupToExpression(filterCriteria, attributes, operations);
     } else if (isAttributeFilter(filterCriteria)) {
         return attributeFilterToExpression(filterCriteria, attributes, operations);
@@ -672,7 +672,7 @@ export function addFilterGroupToEntityFilterCriteria<E extends EntitySchema<any,
     entityFilterCriteria?: EntityFilterCriteria<E>,
 ): EntityFilterCriteria<E> {
 
-    const newFilterCriteria: EntityFilterGroup<E> = isFilterGroup<E>(entityFilterCriteria)
+    const newFilterCriteria: EntityFilterGroup<E> = isEntityFilterGroup<E>(entityFilterCriteria)
         ? { ...entityFilterCriteria }
         : { filterId: '_addFilterGroupToEntityFilterCriteria' };
 

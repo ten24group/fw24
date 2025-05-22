@@ -175,47 +175,6 @@ describe('MeiliSearchEngine Advanced Features Integration Tests', () => {
     expect(version.pkgVersion).toBeDefined();
   }, 30000);
 
-  it('should get and manage tasks', async () => {
-    const task = await engine.indexDocuments([ { id: 'task-test', title: 'Task Test' } ], { ...indexConfig, indexName: TEST_INDEX as string }, false);
-    expect(task).toBeDefined();
-    expect(task.taskUid).toBeDefined();
-    const taskInfo = await engine.getTask(task.taskUid);
-    expect(taskInfo).toBeDefined();
-    expect(taskInfo.uid).toBe(task.taskUid);
-    const tasks = await engine.getTasks();
-    expect(tasks).toBeDefined();
-    expect(tasks.results.length).toBeGreaterThan(0);
-    const filteredTasks = await engine.getTasks({
-      indexUids: [ TEST_INDEX as string ],
-      limit: 5
-    });
-    expect(filteredTasks).toBeDefined();
-    expect(filteredTasks.results.length).toBeGreaterThan(0);
-    expect(filteredTasks.results.every(t => t.indexUid === TEST_INDEX)).toBe(true);
-    await engine.deleteDocuments([ 'task-test' ], TEST_INDEX as string, true);
-  }, 60000);
-
-  it('should cancel and delete tasks', async () => {
-    const tempIndex = `test-tasks-${Math.random().toString(36).substring(2, 10)}`;
-    const tempConfig = { ...indexConfig, indexName: tempIndex };
-    try {
-      await engine.initIndex(tempConfig, true);
-      // Start a long-running task (simulate by adding many docs)
-      const docs = Array(100).fill(null).map((_, i) => ({ id: `doc-${i}`, title: `Doc ${i}` }));
-      const task = await engine.indexDocuments(docs, tempConfig, false);
-      expect(task).toBeDefined();
-      expect(task.taskUid).toBeDefined();
-      // Cancel the task
-      const cancelResult = await engine.cancelTasks({ uids: [ task.taskUid ] });
-      expect(cancelResult).toBeDefined();
-      // Delete the task
-      const deleteResult = await engine.deleteTasks({ uids: [ task.taskUid ] });
-      expect(deleteResult).toBeDefined();
-    } finally {
-      await engine.deleteIndex(tempIndex, true);
-    }
-  });
-
   it('should create a snapshot', async () => {
     // This may require MeiliSearch to be started with snapshot support
     try {

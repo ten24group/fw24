@@ -1,6 +1,7 @@
 import { MeiliSearchEngine, ExtendedMeiliSearchClientConfig } from "./engine";
 import { SearchIndexConfig } from "../../types";
 import { MeiliSearch, Index, SearchParams } from "meilisearch";
+import { GenericFilterCriteria } from "../../../entity/query-types";
 
 jest.mock("meilisearch");
 
@@ -239,12 +240,29 @@ describe("MeiliSearchEngine", () => {
       });
 
       it("handles multiple nested AND/OR/NOT groups", async () => {
-        const filters = {
+        const filters: GenericFilterCriteria<{ a: number, b: number, c: number, d: number, e: number, f: number }> = {
           and: [
-            { or: [ { a: { eq: 1 } }, { b: { eq: 2 } } ] },
-            { not: { c: { gt: 3 } } },
+            {
+              or: [
+                { a: { eq: 1 } }, { b: { eq: 2 } }
+              ]
+            },
+            {
+              not: [
+                { c: { gt: 3 } }
+              ]
+            },
             { d: { lte: 4 } },
-            { or: [ { e: { neq: 5 } }, { not: { f: { in: [ 6, 7 ] } } } ] },
+            {
+              or: [
+                { e: { neq: 5 } },
+                {
+                  not: [
+                    { f: { in: [ 6, 7 ] } }
+                  ]
+                }
+              ]
+            },
           ],
         };
         await engine.search({ search: "", filters }, searchConfig);
@@ -255,12 +273,12 @@ describe("MeiliSearchEngine", () => {
       });
 
       it("handles deeply nested groups with all logical operators", async () => {
-        const filters = {
+        const filters: GenericFilterCriteria<{ x: number, y: number, z: number, w: number, v: number }> = {
           or: [
             {
               and: [
                 { x: { lt: 10 } },
-                { not: { y: { eq: 20 } } },
+                { not: [ { y: { eq: 20 } } ] },
                 {
                   or: [
                     { z: { gte: 30 } },
@@ -269,7 +287,7 @@ describe("MeiliSearchEngine", () => {
                 },
               ],
             },
-            { not: { v: { neq: 50 } } },
+            { not: [ { v: { neq: 50 } } ] },
           ],
         };
         await engine.search({ search: "", filters }, searchConfig);
@@ -294,7 +312,7 @@ describe("MeiliSearchEngine", () => {
       });
 
       it("handles NOT of an OR group", async () => {
-        const filters = {
+        const filters: GenericFilterCriteria<{ a: number, b: number }> = {
           not: [ {
             or: [
               { a: { eq: 1 } },

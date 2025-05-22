@@ -1,11 +1,9 @@
-import { Entity, EntityConfiguration } from "electrodb";
+import { EntityConfiguration } from "electrodb";
 
 import { BaseEntityService, createEntitySchema, DefaultEntityOperations } from "..";
-import { IDIContainer } from "../../interfaces";
-import { DIContainer, OnInit } from "../../di";
 import { Service } from "../../decorators";
-import { EntitySearchService, MeiliSearchEngine } from "../../search";
-import { EntitySchemaValidator } from "../entity-schema-validator";
+import { DIContainer } from "../../di";
+import { MeiliSearchEngine } from "../../search";
 
 
 const entitySchema = createEntitySchema({
