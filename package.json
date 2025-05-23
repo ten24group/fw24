@@ -1,7 +1,7 @@
 {
     "name": "@ten24group/fw24",
     "description": "A modern, serverless, framework to launch software products quickly and scale seamlessly",
-    "version": "0.1.1-beta.20",
+    "version": "0.1.1-beta.24",
     "main": "./dist/package/fw24.js",
     "types": "./dist/package/fw24.d.ts",
     "repository": {
@@ -24,6 +24,7 @@
     "scripts": {
         "watch": "tsc -w",
         "build": "tsc",
+        "test": "jest",
         "release": "npm run build && standard-version --prerelease beta && git push --follow-tags && npm publish",
         "release:BE": "npm run build && standard-version --prerelease beta && git push --follow-tags && npm publish --tag bleeding-edge",
         "layer:build": "esbuild --bundle --platform=node --sourcemap ./src/layer/fw24.ts --outdir=dist/layer/nodejs/node_modules",
@@ -39,7 +40,6 @@
         "@types/uuid": "^10.0.0",
         "aws-cdk-lib": "^2.181.0",
         "electrodb": "*",
-        "esbuild": "^0.24.0",
         "jest": "^29.7.0",
         "standard-version": "^9.5.0",
         "ts-jest": "^29.2.5",
@@ -61,6 +61,8 @@
         "aws-jwt-verify": "^4.0.1",
         "constructs": "^10.4.2",
         "cookie": "^1.0.2",
+        "meilisearch": "^0.50.0",
+        "esbuild": "^0.24.0",
         "qs": "^6.13.1",
         "source-map-support": "^0.5.21",
         "tslog": "^4.9.3"

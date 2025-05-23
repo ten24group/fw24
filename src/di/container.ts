@@ -65,6 +65,8 @@ import {
     NothingToExportError,
     ProviderConfigurationError
 } from './errors';
+import { BaseSearchEngine } from '../search';
+
 
 export class DIContainer implements IDIContainer {
 
@@ -167,6 +169,8 @@ export class DIContainer implements IDIContainer {
         }
         return this._rootInstance;
     }
+
+    private searchEngine?: BaseSearchEngine;
 
     constructor(private parentContainer?: DIContainer, identifier: string = 'ROOT') {
         // to ensure destructuring works correctly
@@ -898,7 +902,7 @@ export class DIContainer implements IDIContainer {
             const theInitMethod = instance[ initMethod as keyof typeof instance ] as Function;
             if (typeof theInitMethod === 'function') {
                 try {
-                    theInitMethod();
+                    theInitMethod.call(instance);  // Bind 'this' context to the instance
                 } catch (error: any) {
                     throw new InitializationMethodError(instance.constructor.name, error.message, this.containerId);
                 }
@@ -1108,7 +1112,7 @@ export class DIContainer implements IDIContainer {
             const theInitMethod = instance[ initMethod as keyof typeof instance ] as Function;
             if (typeof theInitMethod === 'function') {
                 try {
-                    await theInitMethod();
+                    await theInitMethod.call(instance);  // Bind 'this' context to the instance
                 } catch (error: any) {
                     throw new InitializationMethodError(instance.constructor.name, error.message, this.containerId);
                 }
@@ -1174,5 +1178,16 @@ export class DIContainer implements IDIContainer {
             this.logger.debug(`Cache: [${this.containerId}] - ${token}:`, instance);
         }
         this.parent?.logCache();
+    }
+
+    public setSearchEngine(engine: BaseSearchEngine) {
+        this.searchEngine = engine;
+    }
+
+    public resolveSearchEngine(): BaseSearchEngine {
+        if (!this.searchEngine) {
+            throw new Error('Search engine not configured. Please call setSearchEngine() first.');
+        }
+        return this.searchEngine;
     }
 }

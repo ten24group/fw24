@@ -1,7 +1,7 @@
 import type { Request, Response } from '../interfaces';
 import type { EntitySchema, EntityIdentifiersTypeFromSchema } from './base-entity';
 import type { BaseEntityService } from './base-service';
-import type { EntityFilterCriteria } from './query-types';
+import type { EntityFilterCriteria, EntityQuery, GenericFilterCriteria, TypedFilterCriteria } from './query-types';
 
 import { APIController } from '../core/runtime/api-gateway-controller';
 import { Delete, Get, Patch, Post } from '../decorators/method';
@@ -15,6 +15,8 @@ import { NotFoundError } from '../errors';
 import { EntityValidationError } from './errors';
 import { createErrorHandler } from '../errors/handlers';
 import { ExecutionContext } from '../core/types/execution-context';
+import { EntitySearchQuery, SearchResult } from '../search';
+import { EntityRecordTypeFromSchema } from './base-entity';
 
 type seconds = number;
 
@@ -71,8 +73,8 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 * @param {any} context - The context object.
 	 * @returns {Promise<void>} A promise that resolves when the initialization is complete.
 	 */
-	async initialize(event: any, context: any): Promise<void> {
-		this.logger.debug(`BaseEntityController.initialize - done: ${event} ${context}`);
+	async initialize(_event: any, _context: any): Promise<void> {
+		// this.logger.debug(`BaseEntityController.initialize - done: ${event} ${context}`);
 	}
 
 	/**
@@ -140,7 +142,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			customDomain: resolveEnvValueFor({ key: ENV_KEYS.FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY, defaultValue: '' })
 		};
 
-		this.logger.debug(`getSignedUrlForFileUpload::`, options);
+		// this.logger.debug(`getSignedUrlForFileUpload::`, options);
 
 		const signedUploadURL = await getSignedUrlForFileUpload(options);
 
@@ -216,7 +218,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	@Get('')
 	async list(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const data = req.queryStringParameters;
-		this.logger.debug(`list - data:`, data);
+		// this.logger.debug(`list - data:`, data);
 
 		const {
 			order,
@@ -232,28 +234,28 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		let parsedFilters = {};
 
 		if (!isObject(filters)) {
-			this.logger.debug(`filters is not an object: need to parse the filters query string`, filters);
+			// this.logger.debug(`filters is not an object: need to parse the filters query string`, filters);
 
 			if (isJsonString(filters)) {
-				this.logger.debug(`found JSON string filters parsing`, filters);
+				// this.logger.debug(`found JSON string filters parsing`, filters);
 				parsedFilters = JSON.parse(filters);
 			} else {
 				// TODO: parse filters query string
 				this.logger.warn(`filters is not an JSON: need to parse the filters query string`, filters);
 			}
 		} else {
-			this.logger.debug(`filters is a parsed object`, filters);
+			// this.logger.debug(`filters is a parsed object`, filters);
 			parsedFilters = filters;
 		}
 
 		if (restOfQueryParamsWithoutFilters && !isEmptyObject(restOfQueryParamsWithoutFilters)) {
-			this.logger.debug(`found not empty restOfQueryParamsWithoutFilters:`, restOfQueryParamsWithoutFilters);
+			// this.logger.debug(`found not empty restOfQueryParamsWithoutFilters:`, restOfQueryParamsWithoutFilters);
 
 			const parsedQueryParams = parseUrlQueryStringParameters(restOfQueryParamsWithoutFilters);
-			this.logger.debug(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
+			// this.logger.debug(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
 
 			const parsedQueryParamFilters = queryStringParamsToFilterGroup(parsedQueryParams);
-			this.logger.debug(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
+			// this.logger.debug(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
 
 			parsedFilters = merge([ parsedFilters, parsedQueryParamFilters ]) ?? {};
 		}
@@ -364,7 +366,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	@Post('/query')
 	async query(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const query = req.body;
-		this.logger.debug(`query - query:`, query);
+		// this.logger.debug(`query - query:`, query);
 
 		const inputQuery = deepCopy(query);
 
@@ -386,4 +388,88 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		return res.json(result);
 	}
 
+	@Post('/search')
+	async search(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const query = req.body;
+
+		const inputQuery = deepCopy(query) as EntitySearchQuery<Sch>;
+
+		const results = await this.getEntityService().search(query, ctx);
+
+		const response = {
+			...results,
+			items: results.hits,
+		};
+
+		if (req.debugMode) {
+			Object.assign(response, {
+				inputQuery,
+				processingTimeMs: results.processingTimeMs
+			});
+		}
+
+		return res.json(response);
+	}
+
+	@Get('/search')
+	async searchGet(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const query = this.parseSearchQuery(req.queryStringParameters || {});
+		return await this.search({ ...req, body: query }, res, ctx);
+	}
+
+	protected parseSearchQuery(params: Record<string, any>): EntitySearchQuery<Sch> {
+		const { q, query, attributes: attributesParam, hitsPerPage, page, facets: facetsParam, sort: sortParam, ...rest } = params;
+
+
+		let parsedSelect: string[] | undefined = undefined;
+		if (isString(attributesParam)) {
+			parsedSelect = attributesParam.split(',');
+		} else if (Array.isArray(attributesParam)) {
+			parsedSelect = attributesParam.filter(attr => typeof attr === 'string');
+		}
+
+		let parsedFacets: string[] | undefined = undefined;
+		if (isString(facetsParam)) {
+			parsedFacets = facetsParam.split(',');
+		} else if (Array.isArray(facetsParam)) {
+			parsedFacets = facetsParam.filter(facet => typeof facet === 'string');
+		}
+
+		let parsedSort: EntitySearchQuery<Sch>[ 'sort' ] | undefined;
+		let tempSort: { field: string, dir: 'asc' | 'desc' }[] | undefined;
+
+		if (isString(sortParam)) {
+			tempSort = sortParam.split(',')
+				.map(s => {
+					const [ field, dirInput ] = s.split(':');
+					const dir = dirInput?.toLowerCase() === 'desc' ? 'desc' : 'asc';
+					return { field, dir };
+				});
+		} else if (Array.isArray(sortParam)) {
+			tempSort = sortParam
+				.filter(s => s && typeof s.field === 'string')
+				.map(s => ({ field: s.field, dir: s.dir?.toLowerCase() === 'desc' ? 'desc' : 'asc' } as const));
+		}
+
+		if (tempSort?.length) {
+			parsedSort = tempSort as EntitySearchQuery<Sch>[ 'sort' ];
+		}
+
+		const parsedQueryParams = parseUrlQueryStringParameters(rest);
+		const parsedQueryParamFilters = queryStringParamsToFilterGroup(parsedQueryParams);
+		const finalFilters = parsedQueryParamFilters as EntitySearchQuery<Sch>[ 'filters' ];
+
+		return {
+			search: q || query,
+			filters: finalFilters,
+			select: (parsedSelect?.length ? parsedSelect : undefined) as EntitySearchQuery<Sch>[ 'select' ],
+			facets: (parsedFacets?.length ? parsedFacets : undefined) as EntitySearchQuery<Sch>[ 'facets' ],
+			sort: parsedSort,
+			pagination: {
+				limit: parseInt(hitsPerPage, 10) || 20,
+				page: parseInt(page, 10) || 1,
+				usePagination: true
+			}
+		};
+	}
 }

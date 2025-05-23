@@ -1,12 +1,10 @@
 import { describe, expect, it } from '@jest/globals';
-import { parseEntityAttributePaths, parseUrlQueryStringParameters, queryStringParamsToFilterGroup, makeParenthesesGroup, attributeFilterToExpression, entityFilterToExpression, filterGroupToExpression, makeFilterGroupForSearchKeywords, addFilterGroupToEntityFilterCriteria } from './query';
+import { parseEntityAttributePaths, parseUrlQueryStringParameters, queryStringParamsToFilterGroup, makeParenthesesGroup, attributeFilterToExpression, entityFilterToExpression, filterGroupToExpression, makeFilterGroupForSearchKeywords } from './query';
 
 import { entityFilterToFilterGroup } from './query';
 import { EntityFilter } from './query-types';
 
-
 describe('query-test', () => {
-
     describe('entityFilterToFilterGroup', () => {
 
         it('should convert entity filter to filter group', () => {
@@ -120,7 +118,6 @@ describe('query-test', () => {
 
 
     });
-
     describe('parseEntityAttributePaths', () => {
         it('should transform array to nested object', () => {
             const array = [ 'name', 'groupId', 'admin', 'admin.firstName', 'admin.lastName', 'admin.tenant', 'admin.tenant.firstName', 'admin.tenant.lastName' ];
@@ -147,10 +144,7 @@ describe('query-test', () => {
             expect(result).toEqual(expected);
         });
     });
-
-
     describe('parseUrlQueryStringParameters', () => {
-
         it('should parse simple query string params successfully', () => {
             const parsed = parseUrlQueryStringParameters({
                 "foo[eq]": "1",
@@ -297,6 +291,22 @@ describe('query-test', () => {
 
         });
 
+        it('should handle simple status query parameter correctly', () => {
+            const queryParams = { status: 'inactive' };
+            const result = queryStringParamsToFilterGroup(queryParams);
+
+            expect(result).toEqual({
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [
+                    {
+                        attribute: 'status',
+                        eq: 'inactive'
+                    }
+                ],
+                not: [],
+                or: []
+            });
+        });
 
     });
 

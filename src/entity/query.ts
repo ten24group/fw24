@@ -1,9 +1,28 @@
 import type { Item, WhereAttributes, WhereOperations } from "electrodb";
 import type { EntitySchema } from "./base-entity";
-import type { AttributeFilter, EntityFilter, EntityFilterCriteria, FilterCriteria, FilterGroup, ParsedEntityAttributePaths } from './query-types';
+import type { EntityAttributeFilter, EntityFilter, EntityFilterCriteria, EntityFilterGroup, ParsedEntityAttributePaths, TypedFilterCriteria } from './query-types';
 
 import { createLogger } from "../logging";
-import { isAttributeFilter, isComplexFilterValue, isEntityFilter, isFilterGroup } from "./query-types";
+import { isAttributeFilter, isComplexFilterValue, isEntityFilter, isEntityFilterGroup } from "./query-types";
+import {
+    FILTER_KEYS_HAVING_ARRAY_VALUES,
+    PARSE_VALUE_DELIMITERS,
+    isContainsOp,
+    isEqualityOp,
+    isGreaterThanOp,
+    isGreaterThanOrEqualOp,
+    isInOp,
+    isInequalityOp,
+    isLessThanOp,
+    isLessThanOrEqualOp,
+    isNotContainsOp,
+    isNotInOp,
+    isOperatorAlias,
+    isRangeOp,
+    isStringPatternOp,
+    normalizeRangeValue,
+    normalizeToArray
+} from './query-utils';
 
 import {
     parse as parseQueryString,
@@ -93,7 +112,7 @@ export function attributeFilterToExpression<
     I extends Item<A, F, C, S, S[ "attributes" ]>,
     WAttributes extends WhereAttributes<A, F, C, S, I>,
     WOperations extends WhereOperations<A, F, C, S, I>,
->(filter: AttributeFilter<any>, attributes: WAttributes, operations: WOperations) {
+>(filter: EntityAttributeFilter<any>, attributes: WAttributes, operations: WOperations) {
 
     const { filterId: id, filterLabel: label, attribute: prop, logicalOp = 'and', ...filters } = filter;
 
@@ -111,80 +130,89 @@ export function attributeFilterToExpression<
 
         let filterVal = filters[ filterKey as keyof typeof filters ];
 
+        // Use shared utility for complex filter value extraction
         if (isComplexFilterValue(filterVal)) {
             // TODO: handle `expression` filter values
             filterVal = filterVal?.valType == 'propRef' ? name(filterVal.val) : filterVal.val;
         }
 
-        if ([ 'equalTo', 'equal', 'eq', '==', '===' ].includes(filterKey)) {
+        // Use shared utilities instead of array-based checks
+        if (isEqualityOp(filterKey)) {
 
             filterFragments.push(eq(attributeRef, filterVal));
 
-        } else if ([ 'notEqualTo', 'notEqual', 'neq', 'ne', '!=', '!==', '<>' ].includes(filterKey)) {
+        } else if (isInequalityOp(filterKey)) {
 
             filterFragments.push(ne(attributeRef, filterVal));
 
-        } else if ([ 'greaterThen', 'gt', '>' ].includes(filterKey)) {
+        } else if (isGreaterThanOp(filterKey)) {
 
             filterFragments.push(gt(attributeRef, filterVal));
 
-        } else if ([ 'greaterThenOrEqualTo', 'gte', '>=', '>==' ].includes(filterKey)) {
+        } else if (isGreaterThanOrEqualOp(filterKey)) {
 
             filterFragments.push(gte(attributeRef, filterVal));
 
-        } else if ([ 'lessThen', 'lt', '<' ].includes(filterKey)) {
+        } else if (isLessThanOp(filterKey)) {
 
             filterFragments.push(lt(attributeRef, filterVal));
 
-        } else if ([ 'lessThenOrEqualTo', 'lte', '<=', '<==' ].includes(filterKey)) {
+        } else if (isLessThanOrEqualOp(filterKey)) {
 
             filterFragments.push(lte(attributeRef, filterVal));
 
-        } else if ([ 'between', 'bt', 'bw', '><' ].includes(filterKey)) {
-            filterFragments.push(between(attributeRef, filterVal[ 0 ], filterVal[ 1 ]));
+        } else if (isRangeOp(filterKey)) {
+            // Use shared utility for range value normalization
+            try {
+                const [ min, max ] = normalizeRangeValue(filterVal);
+                filterFragments.push(between(attributeRef, min, max));
+            } catch (error) {
+                // Fallback to original array-based approach
+                filterFragments.push(between(attributeRef, filterVal[ 0 ], filterVal[ 1 ]));
+            }
 
-        } else if ([ 'like', 'begins', 'startsWith', 'beginsWith' ].includes(filterKey)) {
+        } else if (isStringPatternOp(filterKey) || isOperatorAlias(filterKey, 'startsWith')) {
 
             filterFragments.push(begins(attributeRef, filterVal));
 
-        } else if ([ 'contains', 'has', 'includes', 'containsSome' ].includes(filterKey)) {
+        } else if (isContainsOp(filterKey) || isOperatorAlias(filterKey, 'containsSome')) {
 
-            filterVal = Array.isArray(filterVal) ? filterVal : [ filterVal ];
-            const logicalOpp = filterKey === 'containsSome' ? 'OR' : 'AND';
+            filterVal = normalizeToArray(filterVal);
+            const logicalOpp = isOperatorAlias(filterKey, 'containsSome') ? 'OR' : 'AND';
 
             const listFilters = filterVal.map((val: any) => contains(attributeRef, val))
 
             filterFragments.push(makeParenthesesGroup(listFilters, logicalOpp));
 
-        } else if ([ 'notContains', 'notHas', 'notIncludes' ].includes(filterKey)) {
+        } else if (isNotContainsOp(filterKey)) {
 
-            filterVal = Array.isArray(filterVal) ? filterVal : [ filterVal ];
+            filterVal = normalizeToArray(filterVal);
 
             const listFilters = filterVal.map((val: any) => notContains(attributeRef, val))
 
             filterFragments.push(makeParenthesesGroup(listFilters, 'AND'));
 
-        } else if ([ 'in', 'inList' ].includes(filterKey)) {
+        } else if (isInOp(filterKey)) {
 
-            filterVal = Array.isArray(filterVal) ? filterVal : [ filterVal ];
+            filterVal = normalizeToArray(filterVal);
 
             const listFilters = filterVal.map((val: any) => eq(attributeRef, val))
 
             filterFragments.push(makeParenthesesGroup(listFilters, 'OR'));
 
-        } else if ([ 'nin', 'notIn', 'notInList' ].includes(filterKey)) {
+        } else if (isNotInOp(filterKey)) {
 
-            filterVal = Array.isArray(filterVal) ? filterVal : [ filterVal ];
+            filterVal = normalizeToArray(filterVal);
 
             const listFilters = filterVal.map((val: any) => ne(attributeRef, val))
 
             filterFragments.push(makeParenthesesGroup(listFilters, 'AND'));
 
-        } else if ([ 'exists', 'isNull' ].includes(filterKey)) {
+        } else if (isOperatorAlias(filterKey, 'exists') || isOperatorAlias(filterKey, 'isNull')) {
 
             filterFragments.push(filterVal ? exists(attributeRef) : notExists(attributeRef));
 
-        } else if ([ 'isEmpty' ].includes(filterKey)) {
+        } else if (isOperatorAlias(filterKey, 'isEmpty')) {
 
             filterFragments.push(filterVal ? eq(attributeRef as string, '' as string) : ne(attributeRef as string, '' as string));
 
@@ -242,21 +270,21 @@ export function entityFilterToFilterGroup<
     F extends string,
     C extends string,
     S extends EntitySchema<A, F, C>
->(entityFilter: EntityFilter<S>): FilterGroup<S> {
+>(entityFilter: EntityFilter<S>): EntityFilterGroup<S> {
 
     if (!isEntityFilter(entityFilter)) {
         throw new Error(`invalid entity filter ${entityFilter}`);
     }
 
-    const entityFilterGroup: FilterGroup<S> = {};
+    const entityFilterGroup: EntityFilterGroup<S> = {};
     const { filterId, filterLabel: label, logicalOp = 'and', ...entityPopsFilters } = entityFilter;
 
     entityFilterGroup.filterId = filterId;
     entityFilterGroup.filterLabel = label;
 
     const logicalOpFilters = Object
-        .entries<FilterCriteria<any>>(entityPopsFilters as { [ s: string ]: FilterCriteria<any>; })
-        .map(([ key, val ]): AttributeFilter<any> => {
+        .entries<TypedFilterCriteria<any>>(entityPopsFilters as { [ s: string ]: TypedFilterCriteria<any>; })
+        .map(([ key, val ]): EntityAttributeFilter<any> => {
             return { ...val, attribute: key };
         });
 
@@ -267,7 +295,7 @@ export function entityFilterToFilterGroup<
 
 /**
  * Converts the entity filter criteria into a filter expression.
- * @param entityFilterCriteria The entity filter criteria to convert.
+ * @param entityFilter The entity filter to convert.
  * @param attributes The attributes for the filter expression.
  * @param operations The operations for the filter expression.
  * @returns The filter expression.
@@ -281,12 +309,12 @@ export function entityFilterToExpression<
     WAttributes extends WhereAttributes<A, F, C, S, I>,
     WOperations extends WhereOperations<A, F, C, S, I>,
 >(
-    entityFilterCriteria: EntityFilterCriteria<S>,
+    entityFilter: EntityFilter<S>,
     attributes: WAttributes,
     operations: WOperations
 ) {
 
-    const filterGroup = entityFilterToFilterGroup(entityFilterCriteria);
+    const filterGroup = entityFilterToFilterGroup(entityFilter);
 
     const expression = filterGroupToExpression(filterGroup, attributes, operations);
 
@@ -340,7 +368,7 @@ export function filterCriteriaOrFilterGroupOrAttributeFilterToExpression<
     WOperations extends WhereOperations<A, F, C, S, I>,
 >(
     options: {
-        filterCriteria: EntityFilter<S>,
+        filterCriteria: EntityFilterCriteria<S>,
         attributes: WAttributes,
         operations: WOperations
     }
@@ -349,7 +377,7 @@ export function filterCriteriaOrFilterGroupOrAttributeFilterToExpression<
 
     if (isEntityFilter(filterCriteria)) {
         return entityFilterToExpression(filterCriteria, attributes, operations);
-    } else if (isFilterGroup(filterCriteria)) {
+    } else if (isEntityFilterGroup(filterCriteria)) {
         return filterGroupToExpression(filterCriteria, attributes, operations);
     } else if (isAttributeFilter(filterCriteria)) {
         return attributeFilterToExpression(filterCriteria, attributes, operations);
@@ -377,7 +405,7 @@ export function filterGroupToExpression<
     I extends Item<A, F, C, S, S[ "attributes" ]>,
     WAttributes extends WhereAttributes<A, F, C, S, I>,
     WOperations extends WhereOperations<A, F, C, S, I>,
->(filterGroup: FilterGroup<any>, attributes: WAttributes, operations: WOperations) {
+>(filterGroup: EntityFilterGroup<any>, attributes: WAttributes, operations: WOperations) {
 
     const { filterId: id, filterLabel: label, and = [], or = [], not = [] } = filterGroup;
 
@@ -484,16 +512,6 @@ export function parseUrlQueryStringParameters(queryStringParameters: { [ name: s
 
     return parsed;
 }
-
-/**
- * Regular expression pattern used to parse value delimiters.
- * The pattern matches any of the following characters: &, ,, +, ;, :, or ..
- */
-export const PARSE_VALUE_DELIMITERS = /(?:&|,|\+|;|:|\.)+/;
-/**
- * An array of filter keys that can have array values.
- */
-export const FILTER_KEYS_HAVING_ARRAY_VALUES = [ 'in', 'inList', 'nin', 'notIn', 'notInList', 'contains', 'includes', 'has', 'notContains', 'notIncludes', 'notHas' ];
 
 /**
  * Converts a query string parameter into a filter object.
@@ -606,7 +624,7 @@ export function makeFilterFromQueryStringParam(paramName: string, paramValue: an
  */
 export function queryStringParamsToFilterGroup(queryStringParams: { [ name: string ]: any }) {
 
-    const formatted: FilterGroup<any> = {
+    const formatted: EntityFilterGroup<any> = {
         filterId: 'queryStringParamsToFilterGroup',
         and: [],
         not: [],
@@ -642,9 +660,9 @@ export function queryStringParamsToFilterGroup(queryStringParams: { [ name: stri
 export function makeFilterGroupForSearchKeywords<E extends EntitySchema<any, any, any>>(
     keywords: Array<string>,
     attributeNames: Array<string> = []
-): FilterGroup<E> {
+): EntityFilterGroup<E> {
 
-    const filterGroup: FilterGroup<E> = {
+    const filterGroup: EntityFilterGroup<E> = {
         filterId: 'keywordSearchFilterGroup',
         or: [],
     };
@@ -663,16 +681,16 @@ export function makeFilterGroupForSearchKeywords<E extends EntitySchema<any, any
  * Adds a filter group to the entity filter criteria.
  * 
  * @template E - The entity schema type.
- * @param {FilterGroup<E>} filterGroup - The filter group to add.
+ * @param {EntityFilterGroup<E>} filterGroup - The filter group to add.
  * @param {EntityFilterCriteria<E>} [entityFilterCriteria] - The existing entity filter criteria.
  * @returns {EntityFilterCriteria<E>} - The updated entity filter criteria.
  */
 export function addFilterGroupToEntityFilterCriteria<E extends EntitySchema<any, any, any>>(
-    filterGroup: FilterGroup<E>,
+    filterGroup: EntityFilterGroup<E>,
     entityFilterCriteria?: EntityFilterCriteria<E>,
 ): EntityFilterCriteria<E> {
 
-    const newFilterCriteria: FilterGroup<E> = isFilterGroup<E>(entityFilterCriteria)
+    const newFilterCriteria: EntityFilterGroup<E> = isEntityFilterGroup<E>(entityFilterCriteria)
         ? { ...entityFilterCriteria }
         : { filterId: '_addFilterGroupToEntityFilterCriteria' };
 
