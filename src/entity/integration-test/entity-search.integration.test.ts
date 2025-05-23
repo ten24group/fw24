@@ -63,22 +63,11 @@ DIContainer.ROOT.setSearchEngine(new MeiliSearchEngine({
   apiKey: 'xxx_your_master_key',
 }));
 
-
-// DIContainer.ROOT.register({
-//   provide: EntitySearchService,
-//   useFactory: (entityService: TestEntityService) => {
-//     const searchEngine = DIContainer.ROOT.resolveSearchEngine();
-//     return new EntitySearchService(entityService, searchEngine);
-//   },
-//   deps: [ TestEntityService ],
-// });
-
 const delay = async (ms: number) => await new Promise(resolve => setTimeout(resolve, ms));
 
 describe('Entity Search', () => {
 
   let entityService: TestEntityService;
-
 
   beforeAll(async () => {
 

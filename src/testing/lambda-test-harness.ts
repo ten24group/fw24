@@ -1,6 +1,14 @@
 import { APIGatewayEvent, APIGatewayProxyResult, Context, CognitoIdentity, ClientContext, ClientContextClient, ClientContextEnv } from 'aws-lambda';
 import { APIController } from '../core/runtime/api-gateway-controller';
 
+export enum LogLevel {
+  SILENT = 0,
+  ERROR = 1,
+  WARN = 2,
+  INFO = 3,
+  DEBUG = 4
+}
+
 export interface TestEventOptions {
   path?: string;
   httpMethod?: string;
@@ -34,6 +42,11 @@ export interface TestContextOptions {
   succeed?: () => void;
 }
 
+export interface LambdaTestHarnessOptions {
+  logLevel?: LogLevel;
+  context?: TestContextOptions;
+}
+
 export type LambdaHandler = (event: any, context: any) => Promise<any>;
 
 // Define a type for controllers that have a controllerName property
@@ -45,21 +58,49 @@ interface ControllerWithName {
 export class LambdaTestHarness {
   private controller: ControllerWithName;
   private context: any;
+  private logLevel: LogLevel;
 
-  constructor(controller: any, context?: any) {
+  constructor(controller: any, options: LambdaTestHarnessOptions = {}) {
+    this.logLevel = options.logLevel ?? LogLevel.WARN;
+
     // Ensure the controller has a controllerName
     if (!controller.controllerName) {
-      console.warn('Warning: controller does not have a controllerName property. Route matching may not work correctly.');
+      this.log(LogLevel.WARN, 'Warning: controller does not have a controllerName property. Route matching may not work correctly.');
     }
 
     // Ensure the controller has a LambdaHandler method
     if (!controller.LambdaHandler && typeof controller.handleRequest === 'function') {
-      console.log('Adding LambdaHandler to controller');
+      this.log(LogLevel.INFO, 'Adding LambdaHandler to controller');
       controller.LambdaHandler = controller.handleRequest.bind(controller);
     }
 
     this.controller = controller;
-    this.context = context;
+    this.context = options.context;
+  }
+
+  /**
+   * Internal logging method that respects the configured log level
+   */
+  private log(level: LogLevel, message: string, ...args: any[]): void {
+    if (level <= this.logLevel) {
+      switch (level) {
+        case LogLevel.ERROR:
+          console.error(message, ...args);
+          break;
+        case LogLevel.WARN:
+          console.warn(message, ...args);
+          break;
+        case LogLevel.INFO:
+          console.log(message, ...args);
+          break;
+        case LogLevel.DEBUG:
+          console.log(`[DEBUG] ${message}`, ...args);
+          break;
+        default:
+          // SILENT level or unknown - do nothing
+          break;
+      }
+    }
   }
 
   private createMockEvent(httpMethod: string, path: string, options: TestEventOptions = {}): any {
@@ -108,7 +149,7 @@ export class LambdaTestHarness {
     }
 
     // For debugging
-    console.log(`Controller: ${controllerName}, Path: ${fullPath}, Resource: ${resourcePath}, PathParams:`, pathParams);
+    this.log(LogLevel.DEBUG, `Controller: ${controllerName}, Path: ${fullPath}, Resource: ${resourcePath}, PathParams:`, pathParams);
 
     return {
       httpMethod,
@@ -178,7 +219,7 @@ export class LambdaTestHarness {
         // Check if the controller has a LambdaHandler method and call it
         if (typeof this.controller.LambdaHandler === 'function') {
           // For debugging
-          console.log('Calling LambdaHandler with event:', {
+          this.log(LogLevel.DEBUG, 'Calling LambdaHandler with event:', {
             httpMethod: event.httpMethod,
             path: event.path,
             resource: event.resource,
@@ -190,7 +231,7 @@ export class LambdaTestHarness {
           throw new Error('Controller does not have a LambdaHandler method');
         }
       } catch (error: unknown) {
-        console.error('Error in test handler:', error);
+        this.log(LogLevel.ERROR, 'Error in test handler:', error);
         if (error instanceof Error) {
           return {
             statusCode: 500,
@@ -249,10 +290,23 @@ export class LambdaTestHarness {
 // Example usage in tests:
 /*
 describe('UserController', () => {
-    const controller = new UserController();
+    // Create test harness with INFO level logging (shows warnings and info messages)
+    const harness = new LambdaTestHarness(new UserController(), { 
+        logLevel: LogLevel.INFO 
+    });
+    
+    // Or create with silent logging for CI/CD environments
+    const silentHarness = new LambdaTestHarness(new UserController(), { 
+        logLevel: LogLevel.SILENT 
+    });
+    
+    // Or create with debug logging for detailed troubleshooting
+    const debugHarness = new LambdaTestHarness(new UserController(), { 
+        logLevel: LogLevel.DEBUG 
+    });
     
     it('should get user by id', async () => {
-        const response = await LambdaTestHarness.get(controller, '/users/123', {
+        const response = await harness.get('/users/123', {
             pathParameters: { id: '123' }
         });
         
@@ -261,7 +315,7 @@ describe('UserController', () => {
     });
 
     it('should create user', async () => {
-        const response = await LambdaTestHarness.post(controller, '/users', {
+        const response = await harness.post('/users', {
             body: {
                 name: 'Test User',
                 email: 'test@example.com'
@@ -271,5 +325,5 @@ describe('UserController', () => {
         expect(response.statusCode).toBe(201);
         expect(JSON.parse(response.body)).toHaveProperty('user.id');
     });
-});
-*/ 
+})
+*/

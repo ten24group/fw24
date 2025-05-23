@@ -83,9 +83,9 @@ describe('MeiliSearchEngine Search Operations Integration Tests', () => {
     const result = await engine.search<any>({
       search: 'document',
       filters: {
-        not: { category: { eq: 'test' } }
+        not: [ { category: { eq: 'test' } } ]
       }
-    } as any, { ...indexConfig, indexName: TEST_INDEX as string });
+    }, { ...indexConfig, indexName: TEST_INDEX as string });
     expect(result).toBeDefined();
     expect(result.hits.every(hit => hit.category !== 'test')).toBe(true);
   });

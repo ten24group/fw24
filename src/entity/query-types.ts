@@ -234,7 +234,7 @@ export type IdAndLabelAndLogicalOp = IdAndLabel & {
  *   gte: 'value',
  * }
  */
-export type TypedFilterCriteria<T> = IdAndLabelAndLogicalOp & {
+export type TypedFilterCriteria<T = any> = IdAndLabelAndLogicalOp & {
     [ op in keyof FilterOperatorsExtended<T> ]?: FilterOperatorsExtended<StringLiteralToType<T>>[ op ]
 }
 
