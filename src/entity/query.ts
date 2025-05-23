@@ -1,9 +1,28 @@
 import type { Item, WhereAttributes, WhereOperations } from "electrodb";
 import type { EntitySchema } from "./base-entity";
-import type { EntityAttributeFilter, EntityFilter, EntityFilterCriteria, TypedFilterCriteria, EntityFilterGroup, ParsedEntityAttributePaths } from './query-types';
+import type { EntityAttributeFilter, EntityFilter, EntityFilterCriteria, EntityFilterGroup, ParsedEntityAttributePaths, TypedFilterCriteria } from './query-types';
 
 import { createLogger } from "../logging";
 import { isAttributeFilter, isComplexFilterValue, isEntityFilter, isEntityFilterGroup } from "./query-types";
+import {
+    FILTER_KEYS_HAVING_ARRAY_VALUES,
+    PARSE_VALUE_DELIMITERS,
+    isContainsOp,
+    isEqualityOp,
+    isGreaterThanOp,
+    isGreaterThanOrEqualOp,
+    isInOp,
+    isInequalityOp,
+    isLessThanOp,
+    isLessThanOrEqualOp,
+    isNotContainsOp,
+    isNotInOp,
+    isOperatorAlias,
+    isRangeOp,
+    isStringPatternOp,
+    normalizeRangeValue,
+    normalizeToArray
+} from './query-utils';
 
 import {
     parse as parseQueryString,
@@ -111,80 +130,89 @@ export function attributeFilterToExpression<
 
         let filterVal = filters[ filterKey as keyof typeof filters ];
 
+        // Use shared utility for complex filter value extraction
         if (isComplexFilterValue(filterVal)) {
             // TODO: handle `expression` filter values
             filterVal = filterVal?.valType == 'propRef' ? name(filterVal.val) : filterVal.val;
         }
 
-        if ([ 'equalTo', 'equal', 'eq', '==', '===' ].includes(filterKey)) {
+        // Use shared utilities instead of array-based checks
+        if (isEqualityOp(filterKey)) {
 
             filterFragments.push(eq(attributeRef, filterVal));
 
-        } else if ([ 'notEqualTo', 'notEqual', 'neq', 'ne', '!=', '!==', '<>' ].includes(filterKey)) {
+        } else if (isInequalityOp(filterKey)) {
 
             filterFragments.push(ne(attributeRef, filterVal));
 
-        } else if ([ 'greaterThen', 'gt', '>' ].includes(filterKey)) {
+        } else if (isGreaterThanOp(filterKey)) {
 
             filterFragments.push(gt(attributeRef, filterVal));
 
-        } else if ([ 'greaterThenOrEqualTo', 'gte', '>=', '>==' ].includes(filterKey)) {
+        } else if (isGreaterThanOrEqualOp(filterKey)) {
 
             filterFragments.push(gte(attributeRef, filterVal));
 
-        } else if ([ 'lessThen', 'lt', '<' ].includes(filterKey)) {
+        } else if (isLessThanOp(filterKey)) {
 
             filterFragments.push(lt(attributeRef, filterVal));
 
-        } else if ([ 'lessThenOrEqualTo', 'lte', '<=', '<==' ].includes(filterKey)) {
+        } else if (isLessThanOrEqualOp(filterKey)) {
 
             filterFragments.push(lte(attributeRef, filterVal));
 
-        } else if ([ 'between', 'bt', 'bw', '><' ].includes(filterKey)) {
-            filterFragments.push(between(attributeRef, filterVal[ 0 ], filterVal[ 1 ]));
+        } else if (isRangeOp(filterKey)) {
+            // Use shared utility for range value normalization
+            try {
+                const [ min, max ] = normalizeRangeValue(filterVal);
+                filterFragments.push(between(attributeRef, min, max));
+            } catch (error) {
+                // Fallback to original array-based approach
+                filterFragments.push(between(attributeRef, filterVal[ 0 ], filterVal[ 1 ]));
+            }
 
-        } else if ([ 'like', 'begins', 'startsWith', 'beginsWith' ].includes(filterKey)) {
+        } else if (isStringPatternOp(filterKey) || isOperatorAlias(filterKey, 'startsWith')) {
 
             filterFragments.push(begins(attributeRef, filterVal));
 
-        } else if ([ 'contains', 'has', 'includes', 'containsSome' ].includes(filterKey)) {
+        } else if (isContainsOp(filterKey) || isOperatorAlias(filterKey, 'containsSome')) {
 
-            filterVal = Array.isArray(filterVal) ? filterVal : [ filterVal ];
-            const logicalOpp = filterKey === 'containsSome' ? 'OR' : 'AND';
+            filterVal = normalizeToArray(filterVal);
+            const logicalOpp = isOperatorAlias(filterKey, 'containsSome') ? 'OR' : 'AND';
 
             const listFilters = filterVal.map((val: any) => contains(attributeRef, val))
 
             filterFragments.push(makeParenthesesGroup(listFilters, logicalOpp));
 
-        } else if ([ 'notContains', 'notHas', 'notIncludes' ].includes(filterKey)) {
+        } else if (isNotContainsOp(filterKey)) {
 
-            filterVal = Array.isArray(filterVal) ? filterVal : [ filterVal ];
+            filterVal = normalizeToArray(filterVal);
 
             const listFilters = filterVal.map((val: any) => notContains(attributeRef, val))
 
             filterFragments.push(makeParenthesesGroup(listFilters, 'AND'));
 
-        } else if ([ 'in', 'inList' ].includes(filterKey)) {
+        } else if (isInOp(filterKey)) {
 
-            filterVal = Array.isArray(filterVal) ? filterVal : [ filterVal ];
+            filterVal = normalizeToArray(filterVal);
 
             const listFilters = filterVal.map((val: any) => eq(attributeRef, val))
 
             filterFragments.push(makeParenthesesGroup(listFilters, 'OR'));
 
-        } else if ([ 'nin', 'notIn', 'notInList' ].includes(filterKey)) {
+        } else if (isNotInOp(filterKey)) {
 
-            filterVal = Array.isArray(filterVal) ? filterVal : [ filterVal ];
+            filterVal = normalizeToArray(filterVal);
 
             const listFilters = filterVal.map((val: any) => ne(attributeRef, val))
 
             filterFragments.push(makeParenthesesGroup(listFilters, 'AND'));
 
-        } else if ([ 'exists', 'isNull' ].includes(filterKey)) {
+        } else if (isOperatorAlias(filterKey, 'exists') || isOperatorAlias(filterKey, 'isNull')) {
 
             filterFragments.push(filterVal ? exists(attributeRef) : notExists(attributeRef));
 
-        } else if ([ 'isEmpty' ].includes(filterKey)) {
+        } else if (isOperatorAlias(filterKey, 'isEmpty')) {
 
             filterFragments.push(filterVal ? eq(attributeRef as string, '' as string) : ne(attributeRef as string, '' as string));
 
@@ -484,16 +512,6 @@ export function parseUrlQueryStringParameters(queryStringParameters: { [ name: s
 
     return parsed;
 }
-
-/**
- * Regular expression pattern used to parse value delimiters.
- * The pattern matches any of the following characters: &, ,, +, ;, :, or ..
- */
-export const PARSE_VALUE_DELIMITERS = /(?:&|,|\+|;|:|\.)+/;
-/**
- * An array of filter keys that can have array values.
- */
-export const FILTER_KEYS_HAVING_ARRAY_VALUES = [ 'in', 'inList', 'nin', 'notIn', 'notInList', 'contains', 'includes', 'has', 'notContains', 'notIncludes', 'notHas' ];
 
 /**
  * Converts a query string parameter into a filter object.
