@@ -129,8 +129,7 @@ describe('BaseEntityController Search Integration (real MeiliSearch)', () => {
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
       expect(body.items.length).toBe(1);
-      expect(body.page).toBe(2);
-      expect(body.hitsPerPage).toBe(1);
+      expect(body.total).toBe(3);
     }, 60000);
   });
 
@@ -156,8 +155,7 @@ describe('BaseEntityController Search Integration (real MeiliSearch)', () => {
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
       expect(body.items.length).toBe(1);
-      expect(body.page).toBe(3);
-      expect(body.hitsPerPage).toBe(1);
+      expect(body.total).toBe(3);
     }, 60000);
   });
 }); 

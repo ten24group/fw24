@@ -1587,10 +1587,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
 
     public async search(query: EntitySearchQuery<S>, ctx?: ExecutionContext) {
-
         const searchService = this.getSearchService();
-        const results = await searchService.search(query, undefined, ctx);
-        return results;
+        return searchService.search(query, undefined, ctx);
     }
 }
 

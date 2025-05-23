@@ -397,11 +397,8 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const results = await this.getEntityService().search(query, ctx);
 
 		const response = {
+			...results,
 			items: results.hits,
-			facets: results.facets,
-			total: results.total,
-			page: results.page,
-			hitsPerPage: results.hitsPerPage
 		};
 
 		if (req.debugMode) {
@@ -470,7 +467,8 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			sort: parsedSort,
 			pagination: {
 				limit: parseInt(hitsPerPage, 10) || 20,
-				page: parseInt(page, 10) || 1
+				page: parseInt(page, 10) || 1,
+				usePagination: true
 			}
 		};
 	}
