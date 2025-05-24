@@ -80,6 +80,7 @@ export interface ListPageConfig extends BasePageConfig {
                 label?: string;
                 icon?: string;
                 url?: string;
+                backUrl?: string;
                 type?: string;
                 openInModal?: boolean;
                 modalConfig?: {
