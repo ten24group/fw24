@@ -1,17 +1,17 @@
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { EntityConfiguration } from 'electrodb';
-import { BaseEntityService, createElectroDBEntity } from '../../entity';
+import { createElectroDBEntity } from '../../entity';
 import { createLogger } from '../../logging';
 import { AuditLoggerConfig, AuditOptions, IAuditLogger } from '../interfaces';
-import { auditSchema, AuditSchemaType } from '../schema/dynamodb';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { auditSchema } from '../schema/dynamodb';
 
 export const AuditWorksDefaultEntityConfiguration: EntityConfiguration = {
-    table: process.env[`${process.env.AUDIT_TABLE_NAME?.toUpperCase()}_TABLE`],
+    table: process.env[ `${process.env.AUDIT_TABLE_NAME?.toUpperCase()}_TABLE` ],
     client: new DynamoDBClient({}),
-  };
-  
+};
+
 export class DynamoDbAuditLogger implements IAuditLogger {
-    private logger = createLogger('DynamoDbAuditLogger');
+    private logger = createLogger(DynamoDbAuditLogger);
     private enabled: boolean;
 
     constructor(config: AuditLoggerConfig) {

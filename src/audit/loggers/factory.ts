@@ -9,8 +9,8 @@ import { DynamoDbAuditLogger } from './dynamodb';
 export class AuditLoggerFactory {
     private static instance: AuditLoggerFactory;
     private auditLoggerCache: Map<string, IAuditLogger> = new Map();
-    private logger = createLogger(AuditLoggerFactory.name);
-    private constructor() {}
+    private logger = createLogger(AuditLoggerFactory);
+    private constructor() { }
 
     public static getInstance(): AuditLoggerFactory {
         if (!AuditLoggerFactory.instance) {
@@ -24,7 +24,7 @@ export class AuditLoggerFactory {
      */
     private getDefaultConfig(): AuditLoggerConfig {
         const envType = resolveEnvValueFor({ key: AUDIT_ENV_KEYS.TYPE }) || AuditLoggerType.CLOUDWATCH;
-        
+
         return {
             enabled: resolveEnvValueFor({ key: AUDIT_ENV_KEYS.ENABLED }) === 'true',
             type: envType as AuditLoggerType,
@@ -53,7 +53,7 @@ export class AuditLoggerFactory {
         this.logger.debug('Creating audit logger', effectiveConfig);
 
         let auditLogger: IAuditLogger;
-        
+
         // If auditing is disabled, return dummy auditor
         switch (effectiveConfig.type) {
             case AuditLoggerType.DYNAMODB:
@@ -70,7 +70,7 @@ export class AuditLoggerFactory {
             case AuditLoggerType.CLOUDWATCH:
             default:
                 auditLogger = new CloudWatchAuditLogger(effectiveConfig);
-            break;
+                break;
         }
 
         // Cache the instance

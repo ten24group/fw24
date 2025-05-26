@@ -147,7 +147,7 @@ export interface AuditConfig extends IConstructConfig {
 export class DynamoDBConstruct implements FW24Construct {
     readonly logger = createLogger(DynamoDBConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
-    
+
     name: string = DynamoDBConstruct.name;
     dependencies: string[] = [];
     output!: FW24ConstructOutput;
@@ -169,7 +169,7 @@ export class DynamoDBConstruct implements FW24Construct {
 
     // construct method to create the stack
     @LogDuration()
-    public async construct() {        
+    public async construct() {
         const fw24 = Fw24.getInstance();
         this.mainStack = fw24.getStack(this.dynamoDBConfig.stackName, this.dynamoDBConfig.parentStackName);
         const appQualifiedTableName = ensureNoSpecialChars(ensureSuffix(this.dynamoDBConfig.table.name, `table`));
@@ -188,8 +188,8 @@ export class DynamoDBConstruct implements FW24Construct {
 
         // Setup stream processing if enabled or audit is enabled and stream ARN exists
         if (
-            (this.dynamoDBConfig.table.stream?.enabled 
-                || this.dynamoDBConfig.table.audit?.enabled) 
+            (this.dynamoDBConfig.table.stream?.enabled
+                || this.dynamoDBConfig.table.audit?.enabled)
             && tableInstance.tableStreamArn) {
             this.setupStreamProcessing(tableInstance);
         }
@@ -205,18 +205,18 @@ export class DynamoDBConstruct implements FW24Construct {
 
     private setupStreamProcessing(tableInstance: TableV2): void {
         const streamConfig = this.dynamoDBConfig.table.stream || {};
-        
+
         // Create SNS topic for stream events
         const topicName = streamConfig.topic?.name || this.getStreamTopicName();
         const isFifo = streamConfig.topic?.props?.fifo ?? false;
-        const streamTopicConfig: ITopicConstructConfig[] = [{
+        const streamTopicConfig: ITopicConstructConfig[] = [ {
             topicName,
             topicProps: {
                 displayName: `Stream events for ${this.dynamoDBConfig.table.name}`,
                 fifo: isFifo,
                 ...streamConfig.topic?.props
             }
-        }];
+        } ];
 
         new TopicConstruct(streamTopicConfig).construct();
 
@@ -228,10 +228,10 @@ export class DynamoDBConstruct implements FW24Construct {
                 TOPIC_TYPE: isFifo ? 'fifo' : 'standard'
             },
             resourceAccess: {
-                topics: [{
+                topics: [ {
                     name: topicName,
-                    access: ['publish']
-                }]
+                    access: [ 'publish' ]
+                } ]
             }
         }) as NodejsFunction;
 
@@ -256,13 +256,13 @@ export class DynamoDBConstruct implements FW24Construct {
         if (tableInstance.tableStreamArn) {
             let resourceAccess: any = {};
             let environmentVariables: any = {};
-            
+
             if (config.type === AuditLoggerType.DYNAMODB) {
                 resourceAccess = {
-                    tables: [{
+                    tables: [ {
                         name: this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME),
-                        access: ['readwrite']
-                    }]
+                        access: [ 'readwrite' ]
+                    } ]
                 };
                 environmentVariables = {
                     AUDIT_TABLE_NAME: this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME)
@@ -284,10 +284,10 @@ export class DynamoDBConstruct implements FW24Construct {
                     ...config.dynamodbstreamOptions?.queueProps
                 },
                 subscriptions: {
-                    topics: [{
+                    topics: [ {
                         name: this.getStreamTopicName(),
                         filters: []
-                    }]
+                    } ]
                 },
                 sqsEventSourceProps: {
                     batchSize: config.dynamodbstreamOptions?.sqsEventSourceProps?.batchSize || 5,
@@ -336,21 +336,21 @@ export class DynamoDBConstruct implements FW24Construct {
     private setupAuditEnvironmentVariables(config: AuditConfig): void {
         this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.ENABLED, config.enabled?.toString() || 'false');
         this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.TYPE, config.type || AuditLoggerType.CLOUDWATCH);
-        
+
         if (config.type === AuditLoggerType.DYNAMODB) {
             this.fw24.setEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME, config.dynamodbstreamOptions?.auditTableName || this.dynamoDBConfig.table.name);
         }
 
         // Default to CLOUDWATCH if no type is set, or it is set to CLOUDWATCH
         if (!config.type || config.type === AuditLoggerType.CLOUDWATCH) {
-            this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.LOG_GROUP_NAME, 
+            this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.LOG_GROUP_NAME,
                 config.cloudwatchOptions?.logGroupName || `/audit/logs/${this.fw24.getConfig().name}`
             );
-            this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.REGION, 
+            this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.REGION,
                 config.cloudwatchOptions?.region || this.fw24.getConfig().region
             );
         }
 
     }
-    
+
 }

@@ -5,10 +5,9 @@ import { IAuditLogger, AuditOptions } from "../interfaces";
  * Used as a fallback when auditing is disabled.
  */
 export class DummyAuditLogger implements IAuditLogger {
-    constructor() {}
+    constructor() { }
 
-    async audit(options: AuditOptions): Promise<void> {
-        options;
+    async audit(_options: AuditOptions): Promise<void> {
         // Do nothing
     }
 }
