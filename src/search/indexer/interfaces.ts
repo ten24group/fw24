@@ -1,0 +1,22 @@
+/**
+ * Environment variable keys used for search indexer configuration
+ */
+
+/**
+ * Constant containing the actual environment variable keys
+ */
+export const SEARCH_INDEXER_ENV_KEYS = {
+  ENABLED: 'SEARCH_INDEXER_ENABLED',
+  MEILI_HOST: 'MEILI_HOST',
+  MEILI_MASTER_KEY: 'MEILI_MASTER_KEY'
+} as const;
+
+
+export interface SearchIndexEntry {
+  entityName: string;
+  eventType: 'create' | 'update' | 'delete';
+  data: any;
+  id: string;
+  timestamp?: string;
+  version?: string;
+} 

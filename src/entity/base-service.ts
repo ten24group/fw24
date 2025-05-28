@@ -1,20 +1,19 @@
 import type { EntityConfiguration } from "electrodb";
-import { DIContainer, OnInit } from "../di";
+import { DIContainer } from "../di";
 import type { EntityInputValidations, EntityValidations } from "../validation";
 import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
 import type { EntityFilterCriteria, EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 
-import { createLogger } from "../logging";
-import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, isSubclassOf, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
-import { createElectroDBEntity } from "./base-entity";
-import { createEntity, deleteEntity, getEntity, getBatchEntity, listEntity, queryEntity, updateEntity, UpdateEntityOperators, upsertEntity } from "./crud-service";
-import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
-import { DepIdentifier, IDIContainer } from "../interfaces";
-import { DatabaseError, EntityValidationError } from './errors';
 import { ExecutionContext } from "../core/types/execution-context";
-import { BaseSearchService, EntitySearchService, EntitySearchQuery, SearchIndexConfig } from '../search';
+import { DepIdentifier, IDIContainer } from "../interfaces";
+import { createLogger } from "../logging";
+import { BaseSearchService, EntitySearchQuery, EntitySearchService, makeEntitySearchIndexName } from '../search';
+import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
+import { createElectroDBEntity } from "./base-entity";
+import { UpdateEntityOperators, createEntity, deleteEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
 import { EntitySchemaValidator } from "./entity-schema-validator";
-import { indexConfig } from "../search/engines/meili/integration-test/testUtils";
+import { DatabaseError, EntityValidationError } from './errors';
+import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
@@ -65,16 +64,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         protected readonly diContainer: IDIContainer = DIContainer.ROOT,
     ) { }
 
-    protected makeEntityIndexName(schema: EntitySchema<any, any, any>, ctx?: ExecutionContext<any>) {
-        const tenantId = ctx?.actor?.tenantId || '';
-        const applicationId = ctx?.actor?.applicationId || '';
-        const environmentId = ctx?.actor?.environmentId || '';
-        const entityName = schema.model.entity;
-        // const version = schema.model.version;
-
-        // ten24-backend-dev-user;
-        return [ tenantId, applicationId, environmentId, entityName ].filter(Boolean).join('-').toLowerCase();
-    }
 
     public getEntitySearchConfig(ctx?: ExecutionContext<any>) {
 
@@ -86,7 +75,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         };
 
         searchConfig.serviceClass = searchConfig.serviceClass || EntitySearchService;
-        searchConfig.indexConfig.indexName = searchConfig.indexConfig.indexName || this.makeEntityIndexName(schema, ctx);
+
+        searchConfig.indexConfig.indexName = searchConfig.indexConfig.indexName || makeEntitySearchIndexName({
+            entityName: schema.model.entity,
+            version: schema.model.version,
+            environment: ctx?.actor?.environmentId,
+            tenant: ctx?.actor?.tenantId,
+            application: ctx?.actor?.applicationId
+        });
+
         searchConfig.indexConfig.primaryKey = searchConfig.indexConfig.primaryKey || this.getEntityPrimaryIdPropertyName();
 
         const entitySearchableAttributes = this.getSearchableAttributeNames();
@@ -150,6 +147,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 )
             ) {
                 try {
+                    // TODO: add support to configure this without needing to use the DI
                     const searchEngine = this.diContainer.resolveSearchEngine();
                     if (!searchEngine) {
                         throw new Error('Search engine not found in container');

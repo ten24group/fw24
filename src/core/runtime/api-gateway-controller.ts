@@ -14,16 +14,16 @@ import { ExecutionContext } from '../types/execution-context';
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 
 // New interfaces for middleware and error handling
-export interface Middleware {
+export interface APIControllerMiddleware {
   before?: (request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
   after?: (request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
   onError?: (error: Error, request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
 }
 
 // Global middleware management
-const globalMiddlewares: Middleware[] = [];
+const globalMiddlewares: APIControllerMiddleware[] = [];
 
-export const useMiddleware = (middleware: Middleware) => {
+export const useMiddleware = (middleware: APIControllerMiddleware) => {
   globalMiddlewares.push(middleware);
 }
 export const clearMiddlewares = () => {
@@ -85,7 +85,7 @@ export interface APIControllerConfig {
 
 export abstract class APIController extends AbstractLambdaHandler {
   protected validator: IValidator = DefaultValidator;
-  protected middlewares: Middleware[] = [];
+  protected middlewares: APIControllerMiddleware[] = [];
   protected responseConfig: ResponseConfig;
 
   constructor(config: APIControllerConfig = {}) {
@@ -100,7 +100,7 @@ export abstract class APIController extends AbstractLambdaHandler {
   }
 
   // Add middleware registration method
-  protected useMiddleware(middleware: Middleware) {
+  protected useMiddleware(middleware: APIControllerMiddleware) {
     this.middlewares.push(middleware);
   }
 

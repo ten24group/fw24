@@ -1,65 +1,160 @@
+import { DynamoDBRecord, } from 'aws-lambda';
+import { BaseDynamoDBStreamHandler, EVENT_TYPE_MAP } from '../../core/runtime/base-dynamodb-stream-handler';
+
 import { AttributeValue } from '@aws-sdk/client-dynamodb';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
-import { DynamoDBRecord, DynamoDBStreamEvent, SQSEvent } from 'aws-lambda';
-import { createLogger } from '../logging';
-import { resolveEnvValueFor } from '../utils';
-import { AUDIT_ENV_KEYS, AuditEntry, AuditLoggerType } from './interfaces';
-import { AuditLoggerFactory } from './loggers/factory';
+import { createLogger } from '../../logging';
+import { resolveEnvValueFor } from '../../utils';
+import { AUDIT_ENV_KEYS, AuditEntry, AuditLoggerType, IAuditLogger } from '../interfaces';
+import { AuditLoggerFactory } from './factory';
+
+
+
+/**
+ * Base audit handler that extends AbstractLambdaHandler
+ * Custom audit handlers can extend this to add custom processing while reusing framework utilities
+ */
+export class DefaultAuditHandler extends BaseDynamoDBStreamHandler {
+
+  private auditLogger?: IAuditLogger;
+
+  constructor() {
+    super();
+  }
+
+  // override this method to initialize custom audit-logger
+  protected initializeAuditLogger() {
+
+    const auditLoggerType = resolveEnvValueFor({ key: AUDIT_ENV_KEYS.TYPE }) || AuditLoggerType.CLOUDWATCH;
+
+    this.auditLogger = AuditLoggerFactory.getInstance().create({
+      type: auditLoggerType as AuditLoggerType,
+      enabled: true
+    });
+
+    if (!this.auditLogger) {
+      throw new Error(`Audit logger not initialized for type ${auditLoggerType}`);
+    }
+
+    this.logger.debug('Audit logger initialized', { auditLoggerType });
+  }
+
+  protected getAuditLogger(): IAuditLogger {
+    if (!this.auditLogger) {
+      this.initializeAuditLogger();
+    }
+
+    return this.auditLogger!;
+  }
+
+  protected async processRecord(record: DynamoDBRecord): Promise<void> {
+
+    const auditEntry = this.makeAditEntry(record);
+
+    if (!auditEntry) {
+      this.logger.info('No audit entry created, skipping', { record });
+      return;
+    }
+
+    await this.writeAuditEntry(auditEntry);
+
+    this.logger.debug('Successfully wrote audit entry', { auditEntry });
+  }
+
+  protected makeAditEntry(record: DynamoDBRecord): AuditEntry | undefined {
+    if (!record.dynamodb) {
+      this.logger.warn('Record does not contain DynamoDB data', { record });
+      return;
+    }
+
+    const eventName = record.eventName as keyof typeof EVENT_TYPE_MAP;
+    if (!eventName || !EVENT_TYPE_MAP[ eventName ]) {
+      this.logger.warn('Unknown event type', { eventName });
+      return;
+    }
+
+    // Get the old and new images of the record
+    const oldImage = record.dynamodb.OldImage
+      ? unmarshall(record.dynamodb.OldImage as Record<string, AttributeValue>)
+      : undefined;
+    const newImage = record.dynamodb.NewImage
+      ? unmarshall(record.dynamodb.NewImage as Record<string, AttributeValue>)
+      : undefined;
+
+    // Get entity name from __edb_e__
+    const entityName = (newImage?.__edb_e__ || oldImage?.__edb_e__) as string;
+
+    if (!entityName) {
+      this.logger.warn('No entity name found in record', { record });
+      return;
+    }
+
+    if (entityName === 'auditLog') {
+      this.logger.info('Skipping audit log', { record });
+      return;
+    }
+
+    // Get only the changed properties
+    const changes = getChangedProperties(oldImage, newImage);
+
+    // Skip if no changes were detected
+    if (Object.keys(changes).length === 0) {
+      this.logger.debug('No changes detected, skipping audit entry');
+      return;
+    }
+
+    // Create audit entry
+    const auditEntry: AuditEntry = {
+      timestamp: new Date().toISOString(),
+      entityName,
+      eventType: EVENT_TYPE_MAP[ eventName ],
+      data: changes,
+      identifiers: {
+        id: (newImage?.id || oldImage?.id) as string
+      },
+      actor: newImage?.updatedBy
+    };
+
+    return auditEntry;
+  }
+
+  protected async writeAuditEntry(auditEntry: AuditEntry): Promise<void> {
+
+    const auditLogger = this.getAuditLogger();
+
+    try {
+
+      this.logger.debug(`Writing audit entry using logger ${auditLogger.constructor.name}`);
+      await auditLogger.audit({ auditEntry });
+
+      this.logger.debug('Successfully wrote audit entry', { auditEntry });
+
+    } catch (error) {
+      this.logger.error('Error writing audit entry', { error, auditEntry });
+      throw error;
+    }
+  }
+}
 
 export const logger = createLogger('DynamoDBStreamHandler');
 
 /**
- * Maps DynamoDB stream event types to CRUD operations
+ * Main entry point for change detection
  */
-const EVENT_TYPE_MAP = {
-  INSERT: 'create',
-  MODIFY: 'update',
-  REMOVE: 'delete'
-} as const;
-
-/**
- * Extracts DynamoDB records from either a DynamoDB stream event or an SQS event
- */
-export function extractDynamoDBRecords(event: DynamoDBStreamEvent | SQSEvent): DynamoDBRecord[] {
-  // Type guard for SQS events
-  const isSQSEvent = (event: DynamoDBStreamEvent | SQSEvent): event is SQSEvent => {
-    return 'Records' in event && event.Records[ 0 ]?.eventSource === 'aws:sqs';
-  };
-
-  if (isSQSEvent(event)) {
-    // Handle SQS event
-    return event.Records.reduce<DynamoDBRecord[]>((acc, record) => {
-      try {
-        const body = JSON.parse(record.body);
-        const message = JSON.parse(body.Message);
-
-        // Create a DynamoDB record from the message
-        const dynamoRecord: DynamoDBRecord = {
-          eventID: message.message.eventID,
-          eventName: message.message.eventName as "INSERT" | "MODIFY" | "REMOVE",
-          eventSource: message.message.eventSource,
-          eventVersion: '1.0',
-          awsRegion: record.awsRegion,
-          dynamodb: message.message.dynamodb
-        };
-
-        acc.push(dynamoRecord);
-      } catch (error) {
-        logger.error('Error parsing SQS message', { error, record });
-      }
-      return acc;
-    }, []);
-  }
-
-  // Handle direct DynamoDB stream event
-  return event.Records;
+export function getChangedProperties(
+  oldImage: Record<string, any> | undefined,
+  newImage: Record<string, any> | undefined,
+  // TODO: more fields like GSI1PK, GSI1SK, etc.
+  ignoredFields: string[] = [ 'updatedAt', '__edb_e__', '__edb_v__', 'pk', 'sk' ]
+): Record<string, { old?: any, new?: any }> {
+  return getChangedPropertiesRecursive(oldImage, newImage, ignoredFields);
 }
 
 /**
  * Simple value comparison helper
  * Returns true if values are different, false if they are the same
  */
-export function isDifferent(oldValue: any, newValue: any): boolean {
+function isDifferent(oldValue: any, newValue: any): boolean {
   if (oldValue === newValue) return false;
   if (typeof oldValue !== typeof newValue) return true;
   if (oldValue === null || newValue === null) return true;
@@ -75,20 +170,11 @@ export function isDifferent(oldValue: any, newValue: any): boolean {
   return JSON.stringify(oldValue) !== JSON.stringify(newValue);
 }
 
-/**
- * Extracts the first object from an array or returns the object itself
- */
-export function extractObject(value: any): any {
-  if (Array.isArray(value) && value.length > 0) {
-    return value[ 0 ];
-  }
-  return value;
-}
 
 /**
  * Processes a single key-value pair and determines if it should be included in changes
  */
-export function processKeyValuePair(
+function processKeyValuePair(
   key: string,
   oldValue: any,
   newValue: any,
@@ -155,7 +241,7 @@ export function processKeyValuePair(
 /**
  * Compares two arrays and returns the changes
  */
-export function compareArrays(
+function compareArrays(
   oldArray: any[],
   newArray: any[],
   ignoredFields: string[]
@@ -205,7 +291,7 @@ export function compareArrays(
 /**
  * Recursively compares two objects and extracts changed properties
  */
-export function getChangedPropertiesRecursive(
+function getChangedPropertiesRecursive(
   oldObj: Record<string, any> | undefined,
   newObj: Record<string, any> | undefined,
   ignoredFields: string[]
@@ -220,7 +306,7 @@ export function getChangedPropertiesRecursive(
     return Object.fromEntries(
       Object.entries(newObj!)
         .filter(([ key ]) => !ignoredFields.includes(key))
-        .map(([ key, value ]) => [ key, { new: extractObject(value) } ])
+        .map(([ key, value ]) => [ key, { new: value } ])
     );
   }
 
@@ -229,7 +315,7 @@ export function getChangedPropertiesRecursive(
     return Object.fromEntries(
       Object.entries(oldObj)
         .filter(([ key ]) => !ignoredFields.includes(key))
-        .map(([ key, value ]) => [ key, { old: extractObject(value) } ])
+        .map(([ key, value ]) => [ key, { old: value } ])
     );
   }
 
@@ -241,83 +327,4 @@ export function getChangedPropertiesRecursive(
   }
 
   return changes;
-}
-
-/**
- * Main entry point for change detection
- */
-export function getChangedProperties(
-  oldImage: Record<string, any> | undefined,
-  newImage: Record<string, any> | undefined
-): Record<string, { old?: any, new?: any }> {
-  const ignoredFields = [ 'updatedAt', '__edb_e__', '__edb_v__', 'pk', 'sk' ];
-  return getChangedPropertiesRecursive(oldImage, newImage, ignoredFields);
-}
-
-/**
- * Process a single DynamoDB Stream record and create an audit log entry
- */
-export async function processStreamRecord(record: DynamoDBRecord): Promise<void> {
-  if (!record.dynamodb) {
-    logger.warn('Record does not contain DynamoDB data', { record });
-    return;
-  }
-
-  const eventName = record.eventName as keyof typeof EVENT_TYPE_MAP;
-  if (!eventName || !EVENT_TYPE_MAP[ eventName ]) {
-    logger.warn('Unknown event type', { eventName });
-    return;
-  }
-
-  // Get the old and new images of the record
-  const oldImage = record.dynamodb.OldImage
-    ? unmarshall(record.dynamodb.OldImage as Record<string, AttributeValue>)
-    : undefined;
-  const newImage = record.dynamodb.NewImage
-    ? unmarshall(record.dynamodb.NewImage as Record<string, AttributeValue>)
-    : undefined;
-
-  // Get entity name from __edb_e__
-  const entityName = (newImage?.__edb_e__ || oldImage?.__edb_e__) as string;
-  if (!entityName) {
-    logger.warn('No entity name found in record', { record });
-    return;
-  } else if (entityName === 'auditLog') {
-    logger.info('Skipping audit log', { record });
-    return;
-  }
-
-  // Get only the changed properties
-  const changes = getChangedProperties(oldImage, newImage);
-
-  // Skip if no changes were detected
-  if (Object.keys(changes).length === 0) {
-    logger.debug('No changes detected, skipping audit entry');
-    return;
-  }
-
-  // Create audit entry
-  const auditEntry: AuditEntry = {
-    timestamp: new Date().toISOString(),
-    entityName,
-    eventType: EVENT_TYPE_MAP[ eventName ],
-    data: changes,
-    identifiers: {
-      id: (newImage?.id || oldImage?.id) as string
-    },
-    actor: newImage?.updatedBy
-  };
-
-  const envType = resolveEnvValueFor({ key: AUDIT_ENV_KEYS.TYPE }) || AuditLoggerType.CLOUDWATCH;
-  const auditLogger = AuditLoggerFactory.getInstance().create({ type: envType as AuditLoggerType, enabled: true });
-
-  // Write to audit table
-  try {
-    logger.debug('Writing audit entry using logger', auditLogger);
-    await auditLogger.audit({ auditEntry });
-    logger.debug('Successfully wrote audit entry', { auditEntry });
-  } catch (error) {
-    logger.error('Error writing audit entry', { error, auditEntry });
-    throw error;
-  }
 }

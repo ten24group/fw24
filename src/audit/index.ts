@@ -1,6 +1,18 @@
-export * from './loggers/dummy';
-export * from './loggers/console';
-export * from './loggers/cloudwatch';
-export * from './loggers/dynamodb';
-export * from './loggers/factory';
-export * from './interfaces';
+export {
+  AuditLoggerType,
+  AuditEnvKeys,
+  AuditLoggerConfig,
+  AuditOptions,
+  AuditEntry,
+  IAuditLogger,
+} from './interfaces';
+
+export {
+  DynamoDbAuditLogger,
+  CloudWatchAuditLogger,
+  AuditLoggerFactory,
+  ConsoleAuditLogger,
+  DummyAuditLogger,
+  DefaultAuditHandler,
+  getChangedProperties,
+} from './loggers';

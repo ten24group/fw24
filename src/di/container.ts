@@ -14,8 +14,8 @@ import {
     FactoryProviderOptions,
     IDIContainer,
     InternalProviderOptions,
-    Middleware,
-    MiddlewareAsync,
+    DIMiddleware,
+    DIMiddlewareAsync,
     PriorityCriteria,
     ProviderOptions,
     Token
@@ -74,8 +74,8 @@ export class DIContainer implements IDIContainer {
 
     public readonly containerId: string;
     private readonly logger: ILogger;
-    private readonly middlewares: Middleware<any>[] = [];
-    private readonly asyncMiddlewares: MiddlewareAsync<any>[] = [];
+    private readonly middlewares: DIMiddleware<any>[] = [];
+    private readonly asyncMiddlewares: DIMiddlewareAsync<any>[] = [];
 
     private _resolving = new Map<string, any>();
     protected get resolving(): Map<string, any> {
@@ -1054,7 +1054,7 @@ export class DIContainer implements IDIContainer {
         }
     }
 
-    useMiddleware({ middleware, order = 1 }: PartialBy<Middleware<any>, 'order'>) {
+    useMiddleware({ middleware, order = 1 }: PartialBy<DIMiddleware<any>, 'order'>) {
         this.middlewares.push({ middleware, order });
         this.middlewares.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     }
@@ -1091,7 +1091,7 @@ export class DIContainer implements IDIContainer {
         return instance;
     }
 
-    useMiddlewareAsync({ middleware, order = 1 }: PartialBy<MiddlewareAsync<any>, 'order'>) {
+    useMiddlewareAsync({ middleware, order = 1 }: PartialBy<DIMiddlewareAsync<any>, 'order'>) {
         this.asyncMiddlewares.push({ middleware, order });
         this.asyncMiddlewares.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     }

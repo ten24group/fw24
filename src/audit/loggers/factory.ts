@@ -1,9 +1,9 @@
-import { AuditLoggerConfig, AuditLoggerType, IAuditLogger, AUDIT_ENV_KEYS } from '../interfaces';
-import { ConsoleAuditLogger } from './console';
-import { CloudWatchAuditLogger } from './cloudwatch';
-import { DummyAuditLogger } from './dummy';
-import { resolveEnvValueFor } from '../../utils';
 import { createLogger } from '../../logging';
+import { resolveEnvValueFor } from '../../utils';
+import { AUDIT_ENV_KEYS, AuditLoggerConfig, AuditLoggerType, IAuditLogger } from '../interfaces';
+import { CloudWatchAuditLogger } from './cloudwatch';
+import { ConsoleAuditLogger } from './console';
+import { DummyAuditLogger } from './dummy';
 import { DynamoDbAuditLogger } from './dynamodb';
 
 export class AuditLoggerFactory {
@@ -65,8 +65,6 @@ export class AuditLoggerFactory {
             case AuditLoggerType.DUMMY:
                 auditLogger = new DummyAuditLogger();
                 break;
-            case AuditLoggerType.CUSTOM:
-                throw new Error('Custom logger not implemented yet');
             case AuditLoggerType.CLOUDWATCH:
             default:
                 auditLogger = new CloudWatchAuditLogger(effectiveConfig);
@@ -82,6 +80,3 @@ export class AuditLoggerFactory {
         return `${config.type}`;
     }
 }
-
-export const AuditLogger = AuditLoggerFactory.getInstance();
-export const NullAuditLogger = AuditLogger.create({ type: AuditLoggerType.DUMMY });

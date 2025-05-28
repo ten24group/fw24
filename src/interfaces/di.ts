@@ -1,4 +1,4 @@
-import { ISearchEngine } from '../search';
+import { BaseSearchEngine } from '../search';
 import { DeepPartial, PartialBy } from '../utils/types';
 
 export type Token = string;
@@ -90,11 +90,11 @@ export type InternalProviderOptions<T = any> = {
 }
 
 
-export type Middleware<T> = {
+export type DIMiddleware<T> = {
     order?: number;
     middleware: (next: () => T) => T;
 };
-export type MiddlewareAsync<T> = {
+export type DIMiddlewareAsync<T> = {
     order?: number;
     middleware: (next: () => Promise<T>) => Promise<T>;
 };
@@ -186,13 +186,13 @@ export interface IDIContainer {
    * Sets the search engine implementation to be used.
    * @param engine The search engine implementation
    */
-    setSearchEngine(engine: ISearchEngine): void;
+    setSearchEngine(engine: BaseSearchEngine): void;
 
     /**
      * Resolves the configured search engine.
      * @throws Error if no search engine is configured
      */
-    resolveSearchEngine(): ISearchEngine;
+    resolveSearchEngine(): BaseSearchEngine;
 
 
     collectBestProvidersFor<T>(
@@ -208,9 +208,9 @@ export interface IDIContainer {
 
     clear(clearChildContainers?: boolean): void;
 
-    useMiddleware({ middleware, order }: PartialBy<Middleware<any>, "order">): void;
+    useMiddleware({ middleware, order }: PartialBy<DIMiddleware<any>, "order">): void;
 
-    useMiddlewareAsync({ middleware, order }: PartialBy<MiddlewareAsync<any>, "order">): void;
+    useMiddlewareAsync({ middleware, order }: PartialBy<DIMiddlewareAsync<any>, "order">): void;
 
     resolve<T, Async extends boolean = false>(
         dependencyToken: DepIdentifier<T>,
