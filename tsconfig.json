@@ -25,10 +25,7 @@
         "experimentalDecorators": true,
         "strictPropertyInitialization": true,
         "stripInternal": true,
-        // can't change it [ "./dist/package" to "./dist"] as changing the output path will break all dependent projects.
-        // we'll need to make sure to create a new release with plans to upgrade the dependent projects.
         "outDir": "./dist/package",
-        "declarationDir": "./dist/declarations",
         "rootDir": "src",
         "typeRoots": [
             "./node_modules/@types"

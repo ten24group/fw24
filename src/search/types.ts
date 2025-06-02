@@ -1,5 +1,5 @@
 import { BaseFieldMetadata } from './../entity/base-entity';
-import { ValueOf } from './../../dist/package/utils/types.d';
+import { ValueOf } from './../utils/types';
 import { EntitySchema } from '../entity/base-entity';
 import type { GenericFilterCriteria } from '../entity/query-types';
 import { OmitNever } from '../utils';

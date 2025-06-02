@@ -10,7 +10,7 @@ import { makeEntitySearchIndexName } from '../search-utils';
 import { SearchEngineError } from '../errors';
 
 /**
- * Search indexer handler for MeiliSearch
+ * Search indexer handler [for MeiliSearch]
  */
 export class DefaultSearchIndexerHandler extends BaseDynamoDBStreamHandler {
 
@@ -18,11 +18,12 @@ export class DefaultSearchIndexerHandler extends BaseDynamoDBStreamHandler {
   private isEnabled: boolean = false;
 
   protected async initialize(_event: any): Promise<void> {
+
     const enabled = resolveEnvValueFor({ key: SEARCH_INDEXER_ENV_KEYS.ENABLED });
     this.isEnabled = enabled === 'true';
 
     if (!this.isEnabled) {
-      this.logger.debug('Search indexing is disabled');
+      this.logger.info('Search indexing is disabled');
       return;
     }
 
@@ -41,7 +42,7 @@ export class DefaultSearchIndexerHandler extends BaseDynamoDBStreamHandler {
     const health = await this.searchEngine.health();
     this.logger.info('MeiliSearch health', { health });
 
-    this.logger.debug('Search indexer initialized', { host });
+    this.logger.info('Search indexer initialized', { host });
   }
 
   protected async processRecord(record: DynamoDBRecord): Promise<void> {
@@ -78,7 +79,7 @@ export class DefaultSearchIndexerHandler extends BaseDynamoDBStreamHandler {
 
     // Skip indexing audit logs and search index entries themselves
     if (entityName === 'auditLog' || entityName.includes('search-index')) {
-      this.logger.debug('Skipping search indexing for system entity', { entityName });
+      this.logger.info('Skipping search indexing for system entity', { entityName });
       return;
     }
 
@@ -113,7 +114,7 @@ export class DefaultSearchIndexerHandler extends BaseDynamoDBStreamHandler {
 
     // For deletions, we only need the ID to remove from index
     if (eventType === 'delete') {
-      this.logger.debug('Deleting document', { oldImage });
+      this.logger.info('Deleting document', { oldImage });
       return { id: oldImage?.id };
     }
 
@@ -149,7 +150,7 @@ export class DefaultSearchIndexerHandler extends BaseDynamoDBStreamHandler {
   private async indexDocument(searchIndexEntry: SearchIndexEntry): Promise<void> {
     const { entityName, eventType, data, id, version } = searchIndexEntry;
 
-    this.logger.debug('Processing search index operation', { entityName, eventType, id });
+    this.logger.info('Processing search index operation', { entityName, eventType, id });
 
     // TODO: additional context like tenant, env, app-name etc.
     const indexName = makeEntitySearchIndexName({ entityName, version });
@@ -176,7 +177,7 @@ export class DefaultSearchIndexerHandler extends BaseDynamoDBStreamHandler {
           return;
       }
 
-      this.logger.debug('Successfully processed search index operation', { indexName, eventType, id });
+      this.logger.info('Successfully processed search index operation', { indexName, eventType, id });
 
     } catch (error) {
 
@@ -202,12 +203,12 @@ export class DefaultSearchIndexerHandler extends BaseDynamoDBStreamHandler {
     }
 
     await this.searchEngine.indexDocuments([ data ], { indexName }, false);
-    this.logger.debug('Document indexed successfully', { indexName, id });
+    this.logger.info('Document indexed successfully', { indexName, id });
   }
 
   private async deleteDocument(indexName: string, id: string): Promise<void> {
     await this.searchEngine.deleteDocuments([ id ], indexName, false);
-    this.logger.debug('Document deleted successfully', { indexName, id });
+    this.logger.info('Document deleted successfully', { indexName, id });
   }
 }
 

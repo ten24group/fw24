@@ -333,9 +333,9 @@ export class DynamoDBConstruct implements FW24Construct {
             customLambdaProps = config.lambdaFunctionProps;
         } else if (isSearchConfig(config)) {
             specificEnvVars = {
-                SEARCH_INDEXER_ENABLED: config.enabled?.toString() || 'false',
-                MEILI_HOST: config.meiliHost || this.fw24.getEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_HOST),
-                MEILI_MASTER_KEY: config.meiliMasterKey || this.fw24.getEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_MASTER_KEY),
+                [ SEARCH_INDEXER_ENV_KEYS.ENABLED ]: config.enabled?.toString() || 'false',
+                [ SEARCH_INDEXER_ENV_KEYS.MEILI_HOST ]: config.meiliHost || this.fw24.getEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_HOST),
+                [ SEARCH_INDEXER_ENV_KEYS.MEILI_MASTER_KEY ]: config.meiliMasterKey || this.fw24.getEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_MASTER_KEY),
             };
             specificQueueProps = config.queueProps;
             specificSqsEventSourceProps = config.sqsEventSourceProps;
@@ -460,6 +460,8 @@ export class DynamoDBConstruct implements FW24Construct {
     private async setupSearchIndexingProcessing(config: SearchIndexingConfig, tableInstance: TableV2) {
         // Set search indexing configuration in environment variables for lambda functions
         this.setupSearchIndexingEnvironmentVariables(config);
+
+        this.logger.info('Setting up search indexing processing for table:', this.dynamoDBConfig.table.name);
 
         // Create QueueLambda for processing search indexing events from the stream topic
         // No specific resourceAccess needed for the default search indexer from here,
