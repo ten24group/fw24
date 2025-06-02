@@ -2,7 +2,7 @@ import {  Schema } from "electrodb";
 import { BaseEntityService, EntitySchema, TIOSchemaAttribute, TIOSchemaAttributesMap } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
 import { formatEntityAttributesForDetail } from "./util";
-import { IEntityPageAction } from "../../entity/base-entity";
+import { IEntityPageAction, IEntityPageColumnConfig } from "../../entity/base-entity";
 
 export type ViewEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string;
@@ -11,6 +11,7 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
     properties: TIOSchemaAttributesMap<S>;
     actions?: IEntityPageAction[];
     breadcrumbs?: Array<{ label: string; url?: string }>;
+    columnsConfig?: IEntityPageColumnConfig;
 }
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
@@ -53,12 +54,11 @@ export function makeViewEntityDetailConfig<S extends EntitySchema<string, string
     options: ViewEntityPageOptions<S>,
     entityService: BaseEntityService<S>
 ){
-
     const{ entityName, properties, CRUDApiPath } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
 
-    const detailsPageConfig = {
+    const detailsPageConfig: any = {
         detailApiConfig: {
             apiMethod: `GET`,
             responseKey: entityNameCamel,
@@ -68,8 +68,12 @@ export function makeViewEntityDetailConfig<S extends EntitySchema<string, string
     }
 
     const formattedProps = formatEntityAttributesForDetail(Array.from(properties.values()), entityService);
-
     detailsPageConfig.propertiesConfig.push(...formattedProps);
+
+    // Add columnsConfig if provided
+    if (options.columnsConfig) {
+        detailsPageConfig.columnsConfig = options.columnsConfig;
+    }
 
     return detailsPageConfig;
 }

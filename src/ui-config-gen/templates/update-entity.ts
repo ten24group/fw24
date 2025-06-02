@@ -1,7 +1,7 @@
 import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
 import { formatEntityAttributesForUpdate } from "./util";
-import { IEntityPageAction } from "../../entity/base-entity";
+import { IEntityPageAction, IEntityPageColumnConfig } from "../../entity/base-entity";
 export type UpdateEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string,
     entityNamePlural: string,
@@ -9,6 +9,7 @@ export type UpdateEntityPageOptions<S extends EntitySchema<string, string, strin
     properties: TIOSchemaAttributesMap<S>,
     actions?: IEntityPageAction[],
     breadcrumbs?: Array<{ label: string; url?: string }>,
+    columnsConfig?: IEntityPageColumnConfig,
 };
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
@@ -73,9 +74,6 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     return {
         pageTitle:  `Update ${entityNamePascalCase}`,
         pageType:   'form',
-        cardStyle: {
-            width: '50%'
-        },
         breadcrumbs: breadcrumbs || [],
         pageHeaderActions: pageHeaderActions,
         formPageConfig: {
@@ -102,7 +100,7 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
 
-    const formPageConfig = {
+    const formPageConfig: any = {
         apiConfig: {
             apiMethod: `PATCH`,
             responseKey: entityNameCamel,
@@ -115,11 +113,16 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
         },
         formButtons: [ "submit", "reset"],
         propertiesConfig: [] as any[],
-    }
+    };
 
     const formattedProps = formatEntityAttributesForUpdate(Array.from(properties.values()), entityService);
 
     formPageConfig.propertiesConfig.push(...formattedProps);
+
+    // Add columnsConfig if provided
+    if (options.columnsConfig) {
+        formPageConfig.columnsConfig = options.columnsConfig;
+    }
 
     return formPageConfig;
 }
