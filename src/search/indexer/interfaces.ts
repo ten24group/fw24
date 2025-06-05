@@ -7,6 +7,7 @@
  */
 export const SEARCH_INDEXER_ENV_KEYS = {
   ENABLED: 'SEARCH_INDEXER_ENABLED',
+  TABLE_NAME_ENV_KEY: 'TABLE_NAME_ENV_KEY', // this will hold a pointer to the actual table name key in the environment.
   MEILI_HOST: 'MEILI_HOST',
   MEILI_MASTER_KEY: 'MEILI_MASTER_KEY'
 } as const;
@@ -18,5 +19,4 @@ export interface SearchIndexEntry {
   data: any;
   id: string;
   timestamp?: string;
-  version?: string;
 } 

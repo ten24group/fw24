@@ -1186,8 +1186,14 @@ export class DIContainer implements IDIContainer {
 
     public resolveSearchEngine(): BaseSearchEngine {
         if (!this.searchEngine) {
+
+            if (this.parent) {
+                return this.parent.resolveSearchEngine();
+            }
+
             throw new Error('Search engine not configured. Please call setSearchEngine() first.');
         }
+
         return this.searchEngine;
     }
 }

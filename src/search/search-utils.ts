@@ -1,58 +1,43 @@
 
 export interface MakeEntitySearchIndexNameOptions {
   entityName: string,
-  version?: string,
-  environment?: string,
-  application?: string,
-  tenant?: string,
+  tableName: string
 }
 
+
 /**
- * Makes a search index name for an entity based on provided options.
- * The name is constructed by joining the entity name, version, environment, application, and tenant
- * with hyphens, filtering out any empty values, and appending '-search-index'.
- * All parts are converted to lowercase.
- *
- * @param options - The options for the search index name.
- * @param options.entityName - The name of the entity (required).
- * @param options.version - The version of the entity or schema (optional).
- * @param options.environment - The environment identifier (optional).
- * @param options.application - The application identifier (optional).
- * @param options.tenant - The tenant identifier (optional).
- * @returns The generated search index name.
- *
+ * Creates a standardized search index name for an entity
+ * 
+ * @param options - Configuration options for creating the index name
+ * @param options.entityName - The name of the entity (e.g., 'User', 'Product')
+ * @param options.tableName - The name of the database table (e.g., 'plusfan', 'myapp')
+ * @returns A lowercase, hyphen-separated index name
+ * 
  * @example
  * ```typescript
- * // Example usage:
+ * // Create index name for User entity in plusfan table
  * const indexName = makeEntitySearchIndexName({
  *   entityName: 'User',
- *   tenant: 'ten24',
- *   environment: 'dev',
- *   application: 'backend'
+ *   tableName: 'plusfan'
  * });
- * // indexName will be 'user-dev-backend-ten24-search-index'
- *
- * const simpleIndexName = makeEntitySearchIndexName({
- *   entityName: 'Product'
+ * // Returns: 'plusfan-user'
+ * 
+ * // Create index name for Product entity in ecommerce table
+ * const productIndex = makeEntitySearchIndexName({
+ *   entityName: 'Product',
+ *   tableName: 'ecommerce'
  * });
- * // simpleIndexName will be 'product-search-index'
+ * // Returns: 'ecommerce-product'
  * ```
  */
 export function makeEntitySearchIndexName({
   entityName,
-  version,
-  environment,
-  application,
-  tenant,
+  tableName
 }: MakeEntitySearchIndexNameOptions) {
 
   const indexName = [
+    tableName,
     entityName.toLowerCase(),
-    version,
-    environment,
-    application,
-    tenant,
-    'search-index'
   ].filter(Boolean).join('-').toLowerCase();
 
   return indexName;

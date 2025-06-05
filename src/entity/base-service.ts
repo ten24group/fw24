@@ -14,6 +14,7 @@ import { UpdateEntityOperators, createEntity, deleteEntity, getBatchEntity, getE
 import { EntitySchemaValidator } from "./entity-schema-validator";
 import { DatabaseError, EntityValidationError } from './errors';
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
+import { InternalServerError, ServerError } from "../errors";
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
@@ -64,8 +65,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         protected readonly diContainer: IDIContainer = DIContainer.ROOT,
     ) { }
 
+    protected getTableName(): string {
+        if (!this.entityConfigurations.table) {
+            throw new InternalServerError(`Table name is required for entity: ${this.getEntityName()}`);
+        }
+        return this.entityConfigurations.table;
+    }
 
-    public getEntitySearchConfig(ctx?: ExecutionContext<any>) {
+
+    public getEntitySearchConfig(_ctx?: ExecutionContext<any>) {
 
         const schema = this.getEntitySchema();
 
@@ -78,10 +86,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         searchConfig.indexConfig.indexName = searchConfig.indexConfig.indexName || makeEntitySearchIndexName({
             entityName: schema.model.entity,
-            version: schema.model.version,
-            environment: ctx?.actor?.environmentId,
-            tenant: ctx?.actor?.tenantId,
-            application: ctx?.actor?.applicationId
+            tableName: this.getTableName(),
         });
 
         searchConfig.indexConfig.primaryKey = searchConfig.indexConfig.primaryKey || this.getEntityPrimaryIdPropertyName();

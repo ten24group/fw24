@@ -19,6 +19,7 @@ import { TopicConstruct, ITopicConstructConfig } from "./topic";
 import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
 import { QueueLambda } from "./queue-lambda";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
+import { removeEmpty } from "../utils";
 /**
  * Configuration for search indexing.
  */
@@ -224,7 +225,7 @@ export class DynamoDBConstruct implements FW24Construct {
 
         // Output the table instance
         this.fw24.setConstructOutput(this, appQualifiedTableName, tableInstance, OutputType.TABLE, 'tableName');
-        this.fw24.setEnvironmentVariable(appQualifiedTableName, tableInstance.tableName, `${OutputType.TABLE}`);
+        this.fw24.setEnvironmentVariable(appQualifiedTableName, tableInstance.tableName, 'table');
 
         // Register the table instance as a global container
         fw24.addDynamoTable(appQualifiedTableName, tableInstance);
@@ -236,9 +237,12 @@ export class DynamoDBConstruct implements FW24Construct {
                 || this.dynamoDBConfig.table.audit?.enabled
                 || this.dynamoDBConfig.table.searchIndexing?.enabled
             )
-            && tableInstance.tableStreamArn
         ) {
-            this.setupStreamProcessing(tableInstance);
+            if (tableInstance.tableStreamArn) {
+                this.setupStreamProcessing(tableInstance);
+            } else {
+                this.logger.warn(`Stream ARN not found for table ${this.dynamoDBConfig.table.name}, cannot set up stream processing`);
+            }
         }
 
         if (this.dynamoDBConfig.table.audit?.enabled) {
@@ -317,49 +321,34 @@ export class DynamoDBConstruct implements FW24Construct {
         const isAuditConfig = (c: any): c is AuditConfig => c.type !== undefined || c.cloudwatchOptions !== undefined || c.dynamodbstreamOptions !== undefined;
         const isSearchConfig = (c: any): c is SearchIndexingConfig => c.meiliHost !== undefined || c.meiliMasterKey !== undefined;
 
-        let specificEnvVars: Record<string, string> = {};
         let specificQueueProps: QueueProps | undefined;
         let specificSqsEventSourceProps: SqsEventSourceProps | undefined;
         let customLambdaProps: LambdaFunctionProps | undefined;
 
         if (isAuditConfig(config)) {
-            specificEnvVars = {
-                AUDIT_ENABLED: config.enabled?.toString() || 'false',
-                AUDIT_TYPE: config.type || AuditLoggerType.CLOUDWATCH,
-                ...(resourceAccess?.tables?.[ 0 ]?.name ? { AUDIT_TABLE_NAME: resourceAccess.tables[ 0 ].name } : {})
-            };
+
+            customLambdaProps = config.lambdaFunctionProps;
             specificQueueProps = config.dynamodbstreamOptions?.queueProps;
             specificSqsEventSourceProps = config.dynamodbstreamOptions?.sqsEventSourceProps;
-            customLambdaProps = config.lambdaFunctionProps;
         } else if (isSearchConfig(config)) {
-            specificEnvVars = {
-                [ SEARCH_INDEXER_ENV_KEYS.ENABLED ]: config.enabled?.toString() || 'false',
-                [ SEARCH_INDEXER_ENV_KEYS.MEILI_HOST ]: config.meiliHost || this.fw24.getEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_HOST),
-                [ SEARCH_INDEXER_ENV_KEYS.MEILI_MASTER_KEY ]: config.meiliMasterKey || this.fw24.getEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_MASTER_KEY),
-            };
+
+            customLambdaProps = config.lambdaFunctionProps;
             specificQueueProps = config.queueProps;
             specificSqsEventSourceProps = config.sqsEventSourceProps;
-            customLambdaProps = config.lambdaFunctionProps;
         }
 
+        customLambdaProps = customLambdaProps || {} as LambdaFunctionProps;
 
-        const lambdaFunctionProps = customLambdaProps ? {
+        const lambdaFunctionProps = {
             ...customLambdaProps,
+            entry: customLambdaProps.entry || defaultHandlerEntry,
             environmentVariables: {
                 ...environmentVariables, // Base env vars
-                ...specificEnvVars, // Consumer specific default env vars
                 ...customLambdaProps.environmentVariables, // Custom env vars (can override)
             },
             resourceAccess: {
                 ...resourceAccess, // Base resource access
                 ...customLambdaProps.resourceAccess, // Custom resource access (can override/extend)
-            },
-        } : {
-            entry: defaultHandlerEntry,
-            resourceAccess: resourceAccess,
-            environmentVariables: {
-                ...environmentVariables, // Base env vars
-                ...specificEnvVars, // Consumer specific default env vars
             },
         };
 
@@ -388,105 +377,89 @@ export class DynamoDBConstruct implements FW24Construct {
 
     private async setupAuditProcessing(config: AuditConfig, tableInstance: TableV2) {
         // Set audit configuration in environment variables for lambda functions
-        this.setupAuditEnvironmentVariables(config);
+        const envVars: Record<string, string> = {
+            [ AUDIT_ENV_KEYS.TYPE ]: config.type || AuditLoggerType.CLOUDWATCH,
+            [ AUDIT_ENV_KEYS.ENABLED ]: config.enabled?.toString() || 'false',
+        };
+
+        if (config.type === AuditLoggerType.DYNAMODB) {
+            envVars[ AUDIT_ENV_KEYS.AUDIT_TABLE_NAME ] = config.dynamodbstreamOptions?.auditTableName || this.dynamoDBConfig.table.name;
+        } else {
+            envVars[ AUDIT_ENV_KEYS.REGION ] = config.cloudwatchOptions?.region || this.fw24.getConfig().region as string;
+            envVars[ AUDIT_ENV_KEYS.LOG_GROUP_NAME ] = config.cloudwatchOptions?.logGroupName || `/audit/logs/${this.fw24.getConfig().name}`;
+        }
 
         let auditResourceAccess: any = {};
+
         if (config.type === AuditLoggerType.DYNAMODB) {
+
+            const tableName = envVars[ AUDIT_ENV_KEYS.AUDIT_TABLE_NAME ];
+
             auditResourceAccess = {
                 tables: [ {
-                    name: this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME),
+                    name: tableName,
                     access: [ 'readwrite' ],
                 } ],
             };
+
+            envVars[ AUDIT_ENV_KEYS.AUDIT_TABLE_NAME ] = tableName;
         }
+
+        removeEmpty(envVars);
 
         this.setupStreamEventConsumers(
             tableInstance,
             'entity-audit',
             config,
             join(__dirname, '../audit/function/dynamodb-stream-handler.js'),
-            {}, // No base environment variables from here, they are set globally or in specificEnvVars
+            envVars,
             auditResourceAccess
         );
 
-        // Handle setup for various audit types
-        switch (config.type) {
-            case AuditLoggerType.DYNAMODB:
-                // Configure the audit logging table
-                const auditTableName = this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME);
-                this.logger.debug(`Setting up DynamoDB audit logging table with name ${auditTableName}`, config);
-                break;
-            case AuditLoggerType.CONSOLE:
-                this.logger.info('No setup required for console audit');
-                break;
-            case AuditLoggerType.CLOUDWATCH:
-            default:
-                this.setupCloudWatchAuditor(config);
-                break;
-        }
-    }
+        this.logger.info('Setting up audit processing for table:', this.dynamoDBConfig.table.name);
 
-    private setupCloudWatchAuditor(config: AuditConfig): void {
-        const logGroupName = this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.LOG_GROUP_NAME);
-        this.logger.info(`Setting up CloudWatch audit log group with name ${logGroupName}`);
-        new LogGroup(this.mainStack, this.fw24.appName + '-audit-log-group', {
-            logGroupName: logGroupName,
-            retention: RetentionDays.ONE_YEAR,
-            removalPolicy: RemovalPolicy.DESTROY,
-            ...config.cloudwatchOptions?.logGroupOptions
-        });
-    }
-
-    private setupAuditEnvironmentVariables(config: AuditConfig): void {
-        this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.ENABLED, config.enabled?.toString() || 'false');
-        this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.TYPE, config.type || AuditLoggerType.CLOUDWATCH);
-
-        if (config.type === AuditLoggerType.DYNAMODB) {
-            this.fw24.setEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME, config.dynamodbstreamOptions?.auditTableName || this.dynamoDBConfig.table.name);
-        }
-
-        // Default to CLOUDWATCH if no type is set, or it is set to CLOUDWATCH
         if (!config.type || config.type === AuditLoggerType.CLOUDWATCH) {
-            this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.LOG_GROUP_NAME,
-                config.cloudwatchOptions?.logGroupName || `/audit/logs/${this.fw24.getConfig().name}`
-            );
-            this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.REGION,
-                config.cloudwatchOptions?.region || this.fw24.getConfig().region
-            );
-        }
 
+            const logGroupName = envVars[ AUDIT_ENV_KEYS.LOG_GROUP_NAME ];
+
+            this.logger.info(`Setting up CloudWatch audit log group with name ${logGroupName}`);
+
+            new LogGroup(this.mainStack, this.fw24.appName + '-audit-log-group', {
+                logGroupName: logGroupName,
+                retention: RetentionDays.ONE_YEAR,
+                removalPolicy: RemovalPolicy.DESTROY,
+                ...config.cloudwatchOptions?.logGroupOptions
+            });
+        }
     }
 
     private async setupSearchIndexingProcessing(config: SearchIndexingConfig, tableInstance: TableV2) {
         // Set search indexing configuration in environment variables for lambda functions
-        this.setupSearchIndexingEnvironmentVariables(config);
-
         this.logger.info('Setting up search indexing processing for table:', this.dynamoDBConfig.table.name);
 
+        const appQualifiedTableName = ensureNoSpecialChars(ensureSuffix(this.dynamoDBConfig.table.name, `table`));
+
+        const envVars = {
+
+            // pointer to the actual table name env variable
+            [ SEARCH_INDEXER_ENV_KEYS.TABLE_NAME_ENV_KEY ]: appQualifiedTableName,
+            // actual table name
+            [ appQualifiedTableName ]: this.fw24.getEnvironmentVariable(appQualifiedTableName, 'table'),
+
+            [ SEARCH_INDEXER_ENV_KEYS.ENABLED ]: config.enabled?.toString() || 'false',
+            [ SEARCH_INDEXER_ENV_KEYS.MEILI_HOST ]: config.meiliHost || this.fw24.getEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_HOST),
+            [ SEARCH_INDEXER_ENV_KEYS.MEILI_MASTER_KEY ]: config.meiliMasterKey || this.fw24.getEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_MASTER_KEY),
+        }
+
         // Create QueueLambda for processing search indexing events from the stream topic
-        // No specific resourceAccess needed for the default search indexer from here,
-        // as it doesn't interact with AWS resources other than what's configured via env vars (Meili).
-        // Custom lambdas can define their own.
         this.setupStreamEventConsumers(
             tableInstance,
             'search-indexer',
             config,
-            join(__dirname, '../search/indexer/search-indexer-handler.js'),
-            {}, // No base environment variables from here
+            join(__dirname, '../search/indexer/functions/default-dynamo-stream-search-indexer-handler.js'),
+            envVars,
             {}  // No base resource access
         );
-    }
-
-    private setupSearchIndexingEnvironmentVariables(config: SearchIndexingConfig): void {
-        this.fw24.setGlobalEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.ENABLED, config.enabled?.toString() || 'false');
-
-        // Set MeiliSearch specific environment variables
-        if (config.meiliHost) {
-            this.fw24.setGlobalEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_HOST, config.meiliHost);
-        }
-        if (config.meiliMasterKey) {
-            this.fw24.setGlobalEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_MASTER_KEY, config.meiliMasterKey);
-        }
     }
 
 }

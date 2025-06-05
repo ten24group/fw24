@@ -12,9 +12,10 @@ export {
 } from './services';
 
 export {
-  DefaultSearchIndexerHandler,
-  SEARCH_INDEXER_ENV_KEYS,
   SearchIndexEntry,
+  SEARCH_INDEXER_ENV_KEYS,
+  BaseSearchIndexer,
+  DynamoDBStreamSearchIndexer,
 } from './indexer';
 
 export {

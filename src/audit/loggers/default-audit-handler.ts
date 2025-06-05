@@ -1,25 +1,26 @@
-import { DynamoDBRecord, } from 'aws-lambda';
-import { BaseDynamoDBStreamHandler, EVENT_TYPE_MAP } from '../../core/runtime/base-dynamodb-stream-handler';
+import { DynamoDBStreamEvent, SQSEvent } from 'aws-lambda';
 
-import { AttributeValue } from '@aws-sdk/client-dynamodb';
-import { unmarshall } from '@aws-sdk/util-dynamodb';
+import { BaseSQSEventProcessor } from '../../core/runtime/event-processor/base-sqs-event-processor';
+import { DynamoDBEventDataExtractor } from '../../core/runtime/event-processor/dynamodb-event-data-extractor';
+import { BaseEventRecord, ChangeStreamPayload } from '../../core/types/event-processor-types';
 import { createLogger } from '../../logging';
 import { resolveEnvValueFor } from '../../utils';
 import { AUDIT_ENV_KEYS, AuditEntry, AuditLoggerType, IAuditLogger } from '../interfaces';
 import { AuditLoggerFactory } from './factory';
 
-
-
 /**
- * Base audit handler that extends AbstractLambdaHandler
+ * Default audit handler that extends BaseSQSEventProcessor
  * Custom audit handlers can extend this to add custom processing while reusing framework utilities
  */
-export class DefaultAuditHandler extends BaseDynamoDBStreamHandler {
+export class DefaultAuditHandler extends BaseSQSEventProcessor<DynamoDBEventDataExtractor> {
 
   private auditLogger?: IAuditLogger;
 
   constructor() {
-    super();
+    super(new DynamoDBEventDataExtractor());
+  }
+
+  async initialize(_event: DynamoDBStreamEvent | SQSEvent): Promise<void> {
   }
 
   // override this method to initialize custom audit-logger
@@ -47,7 +48,29 @@ export class DefaultAuditHandler extends BaseDynamoDBStreamHandler {
     return this.auditLogger!;
   }
 
-  protected async processRecord(record: DynamoDBRecord): Promise<void> {
+  protected async preprocessRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<BaseEventRecord<ChangeStreamPayload> | null> {
+
+    const { entityName, eventType } = record;
+
+    if (![ 'create', 'update', 'delete' ].includes(eventType)) {
+      this.logger.warn('Skipping record with event type', { eventType });
+      return null;
+    }
+
+    if (!entityName) {
+      this.logger.warn('No entity name found in record', { record });
+      return null;
+    }
+
+    if (entityName === 'auditLog') {
+      this.logger.warn('Skipping audit log', { record });
+      return null;
+    }
+
+    return record;
+  }
+
+  protected async processRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<void> {
 
     const auditEntry = this.makeAditEntry(record);
 
@@ -61,39 +84,8 @@ export class DefaultAuditHandler extends BaseDynamoDBStreamHandler {
     this.logger.debug('Successfully wrote audit entry', { auditEntry });
   }
 
-  protected makeAditEntry(record: DynamoDBRecord): AuditEntry | undefined {
-    if (!record.dynamodb) {
-      this.logger.warn('Record does not contain DynamoDB data', { record });
-      return;
-    }
-
-    const eventName = record.eventName as keyof typeof EVENT_TYPE_MAP;
-    if (!eventName || !EVENT_TYPE_MAP[ eventName ]) {
-      this.logger.warn('Unknown event type', { eventName });
-      return;
-    }
-
-    // Get the old and new images of the record
-    const oldImage = record.dynamodb.OldImage
-      ? unmarshall(record.dynamodb.OldImage as Record<string, AttributeValue>)
-      : undefined;
-    const newImage = record.dynamodb.NewImage
-      ? unmarshall(record.dynamodb.NewImage as Record<string, AttributeValue>)
-      : undefined;
-
-    // Get entity name from __edb_e__
-    const entityName = (newImage?.__edb_e__ || oldImage?.__edb_e__) as string;
-
-    if (!entityName) {
-      this.logger.warn('No entity name found in record', { record });
-      return;
-    }
-
-    if (entityName === 'auditLog') {
-      this.logger.info('Skipping audit log', { record });
-      return;
-    }
-
+  protected makeAditEntry(record: BaseEventRecord<ChangeStreamPayload>): AuditEntry | undefined {
+    const { entityName, eventType, timestamp, entityId, payload: { newImage, oldImage } } = record;
     // Get only the changed properties
     const changes = getChangedProperties(oldImage, newImage);
 
@@ -105,14 +97,14 @@ export class DefaultAuditHandler extends BaseDynamoDBStreamHandler {
 
     // Create audit entry
     const auditEntry: AuditEntry = {
-      timestamp: new Date().toISOString(),
+      timestamp: (timestamp ? new Date(timestamp) : new Date()).toISOString(),
       entityName,
-      eventType: EVENT_TYPE_MAP[ eventName ],
+      eventType,
       data: changes,
       identifiers: {
-        id: (newImage?.id || oldImage?.id) as string
+        id: entityId as string
       },
-      actor: newImage?.updatedBy
+      actor: newImage?.updatedBy // TODO: better actor context
     };
 
     return auditEntry;

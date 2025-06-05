@@ -1,4 +1,3 @@
-import { DynamoDBStreamEvent, SQSEvent } from 'aws-lambda';
 import { DefaultAuditHandler } from '../loggers/default-audit-handler';
 
 /**
