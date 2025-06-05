@@ -12,7 +12,7 @@ import { AuditLoggerFactory } from './factory';
  * Default audit handler that extends BaseSQSEventProcessor
  * Custom audit handlers can extend this to add custom processing while reusing framework utilities
  */
-export class DefaultAuditHandler extends BaseSQSEventProcessor<DynamoDBEventDataExtractor> {
+export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEventDataExtractor> {
 
   private auditLogger?: IAuditLogger;
 
@@ -48,6 +48,11 @@ export class DefaultAuditHandler extends BaseSQSEventProcessor<DynamoDBEventData
     return this.auditLogger!;
   }
 
+  protected getAllowedEntityNames(): string[] | undefined {
+    const allowedEntityNames = resolveEnvValueFor({ key: AUDIT_ENV_KEYS.ALLOWED_ENTITY_NAMES });
+    return allowedEntityNames ? allowedEntityNames.split(',') : undefined;
+  }
+
   protected async preprocessRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<BaseEventRecord<ChangeStreamPayload> | null> {
 
     const { entityName, eventType } = record;
@@ -62,7 +67,16 @@ export class DefaultAuditHandler extends BaseSQSEventProcessor<DynamoDBEventData
       return null;
     }
 
-    if (entityName === 'auditLog') {
+    const allowedEntityNames = this.getAllowedEntityNames();
+    if (allowedEntityNames && allowedEntityNames.length > 0) {
+
+      if (!allowedEntityNames.includes(entityName)) {
+        this.logger.warn('Skipping audit log for entity not in allowed list', { entityName, allowedEntityNames });
+        return null;
+      }
+
+    } else if (entityName === 'auditLog') {
+
       this.logger.warn('Skipping audit log', { record });
       return null;
     }

@@ -13,6 +13,11 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
   abstract searchEngine: BaseSearchEngine;
 
 
+  // override this to provide a list of allowed entity names
+  protected getAllowedEntityNames(): string[] | undefined {
+    return undefined;
+  }
+
   protected async preprocessRecord(record: BaseEventRecord<any>): Promise<BaseEventRecord<any> | null> {
 
     const { entityName, eventType } = record;
@@ -27,7 +32,17 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
       return null;
     }
 
-    if (entityName === 'auditLog' || entityName.includes('search-index')) {
+    const allowedEntityNames = this.getAllowedEntityNames();
+
+    if (allowedEntityNames && allowedEntityNames.length > 0) {
+
+      if (!allowedEntityNames.includes(entityName)) {
+        this.logger.warn('Skipping search indexing for entity not in allowed list', { entityName, allowedEntityNames });
+        return null;
+      }
+
+    } else if (entityName === 'auditLog' || entityName.includes('search-index')) {
+
       this.logger.warn('Skipping search indexing for system entity', { entityName });
       return null;
     }

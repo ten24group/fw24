@@ -20,6 +20,23 @@ import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
 import { QueueLambda } from "./queue-lambda";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
 import { removeEmpty } from "../utils";
+
+export type SearchEngineConfig = {
+    type: 'meili',
+    host: string,
+    masterKey: string
+}
+// uncomment when implemented
+// } | {
+//     type: 'elasticsearch', // not implemented yet
+//     host: string,
+//     apiKey: string
+// } | {
+//     type: 'algolia', // not implemented yet
+//     appId: string,
+//     apiKey: string
+// }
+
 /**
  * Configuration for search indexing.
  */
@@ -30,13 +47,25 @@ export interface SearchIndexingConfig extends IConstructConfig {
      */
     enabled?: boolean;
     /**
-     * MeiliSearch host URL
+     * List of allowed entity names to be indexed.
+     * If not provided, all entities will be indexed. except `auditLog`.
      */
-    meiliHost?: string;
+    allowedEntityNames?: string[];
     /**
-     * MeiliSearch master key
+     * Search engine configuration that defines which search provider to use and its connection details.
+     * 
+     * Currently supports MeiliSearch with plans to extend to Elasticsearch and Algolia.
+     * 
+     * @example
+     * ```typescript
+     * engineConfig: {
+     *   type: 'meili',
+     *   host: 'https://your-meilisearch-instance.com',
+     *   masterKey: 'your-master-key'
+     * }
+     * ```
      */
-    meiliMasterKey?: string;
+    engineConfig: SearchEngineConfig;
     /**
      * Custom lambda function properties for search indexing processing.
      * When provided, completely replaces the default search indexer handler.
@@ -99,7 +128,7 @@ export interface IDynamoDBConfig extends IConstructConfig {
         /**
          * Search indexing configuration for the DynamoDB table.
          */
-        searchIndexing?: SearchIndexingConfig;
+        searchIndexing?: SearchIndexingConfig[];
     };
 }
 
@@ -138,14 +167,15 @@ export interface AuditConfig extends IConstructConfig {
      */
     enabled?: boolean;
     /**
+     * List of allowed entity names to be audited.
+     * If not provided, all entities will be audited. except `auditLog`.
+     */
+    allowedEntityNames?: string[];
+    /**
      * The type of audit logger to use.
      * @default 'console'
      */
     type?: AuditLoggerType;
-    /**
-     * Custom logger implementation
-     */
-    customLogger?: IAuditLogger;
     /**
      * Custom lambda function properties for audit processing.
      * When provided, completely replaces the default audit handler.
@@ -230,12 +260,15 @@ export class DynamoDBConstruct implements FW24Construct {
         // Register the table instance as a global container
         fw24.addDynamoTable(appQualifiedTableName, tableInstance);
 
+        const hasAuditEnabled = this.dynamoDBConfig.table.audit?.enabled;
+        const hasSearchIndexingEnabled = this.dynamoDBConfig.table.searchIndexing?.some(config => config.enabled);
+
         // Setup stream processing if enabled or audit is enabled or search indexing is enabled and stream ARN exists
         if (
             (
                 this.dynamoDBConfig.table.stream?.enabled
-                || this.dynamoDBConfig.table.audit?.enabled
-                || this.dynamoDBConfig.table.searchIndexing?.enabled
+                || hasAuditEnabled
+                || hasSearchIndexingEnabled
             )
         ) {
             if (tableInstance.tableStreamArn) {
@@ -249,8 +282,10 @@ export class DynamoDBConstruct implements FW24Construct {
             this.setupAuditProcessing(this.dynamoDBConfig.table.audit, tableInstance);
         }
 
-        if (this.dynamoDBConfig.table.searchIndexing?.enabled) {
-            this.setupSearchIndexingProcessing(this.dynamoDBConfig.table.searchIndexing, tableInstance);
+        if (hasSearchIndexingEnabled) {
+            this.dynamoDBConfig.table.searchIndexing?.forEach(config => {
+                this.setupSearchIndexingProcessing(config, tableInstance);
+            });
         }
     }
 
@@ -382,6 +417,10 @@ export class DynamoDBConstruct implements FW24Construct {
             [ AUDIT_ENV_KEYS.ENABLED ]: config.enabled?.toString() || 'false',
         };
 
+        if (config.allowedEntityNames && config.allowedEntityNames.length > 0) {
+            envVars[ AUDIT_ENV_KEYS.ALLOWED_ENTITY_NAMES ] = config.allowedEntityNames.join(',');
+        }
+
         if (config.type === AuditLoggerType.DYNAMODB) {
             envVars[ AUDIT_ENV_KEYS.AUDIT_TABLE_NAME ] = config.dynamodbstreamOptions?.auditTableName || this.dynamoDBConfig.table.name;
         } else {
@@ -439,16 +478,21 @@ export class DynamoDBConstruct implements FW24Construct {
 
         const appQualifiedTableName = ensureNoSpecialChars(ensureSuffix(this.dynamoDBConfig.table.name, `table`));
 
-        const envVars = {
+        const { enabled, engineConfig: { type: engineType, host: engineHost, masterKey: engineMasterKey } } = config;
 
+        const envVars = {
             // pointer to the actual table name env variable
             [ SEARCH_INDEXER_ENV_KEYS.TABLE_NAME_ENV_KEY ]: appQualifiedTableName,
             // actual table name
             [ appQualifiedTableName ]: this.fw24.getEnvironmentVariable(appQualifiedTableName, 'table'),
 
-            [ SEARCH_INDEXER_ENV_KEYS.ENABLED ]: config.enabled?.toString() || 'false',
-            [ SEARCH_INDEXER_ENV_KEYS.MEILI_HOST ]: config.meiliHost || this.fw24.getEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_HOST),
-            [ SEARCH_INDEXER_ENV_KEYS.MEILI_MASTER_KEY ]: config.meiliMasterKey || this.fw24.getEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_MASTER_KEY),
+            [ SEARCH_INDEXER_ENV_KEYS.ENABLED ]: enabled?.toString() || 'false',
+            [ SEARCH_INDEXER_ENV_KEYS.MEILI_HOST ]: engineHost || engineType === 'meili' ? this.fw24.getEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_HOST) : undefined,
+            [ SEARCH_INDEXER_ENV_KEYS.MEILI_MASTER_KEY ]: engineMasterKey || engineType === 'meili' ? this.fw24.getEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_MASTER_KEY) : undefined,
+        }
+
+        if (config.allowedEntityNames && config.allowedEntityNames.length > 0) {
+            envVars[ SEARCH_INDEXER_ENV_KEYS.ALLOWED_ENTITY_NAMES ] = config.allowedEntityNames.join(',');
         }
 
         // Create QueueLambda for processing search indexing events from the stream topic

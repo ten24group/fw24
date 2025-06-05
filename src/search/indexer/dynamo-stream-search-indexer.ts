@@ -20,6 +20,11 @@ export class DynamoDBStreamSearchIndexer extends BaseSearchIndexer<DynamoDBEvent
     super(new DynamoDBEventDataExtractor());
   }
 
+  protected getAllowedEntityNames(): string[] | undefined {
+    const allowedEntityNames = resolveEnvValueFor({ key: SEARCH_INDEXER_ENV_KEYS.ALLOWED_ENTITY_NAMES });
+    return allowedEntityNames ? allowedEntityNames.split(',') : undefined;
+  }
+
   async initialize(_event: DynamoDBStreamEvent | SQSEvent): Promise<void> {
     const enabled = resolveEnvValueFor({ key: SEARCH_INDEXER_ENV_KEYS.ENABLED });
     this.isEnabled = enabled === 'true';

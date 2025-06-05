@@ -13,6 +13,6 @@ export { ConsoleAuditLogger } from './console';
 export { DummyAuditLogger } from './dummy';
 
 export {
-  DefaultAuditHandler,
+  DynamoDBStreamAuditLogger as DefaultAuditHandler,
   getChangedProperties,
-} from './default-audit-handler';
+} from './dynamo-db-stream-audit-logger';
