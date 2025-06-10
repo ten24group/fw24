@@ -75,7 +75,7 @@ describe('Entity Search', () => {
 
     const searchService = entityService.getSearchService();
     const engine = searchService.getEngine() as MeiliSearchEngine;
-    const indexName = entityService.getEntitySearchConfig().indexConfig.indexName;
+    const indexName = entityService.getEntitySearchConfig().indexConfig?.indexName;
 
     // Clean up and create index
     try {
@@ -99,7 +99,7 @@ describe('Entity Search', () => {
 
     const searchService = entityService.getSearchService();
     const engine = searchService.getEngine() as MeiliSearchEngine;
-    const indexName = entityService.getEntitySearchConfig().indexConfig.indexName;
+    const indexName = entityService.getEntitySearchConfig().indexConfig?.indexName;
     try {
       await engine.deleteIndex(indexName as string, true);
     } catch { }

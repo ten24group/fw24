@@ -396,9 +396,10 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		const results = await this.getEntityService().search(query, ctx);
 
+		const { hits, ...rest } = results;
 		const response = {
-			...results,
-			items: results.hits,
+			...rest,
+			items: hits,
 		};
 
 		if (req.debugMode) {
@@ -418,7 +419,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	}
 
 	protected parseSearchQuery(params: Record<string, any>): EntitySearchQuery<Sch> {
-		const { q, query, attributes: attributesParam, hitsPerPage, page, facets: facetsParam, sort: sortParam, ...rest } = params;
+		const { q, query, attributes: attributesParam, hitsPerPage, page, facets: facetsParam, sort: sortParam, limit: _legacyLimit, cursor: _legacyCursor, ...rest } = params;
 
 
 		let parsedSelect: string[] | undefined = undefined;

@@ -84,6 +84,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         searchConfig.serviceClass = searchConfig.serviceClass || EntitySearchService;
 
+        if (!searchConfig.indexConfig) {
+            searchConfig.indexConfig = {};
+        }
+
         searchConfig.indexConfig.indexName = searchConfig.indexConfig.indexName || makeEntitySearchIndexName({
             entityName: schema.model.entity,
             tableName: this.getTableName(),
@@ -1591,6 +1595,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
     public async search(query: EntitySearchQuery<S>, ctx?: ExecutionContext) {
         const searchService = this.getSearchService();
+        if (!query.select) {
+            // * Note: we expect an array of attribute names
+            query.select = this.getListingAttributeNames() as any;
+        }
         return searchService.search(query, undefined, ctx);
     }
 }

@@ -138,7 +138,7 @@ export class EntityUIConfigGen {
         // generate UI configs
         services.forEach((service, entityName) => {
 
-            const entitySchema = service.getEntitySchema();
+            const entitySchema = service.getEntitySchema() as EntitySchema<any, any, any>;
             const entityDefaultOpsSchema = service.getOpsDefaultIOSchema();
 
             if (!entitySchema.model.excludeFromAdminCreate) {
@@ -170,6 +170,7 @@ export class EntityUIConfigGen {
                     entityNamePlural: entitySchema.model.entityNamePlural,
                     properties: entityDefaultOpsSchema.list.output,
                     CRUDApiPath: entitySchema.model.CRUDApiPath,
+                    useSearch: Boolean(entitySchema.model.search?.enabled),
                     excludeFromAdminCreate: entitySchema.model.excludeFromAdminCreate,
                     excludeFromAdminUpdate: entitySchema.model.excludeFromAdminUpdate,
                     excludeFromAdminDelete: entitySchema.model.excludeFromAdminDelete,

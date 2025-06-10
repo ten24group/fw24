@@ -24,6 +24,10 @@ export class EntitySearchService<S extends EntitySchema<any, any, any>> extends 
       throw new Error('Search config not found');
     }
 
+    if (!searchConfig.indexConfig) {
+      searchConfig.indexConfig = {};
+    }
+
     return searchConfig.indexConfig;
   }
 

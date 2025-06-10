@@ -24,7 +24,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   }
 
   /**
-   * Creates a new index with the provided configuration
+   * Creates a new index with the provided configuration or ensures existing index has correct settings
    */
   async initIndex(config: SearchIndexConfigExt, synchronous: boolean = false) {
     try {
@@ -32,46 +32,87 @@ export class MeiliSearchEngine extends BaseSearchEngine {
       const idx = config.indexName!;
 
       // Check if index exists
+      let indexExists = false;
       try {
-        const exists = await this.indexExists(idx);
-        if (exists) {
-          return this.client.index(idx);
-        }
+        indexExists = await this.indexExists(idx);
       } catch (error: any) {
         throw new SearchIndexError(`Failed to check index existence: ${idx}`, { error });
       }
 
-      // Create the index with primaryKey if specified
-      const createOptions: { primaryKey?: string } = {};
-      createOptions.primaryKey = config.primaryKey ? config.primaryKey as string : 'id';
+      // If index doesn't exist, create it
+      if (!indexExists) {
 
-      const task = await this.client.createIndex(idx, createOptions);
-      if (!task) {
-        throw new SearchIndexError(`Failed to create index ${idx}`);
-      }
+        const createOptions: { primaryKey?: string } = {};
+        createOptions.primaryKey = config.primaryKey ? config.primaryKey as string : 'id';
 
-      // Wait for the task to complete
-      if (synchronous) {
+        const task = await this.client.createIndex(idx, createOptions);
+        if (!task) {
+          throw new SearchIndexError(`Failed to create index ${idx}`);
+        }
+
+        // Wait for the creation task to complete (required before we can update settings)
         await this.waitForTask(task.taskUid);
       }
 
-      // Apply settings if provided
-      if (config.settings || config.meiliSearchIndexSettings) {
-        const indexSettings = {
-          ...config.settings,
-          ...config.meiliSearchIndexSettings,
-        };
-        await this.updateIndexSettings(idx, indexSettings, synchronous);
-      }
+      // Ensure settings are correctly applied for both new and existing indices
+      return await this.ensureIndexSettings(config, synchronous);
 
-      const index = this.client.index(idx);
-      return index;
     } catch (error: any) {
+
       if (error instanceof SearchIndexError) {
         throw error;
       }
+
       throw new SearchEngineError(`Failed to initialize index: ${error.message}`, { error });
     }
+  }
+
+  /**
+   * Ensures index settings are correct with the provided config and updates if needed
+   */
+  async ensureIndexSettings(config: SearchIndexConfigExt, synchronous: boolean = false) {
+    try {
+      this.validateConfig(config);
+      const idx = config.indexName!;
+
+      // Get the index instance
+      const index = this.client.index(idx);
+
+      // Prepare new settings from config
+      const newSettings = {
+        ...config.settings,
+        ...config.meiliSearchIndexSettings,
+      };
+
+      // Only update if we have settings to apply
+      if (newSettings && Object.keys(newSettings).length > 0) {
+        this.logger.debug(`Updating index settings for ${idx}`);
+        await this.updateIndexSettings(idx, newSettings, synchronous);
+      }
+
+      return index;
+    } catch (error: any) {
+      throw new SearchEngineError(`Failed to ensure index settings: ${error.message}`, { error });
+    }
+  }
+
+  // TODO: need ui to inspect and set these features
+  async setExperimentalFeaturesStatus(features: {
+    metrics: boolean,
+    logsRoute: boolean,
+    containsFilter: boolean,
+    editDocumentsByFunction: boolean,
+    network: boolean
+  }) {
+    // PATCH /experimental-features
+    const response = await this.client.httpRequest.patch({
+      path: `/experimental-features`,
+      body: {
+        features
+      }
+    });
+
+    return response;
   }
 
   /**
