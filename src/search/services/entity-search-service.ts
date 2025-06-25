@@ -18,7 +18,7 @@ export class EntitySearchService<S extends EntitySchema<any, any, any>> extends 
     return this.entityService.getEntitySearchConfig();
   }
 
-  protected getSearchIndexConfig() {
+  public getSearchIndexConfig() {
     const searchConfig = this.getEntitySearchConfig();
     if (!searchConfig) {
       throw new Error('Search config not found');

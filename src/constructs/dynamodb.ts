@@ -504,6 +504,16 @@ export class DynamoDBConstruct implements FW24Construct {
             envVars,
             {}  // No base resource access
         );
+
+        // TODO: look into it later
+        // const systemControllerPath = '/system/search';
+        // if (!this.fw24.hasSystemController(systemControllerPath)) {
+        //     this.fw24.registerSystemController({
+        //         path: systemControllerPath,
+        //         filePath: join(__dirname, '../search/system/search-controller.js'),
+        //     });
+        //     this.logger.info('Search system controller registered.');
+        // }
     }
 
 }

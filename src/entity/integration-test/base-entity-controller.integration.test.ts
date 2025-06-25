@@ -33,7 +33,9 @@ describe('BaseEntityController Search Integration (real MeiliSearch)', () => {
 
   @Service()
   class TestEntityService extends BaseEntityService<typeof entitySchema> {
-    constructor(entityConfigurations: EntityConfiguration) {
+    constructor(entityConfigurations: EntityConfiguration = {
+      table: 'test-table-base-entity-controller-integration-test',
+    }) {
       super(entitySchema, entityConfigurations, DIContainer.ROOT);
     }
   }

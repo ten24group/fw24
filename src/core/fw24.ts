@@ -5,7 +5,7 @@ import type { ITopic } from 'aws-cdk-lib/aws-sns';
 import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
 import { DIContainer } from '../di';
 import { type ILambdaEnvConfig } from '../interfaces';
-import { IApplicationConfig } from '../interfaces/config';
+import { IApplicationConfig, SystemControllerDefinition, SystemUIPageDefinition } from '../interfaces/config';
 import { FW24Construct, OutputType } from '../interfaces/construct';
 import { type IDIContainer } from '../interfaces/di';
 import { createLogger } from '../logging';
@@ -44,7 +44,10 @@ export class Fw24 {
     private readonly globalLambdaLayerNames = new Set<string>();
     private readonly globalLambdaEntryPackages = new Set<string>();
 
-    private constructor() {} // Empty constructor as App is set via setApp()
+    private readonly systemUIConfigs: Map<string, SystemUIPageDefinition> = new Map();
+    private readonly systemControllers: Map<string, SystemControllerDefinition> = new Map();
+
+    private constructor() { } // Empty constructor as App is set via setApp()
 
     static getInstance(): Fw24 {
         if (!Fw24.instance) {
@@ -115,6 +118,7 @@ export class Fw24 {
         this.stacks[ name ] = stack;
         return this;
     }
+
 
     /**
      * Get a stack by name. If the stack does not exist, create it.
@@ -517,8 +521,8 @@ export class Fw24 {
     public getConstructOutput<T>(type: OutputType, name: string): T | undefined {
         // Look through all constructs to find the output
         for (const construct of this.constructs.values()) {
-            if (construct.output?.[type]?.[name]) {
-                return construct.output[type][name] as T;
+            if (construct.output?.[ type ]?.[ name ]) {
+                return construct.output[ type ][ name ] as T;
             }
         }
         return undefined;
@@ -556,4 +560,35 @@ export class Fw24 {
         return this.jwtAuthorizer;
     }
 
+    public registerSystemController(controller: SystemControllerDefinition) {
+        this.systemControllers.set(controller.path, controller);
+    }
+    public hasSystemController(path: string): boolean {
+        return this.systemControllers.has(path);
+    }
+    public getSystemController(path: string): SystemControllerDefinition | undefined {
+        return this.systemControllers.get(path);
+    }
+    public hasSystemControllers(): boolean {
+        return this.systemControllers.size > 0;
+    }
+    public getSystemControllers(): SystemControllerDefinition[] {
+        return Array.from(this.systemControllers.values());
+    }
+
+    public async registerSystemUIConfig(name: string, config: SystemUIPageDefinition) {
+        this.systemUIConfigs.set(name, config);
+    }
+    public hasSystemUIConfig(name: string): boolean {
+        return this.systemUIConfigs.has(name);
+    }
+    public getSystemUIConfig(name: string): SystemUIPageDefinition | undefined {
+        return this.systemUIConfigs.get(name);
+    }
+    public getSystemUIConfigs(): SystemUIPageDefinition[] {
+        return Array.from(this.systemUIConfigs.values());
+    }
+    public hasSystemUIConfigs(): boolean {
+        return this.systemUIConfigs.size > 0;
+    }
 }

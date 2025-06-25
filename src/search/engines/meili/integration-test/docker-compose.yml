@@ -24,3 +24,6 @@ services:
   #     SINGLETON_API_KEY: "xxx_your_master_key" # Use the same key as Meilisearch
   #   depends_on:
   #     - meilisearch
+
+  # enable experimental feature
+  # curl -X PATCH 'http://localhost:7700/experimental-features/' -H 'Authorization: Bearer xxx_your_master_key' -H 'Content-Type: application/json' --data-binary '{"containsFilter": true}'

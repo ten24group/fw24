@@ -1,7 +1,7 @@
 import { APIGatewayEvent, APIGatewayProxyResult, Context, CognitoIdentity, ClientContext, ClientContextClient, ClientContextEnv } from 'aws-lambda';
 import { APIController } from '../core/runtime/api-gateway-controller';
 
-export enum LogLevel {
+export enum LambdaTestHarnessLogLevel {
   SILENT = 0,
   ERROR = 1,
   WARN = 2,
@@ -43,11 +43,15 @@ export interface TestContextOptions {
 }
 
 export interface LambdaTestHarnessOptions {
-  logLevel?: LogLevel;
+  logLevel?: LambdaTestHarnessLogLevel;
   context?: TestContextOptions;
+  /**
+   * List of module paths to require before running tests, simulating Lambda layer entry packages
+   */
+  entryPackages?: string[];
 }
 
-export type LambdaHandler = (event: any, context: any) => Promise<any>;
+type LambdaHandler = (event: any, context: any) => Promise<any>;
 
 // Define a type for controllers that have a controllerName property
 interface ControllerWithName {
@@ -58,19 +62,31 @@ interface ControllerWithName {
 export class LambdaTestHarness {
   private controller: ControllerWithName;
   private context: any;
-  private logLevel: LogLevel;
+  private logLevel: LambdaTestHarnessLogLevel;
 
   constructor(controller: any, options: LambdaTestHarnessOptions = {}) {
-    this.logLevel = options.logLevel ?? LogLevel.WARN;
+    this.logLevel = options.logLevel ?? LambdaTestHarnessLogLevel.WARN;
+    // Load entry packages (simulate Lambda layers) before controller setup
+    if (options.entryPackages) {
+      options.entryPackages.forEach(pkg => {
+        try {
+          require(pkg);
+        } catch (error) {
+          this.log(LambdaTestHarnessLogLevel.ERROR, `Failed to import entry package ${pkg}:`, error);
+        }
+      });
+      // Also set environment variable for entry packages if needed by decorators
+      process.env.ENTRY_PACKAGES = options.entryPackages.join(',');
+    }
 
     // Ensure the controller has a controllerName
     if (!controller.controllerName) {
-      this.log(LogLevel.WARN, 'Warning: controller does not have a controllerName property. Route matching may not work correctly.');
+      this.log(LambdaTestHarnessLogLevel.WARN, 'Warning: controller does not have a controllerName property. Route matching may not work correctly.');
     }
 
     // Ensure the controller has a LambdaHandler method
     if (!controller.LambdaHandler && typeof controller.handleRequest === 'function') {
-      this.log(LogLevel.INFO, 'Adding LambdaHandler to controller');
+      this.log(LambdaTestHarnessLogLevel.INFO, 'Adding LambdaHandler to controller');
       controller.LambdaHandler = controller.handleRequest.bind(controller);
     }
 
@@ -81,19 +97,19 @@ export class LambdaTestHarness {
   /**
    * Internal logging method that respects the configured log level
    */
-  private log(level: LogLevel, message: string, ...args: any[]): void {
+  private log(level: LambdaTestHarnessLogLevel, message: string, ...args: any[]): void {
     if (level <= this.logLevel) {
       switch (level) {
-        case LogLevel.ERROR:
+        case LambdaTestHarnessLogLevel.ERROR:
           console.error(message, ...args);
           break;
-        case LogLevel.WARN:
+        case LambdaTestHarnessLogLevel.WARN:
           console.warn(message, ...args);
           break;
-        case LogLevel.INFO:
+        case LambdaTestHarnessLogLevel.INFO:
           console.log(message, ...args);
           break;
-        case LogLevel.DEBUG:
+        case LambdaTestHarnessLogLevel.DEBUG:
           console.log(`[DEBUG] ${message}`, ...args);
           break;
         default:
@@ -149,7 +165,7 @@ export class LambdaTestHarness {
     }
 
     // For debugging
-    this.log(LogLevel.DEBUG, `Controller: ${controllerName}, Path: ${fullPath}, Resource: ${resourcePath}, PathParams:`, pathParams);
+    this.log(LambdaTestHarnessLogLevel.DEBUG, `Controller: ${controllerName}, Path: ${fullPath}, Resource: ${resourcePath}, PathParams:`, pathParams);
 
     return {
       httpMethod,
@@ -219,7 +235,7 @@ export class LambdaTestHarness {
         // Check if the controller has a LambdaHandler method and call it
         if (typeof this.controller.LambdaHandler === 'function') {
           // For debugging
-          this.log(LogLevel.DEBUG, 'Calling LambdaHandler with event:', {
+          this.log(LambdaTestHarnessLogLevel.DEBUG, 'Calling LambdaHandler with event:', {
             httpMethod: event.httpMethod,
             path: event.path,
             resource: event.resource,
@@ -231,7 +247,7 @@ export class LambdaTestHarness {
           throw new Error('Controller does not have a LambdaHandler method');
         }
       } catch (error: unknown) {
-        this.log(LogLevel.ERROR, 'Error in test handler:', error);
+        this.log(LambdaTestHarnessLogLevel.ERROR, 'Error in test handler:', error);
         if (error instanceof Error) {
           return {
             statusCode: 500,

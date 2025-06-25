@@ -49,7 +49,7 @@ export class EntityUIConfigGen {
                 continue;
             }
 
-            const customPageFiles = Helper.scanTSSourceFilesFrom(dir);
+            const customPageFiles = Helper.scanControllerSourceFilesFrom(dir);
 
             for (const file of customPageFiles) {
                 try {
@@ -307,7 +307,7 @@ export class EntityUIConfigGen {
             return scannedServices;
         }
 
-        const servicePaths = Helper.scanTSSourceFilesFrom(servicesDir);
+        const servicePaths = Helper.scanControllerSourceFilesFrom(servicesDir);
 
         for (const servicePath of servicePaths) {
             this.logger.debug(`trying to load servicePath: ${servicePath}`);

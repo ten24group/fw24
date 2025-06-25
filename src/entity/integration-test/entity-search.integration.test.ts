@@ -52,7 +52,9 @@ const entitySchema = createEntitySchema({
 @Service()
 class TestEntityService extends BaseEntityService<typeof entitySchema> {
   constructor(
-    entityConfigurations: EntityConfiguration,
+    entityConfigurations: EntityConfiguration = {
+      table: 'test-table-entity-search-integration-test',
+    },
   ) {
     super(entitySchema, entityConfigurations, DIContainer.ROOT);
   }
@@ -94,6 +96,19 @@ describe('Entity Search', () => {
 
     await delay(2000);
   }, 60000);
+
+  beforeEach(async () => {
+    // Clear all documents from the index before each test to ensure isolation
+    const searchService = entityService.getSearchService();
+    const engine = searchService.getEngine() as MeiliSearchEngine;
+    const indexName = entityService.getEntitySearchConfig().indexConfig?.indexName;
+    try {
+      await engine.deleteAllDocuments(indexName as string, true);
+      await delay(1000); // Wait for delete operation to complete
+    } catch (error) {
+      // Ignore errors during cleanup
+    }
+  }, 10000);
 
   afterAll(async () => {
 
@@ -383,7 +398,7 @@ describe('Entity Search', () => {
       },
     ];
 
-    beforeAll(async () => {
+    beforeEach(async () => {
       await entityService.getSearchService().updateIndexSettings({
         filterableAttributes: [ '_geo', 'name' ],
         sortableAttributes: [ '_geo' ], // Also make it sortable for later tests

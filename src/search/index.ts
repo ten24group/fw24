@@ -21,3 +21,7 @@ export {
 export {
   makeEntitySearchIndexName,
 } from './search-utils';
+
+export {
+  SearchSystemController,
+} from './system/search-controller';

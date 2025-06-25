@@ -114,6 +114,19 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         return searchConfig;
     }
 
+    /**
+     * Checks if search is enabled for the entity.
+     * @returns True if search is enabled, false otherwise.
+     */
+    public isSearchEnabled() {
+        const searchConfig = this.getEntitySearchConfig();
+        return Boolean(searchConfig?.enabled);
+    }
+
+    /**
+     * Gets the search service for the entity.
+     * @returns The search service.
+     */
     public getSearchService(): EntitySearchService<S> {
         try {
             const searchConfig = this.getEntitySearchConfig();

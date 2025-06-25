@@ -623,7 +623,8 @@ describe('DIContainer', () => {
                 @Injectable()
                 class MiddlewareService { }
 
-                expect(() => container.resolve<MiddlewareService>('MiddlewareService')).toThrowError('Middleware error');
+                expect(() => container.resolve<MiddlewareService>('MiddlewareService'))
+                    .toThrow('Middleware error');
             });
         });
 

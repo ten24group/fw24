@@ -419,7 +419,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	}
 
 	protected parseSearchQuery(params: Record<string, any>): EntitySearchQuery<Sch> {
-		const { q, query, attributes: attributesParam, hitsPerPage, page, facets: facetsParam, sort: sortParam, limit: _legacyLimit, cursor: _legacyCursor, ...rest } = params;
+		const { q, query, search, attributes: attributesParam, hitsPerPage, page, facets: facetsParam, sort: sortParam, limit: _legacyLimit, cursor: _legacyCursor, ...rest } = params;
 
 
 		let parsedSelect: string[] | undefined = undefined;
@@ -461,7 +461,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const finalFilters = parsedQueryParamFilters as EntitySearchQuery<Sch>[ 'filters' ];
 
 		return {
-			search: q || query,
+			search: search || q || query, // q and query should be removed
 			filters: finalFilters,
 			select: (parsedSelect?.length ? parsedSelect : undefined) as EntitySearchQuery<Sch>[ 'select' ],
 			facets: (parsedFacets?.length ? parsedFacets : undefined) as EntitySearchQuery<Sch>[ 'facets' ],

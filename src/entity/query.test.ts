@@ -113,7 +113,7 @@ describe('query-test', () => {
 
             expect(() => {
                 entityFilterToFilterGroup(filter);
-            }).toThrowError();
+            }).toThrow();
         });
 
 

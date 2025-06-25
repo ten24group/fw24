@@ -1,21 +1,23 @@
 import { parseValueToCorrectTypes } from '../../utils/parse';
 import { createLogger, ILogger } from '../../logging';
-import { Request } from '../../interfaces/request';
+import { Request, RequestDataType } from '../../interfaces/request';
 import { APIGatewayEvent, Context, APIGatewayProxyEventPathParameters } from "aws-lambda";
 import { resolveEnvValueFor } from '../../utils/env';
 import { ENV_KEYS } from '../../const';
 
 type RecordWithOptionalValues = Record<string, any>;
+type RequestContextDataType = RequestDataType & {
+    body: any,
+    query: Record<string, any>,
+    path: Record<string, any>,
+    headers: Record<string, any>,
+}
 
-export class RequestContext<
-    TBody extends Record<string, any> = Record<string, any>,
-    TQuery extends Record<string, any> = Record<string, any>,
-    TParams extends APIGatewayProxyEventPathParameters = APIGatewayProxyEventPathParameters
-> implements Request<TBody, TQuery> {
+export class RequestContext<T extends RequestContextDataType> implements Request<T> {
 
     private readonly _logger: ILogger;
 
-    public body: TBody;
+    public body: T[ 'body' ];
     public context: Context;
     public debugMode: boolean;
     public event: APIGatewayEvent;
@@ -23,8 +25,8 @@ export class RequestContext<
     public httpMethod: string;
     public isBase64Encoded: boolean;
     public path: string;
-    public pathParameters: TParams;
-    public queryStringParameters: TQuery;
+    public pathParameters: T[ 'path' ];
+    public queryStringParameters: T[ 'query' ];
     public requestContext: any;
     public resource: any;
     public stageVariables: any;
@@ -48,10 +50,10 @@ export class RequestContext<
 
         this.isBase64Encoded = event.isBase64Encoded;
 
-        this.pathParameters = (event.pathParameters || {}) as TParams;
-        this.queryStringParameters = this.parseQueryStringParameters(event.queryStringParameters || {}) as TQuery;
+        this.pathParameters = (event.pathParameters || {}) as T[ 'path' ];
+        this.queryStringParameters = this.parseQueryStringParameters(event.queryStringParameters || {}) as T[ 'query' ];
 
-        this.debugMode = this.checkDebugMode(this.queryStringParameters);
+        this.debugMode = this.checkDebugMode(this.queryStringParameters || {});
 
         this.headers = this.parseHeaders(event.headers || {});
 
@@ -59,7 +61,7 @@ export class RequestContext<
 
         const contentType = this.getHeader('content-type') || 'application/json';
 
-        this.body = this.parseBody(event.body, contentType, this.isBase64Encoded) as TBody;
+        this.body = this.parseBody(event.body, contentType, this.isBase64Encoded) as T[ 'body' ];
     }
 
     private parseQueryStringParameters(params: RecordWithOptionalValues): RecordWithOptionalValues {
