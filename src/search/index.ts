@@ -24,4 +24,13 @@ export {
 
 export {
   SearchSystemController,
+  SEARCH_CONTROLLER_ENV_KEYS,
 } from './system/search-controller';
+
+export {
+  MeiliSearchSystemController,
+} from './system/meilisearch-controller';
+
+export {
+  SearchCustomPageConfigs,
+} from './system/custom-pages-config';

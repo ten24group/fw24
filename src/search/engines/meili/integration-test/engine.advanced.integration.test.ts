@@ -180,7 +180,7 @@ describe('MeiliSearchEngine Advanced Features Integration Tests', () => {
     try {
       const result = await engine.createSnapshot(true);
       expect(result).toBeDefined();
-      expect(result.taskUid).toBeDefined();
+      expect(result.indexUid).toBeDefined();
     } catch (e) {
       // If not supported, skip
       expect(e).toBeDefined();
@@ -192,7 +192,7 @@ describe('MeiliSearchEngine Advanced Features Integration Tests', () => {
     try {
       const result = await engine.createDump(true);
       expect(result).toBeDefined();
-      expect(result.taskUid).toBeDefined();
+      expect(result.indexUid).toBeDefined();
     } catch (e) {
       // If not supported, skip
       expect(e).toBeDefined();

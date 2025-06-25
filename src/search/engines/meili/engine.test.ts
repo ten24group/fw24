@@ -32,7 +32,6 @@ describe("MeiliSearchEngine", () => {
       createIndex: jest.fn().mockResolvedValue(mockIndex),
       multiSearch: jest.fn(),
       getTask: jest.fn(),
-      waitForTask: jest.fn(),
     } as Partial<MeiliSearch> as jest.Mocked<MeiliSearch>;
 
     (MeiliSearch as jest.Mock).mockImplementation(() => mockClient);

@@ -29,7 +29,7 @@ export interface BasePageConfig {
 
 // Dashboard widget type for type safety
 export interface DashboardWidgetConfig {
-    type: 'stat' | 'chart' | 'list';
+    type: 'stat' | 'chart' | 'list' | 'actions';
     title?: string;
     colSpan?: number;
     maxWidth?: number | string;
@@ -37,7 +37,7 @@ export interface DashboardWidgetConfig {
     dataConfig?: any;
     options?: any;
     showTimePeriodSelector?: boolean;
-    defaultTimePeriod?: { period: string; range?: [string, string] };
+    defaultTimePeriod?: { period: string; range?: [ string, string ] };
     timezone?: string;
 }
 
@@ -45,7 +45,7 @@ export interface DashboardPageConfig extends BasePageConfig {
     pageType: "dashboard";
     dashboardPageConfig: {
         showTimePeriodSelector?: boolean;
-        defaultTimePeriod?: { period: string; range?: [string, string] };
+        defaultTimePeriod?: { period: string; range?: [ string, string ] };
         widgets: DashboardWidgetConfig[];
         timezone?: string;
     }

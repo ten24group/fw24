@@ -70,7 +70,7 @@ export class EntityUIConfigGen {
         }
     }
 
-    private isValidCustomPageConfig(value: unknown): value is CustomPageOptions {
+    public isValidCustomPageConfig(value: unknown): value is CustomPageOptions {
         if (!value || typeof value !== 'object') return false;
 
         const config = value as Record<string, unknown>;
@@ -109,7 +109,7 @@ export class EntityUIConfigGen {
     /**
      * Register a custom page. Supports optional routePattern for dynamic routes (e.g., /author/:authorId/books)
      */
-    registerCustomPage(options: CustomPageOptions) {
+    public registerCustomPage(options: CustomPageOptions) {
         const pageName = this.getPageNameFromConfig(options);
         if (pageName) {
             this.customPages.set(pageName, options);

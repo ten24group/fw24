@@ -1,5 +1,5 @@
-import { DocumentsQuery, EnqueuedTask, Index, IndexSwap, MeiliSearch, Config as MeiliSearchClientConfig, Settings as MeiliSearchIndexSettings, RecordAny, TaskStatus } from "meilisearch";
-import { SearchIndexConfig, SearchQuery, SearchResult } from "../../types";
+import { DeleteOrCancelTasksQuery, type DocumentsQuery, type EnqueuedTask, type Index, type IndexSwap, KeyCreation, KeyUpdate, MeiliSearch, type Config as MeiliSearchClientConfig, type Settings as MeiliSearchIndexSettings, type RecordAny, type TaskStatus } from "meilisearch";
+import { type SearchIndexConfig, type SearchQuery, type SearchResult } from "../../types";
 import { BaseSearchEngine } from "../base";
 import { QueryBuilder } from "./query-builder";
 import { applyFilters } from "./utils/applyFIlters";
@@ -21,6 +21,10 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   constructor(config: ExtendedMeiliSearchClientConfig) {
     super(config);
     this.client = new MeiliSearch(config);
+  }
+
+  public getClient(): MeiliSearch {
+    return this.client;
   }
 
   /**
@@ -45,13 +49,13 @@ export class MeiliSearchEngine extends BaseSearchEngine {
         const createOptions: { primaryKey?: string } = {};
         createOptions.primaryKey = config.primaryKey ? config.primaryKey as string : 'id';
 
-        const task = await this.client.createIndex(idx, createOptions);
-        if (!task) {
+        const promise = this.client.createIndex(idx, createOptions);
+
+        if (!promise) {
           throw new SearchIndexError(`Failed to create index ${idx}`);
         }
-
         // Wait for the creation task to complete (required before we can update settings)
-        await this.waitForTask(task.taskUid);
+        const task = await promise.waitTask();
       }
 
       // Ensure settings are correctly applied for both new and existing indices
@@ -96,7 +100,6 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     }
   }
 
-  // TODO: need ui to inspect and set these features
   async setExperimentalFeaturesStatus(features: {
     metrics: boolean,
     logsRoute: boolean,
@@ -171,11 +174,12 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Delete an index
    */
   async deleteIndex(indexName: string, synchronous: boolean = false) {
-    const task = await this.client.deleteIndex(indexName);
+    const promise = this.client.deleteIndex(indexName);
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
     this.indices.delete(indexName);
+    return await promise;
   }
 
   /**
@@ -183,10 +187,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    */
   async updateIndexSettings(indexName: string, settings: MeiliSearchIndexSettings, synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
-    const task = await index.updateSettings(settings);
+    const promise = index.updateSettings(settings);
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
+    return await promise;
   }
 
   /**
@@ -194,10 +199,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    */
   async resetIndexSettings(indexName: string, synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
-    const task = await index.resetSettings();
+    const promise = index.resetSettings();
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
+    return await promise;
   }
 
   /**
@@ -213,10 +219,12 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    */
   async updateFilterableAttributes(indexName: string, attributes: string[], synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
-    const task = await index.updateFilterableAttributes(attributes);
+    const promise = index.updateFilterableAttributes(attributes);
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
+
+    return await promise;
   }
 
   /**
@@ -224,10 +232,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    */
   async updateSortableAttributes(indexName: string, attributes: string[], synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
-    const task = await index.updateSortableAttributes(attributes);
+    const promise = index.updateSortableAttributes(attributes);
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
+    return await promise;
   }
 
   /**
@@ -235,10 +244,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    */
   async updateSearchableAttributes(indexName: string, attributes: string[], synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
-    const task = await index.updateSearchableAttributes(attributes);
+    const promise = index.updateSearchableAttributes(attributes);
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
+    return await promise;
   }
 
   /**
@@ -246,10 +256,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    */
   async updateDisplayedAttributes(indexName: string, attributes: string[], synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
-    const task = await index.updateDisplayedAttributes(attributes);
+    const promise = index.updateDisplayedAttributes(attributes);
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
+    return await promise;
   }
 
   /**
@@ -257,10 +268,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    */
   async updateSynonyms(indexName: string, synonyms: Record<string, string[]>, synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
-    const task = await index.updateSynonyms(synonyms);
+    const promise = index.updateSynonyms(synonyms);
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
+    return await promise;
   }
 
   /**
@@ -268,10 +280,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    */
   async updateStopWords(indexName: string, stopWords: string[], synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
-    const task = await index.updateStopWords(stopWords);
+    const promise = index.updateStopWords(stopWords);
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
+    return await promise;
   }
 
   /**
@@ -279,51 +292,22 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    */
   async updateRankingRules(indexName: string, rankingRules: string[], synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
-    const task = await index.updateRankingRules(rankingRules);
+    const promise = index.updateRankingRules(rankingRules);
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
+    return await promise;
   }
 
   /**
    * Swap two indexes
    */
   async swapIndexes(indexSwaps: IndexSwap[], synchronous: boolean = false) {
-    const task = await this.client.swapIndexes(indexSwaps);
+    const promise = this.client.swapIndexes(indexSwaps);
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
-  }
-
-  /**
-   * Wait for a task to complete
-   */
-  async waitForTask(taskId: number, timeoutMs: number = this.taskTimeoutMs) {
-    const startTime = Date.now();
-    let status: TaskStatus | null = null;
-
-    while (!!status && status !== 'succeeded' && status !== 'canceled') {
-      // Check for timeout
-      if (Date.now() - startTime > timeoutMs) {
-        throw new SearchEngineError(`Task ${taskId} timed out after ${timeoutMs}ms`);
-      }
-
-      // Get task status
-      try {
-        const task = await this.client.tasks.getTask(taskId);
-        status = task.status as TaskStatus;
-
-        if (status === 'failed') {
-          throw new SearchEngineError(`Task ${taskId} failed: ${JSON.stringify(task.error)}`);
-        }
-      } catch (error: any) {
-        throw new SearchEngineConnectionError(`Failed to check task status: ${error.message}`, { taskId, error });
-      }
-
-      if (status !== 'succeeded') {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
+    return await promise;
   }
 
   /**
@@ -335,11 +319,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     synchronous: boolean = false
   ) {
     const index = await this.getIndex(config);
-    const task = await index.addDocuments(docs);
+    const promise = index.addDocuments(docs);
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
-    return task;
+    return await promise;
   }
 
   /**
@@ -355,9 +339,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
 
     for (let i = 0; i < docs.length; i += batchSize) {
       const batch = docs.slice(i, i + batchSize);
-      const task = await index.addDocuments(batch);
+      const promise = index.addDocuments(batch);
       if (synchronous) {
-        await this.waitForTask(task.taskUid);
+        await promise.waitTask();
+      } else {
+        await promise;
       }
     }
   }
@@ -371,11 +357,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     synchronous: boolean = false
   ) {
     const index = await this.getIndex(config);
-    const task = await index.updateDocuments(docs);
+    const promise = index.updateDocuments(docs);
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
-    return task;
+    return await promise;
   }
 
   /**
@@ -391,9 +377,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
 
     for (let i = 0; i < docs.length; i += batchSize) {
       const batch = docs.slice(i, i + batchSize);
-      const task = await index.updateDocuments(batch);
+      const promise = index.updateDocuments(batch);
       if (synchronous) {
-        await this.waitForTask(task.taskUid);
+        await promise.waitTask();
+      } else {
+        await promise;
       }
     }
   }
@@ -423,11 +411,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
       throw new Error("Index name is required for delete operation");
     }
     const index = await this.getIndex({ indexName });
-    const task = await index.deleteDocuments(ids);
+    const promise = index.deleteDocuments(ids);
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
-    return task;
+    return await promise;
   }
 
   /**
@@ -435,11 +423,11 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    */
   async deleteAllDocuments(indexName: string, synchronous: boolean = false) {
     const index = await this.getIndex({ indexName });
-    const task = await index.deleteAllDocuments();
+    const promise = index.deleteAllDocuments();
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
-    return task;
+    return await promise;
   }
 
   /**
@@ -456,34 +444,35 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     applyFilters(builder, filter);
     const { options } = builder.build();
 
-    const task = await index.deleteDocuments({ filter: options.filter! });
+    const promise = index.deleteDocuments({ filter: options.filter! });
 
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
-    return task;
+
+    return await promise;
   }
 
   /**
    * Create a snapshot
    */
-  async createSnapshot(synchronous: boolean = false): Promise<EnqueuedTask> {
-    const task = await this.client.createSnapshot();
+  async createSnapshot(synchronous: boolean = false) {
+    const promise = this.client.createSnapshot();
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
-    return task;
+    return await promise;
   }
 
   /**
    * Create a dump
    */
-  async createDump(synchronous: boolean = false): Promise<EnqueuedTask> {
-    const task = await this.client.createDump();
+  async createDump(synchronous: boolean = false) {
+    const promise = this.client.createDump();
     if (synchronous) {
-      await this.waitForTask(task.taskUid);
+      return await promise.waitTask();
     }
-    return task;
+    return await promise;
   }
 
   /**
@@ -574,6 +563,67 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     }));
 
     return await this.client.multiSearch({ queries: meiliQueries }) as T;
+  }
+
+  /**
+   * Get API keys
+   */
+  async getKeys() {
+    return this.client.getKeys();
+  }
+
+  /**
+   * Get an API key
+   */
+  async getKey(keyOrUid: string) {
+    return this.client.getKey(keyOrUid);
+  }
+
+  /**
+   * Create an API key
+   */
+  async createKey(options: KeyCreation) {
+    return this.client.createKey(options);
+  }
+
+  /**
+   * Update an API key
+   */
+  async updateKey(keyOrUid: string, options: KeyUpdate) {
+    return this.client.updateKey(keyOrUid, options);
+  }
+
+  /**
+   * Delete an API key
+   */
+  async deleteKey(keyOrUid: string) {
+    return this.client.deleteKey(keyOrUid);
+  }
+
+  /**
+   * Cancel tasks
+   */
+  async cancelTasks(query: DeleteOrCancelTasksQuery) {
+    const promise = this.client.tasks.cancelTasks(query);
+    return await promise.waitTask();
+  }
+
+  /**
+   * Delete tasks
+   */
+  async deleteTasks(query: DeleteOrCancelTasksQuery) {
+    const promise = this.client.tasks.deleteTasks(query);
+    return await promise.waitTask();
+  }
+
+  /**
+   * Wait for a task to complete
+   */
+  async waitForTask(taskId: number, timeoutMs: number = this.taskTimeoutMs) {
+    return this.client.tasks.waitForTask(taskId, {
+      timeout: timeoutMs,
+      interval: 100,
+    });
   }
 
   protected validateConfig(config: SearchIndexConfig): void {

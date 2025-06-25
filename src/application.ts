@@ -13,6 +13,7 @@ export class Application {
     mainStack!: Stack;
 
     public readonly fw24: Fw24;
+    public readonly uiConfigGen: EntityUIConfigGen;
     private readonly constructs: Map<string, FW24Construct>;
     private readonly modules: Map<string, IFw24Module>;
     private processedConstructs: Map<string, Promise<void>> = new Map();
@@ -25,6 +26,7 @@ export class Application {
         this.logger.info("Initializing fw24 infrastructure...");
 
         this.fw24 = Fw24.getInstance();
+        this.uiConfigGen = new EntityUIConfigGen();
         this.fw24.setConfig(config);
 
         if (config.environmentVariables) {
@@ -89,8 +91,7 @@ export class Application {
         const disableUIConfigGen = Fw24.getInstance().getConfig().disableUIConfigGen;
 
         if (!disableUIConfigGen) {
-            const uiConfigGen = new EntityUIConfigGen();
-            await uiConfigGen.run();
+            await this.uiConfigGen.run();
         }
 
         await this.constructAllResources()
