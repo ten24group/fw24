@@ -495,6 +495,7 @@ export class AuthConstruct implements FW24Construct {
                 scopes: scopes || ['email', 'profile', 'openid'],
                 attributeMapping: attributeMapping || {
                     email: ProviderAttribute.GOOGLE_EMAIL,
+                    emailVerified: ProviderAttribute.GOOGLE_EMAIL_VERIFIED,
                 }
             });
 
