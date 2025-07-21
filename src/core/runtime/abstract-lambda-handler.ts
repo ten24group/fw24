@@ -10,13 +10,13 @@ export abstract class AbstractLambdaHandler {
     this.LambdaHandler = this.LambdaHandler.bind(this)
   }
 
-  abstract LambdaHandler( event: any, context: any): Promise<any>;
+  abstract LambdaHandler(event: any, context: any): Promise<any>;
 
-/**
-   * Creates a new instance of the controller and returns its LambdaHandler method.
-   * @returns The LambdaHandler method of the controller.
-   */
-  static CreateHandler( handlerFunc: { new (): AbstractLambdaHandler} ) {
+  /**
+     * Creates a new instance of the controller and returns its LambdaHandler method.
+     * @returns The LambdaHandler method of the controller.
+     */
+  static CreateHandler(handlerFunc: { new(): AbstractLambdaHandler }) {
     const instance = new handlerFunc();
     return instance.LambdaHandler;
   }
