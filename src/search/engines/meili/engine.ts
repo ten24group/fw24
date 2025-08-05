@@ -118,6 +118,10 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     return response;
   }
 
+  async getExperimentalFeatures() {
+    return this.client.getExperimentalFeatures();
+  }
+
   /**
    * Gets or creates an index instance for the given config
    */

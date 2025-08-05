@@ -8,6 +8,7 @@ import { InjectContainer } from '../../di';
 import { type BaseEntityService } from '../../entity';
 import { type IDIContainer, type Request, type Response } from '../../interfaces';
 import { deepCopy, resolveEnvValueFor } from '../../utils';
+import { parseSearchQuery } from "../search-utils";
 
 export enum SEARCH_CONTROLLER_ENV_KEYS {
   MEILISEARCH_SYNC_QUEUE_URL = 'MEILISEARCH_SYNC_QUEUE_URL',
@@ -100,10 +101,12 @@ export class SearchSystemController extends APIController {
     const indexSettings = await searchService.getIndexSettings();
 
     return res.json({
-      indexInfo,
-      indexStats,
-      entityName,
-      indexSettings,
+      details: {
+        indexInfo,
+        indexStats,
+        entityName,
+        indexSettings,
+      }
     });
   }
 
@@ -173,8 +176,16 @@ export class SearchSystemController extends APIController {
     res: Response
   ) {
     const { entityName, documentId } = req.pathParameters;
+    const entityService = this.getEntityService(entityName);
     const searchService = this.getEntitySearchService(entityName);
+    const primaryIdFieldName = entityService.getEntityPrimaryIdPropertyName();
+    
     const doc = await searchService.getDocument(documentId);
+
+    doc[ 'id' ] = doc[ 'id' ] || doc[ primaryIdFieldName as string ];
+    doc[ 'fullRecord' ] = { ...doc };
+    doc[ 'entityName' ] = entityName;
+
     return res.json(doc);
   }
 
@@ -191,20 +202,55 @@ export class SearchSystemController extends APIController {
     const { entityName } = req.pathParameters ?? {};
 
     const entityService = this.getEntityService(entityName);
-    const query = deepCopy(req.body);
+    const query = deepCopy(req.queryStringParameters);
 
-    const results = await entityService.search(query as any, ctx);
+    const parsedQuery = parseSearchQuery(query);
+    const { select: _select, ...restQueryParams } = parsedQuery;
+
+    const results = await entityService.search(restQueryParams, ctx);
 
     const { hits, ...rest } = results;
+    
+    // Get the entity's primary identifier field name
+    const primaryIdFieldName = entityService.getEntityPrimaryIdPropertyName();
+    
+    // Ensure all records have a consistent 'id' field for generic UI listing
+    const normalizedHits = hits.map((hit: any) => {
+      const normalizedHit = { ...hit };
+
+      normalizedHit[ 'entityName' ] = entityName;
+      normalizedHit[ 'fullRecord' ] = hit;
+      
+      // If the record doesn't have an 'id' field but has the primary identifier field,
+      // map it to 'id' for consistent generic listing
+      if (!normalizedHit.id && primaryIdFieldName && normalizedHit[primaryIdFieldName]) {
+        normalizedHit.id = normalizedHit[primaryIdFieldName];
+      }
+      
+      // If still no id field, try common identifier patterns
+      if (!normalizedHit.id) {
+        const idFields = [`${entityName}Id`, `${entityName.toLowerCase()}Id`];
+        for (const idField of idFields) {
+          if (normalizedHit[idField]) {
+            normalizedHit.id = normalizedHit[idField];
+            break;
+          }
+        }
+      }
+      
+      return normalizedHit;
+    });
+
     const response = {
       ...rest,
-      items: hits,
+      items: normalizedHits,
     };
 
     if (req.debugMode) {
       Object.assign(response, {
         inputQuery: query,
-        processingTimeMs: results.processingTimeMs
+        processingTimeMs: results.processingTimeMs,
+        primaryIdFieldName
       });
     }
 
@@ -370,7 +416,7 @@ export class SearchSystemController extends APIController {
 
     const searchService = this.getEntitySearchService(entityName);
 
-    const config = await searchService.getSearchIndexConfig();
+    const config = searchService.getSearchIndexConfig();
     await searchService.getEngine().deleteAllDocuments(config.indexName!, true);
 
     return res.json({

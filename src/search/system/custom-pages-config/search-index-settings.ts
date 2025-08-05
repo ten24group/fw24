@@ -11,11 +11,26 @@ export const searchIndexSettingsConfig: FormPageConfig = {
     { label: "Settings" }
   ],
   formPageConfig: {
-    detailApiConfig: { apiMethod: "GET", responseKey: "settings", apiUrl: "/system/search/indices/:entityName/settings" },
-    apiConfig: { apiMethod: "PUT", responseKey: "result", apiUrl: "/system/search/indices/:entityName/settings" },
-    formButtons: [ "Save", { text: "Cancel", url: "/system/search/indices/:entityName" } ],
+    detailApiConfig: {
+      apiMethod: "GET",
+      apiUrl: "/system/search/indices/:entityName/settings"
+    },
+    apiConfig: {
+      apiMethod: "PUT",
+      responseKey: "result",
+      apiUrl: "/system/search/indices/:entityName/settings"
+    },
+    formButtons: [ "submit", { text: "Cancel", url: "/system/search/indices/:entityName" } ],
     propertiesConfig: [
-      { name: "settings", label: "Settings", id: "settings", column: "1", fieldType: "textarea", defaultValue: "{}" }
+      { 
+        name: "settings", 
+        label: "Settings (JSON object)", 
+        id: "settings", 
+        column: "settings", 
+        fieldType: "json", 
+        validations: ["required"],
+        defaultValue: "{}" 
+      }
     ],
     submitSuccessRedirect: "/system/search/indices/:entityName"
   }

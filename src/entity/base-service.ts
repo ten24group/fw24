@@ -148,7 +148,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 try {
                     return this.diContainer.resolve<EntitySearchService<S>>(searchServiceTokenOrClass as DepIdentifier<EntitySearchService<S>>);
                 } catch (err: any) {
-                    debugger;
                     this.logger.error('Failed to resolve search service from container:', err);
                     throw new Error(`Failed to resolve search service for entity ${this.getEntityName()}: ${err.message}`);
                 }

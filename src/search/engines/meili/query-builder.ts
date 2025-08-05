@@ -105,7 +105,6 @@ export class FilterGroup implements FilterNode {
       const res = c.toString()
 
       if (!isString(res)) {
-        debugger;
         throw new Error("FilterGroup contains non-string child");
       }
       return res;

@@ -20,6 +20,7 @@ export {
 
 export {
   makeEntitySearchIndexName,
+  parseSearchQuery,
 } from './search-utils';
 
 export {

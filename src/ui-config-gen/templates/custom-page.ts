@@ -1,6 +1,15 @@
 import { EntitySchema } from "../../entity";
 import { IPageActionItem } from "../../entity/base-entity";
+
 export type PageType = "list" | "form" | "details" | "custom" | "dashboard";
+export type ModalType = "confirm" | "list" | "form" | "custom" | "details";
+
+interface IConfirmModal {
+    title: string;
+    content?: string;
+}
+
+type ModalPageConfig = IConfirmModal | FormPageConfig[ 'formPageConfig' ] | ListPageConfig[ 'listPageConfig' ] | DetailsPageConfig['detailsPageConfig'];
 
 export interface BasePageConfig {
     pageTitle: string;
@@ -15,11 +24,11 @@ export interface BasePageConfig {
         items?: IPageActionItem[];
         openInModal?: boolean;
         modalConfig?: {
-            modalType: string;
-            modalPageConfig: any;
+            modalType: ModalType;
+            modalPageConfig: ModalPageConfig;
             apiConfig?: {
                 apiMethod: string;
-                responseKey: string;
+                responseKey?: string;
                 apiUrl: string;
             };
             submitSuccessRedirect?: string;
@@ -29,7 +38,7 @@ export interface BasePageConfig {
 
 // Dashboard widget type for type safety
 export interface DashboardWidgetConfig {
-    type: 'stat' | 'chart' | 'list' | 'actions';
+    type: 'stat' | 'chart' | 'list' | 'actions' | 'description';
     title?: string;
     colSpan?: number;
     maxWidth?: number | string;
@@ -56,7 +65,8 @@ export interface ListPageConfig extends BasePageConfig {
     listPageConfig: {
         apiConfig: {
             apiMethod: string;
-            responseKey: string;
+            useSearch?: boolean;
+            responseKey?: string;
             apiUrl: string;
         };
         propertiesConfig: Array<{
@@ -87,7 +97,7 @@ export interface ListPageConfig extends BasePageConfig {
                     modalPageConfig: any;
                     apiConfig?: {
                         apiMethod: string;
-                        responseKey: string;
+                        responseKey?: string;
                         apiUrl: string;
                     };
                     submitSuccessRedirect?: string;
@@ -105,12 +115,12 @@ export interface FormPageConfig extends BasePageConfig {
     formPageConfig: {
         apiConfig: {
             apiMethod: string;
-            responseKey: string;
+            responseKey?: string;
             apiUrl: string;
         };
         detailApiConfig?: {
             apiMethod: string;
-            responseKey: string;
+            responseKey?: string;
             apiUrl: string;
         };
         formButtons: Array<string | {
@@ -145,7 +155,7 @@ export interface DetailsPageConfig extends BasePageConfig {
     detailsPageConfig: {
         detailApiConfig: {
             apiMethod: string;
-            responseKey: string;
+            responseKey?: string;
             apiUrl: string;
         };
         propertiesConfig: Array<{

@@ -18,21 +18,8 @@ export const searchDashboardPage: DashboardPageConfig = {
           actions: [
             { label: 'Search Indices', url: '/system/search/indices' },
             { label: 'Searchable Entities', url: '/system/search/entities' },
-            { label: 'Initialize All Indices', url: '/system/search/initIndices' }
-          ]
-        }
-      },
-      {
-        type: 'actions',
-        title: 'MeiliSearch Engine',
-        colSpan: 4,
-        options: {
-          actions: [
-            { label: 'Engine Stats', url: '/system/search/meili/stats' },
-            { label: 'Health Status', url: '/system/search/meili/health' },
-            { label: 'Version Info', url: '/system/search/meili/version' },
-            { label: 'API Keys', url: '/system/search/meili/api-keys' },
-            { label: 'Tasks', url: '/system/search/meili/tasks' }
+            { label: 'View Tasks', url: '/system/search/tasks' },
+            { label: 'View API Keys', url: '/system/search/api-keys' },
           ]
         }
       },
@@ -42,11 +29,116 @@ export const searchDashboardPage: DashboardPageConfig = {
         colSpan: 4,
         options: {
           actions: [
-            { label: 'Create Dump', url: '/system/search/meili/dumps' },
-            { label: 'Create Snapshot', url: '/system/search/meili/snapshots' },
-            { label: 'Swap Indices', url: '/system/search/meili/indices/swap' },
-            { label: 'Multi-Search', url: '/system/search/meili/multi-search' },
-            { label: 'Experimental Features', url: '/system/search/meili/experimental-features' }
+            { 
+              label: 'Swap Indices', 
+              openInModal: true,
+              modalConfig: {
+                modalType: "form",
+                modalPageConfig: {
+                  title: "Swap Indices",
+                  formButtons: ["Swap"],
+                  propertiesConfig: [
+                    {
+                      name: "swaps",
+                      label: "Index Pairs (JSON array)",
+                      fieldType: "textarea",
+                      defaultValue: "[[\"index1\",\"index2\"]]"
+                    }
+                  ]
+                },
+                apiConfig: {
+                  apiMethod: "POST",
+                  apiUrl: "/system/search/indices/swap"
+                },
+                submitSuccessRedirect: "/system/search/tasks"
+              }
+            },
+            { label: 'Experimental Features', url: '/system/search/experimental-features' },
+            { 
+              label: 'Create Dump', 
+              openInModal: true,
+              modalConfig: {
+                modalType: "confirm",
+                modalPageConfig: {
+                  title: "Create Database Dump",
+                  content: "This will create a full database dump. This operation may take some time."
+                },
+                apiConfig: {
+                  apiMethod: "POST",
+                  apiUrl: "/system/search/dumps"
+                },
+                submitSuccessRedirect: "/system/search/tasks"
+              }
+            },
+            { 
+              label: 'Create Snapshot', 
+              openInModal: true,
+              modalConfig: {
+                modalType: "confirm",
+                modalPageConfig: {
+                  title: "Create Database Snapshot",
+                  content: "This will create a database snapshot. This operation may take some time."
+                },
+                apiConfig: {
+                  apiMethod: "POST",
+                  apiUrl: "/system/search/snapshots"
+                },
+                submitSuccessRedirect: "/system/search/tasks"
+              }
+            }
+          ]
+        }
+      },
+      {
+        type: 'description',
+        title: 'Engine Health',
+        colSpan: 4,
+        dataConfig: {
+          apiUrl: '/system/search/is-healthy',
+          apiMethod: 'GET'
+        },
+        options: {
+          bordered: true,
+          size: 'small',
+          items: [
+            { key: 'isHealthy', label: 'Is Healthy' }
+          ]
+        }
+      },
+      {
+        type: 'description',
+        title: 'Engine Version',
+        colSpan: 4,
+        dataConfig: {
+          apiUrl: '/system/search/version',
+          apiMethod: 'GET'
+        },
+        options: {
+          bordered: true,
+          size: 'small',
+          items: [
+            { key: 'pkgVersion', label: 'Version' },
+            { key: 'commitSha', label: 'Commit SHA' },
+            { key: 'commitDate', label: 'Commit Date' },
+            { key: 'pkgName', label: 'Package Name' }
+          ]
+        }
+      },
+      {
+        type: 'description',
+        title: 'Database Statistics',
+        colSpan: 4,
+        dataConfig: {
+          apiUrl: '/system/search/stats',
+          apiMethod: 'GET'
+        },
+        options: {
+          bordered: true,
+          size: 'small',
+          items: [
+            { key: 'databaseSize', label: 'Database Size' },
+            { key: 'lastUpdate', label: 'Last Update' },
+            { key: 'indexes', label: 'Total Indexes' }
           ]
         }
       }

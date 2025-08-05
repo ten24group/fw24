@@ -3,21 +3,21 @@ import { FormPageConfig } from "../../../ui-config-gen";
 export const meiliSearchEditApiKeyPage: FormPageConfig = {
   pageTitle: "Edit MeiliSearch API Key",
   pageType: "form",
-  routePattern: "/system/search/meili/api-keys/:keyOrUid/edit",
+  routePattern: "/system/search/api-keys/:keyOrUid/edit",
   breadcrumbs: [
     { label: "Home", url: "/" },
-    { label: "Search", url: "/system/search/indices" },
-    { label: "API Keys", url: "/system/search/meili/api-keys" },
+    { label: "Search", url: "/system/search" },
+    { label: "API Keys", url: "/system/search/api-keys" },
     { label: "Edit API Key" }
   ],
   formPageConfig: {
-    detailApiConfig: { apiMethod: "GET", responseKey: "", apiUrl: "/system/search/meili/api-keys/:keyOrUid" },
-    apiConfig: { apiMethod: "PUT", responseKey: "", apiUrl: "/system/search/meili/api-keys/:keyOrUid" },
-    formButtons: [ "Save", { text: "Cancel", url: "/system/search/meili/api-keys" } ],
+    detailApiConfig: { apiMethod: "GET", responseKey: "", apiUrl: "/system/search/api-keys/:keyOrUid" },
+    apiConfig: { apiMethod: "PUT", responseKey: "", apiUrl: "/system/search/api-keys/:keyOrUid" },
+    formButtons: [ "submit", "reset", { text: "Cancel", url: "/system/search/api-keys" } ],
     propertiesConfig: [
-      { name: "name", label: "Name", id: "name", column: "1", fieldType: "text" },
-      { name: "description", label: "Description", id: "description", column: "1", fieldType: "text" }
+      { name: "name", label: "Name", id: "name", column: "name", fieldType: "text" },
+      { name: "description", label: "Description", id: "description", column: "description", fieldType: "text" }
     ],
-    submitSuccessRedirect: "/system/search/meili/api-keys"
+    submitSuccessRedirect: "/system/search/api-keys"
   }
 }; 
