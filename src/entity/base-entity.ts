@@ -185,7 +185,7 @@ export interface IEntityPageAction {
   items?: IPageActionItem[];
   openInModal?: boolean;
   modalConfig?: {
-    modalType: string;
+    modalType: "confirm" | "list" | "form" | "accordion" | "custom" | "details";
     modalPageConfig: any;
     apiConfig?: {
       apiMethod: string;
@@ -206,7 +206,7 @@ export interface IEntityPageColumnConfig {
 }
 
 interface TextFieldMetadata extends BaseFieldMetadata {
-  fieldType?: 'text' | 'textarea' | 'password';
+  fieldType?: 'text' | 'textarea' | 'password' | 'email';
   maxLength?: number;
   mask?: string;
 }

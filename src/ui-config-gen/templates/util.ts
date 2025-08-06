@@ -138,7 +138,7 @@ export function formatEntityAttributesForDetail( properties: TIOSchemaAttribute[
 export type ListingPropConfig = {
     name: string,
     dataIndex: string,
-    fieldType: string,
+    fieldType: "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json",
     hidden?: boolean,
     actions?: any[],
     placeholder?: string,
