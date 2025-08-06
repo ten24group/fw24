@@ -162,6 +162,13 @@ export interface BaseFieldMetadata {
   placeholder?: string;
   helpText?: string;
   tooltip?: string; // maybe this can be inferred from the helpText
+  // Filter configuration options
+  filterConfig?: {
+    defaultOperator?: string; // Default filter operator (e.g., 'contains', 'eq', 'in')
+    availableOperators?: string[]; // Restrict available operators for this column
+    predefinedOptions?: Array<{ label: string; value: string }>; // For dropdown/select filters
+    filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean'; // Filter input type
+  };
 }
 
 export interface IPageActionItem {

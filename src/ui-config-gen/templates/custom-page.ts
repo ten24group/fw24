@@ -86,6 +86,13 @@ export interface ListPageConfig extends BasePageConfig {
             isIdentifier?: boolean;
             readOnly?: boolean;
             defaultValue?: any;
+            // New filter configuration options
+            filterConfig?: {
+                defaultOperator?: string; // Default filter operator (e.g., 'contains', 'eq', 'in')
+                availableOperators?: string[]; // Restrict available operators for this column
+                predefinedOptions?: Array<{ label: string; value: string }>; // For dropdown/select filters
+                filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean'; // Filter input type
+            };
             actions?: Array<{
                 label?: string;
                 icon?: string;
