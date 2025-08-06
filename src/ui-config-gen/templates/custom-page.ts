@@ -2,7 +2,11 @@ import { EntitySchema } from "../../entity";
 import { IPageActionItem, IEntityPageColumnConfig } from "../../entity/base-entity";
 
 export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion";
-export type ModalType = "confirm" | "list" | "form" | "custom" | "details";
+export type ModalType = "confirm" | "list" | "form" | "accordion" | "custom" | "details";
+
+// Import shared types from frontend for consistency
+type ConfigFieldType = "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json";
+type ConfigPropertyType = "list" | "map" | "object";
 
 interface IConfirmModal {
     title: string;
@@ -27,7 +31,7 @@ export interface BasePageConfig {
             modalType: ModalType;
             modalPageConfig: ModalPageConfig;
             apiConfig?: {
-                apiMethod: string;
+                apiMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
                 responseKey?: string;
                 apiUrl: string;
             };
@@ -43,8 +47,8 @@ export interface DashboardWidgetConfig {
     colSpan?: number;
     maxWidth?: number | string;
     width?: number | string;
-    dataConfig?: any;
-    options?: any;
+    dataConfig?: Record<string, unknown>;
+    options?: Record<string, unknown>;
     showTimePeriodSelector?: boolean;
     defaultTimePeriod?: { period: string; range?: [ string, string ] };
     timezone?: string;
@@ -78,17 +82,17 @@ export interface ListPageConfig extends BasePageConfig {
     pageType: "list";
     listPageConfig: {
         apiConfig: {
-            apiMethod: string;
+            apiMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
             useSearch?: boolean;
             responseKey?: string;
             apiUrl: string;
         };
         propertiesConfig: Array<{
-            type?: string;
+            type?: ConfigPropertyType;
             id?: string;
             name: string;
             dataIndex: string;
-            fieldType: string;
+            fieldType: ConfigFieldType;
             placeholder?: string;
             helpText?: string;
             hidden?: boolean;
@@ -113,19 +117,26 @@ export interface ListPageConfig extends BasePageConfig {
                 label?: string;
                 icon?: string;
                 url?: string;
-                type?: string;
+                type?: 'button' | 'link' | 'modal';
                 openInModal?: boolean;
                 modalConfig?: {
-                    modalType: string;
-                    modalPageConfig: any;
+                    modalType: ModalType;
+                    modalPageConfig: ModalPageConfig;
                     apiConfig?: {
-                        apiMethod: string;
+                        apiMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
                         responseKey?: string;
                         apiUrl: string;
                     };
                     submitSuccessRedirect?: string;
                 };
             }>;
+            
+            // for internal links
+            isLink?: boolean;
+            linkConfig?: {
+                routePattern: string;
+                displayText?: string;
+            };
         }>;
     };
 }
@@ -137,12 +148,12 @@ export interface FormPageConfig extends BasePageConfig {
     };
     formPageConfig: {
         apiConfig: {
-            apiMethod: string;
+            apiMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
             responseKey?: string;
             apiUrl: string;
         };
         detailApiConfig?: {
-            apiMethod: string;
+            apiMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
             responseKey?: string;
             apiUrl: string;
         };
@@ -151,12 +162,12 @@ export interface FormPageConfig extends BasePageConfig {
             url: string;
         }>;
         propertiesConfig: Array<{
-            type?: string;
+            type?: ConfigPropertyType;
             id?: string;
             name: string;
             label: string;
             column: string;
-            fieldType: string;
+            fieldType: ConfigFieldType;
             placeholder?: string;
             helpText?: string;
             hidden?: boolean;
@@ -179,18 +190,18 @@ export interface DetailsPageConfig extends BasePageConfig {
     pageType: "details";
     detailsPageConfig: {
         detailApiConfig: {
-            apiMethod: string;
+            apiMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
             responseKey?: string;
             apiUrl: string;
         };
         columnsConfig?: IEntityPageColumnConfig;
         propertiesConfig: Array<{
-            type?: string;
+            type?: ConfigPropertyType;
             id?: string;
             name: string;
             label: string;
             column: string;
-            fieldType: string;
+            fieldType: ConfigFieldType;
             placeholder?: string;
             helpText?: string;
             hidden?: boolean;
@@ -204,6 +215,13 @@ export interface DetailsPageConfig extends BasePageConfig {
             isIdentifier?: boolean;
             readOnly?: boolean;
             defaultValue?: any;
+            
+            // for internal links
+            isLink?: boolean;
+            linkConfig?: {
+                routePattern: string;
+                displayText?: string;
+            };
         }>;
     };
 }

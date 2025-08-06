@@ -56,7 +56,19 @@ export const meiliSearchTaskDetailPage: DetailsPageConfig = {
       { name: "indexUid", label: "Index UID", id: "indexUid", column: "indexUid", fieldType: "text" },
       { name: "type", label: "Type", id: "type", column: "type", fieldType: "text" },
       { name: "status", label: "Status", id: "status", column: "status", fieldType: "text" },
-      { name: "batchUid", label: "Batch UID", id: "batchUid", column: "batchUid", fieldType: "number" },
+      {
+        name: "batchUid",
+        label: "Batch UID",
+        id: "batchUid",
+        column: "batchUid",
+        fieldType: "number",
+        readOnly: true,
+        isLink: true,
+        linkConfig: {
+          routePattern: "/system/search/batches/:batchUid",
+          displayText: "View Batch Details"
+        }
+      },
       { name: "canceledBy", label: "Canceled By", id: "canceledBy", column: "canceledBy", fieldType: "number" },
       { name: "duration", label: "Duration", id: "duration", column: "duration", fieldType: "text" },
       { name: "enqueuedAt", label: "Enqueued At", id: "enqueuedAt", column: "enqueuedAt", fieldType: "datetime" },
