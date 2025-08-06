@@ -45,6 +45,12 @@ export const meiliSearchTaskDetailPage: DetailsPageConfig = {
   ],
   detailsPageConfig: {
     detailApiConfig: { apiMethod: "GET", responseKey: "", apiUrl: "/system/search/tasks/:uid",  },
+    columnsConfig: {
+      columns: [
+        { sortOrder: 1, fields: [ "uid", "indexUid", "type", "status", "batchUid", "canceledBy", "duration" ] },
+        { sortOrder: 2, fields: [ "enqueuedAt", "startedAt", "finishedAt", "details", "error"] }
+      ]
+    },
     propertiesConfig: [
       { name: "uid", label: "Task UID", id: "uid", column: "uid", fieldType: "number", isIdentifier: true },
       { name: "indexUid", label: "Index UID", id: "indexUid", column: "indexUid", fieldType: "text" },

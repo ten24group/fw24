@@ -1,5 +1,7 @@
 import { meiliSearchApiKeyDetailPage } from './meili-search-api-key-detail';
 import { meiliSearchApiKeysPage } from './meili-search-api-keys';
+import { meiliSearchBatchDetailPage } from './meili-search-batch-detail';
+import { meiliSearchBatchesPage } from './meili-search-batches';
 import { meiliSearchCreateApiKeyPage } from './meili-search-create-api-key';
 import { meiliSearchEditApiKeyPage } from './meili-search-edit-api-key';
 import { meiliSearchExperimentalFeaturesPage } from './meili-experimental-features';
@@ -17,6 +19,8 @@ import { searchRecordsConfig } from './search-records';
 export const SearchCustomPageConfigs = {
   meiliSearchApiKeyDetailPage,
   meiliSearchApiKeysPage,
+  meiliSearchBatchDetailPage,
+  meiliSearchBatchesPage,
   meiliSearchCreateApiKeyPage,
   meiliSearchEditApiKeyPage,
   meiliSearchExperimentalFeaturesPage,

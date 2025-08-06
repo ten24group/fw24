@@ -19,6 +19,7 @@ export const searchDashboardPage: DashboardPageConfig = {
             { label: 'Search Indices', url: '/system/search/indices' },
             { label: 'Searchable Entities', url: '/system/search/entities' },
             { label: 'View Tasks', url: '/system/search/tasks' },
+            { label: 'View Batches', url: '/system/search/batches' },
             { label: 'View API Keys', url: '/system/search/api-keys' },
           ]
         }

@@ -413,6 +413,90 @@ export class MeiliSearchSystemController extends SearchSystemController {
     });
   }
 
+  @Get('/batches')
+  async getBatches(req: Request<{ query: TasksOrBatchesQuery }>, res: Response) {
+    const engine = this.getMeiliEngine();
+    const { offset, limit, rest } = parseCursorPagination(req);
+
+    // Use the same query parsing as entity controller
+    const parsedQueryParams = parseUrlQueryStringParameters(rest);
+    const filterGroup = queryStringParamsToFilterGroup(parsedQueryParams);
+
+    // Convert filter group to MeiliSearch parameters
+    const meiliParams: TasksOrBatchesQuery = {
+      limit,
+      from: offset,
+      reverse: false, // Get newest batches first
+    };
+
+    // Extract MeiliSearch parameters from filter group
+    if (filterGroup.and) {
+      filterGroup.and.forEach(filter => {
+        if (filter.attribute === 'uid' && filter.eq) {
+          meiliParams.uids = [filter.eq as number];
+        } else if (filter.attribute === 'uid' && filter.in) {
+          meiliParams.uids = filter.in as number[];
+        } else if (filter.attribute === 'batchUid' && filter.eq) {
+          meiliParams.batchUids = [filter.eq as number];
+        } else if (filter.attribute === 'batchUid' && filter.in) {
+          meiliParams.batchUids = filter.in as number[];
+        } else if (filter.attribute === 'indexUid' && filter.eq) {
+          meiliParams.indexUids = [filter.eq as string];
+        } else if (filter.attribute === 'indexUid' && filter.in) {
+          meiliParams.indexUids = filter.in as string[];
+        } else if (filter.attribute === 'status' && filter.eq) {
+          meiliParams.statuses = filter.eq as any;
+        } else if (filter.attribute === 'status' && filter.in) {
+          meiliParams.statuses = filter.in as any;
+        } else if (filter.attribute === 'types' && filter.eq) {
+          meiliParams.types = filter.eq as any;
+        } else if (filter.attribute === 'types' && filter.in) {
+          meiliParams.types = filter.in as any;
+        } else if (filter.attribute === 'startedAt' && filter.lt) {
+          meiliParams.beforeStartedAt = new Date(filter.lt).toISOString();
+        } else if (filter.attribute === 'startedAt' && filter.gt) {
+          meiliParams.afterStartedAt = new Date(filter.gt).toISOString();
+        } else if (filter.attribute === 'finishedAt' && filter.lt) {
+          meiliParams.beforeFinishedAt = new Date(filter.lt).toISOString();
+        } else if (filter.attribute === 'finishedAt' && filter.gt) {
+          meiliParams.afterFinishedAt = new Date(filter.gt).toISOString();
+        }
+      });
+    }
+
+    const batches = await engine.getBatches(meiliParams);
+    
+    // Use MeiliSearch's next value for cursor, or create our own if not available
+    let nextCursor = null;
+    if (batches.next) {
+      // MeiliSearch provides the next offset
+      nextCursor = Buffer.from(JSON.stringify({ offset: batches.next })).toString('base64');
+    }
+
+    const results = batches.results.map((batch: any) => {
+      return {
+        ...batch,
+        status: batch.stats?.status,
+        types: batch.stats?.types
+      };
+    });
+    
+    return res.json({
+      cursor: nextCursor,
+      items: results
+    });
+  }
+
+  @Get('/batches/{uid}')
+  async getBatch(req: Request<{ path: { uid: number } }>, res: Response) {
+    const { uid } = req.pathParameters;
+
+    const engine = this.getMeiliEngine();
+    const batch = await engine.getBatch(Number(uid));
+
+    return res.json(batch);
+  }
+
   @Get('/api-keys/{keyOrUid}')
   async getKey(req: Request<{ path: { keyOrUid: string } }>, res: Response) {
     const { keyOrUid } = req.pathParameters;

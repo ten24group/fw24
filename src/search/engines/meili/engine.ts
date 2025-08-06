@@ -1,4 +1,4 @@
-import { DeleteOrCancelTasksQuery, type DocumentsQuery, type EnqueuedTask, type Index, type IndexSwap, KeyCreation, KeyUpdate, MeiliSearch, type Config as MeiliSearchClientConfig, type Settings as MeiliSearchIndexSettings, type RecordAny, type TaskStatus } from "meilisearch";
+import { DeleteOrCancelTasksQuery, type DocumentsQuery, type EnqueuedTask, type Index, type IndexSwap, KeyCreation, KeyUpdate, MeiliSearch, type Config as MeiliSearchClientConfig, type Settings as MeiliSearchIndexSettings, type RecordAny, TasksOrBatchesQuery, type TaskStatus } from "meilisearch";
 import { type SearchIndexConfig, type SearchQuery, type SearchResult } from "../../types";
 import { BaseSearchEngine } from "../base";
 import { QueryBuilder } from "./query-builder";
@@ -628,6 +628,20 @@ export class MeiliSearchEngine extends BaseSearchEngine {
       timeout: timeoutMs,
       interval: 100,
     });
+  }
+
+  /**
+   * Get batches
+   */
+  async getBatches(params?: TasksOrBatchesQuery) {
+    return this.client.batches.getBatches(params);
+  }
+
+  /**
+   * Get a specific batch
+   */
+  async getBatch(batchUid: number) {
+    return this.client.batches.getBatch(batchUid);
   }
 
   protected validateConfig(config: SearchIndexConfig): void {
