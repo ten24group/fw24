@@ -141,6 +141,8 @@ export type ListingPropConfig = {
     fieldType: string,
     hidden?: boolean,
     actions?: any[],
+    placeholder?: string,
+    helpText?: string,
     // Filter configuration options
     filterConfig?: {
         defaultOperator?: string; // Default filter operator (e.g., 'contains', 'eq', 'in')

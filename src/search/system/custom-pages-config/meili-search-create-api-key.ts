@@ -14,11 +14,54 @@ export const meiliSearchCreateApiKeyPage: FormPageConfig = {
     apiConfig: { apiMethod: "POST", responseKey: "", apiUrl: "/system/search/api-keys" },
     formButtons: [ "submit", "reset", { text: "Cancel", url: "/system/search/api-keys" } ],
     propertiesConfig: [
-      { name: "name", label: "Name", id: "name", column: "name", fieldType: "text" },
-      { name: "description", label: "Description", id: "description", column: "description", fieldType: "textarea" },
-      { name: "actions", label: "Actions (JSON array)", id: "actions", column: "actions", fieldType: "json", defaultValue: "[\"search\", \"documents.get\"]" },
-      { name: "indexes", label: "Indexes (JSON array)", id: "indexes", column: "indexes", fieldType: "json", defaultValue: "[\"*\"]" },
-      { name: "expiresAt", label: "Expires At", id: "expiresAt", column: "expiresAt", fieldType: "datetime", defaultValue: "2025-07-22T00:00:00.000Z" }
+      { 
+        name: "name", 
+        label: "Name", 
+        id: "name", 
+        column: "name", 
+        fieldType: "text",
+        placeholder: "Enter a descriptive name for this API key",
+        helpText: "Optional: A human-readable name for the API key"
+      },
+      { 
+        name: "description", 
+        label: "Description", 
+        id: "description", 
+        column: "description", 
+        fieldType: "textarea",
+        placeholder: "Enter a description of what this API key will be used for",
+        helpText: "Optional: A detailed description of the API key's purpose"
+      },
+      { 
+        name: "actions", 
+        label: "Actions", 
+        id: "actions", 
+        column: "actions", 
+        fieldType: "json", 
+        defaultValue: "[\"search\", \"documents.get\"]",
+        placeholder: "[\"search\", \"documents.get\"]",
+        helpText: "Required: Array of allowed actions. Common actions: search, documents.get, documents.add, documents.update, documents.delete, indexes.create, indexes.update, indexes.delete, settings.get, settings.update"
+      },
+      { 
+        name: "indexes", 
+        label: "Indexes", 
+        id: "indexes", 
+        column: "indexes", 
+        fieldType: "json", 
+        defaultValue: "[\"*\"]",
+        placeholder: "[\"*\"]",
+        helpText: "Required: Array of index UIDs this key can access. Use [\"*\"] for all indexes, or specify individual index UIDs like [\"my-index\", \"another-index\"]"
+      },
+      { 
+        name: "expiresAt", 
+        label: "Expires At", 
+        id: "expiresAt", 
+        column: "expiresAt", 
+        fieldType: "datetime",
+        defaultValue: "2025-12-31T23:59:59Z",
+        placeholder: "2025-12-31T23:59:59Z",
+        helpText: "Optional: ISO 8601 datetime when this key expires. Leave empty for no expiration"
+      }
     ],
     submitSuccessRedirect: "/system/search/api-keys"
   }

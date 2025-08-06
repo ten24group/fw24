@@ -73,19 +73,19 @@ export const meiliSearchTasksPage: ListPageConfig = {
           defaultOperator: "eq",
           availableOperators: ["eq", "in", "nin"],
           predefinedOptions: [
-            { label: "Index Creation", value: "indexCreation" },
-            { label: "Index Update", value: "indexUpdate" },
-            { label: "Index Deletion", value: "indexDeletion" },
-            { label: "Index Swap", value: "indexSwap" },
             { label: "Document Addition/Update", value: "documentAdditionOrUpdate" },
-            { label: "Document Deletion", value: "documentDeletion" },
             { label: "Document Edition", value: "documentEdition" },
+            { label: "Document Deletion", value: "documentDeletion" },
             { label: "Settings Update", value: "settingsUpdate" },
-            { label: "Dump Creation", value: "dumpCreation" },
-            { label: "Snapshot Creation", value: "snapshotCreation" },
+            { label: "Index Creation", value: "indexCreation" },
+            { label: "Index Deletion", value: "indexDeletion" },
+            { label: "Index Update", value: "indexUpdate" },
+            { label: "Index Swap", value: "indexSwap" },
             { label: "Task Cancellation", value: "taskCancelation" },
             { label: "Task Deletion", value: "taskDeletion" },
-            { label: "Database Upgrade", value: "databaseUpgrade" }
+            { label: "Dump Creation", value: "dumpCreation" },
+            { label: "Snapshot Creation", value: "snapshotCreation" },
+            { label: "Database Upgrade", value: "upgradeDatabase" }
           ],
           filterType: "select"
         }

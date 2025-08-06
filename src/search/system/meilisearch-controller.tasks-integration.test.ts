@@ -567,5 +567,177 @@ describe('MeiliSearch Tasks API Integration', () => {
         expect(task).toHaveProperty('finishedAt');
       }
     }, 30000);
+
+    it('should return tasks in descending order (newest first)', async () => {
+      const response = await harness.get('/tasks', {
+        queryStringParameters: { 
+          count: '10'
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      
+      expect(body).toHaveProperty('cursor');
+      expect(body).toHaveProperty('items');
+      expect(Array.isArray(body.items)).toBe(true);
+      
+      // Verify tasks are in descending order (newest first)
+      if (body.items.length > 1) {
+        for (let i = 0; i < body.items.length - 1; i++) {
+          const currentTask = body.items[i];
+          const nextTask = body.items[i + 1];
+          
+          // Compare enqueuedAt timestamps - newer tasks should come first
+          const currentTime = new Date(currentTask.enqueuedAt).getTime();
+          const nextTime = new Date(nextTask.enqueuedAt).getTime();
+          expect(currentTime).toBeGreaterThanOrEqual(nextTime);
+        }
+      }
+    }, 30000);
+
+    it('should handle all valid task types', async () => {
+      const validTypes = [
+        'documentAdditionOrUpdate',
+        'documentEdition', 
+        'documentDeletion',
+        'settingsUpdate',
+        'indexCreation',
+        'indexDeletion',
+        'indexUpdate',
+        'indexSwap',
+        'taskCancelation',
+        'taskDeletion',
+        'dumpCreation',
+        'snapshotCreation',
+        'upgradeDatabase'
+      ];
+
+      for (const taskType of validTypes) {
+        const response = await harness.get('/tasks', {
+          queryStringParameters: { 
+            count: '5',
+            'type.eq': taskType
+          }
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        
+        expect(body).toHaveProperty('cursor');
+        expect(body).toHaveProperty('items');
+        expect(Array.isArray(body.items)).toBe(true);
+        
+        // If there are tasks of this type, verify they match
+        if (body.items.length > 0) {
+          expect(body.items.every((task: any) => task.type === taskType)).toBe(true);
+        }
+      }
+    }, 30000);
+
+    it('should handle all valid task statuses', async () => {
+      const validStatuses = [
+        'enqueued',
+        'processing',
+        'succeeded',
+        'failed',
+        'canceled'
+      ];
+
+      for (const status of validStatuses) {
+        const response = await harness.get('/tasks', {
+          queryStringParameters: { 
+            count: '5',
+            'status.eq': status
+          }
+        });
+
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        
+        expect(body).toHaveProperty('cursor');
+        expect(body).toHaveProperty('items');
+        expect(Array.isArray(body.items)).toBe(true);
+        
+        // If there are tasks with this status, verify they match
+        if (body.items.length > 0) {
+          expect(body.items.every((task: any) => task.status === status)).toBe(true);
+        }
+      }
+    }, 30000);
+
+    it('should handle multiple filter combinations with different operators', async () => {
+      const response = await harness.get('/tasks', {
+        queryStringParameters: { 
+          count: '10',
+          'type.in': 'documentAdditionOrUpdate,settingsUpdate',
+          'status.in': 'succeeded,failed',
+          'enqueuedAt.gt': new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // Last 30 days
+          'startedAt.lt': new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Before tomorrow
+          cursor: '',
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      
+      expect(body).toHaveProperty('cursor');
+      expect(body).toHaveProperty('items');
+      expect(Array.isArray(body.items)).toBe(true);
+      
+      if (body.items.length > 0) {
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        
+        expect(body.items.every((task: any) => {
+          const enqueuedAt = new Date(task.enqueuedAt);
+          const startedAt = task.startedAt ? new Date(task.startedAt) : null;
+          
+          return ['documentAdditionOrUpdate', 'settingsUpdate'].includes(task.type) &&
+                 ['succeeded', 'failed'].includes(task.status) &&
+                 enqueuedAt > thirtyDaysAgo &&
+                 (!startedAt || startedAt < tomorrow);
+        })).toBe(true);
+      }
+    }, 30000);
+
+    it('should handle empty result sets gracefully', async () => {
+      const response = await harness.get('/tasks', {
+        queryStringParameters: { 
+          count: '10',
+          'uid.eq': '999999999' // Non-existent UID
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      
+      expect(body).toHaveProperty('cursor');
+      expect(body).toHaveProperty('items');
+      expect(Array.isArray(body.items)).toBe(true);
+      expect(body.items.length).toBe(0);
+      expect(body.cursor).toBeNull();
+    }, 30000);
+
+    it('should handle invalid filter values gracefully', async () => {
+      const response = await harness.get('/tasks', {
+        queryStringParameters: { 
+          count: '10',
+          'type.eq': 'invalidType',
+          'status.eq': 'invalidStatus'
+        }
+      });
+
+      expect(response.statusCode).toBe(500);
+      const body = JSON.parse(response.body);
+      
+      // Framework error response structure
+      expect(body).toHaveProperty('message');
+      expect(body).toHaveProperty('status');
+      expect(body).toHaveProperty('statusCode');
+      expect(body).toHaveProperty('details');
+      expect(body.details).toHaveProperty('message');
+      expect(body.details.message).toContain('Invalid value in parameter');
+    }, 30000);
   });
 }); 

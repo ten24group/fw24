@@ -75,6 +75,8 @@ export interface ListPageConfig extends BasePageConfig {
             name: string;
             dataIndex: string;
             fieldType: string;
+            placeholder?: string;
+            helpText?: string;
             hidden?: boolean;
             validations?: string[];
             isVisible?: boolean;
@@ -141,6 +143,8 @@ export interface FormPageConfig extends BasePageConfig {
             label: string;
             column: string;
             fieldType: string;
+            placeholder?: string;
+            helpText?: string;
             hidden?: boolean;
             validations?: string[];
             isVisible?: boolean;
@@ -172,6 +176,8 @@ export interface DetailsPageConfig extends BasePageConfig {
             label: string;
             column: string;
             fieldType: string;
+            placeholder?: string;
+            helpText?: string;
             hidden?: boolean;
             validations?: string[];
             isVisible?: boolean;

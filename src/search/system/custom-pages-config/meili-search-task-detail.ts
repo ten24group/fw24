@@ -46,15 +46,18 @@ export const meiliSearchTaskDetailPage: DetailsPageConfig = {
   detailsPageConfig: {
     detailApiConfig: { apiMethod: "GET", responseKey: "", apiUrl: "/system/search/tasks/:uid",  },
     propertiesConfig: [
-      { name: "uid", label: "Task UID", id: "uid", column: "uid", fieldType: "text", isIdentifier: true },
+      { name: "uid", label: "Task UID", id: "uid", column: "uid", fieldType: "number", isIdentifier: true },
       { name: "indexUid", label: "Index UID", id: "indexUid", column: "indexUid", fieldType: "text" },
       { name: "type", label: "Type", id: "type", column: "type", fieldType: "text" },
       { name: "status", label: "Status", id: "status", column: "status", fieldType: "text" },
+      { name: "batchUid", label: "Batch UID", id: "batchUid", column: "batchUid", fieldType: "number" },
+      { name: "canceledBy", label: "Canceled By", id: "canceledBy", column: "canceledBy", fieldType: "number" },
+      { name: "duration", label: "Duration", id: "duration", column: "duration", fieldType: "text" },
       { name: "enqueuedAt", label: "Enqueued At", id: "enqueuedAt", column: "enqueuedAt", fieldType: "datetime" },
       { name: "startedAt", label: "Started At", id: "startedAt", column: "startedAt", fieldType: "datetime" },
       { name: "finishedAt", label: "Finished At", id: "finishedAt", column: "finishedAt", fieldType: "datetime" },
-      { name: "details", label: "Details", id: "details", column: "details", fieldType: "json" },
-      { name: "error", label: "Error", id: "error", column: "error", fieldType: "json" }
+      { name: "details", label: "Task Details", id: "details", column: "details", fieldType: "json" },
+      { name: "error", label: "Error Information", id: "error", column: "error", fieldType: "json" }
     ]
   }
 }; 

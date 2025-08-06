@@ -42,7 +42,9 @@ function createNextCursor(offset: number, limit: number, hasMore: boolean) {
   return Buffer.from(JSON.stringify({ offset: nextOffset })).toString('base64');
 }
 
-@Controller('system/search/meili', {
+//* Note: this is a more focused [towards meilisearch] version of the search controller
+//* at any given point only one of the controllers will be registered with the same route
+@Controller('system/search', {
   // Config will be merged from construct registration
 })
 export class MeiliSearchSystemController extends SearchSystemController {
@@ -202,7 +204,7 @@ export class MeiliSearchSystemController extends SearchSystemController {
     const meiliParams: TasksOrBatchesQuery = {
       limit,
       from: offset,
-      reverse: false, // Get tasks in descending order (newest first)
+      reverse: false, // Get newest tasks first
     };
 
     // Extract MeiliSearch parameters from filter group
@@ -263,7 +265,7 @@ export class MeiliSearchSystemController extends SearchSystemController {
 
   @Get('/tasks/{taskId}')
   async getTask(req: Request<{ path: { taskId: number } }>, res: Response) {
-    const { taskId } = req.pathParameters ?? {};
+    const { taskId } = req.pathParameters;
 
     const engine = this.getMeiliEngine();
     const task = await engine.waitForTask(Number(taskId));
@@ -318,21 +320,85 @@ export class MeiliSearchSystemController extends SearchSystemController {
     // Apply filters from filter group
     if (filterGroup.and) {
       filterGroup.and.forEach(filter => {
-        if (filter.attribute === 'name' && filter.eq) {
+        if (filter.attribute === 'uid' && filter.eq) {
           keysArray = keysArray.filter((key: any) => 
-            key.name?.toLowerCase().includes((filter.eq as string).toLowerCase())
+            key.uid === filter.eq
+          );
+        } else if (filter.attribute === 'uid' && filter.in) {
+          keysArray = keysArray.filter((key: any) => 
+            (filter.in as string[]).includes(key.uid)
+          );
+        } else if (filter.attribute === 'name' && filter.eq) {
+          keysArray = keysArray.filter((key: any) => 
+            key.name === filter.eq
           );
         } else if (filter.attribute === 'name' && filter.contains) {
           keysArray = keysArray.filter((key: any) => 
-            key.name?.toLowerCase().includes((filter.contains as string).toLowerCase())
+            key.name && key.name.toLowerCase().includes((filter.contains as string[])[0].toLowerCase())
+          );
+        } else if (filter.attribute === 'name' && filter.startsWith) {
+          keysArray = keysArray.filter((key: any) => 
+            key.name && key.name.toLowerCase().startsWith((filter.startsWith as string[])[0].toLowerCase())
+          );
+        } else if (filter.attribute === 'description' && filter.contains) {
+          keysArray = keysArray.filter((key: any) => 
+            key.description && key.description.toLowerCase().includes((filter.contains as string[])[0].toLowerCase())
+          );
+        } else if (filter.attribute === 'description' && filter.eq) {
+          keysArray = keysArray.filter((key: any) => 
+            key.description === filter.eq
+          );
+        } else if (filter.attribute === 'key' && filter.contains) {
+          keysArray = keysArray.filter((key: any) => 
+            key.key && key.key.toLowerCase().includes((filter.contains as string[])[0].toLowerCase())
+          );
+        } else if (filter.attribute === 'key' && filter.startsWith) {
+          keysArray = keysArray.filter((key: any) => 
+            key.key && key.key.toLowerCase().startsWith((filter.startsWith as string[])[0].toLowerCase())
           );
         } else if (filter.attribute === 'actions' && filter.in) {
           keysArray = keysArray.filter((key: any) => 
-            key.actions?.some((action: any) => (filter.in as string[]).includes(action))
+            key.actions && key.actions.some((action: any) => (filter.in as string[]).includes(action))
           );
         } else if (filter.attribute === 'indexes' && filter.in) {
           keysArray = keysArray.filter((key: any) => 
-            key.indexes?.some((index: any) => (filter.in as string[]).includes(index))
+            key.indexes && key.indexes.some((index: any) => (filter.in as string[]).includes(index))
+          );
+        } else if (filter.attribute === 'expiresAt' && filter.gt) {
+          keysArray = keysArray.filter((key: any) => 
+            key.expiresAt && new Date(key.expiresAt) > new Date(filter.gt as string)
+          );
+        } else if (filter.attribute === 'expiresAt' && filter.lt) {
+          keysArray = keysArray.filter((key: any) => 
+            key.expiresAt && new Date(key.expiresAt) < new Date(filter.lt as string)
+          );
+        } else if (filter.attribute === 'expiresAt' && filter.eq) {
+          keysArray = keysArray.filter((key: any) => 
+            key.expiresAt && new Date(key.expiresAt).toISOString().split('T')[0] === new Date(filter.eq as string).toISOString().split('T')[0]
+          );
+        } else if (filter.attribute === 'createdAt' && filter.gt) {
+          keysArray = keysArray.filter((key: any) => 
+            key.createdAt && new Date(key.createdAt) > new Date(filter.gt as string)
+          );
+        } else if (filter.attribute === 'createdAt' && filter.lt) {
+          keysArray = keysArray.filter((key: any) => 
+            key.createdAt && new Date(key.createdAt) < new Date(filter.lt as string)
+          );
+        } else if (filter.attribute === 'createdAt' && filter.eq) {
+          keysArray = keysArray.filter((key: any) => 
+            key.createdAt && new Date(key.createdAt).toISOString().split('T')[0] === new Date(filter.eq as string).toISOString().split('T')[0]
+          );
+        } else if (filter.attribute === 'updatedAt' && filter.gt) {
+          keysArray = keysArray.filter((key: any) => 
+            key.updatedAt && new Date(key.updatedAt) > new Date(filter.gt as string)
+          );
+        } else if (filter.attribute === 'updatedAt' && filter.lt) {
+          keysArray = keysArray.filter((key: any) => 
+            key.updatedAt && new Date(key.updatedAt) < new Date(filter.lt as string)
+          );
+        } else if (filter.attribute === 'updatedAt' && filter.eq) {
+          keysArray = keysArray.filter((key: any) => 
+            key.updatedAt && new Date(key.updatedAt).toISOString().split('T')[0] === new Date(filter.eq as string).toISOString().split('T')[0]
           );
         }
       });
@@ -350,6 +416,7 @@ export class MeiliSearchSystemController extends SearchSystemController {
   @Get('/api-keys/{keyOrUid}')
   async getKey(req: Request<{ path: { keyOrUid: string } }>, res: Response) {
     const { keyOrUid } = req.pathParameters;
+    
     const engine = this.getMeiliEngine();
     const key = await engine.getKey(keyOrUid);
     return res.json(key);
@@ -361,10 +428,12 @@ export class MeiliSearchSystemController extends SearchSystemController {
         name: { required: true },
         actions: { required: true },
         indexes: { required: true },
+        expiresAt: { required: true },
       },
     },
   })
   async createKey(req: Request<{ body: any }>, res: Response) {
+
     const options = req.body;
     const engine = this.getMeiliEngine();
 
@@ -398,9 +467,10 @@ export class MeiliSearchSystemController extends SearchSystemController {
   async deleteKey(req: Request<{ path: { keyOrUid: string } }>, res: Response) {
     const { keyOrUid } = req.pathParameters;
     const engine = this.getMeiliEngine();
-    await engine.deleteKey(keyOrUid);
-    return res.status(200).json({
-      message: 'Key deleted successfully',
+    const task = await engine.deleteKey(keyOrUid);
+    return res.json({
+      task,
+      message: 'Key deleted successfully'
     });
   }
 }
