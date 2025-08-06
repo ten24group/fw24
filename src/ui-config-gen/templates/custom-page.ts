@@ -1,5 +1,5 @@
 import { EntitySchema } from "../../entity";
-import { IPageActionItem } from "../../entity/base-entity";
+import { IPageActionItem, IEntityPageColumnConfig } from "../../entity/base-entity";
 
 export type PageType = "list" | "form" | "details" | "custom" | "dashboard";
 export type ModalType = "confirm" | "list" | "form" | "custom" | "details";
@@ -169,6 +169,7 @@ export interface DetailsPageConfig extends BasePageConfig {
             responseKey?: string;
             apiUrl: string;
         };
+        columnsConfig?: IEntityPageColumnConfig;
         propertiesConfig: Array<{
             type?: string;
             id?: string;
