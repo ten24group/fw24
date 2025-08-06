@@ -1,7 +1,7 @@
 import { EntitySchema } from "../../entity";
 import { IPageActionItem, IEntityPageColumnConfig } from "../../entity/base-entity";
 
-export type PageType = "list" | "form" | "details" | "custom" | "dashboard";
+export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion";
 export type ModalType = "confirm" | "list" | "form" | "custom" | "details";
 
 interface IConfirmModal {
@@ -58,6 +58,20 @@ export interface DashboardPageConfig extends BasePageConfig {
         widgets: DashboardWidgetConfig[];
         timezone?: string;
     }
+}
+
+export interface AccordionPageConfig extends BasePageConfig {
+    pageType: "accordion";
+    accordionPageConfig: {
+        accordions: Record<string, {
+            pageTitle: string;
+            pageType: "list" | "form" | "details" | "dashboard";
+            listPageConfig?: ListPageConfig['listPageConfig'];
+            formPageConfig?: FormPageConfig['formPageConfig'];
+            detailsPageConfig?: DetailsPageConfig['detailsPageConfig'];
+            dashboardPageConfig?: DashboardPageConfig['dashboardPageConfig'];
+        }>;
+    };
 }
 
 export interface ListPageConfig extends BasePageConfig {
@@ -194,7 +208,7 @@ export interface DetailsPageConfig extends BasePageConfig {
     };
 }
 
-export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageConfig | DashboardPageConfig;
+export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageConfig | DashboardPageConfig | AccordionPageConfig;
 
 export function makeCustomPageConfig(options: CustomPageOptions) {
     const baseConfig = {
@@ -226,6 +240,11 @@ export function makeCustomPageConfig(options: CustomPageOptions) {
             return {
                 ...baseConfig,
                 dashboardPageConfig: options.dashboardPageConfig
+            };
+        case "accordion":
+            return {
+                ...baseConfig,
+                accordionsPageConfig: options.accordionPageConfig.accordions
             };
         default:
             return baseConfig;

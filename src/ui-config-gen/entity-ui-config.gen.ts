@@ -85,6 +85,8 @@ export class EntityUIConfigGen {
             return 'detailsPageConfig' in config;
         } else if (pageType === 'dashboard') {
             return 'dashboardPageConfig' in config;
+        } else if (pageType === 'accordion') {
+            return 'accordionPageConfig' in config;
         }
         return false;
     }
@@ -101,6 +103,8 @@ export class EntityUIConfigGen {
                 return `view-${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
             case 'dashboard':
                 return `${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+            case 'accordion':
+                return `accordion-${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
             default:
                 return null;
         }
