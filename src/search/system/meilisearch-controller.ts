@@ -11,7 +11,7 @@ import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from '.
 // Helper function to convert cursor-based pagination to offset
 function parseCursorPagination(req: Request) {
   const data = req.queryStringParameters;
-  const { cursor, count="100", limit="250", ...rest } = data || {};
+  const { cursor, count="100", limit="250", hitsPerPage, page, ...rest } = data || {};
   
   let offset = null;
   if (cursor) {
@@ -21,6 +21,18 @@ function parseCursorPagination(req: Request) {
     } catch (error) {
       // Invalid cursor, start from beginning
     }
+  }
+  
+  // Handle search-style pagination (hitsPerPage + page)
+  if (hitsPerPage && page) {
+    const pageSize = safeParseInt(hitsPerPage, 20).value;
+    const pageNum = safeParseInt(page, 1).value;
+    offset = (pageNum - 1) * pageSize;
+    return {
+      offset,
+      limit: pageSize,
+      rest
+    };
   }
   
   // Use count as primary, limit as fallback (same as entity controller)
@@ -191,6 +203,17 @@ export class MeiliSearchSystemController extends SearchSystemController {
     return res.json({ documents });
   }
 
+  private entityNameToIndexName(entityName: string) {
+    const searchService = this.getEntitySearchService(entityName);
+    const indexInfo = searchService.getSearchIndexConfig();
+
+    if (indexInfo) {
+      return indexInfo.indexName;
+    }
+
+    throw new Error(`Index not found for entity ${entityName}`);
+  }
+
   @Get('/tasks')
   async getTasks(req: Request<{ query: TasksOrBatchesQuery }>, res: Response) {
     const engine = this.getMeiliEngine();
@@ -244,6 +267,16 @@ export class MeiliSearchSystemController extends SearchSystemController {
           meiliParams.batchUids = [filter.eq as number];
         } else if (filter.attribute === 'batchUid' && filter.in) {
           meiliParams.batchUids = filter.in as number[];
+        } else if (filter.attribute === 'entityName' && filter.eq) {
+          const entityName = filter.eq as string;
+          const indexName = this.entityNameToIndexName(entityName);
+          if (indexName) {
+            meiliParams.indexUids = [indexName];
+          }
+        } else if (filter.attribute === 'entityName' && filter.in) {
+          const entityNames = filter.in as string[];
+          const indexNames = entityNames.map(entityName => this.entityNameToIndexName(entityName));
+          meiliParams.indexUids = indexNames.filter(indexName => indexName !== undefined);
         }
       });
     }
@@ -460,6 +493,16 @@ export class MeiliSearchSystemController extends SearchSystemController {
           meiliParams.beforeFinishedAt = new Date(filter.lt).toISOString();
         } else if (filter.attribute === 'finishedAt' && filter.gt) {
           meiliParams.afterFinishedAt = new Date(filter.gt).toISOString();
+        } else if (filter.attribute === 'entityName' && filter.eq) {
+          const entityName = filter.eq as string;
+          const indexName = this.entityNameToIndexName(entityName);
+          if (indexName) {
+            meiliParams.indexUids = [ indexName ];
+          }
+        } else if (filter.attribute === 'entityName' && filter.in) {
+          const entityNames = filter.in as string[];
+          const indexNames = entityNames.map(entityName => this.entityNameToIndexName(entityName));
+          meiliParams.indexUids = indexNames.filter(indexName => indexName !== undefined);
         }
       });
     }

@@ -44,7 +44,6 @@ export const meiliSearchBatchDetailPage: AccordionPageConfig = {
         listPageConfig: {
           apiConfig: {
             apiMethod: "GET",
-            useSearch: true,
             responseKey: "items",
             apiUrl: "/system/search/tasks?batchUid.eq=:uid"
           },

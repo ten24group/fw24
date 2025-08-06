@@ -33,7 +33,7 @@ export const meiliSearchBatchesPage: ListPageConfig = {
         name: "Total Tasks", 
         dataIndex: "stats.totalNbTasks", 
         id: "totalNbTasks", 
-        fieldType: "number", 
+        fieldType: "json", 
         isListable: true,
         isFilterable: false
       },
