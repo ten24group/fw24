@@ -5,7 +5,7 @@ export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "a
 export type ModalType = "confirm" | "list" | "form" | "accordion" | "custom" | "details";
 
 // Import shared types from frontend for consistency
-type ConfigFieldType = "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json" | "list";
+type ConfigFieldType = "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json" | "list" | "object";
 type ConfigPropertyType = "list" | "map" | "object";
 
 interface IConfirmModal {
