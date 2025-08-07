@@ -4,7 +4,7 @@ import { SearchSystemController } from './search-controller';
 import { MeiliSearchEngine } from '../engines';
 import { SearchEngineError } from '../errors';
 import { BaseEntityService } from '../../entity/base-service';
-import { DeleteOrCancelTasksQuery, DocumentsQuery, TasksOrBatchesQuery } from 'meilisearch';
+import { DeleteOrCancelTasksQuery, DocumentsQuery, Stats, TasksOrBatchesQuery } from 'meilisearch';
 import { safeParseInt } from '../../utils/parse';
 import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from '../../entity/query';
 
@@ -72,9 +72,18 @@ export class MeiliSearchSystemController extends SearchSystemController {
   }
 
   @Get('/stats')
-  async getStats(_req: Request, res: Response) {
+  async getStats(req: Request, res: Response) {
+    const { includeIndexes = true } = req.queryStringParameters || {};
     const engine = this.getMeiliEngine();
-    const stats = await engine.getStats();
+    
+    const stats = await engine.getStats<Stats>();
+
+    const { indexes, ...rest } = stats;
+
+    if (!includeIndexes) {
+      return res.json(rest);
+    }
+    
     return res.json(stats);
   }
 

@@ -461,11 +461,25 @@ export class MeiliSearchEngine extends BaseSearchEngine {
    * Create a snapshot
    */
   async createSnapshot(synchronous: boolean = false) {
-    const promise = this.client.createSnapshot();
-    if (synchronous) {
-      return await promise.waitTask();
+    try {
+      this.logger.info('Creating snapshot...', { synchronous });
+      
+      const promise = this.client.createSnapshot();
+      
+      if (synchronous) {
+        this.logger.info('Waiting for snapshot task to complete...');
+        const result = await promise.waitTask();
+        this.logger.info('Snapshot created successfully', { result });
+        return result;
+      }
+      
+      const result = await promise;
+      this.logger.info('Snapshot creation task started', { result });
+      return result;
+    } catch (error: any) {
+      this.logger.error('Failed to create snapshot', { error: error.message, stack: error.stack });
+      throw new SearchEngineError(`Failed to create snapshot: ${error.message}`, { error });
     }
-    return await promise;
   }
 
   /**
@@ -501,8 +515,8 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * Get server stats
    */
-  async getStats(): Promise<any> {
-    return await this.client.getStats();
+  async getStats<T extends any = any>(): Promise<T> {
+    return await this.client.getStats() as T;
   }
 
   /**

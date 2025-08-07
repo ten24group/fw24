@@ -41,7 +41,25 @@ export const searchDashboardPage: DashboardPageConfig = {
             { key: 'pkgVersion', label: 'Version' },
             { key: 'commitSha', label: 'Commit SHA' },
             { key: 'commitDate', label: 'Commit Date' },
-            { key: 'pkgName', label: 'Package Name' }
+          ]
+        }
+      },
+
+      {
+        type: 'description',
+        title: 'Database Statistics',
+        colSpan: 4,
+        dataConfig: {
+          apiUrl: '/system/search/stats?includeIndexes=false',
+          apiMethod: 'GET'
+        },
+        options: {
+          bordered: true,
+          size: 'small',
+          items: [
+            { key: 'databaseSize', label: 'Database Size' },
+            { key: 'usedDatabaseSize', label: 'Used Database Size' },
+            { key: 'lastUpdate', label: 'Last Update' },
           ]
         }
       },
@@ -125,24 +143,6 @@ export const searchDashboardPage: DashboardPageConfig = {
           ]
         }
       },
-      {
-        type: 'description',
-        title: 'Database Statistics',
-        colSpan: 4,
-        dataConfig: {
-          apiUrl: '/system/search/stats',
-          apiMethod: 'GET'
-        },
-        options: {
-          bordered: true,
-          size: 'small',
-          items: [
-            { key: 'databaseSize', label: 'Database Size' },
-            { key: 'lastUpdate', label: 'Last Update' },
-            { key: 'indexes', label: 'Total Indexes' }
-          ]
-        }
-      }
     ]
   }
 }; 
