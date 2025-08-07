@@ -11,6 +11,41 @@ export const searchDashboardPage: DashboardPageConfig = {
   dashboardPageConfig: {
     widgets: [
       {
+        type: 'description',
+        title: 'Engine Health',
+        colSpan: 4,
+        dataConfig: {
+          apiUrl: '/system/search/is-healthy',
+          apiMethod: 'GET'
+        },
+        options: {
+          bordered: true,
+          size: 'small',
+          items: [
+            { key: 'isHealthy', label: 'Is Healthy' }
+          ]
+        }
+      },
+      {
+        type: 'description',
+        title: 'Engine Version',
+        colSpan: 4,
+        dataConfig: {
+          apiUrl: '/system/search/version',
+          apiMethod: 'GET'
+        },
+        options: {
+          bordered: true,
+          size: 'small',
+          items: [
+            { key: 'pkgVersion', label: 'Version' },
+            { key: 'commitSha', label: 'Commit SHA' },
+            { key: 'commitDate', label: 'Commit Date' },
+            { key: 'pkgName', label: 'Package Name' }
+          ]
+        }
+      },
+      {
         type: 'actions',
         title: 'Search Management',
         colSpan: 4,
@@ -68,7 +103,7 @@ export const searchDashboardPage: DashboardPageConfig = {
                   apiMethod: "POST",
                   apiUrl: "/system/search/dumps"
                 },
-                submitSuccessRedirect: "/system/search/tasks"
+                submitSuccessRedirect: "/system/search/tasks/:taskUid"
               }
             },
             { 
@@ -78,50 +113,15 @@ export const searchDashboardPage: DashboardPageConfig = {
                 modalType: "confirm",
                 modalPageConfig: {
                   title: "Create Database Snapshot",
-                  content: "This will create a database snapshot. This operation may take some time."
+                  content: "This will create a database snapshot. This operation may take some time. Note: Snapshot functionality requires Meilisearch to be configured with snapshot support."
                 },
                 apiConfig: {
                   apiMethod: "POST",
                   apiUrl: "/system/search/snapshots"
                 },
-                submitSuccessRedirect: "/system/search/tasks"
+                submitSuccessRedirect: "/system/search/tasks/:taskUid",
               }
             }
-          ]
-        }
-      },
-      {
-        type: 'description',
-        title: 'Engine Health',
-        colSpan: 4,
-        dataConfig: {
-          apiUrl: '/system/search/is-healthy',
-          apiMethod: 'GET'
-        },
-        options: {
-          bordered: true,
-          size: 'small',
-          items: [
-            { key: 'isHealthy', label: 'Is Healthy' }
-          ]
-        }
-      },
-      {
-        type: 'description',
-        title: 'Engine Version',
-        colSpan: 4,
-        dataConfig: {
-          apiUrl: '/system/search/version',
-          apiMethod: 'GET'
-        },
-        options: {
-          bordered: true,
-          size: 'small',
-          items: [
-            { key: 'pkgVersion', label: 'Version' },
-            { key: 'commitSha', label: 'Commit SHA' },
-            { key: 'commitDate', label: 'Commit Date' },
-            { key: 'pkgName', label: 'Package Name' }
           ]
         }
       },
