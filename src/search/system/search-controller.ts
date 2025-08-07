@@ -98,14 +98,12 @@ export class SearchSystemController extends APIController {
 
     const indexInfo = await searchService.getIndexInfo();
     const indexStats = await searchService.getIndexStats();
-    const indexSettings = await searchService.getIndexSettings();
 
     return res.json({
       details: {
         indexInfo,
         indexStats,
         entityName,
-        indexSettings,
       }
     });
   }

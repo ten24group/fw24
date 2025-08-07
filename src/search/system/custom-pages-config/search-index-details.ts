@@ -68,26 +68,18 @@ export const searchIndexDetailsConfig: AccordionPageConfig = {
         pageType: "details",
         detailsPageConfig: {
           detailApiConfig: { apiMethod: "GET", responseKey: "details", apiUrl: "/system/search/indices/:entityName" },
+          columnsConfig: {
+            columns: [
+              { sortOrder: 1, fields: [ "entityName", "indexInfo" ] },
+              { sortOrder: 2, fields: [ "indexStats" ] }
+            ]
+          },
           propertiesConfig: [
             { name: "entityName", label: "Entity Name", id: "entityName", column: "entityName", fieldType: "text" },
             // Index Info
-            { name: "indexInfo.uid", label: "Index UID", id: "uid", column: "indexInfo.uid", fieldType: "text" },
-            { name: "indexInfo.primaryKey", label: "Primary Key", id: "primaryKey", column: "indexInfo.primaryKey", fieldType: "text" },
-            { name: "indexInfo.createdAt", label: "Created At", id: "createdAt", column: "indexInfo.createdAt", fieldType: "datetime" },
-            { name: "indexInfo.updatedAt", label: "Updated At", id: "updatedAt", column: "indexInfo.updatedAt", fieldType: "datetime" },
+            { name: "indexInfo", label: "Index Info", id: "indexInfo", column: "indexInfo", fieldType: "json" },
             // Index Stats
-            { name: "indexStats.numberOfDocuments", label: "Document Count", id: "numberOfDocuments", column: "indexStats.numberOfDocuments", fieldType: "number" },
-            { name: "indexStats.isIndexing", label: "Is Indexing", id: "isIndexing", column: "indexStats.isIndexing", fieldType: "boolean" },
-            { name: "indexStats.fieldDistribution", label: "Field Distribution", id: "fieldDistribution", column: "indexStats.fieldDistribution", fieldType: "json" },
-            // Index Settings
-            { name: "indexSettings.filterableAttributes", label: "Filterable Attributes", id: "filterableAttributes", column: "indexSettings.filterableAttributes", fieldType: "json" },
-            { name: "indexSettings.sortableAttributes", label: "Sortable Attributes", id: "sortableAttributes", column: "indexSettings.sortableAttributes", fieldType: "json" },
-            { name: "indexSettings.searchableAttributes", label: "Searchable Attributes", id: "searchableAttributes", column: "indexSettings.searchableAttributes", fieldType: "json" },
-            { name: "indexSettings.displayedAttributes", label: "Displayed Attributes", id: "displayedAttributes", column: "indexSettings.displayedAttributes", fieldType: "json" },
-            { name: "indexSettings.rankingRules", label: "Ranking Rules", id: "rankingRules", column: "indexSettings.rankingRules", fieldType: "json" },
-            { name: "indexSettings.distinctAttribute", label: "Distinct Attribute", id: "distinctAttribute", column: "indexSettings.distinctAttribute", fieldType: "text" },
-            { name: "indexSettings.stopWords", label: "Stop Words", id: "stopWords", column: "indexSettings.stopWords", fieldType: "json" },
-            { name: "indexSettings.synonyms", label: "Synonyms", id: "synonyms", column: "indexSettings.synonyms", fieldType: "json" }
+            { name: "indexStats", label: "Index Stats", id: "indexStats", column: "indexStats", fieldType: "json" },
           ]
         }
       },
