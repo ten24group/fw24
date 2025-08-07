@@ -23,9 +23,6 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     return {
         pageTitle:  `Create ${entityNamePascalCase}`,
         pageType:   'form',
-        cardStyle: {
-            width: '50%'
-        },
         breadcrums: [],
         pageHeaderActions: [
             {
