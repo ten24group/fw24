@@ -10,7 +10,8 @@ import { meiliSearchTasksPage } from './meili-search-tasks';
 import { searchDashboardPage } from './search-dashboard';
 import { searchEntitiesConfig } from './search-entities';
 import { searchIndexDetailsConfig } from './search-index-details';
-import { searchIndexSettingsConfig } from './search-index-settings';
+import { searchIndexSettingsFormConfig } from './search-index-settings-edit';
+import { searchIndexSettingsDetailsConfig } from './search-index-settings-details';
 import { searchIndicesConfig } from './search-indices';
 import { searchRecordDetailConfig } from './search-record-detail';
 import { searchRecordsConfig } from './search-records';
@@ -29,7 +30,8 @@ export const SearchCustomPageConfigs = {
   searchDashboardPage,
   searchEntitiesConfig,
   searchIndexDetailsConfig,
-  searchIndexSettingsConfig,
+  searchIndexSettingsConfig: searchIndexSettingsFormConfig,
+  searchIndexSettingsDetailsConfig,
   searchIndicesConfig,
   searchRecordDetailConfig,
   searchRecordsConfig,

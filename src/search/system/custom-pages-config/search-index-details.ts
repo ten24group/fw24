@@ -11,23 +11,7 @@ export const searchIndexDetailsConfig: AccordionPageConfig = {
     { label: "Index Details" }
   ],
   pageHeaderActions: [
-    { label: "Edit Settings", url: "/system/search/indices/:entityName/settings", type: "button" },
-    { 
-      label: "Reset Settings", 
-      openInModal: true,
-      modalConfig: {
-        modalType: "confirm",
-        modalPageConfig: {
-          title: "Reset Index Settings",
-          content: "This will reset all index settings to their default values. This action cannot be undone."
-        },
-        apiConfig: {
-          apiMethod: "POST",
-          apiUrl: "/system/search/indices/:entityName/reset-settings"
-        },
-        submitSuccessRedirect: "/system/search/indices/:entityName"
-      }
-    },
+    { label: "View Settings", url: "/system/search/indices/:entityName/settings-details", type: "button" },
     { 
       label: "Resync Records", 
       openInModal: true,

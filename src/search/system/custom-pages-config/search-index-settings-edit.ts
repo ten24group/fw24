@@ -1,14 +1,16 @@
 import { FormPageConfig } from "../../../ui-config-gen";
 
-export const searchIndexSettingsConfig: FormPageConfig = {
+export const searchIndexSettingsFormConfig: FormPageConfig = {
   pageTitle: "Search Index Settings",
   pageType: "form",
-  routePattern: "/system/search/indices/:entityName/settings",
+  routePattern: "/system/search/indices/:entityName/settings-edit",
   breadcrumbs: [
     { label: "Home", url: "/" },
     { label: "Search", url: "/system/search" },
     { label: "Indices", url: "/system/search/indices" },
-    { label: "Settings" }
+    { label: "Index Details", url: "/system/search/indices/:entityName" },
+    { label: "Settings Details", url: "/system/search/indices/:entityName/settings-details" },
+    { label: "Edit Settings" }
   ],
   formPageConfig: {
     detailApiConfig: {
@@ -20,7 +22,7 @@ export const searchIndexSettingsConfig: FormPageConfig = {
       responseKey: "result",
       apiUrl: "/system/search/indices/:entityName/settings"
     },
-    formButtons: [ "submit", { text: "Cancel", url: "/system/search/indices/:entityName" } ],
+    formButtons: [ "submit", "reset", { text: "Cancel", url: "/system/search/indices/:entityName/settings-details" } ],
     propertiesConfig: [
       { 
         name: "settings", 
@@ -316,6 +318,6 @@ export const searchIndexSettingsConfig: FormPageConfig = {
         ]
       }
     ],
-    submitSuccessRedirect: "/system/search/indices/:entityName"
+    submitSuccessRedirect: "/system/search/indices/:entityName/settings-details"
   }
 };
