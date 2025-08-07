@@ -1,11 +1,11 @@
-import { EntitySchema } from "../../entity";
+import { EntitySchema, FieldOptions, FieldOptionsAPIConfig } from "../../entity";
 import { IPageActionItem, IEntityPageColumnConfig } from "../../entity/base-entity";
 
 export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion";
 export type ModalType = "confirm" | "list" | "form" | "accordion" | "custom" | "details";
 
 // Import shared types from frontend for consistency
-type ConfigFieldType = "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json";
+type ConfigFieldType = "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json" | "list";
 type ConfigPropertyType = "list" | "map" | "object";
 
 interface IConfirmModal {
@@ -141,6 +141,35 @@ export interface ListPageConfig extends BasePageConfig {
     };
 }
 
+export interface PropertyConfig {
+    type?: ConfigPropertyType;
+    id?: string;
+    name: string;
+    label: string;
+    column: string;
+    fieldType: ConfigFieldType;
+    placeholder?: string;
+    helpText?: string;
+    hidden?: boolean;
+    validations?: string[];
+    isVisible?: boolean;
+    isEditable?: boolean;
+    isListable?: boolean;
+    isCreatable?: boolean;
+    isFilterable?: boolean;
+    isSearchable?: boolean;
+    isIdentifier?: boolean;
+    readOnly?: boolean;
+    defaultValue?: any;
+    options?: FieldOptions<any>;
+    // Support for list/map types from EntityAttribute
+    items?: {
+        type: ConfigFieldType;
+        properties?: Array<PropertyConfig>;
+    };
+    properties?: Array<PropertyConfig>;
+}
+
 export interface FormPageConfig extends BasePageConfig {
     pageType: "form";
     cardStyle?: {
@@ -161,27 +190,7 @@ export interface FormPageConfig extends BasePageConfig {
             text: string;
             url: string;
         }>;
-        propertiesConfig: Array<{
-            type?: ConfigPropertyType;
-            id?: string;
-            name: string;
-            label: string;
-            column: string;
-            fieldType: ConfigFieldType;
-            placeholder?: string;
-            helpText?: string;
-            hidden?: boolean;
-            validations?: string[];
-            isVisible?: boolean;
-            isEditable?: boolean;
-            isListable?: boolean;
-            isCreatable?: boolean;
-            isFilterable?: boolean;
-            isSearchable?: boolean;
-            isIdentifier?: boolean;
-            readOnly?: boolean;
-            defaultValue?: any;
-        }>;
+        propertiesConfig: Array<PropertyConfig>;
         submitSuccessRedirect?: string;
     };
 }
@@ -215,6 +224,24 @@ export interface DetailsPageConfig extends BasePageConfig {
             isIdentifier?: boolean;
             readOnly?: boolean;
             defaultValue?: any;
+            options?: FieldOptions<any>;
+            
+            // Support for list/map types from EntityAttribute
+            items?: {
+                type: ConfigFieldType;
+                properties?: Array<{
+                    name: string;
+                    label: string;
+                    fieldType: string;
+                    placeholder?: string;
+                }>;
+            };
+            properties?: Array<{
+                name: string;
+                label: string;
+                fieldType: string;
+                placeholder?: string;
+            }>;
             
             // for internal links
             isLink?: boolean;

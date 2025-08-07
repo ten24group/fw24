@@ -94,6 +94,14 @@ export class Application {
             await this.uiConfigGen.run();
         }
 
+        // configure a build command like in package.json to only generate the ui config
+        // "ui:gen": "UI_GEN_ONLY=true env-cmd -f .env.local ts-node src/index.ts"
+        // this is useful for generating the ui config during development
+        if (process.env.UI_GEN_ONLY === 'true') {
+            this.logger.info('UI config generation complete. Exiting.');
+            return;
+        }
+
         await this.constructAllResources()
 
         this.logger.info('All construct resource creation completed');
