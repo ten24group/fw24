@@ -10,8 +10,8 @@ export const meiliSearchExperimentalFeaturesPage: FormPageConfig = {
     { label: "Experimental Features" }
   ],
   formPageConfig: {
-    apiConfig: { apiMethod: "POST", responseKey: "", apiUrl: "/system/search/experimental-features" },
-    detailApiConfig: { apiMethod: "GET", responseKey: "", apiUrl: "/system/search/experimental-features" },
+    apiConfig: { apiMethod: "POST", apiUrl: "/system/search/experimental-features" },
+    detailApiConfig: { apiMethod: "GET", apiUrl: "/system/search/experimental-features" },
     formButtons: [ "submit", "reset", { text: "Cancel", url: "/system/search" } ],
     propertiesConfig: [
       { name: "metrics", column: "metrics", fieldType: "boolean", label: "Metrics" },

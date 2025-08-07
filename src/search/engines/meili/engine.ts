@@ -111,7 +111,7 @@ export class MeiliSearchEngine extends BaseSearchEngine {
     const response = await this.client.httpRequest.patch({
       path: `/experimental-features`,
       body: {
-        features
+        ...features
       }
     });
 
