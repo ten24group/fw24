@@ -103,6 +103,7 @@ export interface ListPageConfig extends BasePageConfig {
             isCreatable?: boolean;
             isFilterable?: boolean;
             isSearchable?: boolean;
+            isSortable?: boolean;
             isIdentifier?: boolean;
             readOnly?: boolean;
             defaultValue?: any;

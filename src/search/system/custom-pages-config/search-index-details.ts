@@ -327,6 +327,8 @@ export const searchIndexDetailsConfig: AccordionPageConfig = {
               dataIndex: "id",
               fieldType: "text",
               isListable: true,
+              isSortable: false,
+              isFilterable: false,
               isIdentifier: true,
               actions: [
                 { icon: "view", label: "View Details", url: "/system/search/records/:entityName/:id" }
@@ -336,6 +338,8 @@ export const searchIndexDetailsConfig: AccordionPageConfig = {
               name: "Full Record",
               dataIndex: "fullRecord",
               id: "fullRecord",
+              isSortable: false,
+              isFilterable: false,
               fieldType: "json",
               isListable: true
             }
