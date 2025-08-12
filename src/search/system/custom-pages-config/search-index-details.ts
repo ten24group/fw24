@@ -309,6 +309,38 @@ export const searchIndexDetailsConfig: AccordionPageConfig = {
             }
           ]
         }
+      },
+      "indexDocuments": {
+        pageTitle: "Index Documents",
+        pageType: "list",
+        listPageConfig: {
+          apiConfig: {
+            apiMethod: "GET",
+            useSearch: true,
+            responseKey: "items",
+            apiUrl: "/system/search/records/:entityName"
+          },
+          propertiesConfig: [
+            {
+              id: "id",
+              name: "ID",
+              dataIndex: "id",
+              fieldType: "text",
+              isListable: true,
+              isIdentifier: true,
+              actions: [
+                { icon: "view", label: "View Details", url: "/system/search/records/:entityName/:id" }
+              ]
+            },
+            {
+              name: "Full Record",
+              dataIndex: "fullRecord",
+              id: "fullRecord",
+              fieldType: "json",
+              isListable: true
+            }
+          ]
+        }
       }
     }
   }
