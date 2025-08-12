@@ -50,25 +50,159 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
     return record;
   }
 
+  // Implementation for per-record processing
+  protected override async processRecord(record: BaseEventRecord<TPayload>): Promise<void> {
+    const startTime = Date.now();
+    const { entityName, eventType, entityId } = record;
+    
+    this.logger.info('Processing single record for search indexing', { entityName, eventType, entityId });
+    
+    const searchIndexEntry = this.createSearchIndexEntry(record);
+    await this.indexOrDeleteDocument(searchIndexEntry);
+    
+    const duration = Date.now() - startTime;
+    this.logger.info('Single record processing completed', { entityName, eventType, entityId, durationMs: duration });
+  }
+
+  // Implementation for batch processing
+  protected override async processRecordsBatch(records: BaseEventRecord<TPayload>[]): Promise<void> {
+    const startTime = Date.now();
+    this.logger.info('Starting batch search indexing', { recordCount: records.length });
+    
+    // Group by entityName and eventType to minimize engine calls
+    const groups = new Map<string, BaseEventRecord<TPayload>[]>();
+
+    for (const rec of records) {
+      const key = `${rec.entityName || ''}|${rec.eventType}`;
+      const arr = groups.get(key) || [];
+      arr.push(rec);
+      groups.set(key, arr);
+    }
+
+    this.logger.info('Records grouped for batch processing', { 
+      totalGroups: groups.size, 
+      groupDetails: Array.from(groups.entries()).map(([key, records]) => ({
+        group: key,
+        recordCount: records.length
+      }))
+    });
+
+    let totalIndexed = 0;
+    let totalDeleted = 0;
+    let totalSkipped = 0;
+
+    for (const [ key, groupRecords ] of groups.entries()) {
+      const groupStartTime = Date.now();
+      const [ entityName, eventType ] = key.split('|');
+
+      this.logger.info('Processing batch group', { group: key, recordCount: groupRecords.length, entityName, eventType });
+
+      const indexName = this.getIndexName(entityName);
+
+      await this.ensureIndexExists(indexName);
+
+      switch (eventType) {
+        case 'create':
+        case 'update': {
+          // Build documents from each record's payload (supports object, array, or payload.items)
+          const documents: any[] = [];
+          const nowIso = new Date().toISOString();
+
+          for (const gr of groupRecords) {
+            const payload: any = gr.payload;
+            const items: any[] = Array.isArray(payload)
+              ? payload
+              : (Array.isArray(payload?.items) ? payload.items : [ payload ]);
+
+            for (const item of items) {
+              const id = item?.id || item?.[ `${entityName}Id` ] || (gr.entityId as string | undefined);
+              if (!id) {
+                this.logger.warn('Skipping item without id during batch index', { entityName, itemKeys: Object.keys(item || {}) });
+                totalSkipped++;
+                continue;
+              }
+
+              const doc = item?.id ? { ...item } : { ...item, id };
+              if (!doc._indexedAt) {
+                doc._indexedAt = nowIso;
+              }
+              documents.push(doc);
+            }
+          }
+          
+          if (documents.length === 0) {
+            this.logger.info('No documents to index after payload normalization', { group: key });
+            break;
+          }
+          
+          this.logger.info('Executing batch index operation', { group: key, documentCount: documents.length, indexName });
+          await this.searchEngine.indexDocuments(documents, { indexName }, false);
+          totalIndexed += documents.length;
+          
+          const groupDuration = Date.now() - groupStartTime;
+          this.logger.info('Batch index operation completed', { 
+            group: key, 
+            indexedCount: documents.length, 
+            durationMs: groupDuration,
+            avgTimePerDocument: groupDuration / documents.length 
+          });
+          break;
+        }
+        case 'delete': {
+          const ids = groupRecords.map(gr => gr.entityId as string);
+          
+          this.logger.info('Executing batch delete operation', { group: key, idCount: ids.length, indexName });
+          await this.searchEngine.deleteDocuments(ids, indexName, false);
+          totalDeleted += ids.length;
+          
+          const groupDuration = Date.now() - groupStartTime;
+          this.logger.info('Batch delete operation completed', { 
+            group: key, 
+            deletedCount: ids.length, 
+            durationMs: groupDuration 
+          });
+          break;
+        }
+        default:
+          this.logger.warn('Unknown event type in batch', { eventType, groupSize: groupRecords.length });
+      }
+    }
+
+    const totalDuration = Date.now() - startTime;
+    this.logger.info('Batch search indexing completed', { 
+      totalRecords: records.length,
+      totalGroups: groups.size,
+      totalIndexed,
+      totalDeleted,
+      totalSkipped,
+      durationMs: totalDuration,
+      avgTimePerRecord: totalDuration / records.length,
+      avgTimePerGroup: totalDuration / groups.size
+    });
+  }
+
+  // Helper method to create SearchIndexEntry from a record
+  private createSearchIndexEntry(record: BaseEventRecord<TPayload>): SearchIndexEntry {
+    const { entityName, eventType, entityId, timestamp, payload: payloadData } = record;
+    
+    return {
+      id: entityId as string,
+      data: {
+        ...payloadData,
+        _indexedAt: new Date().toISOString()
+      },
+      eventType: eventType as 'create' | 'update' | 'delete',
+      timestamp: (timestamp ? new Date(timestamp) : new Date()).toISOString(),
+      entityName: entityName as string,
+    };
+  }
+
   protected async indexOrDeleteDocument(searchIndexEntry: SearchIndexEntry): Promise<void> {
     const { entityName, eventType, data, id } = searchIndexEntry;
 
     this.logger.info('Processing search index operation', { entityName, eventType, id });
 
-    const tableNameKey = resolveEnvValueFor({ key: SEARCH_INDEXER_ENV_KEYS.TABLE_NAME_ENV_KEY });
-    this.logger.info('tableNameKey', { tableNameKey });
-    if (!tableNameKey) {
-      throw new SearchValidationError(`${SEARCH_INDEXER_ENV_KEYS.TABLE_NAME_ENV_KEY} environment variable is required to calculate the appropriate index-name`);
-    }
-
-    const tableName = resolveEnvValueFor({ key: tableNameKey, suffix: 'table' });
-    this.logger.info('tableName', { tableName });
-
-    if (!tableName) {
-      throw new SearchValidationError(`${tableName} environment variable is required to calculate the appropriate index-name`);
-    }
-
-    const indexName = makeEntitySearchIndexName({ tableName, entityName });
+    const indexName = this.getIndexName(entityName);
 
     try {
       // Ensure the index exists
@@ -98,6 +232,25 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
 
       throw error;
     }
+  }
+
+  protected getIndexName(entityName: string): string {
+    const tableNameKey = resolveEnvValueFor({ key: SEARCH_INDEXER_ENV_KEYS.TABLE_NAME_ENV_KEY });
+    this.logger.info('tableNameKey', { tableNameKey });
+    if (!tableNameKey) {
+      throw new SearchValidationError(`${SEARCH_INDEXER_ENV_KEYS.TABLE_NAME_ENV_KEY} environment variable is required to calculate the appropriate index-name`);
+    }
+
+    const tableName = resolveEnvValueFor({ key: tableNameKey, suffix: 'table' });
+    this.logger.info('tableName', { tableName });
+
+    if (!tableName) {
+      throw new SearchValidationError(`${tableName} environment variable is required to calculate the appropriate index-name`);
+    }
+
+    const indexName = makeEntitySearchIndexName({ tableName, entityName });
+
+    return indexName;
   }
 
   protected async ensureIndexExists(indexName: string): Promise<void> {

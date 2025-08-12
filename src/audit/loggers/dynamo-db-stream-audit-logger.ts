@@ -98,6 +98,19 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     this.logger.debug('Successfully wrote audit entry', { auditEntry });
   }
 
+  protected async processRecordsBatch(records: BaseEventRecord<ChangeStreamPayload>[]): Promise<void> {
+    // For audit logging, process each record individually to maintain detailed audit trail
+    const auditLogger = this.getAuditLogger();
+    
+    for (const record of records) {
+      const auditEntry = this.makeAditEntry(record);
+      if (auditEntry) {
+        await auditLogger.audit({ auditEntry });
+        this.logger.debug('Successfully wrote audit entry in batch', { auditEntry });
+      }
+    }
+  }
+
   protected makeAditEntry(record: BaseEventRecord<ChangeStreamPayload>): AuditEntry | undefined {
     const { entityName, eventType, timestamp, entityId, payload: { newImage, oldImage } } = record;
     // Get only the changed properties

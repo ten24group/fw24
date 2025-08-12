@@ -9,14 +9,15 @@ import { type BaseEntityService } from '../../entity';
 import { type IDIContainer, type Request, type Response } from '../../interfaces';
 import { deepCopy, resolveEnvValueFor } from '../../utils';
 import { parseSearchQuery } from "../search-utils";
+import { Environment } from "../../client";
 
 export enum SEARCH_CONTROLLER_ENV_KEYS {
-  MEILISEARCH_SYNC_QUEUE_URL = 'MEILISEARCH_SYNC_QUEUE_URL',
+  MEILISEARCH_SYNC_QUEUE_NAME = 'MEILISEARCH_SYNC_QUEUE_NAME',
 }
 
 @Controller('system/search', {
   env: [ {
-    name: SEARCH_CONTROLLER_ENV_KEYS.MEILISEARCH_SYNC_QUEUE_URL,
+    name: SEARCH_CONTROLLER_ENV_KEYS.MEILISEARCH_SYNC_QUEUE_NAME,
   } ],
 })
 export class SearchSystemController extends APIController {
@@ -429,21 +430,22 @@ export class SearchSystemController extends APIController {
   async resyncEntityRecords(
     req: Request<{
       path: { entityName: string };
-      body: { batchSize?: number; queueUrl?: string }
+      body: { batchSize?: number; queueUrl?: string; byBatch?: boolean }
     }>,
     res: Response
   ) {
 
     const { entityName } = req.pathParameters ?? {};
-    const { batchSize = 25, queueUrl } = req.body || {};
+    const { batchSize = 50, queueUrl, byBatch = true } = req.body || {};
 
     const entityService = this.getEntityService(entityName);
 
     // Use provided queueUrl or resolve from environment
-    const resolvedQueueUrl = queueUrl || resolveEnvValueFor({ key: SEARCH_CONTROLLER_ENV_KEYS.MEILISEARCH_SYNC_QUEUE_URL });
+    const queueName = resolveEnvValueFor({ key: SEARCH_CONTROLLER_ENV_KEYS.MEILISEARCH_SYNC_QUEUE_NAME });
+    const resolvedQueueUrl = queueUrl || Environment.queueUrl(queueName);
 
     if (!resolvedQueueUrl) {
-      throw new Error(`Queue URL not provided and ${SEARCH_CONTROLLER_ENV_KEYS.MEILISEARCH_SYNC_QUEUE_URL} not configured`);
+      throw new Error(`Queue URL not provided and env-key [${SEARCH_CONTROLLER_ENV_KEYS.MEILISEARCH_SYNC_QUEUE_NAME}] is not configured`);
     }
 
     // Get all entity records in batches and queue them for sync
@@ -462,21 +464,42 @@ export class SearchSystemController extends APIController {
         }
       });
 
-      await Promise.all(
-        (queryResult.data ?? []).map(async (entityRecord) => {
-          try {
-            await sendQueueMessage(resolvedQueueUrl, {
+      if (byBatch) {
+        const data = [ ...(queryResult.data ?? []) ];
+        try {
+          if (data.length === 0) {
+            this.logger.info(`No records to queue for sync: ${entityName}`, { byBatch, entityName, batchSize, queueUrl});
+            break;
+          }
+
+          await sendQueueMessage(resolvedQueueUrl, {
+            data,
+            eventName: "RESYNC",
+            entityName,
+          });
+          processedCount += data.length;
+        } catch (error: any) {
+          this.logger.error(`Error queueing record for sync: ${error.message}`, { byBatch, entityName, batchSize, queueUrl, error});
+          failedCount += data.length;
+        }
+
+      } else {
+        await Promise.all(
+          (queryResult.data ?? []).map(async (entityRecord) => {
+            try {
+              await sendQueueMessage(resolvedQueueUrl, {
               data: { ...entityRecord },
               eventName: "RESYNC",
               entityName,
             })
             processedCount++;
           } catch (error: any) {
-            this.logger.error(`Error queueing record for sync: ${error.message}`);
+            this.logger.error(`Error queueing record for sync: ${error.message}`, { byBatch, entityName, batchSize, queueUrl, error});
             failedCount++;
-          }
-        })
-      );
+            }
+          })
+        );
+      }
 
       cursor = queryResult.cursor ?? undefined;
     }

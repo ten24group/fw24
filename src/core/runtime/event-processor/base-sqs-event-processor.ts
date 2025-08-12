@@ -8,13 +8,18 @@ import { BaseEventRecord, IEventDataExtractor } from "../../types/event-processo
 abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayload>, TEvent extends DynamoDBStreamEvent | SQSEvent = any, TPayload extends Record<string, any> = Record<string, any>> extends QueueController {
 
   protected eventDataExtractor: T;
+  protected processMode: 'record' | 'batch' = 'record';
 
-  constructor(extractor: T) {
+  constructor(extractor: T, options?: { processMode?: 'record' | 'batch' }) {
     super();
     if (!extractor) {
       throw new Error('IEventDataExtractor is required for BaseSQSEventProcessor');
     }
     this.eventDataExtractor = extractor;
+    if (options?.processMode) {
+      this.processMode = options.processMode;
+    }
+    this.logger.info('BaseSQSEventProcessor initialized', { processMode: this.processMode });
   }
 
   abstract initialize(event: TEvent | SQSEvent, context: Context): Promise<any>;
@@ -23,7 +28,7 @@ abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayl
 
   async LambdaHandler(event: TEvent | SQSEvent, context: Context) {
     const eventSource = event.Records && event.Records.length > 0 ? event.Records[ 0 ].eventSource : 'Unknown';
-    this.logger.debug('Processing incoming stream event', { eventSourceFromRecord: eventSource, recordCount: event.Records?.length });
+    this.logger.info('Processing incoming stream event', { eventSourceFromRecord: eventSource, recordCount: event.Records?.length, processMode: this.processMode });
 
     this.logger.debug('Initializing event processor');
     await this.initialize(event, context);
@@ -38,7 +43,7 @@ abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayl
 
     const records: BaseEventRecord<TPayload>[] = this.eventDataExtractor.extractData(event);
 
-    this.logger.debug('Extracted records for processing', { recordCount: records.length });
+    this.logger.info('Extracted records for processing', { recordCount: records.length, processMode: this.processMode });
 
     if (records.length === 0) {
       this.logger.info('No records extracted for processing from the event.');
@@ -50,29 +55,62 @@ abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayl
 
   protected async processRecords(records: BaseEventRecord<TPayload>[]) {
 
-    this.logger.debug('Processing records', { recordCount: records.length });
+    const startTime = Date.now();
+    this.logger.info('Starting record processing', { recordCount: records.length, processMode: this.processMode });
 
-    const processPromises = records.map(async record => {
-
-      const processedRecord = await this.preprocessRecord(record);
-
-      if (!processedRecord) {
+    // Preprocess and filter
+    const preprocessed: BaseEventRecord<TPayload>[] = [];
+    for (const record of records) {
+      const processed = await this.preprocessRecord(record);
+      if (!processed) {
         this.logger.debug('Record filtered out during preprocessing', { eventId: record.eventId, entityName: record.entityName });
-        return;
+        continue;
       }
+      preprocessed.push(processed);
+    }
 
-      await this.processRecord(processedRecord);
-
-      await this.postprocessRecord(processedRecord);
-
+    this.logger.info('Preprocessing completed', { 
+      originalCount: records.length, 
+      preprocessedCount: preprocessed.length, 
+      filteredCount: records.length - preprocessed.length,
+      processMode: this.processMode 
     });
 
-    await Promise.all(processPromises);
+    if (preprocessed.length === 0) {
+      this.logger.info('No records to process after preprocessing.');
+      return;
+    }
 
-    this.logger.debug(`Successfully processed ${records.length} extracted records from the event`);
+    if (this.processMode === 'batch') {
+      this.logger.info('Executing batch processing mode', { recordCount: preprocessed.length });
+      await this.processRecordsBatch(preprocessed);
+      this.logger.info('Batch processing completed, running postprocessors');
+      for (const rec of preprocessed) {
+        await this.postprocessRecord(rec);
+      }
+    } else {
+      this.logger.info('Executing record-by-record processing mode', { recordCount: preprocessed.length });
+      const processPromises = preprocessed.map(async (processedRecord) => {
+        await this.processRecord(processedRecord);
+        await this.postprocessRecord(processedRecord);
+      });
+      await Promise.all(processPromises);
+    }
+
+    const duration = Date.now() - startTime;
+    this.logger.info('Record processing completed', { 
+      processedCount: preprocessed.length, 
+      processMode: this.processMode, 
+      durationMs: duration,
+      avgTimePerRecord: duration / preprocessed.length 
+    });
   }
 
+  // Abstract method for per-record processing (used in 'record' mode)
   protected abstract processRecord(record: BaseEventRecord<TPayload>): Promise<void>;
+
+  // Abstract method for batch processing (used in 'batch' mode)
+  protected abstract processRecordsBatch(records: BaseEventRecord<TPayload>[]): Promise<void>;
 
   protected async preprocessRecord(record: BaseEventRecord<TPayload>): Promise<BaseEventRecord<TPayload> | null> {
     return record;
