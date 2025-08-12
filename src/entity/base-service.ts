@@ -227,6 +227,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         }
     }
 
+    public async transformDocumentForIndexing(entity: EntityRecordTypeFromSchema<S>): Promise<Record<string, any>> {
+        const searchService = this.getSearchService();
+        return await searchService.transformDocumentForIndexing(entity);
+    }
+
     public validateEntitySchema() {
         const validator = new EntitySchemaValidator(this.diContainer);
         validator.validateSchema(

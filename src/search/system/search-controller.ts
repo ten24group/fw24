@@ -465,7 +465,12 @@ export class SearchSystemController extends APIController {
       });
 
       if (byBatch) {
-        const data = [ ...(queryResult.data ?? []) ];
+        
+        const data = await Promise.all([ ...(queryResult.data ?? []) ].map(async (rec) => {
+          const transformed = await entityService.transformDocumentForIndexing(rec);
+          return transformed;
+        }));
+
         try {
           if (data.length === 0) {
             this.logger.info(`No records to queue for sync: ${entityName}`, { byBatch, entityName, batchSize, queueUrl});
@@ -486,9 +491,10 @@ export class SearchSystemController extends APIController {
       } else {
         await Promise.all(
           (queryResult.data ?? []).map(async (entityRecord) => {
+            const transformed = await entityService.transformDocumentForIndexing(entityRecord);
             try {
               await sendQueueMessage(resolvedQueueUrl, {
-              data: { ...entityRecord },
+              data: transformed,
               eventName: "RESYNC",
               entityName,
             })
@@ -496,7 +502,7 @@ export class SearchSystemController extends APIController {
           } catch (error: any) {
             this.logger.error(`Error queueing record for sync: ${error.message}`, { byBatch, entityName, batchSize, queueUrl, error});
             failedCount++;
-            }
+          }
           })
         );
       }

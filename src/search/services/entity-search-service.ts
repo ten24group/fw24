@@ -53,9 +53,10 @@ export class EntitySearchService<S extends EntitySchema<any, any, any>> extends 
 
     // Use schema-defined transformer if available
     if (searchConfig?.documentTransformer) {
+      this.logger.info('Using schema-defined document transformer', { entityName: this.entityService.getEntityName() });
       return await searchConfig.documentTransformer(entity);
     }
 
-    return super.transformDocumentForIndexing(entity);
+    return await super.transformDocumentForIndexing(entity);
   }
 } 
