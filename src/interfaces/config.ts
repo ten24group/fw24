@@ -24,6 +24,7 @@ export interface IApplicationConfig {
     defaultAdminGroups?: string[];
     environment?: string; // local, dev, prod
     environmentVariables?: Record<string, string>;
+    globalEnvironmentVariables?: Record<string, string>;
     logRetentionDays?: number;
     logRemovalPolicy?: RemovalPolicy;
     functionProps?: Omit<NodejsFunctionProps, 'layers'> & {

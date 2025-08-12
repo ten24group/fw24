@@ -300,6 +300,7 @@ export class MeiliSearchSystemController extends SearchSystemController {
     }
     
     return res.json({
+      meiliParams,
       cursor: nextCursor,
       items: tasks.results
     });
@@ -534,8 +535,9 @@ export class MeiliSearchSystemController extends SearchSystemController {
     });
     
     return res.json({
+      meiliParams,
+      items: results,
       cursor: nextCursor,
-      items: results
     });
   }
 

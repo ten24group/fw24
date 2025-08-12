@@ -35,6 +35,12 @@ export class Application {
             })
         }
 
+        if (config.globalEnvironmentVariables) {
+            Object.entries(config.globalEnvironmentVariables).forEach(([ key, value ]) => {
+                this.fw24.setGlobalEnvironmentVariable(key, value);
+            })
+        }
+
         // ensure there's a log-level set in the fw24 scope so that the constructs can ask for this value
         // this's only the global value, and can be overridden by each lambda function.
         if (!this.fw24.hasEnvironmentVariable('LOG_LEVEL')) {

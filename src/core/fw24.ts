@@ -383,7 +383,7 @@ export class Fw24 {
      * @param value The value of the environment variable.
      */
     setGlobalEnvironmentVariable(name: string, value: any) {
-        this.logger.debug("setGlobalEnvironmentVariable:", name, value);
+        this.logger.info("setGlobalEnvironmentVariable:", name, value);
         this.setEnvironmentVariable(name, value, '');
         this.globalEnvironmentVariables.push(ensureValidEnvKey(name, ''));
     }
