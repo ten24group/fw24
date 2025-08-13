@@ -83,30 +83,6 @@ export const searchDashboardPage: DashboardPageConfig = {
         colSpan: 4,
         options: {
           actions: [
-            { 
-              label: 'Swap Indices', 
-              openInModal: true,
-              modalConfig: {
-                modalType: "form",
-                modalPageConfig: {
-                  title: "Swap Indices",
-                  formButtons: ["Swap"],
-                  propertiesConfig: [
-                    {
-                      name: "swaps",
-                      label: "Index Pairs (JSON array)",
-                      fieldType: "textarea",
-                      defaultValue: "[[\"index1\",\"index2\"]]"
-                    }
-                  ]
-                },
-                apiConfig: {
-                  apiMethod: "POST",
-                  apiUrl: "/system/search/indices/swap"
-                },
-                submitSuccessRedirect: "/system/search/tasks"
-              }
-            },
             { label: 'Experimental Features', url: '/system/search/experimental-features' },
             { 
               label: 'Create Dump', 

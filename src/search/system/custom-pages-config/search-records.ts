@@ -20,6 +20,8 @@ export const searchRecordsConfig: ListPageConfig = {
         dataIndex: "id", 
         fieldType: "text", 
         isListable: true, 
+        isFilterable: false,
+        isSortable: false,
         isIdentifier: true,
         actions: [
           { icon: "view", label: "View Details", url: "/system/search/records/:entityName/:id" }
@@ -30,7 +32,12 @@ export const searchRecordsConfig: ListPageConfig = {
         dataIndex: "fullRecord", 
         id: "fullRecord", 
         fieldType: "json", 
-        isListable: true
+        isListable: true,
+        isFilterable: false,
+        isSortable: false,
+        actions: [
+          { icon: "view", label: "View Details", url: "/system/search/records/:entityName/:id" }
+        ]
       }
     ]
   }

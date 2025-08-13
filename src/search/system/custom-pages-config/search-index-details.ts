@@ -89,7 +89,6 @@ export const searchIndexDetailsConfig: AccordionPageConfig = {
         listPageConfig: {
           apiConfig: {
             apiMethod: "GET",
-            useSearch: true,
             responseKey: "items",
             apiUrl: "/system/search/tasks?entityName.eq=:entityName"
           },
@@ -110,18 +109,6 @@ export const searchIndexDetailsConfig: AccordionPageConfig = {
               actions: [
                 { icon: "view", label: "Details", url: "/system/search/tasks/:uid" }
               ]
-            },
-            {
-              name: "Index UID",
-              dataIndex: "indexUid",
-              id: "indexUid",
-              fieldType: "text",
-              isListable: true,
-              isFilterable: true,
-              filterConfig: {
-                defaultOperator: "eq",
-                availableOperators: [ "eq", "in", "nin" ],
-              }
             },
             {
               name: "Status",
@@ -219,13 +206,12 @@ export const searchIndexDetailsConfig: AccordionPageConfig = {
         listPageConfig: {
           apiConfig: {
             apiMethod: "GET",
-            useSearch: true,
             responseKey: "items",
             apiUrl: "/system/search/batches?entityName.eq=:entityName"
           },
           propertiesConfig: [
             {
-              name: "Batch UID",
+              name: "UID",
               dataIndex: "uid",
               id: "uid",
               fieldType: "number",
@@ -242,27 +228,59 @@ export const searchIndexDetailsConfig: AccordionPageConfig = {
               ]
             },
             {
-              name: "Index UID",
-              dataIndex: "indexUid",
-              id: "indexUid",
-              fieldType: "text",
+              name: "Total Tasks",
+              dataIndex: "stats.totalNbTasks",
+              id: "totalNbTasks",
+              fieldType: "json",
+              isListable: true,
+              isFilterable: false
+            },
+            {
+              name: "Status",
+              dataIndex: "status",
+              id: "status",
+              fieldType: "json",
               isListable: true,
               isFilterable: true,
               filterConfig: {
                 defaultOperator: "eq",
                 availableOperators: [ "eq", "in", "nin" ],
+                predefinedOptions: [
+                  { label: "Enqueued", value: "enqueued" },
+                  { label: "Processing", value: "processing" },
+                  { label: "Succeeded", value: "succeeded" },
+                  { label: "Failed", value: "failed" },
+                  { label: "Canceled", value: "canceled" }
+                ],
+                filterType: "select"
               }
             },
             {
-              name: "Batch Strategy",
-              dataIndex: "batchStrategy",
-              id: "batchStrategy",
-              fieldType: "text",
+              name: "Type",
+              dataIndex: "types",
+              id: "type",
+              fieldType: "json",
               isListable: true,
               isFilterable: true,
               filterConfig: {
                 defaultOperator: "eq",
                 availableOperators: [ "eq", "in", "nin" ],
+                predefinedOptions: [
+                  { label: "Index Creation", value: "indexCreation" },
+                  { label: "Index Update", value: "indexUpdate" },
+                  { label: "Index Deletion", value: "indexDeletion" },
+                  { label: "Index Swap", value: "indexSwap" },
+                  { label: "Document Addition/Update", value: "documentAdditionOrUpdate" },
+                  { label: "Document Deletion", value: "documentDeletion" },
+                  { label: "Document Edition", value: "documentEdition" },
+                  { label: "Settings Update", value: "settingsUpdate" },
+                  { label: "Dump Creation", value: "dumpCreation" },
+                  { label: "Task Cancelation", value: "taskCancelation" },
+                  { label: "Task Deletion", value: "taskDeletion" },
+                  { label: "Database Upgrade", value: "databaseUpgrade" },
+                  { label: "Snapshot Creation", value: "snapshotCreation" }
+                ],
+                filterType: "select"
               }
             },
             {
@@ -296,14 +314,6 @@ export const searchIndexDetailsConfig: AccordionPageConfig = {
               dataIndex: "duration",
               id: "duration",
               fieldType: "text",
-              isListable: true,
-              isFilterable: false
-            },
-            {
-              name: "Progress",
-              dataIndex: "progress",
-              id: "progress",
-              fieldType: "json",
               isListable: true,
               isFilterable: false
             }
