@@ -66,6 +66,28 @@ export const searchDashboardPage: DashboardPageConfig = {
         }
       },
 
+      // add a description widget to show queue info
+      {
+        type: 'description',
+        title: 'Queue Info',
+        colSpan: 4,
+        dataConfig: {
+          apiUrl: '/system/search/queue-info',  
+          apiMethod: 'GET',
+          responseKey: 'info'
+        },
+        options: {
+          bordered: true,
+          size: 'small',
+          items: [  
+            { key: 'messageCount', label: 'Message Count' },
+            { key: 'delaySeconds', label: 'Delay Seconds' },
+            { key: 'messageCountDelayed', label: 'Message Count Delayed' },
+            { key: 'messageCountNotVisible', label: 'Message Count Not Visible' },
+          ]
+        }
+      },
+
       {
         type: 'actions',
         title: 'Search Management',

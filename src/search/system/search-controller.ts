@@ -1,6 +1,6 @@
 import type { APIGatewayProxyEvent, Context } from "aws-lambda";
 
-import { sendQueueMessage } from "../../client/sqs";
+import { getQueueMessageMetadata, sendQueueMessage } from "../../client/sqs";
 import { APIController } from '../../core/runtime/api-gateway-controller';
 import type { ExecutionContext } from "../../core/types/execution-context";
 import { Controller, Delete, Get, Post, Put } from '../../decorators';
@@ -522,6 +522,23 @@ export class SearchSystemController extends APIController {
       failedCount,
       processedCount,
     });
+  }
+
+  @Get('/queue-info')
+  async getQueueInfo(
+    req: Request<{ path: { queueUrl: string } }>,
+    res: Response
+  ) {
+
+    const { queueUrl } = req.queryStringParameters;  
+
+    // Use provided queueUrl or resolve from environment
+    const queueName = resolveEnvValueFor({ key: SEARCH_CONTROLLER_ENV_KEYS.MEILISEARCH_SYNC_QUEUE_NAME });
+    const resolvedQueueUrl = queueUrl || Environment.queueUrl(queueName);
+
+    const info = await getQueueMessageMetadata(resolvedQueueUrl);
+
+    return res.json({ info });
   }
 
   @Put('/records/{entityName}', {
