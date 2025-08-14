@@ -12,6 +12,13 @@ export { ConsoleAuditLogger } from './console';
 
 export { DummyAuditLogger } from './dummy';
 
+export { AUDIT_ENV_KEYS } from '../interfaces';
+
+export {
+  DynamoDBAuditEntityService,
+  DynamoDBAuditEntitySchema,
+} from './dynamodb';
+
 export {
   DynamoDBStreamAuditLogger as DefaultAuditHandler,
   getChangedProperties,

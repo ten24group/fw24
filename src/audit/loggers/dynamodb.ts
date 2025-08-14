@@ -1,9 +1,10 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { randomUUID } from 'crypto';
 import { EntityConfiguration } from 'electrodb';
-import { DefaultEntityOperations, createElectroDBEntity, createEntitySchema } from '../../entity';
+import { BaseEntityService, DefaultEntityOperations, createElectroDBEntity, createEntitySchema } from '../../entity';
 import { createLogger } from '../../logging';
 import { AuditLoggerConfig, AuditOptions, IAuditLogger } from '../interfaces';
+import { Controller, Service } from '../../decorators';
 
 export const DynamoDBAuditEntityConfiguration: EntityConfiguration = {
     table: process.env[ `${process.env.AUDIT_TABLE_NAME?.toUpperCase()}_TABLE` ],
@@ -16,7 +17,11 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
         entity: 'auditLog',
         entityNamePlural: 'auditLogs',
         entityOperations: DefaultEntityOperations,
-        service: 'auditLog'
+        service: 'auditLog',
+        excludeFromAdminUpdate: true,
+        excludeFromAdminCreate: true,
+        excludeFromAdminDelete: true,
+        excludeFromAdminMenu: true,
     },
     attributes: {
         auditId: {
@@ -95,7 +100,15 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             }
         }
     }
-});
+} as const);
+export type AuditEntitySchemaType = typeof DynamoDBAuditEntitySchema;
+
+@Service()
+export class DynamoDBAuditEntityService extends BaseEntityService<AuditEntitySchemaType> {
+    constructor() {
+        super(DynamoDBAuditEntitySchema, DynamoDBAuditEntityConfiguration);
+    }
+}
 
 export class DynamoDbAuditLogger implements IAuditLogger {
     private logger = createLogger(DynamoDbAuditLogger);

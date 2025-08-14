@@ -248,7 +248,7 @@ export class DynamoDBConstruct implements FW24Construct {
         this.mainStack = fw24.getStack(this.dynamoDBConfig.stackName, this.dynamoDBConfig.parentStackName);
         const appQualifiedTableName = ensureNoSpecialChars(ensureSuffix(this.dynamoDBConfig.table.name, `table`));
 
-        this.logger.debug("appQualifiedTableName:", appQualifiedTableName);
+        this.logger.info("appQualifiedTableName:", appQualifiedTableName);
 
         // See https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_dynamodb-readme.html
         const tableInstance = new TableV2(this.mainStack, appQualifiedTableName, this.dynamoDBConfig.table.props);

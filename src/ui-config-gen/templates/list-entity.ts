@@ -47,7 +47,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         breadcrums: [],
         pageHeaderActions: pageHeaderAction,
         listPageConfig
-    };
+    } as const;
 };
 
 export function makeViewEntityListConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
