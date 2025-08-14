@@ -87,6 +87,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     }
 
     const formattedProps = formatEntityAttributesForList(entityName, Array.from(properties.values()), {
+        CRUDApiPath,
         excludeFromAdminUpdate,
         excludeFromAdminDelete,
         excludeFromAdminDetail

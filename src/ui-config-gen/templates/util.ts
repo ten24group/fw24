@@ -153,10 +153,12 @@ export type ListingPropConfig = {
 };
 
 export function formatEntityAttributesForList( entityName: string, properties: TIOSchemaAttribute[], {
+    CRUDApiPath,
     excludeFromAdminUpdate,
     excludeFromAdminDelete,
     excludeFromAdminDetail
 }: {
+    CRUDApiPath?: string,
     excludeFromAdminUpdate?: boolean,
     excludeFromAdminDelete?: boolean,
     excludeFromAdminDetail?: boolean,
@@ -200,7 +202,7 @@ export function formatEntityAttributesForList( entityName: string, properties: T
                         apiConfig: {
                             apiMethod: `DELETE`,
                             responseKey: entityNameLower,
-                            apiUrl: `/${entityNameLower}`,
+                            apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
                         },
                         submitSuccessRedirect: `/list-${entityNameLower}`
                     }
