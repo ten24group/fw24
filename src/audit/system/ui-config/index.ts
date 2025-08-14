@@ -22,7 +22,15 @@ const viewUiConfig = MakeViewEntityConfig({
   entityName: entitySchema.model.entity,
   entityNamePlural: entitySchema.model.entityNamePlural,
   properties: entityDefaultOpsSchema.get.output,
+  breadcrumbs: [
+    { label: "Home", url: "/" },
+    { label: "System", url: "/system" },
+    { label: "Audit Logs", url: "/system/list-auditlog" },
+    { label: "Audit Log Detail" }
+  ],
+  columnsConfig: entitySchema.model.viewPageColumnsConfig,
 }, auditService);
+
 
 export const AuditCustomPageConfigs = {
   listingUiConfig: {

@@ -22,6 +22,24 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
         excludeFromAdminCreate: true,
         excludeFromAdminDelete: true,
         excludeFromAdminMenu: true,
+        viewPageColumnsConfig: {
+            columns: [
+                {
+                    sortOrder: 1,
+                    fields: [
+                        'auditId',
+                        'entityName',
+                        'eventType',
+                        'timestamp',
+                        'identifiers',
+                        'tenant',
+                        'actor',
+                        'entity',
+                        'data',
+                    ]
+                },
+            ]
+        }
     },
     attributes: {
         auditId: {
@@ -54,11 +72,13 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             type: 'any',
             required: false,
             isEditable: false,
+            isListable: false,
         },
         entity: {
             type: 'map',
             required: false,
             isEditable: false,
+            isListable: false,
             properties: {
                 '*': { type: 'any' }
             }
@@ -67,6 +87,7 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             type: 'map',
             required: false,
             isEditable: false,
+            isListable: false,
             properties: {
                 '*': { type: 'any' }
             }
@@ -75,6 +96,7 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             type: 'map',
             required: false,
             isEditable: false,
+            isListable: false,
             properties: {
                 '*': { type: 'any' }
             }
@@ -83,6 +105,7 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             type: 'map',
             required: false,
             isEditable: false,
+            isListable: false,
             properties: {
                 'id': { type: 'string' }
             }
