@@ -57,17 +57,31 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch } = options;
     const entityNameLower = entityName.toLowerCase();
 
-    let apiUrl = `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`;
-    if (useSearch) {
-        apiUrl = `${apiUrl}/search`;
-    }
+    const baseApiUrl = `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`;
+    const searchApiUrl = `${baseApiUrl}/search`;
+
+    // Check if dual API configuration is enabled
+    const isDualApiEnabled = useSearch; // Note: we can make it configurable in future
 
     const listPageConfig = {
-        apiConfig: {
-            apiMethod: `GET`,
+        apiConfig: isDualApiEnabled ? {
+            // Dual API configuration
+            search: {
+                apiMethod: 'GET',
+                responseKey: 'items',
+                apiUrl: searchApiUrl,
+            },
+            database: {
+                apiMethod: 'GET',
+                responseKey: 'items',
+                apiUrl: baseApiUrl,
+            }
+        } : {
+            // Single API configuration (backward compatible)
+            apiMethod: 'GET',
             responseKey: 'items',
             useSearch: useSearch ?? false,
-            apiUrl: apiUrl,
+            apiUrl: useSearch ? searchApiUrl : baseApiUrl,
         },
         propertiesConfig: [] as any[],
     }
