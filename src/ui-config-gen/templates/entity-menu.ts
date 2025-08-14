@@ -8,6 +8,8 @@ export default(
         icon?: string,
         excludeFromAdminList?: boolean,
         excludeFromAdminCreate?: boolean,
+        menuGroup?: string;
+        menuOrder?: number;
     }
 ) => {
 
@@ -33,7 +35,9 @@ export default(
         label: `${toHumanReadableName(options.entityNamePlural)}`,
         icon: `${ options.icon || 'appStore' }`,
         key: options.menuIndex,
-        children
+        children,
+        group: options.menuGroup,
+        order: options.menuOrder || 0
     };
     return config;
 };

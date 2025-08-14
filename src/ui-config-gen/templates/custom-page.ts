@@ -1,7 +1,7 @@
 import { EntitySchema, FieldOptions, FieldOptionsAPIConfig } from "../../entity";
 import { IPageActionItem, IEntityPageColumnConfig } from "../../entity/base-entity";
 
-export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion";
+export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion" | "menu";
 export type ModalType = "confirm" | "list" | "form" | "accordion" | "custom" | "details";
 
 // Import shared types from frontend for consistency
@@ -74,6 +74,26 @@ export interface AccordionPageConfig extends BasePageConfig {
             formPageConfig?: FormPageConfig['formPageConfig'];
             detailsPageConfig?: DetailsPageConfig['detailsPageConfig'];
             dashboardPageConfig?: DashboardPageConfig['dashboardPageConfig'];
+        }>;
+    };
+}
+
+export interface MenuPageConfig extends BasePageConfig {
+    pageType: "menu";
+    menuPageConfig: {
+        menuItems: Array<{
+            label: string;
+            key: string;
+            url?: string;
+            icon?: string;
+            children?: Array<{
+                label: string;
+                key: string;
+                url?: string;
+                icon?: string;
+            }>;
+            group?: string;
+            order?: number;
         }>;
     };
 }
@@ -254,7 +274,7 @@ export interface DetailsPageConfig extends BasePageConfig {
     };
 }
 
-export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageConfig | DashboardPageConfig | AccordionPageConfig;
+export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageConfig | DashboardPageConfig | AccordionPageConfig | MenuPageConfig;
 
 export function makeCustomPageConfig(options: CustomPageOptions) {
     const baseConfig = {
@@ -291,6 +311,11 @@ export function makeCustomPageConfig(options: CustomPageOptions) {
             return {
                 ...baseConfig,
                 accordionsPageConfig: options.accordionPageConfig.accordions
+            };
+        case "menu":
+            return {
+                ...baseConfig,
+                menuPageConfig: options.menuPageConfig
             };
         default:
             return baseConfig;

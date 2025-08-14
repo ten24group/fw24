@@ -87,6 +87,8 @@ export class EntityUIConfigGen {
             return 'dashboardPageConfig' in config;
         } else if (pageType === 'accordion') {
             return 'accordionPageConfig' in config;
+        } else if (pageType === 'menu') {
+            return 'menuPageConfig' in config;
         }
         return false;
     }
@@ -105,6 +107,8 @@ export class EntityUIConfigGen {
                 return `${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
             case 'accordion':
                 return `accordion-${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+            case 'menu':
+                return `${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
             default:
                 return null;
         }
@@ -204,6 +208,8 @@ export class EntityUIConfigGen {
                     menuIndex: menuIndex++,
                     excludeFromAdminList: entitySchema.model.excludeFromAdminList,
                     excludeFromAdminCreate: entitySchema.model.excludeFromAdminCreate,
+                    menuGroup: entitySchema.model.menuGroup,
+                    menuOrder: entitySchema.model.menuOrder,
                 });
 
                 menuConfigs.push(menuConfig);
@@ -213,8 +219,8 @@ export class EntityUIConfigGen {
 
         // Process custom pages
         for (const [ pageName, options ] of this.customPages) {
-            // skip the default dashboard page
-            if (pageName === 'dashboard') {
+            // skip the default dashboard page and menu page
+            if (pageName === 'dashboard' || pageName === 'menu') {
                 continue;
             }
             const customConfig = makeCustomPageConfig(options);
@@ -240,7 +246,66 @@ export class EntityUIConfigGen {
             dashboardConfig = MakeDashboardConfig();
         }
 
-        await this.writeToFiles(menuConfigs, entityConfigs, authConfigs, dashboardConfig);
+        // Look for a menu custom page
+        let menuConfig: any = null;
+        for (const [ pageName, options ] of this.customPages) {
+            if (options.pageType === 'menu' && options.pageTitle.toLowerCase() === 'menu') {
+                menuConfig = options;
+                break;
+            }
+        }
+
+        // Group menu items by their group property
+        const menuGroups = new Map<string, any[]>();
+        const ungroupedItems: any[] = [];
+
+        // Process entity menu items
+        menuConfigs.forEach(item => {
+            if (item.group) {
+                if (!menuGroups.has(item.group)) {
+                    menuGroups.set(item.group, []);
+                }
+                menuGroups.get(item.group)!.push(item);
+            } else {
+                ungroupedItems.push(item);
+            }
+        });
+
+        // Process custom menu items
+        if (menuConfig?.menuPageConfig?.menuItems) {
+            menuConfig.menuPageConfig.menuItems.forEach((item: any) => {
+                if (item.group) {
+                    if (!menuGroups.has(item.group)) {
+                        menuGroups.set(item.group, []);
+                    }
+                    menuGroups.get(item.group)!.push(item);
+                } else {
+                    ungroupedItems.push(item);
+                }
+            });
+        }
+
+        // Create final menu structure
+        const allMenuItems: any[] = [];
+
+        // Add ungrouped items first (primary navigation)
+        allMenuItems.push(...ungroupedItems);
+
+        // Add grouped items
+        menuGroups.forEach((items, groupName) => {
+            // Sort items within group by order
+            items.sort((a, b) => (a.order || 0) - (b.order || 0));
+            
+            // Create group item
+            allMenuItems.push({
+                label: groupName,
+                key: `group-${groupName}`,
+                icon: 'FolderOutlined',
+                children: items
+            });
+        });
+
+        await this.writeToFiles(allMenuItems, entityConfigs, authConfigs, dashboardConfig);
     }
 
     @LogDuration()

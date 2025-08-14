@@ -413,6 +413,10 @@ export interface EntitySchema<
 
     readonly CRUDApiPath?: string, // default is ''
 
+    // Menu configuration
+    readonly menuGroup?: string; // Group this entity belongs to in the menu
+    readonly menuOrder?: number; // Order within the group (default: 0)
+
     // View page configuration
     readonly viewPageActions?: IEntityPageAction[],
     readonly viewPageBreadcrumbs?: Array<{ label: string; url?: string }>,
