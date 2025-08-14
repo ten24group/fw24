@@ -123,6 +123,8 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     }
 
     // Create audit entry
+    // Note: timestamp is already in milliseconds (converted from DynamoDB seconds in the data extractor)
+    // Example: timestamp = 1734567890000 (milliseconds) -> "2024-12-19T10:31:30.000Z"
     const auditEntry: AuditEntry = {
       timestamp: (timestamp ? new Date(timestamp) : new Date()).toISOString(),
       entityName,

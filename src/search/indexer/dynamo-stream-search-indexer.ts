@@ -66,6 +66,8 @@ export class DynamoDBStreamSearchIndexer extends BaseSearchIndexer<DynamoDBEvent
     const searchableData = this.extractSearchableData(oldImage, newImage, eventType);
 
     // Create search index entry
+    // Note: timestamp is already in milliseconds (converted from DynamoDB seconds in the data extractor)
+    // Example: timestamp = 1734567890000 (milliseconds) -> "2024-12-19T10:31:30.000Z"
     const searchIndexEntry: SearchIndexEntry = {
       id: entityId as string,
       data: searchableData,

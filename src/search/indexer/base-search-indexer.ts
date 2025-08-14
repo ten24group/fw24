@@ -185,6 +185,8 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
   private createSearchIndexEntry(record: BaseEventRecord<TPayload>): SearchIndexEntry {
     const { entityName, eventType, entityId, timestamp, payload: payloadData } = record;
     
+    // Note: timestamp is already in milliseconds (converted from DynamoDB seconds in the data extractor)
+    // Example: timestamp = 1734567890000 (milliseconds) -> "2024-12-19T10:31:30.000Z"
     return {
       id: entityId as string,
       data: {

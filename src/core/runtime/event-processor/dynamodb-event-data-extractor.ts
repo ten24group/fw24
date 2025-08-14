@@ -59,13 +59,22 @@ export class DynamoDBEventDataExtractor implements IEventDataExtractor<DynamoDBS
       // create payload
       const payload: ChangeStreamPayload = { oldImage, newImage, keys };
 
+      // DynamoDB ApproximateCreationDateTime is in seconds since Unix epoch
+      // JavaScript Date constructor expects milliseconds since Unix epoch
+      // Example: ApproximateCreationDateTime = 1734567890 (seconds)
+      //         Should become: 1734567890000 (milliseconds)
+      //         Result: 2024-12-19T10:31:30.000Z
+      const timestampInMs = awsRecord.dynamodb.ApproximateCreationDateTime 
+        ? awsRecord.dynamodb.ApproximateCreationDateTime * 1000 
+        : undefined;
+
       processedRecords.push({
         eventId: awsRecord.eventID,
         eventType,
         entityName,
         entityId,
         payload,
-        timestamp: awsRecord.dynamodb.ApproximateCreationDateTime,
+        timestamp: timestampInMs,
         eventSource: awsRecord.eventSource || 'aws:dynamodb',
         metadata: {
           rawSourceEventName: rawDynamoDBEventName, // Keep the original DynamoDB event name

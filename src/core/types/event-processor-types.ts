@@ -6,7 +6,7 @@ export interface BaseEventRecord<P extends Record<string, any> = Record<string, 
   entityName?: string;
   entityId?: string | number | Record<string, any>;
   payload: P;
-  timestamp?: number; // epoch milliseconds
+  timestamp?: number; // Unix epoch milliseconds (e.g., 1734567890000 for "2024-12-19T10:31:30.000Z")
   eventSource?: string;
   metadata?: {
     rawSourceEventName?: string; // e.g., "INSERT", "MODIFY" from DynamoDB
