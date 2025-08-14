@@ -160,7 +160,7 @@ export class LayerConstruct implements FW24Construct {
     private async packageDirectory(layerConfig: IPackageDirectoryConfig) {
         const defaultLayerProps: LayerVersionProps = {
             layerVersionName: layerConfig.layerName,
-            compatibleRuntimes: [Runtime.NODEJS_18_X],
+            compatibleRuntimes: [ Runtime.NODEJS_22_X ],
             code: Code.fromAsset(layerConfig.sourcePath),
             compatibleArchitectures: [Architecture.ARM_64],
         };
@@ -276,7 +276,7 @@ export class LayerConstruct implements FW24Construct {
 
         const defaultLayerProps: LayerVersionProps = {
             layerVersionName: layerName,
-            compatibleRuntimes: [Runtime.NODEJS_18_X],
+            compatibleRuntimes: [ Runtime.NODEJS_22_X ],
             code: Code.fromAsset(bundleDir),
             compatibleArchitectures: [Architecture.ARM_64],
         };

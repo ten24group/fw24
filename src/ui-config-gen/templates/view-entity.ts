@@ -47,7 +47,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         breadcrumbs: breadcrumbs || [],
         pageHeaderActions,
         detailsPageConfig,
-    };
+    } as const;
 };
 
 export function makeViewEntityDetailConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> (

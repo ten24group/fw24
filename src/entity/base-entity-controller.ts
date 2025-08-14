@@ -1,7 +1,7 @@
 import type { Request, Response } from '../interfaces';
 import type { EntitySchema, EntityIdentifiersTypeFromSchema } from './base-entity';
 import type { BaseEntityService } from './base-service';
-import type { EntityFilterCriteria } from './query-types';
+import type { EntityFilterCriteria, EntityQuery, GenericFilterCriteria, TypedFilterCriteria } from './query-types';
 
 import { APIController } from '../core/runtime/api-gateway-controller';
 import { Delete, Get, Patch, Post } from '../decorators/method';
@@ -14,6 +14,9 @@ import { ENV_KEYS } from '../const';
 import { NotFoundError } from '../errors';
 import { EntityValidationError } from './errors';
 import { createErrorHandler } from '../errors/handlers';
+import { ExecutionContext } from '../core/types/execution-context';
+import { EntitySearchQuery, parseSearchQuery, SearchResult } from '../search';
+import { EntityRecordTypeFromSchema } from './base-entity';
 
 type seconds = number;
 
@@ -70,8 +73,8 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 * @param {any} context - The context object.
 	 * @returns {Promise<void>} A promise that resolves when the initialization is complete.
 	 */
-	async initialize(event: any, context: any): Promise<void> {
-		this.logger.debug(`BaseEntityController.initialize - done: ${event} ${context}`);
+	async initialize(_event: any, _context: any): Promise<void> {
+		// this.logger.debug(`BaseEntityController.initialize - done: ${event} ${context}`);
 	}
 
 	/**
@@ -90,8 +93,8 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 * @returns {Promise<Response>} A promise that resolves with the response.
 	 */
 	@Post('')
-	async create(req: Request, res: Response): Promise<Response> {
-		const createdEntity = await this.getEntityService().create(req.body);
+	async create(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const createdEntity = await this.getEntityService().create(req.body, ctx);
 
 		const result: any = {
 			[ camelCase(this.getEntityName()) ]: createdEntity,
@@ -116,7 +119,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			},
 		}
 	})
-	async getSignedUrlForFileUpload(req: Request, res: Response) {
+	async getSignedUrlForFileUpload(req: Request, res: Response, _ctx?: ExecutionContext) {
 
 		let { bucketName, fileName, expiresIn = 15 * 60, fileNamePrefix = "", contentType = "*/*", metadata } = req.queryStringParameters as GetSignedUrlForFileUploadSchema ?? {};
 
@@ -136,10 +139,10 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			expiresIn,
 			bucketName,
 			contentType,
-			customDomain: resolveEnvValueFor({ key: ENV_KEYS.FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY }) ?? ''
+			customDomain: resolveEnvValueFor({ key: ENV_KEYS.FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY, defaultValue: '' })
 		};
 
-		this.logger.debug(`getSignedUrlForFileUpload::`, options);
+		// this.logger.debug(`getSignedUrlForFileUpload::`, options);
 
 		const signedUploadURL = await getSignedUrlForFileUpload(options);
 
@@ -158,12 +161,12 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	}
 
 	@Get('/duplicate/{id}')
-	async duplicate(req: Request, res: Response) {
+	async duplicate(req: Request, res: Response, ctx?: ExecutionContext) {
 		const service = this.getEntityService();
 
 		const identifiers = service.extractEntityIdentifiers(req.pathParameters) as EntityIdentifiersTypeFromSchema<Sch>;
 
-		const duplicateEntity = await service.duplicate(identifiers);
+		const duplicateEntity = await service.duplicate(identifiers, ctx);
 
 		const result: any = {
 			[ camelCase(this.getEntityName()) ]: duplicateEntity,
@@ -184,11 +187,11 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 * @returns {Promise<Response>} A promise that resolves with the response.
 	 */
 	@Get('/{id}')
-	async find(req: Request, res: Response): Promise<Response> {
+	async find(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
 		const attributes = req.queryStringParameters?.attributes?.split?.(',');
 
-		const entity = await this.getEntityService().get({ identifiers, attributes });
+		const entity = await this.getEntityService().get({ identifiers, attributes }, ctx);
 
 		if (!entity) {
 			throw new NotFoundError(this.getEntityName(), undefined, req);
@@ -213,9 +216,9 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 * @returns {Promise<Response>} A promise that resolves with the response.
 	 */
 	@Get('')
-	async list(req: Request, res: Response): Promise<Response> {
+	async list(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const data = req.queryStringParameters;
-		this.logger.debug(`list - data:`, data);
+		// this.logger.debug(`list - data:`, data);
 
 		const {
 			order,
@@ -231,28 +234,28 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		let parsedFilters = {};
 
 		if (!isObject(filters)) {
-			this.logger.debug(`filters is not an object: need to parse the filters query string`, filters);
+			// this.logger.debug(`filters is not an object: need to parse the filters query string`, filters);
 
 			if (isJsonString(filters)) {
-				this.logger.debug(`found JSON string filters parsing`, filters);
+				// this.logger.debug(`found JSON string filters parsing`, filters);
 				parsedFilters = JSON.parse(filters);
 			} else {
 				// TODO: parse filters query string
 				this.logger.warn(`filters is not an JSON: need to parse the filters query string`, filters);
 			}
 		} else {
-			this.logger.debug(`filters is a parsed object`, filters);
+			// this.logger.debug(`filters is a parsed object`, filters);
 			parsedFilters = filters;
 		}
 
 		if (restOfQueryParamsWithoutFilters && !isEmptyObject(restOfQueryParamsWithoutFilters)) {
-			this.logger.debug(`found not empty restOfQueryParamsWithoutFilters:`, restOfQueryParamsWithoutFilters);
+			// this.logger.debug(`found not empty restOfQueryParamsWithoutFilters:`, restOfQueryParamsWithoutFilters);
 
 			const parsedQueryParams = parseUrlQueryStringParameters(restOfQueryParamsWithoutFilters);
-			this.logger.debug(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
+			// this.logger.debug(`parsed restOfQueryParamsWithoutFilters:`, parsedQueryParams);
 
 			const parsedQueryParamFilters = queryStringParamsToFilterGroup(parsedQueryParams);
-			this.logger.debug(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
+			// this.logger.debug(`filters from restOfQueryParamsWithoutFilters:`, parsedQueryParamFilters);
 
 			parsedFilters = merge([ parsedFilters, parsedQueryParamFilters ]) ?? {};
 		}
@@ -275,7 +278,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			searchAttributes
 		};
 
-		const { data: records, cursor: newCursor, query: parsedQuery } = await this.getEntityService().list(query);
+		const { data: records, cursor: newCursor, query: parsedQuery } = await this.getEntityService().list(query, ctx);
 
 		const result: any = {
 			cursor: newCursor,
@@ -303,15 +306,15 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 * @returns {Promise<Response>} A promise that resolves with the response.
 	 */
 	@Patch('/{id}')
-	async update(req: Request, res: Response): Promise<Response> {
+	async update(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
-		const entity = await this.getEntityService().get({ identifiers });
+		const entity = await this.getEntityService().get({ identifiers }, ctx);
 
 		if (!entity) {
 			throw new NotFoundError(this.getEntityName(), undefined, req);
 		}
 
-		const updatedEntity = await this.getEntityService().update(identifiers as any, req.body);
+		const updatedEntity = await this.getEntityService().update(identifiers as any, req.body, undefined, ctx);
 
 		const result: any = {
 			[ camelCase(this.getEntityName()) ]: updatedEntity,
@@ -332,15 +335,15 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 * @returns {Promise<Response>} A promise that resolves with the response.
 	 */
 	@Delete('/{id}')
-	async delete(req: Request, res: Response): Promise<Response> {
+	async delete(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
-		const entity = await this.getEntityService().get({ identifiers });
+		const entity = await this.getEntityService().get({ identifiers }, ctx);
 
 		if (!entity) {
 			throw new NotFoundError(this.getEntityName(), undefined, req);
 		}
 
-		const deletedEntity = await this.getEntityService().delete(identifiers);
+		const deletedEntity = await this.getEntityService().delete(identifiers, ctx);
 
 		const result: any = {
 			[ camelCase(this.getEntityName()) ]: deletedEntity,
@@ -361,13 +364,13 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 * @returns {Promise<Response>} A promise that resolves with the response.
 	 */
 	@Post('/query')
-	async query(req: Request, res: Response): Promise<Response> {
+	async query(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const query = req.body;
-		this.logger.debug(`query - query:`, query);
+		// this.logger.debug(`query - query:`, query);
 
 		const inputQuery = deepCopy(query);
 
-		const { data: records, cursor: newCursor, query: parsedQuery } = await this.getEntityService().query(query);
+		const { data: records, cursor: newCursor, query: parsedQuery } = await this.getEntityService().query(query, ctx);
 
 		const result: any = {
 			cursor: newCursor,
@@ -383,6 +386,36 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		}
 
 		return res.json(result);
+	}
+
+	@Post('/search')
+	async search(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const query = req.body;
+
+		const inputQuery = deepCopy(query) as EntitySearchQuery<Sch>;
+
+		const results = await this.getEntityService().search(query, ctx);
+
+		const { hits, ...rest } = results;
+		const response = {
+			...rest,
+			items: hits,
+		};
+
+		if (req.debugMode) {
+			Object.assign(response, {
+				inputQuery,
+				processingTimeMs: results.processingTimeMs
+			});
+		}
+
+		return res.json(response);
+	}
+
+	@Get('/search')
+	async searchGet(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const query = parseSearchQuery(req.queryStringParameters || {});
+		return await this.search({ ...req, body: query }, res, ctx);
 	}
 
 }

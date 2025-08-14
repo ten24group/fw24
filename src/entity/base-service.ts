@@ -4,13 +4,17 @@ import type { EntityInputValidations, EntityValidations } from "../validation";
 import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
 import type { EntityFilterCriteria, EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 
+import { ExecutionContext } from "../core/types/execution-context";
+import { DepIdentifier, IDIContainer } from "../interfaces";
 import { createLogger } from "../logging";
-import { JsonSerializer, getValueByPath, isArray, isBoolean, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
+import { BaseSearchService, EntitySearchQuery, EntitySearchService, makeEntitySearchIndexName } from '../search';
+import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
-import { createEntity, deleteEntity, getEntity, getBatchEntity, listEntity, queryEntity, updateEntity, UpdateEntityOperators, upsertEntity } from "./crud-service";
-import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
-import { IDIContainer } from "../interfaces";
+import { UpdateEntityOperators, createEntity, deleteEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
+import { EntitySchemaValidator } from "./entity-schema-validator";
 import { DatabaseError, EntityValidationError } from './errors';
+import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
+import { InternalServerError, ServerError } from "../errors";
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
@@ -56,11 +60,184 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     protected entityOpsDefaultIoSchema?: ReturnType<typeof this.makeOpsDefaultIOSchema<S>>;
 
     constructor(
-        protected readonly schema: S,
+        readonly schema: S,
         protected readonly entityConfigurations: EntityConfiguration,
         protected readonly diContainer: IDIContainer = DIContainer.ROOT,
-    ) {
-        return this;
+    ) { }
+
+    protected getTableName(): string {
+        if (!this.entityConfigurations.table) {
+            throw new InternalServerError(`Table name is required for entity: ${this.getEntityName()}`);
+        }
+        return this.entityConfigurations.table;
+    }
+
+
+    public getEntitySearchConfig(_ctx?: ExecutionContext<any>) {
+
+        const schema = this.getEntitySchema();
+
+        const searchConfig = schema.model.search || {
+            enabled: true,
+            indexConfig: {}
+        };
+
+        searchConfig.serviceClass = searchConfig.serviceClass || EntitySearchService;
+
+        if (!searchConfig.indexConfig) {
+            searchConfig.indexConfig = {};
+        }
+
+        searchConfig.indexConfig.indexName = searchConfig.indexConfig.indexName || makeEntitySearchIndexName({
+            entityName: schema.model.entity,
+            tableName: this.getTableName(),
+        });
+
+        searchConfig.indexConfig.primaryKey = searchConfig.indexConfig.primaryKey || this.getEntityPrimaryIdPropertyName();
+
+        const entitySearchableAttributes = this.getSearchableAttributeNames();
+        const entityFilterableAttributes = this.getFilterableAttributeNames();
+
+        searchConfig.indexConfig.settings = {
+            ...(searchConfig.indexConfig.settings || {}),
+            searchableAttributes: [
+                ...(searchConfig.indexConfig.settings?.searchableAttributes || entitySearchableAttributes),
+            ],
+            filterableAttributes: [
+                ...(searchConfig.indexConfig.settings?.filterableAttributes || entityFilterableAttributes),
+            ],
+            sortableAttributes: [
+                ...(searchConfig.indexConfig.settings?.sortableAttributes || entityFilterableAttributes),
+            ],
+        }
+
+        return searchConfig;
+    }
+
+    /**
+     * Checks if search is enabled for the entity.
+     * @returns True if search is enabled, false otherwise.
+     */
+    public isSearchEnabled() {
+        const searchConfig = this.getEntitySearchConfig();
+        return Boolean(searchConfig?.enabled);
+    }
+
+    /**
+     * Gets the search service for the entity.
+     * @returns The search service.
+     */
+    public getSearchService(): EntitySearchService<S> {
+        try {
+            const searchConfig = this.getEntitySearchConfig();
+
+            // Skip search logic if search is not enabled
+            if (!searchConfig?.enabled) {
+                throw new Error(`Search is not enabled for entity ${this.getEntityName()}.`);
+            }
+
+            // Validate search configuration if present
+            if (searchConfig) {
+                this.validateSearchConfig(searchConfig);
+            }
+
+            const searchServiceTokenOrClass = searchConfig?.serviceClass;
+
+            // Case 1: DI Container has the service
+            if (searchServiceTokenOrClass && this.diContainer.has(searchServiceTokenOrClass as DepIdentifier<EntitySearchService<any>>)) {
+                try {
+                    return this.diContainer.resolve<EntitySearchService<S>>(searchServiceTokenOrClass as DepIdentifier<EntitySearchService<S>>);
+                } catch (err: any) {
+                    this.logger.error('Failed to resolve search service from container:', err);
+                    throw new Error(`Failed to resolve search service for entity ${this.getEntityName()}: ${err.message}`);
+                }
+            }
+
+            // Case 2: Service instance provided
+            if (searchServiceTokenOrClass instanceof BaseSearchService) {
+                return searchServiceTokenOrClass;
+            }
+
+            // Case 3: Service class provided
+            if (
+                isClassConstructor(searchServiceTokenOrClass) &&
+                (
+                    searchServiceTokenOrClass === EntitySearchService
+                    ||
+                    searchServiceTokenOrClass.prototype instanceof EntitySearchService
+                )
+            ) {
+                try {
+                    // TODO: add support to configure this without needing to use the DI
+                    const searchEngine = this.diContainer.resolveSearchEngine();
+                    if (!searchEngine) {
+                        throw new Error('Search engine not found in container');
+                    }
+                    return new (searchServiceTokenOrClass as typeof EntitySearchService)(
+                        this,
+                        searchEngine,
+                    );
+                } catch (err: any) {
+                    this.logger.error('Failed to instantiate search service:', err);
+                    throw new Error(`Failed to create search service instance for entity ${this.getEntityName()}: ${err.message}`);
+                }
+            }
+
+            throw new Error(`No valid search-service-configuration found for entity: ${this.getEntityName()}`);
+        } catch (err: any) {
+            this.logger.error('Error in getSearchService:', err);
+            throw new Error(`Search service initialization failed for entity ${this.getEntityName()}: ${err.message}`);
+        }
+    }
+
+    private validateSearchConfig(searchConfig: EntitySchema<any, any, any>[ 'model' ][ 'search' ]) {
+
+        if (!searchConfig) {
+            throw new Error('Search configuration is required');
+        }
+
+        if (!searchConfig.indexConfig) {
+            throw new Error('Search configuration must include a config object');
+        }
+
+        const { indexConfig: config } = searchConfig;
+
+        if (!config.indexName) {
+            throw new Error('Search configuration must specify an indexName');
+        }
+
+        // Validate searchable attributes if specified
+        if (config.settings?.searchableAttributes) {
+            const invalidAttributes = config.settings.searchableAttributes.filter(
+                (attr: string) => !hasAttribute(this.getEntitySchema(), attr)
+            );
+            if (invalidAttributes.length > 0) {
+                throw new Error(`Invalid searchable attributes: ${invalidAttributes.join(', ')}`);
+            }
+        }
+
+        // Validate filterable attributes if specified
+        if (config.settings?.filterableAttributes) {
+            const invalidAttributes = config.settings.filterableAttributes.filter(
+                (attr: string) => !hasAttribute(this.getEntitySchema(), attr)
+            );
+            if (invalidAttributes.length > 0) {
+                throw new Error(`Invalid filterable attributes: ${invalidAttributes.join(', ')}`);
+            }
+        }
+    }
+
+    public async transformDocumentForIndexing(entity: EntityRecordTypeFromSchema<S>): Promise<Record<string, any>> {
+        const searchService = this.getSearchService();
+        return await searchService.transformDocumentForIndexing(entity);
+    }
+
+    public validateEntitySchema() {
+        const validator = new EntitySchemaValidator(this.diContainer);
+        validator.validateSchema(
+            this.getEntitySchema(),
+            this.entityConfigurations
+        );
     }
 
     getEntityServiceByEntityName<T extends EntitySchema<any, any, any>>(relatedEntityName: string) {
@@ -444,7 +621,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         return record.map(record => this.serializeRecord<T>(record, attributes));
     }
 
-    private async hydrateRecords(
+    async hydrateRecords(
         relations: Array<[ relatedAttributeName: string, options: HydrateOptionForRelation<any> ]>,
         rootEntityRecords: Array<{ [ x: string ]: any; }>
     ) {
@@ -707,7 +884,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @returns A promise that resolves to the retrieved entity data.
      */
 
-    public async get(options: GetOptions<S>) {
+    public async get(options: GetOptions<S>, _ctx?: ExecutionContext) {
         const { identifiers, attributes } = options;
 
 
@@ -879,12 +1056,12 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         // Create filters for the query using the correct structure
         const filters = {
-            [attributeName]: { eq: attributeValue }
+            [ attributeName ]: { eq: attributeValue }
         } as EntityFilterCriteria<S>;
 
         // Determine which attributes to project - only the attribute being checked and ignored entity identifiers
-        const attributesToProject: string[] = [attributeName];
-        
+        const attributesToProject: string[] = [ attributeName ];
+
         // Add ignored entity identifier fields to the projection
         if (ignoredEntityIdentifiers && !isEmptyObjectDeep(ignoredEntityIdentifiers)) {
             Object.keys(ignoredEntityIdentifiers).forEach(key => {
@@ -905,8 +1082,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         let entities = result.data || [];
         if (ignoredEntityIdentifiers && !isEmptyObjectDeep(ignoredEntityIdentifiers)) {
             entities = entities.filter(entity => {
-                return !Object.entries(ignoredEntityIdentifiers).every(([key, value]) => 
-                    entity[key] === value
+                return !Object.entries(ignoredEntityIdentifiers).every(([ key, value ]) =>
+                    entity[ key ] === value
                 );
             });
         }
@@ -933,7 +1110,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param payload - The payload for creating the entity.
      * @returns The created entity.
      */
-    public async create(payload: CreateEntityItemTypeFromSchema<S>) {
+    public async create(payload: CreateEntityItemTypeFromSchema<S>, _ctx?: ExecutionContext) {
 
         const payloadCopy = { ...payload }
 
@@ -1063,9 +1240,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * const entityId = { id: 123, name: 'example' };
      * const duplicatedEntity = await duplicate(entityId);
      */
-    public async duplicate(id: EntityIdentifiersTypeFromSchema<S>) {
+    public async duplicate(id: EntityIdentifiersTypeFromSchema<S>, ctx?: ExecutionContext) {
         const duplicateEventData = await this.makeDuplicateEntityData(id);
-        return await this.create(duplicateEventData);
+        return await this.create(duplicateEventData, ctx);
     }
 
     // TODO: should be part of some config
@@ -1080,7 +1257,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param query - The query object containing filters, search keywords, and attributes.
      * @returns A Promise that resolves to an object containing the list of entities and the original query.
      */
-    public async list(query: EntityQuery<S> = {}) {
+    public async list(query: EntityQuery<S> = {}, _ctx?: ExecutionContext) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
         if (!query.attributes) {
@@ -1146,7 +1323,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param query - The entity query to execute.
      * @returns A promise that resolves to the result of the query.
      */
-    public async query(query: EntityQuery<S>) {
+    public async query(query: EntityQuery<S>, _ctx?: ExecutionContext) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
         const { attributes } = query;
@@ -1208,7 +1385,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param remove - Optional array of attributes to remove from the entity.
      * @returns The updated entity.
      */
-    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators) {
+    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, _ctx?: ExecutionContext) {
 
         const uniqueFields = this.getUniqueAttributes();
         const skipCheckingAttributesUniqueness = false;
@@ -1265,7 +1442,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param identifiers - The identifiers of the entity to be deleted.
      * @returns A promise that resolves to the deleted entity.
      */
-    public async delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>) {
+    public async delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, _ctx?: ExecutionContext) {
         try {
             this.logger.debug(`Called ~ delete ~ entityName: ${this.getEntityName()} ~ identifiers:`, identifiers);
 
@@ -1294,30 +1471,30 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             const { batchSize = 100 } = options;
             const entityName = this.getEntityName();
             const repository = this.getRepository();
-            
+
             this.logger.info(`Starting index rebuild for entity: ${entityName}`);
-            
+
             // Get all records from the primary index
             const allRecords = await repository.scan.go();
-            
+
             if (!allRecords.data || allRecords.data.length === 0) {
                 this.logger.info(`No records found for entity: ${entityName}`);
                 return;
             }
-            
+
             this.logger.info(`Found ${allRecords.data.length} records to process for entity: ${entityName}`);
-            
+
             // Process records in batches
             const totalRecords = allRecords.data.length;
             const totalBatches = Math.ceil(totalRecords / batchSize);
-            
+
             for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
                 const start = batchIndex * batchSize;
                 const end = Math.min(start + batchSize, totalRecords);
                 const batch = allRecords.data.slice(start, end);
-                
+
                 this.logger.info(`Processing batch ${batchIndex + 1}/${totalBatches} (${start + 1}-${end} of ${totalRecords} records)`);
-                
+
                 // Rebuild all indexes by upserting each record to the primary index
                 for (const record of batch) {
                     try {
@@ -1328,7 +1505,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                     }
                 }
             }
-            
+
             this.logger.info(`Completed index rebuild for entity: ${entityName}`);
         } catch (error) {
             this.logger.error(`Failed to rebuild index for entity: ${this.getEntityName()}`, error);
@@ -1431,6 +1608,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         });
 
         return inferred;
+    }
+
+    public async search(query: EntitySearchQuery<S>, ctx?: ExecutionContext) {
+        const searchService = this.getSearchService();
+        if (!query.select) {
+            // * Note: we expect an array of attribute names
+            query.select = this.getListingAttributeNames() as any;
+        }
+        return searchService.search(query, undefined, ctx);
     }
 }
 

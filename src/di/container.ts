@@ -14,8 +14,8 @@ import {
     FactoryProviderOptions,
     IDIContainer,
     InternalProviderOptions,
-    Middleware,
-    MiddlewareAsync,
+    DIMiddleware,
+    DIMiddlewareAsync,
     PriorityCriteria,
     ProviderOptions,
     Token
@@ -65,6 +65,8 @@ import {
     NothingToExportError,
     ProviderConfigurationError
 } from './errors';
+import { BaseSearchEngine } from '../search';
+
 
 export class DIContainer implements IDIContainer {
 
@@ -72,8 +74,8 @@ export class DIContainer implements IDIContainer {
 
     public readonly containerId: string;
     private readonly logger: ILogger;
-    private readonly middlewares: Middleware<any>[] = [];
-    private readonly asyncMiddlewares: MiddlewareAsync<any>[] = [];
+    private readonly middlewares: DIMiddleware<any>[] = [];
+    private readonly asyncMiddlewares: DIMiddlewareAsync<any>[] = [];
 
     private _resolving = new Map<string, any>();
     protected get resolving(): Map<string, any> {
@@ -167,6 +169,8 @@ export class DIContainer implements IDIContainer {
         }
         return this._rootInstance;
     }
+
+    private searchEngine?: BaseSearchEngine;
 
     constructor(private parentContainer?: DIContainer, identifier: string = 'ROOT') {
         // to ensure destructuring works correctly
@@ -898,7 +902,7 @@ export class DIContainer implements IDIContainer {
             const theInitMethod = instance[ initMethod as keyof typeof instance ] as Function;
             if (typeof theInitMethod === 'function') {
                 try {
-                    theInitMethod();
+                    theInitMethod.call(instance);  // Bind 'this' context to the instance
                 } catch (error: any) {
                     throw new InitializationMethodError(instance.constructor.name, error.message, this.containerId);
                 }
@@ -1050,7 +1054,7 @@ export class DIContainer implements IDIContainer {
         }
     }
 
-    useMiddleware({ middleware, order = 1 }: PartialBy<Middleware<any>, 'order'>) {
+    useMiddleware({ middleware, order = 1 }: PartialBy<DIMiddleware<any>, 'order'>) {
         this.middlewares.push({ middleware, order });
         this.middlewares.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     }
@@ -1087,7 +1091,7 @@ export class DIContainer implements IDIContainer {
         return instance;
     }
 
-    useMiddlewareAsync({ middleware, order = 1 }: PartialBy<MiddlewareAsync<any>, 'order'>) {
+    useMiddlewareAsync({ middleware, order = 1 }: PartialBy<DIMiddlewareAsync<any>, 'order'>) {
         this.asyncMiddlewares.push({ middleware, order });
         this.asyncMiddlewares.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     }
@@ -1108,7 +1112,7 @@ export class DIContainer implements IDIContainer {
             const theInitMethod = instance[ initMethod as keyof typeof instance ] as Function;
             if (typeof theInitMethod === 'function') {
                 try {
-                    await theInitMethod();
+                    await theInitMethod.call(instance);  // Bind 'this' context to the instance
                 } catch (error: any) {
                     throw new InitializationMethodError(instance.constructor.name, error.message, this.containerId);
                 }
@@ -1174,5 +1178,22 @@ export class DIContainer implements IDIContainer {
             this.logger.debug(`Cache: [${this.containerId}] - ${token}:`, instance);
         }
         this.parent?.logCache();
+    }
+
+    public setSearchEngine(engine: BaseSearchEngine) {
+        this.searchEngine = engine;
+    }
+
+    public resolveSearchEngine(): BaseSearchEngine {
+        if (!this.searchEngine) {
+
+            if (this.parent) {
+                return this.parent.resolveSearchEngine();
+            }
+
+            throw new Error('Search engine not configured. Please call setSearchEngine() first.');
+        }
+
+        return this.searchEngine;
     }
 }

@@ -1,6 +1,5 @@
 import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas, EntityTypeFromSchema } from "./base-entity";
 import type { EntityQuery } from "./query-types";
-import { IAuditLogger, NullAuditLogger } from "../audit";
 import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
@@ -41,7 +40,6 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     logger?: ILogger;
     validator?: IValidator;
     authorizer?: Authorizer.IAuthorizer;        // todo: define authorizer signature
-    auditLogger?: IAuditLogger;       // todo: define audit logger signature
     eventDispatcher?: EventDispatcher.IEventDispatcher;  // todo define event dispatcher signature
 
     // telemetry
@@ -86,7 +84,6 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
         logger = createLogger('CRUD-service:getEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -121,9 +118,6 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
     const entity = await entityService.getRepository().get(identifiers).go({ attributes });
 
     // await eventDispatcher.dispatch({event: 'afterGet', context: arguments});
-
-    // create audit
-    // auditLogger.audit({entityName, crudType, identifiers, entity, actor, tenant});
 
     logger.debug(`Completed EntityCrud ~ getEntity ~ entityName: ${entityName} ~ id:`, id);
 
@@ -173,7 +167,6 @@ export async function getBatchEntity<S extends EntitySchema<any, any, any>>(opti
         logger = createLogger('CRUD-service:getBatchEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
     } = options;
 
@@ -261,7 +254,6 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:createEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -299,9 +291,6 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
 
     // post events
     // await eventDispatcher?.dispatch({ event: 'afterCreate', context: {...arguments, entity} });
-
-    // create audit
-    // auditLogger.audit({});
 
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data, entity.data);
@@ -349,7 +338,6 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:upsertEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -387,9 +375,6 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
 
     // post events
     // await eventDispatcher?.dispatch({ event: 'afterUpsert', context: {...arguments, entity} });
-
-    // create audit
-    // auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
 
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data, entity.data);
@@ -495,7 +480,6 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
         crudType = 'list',
         logger = createLogger('CRUD-service:listEntity'),
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
 
         query = {},
@@ -549,9 +533,6 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
 
     // await eventDispatcher.dispatch({ event: 'afterList', context: arguments });
 
-    // create audit
-    // auditLogger.audit({ entityName, crudType, entities, actor, tenant });
-
     logger.debug(`Completed EntityCrud ~ listEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
     return entities;
@@ -578,7 +559,6 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
         crudType = 'query',
         logger = createLogger('CRUD-service:queryEntity'),
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
 
         query = {}
@@ -631,9 +611,6 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
     }
 
     // await eventDispatcher.dispatch({ event: 'afterQuery', context: arguments });
-
-    // // create audit
-    // auditLogger.audit({ entityName, crudType, entities, actor, tenant });
 
     logger.debug(`Completed EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
@@ -767,7 +744,6 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:updateEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
         compositeKeyData,
     } = options;
@@ -922,7 +898,6 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:deleteEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -956,9 +931,6 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
     const entity = await entityService.getRepository().delete(identifiers).go();
 
     // await eventDispatcher.dispatch({event: 'afterDelete', context: arguments});
-
-    // create audit
-    // auditLogger.audit({ entityName, crudType, data: identifiers, entity: entity.data, actor, tenant });
 
     logger.debug(`Completed EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
 
