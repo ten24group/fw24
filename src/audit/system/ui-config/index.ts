@@ -28,6 +28,11 @@ export const AuditCustomPageConfigs = {
   listingUiConfig: {
     ...listingUiConfig,
     routePattern: `/system/list-auditlog`,
+    breadcrumbs: [
+      { label: "Home", url: "/" },
+      { label: "System", url: "/system" },
+      { label: "Audit Logs" }
+    ],
     listPageConfig: {
       ...listingUiConfig.listPageConfig,
       apiConfig: {

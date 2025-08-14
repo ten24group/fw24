@@ -6,6 +6,7 @@ export const searchDashboardPage: DashboardPageConfig = {
   routePattern: "/system/search",
   breadcrumbs: [
     { label: "Home", url: "/" },
+    { label: "System", url: "/system" },
     { label: "Search Dashboard" }
   ],
   dashboardPageConfig: {
@@ -26,6 +27,7 @@ export const searchDashboardPage: DashboardPageConfig = {
           ]
         }
       },
+
       {
         type: 'description',
         title: 'Engine Version',
@@ -63,6 +65,7 @@ export const searchDashboardPage: DashboardPageConfig = {
           ]
         }
       },
+
       {
         type: 'actions',
         title: 'Search Management',
@@ -77,6 +80,7 @@ export const searchDashboardPage: DashboardPageConfig = {
           ]
         }
       },
+      
       {
         type: 'actions',
         title: 'Advanced Operations',
