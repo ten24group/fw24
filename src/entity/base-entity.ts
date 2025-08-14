@@ -4,6 +4,9 @@ import { createSchema, Entity } from "electrodb";
 import type { EntityQuery } from './query-types';
 import type { BaseEntityService } from "./base-service";
 import type { OmitNever, Paths, Writable } from "../utils/types";
+import { SearchIndexConfig } from '../search/types';
+import { EntitySearchService } from '../search/services';
+import { DepIdentifier } from "../interfaces";
 
 /**
  *  ElectroDB entity  examples
@@ -155,13 +158,55 @@ export interface BaseFieldMetadata {
   isEditable?: boolean; // if the field is editable
   isFilterable?: boolean; // if the field is filterable
   isSearchable?: boolean; // if the field is searchable
+  isSortable?: boolean; // if the field is sortable
   placeholder?: string;
   helpText?: string;
   tooltip?: string; // maybe this can be inferred from the helpText
+  // Filter configuration options
+  filterConfig?: {
+    defaultOperator?: string; // Default filter operator (e.g., 'contains', 'eq', 'in')
+    availableOperators?: string[]; // Restrict available operators for this column
+    predefinedOptions?: Array<{ label: string; value: string }>; // For dropdown/select filters
+    filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean'; // Filter input type
+  };
+}
+
+export interface IPageActionItem {
+  label: string;
+  url: string;
+  icon?: string;
+}
+
+export interface IEntityPageAction {
+  label: string;
+  url?: string;
+  icon?: string;
+  type?: 'button' | 'dropdown';
+  items?: IPageActionItem[];
+  openInModal?: boolean;
+  modalConfig?: {
+    modalType: "confirm" | "list" | "form" | "accordion" | "custom" | "details";
+    modalPageConfig: any;
+    apiConfig?: {
+      apiMethod: string;
+      responseKey: string;
+      apiUrl: string;
+    };
+    submitSuccessRedirect?: string;
+  };
+}
+
+export interface IEntityPageColumn {
+  sortOrder: number;
+  fields: string[];
+}
+
+export interface IEntityPageColumnConfig {
+  columns: IEntityPageColumn[];
 }
 
 interface TextFieldMetadata extends BaseFieldMetadata {
-  fieldType?: 'text' | 'textarea' | 'password';
+  fieldType?: 'text' | 'textarea' | 'password' | 'email';
   maxLength?: number;
   mask?: string;
 }
@@ -365,6 +410,29 @@ export interface EntitySchema<
     readonly excludeFromAdminUpdate?: boolean, // default is false
     readonly excludeFromAdminDelete?: boolean, // default is false
     readonly excludeFromAdminDuplicate?: boolean, // default is false
+
+    readonly CRUDApiPath?: string, // default is ''
+
+    // Menu configuration
+    readonly menuGroup?: string; // Group this entity belongs to in the menu
+    readonly menuOrder?: number; // Order within the group (default: 0)
+
+    // View page configuration
+    readonly viewPageActions?: IEntityPageAction[],
+    readonly viewPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+    readonly viewPageColumnsConfig?: IEntityPageColumnConfig,
+    // Edit page configuration
+    readonly editPageActions?: IEntityPageAction[],
+    readonly editPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+    readonly editPageColumnsConfig?: IEntityPageColumnConfig,
+
+    readonly search?: {
+      enabled: boolean;
+      indexConfig?: SearchIndexConfig;
+      serviceClass?: DepIdentifier<EntitySearchService<any>> | typeof EntitySearchService | EntitySearchService<any>;
+      // Document transformation for indexing
+      documentTransformer?: (entity: EntityRecordTypeFromSchema<EntitySchema<A, F, C>>) => Promise<Record<string, any>>;
+    };
   };
   readonly attributes: {
     readonly [ a in A ]: EntityAttribute;

@@ -163,7 +163,7 @@ export interface IFunctionResourceAccess {
  *   logRemovalPolicy: RemovalPolicy.DESTROY,
  *   functionTimeout: 10,
  *   functionProps: {
- *     runtime: Runtime.NODEJS_14_X,
+ *     runtime: Runtime.NODEJS_22_X,
  *     memorySize: 256,
  *   },
  * };
@@ -209,7 +209,7 @@ export class LambdaFunction extends Construct {
 
     // Default properties for the Node.js function
     let defaultProps: NodejsFunctionProps = {
-      runtime: Runtime.NODEJS_20_X,
+      runtime: Runtime.NODEJS_22_X,
       architecture: Architecture.ARM_64,
       handler: "handler",
       timeout: Duration.seconds(5),
@@ -315,7 +315,7 @@ export class LambdaFunction extends Construct {
       // fw24_xxx (without scope)
       // fw24_AuthModule_xxx (with scope: AuthModule)
       // fw24_UserPool_AuthModule_userPoolId (with scope: UserPool_AuthModule)
-      if (value?.startsWith('fw24_')) {
+      if (value && value.startsWith('fw24_')) {
         // Remove fw24_ prefix
         const keyWithoutPrefix = value.replace('fw24_', '');
         const parts = keyWithoutPrefix.split('_');
@@ -341,6 +341,7 @@ export class LambdaFunction extends Construct {
 
     // Add global environment variables to the function
     fw24.getGlobalEnvironmentVariables().forEach(envKey => {
+      this.logger?.info(`Adding global environment variable: ${envKey}`, id);
       addEnvironmentKeyValueForFunction({
         fn,
         key: envKey,

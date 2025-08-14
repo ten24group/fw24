@@ -354,7 +354,9 @@ export class AuthConstruct implements FW24Construct {
 
         // create user pool groups
         if (this.authConstructConfig.groups) {
-            this.fw24.setEnvironmentVariable('Groups', this.authConstructConfig.groups.map(group => group.name), 'cognito');
+            const groupNames = this.authConstructConfig.groups.map(group => group.name);
+            this.fw24.setEnvironmentVariable('Groups', groupNames, 'cognito');
+            this.fw24.setEnvironmentVariable('authGroups', groupNames.join(','), `userpool_${userPoolName}`);
             //this.fw24.set('AutoUserSignupGroups', this.authConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString(), userPoolName);
             for (const group of this.authConstructConfig.groups) {
                 // create a role for the group
@@ -493,6 +495,7 @@ export class AuthConstruct implements FW24Construct {
                 scopes: scopes || ['email', 'profile', 'openid'],
                 attributeMapping: attributeMapping || {
                     email: ProviderAttribute.GOOGLE_EMAIL,
+                    emailVerified: ProviderAttribute.GOOGLE_EMAIL_VERIFIED,
                 }
             });
 
@@ -531,7 +534,7 @@ export class AuthConstruct implements FW24Construct {
         let domain: UserPoolDomain;
         let domainUrl: string;
 
-        if (domainConfig?.customDomain) {
+        if (domainConfig?.customDomain && domainConfig.customDomain.domainName.length > 0) {
             // Configure custom domain
             const { domainName, certificateArn } = domainConfig.customDomain;
             domain = new UserPoolDomain(this.mainStack, `${userPoolName}-domain`, {

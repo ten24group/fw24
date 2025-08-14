@@ -122,7 +122,7 @@ const QueueLambdaFunctionPropDefaults : QueueLambdaFunctionProps = {
  *     encryption: QueueEncryption.KMS,
  *   },
  *   lambdaFunctionProps: {
- *     runtime: Runtime.NODEJS_14_X,
+ *     runtime: Runtime.NODEJS_22_X,
  *     entry: '/path/to/lambda_function',
  *   },
  *   sqsEventSourceProps: {

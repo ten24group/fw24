@@ -5,7 +5,7 @@ import { AuditLoggerConfig, AuditOptions, IAuditLogger } from '../interfaces';
 export class CloudWatchAuditLogger implements IAuditLogger {
     private client: CloudWatchLogs;
     private logGroupName: string;
-    private logger = createLogger('CloudWatchAuditLogger');
+    private logger = createLogger(CloudWatchAuditLogger);
     private enabled: boolean;
 
     constructor(config: AuditLoggerConfig) {
@@ -29,12 +29,12 @@ export class CloudWatchAuditLogger implements IAuditLogger {
         // Create a new log stream name for each month
         const date = new Date();
         const logStreamName = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        
+
         try {
             this.logger.debug('putLogEvents', auditEntry);
             await this.addLogEvents(logStreamName, auditEntry);
         } catch (error) {
-            if(error instanceof ResourceNotFoundException) {
+            if (error instanceof ResourceNotFoundException) {
                 await this.client.createLogStream({
                     logGroupName: this.logGroupName,
                     logStreamName
@@ -53,10 +53,10 @@ export class CloudWatchAuditLogger implements IAuditLogger {
         await this.client.putLogEvents({
             logGroupName: this.logGroupName,
             logStreamName,
-            logEvents: [{
+            logEvents: [ {
                 timestamp: Date.now(),
                 message: JSON.stringify(auditEntry)
-            }]
+            } ]
         });
     }
 } 

@@ -1,6 +1,5 @@
 import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
 import type { EntityQuery } from "./query-types";
-import { IAuditLogger, NullAuditLogger } from "../audit";
 import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
@@ -41,7 +40,6 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     logger?: ILogger;
     validator?: IValidator;
     authorizer?: Authorizer.IAuthorizer;        // todo: define authorizer signature
-    auditLogger?: IAuditLogger;       // todo: define audit logger signature
     eventDispatcher?: EventDispatcher.IEventDispatcher;  // todo define event dispatcher signature
 
     // telemetry
@@ -86,7 +84,6 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
         logger = createLogger('CRUD-service:getEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -122,9 +119,6 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
 
     // await eventDispatcher.dispatch({event: 'afterGet', context: arguments});
 
-    // create audit
-    // auditLogger.audit({entityName, crudType, identifiers, entity, actor, tenant});
-
     logger.debug(`Completed EntityCrud ~ getEntity ~ entityName: ${entityName} ~ id:`, id);
 
     return entity;
@@ -142,7 +136,7 @@ export interface GetBatchEntityArgs<
     /**
      * Array of entity IDs to retrieve.
      */
-    ids: Array<OpsSchema['get']>;
+    ids: Array<OpsSchema[ 'get' ]>;
     /**
      * Optional array of attributes to include in the retrieved entities.
      */
@@ -173,7 +167,6 @@ export async function getBatchEntity<S extends EntitySchema<any, any, any>>(opti
         logger = createLogger('CRUD-service:getBatchEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
     } = options;
 
@@ -200,7 +193,7 @@ export async function getBatchEntity<S extends EntitySchema<any, any, any>>(opti
         .filter(({ validation }) => !validation.pass);
 
     if (validationErrors.length > 0) {
-        throw new EntityValidationError(validationErrors.flatMap(({ validation, index }) => 
+        throw new EntityValidationError(validationErrors.flatMap(({ validation, index }) =>
             (validation.errors || []).map(error => ({
                 ...error,
                 message: `Item ${index}: ${error.message}`
@@ -209,15 +202,15 @@ export async function getBatchEntity<S extends EntitySchema<any, any, any>>(opti
     }
 
     // Perform batch get operation with concurrency control
-    const result = await entityService.getRepository().get(identifiersBatch).go({ 
+    const result = await entityService.getRepository().get(identifiersBatch).go({
         attributes,
-        concurrent 
+        concurrent
     });
 
     logger.debug(`Completed EntityCrud ~ getBatchEntity ~ entityName: ${entityName} ~ ids:`, ids);
 
     return {
-        data: Array.isArray(result.data) ? result.data : (result.data ? [result.data] : []),
+        data: Array.isArray(result.data) ? result.data : (result.data ? [ result.data ] : []),
         unprocessed: []  // ElectroDB doesn't support unprocessed items tracking, so we return empty array
     };
 }
@@ -261,7 +254,6 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:createEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -299,9 +291,6 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
 
     // post events
     // await eventDispatcher?.dispatch({ event: 'afterCreate', context: {...arguments, entity} });
-
-    // create audit
-    // auditLogger.audit({});
 
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data, entity.data);
@@ -349,7 +338,6 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:upsertEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -388,9 +376,6 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
     // post events
     // await eventDispatcher?.dispatch({ event: 'afterUpsert', context: {...arguments, entity} });
 
-    // create audit
-    // auditLogger.audit({ entityName, crudType, data, entity, actor, tenant});
-
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data, entity.data);
 
@@ -414,7 +399,7 @@ export interface ListEntityArgs<Sch extends EntitySchema<any, any, any>> extends
  * @returns The name of the matching index and the filters used to match it or undefined if no match is found
  */
 export function findMatchingIndex(
-    schema: EntitySchema<any, any, any>, 
+    schema: EntitySchema<any, any, any>,
     filters: Record<string, any> | undefined,
     entityName: string,
     entityService: EntityServiceTypeFromSchema<any>
@@ -427,17 +412,17 @@ export function findMatchingIndex(
     const { keys, index, shouldScan } = (repository as any)._findBestIndexKeyMatch(filters);
 
     logger.debug(`Found ElectroDB index: ${index} with ${keys.length} attribute matches for entity: ${entityName} with filters and scan: ${shouldScan} - `, keys, filters);
-    
+
     // If we found a matching index, use it
     if (!shouldScan) {
         const indexFilters: Record<string, any> = {};
-        
+
         // Add matched keys to indexFilters
         keys.forEach((key: { name: string; type: string }) => {
-            const filterValue = filters![key.name];
+            const filterValue = filters![ key.name ];
             if (filterValue) {
                 // Handle both { eq: value } and direct value formats
-                indexFilters[key.name] = filterValue.eq !== undefined ? filterValue.eq : filterValue;
+                indexFilters[ key.name ] = filterValue.eq !== undefined ? filterValue.eq : filterValue;
             }
         });
 
@@ -448,7 +433,7 @@ export function findMatchingIndex(
         } else {
             // Find the index in our schema that matches this GSI
             const indexes = schema.indexes;
-            for (const [name, indexDef] of Object.entries(indexes)) {
+            for (const [ name, indexDef ] of Object.entries(indexes)) {
                 if (indexDef.index === index) {
                     schemaIndexName = name;
                     break;
@@ -462,13 +447,13 @@ export function findMatchingIndex(
 
     // If no index match found, check for template match
     const indexes = schema.indexes;
-    for (const [indexName, indexDef] of Object.entries(indexes)) {
-        if (indexDef.pk.template && 
-            typeof indexDef.pk.template === 'string' && 
+    for (const [ indexName, indexDef ] of Object.entries(indexes)) {
+        if (indexDef.pk.template &&
+            typeof indexDef.pk.template === 'string' &&
             indexDef.pk.template.toLowerCase() === entityName.toLowerCase()) {
             logger.debug(`Using template matching index: ${indexName} for entity: ${entityName}`);
-            return { 
-                indexName, 
+            return {
+                indexName,
                 indexFilters: {}
             };
         }
@@ -495,7 +480,6 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
         crudType = 'list',
         logger = createLogger('CRUD-service:listEntity'),
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
 
         query = {},
@@ -505,12 +489,13 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
         filters = {},
         attributes = [],
         pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined },
+        index: specifiedIndex
     } = query;
 
     logger.debug(`Called EntityCrud ~ listEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
     // await eventDispatcher.dispatch({event: 'beforeList', context: arguments });
-    
+
     // authorize the actor
     // const authorization = await authorizer.authorize({entityName, crudType, actor, tenant});
     // if(!authorization.pass){
@@ -519,15 +504,18 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
 
     // Check if we have a filter that matches an index
     const schema = entityService.getEntitySchema();
-    const matchResult = findMatchingIndex(schema, filters, entityName, entityService);
+    const matchResult = specifiedIndex
+        ? { indexName: specifiedIndex.name, indexFilters: specifiedIndex.filters || {} }
+        : findMatchingIndex(schema, filters, entityName, entityService);
+
     logger.debug(`Match result:`, matchResult);
     // Use the appropriate index if available
     const repository = entityService.getRepository();
-    
+
     let entities;
     if (matchResult) {
         // Use index query if we have a match
-        const indexQuery = repository.query[matchResult.indexName](matchResult.indexFilters);
+        const indexQuery = repository.query[ matchResult.indexName ](matchResult.indexFilters);
         if (filters && !isEmptyObject(filters)) {
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
@@ -544,9 +532,6 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
     }
 
     // await eventDispatcher.dispatch({ event: 'afterList', context: arguments });
-
-    // create audit
-    // auditLogger.audit({ entityName, crudType, entities, actor, tenant });
 
     logger.debug(`Completed EntityCrud ~ listEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
@@ -574,7 +559,6 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
         crudType = 'query',
         logger = createLogger('CRUD-service:queryEntity'),
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
 
         query = {}
@@ -600,17 +584,17 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
 
     // Check if we have a filter that matches an index
     const schema = entityService.getEntitySchema();
-    const matchResult = specifiedIndex 
-        ? { indexName: specifiedIndex.name, indexFilters: specifiedIndex.filters || {} } 
+    const matchResult = specifiedIndex
+        ? { indexName: specifiedIndex.name, indexFilters: specifiedIndex.filters || {} }
         : findMatchingIndex(schema, filters, entityName, entityService);
 
     // Use the appropriate index if available
     const repository = entityService.getRepository();
-    
+
     let entities;
     if (matchResult) {
         // Use index query if we have a match
-        const indexQuery = repository.query[matchResult.indexName](matchResult.indexFilters);
+        const indexQuery = repository.query[ matchResult.indexName ](matchResult.indexFilters);
         if (filters && !isEmptyObject(filters)) {
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
@@ -627,9 +611,6 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
     }
 
     // await eventDispatcher.dispatch({ event: 'afterQuery', context: arguments });
-
-    // // create audit
-    // auditLogger.audit({ entityName, crudType, entities, actor, tenant });
 
     logger.debug(`Completed EntityCrud ~ queryEntity ~ entityName: ${entityName} ~ filters+paging:`);
 
@@ -688,7 +669,6 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:updateEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -733,9 +713,6 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     // // post events
     // await eventDispatcher?.dispatch({ event: 'afterUpdate', context: {...arguments, entity} });
 
-    // create audit
-    // auditLogger.audit({});
-
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, data, entity.data);
 
@@ -776,7 +753,6 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
         logger = createLogger('CRUD-service:deleteEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
-        auditLogger = NullAuditLogger,
         eventDispatcher = EventDispatcher.Default,
 
     } = options;
@@ -811,9 +787,6 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
 
     // await eventDispatcher.dispatch({event: 'afterDelete', context: arguments});
 
-    // create audit
-    // auditLogger.audit({ entityName, crudType, data: identifiers, entity: entity.data, actor, tenant });
-
     logger.debug(`Completed EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
 
     return entity;
@@ -827,13 +800,13 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
  */
 export function simplifyFilters(filters: Record<string, any> | undefined): Record<string, any> {
     if (!filters) return {};
-    
+
     const result: Record<string, any> = {};
-    for (const [key, value] of Object.entries(filters)) {
+    for (const [ key, value ] of Object.entries(filters)) {
         if (value && typeof value === 'object' && 'eq' in value) {
-            result[key] = value.eq;
+            result[ key ] = value.eq;
         } else {
-            result[key] = value;
+            result[ key ] = value;
         }
     }
     return result;

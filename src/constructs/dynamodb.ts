@@ -14,10 +14,74 @@ import { createLogger, LogDuration } from "../logging";
 import { ensureNoSpecialChars, ensureSuffix } from "../utils/keys";
 import { IConstructConfig } from "../interfaces/construct-config";
 import { AuditLoggerType, AUDIT_ENV_KEYS, IAuditLogger } from "../audit/interfaces";
+import { SEARCH_INDEXER_ENV_KEYS } from "../search/indexer/interfaces";
 import { TopicConstruct, ITopicConstructConfig } from "./topic";
-import { LambdaFunction } from "./lambda-function";
+import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
 import { QueueLambda } from "./queue-lambda";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
+import { removeEmpty } from "../utils";
+
+export type SearchEngineConfig = {
+    type: 'meili',
+    host: string,
+    masterKey: string
+}
+// uncomment when implemented
+// } | {
+//     type: 'elasticsearch', // not implemented yet
+//     host: string,
+//     apiKey: string
+// } | {
+//     type: 'algolia', // not implemented yet
+//     appId: string,
+//     apiKey: string
+// }
+
+/**
+ * Configuration for search indexing.
+ */
+export interface SearchIndexingConfig extends IConstructConfig {
+    /**
+     * Whether to enable search indexing.
+     * @default false
+     */
+    enabled?: boolean;
+    /**
+     * List of allowed entity names to be indexed.
+     * If not provided, all entities will be indexed. except `auditLog`.
+     */
+    allowedEntityNames?: string[];
+    /**
+     * Search engine configuration that defines which search provider to use and its connection details.
+     * 
+     * Currently supports MeiliSearch with plans to extend to Elasticsearch and Algolia.
+     * 
+     * @example
+     * ```typescript
+     * engineConfig: {
+     *   type: 'meili',
+     *   host: 'https://your-meilisearch-instance.com',
+     *   masterKey: 'your-master-key'
+     * }
+     * ```
+     */
+    engineConfig: SearchEngineConfig;
+    /**
+     * Custom lambda function properties for search indexing processing.
+     * When provided, completely replaces the default search indexer handler.
+     * Custom handlers can extend base classes and reuse framework utilities.
+     */
+    lambdaFunctionProps?: LambdaFunctionProps;
+    /**
+     * Search indexing queue properties
+     */
+    queueProps?: QueueProps;
+    /**
+     * SQS event source properties for search indexing
+     */
+    sqsEventSourceProps?: SqsEventSourceProps;
+}
+
 /**
  * Represents the configuration for a DynamoDB table.
  */
@@ -61,6 +125,10 @@ export interface IDynamoDBConfig extends IConstructConfig {
          * Audit configuration for the DynamoDB table.
          */
         audit?: AuditConfig;
+        /**
+         * Search indexing configuration for the DynamoDB table.
+         */
+        searchIndexing?: SearchIndexingConfig[];
     };
 }
 
@@ -99,14 +167,21 @@ export interface AuditConfig extends IConstructConfig {
      */
     enabled?: boolean;
     /**
+     * List of allowed entity names to be audited.
+     * If not provided, all entities will be audited. except `auditLog`.
+     */
+    allowedEntityNames?: string[];
+    /**
      * The type of audit logger to use.
      * @default 'console'
      */
     type?: AuditLoggerType;
     /**
-     * Custom logger implementation
+     * Custom lambda function properties for audit processing.
+     * When provided, completely replaces the default audit handler.
+     * Custom handlers can extend base classes and reuse framework utilities.
      */
-    customLogger?: IAuditLogger;
+    lambdaFunctionProps?: LambdaFunctionProps;
     /**
      * Options for the audit logger.
      */
@@ -147,7 +222,7 @@ export interface AuditConfig extends IConstructConfig {
 export class DynamoDBConstruct implements FW24Construct {
     readonly logger = createLogger(DynamoDBConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
-    
+
     name: string = DynamoDBConstruct.name;
     dependencies: string[] = [];
     output!: FW24ConstructOutput;
@@ -164,38 +239,53 @@ export class DynamoDBConstruct implements FW24Construct {
      * };
      * const dynamoDB = new DynamoDB(dynamoDBConfig);
      */
-    constructor(private dynamoDBConfig: IDynamoDBConfig) {
-    }
+    constructor(private dynamoDBConfig: IDynamoDBConfig) { }
 
     // construct method to create the stack
     @LogDuration()
-    public async construct() {        
+    public async construct() {
         const fw24 = Fw24.getInstance();
         this.mainStack = fw24.getStack(this.dynamoDBConfig.stackName, this.dynamoDBConfig.parentStackName);
         const appQualifiedTableName = ensureNoSpecialChars(ensureSuffix(this.dynamoDBConfig.table.name, `table`));
 
-        this.logger.debug("appQualifiedTableName:", appQualifiedTableName);
+        this.logger.info("appQualifiedTableName:", appQualifiedTableName);
 
         // See https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_dynamodb-readme.html
         const tableInstance = new TableV2(this.mainStack, appQualifiedTableName, this.dynamoDBConfig.table.props);
 
         // Output the table instance
         this.fw24.setConstructOutput(this, appQualifiedTableName, tableInstance, OutputType.TABLE, 'tableName');
-        this.fw24.setEnvironmentVariable(appQualifiedTableName, tableInstance.tableName, `${OutputType.TABLE}`);
+        this.fw24.setEnvironmentVariable(appQualifiedTableName, tableInstance.tableName, 'table');
 
         // Register the table instance as a global container
         fw24.addDynamoTable(appQualifiedTableName, tableInstance);
 
-        // Setup stream processing if enabled or audit is enabled and stream ARN exists
+        const hasAuditEnabled = this.dynamoDBConfig.table.audit?.enabled;
+        const hasSearchIndexingEnabled = this.dynamoDBConfig.table.searchIndexing?.some(config => config.enabled);
+
+        // Setup stream processing if enabled or audit is enabled or search indexing is enabled and stream ARN exists
         if (
-            (this.dynamoDBConfig.table.stream?.enabled 
-                || this.dynamoDBConfig.table.audit?.enabled) 
-            && tableInstance.tableStreamArn) {
-            this.setupStreamProcessing(tableInstance);
+            (
+                this.dynamoDBConfig.table.stream?.enabled
+                || hasAuditEnabled
+                || hasSearchIndexingEnabled
+            )
+        ) {
+            if (tableInstance.tableStreamArn) {
+                this.setupStreamProcessing(tableInstance);
+            } else {
+                this.logger.warn(`Stream ARN not found for table ${this.dynamoDBConfig.table.name}, cannot set up stream processing`);
+            }
         }
 
         if (this.dynamoDBConfig.table.audit?.enabled) {
             this.setupAuditProcessing(this.dynamoDBConfig.table.audit, tableInstance);
+        }
+
+        if (hasSearchIndexingEnabled) {
+            this.dynamoDBConfig.table.searchIndexing?.forEach(config => {
+                this.setupSearchIndexingProcessing(config, tableInstance);
+            });
         }
     }
 
@@ -205,18 +295,19 @@ export class DynamoDBConstruct implements FW24Construct {
 
     private setupStreamProcessing(tableInstance: TableV2): void {
         const streamConfig = this.dynamoDBConfig.table.stream || {};
-        
+
         // Create SNS topic for stream events
         const topicName = streamConfig.topic?.name || this.getStreamTopicName();
+
         const isFifo = streamConfig.topic?.props?.fifo ?? false;
-        const streamTopicConfig: ITopicConstructConfig[] = [{
+        const streamTopicConfig: ITopicConstructConfig[] = [ {
             topicName,
             topicProps: {
                 displayName: `Stream events for ${this.dynamoDBConfig.table.name}`,
                 fifo: isFifo,
                 ...streamConfig.topic?.props
             }
-        }];
+        } ];
 
         new TopicConstruct(streamTopicConfig).construct();
 
@@ -228,10 +319,10 @@ export class DynamoDBConstruct implements FW24Construct {
                 TOPIC_TYPE: isFifo ? 'fifo' : 'standard'
             },
             resourceAccess: {
-                topics: [{
+                topics: [ {
                     name: topicName,
-                    access: ['publish']
-                }]
+                    access: [ 'publish' ]
+                } ]
             }
         }) as NodejsFunction;
 
@@ -248,109 +339,181 @@ export class DynamoDBConstruct implements FW24Construct {
         this.logger.info('Stream processing setup completed for table:', this.dynamoDBConfig.table.name);
     }
 
+    private setupStreamEventConsumers(
+        tableInstance: TableV2,
+        consumerName: string,
+        config: AuditConfig | SearchIndexingConfig,
+        defaultHandlerEntry: string,
+        environmentVariables: Record<string, string>,
+        resourceAccess?: any,
+    ): void {
+
+        if (!tableInstance.tableStreamArn) {
+            this.logger.warn(`Stream ARN not found for table ${this.dynamoDBConfig.table.name}, cannot set up ${consumerName}`);
+            return;
+        }
+
+        const isAuditConfig = (c: any): c is AuditConfig => c.type !== undefined || c.cloudwatchOptions !== undefined || c.dynamodbstreamOptions !== undefined;
+        const isSearchConfig = (c: any): c is SearchIndexingConfig => c.meiliHost !== undefined || c.meiliMasterKey !== undefined;
+
+        let specificQueueProps: QueueProps | undefined;
+        let specificSqsEventSourceProps: SqsEventSourceProps | undefined;
+        let customLambdaProps: LambdaFunctionProps | undefined;
+
+        if (isAuditConfig(config)) {
+
+            customLambdaProps = config.lambdaFunctionProps;
+            specificQueueProps = config.dynamodbstreamOptions?.queueProps;
+            specificSqsEventSourceProps = config.dynamodbstreamOptions?.sqsEventSourceProps;
+        } else if (isSearchConfig(config)) {
+
+            customLambdaProps = config.lambdaFunctionProps;
+            specificQueueProps = config.queueProps;
+            specificSqsEventSourceProps = config.sqsEventSourceProps;
+        }
+
+        customLambdaProps = customLambdaProps || {} as LambdaFunctionProps;
+
+        const lambdaFunctionProps = {
+            ...customLambdaProps,
+            entry: customLambdaProps.entry || defaultHandlerEntry,
+            environmentVariables: {
+                ...environmentVariables, // Base env vars
+                ...customLambdaProps.environmentVariables, // Custom env vars (can override)
+            },
+            resourceAccess: {
+                ...resourceAccess, // Base resource access
+                ...customLambdaProps.resourceAccess, // Custom resource access (can override/extend)
+            },
+        };
+
+        new QueueLambda(this.mainStack, `${this.fw24.appName}-${consumerName}-queue`, {
+            queueName: `${this.dynamoDBConfig.table.name}-${consumerName}`,
+            lambdaFunctionProps: lambdaFunctionProps,
+            queueProps: {
+                ...specificQueueProps,
+            },
+            subscriptions: {
+                topics: [ {
+                    name: this.getStreamTopicName(),
+                    filters: [],
+                } ],
+            },
+            sqsEventSourceProps: {
+                batchSize: specificSqsEventSourceProps?.batchSize || 5,
+                maxBatchingWindow: specificSqsEventSourceProps?.maxBatchingWindow || Duration.seconds(5),
+                reportBatchItemFailures: specificSqsEventSourceProps?.reportBatchItemFailures || true,
+                ...specificSqsEventSourceProps, // Allow overrides
+            },
+        });
+
+        this.logger.info(`${consumerName} setup completed for table:`, this.dynamoDBConfig.table.name);
+    }
+
     private async setupAuditProcessing(config: AuditConfig, tableInstance: TableV2) {
         // Set audit configuration in environment variables for lambda functions
-        this.setupAuditEnvironmentVariables(config);
+        const envVars: Record<string, string> = {
+            [ AUDIT_ENV_KEYS.TYPE ]: config.type || AuditLoggerType.CLOUDWATCH,
+            [ AUDIT_ENV_KEYS.ENABLED ]: config.enabled?.toString() || 'false',
+        };
 
-        // Create QueueLambda for processing audit events from the stream topic
-        if (tableInstance.tableStreamArn) {
-            let resourceAccess: any = {};
-            let environmentVariables: any = {};
-            
-            if (config.type === AuditLoggerType.DYNAMODB) {
-                resourceAccess = {
-                    tables: [{
-                        name: this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME),
-                        access: ['readwrite']
-                    }]
-                };
-                environmentVariables = {
-                    AUDIT_TABLE_NAME: this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME)
-                };
-            }
+        if (config.allowedEntityNames && config.allowedEntityNames.length > 0) {
+            envVars[ AUDIT_ENV_KEYS.ALLOWED_ENTITY_NAMES ] = config.allowedEntityNames.join(',');
+        }
 
-            new QueueLambda(this.mainStack, `${this.fw24.appName}-entity-audit-queue`, {
-                queueName: `${this.dynamoDBConfig.table.name}-entity-audit`,
-                lambdaFunctionProps: {
-                    entry: join(__dirname, '../audit/function/dynamodb-stream-logging.js'),
-                    resourceAccess: resourceAccess,
-                    environmentVariables: {
-                        AUDIT_ENABLED: config.enabled?.toString() || 'false',
-                        AUDIT_TYPE: config.type || AuditLoggerType.CLOUDWATCH,
-                        ...environmentVariables
-                    }
-                },
-                queueProps: {
-                    ...config.dynamodbstreamOptions?.queueProps
-                },
-                subscriptions: {
-                    topics: [{
-                        name: this.getStreamTopicName(),
-                        filters: []
-                    }]
-                },
-                sqsEventSourceProps: {
-                    batchSize: config.dynamodbstreamOptions?.sqsEventSourceProps?.batchSize || 5,
-                    maxBatchingWindow: config.dynamodbstreamOptions?.sqsEventSourceProps?.maxBatchingWindow || Duration.seconds(5),
-                    reportBatchItemFailures: config.dynamodbstreamOptions?.sqsEventSourceProps?.reportBatchItemFailures || true
-                }
+        if (config.type === AuditLoggerType.DYNAMODB) {
+            envVars[ AUDIT_ENV_KEYS.AUDIT_TABLE_NAME ] = config.dynamodbstreamOptions?.auditTableName || this.dynamoDBConfig.table.name;
+        } else {
+            envVars[ AUDIT_ENV_KEYS.REGION ] = config.cloudwatchOptions?.region || this.fw24.getConfig().region as string;
+            envVars[ AUDIT_ENV_KEYS.LOG_GROUP_NAME ] = config.cloudwatchOptions?.logGroupName || `/audit/logs/${this.fw24.getConfig().name}`;
+        }
+
+        let auditResourceAccess: any = {};
+
+        if (config.type === AuditLoggerType.DYNAMODB) {
+
+            const tableName = envVars[ AUDIT_ENV_KEYS.AUDIT_TABLE_NAME ];
+
+            auditResourceAccess = {
+                tables: [ {
+                    name: tableName,
+                    access: [ 'readwrite' ],
+                } ],
+            };
+
+            envVars[ AUDIT_ENV_KEYS.AUDIT_TABLE_NAME ] = tableName;
+        }
+
+        removeEmpty(envVars);
+
+        this.setupStreamEventConsumers(
+            tableInstance,
+            'entity-audit',
+            config,
+            join(__dirname, '../audit/function/dynamodb-stream-handler.js'),
+            envVars,
+            auditResourceAccess
+        );
+
+        this.logger.info('Setting up audit processing for table:', this.dynamoDBConfig.table.name);
+
+        if (!config.type || config.type === AuditLoggerType.CLOUDWATCH) {
+
+            const logGroupName = envVars[ AUDIT_ENV_KEYS.LOG_GROUP_NAME ];
+
+            this.logger.info(`Setting up CloudWatch audit log group with name ${logGroupName}`);
+
+            new LogGroup(this.mainStack, this.fw24.appName + '-audit-log-group', {
+                logGroupName: logGroupName,
+                retention: RetentionDays.ONE_YEAR,
+                removalPolicy: RemovalPolicy.DESTROY,
+                ...config.cloudwatchOptions?.logGroupOptions
             });
         }
-
-        // Handle setup for various audit types
-        switch (config.type) {
-            case AuditLoggerType.DYNAMODB:
-                this.setupDynamoDBAuditor(config);
-                break;
-            case AuditLoggerType.CONSOLE:
-                this.setupConsoleAudit();
-                break;
-            case AuditLoggerType.CLOUDWATCH:
-            default:
-                this.setupCloudWatchAuditor(config);
-                break;
-        }
     }
 
-    private setupDynamoDBAuditor(config: AuditConfig): void {
-        // Configure the audit logging table
-        const auditTableName = this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME);
-        this.logger.debug(`Setting up DynamoDB audit logging table with name ${auditTableName}`, config);
-    }
+    private async setupSearchIndexingProcessing(config: SearchIndexingConfig, tableInstance: TableV2) {
+        // Set search indexing configuration in environment variables for lambda functions
+        this.logger.info('Setting up search indexing processing for table:', this.dynamoDBConfig.table.name);
 
-    private setupCloudWatchAuditor(config: AuditConfig): void {
-        const logGroupName = this.fw24.getEnvironmentVariable(AUDIT_ENV_KEYS.LOG_GROUP_NAME);
-        this.logger.info(`Setting up CloudWatch audit log group with name ${logGroupName}`);
-        new LogGroup(this.mainStack, this.fw24.appName + '-audit-log-group', {
-            logGroupName: logGroupName,
-            retention: RetentionDays.ONE_YEAR,
-            removalPolicy: RemovalPolicy.DESTROY,
-            ...config.cloudwatchOptions?.logGroupOptions
-        });
-    }
+        const appQualifiedTableName = ensureNoSpecialChars(ensureSuffix(this.dynamoDBConfig.table.name, `table`));
 
-    private setupConsoleAudit(): void {
-        // Nothing to do here
-    }
+        const { enabled, engineConfig: { type: engineType, host: engineHost, masterKey: engineMasterKey } } = config;
 
-    private setupAuditEnvironmentVariables(config: AuditConfig): void {
-        this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.ENABLED, config.enabled?.toString() || 'false');
-        this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.TYPE, config.type || AuditLoggerType.CLOUDWATCH);
-        
-        if (config.type === AuditLoggerType.DYNAMODB) {
-            this.fw24.setEnvironmentVariable(AUDIT_ENV_KEYS.AUDIT_TABLE_NAME, config.dynamodbstreamOptions?.auditTableName || this.dynamoDBConfig.table.name);
+        const envVars = {
+            // pointer to the actual table name env variable
+            [ SEARCH_INDEXER_ENV_KEYS.TABLE_NAME_ENV_KEY ]: appQualifiedTableName,
+            // actual table name
+            [ appQualifiedTableName ]: this.fw24.getEnvironmentVariable(appQualifiedTableName, 'table'),
+
+            [ SEARCH_INDEXER_ENV_KEYS.ENABLED ]: enabled?.toString() || 'false',
+            [ SEARCH_INDEXER_ENV_KEYS.MEILI_HOST ]: engineHost || engineType === 'meili' ? this.fw24.getEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_HOST) : undefined,
+            [ SEARCH_INDEXER_ENV_KEYS.MEILI_MASTER_KEY ]: engineMasterKey || engineType === 'meili' ? this.fw24.getEnvironmentVariable(SEARCH_INDEXER_ENV_KEYS.MEILI_MASTER_KEY) : undefined,
         }
 
-        // Default to CLOUDWATCH if no type is set, or it is set to CLOUDWATCH
-        if (!config.type || config.type === AuditLoggerType.CLOUDWATCH) {
-            this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.LOG_GROUP_NAME, 
-                config.cloudwatchOptions?.logGroupName || `/audit/logs/${this.fw24.getConfig().name}`
-            );
-            this.fw24.setGlobalEnvironmentVariable(AUDIT_ENV_KEYS.REGION, 
-                config.cloudwatchOptions?.region || this.fw24.getConfig().region
-            );
+        if (config.allowedEntityNames && config.allowedEntityNames.length > 0) {
+            envVars[ SEARCH_INDEXER_ENV_KEYS.ALLOWED_ENTITY_NAMES ] = config.allowedEntityNames.join(',');
         }
 
+        // Create QueueLambda for processing search indexing events from the stream topic
+        this.setupStreamEventConsumers(
+            tableInstance,
+            'search-indexer',
+            config,
+            join(__dirname, '../search/indexer/functions/default-dynamo-stream-search-indexer-handler.js'),
+            envVars,
+            {}  // No base resource access
+        );
+
+        // TODO: look into it later
+        // const systemControllerPath = '/system/search';
+        // if (!this.fw24.hasSystemController(systemControllerPath)) {
+        //     this.fw24.registerSystemController({
+        //         path: systemControllerPath,
+        //         filePath: join(__dirname, '../search/system/search-controller.js'),
+        //     });
+        //     this.logger.info('Search system controller registered.');
+        // }
     }
-    
+
 }

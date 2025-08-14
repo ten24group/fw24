@@ -2,7 +2,7 @@ import { createLogger } from '../../logging';
 import { AuditLoggerConfig, AuditOptions, IAuditLogger } from '../interfaces';
 
 export class ConsoleAuditLogger implements IAuditLogger {
-    private logger = createLogger('ConsoleAuditLogger');
+    private logger = createLogger(ConsoleAuditLogger);
     private enabled: boolean;
 
     constructor(config?: AuditLoggerConfig) {

@@ -26,6 +26,7 @@
         "strictPropertyInitialization": true,
         "stripInternal": true,
         "outDir": "./dist/package",
+        "rootDir": "src",
         "typeRoots": [
             "./node_modules/@types"
         ],

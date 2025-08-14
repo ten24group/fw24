@@ -1,4 +1,4 @@
-import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+import { GetQueueAttributesCommand, SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 
 const sqsClient = new SQSClient({});
 /**
@@ -24,3 +24,23 @@ export const sendQueueMessage = async (queueUrl: string, message: any) => {
     const result = await sqsClient.send(sqsCommand);
     return result;
 }
+
+export const getQueueMessageMetadata = async ( queueUrl: string ) => {
+    const command = new GetQueueAttributesCommand({
+        QueueUrl: queueUrl,
+        AttributeNames: [ 'ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible', 'ApproximateNumberOfMessagesDelayed', 'DelaySeconds' ]
+    });
+
+    const response = await sqsClient.send(command);
+
+    response.Attributes?.ApproximateNumberOfMessagesDelayed
+
+    return {
+        messageCount: response.Attributes?.ApproximateNumberOfMessages,
+        delaySeconds: response.Attributes?.DelaySeconds,
+        messageCountDelayed: response.Attributes?.ApproximateNumberOfMessagesDelayed,
+        messageCountNotVisible: response.Attributes?.ApproximateNumberOfMessagesNotVisible,
+        response: response
+    }
+}
+

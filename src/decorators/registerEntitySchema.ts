@@ -1,6 +1,7 @@
 import { EntityConfiguration } from 'electrodb';
 import { DI_TOKENS } from '../const';
-import { BaseEntityService, EntitySchema } from '../entity';
+import { BaseEntityService } from '../entity/base-service';
+import { EntitySchema } from '../entity/base-entity';
 import type { ClassConstructor, DepIdentifier, IDIContainer, ProviderOptions, } from '../interfaces/di';
 import { createLogger, DefaultLogger, ILogger } from '../logging';
 import { camelCase, pascalCase } from '../utils/cases';
