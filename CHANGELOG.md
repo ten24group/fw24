@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.0.4-beta.1](https://github.com/ten24group/fw24/compare/v1.0.4-beta.0...v1.0.4-beta.1) (2025-08-15)
+
+
+### Bug Fixes
+
+* audit to have proper timestamps, and show latest audits first ([f908e36](https://github.com/ten24group/fw24/commit/f908e367839e4892bf70321490913ac8dfd87ea0))
+* breadcrumbs for system pages ([7b00a14](https://github.com/ten24group/fw24/commit/7b00a14b371c4a10d8b8c87f7295e94b490f46df))
+* entity-form's card styles ([f2cdf25](https://github.com/ten24group/fw24/commit/f2cdf25e0a65c6e1364526db3567c1338170c658))
+* experimental features ([7a0b9a0](https://github.com/ten24group/fw24/commit/7a0b9a039a505b8b28a4cb619174aaf32e72aa08))
+* filter key ([f02a5a0](https://github.com/ten24group/fw24/commit/f02a5a0d97862c2646018c4f0761fa134cce5b54))
+* issue with OnInit hook ([84941cc](https://github.com/ten24group/fw24/commit/84941cca0b932727b20e2805ad2c7ffe9480123b))
+* LambdaTestHarness and add tests for base-entity-controller ([1ae6a73](https://github.com/ten24group/fw24/commit/1ae6a733e278407e6bd9766d2136134f05f72b9c))
+* listing delete action not utilizing the CRUDApiPath ([0155602](https://github.com/ten24group/fw24/commit/015560229a45118ef43c29801241aa7b4183a371))
+* logs in registerEntitySchema to not log full objects ([ae05e61](https://github.com/ten24group/fw24/commit/ae05e61f2a3cf80a6af0c9c4452125694a183447))
+* type errors ([762f352](https://github.com/ten24group/fw24/commit/762f352f2fd0324f487d3b05d6da488d0f7a0ba0))
+* ui-configs for index's batches and tasks, and search-records, removed index-swap option as it's not needed at this point ([a04e46a](https://github.com/ten24group/fw24/commit/a04e46a5788388e0b939237be909f1f23cd28d26))
+* wrong timestamp in audits ([0646b8b](https://github.com/ten24group/fw24/commit/0646b8b675963f07399e85cf397900c0a9e63963))
+
 ### [1.0.4-beta.0](https://github.com/ten24group/fw24/compare/v1.0.3...v1.0.4-beta.0) (2025-06-12)
 
 
