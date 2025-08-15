@@ -1,0 +1,25 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.QueueController = void 0;
+const abstract_lambda_handler_1 = require("./abstract-lambda-handler");
+/**
+ * Base class for handling SQS events.
+ */
+class QueueController extends abstract_lambda_handler_1.AbstractLambdaHandler {
+    /**
+     * Lambda handler for the queue.
+     * Handles incoming SQS events.
+     * @param event - The event object from the SQS.
+     * @param context - The context object from the SQS.
+     * @returns The SQS response object.
+     */
+    async LambdaHandler(event, context) {
+        this.logger.debug("SQS-LambdaHandler Received event:", JSON.stringify(event, null, 2));
+        // hook for the application to initialize it's state, Dependencies, config etc
+        await this.initialize(event, context);
+        // Execute the associated route function
+        await this.process(event, context);
+    }
+}
+exports.QueueController = QueueController;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoic3FzLWNvbnRyb2xsZXIuanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyIuLi8uLi8uLi8uLi9zcmMvY29yZS9ydW50aW1lL3Nxcy1jb250cm9sbGVyLnRzIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiI7OztBQUNBLHVFQUFrRTtBQUVsRTs7R0FFRztBQUNILE1BQWUsZUFBZ0IsU0FBUSwrQ0FBcUI7SUFNMUQ7Ozs7OztPQU1HO0lBQ0gsS0FBSyxDQUFDLGFBQWEsQ0FBQyxLQUFlLEVBQUUsT0FBZ0I7UUFDakQsSUFBSSxDQUFDLE1BQU0sQ0FBQyxLQUFLLENBQUMsbUNBQW1DLEVBQUUsSUFBSSxDQUFDLFNBQVMsQ0FBQyxLQUFLLEVBQUUsSUFBSSxFQUFFLENBQUMsQ0FBQyxDQUFDLENBQUM7UUFDdkYsOEVBQThFO1FBQzlFLE1BQU0sSUFBSSxDQUFDLFVBQVUsQ0FBQyxLQUFLLEVBQUUsT0FBTyxDQUFDLENBQUM7UUFDdEMsd0NBQXdDO1FBRXhDLE1BQU0sSUFBSSxDQUFDLE9BQU8sQ0FBQyxLQUFLLEVBQUUsT0FBTyxDQUFDLENBQUM7SUFDdkMsQ0FBQztDQUNGO0FBRVEsMENBQWUiLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBTUVNFdmVudCwgQ29udGV4dCB9IGZyb20gXCJhd3MtbGFtYmRhXCI7XG5pbXBvcnQgeyBBYnN0cmFjdExhbWJkYUhhbmRsZXIgfSBmcm9tIFwiLi9hYnN0cmFjdC1sYW1iZGEtaGFuZGxlclwiO1xuXG4vKipcbiAqIEJhc2UgY2xhc3MgZm9yIGhhbmRsaW5nIFNRUyBldmVudHMuXG4gKi9cbmFic3RyYWN0IGNsYXNzIFF1ZXVlQ29udHJvbGxlciBleHRlbmRzIEFic3RyYWN0TGFtYmRhSGFuZGxlciB7XG5cbiAgYWJzdHJhY3QgaW5pdGlhbGl6ZShldmVudDogU1FTRXZlbnQsIGNvbnRleHQ6IENvbnRleHQpOiBQcm9taXNlPGFueT47XG5cbiAgYWJzdHJhY3QgcHJvY2VzcyhldmVudDogYW55LCBjb250ZXh0OiBhbnkpOiBQcm9taXNlPGFueT47XG5cbiAgLyoqXG4gICAqIExhbWJkYSBoYW5kbGVyIGZvciB0aGUgcXVldWUuXG4gICAqIEhhbmRsZXMgaW5jb21pbmcgU1FTIGV2ZW50cy5cbiAgICogQHBhcmFtIGV2ZW50IC0gVGhlIGV2ZW50IG9iamVjdCBmcm9tIHRoZSBTUVMuXG4gICAqIEBwYXJhbSBjb250ZXh0IC0gVGhlIGNvbnRleHQgb2JqZWN0IGZyb20gdGhlIFNRUy5cbiAgICogQHJldHVybnMgVGhlIFNRUyByZXNwb25zZSBvYmplY3QuXG4gICAqL1xuICBhc3luYyBMYW1iZGFIYW5kbGVyKGV2ZW50OiBTUVNFdmVudCwgY29udGV4dDogQ29udGV4dCk6IFByb21pc2U8YW55PiB7XG4gICAgICB0aGlzLmxvZ2dlci5kZWJ1ZyhcIlNRUy1MYW1iZGFIYW5kbGVyIFJlY2VpdmVkIGV2ZW50OlwiLCBKU09OLnN0cmluZ2lmeShldmVudCwgbnVsbCwgMikpO1xuICAgICAgLy8gaG9vayBmb3IgdGhlIGFwcGxpY2F0aW9uIHRvIGluaXRpYWxpemUgaXQncyBzdGF0ZSwgRGVwZW5kZW5jaWVzLCBjb25maWcgZXRjXG4gICAgICBhd2FpdCB0aGlzLmluaXRpYWxpemUoZXZlbnQsIGNvbnRleHQpO1xuICAgICAgLy8gRXhlY3V0ZSB0aGUgYXNzb2NpYXRlZCByb3V0ZSBmdW5jdGlvblxuXG4gICAgICBhd2FpdCB0aGlzLnByb2Nlc3MoZXZlbnQsIGNvbnRleHQpO1xuICB9XG59XG5cbmV4cG9ydCB7IFF1ZXVlQ29udHJvbGxlciB9OyJdfQ==

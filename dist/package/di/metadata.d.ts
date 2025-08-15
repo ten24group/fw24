@@ -1,0 +1,38 @@
+import type { DIModuleOptions, IDIContainer, ClassConstructor, DepIdentifier, ProviderOptions, ParameterInjectMetadata, PropertyInjectMetadata, InjectOptions } from "../interfaces";
+export declare const DI_MODULE_METADATA_KEY = "DI_MODULE";
+export declare const ON_INIT_HOOK_METADATA_KEY = "ON_INIT_HOOK";
+export declare const PROPERTY_INJECT_METADATA_KEY = "PROPERTY_DEPENDENCY";
+export declare const CONSTRUCTOR_INJECT_METADATA_KEY = "CONSTRUCTOR_DEPENDENCY";
+export type RegisterDIModuleMetadataOptions = Omit<DIModuleOptions, 'identifier' | 'container'>;
+export declare class DIModuleMetadata implements DIModuleOptions {
+    private readonly logger;
+    identifier: string;
+    container: IDIContainer;
+    imports: ClassConstructor[];
+    exports: DepIdentifier[];
+    providers: Array<ProviderOptions<any>>;
+    providedBy?: IDIContainer | 'ROOT' | ClassConstructor;
+    constructor(options: DIModuleOptions);
+    updateMetadata(options: Partial<DIModuleOptions>): void;
+    addImport(module: ClassConstructor): void;
+    removeImport(module: ClassConstructor): void;
+    hasImport(module: ClassConstructor): boolean;
+    addExport(provider: DepIdentifier): void;
+    removeExport(provider: DepIdentifier): void;
+    hasExport(provider: DepIdentifier): boolean;
+    addProvider(provider: ProviderOptions<any>): void;
+    removeProvider(provider: ProviderOptions<any>): void;
+    hasProvider(provider: ProviderOptions<any>): boolean;
+    setContainer(container: IDIContainer): void;
+    hasContainer(): boolean;
+    setProvidedBy(providedBy?: IDIContainer | 'ROOT' | ClassConstructor): void;
+    hasProvidedBy(): boolean;
+}
+export declare function registerModuleMetadata(target: any, options: RegisterDIModuleMetadataOptions): void;
+export declare function getModuleMetadata(target: any): DIModuleMetadata | undefined;
+export declare function registerConstructorDependency<T>(target: ClassConstructor, parameterIndex: number, dependencyToken: DepIdentifier<T>, options?: InjectOptions<T>): void;
+export declare function getConstructorDependenciesMetadata<T>(target: ClassConstructor): ParameterInjectMetadata<T>[];
+export declare function registerPropertyDependency<T>(target: ClassConstructor, propertyKey: string | symbol, dependencyToken: DepIdentifier<T>, options?: InjectOptions<T>): void;
+export declare function getPropertyDependenciesMetadata<T>(target: ClassConstructor): PropertyInjectMetadata<T>[];
+export declare function registerOnInitHook<T extends ClassConstructor>(target: T, propertyKey: string | symbol): void;
+export declare function getOnInitHookMetadata<T extends ClassConstructor>(target: T): string | symbol | undefined;

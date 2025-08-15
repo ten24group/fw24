@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.NothingToExportError = void 0;
+const errors_1 = require("../../errors");
+class NothingToExportError extends errors_1.FrameworkError {
+    constructor(token, containerId) {
+        super(`Nothing To export; No providers found for ${token}. DIContainer[${containerId}]`);
+    }
+}
+exports.NothingToExportError = NothingToExportError;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiTm90aGluZ1RvRXhwb3J0RXJyb3IuanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyIuLi8uLi8uLi8uLi9zcmMvZGkvZXJyb3JzL05vdGhpbmdUb0V4cG9ydEVycm9yLnRzIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiI7OztBQUFBLHlDQUE4QztBQUU5QyxNQUFhLG9CQUFxQixTQUFRLHVCQUFjO0lBQ3BELFlBQVksS0FBYSxFQUFFLFdBQW1CO1FBQzFDLEtBQUssQ0FBQyw2Q0FBNkMsS0FBSyxpQkFBaUIsV0FBVyxHQUFHLENBQUMsQ0FBQztJQUM3RixDQUFDO0NBQ0o7QUFKRCxvREFJQyIsInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IEZyYW1ld29ya0Vycm9yIH0gZnJvbSAnLi4vLi4vZXJyb3JzJztcblxuZXhwb3J0IGNsYXNzIE5vdGhpbmdUb0V4cG9ydEVycm9yIGV4dGVuZHMgRnJhbWV3b3JrRXJyb3Ige1xuICAgIGNvbnN0cnVjdG9yKHRva2VuOiBzdHJpbmcsIGNvbnRhaW5lcklkOiBzdHJpbmcpIHtcbiAgICAgICAgc3VwZXIoYE5vdGhpbmcgVG8gZXhwb3J0OyBObyBwcm92aWRlcnMgZm91bmQgZm9yICR7dG9rZW59LiBESUNvbnRhaW5lclske2NvbnRhaW5lcklkfV1gKTtcbiAgICB9XG59XG4iXX0=

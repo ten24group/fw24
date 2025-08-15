@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ProviderConfigurationError = void 0;
+const errors_1 = require("../../errors");
+class ProviderConfigurationError extends errors_1.FrameworkError {
+    constructor(providerId, containerId) {
+        super(`Provider for '${providerId}' is not correctly configured. DIContainer[${containerId}]`);
+    }
+}
+exports.ProviderConfigurationError = ProviderConfigurationError;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiUHJvdmlkZXJDb25maWd1cmF0aW9uRXJyb3IuanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyIuLi8uLi8uLi8uLi9zcmMvZGkvZXJyb3JzL1Byb3ZpZGVyQ29uZmlndXJhdGlvbkVycm9yLnRzIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiI7OztBQUFBLHlDQUE4QztBQUU5QyxNQUFhLDBCQUEyQixTQUFRLHVCQUFjO0lBQzFELFlBQVksVUFBa0IsRUFBRSxXQUFtQjtRQUMvQyxLQUFLLENBQUMsaUJBQWlCLFVBQVUsOENBQThDLFdBQVcsR0FBRyxDQUFDLENBQUM7SUFDbkcsQ0FBQztDQUNKO0FBSkQsZ0VBSUMiLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBGcmFtZXdvcmtFcnJvciB9IGZyb20gJy4uLy4uL2Vycm9ycyc7XG5cbmV4cG9ydCBjbGFzcyBQcm92aWRlckNvbmZpZ3VyYXRpb25FcnJvciBleHRlbmRzIEZyYW1ld29ya0Vycm9yIHtcbiAgICBjb25zdHJ1Y3Rvcihwcm92aWRlcklkOiBzdHJpbmcsIGNvbnRhaW5lcklkOiBzdHJpbmcpIHtcbiAgICAgICAgc3VwZXIoYFByb3ZpZGVyIGZvciAnJHtwcm92aWRlcklkfScgaXMgbm90IGNvcnJlY3RseSBjb25maWd1cmVkLiBESUNvbnRhaW5lclske2NvbnRhaW5lcklkfV1gKTtcbiAgICB9XG59XG4iXX0=

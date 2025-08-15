@@ -1,0 +1,105 @@
+import type { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
+import type { Request, Response } from "../../interfaces";
+import { IControllerConfig } from "../../decorators";
+import { RouteMethods } from "../../decorators/method";
+import { HttpRequestValidations, IValidator, InputValidationRule } from "../../validation";
+import { AbstractLambdaHandler } from "./abstract-lambda-handler";
+import { ResponseConfig } from "./response-config";
+import { createErrorHandler } from "../../errors/";
+import { ExecutionContext } from '../types/execution-context';
+export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
+export interface APIControllerMiddleware {
+    before?: (request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
+    after?: (request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
+    onError?: (error: Error, request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
+}
+export declare const useMiddleware: (middleware: APIControllerMiddleware) => void;
+export declare const clearMiddlewares: () => void;
+/**
+ * Creates an API handler without defining a class
+ *
+ * @example
+ * ```ts
+ * export const { handler, descriptor } = createApiHandler(
+ *  { method: Get, name: 'demo', authorizer: 'NONE' },
+ *   async ( event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult> => {
+ *       return Promise.resolve({
+ *           statusCode: 200,
+ *           body: JSON.stringify({ message: "Hello World!"})
+ *       })
+ *   }
+ * )
+ * ```
+ * @param options - The options for creating the API handler.
+ * @param options.name - The name of the API handler.
+ * @param options.path - The path for the API handler.
+ * @param options.method - The HTTP method for the API handler.
+ * @param handler - The handler function for the API handler.
+ * @returns An object containing the handler function and the controller descriptor.
+ */
+export declare function createApiHandler(options: {
+    name: string;
+    path?: string;
+    method?: RouteMethods;
+} & IControllerConfig, handler: (event: APIGatewayEvent, context: Context) => Promise<APIGatewayProxyResult>): {
+    handler: (event: APIGatewayEvent, context: Context) => Promise<APIGatewayProxyResult>;
+    descriptor: {
+        new (): {
+            inlineHandler(): Promise<void>;
+        };
+    };
+};
+export interface APIControllerConfig {
+    responseConfig?: Partial<ResponseConfig>;
+}
+export declare abstract class APIController extends AbstractLambdaHandler {
+    protected validator: IValidator;
+    protected middlewares: APIControllerMiddleware[];
+    protected responseConfig: ResponseConfig;
+    constructor(config?: APIControllerConfig);
+    abstract initialize(event: APIGatewayEvent, context: Context): Promise<void>;
+    protected getOverriddenHttpRequestValidationErrorMessages(): Promise<Map<string, string>>;
+    protected useMiddleware(middleware: APIControllerMiddleware): void;
+    protected getMiddlewares(): APIControllerMiddleware[];
+    private executeMiddlewarePipeline;
+    validate(requestContext: Request, validations: InputValidationRule | HttpRequestValidations, _ctx?: ExecutionContext): Promise<import("../../validation").ValidatorResult>;
+    makeRequestContext(event: APIGatewayEvent, context: Context): Promise<Request>;
+    makeResponseContext(requestContext: Request): Promise<Response>;
+    /**
+     * Lambda handler for the controller.
+     * Handles incoming API Gateway events.
+     * @param event - The event object from the API Gateway.
+     * @param context - The context object from the API Gateway.
+     * @returns The API Gateway response object.
+     */
+    LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult>;
+    /**
+     * Finds the route that matches the HTTP method and resource.
+     * @param requestData - The request data object.
+     * @returns The matching route or null if not found.
+     */
+    private findMatchingRoute;
+    /**
+     * Retrieves the function associated with the route.
+     * @param route - The matched route.
+     * @returns The function associated with the route.
+     */
+    private getRouteFunction;
+    /**
+     * Handles the NotFound route.
+     * @param _req - The request object.
+     * @returns The response object with a 404 status code.
+     */
+    protected handleNotFound(_req: Request): APIGatewayProxyResult;
+    protected errorHandler?: ControllerErrorHandler;
+    protected getErrorHandler(): ControllerErrorHandler;
+    /**
+     * Handles exceptions and returns a JSON response with the error message.
+     * @param _req - The request object.
+     * @param err - The error object.
+     * @returns The response object with a 500 status code.
+     */
+    protected handleException(req: Request, err: Error, res: Response): APIGatewayProxyResult;
+    protected handleResponse(res: Response | APIGatewayProxyResult): APIGatewayProxyResult;
+    protected buildCtx(event: APIGatewayEvent, context: Context, request: Request, response: Response): ExecutionContext;
+}
