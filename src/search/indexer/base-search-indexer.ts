@@ -109,10 +109,14 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
           const nowIso = new Date().toISOString();
 
           for (const gr of groupRecords) {
-            const payload: any = gr.payload;
-            const items: any[] = Array.isArray(payload)
-              ? payload
-              : (Array.isArray(payload?.items) ? payload.items : [ payload ]);
+            // Use the same transformation logic as individual record processing
+            const searchIndexEntry = this.createSearchIndexEntry(gr);
+            const transformedData = searchIndexEntry.data;
+            
+            // Handle both array and single item payloads after transformation
+            const items: any[] = Array.isArray(transformedData)
+              ? transformedData
+              : (Array.isArray(transformedData?.items) ? transformedData.items : [ transformedData ]);
 
             for (const item of items) {
               const id = item?.id || item?.[ `${entityName}Id` ] || (gr.entityId as string | undefined);
@@ -182,20 +186,81 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
   }
 
   // Helper method to create SearchIndexEntry from a record
-  private createSearchIndexEntry(record: BaseEventRecord<TPayload>): SearchIndexEntry {
-    const { entityName, eventType, entityId, timestamp, payload: payloadData } = record;
+  protected createSearchIndexEntry(record: BaseEventRecord<TPayload>): SearchIndexEntry {
+    const { entityName, eventType, entityId, timestamp, payload: payloadData, metadata } = record;
+    
+    // Extract searchable data based on the source type
+    const searchableData = this.transformPayloadForIndexing(payloadData, eventType, metadata?.source);
     
     // Note: timestamp is already in milliseconds (converted from DynamoDB seconds in the data extractor)
     // Example: timestamp = 1734567890000 (milliseconds) -> "2024-12-19T10:31:30.000Z"
     return {
       id: entityId as string,
-      data: {
-        ...payloadData,
-        _indexedAt: new Date().toISOString()
-      },
+      data: searchableData,
       eventType: eventType as 'create' | 'update' | 'delete',
       timestamp: (timestamp ? new Date(timestamp) : new Date()).toISOString(),
       entityName: entityName as string,
+    };
+  }
+
+  /**
+   * Transform payload data for search indexing based on source type
+   * Override this method in subclasses for custom data transformation
+   */
+  protected transformPayloadForIndexing(payloadData: any, eventType: string, source?: string): any {
+    // For stream sources, payload is ChangeStreamPayload format
+    if (source === 'stream' && payloadData && typeof payloadData === 'object' && 
+        ('oldImage' in payloadData || 'newImage' in payloadData || 'keys' in payloadData)) {
+      const { oldImage, newImage } = payloadData;
+      return this.extractSearchableDataFromChangeStream(oldImage, newImage, eventType);
+    }
+    // For resync sources or fallback, use payload directly
+    return {
+      ...payloadData,
+      _indexedAt: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Extract searchable data from DynamoDB change stream format
+   * Override this method in subclasses for custom field filtering
+   */
+  protected extractSearchableDataFromChangeStream(
+    oldImage: Record<string, any> | undefined,
+    newImage: Record<string, any> | undefined,
+    eventType: string
+  ): any {
+    // For deletions, we only need the ID to remove from index
+    if (eventType === 'delete') {
+      return { id: oldImage?.id };
+    }
+
+    // For creates and updates, use the new image
+    const sourceData = newImage || oldImage;
+    if (!sourceData) {
+      return null;
+    }
+
+    // Remove DynamoDB internal fields and prepare for search indexing
+    const ignoredKeys = [
+      '__EDB_E__', '__EDB_V__', 'PK', 'SK', 
+      'GSI1PK', 'GSI1SK', 'GSI2PK', 'GSI2SK', 'GSI3PK', 'GSI3SK', 'GSI4PK', 'GSI4SK',
+      'PASSWORD'
+    ];
+
+    const searchableData: Record<string, any> = { ...sourceData };
+
+    Object.keys(sourceData).forEach(key => {
+      if (ignoredKeys.includes(key.toUpperCase()) || 
+          key.startsWith('__') || 
+          (key.length > 3 && ['GSI', 'LSI'].includes(key.substring(0, 3).toUpperCase()))) {
+        delete searchableData[key];
+      }
+    });
+
+    return {
+      ...searchableData,
+      _indexedAt: new Date().toISOString()
     };
   }
 

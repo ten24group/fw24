@@ -28,7 +28,13 @@ abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayl
 
   async LambdaHandler(event: TEvent | SQSEvent, context: Context) {
     const eventSource = event.Records && event.Records.length > 0 ? event.Records[ 0 ].eventSource : 'Unknown';
-    this.logger.info('Processing incoming stream event', { eventSourceFromRecord: eventSource, recordCount: event.Records?.length, processMode: this.processMode });
+    this.logger.info('Processing incoming stream event', {
+      eventSourceFromRecord: eventSource,
+      recordCount: event.Records?.length,
+      processMode: this.processMode,
+      event: event,
+      context: context
+    });
 
     this.logger.debug('Initializing event processor');
     await this.initialize(event, context);

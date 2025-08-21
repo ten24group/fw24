@@ -16,6 +16,7 @@ export {
   SEARCH_INDEXER_ENV_KEYS,
   BaseSearchIndexer,
   DynamoDBStreamSearchIndexer,
+  HybridSearchEventExtractor,
 } from './indexer';
 
 export {

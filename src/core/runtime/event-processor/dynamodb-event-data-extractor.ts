@@ -113,19 +113,43 @@ export class DynamoDBEventDataExtractor implements IEventDataExtractor<DynamoDBS
   }
 
   protected mapSQSRecordToDynamoDBRecord(record: SQSRecord): DynamoDBRecord {
-    const body = JSON.parse(record.body);
-    const message = JSON.parse(body.Message);
+    try {
+      const body = JSON.parse(record.body);
 
-    // Create a DynamoDB record from the message
-    const dynamoRecord: DynamoDBRecord = {
-      eventID: message.message.eventID,
-      eventName: message.message.eventName as "INSERT" | "MODIFY" | "REMOVE",
-      eventSource: message.message.eventSource,
-      eventVersion: '1.0',
-      awsRegion: record.awsRegion,
-      dynamodb: message.message.dynamodb
-    };
 
-    return dynamoRecord;
+      if (!body.Message) {
+        this.logger.error('SNS Message field missing from SQS body', { bodyKeys: Object.keys(body) });
+        throw new Error('SNS Message field is missing from SQS body');
+      }
+
+      const message = JSON.parse(body.Message);
+      // The actual DynamoDB event might be nested in message.message (from DynamoDB stream processor)
+      const actualEvent = message?.message ?? message;
+      
+
+
+      if (!actualEvent || !actualEvent.eventID) {
+        this.logger.error('Invalid SNS message structure', { message, actualEvent });
+        throw new Error('SNS message missing required fields');
+      }
+
+      // Create a DynamoDB record from the SNS message
+      const dynamoRecord: DynamoDBRecord = {
+        eventID: actualEvent.eventID,
+        eventName: actualEvent.eventName as "INSERT" | "MODIFY" | "REMOVE",
+        eventSource: actualEvent.eventSource,
+        eventVersion: '1.0',
+        awsRegion: record.awsRegion,
+        dynamodb: actualEvent.dynamodb
+      };
+
+      return dynamoRecord;
+    } catch (error) {
+      this.logger.error('Error parsing SQS->SNS->DynamoDB message', {
+        error: error instanceof Error ? error.message : String(error),
+        recordBody: record.body
+      });
+      throw error;
+    }
   }
 }
