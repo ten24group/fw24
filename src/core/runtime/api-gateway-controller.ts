@@ -427,6 +427,7 @@ export abstract class APIController extends AbstractLambdaHandler {
       lambdaContext: context,
       request,
       response,
+      // TODO: update this to build actor context form cognito context
       actor: undefined,
       debugInfo: {}
     };

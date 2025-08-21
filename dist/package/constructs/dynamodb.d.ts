@@ -47,10 +47,43 @@ export interface SearchIndexingConfig extends IConstructConfig {
      * Custom lambda function properties for search indexing processing.
      * When provided, completely replaces the default search indexer handler.
      * Custom handlers can extend base classes and reuse framework utilities.
+     *
+     * **Note:** Ignored when `existingQueueName` is provided (existing queues have their own handlers)
      */
     lambdaFunctionProps?: LambdaFunctionProps;
     /**
-     * Search indexing queue properties
+     * Custom queue name for creating a new search indexing queue.
+     * If not provided, defaults to `${tableName}-search-indexer`
+     *
+     * **Note:** Cannot be used with `existingQueueName`
+     */
+    queueName?: string;
+    /**
+     * Name of an existing framework-managed queue to use for search indexing processing.
+     *
+     * **Important:** The existing queue must:
+     * - Be defined with @Queue('QueueName') decorator in your src/queues directory
+     * - Already be registered by the framework's QueueConstruct
+     * - Be configured to subscribe to the stream topic in its @Queue subscriptions
+     *
+     * **Example:**
+     * ```typescript
+     * @Queue('MeilisearchSync', {
+     *   subscriptions: {
+     *     topics: [{ name: 'myTable-stream' }]
+     *   }
+     * })
+     * export class MeilisearchSync extends BaseSearchIndexer { ... }
+     * ```
+     * Then use: `existingQueueName: 'MeilisearchSync'`
+     *
+     * **Note:** Cannot be used with `queueName` or `queueProps`
+     */
+    existingQueueName?: string;
+    /**
+     * Search indexing queue properties (only used when creating a new queue)
+     *
+     * **Note:** Ignored when `existingQueueName` is provided
      */
     queueProps?: QueueProps;
     /**
@@ -129,6 +162,62 @@ export interface IDynamoDBConfig extends IConstructConfig {
  * app.use(dynamoDB);
  *
  * ```
+ *
+ * Custom audit queue name:
+ * ```ts
+ * audit: {
+ *   enabled: true,
+ *   type: AuditLoggerType.CLOUDWATCH,
+ *   dynamodbstreamOptions: {
+ *     queueName: 'my-custom-audit-queue'
+ *   }
+ * }
+ * ```
+ *
+ * Existing framework-managed audit queue:
+ * ```ts
+ * // First define the queue handler:
+ * // @Queue('AuditProcessor', { subscriptions: { topics: [{ name: 'myTable-stream' }] } })
+ * // export class AuditProcessor extends BaseAuditLogger { ... }
+ *
+ * audit: {
+ *   enabled: true,
+ *   type: AuditLoggerType.CLOUDWATCH,
+ *   dynamodbstreamOptions: {
+ *     existingQueueName: 'AuditProcessor'  // References the @Queue('AuditProcessor')
+ *   }
+ * }
+ * ```
+ *
+ * Custom search indexing queue:
+ * ```ts
+ * searchIndexing: [{
+ *   enabled: true,
+ *   engineConfig: {
+ *     type: 'meili',
+ *     host: 'https://meilisearch.example.com',
+ *     masterKey: 'master-key'
+ *   },
+ *   queueName: 'my-custom-search-queue'
+ * }]
+ * ```
+ *
+ * Existing framework-managed search indexing queue:
+ * ```ts
+ * // First define the queue handler:
+ * // @Queue('MeilisearchSync', { subscriptions: { topics: [{ name: 'myTable-stream' }] } })
+ * // export class MeilisearchSync extends BaseSearchIndexer { ... }
+ *
+ * searchIndexing: [{
+ *   enabled: true,
+ *   engineConfig: {
+ *     type: 'meili',
+ *     host: 'https://meilisearch.example.com',
+ *     masterKey: 'master-key'
+ *   },
+ *   existingQueueName: 'MeilisearchSync'  // References the @Queue('MeilisearchSync')
+ * }]
+ * ```
  */
 /**
  * Configuration for audit logging.
@@ -153,6 +242,8 @@ export interface AuditConfig extends IConstructConfig {
      * Custom lambda function properties for audit processing.
      * When provided, completely replaces the default audit handler.
      * Custom handlers can extend base classes and reuse framework utilities.
+     *
+     * **Note:** Ignored when `existingQueueName` is provided (existing queues have their own handlers)
      */
     lambdaFunctionProps?: LambdaFunctionProps;
     /**
@@ -182,7 +273,38 @@ export interface AuditConfig extends IConstructConfig {
          */
         ttl?: number;
         /**
-         * Audit queue properties
+         * Custom queue name for creating a new audit queue.
+         * If not provided, defaults to `${tableName}-entity-audit`
+         *
+         * **Note:** Cannot be used with `existingQueueName`
+         */
+        queueName?: string;
+        /**
+         * Name of an existing framework-managed queue to use for audit processing.
+         *
+         * **Important:** The existing queue must:
+         * - Be defined with @Queue('QueueName') decorator in your src/queues directory
+         * - Already be registered by the framework's QueueConstruct
+         * - Be configured to subscribe to the stream topic in its @Queue subscriptions
+         *
+         * **Example:**
+         * ```typescript
+         * @Queue('AuditProcessor', {
+         *   subscriptions: {
+         *     topics: [{ name: 'myTable-stream' }]
+         *   }
+         * })
+         * export class AuditProcessor extends BaseAuditLogger { ... }
+         * ```
+         * Then use: `existingQueueName: 'AuditProcessor'`
+         *
+         * **Note:** Cannot be used with `queueName` or `queueProps`
+         */
+        existingQueueName?: string;
+        /**
+         * Audit queue properties (only used when creating a new queue)
+         *
+         * **Note:** Ignored when `existingQueueName` is provided
          */
         queueProps?: QueueProps;
         /**
@@ -214,6 +336,12 @@ export declare class DynamoDBConstruct implements FW24Construct {
     private getStreamTopicName;
     private setupStreamProcessing;
     private setupStreamEventConsumers;
+    private validateQueueConfig;
+    private extractQueueConfig;
+    private buildCommonLambdaConfig;
+    private setupWithExistingQueue;
+    private setupWithNewQueue;
+    private buildSqsEventSourceProps;
     private setupAuditProcessing;
     private setupSearchIndexingProcessing;
 }

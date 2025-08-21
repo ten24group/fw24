@@ -1,6 +1,6 @@
 import { TablePropsV2, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { TopicProps } from "aws-cdk-lib/aws-sns";
-import { DynamoEventSource, DynamoEventSourceProps, SqsEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
+import { DynamoEventSource, DynamoEventSourceProps, SqsEventSource, SqsEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
 import { LogGroup, LogGroupProps, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { StartingPosition } from "aws-cdk-lib/aws-lambda";
@@ -13,13 +13,28 @@ import { Fw24 } from "../core/fw24";
 import { createLogger, LogDuration } from "../logging";
 import { ensureNoSpecialChars, ensureSuffix } from "../utils/keys";
 import { IConstructConfig } from "../interfaces/construct-config";
-import { AuditLoggerType, AUDIT_ENV_KEYS, IAuditLogger } from "../audit/interfaces";
+import { AuditLoggerType, AUDIT_ENV_KEYS } from "../audit/interfaces";
 import { SEARCH_INDEXER_ENV_KEYS } from "../search/indexer/interfaces";
 import { TopicConstruct, ITopicConstructConfig } from "./topic";
 import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
 import { QueueLambda } from "./queue-lambda";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
 import { removeEmpty } from "../utils";
+
+interface NewQueueConfig {
+    type: 'new';
+    customLambdaProps?: LambdaFunctionProps;
+    queueProps?: QueueProps;
+    sqsEventSourceProps?: SqsEventSourceProps;
+    customQueueName?: string;
+}
+
+interface ExistingQueueConfig {
+    type: 'existing';
+    existingQueueName: string;
+}
+
+type QueueConfig = NewQueueConfig | ExistingQueueConfig;
 
 export type SearchEngineConfig = {
     type: 'meili',
@@ -70,10 +85,43 @@ export interface SearchIndexingConfig extends IConstructConfig {
      * Custom lambda function properties for search indexing processing.
      * When provided, completely replaces the default search indexer handler.
      * Custom handlers can extend base classes and reuse framework utilities.
+     * 
+     * **Note:** Ignored when `existingQueueName` is provided (existing queues have their own handlers)
      */
     lambdaFunctionProps?: LambdaFunctionProps;
     /**
-     * Search indexing queue properties
+     * Custom queue name for creating a new search indexing queue.
+     * If not provided, defaults to `${tableName}-search-indexer`
+     * 
+     * **Note:** Cannot be used with `existingQueueName`
+     */
+    queueName?: string;
+    /**
+     * Name of an existing framework-managed queue to use for search indexing processing.
+     * 
+     * **Important:** The existing queue must:
+     * - Be defined with @Queue('QueueName') decorator in your src/queues directory
+     * - Already be registered by the framework's QueueConstruct
+     * - Be configured to subscribe to the stream topic in its @Queue subscriptions
+     * 
+     * **Example:** 
+     * ```typescript
+     * @Queue('MeilisearchSync', {
+     *   subscriptions: {
+     *     topics: [{ name: 'myTable-stream' }]
+     *   }
+     * })
+     * export class MeilisearchSync extends BaseSearchIndexer { ... }
+     * ```
+     * Then use: `existingQueueName: 'MeilisearchSync'`
+     * 
+     * **Note:** Cannot be used with `queueName` or `queueProps`
+     */
+    existingQueueName?: string;
+    /**
+     * Search indexing queue properties (only used when creating a new queue)
+     * 
+     * **Note:** Ignored when `existingQueueName` is provided
      */
     queueProps?: QueueProps;
     /**
@@ -154,6 +202,62 @@ export interface IDynamoDBConfig extends IConstructConfig {
  * app.use(dynamoDB);
  * 
  * ```
+ * 
+ * Custom audit queue name:
+ * ```ts
+ * audit: {
+ *   enabled: true,
+ *   type: AuditLoggerType.CLOUDWATCH,
+ *   dynamodbstreamOptions: {
+ *     queueName: 'my-custom-audit-queue'
+ *   }
+ * }
+ * ```
+ * 
+ * Existing framework-managed audit queue:
+ * ```ts
+ * // First define the queue handler:
+ * // @Queue('AuditProcessor', { subscriptions: { topics: [{ name: 'myTable-stream' }] } })
+ * // export class AuditProcessor extends BaseAuditLogger { ... }
+ * 
+ * audit: {
+ *   enabled: true,
+ *   type: AuditLoggerType.CLOUDWATCH, 
+ *   dynamodbstreamOptions: {
+ *     existingQueueName: 'AuditProcessor'  // References the @Queue('AuditProcessor')
+ *   }
+ * }
+ * ```
+ * 
+ * Custom search indexing queue:
+ * ```ts
+ * searchIndexing: [{
+ *   enabled: true,
+ *   engineConfig: {
+ *     type: 'meili',
+ *     host: 'https://meilisearch.example.com',
+ *     masterKey: 'master-key'
+ *   },
+ *   queueName: 'my-custom-search-queue'
+ * }]
+ * ```
+ * 
+ * Existing framework-managed search indexing queue:
+ * ```ts
+ * // First define the queue handler:
+ * // @Queue('MeilisearchSync', { subscriptions: { topics: [{ name: 'myTable-stream' }] } })
+ * // export class MeilisearchSync extends BaseSearchIndexer { ... }
+ * 
+ * searchIndexing: [{
+ *   enabled: true,
+ *   engineConfig: {
+ *     type: 'meili',
+ *     host: 'https://meilisearch.example.com', 
+ *     masterKey: 'master-key'
+ *   },
+ *   existingQueueName: 'MeilisearchSync'  // References the @Queue('MeilisearchSync')
+ * }]
+ * ```
  */
 
 
@@ -180,6 +284,8 @@ export interface AuditConfig extends IConstructConfig {
      * Custom lambda function properties for audit processing.
      * When provided, completely replaces the default audit handler.
      * Custom handlers can extend base classes and reuse framework utilities.
+     * 
+     * **Note:** Ignored when `existingQueueName` is provided (existing queues have their own handlers)
      */
     lambdaFunctionProps?: LambdaFunctionProps;
     /**
@@ -209,7 +315,38 @@ export interface AuditConfig extends IConstructConfig {
          */
         ttl?: number;
         /**
-         * Audit queue properties
+         * Custom queue name for creating a new audit queue.
+         * If not provided, defaults to `${tableName}-entity-audit`
+         * 
+         * **Note:** Cannot be used with `existingQueueName`
+         */
+        queueName?: string;
+        /**
+         * Name of an existing framework-managed queue to use for audit processing.
+         * 
+         * **Important:** The existing queue must:
+         * - Be defined with @Queue('QueueName') decorator in your src/queues directory
+         * - Already be registered by the framework's QueueConstruct
+         * - Be configured to subscribe to the stream topic in its @Queue subscriptions
+         * 
+         * **Example:** 
+         * ```typescript
+         * @Queue('AuditProcessor', {
+         *   subscriptions: {
+         *     topics: [{ name: 'myTable-stream' }]
+         *   }
+         * })
+         * export class AuditProcessor extends BaseAuditLogger { ... }
+         * ```
+         * Then use: `existingQueueName: 'AuditProcessor'`
+         * 
+         * **Note:** Cannot be used with `queueName` or `queueProps`
+         */
+        existingQueueName?: string;
+        /**
+         * Audit queue properties (only used when creating a new queue)
+         * 
+         * **Note:** Ignored when `existingQueueName` is provided
          */
         queueProps?: QueueProps;
         /**
@@ -347,70 +484,171 @@ export class DynamoDBConstruct implements FW24Construct {
         environmentVariables: Record<string, string>,
         resourceAccess?: any,
     ): void {
-
         if (!tableInstance.tableStreamArn) {
             this.logger.warn(`Stream ARN not found for table ${this.dynamoDBConfig.table.name}, cannot set up ${consumerName}`);
             return;
         }
 
-        const isAuditConfig = (c: any): c is AuditConfig => c.type !== undefined || c.cloudwatchOptions !== undefined || c.dynamodbstreamOptions !== undefined;
-        const isSearchConfig = (c: any): c is SearchIndexingConfig => c.meiliHost !== undefined || c.meiliMasterKey !== undefined;
+        const queueConfig = this.extractQueueConfig(config);
+        
+        // Validate configuration
+        this.validateQueueConfig(config, consumerName);
 
-        let specificQueueProps: QueueProps | undefined;
-        let specificSqsEventSourceProps: SqsEventSourceProps | undefined;
-        let customLambdaProps: LambdaFunctionProps | undefined;
-
-        if (isAuditConfig(config)) {
-
-            customLambdaProps = config.lambdaFunctionProps;
-            specificQueueProps = config.dynamodbstreamOptions?.queueProps;
-            specificSqsEventSourceProps = config.dynamodbstreamOptions?.sqsEventSourceProps;
-        } else if (isSearchConfig(config)) {
-
-            customLambdaProps = config.lambdaFunctionProps;
-            specificQueueProps = config.queueProps;
-            specificSqsEventSourceProps = config.sqsEventSourceProps;
+        if (queueConfig.type === 'existing') {
+            this.setupWithExistingQueue(queueConfig.existingQueueName, consumerName);
+        } else {
+            const commonConfig = this.buildCommonLambdaConfig(defaultHandlerEntry, environmentVariables, resourceAccess, queueConfig.customLambdaProps);
+            this.setupWithNewQueue(queueConfig, consumerName, commonConfig);
         }
-
-        customLambdaProps = customLambdaProps || {} as LambdaFunctionProps;
-
-        const lambdaFunctionProps = {
-            ...customLambdaProps,
-            entry: customLambdaProps.entry || defaultHandlerEntry,
-            environmentVariables: {
-                ...environmentVariables, // Base env vars
-                ...customLambdaProps.environmentVariables, // Custom env vars (can override)
-            },
-            resourceAccess: {
-                ...resourceAccess, // Base resource access
-                ...customLambdaProps.resourceAccess, // Custom resource access (can override/extend)
-            },
-        };
-
-        new QueueLambda(this.mainStack, `${this.fw24.appName}-${consumerName}-queue`, {
-            queueName: `${this.dynamoDBConfig.table.name}-${consumerName}`,
-            lambdaFunctionProps: lambdaFunctionProps,
-            queueProps: {
-                ...specificQueueProps,
-            },
-            subscriptions: {
-                topics: [ {
-                    name: this.getStreamTopicName(),
-                    filters: [],
-                } ],
-            },
-            sqsEventSourceProps: {
-                batchSize: specificSqsEventSourceProps?.batchSize || 5,
-                maxBatchingWindow: specificSqsEventSourceProps?.maxBatchingWindow || Duration.seconds(5),
-                reportBatchItemFailures: specificSqsEventSourceProps?.reportBatchItemFailures || true,
-                ...specificSqsEventSourceProps, // Allow overrides
-            },
-        });
 
         this.logger.info(`${consumerName} setup completed for table:`, this.dynamoDBConfig.table.name);
     }
 
-    private async setupAuditProcessing(config: AuditConfig, tableInstance: TableV2) {
+    private validateQueueConfig(config: AuditConfig | SearchIndexingConfig, consumerName: string): void {
+        const isSearchConfig = 'engineConfig' in config;
+        
+        if (isSearchConfig) {
+            const searchConfig = config as SearchIndexingConfig;
+            if (searchConfig.existingQueueName && searchConfig.queueName) {
+                this.logger.warn(`${consumerName}: Both 'existingQueueName' and 'queueName' provided. Using existing queue '${searchConfig.existingQueueName}', ignoring queueName.`);
+            }
+            if (searchConfig.existingQueueName && searchConfig.queueProps) {
+                this.logger.warn(`${consumerName}: 'queueProps' provided with 'existingQueueName'. Queue properties are ignored when using existing queues.`);
+            }
+            if (searchConfig.existingQueueName && searchConfig.lambdaFunctionProps) {
+                this.logger.warn(`${consumerName}: 'lambdaFunctionProps' provided with 'existingQueueName'. Lambda properties are ignored when using existing queues (they have their own handlers).`);
+            }
+        } else {
+            const auditConfig = config as AuditConfig;
+            const options = auditConfig.dynamodbstreamOptions;
+            if (options?.existingQueueName && options?.queueName) {
+                this.logger.warn(`${consumerName}: Both 'existingQueueName' and 'queueName' provided. Using existing queue '${options.existingQueueName}', ignoring queueName.`);
+            }
+            if (options?.existingQueueName && options?.queueProps) {
+                this.logger.warn(`${consumerName}: 'queueProps' provided with 'existingQueueName'. Queue properties are ignored when using existing queues.`);
+            }
+            if (options?.existingQueueName && auditConfig.lambdaFunctionProps) {
+                this.logger.warn(`${consumerName}: 'lambdaFunctionProps' provided with 'existingQueueName'. Lambda properties are ignored when using existing queues (they have their own handlers).`);
+            }
+        }
+    }
+
+    private extractQueueConfig(config: AuditConfig | SearchIndexingConfig): QueueConfig {
+        // SearchIndexingConfig is distinguished by having engineConfig (required field)
+        const isSearchConfig = 'engineConfig' in config;
+
+        if (isSearchConfig) {
+            const searchConfig = config as SearchIndexingConfig;
+            
+            if ('existingQueueName' in searchConfig && searchConfig.existingQueueName) {
+                return {
+                    type: 'existing',
+                    existingQueueName: searchConfig.existingQueueName,
+                };
+            } else {
+                return {
+                    type: 'new',
+                    customLambdaProps: searchConfig.lambdaFunctionProps,
+                    queueProps: searchConfig.queueProps,
+                    sqsEventSourceProps: searchConfig.sqsEventSourceProps,
+                    customQueueName: searchConfig.queueName,
+                };
+            }
+        } else {
+            // AuditConfig
+            const auditConfig = config as AuditConfig;
+            const options = auditConfig.dynamodbstreamOptions;
+            
+            if (options && 'existingQueueName' in options && options.existingQueueName) {
+                return {
+                    type: 'existing',
+                    existingQueueName: options.existingQueueName,
+                };
+            } else {
+                return {
+                    type: 'new',
+                    customLambdaProps: auditConfig.lambdaFunctionProps,
+                    queueProps: options?.queueProps,
+                    sqsEventSourceProps: options?.sqsEventSourceProps,
+                    customQueueName: options?.queueName,
+                };
+            }
+        }
+    }
+
+    private buildCommonLambdaConfig(
+        defaultHandlerEntry: string,
+        environmentVariables: Record<string, string>,
+        resourceAccess: any,
+        customLambdaProps?: LambdaFunctionProps
+    ): LambdaFunctionProps {
+        const props = customLambdaProps || {} as LambdaFunctionProps;
+        return {
+            ...props,
+            entry: props.entry || defaultHandlerEntry,
+            environmentVariables: {
+                ...environmentVariables,
+                ...props.environmentVariables,
+            },
+            resourceAccess: {
+                ...resourceAccess,
+                ...props.resourceAccess,
+            },
+        };
+    }
+
+    private setupWithExistingQueue(
+        existingQueueName: string,
+        consumerName: string
+    ): void {
+        this.logger.info(`Using existing framework queue '${existingQueueName}' for ${consumerName}. The queue must be configured to subscribe to topic '${this.getStreamTopicName()}' in its @Queue setup.`);
+
+        // Just validate the queue exists - DON'T modify it or subscribe it to anything
+        try {
+            this.fw24.getQueueByName(
+                existingQueueName,
+                this.mainStack,
+                `${this.fw24.appName}-${consumerName}-existing`
+            );
+            this.logger.info(`${consumerName} validation completed - existing queue ${existingQueueName} found for table:`, this.dynamoDBConfig.table.name);
+        } catch (error) {
+            this.logger.error(`Queue '${existingQueueName}' not found for ${consumerName}. Ensure it's defined with @Queue('${existingQueueName}') decorator.`);
+            throw error;
+        }
+    }
+
+    private setupWithNewQueue(
+        queueConfig: NewQueueConfig,
+        consumerName: string,
+        lambdaConfig: LambdaFunctionProps
+    ): void {
+        const queueName = queueConfig.customQueueName || `${this.dynamoDBConfig.table.name}-${consumerName}`;
+        const eventSourceProps = this.buildSqsEventSourceProps(queueConfig.sqsEventSourceProps);
+
+        new QueueLambda(this.mainStack, `${this.fw24.appName}-${consumerName}-queue`, {
+            queueName: queueName,
+            lambdaFunctionProps: lambdaConfig,
+            queueProps: queueConfig.queueProps || {},
+            subscriptions: {
+                topics: [{
+                    name: this.getStreamTopicName(),
+                    filters: [],
+                }],
+            },
+            sqsEventSourceProps: eventSourceProps,
+        });
+    }
+
+    private buildSqsEventSourceProps(customProps?: SqsEventSourceProps): SqsEventSourceProps {
+        return {
+            batchSize: customProps?.batchSize || 5,
+            maxBatchingWindow: customProps?.maxBatchingWindow || Duration.seconds(5),
+            reportBatchItemFailures: customProps?.reportBatchItemFailures || true,
+            ...customProps,
+        };
+    }
+
+    private setupAuditProcessing(config: AuditConfig, tableInstance: TableV2): void {
         // Set audit configuration in environment variables for lambda functions
         const envVars: Record<string, string> = {
             [ AUDIT_ENV_KEYS.TYPE ]: config.type || AuditLoggerType.CLOUDWATCH,
@@ -472,7 +710,7 @@ export class DynamoDBConstruct implements FW24Construct {
         }
     }
 
-    private async setupSearchIndexingProcessing(config: SearchIndexingConfig, tableInstance: TableV2) {
+    private setupSearchIndexingProcessing(config: SearchIndexingConfig, tableInstance: TableV2): void {
         // Set search indexing configuration in environment variables for lambda functions
         this.logger.info('Setting up search indexing processing for table:', this.dynamoDBConfig.table.name);
 

@@ -20,6 +20,12 @@ export class MeiliSearchEngine extends BaseSearchEngine {
 
   constructor(config: ExtendedMeiliSearchClientConfig) {
     super(config);
+    
+    // Basic validation - let MeiliSearch library handle the rest
+    if (!config?.host?.trim()) {
+      throw new SearchEngineConnectionError('MeiliSearch host is required');
+    }
+    
     this.client = new MeiliSearch(config);
   }
 

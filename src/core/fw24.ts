@@ -2,6 +2,7 @@ import { IAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2';
 import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { Effect, PolicyStatement, type PolicyStatementProps, type Role } from 'aws-cdk-lib/aws-iam';
 import type { ITopic } from 'aws-cdk-lib/aws-sns';
+import { Topic } from 'aws-cdk-lib/aws-sns';
 import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
 import { DIContainer } from '../di';
 import { type ILambdaEnvConfig } from '../interfaces';
@@ -473,6 +474,34 @@ export class Fw24 {
 
     getDynamoTable(name: string): TableV2 {
         return this.dynamoTables[ ensureNoSpecialChars(name) ];
+    }
+
+    /**
+     * Gets a queue reference by name, following the framework's pattern for existing resource references.
+     * @param queueName The name of the queue
+     * @param scope Optional scope for stack resolution 
+     * @param constructId Optional construct ID for unique naming
+     * @returns Queue instance referenced by ARN
+     */
+    getQueueByName(queueName: string, scope?: any, constructId?: string): IQueue {
+        const queueUrl = this.getEnvironmentVariable(queueName + '_queueName', 'queue', scope);
+        const queueArn = this.getArn('sqs', queueUrl);
+        const uniqueId = constructId ? `${constructId}-${queueName}-queue` : `${queueName}-queue`;
+        return Queue.fromQueueArn(scope ?? this.getStack(), uniqueId, queueArn);
+    }
+
+    /**
+     * Gets a topic reference by name, following the framework's pattern for existing resource references.
+     * @param topicName The name of the topic
+     * @param scope Optional scope for stack resolution
+     * @param constructId Optional construct ID for unique naming  
+     * @returns Topic instance referenced by ARN
+     */
+    getTopicByName(topicName: string, scope?: any, constructId?: string): ITopic {
+        const topicArnValue = this.getEnvironmentVariable(topicName, 'topicName');
+        const topicArn = this.getArn('sns', topicArnValue);
+        const uniqueId = constructId ? `${constructId}-${topicName}-topic` : `${topicName}-topic`;
+        return Topic.fromTopicArn(scope ?? this.getStack(), uniqueId, topicArn);
     }
 
     addRouteToRolePolicy(route: string, groups: string[], requireRouteInGroupConfig: boolean = false) {

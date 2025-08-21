@@ -1,6 +1,8 @@
 import { IAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2';
 import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { PolicyStatement, type PolicyStatementProps } from 'aws-cdk-lib/aws-iam';
+import type { ITopic } from 'aws-cdk-lib/aws-sns';
+import { IQueue } from 'aws-cdk-lib/aws-sqs';
 import { type ILambdaEnvConfig } from '../interfaces';
 import { IApplicationConfig, SystemControllerDefinition, SystemUIPageDefinition } from '../interfaces/config';
 import { FW24Construct, OutputType } from '../interfaces/construct';
@@ -98,6 +100,22 @@ export declare class Fw24 {
     setConstructOutput(construct: FW24Construct, key: string, value: any, outputType?: OutputType, exportValueKey?: string, exportValueAlias?: string): void;
     addDynamoTable(name: string, table: TableV2): void;
     getDynamoTable(name: string): TableV2;
+    /**
+     * Gets a queue reference by name, following the framework's pattern for existing resource references.
+     * @param queueName The name of the queue
+     * @param scope Optional scope for stack resolution
+     * @param constructId Optional construct ID for unique naming
+     * @returns Queue instance referenced by ARN
+     */
+    getQueueByName(queueName: string, scope?: any, constructId?: string): IQueue;
+    /**
+     * Gets a topic reference by name, following the framework's pattern for existing resource references.
+     * @param topicName The name of the topic
+     * @param scope Optional scope for stack resolution
+     * @param constructId Optional construct ID for unique naming
+     * @returns Topic instance referenced by ARN
+     */
+    getTopicByName(topicName: string, scope?: any, constructId?: string): ITopic;
     addRouteToRolePolicy(route: string, groups: string[], requireRouteInGroupConfig?: boolean): void;
     getRoutePolicyStatement(route: string): PolicyStatement;
     getConstructOutput<T>(type: OutputType, name: string): T | undefined;

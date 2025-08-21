@@ -10,6 +10,16 @@ export declare abstract class BaseSearchIndexer<T extends IEventDataExtractor<TE
     protected processRecord(record: BaseEventRecord<TPayload>): Promise<void>;
     protected processRecordsBatch(records: BaseEventRecord<TPayload>[]): Promise<void>;
     private createSearchIndexEntry;
+    /**
+     * Transform payload data for search indexing based on source type
+     * Override this method in subclasses for custom data transformation
+     */
+    protected transformPayloadForIndexing(payloadData: any, eventType: string, source?: string): any;
+    /**
+     * Extract searchable data from DynamoDB change stream format
+     * Override this method in subclasses for custom field filtering
+     */
+    protected extractSearchableDataFromChangeStream(oldImage: Record<string, any> | undefined, newImage: Record<string, any> | undefined, eventType: string): any;
     protected indexOrDeleteDocument(searchIndexEntry: SearchIndexEntry): Promise<void>;
     protected getIndexName(entityName: string): string;
     protected ensureIndexExists(indexName: string): Promise<void>;
