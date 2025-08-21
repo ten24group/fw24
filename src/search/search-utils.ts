@@ -91,8 +91,12 @@ export function parseSearchQuery<Sch extends EntitySchema<any, any, any> = Entit
   const parsedQueryParamFilters = queryStringParamsToFilterGroup(parsedQueryParams);
   const finalFilters = parsedQueryParamFilters as EntitySearchQuery<Sch>[ 'filters' ];
 
+  // Convert search value to string to handle numeric search terms
+  const searchValue = search || q || query;
+  const normalizedSearch = searchValue != null ? String(searchValue) : undefined;
+
   return {
-    search: search || q || query, // q and query should be removed
+    search: normalizedSearch, // q and query should be removed
     filters: finalFilters,
     select: (parsedSelect?.length ? parsedSelect : undefined) as EntitySearchQuery<Sch>[ 'select' ],
     facets: (parsedFacets?.length ? parsedFacets : undefined) as EntitySearchQuery<Sch>[ 'facets' ],
