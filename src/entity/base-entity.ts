@@ -532,7 +532,31 @@ export function createEntitySchema<
   S extends EntitySchema<A, F, C, Ops>,
   Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
 >(schema: S): S {
-  return createSchema(schema);
+  // Automatically inject _actor field into every schema for audit tracking
+  const enhancedSchema = {
+    ...schema,
+    attributes: {
+      ...schema.attributes,
+      _actor: {
+        type: 'any',
+        required: false,
+        hidden: true,  // Hidden from ElectroDB operations
+        readOnly: false,
+        // UI metadata - mark as not visible in any UI
+        isVisible: false,
+        isListable: false,
+        isCreatable: false,
+        isEditable: false,
+        isFilterable: false,
+        isSearchable: false,
+        isSortable: false,
+        name: "Actor Context",
+        description: "Internal field storing complete actor context for audit purposes"
+      }
+    }
+  } as S;
+
+  return createSchema(enhancedSchema);
 }
 
 export function createElectroDBEntity<S extends EntitySchema<any, any, any>>(options: CreateElectroDBEntityOptions<S>) {

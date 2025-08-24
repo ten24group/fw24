@@ -88,40 +88,28 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             isListable: false,
         },
         entity: {
-            type: 'map',
+            type: 'any',
             required: false,
             isEditable: false,
             isListable: false,
-            properties: {
-                '*': { type: 'any' }
-            }
         },
         actor: {
-            type: 'map',
+            type: 'any',
             required: false,
             isEditable: false,
             isListable: false,
-            properties: {
-                '*': { type: 'any' }
-            }
         },
         tenant: {
-            type: 'map',
+            type: 'any',
             required: false,
             isEditable: false,
             isListable: false,
-            properties: {
-                '*': { type: 'any' }
-            }
         },
         identifiers: {
-            type: 'map',
+            type: 'any',
             required: false,
             isEditable: false,
             isListable: false,
-            properties: {
-                'id': { type: 'string' }
-            }
         }
     },
     indexes: {
@@ -235,7 +223,7 @@ export class DynamoDbAuditLogger implements IAuditLogger {
 
         try {
 
-            this.logger.debug('Writing to DynamoDB:', {
+            this.logger.info('Writing to DynamoDB:', {
                 auditEntry,
                 DefaultDynamoDBAuditEntityConfiguration: DynamoDBAuditEntityConfiguration
             });
@@ -245,7 +233,8 @@ export class DynamoDbAuditLogger implements IAuditLogger {
                 entityConfigurations: DynamoDBAuditEntityConfiguration,
             });
 
-            await auditService.entity.create(auditEntry).go();
+            const result = await auditService.entity.create(auditEntry).go();
+            this.logger.info('Successfully wrote to DynamoDB:', { result });
 
         } catch (error) {
 

@@ -475,4 +475,383 @@ describe('APIGatewayController Core Functionality', () => {
       });
     });
   });
+
+  describe('Actor Context Extraction', () => {
+    let controller: TestController;
+
+    beforeEach(() => {
+      controller = new TestController({});
+    });
+
+    // Helper to create mock APIGatewayEvent
+    const createMockEventForActorTests = (overrides: Partial<APIGatewayEvent> = {}): APIGatewayEvent => {
+      const baseEvent = {
+        resource: '/test',
+        path: '/test',
+        httpMethod: 'GET',
+        headers: {},
+        multiValueHeaders: {},
+        queryStringParameters: null,
+        multiValueQueryStringParameters: null,
+        pathParameters: null,
+        stageVariables: null,
+        requestContext: {
+          resourceId: 'test',
+          resourcePath: '/test',
+          httpMethod: 'GET',
+          requestId: 'test-request',
+          stage: 'test',
+          identity: {
+            cognitoIdentityPoolId: null,
+            accountId: null,
+            cognitoIdentityId: null,
+            caller: null,
+            sourceIp: '127.0.0.1',
+            principalOrgId: null,
+            accessKey: null,
+            cognitoAuthenticationType: null,
+            cognitoAuthenticationProvider: null,
+            userArn: null,
+            userAgent: 'test-agent',
+            user: null,
+            apiKey: null,
+            apiKeyId: null,
+            clientCert: null
+          },
+          protocol: 'HTTP/1.1',
+          requestTime: '09/Apr/2015:12:34:56 +0000',
+          requestTimeEpoch: 1428582896000,
+          apiId: 'test-api'
+        },
+        body: null,
+        isBase64Encoded: false,
+      } as APIGatewayEvent;
+
+      return {
+        ...baseEvent,
+        ...overrides,
+        requestContext: {
+          ...baseEvent.requestContext,
+          ...overrides.requestContext
+        }
+      } as APIGatewayEvent;
+    };
+
+    it('should extract actor context from Cognito authorization', () => {
+      const event = createMockEventForActorTests({
+        headers: {
+          'user-agent': 'Mozilla/5.0 Chrome/91.0'
+        },
+        requestContext: {
+          identity: {
+            sourceIp: '192.168.1.100'
+          },
+          authorizer: {
+            claims: {
+              sub: 'user-123-456',
+              'cognito:username': 'john.doe',
+              'cognito:groups': 'admin,user',
+              'custom:tenantId': 'tenant-789',
+              email: 'john@example.com'
+            }
+          }
+        } as any
+      });
+
+      const request = createMockRequest({
+        requestId: 'req-abc-123',
+        headers: {
+          'x-correlation-id': 'corr-xyz-789'
+        }
+      });
+
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor).toMatchObject({
+        requestId: 'req-abc-123',
+        sourceIp: '192.168.1.100',
+        userAgent: 'Mozilla/5.0 Chrome/91.0',
+        authMethod: 'cognito',
+        actorType: 'user',
+        actorId: 'john.doe',
+        cognitoSub: 'user-123-456',
+        cognitoUsername: 'john.doe',
+        cognitoGroups: ['admin', 'user'],
+        tenantId: 'tenant-789',
+        correlationId: 'corr-xyz-789',
+        rawAuthContext: {
+          sub: 'user-123-456',
+          'cognito:username': 'john.doe',
+          'cognito:groups': 'admin,user',
+          'custom:tenantId': 'tenant-789',
+          email: 'john@example.com'
+        }
+      });
+      expect(actor.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    });
+
+    it('should extract actor context from API Key authorization', () => {
+      const event = createMockEventForActorTests({
+        requestContext: {
+          identity: {
+            sourceIp: '10.0.0.1',
+            apiKey: 'api-key-abc123',
+            apiKeyId: 'key-id-456'
+          }
+        } as any
+      });
+
+      const request = createMockRequest({
+        requestId: 'req-def-456'
+      });
+
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor).toMatchObject({
+        requestId: 'req-def-456',
+        sourceIp: '10.0.0.1',
+        authMethod: 'api-key',
+        actorType: 'service',
+        actorId: 'api-key:api-key-abc123',
+        apiKeyId: 'api-key-abc123',
+        correlationId: 'req-def-456'
+      });
+    });
+
+    it('should extract actor context from IAM authorization', () => {
+      const event = createMockEventForActorTests({
+        requestContext: {
+          identity: {
+            sourceIp: '172.16.0.1',
+            userArn: 'arn:aws:iam::123456789012:user/service-user',
+            user: 'AIDAI23HZ27SI6FQMGNQ2'
+          }
+        } as any
+      });
+
+      const request = createMockRequest({
+        requestId: 'req-ghi-789'
+      });
+
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor).toMatchObject({
+        requestId: 'req-ghi-789',
+        sourceIp: '172.16.0.1',
+        authMethod: 'iam',
+        actorType: 'service',
+        actorId: 'AIDAI23HZ27SI6FQMGNQ2',
+        iamRole: 'arn:aws:iam::123456789012:user/service-user',
+        iamUserId: 'AIDAI23HZ27SI6FQMGNQ2',
+        correlationId: 'req-ghi-789'
+      });
+    });
+
+    it('should handle system/anonymous authorization', () => {
+      const event = createMockEventForActorTests({
+        requestContext: {
+          identity: {
+            sourceIp: '203.0.113.1'
+          }
+        } as any
+      });
+
+      const request = createMockRequest({
+        requestId: 'req-jkl-012'
+      });
+
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor).toMatchObject({
+        requestId: 'req-jkl-012',
+        sourceIp: '203.0.113.1',
+        authMethod: 'system',
+        actorType: 'anonymous',
+        actorId: 'system',
+        correlationId: 'req-jkl-012'
+      });
+    });
+
+    it('should handle tenant ID from custom headers', () => {
+      const event = createMockEventForActorTests();
+      const request = createMockRequest({
+        requestId: 'req-mno-345',
+        headers: {
+          'x-tenant-id': 'tenant-from-header'
+        }
+      });
+
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor.tenantId).toBe('tenant-from-header');
+    });
+
+    it('should handle missing optional fields gracefully', () => {
+      const event = createMockEventForActorTests({
+        headers: {}, // No user-agent
+        requestContext: {
+          identity: {
+            sourceIp: undefined // No source IP
+          }
+        } as any
+      });
+
+      const request = createMockRequest({
+        requestId: 'req-pqr-678',
+        headers: {} // No custom headers
+      });
+
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor).toMatchObject({
+        requestId: 'req-pqr-678',
+        sourceIp: undefined,
+        userAgent: undefined,
+        authMethod: 'system',
+        actorType: 'anonymous',
+        actorId: 'system',
+        tenantId: undefined,
+        correlationId: 'req-pqr-678'
+      });
+    });
+
+    it('should prioritize cognito username over sub for actorId', () => {
+      const event = createMockEventForActorTests({
+        requestContext: {
+          authorizer: {
+            claims: {
+              sub: 'user-sub-123',
+              'cognito:username': 'preferred.username'
+            }
+          }
+        } as any
+      });
+
+      const request = createMockRequest({
+        requestId: 'req-stu-901'
+      });
+
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor.actorId).toBe('preferred.username');
+      expect(actor.cognitoSub).toBe('user-sub-123');
+    });
+
+    it('should use sub as fallback when cognito username is not available', () => {
+      const event = createMockEventForActorTests({
+        requestContext: {
+          authorizer: {
+            claims: {
+              sub: 'user-sub-456',
+              username: 'fallback.username'
+            }
+          }
+        } as any
+      });
+
+      const request = createMockRequest({
+        requestId: 'req-vwx-234'
+      });
+
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor.actorId).toBe('fallback.username');
+      expect(actor.cognitoSub).toBe('user-sub-456');
+    });
+  });
+
+  describe('buildCtx integration', () => {
+    it('should build execution context with actor', () => {
+      const controller = new TestController({});
+      
+      const createMockEventForBuildCtx = (overrides: Partial<APIGatewayEvent> = {}): APIGatewayEvent => {
+        const baseEvent = {
+          resource: '/test',
+          path: '/test',
+          httpMethod: 'GET',
+          headers: {},
+          multiValueHeaders: {},
+          queryStringParameters: null,
+          multiValueQueryStringParameters: null,
+          pathParameters: null,
+          stageVariables: null,
+          requestContext: {
+            resourceId: 'test',
+            resourcePath: '/test',
+            httpMethod: 'GET',
+            requestId: 'test-request',
+            stage: 'test',
+            identity: {
+              cognitoIdentityPoolId: null,
+              accountId: null,
+              cognitoIdentityId: null,
+              caller: null,
+              sourceIp: '127.0.0.1',
+              principalOrgId: null,
+              accessKey: null,
+              cognitoAuthenticationType: null,
+              cognitoAuthenticationProvider: null,
+              userArn: null,
+              userAgent: 'test-agent',
+              user: null,
+              apiKey: null,
+              apiKeyId: null,
+              clientCert: null
+            },
+            protocol: 'HTTP/1.1',
+            requestTime: '09/Apr/2015:12:34:56 +0000',
+            requestTimeEpoch: 1428582896000,
+            apiId: 'test-api'
+          },
+          body: null,
+          isBase64Encoded: false,
+        } as APIGatewayEvent;
+
+        return {
+          ...baseEvent,
+          ...overrides,
+          requestContext: {
+            ...baseEvent.requestContext,
+            ...overrides.requestContext
+          }
+        } as APIGatewayEvent;
+      };
+      
+      const event = createMockEventForBuildCtx({
+        requestContext: {
+          authorizer: {
+            claims: {
+              sub: 'user-123',
+              'cognito:username': 'test.user'
+            }
+          }
+        } as any
+      });
+
+      const context = {} as Context;
+      const request = createMockRequest({
+        requestId: 'req-ctx-test'
+      });
+      const response = {};
+
+      const executionContext = controller.testBuildCtx(event, context, request, response);
+
+      expect(executionContext).toMatchObject({
+        event,
+        lambdaContext: context,
+        request,
+        response,
+        debugInfo: {}
+      });
+
+      expect(executionContext.actor).toMatchObject({
+        requestId: 'req-ctx-test',
+        authMethod: 'cognito',
+        actorType: 'user',
+        actorId: 'test.user',
+        cognitoSub: 'user-123',
+        cognitoUsername: 'test.user'
+      });
+    });
+  });
 });

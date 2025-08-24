@@ -1,3 +1,5 @@
+import { Actor } from '../core/types/actor';
+
 export enum AuditLoggerType {
     CONSOLE = 'console',
     CLOUDWATCH = 'cloudwatch',
@@ -40,7 +42,7 @@ export interface AuditEntry {
     eventType?: string;
     data?: any;
     entity?: any;
-    actor?: any;
+    actor?: Actor;
     tenant?: any;
     identifiers?: any;
 }

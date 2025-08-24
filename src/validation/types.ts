@@ -1,5 +1,6 @@
 import { EntityRecordTypeFromSchema, EntitySchema, TEntityOpsInputSchemas as EntityOperationsInputSchemas } from "../entity";
 import { Narrow, OmitNever, ValueOf } from '../utils/types';
+import { Actor } from '../core/types/actor';
 
 import { Request } from '../interfaces/request';
 
@@ -100,18 +101,6 @@ export interface IValidator {
     >(
         options: ValidateHttpRequestOptions<Header, Body, Param, Query>
     ): Promise<ValidatorResult>
-}
-
-
-/**
- * Actor interface defines the shape of an actor object.
- * An actor represents a user or entity performing an action in the system.
-*/
-export type Actor = {
-    // 'role': string,
-    // 'userId': string,
-    // 'tenantId': string,
-    [ key: string ]: any,
 }
 
 export type InputType = {

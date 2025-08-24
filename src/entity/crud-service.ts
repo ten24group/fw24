@@ -7,6 +7,7 @@ import { isEmptyObject, removeEmpty } from "../utils";
 import { DefaultValidator, type IValidator } from "../validation";
 import { entityFilterCriteriaToExpression } from "./query";
 import { EntityValidationError } from "./errors/validation-error";
+import { Actor } from "../core/types/actor";
 
 /**
  * 
@@ -34,7 +35,7 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     entityService: EntityServiceTypeFromSchema<S>;
 
     crudType?: keyof TDefaultEntityOperations;
-    actor?: any; // todo: define actor context: [ User+Tenant OR System on behalf of some User+Tenant] trying to perform the operation
+    actor?: Actor; // Actor context: comprehensive actor information including authentication details
     tenant?: any; // todo: define tenant context
 
     logger?: ILogger;
@@ -842,6 +843,9 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     }
     // --- End Composite Key Handling ---
 
+
+    
+    // Use ElectroDB for all fields including _actor (now in schema)
     const query = entityService.getRepository().patch(identifiers).set(data);
 
     if (Object.keys(finalCompositeKeyValuesForElectroDB).length > 0) {
@@ -854,6 +858,8 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     }
 
     const entity = await query.go();
+
+
 
     // // post events
     // await eventDispatcher?.dispatch({ event: 'afterUpdate', context: {...arguments, entity} });

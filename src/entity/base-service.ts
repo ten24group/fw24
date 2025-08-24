@@ -4,10 +4,12 @@ import type { EntityInputValidations, EntityValidations } from "../validation";
 import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
 import type { EntityFilterCriteria, EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 
-import { ExecutionContext } from "../core/types/execution-context";
+import { ExecutionContext, Actor } from "../core/types/execution-context";
 import { DepIdentifier, IDIContainer } from "../interfaces";
 import { createLogger } from "../logging";
-import { BaseSearchService, EntitySearchQuery, EntitySearchService, makeEntitySearchIndexName } from '../search';
+import { BaseSearchService, EntitySearchService } from '../search/services';
+import { EntitySearchQuery } from '../search/types';
+import { makeEntitySearchIndexName } from '../search/search-utils';
 import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
 import { UpdateEntityOperators, createEntity, deleteEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
@@ -28,6 +30,11 @@ type GetOptions<S extends EntitySchema<any, any, any>> = {
 
 export function hasAttribute(schema: EntitySchema<any, any, any>, attributeName: string) {
     return (attributeName in schema.attributes);
+}
+
+export function isAttributeReadOnly(schema: EntitySchema<any, any, any>, attributeName: string): boolean {
+    const attribute = schema.attributes[attributeName];
+    return !!(attribute && attribute.readOnly === true);
 }
 
 export function hasAttributeBy(schema: EntitySchema<any, any, any>, spec: SpecialAttributeType) {
@@ -1105,14 +1112,72 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
 
     /**
+     * Automatically injects actor context into entity data
+     * @param data - The entity data to enhance
+     * @param operation - The operation type (create/update)
+     * @param ctx - The execution context containing actor info
+     * @returns Enhanced data with actor context
+     */
+    private injectActorContext<T extends Record<string, any>>(
+        data: T, 
+        operation: 'create' | 'update', 
+        ctx?: ExecutionContext
+    ): T {
+        if (!ctx?.actor) {
+            this.logger.warn('❌ BaseEntityService: No actor context found, skipping injection');
+            return data;
+        }
+
+        const schema = this.getEntitySchema();
+        const enhancedData = { ...data };
+        const { actor } = ctx;
+
+        // Inject visible actor fields if defined in schema and not read-only
+        if (operation === 'create') {
+            if (hasAttribute(schema, 'createdBy') && !isAttributeReadOnly(schema, 'createdBy') && actor.actorId) {
+                (enhancedData as any).createdBy = actor.actorId;
+            }
+            if (hasAttribute(schema, 'createdAt') && !isAttributeReadOnly(schema, 'createdAt')) {
+                (enhancedData as any).createdAt = actor.timestamp;
+            }
+        }
+        
+        // Always update these fields on create/update (if not read-only)
+        if (hasAttribute(schema, 'updatedBy') && !isAttributeReadOnly(schema, 'updatedBy') && actor.actorId) {
+            (enhancedData as any).updatedBy = actor.actorId;
+        }
+        if (hasAttribute(schema, 'updatedAt') && !isAttributeReadOnly(schema, 'updatedAt')) {
+            (enhancedData as any).updatedAt = actor.timestamp;
+        }
+        if (hasAttribute(schema, 'tenantId') && !isAttributeReadOnly(schema, 'tenantId') && actor.tenantId) {
+            (enhancedData as any).tenantId = actor.tenantId;
+        }
+
+        // Always inject complete actor context for audit trail
+        // This field is hidden from API responses by default
+        // Clean actor object by removing undefined values (DynamoDB doesn't allow them)
+        const cleanActor = Object.fromEntries(
+            Object.entries(actor).filter(([_, value]) => value !== undefined)
+        );
+        (enhancedData as any)._actor = cleanActor;
+
+
+
+        return enhancedData;
+    }
+
+    /**
      * Creates a new entity.
      * 
      * @param payload - The payload for creating the entity.
      * @returns The created entity.
      */
-    public async create(payload: CreateEntityItemTypeFromSchema<S>, _ctx?: ExecutionContext) {
+    public async create(payload: CreateEntityItemTypeFromSchema<S>, ctx?: ExecutionContext) {
 
-        const payloadCopy = { ...payload }
+        let payloadCopy = { ...payload };
+        
+        // Inject actor context
+        payloadCopy = this.injectActorContext(payloadCopy, 'create', ctx);
 
         const schema = this.getEntitySchema();
         const entitySlugAttribute = getAttributeNameBy(schema, 'slug') || '';
@@ -1385,7 +1450,12 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param remove - Optional array of attributes to remove from the entity.
      * @returns The updated entity.
      */
-    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, _ctx?: ExecutionContext) {
+    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, ctx?: ExecutionContext) {
+
+
+
+        // Inject actor context
+        let enhancedData = this.injectActorContext(data as any, 'update', ctx);
 
         const uniqueFields = this.getUniqueAttributes();
         const skipCheckingAttributesUniqueness = false;
@@ -1396,14 +1466,14 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
             for (const { name, readOnly } of uniqueFields) {
                 if (readOnly) {
-                    delete data[ name as keyof typeof data ];
+                    delete enhancedData[ name as keyof typeof enhancedData ];
                     continue;
                 }
 
-                if (name! in data) {
-                    let value = data[ name as keyof typeof data ];
+                if (name! in enhancedData) {
+                    let value = enhancedData[ name as keyof typeof enhancedData ];
                     uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
-                        payloadToUpdate: data,
+                        payloadToUpdate: enhancedData,
                         attributeName: name!,
                         attributeValue: value,
                         maxAttemptsForCreatingUniqueAttributeValue,
@@ -1425,9 +1495,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             }
         }
 
+
+
         const updatedEntity = await updateEntity<S>({
             id: identifiers,
-            data: data,
+            data: enhancedData,
             operators: operators,
             entityName: this.getEntityName(),
             entityService: this,

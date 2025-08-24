@@ -9,7 +9,7 @@ import { RequestContext } from "./request-context";
 import { ResponseContext } from "./response-context";
 import { ResponseConfig, mergeResponseConfig } from "./response-config";
 import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErrorHandler } from "../../errors/";
-import { ExecutionContext } from '../types/execution-context';
+import { ExecutionContext, Actor } from '../types/execution-context';
 
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 
@@ -422,14 +422,80 @@ export abstract class APIController extends AbstractLambdaHandler {
   }
 
   protected buildCtx(event: APIGatewayEvent, context: Context, request: Request, response: Response): ExecutionContext {
-    return {
+    const actor = this.extractActorContext(event, request);
+    
+    const ctx = {
       event,
       lambdaContext: context,
       request,
       response,
-      // TODO: update this to build actor context form cognito context
-      actor: undefined,
+      actor,
       debugInfo: {}
     };
+
+    return ctx;
+  }
+
+  /**
+   * Extracts actor context from the request
+   * Override this method for custom actor extraction logic
+   */
+  protected extractActorContext(event: APIGatewayEvent, request: Request): Actor {
+    const timestamp = new Date().toISOString();
+    const requestId = request.requestId;
+    
+    // Base actor context
+    const actor: Actor = {
+      requestId,
+      timestamp,
+      sourceIp: event.requestContext?.identity?.sourceIp,
+      userAgent: event.headers?.['user-agent'] || event.headers?.['User-Agent'],
+    };
+
+
+
+    // Extract from Cognito
+    if (event.requestContext?.authorizer?.claims) {
+      const claims = event.requestContext.authorizer.claims;
+      actor.authMethod = 'cognito';
+      actor.actorType = 'user';
+      actor.cognitoSub = claims.sub;
+      actor.cognitoUsername = claims['cognito:username'] || claims.username;
+      actor.actorId = claims['cognito:username'] || claims.username || claims.sub;
+      actor.cognitoGroups = claims['cognito:groups']?.split(',') || [];
+      actor.rawAuthContext = claims;
+    }
+    // Extract from API Key
+    else if (event.requestContext?.identity?.apiKey) {
+      actor.authMethod = 'api-key';
+      actor.actorType = 'service';
+      actor.apiKeyId = event.requestContext.identity.apiKey;
+      actor.actorId = `api-key:${actor.apiKeyId}`;
+    }
+    // Extract from IAM
+    else if (event.requestContext?.identity?.userArn) {
+      actor.authMethod = 'iam';
+      actor.actorType = 'service';
+      actor.iamRole = event.requestContext.identity.userArn;
+      actor.iamUserId = event.requestContext.identity.user || undefined;
+      actor.actorId = actor.iamUserId || actor.iamRole;
+    }
+    // System/anonymous
+    else {
+      actor.authMethod = 'system';
+      actor.actorType = 'anonymous';
+      actor.actorId = 'system';
+    }
+
+    // Extract tenant from custom headers or JWT
+    actor.tenantId = request.headers?.['x-tenant-id'] || 
+                    event.requestContext?.authorizer?.claims?.['custom:tenantId'];
+
+    // Generate correlation ID if not present
+    actor.correlationId = request.headers?.['x-correlation-id'] || requestId;
+    
+
+    
+    return actor;
   }
 }

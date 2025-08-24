@@ -112,31 +112,47 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
   }
 
   protected makeAditEntry(record: BaseEventRecord<ChangeStreamPayload>): AuditEntry | undefined {
-    const { entityName, eventType, timestamp, entityId, payload: { newImage, oldImage } } = record;
-    // Get only the changed properties
-    const changes = getChangedProperties(oldImage, newImage);
+        const { entityName, eventType, timestamp, entityId, payload: { newImage, oldImage } } = record;
+        // Get only the changed properties
+        const changes = getChangedProperties(oldImage, newImage);
 
-    // Skip if no changes were detected
-    if (Object.keys(changes).length === 0) {
-      this.logger.debug('No changes detected, skipping audit entry');
-      return;
-    }
+        // Skip if no changes were detected
+        if (Object.keys(changes).length === 0) {
+            this.logger.debug('No changes detected, skipping audit entry');
+            return;
+        }
 
-    // Create audit entry
-    // Note: timestamp is already in milliseconds (converted from DynamoDB seconds in the data extractor)
-    // Example: timestamp = 1734567890000 (milliseconds) -> "2024-12-19T10:31:30.000Z"
-    const auditEntry: AuditEntry = {
-      timestamp: (timestamp ? new Date(timestamp) : new Date()).toISOString(),
-      entityName,
-      eventType,
-      data: changes,
-      identifiers: {
-        id: entityId as string
-      },
-      actor: newImage?.updatedBy // TODO: better actor context
-    };
+        // Extract actor context from the _actor field
+        const rawActorContext = newImage?._actor || oldImage?._actor;
+        
+        const actorContext = rawActorContext;
+        
+        // Fallback to visible actor fields if _actor not available (backward compatibility)
+        const fallbackActor: any = {};
+        if (newImage?.updatedBy || newImage?.createdBy || oldImage?.updatedBy || oldImage?.createdBy) {
+            fallbackActor.actorId = newImage?.updatedBy || newImage?.createdBy || oldImage?.updatedBy || oldImage?.createdBy;
+        }
+        if (newImage?.tenantId || oldImage?.tenantId) {
+            fallbackActor.tenantId = newImage?.tenantId || oldImage?.tenantId;
+        }
 
-    return auditEntry;
+        // Create audit entry
+        // Note: timestamp is already in milliseconds (converted from DynamoDB seconds in the data extractor)
+        // Example: timestamp = 1734567890000 (milliseconds) -> "2024-12-19T10:31:30.000Z"
+        const auditEntry: AuditEntry = {
+            timestamp: (timestamp ? new Date(timestamp) : new Date()).toISOString(),
+            entityName,
+            eventType,
+            data: changes,
+            identifiers: {
+                id: entityId as string
+            },
+            actor: actorContext || (Object.keys(fallbackActor).length > 0 ? fallbackActor : { actorType: 'unknown' })
+        };
+
+
+
+        return auditEntry;
   }
 
   protected async writeAuditEntry(auditEntry: AuditEntry): Promise<void> {
@@ -166,7 +182,7 @@ export function getChangedProperties(
   oldImage: Record<string, any> | undefined,
   newImage: Record<string, any> | undefined,
   // TODO: more fields like GSI1PK, GSI1SK, etc.
-  ignoredFields: string[] = [ 'updatedAt', '__edb_e__', '__edb_v__', 'pk', 'sk' ]
+  ignoredFields: string[] = [ 'updatedAt', '__edb_e__', '__edb_v__', 'pk', 'sk', '_actor' ]
 ): Record<string, { old?: any, new?: any }> {
   return getChangedPropertiesRecursive(oldImage, newImage, ignoredFields);
 }

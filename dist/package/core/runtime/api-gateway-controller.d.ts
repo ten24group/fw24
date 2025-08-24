@@ -6,7 +6,7 @@ import { HttpRequestValidations, IValidator, InputValidationRule } from "../../v
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { ResponseConfig } from "./response-config";
 import { createErrorHandler } from "../../errors/";
-import { ExecutionContext } from '../types/execution-context';
+import { ExecutionContext, Actor } from '../types/execution-context';
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 export interface APIControllerMiddleware {
     before?: (request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
@@ -102,4 +102,9 @@ export declare abstract class APIController extends AbstractLambdaHandler {
     protected handleException(req: Request, err: Error, res: Response): APIGatewayProxyResult;
     protected handleResponse(res: Response | APIGatewayProxyResult): APIGatewayProxyResult;
     protected buildCtx(event: APIGatewayEvent, context: Context, request: Request, response: Response): ExecutionContext;
+    /**
+     * Extracts actor context from the request
+     * Override this method for custom actor extraction logic
+     */
+    protected extractActorContext(event: APIGatewayEvent, request: Request): Actor;
 }

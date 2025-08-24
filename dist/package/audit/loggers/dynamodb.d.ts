@@ -76,48 +76,28 @@ export declare const DynamoDBAuditEntitySchema: {
             readonly isListable: false;
         };
         readonly entity: {
-            readonly type: "map";
+            readonly type: "any";
             readonly required: false;
             readonly isEditable: false;
             readonly isListable: false;
-            readonly properties: {
-                readonly '*': {
-                    readonly type: "any";
-                };
-            };
         };
         readonly actor: {
-            readonly type: "map";
+            readonly type: "any";
             readonly required: false;
             readonly isEditable: false;
             readonly isListable: false;
-            readonly properties: {
-                readonly '*': {
-                    readonly type: "any";
-                };
-            };
         };
         readonly tenant: {
-            readonly type: "map";
+            readonly type: "any";
             readonly required: false;
             readonly isEditable: false;
             readonly isListable: false;
-            readonly properties: {
-                readonly '*': {
-                    readonly type: "any";
-                };
-            };
         };
         readonly identifiers: {
-            readonly type: "map";
+            readonly type: "any";
             readonly required: false;
             readonly isEditable: false;
             readonly isListable: false;
-            readonly properties: {
-                readonly id: {
-                    readonly type: "string";
-                };
-            };
         };
     };
     readonly indexes: {
@@ -248,48 +228,28 @@ export declare class DynamoDBAuditEntityService extends BaseEntityService<AuditE
                     readonly isListable: false;
                 };
                 readonly entity: {
-                    readonly type: "map";
+                    readonly type: "any";
                     readonly required: false;
                     readonly isEditable: false;
                     readonly isListable: false;
-                    readonly properties: {
-                        readonly '*': {
-                            readonly type: "any";
-                        };
-                    };
                 };
                 readonly actor: {
-                    readonly type: "map";
+                    readonly type: "any";
                     readonly required: false;
                     readonly isEditable: false;
                     readonly isListable: false;
-                    readonly properties: {
-                        readonly '*': {
-                            readonly type: "any";
-                        };
-                    };
                 };
                 readonly tenant: {
-                    readonly type: "map";
+                    readonly type: "any";
                     readonly required: false;
                     readonly isEditable: false;
                     readonly isListable: false;
-                    readonly properties: {
-                        readonly '*': {
-                            readonly type: "any";
-                        };
-                    };
                 };
                 readonly identifiers: {
-                    readonly type: "map";
+                    readonly type: "any";
                     readonly required: false;
                     readonly isEditable: false;
                     readonly isListable: false;
-                    readonly properties: {
-                        readonly id: {
-                            readonly type: "string";
-                        };
-                    };
                 };
             };
             readonly indexes: {

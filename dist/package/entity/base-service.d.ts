@@ -4,7 +4,8 @@ import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiers
 import type { EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 import { ExecutionContext } from "../core/types/execution-context";
 import { DepIdentifier, IDIContainer } from "../interfaces";
-import { EntitySearchQuery, EntitySearchService } from '../search';
+import { EntitySearchService } from '../search/services';
+import { EntitySearchQuery } from '../search/types';
 import { UpdateEntityOperators } from "./crud-service";
 export type ExtractEntityIdentifiersContext = {
     forAccessPattern?: string;
@@ -14,6 +15,7 @@ type GetOptions<S extends EntitySchema<any, any, any>> = {
     attributes?: EntitySelections<S>;
 };
 export declare function hasAttribute(schema: EntitySchema<any, any, any>, attributeName: string): boolean;
+export declare function isAttributeReadOnly(schema: EntitySchema<any, any, any>, attributeName: string): boolean;
 export declare function hasAttributeBy(schema: EntitySchema<any, any, any>, spec: SpecialAttributeType): boolean;
 export declare function getAttributeNameBy(schema: EntitySchema<any, any, any>, spec: SpecialAttributeType): string | undefined;
 export declare abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
@@ -27,7 +29,7 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
     protected getTableName(): string;
     getEntitySearchConfig(_ctx?: ExecutionContext<any>): {
         enabled: boolean;
-        indexConfig?: import("../search").SearchIndexConfig;
+        indexConfig?: import("../search/types").SearchIndexConfig;
         serviceClass?: DepIdentifier<EntitySearchService<any>> | typeof EntitySearchService | EntitySearchService<any>;
         documentTransformer?: ((entity: import("electrodb").ResponseItem<any, any, any, EntitySchema<any, any, any, {
             get: string;
@@ -270,12 +272,16 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      */
     generateUniqueValue(originalValue: any, attempt?: number | string): string;
     /**
+     * Injects actor context into entity data for audit tracking
+     */
+    private injectActorContext;
+    /**
      * Creates a new entity.
      *
      * @param payload - The payload for creating the entity.
      * @returns The created entity.
      */
-    create(payload: CreateEntityItemTypeFromSchema<S>, _ctx?: ExecutionContext): Promise<import("./crud-service").CreateEntityResponse<S>>;
+    create(payload: CreateEntityItemTypeFromSchema<S>, ctx?: ExecutionContext): Promise<import("./crud-service").CreateEntityResponse<S>>;
     /**
      * Creates-OR-Updates an entity.
      * NOTE:
@@ -351,7 +357,7 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      * @param remove - Optional array of attributes to remove from the entity.
      * @returns The updated entity.
      */
-    update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, _ctx?: ExecutionContext): Promise<{
+    update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, ctx?: ExecutionContext): Promise<{
         data: Partial<import("electrodb").ResponseItem<any, any, any, EntitySchema<any, any, any, {
             get: string;
             list: string;
@@ -401,7 +407,7 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      * @param maxDepth Maximum recursion depth (optional).
      */
     inferRelationshipsForEntitySelections<E extends EntitySchema<any, any, any>>(schema: E, paths: ParsedEntityAttributePaths, pathKey?: string, visitedPaths?: Set<string>, maxDepth?: number): HydrateOptionsMapForEntity<E>;
-    search(query: EntitySearchQuery<S>, ctx?: ExecutionContext): Promise<import("../search").SearchResult<any>>;
+    search(query: EntitySearchQuery<S>, ctx?: ExecutionContext): Promise<import("../search/types").SearchResult<any>>;
 }
 export declare function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAttribute): Partial<EntityAttribute> & {
     id: string;

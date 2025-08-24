@@ -4,6 +4,7 @@ import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
 import { ILogger } from "../logging";
 import { type IValidator } from "../validation";
+import { Actor } from "../core/types/actor";
 /**
  *
  * Serializer/formatter
@@ -28,7 +29,7 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     entityName: string;
     entityService: EntityServiceTypeFromSchema<S>;
     crudType?: keyof TDefaultEntityOperations;
-    actor?: any;
+    actor?: Actor;
     tenant?: any;
     logger?: ILogger;
     validator?: IValidator;

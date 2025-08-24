@@ -1,5 +1,6 @@
 import { EntityRecordTypeFromSchema, EntitySchema, TEntityOpsInputSchemas as EntityOperationsInputSchemas } from "../entity";
 import { Narrow, OmitNever, ValueOf } from '../utils/types';
+import { Actor } from '../core/types/actor';
 import { Request } from '../interfaces/request';
 export type CustomMessageOrMessageId = {
     customMessage?: string;
@@ -58,13 +59,6 @@ export interface IValidator {
     validateInput<I extends InputType>(input: I | undefined, rules?: InputValidationRule<I>, collectErrors?: boolean): Promise<InputValidationResult<I>>;
     validateHttpRequest<Header extends InputType = InputType, Body extends InputType = InputType, Param extends InputType = InputType, Query extends InputType = InputType>(options: ValidateHttpRequestOptions<Header, Body, Param, Query>): Promise<ValidatorResult>;
 }
-/**
- * Actor interface defines the shape of an actor object.
- * An actor represents a user or entity performing an action in the system.
-*/
-export type Actor = {
-    [key: string]: any;
-};
 export type InputType = {
     readonly [key: string]: any;
 };

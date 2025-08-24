@@ -308,6 +308,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	@Patch('/{id}')
 	async update(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
+		
 		const entity = await this.getEntityService().get({ identifiers }, ctx);
 
 		if (!entity) {
