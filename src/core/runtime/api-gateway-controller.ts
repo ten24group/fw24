@@ -444,57 +444,107 @@ export abstract class APIController extends AbstractLambdaHandler {
     const timestamp = new Date().toISOString();
     const requestId = request.requestId;
     
-    // Base actor context
     const actor: Actor = {
       requestId,
       timestamp,
       sourceIp: event.requestContext?.identity?.sourceIp,
       userAgent: event.headers?.['user-agent'] || event.headers?.['User-Agent'],
+      correlationId: request.headers?.['x-correlation-id'] || requestId,
     };
 
-
-
-    // Extract from Cognito
+    // Cognito authentication
     if (event.requestContext?.authorizer?.claims) {
       const claims = event.requestContext.authorizer.claims;
+      
       actor.authMethod = 'cognito';
       actor.actorType = 'user';
-      actor.cognitoSub = claims.sub;
-      actor.cognitoUsername = claims['cognito:username'] || claims.username;
       actor.actorId = claims['cognito:username'] || claims.username || claims.sub;
-      actor.cognitoGroups = claims['cognito:groups']?.split(',') || [];
+      
+      // Generic user fields
+      actor.email = claims.email;
+      actor.emailVerified = claims.email_verified === 'true' || claims.email_verified === true;
+      actor.phoneNumber = claims.phone_number;
+      actor.phoneVerified = claims.phone_number_verified === 'true' || claims.phone_number_verified === true;
+      actor.firstName = claims.given_name;
+      actor.lastName = claims.family_name;
+      actor.name = claims.name;
+      actor.locale = claims.locale;
+      
+      // Cognito-specific nested data
+      const groups = claims['cognito:groups'];
+      const parsedGroups = typeof groups === 'string' && groups.length > 0 
+        ? groups.split(',').map(g => g.trim()).filter(g => g.length > 0)
+        : [];
+      
+      // Extract custom attributes
+      const customAttributes: Record<string, any> = {};
+      Object.keys(claims).forEach(key => {
+        if (key.startsWith('custom:')) {
+          customAttributes[key.replace('custom:', '')] = claims[key];
+        }
+      });
+      
+      actor.cognito = {
+        sub: claims.sub,
+        username: claims['cognito:username'],
+        groups: parsedGroups,
+        authTime: claims.auth_time,
+        identities: claims.identities,
+        customAttributes: Object.keys(customAttributes).length > 0 ? customAttributes : undefined
+      };
+      
       actor.rawAuthContext = claims;
     }
-    // Extract from API Key
-    else if (event.requestContext?.identity?.apiKey) {
+    // API Key authentication
+    else if (event.requestContext?.identity?.apiKey || request.headers?.['x-api-key']) {
       actor.authMethod = 'api-key';
       actor.actorType = 'service';
-      actor.apiKeyId = event.requestContext.identity.apiKey;
-      actor.actorId = `api-key:${actor.apiKeyId}`;
+      
+      let apiKeyId: string;
+      let source: 'request-context' | 'header';
+      
+      if (event.requestContext?.identity?.apiKey) {
+        apiKeyId = event.requestContext.identity.apiKeyId || event.requestContext.identity.apiKey;
+        source = 'request-context';
+      } else {
+        apiKeyId = request.headers['x-api-key']!;
+        source = 'header';
+      }
+      
+      actor.actorId = `api-key:${apiKeyId}`;
+      actor.apiKey = {
+        id: apiKeyId,
+        source: source
+      };
     }
-    // Extract from IAM
+    // IAM authentication 
     else if (event.requestContext?.identity?.userArn) {
       actor.authMethod = 'iam';
       actor.actorType = 'service';
-      actor.iamRole = event.requestContext.identity.userArn;
-      actor.iamUserId = event.requestContext.identity.user || undefined;
-      actor.actorId = actor.iamUserId || actor.iamRole;
+      actor.actorId = event.requestContext.identity.user || event.requestContext.identity.userArn;
+      
+      actor.iam = {
+        userArn: event.requestContext.identity.userArn,
+        userId: event.requestContext.identity.user || undefined,
+        accountId: event.requestContext.identity.accountId || undefined,
+        caller: event.requestContext.identity.caller || undefined
+      };
     }
-    // System/anonymous
+    // Anonymous
     else {
-      actor.authMethod = 'system';
+      actor.authMethod = 'anonymous';
       actor.actorType = 'anonymous';
-      actor.actorId = 'system';
+      actor.actorId = 'anonymous';
     }
 
-    // Extract tenant from custom headers or JWT
+    // Session and tenant for analytics
+    actor.sessionId = request.headers?.['x-session-id'];
     actor.tenantId = request.headers?.['x-tenant-id'] || 
                     event.requestContext?.authorizer?.claims?.['custom:tenantId'];
-
-    // Generate correlation ID if not present
-    actor.correlationId = request.headers?.['x-correlation-id'] || requestId;
     
-
+    // API Gateway context
+    actor.apiStage = event.requestContext?.stage;
+    actor.apiId = event.requestContext?.apiId;
     
     return actor;
   }

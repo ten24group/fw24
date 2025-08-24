@@ -47,11 +47,14 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
       authMethod: 'cognito',
       sourceIp: '192.168.1.1',
       userAgent: 'Mozilla/5.0',
-      cognitoSub: 'sub-789',
-      cognitoUsername: 'john.doe',
       tenantId: 'tenant-abc',
       correlationId: 'corr-xyz',
-      cognitoGroups: ['admin', 'user'],
+      email: 'john@example.com',
+      cognito: {
+        sub: 'sub-789',
+        username: 'john.doe',
+        groups: ['admin', 'user']
+      },
       rawAuthContext: {
         sub: 'sub-789',
         'cognito:username': 'john.doe',
@@ -210,7 +213,15 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         authMethod: 'cognito',
         sourceIp: '203.0.113.1',
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        cognitoGroups: ['admin', 'manager', 'user'],
+        cognito: {
+          sub: 'sub-789',
+          username: 'john.doe',
+          groups: ['admin', 'manager', 'user'],
+          customAttributes: {
+            department: 'engineering',
+            role: 'senior-developer'
+          }
+        },
         rawAuthContext: {
           sub: 'sub-789',
           'cognito:username': 'john.doe',
@@ -219,8 +230,6 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
           'custom:role': 'senior-developer'
         },
         sessionId: 'session-xyz-789',
-        apiKeyId: undefined, // Not an API key auth
-        iamRole: undefined, // Not IAM auth
         customField: 'custom-value'
       });
 
@@ -241,7 +250,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
       const auditEntry = (auditLogger as any).makeAditEntry(record);
 
       expect(auditEntry.actor).toEqual(complexActor);
-      expect(auditEntry.actor.cognitoGroups).toContain('admin');
+      expect(auditEntry.actor.cognito?.groups).toContain('admin');
       expect(auditEntry.actor.rawAuthContext?.email).toBe('john@example.com');
       expect(auditEntry.actor.customField).toBe('custom-value');
     });
@@ -251,10 +260,12 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         actorType: 'service',
         authMethod: 'api-key',
         actorId: 'api-key:abc123',
-        apiKeyId: 'abc123',
-        cognitoSub: undefined,
-        cognitoUsername: undefined,
-        cognitoGroups: undefined,
+        email: undefined,
+        apiKey: {
+          id: 'abc123',
+          source: 'request-context'
+        },
+        cognito: undefined,
         rawAuthContext: undefined
       });
 
@@ -274,7 +285,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
       expect(auditEntry.actor).toEqual(apiKeyActor);
       expect(auditEntry.actor.authMethod).toBe('api-key');
       expect(auditEntry.actor.actorType).toBe('service');
-      expect(auditEntry.actor.apiKeyId).toBe('abc123');
+      expect(auditEntry.actor.apiKey?.id).toBe('abc123');
     });
 
     it('should handle IAM actor context', () => {
@@ -282,11 +293,14 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         actorType: 'service',
         authMethod: 'iam',
         actorId: 'AIDAI23HZ27SI6FQMGNQ2',
-        iamRole: 'arn:aws:iam::123456789012:user/service-user',
-        iamUserId: 'AIDAI23HZ27SI6FQMGNQ2',
-        cognitoSub: undefined,
-        cognitoUsername: undefined,
-        cognitoGroups: undefined,
+        email: undefined,
+        iam: {
+          userArn: 'arn:aws:iam::123456789012:user/service-user',
+          userId: 'AIDAI23HZ27SI6FQMGNQ2',
+          accountId: '123456789012',
+          caller: 'caller-id'
+        },
+        cognito: undefined,
         rawAuthContext: undefined
       });
 
@@ -308,17 +322,16 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
 
       expect(auditEntry.actor).toEqual(iamActor);
       expect(auditEntry.actor.authMethod).toBe('iam');
-      expect(auditEntry.actor.iamRole).toBe('arn:aws:iam::123456789012:user/service-user');
+      expect(auditEntry.actor.iam?.userArn).toBe('arn:aws:iam::123456789012:user/service-user');
     });
 
     it('should handle system/anonymous actor context', () => {
       const systemActor = createMockActor({
         actorType: 'anonymous',
-        authMethod: 'system',
-        actorId: 'system',
-        cognitoSub: undefined,
-        cognitoUsername: undefined,
-        cognitoGroups: undefined,
+        authMethod: 'anonymous',
+        actorId: 'anonymous',
+        email: undefined,
+        cognito: undefined,
         tenantId: undefined,
         rawAuthContext: undefined
       });
@@ -337,9 +350,9 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
       const auditEntry = (auditLogger as any).makeAditEntry(record);
 
       expect(auditEntry.actor).toEqual(systemActor);
-      expect(auditEntry.actor.authMethod).toBe('system');
+      expect(auditEntry.actor.authMethod).toBe('anonymous');
       expect(auditEntry.actor.actorType).toBe('anonymous');
-      expect(auditEntry.actor.actorId).toBe('system');
+      expect(auditEntry.actor.actorId).toBe('anonymous');
     });
 
     it('should handle missing actor context gracefully', () => {
@@ -360,8 +373,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
       const auditEntry = (auditLogger as any).makeAditEntry(record);
 
       expect(auditEntry.actor).toEqual({
-        actorId: undefined,
-        tenantId: undefined
+        actorType: 'unknown'
       });
     });
 
@@ -505,12 +517,11 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
       const auditEntry = (auditLogger as any).makeAditEntry(record);
 
       expect(auditEntry.actor).toEqual({
-        actorId: undefined,
-        tenantId: undefined
+        actorType: 'unknown'
       });
     });
 
-    it('should validate actor structure and fallback to visible fields for invalid actor', () => {
+    it('should use invalid actor as-is when _actor field exists but is invalid', () => {
       const record = createMockEventRecord({
         payload: {
           newImage: {
@@ -529,11 +540,8 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
 
       const auditEntry = (auditLogger as any).makeAditEntry(record);
 
-      // Should use fallback when _actor is invalid
-      expect(auditEntry.actor).toEqual({
-        actorId: 'fallback-user-123',
-        tenantId: 'fallback-tenant'
-      });
+      // Should use invalid actor as-is since _actor field exists
+      expect(auditEntry.actor).toBe('invalid-actor-string');
     });
 
     it('should handle empty/minimal actor objects', () => {

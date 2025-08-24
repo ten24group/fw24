@@ -228,16 +228,19 @@ describe('BaseEntityService Actor Context Injection', () => {
 
       const result = service.testInjectActorContext(inputData, 'create', ctx);
 
-      expect(result).toEqual({
-        title: 'Test Title',
-        content: 'Test Content',
-        createdBy: 'user-456',
-        updatedBy: 'user-456',
-        createdAt: '2024-01-15T10:30:00.000Z',
-        updatedAt: '2024-01-15T10:30:00.000Z',
-        tenantId: 'tenant-abc',
-        _actor: mockActor
-      });
+      // Check actor fields
+      expect(result.title).toBe('Test Title');
+      expect(result.content).toBe('Test Content');
+      expect((result as any).createdBy).toBe('user-456');
+      expect((result as any).updatedBy).toBe('user-456');
+      expect((result as any).tenantId).toBe('tenant-abc');
+      expect((result as any)._actor).toEqual(mockActor);
+      
+      // Timestamps should be system-generated (current time)
+      expect((result as any).createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date((result as any).createdAt).getTime()).toBeGreaterThan(Date.now() - 5000);
+      expect(new Date((result as any).updatedAt).getTime()).toBeGreaterThan(Date.now() - 5000);
     });
 
     it('should only inject fields that exist in schema', () => {
@@ -270,16 +273,20 @@ describe('BaseEntityService Actor Context Injection', () => {
 
       const result = service.testInjectActorContext(inputData, 'create', ctx);
 
-      expect(result).toEqual({
-        title: 'Test Title',
-        createdAt: '2024-01-15T10:30:00.000Z',
-        updatedAt: '2024-01-15T10:30:00.000Z',
-        tenantId: 'tenant-abc', // tenantId is set even when actorId is undefined
-        // createdBy and updatedBy should not be set when actorId is undefined
-        _actor: mockActor
-      });
+      // Check fields
+      expect(result.title).toBe('Test Title');
+      expect((result as any).tenantId).toBe('tenant-abc'); // tenantId is set even when actorId is undefined
+      expect((result as any)._actor).toEqual(mockActor);
+      
+      // createdBy and updatedBy should not be set when actorId is undefined
       expect(result).not.toHaveProperty('createdBy');
       expect(result).not.toHaveProperty('updatedBy');
+      
+      // But timestamps should be system-generated
+      expect((result as any).createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date((result as any).createdAt).getTime()).toBeGreaterThan(Date.now() - 5000);
+      expect(new Date((result as any).updatedAt).getTime()).toBeGreaterThan(Date.now() - 5000);
     });
 
     it('should handle missing tenantId gracefully', () => {
@@ -292,16 +299,20 @@ describe('BaseEntityService Actor Context Injection', () => {
 
       const result = service.testInjectActorContext(inputData, 'create', ctx);
 
-      expect(result).toEqual({
-        title: 'Test Title',
-        createdBy: 'user-456',
-        updatedBy: 'user-456',
-        createdAt: '2024-01-15T10:30:00.000Z',
-        updatedAt: '2024-01-15T10:30:00.000Z',
-        // tenantId should not be set when undefined
-        _actor: mockActor
-      });
+      // Check fields
+      expect(result.title).toBe('Test Title');
+      expect((result as any).createdBy).toBe('user-456');
+      expect((result as any).updatedBy).toBe('user-456');
+      expect((result as any)._actor).toEqual(mockActor);
+      
+      // tenantId should not be set when undefined
       expect(result).not.toHaveProperty('tenantId');
+      
+      // Timestamps should be system-generated
+      expect((result as any).createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date((result as any).createdAt).getTime()).toBeGreaterThan(Date.now() - 5000);
+      expect(new Date((result as any).updatedAt).getTime()).toBeGreaterThan(Date.now() - 5000);
     });
   });
 
@@ -317,17 +328,20 @@ describe('BaseEntityService Actor Context Injection', () => {
 
       const result = service.testInjectActorContext(inputData, 'update', ctx);
 
-      expect(result).toEqual({
-        title: 'Updated Title',
-        content: 'Updated Content',
-        updatedBy: 'user-456',
-        updatedAt: '2024-01-15T10:30:00.000Z',
-        tenantId: 'tenant-abc',
-        _actor: mockActor
-      });
+      // Check fields
+      expect(result.title).toBe('Updated Title');
+      expect(result.content).toBe('Updated Content');
+      expect((result as any).updatedBy).toBe('user-456');
+      expect((result as any).tenantId).toBe('tenant-abc');
+      expect((result as any)._actor).toEqual(mockActor);
+      
       // Should not set create fields for update operation
       expect(result).not.toHaveProperty('createdBy');
       expect(result).not.toHaveProperty('createdAt');
+      
+      // updatedAt should be system-generated
+      expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date((result as any).updatedAt).getTime()).toBeGreaterThan(Date.now() - 5000);
     });
 
     it('should handle update operation with minimal schema', () => {
@@ -361,15 +375,17 @@ describe('BaseEntityService Actor Context Injection', () => {
 
       const result = service.testInjectActorContext(inputData, 'update', ctx);
 
-      expect(result).toEqual({
-        title: 'Updated Title',
-        existingField: 'existing value',
-        customField: { nested: { data: 'complex' } },
-        updatedBy: 'user-456',
-        updatedAt: '2024-01-15T10:30:00.000Z',
-        tenantId: 'tenant-abc',
-        _actor: mockActor
-      });
+      // Check fields
+      expect(result.title).toBe('Updated Title');
+      expect(result.existingField).toBe('existing value');
+      expect(result.customField).toEqual({ nested: { data: 'complex' } });
+      expect((result as any).updatedBy).toBe('user-456');
+      expect((result as any).tenantId).toBe('tenant-abc');
+      expect((result as any)._actor).toEqual(mockActor);
+      
+      // updatedAt should be system-generated
+      expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date((result as any).updatedAt).getTime()).toBeGreaterThan(Date.now() - 5000);
     });
   });
 
@@ -412,14 +428,17 @@ describe('BaseEntityService Actor Context Injection', () => {
 
       const result = service.testInjectActorContext(inputData, 'create', ctx);
 
-      expect(result).toEqual({
-        createdBy: 'user-456',
-        updatedBy: 'user-456',
-        createdAt: '2024-01-15T10:30:00.000Z',
-        updatedAt: '2024-01-15T10:30:00.000Z',
-        tenantId: 'tenant-abc',
-        _actor: mockActor
-      });
+      // Check fields
+      expect((result as any).createdBy).toBe('user-456');
+      expect((result as any).updatedBy).toBe('user-456');
+      expect((result as any).tenantId).toBe('tenant-abc');
+      expect((result as any)._actor).toEqual(mockActor);
+      
+      // Timestamps should be system-generated
+      expect((result as any).createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date((result as any).createdAt).getTime()).toBeGreaterThan(Date.now() - 5000);
+      expect(new Date((result as any).updatedAt).getTime()).toBeGreaterThan(Date.now() - 5000);
     });
 
     it('should overwrite existing actor fields with current actor context', () => {
@@ -533,8 +552,11 @@ describe('BaseEntityService Actor Context Injection', () => {
       
       const result = service.testInjectActorContext({ title: 'Test' }, 'create', ctx);
       
-      expect((result as any).createdAt).toBeNull();
-      expect((result as any).updatedAt).toBeNull();
+      // Even with null actor timestamp, database timestamps should use current system time
+      expect((result as any).createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date((result as any).createdAt).getTime()).toBeGreaterThan(Date.now() - 5000);
+      expect(new Date((result as any).updatedAt).getTime()).toBeGreaterThan(Date.now() - 5000);
     });
 
     it('should handle extremely large actor context', () => {

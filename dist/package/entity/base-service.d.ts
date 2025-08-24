@@ -272,7 +272,11 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      */
     generateUniqueValue(originalValue: any, attempt?: number | string): string;
     /**
-     * Injects actor context into entity data for audit tracking
+     * Automatically injects actor context into entity data
+     * @param data - The entity data to enhance
+     * @param operation - The operation type (create/update)
+     * @param ctx - The execution context containing actor info
+     * @returns Enhanced data with actor context
      */
     private injectActorContext;
     /**

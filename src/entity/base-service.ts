@@ -1118,13 +1118,13 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param ctx - The execution context containing actor info
      * @returns Enhanced data with actor context
      */
-    private injectActorContext<T extends Record<string, any>>(
+    protected injectActorContext<T extends Record<string, any>>(
         data: T, 
         operation: 'create' | 'update', 
         ctx?: ExecutionContext
     ): T {
         if (!ctx?.actor) {
-            this.logger.warn('❌ BaseEntityService: No actor context found, skipping injection');
+            this.logger.warn('BaseEntityService: No actor context found, skipping injection');
             return data;
         }
 
@@ -1132,13 +1132,16 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const enhancedData = { ...data };
         const { actor } = ctx;
 
+        // Get current timestamp for database operation
+        const currentTimestamp = new Date().toISOString();
+        
         // Inject visible actor fields if defined in schema and not read-only
         if (operation === 'create') {
             if (hasAttribute(schema, 'createdBy') && !isAttributeReadOnly(schema, 'createdBy') && actor.actorId) {
                 (enhancedData as any).createdBy = actor.actorId;
             }
             if (hasAttribute(schema, 'createdAt') && !isAttributeReadOnly(schema, 'createdAt')) {
-                (enhancedData as any).createdAt = actor.timestamp;
+                (enhancedData as any).createdAt = currentTimestamp;
             }
         }
         
@@ -1147,7 +1150,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             (enhancedData as any).updatedBy = actor.actorId;
         }
         if (hasAttribute(schema, 'updatedAt') && !isAttributeReadOnly(schema, 'updatedAt')) {
-            (enhancedData as any).updatedAt = actor.timestamp;
+            (enhancedData as any).updatedAt = currentTimestamp;
         }
         if (hasAttribute(schema, 'tenantId') && !isAttributeReadOnly(schema, 'tenantId') && actor.tenantId) {
             (enhancedData as any).tenantId = actor.tenantId;
@@ -1160,8 +1163,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             Object.entries(actor).filter(([_, value]) => value !== undefined)
         );
         (enhancedData as any)._actor = cleanActor;
-
-
 
         return enhancedData;
     }
@@ -1451,8 +1452,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @returns The updated entity.
      */
     public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, ctx?: ExecutionContext) {
-
-
 
         // Inject actor context
         let enhancedData = this.injectActorContext(data as any, 'update', ctx);

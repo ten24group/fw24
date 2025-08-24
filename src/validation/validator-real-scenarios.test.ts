@@ -155,15 +155,18 @@ describe('Validator Real-World Actor Scenarios', () => {
         requestId: 'req-service-001',
         timestamp: '2024-01-15T14:00:00.000Z',
         authMethod: 'api-key',
-        apiKeyId: 'sync-key-123',
+        apiKey: {
+          id: 'sync-key-123',
+          source: 'request-context'
+        },
         sourceIp: '10.0.1.100'
       };
 
       const entityValidations: EntityValidations<any, any, any> = {
         actor: {
           actorType: [{ eq: 'service' }],
-          authMethod: [{ eq: 'api-key' }],
-          apiKeyId: [{ required: true }],
+          authMethod: [ { eq: 'api-key' } ],
+          apiKey: [{ required: true }],
           sourceIp: [{ required: true }]
         },
         input: {
@@ -217,19 +220,19 @@ describe('Validator Real-World Actor Scenarios', () => {
 
     it('should validate system actor for maintenance operations', async () => {
       const systemActor: Actor = {
-        actorId: 'system',
-        actorType: 'system',
+        actorId: 'anonymous',
+        actorType: 'anonymous',
         requestId: 'req-system-001',
         timestamp: '2024-01-15T02:00:00.000Z',
-        authMethod: 'system',
+        authMethod: 'anonymous',
         maintenanceWindow: true
       } as any;
 
       const entityValidations: EntityValidations<any, any, any> = {
         actor: {
-          actorId: [{ eq: 'system' }],
-          actorType: [{ eq: 'system' }],
-          authMethod: [{ eq: 'system' }],
+          actorId: [{ eq: 'anonymous' }],
+          actorType: [{ eq: 'anonymous' }],
+          authMethod: [{ eq: 'anonymous' }],
           maintenanceWindow: [{ eq: true }]
         },
         input: {
@@ -264,7 +267,9 @@ describe('Validator Real-World Actor Scenarios', () => {
         timestamp: '2024-01-15T16:00:00.000Z',
         authMethod: 'cognito',
         tenantId: 'company-a-tenant',
-        cognitoGroups: ['team-admin'],
+        cognito: {
+          groups: ['team-admin']
+        },
         role: 'admin'
       } as any;
 
@@ -345,7 +350,7 @@ describe('Validator Real-World Actor Scenarios', () => {
         specialization: 'cardiology',
         hospitalId: 'hosp-main-001',
         isActive: true
-      } as any;
+      };
 
       const entityValidations: EntityValidations<any, any, any> = {
         actor: {
@@ -378,20 +383,22 @@ describe('Validator Real-World Actor Scenarios', () => {
       expect(result.pass).toBe(true);
     });
 
-    it('should reject unqualified practitioners', async () => {
+    it('should reject actors missing required business context fields', async () => {
+      // This tests complex business validation that controllers can add via extractActorContext override
+      // Example: Medical system controller adds license validation, financial system adds credit checks, etc.
       const studentActor: Actor = {
         actorId: 'student-001',
         actorType: 'user',
         requestId: 'req-student-001',
         timestamp: '2024-01-15T19:00:00.000Z',
-        profession: 'medical-student', // Not a qualified doctor
+        profession: 'medical-student', // Missing required profession
         isActive: true
       } as any;
 
       const entityValidations: EntityValidations<any, any, any> = {
         actor: {
-          profession: [{ eq: 'doctor' }], // Must be doctor
-          licenseNumber: [{ required: true }] // Must have license
+          profession: [{ eq: 'doctor' }], // Must have specific profession
+          licenseNumber: [{ required: true }] // Must have business license/certification
         }
       };
 
@@ -408,7 +415,7 @@ describe('Validator Real-World Actor Scenarios', () => {
       });
 
       expect(result.pass).toBe(false);
-      expect(result.errors).toHaveLength(2); // profession and licenseNumber both fail
+      expect(result.errors).toHaveLength(2); // profession and licenseNumber validation both fail
     });
 
     it('should validate actor with custom business logic fields', async () => {
@@ -517,6 +524,375 @@ describe('Validator Real-World Actor Scenarios', () => {
 
       expect(result.pass).toBe(false);
       expect(result.errors).toHaveLength(1);
+    });
+  });
+
+  describe('Enhanced Actor Context Validation', () => {
+    
+    it('should validate complex role-based access control', async () => {
+      // Enhanced actor from controller override
+      const managerActor: Actor = {
+        actorId: 'john.manager',
+        actorType: 'user',
+        authMethod: 'cognito',
+        requestId: 'req-rbac-001',
+        timestamp: '2024-01-15T21:00:00.000Z',
+        
+        // Enhanced by controller
+        roles: ['manager', 'approver', 'budget-owner'],
+        primaryRole: 'manager',
+        permissions: ['user.read', 'user.write', 'budget.approve', 'report.generate'],
+        permissionLevel: 'senior',
+        department: 'engineering',
+        approvalLimits: {
+          financial: 50000,
+          timeOff: 30,
+          procurement: 25000
+        },
+        securityClearance: 'confidential'
+      } as any;
+
+      const entityValidations: EntityValidations<any, any, any> = {
+                  actor: {
+            // Role validation - using custom function for array contains
+            roles: [{ custom: (roles: string[]) => Array.isArray(roles) && roles.includes('approver') }],
+            primaryRole: [{ inList: ['manager', 'director', 'vp'] }],
+            
+            // Permission validation - using custom function for array contains
+            permissions: [{ custom: (permissions: string[]) => Array.isArray(permissions) && permissions.includes('budget.approve') }],
+            permissionLevel: [{ inList: ['senior', 'executive'] }],
+            
+            // Department-based access
+            department: [{ eq: 'engineering' }],
+            
+            // Security clearance
+            securityClearance: [{ inList: ['confidential', 'secret', 'top-secret'] }]
+          },
+        input: {
+          // Amount must be within approval limits
+          amount: [{ lte: 50000 }],
+          // Request type must match permissions
+          requestType: [{ eq: 'budget-approval' }]
+        }
+      };
+
+      const result = await validator.validateEntity({
+        operationName: 'financialApproval',
+        entityName: 'BudgetRequest',
+        entityValidations,
+        actor: managerActor,
+        input: {
+          amount: 35000,
+          requestType: 'budget-approval',
+          department: 'engineering',
+          description: 'New server infrastructure'
+        }
+      });
+
+      expect(result.pass).toBe(true);
+    });
+
+    it('should reject insufficient role permissions', async () => {
+      const juniorActor: Actor = {
+        actorId: 'jane.junior',
+        actorType: 'user',
+        authMethod: 'cognito',
+        requestId: 'req-rbac-002',
+        timestamp: '2024-01-15T21:15:00.000Z',
+        
+        roles: ['employee', 'viewer'],
+        primaryRole: 'employee',
+        permissions: ['user.read', 'report.view'],
+        permissionLevel: 'junior',
+        department: 'engineering',
+        approvalLimits: {
+          financial: 0,
+          timeOff: 0,
+          procurement: 0
+        },
+        securityClearance: 'public'
+      } as any;
+
+      const entityValidations: EntityValidations<any, any, any> = {
+        actor: {
+          roles: [{ custom: (roles: string[]) => Array.isArray(roles) && roles.includes('approver') }], // Missing approver role
+          securityClearance: [{ inList: ['confidential', 'secret'] }] // Insufficient clearance
+        }
+      };
+
+      const result = await validator.validateEntity({
+        operationName: 'financialApproval',
+        entityName: 'BudgetRequest',
+        entityValidations,
+        actor: juniorActor,
+        input: {
+          amount: 35000,
+          requestType: 'budget-approval'
+        },
+        collectErrors: true
+      });
+
+      expect(result.pass).toBe(false);
+      expect(result.errors).toHaveLength(2); // roles and securityClearance validations should fail
+    });
+
+    it('should validate subscription-based feature access', async () => {
+      // Enhanced actor with subscription context
+      const enterpriseActor: Actor = {
+        actorId: 'enterprise.user',
+        actorType: 'user',
+        authMethod: 'cognito',
+        requestId: 'req-sub-001',
+        timestamp: '2024-01-15T22:00:00.000Z',
+        tenantId: 'enterprise-corp',
+        
+        // Enhanced by controller with subscription data
+        subscription: {
+          tier: 'enterprise',
+          status: 'active',
+          features: ['advanced-analytics', 'custom-branding', 'sso', 'audit-logs'],
+          limits: {
+            users: 1000,
+            storage: 107374182400, // 100GB
+            apiCallsPerMonth: 1000000
+          }
+        },
+        licenses: ['enterprise-admin', 'analytics-pro'],
+        activeLicenses: ['enterprise-admin', 'analytics-pro'],
+        usage: {
+          apiCallsThisMonth: 45000,
+          storageUsed: 26843545600, // 25GB
+          usersActive: 89
+        },
+        featureFlags: {
+          'beta-ai-features': true,
+          'advanced-reporting': true
+        }
+      } as any;
+
+      const entityValidations: EntityValidations<any, any, any> = {
+        actor: {
+          // Subscription validation - use custom validators for nested properties
+          subscription: [{ custom: (sub: any) => sub?.tier === 'enterprise' || sub?.tier === 'premium' }],
+          
+          // License validation - use custom for array contains
+          activeLicenses: [{ custom: (licenses: string[]) => Array.isArray(licenses) && licenses.includes('analytics-pro') }],
+          
+          // Feature flag validation - use custom for nested property
+          featureFlags: [{ custom: (flags: any) => flags?.['advanced-reporting'] === true }]
+        },
+        input: {
+          // Feature-specific validation
+          reportType: [{ inList: ['advanced', 'custom'] }],
+          dataRange: [{ inList: ['1year', '2years', 'all-time'] }] // Enterprise gets extended ranges
+        }
+      };
+
+      const result = await validator.validateEntity({
+        operationName: 'generateAdvancedReport',
+        entityName: 'AnalyticsReport',
+        entityValidations,
+        actor: enterpriseActor,
+        input: {
+          reportType: 'advanced',
+          dataRange: '2years',
+          includeRawData: true
+        }
+      });
+
+      expect(result.pass).toBe(true);
+    });
+
+    it('should validate middleware-enhanced security context', async () => {
+      // Enhanced actor with security context from middleware
+      const secureActor: Actor = {
+        actorId: 'security.analyst',
+        actorType: 'user',
+        authMethod: 'cognito',
+        requestId: 'req-sec-001',
+        timestamp: '2024-01-15T23:00:00.000Z',
+        
+        // Enhanced by middleware
+        riskProfile: {
+          score: 25, // low risk
+          level: 'low',
+          factors: [],
+          threatLevel: 'minimal'
+        },
+        device: {
+          type: 'desktop',
+          trusted: true,
+          platform: 'Windows'
+        },
+        security: {
+          mfaVerified: true,
+          vpnDetected: false,
+          anomalyFlags: []
+        },
+        session: {
+          mfaVerified: true,
+          deviceTrusted: true,
+          startedAt: '2024-01-15T08:00:00.000Z'
+        }
+      } as any;
+
+      const entityValidations: EntityValidations<any, any, any> = {
+        actor: {
+          // Risk assessment validation - use custom for nested properties
+          riskProfile: [{ custom: (risk: any) => risk?.level === 'low' || risk?.level === 'minimal' }],
+          
+          // Device security validation
+          device: [{ custom: (device: any) => device?.trusted === true }],
+          
+          // Security validation  
+          security: [{ custom: (sec: any) => sec?.mfaVerified === true && sec?.vpnDetected === false }],
+          
+          // Session validation
+          session: [{ custom: (sess: any) => sess?.deviceTrusted === true && sess?.mfaVerified === true }]
+        },
+        input: {
+          // Sensitive operation validation
+          operationType: [{ inList: ['user.suspend', 'security.audit', 'admin.access'] }],
+          dataClassification: [{ inList: ['confidential', 'internal'] }]
+        }
+      };
+
+      const result = await validator.validateEntity({
+        operationName: 'sensitiveSecurityOperation',
+        entityName: 'SecurityAction',
+        entityValidations,
+        actor: secureActor,
+        input: {
+          operationType: 'security.audit',
+          dataClassification: 'confidential',
+          targetUserId: 'suspicious.user'
+        }
+      });
+
+      expect(result.pass).toBe(true);
+    });
+
+    it('should reject high-risk security scenarios', async () => {
+      const riskyActor: Actor = {
+        actorId: 'risky.user',
+        actorType: 'user',
+        authMethod: 'cognito',
+        requestId: 'req-risk-001',
+        timestamp: '2024-01-15T23:30:00.000Z',
+        
+        riskProfile: {
+          score: 85, // high risk
+          level: 'high',
+          factors: ['new-device', 'unusual-location', 'velocity-anomaly'],
+          threatLevel: 'elevated'
+        },
+        device: {
+          type: 'mobile',
+          trusted: false, // Untrusted device
+          platform: 'iOS'
+        },
+        security: {
+          mfaVerified: false, // MFA not verified
+          vpnDetected: true, // VPN detected
+          anomalyFlags: ['login-time-unusual', 'location-anomaly']
+        }
+      } as any;
+
+      const entityValidations: EntityValidations<any, any, any> = {
+        actor: {
+          riskProfile: [{ custom: (risk: any) => (risk?.level === 'low' || risk?.level === 'minimal') && risk?.score <= 50 }],
+          device: [{ custom: (device: any) => device?.trusted === true }],
+          security: [{ custom: (sec: any) => sec?.mfaVerified === true && sec?.vpnDetected === false }]
+        }
+      };
+
+      const result = await validator.validateEntity({
+        operationName: 'sensitiveSecurityOperation',
+        entityName: 'SecurityAction',
+        entityValidations,
+        actor: riskyActor,
+        input: {
+          operationType: 'user.suspend',
+          dataClassification: 'confidential'
+        },
+        collectErrors: true
+      });
+
+      expect(result.pass).toBe(false);
+      expect(result.errors).toHaveLength(3); // riskProfile, device, and security validations should fail
+    });
+
+    it('should validate compliance and audit requirements', async () => {
+      const complianceActor: Actor = {
+        actorId: 'compliance.officer',
+        actorType: 'user',
+        authMethod: 'cognito',
+        requestId: 'req-comp-001',
+        timestamp: '2024-01-16T00:00:00.000Z',
+        tenantId: 'regulated-financial',
+        
+        // Enhanced by middleware with compliance context
+        compliance: {
+          status: 'compliant',
+          certifications: ['SOC2-Type2', 'ISO27001', 'PCI-DSS'],
+          violations: [],
+          gdprStatus: { lawfulBasis: 'legitimate-interest', dataSubject: true },
+          soxCompliant: { certified: true, lastCertification: '2023-12-31' }
+        },
+        audit: {
+          trailEnabled: true,
+          sensitiveOperations: ['financial.approve', 'data.export'],
+          retentionPeriod: 2555, // 7 years
+          highRiskOperations: ['user.delete', 'audit.modify'],
+          realTimeMonitoring: true
+        },
+        roles: ['compliance-officer', 'auditor'],
+        securityClearance: 'confidential'
+      } as any;
+
+      const entityValidations: EntityValidations<any, any, any> = {
+        actor: {
+          // Compliance validation - use custom for nested properties
+          compliance: [{ custom: (comp: any) => 
+            comp?.status === 'compliant' && 
+            Array.isArray(comp?.certifications) && comp.certifications.includes('SOC2-Type2') &&
+            Array.isArray(comp?.violations) && comp.violations.length === 0 &&
+            comp?.soxCompliant?.certified === true
+          }],
+          
+          // Audit validation - use custom for nested properties
+          audit: [{ custom: (audit: any) => 
+            audit?.trailEnabled === true && 
+            audit?.retentionPeriod >= 2555 &&
+            audit?.realTimeMonitoring === true
+          }],
+          
+          // Role validation
+          roles: [{ custom: (roles: string[]) => Array.isArray(roles) && roles.includes('compliance-officer') }],
+          securityClearance: [{ inList: ['confidential', 'secret'] }]
+        },
+        input: {
+          // Financial compliance validation
+          transactionType: [{ inList: ['audit-review', 'compliance-check'] }],
+          amount: [{ gte: 0 }],
+          regulatoryFramework: [{ inList: ['SOX', 'GDPR', 'PCI-DSS'] }]
+        }
+      };
+
+      const result = await validator.validateEntity({
+        operationName: 'financialComplianceReview',
+        entityName: 'ComplianceReport',
+        entityValidations,
+        actor: complianceActor,
+        input: {
+          transactionType: 'audit-review',
+          amount: 250000,
+          regulatoryFramework: 'SOX',
+          reviewType: 'quarterly'
+        }
+      });
+
+      expect(result.pass).toBe(true);
     });
   });
 });

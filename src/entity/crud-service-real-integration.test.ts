@@ -138,9 +138,12 @@ describe('CRUD Service Real Integration Tests', () => {
         requestId: 'req-create-001',
         timestamp: '2024-01-15T10:30:00.000Z',
         authMethod: 'cognito',
-        cognitoSub: 'us-east-1:user-uuid-123',
-        cognitoUsername: 'john.doe@company.com',
-        cognitoGroups: ['user', 'content-creator'],
+        email: 'john.doe@company.com',
+        cognito: {
+          sub: 'us-east-1:user-uuid-123',
+          username: 'john.doe@company.com',
+          groups: ['user', 'content-creator']
+        },
         tenantId: 'company-blog-tenant',
         sourceIp: '192.168.1.100',
         userAgent: 'BlogApp/2.0.0'
@@ -159,10 +162,14 @@ describe('CRUD Service Real Integration Tests', () => {
 
       // Verify actor injection worked
       expect(createdPost.createdBy).toBe('user-john-doe');
-      expect(createdPost.createdAt).toBe('2024-01-15T10:30:00.000Z');
       expect(createdPost.tenantId).toBe('company-blog-tenant');
       expect(createdPost.updatedBy).toBe('user-john-doe');
-      expect(createdPost.updatedAt).toBe('2024-01-15T10:30:00.000Z');
+      
+      // Timestamps should be current system time (ISO format and recent)
+      expect(createdPost.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(createdPost.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date(createdPost.createdAt).getTime()).toBeGreaterThan(Date.now() - 5000); // Within last 5 seconds
+      expect(new Date(createdPost.updatedAt).getTime()).toBeGreaterThan(Date.now() - 5000);
 
       // Verify original data is preserved
       expect(createdPost.title).toBe('My First Blog Post');
@@ -180,7 +187,10 @@ describe('CRUD Service Real Integration Tests', () => {
         requestId: 'req-update-002',
         timestamp: '2024-01-15T15:45:00.000Z',
         authMethod: 'api-key',
-        apiKeyId: 'cms-api-key-789',
+        apiKey: {
+          id: 'cms-api-key-789',
+          source: 'request-context'
+        },
         correlationId: 'bulk-update-batch-456'
       };
 
@@ -201,7 +211,10 @@ describe('CRUD Service Real Integration Tests', () => {
 
       // Verify actor injection for update
       expect(updatedPost.updatedBy).toBe('api-key:content-management-service');
-      expect(updatedPost.updatedAt).toBe('2024-01-15T15:45:00.000Z');
+      
+      // updatedAt should be current system time
+      expect(updatedPost.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date(updatedPost.updatedAt).getTime()).toBeGreaterThan(Date.now() - 5000);
       
       // createdBy should NOT be overwritten in updates
       expect(updatedPost.createdBy).toBeUndefined();
@@ -217,11 +230,11 @@ describe('CRUD Service Real Integration Tests', () => {
 
     it('should handle system actor for automated operations', async () => {
       const systemActor: Actor = {
-        actorId: 'system',
-        actorType: 'system',
+        actorId: 'anonymous',
+        actorType: 'anonymous',
         requestId: 'req-system-cleanup',
         timestamp: '2024-01-15T02:00:00.000Z',
-        authMethod: 'system',
+        authMethod: 'anonymous',
         correlationId: 'scheduled-maintenance-001'
       };
 
@@ -239,8 +252,11 @@ describe('CRUD Service Real Integration Tests', () => {
         ctx
       );
 
-      expect(archivedPost.updatedBy).toBe('system');
-      expect(archivedPost.updatedAt).toBe('2024-01-15T02:00:00.000Z');
+      expect(archivedPost.updatedBy).toBe('anonymous');
+      
+      // updatedAt should be current system time
+      expect(archivedPost.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date(archivedPost.updatedAt).getTime()).toBeGreaterThan(Date.now() - 5000);
       expect(archivedPost.status).toBe('archived');
       expect((archivedPost as any)._actor.correlationId).toBe('scheduled-maintenance-001');
     });
@@ -253,7 +269,9 @@ describe('CRUD Service Real Integration Tests', () => {
         timestamp: '2024-01-15T12:00:00.000Z',
         authMethod: 'cognito',
         tenantId: 'tenant-company-a',
-        cognitoGroups: ['editor']
+        cognito: {
+          groups: ['editor']
+        }
       };
 
       const tenant2Actor: Actor = {
@@ -263,7 +281,9 @@ describe('CRUD Service Real Integration Tests', () => {
         timestamp: '2024-01-15T12:30:00.000Z',
         authMethod: 'cognito',
         tenantId: 'tenant-company-b',
-        cognitoGroups: ['editor']
+        cognito: {
+          groups: ['editor']
+        }
       };
 
       const ctx1 = createMockExecutionContext(tenant1Actor);
@@ -305,7 +325,7 @@ describe('CRUD Service Real Integration Tests', () => {
 
       const createdPost = await postService.create(postData);
 
-      // Should not crash, but no actor fields should be set
+      // Should not crash, but no actor fields should be set (no injection happens)
       expect(createdPost.createdBy).toBeUndefined();
       expect(createdPost.updatedBy).toBeUndefined();
       expect(createdPost.tenantId).toBeUndefined();
@@ -334,10 +354,13 @@ describe('CRUD Service Real Integration Tests', () => {
 
       const createdPost = await postService.create(postData, ctx);
 
-      // Should handle gracefully
+      // Should handle gracefully  
       expect(createdPost.createdBy).toBeUndefined(); // No actorId
-      expect(createdPost.createdAt).toBe('2024-01-15T16:00:00.000Z'); // Has timestamp
       expect(createdPost.tenantId).toBeUndefined(); // No tenantId
+      
+      // When actor context exists but has incomplete data, timestamps should still be injected
+      expect((createdPost as any).createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect((createdPost as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       expect((createdPost as any)._actor).toEqual(incompleteActor);
     });
 
@@ -365,7 +388,85 @@ describe('CRUD Service Real Integration Tests', () => {
       // Current actor should overwrite existing fields
       expect(createdPost.createdBy).toBe('current-user');
       expect(createdPost.tenantId).toBe('current-tenant');
-      expect(createdPost.createdAt).toBe('2024-01-15T17:00:00.000Z');
+      
+      // But timestamps should be system-generated (not from actor)
+      expect(createdPost.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date(createdPost.createdAt).getTime()).toBeGreaterThan(Date.now() - 5000);
+    });
+
+    it('should respect read-only fields and not inject actor data into them', async () => {
+      // Create a schema with read-only actor fields
+      const ReadOnlyPostSchema: EntitySchema<any, any, any> = {
+        model: {
+          entity: 'ReadOnlyPost',
+          version: '1',
+          service: 'blog'
+        },
+        attributes: {
+          postId: { type: 'string', required: true },
+          title: { type: 'string', required: true },
+          content: { type: 'string', required: true },
+          createdBy: { type: 'string', required: false, readOnly: true }, // READ-ONLY
+          updatedBy: { type: 'string', required: false }, // Not read-only
+          createdAt: { type: 'string', required: false, readOnly: true }, // READ-ONLY
+          updatedAt: { type: 'string', required: false }  // Not read-only
+        },
+        indexes: {
+          primary: {
+            pk: { composite: ['postId'] },
+            sk: { composite: [] }
+          }
+        }
+      } as any;
+
+      class ReadOnlyPostService extends BaseEntityService<typeof ReadOnlyPostSchema> {
+        constructor() {
+          super(ReadOnlyPostSchema, { table: 'test-readonly-posts', client: new DynamoDBClient({}) }, DIContainer.ROOT);
+        }
+
+        public testInjectActorContext<T extends Record<string, any>>(
+          data: T,
+          operation: 'create' | 'update',
+          ctx?: ExecutionContext
+        ): T {
+          return (this as any).injectActorContext(data, operation, ctx);
+        }
+      }
+
+      const readOnlyService = new ReadOnlyPostService();
+
+      const actor: Actor = {
+        actorId: 'test-user',
+        requestId: 'req-readonly-test',
+        timestamp: '2024-01-15T18:00:00.000Z',
+        tenantId: 'test-tenant'
+      };
+
+      const ctx = createMockExecutionContext(actor);
+
+      const postData = {
+        postId: 'readonly-test-post',
+        title: 'Testing Read-Only Fields',
+        content: 'This tests read-only actor field behavior.',
+        createdBy: 'system-import', // This should NOT be overwritten (read-only)
+        createdAt: '2024-01-01T00:00:00.000Z' // This should NOT be overwritten (read-only)
+      };
+
+      const result = readOnlyService.testInjectActorContext(postData, 'create', ctx);
+
+      // Read-only fields should NOT be changed
+      expect(result.createdBy).toBe('system-import'); // Preserved original
+      expect(result.createdAt).toBe('2024-01-01T00:00:00.000Z'); // Preserved original
+
+      // Non-read-only fields should be injected
+      expect((result as any).updatedBy).toBe('test-user'); // Actor injected
+      
+      // updatedAt should be system-generated (not from actor)
+      expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(new Date((result as any).updatedAt).getTime()).toBeGreaterThan(Date.now() - 5000);
+
+      // Hidden _actor field should always be injected
+      expect((result as any)._actor).toEqual(actor);
     });
   });
 
@@ -379,7 +480,9 @@ describe('CRUD Service Real Integration Tests', () => {
         requestId: 'req-create-draft',
         timestamp: '2024-01-15T09:00:00.000Z',
         authMethod: 'cognito',
-        cognitoGroups: ['user', 'author'],
+        cognito: {
+          groups: ['user', 'author']
+        },
         tenantId: 'news-publication'
       };
 
@@ -400,7 +503,9 @@ describe('CRUD Service Real Integration Tests', () => {
         requestId: 'req-editor-review',
         timestamp: '2024-01-15T10:30:00.000Z',
         authMethod: 'cognito',
-        cognitoGroups: ['user', 'editor'],
+        cognito: {
+          groups: ['user', 'editor']
+        },
         tenantId: 'news-publication'
       };
 
@@ -421,11 +526,11 @@ describe('CRUD Service Real Integration Tests', () => {
 
       // Step 3: System auto-publishes
       const systemActor: Actor = {
-        actorId: 'system',
-        actorType: 'system',
+        actorId: 'anonymous',
+        actorType: 'anonymous',
         requestId: 'req-auto-publish',
         timestamp: '2024-01-15T11:00:00.000Z',
-        authMethod: 'system',
+        authMethod: 'anonymous',
         correlationId: 'scheduled-publish-001'
       };
 
@@ -439,7 +544,7 @@ describe('CRUD Service Real Integration Tests', () => {
         createMockExecutionContext(systemActor)
       );
 
-      expect(publishedPost.updatedBy).toBe('system');
+      expect(publishedPost.updatedBy).toBe('anonymous');
       expect(publishedPost.status).toBe('published');
       expect((publishedPost as any)._actor.correlationId).toBe('scheduled-publish-001');
     });
@@ -451,7 +556,10 @@ describe('CRUD Service Real Integration Tests', () => {
         requestId: 'req-bulk-migration',
         timestamp: '2024-01-15T03:00:00.000Z',
         authMethod: 'api-key',
-        apiKeyId: 'migration-key-456',
+        apiKey: {
+          id: 'migration-key-456',
+          source: 'request-context'
+        },
         correlationId: 'migration-batch-20240115'
       };
 
@@ -480,9 +588,12 @@ describe('CRUD Service Real Integration Tests', () => {
       // Verify all posts have consistent actor context
       migratedPosts.forEach(post => {
         expect(post.createdBy).toBe('api-key:migration-service');
-        expect(post.createdAt).toBe('2024-01-15T03:00:00.000Z');
         expect((post as any)._actor.correlationId).toBe('migration-batch-20240115');
         expect(post.status).toBe('migrated');
+        
+        // Timestamps should be system-generated
+        expect(post.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+        expect(new Date(post.createdAt).getTime()).toBeGreaterThan(Date.now() - 5000);
       });
     });
   });

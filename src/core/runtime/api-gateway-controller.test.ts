@@ -574,11 +574,13 @@ describe('APIGatewayController Core Functionality', () => {
         authMethod: 'cognito',
         actorType: 'user',
         actorId: 'john.doe',
-        cognitoSub: 'user-123-456',
-        cognitoUsername: 'john.doe',
-        cognitoGroups: ['admin', 'user'],
         tenantId: 'tenant-789',
         correlationId: 'corr-xyz-789',
+        cognito: {
+          sub: 'user-123-456',
+          username: 'john.doe',
+          groups: ['admin', 'user']
+        },
         rawAuthContext: {
           sub: 'user-123-456',
           'cognito:username': 'john.doe',
@@ -590,7 +592,7 @@ describe('APIGatewayController Core Functionality', () => {
       expect(actor.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     });
 
-    it('should extract actor context from API Key authorization', () => {
+    it('should extract actor context from API Key authorization (request context)', () => {
       const event = createMockEventForActorTests({
         requestContext: {
           identity: {
@@ -612,9 +614,73 @@ describe('APIGatewayController Core Functionality', () => {
         sourceIp: '10.0.0.1',
         authMethod: 'api-key',
         actorType: 'service',
-        actorId: 'api-key:api-key-abc123',
-        apiKeyId: 'api-key-abc123',
+        actorId: 'api-key:key-id-456',
+        apiKey: {
+          id: 'key-id-456',
+          source: 'request-context'
+        },
         correlationId: 'req-def-456'
+      });
+    });
+
+    it('should extract actor context from API Key authorization (header)', () => {
+      const event = createMockEventForActorTests({
+        requestContext: {
+          identity: {
+            sourceIp: '10.0.0.1'
+          }
+        } as any
+      });
+
+      const request = createMockRequest({
+        requestId: 'req-header-api-key',
+        headers: {
+          'x-api-key': 'header-api-key-xyz789'
+        }
+      });
+
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor).toMatchObject({
+        requestId: 'req-header-api-key',
+        sourceIp: '10.0.0.1',
+        authMethod: 'api-key',
+        actorType: 'service',
+        actorId: 'api-key:header-api-key-xyz789',
+        apiKey: {
+          id: 'header-api-key-xyz789',
+          source: 'header'
+        },
+        correlationId: 'req-header-api-key'
+      });
+    });
+
+    it('should prioritize request-context API key over header', () => {
+      const event = createMockEventForActorTests({
+        requestContext: {
+          identity: {
+            sourceIp: '10.0.0.1',
+            apiKey: 'context-api-key'
+          }
+        } as any
+      });
+
+      const request = createMockRequest({
+        requestId: 'req-priority-test',
+        headers: {
+          'x-api-key': 'header-api-key-should-be-ignored'
+        }
+      });
+
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor).toMatchObject({
+        authMethod: 'api-key',
+        actorId: 'api-key:context-api-key',
+        apiKey: {
+          id: 'context-api-key',
+          source: 'request-context'
+        }
       });
     });
 
@@ -624,7 +690,9 @@ describe('APIGatewayController Core Functionality', () => {
           identity: {
             sourceIp: '172.16.0.1',
             userArn: 'arn:aws:iam::123456789012:user/service-user',
-            user: 'AIDAI23HZ27SI6FQMGNQ2'
+            user: 'AIDAI23HZ27SI6FQMGNQ2',
+            accountId: '123456789012',
+            caller: 'caller-id'
           }
         } as any
       });
@@ -641,8 +709,12 @@ describe('APIGatewayController Core Functionality', () => {
         authMethod: 'iam',
         actorType: 'service',
         actorId: 'AIDAI23HZ27SI6FQMGNQ2',
-        iamRole: 'arn:aws:iam::123456789012:user/service-user',
-        iamUserId: 'AIDAI23HZ27SI6FQMGNQ2',
+        iam: {
+          userArn: 'arn:aws:iam::123456789012:user/service-user',
+          userId: 'AIDAI23HZ27SI6FQMGNQ2',
+          accountId: '123456789012',
+          caller: 'caller-id'
+        },
         correlationId: 'req-ghi-789'
       });
     });
@@ -665,9 +737,9 @@ describe('APIGatewayController Core Functionality', () => {
       expect(actor).toMatchObject({
         requestId: 'req-jkl-012',
         sourceIp: '203.0.113.1',
-        authMethod: 'system',
+        authMethod: 'anonymous',
         actorType: 'anonymous',
-        actorId: 'system',
+        actorId: 'anonymous',
         correlationId: 'req-jkl-012'
       });
     });
@@ -707,9 +779,9 @@ describe('APIGatewayController Core Functionality', () => {
         requestId: 'req-pqr-678',
         sourceIp: undefined,
         userAgent: undefined,
-        authMethod: 'system',
+        authMethod: 'anonymous',
         actorType: 'anonymous',
-        actorId: 'system',
+        actorId: 'anonymous',
         tenantId: undefined,
         correlationId: 'req-pqr-678'
       });
@@ -734,7 +806,7 @@ describe('APIGatewayController Core Functionality', () => {
       const actor = (controller as any).extractActorContext(event, request);
 
       expect(actor.actorId).toBe('preferred.username');
-      expect(actor.cognitoSub).toBe('user-sub-123');
+      expect(actor.cognito?.sub).toBe('user-sub-123');
     });
 
     it('should use sub as fallback when cognito username is not available', () => {
@@ -756,7 +828,88 @@ describe('APIGatewayController Core Functionality', () => {
       const actor = (controller as any).extractActorContext(event, request);
 
       expect(actor.actorId).toBe('fallback.username');
-      expect(actor.cognitoSub).toBe('user-sub-456');
+      expect(actor.cognito?.sub).toBe('user-sub-456');
+    });
+
+    it('should extract social login identity information', () => {
+      const event = createMockEventForActorTests({
+        requestContext: {
+          authorizer: {
+            claims: {
+              sub: 'google-user-123',
+              'cognito:username': 'google_user',
+              email: 'user@gmail.com',
+              identities: [
+                {
+                  userId: 'google-123456789',
+                  providerName: 'Google',
+                  providerType: 'OIDC',
+                  primary: 'true'
+                }
+              ]
+            }
+          }
+        } as any
+      });
+
+      const request = createMockRequest({
+        requestId: 'req-social-login'
+      });
+
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor).toMatchObject({
+        authMethod: 'cognito',
+        actorType: 'user',
+        email: 'user@gmail.com',
+        cognito: {
+          sub: 'google-user-123',
+          username: 'google_user',
+          identities: [
+            {
+              userId: 'google-123456789',
+              providerName: 'Google',
+              providerType: 'OIDC',
+              primary: 'true'
+            }
+          ]
+        }
+      });
+    });
+
+    it('should extract custom attributes from Cognito', () => {
+      const event = createMockEventForActorTests({
+        requestContext: {
+          authorizer: {
+            claims: {
+              sub: 'user-with-custom-attrs',
+              'cognito:username': 'custom_user',
+              'custom:department': 'engineering',
+              'custom:role': 'senior-developer',
+              'custom:company_id': 'company-123'
+            }
+          }
+        } as any
+      });
+
+      const request = createMockRequest({
+        requestId: 'req-custom-attrs'
+      });
+
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor).toMatchObject({
+        authMethod: 'cognito',
+        cognito: {
+          sub: 'user-with-custom-attrs',
+          username: 'custom_user',
+          customAttributes: {
+            department: 'engineering',
+            role: 'senior-developer',
+            company_id: 'company-123'
+          }
+        }
+      });
     });
   });
 
@@ -849,8 +1002,10 @@ describe('APIGatewayController Core Functionality', () => {
         authMethod: 'cognito',
         actorType: 'user',
         actorId: 'test.user',
-        cognitoSub: 'user-123',
-        cognitoUsername: 'test.user'
+        cognito: {
+          sub: 'user-123',
+          username: 'test.user'
+        }
       });
     });
   });
