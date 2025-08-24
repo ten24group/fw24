@@ -445,53 +445,51 @@ describe('Actor Context Enhancement Patterns', () => {
   describe('Middleware Enhancement: Actor Context', () => {
     
     it('should enhance actor context via before middleware', async () => {
-      // Business context middleware that enhances actor
+      // Business context middleware that enhances actor using framework API
       const businessContextMiddleware: APIControllerMiddleware = {
         before: async (_request: Request, _response: Response, ctx?: ExecutionContext) => {
-          if (!ctx?.actor) return;
+          if (!ctx?.actor || !ctx.enhanceActor) return;
           
           // Simulate fetching additional business context
           const riskProfile = await fetchRiskProfile(ctx.actor.actorId);
           const preferences = await fetchUserPreferences(ctx.actor.actorId);
           const deviceInfo = await fetchDeviceContext(_request);
           
-          // Enhance actor context
-          ctx.actor.riskProfile = {
-            score: riskProfile.score,
-            level: riskProfile.level,
-            factors: riskProfile.factors,
-            lastAssessment: riskProfile.lastAssessment
-          };
-          
-          ctx.actor.preferences = {
-            language: preferences.language,
-            timezone: preferences.timezone,
-            notifications: preferences.notifications,
-            privacy: preferences.privacy
-          };
-          
-          ctx.actor.device = {
-            type: deviceInfo.type,
-            platform: deviceInfo.platform,
-            browser: deviceInfo.browser,
-            ip: deviceInfo.ip,
-            location: deviceInfo.location,
-            trusted: deviceInfo.trusted
-          };
-          
-          ctx.actor.security = {
-            threatLevel: riskProfile.threatLevel,
-            anomalyFlags: riskProfile.anomalies,
-            trustedDevice: deviceInfo.trusted,
-            vpnDetected: deviceInfo.vpnDetected,
-            mfaVerified: true
-          };
-          
-          ctx.actor.session = {
-            mfaVerified: true,
-            deviceTrusted: deviceInfo.trusted,
-            startedAt: '2024-01-15T08:00:00.000Z'
-          };
+          // Use simple framework API to enhance actor context
+          ctx.enhanceActor?.({
+            riskProfile: {
+              score: riskProfile.score,
+              level: riskProfile.level,
+              factors: riskProfile.factors,
+              lastAssessment: riskProfile.lastAssessment
+            },
+            preferences: {
+              language: preferences.language,
+              timezone: preferences.timezone,
+              notifications: preferences.notifications,
+              privacy: preferences.privacy
+            },
+            device: {
+              type: deviceInfo.type,
+              platform: deviceInfo.platform,
+              browser: deviceInfo.browser,
+              ip: deviceInfo.ip,
+              location: deviceInfo.location,
+              trusted: deviceInfo.trusted
+            },
+            security: {
+              threatLevel: riskProfile.threatLevel,
+              anomalyFlags: riskProfile.anomalies,
+              trustedDevice: deviceInfo.trusted,
+              vpnDetected: deviceInfo.vpnDetected,
+              mfaVerified: true
+            },
+            session: {
+              mfaVerified: true,
+              deviceTrusted: deviceInfo.trusted,
+              startedAt: '2024-01-15T08:00:00.000Z'
+            }
+          });
         }
       };
       
@@ -618,29 +616,30 @@ describe('Actor Context Enhancement Patterns', () => {
           const complianceStatus = await fetchComplianceStatus(ctx.actor.actorId, ctx.actor.tenantId);
           const auditContext = await fetchAuditContext(ctx.actor.actorId);
           
-          // Enhance with compliance data
-          ctx.actor.compliance = {
-            status: complianceStatus.status,
-            certifications: complianceStatus.certifications,
-            violations: complianceStatus.violations,
-            lastAudit: complianceStatus.lastAudit,
-            nextReview: complianceStatus.nextReview,
-            dataClassifications: complianceStatus.dataAccess,
-            retentionPolicies: complianceStatus.retention,
-            gdprStatus: complianceStatus.gdpr,
-            soxCompliant: complianceStatus.sox,
-            hipaaAccess: complianceStatus.hipaa
-          };
-          
-          ctx.actor.audit = {
-            trailEnabled: auditContext.enabled,
-            sensitiveOperations: auditContext.sensitiveOps,
-            retentionPeriod: auditContext.retentionDays,
-            lastActivity: auditContext.lastActivity,
-            highRiskOperations: auditContext.highRisk,
-            anomalyDetection: auditContext.anomalyDetection,
-            realTimeMonitoring: auditContext.realTime
-          };
+          // Use framework API to enhance with compliance data
+          ctx.enhanceActor?.({
+            compliance: {
+              status: complianceStatus.status,
+              certifications: complianceStatus.certifications,
+              violations: complianceStatus.violations,
+              lastAudit: complianceStatus.lastAudit,
+              nextReview: complianceStatus.nextReview,
+              dataClassifications: complianceStatus.dataAccess,
+              retentionPolicies: complianceStatus.retention,
+              gdprStatus: complianceStatus.gdpr,
+              soxCompliant: complianceStatus.sox,
+              hipaaAccess: complianceStatus.hipaa
+            },
+            audit: {
+              trailEnabled: auditContext.enabled,
+              sensitiveOperations: auditContext.sensitiveOps,
+              retentionPeriod: auditContext.retentionDays,
+              lastActivity: auditContext.lastActivity,
+              highRiskOperations: auditContext.highRisk,
+              anomalyDetection: auditContext.anomalyDetection,
+              realTimeMonitoring: auditContext.realTime
+            }
+          });
         }
       };
       
@@ -752,27 +751,27 @@ describe('Actor Context Enhancement Patterns', () => {
             // Middleware 1: Add session context
             {
               before: async (_request, _response, ctx) => {
-                if (ctx?.actor) {
-                  ctx.actor.session = {
+                ctx?.enhanceActor?.({
+                  session: {
                     id: 'session-12345',
                     startedAt: '2024-01-15T08:00:00.000Z',
                     mfaVerified: true,
                     deviceTrusted: true
-                  };
-                }
+                  }
+                });
               }
             },
             // Middleware 2: Add real-time risk assessment
             {
               before: async (_request, _response, ctx) => {
-                if (ctx?.actor) {
-                  ctx.actor.riskAssessment = {
+                ctx?.enhanceActor?.({
+                  riskAssessment: {
                     score: 25, // low risk
                     factors: [],
                     recommendedActions: ['proceed'],
                     timestamp: new Date().toISOString()
-                  };
-                }
+                  }
+                });
               }
             }
           ];

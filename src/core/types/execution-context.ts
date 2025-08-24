@@ -10,6 +10,9 @@ export interface ExecutionContext<TObservability = unknown, TDebugInfo = unknown
   actor?: Actor; // current actor extracted from request context
   observability?: TObservability; // TODO: observability, traces, metrics, etc.
   debugInfo?: TDebugInfo; // TODO: debug info 
+  
+  // Simple actor enhancement method
+  enhanceActor?: (enhancement: Partial<Actor>) => void;
 }
 
 // Re-export Actor for convenience

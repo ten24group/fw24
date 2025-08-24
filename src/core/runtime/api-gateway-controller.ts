@@ -424,17 +424,26 @@ export abstract class APIController extends AbstractLambdaHandler {
   protected buildCtx(event: APIGatewayEvent, context: Context, request: Request, response: Response): ExecutionContext {
     const actor = this.extractActorContext(event, request);
     
-    const ctx = {
+    const ctx: ExecutionContext = {
       event,
       lambdaContext: context,
       request,
       response,
       actor,
-      debugInfo: {}
+      debugInfo: {},
+      
+      // Simple actor enhancement method
+      enhanceActor: (enhancement: Partial<Actor>) => {
+        if (ctx.actor) {
+          Object.assign(ctx.actor, enhancement);
+        }
+      }
     };
 
     return ctx;
   }
+
+
 
   /**
    * Extracts actor context from the request
