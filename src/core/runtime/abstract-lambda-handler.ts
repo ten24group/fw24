@@ -1,7 +1,9 @@
 import { createLogger } from "../../logging";
+import { DefaultValidator, IValidator } from "../../validation";
 
 export abstract class AbstractLambdaHandler {
   readonly logger = createLogger(this.constructor.name);
+  protected validator: IValidator = DefaultValidator;
 
   /**
    * Binds the LambdaHandler method to the instance of the class.
