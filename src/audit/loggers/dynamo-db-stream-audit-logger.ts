@@ -86,7 +86,7 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
 
   protected async processRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<void> {
 
-    const auditEntry = this.makeAditEntry(record);
+    const auditEntry = this.makeAuditEntry(record);
 
     if (!auditEntry) {
       this.logger.info('No audit entry created, skipping', { record });
@@ -103,7 +103,7 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     const auditLogger = this.getAuditLogger();
     
     for (const record of records) {
-      const auditEntry = this.makeAditEntry(record);
+      const auditEntry = this.makeAuditEntry(record);
       if (auditEntry) {
         await auditLogger.audit({ auditEntry });
         this.logger.debug('Successfully wrote audit entry in batch', { auditEntry });
@@ -111,7 +111,7 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     }
   }
 
-  protected makeAditEntry(record: BaseEventRecord<ChangeStreamPayload>): AuditEntry | undefined {
+  protected makeAuditEntry(record: BaseEventRecord<ChangeStreamPayload>): AuditEntry | undefined {
         const { entityName, eventType, timestamp, entityId, payload: { newImage, oldImage } } = record;
         // Get only the changed properties
         const changes = getChangedProperties(oldImage, newImage);
