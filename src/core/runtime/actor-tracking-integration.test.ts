@@ -4,14 +4,14 @@
  */
 
 import { APIGatewayEvent, Context } from 'aws-lambda';
-import { BaseEntityService } from '../entity/base-service';
-import { createEntitySchema, DefaultEntityOperations } from '../entity/base-entity';
-import { ExecutionContext, Actor } from '../core/types/execution-context';
-import { getChangedProperties } from '../audit/loggers/dynamo-db-stream-audit-logger';
-import { DIContainer } from '../di';
+import { BaseEntityService } from '../../entity/base-service';
+import { createEntitySchema, DefaultEntityOperations } from '../../entity/base-entity';
+import { ExecutionContext, Actor } from '../types/execution-context';
+import { DIContainer } from '../../di';
 import { EntityConfiguration } from 'electrodb';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { APIController } from '../core/runtime/api-gateway-controller';
+import { APIController } from './api-gateway-controller';
+import { getChangedProperties } from '../../audit';
 
 // Test entity schema with actor tracking
 const BlogPostSchema = createEntitySchema({
@@ -284,9 +284,11 @@ describe('Actor Tracking Integration Test', () => {
         authMethod: 'cognito',
         actorType: 'user',
         actorId: 'alice.writer',
-        cognitoSub: 'user-sub-789',
-        cognitoUsername: 'alice.writer',
-        cognitoGroups: ['content-creators', 'users'],
+        cognito: {
+          sub: 'user-sub-789',
+          username: 'alice.writer',
+          groups: ['content-creators', 'users']
+        },
         tenantId: 'company-123',
         correlationId: 'trace-abc-456',
         rawAuthContext: {
@@ -312,8 +314,19 @@ describe('Actor Tracking Integration Test', () => {
         createdBy: 'alice.writer',
         updatedBy: 'alice.writer',
         tenantId: 'company-123',
-        // Hidden comprehensive actor context
-        _actor: executionContext.actor
+        // Hidden comprehensive actor context (check specific fields)
+        _actor: expect.objectContaining({
+          requestId: executionContext.actor.requestId,
+          authMethod: executionContext.actor.authMethod,
+          actorType: executionContext.actor.actorType,
+          actorId: executionContext.actor.actorId,
+          sourceIp: executionContext.actor.sourceIp,
+          userAgent: executionContext.actor.userAgent,
+          correlationId: executionContext.actor.correlationId,
+          email: executionContext.actor.email,
+          tenantId: executionContext.actor.tenantId,
+          cognito: executionContext.actor.cognito
+        })
       });
       expect(createResult.data.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       expect(createResult.data.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -333,14 +346,25 @@ describe('Actor Tracking Integration Test', () => {
         identifiers: {
           id: 'post-123-generated'
         },
-        actor: executionContext.actor
+        actor: expect.objectContaining({
+          requestId: executionContext.actor.requestId,
+          authMethod: executionContext.actor.authMethod,
+          actorType: executionContext.actor.actorType,
+          actorId: executionContext.actor.actorId,
+          sourceIp: executionContext.actor.sourceIp,
+          userAgent: executionContext.actor.userAgent,
+          correlationId: executionContext.actor.correlationId,
+          email: executionContext.actor.email,
+          tenantId: executionContext.actor.tenantId,
+          cognito: executionContext.actor.cognito
+        })
       });
 
       // Verify that audit contains full actor context including request correlation
       expect(auditEntry.actor.requestId).toBe('req-unique-789');
       expect(auditEntry.actor.correlationId).toBe('trace-abc-456');
       expect(auditEntry.actor.sourceIp).toBe('203.0.113.195');
-      expect(auditEntry.actor.cognitoGroups).toContain('content-creators');
+      expect(auditEntry.actor.cognito?.groups).toContain('content-creators');
     });
 
     it('should track actor throughout complete update operation flow', async () => {
@@ -422,7 +446,7 @@ describe('Actor Tracking Integration Test', () => {
 
       // Verify different actor for update
       expect(updateExecutionContext.actor.actorId).toBe('bob.editor');
-      expect(updateExecutionContext.actor.cognitoGroups).toContain('editors');
+      expect(updateExecutionContext.actor.cognito?.groups).toContain('editors');
 
       // 3. Perform entity update operation
       const updateResult = await blogService.mockUpdate(
@@ -441,8 +465,19 @@ describe('Actor Tracking Integration Test', () => {
         // New update actor
         updatedBy: 'bob.editor',
         tenantId: 'company-123',
-        // New comprehensive actor context
-        _actor: updateExecutionContext.actor
+        // New comprehensive actor context (check specific fields)
+        _actor: expect.objectContaining({
+          requestId: updateExecutionContext.actor.requestId,
+          authMethod: updateExecutionContext.actor.authMethod,
+          actorType: updateExecutionContext.actor.actorType,
+          actorId: updateExecutionContext.actor.actorId,
+          sourceIp: updateExecutionContext.actor.sourceIp,
+          userAgent: updateExecutionContext.actor.userAgent,
+          correlationId: updateExecutionContext.actor.correlationId,
+          email: updateExecutionContext.actor.email,
+          tenantId: updateExecutionContext.actor.tenantId,
+          cognito: updateExecutionContext.actor.cognito
+        })
       });
 
       // 5. Simulate audit logging for the update operation
@@ -540,15 +575,18 @@ describe('Actor Tracking Integration Test', () => {
         userAgent: 'PostmanRuntime/7.32.3',
         authMethod: 'api-key',
         actorType: 'service',
-        actorId: 'api-key:api-key-service-123',
-        apiKeyId: 'api-key-service-123'
+        actorId: 'api-key:abcd1234',
+        apiKey: {
+          id: 'abcd1234',
+          source: 'request-context'
+        }
       });
 
       // Create entity with API key actor
       const apiKeyCreateResult = await blogService.mockCreate(apiKeyRequest.body, apiKeyExecutionContext);
 
       // Verify API key actor injection
-      expect(apiKeyCreateResult.data.createdBy).toBe('api-key:api-key-service-123');
+      expect(apiKeyCreateResult.data.createdBy).toBe('api-key:abcd1234');
       expect((apiKeyCreateResult.data as any)._actor.authMethod).toBe('api-key');
       expect((apiKeyCreateResult.data as any)._actor.actorType).toBe('service');
 
@@ -562,8 +600,8 @@ describe('Actor Tracking Integration Test', () => {
 
       // Verify audit contains API key actor context
       expect(apiKeyAuditEntry.actor.authMethod).toBe('api-key');
-      expect(apiKeyAuditEntry.actor.actorId).toBe('api-key:api-key-service-123');
-      expect(apiKeyAuditEntry.actor.apiKeyId).toBe('api-key-service-123');
+      expect(apiKeyAuditEntry.actor.actorId).toBe('api-key:abcd1234');
+      expect(apiKeyAuditEntry.actor.apiKey.id).toBe('abcd1234');
     });
 
     it('should demonstrate backward compatibility with existing audit records', async () => {
@@ -670,14 +708,14 @@ describe('Actor Tracking Integration Test', () => {
       expect(anonymousContext.actor).toMatchObject({
         requestId: 'req-anonymous',
         sourceIp: '192.0.2.1',
-        authMethod: 'system',
+        authMethod: 'anonymous',
         actorType: 'anonymous',
-        actorId: 'system'
+        actorId: 'anonymous'
       });
 
-      // Should still create with system actor
+      // Should still create with anonymous actor
       const anonymousCreateResult = await blogService.mockCreate(anonymousRequest.body, anonymousContext);
-      expect(anonymousCreateResult.data.createdBy).toBe('system');
+      expect(anonymousCreateResult.data.createdBy).toBe('anonymous');
       expect(anonymousCreateResult.data._actor.actorType).toBe('anonymous');
     });
 

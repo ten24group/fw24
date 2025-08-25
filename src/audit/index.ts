@@ -13,11 +13,18 @@ export {
   ConsoleAuditLogger,
   DummyAuditLogger,
   DefaultAuditHandler,
-  DynamoDBAuditEntityService,
   DynamoDBAuditEntitySchema,
   getChangedProperties,
   AUDIT_ENV_KEYS,
 } from './loggers';
+
+export {
+  DynamoDBAuditEntityService,
+} from './system/audit-entity-service';
+
+export {
+  captureAuditLog,
+} from './audit-helpers';
 
 export {
   AuditCustomPageConfigs

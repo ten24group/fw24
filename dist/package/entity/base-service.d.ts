@@ -278,7 +278,7 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      * @param ctx - The execution context containing actor info
      * @returns Enhanced data with actor context
      */
-    private injectActorContext;
+    protected injectActorContext<T extends Record<string, any>>(data: T, operation: 'create' | 'update' | 'delete', ctx?: ExecutionContext): T;
     /**
      * Creates a new entity.
      *
@@ -379,7 +379,7 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      * @param identifiers - The identifiers of the entity to be deleted.
      * @returns A promise that resolves to the deleted entity.
      */
-    delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, _ctx?: ExecutionContext): Promise<{
+    delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, ctx?: ExecutionContext): Promise<{
         data: import("electrodb").AllTableIndexCompositeAttributes<any, any, any, EntitySchema<any, any, any, {
             get: string;
             list: string;

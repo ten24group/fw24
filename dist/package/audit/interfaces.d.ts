@@ -32,13 +32,16 @@ export interface AuditOptions {
     auditEntry?: AuditEntry;
 }
 export interface AuditEntry {
+    auditId?: string;
+    auditType?: string;
     timestamp?: string;
+    timestampMs?: number;
     entityName?: string;
     eventType?: string;
+    severity?: 'info' | 'warn' | 'error' | 'critical';
+    success?: boolean;
     data?: any;
-    entity?: any;
     actor?: Actor;
-    tenant?: any;
     identifiers?: any;
 }
 export interface IAuditLogger {

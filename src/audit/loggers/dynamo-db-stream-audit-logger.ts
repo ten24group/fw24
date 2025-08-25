@@ -86,7 +86,7 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
 
   protected async processRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<void> {
 
-    const auditEntry = this.makeAditEntry(record);
+    const auditEntry = this.makeAuditEntry(record);
 
     if (!auditEntry) {
       this.logger.info('No audit entry created, skipping', { record });
@@ -103,7 +103,7 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     const auditLogger = this.getAuditLogger();
     
     for (const record of records) {
-      const auditEntry = this.makeAditEntry(record);
+      const auditEntry = this.makeAuditEntry(record);
       if (auditEntry) {
         await auditLogger.audit({ auditEntry });
         this.logger.debug('Successfully wrote audit entry in batch', { auditEntry });
@@ -111,7 +111,7 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     }
   }
 
-  protected makeAditEntry(record: BaseEventRecord<ChangeStreamPayload>): AuditEntry | undefined {
+  protected makeAuditEntry(record: BaseEventRecord<ChangeStreamPayload>): AuditEntry | undefined {
         const { entityName, eventType, timestamp, entityId, payload: { newImage, oldImage } } = record;
         // Get only the changed properties
         const changes = getChangedProperties(oldImage, newImage);
@@ -139,18 +139,29 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
         // Create audit entry
         // Note: timestamp is already in milliseconds (converted from DynamoDB seconds in the data extractor)
         // Example: timestamp = 1734567890000 (milliseconds) -> "2024-12-19T10:31:30.000Z"
+        const timestampDate = timestamp ? new Date(timestamp) : new Date();
+        const timestampIso = timestampDate.toISOString();
+        const timestampMs = timestampDate.getTime();
+        
+        // Determine success and severity based on event type
+        // Database change events are typically successful operations
+        const success = true; // Stream events represent completed database operations
+        const severity = eventType === 'delete' ? 'warn' : 'info'; // Deletions might be more significant
+        
         const auditEntry: AuditEntry = {
-            timestamp: (timestamp ? new Date(timestamp) : new Date()).toISOString(),
+            auditType: 'audit',
+            timestamp: timestampIso,
+            timestampMs,
             entityName,
             eventType,
+            severity,
+            success,
             data: changes,
             identifiers: {
                 id: entityId as string
             },
             actor: actorContext || (Object.keys(fallbackActor).length > 0 ? fallbackActor : { actorType: 'unknown' })
         };
-
-
 
         return auditEntry;
   }

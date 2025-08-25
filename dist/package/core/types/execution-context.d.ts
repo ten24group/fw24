@@ -9,5 +9,6 @@ export interface ExecutionContext<TObservability = unknown, TDebugInfo = unknown
     actor?: Actor;
     observability?: TObservability;
     debugInfo?: TDebugInfo;
+    enhanceActor?: (enhancement: Partial<Actor>) => void;
 }
 export type { Actor };

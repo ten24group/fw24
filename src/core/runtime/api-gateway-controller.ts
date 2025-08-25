@@ -84,7 +84,6 @@ export interface APIControllerConfig {
 }
 
 export abstract class APIController extends AbstractLambdaHandler {
-  protected validator: IValidator = DefaultValidator;
   protected middlewares: APIControllerMiddleware[] = [];
   protected responseConfig: ResponseConfig;
 
@@ -93,7 +92,16 @@ export abstract class APIController extends AbstractLambdaHandler {
     this.responseConfig = mergeResponseConfig(config.responseConfig);
   }
 
-  abstract initialize(event: APIGatewayEvent, context: Context): Promise<void>;
+  /**
+   * can be used to run some logic just before the request is processed like creating clients, di-injection ans so on.
+   * @param _event - The event object from the API Gateway.
+   * @param _context - The context object from the API Gateway.
+   * @returns A promise that resolves when the controller is initialized.
+  */
+  protected async initialize(_event: APIGatewayEvent, _context: Context): Promise<void> {
+    // No-op for API controllers
+    return Promise.resolve();
+  }
 
   protected async getOverriddenHttpRequestValidationErrorMessages() {
     return Promise.resolve(new Map<string, string>());
@@ -448,6 +456,40 @@ export abstract class APIController extends AbstractLambdaHandler {
   /**
    * Extracts actor context from the request
    * Override this method for custom actor extraction logic
+   *
+   * different middleware can enhance the actor context
+   *
+   * @example
+   * ```ts
+   * const middleware: APIControllerMiddleware = {
+   *  before: async (_request, _response, ctx) => {
+   *   ctx?.enhanceActor?.({
+   *     roles: ['admin', 'user'],
+   *     permissions: ['read', 'write'],
+   *     subscription: { tier: 'enterprise' }
+   *   });
+   *  }
+   * }
+   *
+   * useMiddleware(middleware);
+   * 
+   * OR
+   * 
+   * const securityMiddleware = {
+   *   before: async (request, response, ctx) => {
+   *     ctx.enhanceActor?.({
+   *       riskProfile: await assessRisk(ctx.actor.actorId),
+   *       device: await makeDeviceContext(request)
+   *     });
+   *   }
+   * };
+   *
+   * useMiddleware(securityMiddleware);
+   *
+   * @param event - The event object from the API Gateway.
+   * @param request - The request object from the API Gateway.
+   * @returns The actor context.
+   * ```
    */
   protected extractActorContext(event: APIGatewayEvent, request: Request): Actor {
     const timestamp = new Date().toISOString();
