@@ -1120,9 +1120,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      */
     protected injectActorContext<T extends Record<string, any>>(
         data: T, 
-        operation: 'create' | 'update', 
+        operation: 'create' | 'update' | 'delete', 
         ctx?: ExecutionContext
     ): T {
+
         if (!ctx?.actor) {
             this.logger.warn('BaseEntityService: No actor context found, skipping injection');
             return data;
@@ -1145,15 +1146,25 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             }
         }
         
-        // Always update these fields on create/update (if not read-only)
-        if (hasAttribute(schema, 'updatedBy') && !isAttributeReadOnly(schema, 'updatedBy') && actor.actorId) {
-            (enhancedData as any).updatedBy = actor.actorId;
-        }
-        if (hasAttribute(schema, 'updatedAt') && !isAttributeReadOnly(schema, 'updatedAt')) {
-            (enhancedData as any).updatedAt = currentTimestamp;
-        }
-        if (hasAttribute(schema, 'tenantId') && !isAttributeReadOnly(schema, 'tenantId') && actor.tenantId) {
-            (enhancedData as any).tenantId = actor.tenantId;
+        // For delete operations, we still want to track who performed the deletion
+        if (operation === 'delete') {
+            if (hasAttribute(schema, 'deletedBy') && !isAttributeReadOnly(schema, 'deletedBy') && actor.actorId) {
+                (enhancedData as any).deletedBy = actor.actorId;
+            }
+            if (hasAttribute(schema, 'deletedAt') && !isAttributeReadOnly(schema, 'deletedAt')) {
+                (enhancedData as any).deletedAt = currentTimestamp;
+            }
+        } else {
+            // Always update these fields on create/update (if not read-only)
+            if (hasAttribute(schema, 'updatedBy') && !isAttributeReadOnly(schema, 'updatedBy') && actor.actorId) {
+                (enhancedData as any).updatedBy = actor.actorId;
+            }
+            if (hasAttribute(schema, 'updatedAt') && !isAttributeReadOnly(schema, 'updatedAt')) {
+                (enhancedData as any).updatedAt = currentTimestamp;
+            }
+            if (hasAttribute(schema, 'tenantId') && !isAttributeReadOnly(schema, 'tenantId') && actor.tenantId) {
+                (enhancedData as any).tenantId = actor.tenantId;
+            }
         }
 
         // Always inject complete actor context for audit trail
@@ -1162,6 +1173,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const cleanActor = Object.fromEntries(
             Object.entries(actor).filter(([_, value]) => value !== undefined)
         );
+
         (enhancedData as any)._actor = cleanActor;
 
         return enhancedData;
@@ -1494,8 +1506,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             }
         }
 
-
-
         const updatedEntity = await updateEntity<S>({
             id: identifiers,
             data: enhancedData,
@@ -1513,15 +1523,17 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param identifiers - The identifiers of the entity to be deleted.
      * @returns A promise that resolves to the deleted entity.
      */
-    public async delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, _ctx?: ExecutionContext) {
+    public async delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, ctx?: ExecutionContext) {
         try {
-            this.logger.debug(`Called ~ delete ~ entityName: ${this.getEntityName()} ~ identifiers:`, identifiers);
-
+        this.logger.debug(`Called ~ delete ~ entityName: ${this.getEntityName()} ~ identifiers:`, identifiers);
+        
             const deletedEntity = await deleteEntity<S>({
-                id: identifiers,
-                entityName: this.getEntityName(),
-                entityService: this,
-            });
+            id: identifiers,
+            entityName: this.getEntityName(),
+            entityService: this,
+            actor: ctx?.actor,
+            tenant: ctx?.actor?.tenantId,
+        });
 
             return deletedEntity;
         } catch (error: any) {

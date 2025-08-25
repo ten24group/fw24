@@ -113,7 +113,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         }
       });
 
-      const auditEntry = (auditLogger as any).makeAditEntry(record);
+      const auditEntry = (auditLogger as any).makeAuditEntry(record);
 
       expect(auditEntry).toMatchObject({
         timestamp: '2024-01-15T10:30:00.000Z',
@@ -150,7 +150,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         }
       });
 
-      const auditEntry = (auditLogger as any).makeAditEntry(record);
+      const auditEntry = (auditLogger as any).makeAuditEntry(record);
 
       expect(auditEntry).toMatchObject({
         entityName: 'Post',
@@ -176,7 +176,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         }
       });
 
-      const auditEntry = (auditLogger as any).makeAditEntry(record);
+      const auditEntry = (auditLogger as any).makeAuditEntry(record);
 
       expect(auditEntry.actor).toEqual({
         actorId: 'user-visible-456',
@@ -199,7 +199,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         }
       });
 
-      const auditEntry = (auditLogger as any).makeAditEntry(record);
+      const auditEntry = (auditLogger as any).makeAuditEntry(record);
 
       expect(auditEntry.actor).toEqual({
         actorId: 'user-updater-456',
@@ -247,7 +247,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         }
       });
 
-      const auditEntry = (auditLogger as any).makeAditEntry(record);
+      const auditEntry = (auditLogger as any).makeAuditEntry(record);
 
       expect(auditEntry.actor).toEqual(complexActor);
       expect(auditEntry.actor.cognito?.groups).toContain('admin');
@@ -280,7 +280,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         }
       });
 
-      const auditEntry = (auditLogger as any).makeAditEntry(record);
+      const auditEntry = (auditLogger as any).makeAuditEntry(record);
 
       expect(auditEntry.actor).toEqual(apiKeyActor);
       expect(auditEntry.actor.authMethod).toBe('api-key');
@@ -318,7 +318,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         }
       });
 
-      const auditEntry = (auditLogger as any).makeAditEntry(record);
+      const auditEntry = (auditLogger as any).makeAuditEntry(record);
 
       expect(auditEntry.actor).toEqual(iamActor);
       expect(auditEntry.actor.authMethod).toBe('iam');
@@ -347,7 +347,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         }
       });
 
-      const auditEntry = (auditLogger as any).makeAditEntry(record);
+      const auditEntry = (auditLogger as any).makeAuditEntry(record);
 
       expect(auditEntry.actor).toEqual(systemActor);
       expect(auditEntry.actor.authMethod).toBe('anonymous');
@@ -370,7 +370,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         }
       });
 
-      const auditEntry = (auditLogger as any).makeAditEntry(record);
+      const auditEntry = (auditLogger as any).makeAuditEntry(record);
 
       expect(auditEntry.actor).toEqual({
         actorType: 'unknown'
@@ -394,7 +394,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         }
       });
 
-      const auditEntry = (auditLogger as any).makeAditEntry(record);
+      const auditEntry = (auditLogger as any).makeAuditEntry(record);
 
       expect(auditEntry).toBeUndefined();
     });
@@ -420,7 +420,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         }
       });
 
-      const auditEntry = (auditLogger as any).makeAditEntry(record);
+      const auditEntry = (auditLogger as any).makeAuditEntry(record);
 
       expect(auditEntry.actor.requestId).toBe('req-unique-123');
       expect(auditEntry.actor.correlationId).toBe('corr-trace-456');
@@ -514,7 +514,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         }
       });
 
-      const auditEntry = (auditLogger as any).makeAditEntry(record);
+      const auditEntry = (auditLogger as any).makeAuditEntry(record);
 
       expect(auditEntry.actor).toEqual({
         actorType: 'unknown'
@@ -538,7 +538,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         }
       });
 
-      const auditEntry = (auditLogger as any).makeAditEntry(record);
+      const auditEntry = (auditLogger as any).makeAuditEntry(record);
 
       // Should use invalid actor as-is since _actor field exists
       expect(auditEntry.actor).toBe('invalid-actor-string');
@@ -565,7 +565,7 @@ describe('DynamoDBStreamAuditLogger Actor Enhancement', () => {
         }
       });
 
-      const auditEntry = (auditLogger as any).makeAditEntry(record);
+      const auditEntry = (auditLogger as any).makeAuditEntry(record);
 
       expect(auditEntry.actor).toEqual(minimalActor);
     });

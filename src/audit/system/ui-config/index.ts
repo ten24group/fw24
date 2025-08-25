@@ -1,7 +1,8 @@
 import { DIContainer } from '../../../di';
 import MakeListEntityConfig from '../../../ui-config-gen/templates/list-entity';
 import MakeViewEntityConfig from '../../../ui-config-gen/templates/view-entity';
-import { DynamoDBAuditEntitySchema, DynamoDBAuditEntityService } from '../../loggers/dynamodb';
+import { DynamoDBAuditEntitySchema } from '../../loggers/dynamodb';
+import { DynamoDBAuditEntityService } from '../audit-entity-service';
 
 const auditService = DIContainer.ROOT.resolve(DynamoDBAuditEntityService);
 

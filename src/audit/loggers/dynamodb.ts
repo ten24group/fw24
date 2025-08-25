@@ -1,11 +1,9 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { randomUUID } from 'crypto';
 import { EntityConfiguration } from 'electrodb';
-import { BaseEntityService, DefaultEntityOperations, createElectroDBEntity, createEntitySchema, type EntityQuery } from '../../entity';
+import { DefaultEntityOperations, createElectroDBEntity, createEntitySchema } from '../../entity';
 import { createLogger } from '../../logging';
 import { AuditLoggerConfig, AuditOptions, IAuditLogger } from '../interfaces';
-import { Controller, Service } from '../../decorators';
-import { ExecutionContext } from '../../core/types/execution-context';
 
 export const DynamoDBAuditEntityConfiguration: EntityConfiguration = {
     table: process.env[ `${process.env.AUDIT_TABLE_NAME?.toUpperCase()}_TABLE` ],
@@ -32,10 +30,10 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
                         'entityName',
                         'eventType',
                         'timestamp',
+                        'success',
+                        'severity',
                         'identifiers',
-                        'tenant',
                         'actor',
-                        'entity',
                         'data',
                     ]
                 },
@@ -59,6 +57,18 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             isEditable: false,
             default: () => 'audit'
         },
+        success: {
+            type: 'boolean',
+            required: false,
+            isEditable: false,
+        },
+        severity: {
+            type: 'string',
+            required: false,
+            isEditable: false,
+            // 'info', 'warn', 'error', 'critical'
+        },
+
         entityName: {
             type: 'string',
             required: true,
@@ -99,12 +109,6 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             isEditable: false,
             isListable: false,
         },
-        tenant: {
-            type: 'any',
-            required: false,
-            isEditable: false,
-            isListable: false,
-        },
         identifiers: {
             type: 'any',
             required: false,
@@ -134,17 +138,7 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
                 composite: [ 'timestampMs' ]
             }
         },
-        gsi2: {
-            index: 'gsi2',
-            pk: {
-                field: 'gsi2pk',
-                composite: [ 'eventType' ]
-            },
-            sk: {
-                field: 'gsi2sk',
-                composite: [ 'timestampMs' ]
-            }
-        },
+
         gsi3: {
             index: 'gsi3',
             pk: {
@@ -160,40 +154,7 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
 } as const);
 export type AuditEntitySchemaType = typeof DynamoDBAuditEntitySchema;
 
-@Service()
-export class DynamoDBAuditEntityService extends BaseEntityService<AuditEntitySchemaType> {
-    constructor() {
-        super(DynamoDBAuditEntitySchema, DynamoDBAuditEntityConfiguration);
-    }
-
-    /**
-     * Override the base list method to return latest audit records first
-     * This ensures audit logs are displayed with most recent entries at the top
-     * Uses GSI1 index for chronological sorting by timestampMs
-     */
-    public async list(query: EntityQuery<AuditEntitySchemaType> = {}, ctx?: ExecutionContext) {
-        // Set default order to 'desc' for audit logs to show latest first
-        // Allow override via query parameter if needed
-        const modifiedQuery = {
-            ...query,
-            pagination: {
-                ...query.pagination,
-                order: 'desc' as const
-            },
-            // Use GSI3 index for chronological sorting
-            // GSI3: PK = auditType (constant 'audit'), SK = timestampMs
-            // This allows sorting all audit logs chronologically
-            index: {
-                name: 'gsi3',
-                filters: {
-                    auditType: 'audit'
-                }
-            }
-        };
-
-        return super.list(modifiedQuery, ctx);
-    }
-}
+// DynamoDBAuditEntityService moved to separate file to avoid circular dependency
 
 export class DynamoDbAuditLogger implements IAuditLogger {
     private logger = createLogger(DynamoDbAuditLogger);
@@ -209,16 +170,21 @@ export class DynamoDbAuditLogger implements IAuditLogger {
             return;
         }
 
-        const timestamp = new Date();
-        const timestampMs = timestamp.getTime();
+        // Use provided timestamp or generate fallback
+        const providedTimestamp = options.auditEntry?.timestamp;
+        const timestampDate = providedTimestamp ? new Date(providedTimestamp) : new Date();
+        const timestamp = timestampDate.toISOString();
+        const timestampMs = timestampDate.getTime();
 
         const auditEntry = {
-            timestamp: timestamp.toISOString(),
-            timestampMs: timestampMs,
             auditType: 'audit',
+            timestamp,
+            timestampMs,
             ...options.auditEntry,
+            // Ensure required fields have defaults
             entityName: options.auditEntry?.entityName || 'unknown',
             eventType: options.auditEntry?.eventType || 'unknown',
+            severity: options.auditEntry?.severity || 'info',
         };
 
         try {
@@ -233,11 +199,8 @@ export class DynamoDbAuditLogger implements IAuditLogger {
                 entityConfigurations: DynamoDBAuditEntityConfiguration,
             });
 
-            const result = await auditService.entity.create(auditEntry).go();
-            this.logger.info('Successfully wrote to DynamoDB:', { result });
-
+            await auditService.entity.create(auditEntry).go();
         } catch (error) {
-
             this.logger.error('Failed to write to DynamoDB:', error);
             throw error;
         }

@@ -139,18 +139,30 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
         // Create audit entry
         // Note: timestamp is already in milliseconds (converted from DynamoDB seconds in the data extractor)
         // Example: timestamp = 1734567890000 (milliseconds) -> "2024-12-19T10:31:30.000Z"
+        const timestampDate = timestamp ? new Date(timestamp) : new Date();
+        const timestampIso = timestampDate.toISOString();
+        const timestampMs = timestampDate.getTime();
+        
+        // Determine success and severity based on event type
+        // Database change events are typically successful operations
+        const success = true; // Stream events represent completed database operations
+        const severity = eventType === 'delete' ? 'warn' : 'info'; // Deletions might be more significant
+        
         const auditEntry: AuditEntry = {
-            timestamp: (timestamp ? new Date(timestamp) : new Date()).toISOString(),
+            auditType: 'audit',
+            timestamp: timestampIso,
+            timestampMs,
             entityName,
             eventType,
+            severity,
+            success,
             data: changes,
+            entity: newImage || oldImage, // Include full entity state for reference
             identifiers: {
                 id: entityId as string
             },
             actor: actorContext || (Object.keys(fallbackActor).length > 0 ? fallbackActor : { actorType: 'unknown' })
         };
-
-
 
         return auditEntry;
   }

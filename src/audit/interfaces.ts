@@ -37,14 +37,18 @@ export interface AuditOptions {
 }
 
 export interface AuditEntry {
-    timestamp?: string;
-    entityName?: string;
-    eventType?: string;
-    data?: any;
-    entity?: any;
-    actor?: Actor;
-    tenant?: any;
-    identifiers?: any;
+    auditId?: string;                                    // Auto-generated UUID (ElectroDB handles this)
+    auditType?: string;                                  // Record categorization (defaults to 'audit')
+    timestamp?: string;                                  // ISO timestamp (caller can provide or auto-generated)
+    timestampMs?: number;                               // Milliseconds timestamp (auto-generated from timestamp)
+    entityName?: string;                                // Entity being audited (e.g., 'user', 'post')
+    eventType?: string;                                 // Action performed (e.g., 'create', 'update', 'delete', 'login')
+    severity?: 'info' | 'warn' | 'error' | 'critical'; // Importance level
+    success?: boolean;                                  // Whether the operation succeeded
+    data?: any;                                         // Changed fields or event-specific data
+    entity?: any;                                       // Full entity state (for deletes, updates)
+    actor?: Actor;                                      // Who performed the action
+    identifiers?: any;                                  // Entity identifiers (preferred over full entity)
 }
 
 export interface IAuditLogger {
