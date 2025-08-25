@@ -4,14 +4,14 @@
  */
 
 import { APIGatewayEvent, Context } from 'aws-lambda';
-import { BaseEntityService } from '../entity/base-service';
-import { createEntitySchema, DefaultEntityOperations } from '../entity/base-entity';
-import { ExecutionContext, Actor } from '../core/types/execution-context';
-import { getChangedProperties } from '../audit/loggers/dynamo-db-stream-audit-logger';
-import { DIContainer } from '../di';
+import { BaseEntityService } from '../../entity/base-service';
+import { createEntitySchema, DefaultEntityOperations } from '../../entity/base-entity';
+import { ExecutionContext, Actor } from '../types/execution-context';
+import { DIContainer } from '../../di';
 import { EntityConfiguration } from 'electrodb';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { APIController } from '../core/runtime/api-gateway-controller';
+import { APIController } from './api-gateway-controller';
+import { getChangedProperties } from '../../audit';
 
 // Test entity schema with actor tracking
 const BlogPostSchema = createEntitySchema({
