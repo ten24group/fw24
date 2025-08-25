@@ -2,7 +2,7 @@ import type { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda
 import type { Request, Response } from "../../interfaces";
 import { IControllerConfig } from "../../decorators";
 import { RouteMethods } from "../../decorators/method";
-import { HttpRequestValidations, IValidator, InputValidationRule } from "../../validation";
+import { HttpRequestValidations, InputValidationRule } from "../../validation";
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { ResponseConfig } from "./response-config";
 import { createErrorHandler } from "../../errors/";
@@ -53,11 +53,16 @@ export interface APIControllerConfig {
     responseConfig?: Partial<ResponseConfig>;
 }
 export declare abstract class APIController extends AbstractLambdaHandler {
-    protected validator: IValidator;
     protected middlewares: APIControllerMiddleware[];
     protected responseConfig: ResponseConfig;
     constructor(config?: APIControllerConfig);
-    abstract initialize(event: APIGatewayEvent, context: Context): Promise<void>;
+    /**
+     * can be used to run some logic just before the request is processed like creating clients, di-injection ans so on.
+     * @param _event - The event object from the API Gateway.
+     * @param _context - The context object from the API Gateway.
+     * @returns A promise that resolves when the controller is initialized.
+    */
+    protected initialize(_event: APIGatewayEvent, _context: Context): Promise<void>;
     protected getOverriddenHttpRequestValidationErrorMessages(): Promise<Map<string, string>>;
     protected useMiddleware(middleware: APIControllerMiddleware): void;
     protected getMiddlewares(): APIControllerMiddleware[];
@@ -105,6 +110,40 @@ export declare abstract class APIController extends AbstractLambdaHandler {
     /**
      * Extracts actor context from the request
      * Override this method for custom actor extraction logic
+     *
+     * different middleware can enhance the actor context
+     *
+     * @example
+     * ```ts
+     * const middleware: APIControllerMiddleware = {
+     *  before: async (_request, _response, ctx) => {
+     *   ctx?.enhanceActor?.({
+     *     roles: ['admin', 'user'],
+     *     permissions: ['read', 'write'],
+     *     subscription: { tier: 'enterprise' }
+     *   });
+     *  }
+     * }
+     *
+     * useMiddleware(middleware);
+     *
+     * OR
+     *
+     * const securityMiddleware = {
+     *   before: async (request, response, ctx) => {
+     *     ctx.enhanceActor?.({
+     *       riskProfile: await assessRisk(ctx.actor.actorId),
+     *       device: await makeDeviceContext(request)
+     *     });
+     *   }
+     * };
+     *
+     * useMiddleware(securityMiddleware);
+     *
+     * @param event - The event object from the API Gateway.
+     * @param request - The request object from the API Gateway.
+     * @returns The actor context.
+     * ```
      */
     protected extractActorContext(event: APIGatewayEvent, request: Request): Actor;
 }

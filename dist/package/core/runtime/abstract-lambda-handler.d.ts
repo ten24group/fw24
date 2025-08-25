@@ -1,5 +1,7 @@
+import { IValidator } from "../../validation";
 export declare abstract class AbstractLambdaHandler {
     readonly logger: import("tslog").Logger<import("tslog").ILogObj>;
+    protected validator: IValidator;
     /**
      * Binds the LambdaHandler method to the instance of the class.
      */

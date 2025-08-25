@@ -17,7 +17,7 @@ export declare class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<Dyn
     protected preprocessRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<BaseEventRecord<ChangeStreamPayload> | null>;
     protected processRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<void>;
     protected processRecordsBatch(records: BaseEventRecord<ChangeStreamPayload>[]): Promise<void>;
-    protected makeAditEntry(record: BaseEventRecord<ChangeStreamPayload>): AuditEntry | undefined;
+    protected makeAuditEntry(record: BaseEventRecord<ChangeStreamPayload>): AuditEntry | undefined;
     protected writeAuditEntry(auditEntry: AuditEntry): Promise<void>;
 }
 export declare const logger: import("tslog").Logger<import("tslog").ILogObj>;
