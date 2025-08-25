@@ -46,7 +46,6 @@ export interface AuditEntry {
     severity?: 'info' | 'warn' | 'error' | 'critical'; // Importance level
     success?: boolean;                                  // Whether the operation succeeded
     data?: any;                                         // Changed fields or event-specific data
-    entity?: any;                                       // Full entity state (for deletes, updates)
     actor?: Actor;                                      // Who performed the action
     identifiers?: any;                                  // Entity identifiers (preferred over full entity)
 }

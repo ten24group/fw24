@@ -157,7 +157,6 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
             severity,
             success,
             data: changes,
-            entity: newImage || oldImage, // Include full entity state for reference
             identifiers: {
                 id: entityId as string
             },

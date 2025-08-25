@@ -36,7 +36,6 @@ export async function captureAuditLog(options: {
                 success: options.success,
                 actor,
                 data: options.data,
-                entity: options.entity,
                 identifiers: options.identifiers
             }
         });

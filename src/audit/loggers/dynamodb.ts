@@ -68,7 +68,6 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             isEditable: false,
             // 'info', 'warn', 'error', 'critical'
         },
-
         entityName: {
             type: 'string',
             required: true,
@@ -92,12 +91,6 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             default: () => Date.now()
         },
         data: {
-            type: 'any',
-            required: false,
-            isEditable: false,
-            isListable: false,
-        },
-        entity: {
             type: 'any',
             required: false,
             isEditable: false,
