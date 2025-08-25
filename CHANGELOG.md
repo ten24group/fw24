@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.0.4-beta.3](https://github.com/ten24group/fw24/compare/v1.0.4-beta.2...v1.0.4-beta.3) (2025-08-25)
+
+
+### Features
+
+* actor cracking and audits for entity Create and update ([7136786](https://github.com/ten24group/fw24/commit/713678639239ae980f1a74394edeae86091a56ff))
+* introduce audit logging helper and enhance DynamoDB audit entity service. Add captureAuditLog function for streamlined logging, update interfaces for audit entries, and refactor DynamoDBAuditEntityService to improve audit record handling. Update tests for actor tracking integration. ([408c99f](https://github.com/ten24group/fw24/commit/408c99ff32bd5e94656c642f581b0b56f2680691))
+
+
+### Bug Fixes
+
+* import issues in test ([d888b45](https://github.com/ten24group/fw24/commit/d888b45f0ca36873659ac09a5a26ced01f9cdb79))
+* numeric values crashing the search ([33c8613](https://github.com/ten24group/fw24/commit/33c861331c266de41ea04551ed489e9bfcaf64db))
+* type ([b4cab37](https://github.com/ten24group/fw24/commit/b4cab37e8e2b16de4585b8037e4860efbd734584))
+
 ### [1.0.4-beta.2](https://github.com/ten24group/fw24/compare/v1.0.4-beta.1...v1.0.4-beta.2) (2025-08-15)
 
 ### [1.0.4-beta.1](https://github.com/ten24group/fw24/compare/v1.0.4-beta.0...v1.0.4-beta.1) (2025-08-15)
