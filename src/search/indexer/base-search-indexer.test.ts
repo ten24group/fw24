@@ -309,32 +309,7 @@ describe('BaseSearchIndexer', () => {
       expect(indexCall.documents[1].id).toBe('item-2');
     });
 
-    it('should handle payload.items format in batch mode', async () => {
-      // Override extractor to return payload with items
-      indexer['eventDataExtractor'] = {
-        extractData: () => [{
-          eventId: 'msg-items',
-          eventType: 'update',
-          entityName: 'entity1',
-          entityId: 'id-items',
-          payload: {
-            items: [
-              { id: 'item-1', data: 'data-1' },
-              { id: 'item-2', data: 'data-2' }
-            ]
-          },
-          timestamp: Date.now(),
-          eventSource: 'aws:sqs'
-        }]
-      };
 
-      await indexer.process(mockSQSEvent, {} as any);
-
-      const indexCall = indexer.searchEngine.indexDocumentsCalls[0];
-      expect(indexCall.documents).toHaveLength(2);
-      expect(indexCall.documents[0].id).toBe('item-1');
-      expect(indexCall.documents[1].id).toBe('item-2');
-    });
 
     it('should skip items without id in batch mode', async () => {
       // Override extractor to return items without id

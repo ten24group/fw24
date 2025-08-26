@@ -176,8 +176,10 @@ export class MeiliSearchEngine extends BaseSearchEngine {
   /**
    * List all available indices
    */
-  async listIndices() {
-    return await this.client.getIndexes();
+  async listIndices(limit?: number, offset?: number) {
+    // Use a higher limit to ensure we get all indices, including test indices
+    const options = limit ? { limit, offset: offset || 0 } : { limit: 1000 };
+    return await this.client.getIndexes(options);
   }
 
   /**

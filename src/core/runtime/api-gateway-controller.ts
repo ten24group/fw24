@@ -510,83 +510,17 @@ export abstract class APIController extends AbstractLambdaHandler {
       correlationId: request.headers?.['x-correlation-id'] || requestId,
     };
 
-    // Cognito authentication
+    // Cognito authentication with focused enhancements
     if (event.requestContext?.authorizer?.claims) {
-      const claims = event.requestContext.authorizer.claims;
-      
-      actor.authMethod = 'cognito';
-      actor.actorType = 'user';
-      actor.actorId = claims['cognito:username'] || claims.username || claims.sub;
-      
-      // Generic user fields
-      actor.email = claims.email;
-      actor.emailVerified = claims.email_verified === 'true' || claims.email_verified === true;
-      actor.phoneNumber = claims.phone_number;
-      actor.phoneVerified = claims.phone_number_verified === 'true' || claims.phone_number_verified === true;
-      actor.firstName = claims.given_name;
-      actor.lastName = claims.family_name;
-      actor.name = claims.name;
-      actor.locale = claims.locale;
-      
-      // Cognito-specific nested data
-      const groups = claims['cognito:groups'];
-      const parsedGroups = typeof groups === 'string' && groups.length > 0 
-        ? groups.split(',').map(g => g.trim()).filter(g => g.length > 0)
-        : [];
-      
-      // Extract custom attributes
-      const customAttributes: Record<string, any> = {};
-      Object.keys(claims).forEach(key => {
-        if (key.startsWith('custom:')) {
-          customAttributes[key.replace('custom:', '')] = claims[key];
-        }
-      });
-      
-      actor.cognito = {
-        sub: claims.sub,
-        username: claims['cognito:username'],
-        groups: parsedGroups,
-        authTime: claims.auth_time,
-        identities: claims.identities,
-        customAttributes: Object.keys(customAttributes).length > 0 ? customAttributes : undefined
-      };
-      
-      actor.rawAuthContext = claims;
+      this.extractCognitoContext(event.requestContext.authorizer.claims, actor);
     }
     // API Key authentication
     else if (event.requestContext?.identity?.apiKey || request.headers?.['x-api-key']) {
-      actor.authMethod = 'api-key';
-      actor.actorType = 'service';
-      
-      let apiKeyId: string;
-      let source: 'request-context' | 'header';
-      
-      if (event.requestContext?.identity?.apiKey) {
-        apiKeyId = event.requestContext.identity.apiKeyId || event.requestContext.identity.apiKey;
-        source = 'request-context';
-      } else {
-        apiKeyId = request.headers['x-api-key']!;
-        source = 'header';
-      }
-      
-      actor.actorId = `api-key:${apiKeyId}`;
-      actor.apiKey = {
-        id: apiKeyId,
-        source: source
-      };
+      this.extractApiKeyContext(event, request, actor);
     }
     // IAM authentication 
     else if (event.requestContext?.identity?.userArn) {
-      actor.authMethod = 'iam';
-      actor.actorType = 'service';
-      actor.actorId = event.requestContext.identity.user || event.requestContext.identity.userArn;
-      
-      actor.iam = {
-        userArn: event.requestContext.identity.userArn,
-        userId: event.requestContext.identity.user || undefined,
-        accountId: event.requestContext.identity.accountId || undefined,
-        caller: event.requestContext.identity.caller || undefined
-      };
+      this.extractIamContext(event, actor);
     }
     // Anonymous
     else {
@@ -595,15 +529,147 @@ export abstract class APIController extends AbstractLambdaHandler {
       actor.actorId = 'anonymous';
     }
 
-    // Session and tenant for analytics
-    actor.sessionId = request.headers?.['x-session-id'];
-    actor.tenantId = request.headers?.['x-tenant-id'] || 
-                    event.requestContext?.authorizer?.claims?.['custom:tenantId'];
+    // Session and tenant context
+    this.extractSessionAndTenantContext(event, request, actor);
     
     // API Gateway context
     actor.apiStage = event.requestContext?.stage;
     actor.apiId = event.requestContext?.apiId;
     
     return actor;
+  }
+
+  /**
+   * Extract Cognito actor context based on documented AWS Cognito JWT claims
+   * Only extracts what's officially documented and available in API Gateway context
+   * 
+   * @param claims - Cognito JWT claims from the authorizer
+   * @param actor - Actor object to populate
+   */
+  private extractCognitoContext(claims: any, actor: Actor): void {
+    try {
+      actor.authMethod = 'cognito';
+      actor.actorType = 'user';
+      
+      // Actor ID with documented fallback strategy: cognito:username -> email -> sub
+      actor.actorId = claims['cognito:username'] || claims.email || claims.sub;
+      
+      // Standard user attributes (documented Cognito user attributes)
+      actor.email = claims.email;
+      actor.emailVerified = claims.email_verified === 'true';
+      actor.phoneNumber = claims.phone_number;
+      actor.phoneVerified = claims.phone_number_verified === 'true';
+      actor.name = claims.name;
+      actor.locale = claims.locale;
+      
+      // Parse Cognito groups (documented as comma-separated string)
+      const groups = this.parseGroups(claims['cognito:groups']);
+      
+      // Extract custom attributes (documented pattern: custom:*)
+      const customAttributes = this.extractCustomAttributes(claims);
+      
+      // Build Cognito context with only documented fields
+      actor.cognito = {
+        sub: claims.sub,
+        username: claims['cognito:username'],
+        groups: groups, // Always include groups array (empty or populated)
+        customAttributes: Object.keys(customAttributes).length > 0 ? customAttributes : undefined
+      };
+      
+      // Extract tenant ID from custom attributes (common multi-tenant pattern)
+      actor.tenantId = customAttributes.tenantId;
+      
+      actor.rawAuthContext = claims;
+      
+    } catch (error) {
+      this.logger.warn('Error extracting Cognito actor context', { error, claims });
+      
+      // Minimal fallback extraction
+      actor.authMethod = 'cognito';
+      actor.actorType = 'user';
+      actor.actorId = claims.sub || 'unknown';
+      actor.rawAuthContext = claims;
+    }
+  }
+
+  /**
+   * Parse Cognito groups from comma-separated string (documented Cognito format)
+   */
+  private parseGroups(groups: any): string[] {
+    if (typeof groups === 'string' && groups.length > 0) {
+      return groups.split(',').map(g => g.trim()).filter(g => g.length > 0);
+    }
+    return [];
+  }
+
+  /**
+   * Extract custom attributes using documented Cognito pattern (custom:*)
+   */
+  private extractCustomAttributes(claims: any): Record<string, any> {
+    const customAttributes: Record<string, any> = {};
+    
+    Object.keys(claims).forEach(key => {
+      if (key.startsWith('custom:')) {
+        const attributeName = key.replace('custom:', '');
+        customAttributes[attributeName] = claims[key];
+      }
+    });
+    
+    return customAttributes;
+  }
+
+    /**
+   * Extract session and tenant context - focused approach
+   */
+  private extractSessionAndTenantContext(event: APIGatewayEvent, request: Request, actor: Actor): void {
+    // Session context
+    actor.sessionId = request.headers?.['x-session-id'];
+    
+    // Tenant context - check custom attributes first, then headers
+    actor.tenantId = request.headers?.['x-tenant-id'] || 
+                    event.requestContext?.authorizer?.claims?.['custom:tenantId'];
+  }
+
+  /**
+   * Extract API Key context
+   */
+  private extractApiKeyContext(event: APIGatewayEvent, request: Request, actor: Actor): void {
+    actor.authMethod = 'api-key';
+    actor.actorType = 'service';
+    
+    let apiKeyId: string;
+    let source: 'request-context' | 'header';
+    
+    if (event.requestContext?.identity?.apiKey) {
+      apiKeyId = event.requestContext.identity.apiKeyId || event.requestContext.identity.apiKey;
+      source = 'request-context';
+    } else {
+      apiKeyId = request.headers['x-api-key']!;
+      source = 'header';
+    }
+    
+    actor.actorId = `api-key:${apiKeyId}`;
+    actor.apiKey = {
+      id: apiKeyId,
+      source: source,
+    };
+  }
+
+  /**
+   * Extract IAM context
+   */
+  private extractIamContext(event: APIGatewayEvent, actor: Actor): void {
+    actor.authMethod = 'iam';
+    actor.actorType = 'service';
+    actor.actorId = event.requestContext?.identity?.user || 
+                   event.requestContext?.identity?.userArn || 
+                   'unknown-iam-user';
+    
+    actor.iam = {
+      userArn: event.requestContext?.identity?.userArn || undefined,
+      userId: event.requestContext?.identity?.user || undefined,
+      accountId: event.requestContext?.identity?.accountId || undefined,
+      caller: event.requestContext?.identity?.caller || undefined,
+    };
   }
 }
