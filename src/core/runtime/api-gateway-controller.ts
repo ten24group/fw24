@@ -429,35 +429,10 @@ export abstract class APIController extends AbstractLambdaHandler {
     return res;
   }
 
-  protected buildCtx(event: APIGatewayEvent, context: Context, request: Request, response: Response): ExecutionContext {
-    const actor = this.extractActorContext(event, request);
-    
-    const ctx: ExecutionContext = {
-      event,
-      lambdaContext: context,
-      request,
-      response,
-      actor,
-      debugInfo: {},
-      
-      // Simple actor enhancement method
-      enhanceActor: (enhancement: Partial<Actor>) => {
-        if (ctx.actor) {
-          Object.assign(ctx.actor, enhancement);
-        }
-      }
-    };
-
-    return ctx;
-  }
-
-
-
   /**
-   * Extracts actor context from the request
-   * Override this method for custom actor extraction logic
-   *
-   * different middleware can enhance the actor context
+   * Builds the execution context for the request
+   * 
+   * different middleware can enhance the actor context by using the enhanceActor method
    *
    * @example
    * ```ts
@@ -485,6 +460,38 @@ export abstract class APIController extends AbstractLambdaHandler {
    * };
    *
    * useMiddleware(securityMiddleware);
+   *
+   * @param event 
+   * @param context 
+   * @param request 
+   * @param response 
+   * @returns 
+   */
+  protected buildCtx(event: APIGatewayEvent, context: Context, request: Request, response: Response): ExecutionContext {
+    const actor = this.extractActorContext(event, request);
+    
+    const ctx: ExecutionContext = {
+      event,
+      lambdaContext: context,
+      request,
+      response,
+      actor,
+      debugInfo: {},
+      
+      // Simple actor enhancement method
+      enhanceActor: (enhancement: Partial<Actor>) => {
+        if (ctx.actor) {
+          Object.assign(ctx.actor, enhancement);
+        }
+      }
+    };
+
+    return ctx;
+  }
+
+  /**
+   * Extracts actor context from the request
+   * Override this method for custom actor extraction logic
    *
    * @param event - The event object from the API Gateway.
    * @param request - The request object from the API Gateway.
