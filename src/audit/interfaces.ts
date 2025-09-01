@@ -161,6 +161,7 @@ export interface AuditContext {
   logType: 'audit' | 'log' | 'event' | 'metric';
   subType: string;
   entityName: string;
+  entityId?: string;
   operation: string;
   category?: string;
   actor?: Actor;
