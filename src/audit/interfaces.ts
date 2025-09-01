@@ -37,17 +37,60 @@ export interface AuditOptions {
 }
 
 export interface AuditEntry {
+    // === CORE IDENTIFICATION ===
     auditId?: string;                                    // Auto-generated UUID (ElectroDB handles this)
     auditType?: string;                                  // Record categorization (defaults to 'audit')
     timestamp?: string;                                  // ISO timestamp (caller can provide or auto-generated)
     timestampMs?: number;                               // Milliseconds timestamp (auto-generated from timestamp)
-    entityName?: string;                                // Entity being audited (e.g., 'user', 'post')
-    eventType?: string;                                 // Action performed (e.g., 'create', 'update', 'delete', 'login')
+    
+    // === CLASSIFICATION (Enhanced) ===
+    logType?: 'audit' | 'log' | 'event' | 'metric';    // Type of log entry
+    subType?: string;                                   // Detailed log sub-type (api_request, payment_processed, etc.)
     severity?: 'info' | 'warn' | 'error' | 'critical'; // Importance level
+    category?: string;                                  // Log category (security, business, performance, etc.)
+    
+    // === ENTITY/RESOURCE TRACKING ===
+    entityName?: string;                                // Entity being audited (e.g., 'user', 'payment', 'order')
+    entityId?: string;                                  // Specific entity identifier
+    eventType?: string;                                 // Action performed (e.g., 'create', 'update', 'delete', 'login')
+    operation?: string;                                 // Operation alias for eventType
+    
+    // === SERVICE CONTEXT ===
+    service?: string;                                   // Service name (user-service, payment-service, etc.)
+    externalSystem?: string;                            // External system (stripe, sendgrid, github, etc.)
+    externalId?: string;                                // External transaction/reference ID
+    
+    // === STATUS & OUTCOME ===
+    status?: string;                                    // Operation status (pending, completed, failed, etc.)
     success?: boolean;                                  // Whether the operation succeeded
-    data?: any;                                         // Changed fields or event-specific data
-    actor?: Actor;                                      // Who performed the action
-    identifiers?: any;                                  // Entity identifiers (preferred over full entity)
+    ipAddress?: string;                                 // Source IP address
+    
+    // === METRICS (Grouped) ===
+    metrics?: {
+        duration?: number;                              // Operation duration in ms
+        amount?: number;                                // Monetary amount (in cents/smallest unit)
+        currency?: string;                              // Currency (USD, EUR, GBP)
+        recordCount?: number;                           // Number of records processed/affected
+        dataSize?: number;                              // Size of data processed (bytes)
+        responseTime?: number;                          // API response time
+        throughput?: number;                            // Records per second
+        errorRate?: number;                             // Error percentage
+        [key: string]: any;                             // Allow custom metrics
+    };
+    
+    // === TRACKING IDs ===
+    correlationId?: string;                             // Request chain tracking
+    
+    // === ACTOR CONTEXT ===
+    actor?: Actor;                                      // Who performed the action (enhanced with tenant info)
+    
+    // === FLEXIBLE DATA BLOCKS ===
+    data?: any;                                         // Main payload - structure varies by subType
+    metadata?: any;                                     // Additional context (retries, config, etc.)
+    context?: any;                                      // Request/response/environment context
+    
+    // === LEGACY SUPPORT ===
+    identifiers?: any;                                  // Entity identifiers (legacy field, use entityId instead)
 }
 
 export interface IAuditLogger {

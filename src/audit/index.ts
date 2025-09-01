@@ -23,8 +23,11 @@ export {
 } from './system/audit-entity-service';
 
 export {
-  captureAuditLog,
+  captureLog,
+  captureError,
 } from './audit-helpers';
+
+export type { CaptureLogOptions } from './audit-helpers';
 
 export {
   AuditCustomPageConfigs

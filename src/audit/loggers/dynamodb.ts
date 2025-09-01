@@ -27,13 +27,17 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
                     sortOrder: 1,
                     fields: [
                         'auditId',
+                        'logType',
+                        'subType',
                         'entityName',
+                        'entityId',
                         'eventType',
-                        'timestamp',
-                        'success',
+                        'service',
+                        'status',
                         'severity',
-                        'identifiers',
+                        'timestamp',
                         'actor',
+                        'correlationId',
                         'data',
                     ]
                 },
@@ -41,6 +45,7 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
         }
     },
     attributes: {
+        // === CORE IDENTIFICATION ===
         auditId: {
             type: 'string',
             required: true,
@@ -57,27 +62,6 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             isEditable: false,
             default: () => 'audit'
         },
-        success: {
-            type: 'boolean',
-            required: false,
-            isEditable: false,
-        },
-        severity: {
-            type: 'string',
-            required: false,
-            isEditable: false,
-            // 'info', 'warn', 'error', 'critical'
-        },
-        entityName: {
-            type: 'string',
-            required: true,
-            isEditable: false,
-        },
-        eventType: {
-            type: 'string',
-            required: true,
-            isEditable: false,
-        },
         timestamp: {
             type: 'string',
             required: true,
@@ -90,26 +74,157 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             isEditable: false,
             default: () => Date.now()
         },
-        data: {
+        
+        // === CLASSIFICATION (Enhanced) ===
+        logType: {
+            type: 'string',
+            required: false,
+            isEditable: false,
+            default: () => 'audit' // 'audit', 'log', 'event', 'metric'
+        },
+        subType: {
+            type: 'string',
+            required: false,
+            isEditable: false,
+        },
+        severity: {
+            type: 'string',
+            required: false,
+            isEditable: false,
+            default: () => 'info', // 'info', 'warn', 'error', 'critical'
+        },
+        category: {
+            type: 'string',
+            required: false,
+            isEditable: false,
+        },
+        
+        // === ENTITY/RESOURCE TRACKING ===
+        entityName: {
+            type: 'string',
+            required: true,
+            isEditable: false,
+        },
+        entityId: {
+            type: 'string',
+            required: false,
+            isEditable: false,
+        },
+        eventType: {
+            type: 'string',
+            required: true,
+            isEditable: false,
+        },
+        operation: {
+            type: 'string', // 'create', 'read', 'update', 'delete', 'login', 'sync'
+            required: false,
+            isEditable: false,
+        },
+        
+        // === SERVICE CONTEXT ===
+        service: {
+            type: 'string', // 'user-service', 'payment-service', 'api-gateway'
+            required: false,
+            isEditable: false,
+        },
+        externalSystem: {
+            type: 'string', // 'stripe', 'sendgrid', 'github', 'slack'
+            required: false,
+            isEditable: false,
+        },
+        externalId: {
+            type: 'string',
+            required: false,
+            isEditable: false,
+        },
+        
+        // === STATUS & OUTCOME ===
+        status: {
+            type: 'string', // 'pending', 'processing', 'completed', 'failed', 'cancelled'
+            required: false,
+            isEditable: false,
+        },
+        success: {
+            type: 'boolean',
+            required: false,
+            isEditable: false,
+        },
+        ipAddress: {
+            type: 'string',
+            required: false,
+            isEditable: false,
+        },
+        
+        // === METRICS (Structured Object) ===
+        metrics: {
             type: 'any',
             required: false,
             isEditable: false,
             isListable: false,
         },
+        
+        // === TRACKING IDs ===
+        correlationId: {
+            type: 'string',
+            required: false,
+            isEditable: false,
+        },
+        
+        // === ACTOR CONTEXT ===
         actor: {
             type: 'any',
             required: false,
             isEditable: false,
             isListable: false,
         },
+        
+        // === FLEXIBLE DATA BLOCKS ===
+        data: {
+            type: 'any',
+            required: false,
+            isEditable: false,
+            isListable: false,
+        },
+        metadata: {
+            type: 'any',
+            required: false,
+            isEditable: false,
+            isListable: false,
+        },
+        context: {
+            type: 'any',
+            required: false,
+            isEditable: false,
+            isListable: false,
+        },
+        
+        // === LEGACY SUPPORT ===
         identifiers: {
             type: 'any',
             required: false,
             isEditable: false,
             isListable: false,
+        },
+        
+        // === COMPUTED FIELDS FOR INDEXING ===
+        // These are derived fields for optimized querying
+        actorId: {
+            type: 'string',
+            required: false,
+            isEditable: false,
+            watch: ['actor'],
+            set: (_, { actor }) => actor?.actorId || undefined
+        },
+        tenantId: {
+            type: 'string',
+            required: false,
+            isEditable: false,
+            watch: ['actor'],
+            set: (_, { actor }) => actor?.tenantId || undefined
         }
     },
     indexes: {
+        // Primary index - auditId
         primary: {
             pk: {
                 field: 'pk',
@@ -120,6 +235,9 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
                 composite: []
             }
         },
+        
+        // GSI1 - Entity-based queries (entityName)
+        // Usage: Track all activities for specific entities
         gsi1: {
             index: 'gsi1',
             pk: {
@@ -131,7 +249,23 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
                 composite: [ 'timestampMs' ]
             }
         },
-
+        
+        // GSI2 - Log type classification (logType only)
+        // Usage: Filter by log type (subType filtering done post-query)
+        gsi2: {
+            index: 'gsi2',
+            pk: {
+                field: 'gsi2pk',
+                composite: [ 'logType' ]
+            },
+            sk: {
+                field: 'gsi2sk',
+                composite: [ 'timestampMs' ]
+            }
+        },
+        
+        // GSI3 - Legacy audit type index (backward compatibility)
+        // Usage: Query all audit logs chronologically
         gsi3: {
             index: 'gsi3',
             pk: {
@@ -140,6 +274,22 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             },
             sk: {
                 field: 'gsi3sk',
+                composite: [ 'timestampMs' ]
+            }
+        },
+        
+        // GSI4 - Request tracing (correlationId)
+        // Usage: Trace request chains across services
+        // Note: Only populated when correlationId is present
+        gsi4: {
+            index: 'gsi4',
+            condition: ({ correlationId }) => !!correlationId,
+            pk: {
+                field: 'gsi4pk',
+                composite: [ 'correlationId' ]
+            },
+            sk: {
+                field: 'gsi4sk',
                 composite: [ 'timestampMs' ]
             }
         }

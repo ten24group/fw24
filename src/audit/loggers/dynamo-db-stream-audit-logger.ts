@@ -149,18 +149,31 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
         const severity = eventType === 'delete' ? 'warn' : 'info'; // Deletions might be more significant
         
         const auditEntry: AuditEntry = {
+            // Core fields - what we know from the stream
             auditType: 'audit',
             timestamp: timestampIso,
             timestampMs,
+            
+            // Entity tracking - what changed
             entityName,
+            entityId: entityId as string,
             eventType,
+            operation: eventType, // Backward compatibility - same as eventType for stream events
+            
+            // Outcome - stream events represent completed DB operations
             severity,
             success,
+            
+            // Actor - who made the change
+            actor: actorContext || (Object.keys(fallbackActor).length > 0 ? fallbackActor : { actorType: 'unknown' }),
+            
+            // Data - what actually changed
             data: changes,
+            
+            // Legacy support
             identifiers: {
                 id: entityId as string
-            },
-            actor: actorContext || (Object.keys(fallbackActor).length > 0 ? fallbackActor : { actorType: 'unknown' })
+            }
         };
 
         return auditEntry;
