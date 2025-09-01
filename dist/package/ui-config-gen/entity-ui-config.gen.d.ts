@@ -2,7 +2,7 @@ import { BaseEntityService } from '../entity';
 import { CustomPageOptions } from './templates/custom-page';
 export declare class EntityUIConfigGen {
     readonly logger: import("tslog").Logger<import("tslog").ILogObj>;
-    readonly uiGenDIContainer: import("../interfaces").IDIContainer;
+    readonly uiGenDIContainer: import("../fw24").IDIContainer;
     private customPages;
     scanCustomPages(): Promise<void>;
     isValidCustomPageConfig(value: unknown): value is CustomPageOptions;

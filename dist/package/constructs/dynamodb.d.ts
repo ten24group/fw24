@@ -222,7 +222,7 @@ export interface IDynamoDBConfig extends IConstructConfig {
 /**
  * Configuration for audit logging.
  */
-export interface AuditConfig extends IConstructConfig {
+interface AuditConfig extends IConstructConfig {
     /**
      * Whether to enable audit logging.
      * @default false
@@ -345,3 +345,4 @@ export declare class DynamoDBConstruct implements FW24Construct {
     private setupAuditProcessing;
     private setupSearchIndexingProcessing;
 }
+export {};

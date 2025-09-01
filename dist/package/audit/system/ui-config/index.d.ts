@@ -53,6 +53,6 @@ export declare const AuditCustomPageConfigs: {
             label: string;
             url?: string;
         }[];
-        readonly pageHeaderActions: import("../../../entity").IEntityPageAction[];
+        readonly pageHeaderActions: import("../../../fw24").IEntityPageAction[];
     };
 };

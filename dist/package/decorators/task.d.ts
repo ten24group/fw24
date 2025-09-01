@@ -1,5 +1,6 @@
 import type { ILambdaEnvConfig } from "../interfaces";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
+import type { AuditConfig } from '../audit/interfaces';
 /**
  * Represents the configuration for a task.
  */
@@ -12,6 +13,10 @@ export type ITaskConfig = CommonLambdaHandlerOptions & {
      * The environment configuration for the task.
      */
     env?: Array<ILambdaEnvConfig>;
+    /**
+     * Audit configuration for this task
+     */
+    audit?: AuditConfig;
 };
 /**
  * Decorator function to define a scheduled task.

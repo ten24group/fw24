@@ -4,7 +4,7 @@ import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
 import { ILogger } from "../logging";
 import { type IValidator } from "../validation";
-import { Actor } from "../core/types/actor";
+import { Actor } from "../core/types/execution-context";
 /**
  *
  * Serializer/formatter

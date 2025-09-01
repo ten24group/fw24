@@ -32,7 +32,7 @@ export declare class DynamoDBAuditEntityService extends BaseEntityService<AuditE
                 readonly viewPageColumnsConfig: {
                     readonly columns: [{
                         readonly sortOrder: 1;
-                        readonly fields: ["auditId", "entityName", "eventType", "timestamp", "success", "severity", "identifiers", "actor", "data"];
+                        readonly fields: ["auditId", "logType", "subType", "entityName", "entityId", "eventType", "service", "status", "severity", "timestamp", "actor", "correlationId", "data"];
                     }];
                 };
             };
@@ -53,26 +53,6 @@ export declare class DynamoDBAuditEntityService extends BaseEntityService<AuditE
                     readonly isEditable: false;
                     readonly default: () => string;
                 };
-                readonly success: {
-                    readonly type: "boolean";
-                    readonly required: false;
-                    readonly isEditable: false;
-                };
-                readonly severity: {
-                    readonly type: "string";
-                    readonly required: false;
-                    readonly isEditable: false;
-                };
-                readonly entityName: {
-                    readonly type: "string";
-                    readonly required: true;
-                    readonly isEditable: false;
-                };
-                readonly eventType: {
-                    readonly type: "string";
-                    readonly required: true;
-                    readonly isEditable: false;
-                };
                 readonly timestamp: {
                     readonly type: "string";
                     readonly required: true;
@@ -85,13 +65,108 @@ export declare class DynamoDBAuditEntityService extends BaseEntityService<AuditE
                     readonly isEditable: false;
                     readonly default: () => number;
                 };
+                readonly logType: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly isEditable: false;
+                    readonly default: () => string;
+                };
+                readonly subType: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly isEditable: false;
+                };
+                readonly severity: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly isEditable: false;
+                    readonly default: () => string;
+                };
+                readonly category: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly isEditable: false;
+                };
+                readonly entityName: {
+                    readonly type: "string";
+                    readonly required: true;
+                    readonly isEditable: false;
+                };
+                readonly entityId: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly isEditable: false;
+                };
+                readonly eventType: {
+                    readonly type: "string";
+                    readonly required: true;
+                    readonly isEditable: false;
+                };
+                readonly operation: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly isEditable: false;
+                };
+                readonly service: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly isEditable: false;
+                };
+                readonly externalSystem: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly isEditable: false;
+                };
+                readonly externalId: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly isEditable: false;
+                };
+                readonly status: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly isEditable: false;
+                };
+                readonly success: {
+                    readonly type: "boolean";
+                    readonly required: false;
+                    readonly isEditable: false;
+                };
+                readonly ipAddress: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly isEditable: false;
+                };
+                readonly metrics: {
+                    readonly type: "any";
+                    readonly required: false;
+                    readonly isEditable: false;
+                    readonly isListable: false;
+                };
+                readonly correlationId: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly isEditable: false;
+                };
+                readonly actor: {
+                    readonly type: "any";
+                    readonly required: false;
+                    readonly isEditable: false;
+                    readonly isListable: false;
+                };
                 readonly data: {
                     readonly type: "any";
                     readonly required: false;
                     readonly isEditable: false;
                     readonly isListable: false;
                 };
-                readonly actor: {
+                readonly metadata: {
+                    readonly type: "any";
+                    readonly required: false;
+                    readonly isEditable: false;
+                    readonly isListable: false;
+                };
+                readonly context: {
                     readonly type: "any";
                     readonly required: false;
                     readonly isEditable: false;
@@ -102,6 +177,26 @@ export declare class DynamoDBAuditEntityService extends BaseEntityService<AuditE
                     readonly required: false;
                     readonly isEditable: false;
                     readonly isListable: false;
+                };
+                readonly actorId: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly isEditable: false;
+                    readonly watch: readonly ["actor"];
+                    readonly set: (_: string | undefined, { actor }: any) => any;
+                };
+                readonly tenantId: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly isEditable: false;
+                    readonly watch: readonly ["actor"];
+                    readonly set: (_: string | undefined, { actor }: any) => any;
+                };
+                readonly ttl: {
+                    readonly type: "number";
+                    readonly required: false;
+                    readonly isEditable: false;
+                    readonly default: () => number;
                 };
             };
             readonly indexes: {
@@ -123,6 +218,17 @@ export declare class DynamoDBAuditEntityService extends BaseEntityService<AuditE
                     };
                     readonly sk: {
                         readonly field: "gsi1sk";
+                        readonly composite: readonly ["timestampMs"];
+                    };
+                };
+                readonly gsi2: {
+                    readonly index: "gsi2";
+                    readonly pk: {
+                        readonly field: "gsi2pk";
+                        readonly composite: readonly ["logType"];
+                    };
+                    readonly sk: {
+                        readonly field: "gsi2sk";
                         readonly composite: readonly ["timestampMs"];
                     };
                 };
