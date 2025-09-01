@@ -1,6 +1,6 @@
 /**
  * Actor represents the entity performing an action
- * Generic fields at top level, auth-specific fields nested
+ * Focused on practical identity and authorization context
  */
 export interface Actor {
   // Core identity
@@ -15,25 +15,21 @@ export interface Actor {
   userAgent?: string;
   correlationId?: string;
   
-  // Generic user fields (regardless of auth method)
+  // Generic user fields (commonly available)
   email?: string;
   emailVerified?: boolean;
   phoneNumber?: string;
   phoneVerified?: boolean;
-  firstName?: string;
-  lastName?: string;
   name?: string;
   locale?: string;
   
   // Auth-specific data nested
   cognito?: {
-    sub?: string;
-    username?: string;
-    groups?: string[];
-    authTime?: number;
-    identities?: any[];      // For social login analytics
-    customAttributes?: Record<string, any>;
-    [key: string]: any;      // For any other cognito-specific fields
+    sub?: string;                           // Subject - unique user identifier
+    username?: string;                      // cognito:username claim
+    groups?: string[];                      // cognito:groups claim (parsed)
+    customAttributes?: Record<string, any>; // custom:* claims
+    [key: string]: any;                     // For any other cognito-specific fields
   };
   
   apiKey?: {
@@ -48,7 +44,7 @@ export interface Actor {
     caller?: string;
   };
   
-  // Session/tenant for analytics
+  // Session/tenant for multi-tenancy
   sessionId?: string;
   tenantId?: string;
   

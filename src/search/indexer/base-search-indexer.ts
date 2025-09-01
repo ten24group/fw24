@@ -214,7 +214,16 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
       const { oldImage, newImage } = payloadData;
       return this.extractSearchableDataFromChangeStream(oldImage, newImage, eventType);
     }
-    // For resync sources or fallback, use payload directly
+    
+    // Handle array payloads - add _indexedAt to each item
+    if (Array.isArray(payloadData)) {
+      return payloadData.map(item => ({
+        ...item,
+        _indexedAt: new Date().toISOString()
+      }));
+    }
+    
+    // For single object payloads, use payload directly
     return {
       ...payloadData,
       _indexedAt: new Date().toISOString()

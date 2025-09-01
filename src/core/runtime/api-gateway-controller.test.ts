@@ -551,8 +551,10 @@ describe('APIGatewayController Core Functionality', () => {
               sub: 'user-123-456',
               'cognito:username': 'john.doe',
               'cognito:groups': 'admin,user',
+              email: 'john@example.com',
+              email_verified: 'true',
               'custom:tenantId': 'tenant-789',
-              email: 'john@example.com'
+              'custom:role': 'manager'
             }
           }
         } as any
@@ -574,19 +576,17 @@ describe('APIGatewayController Core Functionality', () => {
         authMethod: 'cognito',
         actorType: 'user',
         actorId: 'john.doe',
-        tenantId: 'tenant-789',
+        email: 'john@example.com',
+        emailVerified: true,
         correlationId: 'corr-xyz-789',
         cognito: {
           sub: 'user-123-456',
           username: 'john.doe',
-          groups: ['admin', 'user']
-        },
-        rawAuthContext: {
-          sub: 'user-123-456',
-          'cognito:username': 'john.doe',
-          'cognito:groups': 'admin,user',
-          'custom:tenantId': 'tenant-789',
-          email: 'john@example.com'
+          groups: ['admin', 'user'],
+          customAttributes: {
+            tenantId: 'tenant-789',
+            role: 'manager'
+          }
         }
       });
       expect(actor.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -744,18 +744,39 @@ describe('APIGatewayController Core Functionality', () => {
       });
     });
 
-    it('should handle tenant ID from custom headers', () => {
-      const event = createMockEventForActorTests();
+    it('should handle malformed claims gracefully', () => {
+      const event = createMockEventForActorTests({
+        requestContext: {
+          authorizer: {
+            claims: {
+              sub: 'user-malformed-test',
+              'cognito:username': 'malformed_user',
+              'cognito:groups': null, // Malformed groups
+              email_verified: 'not-a-boolean', // Invalid boolean
+              'custom:weird:key': 'should-be-ignored' // Invalid custom attribute format
+            }
+          }
+        } as any
+      });
+
       const request = createMockRequest({
-        requestId: 'req-mno-345',
-        headers: {
-          'x-tenant-id': 'tenant-from-header'
-        }
+        requestId: 'req-malformed-claims'
       });
 
       const actor = (controller as any).extractActorContext(event, request);
 
-      expect(actor.tenantId).toBe('tenant-from-header');
+      expect(actor).toMatchObject({
+        authMethod: 'cognito',
+        actorType: 'user',
+        actorId: 'malformed_user',
+        emailVerified: false, // Should default to false for invalid boolean
+        cognito: {
+          sub: 'user-malformed-test',
+          username: 'malformed_user',
+          groups: [], // Null groups should become empty array
+          customAttributes: {} // Invalid custom attributes should be empty
+        }
+      });
     });
 
     it('should handle missing optional fields gracefully', () => {
@@ -782,7 +803,6 @@ describe('APIGatewayController Core Functionality', () => {
         authMethod: 'anonymous',
         actorType: 'anonymous',
         actorId: 'anonymous',
-        tenantId: undefined,
         correlationId: 'req-pqr-678'
       });
     });
@@ -809,13 +829,13 @@ describe('APIGatewayController Core Functionality', () => {
       expect(actor.cognito?.sub).toBe('user-sub-123');
     });
 
-    it('should use sub as fallback when cognito username is not available', () => {
+    it('should use email as fallback when cognito username is not available', () => {
       const event = createMockEventForActorTests({
         requestContext: {
           authorizer: {
             claims: {
               sub: 'user-sub-456',
-              username: 'fallback.username'
+              email: 'fallback@example.com'
             }
           }
         } as any
@@ -827,53 +847,54 @@ describe('APIGatewayController Core Functionality', () => {
 
       const actor = (controller as any).extractActorContext(event, request);
 
-      expect(actor.actorId).toBe('fallback.username');
+      expect(actor.actorId).toBe('fallback@example.com');
       expect(actor.cognito?.sub).toBe('user-sub-456');
     });
 
-    it('should extract social login identity information', () => {
-      const event = createMockEventForActorTests({
-        requestContext: {
-          authorizer: {
-            claims: {
-              sub: 'google-user-123',
-              'cognito:username': 'google_user',
-              email: 'user@gmail.com',
-              identities: [
-                {
-                  userId: 'google-123456789',
-                  providerName: 'Google',
-                  providerType: 'OIDC',
-                  primary: 'true'
-                }
-              ]
-            }
-          }
-        } as any
-      });
-
-      const request = createMockRequest({
-        requestId: 'req-social-login'
-      });
-
-      const actor = (controller as any).extractActorContext(event, request);
-
-      expect(actor).toMatchObject({
-        authMethod: 'cognito',
-        actorType: 'user',
-        email: 'user@gmail.com',
-        cognito: {
-          sub: 'google-user-123',
-          username: 'google_user',
-          identities: [
-            {
-              userId: 'google-123456789',
-              providerName: 'Google',
-              providerType: 'OIDC',
-              primary: 'true'
-            }
-          ]
+    it('should handle groups parsing edge cases', () => {
+      const testCases = [
+        {
+          name: 'single group',
+          groups: 'admin',
+          expected: ['admin']
+        },
+        {
+          name: 'multiple groups with spaces',
+          groups: ' admin , user , moderator ',
+          expected: ['admin', 'user', 'moderator']
+        },
+        {
+          name: 'empty group string',
+          groups: '',
+          expected: []
+        },
+        {
+          name: 'groups with extra commas',
+          groups: 'admin,,user,',
+          expected: ['admin', 'user']
         }
+      ];
+
+      testCases.forEach(({ name, groups, expected }) => {
+        const event = createMockEventForActorTests({
+          requestContext: {
+            authorizer: {
+              claims: {
+                sub: 'user-groups-test',
+                'cognito:username': 'groups_user',
+                'cognito:groups': groups
+              }
+            }
+          } as any
+        });
+
+        const request = createMockRequest({
+          requestId: `req-groups-${name.replace(/\s+/g, '-')}`
+        });
+
+        const actor = (controller as any).extractActorContext(event, request);
+
+        expect(actor.cognito?.groups).toEqual(expected);
       });
     });
 
@@ -900,6 +921,8 @@ describe('APIGatewayController Core Functionality', () => {
 
       expect(actor).toMatchObject({
         authMethod: 'cognito',
+        actorType: 'user',
+        actorId: 'custom_user',
         cognito: {
           sub: 'user-with-custom-attrs',
           username: 'custom_user',
@@ -909,6 +932,78 @@ describe('APIGatewayController Core Functionality', () => {
             company_id: 'company-123'
           }
         }
+      });
+    });
+
+    it('should use sub as final fallback for actorId', () => {
+      const event = createMockEventForActorTests({
+        requestContext: {
+          authorizer: {
+            claims: {
+              sub: 'user-sub-final-fallback'
+              // No cognito:username, no email
+            }
+          }
+        } as any
+      });
+
+      const request = createMockRequest({
+        requestId: 'req-sub-fallback'
+      });
+
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor.actorId).toBe('user-sub-final-fallback');
+      expect(actor.cognito?.sub).toBe('user-sub-final-fallback');
+    });
+
+    it('should handle phone number verification correctly', () => {
+      const testCases = [
+        {
+          name: 'verified phone',
+          phone_number: '+1234567890',
+          phone_number_verified: 'true',
+          expectedVerified: true
+        },
+        {
+          name: 'unverified phone',
+          phone_number: '+1234567890',
+          phone_number_verified: 'false',
+          expectedVerified: false
+        },
+        {
+          name: 'phone without verification flag',
+          phone_number: '+1234567890',
+          phone_number_verified: undefined,
+          expectedVerified: false
+        }
+      ];
+
+      testCases.forEach(({ name, phone_number, phone_number_verified, expectedVerified }) => {
+        const claims: any = {
+          sub: 'user-phone-test',
+          'cognito:username': 'phone_user',
+          phone_number
+        };
+        
+        if (phone_number_verified !== undefined) {
+          claims.phone_number_verified = phone_number_verified;
+        }
+
+        const event = createMockEventForActorTests({
+          requestContext: {
+            authorizer: { claims }
+          } as any
+        });
+
+        const request = createMockRequest({
+          requestId: `req-phone-${name.replace(/\s+/g, '-')}`
+        });
+
+        const actor = (controller as any).extractActorContext(event, request);
+
+        expect(actor.phoneNumber).toBe(phone_number);
+        expect(actor.phoneVerified).toBe(expectedVerified);
       });
     });
   });

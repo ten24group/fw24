@@ -97,7 +97,8 @@ describe('EntitySearchService', () => {
     mockEntityService = {
       getEntitySchema: jest.fn().mockReturnValue(testSchema),
       hydrateRecords: jest.fn(),
-      getEntitySearchConfig: jest.fn().mockReturnValue(testSchema.model.search)
+      getEntitySearchConfig: jest.fn().mockReturnValue(testSchema.model.search),
+      getEntityName: jest.fn().mockReturnValue('TestEntity')
     } as any;
 
     service = new EntitySearchService(mockEntityService, mockSearchEngine);
