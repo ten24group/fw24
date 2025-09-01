@@ -4,6 +4,7 @@ import { Actor } from "../../core/types/execution-context";
 import { ExecutionContext } from '../../core/types/execution-context';
 import { randomUUID } from 'crypto';
 import { AuditContext, RequestAuditContext, QueueAuditContext, TaskAuditContext } from '../../fw24';
+import { protectAuditData, getEnvironmentDataProtectionConfig } from './data-protection';
 
 /**
  * Enhanced capture options for the audit system
@@ -60,6 +61,15 @@ export interface CaptureLogOptions {
   
   // === CONVENIENCE ===
   duration?: number; // Will be added to metrics
+  
+  // === TTL & DATA PROTECTION ===
+  ttl?: number;                      // Custom TTL timestamp (Unix seconds)
+  dataProtection?: {
+    enabled?: boolean;
+    redactPII?: boolean;
+    redactSensitiveFields?: boolean;
+    maxStringLength?: number;
+  };
   
   // === CONTROL ===
   enabled?: boolean;
@@ -129,13 +139,23 @@ export async function captureLog(options: CaptureLogOptions): Promise<void> {
       // === DATA BLOCKS ===
       data: options.data,
       metadata: options.metadata,
-      context: options.context
+      context: options.context,
+      
+      // === TTL ===
+      ttl: options.ttl
     };
+    
+    // Apply data protection
+    const dataProtectionConfig = {
+      ...getEnvironmentDataProtectionConfig(),
+      ...options.dataProtection
+    };
+    const protectedAuditEntry = protectAuditData(auditEntry, dataProtectionConfig);
     
     // Create audit options
     const auditOptions: AuditOptions = {
       enabled: options.enabled,
-      auditEntry
+      auditEntry: protectedAuditEntry
     };
     
     // Log the entry using the existing audit system
@@ -205,7 +225,9 @@ export class AuditCaptureService {
         correlation: auditContext.correlation,
         [ auditContext.correlation.operationType ]: operationContext
       },
-      metadata: auditContext.auditConfig.customContext
+      metadata: auditContext.auditConfig.customContext,
+      ttl: auditContext.auditConfig.ttl,
+      dataProtection: auditContext.auditConfig.dataProtection
     });
   }
 
@@ -253,9 +275,9 @@ export class AuditCaptureService {
         ...(responseContext && { response: responseContext })
       },
       metadata: auditContext.auditConfig.customContext,
-      data: error ? {
-        error: { message: error.message, stack: error.stack, name: error.name }
-      } : undefined
+      ttl: auditContext.auditConfig.ttl,
+      dataProtection: auditContext.auditConfig.dataProtection,
+      data: { error }
     });
   }
 }

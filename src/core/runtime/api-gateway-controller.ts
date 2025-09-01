@@ -2,7 +2,7 @@ import type { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda
 import type { Request, Response, Route } from "../../interfaces";
 import { Controller, IControllerConfig } from "../../decorators";
 import { Get, RouteMethods } from "../../decorators/method";
-import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule } from "../../validation";
+import { HttpRequestValidations, InputValidationRule } from "../../validation";
 import { isHttpRequestValidationRule, isInputValidationRule } from "../../validation/utils";
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { RequestContext } from "./request-context";
@@ -10,7 +10,7 @@ import { ResponseContext } from "./response-context";
 import { ResponseConfig, mergeResponseConfig } from "./response-config";
 import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErrorHandler } from "../../errors/";
 import { ExecutionContext, Actor } from '../types/execution-context';
-import { AuditContext, RequestAuditContext, CorrelationContext, AuditConfig } from '../../audit/interfaces';
+import { AuditContext, RequestAuditContext, AuditConfig } from '../../audit/interfaces';
 import { AuditCaptureService } from '../../audit/helpers/audit-helpers';
 
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;

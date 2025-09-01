@@ -221,6 +221,20 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             isEditable: false,
             watch: ['actor'],
             set: (_, { actor }) => actor?.tenantId || undefined
+        },
+        
+        // === TTL (Time To Live) ===
+        // DynamoDB TTL field - automatically deletes records after expiration
+        // Default: 90 days from creation, can be overridden per audit entry
+        ttl: {
+            type: 'number',
+            required: false,
+            isEditable: false,
+            default: () => {
+                // Default TTL: 90 days from now (in seconds)
+                const ttlDays = parseInt(process.env.AUDIT_TTL_DAYS || '90');
+                return Math.floor(Date.now() / 1000) + (ttlDays * 24 * 60 * 60);
+            }
         }
     },
     indexes: {
@@ -264,7 +278,7 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             }
         },
         
-        // GSI3 - Legacy audit type index (backward compatibility)
+        // GSI3 - Log type classification (auditType only)
         // Usage: Query all audit logs chronologically
         gsi3: {
             index: 'gsi3',
@@ -277,22 +291,6 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
                 composite: [ 'timestampMs' ]
             }
         },
-        
-        // GSI4 - Request tracing (correlationId)
-        // Usage: Trace request chains across services
-        // Note: Only populated when correlationId is present
-        gsi4: {
-            index: 'gsi4',
-            condition: ({ correlationId }) => !!correlationId,
-            pk: {
-                field: 'gsi4pk',
-                composite: [ 'correlationId' ]
-            },
-            sk: {
-                field: 'gsi4sk',
-                composite: [ 'timestampMs' ]
-            }
-        }
     }
 } as const);
 export type AuditEntitySchemaType = typeof DynamoDBAuditEntitySchema;

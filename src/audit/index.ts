@@ -47,6 +47,15 @@ export {
 } from './helpers/sampling';
 
 export {
+  protectAuditData,
+  getEnvironmentDataProtectionConfig,
+  containsPII,
+  redactSpecificPII
+} from './helpers/data-protection';
+
+export type { DataProtectionConfig } from './helpers/data-protection';
+
+export {
   AuditCustomPageConfigs
 } from './system/ui-config';
 

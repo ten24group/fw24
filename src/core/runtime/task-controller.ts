@@ -1,5 +1,5 @@
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
-import { AuditContext, TaskAuditContext, AuditConfig } from '../../audit/interfaces';
+import { AuditContext, TaskAuditContext } from '../../audit/interfaces';
 import { AuditCaptureService } from '../../audit/helpers/audit-helpers';
 import { ITaskConfig } from '../../decorators/task';
 

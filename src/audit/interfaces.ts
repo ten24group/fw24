@@ -89,6 +89,9 @@ export interface AuditEntry {
     metadata?: any;                                     // Additional context (retries, config, etc.)
     context?: any;                                      // Request/response/environment context
     
+    // === TTL & DATA PROTECTION ===
+    ttl?: number;                                       // TTL timestamp for automatic deletion (Unix seconds)
+    
     // === LEGACY SUPPORT ===
     identifiers?: any;                                  // Entity identifiers (legacy field, use entityId instead)
 }
@@ -120,6 +123,17 @@ export interface AuditConfig {
     request?: boolean | ('headers' | 'body' | 'query')[];
     response?: boolean | ('headers' | 'body')[];
   };
+
+  // Data protection configuration
+  dataProtection?: {
+    enabled?: boolean;
+    redactPII?: boolean;
+    redactSensitiveFields?: boolean;
+    maxStringLength?: number;
+  };
+
+  // TTL configuration (Unix timestamp in seconds)
+  ttl?: number;
 }
 /**
  * Correlation context for tracking operations across services
