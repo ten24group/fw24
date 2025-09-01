@@ -51,7 +51,7 @@ export {
   createRedactConfig
 } from './helpers/data-protection';
 
-export type { DataProtectionConfig } from './helpers/data-protection';
+export type { DataProtectionConfig, DeepRedactConfig } from './helpers/data-protection';
 
 export {
   AuditCustomPageConfigs

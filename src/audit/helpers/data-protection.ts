@@ -1,5 +1,5 @@
 import { AuditEntry } from '../interfaces';
-import fastRedact from 'fast-redact';
+import { DeepRedact } from '@hackylabs/deep-redact';
 import { deepCopy } from '../../utils/serialize';
 
 /**
@@ -11,14 +11,14 @@ export type DataProtectionFunction = (
 ) => AuditEntry;
 
 /**
- * Fast-redact configuration for common audit scenarios
+ * Deep-redact configuration for common audit scenarios
  */
-export interface FastRedactConfig {
-  paths?: string[];
-  censor?: string | ((value: any) => any);
-  serialize?: boolean | ((obj: any) => string);
-  strict?: boolean;
+export interface DeepRedactConfig {
+  blacklistedKeys?: (string | RegExp)[];
+  caseSensitiveKeyMatch?: boolean;
   remove?: boolean;
+  replacement?: string;
+  fuzzyKeyMatch?: boolean;
 }
 
 /**
@@ -27,54 +27,57 @@ export interface FastRedactConfig {
 export interface DataProtectionConfig {
   /** Enable/disable data protection */
   enabled?: boolean;
-  /** Fast-redact configuration */
-  fastRedact?: FastRedactConfig;
-  /** Custom data protection function - overrides fast-redact if provided */
+  /** Deep-redact configuration */
+  deepRedact?: DeepRedactConfig;
+  /** Custom data protection function - overrides deep-redact if provided */
   customProtectionFn?: DataProtectionFunction;
 }
 
 /**
  * Default data protection configuration
  */
-const DEFAULT_CONFIG: Required<Omit<DataProtectionConfig, 'customProtectionFn' | 'fastRedact'>> = {
+const DEFAULT_CONFIG: Required<Omit<DataProtectionConfig, 'customProtectionFn' | 'deepRedact'>> = {
   enabled: true
 };
 
 /**
- * Default fast-redact configuration for audit entries
+ * Default deep-redact configuration for audit entries
  * Redacts common sensitive fields while preserving audit trail integrity
  */
-const DEFAULT_FAST_REDACT_CONFIG: FastRedactConfig = {
-  paths: [
+const DEFAULT_DEEP_REDACT_CONFIG: DeepRedactConfig = {
+  blacklistedKeys: [
     // Authentication & Authorization
-    '*.password',
-    '*.secret',
-    '*.privateKey',
-    '*.authorization',
-    '*.token',
-    '*.accessToken',
-    '*.refreshToken',
-    '*.apiKey',
-    '*.clientSecret',
+    'password',
+    'secret', 
+    'privateKey',
+    'authorization',
+    'token',
+    'accessToken',
+    'refreshToken',
+    'apiKey',
+    'clientSecret',
     
     // Payment & Financial
-    '*.creditCard',
-    '*.cardNumber',
-    '*.ssn',
-    '*.bankAccount',
-    '*.routingNumber',
-    '*.cvv',
+    'creditCard',
+    'cardNumber',
+    'ssn',
+    'bankAccount', 
+    'routingNumber',
+    'cvv',
     
-    // Headers (cookies are sensitive)
-    '*.cookie',
-    '*.set-cookie'
+    // Headers & Cookies
+    'cookie',
+    'email',
+    'set-cookie'
   ],
-  censor: '[REDACTED]'
+  caseSensitiveKeyMatch: false,
+  remove: false,
+  replacement: '[REDACTED]'
 };
 
 /**
  * Applies data protection to an audit entry before logging
- * Uses fast-redact library for efficient and configurable redaction
+ * Uses @hackylabs/deep-redact library for efficient and configurable redaction
  */
 export function protectAuditData(
   auditEntry: AuditEntry, 
@@ -91,37 +94,31 @@ export function protectAuditData(
     return config.customProtectionFn(auditEntry, config);
   }
 
-  // Use fast-redact (default behavior)
-  const fastRedactConfig = {
-    ...DEFAULT_FAST_REDACT_CONFIG,
-    ...config.fastRedact
+  // Use deep-redact (default behavior)
+  const deepRedactConfig = {
+    ...DEFAULT_DEEP_REDACT_CONFIG,
+    ...config.deepRedact
   };
 
-  // Ensure serialize is false for object return (not string)
-  const redactOptions = {
-    ...fastRedactConfig,
-    serialize: false
-  };
-
-  const redactFn = fastRedact(redactOptions);
+  const redactor = new DeepRedact(deepRedactConfig as any);
   
   // Create a proper deep copy and redact
   const copy = deepCopy(auditEntry);
-  return redactFn(copy) as AuditEntry;
+  return redactor.redact(copy) as AuditEntry;
 }
 
 /**
- * Utility to create a custom fast-redact configuration
+ * Utility to create a custom deep-redact configuration
  */
 export function createRedactConfig(
-  paths: string[],
-  options: Partial<FastRedactConfig> = {}
-): FastRedactConfig {
+  blacklistedKeys: (string | RegExp)[],
+  options: Partial<DeepRedactConfig> = {}
+): DeepRedactConfig {
   return {
-    paths,
-    censor: '[REDACTED]',
-    serialize: false,
-    strict: false,
+    blacklistedKeys,
+    caseSensitiveKeyMatch: false,
+    remove: false,
+    replacement: '[REDACTED]',
     ...options
   };
 }

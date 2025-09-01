@@ -19,7 +19,6 @@ abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayl
     if (options?.processMode) {
       this.processMode = options.processMode;
     }
-    this.logger.info('BaseSQSEventProcessor initialized', { processMode: this.processMode });
   }
 
   abstract initialize(event: TEvent | SQSEvent, context: Context): Promise<any>;

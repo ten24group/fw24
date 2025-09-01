@@ -14,10 +14,7 @@ jest.mock('../loggers/factory', () => ({
   }
 }));
 
-// Mock fast-redact to avoid module loading issues in tests
-jest.mock('fast-redact', () => {
-  return jest.fn(() => jest.fn((obj) => obj));
-});
+// Removed fast-redact mock as we now use @hackylabs/deep-redact
 
 // Mock deepCopy from utils
 jest.mock('../../utils/serialize', () => ({
