@@ -4,7 +4,7 @@ import { Actor } from "../../core/types/execution-context";
 import { ExecutionContext } from '../../core/types/execution-context';
 import { randomUUID } from 'crypto';
 import { AuditContext, RequestAuditContext, QueueAuditContext, TaskAuditContext } from '../../fw24';
-import { protectAuditData, getEnvironmentDataProtectionConfig } from './data-protection';
+import { protectAuditData, DataProtectionConfig } from './data-protection';
 
 /**
  * Enhanced capture options for the audit system
@@ -64,12 +64,7 @@ export interface CaptureLogOptions {
   
   // === TTL & DATA PROTECTION ===
   ttl?: number;                      // Custom TTL timestamp (Unix seconds)
-  dataProtection?: {
-    enabled?: boolean;
-    redactPII?: boolean;
-    redactSensitiveFields?: boolean;
-    maxStringLength?: number;
-  };
+  dataProtection?: DataProtectionConfig;
   
   // === CONTROL ===
   enabled?: boolean;
@@ -91,8 +86,11 @@ export async function captureLog(options: CaptureLogOptions): Promise<void> {
     const correlationId = options.correlationId || options.ctx?.request?.requestId || randomUUID();
     const ipAddress = options.ctx?.event?.requestContext?.identity?.sourceIp;
     
-    // Build metrics object
-    const metrics = { ...options.metrics };
+    // Build metrics object only if needed
+    const metrics: Record<string, any> = {};
+    if (options.metrics) {
+      Object.assign(metrics, options.metrics);
+    }
     if (options.duration !== undefined) {
       metrics.duration = options.duration;
     }
@@ -147,7 +145,6 @@ export async function captureLog(options: CaptureLogOptions): Promise<void> {
     
     // Apply data protection
     const dataProtectionConfig = {
-      ...getEnvironmentDataProtectionConfig(),
       ...options.dataProtection
     };
     const protectedAuditEntry = protectAuditData(auditEntry, dataProtectionConfig);

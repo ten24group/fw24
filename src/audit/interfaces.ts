@@ -127,9 +127,14 @@ export interface AuditConfig {
   // Data protection configuration
   dataProtection?: {
     enabled?: boolean;
-    redactPII?: boolean;
-    redactSensitiveFields?: boolean;
-    maxStringLength?: number;
+    fastRedact?: {
+      paths?: string[];
+      censor?: string | ((value: any) => any);
+      serialize?: boolean | ((obj: any) => string);
+      strict?: boolean;
+      remove?: boolean;
+    };
+    customProtectionFn?: (auditEntry: any, config: any) => any;
   };
 
   // TTL configuration (Unix timestamp in seconds)

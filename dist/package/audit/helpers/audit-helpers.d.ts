@@ -1,6 +1,7 @@
 import { Actor } from "../../core/types/execution-context";
 import { ExecutionContext } from '../../core/types/execution-context';
 import { AuditContext, RequestAuditContext, QueueAuditContext, TaskAuditContext } from '../../fw24';
+import { DataProtectionConfig } from './data-protection';
 /**
  * Enhanced capture options for the audit system
  *
@@ -40,12 +41,7 @@ export interface CaptureLogOptions {
     actor?: Actor;
     duration?: number;
     ttl?: number;
-    dataProtection?: {
-        enabled?: boolean;
-        redactPII?: boolean;
-        redactSensitiveFields?: boolean;
-        maxStringLength?: number;
-    };
+    dataProtection?: DataProtectionConfig;
     enabled?: boolean;
 }
 /**

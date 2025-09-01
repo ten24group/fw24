@@ -92,9 +92,14 @@ export interface AuditConfig {
     };
     dataProtection?: {
         enabled?: boolean;
-        redactPII?: boolean;
-        redactSensitiveFields?: boolean;
-        maxStringLength?: number;
+        fastRedact?: {
+            paths?: string[];
+            censor?: string | ((value: any) => any);
+            serialize?: boolean | ((obj: any) => string);
+            strict?: boolean;
+            remove?: boolean;
+        };
+        customProtectionFn?: (auditEntry: any, config: any) => any;
     };
     ttl?: number;
 }

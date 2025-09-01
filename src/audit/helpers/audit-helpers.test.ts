@@ -14,6 +14,16 @@ jest.mock('../loggers/factory', () => ({
   }
 }));
 
+// Mock fast-redact to avoid module loading issues in tests
+jest.mock('fast-redact', () => {
+  return jest.fn(() => jest.fn((obj) => obj));
+});
+
+// Mock deepCopy from utils
+jest.mock('../../utils/serialize', () => ({
+  deepCopy: jest.fn((obj) => JSON.parse(JSON.stringify(obj)))
+}));
+
 // Import after mocking
 import { AuditLoggerFactory } from '../loggers/factory';
 

@@ -48,9 +48,7 @@ export {
 
 export {
   protectAuditData,
-  getEnvironmentDataProtectionConfig,
-  containsPII,
-  redactSpecificPII
+  createRedactConfig
 } from './helpers/data-protection';
 
 export type { DataProtectionConfig } from './helpers/data-protection';

@@ -4,18 +4,28 @@ import { TaskController } from './task-controller';
 import { ExecutionContext, Actor } from '../types/execution-context';
 import { SQSEvent, Context } from 'aws-lambda';
 import { createHashBasedSampling } from '../../audit/helpers/sampling';
-import { AuditLoggerFactory } from '../../audit/loggers/factory';
 
 // Mock the audit logger factory to capture actual audit logs
-jest.mock('../../audit/loggers/factory', () => ({
-  AuditLoggerFactory: {
-    getInstance: jest.fn().mockReturnValue({
-      create: jest.fn().mockReturnValue({
-        audit: jest.fn().mockResolvedValue(undefined)
-      })
-    })
-  }
-}));
+jest.mock('../../audit/loggers/factory', () => {
+  const mockAuditLogger = {
+    audit: jest.fn().mockResolvedValue(undefined)
+  };
+
+  const mockFactoryInstance = {
+    create: jest.fn().mockReturnValue(mockAuditLogger)
+  };
+
+  return {
+    AuditLoggerFactory: {
+      getInstance: jest.fn().mockReturnValue(mockFactoryInstance)
+    }
+  };
+});
+
+// Get references to the mocked objects for test assertions
+const { AuditLoggerFactory } = require('../../audit/loggers/factory');
+const mockFactoryInstance = AuditLoggerFactory.getInstance();
+const mockAuditLogger = mockFactoryInstance.create();
 
 // Mock Reflect for decorator metadata
 const mockReflectGet = jest.fn();
@@ -28,9 +38,6 @@ global.Reflect = {
 const mockDateNow = jest.spyOn(Date, 'now').mockImplementation(() => 1705314600000);
 
 describe('Controller Audit Integration', () => {
-  const mockFactoryInstance = AuditLoggerFactory.getInstance() as jest.Mocked<any>;
-  const mockAuditLogger = mockFactoryInstance.create();
-
   // Mock console.error to avoid noise in test output
   const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -322,8 +329,9 @@ describe('Controller Audit Integration', () => {
             enabled: true,
             dataProtection: {
               enabled: true,
-              redactPII: true,
-              redactSensitiveFields: true
+              fastRedact: {
+                paths: ['*.password', '*.secret']
+              }
             }
           }
         };
@@ -380,7 +388,15 @@ describe('Controller Audit Integration', () => {
             operationName: 'getUser',
             startTimestamp: '2024-01-15T10:30:00.000Z'
           },
-          auditConfig: { enabled: true }
+          auditConfig: { 
+            enabled: true,
+            dataProtection: {
+              enabled: true,
+              fastRedact: {
+                paths: ['*.password', '*.secret']
+              }
+            }
+          }
         };
         const response = {
           statusCode: 200,
@@ -427,8 +443,9 @@ describe('Controller Audit Integration', () => {
             enabled: true,
             dataProtection: {
               enabled: true,
-              redactPII: true,
-              redactSensitiveFields: true
+              fastRedact: {
+                paths: ['*.password', '*.secret']
+              }
             }
           }
         };
@@ -473,7 +490,15 @@ describe('Controller Audit Integration', () => {
             operationName: 'getUser',
             startTimestamp: '2024-01-15T10:30:00.000Z'
           },
-          auditConfig: { enabled: true }
+          auditConfig: { 
+            enabled: true,
+            dataProtection: {
+              enabled: true,
+              fastRedact: {
+                paths: ['*.password', '*.secret']
+              }
+            }
+          }
         };
         const requestContext = {
           method: 'GET',
