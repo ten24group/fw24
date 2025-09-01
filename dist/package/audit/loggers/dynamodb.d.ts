@@ -55,6 +55,7 @@ export declare const DynamoDBAuditEntitySchema: {
             readonly type: "number";
             readonly required: true;
             readonly isEditable: false;
+            readonly isListable: false;
             readonly default: () => number;
         };
         readonly logType: {
@@ -67,6 +68,7 @@ export declare const DynamoDBAuditEntitySchema: {
             readonly type: "string";
             readonly required: false;
             readonly isEditable: false;
+            readonly isListable: false;
         };
         readonly severity: {
             readonly type: "string";
@@ -93,6 +95,7 @@ export declare const DynamoDBAuditEntitySchema: {
             readonly type: "string";
             readonly required: true;
             readonly isEditable: false;
+            readonly isListable: false;
         };
         readonly operation: {
             readonly type: "string";
@@ -123,6 +126,7 @@ export declare const DynamoDBAuditEntitySchema: {
             readonly type: "boolean";
             readonly required: false;
             readonly isEditable: false;
+            readonly isListable: false;
         };
         readonly ipAddress: {
             readonly type: "string";
@@ -139,6 +143,7 @@ export declare const DynamoDBAuditEntitySchema: {
             readonly type: "string";
             readonly required: false;
             readonly isEditable: false;
+            readonly isListable: false;
         };
         readonly actor: {
             readonly type: "any";
@@ -188,6 +193,7 @@ export declare const DynamoDBAuditEntitySchema: {
             readonly type: "number";
             readonly required: false;
             readonly isEditable: false;
+            readonly isListable: false;
             readonly default: () => number;
         };
     };

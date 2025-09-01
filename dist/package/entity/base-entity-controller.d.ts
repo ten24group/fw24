@@ -3,6 +3,7 @@ import type { EntitySchema } from './base-entity';
 import type { BaseEntityService } from './base-service';
 import { APIController } from '../core/runtime/api-gateway-controller';
 import { ExecutionContext } from '../core/types/execution-context';
+import { AuditContext } from '../audit/interfaces';
 type seconds = number;
 export type GetSignedUrlForFileUploadSchema = {
     fileName: string;
@@ -34,6 +35,15 @@ export declare class BaseEntityController<Sch extends EntitySchema<any, any, any
      * @returns {Promise<void>} A promise that resolves when the initialization is complete.
      */
     initialize(_event: any, _context: any): Promise<void>;
+    /**
+     * Enhanced audit context with entity-specific information
+     * Leverages entity service capabilities to provide rich audit context
+     */
+    protected makeAuditContext(ctx: ExecutionContext): AuditContext | null;
+    /**
+     * Detects the operation type from HTTP method and path
+     */
+    private detectOperation;
     /**
      * Gets the entity service for the controller.
      * @template S - The type of the entity service.
