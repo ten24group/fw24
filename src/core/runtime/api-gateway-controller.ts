@@ -10,6 +10,8 @@ import { ResponseContext } from "./response-context";
 import { ResponseConfig, mergeResponseConfig } from "./response-config";
 import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErrorHandler } from "../../errors/";
 import { ExecutionContext, Actor } from '../types/execution-context';
+import { AuditContext, RequestAuditContext, CorrelationContext, AuditConfig } from '../../audit/interfaces';
+import { AuditCaptureService } from '../../audit/helpers/audit-helpers';
 
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 
@@ -196,6 +198,13 @@ export abstract class APIController extends AbstractLambdaHandler {
     // Build the execution context
     const ctx = this.buildCtx(event, context, request, response);
 
+    // Create audit context
+    const auditContext = this.makeAuditContext(ctx);
+    
+    if (auditContext) {
+      await this.captureStart(auditContext, this.buildRequestContext(ctx, auditContext.auditConfig));
+    }
+
     try {
 
       // Legacy initialize method for backward compatibility
@@ -224,6 +233,11 @@ export abstract class APIController extends AbstractLambdaHandler {
       // Execute after middleware
       await this.executeMiddlewarePipeline('after', request, response, ctx);
 
+      // Capture successful response
+      if (auditContext) {
+        await this.captureEnd(auditContext, response, null);
+      }
+
       // If the controller returned anything (ResponseContext or raw API result), emit that
       if (controllerResponse != null) {
         return this.handleResponse(controllerResponse);
@@ -236,6 +250,11 @@ export abstract class APIController extends AbstractLambdaHandler {
 
       // Execute error middleware
       await this.executeMiddlewarePipeline('onError', request, response, ctx, errorObj);
+
+      // Capture error response
+      if (auditContext) {
+        await this.captureEnd(auditContext, response, errorObj);
+      }
 
       return this.handleException(request, errorObj, response);
     }
@@ -490,6 +509,105 @@ export abstract class APIController extends AbstractLambdaHandler {
   }
 
   /**
+   * Creates audit context for the request following the existing buildCtx pattern
+   * @param ctx - The execution context
+   * @returns AuditContext or null if audit is disabled
+   */
+  protected makeAuditContext(ctx: ExecutionContext): AuditContext | null {
+    const config = this.getControllerConfig();
+    if (!config?.audit?.enabled) return null;
+    
+    const correlationId = ctx.actor?.correlationId || 
+                         ctx.request.headers?.['x-correlation-id'] || 
+                         ctx.request.requestId;
+    
+    const operationName = `${ctx.request.httpMethod.toLowerCase()}_${ctx.request.path}`;
+    const operationId = `${this.constructor.name}.${operationName}`;
+    
+    return {
+      enabled: true,
+      logType: 'log',
+      subType: 'api_request',
+      entityName: this.constructor.name,
+      operation: operationName,
+      category: config.audit.category,
+      actor: ctx.actor,
+      correlation: {
+        correlationId,
+        operationId,
+        parentOperationId: ctx.request.headers?.['x-parent-operation-id'],
+        operationType: 'api',
+        operationName,
+        startTimestamp: new Date().toISOString()
+      },
+      auditConfig: config.audit
+    };
+  }
+
+  /**
+   * Captures audit log for request start
+   */
+  protected async captureStart(auditContext: AuditContext, requestContext: RequestAuditContext): Promise<void> {
+    await AuditCaptureService.captureStart(auditContext, requestContext);
+  }
+
+  /**
+   * Captures audit log for request end (success or error)
+   */
+  protected async captureEnd(auditContext: AuditContext, response: Response, error: Error | null): Promise<void> {
+    const responseContext = {
+      statusCode: response.statusCode,
+      responseSize: response.body?.length || 0,
+      response: this.buildResponseContext(response, auditContext.auditConfig)
+    };
+    
+    await AuditCaptureService.captureEnd(auditContext, null, error, responseContext);
+  }
+
+  /**
+   * Builds request context for audit logging
+   */
+  private buildRequestContext(ctx: ExecutionContext, auditConfig: AuditConfig): RequestAuditContext {
+    const includes = Array.isArray(auditConfig.includes?.request) 
+      ? auditConfig.includes.request 
+      : auditConfig.includes?.request ? ['headers'] : [];
+      
+    return {
+      method: ctx.request.httpMethod,
+      path: ctx.request.path,
+      userAgent: ctx.event.headers?.['user-agent'],
+      sourceIp: ctx.event.requestContext?.identity?.sourceIp,
+      headers: includes.includes('headers') ? ctx.request.headers : undefined,
+      body: includes.includes('body') ? ctx.request.body : undefined,
+      query: includes.includes('query') ? ctx.request.queryStringParameters : undefined
+    };
+  }
+
+  /**
+   * Builds response context for audit logging
+   */
+  private buildResponseContext(response: Response, auditConfig: AuditConfig) {
+    if (!auditConfig.includes?.response) return undefined;
+    
+    const includes = Array.isArray(auditConfig.includes.response) 
+      ? auditConfig.includes.response 
+      : ['headers'];
+      
+    return {
+      statusCode: response.statusCode,
+      headers: includes.includes('headers') ? response.headers : undefined,
+      body: includes.includes('body') ? response.body : undefined
+    };
+  }
+
+  /**
+   * Gets the controller configuration
+   */
+  protected getControllerConfig(): IControllerConfig {
+    return Reflect.get(this, 'controllerConfig') || {};
+  }
+
+  /**
    * Extracts actor context from the request
    * Override this method for custom actor extraction logic
    *
@@ -546,7 +664,7 @@ export abstract class APIController extends AbstractLambdaHandler {
    * @param claims - Cognito JWT claims from the authorizer
    * @param actor - Actor object to populate
    */
-  private extractCognitoContext(claims: any, actor: Actor): void {
+  protected extractCognitoContext(claims: any, actor: Actor): void {
     try {
       actor.authMethod = 'cognito';
       actor.actorType = 'user';
@@ -595,7 +713,7 @@ export abstract class APIController extends AbstractLambdaHandler {
   /**
    * Parse Cognito groups from comma-separated string (documented Cognito format)
    */
-  private parseGroups(groups: any): string[] {
+  protected parseGroups(groups: any): string[] {
     if (typeof groups === 'string' && groups.length > 0) {
       return groups.split(',').map(g => g.trim()).filter(g => g.length > 0);
     }
@@ -605,7 +723,7 @@ export abstract class APIController extends AbstractLambdaHandler {
   /**
    * Extract custom attributes using documented Cognito pattern (custom:*)
    */
-  private extractCustomAttributes(claims: any): Record<string, any> {
+  protected extractCustomAttributes(claims: any): Record<string, any> {
     const customAttributes: Record<string, any> = {};
     
     Object.keys(claims).forEach(key => {
@@ -621,7 +739,7 @@ export abstract class APIController extends AbstractLambdaHandler {
     /**
    * Extract session and tenant context - focused approach
    */
-  private extractSessionAndTenantContext(event: APIGatewayEvent, request: Request, actor: Actor): void {
+  protected extractSessionAndTenantContext(event: APIGatewayEvent, request: Request, actor: Actor): void {
     // Session context
     actor.sessionId = request.headers?.['x-session-id'];
     
@@ -633,7 +751,7 @@ export abstract class APIController extends AbstractLambdaHandler {
   /**
    * Extract API Key context
    */
-  private extractApiKeyContext(event: APIGatewayEvent, request: Request, actor: Actor): void {
+  protected extractApiKeyContext(event: APIGatewayEvent, request: Request, actor: Actor): void {
     actor.authMethod = 'api-key';
     actor.actorType = 'service';
     
@@ -658,7 +776,7 @@ export abstract class APIController extends AbstractLambdaHandler {
   /**
    * Extract IAM context
    */
-  private extractIamContext(event: APIGatewayEvent, actor: Actor): void {
+  protected extractIamContext(event: APIGatewayEvent, actor: Actor): void {
     actor.authMethod = 'iam';
     actor.actorType = 'service';
     actor.actorId = event.requestContext?.identity?.user || 

@@ -1,7 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { randomUUID } from 'crypto';
 import { EntityConfiguration } from 'electrodb';
-import { DefaultEntityOperations, createElectroDBEntity, createEntitySchema } from '../../entity';
+import { DefaultEntityOperations, createElectroDBEntity, createEntitySchema } from '../../entity/base-entity';
 import { createLogger } from '../../logging';
 import { AuditLoggerConfig, AuditOptions, IAuditLogger } from '../interfaces';
 

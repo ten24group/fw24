@@ -7,7 +7,7 @@ import { isEmptyObject, removeEmpty } from "../utils";
 import { DefaultValidator, type IValidator } from "../validation";
 import { entityFilterCriteriaToExpression } from "./query";
 import { EntityValidationError } from "./errors/validation-error";
-import { Actor } from "../core/types/actor";
+import { Actor } from "../core/types/execution-context";
 
 /**
  * 

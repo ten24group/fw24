@@ -1,9 +1,8 @@
+import type { ExecutionContext } from '../../core/types/execution-context';
+import type { BaseEntityService, EntityRecordTypeFromSchema, EntitySchema } from '../../entity';
+import type { BaseSearchEngine } from '../engines';
+import type { EntitySearchQuery, SearchResult } from '../types';
 import { BaseSearchService } from './base-search-service';
-import { EntitySchema, EntityRecordTypeFromSchema, BaseEntityService } from '../../entity';
-import { SearchResult, EntitySearchQuery } from '../types';
-import { SearchIndexConfig } from '../types';
-import { ExecutionContext } from '../../core/types/execution-context';
-import { BaseSearchEngine } from '../engines';
 
 export class EntitySearchService<S extends EntitySchema<any, any, any>> extends BaseSearchService {
 

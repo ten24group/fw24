@@ -25,9 +25,26 @@ export {
 export {
   captureLog,
   captureError,
-} from './audit-helpers';
+} from './helpers/audit-helpers';
 
-export type { CaptureLogOptions } from './audit-helpers';
+export type { CaptureLogOptions } from './helpers/audit-helpers';
+
+export {
+  type AuditConfig,
+  type AuditContext,
+  type CorrelationContext,
+  type RequestAuditContext,
+  type QueueAuditContext,
+  type TaskAuditContext,
+  type SamplingFunction
+} from './interfaces';
+
+export {
+  createHashBasedSampling,
+  createRandomSampling,
+  createAlwaysSample,
+  createNeverSample
+} from './helpers/sampling';
 
 export {
   AuditCustomPageConfigs

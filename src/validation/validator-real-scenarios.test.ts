@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import { Validator } from './validator';
-import { Actor } from '../core/types/actor';
+import { Actor } from "../core/types/execution-context";
 import { EntityValidations } from './types';
 
 describe('Validator Real-World Actor Scenarios', () => {

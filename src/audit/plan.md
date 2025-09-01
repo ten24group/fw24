@@ -409,3 +409,372 @@ const tenantActivity = await logService.query('gsi8')
 ```
 
 This streamlined design eliminates redundancy, groups related metrics, leverages existing Actor context, and maintains clean separation between filterable fields and flexible data blocks! 🎯
+
+
+You're absolutely right on all points! Let me fix these design flaws:
+
+## **🎯 CORRECTED CLEAN AUDIT FRAMEWORK DESIGN**
+
+### **⚙️ Fixed Audit Config (Generic, Not Request-Specific)**
+
+```typescript
+interface AuditConfig {
+  enabled?: boolean;
+  category?: string;
+  customContext?: any;
+  samplingFn?: SamplingFunction;
+  
+  // Opt-out flags (default: capture everything when enabled)
+  skipStart?: boolean;
+  skipEnd?: boolean; 
+  skipErrors?: boolean;
+  
+  // Controller-specific includes (only for API controllers)
+  includes?: {
+    request?: boolean | ('headers' | 'body' | 'query')[];
+    response?: boolean | ('headers' | 'body')[];
+  };
+}
+
+// Update config types
+export type IControllerConfig = {
+  // ... existing fields ...
+  audit?: AuditConfig;
+}
+
+export type IQueueConfig = {
+  // ... existing fields ...  
+  audit?: AuditConfig;
+}
+
+export type ITaskConfig = {
+  // ... existing fields ...
+  audit?: AuditConfig;
+}
+```
+
+### **🔗 Proper Correlation Context (For context field)**
+
+```typescript
+interface CorrelationContext {
+  correlationId: string;
+  operationId: string;
+  parentOperationId?: string;
+  operationType: 'api' | 'queue' | 'task';
+  operationName: string;
+  startTimestamp: string;
+}
+
+interface AuditContext {
+  enabled: boolean;
+  logType: 'audit' | 'log' | 'event' | 'metric';
+  subType: string;
+  entityName: string;
+  operation: string;
+  category?: string;
+  actor?: Actor;
+  correlation: CorrelationContext;  // Proper correlation context
+  auditConfig: AuditConfig;
+}
+```
+
+### **🎯 Predictable Operation IDs (No Random UUIDs)**
+
+```typescript
+// APIController Enhancement
+protected makeAuditContext(ctx: ExecutionContext): AuditContext | null {
+  const config = this.getControllerConfig();
+  if (!config?.audit?.enabled) return null;
+  
+  const correlationId = ctx.actor?.correlationId || 
+                       ctx.request.headers?.['x-correlation-id'] || 
+                       ctx.request.requestId;
+  
+  const operationName = `${ctx.request.httpMethod.toLowerCase()}_${ctx.request.path}`;
+  const operationId = `${this.constructor.name}.${operationName}`;
+  
+  return {
+    enabled: true,
+    logType: 'log',
+    subType: 'api_request',
+    entityName: this.constructor.name,
+    operation: operationName,
+    category: config.audit.category,
+    actor: ctx.actor,
+    correlation: {
+      correlationId,
+      operationId,
+      parentOperationId: ctx.request.headers?.['x-parent-operation-id'],
+      operationType: 'api',
+      operationName,
+      startTimestamp: new Date().toISOString()
+    },
+    auditConfig: config.audit
+  };
+}
+
+protected async captureStart(auditContext: AuditContext, requestContext: RequestAuditContext): Promise<void> {
+  if (!auditContext.enabled || auditContext.auditConfig.skipStart) return;
+  
+  // Check sampling
+  if (auditContext.auditConfig.samplingFn && 
+      !auditContext.auditConfig.samplingFn(auditContext.correlation.correlationId, auditContext.operation)) {
+    return;
+  }
+  
+  await captureLog({
+    logType: auditContext.logType,
+    subType: `${auditContext.subType}_start`,
+    entityName: auditContext.entityName,
+    eventType: 'start',
+    operation: auditContext.operation,
+    category: auditContext.category,
+    correlationId: auditContext.correlation.correlationId,
+    actor: auditContext.actor,
+    context: {
+      correlation: auditContext.correlation,    // Proper correlation context
+      request: requestContext                   // Request-specific context
+    },
+    metadata: auditContext.auditConfig.customContext
+  });
+}
+
+protected async captureEnd(auditContext: AuditContext, response: Response, error: Error | null): Promise<void> {
+  if (!auditContext.enabled) return;
+  if (error && auditContext.auditConfig.skipErrors) return;
+  if (!error && auditContext.auditConfig.skipEnd) return;
+  
+  // Check sampling
+  if (auditContext.auditConfig.samplingFn && 
+      !auditContext.auditConfig.samplingFn(auditContext.correlation.correlationId, auditContext.operation)) {
+    return;
+  }
+  
+  const duration = Date.now() - new Date(auditContext.correlation.startTimestamp).getTime();
+  
+  await captureLog({
+    logType: auditContext.logType,
+    subType: error ? `${auditContext.subType}_error` : `${auditContext.subType}_complete`,
+    entityName: auditContext.entityName,
+    eventType: error ? 'error' : 'complete',
+    operation: auditContext.operation,
+    category: auditContext.category,
+    success: !error,
+    status: error ? 'failed' : 'completed',
+    correlationId: auditContext.correlation.correlationId,
+    actor: auditContext.actor,
+    metrics: {
+      duration,
+      statusCode: response.statusCode,
+      responseSize: response.body?.length || 0
+    },
+    context: {
+      correlation: auditContext.correlation,
+      request: this.buildRequestContext(response, auditContext.auditConfig),
+      response: this.buildResponseContext(response, auditContext.auditConfig)
+    },
+    metadata: auditContext.auditConfig.customContext,
+    data: error ? { 
+      error: { message: error.message, stack: error.stack, name: error.name }
+    } : undefined
+  });
+}
+
+private buildRequestContext(ctx: ExecutionContext, auditConfig: AuditConfig): RequestAuditContext | undefined {
+  if (!auditConfig.includes?.request) return undefined;
+  
+  const includes = Array.isArray(auditConfig.includes.request) 
+    ? auditConfig.includes.request 
+    : ['headers'];
+    
+  return {
+    method: ctx.request.httpMethod,
+    path: ctx.request.path,
+    userAgent: ctx.event.headers?.['user-agent'],
+    sourceIp: ctx.event.requestContext?.identity?.sourceIp,
+    headers: includes.includes('headers') ? ctx.request.headers : undefined,
+    body: includes.includes('body') ? ctx.request.body : undefined,
+    query: includes.includes('query') ? ctx.request.queryStringParameters : undefined
+  };
+}
+
+private buildResponseContext(response: Response, auditConfig: AuditConfig) {
+  if (!auditConfig.includes?.response) return undefined;
+  
+  const includes = Array.isArray(auditConfig.includes.response) 
+    ? auditConfig.includes.response 
+    : ['headers'];
+    
+  return {
+    statusCode: response.statusCode,
+    headers: includes.includes('headers') ? response.headers : undefined,
+    body: includes.includes('body') ? response.body : undefined
+  };
+}
+```
+
+### **🚀 QueueController (Predictable IDs)**
+
+```typescript
+protected makeAuditContext(event: SQSEvent, context: Context): AuditContext | null {
+  const config = this.getQueueConfig();
+  if (!config?.audit?.enabled) return null;
+  
+  const correlationId = this.extractCorrelationFromMessages(event) || context.awsRequestId;
+  const operationName = config.queueName || 'process_batch';
+  const operationId = `${this.constructor.name}.${operationName}`;
+  
+  return {
+    enabled: true,
+    logType: 'event',
+    subType: 'queue_processing',
+    entityName: this.constructor.name,
+    operation: operationName,
+    category: config.audit.category,
+    correlation: {
+      correlationId,
+      operationId,
+      parentOperationId: this.extractParentOperationFromMessages(event),
+      operationType: 'queue',
+      operationName,
+      startTimestamp: new Date().toISOString()
+    },
+    auditConfig: config.audit
+  };
+}
+
+protected async captureStart(auditContext: AuditContext, queueContext: QueueAuditContext): Promise<void> {
+  if (!auditContext.enabled || auditContext.auditConfig.skipStart) return;
+  
+  if (auditContext.auditConfig.samplingFn && 
+      !auditContext.auditConfig.samplingFn(auditContext.correlation.correlationId, auditContext.operation)) {
+    return;
+  }
+  
+  await captureLog({
+    logType: auditContext.logType,
+    subType: `${auditContext.subType}_start`,
+    entityName: auditContext.entityName,
+    eventType: 'start',
+    operation: auditContext.operation,
+    category: auditContext.category,
+    correlationId: auditContext.correlation.correlationId,
+    context: {
+      correlation: auditContext.correlation,    // Proper correlation context
+      queue: queueContext                       // Queue-specific context
+    },
+    metadata: auditContext.auditConfig.customContext
+  });
+}
+```
+
+### **📋 TaskController (Predictable IDs)**
+
+```typescript
+protected makeAuditContext(): AuditContext | null {
+  const config = this.getTaskConfig();
+  if (!config?.audit?.enabled) return null;
+  
+  const operationName = config.taskName || 'execute';
+  const operationId = `${this.constructor.name}.${operationName}`;
+  const correlationId = `${operationId}-${Date.now()}`;  // Predictable correlation
+  
+  return {
+    enabled: true,
+    logType: 'event',
+    subType: 'task_execution',
+    entityName: this.constructor.name,
+    operation: operationName,
+    category: config.audit.category,
+    actor: {
+      actorType: 'service',
+      actorId: 'scheduler',
+      authMethod: 'system',
+      requestId: correlationId,
+      timestamp: new Date().toISOString()
+    },
+    correlation: {
+      correlationId,
+      operationId,
+      parentOperationId: undefined, // Tasks typically don't have parents
+      operationType: 'task',
+      operationName,
+      startTimestamp: new Date().toISOString()
+    },
+    auditConfig: config.audit
+  };
+}
+
+protected async captureStart(auditContext: AuditContext, taskContext: TaskAuditContext): Promise<void> {
+  if (!auditContext.enabled || auditContext.auditConfig.skipStart) return;
+  
+  if (auditContext.auditConfig.samplingFn && 
+      !auditContext.auditConfig.samplingFn(auditContext.correlation.correlationId, auditContext.operation)) {
+    return;
+  }
+  
+  await captureLog({
+    logType: auditContext.logType,
+    subType: `${auditContext.subType}_start`,
+    entityName: auditContext.entityName,
+    eventType: 'start',
+    operation: auditContext.operation,
+    category: auditContext.category,
+    correlationId: auditContext.correlation.correlationId,
+    actor: auditContext.actor,
+    context: {
+      correlation: auditContext.correlation,    // Proper correlation context
+      task: taskContext                         // Task-specific context
+    },
+    metadata: auditContext.auditConfig.customContext
+  });
+}
+```
+
+### **🎯 Application Usage (Fixed)**
+
+```typescript
+@Controller('/users', {
+  audit: {
+    enabled: true,
+    category: 'user_management',
+    includes: {
+      request: ['headers', 'body'],
+      response: ['headers']
+    },
+    samplingFn: createHashBasedSampling(0.1),
+    // skipStart: false,  // Default: capture start
+    // skipEnd: false,    // Default: capture end  
+    // skipErrors: false, // Default: capture errors
+    customContext: { team: 'backend', version: 'v2.1.0' }
+  }
+})
+
+@Queue('user-notifications', {
+  audit: {
+    enabled: true,
+    category: 'notifications',
+    samplingFn: createHashBasedSampling(0.05),
+    customContext: { service: 'notification-service' }
+  }
+})
+
+@Task('daily-cleanup', {
+  schedule: 'cron(0 2 * * ? *)',
+  audit: {
+    enabled: true,
+    category: 'maintenance',
+    skipStart: true,  // Only capture end and errors for tasks
+    customContext: { automation: true }
+  }
+})
+```
+
+**Fixed issues:**
+✅ **Opt-out capture flags** - skipStart/skipEnd/skipErrors (default: capture all)  
+✅ **Generic audit config** - no request-specific fields in base config  
+✅ **Predictable operation IDs** - based on class + operation names  
+✅ **Proper correlation context** - in context field, not data field  
+✅ **No conflicts** - enabled flag controls overall, skip flags control specifics  
+
+**Ready to implement this corrected design?**

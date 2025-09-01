@@ -1,5 +1,6 @@
 import type { ILambdaEnvConfig } from "../interfaces";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
+import type { AuditConfig } from '../audit/interfaces';
 import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor } from "./decorator-utils";
 
 /**
@@ -15,6 +16,11 @@ export type ITaskConfig = CommonLambdaHandlerOptions & {
 	 * The environment configuration for the task.
 	 */
 	env?: Array<ILambdaEnvConfig>;
+
+	/**
+	 * Audit configuration for this task
+	 */
+	audit?: AuditConfig;
 }
 
 /**

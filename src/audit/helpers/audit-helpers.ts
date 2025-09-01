@@ -1,8 +1,9 @@
-import { AuditEntry, AuditOptions } from './interfaces';
-import { AuditLoggerFactory } from './loggers/factory';
-import { Actor } from '../core/types/actor';
-import { ExecutionContext } from '../core/types/execution-context';
+import { AuditEntry, AuditOptions } from '../interfaces';
+import { AuditLoggerFactory } from '../loggers/factory';
+import { Actor } from "../../core/types/execution-context";
+import { ExecutionContext } from '../../core/types/execution-context';
 import { randomUUID } from 'crypto';
+import { AuditContext, RequestAuditContext, QueueAuditContext, TaskAuditContext } from '../../fw24';
 
 /**
  * Enhanced capture options for the audit system
@@ -63,8 +64,6 @@ export interface CaptureLogOptions {
   // === CONTROL ===
   enabled?: boolean;
 }
-
-
 
 /**
  * Enhanced capture log function for the existing audit system
@@ -170,4 +169,93 @@ export async function captureError(
       error: error
     }
   });
+}
+/**
+ * Audit capture service to handle audit logging for all controller types
+ * This service breaks the circular import cycle by keeping audit logic separate from controllers
+ */
+
+export class AuditCaptureService {
+
+  /**
+   * Captures audit log for operation start
+   */
+  static async captureStart(
+    auditContext: AuditContext,
+    operationContext: RequestAuditContext | QueueAuditContext | TaskAuditContext
+  ): Promise<void> {
+    if (!auditContext.enabled || auditContext.auditConfig.skipStart) return;
+
+    // Check sampling
+    if (auditContext.auditConfig.samplingFn &&
+      !auditContext.auditConfig.samplingFn(auditContext.correlation.correlationId, auditContext.operation)) {
+      return;
+    }
+
+    await captureLog({
+      logType: auditContext.logType,
+      subType: `${auditContext.subType}_start`,
+      entityName: auditContext.entityName,
+      eventType: 'start',
+      operation: auditContext.operation,
+      category: auditContext.category,
+      correlationId: auditContext.correlation.correlationId,
+      actor: auditContext.actor,
+      context: {
+        correlation: auditContext.correlation,
+        [ auditContext.correlation.operationType ]: operationContext
+      },
+      metadata: auditContext.auditConfig.customContext
+    });
+  }
+
+  /**
+   * Captures audit log for operation end (success or error)
+   */
+  static async captureEnd(
+    auditContext: AuditContext,
+    _result: any,
+    error: Error | null,
+    responseContext?: any
+  ): Promise<void> {
+    if (!auditContext.enabled) return;
+    if (error && auditContext.auditConfig.skipErrors) return;
+    if (!error && auditContext.auditConfig.skipEnd) return;
+
+    // Check sampling
+    if (auditContext.auditConfig.samplingFn &&
+      !auditContext.auditConfig.samplingFn(auditContext.correlation.correlationId, auditContext.operation)) {
+      return;
+    }
+
+    const duration = Date.now() - new Date(auditContext.correlation.startTimestamp).getTime();
+
+    await captureLog({
+      logType: auditContext.logType,
+      subType: error ? `${auditContext.subType}_error` : `${auditContext.subType}_complete`,
+      entityName: auditContext.entityName,
+      eventType: error ? 'error' : 'complete',
+      operation: auditContext.operation,
+      category: auditContext.category,
+      success: !error,
+      status: error ? 'failed' : 'completed',
+      correlationId: auditContext.correlation.correlationId,
+      actor: auditContext.actor,
+      metrics: {
+        duration,
+        ...(responseContext ? {
+          statusCode: responseContext.statusCode,
+          responseSize: responseContext.responseSize
+        } : {})
+      },
+      context: {
+        correlation: auditContext.correlation,
+        ...(responseContext && { response: responseContext })
+      },
+      metadata: auditContext.auditConfig.customContext,
+      data: error ? {
+        error: { message: error.message, stack: error.stack, name: error.name }
+      } : undefined
+    });
+  }
 }

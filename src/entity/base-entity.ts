@@ -5,7 +5,7 @@ import type { EntityQuery } from './query-types';
 import type { BaseEntityService } from "./base-service";
 import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
-import { EntitySearchService } from '../search/services';
+import { type EntitySearchService } from '../search/services';
 import { DepIdentifier } from "../interfaces";
 
 /**

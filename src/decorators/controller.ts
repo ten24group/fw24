@@ -1,6 +1,7 @@
 import type { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import type { AuthorizerTypeMetadata } from "./authorizer";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
+import type { AuditConfig } from '../audit/interfaces';
 import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor } from "./decorator-utils";
 
 /**
@@ -52,6 +53,11 @@ export type IControllerConfig = CommonLambdaHandlerOptions & {
 	 * @default false
 	 */
 	requireApiKey?: boolean;
+
+	/**
+	 * Audit configuration for this controller
+	 */
+	audit?: AuditConfig;
 }
 
 /**

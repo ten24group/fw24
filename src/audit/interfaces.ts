@@ -1,4 +1,4 @@
-import { Actor } from '../core/types/actor';
+import { Actor } from "../core/types/execution-context";
 
 export enum AuditLoggerType {
     CONSOLE = 'console',
@@ -95,4 +95,90 @@ export interface AuditEntry {
 
 export interface IAuditLogger {
     audit(options: AuditOptions): Promise<void>;
-} 
+}/**
+ * Configurable sampling function for audit logging
+ */
+
+export type SamplingFunction = (correlationId: string, operation: string) => boolean;
+/**
+ * Generic audit configuration for all controller types
+ */
+
+export interface AuditConfig {
+  enabled?: boolean;
+  category?: string;
+  customContext?: any;
+  samplingFn?: SamplingFunction;
+
+  // Opt-out flags (default: capture everything when enabled)
+  skipStart?: boolean;
+  skipEnd?: boolean;
+  skipErrors?: boolean;
+
+  // Controller-specific includes (only for API controllers)
+  includes?: {
+    request?: boolean | ('headers' | 'body' | 'query')[];
+    response?: boolean | ('headers' | 'body')[];
+  };
+}
+/**
+ * Correlation context for tracking operations across services
+ */
+
+export interface CorrelationContext {
+  correlationId: string;
+  operationId: string;
+  parentOperationId?: string;
+  operationType: 'api' | 'queue' | 'task';
+  operationName: string;
+  startTimestamp: string;
+}
+/**
+ * Core audit context for framework components
+ */
+
+export interface AuditContext {
+  enabled: boolean;
+  logType: 'audit' | 'log' | 'event' | 'metric';
+  subType: string;
+  entityName: string;
+  operation: string;
+  category?: string;
+  actor?: Actor;
+  correlation: CorrelationContext;
+  auditConfig: AuditConfig;
+}
+/**
+ * Request-specific context for API controllers
+ */
+
+export interface RequestAuditContext {
+  method: string;
+  path: string;
+  headers?: any;
+  body?: any;
+  query?: any;
+  userAgent?: string;
+  sourceIp?: string;
+}
+/**
+ * Queue-specific context for SQS controllers
+ */
+
+export interface QueueAuditContext {
+  queueName?: string;
+  batchSize: number;
+  messageIds: string[];
+  approximateReceiveCount?: number;
+}
+/**
+ * Task-specific context for scheduled tasks
+ */
+
+export interface TaskAuditContext {
+  taskName?: string;
+  schedule?: string;
+  triggerSource: 'scheduled' | 'manual' | 'api';
+  environment?: string;
+}
+ 
