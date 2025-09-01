@@ -32,7 +32,7 @@ export declare class DynamoDBAuditEntityService extends BaseEntityService<AuditE
                 readonly viewPageColumnsConfig: {
                     readonly columns: [{
                         readonly sortOrder: 1;
-                        readonly fields: ["auditId", "logType", "subType", "entityName", "entityId", "eventType", "service", "status", "severity", "timestamp", "actor", "correlationId", "data"];
+                        readonly fields: ["auditId", "auditType", "logType", "subType", "entityName", "entityId", "eventType", "operation", "service", "status", "success", "severity", "category", "timestamp", "ttl", "actorId", "correlationId", "data", "metrics", "actor", "context"];
                     }];
                 };
             };
