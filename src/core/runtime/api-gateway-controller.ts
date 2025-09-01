@@ -190,7 +190,6 @@ export abstract class APIController extends AbstractLambdaHandler {
    * @returns The API Gateway response object.
    */
   async LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult> {
-    // this.logger.info("LambdaHandler Received event:", JSON.stringify(event, null, 2));
 
     const request = await this.makeRequestContext(event, context);
     const response = await this.makeResponseContext(request);
@@ -270,7 +269,6 @@ export abstract class APIController extends AbstractLambdaHandler {
    */
   private findMatchingRoute(requestData: Request): Route | null {
     let controller: any = this;
-    // this.logger.info("Called findMatchingRoute with requestData: ", { requestData, routes: controller.routes });
 
     // Determine the controller base path by finding the longest common prefix that ends with the controller name
     let controllerBasePath = `/${controller.controllerName}`;
@@ -313,9 +311,6 @@ export abstract class APIController extends AbstractLambdaHandler {
       }
     }
 
-    // this.logger.info('controllerBasePath: ', controllerBasePath);
-    // this.logger.info('resourceWithoutRoot: ', resourceWithoutRoot);
-
     // Separate routes into exact and parameterized for proper prioritization
     const exactMatches: Array<{ routeKey: string, route: Route }> = [];
     const parameterizedMatches: Array<{ routeKey: string, route: Route }> = [];
@@ -342,7 +337,7 @@ export abstract class APIController extends AbstractLambdaHandler {
       const [ , routePath ] = routeKey.split('|');
 
       if (routePath === resourceWithoutRoot) {
-        this.logger.info(`Found exact match for route: ${routeKey}`);
+        this.logger.debug(`Found exact match for route: ${routeKey}`);
         return route;
       }
     }
@@ -374,7 +369,7 @@ export abstract class APIController extends AbstractLambdaHandler {
         const matchResult = matcher(resourceWithoutRoot);
 
         if (matchResult) {
-          this.logger.info(`Found parameterized match for route: ${routeKey}`, {
+          this.logger.debug(`Found parameterized match for route: ${routeKey}`, {
             pattern: pathToRegexpPattern,
             params: matchResult.params,
             specificityScore: sortedParameterizedMatches.find(m => m.routeKey === routeKey)?.specificityScore
