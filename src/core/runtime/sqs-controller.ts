@@ -1,6 +1,6 @@
 import { SQSEvent, Context } from "aws-lambda";
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
-import { AuditContext, QueueAuditContext, AuditConfig } from '../../audit/interfaces';
+import { AuditContext, QueueAuditContext } from '../../audit/interfaces';
 import { AuditCaptureService } from '../../audit/helpers/audit-helpers';
 import { IQueueConfig } from '../../decorators/queue';
 
