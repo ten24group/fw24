@@ -80,6 +80,7 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             type: 'number',
             required: true,
             isEditable: false,
+            isListable: false,
             default: () => Date.now()
         },
         
@@ -94,6 +95,7 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             type: 'string',
             required: false,
             isEditable: false,
+            isListable: false,
         },
         severity: {
             type: 'string',
@@ -122,6 +124,7 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             type: 'string',
             required: true,
             isEditable: false,
+            isListable: false,
         },
         operation: {
             type: 'string', // 'create', 'read', 'update', 'delete', 'login', 'sync'
@@ -156,6 +159,7 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             type: 'boolean',
             required: false,
             isEditable: false,
+            isListable: false,
         },
         ipAddress: {
             type: 'string',
@@ -176,6 +180,7 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             type: 'string',
             required: false,
             isEditable: false,
+            isListable: false,
         },
         
         // === ACTOR CONTEXT ===
@@ -238,9 +243,10 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             type: 'number',
             required: false,
             isEditable: false,
+            isListable: false,
             default: () => {
-                // Default TTL: 90 days from now (in seconds)
-                const ttlDays = parseInt(process.env.AUDIT_TTL_DAYS || '90');
+                // Default TTL: 365 days from now (in seconds)
+                const ttlDays = parseInt(process.env.AUDIT_TTL_DAYS || '365');
                 return Math.floor(Date.now() / 1000) + (ttlDays * 24 * 60 * 60);
             }
         }
