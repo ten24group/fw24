@@ -6,6 +6,6 @@ export type { CaptureLogOptions } from './helpers/audit-helpers';
 export { type AuditConfig, type AuditContext, type CorrelationContext, type RequestAuditContext, type QueueAuditContext, type TaskAuditContext, type SamplingFunction } from './interfaces';
 export { createHashBasedSampling, createRandomSampling, createAlwaysSample, createNeverSample } from './helpers/sampling';
 export { protectAuditData, createRedactConfig } from './helpers/data-protection';
-export type { DataProtectionConfig } from './helpers/data-protection';
+export type { DataProtectionConfig, DeepRedactConfig } from './helpers/data-protection';
 export { AuditCustomPageConfigs } from './system/ui-config';
 export { DynamoDBAuditSystemController, } from './system/audit-controller';

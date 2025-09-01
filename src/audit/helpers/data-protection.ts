@@ -97,10 +97,12 @@ export function protectAuditData(
   // Use deep-redact (default behavior)
   const deepRedactConfig = {
     ...DEFAULT_DEEP_REDACT_CONFIG,
-    ...config.deepRedact
+    ...config.deepRedact,
+    // Ensure blacklistedKeys is always provided
+    blacklistedKeys: config.deepRedact?.blacklistedKeys || DEFAULT_DEEP_REDACT_CONFIG.blacklistedKeys || []
   };
 
-  const redactor = new DeepRedact(deepRedactConfig as any);
+  const redactor = new DeepRedact(deepRedactConfig);
   
   // Create a proper deep copy and redact
   const copy = deepCopy(auditEntry);

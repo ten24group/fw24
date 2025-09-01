@@ -4,14 +4,14 @@ import { AuditEntry } from '../interfaces';
  */
 export type DataProtectionFunction = (auditEntry: AuditEntry, config: DataProtectionConfig) => AuditEntry;
 /**
- * Fast-redact configuration for common audit scenarios
+ * Deep-redact configuration for common audit scenarios
  */
-export interface FastRedactConfig {
-    paths?: string[];
-    censor?: string | ((value: any) => any);
-    serialize?: boolean | ((obj: any) => string);
-    strict?: boolean;
+export interface DeepRedactConfig {
+    blacklistedKeys?: (string | RegExp)[];
+    caseSensitiveKeyMatch?: boolean;
     remove?: boolean;
+    replacement?: string;
+    fuzzyKeyMatch?: boolean;
 }
 /**
  * Data protection configuration for audit entries
@@ -19,17 +19,17 @@ export interface FastRedactConfig {
 export interface DataProtectionConfig {
     /** Enable/disable data protection */
     enabled?: boolean;
-    /** Fast-redact configuration */
-    fastRedact?: FastRedactConfig;
-    /** Custom data protection function - overrides fast-redact if provided */
+    /** Deep-redact configuration */
+    deepRedact?: DeepRedactConfig;
+    /** Custom data protection function - overrides deep-redact if provided */
     customProtectionFn?: DataProtectionFunction;
 }
 /**
  * Applies data protection to an audit entry before logging
- * Uses fast-redact library for efficient and configurable redaction
+ * Uses @hackylabs/deep-redact library for efficient and configurable redaction
  */
 export declare function protectAuditData(auditEntry: AuditEntry, config?: DataProtectionConfig): AuditEntry;
 /**
- * Utility to create a custom fast-redact configuration
+ * Utility to create a custom deep-redact configuration
  */
-export declare function createRedactConfig(paths: string[], options?: Partial<FastRedactConfig>): FastRedactConfig;
+export declare function createRedactConfig(blacklistedKeys: (string | RegExp)[], options?: Partial<DeepRedactConfig>): DeepRedactConfig;
