@@ -221,6 +221,128 @@ export class PaymentController extends APIController {
 }
 ```
 
+## 🔒 Data Protection
+
+The audit system includes automatic data redaction to protect sensitive information in logs.
+
+### Default Protection
+Automatically redacts common sensitive fields:
+```typescript
+// These fields are redacted by default:
+const sensitiveFields = [
+  'password', 'secret', 'privateKey', 'authorization', 'token',
+  'accessToken', 'refreshToken', 'apiKey', 'clientSecret',
+  'creditCard', 'cardNumber', 'ssn', 'bankAccount', 'routingNumber', 'cvv',
+  'cookie', 'email', 'set-cookie'
+];
+```
+
+### Configuration
+```typescript
+@Controller('/users', {
+  audit: {
+    enabled: true,
+    dataProtection: {
+      enabled: true,  // Default: true
+      deepRedact: {
+        blacklistedKeys: ['password', 'secret', 'apiKey'], // Custom sensitive fields
+        caseSensitiveKeyMatch: false,  // Default: false
+        replacement: '[REDACTED]'      // Default: '[REDACTED]'
+      }
+    }
+  }
+})
+export class UserController extends APIController { }
+```
+
+### Custom Protection Function
+```typescript
+@Controller('/payments', {
+  audit: {
+    enabled: true,
+    dataProtection: {
+      customProtectionFn: (auditEntry, config) => {
+        // Custom business logic for data protection
+        if (auditEntry.data?.paymentMethod) {
+          auditEntry.data.paymentMethod = {
+            type: auditEntry.data.paymentMethod.type,
+            last4: '****'  // Keep only safe fields
+          };
+        }
+        return auditEntry;
+      }
+    }
+  }
+})
+export class PaymentController extends APIController { }
+```
+
+### Protected Audit Example
+```typescript
+// Before protection:
+{
+  "data": {
+    "user": {
+      "email": "user@example.com",
+      "password": "mySecretPassword",
+      "profile": { "name": "John Doe" }
+    },
+    "headers": {
+      "authorization": "Bearer abc123",
+      "cookie": "session=xyz789"
+    }
+  }
+}
+
+// After protection:
+{
+  "data": {
+    "user": {
+      "email": "[REDACTED]",
+      "password": "[REDACTED]",
+      "profile": { "name": "John Doe" }
+    },
+    "headers": {
+      "authorization": "[REDACTED]",
+      "cookie": "[REDACTED]"
+    }
+  }
+}
+```
+
+### Manual Data Protection
+```typescript
+import { protectAuditData } from '@ten24group/fw24/audit';
+
+// Protect sensitive data manually
+const auditEntry = {
+  data: {
+    user: {
+      email: 'user@example.com',
+      password: 'secret123',
+      profile: { name: 'John Doe' }
+    }
+  }
+};
+
+const protectedEntry = protectAuditData(auditEntry, {
+  enabled: true,
+  deepRedact: {
+    blacklistedKeys: ['password', 'email', 'creditCard'],
+    replacement: '[PROTECTED]'
+  }
+});
+
+// Result: { data: { user: { email: '[PROTECTED]', password: '[PROTECTED]', profile: { name: 'John Doe' } } } }
+```
+
+### Best Practices
+- **Always enabled**: Data protection is enabled by default
+- **Custom fields**: Add business-specific sensitive fields to `blacklistedKeys`
+- **Custom functions**: Use for complex redaction logic beyond simple field matching
+- **Test thoroughly**: Verify your protection rules work as expected
+- **Manual protection**: Use `protectAuditData()` for non-audit data that needs protection
+
 ## 🎛️ Sampling
 
 ```typescript
@@ -275,8 +397,29 @@ const events = await auditService.query('gsi2')
 - `AuditCaptureService.captureStart()`: Operation start (automatic)
 - `AuditCaptureService.captureEnd()`: Operation end (automatic)
 
+### Data Protection Functions
+- `protectAuditData(auditEntry, config)`: Apply data protection to audit entries
+- `DataProtectionConfig`: Configuration interface for data redaction
+- `DeepRedactConfig`: Deep redact library configuration options
+
 ### Sampling Functions
 - `createHashBasedSampling(rate)`: Deterministic sampling
 - `createRandomSampling(rate)`: Random sampling
 - `createAlwaysSample()`: Always log (debug)
 - `createNeverSample()`: Never log (disable)
+
+### Interfaces
+```typescript
+interface DataProtectionConfig {
+  enabled?: boolean;
+  deepRedact?: DeepRedactConfig;
+  customProtectionFn?: (auditEntry: AuditEntry, config: DataProtectionConfig) => AuditEntry;
+}
+
+interface DeepRedactConfig {
+  blacklistedKeys?: string[];
+  caseSensitiveKeyMatch?: boolean;
+  remove?: boolean;
+  replacement?: string;
+}
+```
