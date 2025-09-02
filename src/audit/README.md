@@ -380,6 +380,72 @@ const protectedEntry = protectAuditData(auditEntry, {
 - **Test thoroughly**: Verify your protection rules work as expected
 - **Manual protection**: Use `protectAuditData()` for non-audit data that needs protection
 
+## 🎯 Audit Strategies
+
+### Single vs Separate Entry Strategies
+
+```typescript
+// Default: Separate entries (start + end + error)
+@Controller('/api', {
+  audit: {
+    enabled: true,
+    strategy: 'separate' // Creates multiple audit entries per operation
+  }
+})
+
+// Single comprehensive entry (more efficient)
+@Controller('/api', {
+  audit: {
+    enabled: true,
+    strategy: 'single' // Creates one audit entry with all data
+  }
+})
+```
+
+**Separate Strategy (Default):**
+- Creates `api_request_start` entry when operation begins
+- Creates `api_request_complete` or `api_request_error` entry when operation ends
+- Better for real-time monitoring
+- More audit entries in database
+
+**Single Strategy:**
+- Creates only one `api_request` entry when operation completes
+- Contains comprehensive data: request, response, timing, errors
+- More efficient storage and querying
+- Better for high-volume APIs
+
+### Single Strategy Data Structure
+
+```typescript
+{
+  "subType": "api_request",
+  "eventType": "completed", // or "failed"
+  "success": true,
+  "data": {
+    "request": {
+      "method": "POST",
+      "path": "/api/users",
+      "headers": {...},
+      "body": {...}
+    },
+    "response": {
+      "statusCode": 201,
+      "headers": {...},
+      "body": {...}
+    },
+    "timing": {
+      "startTime": "2024-01-01T00:00:00.000Z",
+      "endTime": "2024-01-01T00:00:01.234Z", 
+      "duration": 1234
+    },
+    "error": { // Only if operation failed
+      "name": "ValidationError",
+      "message": "Invalid input"
+    }
+  }
+}
+```
+
 ## 🎯 Method-Level Audit Configuration
 
 Override or enhance controller-level audit settings on individual routes for fine-grained control.

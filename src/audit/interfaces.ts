@@ -107,12 +107,27 @@ export type SamplingFunction = (correlationId: string, operation: string) => boo
  * Generic audit configuration for all controller types
  */
 
+/**
+ * Audit capture strategies
+ */
+export type AuditStrategy = 
+  | 'separate'   // Current: separate start/end/error entries (default)
+  | 'single';    // Single comprehensive entry at operation completion
+
 export interface AuditConfig {
   enabled?: boolean;
   category?: string;
   customContext?: any;
   samplingFn?: SamplingFunction;
 
+  // === AUDIT STRATEGY ===
+  /**
+   * Capture strategy: 'separate' (default) or 'single'
+   * @default 'separate'
+   */
+  strategy?: AuditStrategy;
+
+  // === LEGACY FLAGS (for 'separate' strategy) ===
   // Opt-out flags (default: capture everything when enabled)
   skipStart?: boolean;
   skipEnd?: boolean;

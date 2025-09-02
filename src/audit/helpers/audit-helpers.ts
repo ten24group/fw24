@@ -202,6 +202,16 @@ export class AuditCaptureService {
     operationContext: RequestAuditContext | QueueAuditContext | TaskAuditContext
   ): Promise<void> {
     if (!auditContext.enabled || auditContext.auditConfig.skipStart) return;
+    
+    // For 'single' strategy, don't log start - just store context for later
+    if (auditContext.auditConfig.strategy === 'single') {
+      // Store the operation context for later use in captureEnd
+      if (!auditContext.auditConfig.customContext) {
+        auditContext.auditConfig.customContext = {};
+      }
+      auditContext.auditConfig.customContext._operationContext = operationContext;
+      return;
+    }
 
     // Check sampling
     if (auditContext.auditConfig.samplingFn &&
@@ -250,6 +260,59 @@ export class AuditCaptureService {
 
     const duration = Date.now() - new Date(auditContext.correlation.startTimestamp).getTime();
 
+    // For 'single' strategy, create comprehensive audit entry
+    if (auditContext.auditConfig.strategy === 'single') {
+      const operationContext = auditContext.auditConfig.customContext?._operationContext;
+      
+      await captureLog({
+        logType: auditContext.logType,
+        subType: auditContext.subType,
+        entityName: auditContext.entityName,
+        entityId: auditContext.entityId,
+        eventType: error ? 'failed' : 'completed',
+        operation: auditContext.operation,
+        category: auditContext.category,
+        success: !error,
+        status: error ? 'failed' : 'completed',
+        correlationId: auditContext.correlation.correlationId,
+        actor: auditContext.actor,
+        
+        // Use existing fields for comprehensive data
+        data: {
+          request: operationContext,
+          response: responseContext,
+          timing: {
+            startTime: auditContext.correlation.startTimestamp,
+            endTime: new Date().toISOString(),
+            duration
+          },
+          error: error ? {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+          } : undefined
+        },
+        
+        metrics: {
+          duration,
+          ...(responseContext ? {
+            statusCode: responseContext.statusCode,
+            responseSize: responseContext.responseSize
+          } : {})
+        },
+        
+        context: {
+          correlation: auditContext.correlation
+        },
+        
+        metadata: auditContext.auditConfig.customContext,
+        ttl: auditContext.auditConfig.ttl,
+        dataProtection: auditContext.auditConfig.dataProtection
+      });
+      return;
+    }
+
+    // Default 'separate' strategy (existing behavior)
     await captureLog({
       logType: auditContext.logType,
       subType: error ? `${auditContext.subType}_error` : `${auditContext.subType}_complete`,
