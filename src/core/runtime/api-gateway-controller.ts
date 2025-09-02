@@ -197,8 +197,11 @@ export abstract class APIController extends AbstractLambdaHandler {
     // Build the execution context
     const ctx = this.buildCtx(event, context, request, response);
 
-    // Create audit context
-    const auditContext = this.makeAuditContext(ctx);
+    // Find the matching route first for method-level audit config
+    const route = this.findMatchingRoute(request);
+
+    // Create audit context with route information for method-level config
+    const auditContext = this.makeAuditContext(ctx, route);
     
     if (auditContext) {
       await this.captureStart(auditContext, this.buildRequestContext(ctx, auditContext.auditConfig));
@@ -211,8 +214,6 @@ export abstract class APIController extends AbstractLambdaHandler {
 
       // Execute before middleware
       await this.executeMiddlewarePipeline('before', request, response, ctx);
-
-      const route = this.findMatchingRoute(request);
 
       // Validate the request if validations are defined
       if (route?.validations) {
@@ -506,11 +507,18 @@ export abstract class APIController extends AbstractLambdaHandler {
   /**
    * Creates audit context for the request following the existing buildCtx pattern
    * @param ctx - The execution context
+   * @param route - The matched route (optional, for method-level audit config)
    * @returns AuditContext or null if audit is disabled
    */
-  protected makeAuditContext(ctx: ExecutionContext): AuditContext | null {
+  protected makeAuditContext(ctx: ExecutionContext, route?: Route | null): AuditContext | null {
     const config = this.getControllerConfig();
-    if (!config?.audit?.enabled) return null;
+    
+    // Merge controller-level and method-level audit configs
+    const controllerAudit = config?.audit;
+    const methodAudit = route?.audit;
+    const mergedAuditConfig = this.mergeAuditConfigs(controllerAudit, methodAudit);
+    
+    if (!mergedAuditConfig?.enabled) return null;
     
     const correlationId = ctx.actor?.correlationId || 
                          ctx.request.headers?.['x-correlation-id'] || 
@@ -525,7 +533,7 @@ export abstract class APIController extends AbstractLambdaHandler {
       subType: 'api_request',
       entityName: this.constructor.name,
       operation: operationName,
-      category: config.audit.category,
+      category: mergedAuditConfig.category,
       actor: ctx.actor,
       correlation: {
         correlationId,
@@ -535,8 +543,81 @@ export abstract class APIController extends AbstractLambdaHandler {
         operationName,
         startTimestamp: new Date().toISOString()
       },
-      auditConfig: config.audit
+      auditConfig: mergedAuditConfig
     };
+  }
+
+  /**
+   * Merges controller-level and method-level audit configurations
+   * Method-level config takes precedence over controller-level config
+   * @param controllerAudit - Controller-level audit config
+   * @param methodAudit - Method-level audit config  
+   * @returns Merged audit configuration
+   */
+  private mergeAuditConfigs(controllerAudit?: AuditConfig, methodAudit?: AuditConfig): AuditConfig | undefined {
+    if (!controllerAudit && !methodAudit) return undefined;
+    if (!controllerAudit) return methodAudit;
+    if (!methodAudit) return controllerAudit;
+    
+    // Deep merge with method-level config taking precedence
+    const merged: AuditConfig = {
+      ...controllerAudit,
+      ...methodAudit
+    };
+    
+    // Special handling for nested objects
+    if (controllerAudit.includes || methodAudit.includes) {
+      merged.includes = {
+        ...controllerAudit.includes,
+        ...methodAudit.includes
+      };
+      
+      // Merge request and response arrays if both exist and are arrays
+      if (controllerAudit.includes?.request && methodAudit.includes?.request) {
+        const controllerRequest = Array.isArray(controllerAudit.includes.request) ? controllerAudit.includes.request : [];
+        const methodRequest = Array.isArray(methodAudit.includes.request) ? methodAudit.includes.request : [];
+        merged.includes.request = [...new Set([...controllerRequest, ...methodRequest])];
+      }
+      if (controllerAudit.includes?.response && methodAudit.includes?.response) {
+        const controllerResponse = Array.isArray(controllerAudit.includes.response) ? controllerAudit.includes.response : [];
+        const methodResponse = Array.isArray(methodAudit.includes.response) ? methodAudit.includes.response : [];
+        merged.includes.response = [...new Set([...controllerResponse, ...methodResponse])];
+      }
+    }
+    
+    if (controllerAudit.dataProtection || methodAudit.dataProtection) {
+      merged.dataProtection = {
+        ...controllerAudit.dataProtection,
+        ...methodAudit.dataProtection
+      };
+      
+      // Merge deepRedact config
+      if (controllerAudit.dataProtection?.deepRedact || methodAudit.dataProtection?.deepRedact) {
+        merged.dataProtection.deepRedact = {
+          ...controllerAudit.dataProtection?.deepRedact,
+          ...methodAudit.dataProtection?.deepRedact
+        };
+        
+        // Merge blacklistedKeys arrays
+        if (controllerAudit.dataProtection?.deepRedact?.blacklistedKeys && methodAudit.dataProtection?.deepRedact?.blacklistedKeys) {
+          merged.dataProtection.deepRedact.blacklistedKeys = [
+            ...new Set([
+              ...controllerAudit.dataProtection.deepRedact.blacklistedKeys,
+              ...methodAudit.dataProtection.deepRedact.blacklistedKeys
+            ])
+          ];
+        }
+      }
+    }
+    
+    if (controllerAudit.customContext || methodAudit.customContext) {
+      merged.customContext = {
+        ...controllerAudit.customContext,
+        ...methodAudit.customContext
+      };
+    }
+    
+    return merged;
   }
 
   /**

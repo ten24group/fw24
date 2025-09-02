@@ -1,4 +1,5 @@
 import type { HttpRequestValidations, InputValidationRule } from "../validation";
+import type { AuditConfig } from "../audit/interfaces";
 
 export interface Route {
   httpMethod: string;
@@ -12,6 +13,7 @@ export interface Route {
 	} | string;
   validations ?: InputValidationRule | HttpRequestValidations;
   target?: string;
+  audit?: AuditConfig;
 }
 
 export type Routes = Route[];

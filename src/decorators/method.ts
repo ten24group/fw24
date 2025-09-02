@@ -1,5 +1,6 @@
 import type { Route } from "../interfaces/route";
 import type { HttpRequestValidations, InputValidationRule } from "../validation";
+import type { AuditConfig } from "../audit/interfaces";
 import { findConstructor, getRoutesKey } from "./decorator-utils";
 
 // function InjectParams(
@@ -36,6 +37,11 @@ function createRouteDecorator(method: string) {
        * @default ""
        */
       target?: string;
+      /**
+       * Audit configuration for this route
+       * Will override/enhance controller-level audit config
+       */
+      audit?: AuditConfig;
     }
   ) =>
     (target: any, methodToDecorate: any) => {
@@ -94,7 +100,8 @@ function createRouteDecorator(method: string) {
         functionName: methodToDecorate.name || methodToDecorate,
         parameters: parameters,
         validations: options?.validations,
-        target: options?.target
+        target: options?.target,
+        audit: options?.audit
       };
 
       // Store routes on the constructor using the unique symbol

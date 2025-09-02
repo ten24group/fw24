@@ -129,7 +129,44 @@ graph LR
     customContext: { team: 'backend' }
   }
 })
-export class UserController extends APIController { }
+export class UserController extends APIController { 
+  
+  @Get('/profile')
+  getProfile() {
+    // Uses controller-level audit config
+    return { profile: 'data' };
+  }
+
+  @Post('/login', {
+    audit: {
+      category: 'authentication',
+      includes: {
+        request: ['headers', 'body'],
+        response: ['headers'] // No response body for security
+      },
+      dataProtection: {
+        deepRedact: {
+          blacklistedKeys: ['password', 'token'],
+          replacement: '[SECURITY-REDACTED]'
+        }
+      }
+    }
+  })
+  login() {
+    // Method-level config overrides/enhances controller config
+    return { token: 'jwt-token' };
+  }
+
+  @Get('/sensitive-data', {
+    audit: {
+      enabled: false // Completely disable audit for this endpoint
+    }
+  })
+  getSensitiveData() {
+    // No audit logs will be generated
+    return { sensitiveData: 'classified' };
+  }
+}
 ```
 
 ### Queue Controller
@@ -342,6 +379,105 @@ const protectedEntry = protectAuditData(auditEntry, {
 - **Custom functions**: Use for complex redaction logic beyond simple field matching
 - **Test thoroughly**: Verify your protection rules work as expected
 - **Manual protection**: Use `protectAuditData()` for non-audit data that needs protection
+
+## 🎯 Method-Level Audit Configuration
+
+Override or enhance controller-level audit settings on individual routes for fine-grained control.
+
+### How Method-Level Config Works
+
+```typescript
+@Controller('/api', {
+  audit: {
+    enabled: true,
+    category: 'general-api',
+    includes: { request: ['headers'] }
+  }
+})
+export class ApiController extends APIController {
+  
+  @Get('/public-data')
+  getPublicData() {
+    // Uses controller config: category='general-api', includes=['headers']
+  }
+  
+  @Post('/secure-action', {
+    audit: {
+      category: 'security',           // Overrides controller category
+      includes: {
+        request: ['headers', 'body'], // Enhances controller includes
+        response: ['headers']
+      },
+      dataProtection: {
+        deepRedact: {
+          blacklistedKeys: ['apiKey', 'secret'] // Adds to controller blacklist
+        }
+      }
+    }
+  })
+  secureAction() {
+    // Final config: category='security', includes merged, blacklist combined
+  }
+  
+  @Get('/internal', {
+    audit: { enabled: false }        // Completely disables audit for this route
+  })
+  internalEndpoint() {
+    // No audit logs generated
+  }
+}
+```
+
+### Configuration Merging Rules
+
+1. **Method config takes precedence** over controller config
+2. **Arrays are merged and deduplicated** (e.g., `blacklistedKeys`, `includes.request`)
+3. **Objects are deep merged** with method values overriding controller values
+4. **Disabled audit** (`enabled: false`) stops all logging for that route
+
+### Common Use Cases
+
+**High-Security Endpoints:**
+```typescript
+@Post('/auth/login', {
+  audit: {
+    category: 'authentication',
+    samplingFn: createAlwaysSample(), // Never sample auth events
+    dataProtection: {
+      deepRedact: {
+        blacklistedKeys: ['password', 'mfa', 'recoveryCode'],
+        replacement: '[AUTH-REDACTED]'
+      }
+    }
+  }
+})
+```
+
+**Performance-Critical Endpoints:**
+```typescript
+@Get('/health', {
+  audit: {
+    enabled: false // No audit overhead for health checks
+  }
+})
+```
+
+**Debug/Development Endpoints:**
+```typescript
+@Post('/debug/test', {
+  audit: {
+    category: 'debug',
+    includes: {
+      request: ['headers', 'body', 'query'],
+      response: ['headers', 'body'] // Include everything for debugging
+    },
+    customContext: {
+      environment: 'development',
+      debug: true
+    }
+  }
+})
+```
 
 ## 🎛️ Sampling
 

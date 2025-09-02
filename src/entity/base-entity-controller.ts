@@ -1,4 +1,4 @@
-import type { Request, Response } from '../interfaces';
+import type { Request, Response, Route } from '../interfaces';
 import type { EntitySchema, EntityIdentifiersTypeFromSchema } from './base-entity';
 import type { BaseEntityService } from './base-service';
 import type { EntityFilterCriteria, EntityQuery, GenericFilterCriteria, TypedFilterCriteria } from './query-types';
@@ -82,8 +82,8 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 * Enhanced audit context with entity-specific information
 	 * Leverages entity service capabilities to provide rich audit context
 	 */
-	protected makeAuditContext(ctx: ExecutionContext): AuditContext | null {
-		const baseContext = super.makeAuditContext(ctx);
+	protected makeAuditContext(ctx: ExecutionContext, route?: Route | null): AuditContext | null {
+		const baseContext = super.makeAuditContext(ctx, route);
 		if (!baseContext) return null;
 
 		// Extract entity identifiers from path parameters when available
