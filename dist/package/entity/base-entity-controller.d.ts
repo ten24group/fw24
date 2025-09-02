@@ -1,4 +1,4 @@
-import type { Request, Response } from '../interfaces';
+import type { Request, Response, Route } from '../interfaces';
 import type { EntitySchema } from './base-entity';
 import type { BaseEntityService } from './base-service';
 import { APIController } from '../core/runtime/api-gateway-controller';
@@ -39,7 +39,7 @@ export declare class BaseEntityController<Sch extends EntitySchema<any, any, any
      * Enhanced audit context with entity-specific information
      * Leverages entity service capabilities to provide rich audit context
      */
-    protected makeAuditContext(ctx: ExecutionContext): AuditContext | null;
+    protected makeAuditContext(ctx: ExecutionContext, route?: Route | null): AuditContext | null;
     /**
      * Detects the operation type from HTTP method and path
      */

@@ -1,5 +1,5 @@
 import type { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
-import type { Request, Response } from "../../interfaces";
+import type { Request, Response, Route } from "../../interfaces";
 import { IControllerConfig } from "../../decorators";
 import { RouteMethods } from "../../decorators/method";
 import { HttpRequestValidations, InputValidationRule } from "../../validation";
@@ -149,9 +149,18 @@ export declare abstract class APIController extends AbstractLambdaHandler {
     /**
      * Creates audit context for the request following the existing buildCtx pattern
      * @param ctx - The execution context
+     * @param route - The matched route (optional, for method-level audit config)
      * @returns AuditContext or null if audit is disabled
      */
-    protected makeAuditContext(ctx: ExecutionContext): AuditContext | null;
+    protected makeAuditContext(ctx: ExecutionContext, route?: Route | null): AuditContext | null;
+    /**
+     * Merges controller-level and method-level audit configurations
+     * Method-level config takes precedence over controller-level config
+     * @param controllerAudit - Controller-level audit config
+     * @param methodAudit - Method-level audit config
+     * @returns Merged audit configuration
+     */
+    private mergeAuditConfigs;
     /**
      * Captures audit log for request start
      */

@@ -92,12 +92,12 @@ export interface AuditConfig {
     };
     dataProtection?: {
         enabled?: boolean;
-        fastRedact?: {
-            paths?: string[];
-            censor?: string | ((value: any) => any);
-            serialize?: boolean | ((obj: any) => string);
-            strict?: boolean;
+        deepRedact?: {
+            blacklistedKeys?: (string | RegExp)[];
+            caseSensitiveKeyMatch?: boolean;
             remove?: boolean;
+            replacement?: string;
+            fuzzyKeyMatch?: boolean;
         };
         customProtectionFn?: (auditEntry: any, config: any) => any;
     };
