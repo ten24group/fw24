@@ -42,7 +42,9 @@ const DEFAULT_CONFIG: Required<Omit<DataProtectionConfig, 'customProtectionFn' |
 
 /**
  * Default deep-redact configuration for audit entries
- * Redacts common sensitive fields while preserving audit trail integrity
+ * Redacts common sensitive fields while preserving audit trail integrity,
+ * TODO: make all these a pattern to ensure nothing sensitive is left out
+ * TODO:add an allowed keys list to allow certain keys to be kept unredacted
  */
 const DEFAULT_DEEP_REDACT_CONFIG: DeepRedactConfig = {
   blacklistedKeys: [
@@ -70,9 +72,23 @@ const DEFAULT_DEEP_REDACT_CONFIG: DeepRedactConfig = {
     'email',
     'set-cookie'
   ],
-  caseSensitiveKeyMatch: false,
-  remove: false,
-  replacement: '[REDACTED]'
+  
+  /** Loosely compare key names by checking if the key name of your unredacted object is included 
+   * anywhere within the name of your blacklisted key.
+   * For example, is "pass" (your key) included in "password" (from config).
+   * 
+   * @default false in the deep-redact library
+   * */
+  fuzzyKeyMatch: true,
+
+  /**
+   * Loosely compare key names by normalising the strings. This involves removing non-word characters and transforms the string to lowercase.
+   * This means you never have to worry having to list duplicate keys in different formats 
+   * such as snake_case, camelCase, PascalCase or any other case.
+   * 
+   * @default true in the deep-redact library
+   */
+  caseSensitiveKeyMatch: true,
 };
 
 /**
