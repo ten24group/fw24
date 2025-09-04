@@ -135,8 +135,15 @@ export interface AuditConfig {
 
   // Controller-specific includes (only for API controllers)
   includes?: {
-    request?: boolean | ('headers' | 'body' | 'query')[];
-    response?: boolean | ('headers' | 'body')[];
+    request?: boolean | ('headers' | 'body' | 'query')[] | {
+      headers?: string[];
+      body?: string[];
+      query?: string[];
+    };
+    response?: boolean | ('headers' | 'body')[] | {
+      headers?: string[];
+      body?: string[];
+    };
   };
 
   // Data protection configuration

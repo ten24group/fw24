@@ -446,6 +446,169 @@ const protectedEntry = protectAuditData(auditEntry, {
 }
 ```
 
+## 🎯 Selective Field Auditing
+
+Control exactly which fields are included in audit logs for fine-grained privacy and performance control.
+
+### Basic vs Selective Includes
+
+```typescript
+// Legacy: All-or-nothing approach
+@Controller('/api', {
+  audit: {
+    enabled: true,
+    includes: {
+      request: ['headers', 'body', 'query'],   // Include entire objects
+      response: ['headers', 'body']
+    }
+  }
+})
+
+// New: Selective field-level control
+@Controller('/api', {
+  audit: {
+    enabled: true,
+    includes: {
+      request: {
+        headers: ['content-type', 'user-agent'],    // Only specific headers
+        body: ['email', 'name'],                    // Only specific body fields
+        query: ['page', 'limit']                    // Only specific query params
+      },
+      response: {
+        headers: ['content-type', 'x-response-time'],
+        body: ['id', 'status', 'message']          // Only specific response fields
+      }
+    }
+  }
+})
+```
+
+### Security & Privacy Benefits
+
+**Exclude Sensitive Data:**
+```typescript
+@Controller('/api/auth', {
+  audit: {
+    enabled: true,
+    includes: {
+      request: {
+        headers: ['user-agent', 'content-type'],  // Skip authorization header
+        body: ['email', 'username']               // Skip password field
+      },
+      response: {
+        body: ['success', 'message', 'userId']    // Skip access tokens
+      }
+    }
+  }
+})
+```
+
+**Performance Optimization:**
+```typescript
+@Controller('/api/reports', {
+  audit: {
+    enabled: true,
+    includes: {
+      request: {
+        query: ['reportId', 'format']             // Skip large filter objects
+      },
+      response: {
+        headers: ['content-type'],                // Skip large response bodies
+        body: ['id', 'status', 'downloadUrl']
+      }
+    }
+  }
+})
+```
+
+### Backward Compatibility
+
+All existing audit configurations continue to work unchanged:
+
+```typescript
+// These all still work exactly as before
+includes: { request: ['headers', 'body'] }        // Legacy array format
+includes: { request: true }                       // Boolean format
+includes: { request: ['headers'], response: true } // Mixed formats
+```
+
+### Configuration Options
+
+**Request Includes:**
+- `headers: string[]` - Specific header names to include
+- `body: string[]` - Specific body field names to include  
+- `query: string[]` - Specific query parameter names to include
+
+**Response Includes:**
+- `headers: string[]` - Specific response header names to include
+- `body: string[]` - Specific response body field names to include
+
+**Empty Arrays:**
+```typescript
+includes: {
+  request: {
+    headers: [],  // Empty array = include all headers
+    body: []      // Empty array = include all body fields
+  }
+}
+```
+
+### Real-World Examples
+
+**Healthcare API (HIPAA Compliance):**
+```typescript
+@Controller('/api/patients', {
+  audit: {
+    enabled: true,
+    includes: {
+      request: {
+        headers: ['content-type', 'user-agent'],
+        body: ['patientId', 'visitType']          // Exclude medical details
+      },
+      response: {
+        body: ['appointmentId', 'status']         // Exclude patient data
+      }
+    }
+  }
+})
+```
+
+**Payment API (PCI DSS Compliance):**
+```typescript
+@Controller('/api/payments', {
+  audit: {
+    enabled: true,
+    includes: {
+      request: {
+        headers: ['content-type'],
+        body: ['amount', 'currency', 'orderId']   // Exclude card numbers
+      },
+      response: {
+        body: ['transactionId', 'status']         // Exclude payment details
+      }
+    }
+  }
+})
+```
+
+**High-Volume Analytics API:**
+```typescript
+@Controller('/api/analytics', {
+  audit: {
+    enabled: true,
+    includes: {
+      request: {
+        query: ['metric', 'dateRange']            // Skip large data payloads
+      },
+      response: {
+        headers: ['content-type'],                // Skip large result sets
+        body: ['queryId', 'recordCount']
+      }
+    }
+  }
+})
+```
+
 ## 🎯 Method-Level Audit Configuration
 
 Override or enhance controller-level audit settings on individual routes for fine-grained control.

@@ -644,35 +644,130 @@ export abstract class APIController extends AbstractLambdaHandler {
    * Builds request context for audit logging
    */
   private buildRequestContext(ctx: ExecutionContext, auditConfig: AuditConfig): RequestAuditContext {
-    const includes = Array.isArray(auditConfig.includes?.request) 
-      ? auditConfig.includes.request 
-      : auditConfig.includes?.request ? ['headers'] : [];
-      
+    const requestIncludes = auditConfig.includes?.request;
+    
+    // Determine what to include based on the configuration format
+    let includeHeaders = false, includeBody = false, includeQuery = false;
+    let headerFields: string[] = [], bodyFields: string[] = [], queryFields: string[] = [];
+
+    if (Array.isArray(requestIncludes)) {
+      // Legacy format: ['headers', 'body', 'query']
+      includeHeaders = requestIncludes.includes('headers');
+      includeBody = requestIncludes.includes('body');
+      includeQuery = requestIncludes.includes('query');
+    } else if (typeof requestIncludes === 'object' && requestIncludes !== null) {
+      // New selective format: { headers: ['auth'], body: ['email'], query: ['page'] }
+      includeHeaders = !!requestIncludes.headers;
+      includeBody = !!requestIncludes.body;
+      includeQuery = !!requestIncludes.query;
+      headerFields = requestIncludes.headers || [];
+      bodyFields = requestIncludes.body || [];
+      queryFields = requestIncludes.query || [];
+    } else if (requestIncludes === true) {
+      // Boolean true - include headers by default (legacy behavior)
+      includeHeaders = true;
+    }
+
     return {
       method: ctx.request.httpMethod,
       path: ctx.request.path,
       userAgent: ctx.event.headers?.['user-agent'],
       sourceIp: ctx.event.requestContext?.identity?.sourceIp,
-      headers: includes.includes('headers') ? ctx.request.headers : undefined,
-      body: includes.includes('body') ? ctx.request.body : undefined,
-      query: includes.includes('query') ? ctx.request.queryStringParameters : undefined
+      headers: includeHeaders ? 
+        this.selectivelyIncludeFields(ctx.request.headers, headerFields) : undefined,
+      body: includeBody ? 
+        this.selectivelyIncludeFields(ctx.request.body, bodyFields) : undefined,
+      query: includeQuery ? 
+        this.selectivelyIncludeFields(ctx.request.queryStringParameters, queryFields) : undefined
     };
+  }
+
+  /**
+   * Selectively includes fields from an object based on field list
+   * If no fields specified, returns the entire object
+   */
+  private selectivelyIncludeFields(obj: any, fields: string[]): any {
+    if (!obj || typeof obj !== 'object') {
+      return obj;
+    }
+    
+    // If no specific fields requested, return entire object
+    if (!fields.length) {
+      return obj;
+    }
+    
+    // Extract only specified fields
+    const result: any = {};
+    for (const field of fields) {
+      if (obj.hasOwnProperty(field)) {
+        result[field] = obj[field];
+      }
+    }
+    
+    return result;
+  }
+
+  /**
+   * Selectively includes fields from response body (handles JSON string bodies)
+   * If no fields specified, returns the entire body
+   */
+  private selectivelyIncludeResponseBody(body: string, fields: string[]): any {
+    if (!body || typeof body !== 'string') {
+      return body;
+    }
+    
+    // If no specific fields requested, return entire body
+    if (!fields.length) {
+      return body;
+    }
+    
+    try {
+      // Try to parse as JSON
+      const bodyObj = JSON.parse(body);
+      if (typeof bodyObj === 'object' && bodyObj !== null) {
+        // Apply field selection and stringify back
+        const selected = this.selectivelyIncludeFields(bodyObj, fields);
+        return JSON.stringify(selected);
+      }
+    } catch (error) {
+      // Not valid JSON, return as-is
+    }
+    
+    return body;
   }
 
   /**
    * Builds response context for audit logging
    */
   private buildResponseContext(response: Response, auditConfig: AuditConfig) {
-    if (!auditConfig.includes?.response) return undefined;
+    const responseIncludes = auditConfig.includes?.response;
+    if (!responseIncludes) return undefined;
     
-    const includes = Array.isArray(auditConfig.includes.response) 
-      ? auditConfig.includes.response 
-      : ['headers'];
+    // Determine what to include based on the configuration format
+    let includeHeaders = false, includeBody = false;
+    let headerFields: string[] = [], bodyFields: string[] = [];
+
+    if (Array.isArray(responseIncludes)) {
+      // Legacy format: ['headers', 'body']
+      includeHeaders = responseIncludes.includes('headers');
+      includeBody = responseIncludes.includes('body');
+    } else if (typeof responseIncludes === 'object' && responseIncludes !== null) {
+      // New selective format: { headers: ['content-type'], body: ['id', 'status'] }
+      includeHeaders = !!responseIncludes.headers;
+      includeBody = !!responseIncludes.body;
+      headerFields = responseIncludes.headers || [];
+      bodyFields = responseIncludes.body || [];
+    } else if (responseIncludes === true) {
+      // Boolean true - include headers by default (legacy behavior)
+      includeHeaders = true;
+    }
       
     return {
       statusCode: response.statusCode,
-      headers: includes.includes('headers') ? response.headers : undefined,
-      body: includes.includes('body') ? response.body : undefined
+      headers: includeHeaders ? 
+        this.selectivelyIncludeFields(response.headers, headerFields) : undefined,
+      body: includeBody ? 
+        this.selectivelyIncludeResponseBody(response.body, bodyFields) : undefined
     };
   }
 
