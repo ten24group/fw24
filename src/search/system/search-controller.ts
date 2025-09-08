@@ -284,7 +284,7 @@ export class SearchSystemController extends APIController {
       error?: string;
       success: boolean;
       message?: string;
-
+      resyncResult?: any;
       entityName: string;
       indexName?: string;
       indexConfig?: any;
@@ -310,10 +310,23 @@ export class SearchSystemController extends APIController {
         await searchService.initSearchIndex();
         const config = searchService.getSearchIndexConfig();
 
+        let resyncResult: any;
+
+        try {
+          resyncResult = await this.resyncRecordsForEntity(entityName, undefined, true, 50);
+        } catch (error: any) {
+          this.logger.error(`Error resyncing records for entity ${entityName}: ${error.message}`, { error });
+          resyncResult = {
+            success: false,
+            message: `Error resyncing records for entity ${entityName}: ${error.message}`,
+          };
+        }
+
         results.push({
           entityName,
           indexName: config.indexName,
           indexConfig: config,
+          resyncResult,
           success: true,
           message: `Index ${config.indexName} initialized successfully`,
         });
@@ -438,6 +451,12 @@ export class SearchSystemController extends APIController {
     const { entityName } = req.pathParameters ?? {};
     const { batchSize = 50, queueUrl, byBatch = true } = req.body || {};
 
+    const result = await this.resyncRecordsForEntity(entityName, queueUrl, byBatch, batchSize);
+
+    return res.json({ ...result });
+  }
+
+  protected async resyncRecordsForEntity(entityName: string, queueUrl: string | undefined, byBatch = true, batchSize = 50) {
     const entityService = this.getEntityService(entityName);
 
     // Use provided queueUrl or resolve from environment
@@ -445,7 +464,7 @@ export class SearchSystemController extends APIController {
     const resolvedQueueUrl = queueUrl || Environment.queueUrl(queueName);
 
     if (!resolvedQueueUrl) {
-      throw new Error(`Queue URL not provided and env-key [${SEARCH_CONTROLLER_ENV_KEYS.MEILISEARCH_SYNC_QUEUE_NAME}] is not configured`);
+      throw new Error(`Queue URL not provided for resyncing records for entity ${entityName} and env-key [${SEARCH_CONTROLLER_ENV_KEYS.MEILISEARCH_SYNC_QUEUE_NAME}] is not configured`);
     }
 
     // Get all entity records in batches and queue them for sync
@@ -465,7 +484,7 @@ export class SearchSystemController extends APIController {
       });
 
       if (byBatch) {
-        
+
         const data = await Promise.all([ ...(queryResult.data ?? []) ].map(async (rec) => {
           const transformed = await entityService.transformDocumentForIndexing(rec);
           return transformed;
@@ -473,7 +492,7 @@ export class SearchSystemController extends APIController {
 
         try {
           if (data.length === 0) {
-            this.logger.info(`No records to queue for sync: ${entityName}`, { byBatch, entityName, batchSize, queueUrl});
+            this.logger.info(`No records to queue for sync: ${entityName}`, { byBatch, entityName, batchSize, queueUrl });
             break;
           }
 
@@ -484,7 +503,7 @@ export class SearchSystemController extends APIController {
           });
           processedCount += data.length;
         } catch (error: any) {
-          this.logger.error(`Error queueing record for sync: ${error.message}`, { byBatch, entityName, batchSize, queueUrl, error});
+          this.logger.error(`Error queueing record for sync: ${error.message}`, { byBatch, entityName, batchSize, queueUrl, error });
           failedCount += data.length;
         }
 
@@ -494,15 +513,15 @@ export class SearchSystemController extends APIController {
             const transformed = await entityService.transformDocumentForIndexing(entityRecord);
             try {
               await sendQueueMessage(resolvedQueueUrl, {
-              data: transformed,
-              eventName: "RESYNC",
-              entityName,
-            })
-            processedCount++;
-          } catch (error: any) {
-            this.logger.error(`Error queueing record for sync: ${error.message}`, { byBatch, entityName, batchSize, queueUrl, error});
-            failedCount++;
-          }
+                data: transformed,
+                eventName: "RESYNC",
+                entityName,
+              })
+              processedCount++;
+            } catch (error: any) {
+              this.logger.error(`Error queueing record for sync: ${error.message}`, { byBatch, entityName, batchSize, queueUrl, error });
+              failedCount++;
+            }
           })
         );
       }
@@ -515,13 +534,13 @@ export class SearchSystemController extends APIController {
       message += `, ${failedCount} records failed to be queued`;
     }
 
-    return res.json({
+    return {
       message,
       success: processedCount > 0,
       entityName,
       failedCount,
       processedCount,
-    });
+    };
   }
 
   @Get('/queue-info')
