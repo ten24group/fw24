@@ -12,8 +12,9 @@ const entitySchema = DynamoDBAuditEntitySchema;
 const listingUiConfig = MakeListEntityConfig({
   entityName: entitySchema.model.entity,
   entityNamePlural: entitySchema.model.entityNamePlural,
+  CRUDApiPath: entitySchema.model.CRUDApiPath,
+  useSearch: Boolean(entitySchema.model.search?.enabled),
   properties: entityDefaultOpsSchema.list.output,
-  useSearch: false,
   excludeFromAdminCreate: true,
   excludeFromAdminUpdate: true,
   excludeFromAdminDelete: true,
@@ -34,6 +35,7 @@ const viewUiConfig = MakeViewEntityConfig({
 
 
 export const AuditCustomPageConfigs = {
+
   listingUiConfig: {
     ...listingUiConfig,
     routePattern: `/system/list-auditlog`,
@@ -41,17 +43,16 @@ export const AuditCustomPageConfigs = {
       { label: "Home", url: "/" },
       { label: "System", url: "/system" },
       { label: "Audit Logs" }
-    ],
-    listPageConfig: {
-      ...listingUiConfig.listPageConfig,
-      apiConfig: {
-        ...listingUiConfig.listPageConfig.apiConfig,
-        apiUrl: '/system/auditlog',
-      } 
-    }
+    ]
   } as const,
+
   viewUiConfig: {
     ...viewUiConfig,
+    pageHeaderActions: [ {
+      label: "Back",
+      url: "/system/list-auditlog",
+      icon: "arrow-left"
+    }],
     routePattern: `/view-auditlog/:auditId`,
     detailsPageConfig: {
       ...viewUiConfig.detailsPageConfig,

@@ -92,8 +92,6 @@ export function formatEntityAttributeForFormOrDetail(
         }
     }
 
-    // TODO: add support for set, enum, and custom-types
-
     return formatted;
 }
 

@@ -21,6 +21,13 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
         excludeFromAdminCreate: true,
         excludeFromAdminDelete: true,
         excludeFromAdminMenu: true,
+        CRUDApiPath: '/system',
+        search: {
+            enabled: true,
+            indexConfig: {
+                primaryKey: 'auditId',
+            }
+        },
         viewPageColumnsConfig: {
             columns: [
                 {
