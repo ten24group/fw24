@@ -10,32 +10,6 @@ export declare const AuditCustomPageConfigs: {
         }, {
             readonly label: "Audit Logs";
         }];
-        readonly listPageConfig: {
-            readonly apiConfig: {
-                readonly apiUrl: "/system/auditlog";
-                readonly search: {
-                    apiMethod: string;
-                    responseKey: string;
-                    apiUrl: string;
-                };
-                readonly database: {
-                    apiMethod: string;
-                    responseKey: string;
-                    apiUrl: string;
-                };
-                readonly apiMethod?: undefined;
-                readonly responseKey?: undefined;
-                readonly useSearch?: undefined;
-            } | {
-                readonly apiUrl: "/system/auditlog";
-                readonly apiMethod: string;
-                readonly responseKey: string;
-                readonly useSearch: false;
-                readonly search?: undefined;
-                readonly database?: undefined;
-            };
-            readonly propertiesConfig: any[];
-        };
         readonly pageTitle: `${string} Listing`;
         readonly pageType: "list";
         readonly breadcrums: readonly [];
@@ -43,8 +17,39 @@ export declare const AuditCustomPageConfigs: {
             label: string;
             url: string;
         }[];
+        readonly listPageConfig: {
+            apiConfig: {
+                search: {
+                    apiMethod: string;
+                    responseKey: string;
+                    apiUrl: string;
+                };
+                database: {
+                    apiMethod: string;
+                    responseKey: string;
+                    apiUrl: string;
+                };
+                apiMethod?: undefined;
+                responseKey?: undefined;
+                useSearch?: undefined;
+                apiUrl?: undefined;
+            } | {
+                apiMethod: string;
+                responseKey: string;
+                useSearch: false;
+                apiUrl: string;
+                search?: undefined;
+                database?: undefined;
+            };
+            propertiesConfig: any[];
+        };
     };
     viewUiConfig: {
+        readonly pageHeaderActions: readonly [{
+            readonly label: "Back";
+            readonly url: "/system/list-auditlog";
+            readonly icon: "arrow-left";
+        }];
         readonly routePattern: "/view-auditlog/:auditId";
         readonly detailsPageConfig: any;
         readonly pageTitle: `${string} Details`;
@@ -53,6 +58,5 @@ export declare const AuditCustomPageConfigs: {
             label: string;
             url?: string;
         }[];
-        readonly pageHeaderActions: import("../../../fw24").IEntityPageAction[];
     };
 };

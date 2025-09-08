@@ -21,6 +21,13 @@ export declare const DynamoDBAuditEntitySchema: {
         readonly excludeFromAdminCreate: true;
         readonly excludeFromAdminDelete: true;
         readonly excludeFromAdminMenu: true;
+        readonly CRUDApiPath: "/system";
+        readonly search: {
+            readonly enabled: true;
+            readonly indexConfig: {
+                readonly primaryKey: "auditId";
+            };
+        };
         readonly viewPageColumnsConfig: {
             readonly columns: [{
                 readonly sortOrder: 1;

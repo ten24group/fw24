@@ -78,17 +78,33 @@ export type SamplingFunction = (correlationId: string, operation: string) => boo
 /**
  * Generic audit configuration for all controller types
  */
+/**
+ * Audit capture strategies
+ */
+export type AuditStrategy = 'separate' | 'single';
 export interface AuditConfig {
     enabled?: boolean;
     category?: string;
     customContext?: any;
     samplingFn?: SamplingFunction;
+    /**
+     * Capture strategy: 'separate' (default) or 'single'
+     * @default 'separate'
+     */
+    strategy?: AuditStrategy;
     skipStart?: boolean;
     skipEnd?: boolean;
     skipErrors?: boolean;
     includes?: {
-        request?: boolean | ('headers' | 'body' | 'query')[];
-        response?: boolean | ('headers' | 'body')[];
+        request?: boolean | ('headers' | 'body' | 'query')[] | {
+            headers?: string[];
+            body?: string[];
+            query?: string[];
+        };
+        response?: boolean | ('headers' | 'body')[] | {
+            headers?: string[];
+            body?: string[];
+        };
     };
     dataProtection?: {
         enabled?: boolean;

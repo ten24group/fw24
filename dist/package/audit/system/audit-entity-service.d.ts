@@ -1,5 +1,6 @@
 import { BaseEntityService, EntityQuery } from '../../entity';
 import { ExecutionContext } from '../../core/types/execution-context';
+import { EntitySearchQuery } from '../../search/types';
 import { AuditEntitySchemaType } from '../loggers/dynamodb';
 export declare class DynamoDBAuditEntityService extends BaseEntityService<AuditEntitySchemaType> {
     constructor();
@@ -29,6 +30,13 @@ export declare class DynamoDBAuditEntityService extends BaseEntityService<AuditE
                 readonly excludeFromAdminCreate: true;
                 readonly excludeFromAdminDelete: true;
                 readonly excludeFromAdminMenu: true;
+                readonly CRUDApiPath: "/system";
+                readonly search: {
+                    readonly enabled: true;
+                    readonly indexConfig: {
+                        readonly primaryKey: "auditId";
+                    };
+                };
                 readonly viewPageColumnsConfig: {
                     readonly columns: [{
                         readonly sortOrder: 1;
@@ -256,4 +264,10 @@ export declare class DynamoDBAuditEntityService extends BaseEntityService<AuditE
         }[];
         cursor: string | null;
     }>;
+    /**
+     * Override the base search method to return latest audit records first
+     * This ensures audit logs are displayed with most recent entries at the top
+     * Adds default sorting by timestamp in descending order when no sort is specified
+     */
+    search(query: EntitySearchQuery<AuditEntitySchemaType>, ctx?: ExecutionContext): Promise<import("../../search/types").SearchResult<any>>;
 }

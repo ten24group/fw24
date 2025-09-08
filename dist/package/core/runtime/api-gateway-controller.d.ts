@@ -174,6 +174,16 @@ export declare abstract class APIController extends AbstractLambdaHandler {
      */
     private buildRequestContext;
     /**
+     * Selectively includes fields from an object based on field list
+     * If no fields specified, returns the entire object
+     */
+    private selectivelyIncludeFields;
+    /**
+     * Selectively includes fields from response body (handles JSON string bodies)
+     * If no fields specified, returns the entire body
+     */
+    private selectivelyIncludeResponseBody;
+    /**
      * Builds response context for audit logging
      */
     private buildResponseContext;

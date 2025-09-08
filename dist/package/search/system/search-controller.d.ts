@@ -76,6 +76,13 @@ export declare class SearchSystemController extends APIController {
             byBatch?: boolean;
         };
     }>, res: Response): Promise<Response>;
+    protected resyncRecordsForEntity(entityName: string, queueUrl: string | undefined, byBatch?: boolean, batchSize?: number): Promise<{
+        message: string;
+        success: boolean;
+        entityName: string;
+        failedCount: number;
+        processedCount: number;
+    }>;
     getQueueInfo(req: Request<{
         path: {
             queueUrl: string;
