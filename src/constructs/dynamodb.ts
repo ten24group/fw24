@@ -63,7 +63,7 @@ export interface SearchIndexingConfig extends IConstructConfig {
     enabled?: boolean;
     /**
      * List of allowed entity names to be indexed.
-     * If not provided, all entities will be indexed. except `auditLog`.
+     * If not provided, all entities will be indexed.
      */
     allowedEntityNames?: string[];
     /**

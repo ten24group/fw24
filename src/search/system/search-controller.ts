@@ -308,7 +308,7 @@ export class SearchSystemController extends APIController {
         }
 
         await searchService.initSearchIndex();
-        const config = await searchService.getSearchIndexConfig();
+        const config = searchService.getSearchIndexConfig();
 
         results.push({
           entityName,

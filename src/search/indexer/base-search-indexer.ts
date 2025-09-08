@@ -41,10 +41,6 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
         return null;
       }
 
-    } else if (entityName === 'auditLog' || entityName.includes('search-index')) {
-
-      this.logger.warn('Skipping search indexing for system entity', { entityName });
-      return null;
     }
 
     return record;
