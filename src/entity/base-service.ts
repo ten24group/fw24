@@ -236,7 +236,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
     public async transformDocumentForIndexing(entity: EntityRecordTypeFromSchema<S>): Promise<Record<string, any>> {
         const searchService = this.getSearchService();
-        return await searchService.transformDocumentForIndexing(entity);
+        const transformed = await searchService.transformDocumentForIndexing(entity);
+        
+        if(!transformed[ 'id' ]) {
+            // make sure there's an id attribute
+            const primaryIdName = this.getEntityPrimaryIdPropertyName();
+            transformed[ 'id' ] = entity[ primaryIdName as any ];
+        }
+
+        return transformed;
     }
 
     public validateEntitySchema() {
