@@ -1,6 +1,7 @@
 import { Service } from '../../decorators';
 import { BaseEntityService, EntityQuery } from '../../entity';
 import { ExecutionContext } from '../../core/types/execution-context';
+import { EntitySearchQuery } from '../../search/types';
 import { DynamoDBAuditEntitySchema, DynamoDBAuditEntityConfiguration, AuditEntitySchemaType } from '../loggers/dynamodb';
 
 @Service()
@@ -35,5 +36,24 @@ export class DynamoDBAuditEntityService extends BaseEntityService<AuditEntitySch
         };
 
         return super.list(modifiedQuery, ctx);
+    }
+
+    /**
+     * Override the base search method to return latest audit records first
+     * This ensures audit logs are displayed with most recent entries at the top
+     * Adds default sorting by timestamp in descending order when no sort is specified
+     */
+    public async search(query: EntitySearchQuery<AuditEntitySchemaType>, ctx?: ExecutionContext) {
+        // Set default sort to 'timestamp:desc' for audit logs to show latest first
+        // Allow override via query parameter if needed
+        const modifiedQuery: EntitySearchQuery<AuditEntitySchemaType> = {
+            ...query,
+            // Only add default sort if no sort is specified
+            sort: query.sort && query.sort.length > 0 
+                ? query.sort 
+                : [{ field: 'timestamp' as const, dir: 'desc' as const }]
+        };
+
+        return super.search(modifiedQuery, ctx);
     }
 }
