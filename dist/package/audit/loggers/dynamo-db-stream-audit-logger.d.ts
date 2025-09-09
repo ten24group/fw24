@@ -14,6 +14,7 @@ export declare class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<Dyn
     protected initializeAuditLogger(): void;
     protected getAuditLogger(): IAuditLogger;
     protected getAllowedEntityNames(): string[] | undefined;
+    protected getIgnoredEntityNames(): string[] | undefined;
     protected preprocessRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<BaseEventRecord<ChangeStreamPayload> | null>;
     protected processRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<void>;
     protected processRecordsBatch(records: BaseEventRecord<ChangeStreamPayload>[]): Promise<void>;

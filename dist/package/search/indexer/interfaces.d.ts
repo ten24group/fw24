@@ -10,6 +10,7 @@ export declare const SEARCH_INDEXER_ENV_KEYS: {
     readonly MEILI_HOST: "MEILI_HOST";
     readonly MEILI_MASTER_KEY: "MEILI_MASTER_KEY";
     readonly ALLOWED_ENTITY_NAMES: "SEARCH_INDEXER_ALLOWED_ENTITY_NAMES";
+    readonly IGNORED_ENTITY_NAMES: "SEARCH_INDEXER_IGNORED_ENTITY_NAMES";
 };
 export interface SearchIndexEntry {
     entityName: string;

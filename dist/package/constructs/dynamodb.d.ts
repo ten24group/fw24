@@ -29,6 +29,11 @@ export interface SearchIndexingConfig extends IConstructConfig {
      */
     allowedEntityNames?: string[];
     /**
+     * List of entity names to be ignored from indexing.
+     * Takes precedence over allowedEntityNames - if an entity is in both lists, it will be ignored.
+     */
+    ignoredEntityNames?: string[];
+    /**
      * Search engine configuration that defines which search provider to use and its connection details.
      *
      * Currently supports MeiliSearch with plans to extend to Elasticsearch and Algolia.
@@ -233,6 +238,11 @@ interface AuditConfig extends IConstructConfig {
      * If not provided, all entities will be audited. except `auditLog`.
      */
     allowedEntityNames?: string[];
+    /**
+     * List of entity names to be ignored from auditing.
+     * Takes precedence over allowedEntityNames - if an entity is in both lists, it will be ignored.
+     */
+    ignoredEntityNames?: string[];
     /**
      * The type of audit logger to use.
      * @default 'console'
