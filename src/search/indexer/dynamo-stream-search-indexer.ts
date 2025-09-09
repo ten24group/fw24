@@ -25,6 +25,11 @@ export class DynamoDBStreamSearchIndexer extends BaseSearchIndexer<DynamoDBEvent
     return allowedEntityNames ? allowedEntityNames.split(',') : undefined;
   }
 
+  protected getIgnoredEntityNames(): string[] | undefined {
+    const ignoredEntityNames = resolveEnvValueFor({ key: SEARCH_INDEXER_ENV_KEYS.IGNORED_ENTITY_NAMES });
+    return ignoredEntityNames ? ignoredEntityNames.split(',') : undefined;
+  }
+
   async initialize(_event: DynamoDBStreamEvent | SQSEvent): Promise<void> {
     const enabled = resolveEnvValueFor({ key: SEARCH_INDEXER_ENV_KEYS.ENABLED });
     this.isEnabled = enabled === 'true';

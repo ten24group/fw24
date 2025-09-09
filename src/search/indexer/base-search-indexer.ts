@@ -18,6 +18,11 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
     return undefined;
   }
 
+  // override this to provide a list of ignored entity names
+  protected getIgnoredEntityNames(): string[] | undefined {
+    return undefined;
+  }
+
   protected async preprocessRecord(record: BaseEventRecord<any>): Promise<BaseEventRecord<any> | null> {
 
     const { entityName, eventType } = record;
@@ -32,15 +37,20 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
       return null;
     }
 
+    // Check ignored entities first (takes precedence)
+    const ignoredEntityNames = this.getIgnoredEntityNames();
+    if (ignoredEntityNames && ignoredEntityNames.includes(entityName)) {
+      this.logger.warn('Skipping search indexing for ignored entity', { entityName, ignoredEntityNames });
+      return null;
+    }
+
+    // Check allowed entities list
     const allowedEntityNames = this.getAllowedEntityNames();
-
-    if (allowedEntityNames && allowedEntityNames.length > 0) {
-
-      if (!allowedEntityNames.includes(entityName)) {
+    if (allowedEntityNames) {
+      if (allowedEntityNames.length === 0 || !allowedEntityNames.includes(entityName)) {
         this.logger.warn('Skipping search indexing for entity not in allowed list', { entityName, allowedEntityNames });
         return null;
       }
-
     }
 
     return record;

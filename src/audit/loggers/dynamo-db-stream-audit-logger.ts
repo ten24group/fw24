@@ -53,6 +53,11 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     return allowedEntityNames ? allowedEntityNames.split(',') : undefined;
   }
 
+  protected getIgnoredEntityNames(): string[] | undefined {
+    const ignoredEntityNames = resolveEnvValueFor({ key: AUDIT_ENV_KEYS.IGNORED_ENTITY_NAMES });
+    return ignoredEntityNames ? ignoredEntityNames.split(',') : undefined;
+  }
+
   protected async preprocessRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<BaseEventRecord<ChangeStreamPayload> | null> {
 
     const { entityName, eventType } = record;
@@ -67,16 +72,22 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
       return null;
     }
 
-    const allowedEntityNames = this.getAllowedEntityNames();
-    if (allowedEntityNames && allowedEntityNames.length > 0) {
+    // Check ignored entities first (takes precedence)
+    const ignoredEntityNames = this.getIgnoredEntityNames();
+    if (ignoredEntityNames && ignoredEntityNames.includes(entityName)) {
+      this.logger.warn('Skipping audit log for ignored entity', { entityName, ignoredEntityNames });
+      return null;
+    }
 
-      if (!allowedEntityNames.includes(entityName)) {
+    // Check allowed entities list
+    const allowedEntityNames = this.getAllowedEntityNames();
+    if (allowedEntityNames) {
+      if (allowedEntityNames.length === 0 || !allowedEntityNames.includes(entityName)) {
         this.logger.warn('Skipping audit log for entity not in allowed list', { entityName, allowedEntityNames });
         return null;
       }
-
     } else if (entityName === 'auditLog') {
-
+      // Default: skip auditLog entities when no allowed list is specified
       this.logger.warn('Skipping audit log', { record });
       return null;
     }

@@ -67,6 +67,11 @@ export interface SearchIndexingConfig extends IConstructConfig {
      */
     allowedEntityNames?: string[];
     /**
+     * List of entity names to be ignored from indexing.
+     * Takes precedence over allowedEntityNames - if an entity is in both lists, it will be ignored.
+     */
+    ignoredEntityNames?: string[];
+    /**
      * Search engine configuration that defines which search provider to use and its connection details.
      * 
      * Currently supports MeiliSearch with plans to extend to Elasticsearch and Algolia.
@@ -275,6 +280,11 @@ interface AuditConfig extends IConstructConfig {
      * If not provided, all entities will be audited. except `auditLog`.
      */
     allowedEntityNames?: string[];
+    /**
+     * List of entity names to be ignored from auditing.
+     * Takes precedence over allowedEntityNames - if an entity is in both lists, it will be ignored.
+     */
+    ignoredEntityNames?: string[];
     /**
      * The type of audit logger to use.
      * @default 'console'
@@ -659,6 +669,10 @@ export class DynamoDBConstruct implements FW24Construct {
             envVars[ AUDIT_ENV_KEYS.ALLOWED_ENTITY_NAMES ] = config.allowedEntityNames.join(',');
         }
 
+        if (config.ignoredEntityNames && config.ignoredEntityNames.length > 0) {
+            envVars[ AUDIT_ENV_KEYS.IGNORED_ENTITY_NAMES ] = config.ignoredEntityNames.join(',');
+        }
+
         if (config.type === AuditLoggerType.DYNAMODB) {
             envVars[ AUDIT_ENV_KEYS.AUDIT_TABLE_NAME ] = config.dynamodbstreamOptions?.auditTableName || this.dynamoDBConfig.table.name;
         } else {
@@ -731,6 +745,10 @@ export class DynamoDBConstruct implements FW24Construct {
 
         if (config.allowedEntityNames && config.allowedEntityNames.length > 0) {
             envVars[ SEARCH_INDEXER_ENV_KEYS.ALLOWED_ENTITY_NAMES ] = config.allowedEntityNames.join(',');
+        }
+
+        if (config.ignoredEntityNames && config.ignoredEntityNames.length > 0) {
+            envVars[ SEARCH_INDEXER_ENV_KEYS.IGNORED_ENTITY_NAMES ] = config.ignoredEntityNames.join(',');
         }
 
         // Create QueueLambda for processing search indexing events from the stream topic
