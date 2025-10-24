@@ -39,9 +39,6 @@ export function Task(taskName: string, taskConfig: ITaskConfig) {
 		};
 
 		Reflect.defineMetadata(METADATA_KEYS.TASK, taskMetadata, target);
-		
-		console.log(`[Task] Stored metadata for task: ${taskName}`);
-
 
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {

@@ -80,8 +80,6 @@ export function registerEntitySchema<T extends EntitySchema<any, any, any>>(opti
     const globalEntityRegistry = (global as any).__fw24EntityRegistry || ((global as any).__fw24EntityRegistry = new Map());
     globalEntityRegistry.set(String(options.forEntity), entityMetadata);
 
-    console.log(`[registerEntitySchema] Stored entity metadata: ${entityMetadata.entityName}`);
-
     if (options.doNotAutoRegisterEntityService) {
         return;
     }

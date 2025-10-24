@@ -22,6 +22,5 @@ export function Service(options: InjectableOptions = {} ): ClassDecorator {
 
         Reflect.defineMetadata(METADATA_KEYS.SERVICE, serviceMetadata, constructor);
         
-        console.log(`[Service] Stored metadata for service: ${constructor.name}`);
     };
 }

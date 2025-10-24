@@ -690,7 +690,7 @@ async function prepareCompositeAttributesForUpdate<S extends EntitySchema<any, a
     });
 
     if (attributesToFetch.size > 0) {
-        logger.info(`Need to fetch attributes for composite keys:`, Array.from(attributesToFetch));
+        logger.debug(`Need to fetch attributes for composite keys:`, Array.from(attributesToFetch));
 
         try {
             const existingRecordContainer = await entityService.getRepository()
@@ -805,7 +805,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     if (allReferencedCompositeAttributes.size > 0) {
         if (compositeKeyData && typeof compositeKeyData === 'object') {
 
-            logger.info(`Using provided compositeKeyData for update.`, compositeKeyData);
+            logger.debug(`Using provided compositeKeyData for update.`, compositeKeyData);
 
             finalCompositeKeyValuesForElectroDB = compositeKeyData;
 
@@ -826,7 +826,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
 
         } else {
 
-            logger.info(`No compositeKeyData provided, preparing composite attributes internally. Required:`, Array.from(allReferencedCompositeAttributes));
+            logger.debug(`No compositeKeyData provided, preparing composite attributes internally. Required:`, Array.from(allReferencedCompositeAttributes));
 
             finalCompositeKeyValuesForElectroDB = await prepareCompositeAttributesForUpdate({
                 entityName,
@@ -839,7 +839,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         }
 
     } else {
-        logger.info(`No composite attributes defined in schema or needed for this update.`);
+        logger.debug(`No composite attributes defined in schema or needed for this update.`);
     }
     // --- End Composite Key Handling ---
 
@@ -849,7 +849,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     const query = entityService.getRepository().patch(identifiers).set(data);
 
     if (Object.keys(finalCompositeKeyValuesForElectroDB).length > 0) {
-        logger.info(`Using composite values for ElectroDB patch:`, finalCompositeKeyValuesForElectroDB);
+        logger.debug(`Using composite values for ElectroDB patch:`, finalCompositeKeyValuesForElectroDB);
         query.composite(finalCompositeKeyValuesForElectroDB);
     }
 

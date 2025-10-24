@@ -91,8 +91,6 @@ export function Controller(controllerName: string, controllerConfig: IController
 
 		Reflect.defineMetadata(METADATA_KEYS.CONTROLLER, controllerMetadata, target);
 		
-		console.log(`[Controller] Stored comprehensive metadata for controller: ${controllerName}`);
-
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {
 			constructor(...args: any[]) {

@@ -90,8 +90,6 @@ export function Queue(queueName: string, queueConfig: IQueueConfig = {}) {
 
 		Reflect.defineMetadata(METADATA_KEYS.QUEUE, queueMetadata, target);
 		
-		console.log(`[Queue] Stored metadata for queue: ${queueName}`);
-
 
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {
