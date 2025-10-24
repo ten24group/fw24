@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import type { ILambdaEnvConfig } from "../interfaces";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
 /**

@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import type { QueueProps } from "aws-cdk-lib/aws-sqs";
 import type { IQueueSubscriptions } from "../constructs/queue-lambda";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";

@@ -1,7 +1,10 @@
+import 'reflect-metadata';
 import type { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import type { AuthorizerTypeMetadata } from "./authorizer";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
-import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor } from "./decorator-utils";
+import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor, getRoutesKey } from "./decorator-utils";
+import { METADATA_KEYS, type ControllerMetadata } from '../manifest/metadata-keys';
+import type { Route } from '../interfaces/route';
 
 /**
  * Represents the configuration options for a controller.
@@ -69,6 +72,26 @@ export function Controller(controllerName: string, controllerConfig: IController
 
 		// Default autoExportLambdaHandler to true if undefined
 		controllerConfig.autoExportLambdaHandler = controllerConfig.autoExportLambdaHandler ?? true;
+
+
+		// Store comprehensive controller metadata using reflect-metadata
+		const controllerMetadata: ControllerMetadata = {
+			name: controllerName,
+			config: controllerConfig,
+			basePath: `/${controllerName.toLowerCase()}`,
+			authorizer: controllerConfig.authorizer,
+			resourceAccess: controllerConfig.resourceAccess,
+			env: controllerConfig.env,
+			target: controllerConfig.target,
+			functionTimeout: controllerConfig.functionTimeout,
+			policies: controllerConfig.policies,
+			processorArchitecture: controllerConfig.processorArchitecture,
+			functionProps: controllerConfig.functionProps
+		};
+
+		Reflect.defineMetadata(METADATA_KEYS.CONTROLLER, controllerMetadata, target);
+		
+		console.log(`[Controller] Stored comprehensive metadata for controller: ${controllerName}`);
 
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {

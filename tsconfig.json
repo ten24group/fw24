@@ -25,6 +25,7 @@
         "experimentalDecorators": true,
         "strictPropertyInitialization": true,
         "stripInternal": true,
+        "skipLibCheck": true,
         "outDir": "./dist/package",
         "rootDir": "src",
         "typeRoots": [

@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import type { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import type { AuthorizerTypeMetadata } from "./authorizer";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";

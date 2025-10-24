@@ -393,7 +393,7 @@ export class LambdaFunction extends Construct {
 
       const access = typeof table === 'string' ? [ 'readwrite' ] : table.access || [ 'readwrite' ];
       // Get the DynamoDB table based on the controller config
-      const tableInstance: ITableV2 = TableV2.fromTableAttributes(this, `${id}-${tableName}-table`, {
+      const tableInstance: ITableV2 = TableV2.fromTableAttributes(this, `${id}-${tableName}-table-${Math.random().toString(36).substr(2, 9)}`, {
         tableName: fw24.getEnvironmentVariable(appQualifiedTableName + '_tableName', 'table', scope),
         grantIndexPermissions: true,
       });
@@ -431,7 +431,7 @@ export class LambdaFunction extends Construct {
       const access = typeof bucket === 'string' ? [ 'readwrite' ] : bucket.access || [ 'readwrite' ];
 
       const bucketFullName = fw24.getUniqueName(bucketName);
-      const bucketInstance: any = Bucket.fromBucketName(this, bucketName + id + '-bucket', bucketFullName);
+      const bucketInstance: any = Bucket.fromBucketName(this, `${bucketName}-${id}-bucket-${Math.random().toString(36).substr(2, 9)}`, bucketFullName);
       // Grant the lambda function access to the bucket
       access.forEach((accessType: string) => {
         switch (accessType) {

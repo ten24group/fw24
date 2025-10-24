@@ -203,7 +203,7 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
     */
     getFilterableAttributeNames(): Array<string>;
     serializeRecord<T extends Record<string, any>>(record: T, attributes?: EntitySelections<S>): Partial<T>;
-    serializeRecords<T extends Record<string, any>>(record: Array<T>, attributes?: EntitySelections<S>): Array<Partial<T>>;
+    serializeRecords<T extends Record<string, any>>(record: Array<T> | null, attributes?: EntitySelections<S>): Array<Partial<T>>;
     hydrateRecords(relations: Array<[relatedAttributeName: string, options: HydrateOptionForRelation<any>]>, rootEntityRecords: Array<{
         [x: string]: any;
     }>): Promise<void>;

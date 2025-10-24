@@ -47,7 +47,7 @@ export declare class MeiliSearchEngine extends BaseSearchEngine {
     /**
      * List all available indices
      */
-    listIndices(): Promise<import("meilisearch").IndexesResults<Index<RecordAny>[]>>;
+    listIndices(limit?: number, offset?: number): Promise<import("meilisearch").IndexesResults<Index<RecordAny>[]>>;
     /**
      * Delete an index
      */

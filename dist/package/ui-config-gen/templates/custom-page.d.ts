@@ -265,7 +265,7 @@ export interface DetailsPageConfig extends BasePageConfig {
 export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageConfig | DashboardPageConfig | AccordionPageConfig | MenuPageConfig;
 export declare function makeCustomPageConfig(options: CustomPageOptions): {
     pageTitle: string;
-    pageType: "details" | "form" | "menu" | "list" | "accordion" | "dashboard";
+    pageType: "list" | "form" | "accordion" | "details" | "dashboard" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string;
@@ -351,7 +351,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         }>;
     };
     pageTitle: string;
-    pageType: "details" | "form" | "menu" | "list" | "accordion" | "dashboard";
+    pageType: "list" | "form" | "accordion" | "details" | "dashboard" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string;
@@ -398,7 +398,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         submitSuccessRedirect?: string;
     };
     pageTitle: string;
-    pageType: "details" | "form" | "menu" | "list" | "accordion" | "dashboard";
+    pageType: "list" | "form" | "accordion" | "details" | "dashboard" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string;
@@ -474,7 +474,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         }>;
     };
     pageTitle: string;
-    pageType: "details" | "form" | "menu" | "list" | "accordion" | "dashboard";
+    pageType: "list" | "form" | "accordion" | "details" | "dashboard" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string;
@@ -509,7 +509,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         timezone?: string;
     };
     pageTitle: string;
-    pageType: "details" | "form" | "menu" | "list" | "accordion" | "dashboard";
+    pageType: "list" | "form" | "accordion" | "details" | "dashboard" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string;
@@ -543,7 +543,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         dashboardPageConfig?: DashboardPageConfig["dashboardPageConfig"];
     }>;
     pageTitle: string;
-    pageType: "details" | "form" | "menu" | "list" | "accordion" | "dashboard";
+    pageType: "list" | "form" | "accordion" | "details" | "dashboard" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string;
@@ -585,7 +585,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         }>;
     };
     pageTitle: string;
-    pageType: "details" | "form" | "menu" | "list" | "accordion" | "dashboard";
+    pageType: "list" | "form" | "accordion" | "details" | "dashboard" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string;

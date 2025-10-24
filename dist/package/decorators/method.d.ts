@@ -1,4 +1,6 @@
+import 'reflect-metadata';
 import type { HttpRequestValidations, InputValidationRule } from "../validation";
+import type { AuthorizerTypeMetadata } from './authorizer';
 /**
  * Decorator function for defining a GET route.
  *
@@ -10,9 +12,13 @@ export declare const Get: (route: string, options?: {
     /**
      * Specifies the target for the API
      * Values can be "queue" or "topic"
-     * @default ""
+     * @default "function"
      */
-    target?: string;
+    target?: "function" | "queue" | "topic";
+    /**
+     * Specifies the authorizer for this route
+     */
+    authorizer?: AuthorizerTypeMetadata | string;
 }) => (target: any, methodToDecorate: any) => void;
 /**
  * Decorator function for creating a POST route.
@@ -23,9 +29,13 @@ export declare const Post: (route: string, options?: {
     /**
      * Specifies the target for the API
      * Values can be "queue" or "topic"
-     * @default ""
+     * @default "function"
      */
-    target?: string;
+    target?: "function" | "queue" | "topic";
+    /**
+     * Specifies the authorizer for this route
+     */
+    authorizer?: AuthorizerTypeMetadata | string;
 }) => (target: any, methodToDecorate: any) => void;
 /**
  * Decorator function for defining a PUT route.
@@ -38,9 +48,13 @@ export declare const Put: (route: string, options?: {
     /**
      * Specifies the target for the API
      * Values can be "queue" or "topic"
-     * @default ""
+     * @default "function"
      */
-    target?: string;
+    target?: "function" | "queue" | "topic";
+    /**
+     * Specifies the authorizer for this route
+     */
+    authorizer?: AuthorizerTypeMetadata | string;
 }) => (target: any, methodToDecorate: any) => void;
 /**
  * Decorator function for defining a DELETE route.
@@ -53,9 +67,13 @@ export declare const Delete: (route: string, options?: {
     /**
      * Specifies the target for the API
      * Values can be "queue" or "topic"
-     * @default ""
+     * @default "function"
      */
-    target?: string;
+    target?: "function" | "queue" | "topic";
+    /**
+     * Specifies the authorizer for this route
+     */
+    authorizer?: AuthorizerTypeMetadata | string;
 }) => (target: any, methodToDecorate: any) => void;
 /**
  * Decorator function for PATCH routes.
@@ -68,9 +86,13 @@ export declare const Patch: (route: string, options?: {
     /**
      * Specifies the target for the API
      * Values can be "queue" or "topic"
-     * @default ""
+     * @default "function"
      */
-    target?: string;
+    target?: "function" | "queue" | "topic";
+    /**
+     * Specifies the authorizer for this route
+     */
+    authorizer?: AuthorizerTypeMetadata | string;
 }) => (target: any, methodToDecorate: any) => void;
 /**
  * Represents a decorator that creates a route decorator with the specified HTTP method "OPTIONS".
@@ -83,8 +105,12 @@ export declare const Options: (route: string, options?: {
     /**
      * Specifies the target for the API
      * Values can be "queue" or "topic"
-     * @default ""
+     * @default "function"
      */
-    target?: string;
+    target?: "function" | "queue" | "topic";
+    /**
+     * Specifies the authorizer for this route
+     */
+    authorizer?: AuthorizerTypeMetadata | string;
 }) => (target: any, methodToDecorate: any) => void;
 export type RouteMethods = typeof Options | typeof Patch | typeof Delete | typeof Put | typeof Post | typeof Get;

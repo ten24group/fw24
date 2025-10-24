@@ -5,10 +5,13 @@ import { registerConstructorDependency, RegisterDIModuleMetadataOptions, registe
 import { setupDIModule } from './utils/setupDIModule';
 
 import { tryRegisterInjectable, type InjectableOptions } from './utils/tryRegisterInjectable';
+// Removed old metadata registry - using reflect-metadata instead
 
 export function Injectable( options: InjectableOptions = { providedIn: 'ROOT' }): ClassDecorator {
     return (constructor: Function) => {
         tryRegisterInjectable(constructor as ClassConstructor, options);
+
+        // Provider metadata is now handled by @Service decorator specifically
     };
 }
 
@@ -24,6 +27,8 @@ export function DIModule(options: RegisterDIModuleMetadataOptions = {}): ClassDe
                 fallbackToRootContainer: true
             });
         }
+
+        // Module metadata extraction is handled by the reflection system
     };
 }
 

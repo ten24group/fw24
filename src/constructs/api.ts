@@ -39,7 +39,7 @@ import { LambdaFunction } from "./lambda-function";
 import { LambdaIntegration } from "./lambda-integration";
 
 import { IControllerConfig } from "../decorators/controller";
-import { ENV_KEYS } from "../fw24";
+import { ENV_KEYS, Route } from "../fw24";
 import { isArray, isString } from "../utils";
 import { AuthConstruct } from "./auth";
 import { CertificateConstruct } from "./certificate";
@@ -53,7 +53,8 @@ import { createHash, randomUUID } from "crypto";
 import { VpcConstruct } from "./vpc";
 import { ApiKey, UsagePlan, Period } from "aws-cdk-lib/aws-apigateway";
 import path from 'path';
-import { mkdirSync, existsSync, copyFileSync } from 'fs';
+import { mkdirSync, existsSync, copyFileSync, readFileSync } from 'fs';
+import { CapabilityDescriptor, Manifest, DeploymentUnitDescriptor, ResourceIntent } from "../manifest/types";
 
 /**
  * Represents the configuration options for an API construct.
@@ -312,11 +313,19 @@ export class APIConstruct implements FW24Construct {
     }
 
     private async registerControllers() {
-        // sets the default controllers directory if not defined
-        const controllersDirectory = this.apiConstructConfig.controllersDirectory || "./src/controllers";
+        // Check if manifest exists and use it instead of scanning
+        const manifestPath = path.join(process.cwd(), '.fw24', 'out', 'manifest.json');
+        if (existsSync(manifestPath)) {
+            this.logger.info("Using manifest-based controller registration");
+            await this.registerControllersFromManifest(manifestPath);
+        } else {
+            this.logger.info("Manifest not found, falling back to directory scanning");
+            // sets the default controllers directory if not defined
+            const controllersDirectory = this.apiConstructConfig.controllersDirectory || "./src/controllers";
 
-        // register the controllers
-        await Helper.registerHandlers(controllersDirectory, this.registerController);
+            // register the controllers
+            await Helper.registerHandlers(controllersDirectory, this.registerController);
+        }
 
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
@@ -344,6 +353,42 @@ export class APIConstruct implements FW24Construct {
         } else {
             this.logger.debug("API-gateway stack: construct: app has NO system controllers");
         }
+    }
+
+    private async registerControllersFromManifest(manifestPath: string) {
+        this.logger.info("Loading manifest from:", manifestPath);
+        
+        const manifestContent = readFileSync(manifestPath, 'utf-8');
+        const manifest: Manifest = JSON.parse(manifestContent);
+        
+        // Register API deployment units (which contain grouped controllers)
+        const apiDUs = manifest.deploymentUnits.filter(du => du.kind === 'api');
+        
+        for (const du of apiDUs) {
+            this.logger.info(`Registering API DU: ${du.name}`);
+            
+            // Use the generated bootstrap file instead of individual controllers
+            const bootstrapPath = `.fw24/.generated/du-${du.name}.bootstrap.ts`;
+            
+            const handlerDescriptor: HandlerDescriptor = {
+                handlerClass: null,
+                fileName: `du-${du.name}.bootstrap.ts`,
+                filePath: path.resolve('.fw24/.generated'),
+                handlerHash: `du-${du.name}`,
+                deploymentUnit: du,
+                manifestCapabilities: manifest.capabilities.filter(cap => 
+                    cap.kind === 'controller' && this.isCapabilityInDU(cap, du, manifest)
+                )
+            };
+            
+            this.registerController(handlerDescriptor);
+        }
+    }
+    
+    private isCapabilityInDU(capability: CapabilityDescriptor, du: DeploymentUnitDescriptor, _manifest: Manifest): boolean {
+        // For now, simple logic - all controllers go to 'api' DU
+        // TODO: Implement proper DU matching logic based on du.include/exclude
+        return du.name === 'api' && capability.kind === 'controller';
     }
 
     private async copyAndRegisterSystemControllers() {
@@ -419,12 +464,31 @@ export class APIConstruct implements FW24Construct {
 
     // register a single controller
     private registerController = async (controllerInfo: HandlerDescriptor, ownerModule?: IFw24Module) => {
-        const { handlerClass, filePath, fileName, handlerHash } = controllerInfo;
-        // Add the folder path from filename to the controller name
-        const folderPath = fileName.split('/').slice(0, -1).join('/');
-        const handlerInstance = new handlerClass();
-        const controllerName = !fileName.includes('/') ? handlerInstance.controllerName : folderPath + '/' + handlerInstance.controllerName;
-        const controllerConfig: IControllerConfig = handlerInstance?.controllerConfig || {};
+        const { handlerClass, filePath, fileName, handlerHash, manifestCapability, deploymentUnit, manifestCapabilities } = controllerInfo;
+        
+        let controllerName: string;
+        let controllerConfig: IControllerConfig;
+        let routes: Record<string, Route>;
+        
+        if (deploymentUnit && manifestCapabilities) {
+            // DU-based registration - register the entire deployment unit
+            controllerName = deploymentUnit.name;
+            controllerConfig = this.extractDUConfigFromManifest(deploymentUnit, manifestCapabilities);
+            routes = this.extractDURoutesFromManifest(manifestCapabilities);
+        } else if (manifestCapability) {
+            // Single capability manifest-based registration
+            controllerName = manifestCapability.id.split(':')[0];
+            controllerConfig = this.extractControllerConfigFromManifest(manifestCapability);
+            routes = this.extractRoutesFromManifest(manifestCapability);
+        } else {
+            // Traditional registration - instantiate class
+            const folderPath = fileName.split('/').slice(0, -1).join('/');
+            const handlerInstance = new handlerClass();
+            controllerName = !fileName.includes('/') ? handlerInstance.controllerName : folderPath + '/' + handlerInstance.controllerName;
+            controllerConfig = handlerInstance?.controllerConfig || {};
+            routes = handlerInstance.routes;
+        }
+        
         const controllerStackName = controllerConfig.stackName || controllerName;
         const parentStackName = controllerConfig.parentStackName || this.apiConstructConfig.controllerParentStackName;
 
@@ -439,7 +503,7 @@ export class APIConstruct implements FW24Construct {
 
         // make sure the controller stack exists
         this.fw24.getStack(controllerStackName, parentStackName);
-        controllerInfo.routes = handlerInstance.routes;
+        controllerInfo.routes = routes;
 
         this.logger.info(`Registering controller ${controllerName} from ${filePath}/${fileName}`);
 
@@ -993,6 +1057,103 @@ export class APIConstruct implements FW24Construct {
         }
 
         return this.usagePlans.get(planName)!;
+    }
+
+    private extractControllerConfigFromManifest(capability: CapabilityDescriptor): IControllerConfig {
+        // Extract controller config from manifest capability
+        // This is a simplified version - in full implementation would handle all config options
+        const config: IControllerConfig = {};
+        
+        if (capability.requires?.resourceIntents) {
+            // Convert resource intents to legacy resourceAccess format
+            const resourceAccess: any = {};
+            
+            for (const intent of capability.requires.resourceIntents) {
+                if (intent.kind === 'table') {
+                    if (!resourceAccess.tables) resourceAccess.tables = [];
+                    resourceAccess.tables.push(intent.name);
+                }
+                // Add other resource types as needed
+            }
+            
+            config.resourceAccess = resourceAccess;
+        }
+        
+        return config;
+    }
+
+    private extractRoutesFromManifest(capability: CapabilityDescriptor): Record<string, Route> {
+        const routes: Record<string, Route> = {};
+        
+        if (capability.routing?.routes) {
+            for (const route of capability.routing.routes) {
+                const routeKey = `${route.method.toLowerCase()}${route.path}`;
+                routes[routeKey] = {
+                    httpMethod: route.method,
+                    functionName: capability.exportName,
+                    path: route.path,
+                    parameters: [], // Extract from path parameters if needed
+                    authorizer: route.authorizer,
+                    target: route.target || 'function'
+                };
+            }
+        }
+        
+        return routes;
+    }
+
+    private extractDUConfigFromManifest(_du: DeploymentUnitDescriptor, capabilities: CapabilityDescriptor[]): IControllerConfig {
+        // Merge resource intents from all capabilities in the DU
+        const allIntents = capabilities.flatMap(cap => cap.requires?.resourceIntents || []);
+        const resourceAccess = this.translateIntentsToResourceAccess(allIntents);
+        
+        return {
+            resourceAccess,
+            // TODO: Convert DU functionProps to proper format
+            // TODO: Convert DU env to proper format
+        };
+    }
+
+    private extractDURoutesFromManifest(capabilities: CapabilityDescriptor[]): Record<string, Route> {
+        const routes: Record<string, Route> = {};
+        
+        for (const capability of capabilities) {
+            if (capability.kind === 'controller' && capability.routing?.routes) {
+                const basePath = capability.routing.basePath || '';
+                
+                for (const route of capability.routing.routes) {
+                    const fullPath = `${basePath}${route.path}`;
+                    const routeKey = `${route.method}|${fullPath}`;
+                    
+                    routes[routeKey] = {
+                        httpMethod: route.method,
+                        functionName: capability.exportName,
+                        path: fullPath,
+                        authorizer: route.authorizer,
+                        target: route.target || 'function',
+                        parameters: [] // TODO: Extract parameters from route path
+                    };
+                }
+            }
+        }
+        
+        return routes;
+    }
+
+    private translateIntentsToResourceAccess(intents: ResourceIntent[]): any {
+        const resourceAccess: any = {};
+        
+        const tables = intents.filter(i => i.kind === 'table').map(i => i.name);
+        const buckets = intents.filter(i => i.kind === 'bucket').map(i => i.name);
+        const queues = intents.filter(i => i.kind === 'queue').map(i => i.name);
+        const topics = intents.filter(i => i.kind === 'topic').map(i => i.name);
+        
+        if (tables.length > 0) resourceAccess.tables = tables;
+        if (buckets.length > 0) resourceAccess.buckets = buckets;
+        if (queues.length > 0) resourceAccess.queues = queues;
+        if (topics.length > 0) resourceAccess.topics = topics;
+        
+        return resourceAccess;
     }
 
 }

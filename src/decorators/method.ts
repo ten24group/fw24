@@ -1,6 +1,9 @@
+import 'reflect-metadata';
 import type { Route } from "../interfaces/route";
 import type { HttpRequestValidations, InputValidationRule } from "../validation";
 import { findConstructor, getRoutesKey } from "./decorator-utils";
+import { METADATA_KEYS, type RouteMetadata } from '../manifest/metadata-keys';
+import type { AuthorizerTypeMetadata } from './authorizer';
 
 // function InjectParams(
 //   target: any,
@@ -33,9 +36,13 @@ function createRouteDecorator(method: string) {
       /**
        * Specifies the target for the API
        * Values can be "queue" or "topic"
-       * @default ""
+       * @default "function"
        */
-      target?: string;
+      target?: 'function' | 'queue' | 'topic';
+      /**
+       * Specifies the authorizer for this route
+       */
+      authorizer?: AuthorizerTypeMetadata | string;
     }
   ) =>
     (target: any, methodToDecorate: any) => {
@@ -84,12 +91,14 @@ function createRouteDecorator(method: string) {
         }
       });
 
+      const normalizedPath = route.endsWith('/') ? route.slice(0,-1) : route;
+      
       routes[`${method}|${route}`] = {
         // Make sure path does-not end with a trailing-slash `/` 
         // [AWS signature needs the exact path (with or without slash)]
         // And API gateway strips teh training slash from the API-endpoint
         // * we need to make sure that API, Auth-policy, and Frontend-code all follow the same convention
-        path: route.endsWith('/') ? route.slice(0,-1) : route, 
+        path: normalizedPath, 
         httpMethod: method,
         functionName: methodToDecorate.name || methodToDecorate,
         parameters: parameters,
@@ -97,7 +106,23 @@ function createRouteDecorator(method: string) {
         target: options?.target
       };
 
-      // Store routes on the constructor using the unique symbol
+      // Store route metadata using reflect-metadata for production extraction
+      const routeMetadata: RouteMetadata = {
+        method: method.toUpperCase(),
+        path: normalizedPath,
+        options: {
+          authorizer: options?.authorizer || 'AWS_IAM',
+          target: options?.target || 'function',
+          validations: options?.validations
+        },
+        functionName: methodToDecorate.name || methodToDecorate,
+        parameters: parameters.map(p => String(p))
+      };
+
+      // Store metadata on the method itself
+      Reflect.defineMetadata(METADATA_KEYS.ROUTE, routeMetadata, target, methodToDecorate.name);
+
+      // Store routes on the constructor using the unique symbol (backward compatibility)
       Reflect.set(constructor, routesKey, routes);
       
       // Also store a reference to the routes on the prototype for backward compatibility

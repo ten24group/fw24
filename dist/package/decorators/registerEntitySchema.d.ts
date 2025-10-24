@@ -1,6 +1,7 @@
 import { EntitySchema } from '../entity/base-entity';
 import type { ClassConstructor, DepIdentifier, IDIContainer, ProviderOptions } from '../interfaces/di';
 import type { OmitAnyKeys } from '../utils/types';
+import 'reflect-metadata';
 export type EntitySchemaProviderOptions = OmitAnyKeys<ProviderOptions<any>, 'provide' | 'useClass' | 'useConfig' | 'useExisting'> & {
     forEntity: DepIdentifier<any>;
     providedIn?: 'ROOT' | IDIContainer | ClassConstructor;

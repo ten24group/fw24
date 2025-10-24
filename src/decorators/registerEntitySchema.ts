@@ -9,6 +9,8 @@ import type { OmitAnyKeys } from '../utils/types';
 
 import { DIContainer } from '../di/container';
 import { getModuleMetadata } from '../di/metadata';
+import 'reflect-metadata';
+import { METADATA_KEYS, type EntitySchemaMetadata } from '../manifest/metadata-keys';
 
 export type EntitySchemaProviderOptions = OmitAnyKeys<ProviderOptions<any>, 'provide' | 'useClass' | 'useConfig' | 'useExisting'> & {
     forEntity: DepIdentifier<any>;
@@ -64,6 +66,21 @@ export function registerEntitySchema<T extends EntitySchema<any, any, any>>(opti
         DefaultLogger.error(`registerEntitySchema:: Error registering ${options.forEntity} schema with container:`, { container: container.containerId, error });
         throw error;
     }
+
+    // Store entity schema metadata using reflect-metadata
+    const entityMetadata: EntitySchemaMetadata = {
+        entityName: String(options.forEntity),
+        schemaProviderToken: entitySchemaToken,
+        providedIn: typeof options.providedIn === 'string' ? options.providedIn : options.providedIn?.constructor?.name,
+        tags: options.tags || [],
+        doNotAutoRegisterEntityService: options.doNotAutoRegisterEntityService
+    };
+
+    // Store metadata on a global object since this is a function, not a decorator
+    const globalEntityRegistry = (global as any).__fw24EntityRegistry || ((global as any).__fw24EntityRegistry = new Map());
+    globalEntityRegistry.set(String(options.forEntity), entityMetadata);
+
+    console.log(`[registerEntitySchema] Stored entity metadata: ${entityMetadata.entityName}`);
 
     if (options.doNotAutoRegisterEntityService) {
         return;

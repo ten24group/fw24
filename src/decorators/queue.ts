@@ -1,8 +1,10 @@
+import 'reflect-metadata';
 import type { QueueProps } from "aws-cdk-lib/aws-sqs";
 import type { IQueueSubscriptions } from "../constructs/queue-lambda";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
 import type { ILambdaEnvConfig } from "../interfaces";
 import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor } from "./decorator-utils";
+import { METADATA_KEYS, type QueueMetadata } from '../manifest/metadata-keys';
 
 /**
  * Configuration options for the queue.
@@ -79,6 +81,16 @@ export function Queue(queueName: string, queueConfig: IQueueConfig = {}) {
 
 		// Default autoExportLambdaHandler to true if undefined
 		queueConfig.autoExportLambdaHandler = queueConfig.autoExportLambdaHandler ?? true;
+
+		// Store queue metadata using reflect-metadata
+		const queueMetadata: QueueMetadata = {
+			name: queueName,
+			config: queueConfig
+		};
+
+		Reflect.defineMetadata(METADATA_KEYS.QUEUE, queueMetadata, target);
+		
+		console.log(`[Queue] Stored metadata for queue: ${queueName}`);
 
 
 		// Create an extended class that includes additional setup

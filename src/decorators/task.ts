@@ -1,6 +1,8 @@
+import 'reflect-metadata';
 import type { ILambdaEnvConfig } from "../interfaces";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
 import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor } from "./decorator-utils";
+import { METADATA_KEYS, type TaskMetadata } from '../manifest/metadata-keys';
 
 /**
  * Represents the configuration for a task.
@@ -29,6 +31,16 @@ export function Task(taskName: string, taskConfig: ITaskConfig) {
 
 		// Default autoExportLambdaHandler to true if undefined
 		taskConfig.autoExportLambdaHandler = taskConfig.autoExportLambdaHandler ?? true;
+
+		// Store task metadata using reflect-metadata
+		const taskMetadata: TaskMetadata = {
+			name: taskName,
+			config: taskConfig
+		};
+
+		Reflect.defineMetadata(METADATA_KEYS.TASK, taskMetadata, target);
+		
+		console.log(`[Task] Stored metadata for task: ${taskName}`);
 
 
 		// Create an extended class that includes additional setup

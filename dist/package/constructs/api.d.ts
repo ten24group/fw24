@@ -147,6 +147,8 @@ export declare class APIConstruct implements FW24Construct {
     construct(): Promise<void>;
     private getAPI;
     private registerControllers;
+    private registerControllersFromManifest;
+    private isCapabilityInDU;
     private copyAndRegisterSystemControllers;
     private prepareEntryPackages;
     private registerController;
@@ -165,5 +167,10 @@ export declare class APIConstruct implements FW24Construct {
     private createSNSIntegration;
     private outputApiEndpoint;
     private setupUsagePlan;
+    private extractControllerConfigFromManifest;
+    private extractRoutesFromManifest;
+    private extractDUConfigFromManifest;
+    private extractDURoutesFromManifest;
+    private translateIntentsToResourceAccess;
 }
 export {};
