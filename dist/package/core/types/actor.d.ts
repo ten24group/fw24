@@ -1,6 +1,6 @@
 /**
  * Actor represents the entity performing an action
- * Generic fields at top level, auth-specific fields nested
+ * Focused on practical identity and authorization context
  */
 export interface Actor {
     actorId?: string;
@@ -15,16 +15,12 @@ export interface Actor {
     emailVerified?: boolean;
     phoneNumber?: string;
     phoneVerified?: boolean;
-    firstName?: string;
-    lastName?: string;
     name?: string;
     locale?: string;
     cognito?: {
         sub?: string;
         username?: string;
         groups?: string[];
-        authTime?: number;
-        identities?: any[];
         customAttributes?: Record<string, any>;
         [key: string]: any;
     };

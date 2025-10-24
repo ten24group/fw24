@@ -426,11 +426,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 continue;
             }
 
-            if (formattedAtt.isVisible) {
+            if (formattedAtt.isVisible || formattedAtt.isIdentifier) {
                 outputSchemaAttributes.detail.set(attName, { ...formattedAtt });
             }
 
-            if (formattedAtt.isListable) {
+            if (formattedAtt.isListable || formattedAtt.isIdentifier) {
                 outputSchemaAttributes.list.set(attName, { ...formattedAtt });
             }
 
@@ -624,7 +624,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         return pickKeys<T>(record, ...keys);
     }
 
-    public serializeRecords<T extends Record<string, any>>(record: Array<T>, attributes = this.getDefaultSerializationAttributeNames()): Array<Partial<T>> {
+    public serializeRecords<T extends Record<string, any>>(record: Array<T> | null, attributes = this.getDefaultSerializationAttributeNames()): Array<Partial<T>> {
+        if (!record || !Array.isArray(record)) {
+            return [];
+        }
         return record.map(record => this.serializeRecord<T>(record, attributes));
     }
 
@@ -1125,7 +1128,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     ): T {
 
         if (!ctx?.actor) {
-            this.logger.warn('BaseEntityService: No actor context found, skipping injection');
+            this.logger.debug('BaseEntityService: No actor context found, skipping injection');
             return data;
         }
 
