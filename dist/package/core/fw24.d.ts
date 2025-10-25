@@ -43,7 +43,7 @@ export declare class Fw24 {
     getConfig(): IApplicationConfig;
     getAppDIContainer(): IDIContainer;
     getLambdaEntryPackages(): string[];
-    addGlobalLambdaEntryPackage(packageName: string): void;
+    addGlobalLambdaEntryPackage(packageName: string, priority?: number): void;
     hasGlobalLambdaEntryPackage(packageName: string): boolean;
     removeGlobalLambdaEntryPackage(packageName: string): void;
     getGlobalLambdaLayerNames(): Set<string>;

@@ -32,14 +32,14 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
         indexConfig?: import("../search/types").SearchIndexConfig;
         serviceClass?: DepIdentifier<EntitySearchService<any>> | typeof EntitySearchService | EntitySearchService<any>;
         documentTransformer?: ((entity: import("electrodb").ResponseItem<any, any, any, EntitySchema<any, any, any, {
-            get: string;
-            list: string;
-            query: string;
-            create: string;
-            upsert: string;
-            update: string;
-            delete: string;
-            duplicate: string;
+            readonly get: "get";
+            readonly list: "list";
+            readonly query: "query";
+            readonly create: "create";
+            readonly upsert: "upsert";
+            readonly update: "update";
+            readonly delete: "delete";
+            readonly duplicate: "duplicate";
         }>>) => Promise<Record<string, any>>) | undefined;
     };
     /**
@@ -363,14 +363,14 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      */
     update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, ctx?: ExecutionContext): Promise<{
         data: Partial<import("electrodb").ResponseItem<any, any, any, EntitySchema<any, any, any, {
-            get: string;
-            list: string;
-            query: string;
-            create: string;
-            upsert: string;
-            update: string;
-            delete: string;
-            duplicate: string;
+            readonly get: "get";
+            readonly list: "list";
+            readonly query: "query";
+            readonly create: "create";
+            readonly upsert: "upsert";
+            readonly update: "update";
+            readonly delete: "delete";
+            readonly duplicate: "duplicate";
         }>>>;
     }>;
     /**
@@ -381,14 +381,14 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      */
     delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, ctx?: ExecutionContext): Promise<{
         data: import("electrodb").AllTableIndexCompositeAttributes<any, any, any, EntitySchema<any, any, any, {
-            get: string;
-            list: string;
-            query: string;
-            create: string;
-            upsert: string;
-            update: string;
-            delete: string;
-            duplicate: string;
+            readonly get: "get";
+            readonly list: "list";
+            readonly query: "query";
+            readonly create: "create";
+            readonly upsert: "upsert";
+            readonly update: "update";
+            readonly delete: "delete";
+            readonly duplicate: "duplicate";
         }>> | null;
     }>;
     /**

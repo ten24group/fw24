@@ -219,14 +219,14 @@ export interface UpdateEntityOperators {
  */
 export declare function updateEntity<S extends EntitySchema<any, any, any>>(options: UpdateEntityArgs<S>): Promise<{
     data: Partial<import("electrodb").ResponseItem<any, any, any, EntitySchema<any, any, any, {
-        get: string;
-        list: string;
-        query: string;
-        create: string;
-        upsert: string;
-        update: string;
-        delete: string;
-        duplicate: string;
+        readonly get: "get";
+        readonly list: "list";
+        readonly query: "query";
+        readonly create: "create";
+        readonly upsert: "upsert";
+        readonly update: "update";
+        readonly delete: "delete";
+        readonly duplicate: "duplicate";
     }>>>;
 }>;
 /**
@@ -247,14 +247,14 @@ export interface DeleteEntityArgs<Sch extends EntitySchema<any, any, any>, OpsSc
  */
 export declare function deleteEntity<S extends EntitySchema<any, any, any>>(options: DeleteEntityArgs<S>): Promise<{
     data: import("electrodb").AllTableIndexCompositeAttributes<any, any, any, EntitySchema<any, any, any, {
-        get: string;
-        list: string;
-        query: string;
-        create: string;
-        upsert: string;
-        update: string;
-        delete: string;
-        duplicate: string;
+        readonly get: "get";
+        readonly list: "list";
+        readonly query: "query";
+        readonly create: "create";
+        readonly upsert: "upsert";
+        readonly update: "update";
+        readonly delete: "delete";
+        readonly duplicate: "duplicate";
     }>> | null;
 }>;
 /**

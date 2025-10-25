@@ -6,14 +6,14 @@ export declare namespace User {
             readonly entity: "user";
             readonly entityNamePlural: "Users";
             readonly entityOperations: {
-                get: string;
-                list: string;
-                query: string;
-                create: string;
-                upsert: string;
-                update: string;
-                delete: string;
-                duplicate: string;
+                readonly get: "get";
+                readonly list: "list";
+                readonly query: "query";
+                readonly create: "create";
+                readonly upsert: "upsert";
+                readonly update: "update";
+                readonly delete: "delete";
+                readonly duplicate: "duplicate";
             };
             readonly service: "users";
         };
@@ -295,14 +295,14 @@ export declare namespace User {
             readonly entity: "group";
             readonly entityNamePlural: "Groups";
             readonly entityOperations: {
-                get: string;
-                list: string;
-                query: string;
-                create: string;
-                upsert: string;
-                update: string;
-                delete: string;
-                duplicate: string;
+                readonly get: "get";
+                readonly list: "list";
+                readonly query: "query";
+                readonly create: "create";
+                readonly upsert: "upsert";
+                readonly update: "update";
+                readonly delete: "delete";
+                readonly duplicate: "duplicate";
             };
             readonly service: "users";
         };
@@ -361,14 +361,14 @@ export declare namespace User {
             readonly entity: "group";
             readonly entityNamePlural: "Groups";
             readonly entityOperations: {
-                get: string;
-                list: string;
-                query: string;
-                create: string;
-                upsert: string;
-                update: string;
-                delete: string;
-                duplicate: string;
+                readonly get: "get";
+                readonly list: "list";
+                readonly query: "query";
+                readonly create: "create";
+                readonly upsert: "upsert";
+                readonly update: "update";
+                readonly delete: "delete";
+                readonly duplicate: "duplicate";
             };
             readonly service: "users";
         };

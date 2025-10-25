@@ -53,7 +53,7 @@ export interface APIControllerConfig {
     responseConfig?: Partial<ResponseConfig>;
 }
 export declare abstract class APIController extends AbstractLambdaHandler {
-    protected middlewares: APIControllerMiddleware[];
+    protected middlewares: Set<APIControllerMiddleware>;
     protected responseConfig: ResponseConfig;
     constructor(config?: APIControllerConfig);
     /**
