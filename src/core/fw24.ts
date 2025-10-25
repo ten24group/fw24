@@ -43,7 +43,7 @@ export class Fw24 {
     private constructs = new Map<string, FW24Construct>();
 
     private readonly globalLambdaLayerNames = new Set<string>();
-    private readonly globalLambdaEntryPackages = new Set<string>();
+    private readonly globalLambdaEntryPackages = new Map<string, number>(); // package -> priority
 
     private readonly systemUIConfigs: Map<string, SystemUIPageDefinition> = new Map();
     private readonly systemControllers: Map<string, SystemControllerDefinition> = new Map();
@@ -83,11 +83,18 @@ export class Fw24 {
     }
 
     getLambdaEntryPackages(): string[] {
-        return this.config.lambdaEntryPackages || Array.from(this.globalLambdaEntryPackages);
+        if (this.config.lambdaEntryPackages) {
+            return this.config.lambdaEntryPackages;
+        }
+        
+        // Sort entry packages by priority (lower number = loaded first)
+        return Array.from(this.globalLambdaEntryPackages.entries())
+            .sort((a, b) => a[1] - b[1])  // Sort by priority
+            .map(([packageName]) => packageName);
     }
 
-    addGlobalLambdaEntryPackage(packageName: string) {
-        this.globalLambdaEntryPackages.add(packageName);
+    addGlobalLambdaEntryPackage(packageName: string, priority: number = 999) {
+        this.globalLambdaEntryPackages.set(packageName, priority);
     }
 
     hasGlobalLambdaEntryPackage(packageName: string) {

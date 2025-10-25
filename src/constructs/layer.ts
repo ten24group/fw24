@@ -36,6 +36,31 @@ export interface IPackageDirectoryConfig extends IConstructConfig {
      * Optional properties for the layer version.
      */
     layerProps?: Omit<LayerVersionProps, 'code'>;
+
+    /**
+     * Priority for layer loading order. Lower numbers load first.
+     * If not specified, priority is auto-assigned as (array_index + 10).
+     * 
+     * Priority ranges:
+     * - 0-9: Reserved for framework layers (fw24 core = 0)
+     * - 10+: User/application layers (auto-assigned or explicit)
+     * 
+     * @example
+     * // Auto-assigned priorities (recommended):
+     * const layers = new DILayerConstruct([
+     *   { sourcePath: './di.ts' },        // priority: 10
+     *   { sourcePath: './shared.ts' },    // priority: 11
+     *   { sourcePath: './firebase.ts' }   // priority: 12
+     * ]);
+     * 
+     * // Explicit priorities (for special cases):
+     * const layers = new DILayerConstruct([
+     *   { sourcePath: './di.ts', priority: 10 },      // Load first
+     *   { sourcePath: './firebase.ts', priority: 20 }, // Load last
+     *   { sourcePath: './shared.ts', priority: 15 }   // Load in between
+     * ]);
+     */
+    priority?: number;
 }
 
 /**
@@ -74,15 +99,70 @@ export interface IBuildAndPackageConfig extends IConstructConfig {
 
     
     notGlobal?: boolean;
+
+    /**
+     * Priority for layer loading order. Lower numbers load first.
+     * If not specified, priority is auto-assigned as (array_index + 10).
+     * 
+     * Priority ranges:
+     * - 0-9: Reserved for framework layers (fw24 core = 0)
+     * - 10+: User/application layers (auto-assigned or explicit)
+     * 
+     * @example
+     * // Auto-assigned priorities (recommended):
+     * const layers = new DILayerConstruct([
+     *   { sourcePath: './di.ts' },        // priority: 10
+     *   { sourcePath: './shared.ts' },    // priority: 11
+     *   { sourcePath: './firebase.ts' }   // priority: 12
+     * ]);
+     * 
+     * // Explicit priorities (for special cases):
+     * const layers = new DILayerConstruct([
+     *   { sourcePath: './di.ts', priority: 10 },      // Load first
+     *   { sourcePath: './firebase.ts', priority: 20 }, // Load last
+     *   { sourcePath: './shared.ts', priority: 15 }   // Load in between
+     * ]);
+     */
+    priority?: number;
 }
 
 /**
  * Configuration for layer construct.
+ * 
+ * Layers are processed in parallel for speed, but loaded at runtime in priority order.
+ * Priority determines the order in which layers initialize when Lambda cold starts.
+ * 
+ * @see IBuildAndPackageConfig.priority for priority details
  */
 export type ILayerConstructConfig = IPackageDirectoryConfig | IBuildAndPackageConfig;
 
 /**
  * Represents a construct for creating Lambda layers.
+ * 
+ * Layers are built in parallel for performance, but initialize at Lambda runtime
+ * in priority order. This ensures correct dependency loading (e.g., DI container
+ * loads before layers that use it).
+ * 
+ * Priority System:
+ * - 0-9: Reserved for framework layers (fw24 core = 0)
+ * - 10+: Application layers (auto-assigned starting at 10, or set explicitly)
+ * 
+ * @example
+ * ```ts
+ * // Basic usage with auto-priority (recommended)
+ * const diLayer = new DILayerConstruct([
+ *   { sourcePath: './src/di.ts' },              // priority: 10 (auto)
+ *   { sourcePath: './src/config/shared.ts' },   // priority: 11 (auto)
+ *   { sourcePath: './src/config/firebase.ts' }  // priority: 12 (auto)
+ * ]);
+ * 
+ * // Advanced usage with explicit priorities
+ * const diLayer = new DILayerConstruct([
+ *   { sourcePath: './src/di.ts', priority: 10 },        // Load first
+ *   { sourcePath: './src/config/firebase.ts', priority: 20 }, // Load last
+ *   { sourcePath: './src/config/shared.ts', priority: 15 }    // Load in between
+ * ]);
+ * ```
  */
 export class LayerConstruct implements FW24Construct {
     readonly logger = createLogger(LayerConstruct);
@@ -97,30 +177,6 @@ export class LayerConstruct implements FW24Construct {
     /**
      * Creates a new LayerConstruct instance.
      * @param config - The configuration for the LayerConstruct.
-     * 
-     * @example
-     * ```ts
-     * // Detailed usage example.
-     * const layerConfig: ILayerConstructConfig[] = [
-     *   {
-     *     layerName: "MyLayer",
-     *     sourcePath: "/path/to/source",
-     *     clearOutputDir: true,
-     *     layerProps: {
-     *       // additional layer properties
-     *     }
-     *   }, {
-     *      sourcePath: "/path/to/layer/file.ts", // File needs to be decorated with `@LayerEntry`
-     *      mode: 'BUILD_AND_PACKAGE',
-     *  }, {
-     *     sourcePath: "/path/to/layers/", // only the files decorated with `@LayerEntry({...})` will be processed as layers
-     *     mode: 'BUILD_AND_PACKAGE',
-     *     outputDir: "/path/to/dist"
-     *     clearOutputDir: true, // defaults to false
-     * }
-     * ];
-     * const layer = new LayerConstruct(layerConfig);
-     * ```
      */
     constructor(private config: ILayerConstructConfig[]) {
         
@@ -137,6 +193,16 @@ export class LayerConstruct implements FW24Construct {
 
     @LogDuration()
     public async construct() {
+        // Assign priority to each layer: use explicit priority if set, otherwise use array index + 10
+        // Priority 0-9 reserved for framework layers (fw24 core = 0)
+        // User layers start at 10+ to ensure framework layers always load first
+        this.config.forEach((layerConfig, index) => {
+            if (!layerConfig.priority && layerConfig.priority !== 0) {
+                layerConfig.priority = index + 10;
+            }
+        });
+
+        // Process layers in parallel for speed while respecting priority-based loading order
         await Promise.all(this.config.map(async (layerConfig) => {
             this.mainStack = this.fw24.getStack(layerConfig.stackName || this.fw24.getConfig().layerStackName, layerConfig.parentStackName);
 
@@ -186,6 +252,7 @@ export class LayerConstruct implements FW24Construct {
             ? scanDirectory(sourceDirectoryOrFileName)
             : [sourceDirectoryOrFileName];
 
+        // Process files in parallel now that we have priority-based ordering
         await Promise.all(tsFiles.map(async (file) => {
             await this.tryCreateLayerForFile(file, distDirectory, layerConfig);
         }));
@@ -268,8 +335,12 @@ export class LayerConstruct implements FW24Construct {
         if(isGlobalLayer(layerDescriptor)){
             // collect global layers for lambda
             this.fw24.addGlobalLambdaLayerNames(layerName);
-            // collect global entry-packages for lambdas
-            this.fw24.addGlobalLambdaEntryPackage(`env:layerImportPath:${layerName}`);
+            // collect global entry-packages for lambdas with priority for correct loading order
+            // Priority is always set in construct(), so it must be defined here
+            if (layerConfig.priority === undefined) {
+                throw new Error(`Layer ${layerName} has no priority. This should never happen.`);
+            }
+            this.fw24.addGlobalLambdaEntryPackage(`env:layerImportPath:${layerName}`, layerConfig.priority);
         }
 
         const layerProps = getLayerProps(layerDescriptor);
