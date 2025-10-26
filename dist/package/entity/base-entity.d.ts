@@ -410,6 +410,7 @@ export interface IPageActionItem {
     url: string;
     icon?: string;
 }
+
 export interface IEntityPageAction {
     label: string;
     url?: string;
