@@ -154,7 +154,9 @@ export class EntityUIConfigGen {
                     entityName,
                     entityNamePlural: entitySchema.model.entityNamePlural,
                     CRUDApiPath: entitySchema.model.CRUDApiPath,
-                    properties: entityDefaultOpsSchema.create.input
+                    properties: entityDefaultOpsSchema.create.input,
+                    breadcrumbs: entitySchema.model.createPageBreadcrumbs,
+                    columnsConfig: entitySchema.model.createPageColumnsConfig,
                 }, service);
                 entityConfigs[ `create-${entityName.toLowerCase()}` ] = createConfig;
             }
@@ -182,7 +184,10 @@ export class EntityUIConfigGen {
                     excludeFromAdminCreate: entitySchema.model.excludeFromAdminCreate,
                     excludeFromAdminUpdate: entitySchema.model.excludeFromAdminUpdate,
                     excludeFromAdminDelete: entitySchema.model.excludeFromAdminDelete,
-                    excludeFromAdminDetail: entitySchema.model.excludeFromAdminDetail
+                    excludeFromAdminDetail: entitySchema.model.excludeFromAdminDetail,
+                    pageHeaderActions: entitySchema.model.listPageActions,
+                    breadcrumbs: entitySchema.model.listPageBreadcrumbs,
+                    defaultSort: entitySchema.model.listPageDefaultSort,
                 });
                 entityConfigs[ `list-${entityName.toLowerCase()}` ] = listConfig;
             }

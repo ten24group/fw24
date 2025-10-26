@@ -1,4 +1,4 @@
-import { BaseEntityService, TIOSchemaAttribute, isSelectFieldMetadata } from "../../entity";
+import { BaseEntityService, FieldMetadata, TIOSchemaAttribute, isSelectFieldMetadata } from "../../entity";
 import { DefaultLogger } from "../../logging";
 import { pascalCase } from "../../utils";
 import { makeCreateEntityFormConfig } from "./create-entity";
@@ -135,21 +135,11 @@ export function formatEntityAttributesForDetail( properties: TIOSchemaAttribute[
         .map( (att) => formatEntityAttributeForFormOrDetail(att, 'detail', entityService) );
 }
 
-export type ListingPropConfig = {
+export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' | 'helpText' | 'filterConfig'> & {
     name: string,
     dataIndex: string,
-    fieldType: "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json",
     hidden?: boolean,
     actions?: any[],
-    placeholder?: string,
-    helpText?: string,
-    // Filter configuration options
-    filterConfig?: {
-        defaultOperator?: string; // Default filter operator (e.g., 'contains', 'eq', 'in')
-        availableOperators?: string[]; // Restrict available operators for this column
-        predefinedOptions?: Array<{ label: string; value: string }>; // For dropdown/select filters
-        filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean'; // Filter input type
-    };
 };
 
 export function formatEntityAttributesForList( entityName: string, properties: TIOSchemaAttribute[], {

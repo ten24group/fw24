@@ -14,35 +14,49 @@ export declare const AuditCustomPageConfigs: {
             readonly apiConfig: {
                 readonly apiUrl: "/system/auditlog";
                 readonly search: {
-                    apiMethod: string;
+                    defaultSort?: string | {
+                        field: string;
+                        order: "asc" | "desc";
+                    } | {
+                        field: string;
+                        order: "asc" | "desc";
+                    }[] | undefined;
+                    apiMethod: "GET";
                     responseKey: string;
                     apiUrl: string;
                 };
                 readonly database: {
-                    apiMethod: string;
+                    defaultSort?: string | {
+                        field: string;
+                        order: "asc" | "desc";
+                    } | {
+                        field: string;
+                        order: "asc" | "desc";
+                    }[] | undefined;
+                    apiMethod: "GET";
                     responseKey: string;
                     apiUrl: string;
                 };
-                readonly apiMethod?: undefined;
-                readonly responseKey?: undefined;
-                readonly useSearch?: undefined;
             } | {
                 readonly apiUrl: "/system/auditlog";
-                readonly apiMethod: string;
+                readonly defaultSort?: string | {
+                    field: string;
+                    order: "asc" | "desc";
+                } | {
+                    field: string;
+                    order: "asc" | "desc";
+                }[] | undefined;
+                readonly apiMethod: "GET";
                 readonly responseKey: string;
                 readonly useSearch: false;
                 readonly search?: undefined;
                 readonly database?: undefined;
             };
-            readonly propertiesConfig: any[];
+            readonly propertiesConfig: import("../../../ui-config-gen/templates/util").ListingPropConfig[];
         };
         readonly pageTitle: `${string} Listing`;
         readonly pageType: "list";
-        readonly breadcrums: readonly [];
-        readonly pageHeaderActions: {
-            label: string;
-            url: string;
-        }[];
+        readonly pageHeaderActions: import("../../../entity").IEntityPageAction[];
     };
     viewUiConfig: {
         readonly routePattern: "/view-auditlog/:auditId";

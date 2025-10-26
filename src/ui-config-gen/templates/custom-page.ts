@@ -1,19 +1,14 @@
-import { EntitySchema, FieldOptions, FieldOptionsAPIConfig } from "../../entity";
+import { EntitySchema, FieldOptions, FieldOptionsAPIConfig, ApiMethod, ModalType, IModalApiConfig, IConfirmModal } from "../../entity";
 import { IPageActionItem, IEntityPageColumnConfig } from "../../entity/base-entity";
 
 export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion" | "menu";
-export type ModalType = "confirm" | "list" | "form" | "accordion" | "custom" | "details";
 
-// Import shared types from frontend for consistency
-type ConfigFieldType = "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json" | "list" | "object";
-type ConfigPropertyType = "list" | "map" | "object";
+// ConfigFieldType: Field rendering types (UI components)
+// Should NOT include structural types like "list" or "object"
+export type ConfigFieldType = "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json";
 
-interface IConfirmModal {
-    title: string;
-    content?: string;
-}
-
-type ModalPageConfig = IConfirmModal | FormPageConfig[ 'formPageConfig' ] | ListPageConfig[ 'listPageConfig' ] | DetailsPageConfig['detailsPageConfig'];
+// ConfigPropertyType: Data structure types
+export type ConfigPropertyType = "list" | "map" | "object";
 
 export interface BasePageConfig {
     pageTitle: string;
@@ -29,12 +24,8 @@ export interface BasePageConfig {
         openInModal?: boolean;
         modalConfig?: {
             modalType: ModalType;
-            modalPageConfig: ModalPageConfig;
-            apiConfig?: {
-                apiMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-                responseKey?: string;
-                apiUrl: string;
-            };
+            modalPageConfig?: IConfirmModal | Record<string, any>;
+            apiConfig?: IModalApiConfig;
             submitSuccessRedirect?: string;
         };
     }>;
@@ -142,12 +133,8 @@ export interface ListPageConfig extends BasePageConfig {
                 openInModal?: boolean;
                 modalConfig?: {
                     modalType: ModalType;
-                    modalPageConfig: ModalPageConfig;
-                    apiConfig?: {
-                        apiMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-                        responseKey?: string;
-                        apiUrl: string;
-                    };
+                    modalPageConfig: IConfirmModal | Record<string, any>;
+                    apiConfig?: IModalApiConfig;
                     submitSuccessRedirect?: string;
                 };
             }>;
@@ -197,33 +184,22 @@ export interface FormPageConfig extends BasePageConfig {
         width: string;
     };
     formPageConfig: {
-        apiConfig: {
-            apiMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-            responseKey?: string;
-            apiUrl: string;
-        };
-        detailApiConfig?: {
-            apiMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-            responseKey?: string;
-            apiUrl: string;
-        };
+        apiConfig: IModalApiConfig;
+        detailApiConfig?: IModalApiConfig;
         formButtons: Array<string | {
             text: string;
             url: string;
         }>;
         propertiesConfig: Array<PropertyConfig>;
         submitSuccessRedirect?: string;
+        columnsConfig?: IEntityPageColumnConfig;
     };
 }
 
 export interface DetailsPageConfig extends BasePageConfig {
     pageType: "details";
     detailsPageConfig: {
-        detailApiConfig: {
-            apiMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-            responseKey?: string;
-            apiUrl: string;
-        };
+        detailApiConfig: IModalApiConfig;
         columnsConfig?: IEntityPageColumnConfig;
         propertiesConfig: Array<{
             type?: ConfigPropertyType;

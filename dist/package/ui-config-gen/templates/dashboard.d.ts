@@ -1,6 +1,6 @@
 declare const _default: () => {
     pageTitle: string;
     pageType: string;
-    breadcrums: never[];
+    breadcrumbs: never[];
 };
 export default _default;

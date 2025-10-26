@@ -1,7 +1,7 @@
 import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem, UpsertItem } from "electrodb";
 import { createSchema, Entity } from "electrodb";
 
-import type { EntityQuery } from './query-types';
+import type { EntityQuery, FilterOperatorsExtended } from './query-types';
 import type { BaseEntityService } from "./base-service";
 import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
@@ -458,10 +458,16 @@ export interface BaseFieldMetadata {
   tooltip?: string; // maybe this can be inferred from the helpText
   // Filter configuration options
   filterConfig?: {
-    defaultOperator?: string; // Default filter operator (e.g., 'contains', 'eq', 'in')
-    availableOperators?: string[]; // Restrict available operators for this column
-    predefinedOptions?: Array<{ label: string; value: string }>; // For dropdown/select filters
     filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean'; // Filter input type
+    defaultOperator?: FilterOperatorsExtended<any>; // Default filter operator (e.g., 'contains', 'eq', 'in')
+    availableOperators?: FilterOperatorsExtended<any>[]; // Restrict available operators for this column
+    predefinedOptions?: Array<{ label: string; value: string }>; // For dropdown/select filters
+  };
+  // Link configuration for rendering field as internal link
+  isLink?: boolean;
+  linkConfig?: {
+    routePattern: string;
+    displayText?: string;
   };
 }
 
@@ -471,6 +477,44 @@ export interface IPageActionItem {
   icon?: string;
 }
 
+/**
+ * Modal type for actions
+ */
+export type ModalType = "confirm" | "list" | "form" | "accordion" | "custom" | "details" | "dashboard";
+
+/**
+ * API method type - must match frontend IApiConfig
+ */
+export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+
+/**
+ * Confirm modal configuration
+ */
+export interface IConfirmModal {
+  title: string;
+  content?: string;
+}
+
+/**
+ * API configuration for modal actions
+ */
+export interface IModalApiConfig {
+  apiMethod: ApiMethod;
+  responseKey?: string;
+  apiUrl: string;
+}
+
+/**
+ * Modal configuration for entity page actions
+ * Note: This is a subset of the frontend IModalConfig, excluding runtime props
+ */
+export interface IEntityPageActionModalConfig {
+  modalType: ModalType;
+  modalPageConfig?: IConfirmModal | Record<string, any>;
+  apiConfig?: IModalApiConfig;
+  submitSuccessRedirect?: string;
+}
+
 export interface IEntityPageAction {
   label: string;
   url?: string;
@@ -478,16 +522,7 @@ export interface IEntityPageAction {
   type?: 'button' | 'dropdown';
   items?: IPageActionItem[];
   openInModal?: boolean;
-  modalConfig?: {
-    modalType: "confirm" | "list" | "form" | "accordion" | "custom" | "details";
-    modalPageConfig: any;
-    apiConfig?: {
-      apiMethod: string;
-      responseKey: string;
-      apiUrl: string;
-    };
-    submitSuccessRedirect?: string;
-  };
+  modalConfig?: IEntityPageActionModalConfig;
 }
 
 export interface IEntityPageColumn {
@@ -496,6 +531,7 @@ export interface IEntityPageColumn {
 }
 
 export interface IEntityPageColumnConfig {
+  numColumns?: number;
   columns: IEntityPageColumn[];
 }
 
@@ -853,6 +889,13 @@ export interface EntitySchema<
     readonly menuGroup?: string; // Group this entity belongs to in the menu
     readonly menuOrder?: number; // Order within the group (default: 0)
 
+    // Create page configuration
+    readonly createPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+    readonly createPageColumnsConfig?: IEntityPageColumnConfig,
+    // List page configuration
+    readonly listPageActions?: IEntityPageAction[],
+    readonly listPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+    readonly listPageDefaultSort?: { field: string; order: 'asc' | 'desc' } | Array<{ field: string; order: 'asc' | 'desc' }> | string,
     // View page configuration
     readonly viewPageActions?: IEntityPageAction[],
     readonly viewPageBreadcrumbs?: Array<{ label: string; url?: string }>,
@@ -861,6 +904,7 @@ export interface EntitySchema<
     readonly editPageActions?: IEntityPageAction[],
     readonly editPageBreadcrumbs?: Array<{ label: string; url?: string }>,
     readonly editPageColumnsConfig?: IEntityPageColumnConfig,
+    
 
     readonly search?: {
       enabled: boolean;

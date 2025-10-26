@@ -1,6 +1,6 @@
 import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem, UpsertItem } from "electrodb";
 import { Entity } from "electrodb";
-import type { EntityQuery } from './query-types';
+import type { EntityQuery, FilterOperatorsExtended } from './query-types';
 import type { BaseEntityService } from "./base-service";
 import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
@@ -396,13 +396,18 @@ export interface BaseFieldMetadata {
     helpText?: string;
     tooltip?: string;
     filterConfig?: {
-        defaultOperator?: string;
-        availableOperators?: string[];
+        filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean';
+        defaultOperator?: FilterOperatorsExtended<any>;
+        availableOperators?: FilterOperatorsExtended<any>[];
         predefinedOptions?: Array<{
             label: string;
             value: string;
         }>;
-        filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean';
+    };
+    isLink?: boolean;
+    linkConfig?: {
+        routePattern: string;
+        displayText?: string;
     };
 }
 export interface IPageActionItem {
@@ -410,7 +415,39 @@ export interface IPageActionItem {
     url: string;
     icon?: string;
 }
-
+/**
+ * Modal type for actions
+ */
+export type ModalType = "confirm" | "list" | "form" | "accordion" | "custom" | "details" | "dashboard";
+/**
+ * API method type - must match frontend IApiConfig
+ */
+export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+/**
+ * Confirm modal configuration
+ */
+export interface IConfirmModal {
+    title: string;
+    content?: string;
+}
+/**
+ * API configuration for modal actions
+ */
+export interface IModalApiConfig {
+    apiMethod: ApiMethod;
+    responseKey?: string;
+    apiUrl: string;
+}
+/**
+ * Modal configuration for entity page actions
+ * Note: This is a subset of the frontend IModalConfig, excluding runtime props
+ */
+export interface IEntityPageActionModalConfig {
+    modalType: ModalType;
+    modalPageConfig?: IConfirmModal | Record<string, any>;
+    apiConfig?: IModalApiConfig;
+    submitSuccessRedirect?: string;
+}
 export interface IEntityPageAction {
     label: string;
     url?: string;
@@ -418,22 +455,14 @@ export interface IEntityPageAction {
     type?: 'button' | 'dropdown';
     items?: IPageActionItem[];
     openInModal?: boolean;
-    modalConfig?: {
-        modalType: "confirm" | "list" | "form" | "accordion" | "custom" | "details";
-        modalPageConfig: any;
-        apiConfig?: {
-            apiMethod: string;
-            responseKey: string;
-            apiUrl: string;
-        };
-        submitSuccessRedirect?: string;
-    };
+    modalConfig?: IEntityPageActionModalConfig;
 }
 export interface IEntityPageColumn {
     sortOrder: number;
     fields: string[];
 }
 export interface IEntityPageColumnConfig {
+    numColumns?: number;
     columns: IEntityPageColumn[];
 }
 interface TextFieldMetadata extends BaseFieldMetadata {
@@ -671,6 +700,23 @@ export interface EntitySchema<A extends string, F extends string, C extends stri
         readonly CRUDApiPath?: string;
         readonly menuGroup?: string;
         readonly menuOrder?: number;
+        readonly createPageBreadcrumbs?: Array<{
+            label: string;
+            url?: string;
+        }>;
+        readonly createPageColumnsConfig?: IEntityPageColumnConfig;
+        readonly listPageActions?: IEntityPageAction[];
+        readonly listPageBreadcrumbs?: Array<{
+            label: string;
+            url?: string;
+        }>;
+        readonly listPageDefaultSort?: {
+            field: string;
+            order: 'asc' | 'desc';
+        } | Array<{
+            field: string;
+            order: 'asc' | 'desc';
+        }> | string;
         readonly viewPageActions?: IEntityPageAction[];
         readonly viewPageBreadcrumbs?: Array<{
             label: string;

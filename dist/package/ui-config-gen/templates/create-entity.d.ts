@@ -1,14 +1,22 @@
-import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, IEntityPageColumnConfig } from "../../entity";
 export type CreateEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string;
     entityNamePlural: string;
     CRUDApiPath?: string;
     properties: TIOSchemaAttributesMap<S>;
+    breadcrumbs?: Array<{
+        label: string;
+        url?: string;
+    }>;
+    columnsConfig?: IEntityPageColumnConfig;
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: CreateEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     pageTitle: string;
     pageType: string;
-    breadcrums: never[];
+    breadcrumbs: {
+        label: string;
+        url?: string;
+    }[];
     pageHeaderActions: {
         label: string;
         url: string;
@@ -19,8 +27,9 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
             url: string;
         })[];
         submitSuccessRedirect: string;
+        columnsConfig?: IEntityPageColumnConfig | undefined;
         apiConfig: {
-            apiMethod: string;
+            apiMethod: "POST";
             responseKey: string;
             apiUrl: string;
         };
@@ -29,11 +38,12 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
 };
 export default _default;
 export declare function makeCreateEntityFormConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: CreateEntityPageOptions<S>, entityService: BaseEntityService<S>): {
+    columnsConfig?: IEntityPageColumnConfig | undefined;
     apiConfig: {
-        apiMethod: string;
+        apiMethod: "POST";
         responseKey: string;
         apiUrl: string;
     };
-    formButtons: string[];
+    formButtons: readonly ["submit", "reset"];
     propertiesConfig: any[];
 };
