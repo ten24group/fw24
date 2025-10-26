@@ -6,6 +6,7 @@ import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
 import { EntitySearchService } from '../search/services';
 import { DepIdentifier } from "../interfaces";
+import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure } from '../ui-config-gen/templates/custom-page';
 /**
  * @fileoverview Entity Schema and Type-Safe Helper Functions
  *
@@ -444,7 +445,7 @@ export interface IModalApiConfig {
  */
 export interface IEntityPageActionModalConfig {
     modalType: ModalType;
-    modalPageConfig?: IConfirmModal | Record<string, any>;
+    modalPageConfig?: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure;
     apiConfig?: IModalApiConfig;
     submitSuccessRedirect?: string;
 }
