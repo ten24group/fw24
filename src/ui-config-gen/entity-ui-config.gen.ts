@@ -19,6 +19,7 @@ import {
 import { Fw24 } from '../core/fw24';
 import { Helper } from '../core/helper';
 import { LogDuration, createLogger } from '../logging';
+import { toSlug } from '../utils/cases';
 
 export class EntityUIConfigGen {
     readonly logger = createLogger(EntityUIConfigGen.name);
@@ -94,21 +95,24 @@ export class EntityUIConfigGen {
     }
 
     private getPageNameFromConfig(config: CustomPageOptions): string | null {
+        if (config.pageName) {
+            return toSlug(config.pageName);
+        }
         switch (config.pageType) {
             case 'list':
-                return `list-${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+                return `list-${toSlug(config.pageTitle)}`;
             case 'form':
                 return config.pageTitle.toLowerCase().includes('add')
-                    ? `create-${config.pageTitle.toLowerCase().replace(/\s+/g, '-').replace('add-', '')}`
-                    : `edit-${config.pageTitle.toLowerCase().replace(/\s+/g, '-').replace('edit-', '')}`;
+                    ? `create-${toSlug(config.pageTitle)}`
+                    : `edit-${toSlug(config.pageTitle)}`;
             case 'details':
-                return `view-${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+                return `view-${toSlug(config.pageTitle)}`;
             case 'dashboard':
-                return `${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+                return `${toSlug(config.pageTitle)}`;
             case 'accordion':
-                return `accordion-${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+                return `accordion-${toSlug(config.pageTitle)}`;
             case 'menu':
-                return `${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+                return `${toSlug(config.pageTitle)}`;
             default:
                 return null;
         }

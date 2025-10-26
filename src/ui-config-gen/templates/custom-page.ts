@@ -202,6 +202,7 @@ export interface IPageAction {
 }
 
 export interface BasePageConfig {
+    pageName?: string;
     pageTitle: string;
     pageType: PageType;
     routePattern?: string;
@@ -275,6 +276,7 @@ export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageCon
 
 export function makeCustomPageConfig(options: CustomPageOptions) {
     const baseConfig = {
+        pageName: options.pageName,
         pageTitle: options.pageTitle,
         pageType: options.pageType,
         routePattern: options.routePattern,

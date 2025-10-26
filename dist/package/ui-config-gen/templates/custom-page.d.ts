@@ -183,6 +183,7 @@ export interface IPageAction {
     };
 }
 export interface BasePageConfig {
+    pageName?: string;
     pageTitle: string;
     pageType: PageType;
     routePattern?: string;
@@ -253,6 +254,7 @@ export interface MenuPageConfig extends BasePageConfig {
 }
 export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageConfig | DashboardPageConfig | AccordionPageConfig | MenuPageConfig;
 export declare function makeCustomPageConfig(options: CustomPageOptions): {
+    pageName: string | undefined;
     pageTitle: string;
     pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
@@ -263,6 +265,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     pageHeaderActions: IPageAction[];
 } | {
     listPageConfig: ListPageConfigStructure;
+    pageName: string | undefined;
     pageTitle: string;
     pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
@@ -276,6 +279,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         width: string;
     } | undefined;
     formPageConfig: FormPageConfigStructure;
+    pageName: string | undefined;
     pageTitle: string;
     pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
@@ -286,6 +290,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     pageHeaderActions: IPageAction[];
 } | {
     detailsPageConfig: DetailsPageConfigStructure;
+    pageName: string | undefined;
     pageTitle: string;
     pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
@@ -304,6 +309,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         widgets: DashboardWidgetConfig[];
         timezone?: string;
     };
+    pageName: string | undefined;
     pageTitle: string;
     pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
@@ -321,6 +327,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         detailsPageConfig?: DetailsPageConfigStructure;
         dashboardPageConfig?: DashboardPageConfig["dashboardPageConfig"];
     }>;
+    pageName: string | undefined;
     pageTitle: string;
     pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
@@ -346,6 +353,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
             order?: number;
         }>;
     };
+    pageName: string | undefined;
     pageTitle: string;
     pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;

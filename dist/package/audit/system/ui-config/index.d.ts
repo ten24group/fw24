@@ -1,5 +1,6 @@
 export declare const AuditCustomPageConfigs: {
     listingUiConfig: {
+        readonly pageTitle: "AuditLog";
         readonly routePattern: "/system/list-auditlog";
         readonly breadcrumbs: readonly [{
             readonly label: "Home";
@@ -54,19 +55,22 @@ export declare const AuditCustomPageConfigs: {
             };
             readonly propertiesConfig: import("../../../ui-config-gen/templates/util").ListingPropConfig[];
         };
-        readonly pageTitle: `${string} Listing`;
         readonly pageType: "list";
         readonly pageHeaderActions: import("../../../entity").IEntityPageAction[];
     };
     viewUiConfig: {
+        readonly pageTitle: "AuditLog";
         readonly routePattern: "/view-auditlog/:auditId";
+        readonly pageHeaderActions: readonly [{
+            readonly label: "Back";
+            readonly url: "/system/list-auditlog";
+            readonly icon: "arrow-left";
+        }];
         readonly detailsPageConfig: any;
-        readonly pageTitle: `${string} Details`;
         readonly pageType: "details";
         readonly breadcrumbs: {
             label: string;
             url?: string;
         }[];
-        readonly pageHeaderActions: import("../../../entity").IEntityPageAction[];
     };
 };
