@@ -1,5 +1,5 @@
 import { FieldOptions, ModalType, IModalApiConfig, IConfirmModal } from "../../entity";
-import { IPageActionItem, IEntityPageColumnConfig } from "../../entity/base-entity";
+import { IEntityPageColumnConfig } from "../../entity/base-entity";
 export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion" | "menu";
 export type ConfigFieldType = "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json";
 export type ConfigPropertyType = "list" | "map" | "object";
@@ -168,6 +168,20 @@ export interface DetailsPageConfigStructure {
     }>;
 }
 export type ModalPageConfig = IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure;
+export interface IPageAction {
+    label: string;
+    url?: string;
+    icon?: string;
+    type?: 'button' | 'dropdown';
+    items?: Array<Omit<IPageAction, 'items'>>;
+    openInModal?: boolean;
+    modalConfig?: {
+        modalType: ModalType;
+        modalPageConfig?: ModalPageConfig;
+        apiConfig?: IModalApiConfig;
+        submitSuccessRedirect?: string;
+    };
+}
 export interface BasePageConfig {
     pageTitle: string;
     pageType: PageType;
@@ -176,20 +190,7 @@ export interface BasePageConfig {
         label: string;
         url?: string;
     }>;
-    pageHeaderActions?: Array<{
-        label: string;
-        url?: string;
-        icon?: string;
-        type?: 'button' | 'dropdown';
-        items?: IPageActionItem[];
-        openInModal?: boolean;
-        modalConfig?: {
-            modalType: ModalType;
-            modalPageConfig?: ModalPageConfig;
-            apiConfig?: IModalApiConfig;
-            submitSuccessRedirect?: string;
-        };
-    }>;
+    pageHeaderActions?: Array<IPageAction>;
 }
 export interface DashboardPageConfig extends BasePageConfig {
     pageType: "dashboard";
@@ -259,20 +260,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         label: string;
         url?: string;
     }[];
-    pageHeaderActions: {
-        label: string;
-        url?: string;
-        icon?: string;
-        type?: "button" | "dropdown";
-        items?: IPageActionItem[];
-        openInModal?: boolean;
-        modalConfig?: {
-            modalType: ModalType;
-            modalPageConfig?: ModalPageConfig;
-            apiConfig?: IModalApiConfig;
-            submitSuccessRedirect?: string;
-        };
-    }[];
+    pageHeaderActions: IPageAction[];
 } | {
     listPageConfig: ListPageConfigStructure;
     pageTitle: string;
@@ -282,20 +270,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         label: string;
         url?: string;
     }[];
-    pageHeaderActions: {
-        label: string;
-        url?: string;
-        icon?: string;
-        type?: "button" | "dropdown";
-        items?: IPageActionItem[];
-        openInModal?: boolean;
-        modalConfig?: {
-            modalType: ModalType;
-            modalPageConfig?: ModalPageConfig;
-            apiConfig?: IModalApiConfig;
-            submitSuccessRedirect?: string;
-        };
-    }[];
+    pageHeaderActions: IPageAction[];
 } | {
     cardStyle: {
         width: string;
@@ -308,20 +283,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         label: string;
         url?: string;
     }[];
-    pageHeaderActions: {
-        label: string;
-        url?: string;
-        icon?: string;
-        type?: "button" | "dropdown";
-        items?: IPageActionItem[];
-        openInModal?: boolean;
-        modalConfig?: {
-            modalType: ModalType;
-            modalPageConfig?: ModalPageConfig;
-            apiConfig?: IModalApiConfig;
-            submitSuccessRedirect?: string;
-        };
-    }[];
+    pageHeaderActions: IPageAction[];
 } | {
     detailsPageConfig: DetailsPageConfigStructure;
     pageTitle: string;
@@ -331,20 +293,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         label: string;
         url?: string;
     }[];
-    pageHeaderActions: {
-        label: string;
-        url?: string;
-        icon?: string;
-        type?: "button" | "dropdown";
-        items?: IPageActionItem[];
-        openInModal?: boolean;
-        modalConfig?: {
-            modalType: ModalType;
-            modalPageConfig?: ModalPageConfig;
-            apiConfig?: IModalApiConfig;
-            submitSuccessRedirect?: string;
-        };
-    }[];
+    pageHeaderActions: IPageAction[];
 } | {
     dashboardPageConfig: {
         showTimePeriodSelector?: boolean;
@@ -362,20 +311,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         label: string;
         url?: string;
     }[];
-    pageHeaderActions: {
-        label: string;
-        url?: string;
-        icon?: string;
-        type?: "button" | "dropdown";
-        items?: IPageActionItem[];
-        openInModal?: boolean;
-        modalConfig?: {
-            modalType: ModalType;
-            modalPageConfig?: ModalPageConfig;
-            apiConfig?: IModalApiConfig;
-            submitSuccessRedirect?: string;
-        };
-    }[];
+    pageHeaderActions: IPageAction[];
 } | {
     accordionsPageConfig: Record<string, {
         pageTitle: string;
@@ -392,20 +328,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         label: string;
         url?: string;
     }[];
-    pageHeaderActions: {
-        label: string;
-        url?: string;
-        icon?: string;
-        type?: "button" | "dropdown";
-        items?: IPageActionItem[];
-        openInModal?: boolean;
-        modalConfig?: {
-            modalType: ModalType;
-            modalPageConfig?: ModalPageConfig;
-            apiConfig?: IModalApiConfig;
-            submitSuccessRedirect?: string;
-        };
-    }[];
+    pageHeaderActions: IPageAction[];
 } | {
     menuPageConfig: {
         menuItems: Array<{
@@ -430,18 +353,5 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         label: string;
         url?: string;
     }[];
-    pageHeaderActions: {
-        label: string;
-        url?: string;
-        icon?: string;
-        type?: "button" | "dropdown";
-        items?: IPageActionItem[];
-        openInModal?: boolean;
-        modalConfig?: {
-            modalType: ModalType;
-            modalPageConfig?: ModalPageConfig;
-            apiConfig?: IModalApiConfig;
-            submitSuccessRedirect?: string;
-        };
-    }[];
+    pageHeaderActions: IPageAction[];
 };

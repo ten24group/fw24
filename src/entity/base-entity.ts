@@ -472,12 +472,6 @@ export interface BaseFieldMetadata {
   };
 }
 
-export interface IPageActionItem {
-  label: string;
-  url: string;
-  icon?: string;
-}
-
 /**
  * Modal type for actions
  */
@@ -516,12 +510,17 @@ export interface IEntityPageActionModalConfig {
   submitSuccessRedirect?: string;
 }
 
+/**
+ * Entity page action
+ * Supports buttons, dropdowns with modals/navigation
+ * Note: items cannot have nested items (max 1 level of nesting)
+ */
 export interface IEntityPageAction {
   label: string;
   url?: string;
   icon?: string;
   type?: 'button' | 'dropdown';
-  items?: IPageActionItem[];
+  items?: Array<Omit<IEntityPageAction, 'items'>>;  // Items cannot have sub-items
   openInModal?: boolean;
   modalConfig?: IEntityPageActionModalConfig;
 }

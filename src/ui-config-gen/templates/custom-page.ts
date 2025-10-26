@@ -1,5 +1,5 @@
 import { EntitySchema, FieldOptions, FieldOptionsAPIConfig, ApiMethod, ModalType, IModalApiConfig, IConfirmModal } from "../../entity";
-import { IPageActionItem, IEntityPageColumnConfig } from "../../entity/base-entity";
+import { IEntityPageColumnConfig } from "../../entity/base-entity";
 
 export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion" | "menu";
 
@@ -186,25 +186,27 @@ export interface DetailsPageConfigStructure {
 // Define the proper modal page config type as a union of all possible page configs
 export type ModalPageConfig = IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure;
 
+export interface IPageAction {
+    label: string;
+    url?: string;
+    icon?: string;
+    type?: 'button' | 'dropdown';
+    items?: Array<Omit<IPageAction, 'items'>>;  // Items cannot have sub-items
+    openInModal?: boolean;
+    modalConfig?: {
+        modalType: ModalType;
+        modalPageConfig?: ModalPageConfig;
+        apiConfig?: IModalApiConfig;
+        submitSuccessRedirect?: string;
+    };
+}
+
 export interface BasePageConfig {
     pageTitle: string;
     pageType: PageType;
     routePattern?: string;
     breadcrumbs?: Array<{ label: string; url?: string }>;
-    pageHeaderActions?: Array<{
-        label: string;
-        url?: string;
-        icon?: string;
-        type?: 'button' | 'dropdown';
-        items?: IPageActionItem[];
-        openInModal?: boolean;
-        modalConfig?: {
-            modalType: ModalType;
-            modalPageConfig?: ModalPageConfig;
-            apiConfig?: IModalApiConfig;
-            submitSuccessRedirect?: string;
-        };
-    }>;
+    pageHeaderActions?: Array<IPageAction>;
 }
 
 export interface DashboardPageConfig extends BasePageConfig {

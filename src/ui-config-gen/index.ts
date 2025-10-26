@@ -9,7 +9,6 @@ export type {
     IConfirmModal,
     IEntityPageAction,
     IEntityPageActionModalConfig,
-    IPageActionItem,
     IEntityPageColumn,
     IEntityPageColumnConfig,
     BaseFieldMetadata,
