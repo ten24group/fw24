@@ -124,12 +124,14 @@ export interface UpsertEntityArgs<Sch extends EntitySchema<any, any, any>, OpsSc
 }
 export type UpsertEntityResponse<Sch extends EntitySchema<any, any, any>> = {
     data?: EntityResponseItemTypeFromSchema<Sch>;
+    wasCreated?: boolean;
+    oldData?: EntityResponseItemTypeFromSchema<Sch>;
 };
 /**
  * Creates an entity using the provided options.
  *
  * @param options - The options for creating-OR-updating the entity.
- * @returns The created entity.
+ * @returns The created entity with wasCreated flag indicating if it was a new record.
  * @throws Error if no data is provided for upsert operation, validation fails, or authorization fails.
  */
 export declare function upsertEntity<S extends EntitySchema<any, any, any>>(options: UpsertEntityArgs<S>): Promise<UpsertEntityResponse<S>>;

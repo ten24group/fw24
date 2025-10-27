@@ -317,13 +317,15 @@ export interface UpsertEntityArgs<
 
 export type UpsertEntityResponse<Sch extends EntitySchema<any, any, any>> = {
     data?: EntityResponseItemTypeFromSchema<Sch>
+    wasCreated?: boolean  // true if record was created, false if already existed
+    oldData?: EntityResponseItemTypeFromSchema<Sch>  // previous data if it was an update (undefined for creates)
 }
 
 /**
  * Creates an entity using the provided options.
  * 
  * @param options - The options for creating-OR-updating the entity.
- * @returns The created entity.
+ * @returns The created entity with wasCreated flag indicating if it was a new record.
  * @throws Error if no data is provided for upsert operation, validation fails, or authorization fails.
  */
 export async function upsertEntity<S extends EntitySchema<any, any, any>>(options: UpsertEntityArgs<S>): Promise<UpsertEntityResponse<S>> {
@@ -372,15 +374,26 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
     //     throw new Error("Authorization failed for upsert: " + { cause: authorization });
     // }
 
-    const entity = await entityService.getRepository().upsert(data as any).go();
+    // Use "all_old" to get the previous item state - allows us to detect create vs update
+    // If oldData is empty/null, it was a CREATE. If it has data, it was an UPDATE.
+    const entity = await entityService.getRepository().upsert(data as any).go({ response: "all_old" });
+
+    const wasCreated = !entity.data || Object.keys(entity.data).length === 0;
+    const oldData = wasCreated ? undefined : entity.data;
 
     // post events
     // await eventDispatcher?.dispatch({ event: 'afterUpsert', context: {...arguments, entity} });
 
     // return entity;
-    logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data, entity.data);
+    logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ wasCreated: ${wasCreated}`);
 
-    return entity as UpsertEntityResponse<S>;
+    // Note: with "all_old", entity.data contains the OLD data, we need to return the NEW data
+    // Since we don't have the new data from DynamoDB, we return the input data as the new data
+    return { 
+        data: data as any,  // The new data we just upserted
+        wasCreated, 
+        oldData 
+    } as UpsertEntityResponse<S>;
 }
 
 /**

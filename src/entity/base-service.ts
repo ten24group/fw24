@@ -1253,18 +1253,21 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      *   - It's the responsibility of the caller to ensure the read ony attributes are not provided if the record is being upsert.
      * 
      * @param payload - The payload for creating-OR-updating the entity.
-     * @returns The created-OR-updated entity.
+     * @returns Object containing:
+     *   - data: The upserted entity data
+     *   - wasCreated: true if record was created, false if updated
+     *   - oldData: previous data if it was an update (undefined for creates)
      */
     public async upsert(payload: UpsertEntityItemTypeFromSchema<S>) {
         this.logger.debug(`Called ~ upsert ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
 
-        const entity = await upsertEntity<S>({
+        const result = await upsertEntity<S>({
             data: payload,
             entityName: this.getEntityName(),
             entityService: this,
         });
 
-        return entity;
+        return result;
     }
 
     /**

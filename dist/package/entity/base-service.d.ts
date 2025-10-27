@@ -293,7 +293,10 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      *   - It's the responsibility of the caller to ensure the read ony attributes are not provided if the record is being upsert.
      *
      * @param payload - The payload for creating-OR-updating the entity.
-     * @returns The created-OR-updated entity.
+     * @returns Object containing:
+     *   - data: The upserted entity data
+     *   - wasCreated: true if record was created, false if updated
+     *   - oldData: previous data if it was an update (undefined for creates)
      */
     upsert(payload: UpsertEntityItemTypeFromSchema<S>): Promise<import("./crud-service").UpsertEntityResponse<S>>;
     /**
