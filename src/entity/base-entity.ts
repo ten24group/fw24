@@ -15,6 +15,38 @@ import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfi
  * This module provides essential type-safe helpers for defining entity schemas,
  * relations, queries, and configurations with full TypeScript support.
  * 
+ * ## Architecture: Data Layer vs UI Layer
+ * 
+ * ### ⚠️ CRITICAL: Relations are split into two layers:
+ * 
+ * **1. Data Layer (`Relation<E>`)** - Define in entity attribute's `relation` property
+ * - Purpose: Fetching, hydration, identifiers
+ * - Properties: `entityName`, `type`, `identifiers`, `hydrate`, `attributes`
+ * - When: Always required for relations
+ * 
+ * **2. UI Layer (`IRelationFieldConfig`)** - Optional, define in `relationConfig` property
+ * - Purpose: Display, navigation, modals
+ * - Properties: `routePattern`, `modalConfigRef`, `displayConfig`, etc.
+ * - When: Only if you need custom UI behavior (backend auto-generates defaults)
+ * 
+ * ### Example:
+ * ```ts
+ * teamId: {
+ *   type: 'string',
+ *   // DATA LAYER (required)
+ *   relation: createEntityRelation<TeamSchema>({
+ *     entityName: 'team',
+ *     type: 'many-to-one',
+ *     identifiers: { source: 'teamId', target: 'teamId' }
+ *   }),
+ *   // UI LAYER (optional - backend auto-generates if omitted)
+ *   relationConfig: {
+ *     routePattern: '/custom-team/:teamId',
+ *     modalWidth: 1200
+ *   }
+ * }
+ * ```
+ * 
  * ## Core Type-Safe Helper Functions
  * 
  * ### Essential Helpers (4 functions)
@@ -315,7 +347,10 @@ export type ResolveEntitySchema<T> = T extends () => infer E
 
 /**
  * Creates an entity relation with full type safety and circular dependency support.
- * This is the primary helper for defining entity relations.
+ * This is the primary helper for defining entity relations (DATA LAYER).
+ * 
+ * ⚠️ IMPORTANT: This is for data layer only (identifiers, hydration, attributes).
+ * For UI configuration (routes, modals), use `relationConfig` in field metadata.
  * 
  * @template T - The entity schema type (direct or lazy-loaded via function)
  * @param relation - The relation configuration
@@ -330,7 +365,7 @@ export type ResolveEntitySchema<T> = T extends () => infer E
  * })
  * 
  * @example
- * // Multiple identifiers
+ * // Multiple identifiers (composite key)
  * createEntityRelation<TeamSchema>({
  *   entityName: 'team',
  *   type: 'many-to-one',
@@ -349,7 +384,7 @@ export type ResolveEntitySchema<T> = T extends () => infer E
  * })
  * 
  * @example
- * // With hydration options
+ * // With hydration (auto-load related data)
  * createEntityRelation<TeamSchema>({
  *   entityName: 'team',
  *   type: 'many-to-one',
@@ -357,6 +392,22 @@ export type ResolveEntitySchema<T> = T extends () => infer E
  *   hydrate: true,
  *   attributes: { teamId: true, teamName: true, logo: true }
  * })
+ * 
+ * @example
+ * // With UI customization (use relationConfig separately)
+ * teamId: {
+ *   type: 'string',
+ *   relation: createEntityRelation<TeamSchema>({
+ *     entityName: 'team',
+ *     type: 'many-to-one',
+ *     identifiers: { source: 'teamId', target: 'teamId' }
+ *   }),
+ *   // UI config (optional - backend auto-generates if omitted)
+ *   relationConfig: {
+ *     routePattern: '/custom-team/:teamId',
+ *     modalWidth: 1200
+ *   }
+ * }
  */
 export function createEntityRelation<T extends EntitySchema<any, any, any, any> | (() => EntitySchema<any, any, any, any>)>(
   relation: Relation<ResolveEntitySchema<T>>
@@ -366,38 +417,98 @@ export function createEntityRelation<T extends EntitySchema<any, any, any, any> 
 
 export type RelToRelatedEntity<Rel> = Rel extends Relation<infer E> ? E : never;
 /**
- * Represents a relation between entities.
+ * Represents a relation between entities (DATA LAYER ONLY).
  * Supports lazy-loaded entity schemas to avoid circular dependency issues.
+ * 
+ * ⚠️ IMPORTANT: This type is for DATA/HYDRATION concerns only!
+ * For UI configuration (routes, modals, display), use `relationConfig` in field metadata.
  *
  * @template E - The type of the related entity schema.
+ * 
+ * @example
+ * // Simple relation (data layer)
+ * teamId: {
+ *   type: 'string',
+ *   relation: createEntityRelation<TeamSchema>({
+ *     entityName: 'team',
+ *     type: 'many-to-one',
+ *     identifiers: { source: 'teamId', target: 'teamId' },
+ *     hydrate: true,
+ *     attributes: { teamId: true, teamName: true }
+ *   })
+ * }
+ * 
+ * @example
+ * // With UI configuration (use relationConfig separately)
+ * teamId: {
+ *   type: 'string',
+ *   relation: createEntityRelation<TeamSchema>({
+ *     entityName: 'team',
+ *     type: 'many-to-one',
+ *     identifiers: { source: 'teamId', target: 'teamId' }
+ *   }),
+ *   // UI config goes here (optional, backend will generate defaults)
+ *   relationConfig: {
+ *     routePattern: '/custom-team/:teamId',
+ *     modalConfigRef: {
+ *       entityName: 'team',
+ *       pageType: 'view',
+ *       overrideConfig: { pageTitle: 'Team Details' }
+ *     }
+ *   }
+ * }
  */
 export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
   /**
-   * Represents a relation between entities.
+   * Entity name of the related entity
    */
   entityName: E[ 'model' ][ 'entity' ];
 
   /**
    * The type of the relation.
-   * Possible values: 'one-to-one', 'one-to-many', 'many-to-one', 'many-to-many'.
+   * Possible values: 'one-to-many' or 'many-to-one'
    */
   type: 'one-to-many' | 'many-to-one'; // 'one-to-one' | 'many-to-many';
 
   /**
    * Identifiers to load the related entity.
-   * These are mappings between source entity attributes and related entity attributes.
-   * The keys for source entities can support paths like 'att1.nestedKey1'.
-   * The values can be a string representing the related entity attribute or an array of strings.
+   * Mappings between source entity attributes and target entity attributes.
+   * Source keys support nested paths like 'order.userId'.
    * Can be provided directly or via a function to handle circular dependencies.
+   * 
+   * @example
+   * // Single identifier
+   * identifiers: { source: 'teamId', target: 'teamId' }
+   * 
+   * @example
+   * // Composite key
+   * identifiers: [
+   *   { source: 'tenantId', target: 'tenantId' },
+   *   { source: 'teamId', target: 'teamId' }
+   * ]
+   * 
+   * @example
+   * // Lazy loading (circular dependency)
+   * identifiers: () => ({ source: 'userId', target: 'userId' })
    */
   identifiers: RelationIdentifiers<E> | (() => RelationIdentifiers<E>);
 
-  // set this to true in entity-definition to auto-hydrate this relation
+  /**
+   * Auto-hydrate this relation when loading the parent entity.
+   * Default: false
+   */
   hydrate?: boolean;
 
   /**
-   * Attributes to load when hydrating this relation and Options for hydrating the relational attributes of this relation.
-   * Can be provided directly or via a function to handle circular dependencies in complex relation chains.
+   * Attributes to load when hydrating this relation.
+   * Can be provided directly or via a function to handle circular dependencies.
+   * 
+   * @example
+   * attributes: { teamId: true, teamName: true, logo: true }
+   * 
+   * @example
+   * // Lazy loading
+   * attributes: () => ({ userId: true, name: true, email: true })
    */
   attributes?: HydrateOptionForEntity<E> | (() => HydrateOptionForEntity<E>);
 };
@@ -445,8 +556,12 @@ export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldM
   | ImageFieldMetadata | HiddenFieldMetadata | CustomFieldMetadata
   | RatingFieldMetadata | EditorFieldMetadata | CodeEditorFieldMetadata;
 
-// Metadata for UI
+/**
+ * UI Metadata for entity attributes.
+ * Controls how fields are displayed, filtered, and interacted with in the UI.
+ */
 export interface BaseFieldMetadata {
+  // Visibility controls
   isVisible?: boolean; // if the field is visible or hidden on all detail-pages
   isListable?: boolean; // if the field is visible in the list view
   isCreatable?: boolean; // if the field is creatable
@@ -454,9 +569,12 @@ export interface BaseFieldMetadata {
   isFilterable?: boolean; // if the field is filterable
   isSearchable?: boolean; // if the field is searchable
   isSortable?: boolean; // if the field is sortable
+  
+  // Display configuration
   placeholder?: string;
   helpText?: string;
   tooltip?: string; // maybe this can be inferred from the helpText
+  
   // Filter configuration options
   filterConfig?: {
     filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean'; // Filter input type
@@ -464,12 +582,54 @@ export interface BaseFieldMetadata {
     availableOperators?: FilterOperatorsExtended<any>[]; // Restrict available operators for this column
     predefinedOptions?: Array<{ label: string; value: string }>; // For dropdown/select filters
   };
-  // Link configuration for rendering field as internal link
+  
+  // Link configuration for rendering field as internal link (non-relation fields)
   isLink?: boolean;
   linkConfig?: {
     routePattern: string;
     displayText?: string;
   };
+  
+  /**
+   * UI Configuration for relation fields (UI LAYER ONLY).
+   * 
+   * ⚠️ IMPORTANT: This is separate from `relation` (which is data layer).
+   * 
+   * Use this to customize how relation fields are displayed in detail pages:
+   * - Navigation routes
+   * - Modal display
+   * - Icons and links
+   * 
+   * If not provided, the backend will auto-generate defaults from the `relation` definition.
+   * Providing this allows you to override/customize the UI behavior.
+   * 
+   * @example
+   * // Auto-generated (no relationConfig needed)
+   * teamId: {
+   *   type: 'string',
+   *   relation: createEntityRelation<TeamSchema>({
+   *     entityName: 'team',
+   *     type: 'many-to-one',
+   *     identifiers: { source: 'teamId', target: 'teamId' }
+   *   })
+   *   // Backend generates: routePattern, modalConfigRef, displayConfig
+   * }
+   * 
+   * @example
+   * // Custom UI (override defaults)
+   * teamId: {
+   *   type: 'string',
+   *   relation: createEntityRelation<TeamSchema>({ ... }),
+   *   relationConfig: {
+   *     routePattern: '/teams/:teamId/details', // Custom route
+   *     modalWidth: 1200, // Wider modal
+   *     displayConfig: {
+   *       showLink: false // Hide link, only show modal icon
+   *     }
+   *   }
+   * }
+   */
+  relationConfig?: IRelationFieldConfig;
 }
 
 /**
@@ -570,6 +730,213 @@ export interface IResponseDisplayConfig {
    * Example: "data.results" will use response.data.results as the data source
    */
   dataPath?: string;
+}
+
+/**
+ * Entity Configuration Reference
+ * 
+ * Instead of embedding full page configurations (causing massive JSON bloat),
+ * reference existing entity configs by name and apply optional overrides.
+ * 
+ * Benefits:
+ * - Dramatically reduces JSON payload size (KB → bytes)
+ * - Maintains single source of truth for entity configs
+ * - Supports customization via overrideConfig
+ * 
+ * Example:
+ * ```ts
+ * addNewOptionConfig: {
+ *   entityName: 'team',
+ *   pageType: 'create',
+ *   overrideConfig: {
+ *     submitSuccessRedirect: undefined, // Stay in modal
+ *     formButtons: [
+ *       { text: "Add", action: "submit" },
+ *       { text: "Cancel", action: "cancel" }
+ *     ]
+ *   }
+ * }
+ * ```
+ */
+export interface IEntityConfigReference {
+  /** Entity name (e.g., 'team', 'game', 'user') */
+  entityName: string;
+  
+  /** Which page config to reference: 'view', 'create', or 'list' */
+  pageType: 'view' | 'create' | 'list';
+  
+  /** Optional overrides to apply to the referenced config */
+  overrideConfig?: {
+    /** Override page title */
+    pageTitle?: string;
+    
+    /** Override columns configuration (for view pages) */
+    columnsConfig?: IEntityPageColumnConfig;
+    
+    /** Override breadcrumbs */
+    breadcrumbs?: Array<{ label: string; url?: string }>;
+    
+    /** Override form success redirect (for create pages) */
+    submitSuccessRedirect?: string;
+    
+    /** Override form buttons (for create pages) */
+    formButtons?: Array<{ text: string; action: string; url?: string }>;
+    
+    /** Add default filters (for list pages) */
+    defaultFilters?: Record<string, any>;
+    
+    /** Hide specific fields from rendering */
+    hideFields?: string[];
+    
+    /** Show only specific fields (mutually exclusive with hideFields) */
+    showOnlyFields?: string[];
+  };
+}
+
+/**
+ * Relation Field UI Configuration (UI LAYER ONLY)
+ * 
+ * ⚠️ IMPORTANT: This is for UI rendering only! Works together with `Relation<E>` (data layer).
+ * 
+ * **Architecture:**
+ * - `Relation<E>` (in entity attribute): Data layer (identifiers, hydration, attributes)
+ * - `IRelationFieldConfig` (in BaseFieldMetadata): UI layer (routes, modals, display)
+ * 
+ * **When to use:**
+ * - Usually NOT needed - backend auto-generates from `Relation<E>`
+ * - Use only to override defaults or customize UI behavior
+ * 
+ * **Defines how relation fields are rendered in detail pages:**
+ * - Navigation via link (opens route)
+ * - Modal viewing (opens related entity in modal)
+ * - Filtering (for to-many relations)
+ * - Display options (icons, links)
+ * 
+ * **Display patterns:**
+ * - To-One: Shows ID value with link + modal icon (e.g., "abc-123 | 🔍")
+ * - To-Many: Shows count/array with modal icon only (e.g., "[3 items] | 📋")
+ * 
+ * @example
+ * // AUTO-GENERATED (most common - no manual config needed!)
+ * teamId: {
+ *   type: 'string',
+ *   relation: createEntityRelation<TeamSchema>({
+ *     entityName: 'team',
+ *     type: 'many-to-one',
+ *     identifiers: { source: 'teamId', target: 'teamId' }
+ *   })
+ *   // Backend auto-generates:
+ *   // - routePattern: '/view-team/:teamId'
+ *   // - identifierMapping: [{ source: 'teamId', target: 'teamId' }]
+ *   // - modalConfigRef: { entityName: 'team', pageType: 'view' }
+ *   // - displayConfig: { showLink: true, showModalIcon: true }
+ * }
+ * 
+ * @example
+ * // CUSTOM OVERRIDE (to-one relation with custom UI)
+ * teamId: {
+ *   type: 'string',
+ *   relation: createEntityRelation<TeamSchema>({
+ *     entityName: 'team',
+ *     type: 'many-to-one',
+ *     identifiers: { source: 'teamId', target: 'teamId' }
+ *   }),
+ *   relationConfig: {
+ *     routePattern: '/teams/:teamId/details', // Custom route
+ *     modalWidth: 1200,
+ *     modalConfigRef: {
+ *       entityName: 'team',
+ *       pageType: 'view',
+ *       overrideConfig: {
+ *         pageTitle: 'Team Information'
+ *       }
+ *     },
+ *     displayConfig: {
+ *       showLink: false, // Hide link, only show modal icon
+ *       icon: 'TeamOutlined'
+ *     }
+ *   }
+ * }
+ * 
+ * @example
+ * // CUSTOM OVERRIDE (to-many relation with filters)
+ * games: {
+ *   type: 'list',
+ *   items: { type: 'string' },
+ *   relation: createEntityRelation<GameSchema>({
+ *     entityName: 'game',
+ *     type: 'one-to-many',
+ *     identifiers: { source: 'teamId', target: 'teamId' }
+ *   }),
+ *   relationConfig: {
+ *     routePattern: '/list-game',
+ *     modalConfigRef: {
+ *       entityName: 'game',
+ *       pageType: 'list',
+ *       overrideConfig: {
+ *         defaultFilters: { teamId: ':teamId', status: 'upcoming' }
+ *       }
+ *     },
+ *     modalWidth: '95%',
+ *     displayConfig: {
+ *       showModalIcon: true,
+ *       icon: 'UnorderedListOutlined',
+ *       showLink: false
+ *     }
+ *   }
+ * }
+ */
+export interface IRelationFieldConfig {
+  /** 
+   * Route pattern for navigation (e.g., '/view-team/:teamId' or '/list-game')
+   * Backend auto-generates if not provided
+   */
+  routePattern: string;
+  
+  /** 
+   * Identifier mappings from source fields to target params.
+   * Backend auto-extracts from `Relation.identifiers` if not provided.
+   * 
+   * @example
+   * // Single identifier
+   * identifierMapping: { source: 'homeTeamId', target: 'teamId' }
+   * 
+   * @example
+   * // Composite key
+   * identifierMapping: [
+   *   { source: 'tenantId', target: 'tenantId' },
+   *   { source: 'teamId', target: 'teamId' }
+   * ]
+   * 
+   * @example
+   * // Nested path
+   * identifierMapping: { source: 'order.userId', target: 'userId' }
+   */
+  identifierMapping?: RelationIdentifier | RelationIdentifier[];
+  
+  /** 
+   * Reference to entity config for modal display.
+   * Backend auto-generates if not provided.
+   */
+  modalConfigRef?: IEntityConfigReference;
+  
+  /** Modal width in pixels or CSS string. Default: 800 for to-one, 1200 for to-many */
+  modalWidth?: number | string;
+  
+  /** Modal title override. Default: uses page title from config */
+  modalTitle?: string;
+  
+  /** Display configuration for icons and links */
+  displayConfig?: {
+    /** Show modal icon? Default: true */
+    showModalIcon?: boolean;
+    
+    /** Icon to use for modal action. Default: 'EyeOutlined' for to-one, 'UnorderedListOutlined' for to-many */
+    icon?: string;
+    
+    /** Show link for navigation? Default: true for to-one, false for to-many */
+    showLink?: boolean;
+  };
 }
 
 export interface IEntityPageActionModalConfig {
@@ -686,10 +1053,24 @@ export interface SelectFieldMetadata<E extends EntitySchema<any, any, any> = any
   fieldType?: 'select' | 'multi-select' | 'autocomplete';
   options: FieldOptions<E>;
   maxSelections?: number; // maximum number of selections
-  // whether to allow adding new options
+  
+  // DEPRECATED: Use addNewOptionConfig instead (this generates embedded config - causes JSON bloat)
   addNewOption?: {
     entityName: string; // entity name to create new option
+    // UI Configuration: Overrides to apply when opening create form in modal
+    overrideConfig?: {
+      pageTitle?: string;
+      columnsConfig?: IEntityPageColumnConfig;
+      breadcrumbs?: Array<{ label: string; url?: string }>;
+      submitSuccessRedirect?: string;
+      formButtons?: Array<{ text: string; action: string; url?: string }>;
+      hideFields?: string[];
+      showOnlyFields?: string[];
+    };
   };
+  
+  // NEW: Reference entity config instead of embedding (recommended - reduces JSON size)
+  addNewOptionConfig?: IEntityConfigReference;
 }
 
 // Type guard for SelectFieldMetadata

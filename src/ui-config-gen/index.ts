@@ -11,6 +11,8 @@ export type {
     IEntityPageActionModalConfig,
     INavigateToConfig,
     IResponseDisplayConfig,
+    IEntityConfigReference,
+    IRelationFieldConfig,
     IEntityPageColumn,
     IEntityPageColumnConfig,
     BaseFieldMetadata,

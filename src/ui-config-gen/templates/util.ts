@@ -1,4 +1,12 @@
-import { BaseEntityService, FieldMetadata, TIOSchemaAttribute, isSelectFieldMetadata } from "../../entity";
+import { 
+    BaseEntityService, 
+    FieldMetadata, 
+    TIOSchemaAttribute, 
+    isSelectFieldMetadata,
+    SelectFieldMetadata,
+    EntityAttribute,
+    IRelationFieldConfig
+} from "../../entity";
 import { DefaultLogger } from "../../logging";
 import { pascalCase } from "../../utils";
 import { makeCreateEntityFormConfig } from "./create-entity";
@@ -6,89 +14,186 @@ import { makeViewEntityListConfig } from "./list-entity";
 import { makeViewEntityDetailConfig } from "./view-entity";
 
 export function formatEntityAttributeForFormOrDetail(
-    thisProp: TIOSchemaAttribute, 
+    thisProp: TIOSchemaAttribute,
     type: 'create' | 'update' | 'detail',
     entityService: BaseEntityService<any>
 ) {
-    const formatted: any =  {
+    const formatted: any = {
         ...thisProp,
-        label:          thisProp.name,
-        column:         thisProp.id,
-        fieldType:      thisProp.fieldType || 'text',
+        label: thisProp.name,
+        column: thisProp.id,
+        fieldType: thisProp.fieldType || 'text',
         hidden: thisProp.hasOwnProperty('isVisible') && !thisProp.isVisible
     };
 
-    if(isSelectFieldMetadata(thisProp) && thisProp.addNewOption && ['create', 'update'].includes(type)){
+    // Handle addNewOption (OLD - deprecated, generates embedded config) or addNewOptionConfig (NEW - just pass through reference)
+    if (isSelectFieldMetadata(thisProp) && [ 'create', 'update' ].includes(type)) {
+        const selectField = thisProp as SelectFieldMetadata;
         
-        const {entityName} = thisProp.addNewOption;
+        if (selectField.addNewOptionConfig) {
+            // NEW WAY: User provided addNewOptionConfig reference - just pass it through
+            formatted[ 'addNewOptionConfig' ] = selectField.addNewOptionConfig;
+            
+        } else if (selectField.addNewOption) {
+            // OLD WAY (DEPRECATED): Transform addNewOption to addNewOptionConfig for backward compatibility
+            const { entityName, overrideConfig } = selectField.addNewOption;
 
-        if(entityName && entityService.hasEntityServiceByEntityName(entityName)){
-            const relatedEntityService = entityService.getEntityServiceByEntityName(entityName);
-            const relatedEntitySchema = relatedEntityService.getEntitySchema();
-            const relDefaultIoSchema = relatedEntityService.getOpsDefaultIOSchema();
-
-            let formConfig = makeCreateEntityFormConfig({
-                entityName,
-                properties: relDefaultIoSchema.create.input,
-                entityNamePlural: relatedEntitySchema.model.entityNamePlural,
-            }, relatedEntityService);
-
-            formatted['addNewOption'] = {
-                modalType: 'form',
-                modalPageConfig: formConfig
+            if (entityName && entityService.hasEntityServiceByEntityName(entityName)) {
+                formatted[ 'addNewOptionConfig' ] = {
+                    entityName: entityName,
+                    pageType: 'create' as const,
+                    overrideConfig: overrideConfig || {
+                        submitSuccessRedirect: undefined,  // Stay in modal after creation
+                        formButtons: [
+                            { text: "Add", action: "submit" },
+                            { text: "Cancel", action: "cancel" }
+                        ]
+                    }
+                };
+            } else {
+                DefaultLogger.warn(`formatEntityAttributeForFormOrDetail: Could not find related-entity-service for entity [${entityName}] in ${entityService.constructor.name}`);
             }
-        } else {
+        }
+    }
+
+    // Handle relation fields (DATA LAYER + UI LAYER)
+    if (thisProp.relation && type === 'detail') {
+        const relation = thisProp.relation;
+        const { entityName, type: relationType, identifiers } = relation;
+        const entityNameLower = entityName.toLowerCase();
+
+        if (!entityService.hasEntityServiceByEntityName(entityName)) {
             DefaultLogger.warn(`formatEntityAttributeForFormOrDetail: Could not find related-entity-service for entity [${entityName}] in ${entityService.constructor.name}`);
+            return formatted;
         }
-    }
-    
-    if(thisProp.relation && type === 'detail'){
-        
-        const entityName = thisProp.relation.entityName;
 
-        if(entityService.hasEntityServiceByEntityName(entityName)){
-            const relatedEntityService = entityService.getEntityServiceByEntityName(entityName);
-            const relatedEntitySchema = relatedEntityService.getEntitySchema();
-            const relDefaultIoSchema = relatedEntityService.getOpsDefaultIOSchema();
+        // Resolve identifiers (could be direct value or lazy function)
+        const resolvedIdentifiers = typeof identifiers === 'function' ? identifiers() : identifiers;
 
-            if(thisProp.relation.type.endsWith('to-one')){
-
-                const modalPageConfig = makeViewEntityDetailConfig({
-                    entityName,
-                    properties: relDefaultIoSchema.update.input,
-                    entityNamePlural: relatedEntitySchema.model.entityNamePlural,
-                }, relatedEntityService);
-
-                formatted['openInModal'] = {
-                    modalType: 'details',
-                    modalPageConfig
-                }
-            } else if(thisProp.relation.type.endsWith('to-many')){
-
-                const modalPageConfig = makeViewEntityListConfig({
-                    entityName,
-                    properties: relDefaultIoSchema.update.input,
-                    entityNamePlural: relatedEntitySchema.model.entityNamePlural,
-                    excludeFromAdminUpdate: relatedEntitySchema.model.excludeFromAdminUpdate,
-                    excludeFromAdminDelete: relatedEntitySchema.model.excludeFromAdminDelete,
-                    excludeFromAdminDetail: relatedEntitySchema.model.excludeFromAdminDetail
-                });
-                
-                formatted['openInModal'] = {
-                    modalType: 'list',
-                    modalPageConfig
-                }
+        // Safety check for array identifiers
+        if (Array.isArray(resolvedIdentifiers)) {
+            if (resolvedIdentifiers.length === 0) {
+                DefaultLogger.warn(`formatEntityAttributeForFormOrDetail: Empty identifiers array for relation [${entityName}]`);
+                return formatted;
             }
         }
+
+        // Handle both single and multiple identifiers for composite keys
+        const identifierMappings = Array.isArray(resolvedIdentifiers) 
+            ? resolvedIdentifiers.map(id => ({
+                source: String(id.source),
+                target: String(id.target)
+              }))
+            : [{
+                source: String(resolvedIdentifiers.source),
+                target: String(resolvedIdentifiers.target)
+              }];
+
+        // For route pattern and default filters, use the first identifier
+        // (most entities have single identifier; composite keys need explicit routePattern)
+        const primaryIdentifier = identifierMappings[0];
+
+        // Check if user provided custom UI config in relationConfig (optional override)
+        const userRelationConfig = thisProp.relationConfig as IRelationFieldConfig | undefined;
+
+        if (relationType.endsWith('to-one')) {
+            // TO-ONE: Show value as link + modal icon
+            // Route pattern: Use custom (from relationConfig) or default to /view-{entity}/:targetId
+            const routePattern = userRelationConfig?.routePattern 
+                || `/view-${entityNameLower}/:${primaryIdentifier.target}`;
+
+            const generatedRelationConfig: IRelationFieldConfig = {
+                routePattern: routePattern,
+                // Pass ALL identifier mappings (supports composite keys)
+                identifierMapping: identifierMappings.length === 1 
+                    ? identifierMappings[0]  // Single: return object
+                    : identifierMappings,     // Multiple: return array
+                modalConfigRef: userRelationConfig?.modalConfigRef || {
+                    entityName: entityName,
+                    pageType: 'view' as const,
+                    overrideConfig: {}
+                },
+                modalWidth: userRelationConfig?.modalWidth || '95%', // Default width for detail modals
+                modalTitle: userRelationConfig?.modalTitle,
+                displayConfig: userRelationConfig?.displayConfig || {
+                    showModalIcon: true,
+                    icon: 'EyeOutlined',
+                    showLink: true
+                }
+            };
+
+            formatted[ 'relationConfig' ] = generatedRelationConfig;
+
+            // Backward compatibility: Keep isLink and linkConfig
+            formatted[ 'isLink' ] = true;
+            formatted[ 'linkConfig' ] = {
+                routePattern: routePattern
+            };
+
+        } else if (relationType.endsWith('to-many')) {
+            // TO-MANY: Show count + modal icon (opens filtered list)
+            // Route pattern: Use custom (from relationConfig) or default to /list-{entity}
+            const routePattern = userRelationConfig?.routePattern
+                || `/list-${entityNameLower}`;
+
+            // Build default filters to show only related items
+            // For example, if we're viewing a Team and this field shows Games,
+            // we want to filter games where teamId = current team's ID
+            // For composite keys, add all identifiers as filters
+            const defaultFilters: Record<string, any> = {};
+            identifierMappings.forEach(mapping => {
+                defaultFilters[mapping.source] = `:${mapping.source}`;
+            });
+
+            const generatedRelationConfig: IRelationFieldConfig = {
+                routePattern: routePattern,
+                // Pass ALL identifier mappings (supports composite keys)
+                identifierMapping: identifierMappings.length === 1 
+                    ? identifierMappings[0]  // Single: return object
+                    : identifierMappings,     // Multiple: return array
+                modalConfigRef: userRelationConfig?.modalConfigRef || {
+                    entityName: entityName,
+                    pageType: 'list' as const,
+                    overrideConfig: {
+                        defaultFilters: defaultFilters
+                    }
+                },
+                modalWidth: userRelationConfig?.modalWidth || 1200, // Larger width for list modals
+                modalTitle: userRelationConfig?.modalTitle,
+                displayConfig: userRelationConfig?.displayConfig || {
+                    showModalIcon: true,
+                    icon: 'UnorderedListOutlined',
+                    showLink: false
+                }
+            };
+
+            // If user provided custom modalConfigRef, merge default filters with their overrides
+            if (userRelationConfig?.modalConfigRef?.overrideConfig) {
+                generatedRelationConfig.modalConfigRef!.overrideConfig = {
+                    ...userRelationConfig.modalConfigRef.overrideConfig,
+                    defaultFilters: {
+                        ...defaultFilters,
+                        ...(userRelationConfig.modalConfigRef.overrideConfig.defaultFilters || {})
+                    }
+                };
+            }
+
+            formatted[ 'relationConfig' ] = generatedRelationConfig;
+         }
     }
 
-    const items = (thisProp as any).items;
-    if(thisProp.type === 'map'){
-        formatted['properties'] =  formatEntityAttributesForFormOrDetail(thisProp.properties ?? [], type, entityService);
-    } else if(thisProp.type === 'list' && items?.type === 'map'){
-        formatted['items'] = {
-            ...formatted['items'],
-            properties: formatEntityAttributesForFormOrDetail(items.properties ?? [], type, entityService)
+    // Handle nested structures (map and list types)
+    if (thisProp.type === 'map' && thisProp.properties) {
+        formatted[ 'properties' ] = formatEntityAttributesForFormOrDetail(thisProp.properties, type, entityService);
+    } else if (thisProp.type === 'list') {
+        // For list types, check if items are maps (nested structures)
+        // Note: items property exists on list-type attributes but not in base EntityAttribute type
+        const extendedProp = thisProp as TIOSchemaAttribute & { items?: { type: string; properties?: TIOSchemaAttribute[] } };
+        if (extendedProp.items?.type === 'map' && extendedProp.items.properties) {
+            formatted[ 'items' ] = {
+                ...formatted[ 'items' ],
+                properties: formatEntityAttributesForFormOrDetail(extendedProp.items.properties, type, entityService)
+            };
         }
     }
 
@@ -97,42 +202,42 @@ export function formatEntityAttributeForFormOrDetail(
     return formatted;
 }
 
-export function formatEntityAttributesForFormOrDetail( 
-    properties: TIOSchemaAttribute[], 
+export function formatEntityAttributesForFormOrDetail(
+    properties: TIOSchemaAttribute[],
     type: 'create' | 'update' | 'detail',
     entityService: BaseEntityService<any>
 ) {
-    
-    if(type === 'create'){
+
+    if (type === 'create') {
         return formatEntityAttributesForCreate(properties, entityService);
-    } 
+    }
 
-    if(type === 'update'){
+    if (type === 'update') {
         return formatEntityAttributesForUpdate(properties, entityService);
-    } 
+    }
 
-    if(type === 'detail'){
+    if (type === 'detail') {
         return formatEntityAttributesForDetail(properties, entityService);
     }
     throw (`Invalid type [${type}] provided to formatEntityAttributesForFormOrDetail`);
 }
 
-export function formatEntityAttributesForCreate( properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
+export function formatEntityAttributesForCreate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
     return properties
-        .filter( prop => prop && (!prop.hasOwnProperty('isCreatable') || prop.isCreatable) )
-        .map( (att) => formatEntityAttributeForFormOrDetail(att, 'create', entityService) );
+        .filter(prop => prop && (!prop.hasOwnProperty('isCreatable') || prop.isCreatable))
+        .map((att) => formatEntityAttributeForFormOrDetail(att, 'create', entityService));
 }
 
-export function formatEntityAttributesForUpdate( properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
+export function formatEntityAttributesForUpdate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
     return properties
-        .filter( prop => prop && (!prop.hasOwnProperty('isEditable') || prop.isEditable) )
-        .map( (att) => formatEntityAttributeForFormOrDetail(att, 'update', entityService) );
+        .filter(prop => prop && (!prop.hasOwnProperty('isEditable') || prop.isEditable))
+        .map((att) => formatEntityAttributeForFormOrDetail(att, 'update', entityService));
 }
 
-export function formatEntityAttributesForDetail( properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
+export function formatEntityAttributesForDetail(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
     return properties
-        .filter( prop => prop && (!prop.hasOwnProperty('isVisible') || prop.isVisible) )
-        .map( (att) => formatEntityAttributeForFormOrDetail(att, 'detail', entityService) );
+        .filter(prop => prop && (!prop.hasOwnProperty('isVisible') || prop.isVisible))
+        .map((att) => formatEntityAttributeForFormOrDetail(att, 'detail', entityService));
 }
 
 export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' | 'helpText' | 'filterConfig'> & {
@@ -142,7 +247,7 @@ export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' 
     actions?: any[],
 };
 
-export function formatEntityAttributesForList( entityName: string, properties: TIOSchemaAttribute[], {
+export function formatEntityAttributesForList(entityName: string, properties: TIOSchemaAttribute[], {
     CRUDApiPath,
     excludeFromAdminUpdate,
     excludeFromAdminDelete,
@@ -156,59 +261,59 @@ export function formatEntityAttributesForList( entityName: string, properties: T
 
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
-    
+
     return properties
-        .filter( prop => prop && prop.isListable )
-        .map( prop => {
-        
-        const propConfig: ListingPropConfig = {
-            ...prop,
-            dataIndex:  `${prop.id}`,
-            fieldType:  prop.fieldType || 'text',
-            hidden: prop.hasOwnProperty('isVisible') && !prop.isVisible
-        };
+        .filter(prop => prop && prop.isListable)
+        .map(prop => {
 
-        if(prop.isIdentifier){
+            const propConfig: ListingPropConfig = {
+                ...prop,
+                dataIndex: `${prop.id}`,
+                fieldType: prop.fieldType || 'text',
+                hidden: prop.hasOwnProperty('isVisible') && !prop.isVisible
+            };
 
-            const actions = [];
+            if (prop.isIdentifier) {
 
-            if(!excludeFromAdminUpdate){
-                actions.push({
-                    icon: 'edit',
-                    url: `/edit-${entityNameLower}`
-                });
+                const actions = [];
+
+                if (!excludeFromAdminUpdate) {
+                    actions.push({
+                        icon: 'edit',
+                        url: `/edit-${entityNameLower}`
+                    });
+                }
+
+                if (!excludeFromAdminDelete) {
+                    actions.push({
+                        icon: 'delete',
+                        openInModal: true,
+                        modalConfig: {
+                            modalType: 'confirm',
+                            modalPageConfig: {
+                                title: `Delete ${entityNamePascalCase}`,
+                                content: `Are you sure you want to delete this ${entityNamePascalCase}?`
+                            },
+                            apiConfig: {
+                                apiMethod: `DELETE`,
+                                responseKey: entityNameLower,
+                                apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
+                            },
+                            submitSuccessRedirect: `/list-${entityNameLower}`
+                        }
+                    });
+                }
+
+                if (!excludeFromAdminDetail) {
+                    actions.push({
+                        icon: 'view',
+                        url: `/view-${entityNameLower}`
+                    });
+                }
+
+                propConfig.actions = actions;
             }
 
-            if(!excludeFromAdminDelete){
-                actions.push({
-                    icon: 'delete',
-                    openInModal: true,
-                    modalConfig: {
-                        modalType: 'confirm',
-                        modalPageConfig: {
-                            title: `Delete ${entityNamePascalCase}`,
-                            content: `Are you sure you want to delete this ${entityNamePascalCase}?`
-                        },
-                        apiConfig: {
-                            apiMethod: `DELETE`,
-                            responseKey: entityNameLower,
-                            apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
-                        },
-                        submitSuccessRedirect: `/list-${entityNameLower}`
-                    }
-                });
-            }
-
-            if(!excludeFromAdminDetail){
-                actions.push({
-                    icon: 'view',
-                    url: `/view-${entityNameLower}`
-                });
-            }
-
-            propConfig.actions = actions;
-        }
-
-        return propConfig;
-    });
+            return propConfig;
+        });
 }

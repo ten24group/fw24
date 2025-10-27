@@ -1718,7 +1718,7 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
 
     const relationMeta = relatedEntityName ? { ...restRelation, entityName: relatedEntityName } : undefined;
 
-    const { items, type, properties, addNewOption, ...restRestMeta } = restMeta as any;
+    const { items, type, properties, addNewOption, addNewOptionConfig, ...restRestMeta } = restMeta as any;
 
     const formatted: any = {
         ...restRestMeta,
@@ -1736,6 +1736,10 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         isSearchable: !('isSearchable' in att) ? true : att.isSearchable,
     }
 
+    // Pass through both old and new addNewOption formats
+    if (addNewOptionConfig) {
+        formatted[ 'addNewOptionConfig' ] = addNewOptionConfig;
+    }
     if (addNewOption) {
         formatted[ 'addNewOption' ] = addNewOption;
     }

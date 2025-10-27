@@ -262,6 +262,43 @@ export declare function createSchemaHelpers<const TAttrKeys extends readonly str
     /** The attribute keys this helper is configured for */
     attrKeys: TAttrKeys;
 };
+/**
+ * ENHANCED: createEntitySchemaTypeSafe with callback-based helpers
+ *
+ * Same familiar object syntax, but options/relation/indexes can use callbacks
+ * that receive strongly-typed helpers automatically!
+ *
+ * @example
+ * const UserSchema = createEntitySchemaTypeSafeWithHelpers({
+ *   model: { entity: 'user', ... },
+ *   attributes: {
+ *     userId: { type: 'string', required: true },
+ *     email: { type: 'string', required: true },
+ *     managerId: {
+ *       type: 'string',
+ *       fieldType: 'select',
+ *       // ✅ Callback receives helpers that know: userId | email | managerId
+ *       options: (h) => h.fieldOptions({
+ *         optionMapping: { label: 'email', value: 'userId' }  // ✅ Autocomplete!
+ *       }),
+ *       relation: (h) => h.relation({
+ *         identifiers: { source: 'managerId', target: 'userId' }  // ✅ Autocomplete!
+ *       })
+ *     }
+ *   },
+ *   // ✅ Callback receives helpers that know all attribute keys
+ *   indexes: (h) => ({
+ *     primary: h.index({
+ *       pk: { field: 'pk', composite: ['userId'] }  // ✅ Autocomplete!
+ *     })
+ *   })
+ * });
+ */
+export declare function createEntitySchemaTypeSafeWithHelpers<const TSchema extends {
+    model: any;
+    attributes: Record<string, any>;
+    indexes?: any | ((h: ReturnType<typeof createSchemaHelpers<string[]>>) => any);
+}>(schema: TSchema): any;
 export {};
 /**
  * FINAL HONEST ASSESSMENT - What ACTUALLY Works:
@@ -285,10 +322,10 @@ export {};
  * ✅ **WITH helpers**: Full autocomplete + validation
  *
  * ═══════════════════════════════════════════════════════════════════════════
- * HELPER FUNCTIONS (3 Approaches - Pick What You Prefer):
+ * HELPER FUNCTIONS (4 Approaches - Pick What You Prefer):
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * **Approach 1: Individual Helpers** (Most Explicit)
+ * **Approach 1: Individual Helpers** (Most Explicit, repetitive)
  * ```ts
  * options: defineFieldOptions(['attr1', 'attr2'] as const, {
  *   optionMapping: { label: '', value: '' } // ✅ Autocomplete!
@@ -303,7 +340,7 @@ export {};
  * })
  * ```
  *
- * **Approach 2: Schema-Level Helper Factory** (DRY - Define attrs once)
+ * **Approach 2: Schema-Level Helper Factory** (DRY - define keys once)
  * ```ts
  * const h = createSchemaHelpers(['attr1', 'attr2', 'attr3'] as const);
  *
@@ -318,7 +355,35 @@ export {};
  * });
  * ```
  *
- * **Approach 3: No Helpers** (Validation only, no autocomplete)
+ * **Approach 3: Callback-Based Helpers** (🏆 RECOMMENDED - Familiar + Auto!)
+ * ```ts
+ * const Schema = createEntitySchemaTypeSafeWithHelpers({
+ *   model: { entity: 'user', ... },
+ *   attributes: {
+ *     userId: { type: 'string' },
+ *     email: { type: 'string' },
+ *     managerId: {
+ *       type: 'string',
+ *       fieldType: 'select',
+ *       // ✅ Callback receives helpers - NO manual keys!
+ *       options: (h) => h.fieldOptions({
+ *         optionMapping: { label: 'email', value: 'userId' }  // ✅ Autocomplete!
+ *       }),
+ *       relation: (h) => h.relation({
+ *         identifiers: { source: 'managerId', target: 'userId' }  // ✅ Autocomplete!
+ *       })
+ *     }
+ *   },
+ *   // ✅ Callback receives helpers - NO manual keys!
+ *   indexes: (h) => ({
+ *     primary: h.index({
+ *       pk: { field: 'pk', composite: ['userId'] }  // ✅ Autocomplete!
+ *     })
+ *   })
+ * });
+ * ```
+ *
+ * **Approach 4: No Helpers** (Validation only, no autocomplete)
  * ```ts
  * // Just use createEntitySchemaTypeSafe directly
  * // You get all validation, but NO autocomplete
@@ -332,8 +397,14 @@ export {};
  * ✅ Multiple identifiers support in relations
  * ✅ Optional hydrate/attributes in relations
  * ✅ Schema-level helper factory for DRY code
+ * ✅ **Callback-based helpers** - familiar object syntax + auto helpers! (BEST)
  * ✅ Zero runtime cost - all helpers just return input
  * ✅ 100% compatible with existing base-entity.ts types
+ *
+ * RECOMMENDATION:
+ * Use **Approach 3 (Callback-Based Helpers)** - it keeps the familiar
+ * `createEntitySchemaTypeSafe` object syntax but injects strongly-typed helpers
+ * via callbacks where needed. NO manual key passing, completely automatic!
  *
  * HOW IT WORKS - THE MAGIC EXPLAINED:
  *
