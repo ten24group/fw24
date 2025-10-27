@@ -113,7 +113,7 @@ export function formatEntityAttributeForFormOrDetail(
                     pageType: 'view' as const,
                     overrideConfig: {}
                 },
-                modalWidth: userRelationConfig?.modalWidth || '95%', // Default width for detail modals
+                modalWidth: userRelationConfig?.modalWidth,
                 modalTitle: userRelationConfig?.modalTitle,
                 displayConfig: userRelationConfig?.displayConfig || {
                     showModalIcon: true,
@@ -158,7 +158,7 @@ export function formatEntityAttributeForFormOrDetail(
                         defaultFilters: defaultFilters
                     }
                 },
-                modalWidth: userRelationConfig?.modalWidth || 1200, // Larger width for list modals
+                modalWidth: userRelationConfig?.modalWidth,
                 modalTitle: userRelationConfig?.modalTitle,
                 displayConfig: userRelationConfig?.displayConfig || {
                     showModalIcon: true,
