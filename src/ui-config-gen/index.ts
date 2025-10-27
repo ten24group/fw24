@@ -8,7 +8,6 @@ export type {
     IModalApiConfig,
     IConfirmModal,
     IEntityPageAction,
-    IEntityPageActionModalConfig,
     INavigateToConfig,
     IResponseDisplayConfig,
     IEntityConfigReference,
