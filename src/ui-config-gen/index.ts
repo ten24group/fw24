@@ -9,6 +9,8 @@ export type {
     IConfirmModal,
     IEntityPageAction,
     IEntityPageActionModalConfig,
+    INavigateToConfig,
+    IResponseDisplayConfig,
     IEntityPageColumn,
     IEntityPageColumnConfig,
     BaseFieldMetadata,

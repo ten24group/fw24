@@ -503,16 +503,101 @@ export interface IModalApiConfig {
  * Modal configuration for entity page actions
  * Note: This is a subset of the frontend IModalConfig, excluding runtime props
  */
+/**
+ * Navigation configuration for modal form submissions
+ * Allows collecting user input and navigating to a route without API calls
+ */
+export interface INavigateToConfig {
+  /** Target route pattern, e.g., "/list-game" or "/view-user/:userId" */
+  routePattern: string;
+  
+  /** Whether to use form values for route/query params. Default: true */
+  useFormValues?: boolean;
+  
+  /** Maps form field paths to query parameters. 
+   * Example: { "status.eq": "statusFilter", "teamIds.in": "selectedTeams" }
+   */
+  queryParamMapping?: Record<string, string>;
+  
+  /** Maps form field paths to route parameters.
+   * Example: { userId: "selectedUser.id" }
+   */
+  routeParamMapping?: Record<string, string>;
+  
+  /** Use sessionStorage for large parameter sets (>1500 chars). Default: false */
+  useLargeParamStorage?: boolean;
+  
+  /** Date format for date fields. Default: 'ISO' */
+  dateFormat?: 'ISO' | 'unix' | 'YYYY-MM-DD';
+  
+  /** Array field to extract (e.g., 'id' extracts IDs from object arrays). Default: auto-detect */
+  arrayValuePath?: string;
+  
+  /** Use replace instead of push in navigation history. Default: false */
+  replace?: boolean;
+  
+  /** Pre-populate form from query params on modal open. Default: false */
+  inverseMapping?: boolean;
+}
+
+/**
+ * Configuration for displaying API response in a modal
+ * Reuses the existing page rendering system (details, list, dashboard, etc.)
+ * 
+ * Use Cases:
+ * - Bulk operations: Show results breakdown (created/updated/failed counts)
+ * - Report generation: Show summary with download links
+ * - Test/validation: Show operation results, warnings, API responses
+ */
+export interface IResponseDisplayConfig {
+  /** Whether to show response in a modal. If false, only toast notification shows. Default: false */
+  showModal?: boolean;
+  
+  /** Title for response modal. If not provided, appends " - Results" to action modal title */
+  modalTitle?: string;
+  
+  /** Width of response modal in pixels. Default: 800 */
+  modalWidth?: number;
+  
+  /** OPTION 1: Render response using existing page type system (recommended) */
+  pageType?: 'details' | 'list' | 'dashboard' | 'accordion';
+  pageConfig?: DetailsPageConfigStructure | ListPageConfigStructure | Record<string, any>;
+  
+  /** OPTION 2: Show raw JSON response (useful for debugging/testing) */
+  showRawJson?: boolean;
+  
+  /** Path to extract data from response. Default: uses response root
+   * Example: "data.results" will use response.data.results as the data source
+   */
+  dataPath?: string;
+}
+
 export interface IEntityPageActionModalConfig {
   modalType: ModalType;
   modalPageConfig?: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure;
+  
+  /** EITHER: Make API call (existing pattern) */
   apiConfig?: IModalApiConfig;
   submitSuccessRedirect?: string;
+  
+  /** OR: Navigate without API call (new pattern) */
+  navigateTo?: INavigateToConfig | string;  // String shorthand: "/list-game?status={status}"
+  
+  /** OPTIONAL: Display API response in a modal (instead of just toast notification)
+   * Note: Only applies when apiConfig is present. Ignored for navigateTo.
+   */
+  responseConfig?: IResponseDisplayConfig;
 }
 
 /**
  * Entity page action
  * Supports buttons, dropdowns with modals/navigation
+ * 
+ * Patterns:
+ * 1. Navigation: { url: "/view-user/:id" }
+ * 2. Modal with inline config: { openInModal: true, modalConfig: {...} }
+ * 3. Modal with route resolution: { openInModal: true, url: "/view-user/:id" }
+ * 
  * Note: items cannot have nested items (max 1 level of nesting)
  */
 export interface IEntityPageAction {
@@ -521,8 +606,24 @@ export interface IEntityPageAction {
   icon?: string;
   type?: 'button' | 'dropdown';
   items?: Array<Omit<IEntityPageAction, 'items'>>;  // Items cannot have sub-items
+  
+  /** Open action in modal instead of navigating */
   openInModal?: boolean;
+  
+  /** Modal configuration (inline config or resolved from url) */
   modalConfig?: IEntityPageActionModalConfig;
+  
+  /** Custom modal width. Default: auto-detect from page type */
+  modalWidth?: number | string;
+  
+  /** Override resolved page title when opened in modal */
+  modalTitle?: string;
+  
+  /** Hide this action when rendered inside a modal. Default: false */
+  hideInModal?: boolean;
+  
+  /** Only open in modal on specified screen size. Default: always */
+  openInModalCondition?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
 export interface IEntityPageColumn {
