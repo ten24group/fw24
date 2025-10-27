@@ -317,13 +317,15 @@ export interface UpsertEntityArgs<
 
 export type UpsertEntityResponse<Sch extends EntitySchema<any, any, any>> = {
     data?: EntityResponseItemTypeFromSchema<Sch>
+    wasCreated?: boolean  // true if record was created, false if already existed
+    oldData?: EntityResponseItemTypeFromSchema<Sch>  // previous data if it was an update (undefined for creates)
 }
 
 /**
  * Creates an entity using the provided options.
  * 
  * @param options - The options for creating-OR-updating the entity.
- * @returns The created entity.
+ * @returns The created entity with wasCreated flag indicating if it was a new record.
  * @throws Error if no data is provided for upsert operation, validation fails, or authorization fails.
  */
 export async function upsertEntity<S extends EntitySchema<any, any, any>>(options: UpsertEntityArgs<S>): Promise<UpsertEntityResponse<S>> {
@@ -372,15 +374,26 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
     //     throw new Error("Authorization failed for upsert: " + { cause: authorization });
     // }
 
-    const entity = await entityService.getRepository().upsert(data as any).go();
+    // Use "all_old" to get the previous item state - allows us to detect create vs update
+    // If oldData is empty/null, it was a CREATE. If it has data, it was an UPDATE.
+    const entity = await entityService.getRepository().upsert(data as any).go({ response: "all_old" });
+
+    const wasCreated = !entity.data || Object.keys(entity.data).length === 0;
+    const oldData = wasCreated ? undefined : entity.data;
 
     // post events
     // await eventDispatcher?.dispatch({ event: 'afterUpsert', context: {...arguments, entity} });
 
     // return entity;
-    logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data, entity.data);
+    logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ wasCreated: ${wasCreated}`);
 
-    return entity as UpsertEntityResponse<S>;
+    // Note: with "all_old", entity.data contains the OLD data, we need to return the NEW data
+    // Since we don't have the new data from DynamoDB, we return the input data as the new data
+    return { 
+        data: data as any,  // The new data we just upserted
+        wasCreated, 
+        oldData 
+    } as UpsertEntityResponse<S>;
 }
 
 /**
@@ -690,7 +703,7 @@ async function prepareCompositeAttributesForUpdate<S extends EntitySchema<any, a
     });
 
     if (attributesToFetch.size > 0) {
-        logger.info(`Need to fetch attributes for composite keys:`, Array.from(attributesToFetch));
+        logger.debug(`Need to fetch attributes for composite keys:`, Array.from(attributesToFetch));
 
         try {
             const existingRecordContainer = await entityService.getRepository()
@@ -805,7 +818,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     if (allReferencedCompositeAttributes.size > 0) {
         if (compositeKeyData && typeof compositeKeyData === 'object') {
 
-            logger.info(`Using provided compositeKeyData for update.`, compositeKeyData);
+            logger.debug(`Using provided compositeKeyData for update.`, compositeKeyData);
 
             finalCompositeKeyValuesForElectroDB = compositeKeyData;
 
@@ -826,7 +839,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
 
         } else {
 
-            logger.info(`No compositeKeyData provided, preparing composite attributes internally. Required:`, Array.from(allReferencedCompositeAttributes));
+            logger.debug(`No compositeKeyData provided, preparing composite attributes internally. Required:`, Array.from(allReferencedCompositeAttributes));
 
             finalCompositeKeyValuesForElectroDB = await prepareCompositeAttributesForUpdate({
                 entityName,
@@ -839,7 +852,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         }
 
     } else {
-        logger.info(`No composite attributes defined in schema or needed for this update.`);
+        logger.debug(`No composite attributes defined in schema or needed for this update.`);
     }
     // --- End Composite Key Handling ---
 
@@ -849,7 +862,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     const query = entityService.getRepository().patch(identifiers).set(data);
 
     if (Object.keys(finalCompositeKeyValuesForElectroDB).length > 0) {
-        logger.info(`Using composite values for ElectroDB patch:`, finalCompositeKeyValuesForElectroDB);
+        logger.debug(`Using composite values for ElectroDB patch:`, finalCompositeKeyValuesForElectroDB);
         query.composite(finalCompositeKeyValuesForElectroDB);
     }
 

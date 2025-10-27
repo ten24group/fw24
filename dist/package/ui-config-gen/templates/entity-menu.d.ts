@@ -13,7 +13,7 @@ declare const _default: (options: {
     key: number | undefined;
     children: {
         label: string;
-        key: number;
+        key: string;
         url: string;
     }[];
     group: string | undefined;

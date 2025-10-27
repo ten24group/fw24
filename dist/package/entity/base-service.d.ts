@@ -32,14 +32,14 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
         indexConfig?: import("../search/types").SearchIndexConfig;
         serviceClass?: DepIdentifier<EntitySearchService<any>> | typeof EntitySearchService | EntitySearchService<any>;
         documentTransformer?: ((entity: import("electrodb").ResponseItem<any, any, any, EntitySchema<any, any, any, {
-            get: string;
-            list: string;
-            query: string;
-            create: string;
-            upsert: string;
-            update: string;
-            delete: string;
-            duplicate: string;
+            readonly get: "get";
+            readonly list: "list";
+            readonly query: "query";
+            readonly create: "create";
+            readonly upsert: "upsert";
+            readonly update: "update";
+            readonly delete: "delete";
+            readonly duplicate: "duplicate";
         }>>) => Promise<Record<string, any>>) | undefined;
     };
     /**
@@ -203,7 +203,7 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
     */
     getFilterableAttributeNames(): Array<string>;
     serializeRecord<T extends Record<string, any>>(record: T, attributes?: EntitySelections<S>): Partial<T>;
-    serializeRecords<T extends Record<string, any>>(record: Array<T>, attributes?: EntitySelections<S>): Array<Partial<T>>;
+    serializeRecords<T extends Record<string, any>>(record: Array<T> | null, attributes?: EntitySelections<S>): Array<Partial<T>>;
     hydrateRecords(relations: Array<[relatedAttributeName: string, options: HydrateOptionForRelation<any>]>, rootEntityRecords: Array<{
         [x: string]: any;
     }>): Promise<void>;
@@ -293,7 +293,10 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      *   - It's the responsibility of the caller to ensure the read ony attributes are not provided if the record is being upsert.
      *
      * @param payload - The payload for creating-OR-updating the entity.
-     * @returns The created-OR-updated entity.
+     * @returns Object containing:
+     *   - data: The upserted entity data
+     *   - wasCreated: true if record was created, false if updated
+     *   - oldData: previous data if it was an update (undefined for creates)
      */
     upsert(payload: UpsertEntityItemTypeFromSchema<S>): Promise<import("./crud-service").UpsertEntityResponse<S>>;
     /**
@@ -363,14 +366,14 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      */
     update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, ctx?: ExecutionContext): Promise<{
         data: Partial<import("electrodb").ResponseItem<any, any, any, EntitySchema<any, any, any, {
-            get: string;
-            list: string;
-            query: string;
-            create: string;
-            upsert: string;
-            update: string;
-            delete: string;
-            duplicate: string;
+            readonly get: "get";
+            readonly list: "list";
+            readonly query: "query";
+            readonly create: "create";
+            readonly upsert: "upsert";
+            readonly update: "update";
+            readonly delete: "delete";
+            readonly duplicate: "duplicate";
         }>>>;
     }>;
     /**
@@ -381,14 +384,14 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      */
     delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, ctx?: ExecutionContext): Promise<{
         data: import("electrodb").AllTableIndexCompositeAttributes<any, any, any, EntitySchema<any, any, any, {
-            get: string;
-            list: string;
-            query: string;
-            create: string;
-            upsert: string;
-            update: string;
-            delete: string;
-            duplicate: string;
+            readonly get: "get";
+            readonly list: "list";
+            readonly query: "query";
+            readonly create: "create";
+            readonly upsert: "upsert";
+            readonly update: "update";
+            readonly delete: "delete";
+            readonly duplicate: "duplicate";
         }>> | null;
     }>;
     /**

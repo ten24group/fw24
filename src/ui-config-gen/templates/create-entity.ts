@@ -1,4 +1,4 @@
-import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, IEntityPageColumnConfig } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
 import { formatEntityAttributesForCreate } from "./util";
 
@@ -7,6 +7,8 @@ export type CreateEntityPageOptions<S extends EntitySchema<string, string, strin
     entityNamePlural: string,
     CRUDApiPath?: string,
     properties: TIOSchemaAttributesMap<S>,
+    breadcrumbs?: Array<{ label: string; url?: string }>,
+    columnsConfig?: IEntityPageColumnConfig,
 }
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
@@ -14,7 +16,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     entityService: BaseEntityService<S>
 ) => {
 
-    const{ entityName } = options;
+    const{ entityName, breadcrumbs } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
 
@@ -23,7 +25,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     return {
         pageTitle:  `Create ${entityNamePascalCase}`,
         pageType:   'form',
-        breadcrums: [],
+        breadcrumbs: breadcrumbs || [],
         pageHeaderActions: [
             {
                 label:  "Back",
@@ -50,23 +52,20 @@ export function makeCreateEntityFormConfig<S extends EntitySchema<string, string
     entityService: BaseEntityService<S>
 ){
 
-    const{ entityName, properties, CRUDApiPath } = options;
+    const{ entityName, properties, CRUDApiPath, columnsConfig } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
 
-    const formPageConfig = {
+    const formattedProps = formatEntityAttributesForCreate( Array.from(properties.values()), entityService);
+
+    return {
         apiConfig: {
-            apiMethod: `POST`,
+            apiMethod: 'POST' as const,
             responseKey: entityNameCamel,
             apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
         },
-        formButtons: [ "submit", "reset"],
-        propertiesConfig: [] as any[],
-    }
-
-    const formattedProps = formatEntityAttributesForCreate( Array.from(properties.values()), entityService);
-
-    formPageConfig.propertiesConfig.push(...formattedProps);
-
-    return formPageConfig;
+        formButtons: [ "submit", "reset"] as const,
+        propertiesConfig: formattedProps,
+        ...(columnsConfig && { columnsConfig })
+    };
 }

@@ -1,4 +1,5 @@
 import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { IEntityPageAction } from "../../entity/base-entity";
 import { pascalCase } from "../../utils";
 import { formatEntityAttributesForList } from "./util";
 
@@ -20,32 +21,41 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
     CRUDApiPath?: string,
     properties: TIOSchemaAttributesMap<S>
     useSearch?: boolean,
+    pageHeaderActions?: Array<IEntityPageAction>,
+    breadcrumbs?: Array<{ label: string; url?: string }>,
+    defaultSort?: { field: string; order: 'asc' | 'desc' } | Array<{ field: string; order: 'asc' | 'desc' }> | string,
 }
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
     options: ListEntityPageOptions<S>
 ) => {
 
-    const { entityName, entityNamePlural, properties } = options;
+    const { entityName, entityNamePlural, properties, breadcrumbs } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
 
     const listPageConfig = makeViewEntityListConfig(options);
 
-    const pageHeaderAction = [];
+    // Build default page header actions
+    const defaultPageHeaderActions = [];
     if (!options.excludeFromAdminCreate) {
-        pageHeaderAction.push({
+        defaultPageHeaderActions.push({
             label: "Create",
             url: `/create-${entityNameLower}`
         });
     }
 
+    // Combine default actions with custom actions (custom actions take precedence)
+    const pageHeaderActions = options.pageHeaderActions 
+        ? [...defaultPageHeaderActions, ...options.pageHeaderActions]
+        : defaultPageHeaderActions;
+
     return {
         pageTitle: `${entityNamePascalCase} Listing`,
         pageType: "list",
         routePattern: undefined,
-        breadcrums: [],
-        pageHeaderActions: pageHeaderAction,
+        breadcrumbs: breadcrumbs || [],
+        pageHeaderActions,
         listPageConfig
     } as const;
 };
@@ -54,7 +64,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     options: ListEntityPageOptions<S>
 ) {
 
-    const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch } = options;
+    const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch, defaultSort } = options;
     const entityNameLower = entityName.toLowerCase();
 
     const baseApiUrl = `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`;
@@ -63,28 +73,29 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     // Check if dual API configuration is enabled
     const isDualApiEnabled = useSearch; // Note: we can make it configurable in future
 
-    const listPageConfig = {
-        apiConfig: isDualApiEnabled ? {
-            // Dual API configuration
-            search: {
-                apiMethod: 'GET',
-                responseKey: 'items',
-                apiUrl: searchApiUrl,
-            },
-            database: {
-                apiMethod: 'GET',
-                responseKey: 'items',
-                apiUrl: baseApiUrl,
-            }
-        } : {
-            // Single API configuration (backward compatible)
-            apiMethod: 'GET',
+    // Build API config with optional defaultSort
+    const apiConfig = isDualApiEnabled ? {
+        // Dual API configuration
+        search: {
+            apiMethod: 'GET' as const,
             responseKey: 'items',
-            useSearch: useSearch ?? false,
-            apiUrl: useSearch ? searchApiUrl : baseApiUrl,
+            apiUrl: searchApiUrl,
+            ...(defaultSort && { defaultSort })
         },
-        propertiesConfig: [] as any[],
-    }
+        database: {
+            apiMethod: 'GET' as const,
+            responseKey: 'items',
+            apiUrl: baseApiUrl,
+            ...(defaultSort && { defaultSort })
+        }
+    } : {
+        // Single API configuration (backward compatible)
+        apiMethod: 'GET' as const,
+        responseKey: 'items',
+        useSearch: useSearch ?? false,
+        apiUrl: useSearch ? searchApiUrl : baseApiUrl,
+        ...(defaultSort && { defaultSort })
+    };
 
     const formattedProps = formatEntityAttributesForList(entityName, Array.from(properties.values()), {
         CRUDApiPath,
@@ -93,7 +104,8 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
         excludeFromAdminDetail
     });
 
-    listPageConfig.propertiesConfig.push(...formattedProps);
-
-    return listPageConfig;
+    return {
+        apiConfig,
+        propertiesConfig: formattedProps
+    };
 }

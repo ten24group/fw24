@@ -21,13 +21,13 @@ export interface APIControllerMiddleware {
 }
 
 // Global middleware management
-const globalMiddlewares: APIControllerMiddleware[] = [];
+const globalMiddlewares: Set<APIControllerMiddleware> = new Set();
 
 export const useMiddleware = (middleware: APIControllerMiddleware) => {
-  globalMiddlewares.push(middleware);
+  globalMiddlewares.add(middleware);
 }
 export const clearMiddlewares = () => {
-  globalMiddlewares.length = 0;
+  globalMiddlewares.clear();
 }
 
 /**
@@ -84,7 +84,7 @@ export interface APIControllerConfig {
 }
 
 export abstract class APIController extends AbstractLambdaHandler {
-  protected middlewares: APIControllerMiddleware[] = [];
+  protected middlewares: Set<APIControllerMiddleware> = new Set();
   protected responseConfig: ResponseConfig;
 
   constructor(config: APIControllerConfig = {}) {
@@ -109,11 +109,11 @@ export abstract class APIController extends AbstractLambdaHandler {
 
   // Add middleware registration method
   protected useMiddleware(middleware: APIControllerMiddleware) {
-    this.middlewares.push(middleware);
+    this.middlewares.add(middleware);
   }
 
   protected getMiddlewares() {
-    return [ ...globalMiddlewares, ...this.middlewares ];
+    return [ ...Array.from(globalMiddlewares), ...Array.from(this.middlewares) ];
   }
 
   // Execute middleware pipeline

@@ -426,11 +426,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 continue;
             }
 
-            if (formattedAtt.isVisible) {
+            if (formattedAtt.isVisible || formattedAtt.isIdentifier) {
                 outputSchemaAttributes.detail.set(attName, { ...formattedAtt });
             }
 
-            if (formattedAtt.isListable) {
+            if (formattedAtt.isListable || formattedAtt.isIdentifier) {
                 outputSchemaAttributes.list.set(attName, { ...formattedAtt });
             }
 
@@ -624,7 +624,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         return pickKeys<T>(record, ...keys);
     }
 
-    public serializeRecords<T extends Record<string, any>>(record: Array<T>, attributes = this.getDefaultSerializationAttributeNames()): Array<Partial<T>> {
+    public serializeRecords<T extends Record<string, any>>(record: Array<T> | null, attributes = this.getDefaultSerializationAttributeNames()): Array<Partial<T>> {
+        if (!record || !Array.isArray(record)) {
+            return [];
+        }
         return record.map(record => this.serializeRecord<T>(record, attributes));
     }
 
@@ -1125,7 +1128,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     ): T {
 
         if (!ctx?.actor) {
-            this.logger.warn('BaseEntityService: No actor context found, skipping injection');
+            this.logger.debug('BaseEntityService: No actor context found, skipping injection');
             return data;
         }
 
@@ -1250,18 +1253,21 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      *   - It's the responsibility of the caller to ensure the read ony attributes are not provided if the record is being upsert.
      * 
      * @param payload - The payload for creating-OR-updating the entity.
-     * @returns The created-OR-updated entity.
+     * @returns Object containing:
+     *   - data: The upserted entity data
+     *   - wasCreated: true if record was created, false if updated
+     *   - oldData: previous data if it was an update (undefined for creates)
      */
     public async upsert(payload: UpsertEntityItemTypeFromSchema<S>) {
         this.logger.debug(`Called ~ upsert ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
 
-        const entity = await upsertEntity<S>({
+        const result = await upsertEntity<S>({
             data: payload,
             entityName: this.getEntityName(),
             entityService: this,
         });
 
-        return entity;
+        return result;
     }
 
     /**
@@ -1715,7 +1721,7 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
 
     const relationMeta = relatedEntityName ? { ...restRelation, entityName: relatedEntityName } : undefined;
 
-    const { items, type, properties, addNewOption, ...restRestMeta } = restMeta as any;
+    const { items, type, properties, addNewOption, addNewOptionConfig, ...restRestMeta } = restMeta as any;
 
     const formatted: any = {
         ...restRestMeta,
@@ -1733,6 +1739,10 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         isSearchable: !('isSearchable' in att) ? true : att.isSearchable,
     }
 
+    // Pass through both old and new addNewOption formats
+    if (addNewOptionConfig) {
+        formatted[ 'addNewOptionConfig' ] = addNewOptionConfig;
+    }
     if (addNewOption) {
         formatted[ 'addNewOption' ] = addNewOption;
     }

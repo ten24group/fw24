@@ -30,12 +30,14 @@ const viewUiConfig = MakeViewEntityConfig({
     { label: "Audit Log Detail" }
   ],
   columnsConfig: entitySchema.model.viewPageColumnsConfig,
+  actions: [],  // Empty array to prevent default actions (Back, Edit) from being added
 }, auditService);
 
 
 export const AuditCustomPageConfigs = {
   listingUiConfig: {
     ...listingUiConfig,
+    pageTitle: "AuditLog",  // Must match default key generation: list-${entityName} → "list-auditlog"
     routePattern: `/system/list-auditlog`,
     breadcrumbs: [
       { label: "Home", url: "/" },
@@ -52,7 +54,15 @@ export const AuditCustomPageConfigs = {
   } as const,
   viewUiConfig: {
     ...viewUiConfig,
+    pageTitle: "AuditLog",  // Must match default key generation: "view-auditlog"
     routePattern: `/view-auditlog/:auditId`,
+    pageHeaderActions: [
+      {
+        label: "Back",
+        url: `/system/list-auditlog`,
+        icon: "arrow-left"
+      }
+    ],
     detailsPageConfig: {
       ...viewUiConfig.detailsPageConfig,
       detailApiConfig: {

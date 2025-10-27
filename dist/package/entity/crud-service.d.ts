@@ -124,12 +124,14 @@ export interface UpsertEntityArgs<Sch extends EntitySchema<any, any, any>, OpsSc
 }
 export type UpsertEntityResponse<Sch extends EntitySchema<any, any, any>> = {
     data?: EntityResponseItemTypeFromSchema<Sch>;
+    wasCreated?: boolean;
+    oldData?: EntityResponseItemTypeFromSchema<Sch>;
 };
 /**
  * Creates an entity using the provided options.
  *
  * @param options - The options for creating-OR-updating the entity.
- * @returns The created entity.
+ * @returns The created entity with wasCreated flag indicating if it was a new record.
  * @throws Error if no data is provided for upsert operation, validation fails, or authorization fails.
  */
 export declare function upsertEntity<S extends EntitySchema<any, any, any>>(options: UpsertEntityArgs<S>): Promise<UpsertEntityResponse<S>>;
@@ -219,14 +221,14 @@ export interface UpdateEntityOperators {
  */
 export declare function updateEntity<S extends EntitySchema<any, any, any>>(options: UpdateEntityArgs<S>): Promise<{
     data: Partial<import("electrodb").ResponseItem<any, any, any, EntitySchema<any, any, any, {
-        get: string;
-        list: string;
-        query: string;
-        create: string;
-        upsert: string;
-        update: string;
-        delete: string;
-        duplicate: string;
+        readonly get: "get";
+        readonly list: "list";
+        readonly query: "query";
+        readonly create: "create";
+        readonly upsert: "upsert";
+        readonly update: "update";
+        readonly delete: "delete";
+        readonly duplicate: "duplicate";
     }>>>;
 }>;
 /**
@@ -247,14 +249,14 @@ export interface DeleteEntityArgs<Sch extends EntitySchema<any, any, any>, OpsSc
  */
 export declare function deleteEntity<S extends EntitySchema<any, any, any>>(options: DeleteEntityArgs<S>): Promise<{
     data: import("electrodb").AllTableIndexCompositeAttributes<any, any, any, EntitySchema<any, any, any, {
-        get: string;
-        list: string;
-        query: string;
-        create: string;
-        upsert: string;
-        update: string;
-        delete: string;
-        duplicate: string;
+        readonly get: "get";
+        readonly list: "list";
+        readonly query: "query";
+        readonly create: "create";
+        readonly upsert: "upsert";
+        readonly update: "update";
+        readonly delete: "delete";
+        readonly duplicate: "duplicate";
     }>> | null;
 }>;
 /**

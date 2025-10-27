@@ -26,7 +26,8 @@ export function pascalCase(input: string) {
 export function toSlug(str: string): string {
     if(!str) return '';
     
-    return str.toString().normalize('NFD').replace(/[\u0300-\u036f]/g, "") //remove diacritics
+    return str.toString().normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, "") //remove diacritics
             .toLowerCase()
             .replace(/\s+/g, '-') //spaces to dashes
             .replace(/&/g, '-and-') //ampersand to and

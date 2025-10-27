@@ -53,7 +53,7 @@ export interface APIControllerConfig {
     responseConfig?: Partial<ResponseConfig>;
 }
 export declare abstract class APIController extends AbstractLambdaHandler {
-    protected middlewares: APIControllerMiddleware[];
+    protected middlewares: Set<APIControllerMiddleware>;
     protected responseConfig: ResponseConfig;
     constructor(config?: APIControllerConfig);
     /**
@@ -106,12 +106,10 @@ export declare abstract class APIController extends AbstractLambdaHandler {
      */
     protected handleException(req: Request, err: Error, res: Response): APIGatewayProxyResult;
     protected handleResponse(res: Response | APIGatewayProxyResult): APIGatewayProxyResult;
-    protected buildCtx(event: APIGatewayEvent, context: Context, request: Request, response: Response): ExecutionContext;
     /**
-     * Extracts actor context from the request
-     * Override this method for custom actor extraction logic
+     * Builds the execution context for the request
      *
-     * different middleware can enhance the actor context
+     * different middleware can enhance the actor context by using the enhanceActor method
      *
      * @example
      * ```ts
@@ -140,10 +138,49 @@ export declare abstract class APIController extends AbstractLambdaHandler {
      *
      * useMiddleware(securityMiddleware);
      *
+     * @param event
+     * @param context
+     * @param request
+     * @param response
+     * @returns
+     */
+    protected buildCtx(event: APIGatewayEvent, context: Context, request: Request, response: Response): ExecutionContext;
+    /**
+     * Extracts actor context from the request
+     * Override this method for custom actor extraction logic
+     *
      * @param event - The event object from the API Gateway.
      * @param request - The request object from the API Gateway.
      * @returns The actor context.
      * ```
      */
     protected extractActorContext(event: APIGatewayEvent, request: Request): Actor;
+    /**
+     * Extract Cognito actor context based on documented AWS Cognito JWT claims
+     * Only extracts what's officially documented and available in API Gateway context
+     *
+     * @param claims - Cognito JWT claims from the authorizer
+     * @param actor - Actor object to populate
+     */
+    private extractCognitoContext;
+    /**
+     * Parse Cognito groups from comma-separated string (documented Cognito format)
+     */
+    private parseGroups;
+    /**
+     * Extract custom attributes using documented Cognito pattern (custom:*)
+     */
+    private extractCustomAttributes;
+    /**
+   * Extract session and tenant context - focused approach
+   */
+    private extractSessionAndTenantContext;
+    /**
+     * Extract API Key context
+     */
+    private extractApiKeyContext;
+    /**
+     * Extract IAM context
+     */
+    private extractIamContext;
 }

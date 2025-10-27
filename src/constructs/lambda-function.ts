@@ -341,7 +341,7 @@ export class LambdaFunction extends Construct {
 
     // Add global environment variables to the function
     fw24.getGlobalEnvironmentVariables().forEach(envKey => {
-      this.logger?.info(`Adding global environment variable: ${envKey}`, id);
+      this.logger?.debug(`Adding global environment variable: ${envKey}`, id);
       addEnvironmentKeyValueForFunction({
         fn,
         key: envKey,

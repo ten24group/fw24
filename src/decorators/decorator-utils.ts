@@ -166,10 +166,10 @@ export function exportHandler(handler: any, handlerName: string = 'handler', cal
 		if (!callingModule.exports.hasOwnProperty(handlerName)) {
 			callingModule.exports[ handlerName ] = handler;
 		} else {
-			DefaultLogger.warn(`exportHandler: Handler '${handlerName}' already exists in calling module: ${callingModule.filename}`);
+			DefaultLogger.debug(`exportHandler: Handler '${handlerName}' already exists in calling module: ${callingModule.filename}`);
 		}
 	} else {
-		DefaultLogger.warn('exportHandler: Could not find calling module');
+		DefaultLogger.debug('exportHandler: Could not find calling module');
 	}
 }
 

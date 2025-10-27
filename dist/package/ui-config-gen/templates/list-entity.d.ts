@@ -1,4 +1,5 @@
 import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { IEntityPageAction } from "../../entity/base-entity";
 export type ListingPropConfig = {
     name: string;
     dataIndex: string;
@@ -16,67 +17,113 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
     CRUDApiPath?: string;
     properties: TIOSchemaAttributesMap<S>;
     useSearch?: boolean;
+    pageHeaderActions?: Array<IEntityPageAction>;
+    breadcrumbs?: Array<{
+        label: string;
+        url?: string;
+    }>;
+    defaultSort?: {
+        field: string;
+        order: 'asc' | 'desc';
+    } | Array<{
+        field: string;
+        order: 'asc' | 'desc';
+    }> | string;
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>) => {
     readonly pageTitle: `${string} Listing`;
     readonly pageType: "list";
     readonly routePattern: undefined;
-    readonly breadcrums: readonly [];
-    readonly pageHeaderActions: {
+    readonly breadcrumbs: {
         label: string;
-        url: string;
+        url?: string;
     }[];
+    readonly pageHeaderActions: IEntityPageAction[];
     readonly listPageConfig: {
         apiConfig: {
             search: {
-                apiMethod: string;
+                defaultSort?: string | {
+                    field: string;
+                    order: "asc" | "desc";
+                } | {
+                    field: string;
+                    order: "asc" | "desc";
+                }[] | undefined;
+                apiMethod: "GET";
                 responseKey: string;
                 apiUrl: string;
             };
             database: {
-                apiMethod: string;
+                defaultSort?: string | {
+                    field: string;
+                    order: "asc" | "desc";
+                } | {
+                    field: string;
+                    order: "asc" | "desc";
+                }[] | undefined;
+                apiMethod: "GET";
                 responseKey: string;
                 apiUrl: string;
             };
-            apiMethod?: undefined;
-            responseKey?: undefined;
-            useSearch?: undefined;
-            apiUrl?: undefined;
         } | {
-            apiMethod: string;
+            defaultSort?: string | {
+                field: string;
+                order: "asc" | "desc";
+            } | {
+                field: string;
+                order: "asc" | "desc";
+            }[] | undefined;
+            apiMethod: "GET";
             responseKey: string;
             useSearch: false;
             apiUrl: string;
             search?: undefined;
             database?: undefined;
         };
-        propertiesConfig: any[];
+        propertiesConfig: import("./util").ListingPropConfig[];
     };
 };
 export default _default;
 export declare function makeViewEntityListConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>): {
     apiConfig: {
         search: {
-            apiMethod: string;
+            defaultSort?: string | {
+                field: string;
+                order: "asc" | "desc";
+            } | {
+                field: string;
+                order: "asc" | "desc";
+            }[] | undefined;
+            apiMethod: "GET";
             responseKey: string;
             apiUrl: string;
         };
         database: {
-            apiMethod: string;
+            defaultSort?: string | {
+                field: string;
+                order: "asc" | "desc";
+            } | {
+                field: string;
+                order: "asc" | "desc";
+            }[] | undefined;
+            apiMethod: "GET";
             responseKey: string;
             apiUrl: string;
         };
-        apiMethod?: undefined;
-        responseKey?: undefined;
-        useSearch?: undefined;
-        apiUrl?: undefined;
     } | {
-        apiMethod: string;
+        defaultSort?: string | {
+            field: string;
+            order: "asc" | "desc";
+        } | {
+            field: string;
+            order: "asc" | "desc";
+        }[] | undefined;
+        apiMethod: "GET";
         responseKey: string;
         useSearch: false;
         apiUrl: string;
         search?: undefined;
         database?: undefined;
     };
-    propertiesConfig: any[];
+    propertiesConfig: import("./util").ListingPropConfig[];
 };

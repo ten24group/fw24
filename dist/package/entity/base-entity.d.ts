@@ -1,21 +1,155 @@
 import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem, UpsertItem } from "electrodb";
 import { Entity } from "electrodb";
-import type { EntityQuery } from './query-types';
+import type { EntityQuery, FilterOperatorsExtended } from './query-types';
 import type { BaseEntityService } from "./base-service";
 import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
 import { EntitySearchService } from '../search/services';
 import { DepIdentifier } from "../interfaces";
+import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure } from '../ui-config-gen/templates/custom-page';
 /**
- *  ElectroDB entity  examples
+ * @fileoverview Entity Schema and Type-Safe Helper Functions
+ *
+ * This module provides essential type-safe helpers for defining entity schemas,
+ * relations, queries, and configurations with full TypeScript support.
+ *
+ * ## Architecture: Data Layer vs UI Layer
+ *
+ * ### ⚠️ CRITICAL: Relations are split into two layers:
+ *
+ * **1. Data Layer (`Relation<E>`)** - Define in entity attribute's `relation` property
+ * - Purpose: Fetching, hydration, identifiers
+ * - Properties: `entityName`, `type`, `identifiers`, `hydrate`, `attributes`
+ * - When: Always required for relations
+ *
+ * **2. UI Layer (`IRelationFieldConfig`)** - Optional, define in `relationConfig` property
+ * - Purpose: Display, navigation, modals
+ * - Properties: `routePattern`, `modalConfigRef`, `displayConfig`, etc.
+ * - When: Only if you need custom UI behavior (backend auto-generates defaults)
+ *
+ * ### Example:
+ * ```ts
+ * teamId: {
+ *   type: 'string',
+ *   // DATA LAYER (required)
+ *   relation: createEntityRelation<TeamSchema>({
+ *     entityName: 'team',
+ *     type: 'many-to-one',
+ *     identifiers: { source: 'teamId', target: 'teamId' }
+ *   }),
+ *   // UI LAYER (optional - backend auto-generates if omitted)
+ *   relationConfig: {
+ *     routePattern: '/custom-team/:teamId',
+ *     modalWidth: 1200
+ *   }
+ * }
+ * ```
+ *
+ * ## Core Type-Safe Helper Functions
+ *
+ * ### Essential Helpers (4 functions)
+ *
+ * 1. **`createEntityRelation<E>()`** - Define entity relations with circular dependency support
+ *    - Direct: `createEntityRelation<TeamSchema>({ ... })`
+ *    - Lazy: `createEntityRelation<() => PostSchema>({ ... })`
+ *
+ * 2. **`createEntityQuery<E>()`** - Build type-safe queries with filters, pagination, and hydration
+ *
+ * 3. **`createHydrateOptions<E>()`** - Specify which attributes and relations to load
+ *
+ * 4. **`createFieldOptions<E>()`** - Configure API-loaded options for select/radio/checkbox fields
+ *
+ * ### Core Schema Functions
+ * - `createEntitySchema<...>()` - Define entity schemas with ElectroDB
+ * - `createElectroDBEntity<S>()` - Create ElectroDB entity instances
+ *
+ * ## Usage Examples
+ *
+ * ### Simple Relation
+ * ```ts
+ * teamId: {
+ *   type: 'string',
+ *   relation: createEntityRelation<TeamSchema>({
+ *     entityName: 'team',
+ *     type: 'many-to-one',
+ *     identifiers: { source: 'teamId', target: 'teamId' }
+ *   })
+ * }
+ * ```
+ *
+ * ### Circular Dependency Relation
+ * ```ts
+ * userId: {
+ *   type: 'string',
+ *   relation: createEntityRelation<() => UserSchema>({
+ *     entityName: 'user',
+ *     type: 'many-to-one',
+ *     identifiers: () => ({ source: 'userId', target: 'userId' })
+ *   })
+ * }
+ * ```
+ *
+ * ### Query with Hydration
+ * ```ts
+ * const query = createEntityQuery<GameSchema>({
+ *   filters: { status: { eq: 'upcoming' } },
+ *   attributes: createHydrateOptions<GameSchema>({
+ *     gameId: true,
+ *     homeTeam: { attributes: { teamId: true, teamName: true } }
+ *   })
+ * })
+ * ```
+ *
+ * ### Field Options
+ * ```ts
+ * // Static options - use array directly
+ * options: [
+ *   { value: 'active', label: 'Active' },
+ *   { value: 'inactive', label: 'Inactive' }
+ * ]
+ *
+ * // API-loaded options - use helper
+ * options: createFieldOptions<TeamSchema>({
+ *   apiMethod: 'GET',
+ *   apiUrl: '/api/teams',
+ *   responseKey: 'data',
+ *   optionMapping: { label: 'teamName', value: 'teamId' }
+ * })
+ * ```
+ *
+ * ### Entity Operations
+ *
+ * ```ts
+ * // Full set (default) - All CRUD operations
+ * entityOperations: DefaultEntityOperations
+ *
+ * // Superset - Add custom operations (e.g., publish/approve workflows)
+ * const ArticleOps = {
+ *   ...DefaultEntityOperations,
+ *   publish: 'publish',
+ *   unpublish: 'unpublish',
+ *   archive: 'archive'
+ * } as const;
+ * entityOperations: ArticleOps
+ * ```
+ *
+ * ## Type Utilities
+ *
+ * Additional type utilities for advanced use cases:
+ * - `AttributesTemplate<E>` - Type-safe attribute composition
+ * - `VisibleAttributeKeys<E>` - Extract visible attribute names
+ * - `WritableAttributeKeys<E>` - Extract writable attribute names
+ * - `AttributeValueType<E, K>` - Get value type for an attribute
+ * - `EntityAttributeValueMap<E>` - Map of all attributes to value types
+ *
+ * ## Resources
  *
  * - https://github.com/nljms/ssia/blob/main/packages/database/storages/PlayerStorage.ts
  * - https://github.com/tywalch/electro-demo/blob/main/netlify/functions/share/ratelimit.ts
  * - https://gist.github.com/tywalch/8040087e0fc886ca5f742aa99b623e1b
- * -- https://medium.com/developing-koan/modeling-graph-relationships-in-dynamodb-c06141612a70
+ * - https://medium.com/developing-koan/modeling-graph-relationships-in-dynamodb-c06141612a70
  * - https://gist.github.com/severi/5d181a3e779f41a5e5fce1b7dcd17a89
  * - https://github.com/ikushlianski/family-car-booking-backend/blob/main/services/core/booking/booking.repository.ts
- *
  */
 /**
  * Represents the options for hydrating an entity.
@@ -44,50 +178,296 @@ export type HydrateOptionForEntity<E extends EntitySchema<any, any, any, any>> =
 export type HydrateOptionForRelation<Rel extends Relation<any> = any> = {
     entityName?: Rel['entityName'];
     relationType?: Rel['type'];
-    identifiers?: RelationIdentifiers<RelToRelatedEntity<Rel>['entity']>;
-    attributes: HydrateOptionForEntity<RelToRelatedEntity<Rel>['entity']>;
+    identifiers?: RelationIdentifiers<RelToRelatedEntity<Rel>>;
+    attributes: HydrateOptionForEntity<RelToRelatedEntity<Rel>>;
 };
+/**
+ * Creates type-safe hydrate options for entity queries.
+ * Use this to specify which attributes (including relations) to load when querying entities.
+ *
+ * @template E - The entity schema type
+ * @param options - The hydrate options (map or array of attribute paths)
+ * @returns The typed hydrate options
+ *
+ * @example
+ * // Using attribute map
+ * createHydrateOptions<UserSchema>({
+ *   userId: true,
+ *   name: true,
+ *   email: true,
+ *   posts: true // hydrate relation
+ * })
+ *
+ * @example
+ * // Using array of paths
+ * createHydrateOptions<UserSchema>([
+ *   'userId',
+ *   'name',
+ *   'email',
+ *   'posts.title',
+ *   'posts.content'
+ * ])
+ *
+ * @example
+ * // With nested relation hydration
+ * createHydrateOptions<UserSchema>({
+ *   userId: true,
+ *   name: true,
+ *   posts: {
+ *     attributes: {
+ *       postId: true,
+ *       title: true,
+ *       comments: true
+ *     }
+ *   }
+ * })
+ */
+export declare function createHydrateOptions<E extends EntitySchema<any, any, any, any>>(options: HydrateOptionForEntity<E>): HydrateOptionForEntity<E>;
+/**
+ * Creates a type-safe entity query with proper type inference for all query parameters.
+ * Ensures that filters, attributes, and search parameters are valid for the given entity schema.
+ *
+ * @template E - The entity schema type
+ * @param query - The entity query configuration
+ * @returns The typed entity query
+ *
+ * @example
+ * // Simple query with filters
+ * createEntityQuery<UserSchema>({
+ *   filters: {
+ *     status: { eq: 'active' },
+ *     age: { gte: 18 }
+ *   },
+ *   attributes: ['userId', 'name', 'email']
+ * })
+ *
+ * @example
+ * // Query with pagination and search
+ * createEntityQuery<UserSchema>({
+ *   search: 'john',
+ *   searchAttributes: ['name', 'email'],
+ *   attributes: createHydrateOptions<UserSchema>({
+ *     userId: true,
+ *     name: true,
+ *     email: true
+ *   }),
+ *   pagination: {
+ *     count: 20,
+ *     order: 'asc',
+ *     cursor: null
+ *   }
+ * })
+ *
+ * @example
+ * // Query with relation hydration
+ * createEntityQuery<GameSchema>({
+ *   filters: {
+ *     status: { eq: 'upcoming' }
+ *   },
+ *   attributes: createHydrateOptions<GameSchema>({
+ *     gameId: true,
+ *     gameDate: true,
+ *     homeTeam: {
+ *       attributes: {
+ *         teamId: true,
+ *         teamName: true,
+ *         logo: true
+ *       }
+ *     },
+ *     awayTeam: {
+ *       attributes: {
+ *         teamId: true,
+ *         teamName: true,
+ *         logo: true
+ *       }
+ *     }
+ *   }),
+ *   pagination: { count: 10 }
+ * })
+ */
+export declare function createEntityQuery<E extends EntitySchema<any, any, any>>(query: EntityQuery<E>): EntityQuery<E>;
+/**
+ * Utility type to extract only visible (non-hidden) attribute keys from an entity schema
+ */
+export type VisibleAttributeKeys<E extends EntitySchema<any, any, any, any>> = {
+    [K in keyof E['attributes']]: E['attributes'][K]['hidden'] extends true ? never : K;
+}[keyof E['attributes']];
+/**
+ * Utility type to extract only writable (non-readonly) attribute keys from an entity schema
+ */
+export type WritableAttributeKeys<E extends EntitySchema<any, any, any, any>> = {
+    [K in keyof E['attributes']]: E['attributes'][K]['readOnly'] extends true ? never : K;
+}[keyof E['attributes']];
+/**
+ * Represents an identifier mapping between source and target entity attributes.
+ * The target is constrained to valid attribute keys of the target entity.
+ */
 export type RelationIdentifier<E extends EntitySchema<any, any, any, any> = any> = {
     source: string;
     target: keyof E['attributes'];
 };
 export type RelationIdentifiers<E extends EntitySchema<any, any, any, any> = any> = RelationIdentifier<E> | Array<RelationIdentifier<E>>;
 /**
- * Creates an entity relation and infers the type based on the provided relation.
- *
- * @param relation - The relation to create.
- * @returns The created relation.
+ * Helper type to resolve entity schema from either direct type or lazy function
  */
-export declare function createEntityRelation<E extends EntitySchema<any, any, any, any>>(relation: Relation<E>): Relation<E>;
+export type ResolveEntitySchema<T> = T extends () => infer E ? E extends EntitySchema<any, any, any, any> ? E : never : T extends EntitySchema<any, any, any, any> ? T : never;
+/**
+ * Creates an entity relation with full type safety and circular dependency support.
+ * This is the primary helper for defining entity relations (DATA LAYER).
+ *
+ * ⚠️ IMPORTANT: This is for data layer only (identifiers, hydration, attributes).
+ * For UI configuration (routes, modals), use `relationConfig` in field metadata.
+ *
+ * @template T - The entity schema type (direct or lazy-loaded via function)
+ * @param relation - The relation configuration
+ * @returns The typed relation
+ *
+ * @example
+ * // Simple relation (no circular dependency)
+ * createEntityRelation<TeamSchema>({
+ *   entityName: 'team',
+ *   type: 'many-to-one',
+ *   identifiers: { source: 'teamId', target: 'teamId' }
+ * })
+ *
+ * @example
+ * // Multiple identifiers (composite key)
+ * createEntityRelation<TeamSchema>({
+ *   entityName: 'team',
+ *   type: 'many-to-one',
+ *   identifiers: [
+ *     { source: 'teamId', target: 'teamId' },
+ *     { source: 'tenantId', target: 'tenantId' }
+ *   ]
+ * })
+ *
+ * @example
+ * // Circular dependency - use lazy loading with arrow function
+ * createEntityRelation<() => PostSchema>({
+ *   entityName: 'post',
+ *   type: 'one-to-many',
+ *   identifiers: () => ({ source: 'userId', target: 'userId' })
+ * })
+ *
+ * @example
+ * // With hydration (auto-load related data)
+ * createEntityRelation<TeamSchema>({
+ *   entityName: 'team',
+ *   type: 'many-to-one',
+ *   identifiers: { source: 'teamId', target: 'teamId' },
+ *   hydrate: true,
+ *   attributes: { teamId: true, teamName: true, logo: true }
+ * })
+ *
+ * @example
+ * // With UI customization (use relationConfig separately)
+ * teamId: {
+ *   type: 'string',
+ *   relation: createEntityRelation<TeamSchema>({
+ *     entityName: 'team',
+ *     type: 'many-to-one',
+ *     identifiers: { source: 'teamId', target: 'teamId' }
+ *   }),
+ *   // UI config (optional - backend auto-generates if omitted)
+ *   relationConfig: {
+ *     routePattern: '/custom-team/:teamId',
+ *     modalWidth: 1200
+ *   }
+ * }
+ */
+export declare function createEntityRelation<T extends EntitySchema<any, any, any, any> | (() => EntitySchema<any, any, any, any>)>(relation: Relation<ResolveEntitySchema<T>>): Relation<ResolveEntitySchema<T>>;
 export type RelToRelatedEntity<Rel> = Rel extends Relation<infer E> ? E : never;
 /**
- * Represents a relation between entities.
+ * Represents a relation between entities (DATA LAYER ONLY).
+ * Supports lazy-loaded entity schemas to avoid circular dependency issues.
+ *
+ * ⚠️ IMPORTANT: This type is for DATA/HYDRATION concerns only!
+ * For UI configuration (routes, modals, display), use `relationConfig` in field metadata.
  *
  * @template E - The type of the related entity schema.
+ *
+ * @example
+ * // Simple relation (data layer)
+ * teamId: {
+ *   type: 'string',
+ *   relation: createEntityRelation<TeamSchema>({
+ *     entityName: 'team',
+ *     type: 'many-to-one',
+ *     identifiers: { source: 'teamId', target: 'teamId' },
+ *     hydrate: true,
+ *     attributes: { teamId: true, teamName: true }
+ *   })
+ * }
+ *
+ * @example
+ * // With UI configuration (use relationConfig separately)
+ * teamId: {
+ *   type: 'string',
+ *   relation: createEntityRelation<TeamSchema>({
+ *     entityName: 'team',
+ *     type: 'many-to-one',
+ *     identifiers: { source: 'teamId', target: 'teamId' }
+ *   }),
+ *   // UI config goes here (optional, backend will generate defaults)
+ *   relationConfig: {
+ *     routePattern: '/custom-team/:teamId',
+ *     modalConfigRef: {
+ *       entityName: 'team',
+ *       pageType: 'view',
+ *       overrideConfig: { pageTitle: 'Team Details' }
+ *     }
+ *   }
+ * }
  */
 export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
     /**
-     * Represents a relation between entities.
+     * Entity name of the related entity
      */
     entityName: E['model']['entity'];
     /**
      * The type of the relation.
-     * Possible values: 'one-to-one', 'one-to-many', 'many-to-one', 'many-to-many'.
+     * Possible values: 'one-to-many' or 'many-to-one'
      */
     type: 'one-to-many' | 'many-to-one';
     /**
      * Identifiers to load the related entity.
-     * These are mappings between source entity attributes and related entity attributes.
-     * The keys for source entities can support paths like 'att1.nestedKey1'.
-     * The values can be a string representing the related entity attribute or an array of strings.
+     * Mappings between source entity attributes and target entity attributes.
+     * Source keys support nested paths like 'order.userId'.
+     * Can be provided directly or via a function to handle circular dependencies.
      *
+     * @example
+     * // Single identifier
+     * identifiers: { source: 'teamId', target: 'teamId' }
+     *
+     * @example
+     * // Composite key
+     * identifiers: [
+     *   { source: 'tenantId', target: 'tenantId' },
+     *   { source: 'teamId', target: 'teamId' }
+     * ]
+     *
+     * @example
+     * // Lazy loading (circular dependency)
+     * identifiers: () => ({ source: 'userId', target: 'userId' })
      */
     identifiers: RelationIdentifiers<E> | (() => RelationIdentifiers<E>);
+    /**
+     * Auto-hydrate this relation when loading the parent entity.
+     * Default: false
+     */
     hydrate?: boolean;
     /**
-     * Attributes to load when hydrating this relation and Options for hydrating the relational attributes of of this relation.
+     * Attributes to load when hydrating this relation.
+     * Can be provided directly or via a function to handle circular dependencies.
+     *
+     * @example
+     * attributes: { teamId: true, teamName: true, logo: true }
+     *
+     * @example
+     * // Lazy loading
+     * attributes: () => ({ userId: true, name: true, email: true })
      */
-    attributes?: HydrateOptionForEntity<E>;
+    attributes?: HydrateOptionForEntity<E> | (() => HydrateOptionForEntity<E>);
 };
 /**
  * Represents an entity attribute.
@@ -102,16 +482,25 @@ export type EntityAttribute = Attribute & {
      */
     isIdentifier?: boolean;
     /**
-     * Indicates whether the attribute is an identifier.
+     * Indicates whether the attribute is unique (for unique constraints).
      */
     isUnique?: boolean;
-    relation?: Relation;
+    /**
+     * Defines a relation with another entity.
+     * Use the type-helper `createEntityRelation<EntitySchema>()` function for type-safe relation creation.
+     * For circular dependencies, use `createEntityRelation<() => EntitySchema>()` with lazy loading.
+     */
+    relation?: Relation<any>;
     /**
      * Validations for the attribute.
      */
     validations?: any[];
 } & FieldMetadata;
 export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldMetadata | TimeFieldMetadata | DateTimeFieldMetadata | BooleanFieldMetadata | SelectFieldMetadata | RadioFieldMetadata | CheckboxFieldMetadata | FileFieldMetadata | RangeFieldMetadata | ColorFieldMetadata | ImageFieldMetadata | HiddenFieldMetadata | CustomFieldMetadata | RatingFieldMetadata | EditorFieldMetadata | CodeEditorFieldMetadata;
+/**
+ * UI Metadata for entity attributes.
+ * Controls how fields are displayed, filtered, and interacted with in the UI.
+ */
 export interface BaseFieldMetadata {
     isVisible?: boolean;
     isListable?: boolean;
@@ -124,43 +513,386 @@ export interface BaseFieldMetadata {
     helpText?: string;
     tooltip?: string;
     filterConfig?: {
-        defaultOperator?: string;
-        availableOperators?: string[];
+        filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean';
+        defaultOperator?: FilterOperatorsExtended<any>;
+        availableOperators?: FilterOperatorsExtended<any>[];
         predefinedOptions?: Array<{
             label: string;
             value: string;
         }>;
-        filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean';
+    };
+    isLink?: boolean;
+    linkConfig?: {
+        routePattern: string;
+        displayText?: string;
+    };
+    /**
+     * UI Configuration for relation fields (UI LAYER ONLY).
+     *
+     * ⚠️ IMPORTANT: This is separate from `relation` (which is data layer).
+     *
+     * Use this to customize how relation fields are displayed in detail pages:
+     * - Navigation routes
+     * - Modal display
+     * - Icons and links
+     *
+     * If not provided, the backend will auto-generate defaults from the `relation` definition.
+     * Providing this allows you to override/customize the UI behavior.
+     *
+     * @example
+     * // Auto-generated (no relationConfig needed)
+     * teamId: {
+     *   type: 'string',
+     *   relation: createEntityRelation<TeamSchema>({
+     *     entityName: 'team',
+     *     type: 'many-to-one',
+     *     identifiers: { source: 'teamId', target: 'teamId' }
+     *   })
+     *   // Backend generates: routePattern, modalConfigRef, displayConfig
+     * }
+     *
+     * @example
+     * // Custom UI (override defaults)
+     * teamId: {
+     *   type: 'string',
+     *   relation: createEntityRelation<TeamSchema>({ ... }),
+     *   relationConfig: {
+     *     routePattern: '/teams/:teamId/details', // Custom route
+     *     modalWidth: 1200, // Wider modal
+     *     displayConfig: {
+     *       showLink: false // Hide link, only show modal icon
+     *     }
+     *   }
+     * }
+     */
+    relationConfig?: IRelationFieldConfig;
+}
+/**
+ * Modal type for actions
+ */
+export type ModalType = "confirm" | "list" | "form" | "accordion" | "custom" | "details" | "dashboard";
+/**
+ * API method type - must match frontend IApiConfig
+ */
+export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+/**
+ * Confirm modal configuration
+ */
+export interface IConfirmModal {
+    title: string;
+    content?: string;
+}
+/**
+ * API configuration for modal actions
+ */
+export interface IModalApiConfig {
+    apiMethod: ApiMethod;
+    responseKey?: string;
+    apiUrl: string;
+}
+/**
+ * Modal configuration for entity page actions
+ * Note: This is a subset of the frontend IModalConfig, excluding runtime props
+ */
+/**
+ * Navigation configuration for modal form submissions
+ * Allows collecting user input and navigating to a route without API calls
+ */
+export interface INavigateToConfig {
+    /** Target route pattern, e.g., "/list-game" or "/view-user/:userId" */
+    routePattern: string;
+    /** Whether to use form values for route/query params. Default: true */
+    useFormValues?: boolean;
+    /** Maps form field paths to query parameters.
+     * Example: { "status.eq": "statusFilter", "teamIds.in": "selectedTeams" }
+     */
+    queryParamMapping?: Record<string, string>;
+    /** Maps form field paths to route parameters.
+     * Example: { userId: "selectedUser.id" }
+     */
+    routeParamMapping?: Record<string, string>;
+    /** Use sessionStorage for large parameter sets (>1500 chars). Default: false */
+    useLargeParamStorage?: boolean;
+    /** Date format for date fields. Default: 'ISO' */
+    dateFormat?: 'ISO' | 'unix' | 'YYYY-MM-DD';
+    /** Array field to extract (e.g., 'id' extracts IDs from object arrays). Default: auto-detect */
+    arrayValuePath?: string;
+    /** Use replace instead of push in navigation history. Default: false */
+    replace?: boolean;
+    /** Pre-populate form from query params on modal open. Default: false */
+    inverseMapping?: boolean;
+}
+/**
+ * Configuration for displaying API response in a modal
+ * Reuses the existing page rendering system (details, list, dashboard, etc.)
+ *
+ * Use Cases:
+ * - Bulk operations: Show results breakdown (created/updated/failed counts)
+ * - Report generation: Show summary with download links
+ * - Test/validation: Show operation results, warnings, API responses
+ */
+export interface IResponseDisplayConfig {
+    /** Whether to show response in a modal. If false, only toast notification shows. Default: false */
+    showModal?: boolean;
+    /** Title for response modal. If not provided, appends " - Results" to action modal title */
+    modalTitle?: string;
+    /** Width of response modal in pixels. Default: 800 */
+    modalWidth?: number;
+    /** OPTION 1: Render response using existing page type system (recommended) */
+    pageType?: 'details' | 'list' | 'dashboard' | 'accordion';
+    pageConfig?: DetailsPageConfigStructure | ListPageConfigStructure | Record<string, any>;
+    /** OPTION 2: Show raw JSON response (useful for debugging/testing) */
+    showRawJson?: boolean;
+    /** Path to extract data from response. Default: uses response root
+     * Example: "data.results" will use response.data.results as the data source
+     */
+    dataPath?: string;
+}
+/**
+ * Entity Configuration Reference
+ *
+ * Instead of embedding full page configurations (causing massive JSON bloat),
+ * reference existing entity configs by name and apply optional overrides.
+ *
+ * Benefits:
+ * - Dramatically reduces JSON payload size (KB → bytes)
+ * - Maintains single source of truth for entity configs
+ * - Supports customization via overrideConfig
+ *
+ * Example:
+ * ```ts
+ * addNewOptionConfig: {
+ *   entityName: 'team',
+ *   pageType: 'create',
+ *   overrideConfig: {
+ *     submitSuccessRedirect: undefined, // Stay in modal
+ *     formButtons: [
+ *       { text: "Add", action: "submit" },
+ *       { text: "Cancel", action: "cancel" }
+ *     ]
+ *   }
+ * }
+ * ```
+ */
+export interface IEntityConfigReference {
+    /** Entity name (e.g., 'team', 'game', 'user') */
+    entityName: string;
+    /** Which page config to reference: 'view', 'create', or 'list' */
+    pageType: 'view' | 'create' | 'list';
+    /** Optional overrides to apply to the referenced config */
+    overrideConfig?: {
+        /** Override page title */
+        pageTitle?: string;
+        /** Override columns configuration (for view pages) */
+        columnsConfig?: IEntityPageColumnConfig;
+        /** Override breadcrumbs */
+        breadcrumbs?: Array<{
+            label: string;
+            url?: string;
+        }>;
+        /** Override form success redirect (for create pages) */
+        submitSuccessRedirect?: string;
+        /** Override form buttons (for create pages) */
+        formButtons?: Array<{
+            text: string;
+            action: string;
+            url?: string;
+        }>;
+        /** Add default filters (for list pages) */
+        defaultFilters?: Record<string, any>;
+        /** Hide specific fields from rendering */
+        hideFields?: string[];
+        /** Show only specific fields (mutually exclusive with hideFields) */
+        showOnlyFields?: string[];
     };
 }
-export interface IPageActionItem {
-    label: string;
-    url: string;
-    icon?: string;
+/**
+ * Relation Field UI Configuration (UI LAYER ONLY)
+ *
+ * ⚠️ IMPORTANT: This is for UI rendering only! Works together with `Relation<E>` (data layer).
+ *
+ * **Architecture:**
+ * - `Relation<E>` (in entity attribute): Data layer (identifiers, hydration, attributes)
+ * - `IRelationFieldConfig` (in BaseFieldMetadata): UI layer (routes, modals, display)
+ *
+ * **When to use:**
+ * - Usually NOT needed - backend auto-generates from `Relation<E>`
+ * - Use only to override defaults or customize UI behavior
+ *
+ * **Defines how relation fields are rendered in detail pages:**
+ * - Navigation via link (opens route)
+ * - Modal viewing (opens related entity in modal)
+ * - Filtering (for to-many relations)
+ * - Display options (icons, links)
+ *
+ * **Display patterns:**
+ * - To-One: Shows ID value with link + modal icon (e.g., "abc-123 | 🔍")
+ * - To-Many: Shows count/array with modal icon only (e.g., "[3 items] | 📋")
+ *
+ * @example
+ * // AUTO-GENERATED (most common - no manual config needed!)
+ * teamId: {
+ *   type: 'string',
+ *   relation: createEntityRelation<TeamSchema>({
+ *     entityName: 'team',
+ *     type: 'many-to-one',
+ *     identifiers: { source: 'teamId', target: 'teamId' }
+ *   })
+ *   // Backend auto-generates:
+ *   // - routePattern: '/view-team/:teamId'
+ *   // - identifierMapping: [{ source: 'teamId', target: 'teamId' }]
+ *   // - modalConfigRef: { entityName: 'team', pageType: 'view' }
+ *   // - displayConfig: { showLink: true, showModalIcon: true }
+ * }
+ *
+ * @example
+ * // CUSTOM OVERRIDE (to-one relation with custom UI)
+ * teamId: {
+ *   type: 'string',
+ *   relation: createEntityRelation<TeamSchema>({
+ *     entityName: 'team',
+ *     type: 'many-to-one',
+ *     identifiers: { source: 'teamId', target: 'teamId' }
+ *   }),
+ *   relationConfig: {
+ *     routePattern: '/teams/:teamId/details', // Custom route
+ *     modalWidth: 1200,
+ *     modalConfigRef: {
+ *       entityName: 'team',
+ *       pageType: 'view',
+ *       overrideConfig: {
+ *         pageTitle: 'Team Information'
+ *       }
+ *     },
+ *     displayConfig: {
+ *       showLink: false, // Hide link, only show modal icon
+ *       icon: 'TeamOutlined'
+ *     }
+ *   }
+ * }
+ *
+ * @example
+ * // CUSTOM OVERRIDE (to-many relation with filters)
+ * games: {
+ *   type: 'list',
+ *   items: { type: 'string' },
+ *   relation: createEntityRelation<GameSchema>({
+ *     entityName: 'game',
+ *     type: 'one-to-many',
+ *     identifiers: { source: 'teamId', target: 'teamId' }
+ *   }),
+ *   relationConfig: {
+ *     routePattern: '/list-game',
+ *     modalConfigRef: {
+ *       entityName: 'game',
+ *       pageType: 'list',
+ *       overrideConfig: {
+ *         defaultFilters: { teamId: ':teamId', status: 'upcoming' }
+ *       }
+ *     },
+ *     modalWidth: '95%',
+ *     displayConfig: {
+ *       showModalIcon: true,
+ *       icon: 'UnorderedListOutlined',
+ *       showLink: false
+ *     }
+ *   }
+ * }
+ */
+export interface IRelationFieldConfig {
+    /**
+     * Route pattern for navigation (e.g., '/view-team/:teamId' or '/list-game')
+     * Backend auto-generates if not provided
+     */
+    routePattern: string;
+    /**
+     * Identifier mappings from source fields to target params.
+     * Backend auto-extracts from `Relation.identifiers` if not provided.
+     *
+     * @example
+     * // Single identifier
+     * identifierMapping: { source: 'homeTeamId', target: 'teamId' }
+     *
+     * @example
+     * // Composite key
+     * identifierMapping: [
+     *   { source: 'tenantId', target: 'tenantId' },
+     *   { source: 'teamId', target: 'teamId' }
+     * ]
+     *
+     * @example
+     * // Nested path
+     * identifierMapping: { source: 'order.userId', target: 'userId' }
+     */
+    identifierMapping?: RelationIdentifier | RelationIdentifier[];
+    /**
+     * Reference to entity config for modal display.
+     * Backend auto-generates if not provided.
+     */
+    modalConfigRef?: IEntityConfigReference;
+    /** Modal width in pixels or CSS string. Default: 800 for to-one, 1200 for to-many */
+    modalWidth?: number | string;
+    /** Modal title override. Default: uses page title from config */
+    modalTitle?: string;
+    /** Display configuration for icons and links */
+    displayConfig?: {
+        /** Show modal icon? Default: true */
+        showModalIcon?: boolean;
+        /** Icon to use for modal action. Default: 'EyeOutlined' for to-one, 'UnorderedListOutlined' for to-many */
+        icon?: string;
+        /** Show link for navigation? Default: true for to-one, false for to-many */
+        showLink?: boolean;
+    };
 }
+export interface IEntityPageActionModalConfig {
+    modalType: ModalType;
+    modalPageConfig?: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure;
+    /** EITHER: Make API call (existing pattern) */
+    apiConfig?: IModalApiConfig;
+    submitSuccessRedirect?: string;
+    /** OR: Navigate without API call (new pattern) */
+    navigateTo?: INavigateToConfig | string;
+    /** OPTIONAL: Display API response in a modal (instead of just toast notification)
+     * Note: Only applies when apiConfig is present. Ignored for navigateTo.
+     */
+    responseConfig?: IResponseDisplayConfig;
+}
+/**
+ * Entity page action
+ * Supports buttons, dropdowns with modals/navigation
+ *
+ * Patterns:
+ * 1. Navigation: { url: "/view-user/:id" }
+ * 2. Modal with inline config: { openInModal: true, modalConfig: {...} }
+ * 3. Modal with route resolution: { openInModal: true, url: "/view-user/:id" }
+ *
+ * Note: items cannot have nested items (max 1 level of nesting)
+ */
 export interface IEntityPageAction {
     label: string;
     url?: string;
     icon?: string;
     type?: 'button' | 'dropdown';
-    items?: IPageActionItem[];
+    items?: Array<Omit<IEntityPageAction, 'items'>>;
+    /** Open action in modal instead of navigating */
     openInModal?: boolean;
-    modalConfig?: {
-        modalType: "confirm" | "list" | "form" | "accordion" | "custom" | "details";
-        modalPageConfig: any;
-        apiConfig?: {
-            apiMethod: string;
-            responseKey: string;
-            apiUrl: string;
-        };
-        submitSuccessRedirect?: string;
-    };
+    /** Modal configuration (inline config or resolved from url) */
+    modalConfig?: IEntityPageActionModalConfig;
+    /** Custom modal width. Default: auto-detect from page type */
+    modalWidth?: number | string;
+    /** Override resolved page title when opened in modal */
+    modalTitle?: string;
+    /** Hide this action when rendered inside a modal. Default: false */
+    hideInModal?: boolean;
+    /** Only open in modal on specified screen size. Default: always */
+    openInModalCondition?: 'sm' | 'md' | 'lg' | 'xl';
 }
 export interface IEntityPageColumn {
     sortOrder: number;
     fields: string[];
 }
 export interface IEntityPageColumnConfig {
+    numColumns?: number;
     columns: IEntityPageColumn[];
 }
 interface TextFieldMetadata extends BaseFieldMetadata {
@@ -207,9 +939,34 @@ export interface SelectFieldMetadata<E extends EntitySchema<any, any, any> = any
     maxSelections?: number;
     addNewOption?: {
         entityName: string;
+        overrideConfig?: {
+            pageTitle?: string;
+            columnsConfig?: IEntityPageColumnConfig;
+            breadcrumbs?: Array<{
+                label: string;
+                url?: string;
+            }>;
+            submitSuccessRedirect?: string;
+            formButtons?: Array<{
+                text: string;
+                action: string;
+                url?: string;
+            }>;
+            hideFields?: string[];
+            showOnlyFields?: string[];
+        };
     };
+    addNewOptionConfig?: IEntityConfigReference;
 }
 export declare function isSelectFieldMetadata(obj: any): obj is SelectFieldMetadata;
+export declare function isImageFieldMetadata(obj: any): obj is ImageFieldMetadata;
+export declare function isFileFieldMetadata(obj: any): obj is FileFieldMetadata;
+export declare function isDateFieldMetadata(obj: any): obj is DateFieldMetadata;
+export declare function isDateTimeFieldMetadata(obj: any): obj is DateTimeFieldMetadata;
+export declare function isNumberFieldMetadata(obj: any): obj is NumberFieldMetadata;
+export declare function isBooleanFieldMetadata(obj: any): obj is BooleanFieldMetadata;
+export declare function isEditorFieldMetadata(obj: any): obj is EditorFieldMetadata;
+export declare function isCodeEditorFieldMetadata(obj: any): obj is CodeEditorFieldMetadata;
 interface RadioFieldMetadata<E extends EntitySchema<any, any, any> = any> extends BaseFieldMetadata {
     fieldType?: 'radio';
     options: FieldOptions<E>;
@@ -269,28 +1026,89 @@ export type FieldOption = {
 };
 /**
  * Represents the template for attributes.
- * like
+ * Allows composing multiple attributes into a formatted string.
+ * Provides type-safe attribute name validation via generics.
+ *
+ * @template E - The entity schema type
+ *
+ * @example
  * ```ts
- * {
- *      composite: ['att1', 'att2'],
- *      template: '{att1}-AND-${att2}' // any arbitrary string with placeholders
+ * // Define directly in field options config
+ * const template: AttributesTemplate<UserSchema> = {
+ *   composite: ['firstName', 'lastName'],
+ *   template: '{firstName}-AND-{lastName}'
  * }
  * ```
-*/
-export type AttributesTemplate = {
-    composite: Array<string>;
+ */
+export type AttributesTemplate<E extends EntitySchema<any, any, any> = any> = {
+    composite: Array<keyof E['attributes'] & string>;
     template: string;
 };
+/**
+ * Configuration for loading field options from an API endpoint.
+ * Provides type-safe attribute references for the given entity schema.
+ *
+ * @template E - The entity schema type for type-safe attribute references
+ */
 export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
     apiMethod: 'GET' | 'POST';
     apiUrl: string;
     responseKey: string;
     query?: EntityQuery<E>;
     optionMapping?: {
-        label: string | AttributesTemplate;
-        value: string | AttributesTemplate;
+        label: (keyof E['attributes'] & string) | AttributesTemplate<E>;
+        value: (keyof E['attributes'] & string) | AttributesTemplate<E>;
     };
 };
+/**
+ * Creates type-safe field options configuration for API-loaded select/radio/checkbox options.
+ * Provides full type safety for attribute references in option mappings and query filters.
+ *
+ * @template E - The entity schema type for the options source
+ * @param config - The field options API configuration
+ * @returns The typed field options API config
+ *
+ * @example
+ * // Simple attribute mapping
+ * createFieldOptions<UserSchema>({
+ *   apiMethod: 'GET',
+ *   apiUrl: '/api/users',
+ *   responseKey: 'data',
+ *   optionMapping: {
+ *     label: 'name',
+ *     value: 'userId'
+ *   }
+ * })
+ *
+ * @example
+ * // With query filters
+ * createFieldOptions<TeamSchema>({
+ *   apiMethod: 'GET',
+ *   apiUrl: '/api/teams',
+ *   responseKey: 'teams',
+ *   query: { filters: { status: { eq: 'active' } } },
+ *   optionMapping: {
+ *     label: 'teamName',
+ *     value: 'teamId'
+ *   }
+ * })
+ *
+ * @example
+ * // With attribute template for composed labels
+ * createFieldOptions<TeamSchema>({
+ *   apiMethod: 'GET',
+ *   apiUrl: '/api/teams',
+ *   responseKey: 'teams',
+ *   optionMapping: {
+ *     label: {
+ *       composite: ['teamName', 'city'],
+ *       template: '{teamName} ({city})'
+ *     },
+ *     value: 'teamId'
+ *   }
+ * })
+ */
+export declare function createFieldOptions<E extends EntitySchema<any, any, any>>(config: FieldOptionsAPIConfig<E>): FieldOptionsAPIConfig<E>;
 export declare const SpecialAttributeTypes: {
     name: string;
     slug: string;
@@ -305,6 +1123,9 @@ export type SpecialAttributeType = keyof typeof SpecialAttributeTypes;
 /**
  * Represents the schema for an entity.
  *
+ * @template A - Attribute names
+ * @template F - Facet names
+ * @template C - Collection names
  * @template Opp - The type of entity operations.
  */
 export interface EntitySchema<A extends string, F extends string, C extends string, Opp extends TDefaultEntityOperations = TDefaultEntityOperations> extends Schema<A, F, C> {
@@ -326,6 +1147,23 @@ export interface EntitySchema<A extends string, F extends string, C extends stri
         readonly CRUDApiPath?: string;
         readonly menuGroup?: string;
         readonly menuOrder?: number;
+        readonly createPageBreadcrumbs?: Array<{
+            label: string;
+            url?: string;
+        }>;
+        readonly createPageColumnsConfig?: IEntityPageColumnConfig;
+        readonly listPageActions?: IEntityPageAction[];
+        readonly listPageBreadcrumbs?: Array<{
+            label: string;
+            url?: string;
+        }>;
+        readonly listPageDefaultSort?: {
+            field: string;
+            order: 'asc' | 'desc';
+        } | Array<{
+            field: string;
+            order: 'asc' | 'desc';
+        }> | string;
         readonly viewPageActions?: IEntityPageAction[];
         readonly viewPageBreadcrumbs?: Array<{
             label: string;
@@ -349,24 +1187,45 @@ export interface EntitySchema<A extends string, F extends string, C extends stri
         readonly [a in A]: EntityAttribute;
     };
 }
+/**
+ * Default entity operations that are commonly used.
+ * Use this as a base or define your own subset/superset.
+ */
 export declare const DefaultEntityOperations: {
-    get: string;
-    list: string;
-    query: string;
-    create: string;
-    upsert: string;
-    update: string;
-    delete: string;
-    duplicate: string;
+    readonly get: "get";
+    readonly list: "list";
+    readonly query: "query";
+    readonly create: "create";
+    readonly upsert: "upsert";
+    readonly update: "update";
+    readonly delete: "delete";
+    readonly duplicate: "duplicate";
 };
+/**
+ * Type for the default entity operations.
+ * Use this when you want all standard CRUD operations.
+ */
 export type TDefaultEntityOperations = typeof DefaultEntityOperations;
 /**
  * Represents the input schemas for entity operations.
- * Extend this type for additional operations's input-schema types
+ * Provides type-safe mapping of operation names to their corresponding input types.
+ * Extend this type for additional operations's input-schema types.
+ *
  * @template Sch - The entity schema type.
+ *
+ * @example
+ * ```ts
+ * type UserOpsInputs = TEntityOpsInputSchemas<UserEntitySchema>;
+ * // {
+ * //   get: UserIdentifiers | UserIdentifiers[],
+ * //   create: CreateUserItem,
+ * //   update: UpdateUserItem,
+ * //   ...
+ * // }
+ * ```
  */
-export type TEntityOpsInputSchemas<Sch extends EntitySchema<any, any, any>> = {
-    readonly [opName in keyof Sch['model']['entityOperations']]: opName extends 'get' ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>> : opName extends 'create' ? CreateEntityItemTypeFromSchema<Sch> : opName extends 'upsert' ? UpsertEntityItemTypeFromSchema<Sch> : opName extends 'update' ? UpdateEntityItemTypeFromSchema<Sch> : opName extends 'delete' ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>> : opName extends 'duplicate' ? EntityIdentifiersTypeFromSchema<Sch> : {};
+export type TEntityOpsInputSchemas<Sch extends EntitySchema<any, any, any, any>> = {
+    readonly [opName in keyof Sch['model']['entityOperations']]: opName extends 'get' ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>> : opName extends 'list' ? never : opName extends 'query' ? never : opName extends 'create' ? CreateEntityItemTypeFromSchema<Sch> : opName extends 'upsert' ? UpsertEntityItemTypeFromSchema<Sch> : opName extends 'update' ? UpdateEntityItemTypeFromSchema<Sch> : opName extends 'delete' ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>> : opName extends 'duplicate' ? EntityIdentifiersTypeFromSchema<Sch> : {};
 };
 export type CreateElectroDBEntityOptions<S extends EntitySchema<any, any, any>> = {
     schema: S;
@@ -430,6 +1289,22 @@ export declare function createElectroDBEntity<S extends EntitySchema<any, any, a
 };
 export type EntityTypeFromSchema<TSchema> = TSchema extends EntitySchema<infer A, infer F, infer C> ? Entity<A, F, C, TSchema> : never;
 export type EntityResponseItemTypeFromSchema<TSchema> = TSchema extends EntitySchema<infer A, infer F, infer C> ? ResponseItem<A, F, C, TSchema> : never;
+/**
+ * Utility type to extract the value type of a specific attribute from an entity schema.
+ * Useful for type-safe attribute value handling.
+ *
+ * @template E - The entity schema
+ * @template K - The attribute key
+ */
+export type AttributeValueType<E extends EntitySchema<any, any, any>, K extends keyof E['attributes']> = E['attributes'][K]['type'] extends 'string' ? string : E['attributes'][K]['type'] extends 'number' ? number : E['attributes'][K]['type'] extends 'boolean' ? boolean : E['attributes'][K]['type'] extends Array<infer T> ? T : E['attributes'][K]['type'] extends 'any' ? any : E['attributes'][K]['type'] extends 'set' ? Set<string> : E['attributes'][K]['type'] extends 'list' ? Array<any> : E['attributes'][K]['type'] extends 'map' ? Record<string, any> : any;
+/**
+ * Utility type to extract all attribute names and their value types as a key-value map.
+ *
+ * @template E - The entity schema
+ */
+export type EntityAttributeValueMap<E extends EntitySchema<any, any, any>> = {
+    [K in keyof E['attributes']]: AttributeValueType<E, K>;
+};
 export type UpsertEntityItem<E extends Entity<any, any, any, any>> = E extends Entity<infer A, infer F, infer C, infer S> ? UpsertItem<A, F, C, S> : never;
 export type EntityRecordTypeFromSchema<Sch extends EntitySchema<any, any, any>> = EntityItem<EntityTypeFromSchema<Sch>>;
 export type EntityServiceTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = BaseEntityService<TSchema>;

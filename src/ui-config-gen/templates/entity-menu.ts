@@ -18,7 +18,7 @@ export default(
     if(!options.excludeFromAdminList){
         children.push({
             label: `${toHumanReadableName(options.entityName)} List`,
-            key: (options.menuIndex || 1) * 10 + 1,
+            key: `${options.menuIndex || 1}-list`,
             url: `/list-${options.entityName.toLowerCase()}`
         });
     }
@@ -26,7 +26,7 @@ export default(
     if(!options.excludeFromAdminCreate){
         children.push({
             label: `Add New ${toHumanReadableName(options.entityName)}`,
-            key: (options.menuIndex || 1) * 10 + 2,
+            key: `${options.menuIndex || 1}-create`,
             url: `/create-${options.entityName.toLowerCase()}`
         }); 
     }
