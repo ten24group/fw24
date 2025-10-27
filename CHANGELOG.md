@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.0.4-beta.4](https://github.com/ten24group/fw24/compare/v1.0.4-beta.3...v1.0.4-beta.4) (2025-10-27)
+
+
+### Bug Fixes
+
+* audit-log detail not working and updated custom pages slug generation ([4ee8d1a](https://github.com/ten24group/fw24/commit/4ee8d1a12ccae3bf2116c88ccaa80d4b4db22e93))
+* duplicate warning for menu key generation ([1eb80fb](https://github.com/ten24group/fw24/commit/1eb80fb81049c29718f428b993a2a8a02d59c762))
+* failing tests and cleaned up the actor context ([65102ba](https://github.com/ten24group/fw24/commit/65102ba198496ac21638d1e4b194cbd802eaff6b))
+* layer import order ([173a507](https://github.com/ten24group/fw24/commit/173a507cf887e0901262271e649037191976d6b7))
+* list API not returning some keys, and hard error; cleanup logging ([c81c353](https://github.com/ten24group/fw24/commit/c81c353cbcdb841a16b82cf7f686949d6392224f))
+* modal default width ([b4426a0](https://github.com/ten24group/fw24/commit/b4426a0413df61dff41e08cf0b5fd7d4bd24a952))
+
 ### [1.0.4-beta.3](https://github.com/ten24group/fw24/compare/v1.0.4-beta.2...v1.0.4-beta.3) (2025-08-25)
 
 
