@@ -1374,15 +1374,143 @@ export interface EntitySchema<
     // Create page configuration
     readonly createPageBreadcrumbs?: Array<{ label: string; url?: string }>,
     readonly createPageColumnsConfig?: IEntityPageColumnConfig,
-    // List page configuration
+    
+    /**
+     * List page configuration
+     * 
+     * These properties configure the entity's list/index page (e.g., `/list-game`).
+     * All properties are transformed to unified names in the generated UI config.
+     */
+    
+    /**
+     * Actions for the list page header (page-level actions only, not table row actions).
+     * 
+     * These appear in the page header and operate at the page/entity level, not on individual
+     * rows or selections. For row-level actions (edit, delete, view) or bulk selection actions
+     * (delete selected, export selected), those are configured separately in the table config.
+     * 
+     * Note: Mapped to `pageHeaderActions` in generated UI config for frontend consumption.
+     * The page-specific naming here (listPageActions) provides semantic clarity during
+     * entity schema definition, while the frontend uses unified naming (pageHeaderActions)
+     * for component reusability across all page types.
+     * 
+     * @example
+     * ```typescript
+     * listPageActions: [
+     *   {
+     *     label: 'Import Data',
+     *     url: '/game/import',
+     *     icon: 'upload',
+     *     openInModal: true
+     *   },
+     *   {
+     *     type: 'dropdown',
+     *     label: 'Export Options',
+     *     items: [
+     *       { label: 'Export All as CSV', url: '/game/export/csv' },
+     *       { label: 'Export All as JSON', url: '/game/export/json' }
+     *     ]
+     *   },
+     *   {
+     *     label: 'Refresh Data',
+     *     url: '/game/refresh',
+     *     icon: 'reload'
+     *   }
+     * ]
+     * ```
+     */
     readonly listPageActions?: IEntityPageAction[],
     readonly listPageBreadcrumbs?: Array<{ label: string; url?: string }>,
-    readonly listPageDefaultSort?: { field: string; order: 'asc' | 'desc' } | Array<{ field: string; order: 'asc' | 'desc' }> | string,
-    // View page configuration
+    /**
+     * Default sort configuration for the list page
+     * 
+     * Three formats supported:
+     * 1. Object (single column for search): { field: 'createdAt', order: 'desc' }
+     * 2. Array (multi-column for search): [{ field: 'publishDate', order: 'desc' }, { field: 'likeCount', order: 'desc' }]
+     * 3. Order direction (DynamoDB index order): 'asc' | 'desc'
+     * 
+     * Note: For DynamoDB (non-search) mode, use 'asc' | 'desc' to indicate the expected
+     * index order direction. DynamoDB returns data in index (PK/SK) order, not arbitrary sort.
+     */
+    readonly listPageDefaultSort?: { field: string; order: 'asc' | 'desc' } | Array<{ field: string; order: 'asc' | 'desc' }> | 'asc' | 'desc',
+    
+    /**
+     * View/Detail page configuration
+     * 
+     * These properties configure the entity's detail/view page (e.g., `/view-game/:id`).
+     * All properties are transformed to unified names in the generated UI config.
+     */
+    
+    /**
+     * Actions for the view/detail page header (page-level actions for this specific record).
+     * 
+     * These actions operate on the current record being viewed. Common use cases include
+     * navigating to related data, triggering record-specific operations, or opening
+     * related pages/modals.
+     * 
+     * Note: Mapped to `pageHeaderActions` in generated UI config for frontend consumption.
+     * Default actions ("Back", "Edit") are automatically added by the framework unless
+     * excluded via entity operation flags.
+     * 
+     * @example
+     * ```typescript
+     * viewPageActions: [
+     *   {
+     *     type: 'dropdown',
+     *     label: 'Related Data',
+     *     items: [
+     *       { label: 'View Game Stats', url: '/game/:id/stats' },
+     *       { label: 'View Players', url: '/game/:id/players' },
+     *       { label: 'View Timeline', url: '/game/:id/timeline' }
+     *     ]
+     *   },
+     *   {
+     *     label: 'Publish',
+     *     url: '/game/:id/publish',
+     *     icon: 'rocket',
+     *     openInModal: true
+     *   }
+     * ]
+     * ```
+     */
     readonly viewPageActions?: IEntityPageAction[],
     readonly viewPageBreadcrumbs?: Array<{ label: string; url?: string }>,
     readonly viewPageColumnsConfig?: IEntityPageColumnConfig,
-    // Edit page configuration
+    
+    /**
+     * Edit/Update page configuration
+     * 
+     * These properties configure the entity's edit/update page (e.g., `/edit-game/:id`).
+     * All properties are transformed to unified names in the generated UI config.
+     */
+    
+    /**
+     * Actions for the edit/update page header (page-level actions while editing this record).
+     * 
+     * These actions are available while editing a record. Common use cases include
+     * previewing changes, accessing related data, or triggering record-specific workflows.
+     * 
+     * Note: Mapped to `pageHeaderActions` in generated UI config for frontend consumption.
+     * Default actions ("Back", "Delete", "Duplicate") are automatically added by the
+     * framework unless excluded via entity operation flags.
+     * 
+     * @example
+     * ```typescript
+     * editPageActions: [
+     *   {
+     *     label: 'Preview Changes',
+     *     url: '/game/:id/preview',
+     *     icon: 'eye',
+     *     openInModal: true
+     *   },
+     *   {
+     *     label: 'View History',
+     *     url: '/game/:id/history',
+     *     icon: 'history'
+     *   }
+     * ]
+     * ```
+     */
     readonly editPageActions?: IEntityPageAction[],
     readonly editPageBreadcrumbs?: Array<{ label: string; url?: string }>,
     readonly editPageColumnsConfig?: IEntityPageColumnConfig,
