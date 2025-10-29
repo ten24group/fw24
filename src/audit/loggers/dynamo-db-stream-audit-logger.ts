@@ -53,6 +53,37 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     return allowedEntityNames ? allowedEntityNames.split(',') : undefined;
   }
 
+  protected getExcludedEntityNames(): string[] | undefined {
+    const excludedEntityNames = resolveEnvValueFor({ key: AUDIT_ENV_KEYS.EXCLUDED_ENTITY_NAMES });
+    return excludedEntityNames ? excludedEntityNames.split(',') : undefined;
+  }
+
+  /**
+   * Determines if an entity should be audited based on allowed/excluded lists.
+   * Logic:
+   * - If allowedEntityNames is provided, only audit entities in that list
+   * - If excludedEntityNames is provided (and no allowedEntityNames), audit all except excluded
+   * - If neither is provided, audit all except 'auditLog' (default behavior)
+   * - allowedEntityNames takes precedence over excludedEntityNames
+   */
+  protected shouldAuditEntity(entityName: string): boolean {
+    const allowedEntityNames = this.getAllowedEntityNames();
+    const excludedEntityNames = this.getExcludedEntityNames();
+
+    // If allowedEntityNames is provided, use it exclusively
+    if (allowedEntityNames && allowedEntityNames.length > 0) {
+      return allowedEntityNames.includes(entityName);
+    }
+
+    // If excludedEntityNames is provided, audit all except excluded
+    if (excludedEntityNames && excludedEntityNames.length > 0) {
+      return !excludedEntityNames.includes(entityName);
+    }
+
+    // Default behavior: audit all except system entities
+    return entityName !== 'auditLog';
+  }
+
   protected async preprocessRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<BaseEventRecord<ChangeStreamPayload> | null> {
 
     const { entityName, eventType } = record;
@@ -67,17 +98,14 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
       return null;
     }
 
-    const allowedEntityNames = this.getAllowedEntityNames();
-    if (allowedEntityNames && allowedEntityNames.length > 0) {
-
-      if (!allowedEntityNames.includes(entityName)) {
-        this.logger.warn('Skipping audit log for entity not in allowed list', { entityName, allowedEntityNames });
-        return null;
-      }
-
-    } else if (entityName === 'auditLog') {
-
-      this.logger.warn('Skipping audit log', { record });
+    if (!this.shouldAuditEntity(entityName)) {
+      const allowedEntityNames = this.getAllowedEntityNames();
+      const excludedEntityNames = this.getExcludedEntityNames();
+      this.logger.warn('Skipping audit log for entity based on filtering rules', { 
+        entityName, 
+        allowedEntityNames, 
+        excludedEntityNames 
+      });
       return null;
     }
 

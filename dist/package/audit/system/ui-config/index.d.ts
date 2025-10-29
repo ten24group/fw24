@@ -15,24 +15,24 @@ export declare const AuditCustomPageConfigs: {
             readonly apiConfig: {
                 readonly apiUrl: "/system/auditlog";
                 readonly search: {
-                    defaultSort?: string | {
-                        field: string;
-                        order: "asc" | "desc";
-                    } | {
-                        field: string;
-                        order: "asc" | "desc";
+                    defaultSort?: "desc" | "asc" | {
+                        readonly field: string;
+                        readonly order: "asc" | "desc";
+                    } | readonly {
+                        readonly field: string;
+                        readonly order: "asc" | "desc";
                     }[] | undefined;
                     apiMethod: "GET";
                     responseKey: string;
                     apiUrl: string;
                 };
                 readonly database: {
-                    defaultSort?: string | {
-                        field: string;
-                        order: "asc" | "desc";
-                    } | {
-                        field: string;
-                        order: "asc" | "desc";
+                    defaultSort?: "desc" | "asc" | {
+                        readonly field: string;
+                        readonly order: "asc" | "desc";
+                    } | readonly {
+                        readonly field: string;
+                        readonly order: "asc" | "desc";
                     }[] | undefined;
                     apiMethod: "GET";
                     responseKey: string;
@@ -40,12 +40,12 @@ export declare const AuditCustomPageConfigs: {
                 };
             } | {
                 readonly apiUrl: "/system/auditlog";
-                readonly defaultSort?: string | {
-                    field: string;
-                    order: "asc" | "desc";
-                } | {
-                    field: string;
-                    order: "asc" | "desc";
+                readonly defaultSort?: "desc" | "asc" | {
+                    readonly field: string;
+                    readonly order: "asc" | "desc";
+                } | readonly {
+                    readonly field: string;
+                    readonly order: "asc" | "desc";
                 }[] | undefined;
                 readonly apiMethod: "GET";
                 readonly responseKey: string;
@@ -69,7 +69,7 @@ export declare const AuditCustomPageConfigs: {
         readonly detailsPageConfig: any;
         readonly pageType: "details";
         readonly breadcrumbs: {
-            label: string;
+            label: import("../../../entity").Template;
             url?: string;
         }[];
     };

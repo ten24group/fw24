@@ -6,6 +6,13 @@ import { SearchIndexEntry } from './interfaces';
 export declare abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TPayload>, TEvent extends DynamoDBStreamEvent | SQSEvent = any, TPayload extends Record<string, any> = Record<string, any>> extends BaseSQSEventProcessor<T> {
     abstract searchEngine: BaseSearchEngine;
     protected getAllowedEntityNames(): string[] | undefined;
+    protected getExcludedEntityNames(): string[] | undefined;
+    /**
+     * Determines if an entity should be indexed based on allowed/excluded lists.
+     * Override in subclasses to implement custom logic.
+     * Default behavior: index all except system entities.
+     */
+    protected shouldIndexEntity(entityName: string): boolean;
     protected preprocessRecord(record: BaseEventRecord<any>): Promise<BaseEventRecord<any> | null>;
     protected processRecord(record: BaseEventRecord<TPayload>): Promise<void>;
     protected processRecordsBatch(records: BaseEventRecord<TPayload>[]): Promise<void>;
