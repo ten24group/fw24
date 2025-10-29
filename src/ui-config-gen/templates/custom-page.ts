@@ -1,4 +1,4 @@
-import { EntitySchema, FieldOptions, FieldOptionsAPIConfig, ApiMethod, ModalType, IModalApiConfig, IConfirmModal } from "../../entity";
+import { EntitySchema, FieldOptions, FieldOptionsAPIConfig, ApiMethod, ModalType, IModalApiConfig, IConfirmModal, Template } from "../../entity";
 import { IEntityPageColumnConfig } from "../../entity/base-entity";
 
 export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion" | "menu";
@@ -66,6 +66,17 @@ export interface FormPageConfigStructure {
     }>;
     propertiesConfig: Array<PropertyConfig>;
     submitSuccessRedirect?: string;
+    /**
+     * Custom success message template.
+     * @example successMessage: 'Record created successfully!'
+     * @example successMessage: '{entityName} created successfully!'
+     */
+    successMessage?: Template;
+    /**
+     * Custom error message template.
+     * @example errorMessage: 'Failed to create record'
+     */
+    errorMessage?: Template;
     columnsConfig?: IEntityPageColumnConfig;
 }
 
@@ -99,6 +110,13 @@ export interface ListPageConfigStructure {
         isIdentifier?: boolean;
         readOnly?: boolean;
         defaultValue?: any;
+        /**
+         * Template for rendering column values.
+         * Overrides default rendering when provided.
+         * @example template: '{firstName} {lastName}'
+         * @example template: { composite: ['firstName', 'lastName'], template: '{firstName} {lastName}' }
+         */
+        template?: Template;
         // New filter configuration options
         filterConfig?: {
             defaultOperator?: string; // Default filter operator (e.g., 'contains', 'eq', 'in')
@@ -108,6 +126,11 @@ export interface ListPageConfigStructure {
         };
         actions?: Array<{
             label?: string;
+            /**
+             * Dynamic action label template.
+             * @example template: 'Edit {name}'
+             */
+            template?: Template;
             icon?: string;
             url?: string;
             type?: 'button' | 'link' | 'modal';
@@ -117,6 +140,8 @@ export interface ListPageConfigStructure {
                 modalPageConfig: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure;
                 apiConfig?: IModalApiConfig;
                 submitSuccessRedirect?: string;
+                successMessage?: Template;
+                errorMessage?: Template;
             };
         }>;
         
@@ -188,6 +213,12 @@ export type ModalPageConfig = IConfirmModal | FormPageConfigStructure | ListPage
 
 export interface IPageAction {
     label: string;
+    /**
+     * Dynamic label template (evaluated from routeParams or record context).
+     * If provided, overrides static `label` field.
+     * Can be simple string or complex template object.
+     */
+    template?: Template;
     url?: string;
     icon?: string;
     type?: 'button' | 'dropdown';
@@ -198,15 +229,39 @@ export interface IPageAction {
         modalPageConfig?: ModalPageConfig;
         apiConfig?: IModalApiConfig;
         submitSuccessRedirect?: string;
+        /**
+         * Custom success message template.
+         * @example successMessage: '{entityName} created successfully!'
+         */
+        successMessage?: Template;
+        /**
+         * Custom error message template.
+         * @example errorMessage: 'Failed to create {entityName}'
+         */
+        errorMessage?: Template;
     };
 }
 
 export interface BasePageConfig {
     pageName?: string;
-    pageTitle: string;
+    /**
+     * Page title - can be static string or dynamic template.
+     * @example pageTitle: 'Dashboard'
+     * @example pageTitle: '{userName} Dashboard'
+     * @example pageTitle: { composite: ['userName', 'role'], template: '{userName} ({role}) - Dashboard' }
+     */
+    pageTitle: string | Template;
     pageType: PageType;
     routePattern?: string;
-    breadcrumbs?: Array<{ label: string; url?: string }>;
+    /**
+     * Breadcrumbs with template support.
+     * @example
+     * breadcrumbs: [
+     *   { label: 'Home', url: '/' },
+     *   { label: '{entityName}' }
+     * ]
+     */
+    breadcrumbs?: Array<{ label: string | Template; url?: string }>;
     pageHeaderActions?: Array<IPageAction>;
 }
 
@@ -242,7 +297,12 @@ export interface AccordionPageConfig extends BasePageConfig {
     pageType: "accordion";
     accordionPageConfig: {
         accordions: Record<string, {
-            pageTitle: string;
+            /**
+             * Accordion section title - supports templates.
+             * @example pageTitle: 'User Details'
+             * @example pageTitle: '{userName} Information'
+             */
+            pageTitle: string | Template;
             pageType: "list" | "form" | "details" | "dashboard";
             listPageConfig?: ListPageConfigStructure;
             formPageConfig?: FormPageConfigStructure;

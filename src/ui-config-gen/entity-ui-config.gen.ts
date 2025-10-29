@@ -98,21 +98,28 @@ export class EntityUIConfigGen {
         if (config.pageName) {
             return toSlug(config.pageName);
         }
+        
+        // For template-based page titles (objects), pageName MUST be provided
+        // Extract string from pageTitle (handles both string and Template types)
+        const pageTitleString = typeof config.pageTitle === 'string' 
+            ? config.pageTitle 
+            : 'custom-page'; // Fallback for Template objects
+        
         switch (config.pageType) {
             case 'list':
-                return `list-${toSlug(config.pageTitle)}`;
+                return `list-${toSlug(pageTitleString)}`;
             case 'form':
-                return config.pageTitle.toLowerCase().includes('add')
-                    ? `create-${toSlug(config.pageTitle)}`
-                    : `edit-${toSlug(config.pageTitle)}`;
+                return pageTitleString.toLowerCase().includes('add')
+                    ? `create-${toSlug(pageTitleString)}`
+                    : `edit-${toSlug(pageTitleString)}`;
             case 'details':
-                return `view-${toSlug(config.pageTitle)}`;
+                return `view-${toSlug(pageTitleString)}`;
             case 'dashboard':
-                return `${toSlug(config.pageTitle)}`;
+                return `${toSlug(pageTitleString)}`;
             case 'accordion':
-                return `accordion-${toSlug(config.pageTitle)}`;
+                return `accordion-${toSlug(pageTitleString)}`;
             case 'menu':
-                return `${toSlug(config.pageTitle)}`;
+                return `${toSlug(pageTitleString)}`;
             default:
                 return null;
         }
@@ -246,7 +253,9 @@ export class EntityUIConfigGen {
         // Look for a dashboard custom page
         let dashboardConfig: DashboardPageConfig | any = null;
         for (const [ , options ] of this.customPages) {
-            if (options.pageType === 'dashboard' && options.pageTitle.toLowerCase() === 'dashboard') {
+            // Check if this is a dashboard page - handle both string and Template pageTitle
+            const pageTitleStr = typeof options.pageTitle === 'string' ? options.pageTitle : '';
+            if (options.pageType === 'dashboard' && pageTitleStr.toLowerCase() === 'dashboard') {
                 dashboardConfig = options;
                 break;
             }
@@ -258,7 +267,9 @@ export class EntityUIConfigGen {
         // Look for a menu custom page
         let menuConfig: any = null;
         for (const [ pageName, options ] of this.customPages) {
-            if (options.pageType === 'menu' && options.pageTitle.toLowerCase() === 'menu') {
+            // Check if this is a menu page - handle both string and Template pageTitle
+            const pageTitleStr = typeof options.pageTitle === 'string' ? options.pageTitle : '';
+            if (options.pageType === 'menu' && pageTitleStr.toLowerCase() === 'menu') {
                 menuConfig = options;
                 break;
             }

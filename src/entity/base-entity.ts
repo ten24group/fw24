@@ -591,6 +591,24 @@ export interface BaseFieldMetadata {
   };
   
   /**
+   * Template for rendering column values (list pages only).
+   * Supports nested paths and composite templates.
+   * If provided, overrides default rendering.
+   * 
+   * @example
+   * // Simple string template
+   * template: '{firstName} {lastName}'
+   * 
+   * @example
+   * // Complex template with nested paths
+   * template: {
+   *   composite: ['jerseyNumber', 'name', 'team.name'],
+   *   template: '#{jerseyNumber} {name} ({team.name})'
+   * }
+   */
+  template?: Template;
+  
+  /**
    * UI Configuration for relation fields (UI LAYER ONLY).
    * 
    * ⚠️ IMPORTANT: This is separate from `relation` (which is data layer).
@@ -646,8 +664,23 @@ export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
  * Confirm modal configuration
  */
 export interface IConfirmModal {
-  title: string;
-  content?: string;
+  /**
+   * Modal title - can be static string or dynamic template.
+   * 
+   * @example title: "Delete Team?"
+   * @example title: "Delete {teamName}?"
+   * @example title: { composite: ['teamName', 'city'], template: 'Delete {teamName} ({city})?' }
+   */
+  title: Template;
+  
+  /**
+   * Modal content - can be static string or dynamic template.
+   * 
+   * @example content: "Are you sure?"
+   * @example content: "Delete {teamName}? This will affect {playerCount} players."
+   * @example content: { composite: ['teamName', 'playerCount'], template: 'Delete {teamName}? This will affect {playerCount} players.' }
+   */
+  content?: Template;
 }
 
 /**
@@ -926,16 +959,61 @@ export interface IRelationFieldConfig {
   /** Modal title override. Default: uses page title from config */
   modalTitle?: string;
   
-  /** Display configuration for icons and links */
+  /**
+   * Display configuration for relation fields.
+   * Controls templates, fallbacks, icons, and actions.
+   */
   displayConfig?: {
-    /** Show modal icon? Default: true */
-    showModalIcon?: boolean;
+    /**
+     * Template for displaying relation value when hydrated data is available.
+     * Falls back to fallback.template if data not available, then raw value.
+     * 
+     * @example '{team.name} ({team.city})'
+     * @example { composite: ['team.name', 'team.city'], template: '{team.name} ({team.city})' }
+     */
+    template?: Template;
     
-    /** Icon to use for modal action. Default: 'EyeOutlined' for to-one, 'UnorderedListOutlined' for to-many */
+    /**
+     * Fallback configuration when only ID available.
+     * Backend pre-resolves this using entity metadata.
+     * 
+     * @example
+     * fallback: {
+     *   template: 'Team: {teamId}',
+     *   linkText: 'View Team',
+     *   modalButtonText: 'Team Details'
+     * }
+     */
+    fallback?: {
+      /** Fallback template - intentionally string-only for simplicity, backend pre-generates these */
+      template: string;
+      /** Link text (e.g., "View Team") */
+      linkText?: string;
+      /** Modal button text (e.g., "Team Details") */
+      modalButtonText?: string;
+    };
+    
+    /** Icon (defaults to entity metadata icon if not provided) */
     icon?: string;
     
-    /** Show link for navigation? Default: true for to-one, false for to-many */
+    /** Show navigation link? Default: true for to-one, false for to-many */
     showLink?: boolean;
+    
+    /** Show modal button? Default: true */
+    showModalIcon?: boolean;
+    
+    /** Configure which actions to render */
+    actions?: {
+      link?: boolean;
+      modal?: boolean;
+      custom?: Array<{
+        label: string;
+        /** Dynamic custom action label */
+        template?: Template;
+        icon?: string;
+        onClick: string;
+      }>;
+    };
   };
 }
 
@@ -1023,6 +1101,37 @@ export interface IEntityPageActionModalConfig {
    * }
    */
   refreshParentOnSuccess?: boolean;
+  
+  /**
+   * Modal title - can be static string or dynamic template.
+   * If string: used as-is or evaluated as template if contains {...}
+   * If object: evaluated from routeParams
+   * 
+   * @example modalTitle: "Edit Team"
+   * @example modalTitle: "Edit {teamName}"
+   * @example modalTitle: { composite: ['teamName', 'city'], template: 'Edit {teamName} ({city})' }
+   */
+  modalTitle?: Template;
+  
+  /**
+   * Success message - can be static string or dynamic template.
+   * Evaluated from API response data.
+   * If not provided, uses message from API response.
+   * 
+   * @example successMessage: 'Team created successfully!'
+   * @example successMessage: '{teamName} created successfully!'
+   */
+  successMessage?: Template;
+  
+  /**
+   * Error message - can be static string or dynamic template.
+   * Evaluated from API error data.
+   * If not provided, uses error from API response.
+   * 
+   * @example errorMessage: 'Failed to create team'
+   * @example errorMessage: 'Failed to create {teamName}'
+   */
+  errorMessage?: Template;
 }
 
 /**
@@ -1038,6 +1147,24 @@ export interface IEntityPageActionModalConfig {
  */
 export interface IEntityPageAction {
   label: string;
+  
+  /**
+   * Dynamic label template (evaluated from routeParams or record context).
+   * If provided, overrides static `label` field.
+   * 
+   * @example
+   * // Simple template
+   * template: 'Edit {teamName}'
+   * 
+   * @example
+   * // Complex template
+   * template: {
+   *   composite: ['teamName', 'city'],
+   *   template: 'Edit {teamName} ({city})'
+   * }
+   */
+  template?: Template;
+  
   url?: string;
   icon?: string;
   type?: 'button' | 'dropdown';
@@ -1352,6 +1479,30 @@ export type AttributesTemplate<E extends EntitySchema<any, any, any> = any> = {
 }
 
 /**
+ * Template type for dynamic text rendering throughout FW24.
+ * Used for actions, titles, labels, messages, etc.
+ * 
+ * Backend uses this with AttributesTemplate<E> for type safety against entity schemas.
+ * Frontend uses ITemplateConfig as a generic interface for runtime evaluation.
+ * 
+ * @template E - Entity schema type for type-safe field access
+ * 
+ * @example
+ * // Simple string template
+ * template: '{firstName} {lastName}'
+ * 
+ * @example
+ * // Complex template with type safety
+ * template: {
+ *   composite: ['firstName', 'lastName', 'team.name'],
+ *   template: '{firstName} {lastName} ({team.name})'
+ * }
+ */
+export type Template<E extends EntitySchema<any, any, any> = any> = 
+  | string  // Simple: '{field1} {field2}' or static 'My Title'
+  | AttributesTemplate<E>;  // Complex: { composite: [...], template: '...' }
+
+/**
  * Configuration for loading field options from an API endpoint.
  * Provides type-safe attribute references for the given entity schema.
  * 
@@ -1550,6 +1701,19 @@ export interface EntitySchema<
     readonly excludeFromAdminDuplicate?: boolean, // default is false
 
     readonly CRUDApiPath?: string, // default is ''
+
+    /**
+     * Entity metadata for UI rendering.
+     * Used for relation fallbacks, default icons, descriptions, etc.
+     */
+    readonly metadata?: {
+      /** Icon name (Ant Design) - used as default in relations and UI elements */
+      icon?: string;
+      /** Brand color for this entity type (hex color) */
+      color?: string;
+      /** Short description for tooltips and help text */
+      description?: string;
+    };
 
     // Menu configuration
     readonly menuGroup?: string; // Group this entity belongs to in the menu

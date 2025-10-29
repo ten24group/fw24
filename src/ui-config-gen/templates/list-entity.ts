@@ -1,5 +1,5 @@
 import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
-import { IEntityPageAction } from "../../entity/base-entity";
+import { IEntityPageAction, Template } from "../../entity/base-entity";
 import { pascalCase } from "../../utils";
 import { formatEntityAttributesForList } from "./util";
 
@@ -22,7 +22,29 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
     properties: TIOSchemaAttributesMap<S>
     useSearch?: boolean,
     pageHeaderActions?: Array<IEntityPageAction>,
-    breadcrumbs?: Array<{ label: string; url?: string }>,
+    /**
+     * Breadcrumbs with template support
+     * 
+     * @example
+     * breadcrumbs: [
+     *   { label: 'Home', url: '/' },
+     *   { label: 'Teams' }  // Static
+     * ]
+     * 
+     * @example
+     * breadcrumbs: [
+     *   { label: 'Home', url: '/' },
+     *   { label: '{teamName}' }  // Dynamic template
+     * ]
+     */
+    breadcrumbs?: Array<{ label: Template; url?: string }>,
+    /**
+     * Page title with template support
+     * 
+     * @example pageTitle: 'Team Listing'
+     * @example pageTitle: '{sport} Teams'
+     */
+    pageTitle?: Template,
     /**
      * Default sort configuration
      * - Object/Array: for search mode with field+order
@@ -35,17 +57,18 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     options: ListEntityPageOptions<S>
 ) => {
 
-    const { entityName, entityNamePlural, properties, breadcrumbs } = options;
+    const { entityName, entityNamePlural, properties, breadcrumbs, pageTitle } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
 
     const listPageConfig = makeViewEntityListConfig(options);
 
-    // Build default page header actions
-    const defaultPageHeaderActions = [];
+    // Build default page header actions with templates
+    const defaultPageHeaderActions: IEntityPageAction[] = [];
     if (!options.excludeFromAdminCreate) {
         defaultPageHeaderActions.push({
             label: "Create",
+            template: `Create ${entityNamePascalCase}`, // Template showing entity name
             url: `/create-${entityNameLower}`
         });
     }
@@ -56,7 +79,8 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         : defaultPageHeaderActions;
 
     return {
-        pageTitle: `${entityNamePascalCase} Listing`,
+        // Use custom pageTitle if provided, otherwise default
+        pageTitle: pageTitle || `${entityNamePascalCase} Listing`,
         pageType: "list",
         routePattern: undefined,
         breadcrumbs: breadcrumbs || [],

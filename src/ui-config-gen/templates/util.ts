@@ -13,6 +13,42 @@ import { makeCreateEntityFormConfig } from "./create-entity";
 import { makeViewEntityListConfig } from "./list-entity";
 import { makeViewEntityDetailConfig } from "./view-entity";
 
+/**
+ * Generate smart fallback configuration for relation display when only ID is available.
+ * Uses entity metadata (icon, entityNamePlural) to create user-friendly fallback text.
+ * 
+ * @param entityName - Related entity name (e.g., 'team')
+ * @param idField - ID field name (e.g., 'teamId')
+ * @param entityService - Entity service to get metadata from
+ * @returns Fallback configuration with template, linkText, and modalButtonText
+ * 
+ * @example
+ * // For a team relation
+ * generateRelationFallback('team', 'teamId', teamService)
+ * // Returns: {
+ * //   template: 'Team: {teamId}',
+ * //   linkText: 'View Team',
+ * //   modalButtonText: 'Team Details'
+ * // }
+ */
+export function generateRelationFallback(
+    entityName: string,
+    idField: string,
+    entityService?: BaseEntityService<any>
+): NonNullable<IRelationFieldConfig['displayConfig']>['fallback'] {
+    // Try to get entity metadata for better fallback text
+    const entityMetadata = entityService?.getEntitySchema?.().model;
+    const displayName = entityMetadata?.entityNamePlural || pascalCase(entityName);
+    
+    return {
+        // Backend pre-generates fallback template (intentionally string-only, not Template type)
+        // Frontend will use this when only ID is available
+        template: `${displayName}: {${idField}}`,  // e.g., "Team: {teamId}"
+        linkText: `View ${displayName}`,           // e.g., "View Team"
+        modalButtonText: `${displayName} Details`  // e.g., "Team Details"
+    };
+}
+
 export function formatEntityAttributeForFormOrDetail(
     thisProp: TIOSchemaAttribute,
     type: 'create' | 'update' | 'detail',
@@ -96,11 +132,27 @@ export function formatEntityAttributeForFormOrDetail(
         // Check if user provided custom UI config in relationConfig (optional override)
         const userRelationConfig = thisProp.relationConfig as IRelationFieldConfig | undefined;
 
+        // Get related entity service for metadata (icon, etc.)
+        const relatedEntityService = entityService.hasEntityServiceByEntityName(entityName) 
+            ? entityService.getEntityServiceByEntityName(entityName)
+            : undefined;
+        
+        // Get entity metadata for icon and fallback generation
+        const relatedEntityMetadata = relatedEntityService?.getEntitySchema?.().model;
+        const defaultIcon = relatedEntityMetadata?.metadata?.icon;
+
         if (relationType.endsWith('to-one')) {
             // TO-ONE: Show value as link + modal icon
             // Route pattern: Use custom (from relationConfig) or default to /view-{entity}/:targetId
             const routePattern = userRelationConfig?.routePattern 
                 || `/view-${entityNameLower}/:${primaryIdentifier.target}`;
+
+            // Generate fallback configuration for when only ID is available
+            const fallbackConfig = generateRelationFallback(
+                entityName,
+                primaryIdentifier.source,
+                relatedEntityService
+            );
 
             const generatedRelationConfig: IRelationFieldConfig = {
                 routePattern: routePattern,
@@ -115,10 +167,17 @@ export function formatEntityAttributeForFormOrDetail(
                 },
                 modalWidth: userRelationConfig?.modalWidth,
                 modalTitle: userRelationConfig?.modalTitle,
-                displayConfig: userRelationConfig?.displayConfig || {
-                    showModalIcon: true,
-                    icon: 'EyeOutlined',
-                    showLink: true
+                displayConfig: {
+                    // User can override with custom template
+                    template: userRelationConfig?.displayConfig?.template,
+                    // Smart fallback pre-generated from entity metadata
+                    fallback: userRelationConfig?.displayConfig?.fallback || fallbackConfig,
+                    // Icon from entity metadata or user override
+                    icon: userRelationConfig?.displayConfig?.icon || defaultIcon || 'EyeOutlined',
+                    showModalIcon: userRelationConfig?.displayConfig?.showModalIcon !== false,
+                    showLink: userRelationConfig?.displayConfig?.showLink !== false,
+                    // Pass through any custom actions
+                    actions: userRelationConfig?.displayConfig?.actions
                 }
             };
 
@@ -145,6 +204,13 @@ export function formatEntityAttributeForFormOrDetail(
                 defaultFilters[mapping.source] = `:${mapping.source}`;
             });
 
+            // Generate fallback configuration for to-many (shows count)
+            const fallbackConfig = generateRelationFallback(
+                entityName,
+                primaryIdentifier.source,
+                relatedEntityService
+            );
+
             const generatedRelationConfig: IRelationFieldConfig = {
                 routePattern: routePattern,
                 // Pass ALL identifier mappings (supports composite keys)
@@ -160,10 +226,17 @@ export function formatEntityAttributeForFormOrDetail(
                 },
                 modalWidth: userRelationConfig?.modalWidth,
                 modalTitle: userRelationConfig?.modalTitle,
-                displayConfig: userRelationConfig?.displayConfig || {
-                    showModalIcon: true,
-                    icon: 'UnorderedListOutlined',
-                    showLink: false
+                displayConfig: {
+                    // User can override with custom template
+                    template: userRelationConfig?.displayConfig?.template,
+                    // Smart fallback pre-generated from entity metadata
+                    fallback: userRelationConfig?.displayConfig?.fallback || fallbackConfig,
+                    // Icon from entity metadata or user override
+                    icon: userRelationConfig?.displayConfig?.icon || defaultIcon || 'UnorderedListOutlined',
+                    showModalIcon: userRelationConfig?.displayConfig?.showModalIcon !== false,
+                    showLink: userRelationConfig?.displayConfig?.showLink !== true, // Default false for to-many
+                    // Pass through any custom actions
+                    actions: userRelationConfig?.displayConfig?.actions
                 }
             };
 
@@ -280,6 +353,8 @@ export function formatEntityAttributesForList(entityName: string, properties: TI
                 if (!excludeFromAdminUpdate) {
                     actions.push({
                         icon: 'edit',
+                        label: 'Edit',
+                        template: `Edit {${prop.id}}`, // Dynamic label showing which record
                         url: `/edit-${entityNameLower}`
                     });
                 }
@@ -287,18 +362,22 @@ export function formatEntityAttributesForList(entityName: string, properties: TI
                 if (!excludeFromAdminDelete) {
                     actions.push({
                         icon: 'delete',
+                        label: 'Delete',
+                        template: `Delete {${prop.id}}`, // Dynamic label showing which record
                         openInModal: true,
                         modalConfig: {
                             modalType: 'confirm',
                             modalPageConfig: {
-                                title: `Delete ${entityNamePascalCase}`,
-                                content: `Are you sure you want to delete this ${entityNamePascalCase}?`
+                                title: `Delete ${entityNamePascalCase}?`,
+                                content: `Are you sure you want to delete this ${entityNamePascalCase}? This action cannot be undone.`
                             },
                             apiConfig: {
                                 apiMethod: `DELETE`,
                                 responseKey: entityNameLower,
                                 apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
                             },
+                            successMessage: `${entityNamePascalCase} deleted successfully`,
+                            errorMessage: `Failed to delete ${entityNamePascalCase}`,
                             submitSuccessRedirect: `/list-${entityNameLower}`
                         }
                     });
@@ -307,6 +386,8 @@ export function formatEntityAttributesForList(entityName: string, properties: TI
                 if (!excludeFromAdminDetail) {
                     actions.push({
                         icon: 'view',
+                        label: 'View',
+                        template: `View {${prop.id}}`, // Dynamic label showing which record
                         url: `/view-${entityNameLower}`
                     });
                 }
