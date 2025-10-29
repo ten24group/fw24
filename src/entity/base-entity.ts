@@ -1135,6 +1135,145 @@ export interface IEntityPageActionModalConfig {
 }
 
 /**
+ * Template reference for dynamic value resolution in visibility conditions.
+ * Uses object notation to avoid JSX confusion.
+ * 
+ * @example
+ * { $ref: 'actor.actorId' }
+ * { $ref: 'record.createdBy' }
+ * { $ref: 'context.pageType' }
+ */
+export type TemplateRef = {
+  readonly $ref: string;
+};
+
+/**
+ * Evaluation rule for visibility conditions.
+ * Aligned with ValidationRule<T> pattern from validation/types.ts
+ * 
+ * @template T - The type of value being evaluated
+ */
+export type EvaluationRule<T = any> = {
+  readonly eq?: T | TemplateRef;
+  readonly neq?: T | TemplateRef;
+  readonly gt?: T | TemplateRef;
+  readonly gte?: T | TemplateRef;
+  readonly lt?: T | TemplateRef;
+  readonly lte?: T | TemplateRef;
+  readonly inList?: ReadonlyArray<T>;
+  readonly notInList?: ReadonlyArray<T>;
+  readonly custom?: string;
+  readonly pattern?: string;
+  readonly exists?: boolean;
+  readonly empty?: boolean;
+};
+
+/**
+ * Inline visibility condition (full structure).
+ * Similar to EntityValidationCondition pattern from validation/types.ts
+ */
+export type InlineVisibilityCondition = {
+  readonly actor?: {
+    readonly [ path: string ]: EvaluationRule;
+  };
+  readonly record?: {
+    readonly [ path: string ]: EvaluationRule;
+  };
+  readonly selectedRecords?: {
+    readonly length?: EvaluationRule<number>;
+    readonly all?: {
+      readonly [ path: string ]: EvaluationRule;
+    };
+    readonly some?: {
+      readonly [ path: string ]: EvaluationRule;
+    };
+    readonly none?: {
+      readonly [ path: string ]: EvaluationRule;
+    };
+  };
+  readonly queryParams?: {
+    readonly [ key: string ]: EvaluationRule;
+  };
+  readonly context?: {
+    readonly pageType?: EvaluationRule<'list' | 'view' | 'edit' | 'create'>;
+    readonly modalDepth?: EvaluationRule<number>;
+    readonly entityName?: EvaluationRule<string>;
+    readonly [ key: string ]: EvaluationRule | undefined;
+  };
+  readonly formValues?: {
+    readonly [ path: string ]: EvaluationRule;
+  };
+};
+
+/**
+ * Custom evaluator reference.
+ * References a function registered in the frontend registry.
+ */
+export type CustomVisibilityCondition = {
+  readonly custom: string;
+};
+
+/**
+ * Named conditions with scope.
+ * References multiple named conditions registered in the frontend.
+ */
+export type NamedVisibilityCondition = {
+  readonly conditions: ReadonlyArray<string>;
+  readonly scope?: 'all' | 'any' | 'none';
+};
+
+/**
+ * Shortcut visibility config for common cases.
+ * Provides simplified syntax for role-based and simple conditional visibility.
+ */
+export type ShortcutVisibilityCondition = {
+  readonly requiredRoles?: ReadonlyArray<string>;
+  readonly excludedRoles?: ReadonlyArray<string>;
+  readonly showWhen?: Record<string, any>;
+  readonly hideWhen?: Record<string, any>;
+};
+
+/**
+ * Visibility configuration for actions, buttons, and UI elements.
+ * Controls visibility and enablement based on actor, record, context, and custom logic.
+ * 
+ * Serializable JSON configuration evaluated in the frontend.
+ * Supports roles, permissions, custom evaluators, and complex conditions.
+ * 
+ * @example
+ * // Role-based (shortcut)
+ * visibility: {
+ *   requiredRoles: ['admin', 'editor']
+ * }
+ * 
+ * @example
+ * // Owner check (inline with template)
+ * visibility: {
+ *   record: {
+ *     createdBy: { eq: { $ref: 'actor.actorId' } }
+ *   }
+ * }
+ * 
+ * @example
+ * // Custom logic (function reference)
+ * visibility: {
+ *   custom: 'canEditGame'
+ * }
+ * 
+ * @example
+ * // Named conditions
+ * visibility: {
+ *   conditions: ['isAdmin', 'isOwner'],
+ *   scope: 'any'
+ * }
+ */
+export type VisibilityConfig = 
+  | InlineVisibilityCondition
+  | CustomVisibilityCondition
+  | NamedVisibilityCondition
+  | ShortcutVisibilityCondition;
+
+/**
  * Entity page action
  * Supports buttons, dropdowns with modals/navigation
  * 
@@ -1187,6 +1326,47 @@ export interface IEntityPageAction {
   
   /** Only open in modal on specified screen size. Default: always */
   openInModalCondition?: 'sm' | 'md' | 'lg' | 'xl';
+  
+  /**
+   * Visibility configuration for this action.
+   * Controls visibility and enablement based on actor roles, record state, context, and custom logic.
+   * 
+   * When undefined, action is visible and enabled by default.
+   * 
+   * Supports:
+   * - Role-based access (requiredRoles, excludedRoles)
+   * - Record-based conditions (owner checks, status checks)
+   * - Context-based logic (page type, modal depth, query params)
+   * - Custom evaluator functions (registered in frontend)
+   * 
+   * @example
+   * // Simple role check
+   * visibility: {
+   *   requiredRoles: ['admin']
+   * }
+   * 
+   * @example
+   * // Owner check
+   * visibility: {
+   *   record: {
+   *     createdBy: { eq: { $ref: 'actor.actorId' } }
+   *   }
+   * }
+   * 
+   * @example
+   * // Custom logic
+   * visibility: {
+   *   custom: 'canEditGame'
+   * }
+   * 
+   * @example
+   * // Multiple conditions
+   * visibility: {
+   *   conditions: ['isAdmin', 'isOwner'],
+   *   scope: 'any'
+   * }
+   */
+  visibility?: VisibilityConfig;
 }
 
 export interface IEntityPageColumn {
@@ -1677,6 +1857,86 @@ export type SpecialAttributeType = keyof typeof SpecialAttributeTypes;
  * @template C - Collection names
  * @template Opp - The type of entity operations.
  */
+/**
+ * List page nested configuration (RECOMMENDED)
+ * Replaces: listPageActions, listPageBreadcrumbs, listPageDefaultSort
+ */
+export interface EntityListPageConfig {
+  readonly actions?: IEntityPageAction[];
+  readonly breadcrumbs?: Array<{ label: Template; url?: string }>;
+  readonly defaultSort?: { readonly field: string; readonly order: 'asc' | 'desc' } | ReadonlyArray<{ readonly field: string; readonly order: 'asc' | 'desc' }> | 'asc' | 'desc';
+  readonly tableConfig?: {
+    readonly rowActions?: IEntityPageAction[];
+    readonly bulkActions?: IEntityPageAction[];
+    readonly rowSelection?: {
+      enabled: boolean;
+      visibility?: VisibilityConfig;
+    };
+    readonly columns?: Array<{
+      field: string;
+      visibility?: VisibilityConfig;
+    }>;
+  };
+}
+
+/**
+ * View page nested configuration (RECOMMENDED)
+ * Replaces: viewPageActions, viewPageBreadcrumbs, viewPageColumnsConfig
+ */
+export interface EntityViewPageConfig {
+  readonly actions?: IEntityPageAction[];
+  readonly breadcrumbs?: Array<{ label: Template; url?: string }>;
+  readonly columnsConfig?: IEntityPageColumnConfig;
+  readonly fields?: Array<{
+    name: string;
+    visibility?: VisibilityConfig;
+  }>;
+}
+
+/**
+ * Edit page nested configuration (RECOMMENDED)
+ * Replaces: editPageActions, editPageBreadcrumbs, editPageColumnsConfig
+ */
+export interface EntityEditPageConfig {
+  readonly actions?: IEntityPageAction[];
+  readonly breadcrumbs?: Array<{ label: Template; url?: string }>;
+  readonly columnsConfig?: IEntityPageColumnConfig;
+  readonly formConfig?: {
+    readonly buttons?: Array<{
+      text: string;
+      action: 'submit' | 'reset' | 'cancel';
+      url?: string;
+      visibility?: VisibilityConfig;
+    }>;
+    readonly fields?: Array<{
+      name: string;
+      visibility?: VisibilityConfig;
+      enablement?: VisibilityConfig;
+    }>;
+  };
+}
+
+/**
+ * Create page nested configuration (RECOMMENDED)
+ * Replaces: createPageBreadcrumbs, createPageColumnsConfig
+ */
+export interface EntityCreatePageConfig {
+  readonly breadcrumbs?: Array<{ label: Template; url?: string }>;
+  readonly columnsConfig?: IEntityPageColumnConfig;
+  readonly formConfig?: {
+    readonly buttons?: Array<{
+      text: string;
+      action: 'submit' | 'reset' | 'cancel';
+      url?: string;
+      visibility?: VisibilityConfig;
+    }>;
+    readonly fields?: Array<{
+      name: string;
+      visibility?: VisibilityConfig;
+    }>;
+  };
+}
+
 export interface EntitySchema<
   A extends string,
   F extends string,
@@ -1720,7 +1980,13 @@ export interface EntitySchema<
     readonly menuOrder?: number; // Order within the group (default: 0)
 
     // Create page configuration
+    /**
+     * @deprecated Use createPageConfig.breadcrumbs instead
+     */
     readonly createPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+    /**
+     * @deprecated Use createPageConfig.columnsConfig instead
+     */
     readonly createPageColumnsConfig?: IEntityPageColumnConfig,
     
     /**
@@ -1766,8 +2032,13 @@ export interface EntitySchema<
      *   }
      * ]
      * ```
+     * 
+     * @deprecated Use listPageConfig.actions instead
      */
     readonly listPageActions?: IEntityPageAction[],
+    /**
+     * @deprecated Use listPageConfig.breadcrumbs instead
+     */
     readonly listPageBreadcrumbs?: Array<{ label: string; url?: string }>,
     /**
      * Default sort configuration for the list page
@@ -1779,8 +2050,10 @@ export interface EntitySchema<
      * 
      * Note: For DynamoDB (non-search) mode, use 'asc' | 'desc' to indicate the expected
      * index order direction. DynamoDB returns data in index (PK/SK) order, not arbitrary sort.
+     * 
+     * @deprecated Use listPageConfig.defaultSort instead
      */
-    readonly listPageDefaultSort?: { field: string; order: 'asc' | 'desc' } | Array<{ field: string; order: 'asc' | 'desc' }> | 'asc' | 'desc',
+    readonly listPageDefaultSort?: { readonly field: string; readonly order: 'asc' | 'desc' } | ReadonlyArray<{ readonly field: string; readonly order: 'asc' | 'desc' }> | 'asc' | 'desc',
     
     /**
      * View/Detail page configuration
@@ -1820,9 +2093,17 @@ export interface EntitySchema<
      *   }
      * ]
      * ```
+     * 
+     * @deprecated Use viewPageConfig.actions instead
      */
     readonly viewPageActions?: IEntityPageAction[],
+    /**
+     * @deprecated Use viewPageConfig.breadcrumbs instead
+     */
     readonly viewPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+    /**
+     * @deprecated Use viewPageConfig.columnsConfig instead
+     */
     readonly viewPageColumnsConfig?: IEntityPageColumnConfig,
     
     /**
@@ -1859,10 +2140,50 @@ export interface EntitySchema<
      * ]
      * ```
      */
+    /**
+     * @deprecated Use editPageConfig.actions instead
+     */
     readonly editPageActions?: IEntityPageAction[],
+    /**
+     * @deprecated Use editPageConfig.breadcrumbs instead
+     */
     readonly editPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+    /**
+     * @deprecated Use editPageConfig.columnsConfig instead
+     */
     readonly editPageColumnsConfig?: IEntityPageColumnConfig,
     
+    /**
+     * NEW NESTED STRUCTURE (RECOMMENDED)
+     * 
+     * These nested configs provide better organization and support for the universal
+     * evaluation system, including visibility/enablement configs for actions, form
+     * buttons, fields, and more.
+     */
+    
+    /**
+     * List page nested configuration
+     * Replaces: listPageActions, listPageBreadcrumbs, listPageDefaultSort
+     */
+    readonly listPageConfig?: EntityListPageConfig;
+    
+    /**
+     * View page nested configuration
+     * Replaces: viewPageActions, viewPageBreadcrumbs, viewPageColumnsConfig
+     */
+    readonly viewPageConfig?: EntityViewPageConfig;
+    
+    /**
+     * Edit page nested configuration
+     * Replaces: editPageActions, editPageBreadcrumbs, editPageColumnsConfig
+     */
+    readonly editPageConfig?: EntityEditPageConfig;
+    
+    /**
+     * Create page nested configuration
+     * Replaces: createPageBreadcrumbs, createPageColumnsConfig
+     */
+    readonly createPageConfig?: EntityCreatePageConfig;
 
     readonly search?: {
       enabled: boolean;

@@ -50,7 +50,7 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
      * - Object/Array: for search mode with field+order
      * - 'asc' | 'desc': for DynamoDB mode (index order direction only)
      */
-    defaultSort?: { field: string; order: 'asc' | 'desc' } | Array<{ field: string; order: 'asc' | 'desc' }> | 'asc' | 'desc',
+    defaultSort?: { readonly field: string; readonly order: 'asc' | 'desc' } | ReadonlyArray<{ readonly field: string; readonly order: 'asc' | 'desc' }> | 'asc' | 'desc',
 }
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
