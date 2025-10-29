@@ -1,7 +1,7 @@
 import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem, UpsertItem } from "electrodb";
 import { createSchema, Entity } from "electrodb";
 
-import type { EntityQuery, FilterOperatorsExtended } from './query-types';
+import type { EntityQuery, FilterOperatorsExtended, EntityFilterCriteria } from './query-types';
 import type { BaseEntityService } from "./base-service";
 import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
@@ -954,6 +954,75 @@ export interface IEntityPageActionModalConfig {
    * Note: Only applies when apiConfig is present. Ignored for navigateTo.
    */
   responseConfig?: IResponseDisplayConfig;
+  
+  /**
+   * Pre-populate form fields from context (route params + record data).
+   * 
+   * Values are evaluated when the modal opens and merged with form field defaults.
+   * Merge priority (lowest to highest):
+   * 1. Field-level defaults (from entity schema)
+   * 2. initialValues (from action config) ← THIS
+   * 3. Query params (from URL navigation with inverseMapping)
+   * 4. Form defaultValues (from parent component)
+   * 
+   * Supports:
+   * - Static values: `{ isActive: true, priority: 1 }`
+   * - Template strings: `{ teamId: '{teamId}', sport: '{sport}' }`
+   * - Nested paths: `{ teamName: '{team.name}', teamId: '{team.teamId}' }`
+   * 
+   * @example
+   * // Static values
+   * initialValues: {
+   *   isActive: true,
+   *   status: 'pending'
+   * }
+   * 
+   * @example
+   * // Template strings (evaluated from routeParams)
+   * initialValues: {
+   *   teamId: '{teamId}',        // Gets routeParams.teamId
+   *   sport: '{sport}',          // Gets routeParams.sport
+   *   createdDate: '2024-01-01'  // Static
+   * }
+   * 
+   * @example
+   * // Nested paths (for complex record data)
+   * initialValues: {
+   *   teamId: '{team.teamId}',
+   *   teamName: '{team.name}',
+   *   sportId: '{team.sport.sportId}'
+   * }
+   * 
+   * Note: Template strings like '{teamId}' are evaluated at runtime from:
+   * - routeParams (URL parameters)
+   * - record (table row data when action is triggered from a table row)
+   */
+  initialValues?: Record<string, any>;
+  
+  /**
+   * If true, parent component will be notified to refresh after successful operation.
+   * This triggers the onSuccessCallback with the API response data.
+   * 
+   * Use cases:
+   * - Refresh table after creating/updating a record
+   * - Refresh parent page data after a successful operation
+   * - Update UI state after modal action completes
+   * 
+   * Note: This works in combination with submitSuccessRedirect and responseConfig.
+   * All three can be used together.
+   * 
+   * @default false
+   * 
+   * @example
+   * {
+   *   modalConfig: {
+   *     modalType: 'form',
+   *     apiConfig: { apiUrl: '/api/teams', apiMethod: 'POST' },
+   *     refreshParentOnSuccess: true  // ✅ Table will refresh after creation
+   *   }
+   * }
+   */
+  refreshParentOnSuccess?: boolean;
 }
 
 /**
@@ -1229,23 +1298,56 @@ export type FieldOption = {
 }
 
 /**
- * Represents the template for attributes.
- * Allows composing multiple attributes into a formatted string.
+ * Represents the template for attributes in option selectors and dynamic labels.
+ * Allows composing multiple attributes (including nested paths) into a formatted string.
  * Provides type-safe attribute name validation via generics.
+ * 
+ * Supports:
+ * - Simple attribute names: 'firstName', 'lastName'
+ * - Nested paths (dot notation): 'team.name', 'address.city', 'sport.league.name'
+ * - Mixed usage: Combine simple and nested paths in the same template
  * 
  * @template E - The entity schema type
  * 
  * @example
  * ```ts
- * // Define directly in field options config
+ * // Simple attributes
  * const template: AttributesTemplate<UserSchema> = {
  *   composite: ['firstName', 'lastName'],
- *   template: '{firstName}-AND-{lastName}'
+ *   template: '{firstName} {lastName}'
  * }
+ * ```
+ * 
+ * @example
+ * ```ts
+ * // Nested paths (dot notation)
+ * const template: AttributesTemplate<PlayerSchema> = {
+ *   composite: ['name', 'team.name', 'team.city'],
+ *   template: '{name} - {team.name} ({team.city})'
+ * }
+ * // Result: 'LeBron James - Lakers (Los Angeles)'
+ * ```
+ * 
+ * @example
+ * ```ts
+ * // Complex template with nested paths
+ * const template: AttributesTemplate<PlayerSchema> = {
+ *   composite: ['jerseyNumber', 'name', 'team.name', 'team.sport.league'],
+ *   template: '#{jerseyNumber} {name} ({team.name} - {team.sport.league})'
+ * }
+ * // Result: '#23 LeBron James (Lakers - NBA)'
  * ```
  */
 export type AttributesTemplate<E extends EntitySchema<any, any, any> = any> = {
+  /** 
+   * Array of attribute paths to include in the template.
+   * Supports dot notation for nested access (e.g., 'team.name', 'address.city')
+   */
   composite: Array<keyof E['attributes'] & string>,
+  /** 
+   * Template string with {attributePath} placeholders.
+   * Example: '{firstName} {lastName}' or '{team.name} ({team.city})'
+   */
   template: string,
 }
 
@@ -1253,22 +1355,72 @@ export type AttributesTemplate<E extends EntitySchema<any, any, any> = any> = {
  * Configuration for loading field options from an API endpoint.
  * Provides type-safe attribute references for the given entity schema.
  * 
+ * Features:
+ * - Cursor-based pagination with "Load More" button (enabled by default)
+ * - Remote search with debouncing (enabled by default)
+ * - Frontend search fallback when remote search is disabled
+ * - Automatic deduplication by value
+ * - Alphabetical sorting by label
+ * - Nested field support via dot notation (e.g., 'team.name')
+ * - Complex template labels with multiple fields
+ * 
  * @template E - The entity schema type for type-safe attribute references
  */
 export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
+  /** HTTP method to use for fetching options */
   apiMethod: 'GET' | 'POST',
+  /** API endpoint URL */
   apiUrl: string,
+  /** Key in response data that contains the options array */
   responseKey: string,
-  query?: EntityQuery<E>,
+  /** Additional filters to apply when fetching options (supports EntityFilterCriteria) */
+  filters?: Record<string, any> | EntityFilterCriteria<E>,
+  /** 
+   * Mapping configuration for label and value fields.
+   * 
+   * Supports:
+   * - Simple field names: 'firstName', 'teamName'
+   * - Nested paths (dot notation): 'team.name', 'address.city'
+   * - Complex templates: { composite: ['name', 'team.city'], template: '{name} ({team.city})' }
+   */
   optionMapping?: {
     label: (keyof E['attributes'] & string) | AttributesTemplate<E>,
     value: (keyof E['attributes'] & string) | AttributesTemplate<E>,
   },
+  /** Number of options to fetch per request (default: 50) */
+  count?: number,
+  /** 
+   * Disable cursor-based pagination "Load More" functionality.
+   * When false (default), shows "Load More" button when more data is available.
+   * @default false (ENABLED by default)
+   */
+  disableLoadMore?: boolean,
+  /** 
+   * Disable remote search functionality.
+   * When false (default), sends 'search' parameter to backend.
+   * When true, falls back to frontend filtering.
+   * @default false (ENABLED by default)
+   */
+  disableSearch?: boolean,
+  /** 
+   * Debounce delay for remote search in milliseconds.
+   * Prevents excessive API calls while user is typing.
+   * @default 500
+   */
+  searchDebounce?: number,
 }
 
 /**
  * Creates type-safe field options configuration for API-loaded select/radio/checkbox options.
- * Provides full type safety for attribute references in option mappings and query filters.
+ * Provides full type safety for attribute references in option mappings and filters.
+ * 
+ * Features:
+ * - Cursor-based pagination with "Load More" (enabled by default)
+ * - Remote search with debouncing (enabled by default)
+ * - Type-safe filters using EntityFilterCriteria
+ * - Nested field support via dot notation (e.g., 'team.name')
+ * - Complex template labels with multiple fields
+ * - Configurable fetch count (default: 50)
  * 
  * @template E - The entity schema type for the options source
  * @param config - The field options API configuration
@@ -1287,12 +1439,12 @@ export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
  * })
  * 
  * @example
- * // With query filters
+ * // With filters (active users only)
  * createFieldOptions<TeamSchema>({
  *   apiMethod: 'GET',
  *   apiUrl: '/api/teams',
  *   responseKey: 'teams',
- *   query: { filters: { status: { eq: 'active' } } },
+ *   filters: { status: { eq: 'active' } },
  *   optionMapping: {
  *     label: 'teamName',
  *     value: 'teamId'
@@ -1311,6 +1463,38 @@ export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
  *       template: '{teamName} ({city})'
  *     },
  *     value: 'teamId'
+ *   }
+ * })
+ * 
+ * @example
+ * // With nested paths (dot notation) - supports accessing related entity data
+ * createFieldOptions<PlayerSchema>({
+ *   apiMethod: 'GET',
+ *   apiUrl: '/api/players',
+ *   responseKey: 'data',
+ *   optionMapping: {
+ *     label: {
+ *       composite: ['jerseyNumber', 'name', 'team.name', 'team.city'],
+ *       template: '#{jerseyNumber} {name} ({team.name} - {team.city})'
+ *     },
+ *     value: 'playerId'
+ *   }
+ * })
+ * // Result: '#23 LeBron James (Lakers - Los Angeles)'
+ * 
+ * @example
+ * // With custom settings: disable search, custom count, faster debounce
+ * createFieldOptions<UserSchema>({
+ *   apiMethod: 'GET',
+ *   apiUrl: '/api/users',
+ *   responseKey: 'data',
+ *   count: 100,
+ *   disableSearch: true,
+ *   disableLoadMore: false,
+ *   searchDebounce: 300,
+ *   optionMapping: {
+ *     label: 'name',
+ *     value: 'userId'
  *   }
  * })
  */
