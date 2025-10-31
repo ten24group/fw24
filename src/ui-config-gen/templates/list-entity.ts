@@ -21,7 +21,7 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
     CRUDApiPath?: string,
     properties: TIOSchemaAttributesMap<S>
     useSearch?: boolean,
-    pageHeaderActions?: Array<IEntityPageAction>,
+    pageHeaderActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
     /**
      * Breadcrumbs with template support
      * 
@@ -37,7 +37,7 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
      *   { label: '{teamName}' }  // Dynamic template
      * ]
      */
-    breadcrumbs?: Array<{ label: Template; url?: string }>,
+    breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>,
     /**
      * Page title with template support
      * 
@@ -68,7 +68,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     if (!options.excludeFromAdminCreate) {
         defaultPageHeaderActions.push({
             label: "Create",
-            template: `Create ${entityNamePascalCase}`, // Template showing entity name
+            template: `Create`, // Template showing entity name
             url: `/create-${entityNameLower}`
         });
     }
@@ -135,6 +135,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
 
     return {
         apiConfig,
-        propertiesConfig: formattedProps
+        propertiesConfig: formattedProps,
+        entityName  // NEW: Add entityName to config for evaluation system
     };
 }

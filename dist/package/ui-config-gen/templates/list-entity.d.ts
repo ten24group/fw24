@@ -1,5 +1,5 @@
 import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
-import { IEntityPageAction } from "../../entity/base-entity";
+import { IEntityPageAction, Template } from "../../entity/base-entity";
 export type ListingPropConfig = {
     name: string;
     dataIndex: string;
@@ -17,61 +17,91 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
     CRUDApiPath?: string;
     properties: TIOSchemaAttributesMap<S>;
     useSearch?: boolean;
-    pageHeaderActions?: Array<IEntityPageAction>;
-    breadcrumbs?: Array<{
-        label: string;
+    pageHeaderActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+    /**
+     * Breadcrumbs with template support
+     *
+     * @example
+     * breadcrumbs: [
+     *   { label: 'Home', url: '/' },
+     *   { label: 'Teams' }  // Static
+     * ]
+     *
+     * @example
+     * breadcrumbs: [
+     *   { label: 'Home', url: '/' },
+     *   { label: '{teamName}' }  // Dynamic template
+     * ]
+     */
+    breadcrumbs?: ReadonlyArray<{
+        label: Template;
+        url?: string;
+    }> | Array<{
+        label: Template;
         url?: string;
     }>;
+    /**
+     * Page title with template support
+     *
+     * @example pageTitle: 'Team Listing'
+     * @example pageTitle: '{sport} Teams'
+     */
+    pageTitle?: Template;
+    /**
+     * Default sort configuration
+     * - Object/Array: for search mode with field+order
+     * - 'asc' | 'desc': for DynamoDB mode (index order direction only)
+     */
     defaultSort?: {
-        field: string;
-        order: 'asc' | 'desc';
-    } | Array<{
-        field: string;
-        order: 'asc' | 'desc';
-    }> | string;
+        readonly field: string;
+        readonly order: 'asc' | 'desc';
+    } | ReadonlyArray<{
+        readonly field: string;
+        readonly order: 'asc' | 'desc';
+    }> | 'asc' | 'desc';
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>) => {
-    readonly pageTitle: `${string} Listing`;
+    readonly pageTitle: Template;
     readonly pageType: "list";
     readonly routePattern: undefined;
-    readonly breadcrumbs: {
-        label: string;
+    readonly breadcrumbs: readonly {
+        label: Template;
         url?: string;
     }[];
     readonly pageHeaderActions: IEntityPageAction[];
     readonly listPageConfig: {
         apiConfig: {
             search: {
-                defaultSort?: string | {
-                    field: string;
-                    order: "asc" | "desc";
-                } | {
-                    field: string;
-                    order: "asc" | "desc";
+                defaultSort?: "desc" | "asc" | {
+                    readonly field: string;
+                    readonly order: "asc" | "desc";
+                } | readonly {
+                    readonly field: string;
+                    readonly order: "asc" | "desc";
                 }[] | undefined;
                 apiMethod: "GET";
                 responseKey: string;
                 apiUrl: string;
             };
             database: {
-                defaultSort?: string | {
-                    field: string;
-                    order: "asc" | "desc";
-                } | {
-                    field: string;
-                    order: "asc" | "desc";
+                defaultSort?: "desc" | "asc" | {
+                    readonly field: string;
+                    readonly order: "asc" | "desc";
+                } | readonly {
+                    readonly field: string;
+                    readonly order: "asc" | "desc";
                 }[] | undefined;
                 apiMethod: "GET";
                 responseKey: string;
                 apiUrl: string;
             };
         } | {
-            defaultSort?: string | {
-                field: string;
-                order: "asc" | "desc";
-            } | {
-                field: string;
-                order: "asc" | "desc";
+            defaultSort?: "desc" | "asc" | {
+                readonly field: string;
+                readonly order: "asc" | "desc";
+            } | readonly {
+                readonly field: string;
+                readonly order: "asc" | "desc";
             }[] | undefined;
             apiMethod: "GET";
             responseKey: string;
@@ -81,42 +111,43 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
             database?: undefined;
         };
         propertiesConfig: import("./util").ListingPropConfig[];
+        entityName: string;
     };
 };
 export default _default;
 export declare function makeViewEntityListConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>): {
     apiConfig: {
         search: {
-            defaultSort?: string | {
-                field: string;
-                order: "asc" | "desc";
-            } | {
-                field: string;
-                order: "asc" | "desc";
+            defaultSort?: "desc" | "asc" | {
+                readonly field: string;
+                readonly order: "asc" | "desc";
+            } | readonly {
+                readonly field: string;
+                readonly order: "asc" | "desc";
             }[] | undefined;
             apiMethod: "GET";
             responseKey: string;
             apiUrl: string;
         };
         database: {
-            defaultSort?: string | {
-                field: string;
-                order: "asc" | "desc";
-            } | {
-                field: string;
-                order: "asc" | "desc";
+            defaultSort?: "desc" | "asc" | {
+                readonly field: string;
+                readonly order: "asc" | "desc";
+            } | readonly {
+                readonly field: string;
+                readonly order: "asc" | "desc";
             }[] | undefined;
             apiMethod: "GET";
             responseKey: string;
             apiUrl: string;
         };
     } | {
-        defaultSort?: string | {
-            field: string;
-            order: "asc" | "desc";
-        } | {
-            field: string;
-            order: "asc" | "desc";
+        defaultSort?: "desc" | "asc" | {
+            readonly field: string;
+            readonly order: "asc" | "desc";
+        } | readonly {
+            readonly field: string;
+            readonly order: "asc" | "desc";
         }[] | undefined;
         apiMethod: "GET";
         responseKey: string;
@@ -126,4 +157,5 @@ export declare function makeViewEntityListConfig<S extends EntitySchema<string, 
         database?: undefined;
     };
     propertiesConfig: import("./util").ListingPropConfig[];
+    entityName: string;
 };

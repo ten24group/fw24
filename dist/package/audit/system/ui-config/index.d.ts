@@ -54,6 +54,7 @@ export declare const AuditCustomPageConfigs: {
                 readonly database?: undefined;
             };
             readonly propertiesConfig: import("../../../ui-config-gen/templates/util").ListingPropConfig[];
+            readonly entityName: string;
         };
         readonly pageType: "list";
         readonly pageHeaderActions: import("../../../entity").IEntityPageAction[];
@@ -68,7 +69,7 @@ export declare const AuditCustomPageConfigs: {
         }];
         readonly detailsPageConfig: any;
         readonly pageType: "details";
-        readonly breadcrumbs: {
+        readonly breadcrumbs: readonly {
             label: import("../../../entity").Template;
             url?: string;
         }[];

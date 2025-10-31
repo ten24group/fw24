@@ -1,4 +1,4 @@
-import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem, UpsertItem } from "electrodb";
+import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem, UpsertItem  } from "electrodb";
 import { createSchema, Entity } from "electrodb";
 
 import type { EntityQuery, FilterOperatorsExtended, EntityFilterCriteria } from './query-types';
@@ -513,40 +513,44 @@ export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
   attributes?: HydrateOptionForEntity<E> | (() => HydrateOptionForEntity<E>);
 };
 
-
 /**
- * Represents an entity attribute.
+ * FW24-specific properties that extend ElectroDB attributes
  */
-export type EntityAttribute = Attribute & {
+export interface FW24AttributeExtensions {
   /**
    * The human readable name of the attribute.
    */
-  name?: string;
+  readonly name?: string;
 
   /**
    * Indicates whether the attribute is an identifier.
    */
-  isIdentifier?: boolean;
+  readonly isIdentifier?: boolean;
 
   /**
    * Indicates whether the attribute is unique (for unique constraints).
    */
-  isUnique?: boolean;
+  readonly isUnique?: boolean;
 
   /**
    * Defines a relation with another entity.
    * Use the type-helper `createEntityRelation<EntitySchema>()` function for type-safe relation creation.
    * For circular dependencies, use `createEntityRelation<() => EntitySchema>()` with lazy loading.
    */
-  relation?: Relation<any>;
+  readonly relation?: Relation<any>;
 
   /**
    * Validations for the attribute.
+   * Supports both readonly and mutable arrays for compatibility with 'as const' entity schemas.
    */
-  validations?: any[];
-
+  readonly validations?: ReadonlyArray<any> | Array<any>;
 }
-  & FieldMetadata;
+
+/**
+ * Represents an entity attribute
+ * Extends ElectroDB's Attribute with FW24-specific properties and FieldMetadata
+ */
+export type EntityAttribute = Attribute & FW24AttributeExtensions & FieldMetadata;
 
 
 export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldMetadata
@@ -579,8 +583,8 @@ export interface BaseFieldMetadata {
   filterConfig?: {
     filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean'; // Filter input type
     defaultOperator?: FilterOperatorsExtended<any>; // Default filter operator (e.g., 'contains', 'eq', 'in')
-    availableOperators?: FilterOperatorsExtended<any>[]; // Restrict available operators for this column
-    predefinedOptions?: Array<{ label: string; value: string }>; // For dropdown/select filters
+    availableOperators?: ReadonlyArray<FilterOperatorsExtended<any>> | Array<FilterOperatorsExtended<any>>; // Restrict available operators for this column
+    predefinedOptions?: ReadonlyArray<{ label: string; value: string }> | Array<{ label: string; value: string }>; // For dropdown/select filters
   };
   
   // Link configuration for rendering field as internal link (non-relation fields)
@@ -807,22 +811,22 @@ export interface IEntityConfigReference {
     columnsConfig?: IEntityPageColumnConfig;
     
     /** Override breadcrumbs */
-    breadcrumbs?: Array<{ label: string; url?: string }>;
+    breadcrumbs?: ReadonlyArray<{ label: string; url?: string }> | Array<{ label: string; url?: string }>;
     
     /** Override form success redirect (for create pages) */
     submitSuccessRedirect?: string;
     
     /** Override form buttons (for create pages) */
-    formButtons?: Array<{ text: string; action: string; url?: string }>;
+    formButtons?: ReadonlyArray<{ text: string; action: string; url?: string }> | Array<{ text: string; action: string; url?: string }>;
     
     /** Add default filters (for list pages) */
     defaultFilters?: Record<string, any>;
     
     /** Hide specific fields from rendering */
-    hideFields?: string[];
+    hideFields?: ReadonlyArray<string> | Array<string>;
     
     /** Show only specific fields (mutually exclusive with hideFields) */
-    showOnlyFields?: string[];
+    showOnlyFields?: ReadonlyArray<string> | Array<string>;
   };
 }
 
@@ -1307,7 +1311,7 @@ export interface IEntityPageAction {
   url?: string;
   icon?: string;
   type?: 'button' | 'dropdown';
-  items?: Array<Omit<IEntityPageAction, 'items'>>;  // Items cannot have sub-items
+  items?: ReadonlyArray<Omit<IEntityPageAction, 'items'>> | Array<Omit<IEntityPageAction, 'items'>>;  // Items cannot have sub-items
   
   /** Open action in modal instead of navigating */
   openInModal?: boolean;
@@ -1437,11 +1441,11 @@ export interface SelectFieldMetadata<E extends EntitySchema<any, any, any> = any
     overrideConfig?: {
       pageTitle?: string;
       columnsConfig?: IEntityPageColumnConfig;
-      breadcrumbs?: Array<{ label: string; url?: string }>;
+      breadcrumbs?: ReadonlyArray<{ label: string; url?: string }> | Array<{ label: string; url?: string }>;
       submitSuccessRedirect?: string;
-      formButtons?: Array<{ text: string; action: string; url?: string }>;
-      hideFields?: string[];
-      showOnlyFields?: string[];
+      formButtons?: ReadonlyArray<{ text: string; action: string; url?: string }> | Array<{ text: string; action: string; url?: string }>;
+      hideFields?: ReadonlyArray<string> | Array<string>;
+      showOnlyFields?: ReadonlyArray<string> | Array<string>;
     };
   };
   
@@ -1597,7 +1601,7 @@ interface CodeEditorFieldMetadata extends BaseFieldMetadata {
   fieldType?: 'code' | 'markdown' | 'json';
 }
 
-export type FieldOptions<E extends EntitySchema<any, any, any> = any> = Array<FieldOption> | FieldOptionsAPIConfig<E>;
+export type FieldOptions<E extends EntitySchema<any, any, any> = any> = ReadonlyArray<FieldOption> | Array<FieldOption> | FieldOptionsAPIConfig<E>;
 
 export type FieldOption = {
   value: string,
@@ -1650,7 +1654,9 @@ export type AttributesTemplate<E extends EntitySchema<any, any, any> = any> = {
    * Array of attribute paths to include in the template.
    * Supports dot notation for nested access (e.g., 'team.name', 'address.city')
    */
-  composite: Array<keyof E['attributes'] & string>,
+  // composite: Array<keyof E['attributes'] & string>,
+  composite: ReadonlyArray<keyof E['attributes'] & string> | Array<keyof E['attributes'] & string>,
+
   /** 
    * Template string with {attributePath} placeholders.
    * Example: '{firstName} {lastName}' or '{team.name} ({team.city})'
@@ -1862,17 +1868,20 @@ export type SpecialAttributeType = keyof typeof SpecialAttributeTypes;
  * Replaces: listPageActions, listPageBreadcrumbs, listPageDefaultSort
  */
 export interface EntityListPageConfig {
-  readonly actions?: IEntityPageAction[];
-  readonly breadcrumbs?: Array<{ label: Template; url?: string }>;
+  readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+  readonly breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
   readonly defaultSort?: { readonly field: string; readonly order: 'asc' | 'desc' } | ReadonlyArray<{ readonly field: string; readonly order: 'asc' | 'desc' }> | 'asc' | 'desc';
   readonly tableConfig?: {
-    readonly rowActions?: IEntityPageAction[];
-    readonly bulkActions?: IEntityPageAction[];
+    readonly rowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+    readonly bulkActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
     readonly rowSelection?: {
       enabled: boolean;
       visibility?: VisibilityConfig;
     };
-    readonly columns?: Array<{
+    readonly columns?: ReadonlyArray<{
+      field: string;
+      visibility?: VisibilityConfig;
+    }> | Array<{
       field: string;
       visibility?: VisibilityConfig;
     }>;
@@ -1884,10 +1893,13 @@ export interface EntityListPageConfig {
  * Replaces: viewPageActions, viewPageBreadcrumbs, viewPageColumnsConfig
  */
 export interface EntityViewPageConfig {
-  readonly actions?: IEntityPageAction[];
-  readonly breadcrumbs?: Array<{ label: Template; url?: string }>;
+  readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+  readonly breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
   readonly columnsConfig?: IEntityPageColumnConfig;
-  readonly fields?: Array<{
+  readonly fields?: ReadonlyArray<{
+    name: string;
+    visibility?: VisibilityConfig;
+  }> | Array<{
     name: string;
     visibility?: VisibilityConfig;
   }>;
@@ -1898,17 +1910,26 @@ export interface EntityViewPageConfig {
  * Replaces: editPageActions, editPageBreadcrumbs, editPageColumnsConfig
  */
 export interface EntityEditPageConfig {
-  readonly actions?: IEntityPageAction[];
-  readonly breadcrumbs?: Array<{ label: Template; url?: string }>;
+  readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+  readonly breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
   readonly columnsConfig?: IEntityPageColumnConfig;
   readonly formConfig?: {
-    readonly buttons?: Array<{
+    readonly buttons?: ReadonlyArray<{
+      text: string;
+      action: 'submit' | 'reset' | 'cancel';
+      url?: string;
+      visibility?: VisibilityConfig;
+    }> | Array<{
       text: string;
       action: 'submit' | 'reset' | 'cancel';
       url?: string;
       visibility?: VisibilityConfig;
     }>;
-    readonly fields?: Array<{
+    readonly fields?: ReadonlyArray<{
+      name: string;
+      visibility?: VisibilityConfig;
+      enablement?: VisibilityConfig;
+    }> | Array<{
       name: string;
       visibility?: VisibilityConfig;
       enablement?: VisibilityConfig;
@@ -1921,16 +1942,24 @@ export interface EntityEditPageConfig {
  * Replaces: createPageBreadcrumbs, createPageColumnsConfig
  */
 export interface EntityCreatePageConfig {
-  readonly breadcrumbs?: Array<{ label: Template; url?: string }>;
+  readonly breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
   readonly columnsConfig?: IEntityPageColumnConfig;
   readonly formConfig?: {
-    readonly buttons?: Array<{
+    readonly buttons?: ReadonlyArray<{
+      text: string;
+      action: 'submit' | 'reset' | 'cancel';
+      url?: string;
+      visibility?: VisibilityConfig;
+    }> | Array<{
       text: string;
       action: 'submit' | 'reset' | 'cancel';
       url?: string;
       visibility?: VisibilityConfig;
     }>;
-    readonly fields?: Array<{
+    readonly fields?: ReadonlyArray<{
+      name: string;
+      visibility?: VisibilityConfig;
+    }> | Array<{
       name: string;
       visibility?: VisibilityConfig;
     }>;
@@ -1983,7 +2012,7 @@ export interface EntitySchema<
     /**
      * @deprecated Use createPageConfig.breadcrumbs instead
      */
-    readonly createPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+    readonly createPageBreadcrumbs?: ReadonlyArray<{ label: string; url?: string }> | Array<{ label: string; url?: string }>,
     /**
      * @deprecated Use createPageConfig.columnsConfig instead
      */
@@ -2035,11 +2064,11 @@ export interface EntitySchema<
      * 
      * @deprecated Use listPageConfig.actions instead
      */
-    readonly listPageActions?: IEntityPageAction[],
+    readonly listPageActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
     /**
      * @deprecated Use listPageConfig.breadcrumbs instead
      */
-    readonly listPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+    readonly listPageBreadcrumbs?: ReadonlyArray<{ label: string; url?: string }> | Array<{ label: string; url?: string }>,
     /**
      * Default sort configuration for the list page
      * 
@@ -2096,11 +2125,11 @@ export interface EntitySchema<
      * 
      * @deprecated Use viewPageConfig.actions instead
      */
-    readonly viewPageActions?: IEntityPageAction[],
+    readonly viewPageActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
     /**
      * @deprecated Use viewPageConfig.breadcrumbs instead
      */
-    readonly viewPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+    readonly viewPageBreadcrumbs?: ReadonlyArray<{ label: string; url?: string }> | Array<{ label: string; url?: string }>,
     /**
      * @deprecated Use viewPageConfig.columnsConfig instead
      */
@@ -2143,11 +2172,11 @@ export interface EntitySchema<
     /**
      * @deprecated Use editPageConfig.actions instead
      */
-    readonly editPageActions?: IEntityPageAction[],
+    readonly editPageActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
     /**
      * @deprecated Use editPageConfig.breadcrumbs instead
      */
-    readonly editPageBreadcrumbs?: Array<{ label: string; url?: string }>,
+    readonly editPageBreadcrumbs?: ReadonlyArray<{ label: string; url?: string }> | Array<{ label: string; url?: string }>,
     /**
      * @deprecated Use editPageConfig.columnsConfig instead
      */

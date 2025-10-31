@@ -1,4 +1,4 @@
-import { FieldOptions, ModalType, IModalApiConfig, IConfirmModal } from "../../entity";
+import { FieldOptions, ModalType, IModalApiConfig, IConfirmModal, Template } from "../../entity";
 import { IEntityPageColumnConfig } from "../../entity/base-entity";
 export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion" | "menu";
 export type ConfigFieldType = "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json";
@@ -57,6 +57,17 @@ export interface FormPageConfigStructure {
     }>;
     propertiesConfig: Array<PropertyConfig>;
     submitSuccessRedirect?: string;
+    /**
+     * Custom success message template.
+     * @example successMessage: 'Record created successfully!'
+     * @example successMessage: '{entityName} created successfully!'
+     */
+    successMessage?: Template;
+    /**
+     * Custom error message template.
+     * @example errorMessage: 'Failed to create record'
+     */
+    errorMessage?: Template;
     columnsConfig?: IEntityPageColumnConfig;
 }
 export interface ListPageConfigStructure {
@@ -89,6 +100,13 @@ export interface ListPageConfigStructure {
         isIdentifier?: boolean;
         readOnly?: boolean;
         defaultValue?: any;
+        /**
+         * Template for rendering column values.
+         * Overrides default rendering when provided.
+         * @example template: '{firstName} {lastName}'
+         * @example template: { composite: ['firstName', 'lastName'], template: '{firstName} {lastName}' }
+         */
+        template?: Template;
         filterConfig?: {
             defaultOperator?: string;
             availableOperators?: string[];
@@ -100,6 +118,11 @@ export interface ListPageConfigStructure {
         };
         actions?: Array<{
             label?: string;
+            /**
+             * Dynamic action label template.
+             * @example template: 'Edit {name}'
+             */
+            template?: Template;
             icon?: string;
             url?: string;
             type?: 'button' | 'link' | 'modal';
@@ -109,6 +132,8 @@ export interface ListPageConfigStructure {
                 modalPageConfig: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure;
                 apiConfig?: IModalApiConfig;
                 submitSuccessRedirect?: string;
+                successMessage?: Template;
+                errorMessage?: Template;
             };
         }>;
         isLink?: boolean;
@@ -170,6 +195,12 @@ export interface DetailsPageConfigStructure {
 export type ModalPageConfig = IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure;
 export interface IPageAction {
     label: string;
+    /**
+     * Dynamic label template (evaluated from routeParams or record context).
+     * If provided, overrides static `label` field.
+     * Can be simple string or complex template object.
+     */
+    template?: Template;
     url?: string;
     icon?: string;
     type?: 'button' | 'dropdown';
@@ -180,15 +211,39 @@ export interface IPageAction {
         modalPageConfig?: ModalPageConfig;
         apiConfig?: IModalApiConfig;
         submitSuccessRedirect?: string;
+        /**
+         * Custom success message template.
+         * @example successMessage: '{entityName} created successfully!'
+         */
+        successMessage?: Template;
+        /**
+         * Custom error message template.
+         * @example errorMessage: 'Failed to create {entityName}'
+         */
+        errorMessage?: Template;
     };
 }
 export interface BasePageConfig {
     pageName?: string;
-    pageTitle: string;
+    /**
+     * Page title - can be static string or dynamic template.
+     * @example pageTitle: 'Dashboard'
+     * @example pageTitle: '{userName} Dashboard'
+     * @example pageTitle: { composite: ['userName', 'role'], template: '{userName} ({role}) - Dashboard' }
+     */
+    pageTitle: string | Template;
     pageType: PageType;
     routePattern?: string;
+    /**
+     * Breadcrumbs with template support.
+     * @example
+     * breadcrumbs: [
+     *   { label: 'Home', url: '/' },
+     *   { label: '{entityName}' }
+     * ]
+     */
     breadcrumbs?: Array<{
-        label: string;
+        label: string | Template;
         url?: string;
     }>;
     pageHeaderActions?: Array<IPageAction>;
@@ -224,7 +279,12 @@ export interface AccordionPageConfig extends BasePageConfig {
     pageType: "accordion";
     accordionPageConfig: {
         accordions: Record<string, {
-            pageTitle: string;
+            /**
+             * Accordion section title - supports templates.
+             * @example pageTitle: 'User Details'
+             * @example pageTitle: '{userName} Information'
+             */
+            pageTitle: string | Template;
             pageType: "list" | "form" | "details" | "dashboard";
             listPageConfig?: ListPageConfigStructure;
             formPageConfig?: FormPageConfigStructure;
@@ -255,22 +315,22 @@ export interface MenuPageConfig extends BasePageConfig {
 export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageConfig | DashboardPageConfig | AccordionPageConfig | MenuPageConfig;
 export declare function makeCustomPageConfig(options: CustomPageOptions): {
     pageName: string | undefined;
-    pageTitle: string;
+    pageTitle: Template;
     pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
     breadcrumbs: {
-        label: string;
+        label: string | Template;
         url?: string;
     }[];
     pageHeaderActions: IPageAction[];
 } | {
     listPageConfig: ListPageConfigStructure;
     pageName: string | undefined;
-    pageTitle: string;
+    pageTitle: Template;
     pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
     breadcrumbs: {
-        label: string;
+        label: string | Template;
         url?: string;
     }[];
     pageHeaderActions: IPageAction[];
@@ -280,22 +340,22 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     } | undefined;
     formPageConfig: FormPageConfigStructure;
     pageName: string | undefined;
-    pageTitle: string;
+    pageTitle: Template;
     pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
     breadcrumbs: {
-        label: string;
+        label: string | Template;
         url?: string;
     }[];
     pageHeaderActions: IPageAction[];
 } | {
     detailsPageConfig: DetailsPageConfigStructure;
     pageName: string | undefined;
-    pageTitle: string;
+    pageTitle: Template;
     pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
     breadcrumbs: {
-        label: string;
+        label: string | Template;
         url?: string;
     }[];
     pageHeaderActions: IPageAction[];
@@ -310,17 +370,22 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         timezone?: string;
     };
     pageName: string | undefined;
-    pageTitle: string;
+    pageTitle: Template;
     pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
     breadcrumbs: {
-        label: string;
+        label: string | Template;
         url?: string;
     }[];
     pageHeaderActions: IPageAction[];
 } | {
     accordionsPageConfig: Record<string, {
-        pageTitle: string;
+        /**
+         * Accordion section title - supports templates.
+         * @example pageTitle: 'User Details'
+         * @example pageTitle: '{userName} Information'
+         */
+        pageTitle: string | Template;
         pageType: "list" | "form" | "details" | "dashboard";
         listPageConfig?: ListPageConfigStructure;
         formPageConfig?: FormPageConfigStructure;
@@ -328,11 +393,11 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         dashboardPageConfig?: DashboardPageConfig["dashboardPageConfig"];
     }>;
     pageName: string | undefined;
-    pageTitle: string;
+    pageTitle: Template;
     pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
     breadcrumbs: {
-        label: string;
+        label: string | Template;
         url?: string;
     }[];
     pageHeaderActions: IPageAction[];
@@ -354,11 +419,11 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         }>;
     };
     pageName: string | undefined;
-    pageTitle: string;
+    pageTitle: Template;
     pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
     breadcrumbs: {
-        label: string;
+        label: string | Template;
         url?: string;
     }[];
     pageHeaderActions: IPageAction[];

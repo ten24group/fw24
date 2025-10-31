@@ -13,6 +13,15 @@ export declare class EntityUIConfigGen {
     registerCustomPage(options: CustomPageOptions): void;
     run(): Promise<void>;
     process(): Promise<void>;
+    /**
+     * Transform legacy flat config structure to new nested structure
+     * Supports backward compatibility by transforming old properties to new format
+     */
+    private transformLegacyConfig;
+    /**
+     * Check for deprecated configuration usage and emit warnings
+     */
+    private checkDeprecatedUsage;
     prepareServicesDirectories(): string[];
     scanAndLoadServices(serviceDirectories: Array<string>): Promise<Map<string, BaseEntityService<any>>>;
     scanServicesFromDirectory(servicesDir: string): Promise<Set<Function>>;

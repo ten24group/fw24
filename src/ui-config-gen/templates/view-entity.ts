@@ -3,13 +3,14 @@ import { BaseEntityService, EntitySchema, TIOSchemaAttribute, TIOSchemaAttribute
 import { camelCase, pascalCase } from "../../utils";
 import { formatEntityAttributesForDetail } from "./util";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
+import { DefaultLogger } from "../../logging";
 
 export type ViewEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string;
     entityNamePlural: string;
     CRUDApiPath?: string;
     properties: TIOSchemaAttributesMap<S>;
-    actions?: IEntityPageAction[];
+    actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
     /**
      * Breadcrumbs with template support
      * 
@@ -20,7 +21,7 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
      *   { label: '{teamName}' }  // Dynamic template from record data
      * ]
      */
-    breadcrumbs?: Array<{ label: Template; url?: string }>;
+    breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
     /**
      * Page title with template support
      * 
@@ -38,25 +39,22 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 ) => {
     const { entityName, CRUDApiPath, actions, breadcrumbs, pageTitle } = options;
     const entityNameLower = entityName.toLowerCase();
+    const entityNameCamel = camelCase(entityName);
     const entityNamePascalCase = pascalCase(entityName);
 
     const detailsPageConfig = makeViewEntityDetailConfig(options, entityService);
-
-    // Get primary identifier field for templates
-    const pkComposite = entityService.getEntityPrimaryIdPropertyName();
-
 
     // Default back action
     const defaultActions: IEntityPageAction[] = [
         {
             label: "Back",
-            template: `Back to ${entityNamePascalCase} Listing`,
+            template: `Back`,
             url: `/list-${entityNameLower}`,
             icon: "arrow-left"
         },
         {
             label: "Edit",
-            template: `Edit {${pkComposite}}`, // Dynamic template showing record ID
+            template: `Edit`, // Dynamic template showing record ID
             url: `/edit-${entityNameLower}/:id`,
             icon: "edit",
         }
@@ -90,6 +88,7 @@ export function makeViewEntityDetailConfig<S extends EntitySchema<string, string
             apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
         },
         propertiesConfig: [] as any[],
+        entityName,  // NEW: Add entityName to config for evaluation system
     }
 
     const formattedProps = formatEntityAttributesForDetail(Array.from(properties.values()), entityService);

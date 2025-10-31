@@ -17,7 +17,7 @@ export type CreateEntityPageOptions<S extends EntitySchema<string, string, strin
      *   { label: 'Create' }
      * ]
      */
-    breadcrumbs?: Array<{ label: Template; url?: string }>,
+    breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>,
     /**
      * Page title with template support
      * 
@@ -53,7 +53,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         pageHeaderActions: [
             {
                 label:  "Back",
-                template: `Back to ${entityNamePascalCase} Listing`,
+                template: `Back`,
                 url:    `/list-${entityNameLower}`
             }
         ], 
@@ -92,6 +92,7 @@ export function makeCreateEntityFormConfig<S extends EntitySchema<string, string
         },
         formButtons: [ "submit", "reset"] as const,
         propertiesConfig: formattedProps,
+        entityName,  // NEW: Add entityName to config for evaluation system
         ...(columnsConfig && { columnsConfig })
     };
 }

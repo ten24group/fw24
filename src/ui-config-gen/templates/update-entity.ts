@@ -2,12 +2,13 @@ import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap } from "../../e
 import { camelCase, pascalCase } from "../../utils";
 import { formatEntityAttributesForUpdate } from "./util";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
+import { DefaultLogger } from "../../logging";
 export type UpdateEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string,
     entityNamePlural: string,
     CRUDApiPath?: string,
     properties: TIOSchemaAttributesMap<S>,
-    actions?: IEntityPageAction[],
+    actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
     /**
      * Breadcrumbs with template support
      * 
@@ -19,7 +20,7 @@ export type UpdateEntityPageOptions<S extends EntitySchema<string, string, strin
      *   { label: 'Edit' }
      * ]
      */
-    breadcrumbs?: Array<{ label: Template; url?: string }>,
+    breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>,
     /**
      * Page title with template support
      * 
@@ -44,24 +45,22 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 
     const{ entityName, actions, breadcrumbs, CRUDApiPath, pageTitle, successMessage } = options;
     const entityNameLower = entityName.toLowerCase();
+    const entityNameCamel = camelCase(entityName);
     const entityNamePascalCase = pascalCase(entityName);
 
     const formPageConfig = makeUpdateEntityFormConfig(options, entityService);
-
-    // Get primary identifier field for templates
-    const pkComposite = entityService.getEntityPrimaryIdPropertyName();
 
     // Default back action with templates
     const defaultActions: IEntityPageAction[] = [
         {
             label:  "Back",
-            template: `Back to ${entityNamePascalCase} Listing`,
+            template: `Back`,
             url:    `/list-${entityNameLower}`
         },
         {
             icon: 'delete',
             label: `Delete`,
-            template: `Delete {${pkComposite}}`, // Dynamic label showing record ID
+            template: `Delete`, // Dynamic label showing record ID
             openInModal: true,
             modalConfig: {
                 modalType: 'confirm',
@@ -82,7 +81,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         {
             icon: 'copy',
             label: `Duplicate`,
-            template: `Duplicate {${pkComposite}}`, // Dynamic label showing record ID
+            template: `Duplicate`, // Dynamic label showing record ID
             openInModal: true,
             modalConfig: {
                 modalType: 'confirm',
@@ -149,6 +148,7 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
         },
         formButtons: [ "submit", "reset"],
         propertiesConfig: [] as any[],
+        entityName,  // NEW: Add entityName to config for evaluation system
     };
 
     const formattedProps = formatEntityAttributesForUpdate(Array.from(properties.values()), entityService);
