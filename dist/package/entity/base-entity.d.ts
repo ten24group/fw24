@@ -826,7 +826,7 @@ export interface IEntityConfigReference {
  *   relation: createEntityRelation<GameSchema>({
  *     entityName: 'game',
  *     type: 'one-to-many',
- *     identifiers: { source: 'teamId', target: 'teamId' }
+ *     identifiers: { source: 'homeTeamId', target: 'teamId' }
  *   }),
  *   relationConfig: {
  *     routePattern: '/list-game',
@@ -834,7 +834,7 @@ export interface IEntityConfigReference {
  *       entityName: 'game',
  *       pageType: 'list',
  *       overrideConfig: {
- *         defaultFilters: { teamId: ':teamId', status: 'upcoming' }
+ *         defaultFilters: { homeTeamId: ':teamId', status: 'upcoming' }
  *       }
  *     },
  *     modalWidth: '95%',

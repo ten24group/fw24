@@ -201,7 +201,7 @@ export function formatEntityAttributeForFormOrDetail(
             // For composite keys, add all identifiers as filters
             const defaultFilters: Record<string, any> = {};
             identifierMappings.forEach(mapping => {
-                defaultFilters[mapping.source] = `:${mapping.source}`;
+                defaultFilters[mapping.target] = `:${mapping.source}`;
             });
 
             // Generate fallback configuration for to-many (shows count)
