@@ -12,7 +12,7 @@ import { EntitySearchQuery } from '../search/types';
 import { makeEntitySearchIndexName } from '../search/search-utils';
 import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
-import { UpdateEntityOperators, createEntity, deleteEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
+import { UpdateEntityOperators, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
 import { EntitySchemaValidator } from "./entity-schema-validator";
 import { DatabaseError, EntityValidationError } from './errors';
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
@@ -1544,6 +1544,181 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             return deletedEntity;
         } catch (error: any) {
             throw new DatabaseError(`Failed to delete ${this.getEntityName()}: ${error.message}`);
+        }
+    }
+
+    /**
+     * Deletes multiple entities in a batch operation.
+     * 
+     * @param options - The options for batch deleting entities.
+     * @param options.identifiers - Array of entity identifiers to delete.
+     * @param options.concurrent - Optional number of concurrent batch operations to perform (default: 1).
+     * @param ctx - Optional execution context containing actor information.
+     * @returns A promise that resolves to an object containing any unprocessed items.
+     * 
+     * @example
+     * ```typescript
+     * // Delete multiple entities
+     * const result = await service.batchDelete({
+     *   identifiers: [
+     *     { id: 'item1' },
+     *     { id: 'item2' },
+     *     { id: 'item3' }
+     *   ],
+     *   concurrent: 2
+     * });
+     * 
+     * if (result.unprocessed.length > 0) {
+     *   console.log('Some items were not deleted:', result.unprocessed);
+     * }
+     * ```
+     */
+    public async batchDelete(options: {
+        identifiers: Array<EntityIdentifiersTypeFromSchema<S>>,
+        concurrent?: number
+    }, ctx?: ExecutionContext) {
+        try {
+            const { identifiers, concurrent = 1 } = options;
+            
+            this.logger.debug(`Called ~ batchDelete ~ entityName: ${this.getEntityName()} ~ count: ${identifiers.length}`, {
+                concurrent
+            });
+
+            const result = await deleteBatchEntity<S>({
+                ids: identifiers,
+                entityName: this.getEntityName(),
+                entityService: this,
+                actor: ctx?.actor,
+                tenant: ctx?.actor?.tenantId,
+                concurrent
+            });
+
+            // ElectroDB batch delete returns { unprocessed: Array }
+            const unprocessedCount = (result as any)?.unprocessed?.length || 0;
+            const dataCount = result.data?.length;
+            this.logger.debug(`Completed ~ batchDelete ~ entityName: ${this.getEntityName()} ~ processed: ${identifiers.length}, dataCount: ${dataCount}, unprocessed: ${unprocessedCount}`);
+
+            return result;
+        } catch (error: any) {
+            throw new DatabaseError(`Failed to batch delete ${this.getEntityName()}: ${error.message}`);
+        }
+    }
+
+    /**
+     * Deletes entities based on a query filter.
+     * This method queries for entities matching the filter and then batch deletes them.
+     * 
+     * @param options - The options for deleting by query.
+     * @param options.filters - The filter criteria to match entities for deletion.
+     * @param options.batchSize - The number of items to delete in each batch (default: 25).
+     * @param options.concurrent - Number of concurrent batch operations (default: 1).
+     * @param options.maxItems - Optional maximum number of items to delete (safety limit).
+     * @param ctx - Optional execution context containing actor information.
+     * @returns A promise that resolves to an object with deletion statistics.
+     * 
+     * @example
+     * ```typescript
+     * // Delete all inactive users
+     * const result = await userService.deleteByQuery({
+     *   filters: {
+     *     status: { eq: 'inactive' },
+     *     lastLoginAt: { lt: '2023-01-01' }
+     *   },
+     *   batchSize: 50,
+     *   maxItems: 1000
+     * });
+     * 
+     * console.log(`Deleted ${result.deletedCount} items, ${result.failedCount} failed`);
+     * ```
+     */
+    public async deleteByQuery(options: {
+        filters: EntityFilterCriteria<S>,
+        batchSize?: number,
+        concurrent?: number,
+        maxItems?: number
+    }, ctx?: ExecutionContext) {
+        try {
+            const { filters, batchSize = 25, concurrent = 1, maxItems } = options;
+            
+            this.logger.info(`Called ~ deleteByQuery ~ entityName: ${this.getEntityName()}`, {
+                filters,
+                batchSize,
+                maxItems
+            });
+
+            // Safety check: require filters to prevent accidental deletion of all records
+            if (!filters || isEmptyObjectDeep(filters)) {
+                throw new Error('deleteByQuery requires filters to prevent accidental deletion of all records. Use scan with explicit confirmation if you need to delete all records.');
+            }
+
+            let deletedCount = 0;
+            let failedCount = 0;
+            let cursor: string | null = null;
+            let totalProcessed = 0;
+
+            // Query and delete in batches
+            do {
+                // Fetch a batch of items to delete
+                const queryResult = await this.query({
+                    filters,
+                    pagination: {
+                        count: batchSize,
+                        cursor: cursor || undefined,
+                        order: 'asc',
+                        pager: 'cursor'
+                    }
+                }, ctx);
+
+                const itemsToDelete = queryResult.data;
+                
+                if (!itemsToDelete || itemsToDelete.length === 0) {
+                    break;
+                }
+
+                this.logger.debug(`Deleting batch of ${itemsToDelete.length} items`);
+
+                // Extract identifiers from the fetched items
+                const identifiers = itemsToDelete.map(item => 
+                    this.extractEntityIdentifiers(item as any)
+                ) as Array<EntityIdentifiersTypeFromSchema<S>>;
+
+                // Batch delete the items
+                const deleteResult = await this.batchDelete({
+                    identifiers,
+                    concurrent
+                }, ctx);
+
+                const unprocessedCount = (deleteResult as any)?.unprocessed?.length || 0;
+                const dataCount = deleteResult.data?.length;
+                const batchDeletedCount = identifiers.length - unprocessedCount;
+                deletedCount += batchDeletedCount;
+                failedCount += unprocessedCount;
+                totalProcessed += itemsToDelete.length;
+
+                this.logger.debug(`Batch result: ${batchDeletedCount} deleted, ${unprocessedCount} failed`);
+
+                // Check if we've hit the max items limit
+                if (maxItems && totalProcessed >= maxItems) {
+                    this.logger.warn(`Reached maxItems limit of ${maxItems}, stopping deletion`);
+                    break;
+                }
+
+                // Update cursor for next iteration
+                cursor = queryResult.cursor || null;
+
+            } while (cursor);
+
+            this.logger.info(`Completed ~ deleteByQuery ~ entityName: ${this.getEntityName()} ~ deleted: ${deletedCount}, failed: ${failedCount}`);
+
+            return {
+                deletedCount,
+                failedCount,
+                totalProcessed
+            };
+
+        } catch (error: any) {
+            this.logger.error(`Failed to delete by query for ${this.getEntityName()}:`, error);
+            throw new DatabaseError(`Failed to delete by query for ${this.getEntityName()}: ${error.message}`);
         }
     }
 

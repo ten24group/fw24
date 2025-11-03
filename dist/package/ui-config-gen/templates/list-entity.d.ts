@@ -74,6 +74,10 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
     }[];
     readonly pageHeaderActions: IEntityPageAction[];
     readonly listPageConfig: {
+        rowSelection?: {
+            enabled: boolean;
+            visibility?: import("../../entity").VisibilityConfig;
+        } | undefined;
         bulkActions?: readonly IEntityPageAction[] | IEntityPageAction[] | undefined;
         apiConfig: {
             search: {
@@ -121,6 +125,10 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
 };
 export default _default;
 export declare function makeViewEntityListConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>): {
+    rowSelection?: {
+        enabled: boolean;
+        visibility?: import("../../entity").VisibilityConfig;
+    } | undefined;
     bulkActions?: readonly IEntityPageAction[] | IEntityPageAction[] | undefined;
     apiConfig: {
         search: {

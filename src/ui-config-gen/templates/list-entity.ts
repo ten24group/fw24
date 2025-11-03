@@ -148,6 +148,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
         apiConfig,
         propertiesConfig: formattedProps,  // Row actions are merged into identifier field's actions
         entityName,  // Add entityName to config for evaluation system
-        ...(tableConfig?.bulkActions && { bulkActions: tableConfig.bulkActions })  // Include bulkActions if provided
+        ...(tableConfig?.bulkActions && { bulkActions: tableConfig.bulkActions }),  // Include bulkActions if provided
+        ...(tableConfig?.rowSelection && { rowSelection: tableConfig.rowSelection })  // Include rowSelection if provided
     };
 }

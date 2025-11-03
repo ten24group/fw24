@@ -359,6 +359,151 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	}
 
 	/**
+	 * BULK DELETE OPERATIONS
+	 * =======================
+	 * 
+	 * The following methods are commented out by default as they are dangerous operations
+	 * that can delete multiple records at once. To enable them in your controller:
+	 * 
+	 * 1. Uncomment the method(s) you need
+	 * 2. Add appropriate authorization checks
+	 * 3. Consider adding additional safety measures (e.g., dry-run mode, confirmation tokens)
+	 * 4. Add audit logging
+	 * 
+	 * Example usage in a specific entity controller:
+	 * 
+	 * ```typescript
+	 * export class MyEntityController extends BaseEntityController<MyEntitySchema> {
+	 *     // Uncomment and customize the bulk delete methods below
+	 * }
+	 * ```
+	 */
+
+	/**
+	 * Batch deletes multiple entities by their IDs.
+	 * 
+	 * ⚠️ DANGEROUS OPERATION - Enable only in specific controllers with proper authorization
+	 * 
+	 * @param {Request} req - The request object with body: { ids: Array<identifiers>, concurrent?: number }
+	 * @param {Response} res - The response object.
+	 * @returns {Promise<Response>} A promise that resolves with the response.
+	 * 
+	 * @example
+	 * // Request body:
+	 * {
+	 *   "ids": [
+	 *     { "id": "item1" },
+	 *     { "id": "item2" },
+	 *     { "id": "item3" }
+	 *   ],
+	 *   "concurrent": 2
+	 * }
+	 */
+	// ⚠️ DANGEROUS OPERATION
+	//  @Post('/batch-delete')
+	async batchDelete(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const { ids = [], concurrent = 1 } = req.body || {};
+	
+		const identifiers = ids.map((id: any) => this.getEntityService()?.extractEntityIdentifiers(id));
+	
+		const result = await this.getEntityService().batchDelete({
+			identifiers,
+			concurrent
+		}, ctx);
+
+		const unprocessedCount = (result as any)?.unprocessed?.length || 0;
+	
+		const deletedCount = identifiers.length - unprocessedCount;
+	
+		const response: any = {
+			deletedCount,
+			unprocessedCount: unprocessedCount,
+			message: `Successfully deleted ${deletedCount} ${this.getEntityName()} record(s)`
+		};
+	
+		if (unprocessedCount > 0) {
+			response.unprocessed = (result as any)?.unprocessed || [];
+			response.message += `, ${unprocessedCount} failed`;
+		}
+	
+		if (req.debugMode) {
+			response.req = req;
+		}
+	
+		return res.json(response);
+	}
+
+	/**
+	 * Deletes entities based on filter criteria.
+	 * 
+	 * ⚠️ EXTREMELY DANGEROUS OPERATION - Enable only in specific controllers with strict authorization
+	 * 
+	 * This endpoint queries for entities matching the filters and batch deletes them.
+	 * It includes safety measures like requiring filters and optional maxItems limit.
+	 * 
+	 * @param {Request} req - The request object with body containing filters and options
+	 * @param {Response} res - The response object.
+	 * @returns {Promise<Response>} A promise that resolves with the response.
+	 * 
+	 * @example
+	 * // Request body:
+	 * {
+	 *   "filters": {
+	 *     "status": { "eq": "inactive" },
+	 *     "lastLoginAt": { "lt": "2023-01-01" }
+	 *   },
+	 *   "batchSize": 50,
+	 *   "concurrent": 2,
+	 *   "maxItems": 1000
+	 * }
+	 */
+	// ⚠️ EXTREMELY DANGEROUS OPERATION
+	// @Post('/delete-by-query')
+	async deleteByQuery(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const { filters, batchSize = 25, concurrent = 1, maxItems } = req.body || {};
+	
+		const { dryRun = false } = req.queryStringParameters || {};
+
+		if (dryRun) {
+		    const previewResult = await this.getEntityService().query({ 
+					filters, 
+					pagination: { count: 1000, limit: 1000, pages: 'all' } 
+				}, 
+				ctx
+			);
+
+			return res.json({
+					message: 'Dry run mode - preview results [up to 1000 items]',
+					previewCount: previewResult.data.length,
+					preview: previewResult.data
+			});
+		}
+	
+		const result = await this.getEntityService().deleteByQuery({
+			filters,
+			batchSize,
+			concurrent,
+			maxItems
+		}, ctx);
+	
+		const response: any = {
+			...result,
+			message: `Successfully deleted ${result.deletedCount} ${this.getEntityName()} record(s)`
+		};
+	
+		if (result.failedCount > 0) {
+			response.message += `, ${result.failedCount} failed`;
+		}
+	
+		if (req.debugMode) {
+			response.req = req;
+			response.filters = filters;
+		}
+	
+		return res.json(response);
+	}
+
+	/**
 	 * Performs a custom query on the entity.
 	 * @param {Request} req - The request object.
 	 * @param {Response} res - The response object.

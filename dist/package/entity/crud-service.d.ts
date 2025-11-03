@@ -1,10 +1,10 @@
-import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
-import type { EntityQuery } from "./query-types";
 import { Authorizer } from "../authorize";
+import { Actor } from "../core/types/actor";
 import { EventDispatcher } from "../event";
 import { ILogger } from "../logging";
 import { type IValidator } from "../validation";
-import { Actor } from "../core/types/actor";
+import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
+import type { EntityQuery } from "./query-types";
 /**
  *
  * Serializer/formatter
@@ -258,6 +258,38 @@ export declare function deleteEntity<S extends EntitySchema<any, any, any>>(opti
         readonly delete: "delete";
         readonly duplicate: "duplicate";
     }>> | null;
+}>;
+/**
+ * Represents the arguments for batch deleting entities.
+ * @template Sch - The entity schema type.
+ * @template OpsSchema - The input schemas for entity operations.
+ */
+export interface DeleteBatchEntityArgs<Sch extends EntitySchema<any, any, any>, OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>> extends BaseEntityCrudArgs<Sch> {
+    /**
+     * Array of entity IDs to delete.
+     */
+    ids: Array<OpsSchema['delete']>;
+    /**
+     * Optional number of concurrent batch operations (default: 1).
+     */
+    concurrent?: number;
+}
+/**
+ * Deletes multiple entities in a batch operation.
+ * @param options - The options for deleting the entities.
+ * @returns The unprocessed items that couldn't be deleted.
+ */
+export declare function deleteBatchEntity<S extends EntitySchema<any, any, any>>(options: DeleteBatchEntityArgs<S>): Promise<{
+    data: import("electrodb").AllTableIndexCompositeAttributes<any, any, any, EntitySchema<any, any, any, {
+        readonly get: "get";
+        readonly list: "list";
+        readonly query: "query";
+        readonly create: "create";
+        readonly upsert: "upsert";
+        readonly update: "update";
+        readonly delete: "delete";
+        readonly duplicate: "duplicate";
+    }>>;
 }>;
 /**
  * Converts a filter object with eq operators to a simplified form.

@@ -1,7 +1,7 @@
 import type { EntityConfiguration } from "electrodb";
 import type { EntityInputValidations, EntityValidations } from "../validation";
 import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForRelation, HydrateOptionsMapForEntity, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
-import type { EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
+import type { EntityFilterCriteria, EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 import { ExecutionContext } from "../core/types/execution-context";
 import { DepIdentifier, IDIContainer } from "../interfaces";
 import { EntitySearchService } from '../search/services';
@@ -393,6 +393,84 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
             readonly delete: "delete";
             readonly duplicate: "duplicate";
         }>> | null;
+    }>;
+    /**
+     * Deletes multiple entities in a batch operation.
+     *
+     * @param options - The options for batch deleting entities.
+     * @param options.identifiers - Array of entity identifiers to delete.
+     * @param options.concurrent - Optional number of concurrent batch operations to perform (default: 1).
+     * @param ctx - Optional execution context containing actor information.
+     * @returns A promise that resolves to an object containing any unprocessed items.
+     *
+     * @example
+     * ```typescript
+     * // Delete multiple entities
+     * const result = await service.batchDelete({
+     *   identifiers: [
+     *     { id: 'item1' },
+     *     { id: 'item2' },
+     *     { id: 'item3' }
+     *   ],
+     *   concurrent: 2
+     * });
+     *
+     * if (result.unprocessed.length > 0) {
+     *   console.log('Some items were not deleted:', result.unprocessed);
+     * }
+     * ```
+     */
+    batchDelete(options: {
+        identifiers: Array<EntityIdentifiersTypeFromSchema<S>>;
+        concurrent?: number;
+    }, ctx?: ExecutionContext): Promise<{
+        data: import("electrodb").AllTableIndexCompositeAttributes<any, any, any, EntitySchema<any, any, any, {
+            readonly get: "get";
+            readonly list: "list";
+            readonly query: "query";
+            readonly create: "create";
+            readonly upsert: "upsert";
+            readonly update: "update";
+            readonly delete: "delete";
+            readonly duplicate: "duplicate";
+        }>>;
+    }>;
+    /**
+     * Deletes entities based on a query filter.
+     * This method queries for entities matching the filter and then batch deletes them.
+     *
+     * @param options - The options for deleting by query.
+     * @param options.filters - The filter criteria to match entities for deletion.
+     * @param options.batchSize - The number of items to delete in each batch (default: 25).
+     * @param options.concurrent - Number of concurrent batch operations (default: 1).
+     * @param options.maxItems - Optional maximum number of items to delete (safety limit).
+     * @param ctx - Optional execution context containing actor information.
+     * @returns A promise that resolves to an object with deletion statistics.
+     *
+     * @example
+     * ```typescript
+     * // Delete all inactive users
+     * const result = await userService.deleteByQuery({
+     *   filters: {
+     *     status: { eq: 'inactive' },
+     *     lastLoginAt: { lt: '2023-01-01' }
+     *   },
+     *   batchSize: 50,
+     *   maxItems: 1000
+     * });
+     *
+     * console.log(`Deleted ${result.deletedCount} items, ${result.failedCount} failed`);
+     * ```
+     */
+    deleteByQuery(options: {
+        filters: EntityFilterCriteria<S>;
+        batchSize?: number;
+        concurrent?: number;
+        maxItems?: number;
+    }, ctx?: ExecutionContext): Promise<{
+        deletedCount: number;
+        failedCount: number;
+        totalProcessed: number;
     }>;
     /**
      * Rebuilds all indexes for the entity by writing to the primary index.
