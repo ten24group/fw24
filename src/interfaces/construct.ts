@@ -1,7 +1,7 @@
 import type { ICertificate } from "aws-cdk-lib/aws-certificatemanager";
 import type { CloudFrontWebDistribution } from "aws-cdk-lib/aws-cloudfront";
 import type { CfnIdentityPool, UserPool, UserPoolClient } from "aws-cdk-lib/aws-cognito";
-import type { ISecurityGroup, ISubnet, Vpc } from "aws-cdk-lib/aws-ec2";
+import type { ISecurityGroup, ISubnet, Vpc, Instance } from "aws-cdk-lib/aws-ec2";
 import type { Role } from "aws-cdk-lib/aws-iam";
 import type { LayerVersion } from "aws-cdk-lib/aws-lambda";
 import type { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
@@ -54,6 +54,7 @@ export interface FW24ConstructOutput extends Record<string, any>{
     [OutputType.EFS]: Record<string,FileSystem>;
     [OutputType.AUTHORIZER]: Record<string,IAuthorizer>;
     [OutputType.RESOURCE]: Record<string,IResource>;
+    [OutputType.INSTANCE]: Record<string,Instance>;
     [key: string]: any;
 }
 
@@ -82,5 +83,6 @@ export enum OutputType   {
     CLUSTER = 'cluster',
     EFS = 'efs',
     AUTHORIZER = 'authorizer',
-    RESOURCE = 'resource'
+    RESOURCE = 'resource',
+    INSTANCE = 'instance'
 }
