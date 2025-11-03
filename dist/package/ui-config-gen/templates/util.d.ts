@@ -1,4 +1,5 @@
 import { BaseEntityService, FieldMetadata, TIOSchemaAttribute, IRelationFieldConfig } from "../../entity";
+import type { IEntityPageAction } from '../../entity/base-entity';
 /**
  * Generate smart fallback configuration for relation display when only ID is available.
  * Uses entity metadata (icon, entityNamePlural) to create user-friendly fallback text.
@@ -27,11 +28,83 @@ export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' 
     name: string;
     dataIndex: string;
     hidden?: boolean;
-    actions?: any[];
+    actions?: Array<IEntityPageAction>;
 };
-export declare function formatEntityAttributesForList(entityName: string, properties: TIOSchemaAttribute[], { CRUDApiPath, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail }: {
+export declare function formatEntityAttributesForList(entityName: string, properties: TIOSchemaAttribute[], { CRUDApiPath, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, customRowActions }: {
     CRUDApiPath?: string;
     excludeFromAdminUpdate?: boolean;
     excludeFromAdminDelete?: boolean;
     excludeFromAdminDetail?: boolean;
+    customRowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
 }): ListingPropConfig[];
+/**
+ * MERGE UTILITY FUNCTIONS
+ *
+ * These functions implement the identifier-based override pattern:
+ * - Defaults have standard identifiers (e.g., 'view', 'edit', 'delete')
+ * - Custom configs with same identifier override the default
+ * - New identifiers get added to the result
+ */
+/**
+ * Merge default buttons with custom buttons using identifier-based override.
+ *
+ * @param defaults - Default buttons (from generator)
+ * @param customs - Custom buttons (from entity schema)
+ * @returns Merged button array
+ */
+export declare function mergeButtons<T extends {
+    id?: string;
+}>(defaults: Array<T>, customs?: ReadonlyArray<T> | Array<T>): Array<T>;
+/**
+ * Merge default actions with custom actions using identifier-based override.
+ * Same logic as mergeButtons but semantically named for actions.
+ *
+ * @param defaults - Default actions (from generator)
+ * @param customs - Custom actions (from entity schema)
+ * @returns Merged action array
+ */
+export declare function mergeActions<T extends {
+    id?: string;
+}>(defaults: Array<T>, customs?: ReadonlyArray<T> | Array<T>): Array<T>;
+/**
+ * Merge field-level visibility/enablement/helpText/placeholder into base properties.
+ *
+ * @param baseProperties - Base properties from schema
+ * @param fieldOverrides - Field overrides from formConfig.fields
+ * @returns Properties with overrides merged
+ */
+export declare function mergeFieldVisibility<T extends {
+    name: string;
+}>(baseProperties: Array<T>, fieldOverrides?: ReadonlyArray<{
+    readonly name: string;
+    readonly visibility?: any;
+    readonly enablement?: any;
+    readonly helpText?: string;
+    readonly placeholder?: string;
+}> | Array<{
+    name: string;
+    visibility?: any;
+    enablement?: any;
+    helpText?: string;
+    placeholder?: string;
+}>): Array<T>;
+/**
+ * Merge column-level visibility/width/fixed into base properties.
+ *
+ * @param baseProperties - Base properties from schema
+ * @param columnOverrides - Column overrides from tableConfig.columns
+ * @returns Properties with column overrides merged
+ */
+export declare function mergeColumnVisibility<T extends {
+    name: string;
+}>(baseProperties: Array<T>, columnOverrides?: ReadonlyArray<{
+    readonly field: string;
+    readonly visibility?: any;
+    readonly width?: string | number;
+    readonly fixed?: 'left' | 'right';
+}> | Array<{
+    field: string;
+    visibility?: any;
+    width?: string | number;
+    fixed?: 'left' | 'right';
+}>): Array<T>;

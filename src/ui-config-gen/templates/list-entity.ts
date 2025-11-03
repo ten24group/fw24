@@ -1,14 +1,14 @@
-import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
 import { IEntityPageAction, Template } from "../../entity/base-entity";
 import { pascalCase } from "../../utils";
-import { formatEntityAttributesForList } from "./util";
+import { formatEntityAttributesForList, mergeColumnVisibility } from "./util";
 
 export type ListingPropConfig = {
     name: string,
     dataIndex: string,
     fieldType: "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json",
     hidden?: boolean,
-    actions?: any[]
+    actions?: Array<IEntityPageAction>
 };
 
 export type ListEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
@@ -51,6 +51,10 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
      * - 'asc' | 'desc': for DynamoDB mode (index order direction only)
      */
     defaultSort?: { readonly field: string; readonly order: 'asc' | 'desc' } | ReadonlyArray<{ readonly field: string; readonly order: 'asc' | 'desc' }> | 'asc' | 'desc',
+    /**
+     * Table configuration including row actions, bulk actions, row selection, and column visibility
+     */
+    tableConfig?: EntityListPageConfig['tableConfig'];
 }
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
@@ -93,7 +97,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     options: ListEntityPageOptions<S>
 ) {
 
-    const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch, defaultSort } = options;
+    const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch, defaultSort, tableConfig } = options;
     const entityNameLower = entityName.toLowerCase();
 
     const baseApiUrl = `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`;
@@ -126,16 +130,24 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
         ...(defaultSort && { defaultSort })
     };
 
-    const formattedProps = formatEntityAttributesForList(entityName, Array.from(properties.values()), {
+    // 1. Generate base properties from schema with merged row actions
+    let formattedProps = formatEntityAttributesForList(entityName, Array.from(properties.values()), {
         CRUDApiPath,
         excludeFromAdminUpdate,
         excludeFromAdminDelete,
-        excludeFromAdminDetail
+        excludeFromAdminDetail,
+        customRowActions: tableConfig?.rowActions
     });
+
+    // 2. Merge column visibility from tableConfig.columns
+    if (tableConfig?.columns) {
+        formattedProps = mergeColumnVisibility(formattedProps, tableConfig.columns);
+    }
 
     return {
         apiConfig,
-        propertiesConfig: formattedProps,
-        entityName  // NEW: Add entityName to config for evaluation system
+        propertiesConfig: formattedProps,  // Row actions are merged into identifier field's actions
+        entityName,  // Add entityName to config for evaluation system
+        ...(tableConfig?.bulkActions && { bulkActions: tableConfig.bulkActions })  // Include bulkActions if provided
     };
 }

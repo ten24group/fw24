@@ -7,6 +7,7 @@ import {
     EntityAttribute,
     IRelationFieldConfig
 } from "../../entity";
+import type { IEntityPageAction } from '../../entity/base-entity';
 import { DefaultLogger } from "../../logging";
 import { pascalCase } from "../../utils";
 import { makeCreateEntityFormConfig } from "./create-entity";
@@ -317,19 +318,21 @@ export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' 
     name: string,
     dataIndex: string,
     hidden?: boolean,
-    actions?: any[],
+    actions?: Array<IEntityPageAction>,
 };
 
 export function formatEntityAttributesForList(entityName: string, properties: TIOSchemaAttribute[], {
     CRUDApiPath,
     excludeFromAdminUpdate,
     excludeFromAdminDelete,
-    excludeFromAdminDetail
+    excludeFromAdminDetail,
+    customRowActions
 }: {
     CRUDApiPath?: string,
     excludeFromAdminUpdate?: boolean,
     excludeFromAdminDelete?: boolean,
     excludeFromAdminDetail?: boolean,
+    customRowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
 }) {
 
     const entityNameLower = entityName.toLowerCase();
@@ -347,23 +350,35 @@ export function formatEntityAttributesForList(entityName: string, properties: TI
             };
 
             if (prop.isIdentifier) {
+                // Build default row actions with IDs
+                const defaultActions: Array<IEntityPageAction> = [];
 
-                const actions = [];
+                if (!excludeFromAdminDetail) {
+                    defaultActions.push({
+                        id: 'view',
+                        icon: 'view',
+                        label: 'View',
+                        template: `View {${prop.id}}`,
+                        url: `/view-${entityNameLower}`
+                    });
+                }
 
                 if (!excludeFromAdminUpdate) {
-                    actions.push({
+                    defaultActions.push({
+                        id: 'edit',
                         icon: 'edit',
                         label: 'Edit',
-                        template: `Edit {${prop.id}}`, // Dynamic label showing which record
+                        template: `Edit {${prop.id}}`,
                         url: `/edit-${entityNameLower}`
                     });
                 }
 
                 if (!excludeFromAdminDelete) {
-                    actions.push({
+                    defaultActions.push({
+                        id: 'delete',
                         icon: 'delete',
                         label: 'Delete',
-                        template: `Delete {${prop.id}}`, // Dynamic label showing which record
+                        template: `Delete {${prop.id}}`,
                         openInModal: true,
                         modalConfig: {
                             modalType: 'confirm',
@@ -383,18 +398,164 @@ export function formatEntityAttributesForList(entityName: string, properties: TI
                     });
                 }
 
-                if (!excludeFromAdminDetail) {
-                    actions.push({
-                        icon: 'view',
-                        label: 'View',
-                        template: `View {${prop.id}}`, // Dynamic label showing which record
-                        url: `/view-${entityNameLower}`
-                    });
-                }
-
-                propConfig.actions = actions;
+                // Merge custom row actions using identifier-based override
+                propConfig.actions = customRowActions 
+                    ? mergeActions(defaultActions, customRowActions)
+                    : defaultActions;
             }
 
             return propConfig;
         });
+}
+
+/**
+ * MERGE UTILITY FUNCTIONS
+ * 
+ * These functions implement the identifier-based override pattern:
+ * - Defaults have standard identifiers (e.g., 'view', 'edit', 'delete')
+ * - Custom configs with same identifier override the default
+ * - New identifiers get added to the result
+ */
+
+/**
+ * Merge default buttons with custom buttons using identifier-based override.
+ * 
+ * @param defaults - Default buttons (from generator)
+ * @param customs - Custom buttons (from entity schema)
+ * @returns Merged button array
+ */
+export function mergeButtons<T extends { id?: string }>(
+    defaults: Array<T>,
+    customs: ReadonlyArray<T> | Array<T> = []
+): Array<T> {
+    const customsArray = [...customs];  // Convert to mutable array
+    const customMap = new Map(
+        customsArray.filter(c => c.id).map(c => [c.id, c])
+    );
+    
+    // Start with defaults, replace if custom has same id
+    const merged = defaults.map(defaultBtn => 
+        defaultBtn.id && customMap.has(defaultBtn.id)
+            ? customMap.get(defaultBtn.id)!  // Override
+            : defaultBtn
+    );
+    
+    // Add custom buttons that don't override defaults
+    customsArray.forEach(customBtn => {
+        if (!customBtn.id || !defaults.some(d => d.id === customBtn.id)) {
+            merged.push(customBtn);  // Add new
+        }
+    });
+    
+    return merged;
+}
+
+/**
+ * Merge default actions with custom actions using identifier-based override.
+ * Same logic as mergeButtons but semantically named for actions.
+ * 
+ * @param defaults - Default actions (from generator)
+ * @param customs - Custom actions (from entity schema)
+ * @returns Merged action array
+ */
+export function mergeActions<T extends { id?: string }>(
+    defaults: Array<T>,
+    customs: ReadonlyArray<T> | Array<T> = []
+): Array<T> {
+    return mergeButtons(defaults, [...customs]);  // Spread to handle both readonly and mutable
+}
+
+/**
+ * Merge field-level visibility/enablement/helpText/placeholder into base properties.
+ * 
+ * @param baseProperties - Base properties from schema
+ * @param fieldOverrides - Field overrides from formConfig.fields
+ * @returns Properties with overrides merged
+ */
+export function mergeFieldVisibility<T extends { name: string }>(
+    baseProperties: Array<T>,
+    fieldOverrides: ReadonlyArray<{
+        readonly name: string;
+        readonly visibility?: any;
+        readonly enablement?: any;
+        readonly helpText?: string;
+        readonly placeholder?: string;
+    }> | Array<{
+        name: string;
+        visibility?: any;
+        enablement?: any;
+        helpText?: string;
+        placeholder?: string;
+    }> = []
+): Array<T> {
+    const overrideMap = new Map(
+        [...fieldOverrides].map(f => [f.name, f])
+    );
+    
+    // Validation: Warn if field override references non-existent field
+    fieldOverrides.forEach(override => {
+        if (!baseProperties.some(p => p.name === override.name)) {
+            DefaultLogger.warn(`Field override "${override.name}" not found in schema properties. This override will be ignored.`);
+        }
+    });
+    
+    return baseProperties.map(prop => {
+        const override = overrideMap.get(prop.name);
+        
+        if (!override) return prop;
+        
+        return {
+            ...prop,
+            ...(override.visibility !== undefined && { visibility: override.visibility }),
+            ...(override.enablement !== undefined && { enablement: override.enablement }),
+            ...(override.helpText !== undefined && { helpText: override.helpText }),
+            ...(override.placeholder !== undefined && { placeholder: override.placeholder })
+        };
+    });
+}
+
+/**
+ * Merge column-level visibility/width/fixed into base properties.
+ * 
+ * @param baseProperties - Base properties from schema
+ * @param columnOverrides - Column overrides from tableConfig.columns
+ * @returns Properties with column overrides merged
+ */
+export function mergeColumnVisibility<T extends { name: string }>(
+    baseProperties: Array<T>,
+    columnOverrides: ReadonlyArray<{
+        readonly field: string;
+        readonly visibility?: any;
+        readonly width?: string | number;
+        readonly fixed?: 'left' | 'right';
+    }> | Array<{
+        field: string;
+        visibility?: any;
+        width?: string | number;
+        fixed?: 'left' | 'right';
+    }> = []
+): Array<T> {
+    const overrideMap = new Map(
+        [...columnOverrides].map(c => [c.field, c])
+    );
+    
+    // Validation: Warn if column override references non-existent column
+    columnOverrides.forEach(override => {
+        if (!baseProperties.some(p => p.name === override.field)) {
+            DefaultLogger.warn(`Column override "${override.field}" not found in schema properties. This override will be ignored.`);
+        }
+    });
+    
+    return baseProperties.map(prop => {
+        const override = overrideMap.get(prop.name);
+        
+        if (!override) return prop;
+        
+        return {
+            ...prop,
+            ...(override.visibility !== undefined && { visibility: override.visibility }),
+            ...(override.width !== undefined && { width: override.width }),
+            ...(override.fixed !== undefined && { fixed: override.fixed })
+        };
+    });
 }

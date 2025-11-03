@@ -53,6 +53,7 @@ export declare const AuditCustomPageConfigs: {
                 readonly search?: undefined;
                 readonly database?: undefined;
             };
+            readonly bulkActions?: readonly import("../../../entity").IEntityPageAction[] | import("../../../entity").IEntityPageAction[] | undefined;
             readonly propertiesConfig: import("../../../ui-config-gen/templates/util").ListingPropConfig[];
             readonly entityName: string;
         };

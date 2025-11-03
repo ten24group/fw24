@@ -1,4 +1,4 @@
-import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, EntityViewPageConfig } from "../../entity";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
 export type ViewEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string;
@@ -32,6 +32,10 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
      */
     pageTitle?: Template;
     columnsConfig?: IEntityPageColumnConfig;
+    /**
+     * Field-level visibility overrides
+     */
+    fields?: EntityViewPageConfig['fields'];
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ViewEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     readonly pageTitle: Template;

@@ -1181,6 +1181,12 @@ export type VisibilityConfig = InlineVisibilityCondition | CustomVisibilityCondi
  * Note: items cannot have nested items (max 1 level of nesting)
  */
 export interface IEntityPageAction {
+    /**
+     * Unique identifier for this action. Used for override matching in merge logic.
+     * When defaults are generated, they use standard IDs like 'view', 'edit', 'delete'.
+     * Custom actions with the same ID will override defaults.
+     */
+    id?: string;
     label: string;
     /**
      * Dynamic label template (evaluated from routeParams or record context).
@@ -1669,9 +1675,13 @@ export interface EntityListPageConfig {
         readonly columns?: ReadonlyArray<{
             field: string;
             visibility?: VisibilityConfig;
+            width?: string | number;
+            fixed?: 'left' | 'right';
         }> | Array<{
             field: string;
             visibility?: VisibilityConfig;
+            width?: string | number;
+            fixed?: 'left' | 'right';
         }>;
     };
 }
@@ -1692,9 +1702,11 @@ export interface EntityViewPageConfig {
     readonly fields?: ReadonlyArray<{
         name: string;
         visibility?: VisibilityConfig;
+        helpText?: string;
     }> | Array<{
         name: string;
         visibility?: VisibilityConfig;
+        helpText?: string;
     }>;
 }
 /**
@@ -1713,11 +1725,13 @@ export interface EntityEditPageConfig {
     readonly columnsConfig?: IEntityPageColumnConfig;
     readonly formConfig?: {
         readonly buttons?: ReadonlyArray<{
+            id?: string;
             text: string;
             action: 'submit' | 'reset' | 'cancel';
             url?: string;
             visibility?: VisibilityConfig;
         }> | Array<{
+            id?: string;
             text: string;
             action: 'submit' | 'reset' | 'cancel';
             url?: string;
@@ -1727,10 +1741,14 @@ export interface EntityEditPageConfig {
             name: string;
             visibility?: VisibilityConfig;
             enablement?: VisibilityConfig;
+            helpText?: string;
+            placeholder?: string;
         }> | Array<{
             name: string;
             visibility?: VisibilityConfig;
             enablement?: VisibilityConfig;
+            helpText?: string;
+            placeholder?: string;
         }>;
     };
 }
@@ -1749,11 +1767,13 @@ export interface EntityCreatePageConfig {
     readonly columnsConfig?: IEntityPageColumnConfig;
     readonly formConfig?: {
         readonly buttons?: ReadonlyArray<{
+            id?: string;
             text: string;
             action: 'submit' | 'reset' | 'cancel';
             url?: string;
             visibility?: VisibilityConfig;
         }> | Array<{
+            id?: string;
             text: string;
             action: 'submit' | 'reset' | 'cancel';
             url?: string;
@@ -1762,9 +1782,13 @@ export interface EntityCreatePageConfig {
         readonly fields?: ReadonlyArray<{
             name: string;
             visibility?: VisibilityConfig;
+            helpText?: string;
+            placeholder?: string;
         }> | Array<{
             name: string;
             visibility?: VisibilityConfig;
+            helpText?: string;
+            placeholder?: string;
         }>;
     };
 }

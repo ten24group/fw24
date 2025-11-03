@@ -1,6 +1,6 @@
-import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { BaseEntityService, EntityEditPageConfig, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
-import { formatEntityAttributesForUpdate } from "./util";
+import { formatEntityAttributesForUpdate, mergeButtons, mergeFieldVisibility } from "./util";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
 import { DefaultLogger } from "../../logging";
 export type UpdateEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
@@ -36,6 +36,10 @@ export type UpdateEntityPageOptions<S extends EntitySchema<string, string, strin
      */
     successMessage?: Template,
     columnsConfig?: IEntityPageColumnConfig,
+    /**
+     * Form configuration including custom buttons and field-level visibility
+     */
+    formConfig?: EntityEditPageConfig['formConfig'];
 };
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
@@ -105,21 +109,18 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     const pageHeaderActions = [...defaultActions, ...(actions || [])];
 
 
+    // Add cancel button to the merged form buttons
+    const cancelButton = { id: 'cancel', text: 'Cancel', action: 'cancel' as const, url: `/list-${entityNameLower}` };
+    const finalFormButtons = [...formPageConfig.formButtons, cancelButton];
+
     return {
         pageTitle: pageTitle || `Update ${entityNamePascalCase}`,
         pageType:   'form',
         breadcrumbs: breadcrumbs || [],
         pageHeaderActions: pageHeaderActions,
         formPageConfig: {
-            ...formPageConfig, 
-            formButtons: [
-                "submit", 
-                "reset", 
-                {
-                    text:  "Cancel",
-                    url:    `/list-${entityNameLower}`
-                }
-            ],
+            ...formPageConfig,
+            formButtons: finalFormButtons,  // Use merged buttons with cancel added
             submitSuccessRedirect: `/list-${entityNameLower}`,
             ...(successMessage && { successMessage })
         }
@@ -131,9 +132,28 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
     entityService: BaseEntityService<S>
 ){
 
-    const{ entityName, properties, CRUDApiPath } = options;
+    const{ entityName, properties, CRUDApiPath, formConfig } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
+
+    // 1. Generate base properties from schema
+    let formattedProps = formatEntityAttributesForUpdate(Array.from(properties.values()), entityService);
+
+    // 2. Merge field-level visibility/enablement/helpText/placeholder from formConfig.fields
+    if (formConfig?.fields) {
+        formattedProps = mergeFieldVisibility(formattedProps, formConfig.fields);
+    }
+
+    // 3. Build default form buttons with IDs
+    const defaultButtons = [
+        { id: 'submit', text: 'Submit', action: 'submit' as const },
+        { id: 'reset', text: 'Reset', action: 'reset' as const }
+    ];
+
+    // 4. Merge custom buttons from formConfig.buttons (override/add pattern)
+    const finalButtons = formConfig?.buttons
+        ? mergeButtons(defaultButtons, formConfig.buttons as any[])
+        : defaultButtons;
 
     const formPageConfig: any = {
         apiConfig: {
@@ -146,14 +166,10 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
             responseKey: entityNameCamel,
             apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
         },
-        formButtons: [ "submit", "reset"],
-        propertiesConfig: [] as any[],
-        entityName,  // NEW: Add entityName to config for evaluation system
+        formButtons: finalButtons,  // Merged buttons
+        propertiesConfig: formattedProps,  // Properties with field visibility merged
+        entityName,  // Add entityName to config for evaluation system
     };
-
-    const formattedProps = formatEntityAttributesForUpdate(Array.from(properties.values()), entityService);
-
-    formPageConfig.propertiesConfig.push(...formattedProps);
 
     // Add columnsConfig if provided
     if (options.columnsConfig) {

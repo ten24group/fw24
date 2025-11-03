@@ -1,4 +1,4 @@
-import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { BaseEntityService, EntityEditPageConfig, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
 export type UpdateEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string;
@@ -39,6 +39,10 @@ export type UpdateEntityPageOptions<S extends EntitySchema<string, string, strin
      */
     successMessage?: Template;
     columnsConfig?: IEntityPageColumnConfig;
+    /**
+     * Form configuration including custom buttons and field-level visibility
+     */
+    formConfig?: EntityEditPageConfig['formConfig'];
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: UpdateEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     pageTitle: Template;

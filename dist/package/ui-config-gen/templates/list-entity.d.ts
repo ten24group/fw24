@@ -1,11 +1,11 @@
-import { EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
 import { IEntityPageAction, Template } from "../../entity/base-entity";
 export type ListingPropConfig = {
     name: string;
     dataIndex: string;
     fieldType: "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json";
     hidden?: boolean;
-    actions?: any[];
+    actions?: Array<IEntityPageAction>;
 };
 export type ListEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string;
@@ -59,6 +59,10 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
         readonly field: string;
         readonly order: 'asc' | 'desc';
     }> | 'asc' | 'desc';
+    /**
+     * Table configuration including row actions, bulk actions, row selection, and column visibility
+     */
+    tableConfig?: EntityListPageConfig['tableConfig'];
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>) => {
     readonly pageTitle: Template;
@@ -70,6 +74,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
     }[];
     readonly pageHeaderActions: IEntityPageAction[];
     readonly listPageConfig: {
+        bulkActions?: readonly IEntityPageAction[] | IEntityPageAction[] | undefined;
         apiConfig: {
             search: {
                 defaultSort?: "desc" | "asc" | {
@@ -116,6 +121,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
 };
 export default _default;
 export declare function makeViewEntityListConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>): {
+    bulkActions?: readonly IEntityPageAction[] | IEntityPageAction[] | undefined;
     apiConfig: {
         search: {
             defaultSort?: "desc" | "asc" | {

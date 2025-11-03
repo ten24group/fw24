@@ -175,6 +175,7 @@ export class EntityUIConfigGen {
                     // Use new nested config if available, fallback to old
                     breadcrumbs: entitySchema.model.createPageConfig?.breadcrumbs || entitySchema.model.createPageBreadcrumbs,
                     columnsConfig: entitySchema.model.createPageConfig?.columnsConfig || entitySchema.model.createPageColumnsConfig,
+                    formConfig: entitySchema.model.createPageConfig?.formConfig,
                 }, service);
                 entityConfigs[ `create-${entityName.toLowerCase()}` ] = createConfig;
             }
@@ -189,6 +190,7 @@ export class EntityUIConfigGen {
                     actions: entitySchema.model.editPageConfig?.actions || entitySchema.model.editPageActions,
                     breadcrumbs: entitySchema.model.editPageConfig?.breadcrumbs || entitySchema.model.editPageBreadcrumbs,
                     columnsConfig: entitySchema.model.editPageConfig?.columnsConfig || entitySchema.model.editPageColumnsConfig,
+                    formConfig: entitySchema.model.editPageConfig?.formConfig,
                 }, service);
                 entityConfigs[ `edit-${entityName.toLowerCase()}` ] = updateConfig;
             }
@@ -208,6 +210,7 @@ export class EntityUIConfigGen {
                     pageHeaderActions: entitySchema.model.listPageConfig?.actions || entitySchema.model.listPageActions,
                     breadcrumbs: entitySchema.model.listPageConfig?.breadcrumbs || entitySchema.model.listPageBreadcrumbs,
                     defaultSort: entitySchema.model.listPageConfig?.defaultSort || entitySchema.model.listPageDefaultSort,
+                    tableConfig: entitySchema.model.listPageConfig?.tableConfig,
                 });
                 entityConfigs[ `list-${entityName.toLowerCase()}` ] = listConfig;
             }
@@ -222,6 +225,7 @@ export class EntityUIConfigGen {
                     actions: entitySchema.model.viewPageConfig?.actions || entitySchema.model.viewPageActions,
                     breadcrumbs: entitySchema.model.viewPageConfig?.breadcrumbs || entitySchema.model.viewPageBreadcrumbs,
                     columnsConfig: entitySchema.model.viewPageConfig?.columnsConfig || entitySchema.model.viewPageColumnsConfig,
+                    fields: entitySchema.model.viewPageConfig?.fields,
                 }, service);
                 entityConfigs[ `view-${entityName.toLowerCase()}` ] = viewConfig;
             }
