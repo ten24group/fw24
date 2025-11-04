@@ -59,6 +59,7 @@ export declare class QueueConstruct implements FW24Construct {
     dependencies: string[];
     output: FW24ConstructOutput;
     mainStack: Stack;
+    private queueMap;
     /**
      * Default constructor to initialize the stack configuration.
      * @param queueConstructConfig The configuration for the QueueConstruct.
@@ -69,8 +70,13 @@ export declare class QueueConstruct implements FW24Construct {
      */
     construct(): Promise<void>;
     /**
-     * Registers a queue using the provided queue information.
+     * Phase 2: Creates queue without lambda and registers its URL
      * @param queueInfo The information about the queue to be registered.
      */
-    private registerQueue;
+    private createAndRegisterQueue;
+    /**
+     * Phase 3: Creates lambda function for the queue (after all queues are registered)
+     * @param queueInfo The information about the queue to be registered.
+     */
+    private createQueueLambda;
 }

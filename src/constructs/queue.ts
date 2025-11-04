@@ -10,9 +10,11 @@ import { QueueLambda } from "./queue-lambda";
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { LogDuration, createLogger } from "../logging";
 import { DynamoDBConstruct } from "./dynamodb";
-import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { IConstructConfig } from "../interfaces/construct-config";
 import { VpcConstruct } from "./vpc";
+import { LambdaFunction } from "./lambda-function";
+import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 
 /**
  * Represents the configuration for a queue construct.
@@ -74,6 +76,7 @@ export class QueueConstruct implements FW24Construct {
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;
+    private queueMap = new Map<string, Queue>();
 
     /**
      * Default constructor to initialize the stack configuration.
@@ -97,8 +100,14 @@ export class QueueConstruct implements FW24Construct {
             this.queueConstructConfig.queuesDirectory = "./src/queues";
         }
 
-        // register the queues
-        await Helper.registerHandlers(this.queueConstructConfig.queuesDirectory, this.registerQueue);
+        // Two-phase construction to handle cross-queue references:
+        // Phase 1: Collect all queue descriptors
+        const queueDescriptors: HandlerDescriptor[] = [];
+        const collectQueue = (queueInfo: HandlerDescriptor) => {
+            queueDescriptors.push(queueInfo);
+        };
+
+        await Helper.registerHandlers(this.queueConstructConfig.queuesDirectory, collectQueue);
 
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
@@ -108,19 +117,29 @@ export class QueueConstruct implements FW24Construct {
                 const queuesDirectory = module.getQueuesDirectory();
                 if(queuesDirectory != ''){
                     this.logger.debug("Load queues from module base-path: ", basePath);
-                    await Helper.registerQueuesFromModule(module, this.registerQueue);
+                    await Helper.registerQueuesFromModule(module, collectQueue);
                 }
             }
         } else {
             this.logger.debug("SQS stack: construct: app has no modules ");
         }
+
+        // Phase 2: Create queues without lambdas and register their URLs
+        for (const queueInfo of queueDescriptors) {
+            this.createAndRegisterQueue(queueInfo);
+        }
+
+        // Phase 3: Create lambda functions for queues (now all queue URLs are registered)
+        for (const queueInfo of queueDescriptors) {
+            this.createQueueLambda(queueInfo);
+        }
     }
 
     /**
-     * Registers a queue using the provided queue information.
+     * Phase 2: Creates queue without lambda and registers its URL
      * @param queueInfo The information about the queue to be registered.
      */
-    private registerQueue = (queueInfo: HandlerDescriptor) => {
+    private createAndRegisterQueue = (queueInfo: HandlerDescriptor) => {
         queueInfo.handlerInstance = new queueInfo.handlerClass();
         this.logger.debug(":::Queue instance: ", queueInfo.fileName, queueInfo.filePath);
         
@@ -128,8 +147,9 @@ export class QueueConstruct implements FW24Construct {
         const queueConfig = queueInfo.handlerInstance.queueConfig || {};
         const queueProps = {...this.queueConstructConfig.queueProps, ...queueConfig.queueProps};
 
-        this.logger.info(`:::Registering queue ${queueName} from ${queueInfo.filePath}/${queueInfo.fileName}`);
+        this.logger.info(`:::Creating queue ${queueName} from ${queueInfo.filePath}/${queueInfo.fileName}`);
 
+        // Create queue without lambda (lambdaFunctionProps: undefined)
         const queue = new QueueLambda(this.mainStack, queueName + "-queue", {
             queueName: queueName,
             queueProps: queueProps,
@@ -141,19 +161,58 @@ export class QueueConstruct implements FW24Construct {
                 maxBatchingWindow: Duration.seconds(queueConfig?.maxBatchingWindowSeconds ?? 5),
                 ...queueConfig?.sqsEventSourceProps,
             },
-            subscriptions: queueConfig?.subscriptions,            
-            lambdaFunctionProps: {
-                entry: queueInfo.filePath + "/" + queueInfo.fileName,
-                environmentVariables: this.fw24.resolveEnvVariables(queueConfig.env),
-                resourceAccess: queueConfig?.resourceAccess,
-                functionTimeout: queueConfig?.functionTimeout || this.fw24.getConfig().functionTimeout,
-                policies: queueConfig?.policies,
-                functionProps: {...this.queueConstructConfig.functionProps, ...queueConfig?.functionProps},
-                logRemovalPolicy: queueConfig?.logRemovalPolicy,
-                logRetentionDays: queueConfig?.logRetentionDays,
-            }
+            subscriptions: queueConfig?.subscriptions,
+            lambdaFunctionProps: undefined  // Don't create lambda yet
         }) as Queue;
         
+        // Register queue URL immediately so other lambdas can reference it
         this.fw24.setConstructOutput(this, queueName, queue, OutputType.QUEUE, 'queueName');
+        
+        // Store queue for phase 3
+        this.queueMap.set(queueName, queue);
+    }
+
+    /**
+     * Phase 3: Creates lambda function for the queue (after all queues are registered)
+     * @param queueInfo The information about the queue to be registered.
+     */
+    private createQueueLambda = (queueInfo: HandlerDescriptor) => {
+        const queueName = queueInfo.handlerInstance.queueName;
+        const queueConfig = queueInfo.handlerInstance.queueConfig || {};
+
+        this.logger.info(`:::Creating lambda for queue ${queueName}`);
+
+        // Get the already-created queue
+        const queue = this.queueMap.get(queueName);
+        if (!queue) {
+            this.logger.error(`Queue ${queueName} not found in queueMap`);
+            return;
+        }
+
+        // Create lambda function separately using LambdaFunction construct
+        const queueFunction = new LambdaFunction(this.mainStack, `${queueName}-queue-lambda`, {
+            entry: queueInfo.filePath + "/" + queueInfo.fileName,
+            environmentVariables: this.fw24.resolveEnvVariables(queueConfig.env),
+            resourceAccess: queueConfig?.resourceAccess,
+            functionTimeout: queueConfig?.functionTimeout || this.fw24.getConfig().functionTimeout,
+            policies: queueConfig?.policies,
+            functionProps: {...this.queueConstructConfig.functionProps, ...queueConfig?.functionProps},
+            logRemovalPolicy: queueConfig?.logRemovalPolicy,
+            logRetentionDays: queueConfig?.logRetentionDays,
+        }) as NodejsFunction;
+
+        // Attach queue as event source
+        const isFifoQueue = Helper.isFifoQueueProps({ 
+            ...(queueConfig.queueProps || {}), 
+            queueName: queueName 
+        });
+        
+        const eventSourceProps = isFifoQueue ? {} : {
+            batchSize: queueConfig.sqsEventSourceProps?.batchSize ?? 1,
+            maxBatchingWindow: queueConfig.sqsEventSourceProps?.maxBatchingWindow ?? Duration.seconds(5),
+            reportBatchItemFailures: queueConfig.sqsEventSourceProps?.reportBatchItemFailures ?? true,
+        };
+        
+        queueFunction.addEventSource(new SqsEventSource(queue, eventSourceProps));
     }
 }
