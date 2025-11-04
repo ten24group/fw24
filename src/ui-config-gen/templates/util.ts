@@ -7,11 +7,48 @@ import {
     EntityAttribute,
     IRelationFieldConfig
 } from "../../entity";
+import type { IEntityPageAction } from '../../entity/base-entity';
 import { DefaultLogger } from "../../logging";
 import { pascalCase } from "../../utils";
 import { makeCreateEntityFormConfig } from "./create-entity";
 import { makeViewEntityListConfig } from "./list-entity";
 import { makeViewEntityDetailConfig } from "./view-entity";
+
+/**
+ * Generate smart fallback configuration for relation display when only ID is available.
+ * Uses entity metadata (icon, entityNamePlural) to create user-friendly fallback text.
+ * 
+ * @param entityName - Related entity name (e.g., 'team')
+ * @param idField - ID field name (e.g., 'teamId')
+ * @param entityService - Entity service to get metadata from
+ * @returns Fallback configuration with template, linkText, and modalButtonText
+ * 
+ * @example
+ * // For a team relation
+ * generateRelationFallback('team', 'teamId', teamService)
+ * // Returns: {
+ * //   template: 'Team: {teamId}',
+ * //   linkText: 'View Team',
+ * //   modalButtonText: 'Team Details'
+ * // }
+ */
+export function generateRelationFallback(
+    entityName: string,
+    idField: string,
+    entityService?: BaseEntityService<any>
+): NonNullable<IRelationFieldConfig['displayConfig']>['fallback'] {
+    // Try to get entity metadata for better fallback text
+    const entityMetadata = entityService?.getEntitySchema?.().model;
+    const displayName = entityMetadata?.entityNamePlural || pascalCase(entityName);
+    
+    return {
+        // Backend pre-generates fallback template (intentionally string-only, not Template type)
+        // Frontend will use this when only ID is available
+        template: `${displayName}: {${idField}}`,  // e.g., "Team: {teamId}"
+        linkText: `View ${displayName}`,           // e.g., "View Team"
+        modalButtonText: `${displayName} Details`  // e.g., "Team Details"
+    };
+}
 
 export function formatEntityAttributeForFormOrDetail(
     thisProp: TIOSchemaAttribute,
@@ -96,11 +133,27 @@ export function formatEntityAttributeForFormOrDetail(
         // Check if user provided custom UI config in relationConfig (optional override)
         const userRelationConfig = thisProp.relationConfig as IRelationFieldConfig | undefined;
 
+        // Get related entity service for metadata (icon, etc.)
+        const relatedEntityService = entityService.hasEntityServiceByEntityName(entityName) 
+            ? entityService.getEntityServiceByEntityName(entityName)
+            : undefined;
+        
+        // Get entity metadata for icon and fallback generation
+        const relatedEntityMetadata = relatedEntityService?.getEntitySchema?.().model;
+        const defaultIcon = relatedEntityMetadata?.metadata?.icon;
+
         if (relationType.endsWith('to-one')) {
             // TO-ONE: Show value as link + modal icon
             // Route pattern: Use custom (from relationConfig) or default to /view-{entity}/:targetId
             const routePattern = userRelationConfig?.routePattern 
                 || `/view-${entityNameLower}/:${primaryIdentifier.target}`;
+
+            // Generate fallback configuration for when only ID is available
+            const fallbackConfig = generateRelationFallback(
+                entityName,
+                primaryIdentifier.source,
+                relatedEntityService
+            );
 
             const generatedRelationConfig: IRelationFieldConfig = {
                 routePattern: routePattern,
@@ -115,10 +168,17 @@ export function formatEntityAttributeForFormOrDetail(
                 },
                 modalWidth: userRelationConfig?.modalWidth,
                 modalTitle: userRelationConfig?.modalTitle,
-                displayConfig: userRelationConfig?.displayConfig || {
-                    showModalIcon: true,
-                    icon: 'EyeOutlined',
-                    showLink: true
+                displayConfig: {
+                    // User can override with custom template
+                    template: userRelationConfig?.displayConfig?.template,
+                    // Smart fallback pre-generated from entity metadata
+                    fallback: userRelationConfig?.displayConfig?.fallback || fallbackConfig,
+                    // Icon from entity metadata or user override
+                    icon: userRelationConfig?.displayConfig?.icon || defaultIcon || 'EyeOutlined',
+                    showModalIcon: userRelationConfig?.displayConfig?.showModalIcon !== false,
+                    showLink: userRelationConfig?.displayConfig?.showLink !== false,
+                    // Pass through any custom actions
+                    actions: userRelationConfig?.displayConfig?.actions
                 }
             };
 
@@ -142,8 +202,15 @@ export function formatEntityAttributeForFormOrDetail(
             // For composite keys, add all identifiers as filters
             const defaultFilters: Record<string, any> = {};
             identifierMappings.forEach(mapping => {
-                defaultFilters[mapping.source] = `:${mapping.source}`;
+                defaultFilters[mapping.target] = `:${mapping.source}`;
             });
+
+            // Generate fallback configuration for to-many (shows count)
+            const fallbackConfig = generateRelationFallback(
+                entityName,
+                primaryIdentifier.source,
+                relatedEntityService
+            );
 
             const generatedRelationConfig: IRelationFieldConfig = {
                 routePattern: routePattern,
@@ -160,10 +227,17 @@ export function formatEntityAttributeForFormOrDetail(
                 },
                 modalWidth: userRelationConfig?.modalWidth,
                 modalTitle: userRelationConfig?.modalTitle,
-                displayConfig: userRelationConfig?.displayConfig || {
-                    showModalIcon: true,
-                    icon: 'UnorderedListOutlined',
-                    showLink: false
+                displayConfig: {
+                    // User can override with custom template
+                    template: userRelationConfig?.displayConfig?.template,
+                    // Smart fallback pre-generated from entity metadata
+                    fallback: userRelationConfig?.displayConfig?.fallback || fallbackConfig,
+                    // Icon from entity metadata or user override
+                    icon: userRelationConfig?.displayConfig?.icon || defaultIcon || 'UnorderedListOutlined',
+                    showModalIcon: userRelationConfig?.displayConfig?.showModalIcon !== false,
+                    showLink: userRelationConfig?.displayConfig?.showLink !== true, // Default false for to-many
+                    // Pass through any custom actions
+                    actions: userRelationConfig?.displayConfig?.actions
                 }
             };
 
@@ -244,19 +318,21 @@ export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' 
     name: string,
     dataIndex: string,
     hidden?: boolean,
-    actions?: any[],
+    actions?: Array<IEntityPageAction>,
 };
 
 export function formatEntityAttributesForList(entityName: string, properties: TIOSchemaAttribute[], {
     CRUDApiPath,
     excludeFromAdminUpdate,
     excludeFromAdminDelete,
-    excludeFromAdminDetail
+    excludeFromAdminDetail,
+    customRowActions
 }: {
     CRUDApiPath?: string,
     excludeFromAdminUpdate?: boolean,
     excludeFromAdminDelete?: boolean,
     excludeFromAdminDetail?: boolean,
+    customRowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
 }) {
 
     const entityNameLower = entityName.toLowerCase();
@@ -274,46 +350,212 @@ export function formatEntityAttributesForList(entityName: string, properties: TI
             };
 
             if (prop.isIdentifier) {
+                // Build default row actions with IDs
+                const defaultActions: Array<IEntityPageAction> = [];
 
-                const actions = [];
+                if (!excludeFromAdminDetail) {
+                    defaultActions.push({
+                        id: 'view',
+                        icon: 'view',
+                        label: 'View',
+                        template: `View {${prop.id}}`,
+                        url: `/view-${entityNameLower}`
+                    });
+                }
 
                 if (!excludeFromAdminUpdate) {
-                    actions.push({
+                    defaultActions.push({
+                        id: 'edit',
                         icon: 'edit',
+                        label: 'Edit',
+                        template: `Edit {${prop.id}}`,
                         url: `/edit-${entityNameLower}`
                     });
                 }
 
                 if (!excludeFromAdminDelete) {
-                    actions.push({
+                    defaultActions.push({
+                        id: 'delete',
                         icon: 'delete',
+                        label: 'Delete',
+                        template: `Delete {${prop.id}}`,
                         openInModal: true,
                         modalConfig: {
                             modalType: 'confirm',
                             modalPageConfig: {
-                                title: `Delete ${entityNamePascalCase}`,
-                                content: `Are you sure you want to delete this ${entityNamePascalCase}?`
+                                title: `Delete ${entityNamePascalCase}?`,
+                                content: `Are you sure you want to delete this ${entityNamePascalCase}? This action cannot be undone.`
                             },
                             apiConfig: {
                                 apiMethod: `DELETE`,
                                 responseKey: entityNameLower,
                                 apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
                             },
+                            successMessage: `${entityNamePascalCase} deleted successfully`,
+                            errorMessage: `Failed to delete ${entityNamePascalCase}`,
                             submitSuccessRedirect: `/list-${entityNameLower}`
                         }
                     });
                 }
 
-                if (!excludeFromAdminDetail) {
-                    actions.push({
-                        icon: 'view',
-                        url: `/view-${entityNameLower}`
-                    });
-                }
-
-                propConfig.actions = actions;
+                // Merge custom row actions using identifier-based override
+                propConfig.actions = customRowActions 
+                    ? mergeActions(defaultActions, customRowActions)
+                    : defaultActions;
             }
 
             return propConfig;
         });
+}
+
+/**
+ * MERGE UTILITY FUNCTIONS
+ * 
+ * These functions implement the identifier-based override pattern:
+ * - Defaults have standard identifiers (e.g., 'view', 'edit', 'delete')
+ * - Custom configs with same identifier override the default
+ * - New identifiers get added to the result
+ */
+
+/**
+ * Merge default buttons with custom buttons using identifier-based override.
+ * 
+ * @param defaults - Default buttons (from generator)
+ * @param customs - Custom buttons (from entity schema)
+ * @returns Merged button array
+ */
+export function mergeButtons<T extends { id?: string }>(
+    defaults: Array<T>,
+    customs: ReadonlyArray<T> | Array<T> = []
+): Array<T> {
+    const customsArray = [...customs];  // Convert to mutable array
+    const customMap = new Map(
+        customsArray.filter(c => c.id).map(c => [c.id, c])
+    );
+    
+    // Start with defaults, replace if custom has same id
+    const merged = defaults.map(defaultBtn => 
+        defaultBtn.id && customMap.has(defaultBtn.id)
+            ? customMap.get(defaultBtn.id)!  // Override
+            : defaultBtn
+    );
+    
+    // Add custom buttons that don't override defaults
+    customsArray.forEach(customBtn => {
+        if (!customBtn.id || !defaults.some(d => d.id === customBtn.id)) {
+            merged.push(customBtn);  // Add new
+        }
+    });
+    
+    return merged;
+}
+
+/**
+ * Merge default actions with custom actions using identifier-based override.
+ * Same logic as mergeButtons but semantically named for actions.
+ * 
+ * @param defaults - Default actions (from generator)
+ * @param customs - Custom actions (from entity schema)
+ * @returns Merged action array
+ */
+export function mergeActions<T extends { id?: string }>(
+    defaults: Array<T>,
+    customs: ReadonlyArray<T> | Array<T> = []
+): Array<T> {
+    return mergeButtons(defaults, [...customs]);  // Spread to handle both readonly and mutable
+}
+
+/**
+ * Merge field-level visibility/enablement/helpText/placeholder into base properties.
+ * 
+ * @param baseProperties - Base properties from schema
+ * @param fieldOverrides - Field overrides from formConfig.fields
+ * @returns Properties with overrides merged
+ */
+export function mergeFieldVisibility<T extends { name: string }>(
+    baseProperties: Array<T>,
+    fieldOverrides: ReadonlyArray<{
+        readonly name: string;
+        readonly visibility?: any;
+        readonly enablement?: any;
+        readonly helpText?: string;
+        readonly placeholder?: string;
+    }> | Array<{
+        name: string;
+        visibility?: any;
+        enablement?: any;
+        helpText?: string;
+        placeholder?: string;
+    }> = []
+): Array<T> {
+    const overrideMap = new Map(
+        [...fieldOverrides].map(f => [f.name, f])
+    );
+    
+    // Validation: Warn if field override references non-existent field
+    fieldOverrides.forEach(override => {
+        if (!baseProperties.some(p => p.name === override.name)) {
+            DefaultLogger.warn(`Field override "${override.name}" not found in schema properties. This override will be ignored.`);
+        }
+    });
+    
+    return baseProperties.map(prop => {
+        const override = overrideMap.get(prop.name);
+        
+        if (!override) return prop;
+        
+        return {
+            ...prop,
+            ...(override.visibility !== undefined && { visibility: override.visibility }),
+            ...(override.enablement !== undefined && { enablement: override.enablement }),
+            ...(override.helpText !== undefined && { helpText: override.helpText }),
+            ...(override.placeholder !== undefined && { placeholder: override.placeholder })
+        };
+    });
+}
+
+/**
+ * Merge column-level visibility/width/fixed into base properties.
+ * 
+ * @param baseProperties - Base properties from schema
+ * @param columnOverrides - Column overrides from tableConfig.columns
+ * @returns Properties with column overrides merged
+ */
+export function mergeColumnVisibility<T extends { name: string }>(
+    baseProperties: Array<T>,
+    columnOverrides: ReadonlyArray<{
+        readonly field: string;
+        readonly visibility?: any;
+        readonly width?: string | number;
+        readonly fixed?: 'left' | 'right';
+    }> | Array<{
+        field: string;
+        visibility?: any;
+        width?: string | number;
+        fixed?: 'left' | 'right';
+    }> = []
+): Array<T> {
+    const overrideMap = new Map(
+        [...columnOverrides].map(c => [c.field, c])
+    );
+    
+    // Validation: Warn if column override references non-existent column
+    columnOverrides.forEach(override => {
+        if (!baseProperties.some(p => p.name === override.field)) {
+            DefaultLogger.warn(`Column override "${override.field}" not found in schema properties. This override will be ignored.`);
+        }
+    });
+    
+    return baseProperties.map(prop => {
+        const override = overrideMap.get(prop.name);
+        
+        if (!override) return prop;
+        
+        return {
+            ...prop,
+            ...(override.visibility !== undefined && { visibility: override.visibility }),
+            ...(override.width !== undefined && { width: override.width }),
+            ...(override.fixed !== undefined && { fixed: override.fixed })
+        };
+    });
 }

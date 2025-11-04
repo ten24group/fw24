@@ -1,13 +1,14 @@
-import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas, EntityTypeFromSchema } from "./base-entity";
-import type { EntityQuery } from "./query-types";
+import type { BulkOptions } from "electrodb";
 import { Authorizer } from "../authorize";
+import { Actor } from "../core/types/actor";
 import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
 import { isEmptyObject, removeEmpty } from "../utils";
 import { DefaultValidator, type IValidator } from "../validation";
-import { entityFilterCriteriaToExpression } from "./query";
+import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
 import { EntityValidationError } from "./errors/validation-error";
-import { Actor } from "../core/types/actor";
+import { entityFilterCriteriaToExpression } from "./query";
+import type { EntityQuery } from "./query-types";
 
 /**
  * 
@@ -954,6 +955,92 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
     logger.debug(`Completed EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
 
     return entity;
+}
+
+/**
+ * Represents the arguments for batch deleting entities.
+ * @template Sch - The entity schema type.
+ * @template OpsSchema - The input schemas for entity operations.
+ */
+export interface DeleteBatchEntityArgs<
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> extends BaseEntityCrudArgs<Sch> {
+    /**
+     * Array of entity IDs to delete.
+     */
+    ids: Array<OpsSchema[ 'delete' ]>;
+    /**
+     * Optional number of concurrent batch operations (default: 1).
+     */
+    concurrent?: number;
+}
+
+/**
+ * Deletes multiple entities in a batch operation.
+ * @param options - The options for deleting the entities.
+ * @returns The unprocessed items that couldn't be deleted.
+ */
+export async function deleteBatchEntity<S extends EntitySchema<any, any, any>>(options: DeleteBatchEntityArgs<S>) {
+    const {
+        ids,
+        entityName,
+        entityService,
+        concurrent = 1,
+
+        actor,
+        tenant,
+
+        crudType = 'delete',
+        logger = createLogger('CRUD-service:deleteBatchEntity'),
+        validator = DefaultValidator,
+        authorizer = Authorizer.Default,
+        eventDispatcher = EventDispatcher.Default,
+    } = options;
+
+    logger.debug(`Called EntityCrud ~ deleteBatchEntity ~ entityName: ${entityName}:`, { ids, concurrent });
+
+    // Extract identifiers for all items in the batch
+    const identifiersBatch = ids.map(id => entityService.extractEntityIdentifiers(id));
+
+    // Validate each item in the batch
+    const validations = await Promise.all(identifiersBatch.map(async identifiers =>
+        validator.validateEntity({
+            operationName: crudType,
+            entityName,
+            entityValidations: entityService.getEntityValidations(),
+            overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+            input: identifiers,
+            actor: actor
+        })
+    ));
+
+    // Check for validation errors
+    const validationErrors = validations
+        .map((validation, index) => ({ validation, index }))
+        .filter(({ validation }) => !validation.pass);
+
+    if (validationErrors.length > 0) {
+        throw new EntityValidationError(validationErrors.flatMap(({ validation, index }) =>
+            (validation.errors || []).map(error => ({
+                ...error,
+                message: `Item ${index}: ${error.message}`
+            }))
+        ));
+    }
+
+    // Perform batch delete operation with concurrency control
+    // Per ElectroDB docs: http://electrodb.dev/en/mutations/batch-delete/
+    // Note: ElectroDB types use 'concurrency' while docs show 'concurrent'
+    const bulkOptions: Partial<BulkOptions> = {
+        concurrency: concurrent
+    };
+    
+    const electroResult = await entityService.getRepository().delete(identifiersBatch).go(bulkOptions);
+
+    logger.debug(`Completed EntityCrud ~ deleteBatchEntity ~ entityName: ${entityName} ~ ids:`, ids);
+
+    return electroResult;
 }
 
 /**

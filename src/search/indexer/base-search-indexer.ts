@@ -18,6 +18,34 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
     return undefined;
   }
 
+  // override this to provide a list of excluded entity names
+  protected getExcludedEntityNames(): string[] | undefined {
+    return undefined;
+  }
+
+  /**
+   * Determines if an entity should be indexed based on allowed/excluded lists.
+   * Override in subclasses to implement custom logic.
+   * Default behavior: index all except system entities.
+   */
+  protected shouldIndexEntity(entityName: string): boolean {
+    const allowedEntityNames = this.getAllowedEntityNames();
+    const excludedEntityNames = this.getExcludedEntityNames();
+
+    // If allowedEntityNames is provided, use it exclusively
+    if (allowedEntityNames && allowedEntityNames.length > 0) {
+      return allowedEntityNames.includes(entityName);
+    }
+
+    // If excludedEntityNames is provided, index all except excluded
+    if (excludedEntityNames && excludedEntityNames.length > 0) {
+      return !excludedEntityNames.includes(entityName);
+    }
+
+    // Default behavior: index all entities
+    return true;
+  }
+
   protected async preprocessRecord(record: BaseEventRecord<any>): Promise<BaseEventRecord<any> | null> {
 
     const { entityName, eventType } = record;
@@ -32,18 +60,14 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
       return null;
     }
 
-    const allowedEntityNames = this.getAllowedEntityNames();
-
-    if (allowedEntityNames && allowedEntityNames.length > 0) {
-
-      if (!allowedEntityNames.includes(entityName)) {
-        this.logger.warn('Skipping search indexing for entity not in allowed list', { entityName, allowedEntityNames });
-        return null;
-      }
-
-    } else if (entityName === 'auditLog' || entityName.includes('search-index')) {
-
-      this.logger.warn('Skipping search indexing for system entity', { entityName });
+    if (!this.shouldIndexEntity(entityName)) {
+      const allowedEntityNames = this.getAllowedEntityNames();
+      const excludedEntityNames = this.getExcludedEntityNames();
+      this.logger.warn('Skipping search indexing for entity based on filtering rules', { 
+        entityName, 
+        allowedEntityNames, 
+        excludedEntityNames 
+      });
       return null;
     }
 

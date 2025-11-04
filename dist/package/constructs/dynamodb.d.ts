@@ -25,9 +25,16 @@ export interface SearchIndexingConfig extends IConstructConfig {
     enabled?: boolean;
     /**
      * List of allowed entity names to be indexed.
-     * If not provided, all entities will be indexed. except `auditLog`.
+     * If not provided, all entities will be indexed except those in excludedEntityNames or system entities.
+     * Takes precedence over excludedEntityNames if both are provided.
      */
     allowedEntityNames?: string[];
+    /**
+     * List of entity names to exclude from indexing.
+     * If allowedEntityNames is provided, this field is ignored.
+     * If neither allowedEntityNames nor excludedEntityNames is provided, defaults to excluding system entities like 'auditLog'.
+     */
+    excludedEntityNames?: string[];
     /**
      * Search engine configuration that defines which search provider to use and its connection details.
      *
@@ -230,9 +237,16 @@ export interface AuditConfig extends IConstructConfig {
     enabled?: boolean;
     /**
      * List of allowed entity names to be audited.
-     * If not provided, all entities will be audited. except `auditLog`.
+     * If not provided, all entities will be audited except those in excludedEntityNames or system entities.
+     * Takes precedence over excludedEntityNames if both are provided.
      */
     allowedEntityNames?: string[];
+    /**
+     * List of entity names to exclude from auditing.
+     * If allowedEntityNames is provided, this field is ignored.
+     * If neither allowedEntityNames nor excludedEntityNames is provided, defaults to excluding system entities like 'auditLog'.
+     */
+    excludedEntityNames?: string[];
     /**
      * The type of audit logger to use.
      * @default 'console'

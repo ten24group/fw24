@@ -279,9 +279,12 @@ export class EntitySchemaValidator {
       if (!attr.options.every(opt => 'value' in opt && 'label' in opt)) {
         throw new Error(`Static options must have value and label properties for "${attrName}"`);
       }
+    } else if (typeof attr.options === 'object' && 'apiMethod' in attr.options) {
+      // Dynamic options (API config)
+      this.validateOptionsAPIConfig(attr.options as FieldOptionsAPIConfig<any>, attrName);
     } else {
       // Dynamic options
-      this.validateOptionsAPIConfig(attr.options, attrName);
+      throw new Error(`Invalid options configuration for "${attrName}"`);
     }
 
     if (attr.addNewOption) {

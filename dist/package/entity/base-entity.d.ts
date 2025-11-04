@@ -1,6 +1,6 @@
 import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem, UpsertItem } from "electrodb";
 import { Entity } from "electrodb";
-import type { EntityQuery, FilterOperatorsExtended } from './query-types';
+import type { EntityQuery, FilterOperatorsExtended, EntityFilterCriteria } from './query-types';
 import type { BaseEntityService } from "./base-service";
 import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
@@ -470,32 +470,38 @@ export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
     attributes?: HydrateOptionForEntity<E> | (() => HydrateOptionForEntity<E>);
 };
 /**
- * Represents an entity attribute.
+ * FW24-specific properties that extend ElectroDB attributes
  */
-export type EntityAttribute = Attribute & {
+export interface FW24AttributeExtensions {
     /**
      * The human readable name of the attribute.
      */
-    name?: string;
+    readonly name?: string;
     /**
      * Indicates whether the attribute is an identifier.
      */
-    isIdentifier?: boolean;
+    readonly isIdentifier?: boolean;
     /**
      * Indicates whether the attribute is unique (for unique constraints).
      */
-    isUnique?: boolean;
+    readonly isUnique?: boolean;
     /**
      * Defines a relation with another entity.
      * Use the type-helper `createEntityRelation<EntitySchema>()` function for type-safe relation creation.
      * For circular dependencies, use `createEntityRelation<() => EntitySchema>()` with lazy loading.
      */
-    relation?: Relation<any>;
+    readonly relation?: Relation<any>;
     /**
      * Validations for the attribute.
+     * Supports both readonly and mutable arrays for compatibility with 'as const' entity schemas.
      */
-    validations?: any[];
-} & FieldMetadata;
+    readonly validations?: ReadonlyArray<any> | Array<any>;
+}
+/**
+ * Represents an entity attribute
+ * Extends ElectroDB's Attribute with FW24-specific properties and FieldMetadata
+ */
+export type EntityAttribute = Attribute & FW24AttributeExtensions & FieldMetadata;
 export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldMetadata | TimeFieldMetadata | DateTimeFieldMetadata | BooleanFieldMetadata | SelectFieldMetadata | RadioFieldMetadata | CheckboxFieldMetadata | FileFieldMetadata | RangeFieldMetadata | ColorFieldMetadata | ImageFieldMetadata | HiddenFieldMetadata | CustomFieldMetadata | RatingFieldMetadata | EditorFieldMetadata | CodeEditorFieldMetadata;
 /**
  * UI Metadata for entity attributes.
@@ -515,8 +521,11 @@ export interface BaseFieldMetadata {
     filterConfig?: {
         filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean';
         defaultOperator?: FilterOperatorsExtended<any>;
-        availableOperators?: FilterOperatorsExtended<any>[];
-        predefinedOptions?: Array<{
+        availableOperators?: ReadonlyArray<FilterOperatorsExtended<any>> | Array<FilterOperatorsExtended<any>>;
+        predefinedOptions?: ReadonlyArray<{
+            label: string;
+            value: string;
+        }> | Array<{
             label: string;
             value: string;
         }>;
@@ -526,6 +535,23 @@ export interface BaseFieldMetadata {
         routePattern: string;
         displayText?: string;
     };
+    /**
+     * Template for rendering column values (list pages only).
+     * Supports nested paths and composite templates.
+     * If provided, overrides default rendering.
+     *
+     * @example
+     * // Simple string template
+     * template: '{firstName} {lastName}'
+     *
+     * @example
+     * // Complex template with nested paths
+     * template: {
+     *   composite: ['jerseyNumber', 'name', 'team.name'],
+     *   template: '#{jerseyNumber} {name} ({team.name})'
+     * }
+     */
+    template?: Template;
     /**
      * UI Configuration for relation fields (UI LAYER ONLY).
      *
@@ -579,8 +605,22 @@ export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
  * Confirm modal configuration
  */
 export interface IConfirmModal {
-    title: string;
-    content?: string;
+    /**
+     * Modal title - can be static string or dynamic template.
+     *
+     * @example title: "Delete Team?"
+     * @example title: "Delete {teamName}?"
+     * @example title: { composite: ['teamName', 'city'], template: 'Delete {teamName} ({city})?' }
+     */
+    title: Template;
+    /**
+     * Modal content - can be static string or dynamic template.
+     *
+     * @example content: "Are you sure?"
+     * @example content: "Delete {teamName}? This will affect {playerCount} players."
+     * @example content: { composite: ['teamName', 'playerCount'], template: 'Delete {teamName}? This will affect {playerCount} players.' }
+     */
+    content?: Template;
 }
 /**
  * API configuration for modal actions
@@ -686,14 +726,21 @@ export interface IEntityConfigReference {
         /** Override columns configuration (for view pages) */
         columnsConfig?: IEntityPageColumnConfig;
         /** Override breadcrumbs */
-        breadcrumbs?: Array<{
+        breadcrumbs?: ReadonlyArray<{
+            label: string;
+            url?: string;
+        }> | Array<{
             label: string;
             url?: string;
         }>;
         /** Override form success redirect (for create pages) */
         submitSuccessRedirect?: string;
         /** Override form buttons (for create pages) */
-        formButtons?: Array<{
+        formButtons?: ReadonlyArray<{
+            text: string;
+            action: string;
+            url?: string;
+        }> | Array<{
             text: string;
             action: string;
             url?: string;
@@ -701,9 +748,9 @@ export interface IEntityConfigReference {
         /** Add default filters (for list pages) */
         defaultFilters?: Record<string, any>;
         /** Hide specific fields from rendering */
-        hideFields?: string[];
+        hideFields?: ReadonlyArray<string> | Array<string>;
         /** Show only specific fields (mutually exclusive with hideFields) */
-        showOnlyFields?: string[];
+        showOnlyFields?: ReadonlyArray<string> | Array<string>;
     };
 }
 /**
@@ -779,7 +826,7 @@ export interface IEntityConfigReference {
  *   relation: createEntityRelation<GameSchema>({
  *     entityName: 'game',
  *     type: 'one-to-many',
- *     identifiers: { source: 'teamId', target: 'teamId' }
+ *     identifiers: { source: 'homeTeamId', target: 'teamId' }
  *   }),
  *   relationConfig: {
  *     routePattern: '/list-game',
@@ -787,7 +834,7 @@ export interface IEntityConfigReference {
  *       entityName: 'game',
  *       pageType: 'list',
  *       overrideConfig: {
- *         defaultFilters: { teamId: ':teamId', status: 'upcoming' }
+ *         defaultFilters: { homeTeamId: ':teamId', status: 'upcoming' }
  *       }
  *     },
  *     modalWidth: '95%',
@@ -834,14 +881,56 @@ export interface IRelationFieldConfig {
     modalWidth?: number | string;
     /** Modal title override. Default: uses page title from config */
     modalTitle?: string;
-    /** Display configuration for icons and links */
+    /**
+     * Display configuration for relation fields.
+     * Controls templates, fallbacks, icons, and actions.
+     */
     displayConfig?: {
-        /** Show modal icon? Default: true */
-        showModalIcon?: boolean;
-        /** Icon to use for modal action. Default: 'EyeOutlined' for to-one, 'UnorderedListOutlined' for to-many */
+        /**
+         * Template for displaying relation value when hydrated data is available.
+         * Falls back to fallback.template if data not available, then raw value.
+         *
+         * @example '{team.name} ({team.city})'
+         * @example { composite: ['team.name', 'team.city'], template: '{team.name} ({team.city})' }
+         */
+        template?: Template;
+        /**
+         * Fallback configuration when only ID available.
+         * Backend pre-resolves this using entity metadata.
+         *
+         * @example
+         * fallback: {
+         *   template: 'Team: {teamId}',
+         *   linkText: 'View Team',
+         *   modalButtonText: 'Team Details'
+         * }
+         */
+        fallback?: {
+            /** Fallback template - intentionally string-only for simplicity, backend pre-generates these */
+            template: string;
+            /** Link text (e.g., "View Team") */
+            linkText?: string;
+            /** Modal button text (e.g., "Team Details") */
+            modalButtonText?: string;
+        };
+        /** Icon (defaults to entity metadata icon if not provided) */
         icon?: string;
-        /** Show link for navigation? Default: true for to-one, false for to-many */
+        /** Show navigation link? Default: true for to-one, false for to-many */
         showLink?: boolean;
+        /** Show modal button? Default: true */
+        showModalIcon?: boolean;
+        /** Configure which actions to render */
+        actions?: {
+            link?: boolean;
+            modal?: boolean;
+            custom?: Array<{
+                label: string;
+                /** Dynamic custom action label */
+                template?: Template;
+                icon?: string;
+                onClick: string;
+            }>;
+        };
     };
 }
 export interface IEntityPageActionModalConfig {
@@ -856,7 +945,230 @@ export interface IEntityPageActionModalConfig {
      * Note: Only applies when apiConfig is present. Ignored for navigateTo.
      */
     responseConfig?: IResponseDisplayConfig;
+    /**
+     * Pre-populate form fields from context (route params + record data).
+     *
+     * Values are evaluated when the modal opens and merged with form field defaults.
+     * Merge priority (lowest to highest):
+     * 1. Field-level defaults (from entity schema)
+     * 2. initialValues (from action config) ← THIS
+     * 3. Query params (from URL navigation with inverseMapping)
+     * 4. Form defaultValues (from parent component)
+     *
+     * Supports:
+     * - Static values: `{ isActive: true, priority: 1 }`
+     * - Template strings: `{ teamId: '{teamId}', sport: '{sport}' }`
+     * - Nested paths: `{ teamName: '{team.name}', teamId: '{team.teamId}' }`
+     *
+     * @example
+     * // Static values
+     * initialValues: {
+     *   isActive: true,
+     *   status: 'pending'
+     * }
+     *
+     * @example
+     * // Template strings (evaluated from routeParams)
+     * initialValues: {
+     *   teamId: '{teamId}',        // Gets routeParams.teamId
+     *   sport: '{sport}',          // Gets routeParams.sport
+     *   createdDate: '2024-01-01'  // Static
+     * }
+     *
+     * @example
+     * // Nested paths (for complex record data)
+     * initialValues: {
+     *   teamId: '{team.teamId}',
+     *   teamName: '{team.name}',
+     *   sportId: '{team.sport.sportId}'
+     * }
+     *
+     * Note: Template strings like '{teamId}' are evaluated at runtime from:
+     * - routeParams (URL parameters)
+     * - record (table row data when action is triggered from a table row)
+     */
+    initialValues?: Record<string, any>;
+    /**
+     * If true, parent component will be notified to refresh after successful operation.
+     * This triggers the onSuccessCallback with the API response data.
+     *
+     * Use cases:
+     * - Refresh table after creating/updating a record
+     * - Refresh parent page data after a successful operation
+     * - Update UI state after modal action completes
+     *
+     * Note: This works in combination with submitSuccessRedirect and responseConfig.
+     * All three can be used together.
+     *
+     * @default false
+     *
+     * @example
+     * {
+     *   modalConfig: {
+     *     modalType: 'form',
+     *     apiConfig: { apiUrl: '/api/teams', apiMethod: 'POST' },
+     *     refreshParentOnSuccess: true  // ✅ Table will refresh after creation
+     *   }
+     * }
+     */
+    refreshParentOnSuccess?: boolean;
+    /**
+     * Modal title - can be static string or dynamic template.
+     * If string: used as-is or evaluated as template if contains {...}
+     * If object: evaluated from routeParams
+     *
+     * @example modalTitle: "Edit Team"
+     * @example modalTitle: "Edit {teamName}"
+     * @example modalTitle: { composite: ['teamName', 'city'], template: 'Edit {teamName} ({city})' }
+     */
+    modalTitle?: Template;
+    /**
+     * Success message - can be static string or dynamic template.
+     * Evaluated from API response data.
+     * If not provided, uses message from API response.
+     *
+     * @example successMessage: 'Team created successfully!'
+     * @example successMessage: '{teamName} created successfully!'
+     */
+    successMessage?: Template;
+    /**
+     * Error message - can be static string or dynamic template.
+     * Evaluated from API error data.
+     * If not provided, uses error from API response.
+     *
+     * @example errorMessage: 'Failed to create team'
+     * @example errorMessage: 'Failed to create {teamName}'
+     */
+    errorMessage?: Template;
 }
+/**
+ * Template reference for dynamic value resolution in visibility conditions.
+ * Uses object notation to avoid JSX confusion.
+ *
+ * @example
+ * { $ref: 'actor.actorId' }
+ * { $ref: 'record.createdBy' }
+ * { $ref: 'context.pageType' }
+ */
+export type TemplateRef = {
+    readonly $ref: string;
+};
+/**
+ * Evaluation rule for visibility conditions.
+ * Aligned with ValidationRule<T> pattern from validation/types.ts
+ *
+ * @template T - The type of value being evaluated
+ */
+export type EvaluationRule<T = any> = {
+    readonly eq?: T | TemplateRef;
+    readonly neq?: T | TemplateRef;
+    readonly gt?: T | TemplateRef;
+    readonly gte?: T | TemplateRef;
+    readonly lt?: T | TemplateRef;
+    readonly lte?: T | TemplateRef;
+    readonly inList?: ReadonlyArray<T>;
+    readonly notInList?: ReadonlyArray<T>;
+    readonly custom?: string;
+    readonly pattern?: string;
+    readonly exists?: boolean;
+    readonly empty?: boolean;
+};
+/**
+ * Inline visibility condition (full structure).
+ * Similar to EntityValidationCondition pattern from validation/types.ts
+ */
+export type InlineVisibilityCondition = {
+    readonly actor?: {
+        readonly [path: string]: EvaluationRule;
+    };
+    readonly record?: {
+        readonly [path: string]: EvaluationRule;
+    };
+    readonly selectedRecords?: {
+        readonly length?: EvaluationRule<number>;
+        readonly all?: {
+            readonly [path: string]: EvaluationRule;
+        };
+        readonly some?: {
+            readonly [path: string]: EvaluationRule;
+        };
+        readonly none?: {
+            readonly [path: string]: EvaluationRule;
+        };
+    };
+    readonly queryParams?: {
+        readonly [key: string]: EvaluationRule;
+    };
+    readonly context?: {
+        readonly pageType?: EvaluationRule<'list' | 'view' | 'edit' | 'create'>;
+        readonly modalDepth?: EvaluationRule<number>;
+        readonly entityName?: EvaluationRule<string>;
+        readonly [key: string]: EvaluationRule | undefined;
+    };
+    readonly formValues?: {
+        readonly [path: string]: EvaluationRule;
+    };
+};
+/**
+ * Custom evaluator reference.
+ * References a function registered in the frontend registry.
+ */
+export type CustomVisibilityCondition = {
+    readonly custom: string;
+};
+/**
+ * Named conditions with scope.
+ * References multiple named conditions registered in the frontend.
+ */
+export type NamedVisibilityCondition = {
+    readonly conditions: ReadonlyArray<string>;
+    readonly scope?: 'all' | 'any' | 'none';
+};
+/**
+ * Shortcut visibility config for common cases.
+ * Provides simplified syntax for role-based and simple conditional visibility.
+ */
+export type ShortcutVisibilityCondition = {
+    readonly requiredRoles?: ReadonlyArray<string>;
+    readonly excludedRoles?: ReadonlyArray<string>;
+    readonly showWhen?: Record<string, any>;
+    readonly hideWhen?: Record<string, any>;
+};
+/**
+ * Visibility configuration for actions, buttons, and UI elements.
+ * Controls visibility and enablement based on actor, record, context, and custom logic.
+ *
+ * Serializable JSON configuration evaluated in the frontend.
+ * Supports roles, permissions, custom evaluators, and complex conditions.
+ *
+ * @example
+ * // Role-based (shortcut)
+ * visibility: {
+ *   requiredRoles: ['admin', 'editor']
+ * }
+ *
+ * @example
+ * // Owner check (inline with template)
+ * visibility: {
+ *   record: {
+ *     createdBy: { eq: { $ref: 'actor.actorId' } }
+ *   }
+ * }
+ *
+ * @example
+ * // Custom logic (function reference)
+ * visibility: {
+ *   custom: 'canEditGame'
+ * }
+ *
+ * @example
+ * // Named conditions
+ * visibility: {
+ *   conditions: ['isAdmin', 'isOwner'],
+ *   scope: 'any'
+ * }
+ */
+export type VisibilityConfig = InlineVisibilityCondition | CustomVisibilityCondition | NamedVisibilityCondition | ShortcutVisibilityCondition;
 /**
  * Entity page action
  * Supports buttons, dropdowns with modals/navigation
@@ -869,11 +1181,33 @@ export interface IEntityPageActionModalConfig {
  * Note: items cannot have nested items (max 1 level of nesting)
  */
 export interface IEntityPageAction {
+    /**
+     * Unique identifier for this action. Used for override matching in merge logic.
+     * When defaults are generated, they use standard IDs like 'view', 'edit', 'delete'.
+     * Custom actions with the same ID will override defaults.
+     */
+    id?: string;
     label: string;
+    /**
+     * Dynamic label template (evaluated from routeParams or record context).
+     * If provided, overrides static `label` field.
+     *
+     * @example
+     * // Simple template
+     * template: 'Edit {teamName}'
+     *
+     * @example
+     * // Complex template
+     * template: {
+     *   composite: ['teamName', 'city'],
+     *   template: 'Edit {teamName} ({city})'
+     * }
+     */
+    template?: Template;
     url?: string;
     icon?: string;
     type?: 'button' | 'dropdown';
-    items?: Array<Omit<IEntityPageAction, 'items'>>;
+    items?: ReadonlyArray<Omit<IEntityPageAction, 'items'>> | Array<Omit<IEntityPageAction, 'items'>>;
     /** Open action in modal instead of navigating */
     openInModal?: boolean;
     /** Modal configuration (inline config or resolved from url) */
@@ -886,6 +1220,46 @@ export interface IEntityPageAction {
     hideInModal?: boolean;
     /** Only open in modal on specified screen size. Default: always */
     openInModalCondition?: 'sm' | 'md' | 'lg' | 'xl';
+    /**
+     * Visibility configuration for this action.
+     * Controls visibility and enablement based on actor roles, record state, context, and custom logic.
+     *
+     * When undefined, action is visible and enabled by default.
+     *
+     * Supports:
+     * - Role-based access (requiredRoles, excludedRoles)
+     * - Record-based conditions (owner checks, status checks)
+     * - Context-based logic (page type, modal depth, query params)
+     * - Custom evaluator functions (registered in frontend)
+     *
+     * @example
+     * // Simple role check
+     * visibility: {
+     *   requiredRoles: ['admin']
+     * }
+     *
+     * @example
+     * // Owner check
+     * visibility: {
+     *   record: {
+     *     createdBy: { eq: { $ref: 'actor.actorId' } }
+     *   }
+     * }
+     *
+     * @example
+     * // Custom logic
+     * visibility: {
+     *   custom: 'canEditGame'
+     * }
+     *
+     * @example
+     * // Multiple conditions
+     * visibility: {
+     *   conditions: ['isAdmin', 'isOwner'],
+     *   scope: 'any'
+     * }
+     */
+    visibility?: VisibilityConfig;
 }
 export interface IEntityPageColumn {
     sortOrder: number;
@@ -942,18 +1316,25 @@ export interface SelectFieldMetadata<E extends EntitySchema<any, any, any> = any
         overrideConfig?: {
             pageTitle?: string;
             columnsConfig?: IEntityPageColumnConfig;
-            breadcrumbs?: Array<{
+            breadcrumbs?: ReadonlyArray<{
+                label: string;
+                url?: string;
+            }> | Array<{
                 label: string;
                 url?: string;
             }>;
             submitSuccessRedirect?: string;
-            formButtons?: Array<{
+            formButtons?: ReadonlyArray<{
+                text: string;
+                action: string;
+                url?: string;
+            }> | Array<{
                 text: string;
                 action: string;
                 url?: string;
             }>;
-            hideFields?: string[];
-            showOnlyFields?: string[];
+            hideFields?: ReadonlyArray<string> | Array<string>;
+            showOnlyFields?: ReadonlyArray<string> | Array<string>;
         };
     };
     addNewOptionConfig?: IEntityConfigReference;
@@ -1019,50 +1400,154 @@ interface EditorFieldMetadata extends BaseFieldMetadata, CommonFileFieldMetadata
 interface CodeEditorFieldMetadata extends BaseFieldMetadata {
     fieldType?: 'code' | 'markdown' | 'json';
 }
-export type FieldOptions<E extends EntitySchema<any, any, any> = any> = Array<FieldOption> | FieldOptionsAPIConfig<E>;
+export type FieldOptions<E extends EntitySchema<any, any, any> = any> = ReadonlyArray<FieldOption> | Array<FieldOption> | FieldOptionsAPIConfig<E>;
 export type FieldOption = {
     value: string;
     label: string;
 };
 /**
- * Represents the template for attributes.
- * Allows composing multiple attributes into a formatted string.
+ * Represents the template for attributes in option selectors and dynamic labels.
+ * Allows composing multiple attributes (including nested paths) into a formatted string.
  * Provides type-safe attribute name validation via generics.
+ *
+ * Supports:
+ * - Simple attribute names: 'firstName', 'lastName'
+ * - Nested paths (dot notation): 'team.name', 'address.city', 'sport.league.name'
+ * - Mixed usage: Combine simple and nested paths in the same template
  *
  * @template E - The entity schema type
  *
  * @example
  * ```ts
- * // Define directly in field options config
+ * // Simple attributes
  * const template: AttributesTemplate<UserSchema> = {
  *   composite: ['firstName', 'lastName'],
- *   template: '{firstName}-AND-{lastName}'
+ *   template: '{firstName} {lastName}'
  * }
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Nested paths (dot notation)
+ * const template: AttributesTemplate<PlayerSchema> = {
+ *   composite: ['name', 'team.name', 'team.city'],
+ *   template: '{name} - {team.name} ({team.city})'
+ * }
+ * // Result: 'LeBron James - Lakers (Los Angeles)'
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Complex template with nested paths
+ * const template: AttributesTemplate<PlayerSchema> = {
+ *   composite: ['jerseyNumber', 'name', 'team.name', 'team.sport.league'],
+ *   template: '#{jerseyNumber} {name} ({team.name} - {team.sport.league})'
+ * }
+ * // Result: '#23 LeBron James (Lakers - NBA)'
  * ```
  */
 export type AttributesTemplate<E extends EntitySchema<any, any, any> = any> = {
-    composite: Array<keyof E['attributes'] & string>;
+    /**
+     * Array of attribute paths to include in the template.
+     * Supports dot notation for nested access (e.g., 'team.name', 'address.city')
+     */
+    composite: ReadonlyArray<keyof E['attributes'] & string> | Array<keyof E['attributes'] & string>;
+    /**
+     * Template string with {attributePath} placeholders.
+     * Example: '{firstName} {lastName}' or '{team.name} ({team.city})'
+     */
     template: string;
 };
+/**
+ * Template type for dynamic text rendering throughout FW24.
+ * Used for actions, titles, labels, messages, etc.
+ *
+ * Backend uses this with AttributesTemplate<E> for type safety against entity schemas.
+ * Frontend uses ITemplateConfig as a generic interface for runtime evaluation.
+ *
+ * @template E - Entity schema type for type-safe field access
+ *
+ * @example
+ * // Simple string template
+ * template: '{firstName} {lastName}'
+ *
+ * @example
+ * // Complex template with type safety
+ * template: {
+ *   composite: ['firstName', 'lastName', 'team.name'],
+ *   template: '{firstName} {lastName} ({team.name})'
+ * }
+ */
+export type Template<E extends EntitySchema<any, any, any> = any> = string | AttributesTemplate<E>;
 /**
  * Configuration for loading field options from an API endpoint.
  * Provides type-safe attribute references for the given entity schema.
  *
+ * Features:
+ * - Cursor-based pagination with "Load More" button (enabled by default)
+ * - Remote search with debouncing (enabled by default)
+ * - Frontend search fallback when remote search is disabled
+ * - Automatic deduplication by value
+ * - Alphabetical sorting by label
+ * - Nested field support via dot notation (e.g., 'team.name')
+ * - Complex template labels with multiple fields
+ *
  * @template E - The entity schema type for type-safe attribute references
  */
 export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
+    /** HTTP method to use for fetching options */
     apiMethod: 'GET' | 'POST';
+    /** API endpoint URL */
     apiUrl: string;
+    /** Key in response data that contains the options array */
     responseKey: string;
-    query?: EntityQuery<E>;
+    /** Additional filters to apply when fetching options (supports EntityFilterCriteria) */
+    filters?: Record<string, any> | EntityFilterCriteria<E>;
+    /**
+     * Mapping configuration for label and value fields.
+     *
+     * Supports:
+     * - Simple field names: 'firstName', 'teamName'
+     * - Nested paths (dot notation): 'team.name', 'address.city'
+     * - Complex templates: { composite: ['name', 'team.city'], template: '{name} ({team.city})' }
+     */
     optionMapping?: {
         label: (keyof E['attributes'] & string) | AttributesTemplate<E>;
         value: (keyof E['attributes'] & string) | AttributesTemplate<E>;
     };
+    /** Number of options to fetch per request (default: 50) */
+    count?: number;
+    /**
+     * Disable cursor-based pagination "Load More" functionality.
+     * When false (default), shows "Load More" button when more data is available.
+     * @default false (ENABLED by default)
+     */
+    disableLoadMore?: boolean;
+    /**
+     * Disable remote search functionality.
+     * When false (default), sends 'search' parameter to backend.
+     * When true, falls back to frontend filtering.
+     * @default false (ENABLED by default)
+     */
+    disableSearch?: boolean;
+    /**
+     * Debounce delay for remote search in milliseconds.
+     * Prevents excessive API calls while user is typing.
+     * @default 500
+     */
+    searchDebounce?: number;
 };
 /**
  * Creates type-safe field options configuration for API-loaded select/radio/checkbox options.
- * Provides full type safety for attribute references in option mappings and query filters.
+ * Provides full type safety for attribute references in option mappings and filters.
+ *
+ * Features:
+ * - Cursor-based pagination with "Load More" (enabled by default)
+ * - Remote search with debouncing (enabled by default)
+ * - Type-safe filters using EntityFilterCriteria
+ * - Nested field support via dot notation (e.g., 'team.name')
+ * - Complex template labels with multiple fields
+ * - Configurable fetch count (default: 50)
  *
  * @template E - The entity schema type for the options source
  * @param config - The field options API configuration
@@ -1081,12 +1566,12 @@ export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
  * })
  *
  * @example
- * // With query filters
+ * // With filters (active users only)
  * createFieldOptions<TeamSchema>({
  *   apiMethod: 'GET',
  *   apiUrl: '/api/teams',
  *   responseKey: 'teams',
- *   query: { filters: { status: { eq: 'active' } } },
+ *   filters: { status: { eq: 'active' } },
  *   optionMapping: {
  *     label: 'teamName',
  *     value: 'teamId'
@@ -1105,6 +1590,38 @@ export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
  *       template: '{teamName} ({city})'
  *     },
  *     value: 'teamId'
+ *   }
+ * })
+ *
+ * @example
+ * // With nested paths (dot notation) - supports accessing related entity data
+ * createFieldOptions<PlayerSchema>({
+ *   apiMethod: 'GET',
+ *   apiUrl: '/api/players',
+ *   responseKey: 'data',
+ *   optionMapping: {
+ *     label: {
+ *       composite: ['jerseyNumber', 'name', 'team.name', 'team.city'],
+ *       template: '#{jerseyNumber} {name} ({team.name} - {team.city})'
+ *     },
+ *     value: 'playerId'
+ *   }
+ * })
+ * // Result: '#23 LeBron James (Lakers - Los Angeles)'
+ *
+ * @example
+ * // With custom settings: disable search, custom count, faster debounce
+ * createFieldOptions<UserSchema>({
+ *   apiMethod: 'GET',
+ *   apiUrl: '/api/users',
+ *   responseKey: 'data',
+ *   count: 100,
+ *   disableSearch: true,
+ *   disableLoadMore: false,
+ *   searchDebounce: 300,
+ *   optionMapping: {
+ *     label: 'name',
+ *     value: 'userId'
  *   }
  * })
  */
@@ -1128,6 +1645,153 @@ export type SpecialAttributeType = keyof typeof SpecialAttributeTypes;
  * @template C - Collection names
  * @template Opp - The type of entity operations.
  */
+/**
+ * List page nested configuration (RECOMMENDED)
+ * Replaces: listPageActions, listPageBreadcrumbs, listPageDefaultSort
+ */
+export interface EntityListPageConfig {
+    readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+    readonly breadcrumbs?: ReadonlyArray<{
+        label: Template;
+        url?: string;
+    }> | Array<{
+        label: Template;
+        url?: string;
+    }>;
+    readonly defaultSort?: {
+        readonly field: string;
+        readonly order: 'asc' | 'desc';
+    } | ReadonlyArray<{
+        readonly field: string;
+        readonly order: 'asc' | 'desc';
+    }> | 'asc' | 'desc';
+    readonly tableConfig?: {
+        readonly rowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+        readonly bulkActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+        readonly rowSelection?: {
+            enabled: boolean;
+            visibility?: VisibilityConfig;
+        };
+        readonly columns?: ReadonlyArray<{
+            field: string;
+            visibility?: VisibilityConfig;
+            width?: string | number;
+            fixed?: 'left' | 'right';
+        }> | Array<{
+            field: string;
+            visibility?: VisibilityConfig;
+            width?: string | number;
+            fixed?: 'left' | 'right';
+        }>;
+    };
+}
+/**
+ * View page nested configuration (RECOMMENDED)
+ * Replaces: viewPageActions, viewPageBreadcrumbs, viewPageColumnsConfig
+ */
+export interface EntityViewPageConfig {
+    readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+    readonly breadcrumbs?: ReadonlyArray<{
+        label: Template;
+        url?: string;
+    }> | Array<{
+        label: Template;
+        url?: string;
+    }>;
+    readonly columnsConfig?: IEntityPageColumnConfig;
+    readonly fields?: ReadonlyArray<{
+        name: string;
+        visibility?: VisibilityConfig;
+        helpText?: string;
+    }> | Array<{
+        name: string;
+        visibility?: VisibilityConfig;
+        helpText?: string;
+    }>;
+}
+/**
+ * Edit page nested configuration (RECOMMENDED)
+ * Replaces: editPageActions, editPageBreadcrumbs, editPageColumnsConfig
+ */
+export interface EntityEditPageConfig {
+    readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+    readonly breadcrumbs?: ReadonlyArray<{
+        label: Template;
+        url?: string;
+    }> | Array<{
+        label: Template;
+        url?: string;
+    }>;
+    readonly columnsConfig?: IEntityPageColumnConfig;
+    readonly formConfig?: {
+        readonly buttons?: ReadonlyArray<{
+            id?: string;
+            text: string;
+            action: 'submit' | 'reset' | 'cancel';
+            url?: string;
+            visibility?: VisibilityConfig;
+        }> | Array<{
+            id?: string;
+            text: string;
+            action: 'submit' | 'reset' | 'cancel';
+            url?: string;
+            visibility?: VisibilityConfig;
+        }>;
+        readonly fields?: ReadonlyArray<{
+            name: string;
+            visibility?: VisibilityConfig;
+            enablement?: VisibilityConfig;
+            helpText?: string;
+            placeholder?: string;
+        }> | Array<{
+            name: string;
+            visibility?: VisibilityConfig;
+            enablement?: VisibilityConfig;
+            helpText?: string;
+            placeholder?: string;
+        }>;
+    };
+}
+/**
+ * Create page nested configuration (RECOMMENDED)
+ * Replaces: createPageBreadcrumbs, createPageColumnsConfig
+ */
+export interface EntityCreatePageConfig {
+    readonly breadcrumbs?: ReadonlyArray<{
+        label: Template;
+        url?: string;
+    }> | Array<{
+        label: Template;
+        url?: string;
+    }>;
+    readonly columnsConfig?: IEntityPageColumnConfig;
+    readonly formConfig?: {
+        readonly buttons?: ReadonlyArray<{
+            id?: string;
+            text: string;
+            action: 'submit' | 'reset' | 'cancel';
+            url?: string;
+            visibility?: VisibilityConfig;
+        }> | Array<{
+            id?: string;
+            text: string;
+            action: 'submit' | 'reset' | 'cancel';
+            url?: string;
+            visibility?: VisibilityConfig;
+        }>;
+        readonly fields?: ReadonlyArray<{
+            name: string;
+            visibility?: VisibilityConfig;
+            helpText?: string;
+            placeholder?: string;
+        }> | Array<{
+            name: string;
+            visibility?: VisibilityConfig;
+            helpText?: string;
+            placeholder?: string;
+        }>;
+    };
+}
 export interface EntitySchema<A extends string, F extends string, C extends string, Opp extends TDefaultEntityOperations = TDefaultEntityOperations> extends Schema<A, F, C> {
     readonly model: Schema<A, F, C>['model'] & {
         readonly entityNamePlural: string;
@@ -1145,37 +1809,243 @@ export interface EntitySchema<A extends string, F extends string, C extends stri
         readonly excludeFromAdminDelete?: boolean;
         readonly excludeFromAdminDuplicate?: boolean;
         readonly CRUDApiPath?: string;
+        /**
+         * Entity metadata for UI rendering.
+         * Used for relation fallbacks, default icons, descriptions, etc.
+         */
+        readonly metadata?: {
+            /** Icon name (Ant Design) - used as default in relations and UI elements */
+            icon?: string;
+            /** Brand color for this entity type (hex color) */
+            color?: string;
+            /** Short description for tooltips and help text */
+            description?: string;
+        };
         readonly menuGroup?: string;
         readonly menuOrder?: number;
-        readonly createPageBreadcrumbs?: Array<{
+        /**
+         * @deprecated Use createPageConfig.breadcrumbs instead
+         */
+        readonly createPageBreadcrumbs?: ReadonlyArray<{
+            label: string;
+            url?: string;
+        }> | Array<{
             label: string;
             url?: string;
         }>;
+        /**
+         * @deprecated Use createPageConfig.columnsConfig instead
+         */
         readonly createPageColumnsConfig?: IEntityPageColumnConfig;
-        readonly listPageActions?: IEntityPageAction[];
-        readonly listPageBreadcrumbs?: Array<{
+        /**
+         * List page configuration
+         *
+         * These properties configure the entity's list/index page (e.g., `/list-game`).
+         * All properties are transformed to unified names in the generated UI config.
+         */
+        /**
+         * Actions for the list page header (page-level actions only, not table row actions).
+         *
+         * These appear in the page header and operate at the page/entity level, not on individual
+         * rows or selections. For row-level actions (edit, delete, view) or bulk selection actions
+         * (delete selected, export selected), those are configured separately in the table config.
+         *
+         * Note: Mapped to `pageHeaderActions` in generated UI config for frontend consumption.
+         * The page-specific naming here (listPageActions) provides semantic clarity during
+         * entity schema definition, while the frontend uses unified naming (pageHeaderActions)
+         * for component reusability across all page types.
+         *
+         * @example
+         * ```typescript
+         * listPageActions: [
+         *   {
+         *     label: 'Import Data',
+         *     url: '/game/import',
+         *     icon: 'upload',
+         *     openInModal: true
+         *   },
+         *   {
+         *     type: 'dropdown',
+         *     label: 'Export Options',
+         *     items: [
+         *       { label: 'Export All as CSV', url: '/game/export/csv' },
+         *       { label: 'Export All as JSON', url: '/game/export/json' }
+         *     ]
+         *   },
+         *   {
+         *     label: 'Refresh Data',
+         *     url: '/game/refresh',
+         *     icon: 'reload'
+         *   }
+         * ]
+         * ```
+         *
+         * @deprecated Use listPageConfig.actions instead
+         */
+        readonly listPageActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+        /**
+         * @deprecated Use listPageConfig.breadcrumbs instead
+         */
+        readonly listPageBreadcrumbs?: ReadonlyArray<{
+            label: string;
+            url?: string;
+        }> | Array<{
             label: string;
             url?: string;
         }>;
+        /**
+         * Default sort configuration for the list page
+         *
+         * Three formats supported:
+         * 1. Object (single column for search): { field: 'createdAt', order: 'desc' }
+         * 2. Array (multi-column for search): [{ field: 'publishDate', order: 'desc' }, { field: 'likeCount', order: 'desc' }]
+         * 3. Order direction (DynamoDB index order): 'asc' | 'desc'
+         *
+         * Note: For DynamoDB (non-search) mode, use 'asc' | 'desc' to indicate the expected
+         * index order direction. DynamoDB returns data in index (PK/SK) order, not arbitrary sort.
+         *
+         * @deprecated Use listPageConfig.defaultSort instead
+         */
         readonly listPageDefaultSort?: {
-            field: string;
-            order: 'asc' | 'desc';
-        } | Array<{
-            field: string;
-            order: 'asc' | 'desc';
-        }> | string;
-        readonly viewPageActions?: IEntityPageAction[];
-        readonly viewPageBreadcrumbs?: Array<{
+            readonly field: string;
+            readonly order: 'asc' | 'desc';
+        } | ReadonlyArray<{
+            readonly field: string;
+            readonly order: 'asc' | 'desc';
+        }> | 'asc' | 'desc';
+        /**
+         * View/Detail page configuration
+         *
+         * These properties configure the entity's detail/view page (e.g., `/view-game/:id`).
+         * All properties are transformed to unified names in the generated UI config.
+         */
+        /**
+         * Actions for the view/detail page header (page-level actions for this specific record).
+         *
+         * These actions operate on the current record being viewed. Common use cases include
+         * navigating to related data, triggering record-specific operations, or opening
+         * related pages/modals.
+         *
+         * Note: Mapped to `pageHeaderActions` in generated UI config for frontend consumption.
+         * Default actions ("Back", "Edit") are automatically added by the framework unless
+         * excluded via entity operation flags.
+         *
+         * @example
+         * ```typescript
+         * viewPageActions: [
+         *   {
+         *     type: 'dropdown',
+         *     label: 'Related Data',
+         *     items: [
+         *       { label: 'View Game Stats', url: '/game/:id/stats' },
+         *       { label: 'View Players', url: '/game/:id/players' },
+         *       { label: 'View Timeline', url: '/game/:id/timeline' }
+         *     ]
+         *   },
+         *   {
+         *     label: 'Publish',
+         *     url: '/game/:id/publish',
+         *     icon: 'rocket',
+         *     openInModal: true
+         *   }
+         * ]
+         * ```
+         *
+         * @deprecated Use viewPageConfig.actions instead
+         */
+        readonly viewPageActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+        /**
+         * @deprecated Use viewPageConfig.breadcrumbs instead
+         */
+        readonly viewPageBreadcrumbs?: ReadonlyArray<{
+            label: string;
+            url?: string;
+        }> | Array<{
             label: string;
             url?: string;
         }>;
+        /**
+         * @deprecated Use viewPageConfig.columnsConfig instead
+         */
         readonly viewPageColumnsConfig?: IEntityPageColumnConfig;
-        readonly editPageActions?: IEntityPageAction[];
-        readonly editPageBreadcrumbs?: Array<{
+        /**
+         * Edit/Update page configuration
+         *
+         * These properties configure the entity's edit/update page (e.g., `/edit-game/:id`).
+         * All properties are transformed to unified names in the generated UI config.
+         */
+        /**
+         * Actions for the edit/update page header (page-level actions while editing this record).
+         *
+         * These actions are available while editing a record. Common use cases include
+         * previewing changes, accessing related data, or triggering record-specific workflows.
+         *
+         * Note: Mapped to `pageHeaderActions` in generated UI config for frontend consumption.
+         * Default actions ("Back", "Delete", "Duplicate") are automatically added by the
+         * framework unless excluded via entity operation flags.
+         *
+         * @example
+         * ```typescript
+         * editPageActions: [
+         *   {
+         *     label: 'Preview Changes',
+         *     url: '/game/:id/preview',
+         *     icon: 'eye',
+         *     openInModal: true
+         *   },
+         *   {
+         *     label: 'View History',
+         *     url: '/game/:id/history',
+         *     icon: 'history'
+         *   }
+         * ]
+         * ```
+         */
+        /**
+         * @deprecated Use editPageConfig.actions instead
+         */
+        readonly editPageActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+        /**
+         * @deprecated Use editPageConfig.breadcrumbs instead
+         */
+        readonly editPageBreadcrumbs?: ReadonlyArray<{
+            label: string;
+            url?: string;
+        }> | Array<{
             label: string;
             url?: string;
         }>;
+        /**
+         * @deprecated Use editPageConfig.columnsConfig instead
+         */
         readonly editPageColumnsConfig?: IEntityPageColumnConfig;
+        /**
+         * NEW NESTED STRUCTURE (RECOMMENDED)
+         *
+         * These nested configs provide better organization and support for the universal
+         * evaluation system, including visibility/enablement configs for actions, form
+         * buttons, fields, and more.
+         */
+        /**
+         * List page nested configuration
+         * Replaces: listPageActions, listPageBreadcrumbs, listPageDefaultSort
+         */
+        readonly listPageConfig?: EntityListPageConfig;
+        /**
+         * View page nested configuration
+         * Replaces: viewPageActions, viewPageBreadcrumbs, viewPageColumnsConfig
+         */
+        readonly viewPageConfig?: EntityViewPageConfig;
+        /**
+         * Edit page nested configuration
+         * Replaces: editPageActions, editPageBreadcrumbs, editPageColumnsConfig
+         */
+        readonly editPageConfig?: EntityEditPageConfig;
+        /**
+         * Create page nested configuration
+         * Replaces: createPageBreadcrumbs, createPageColumnsConfig
+         */
+        readonly createPageConfig?: EntityCreatePageConfig;
         readonly search?: {
             enabled: boolean;
             indexConfig?: SearchIndexConfig;
