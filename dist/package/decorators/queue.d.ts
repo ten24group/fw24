@@ -54,6 +54,14 @@ export type IQueueConfig = CommonLambdaHandlerOptions & {
      * The subscriptions for the queue.
      */
     subscriptions?: IQueueSubscriptions;
+    /**
+     * Skip automatic registration by QueueConstruct.
+     * When true, this queue will not be automatically created during QueueConstruct's construct phase.
+     * Use this when another construct (e.g., DynamoDBConstruct) will manually create and register the queue.
+     *
+     * @default false
+     */
+    manualRegistration?: boolean;
 };
 /**
  * Decorator function defining a queue.

@@ -88,9 +88,35 @@ export interface SearchIndexingConfig extends IConstructConfig {
      */
     existingQueueName?: string;
     /**
+     * Path to queue handler file for manual registration.
+     * The queue handler must have `manualRegistration: true` in its @Queue config.
+     * DynamoDB construct will create the queue and automatically subscribe it to the stream topic.
+     *
+     * **Example:**
+     * ```typescript
+     * // In src/queues/meilisearch-sync.ts:
+     * @Queue('MeilisearchSync', {
+     *   manualRegistration: true,
+     *   resourceAccess: { tables: ['plusfan'] },
+     *   // ... other queue config
+     * })
+     * export class MeilisearchSync extends BaseSearchIndexer { ... }
+     *
+     * // In index.ts:
+     * searchIndexing: [{
+     *   enabled: true,
+     *   queueHandlerPath: './src/queues/meilisearch-sync.ts',
+     *   engineConfig: { type: 'meili', host: '...', masterKey: '...' }
+     * }]
+     * ```
+     *
+     * **Note:** Cannot be used with `queueName`, `existingQueueName`, or `lambdaFunctionProps`
+     */
+    queueHandlerPath?: string;
+    /**
      * Search indexing queue properties (only used when creating a new queue)
      *
-     * **Note:** Ignored when `existingQueueName` is provided
+     * **Note:** Ignored when `existingQueueName` or `queueHandlerPath` is provided
      */
     queueProps?: QueueProps;
     /**
@@ -354,6 +380,7 @@ export declare class DynamoDBConstruct implements FW24Construct {
     private extractQueueConfig;
     private buildCommonLambdaConfig;
     private setupWithExistingQueue;
+    private setupWithQueueHandler;
     private setupWithNewQueue;
     private buildSqsEventSourceProps;
     private setupAuditProcessing;
