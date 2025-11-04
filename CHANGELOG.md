@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.0.4-beta.6](https://github.com/ten24group/fw24/compare/v1.0.4-beta.5...v1.0.4-beta.6) (2025-11-04)
+
+
+### Bug Fixes
+
+* bugs in ui-config ([e168dc3](https://github.com/ten24group/fw24/commit/e168dc39e3ad41d1d29cf6ecaa4889e394f85aac))
+* default sort and types ([593a618](https://github.com/ten24group/fw24/commit/593a6183682b9541ff9d1307116f582331363efe))
+* read-only vs mutable Array types for entity-schema ([350652b](https://github.com/ten24group/fw24/commit/350652b5ab12df82d803fea13570a65c874eee31))
+
 ### [1.0.4-beta.5](https://github.com/ten24group/fw24/compare/v1.0.4-beta.4...v1.0.4-beta.5) (2025-10-27)
 
 ### [1.0.4-beta.4](https://github.com/ten24group/fw24/compare/v1.0.4-beta.3...v1.0.4-beta.4) (2025-10-27)
