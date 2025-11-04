@@ -342,9 +342,37 @@ export interface AuditConfig extends IConstructConfig {
          */
         existingQueueName?: string;
         /**
+         * Path to queue handler file for manual registration.
+         * The queue handler must have `manualRegistration: true` in its @Queue config.
+         * DynamoDB construct will create the queue and automatically subscribe it to the stream topic.
+         *
+         * **Example:**
+         * ```typescript
+         * // In src/queues/custom-audit.ts:
+         * @Queue('CustomAudit', {
+         *   manualRegistration: true,
+         *   resourceAccess: { tables: ['plusfan'] },
+         *   // ... other queue config
+         * })
+         * export class CustomAudit extends BaseAuditLogger { ... }
+         *
+         * // In index.ts:
+         * audit: {
+         *   enabled: true,
+         *   type: AuditLoggerType.DYNAMODB,
+         *   dynamodbstreamOptions: {
+         *     queueHandlerPath: './src/queues/custom-audit.ts'
+         *   }
+         * }
+         * ```
+         *
+         * **Note:** Cannot be used with `queueName`, `existingQueueName`, or custom `lambdaFunctionProps`
+         */
+        queueHandlerPath?: string;
+        /**
          * Audit queue properties (only used when creating a new queue)
          *
-         * **Note:** Ignored when `existingQueueName` is provided
+         * **Note:** Ignored when `existingQueueName` or `queueHandlerPath` is provided
          */
         queueProps?: QueueProps;
         /**
