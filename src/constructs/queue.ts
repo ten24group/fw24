@@ -145,6 +145,13 @@ export class QueueConstruct implements FW24Construct {
         
         const queueName = queueInfo.handlerInstance.queueName;
         const queueConfig = queueInfo.handlerInstance.queueConfig || {};
+        
+        // Skip queues marked for manual registration
+        if (queueConfig.manualRegistration) {
+            this.logger.info(`:::Skipping manual registration queue ${queueName} from ${queueInfo.filePath}/${queueInfo.fileName}`);
+            return;
+        }
+        
         const queueProps = {...this.queueConstructConfig.queueProps, ...queueConfig.queueProps};
 
         this.logger.info(`:::Creating queue ${queueName} from ${queueInfo.filePath}/${queueInfo.fileName}`);
@@ -179,6 +186,12 @@ export class QueueConstruct implements FW24Construct {
     private createQueueLambda = (queueInfo: HandlerDescriptor) => {
         const queueName = queueInfo.handlerInstance.queueName;
         const queueConfig = queueInfo.handlerInstance.queueConfig || {};
+
+        // Skip queues marked for manual registration
+        if (queueConfig.manualRegistration) {
+            this.logger.debug(`:::Skipping lambda creation for manual registration queue ${queueName}`);
+            return;
+        }
 
         this.logger.info(`:::Creating lambda for queue ${queueName}`);
 
