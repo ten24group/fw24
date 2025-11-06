@@ -2,12 +2,12 @@ import { TablePropsV2 } from "aws-cdk-lib/aws-dynamodb";
 import { TopicProps } from "aws-cdk-lib/aws-sns";
 import { DynamoEventSourceProps, SqsEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
 import { LogGroupProps } from "aws-cdk-lib/aws-logs";
+import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Stack } from "aws-cdk-lib";
 import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import { IConstructConfig } from "../interfaces/construct-config";
 import { AuditLoggerType } from "../audit/interfaces";
-import { LambdaFunctionProps } from "./lambda-function";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
 export type SearchEngineConfig = {
     type: 'meili';
@@ -51,13 +51,14 @@ export interface SearchIndexingConfig extends IConstructConfig {
      */
     engineConfig: SearchEngineConfig;
     /**
-     * Custom lambda function properties for search indexing processing.
-     * When provided, completely replaces the default search indexer handler.
-     * Custom handlers can extend base classes and reuse framework utilities.
+     * Custom function properties for the search indexing Lambda.
+     * Allows overriding function configuration like VPC, memory, timeout, etc.
      *
-     * **Note:** Ignored when `existingQueueName` is provided (existing queues have their own handlers)
+     * **Note:**
+     * - Properties specified here will override the queue's @Queue decorator functionProps
+     * - Ignored when `existingQueueName` is provided (existing queues have their own handlers)
      */
-    lambdaFunctionProps?: LambdaFunctionProps;
+    functionProps?: NodejsFunctionProps;
     /**
      * Custom queue name for creating a new search indexing queue.
      * If not provided, defaults to `${tableName}-search-indexer`
@@ -279,13 +280,14 @@ export interface AuditConfig extends IConstructConfig {
      */
     type?: AuditLoggerType;
     /**
-     * Custom lambda function properties for audit processing.
-     * When provided, completely replaces the default audit handler.
-     * Custom handlers can extend base classes and reuse framework utilities.
+     * Custom function properties for the audit Lambda.
+     * Allows overriding function configuration like VPC, memory, timeout, etc.
      *
-     * **Note:** Ignored when `existingQueueName` is provided (existing queues have their own handlers)
+     * **Note:**
+     * - Properties specified here will override the queue's @Queue decorator functionProps
+     * - Ignored when `existingQueueName` is provided (existing queues have their own handlers)
      */
-    lambdaFunctionProps?: LambdaFunctionProps;
+    functionProps?: NodejsFunctionProps;
     /**
      * Options for the audit logger.
      */

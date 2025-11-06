@@ -67,7 +67,7 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>) => {
     readonly pageTitle: Template;
     readonly pageType: "list";
-    readonly routePattern: undefined;
+    readonly routePattern: `list-${string}`;
     readonly breadcrumbs: readonly {
         label: Template;
         url?: string;

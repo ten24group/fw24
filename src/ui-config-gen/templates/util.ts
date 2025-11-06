@@ -59,7 +59,7 @@ export function formatEntityAttributeForFormOrDetail(
         ...thisProp,
         label: thisProp.name,
         column: thisProp.id,
-        fieldType: thisProp.fieldType || 'text',
+        fieldType: thisProp.fieldType || 'text',  // fieldType should already be inferred in base-service
         hidden: thisProp.hasOwnProperty('isVisible') && !thisProp.isVisible
     };
 
@@ -341,11 +341,10 @@ export function formatEntityAttributesForList(entityName: string, properties: TI
     return properties
         .filter(prop => prop && prop.isListable)
         .map(prop => {
-
             const propConfig: ListingPropConfig = {
                 ...prop,
                 dataIndex: `${prop.id}`,
-                fieldType: prop.fieldType || 'text',
+                fieldType: prop.fieldType || 'text',  // fieldType should already be inferred in base-service
                 hidden: prop.hasOwnProperty('isVisible') && !prop.isVisible
             };
 

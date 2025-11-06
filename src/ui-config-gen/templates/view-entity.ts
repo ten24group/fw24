@@ -71,6 +71,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         // Use custom pageTitle if provided, otherwise default
         pageTitle: pageTitle || `${entityNamePascalCase} Details`,
         pageType: 'details',
+        routePattern: `/view-${entityNameLower}/:id`,
         breadcrumbs: breadcrumbs || [],
         pageHeaderActions,
         detailsPageConfig,
@@ -97,7 +98,7 @@ export function makeViewEntityDetailConfig<S extends EntitySchema<string, string
         detailApiConfig: {
             apiMethod: `GET`,
             responseKey: entityNameCamel,
-            apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
+            apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}/:id`,
         },
         propertiesConfig: formattedProps,  // Properties with field visibility merged
         entityName,  // Add entityName to config for evaluation system

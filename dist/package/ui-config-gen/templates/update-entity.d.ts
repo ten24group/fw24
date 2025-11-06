@@ -47,6 +47,7 @@ export type UpdateEntityPageOptions<S extends EntitySchema<string, string, strin
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: UpdateEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     pageTitle: Template;
     pageType: string;
+    routePattern: string;
     breadcrumbs: readonly {
         label: Template;
         url?: string;

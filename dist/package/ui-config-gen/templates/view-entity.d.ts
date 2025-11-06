@@ -40,6 +40,7 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ViewEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     readonly pageTitle: Template;
     readonly pageType: "details";
+    readonly routePattern: `/view-${string}/:id`;
     readonly breadcrumbs: readonly {
         label: Template;
         url?: string;

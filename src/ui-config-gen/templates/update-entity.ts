@@ -116,6 +116,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     return {
         pageTitle: pageTitle || `Update ${entityNamePascalCase}`,
         pageType:   'form',
+        routePattern: `/edit-${entityNameLower}/:id`,
         breadcrumbs: breadcrumbs || [],
         pageHeaderActions: pageHeaderActions,
         formPageConfig: {
@@ -159,12 +160,12 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
         apiConfig: {
             apiMethod: `PATCH`,
             responseKey: entityNameCamel,
-            apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
+            apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}/:id`,
         },
         detailApiConfig: {
             apiMethod: "GET",
             responseKey: entityNameCamel,
-            apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`,
+            apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}/:id`,
         },
         formButtons: finalButtons,  // Merged buttons
         propertiesConfig: formattedProps,  // Properties with field visibility merged

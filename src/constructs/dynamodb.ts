@@ -2,7 +2,7 @@ import { TablePropsV2, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { TopicProps } from "aws-cdk-lib/aws-sns";
 import { DynamoEventSource, DynamoEventSourceProps, SqsEventSource, SqsEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
 import { LogGroup, LogGroupProps, RetentionDays } from "aws-cdk-lib/aws-logs";
-import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { StartingPosition } from "aws-cdk-lib/aws-lambda";
 import { RemovalPolicy, Stack } from "aws-cdk-lib";
 import { join, resolve } from "path";
@@ -24,7 +24,7 @@ import { removeEmpty } from "../utils";
 
 interface NewQueueConfig {
     type: 'new';
-    customLambdaProps?: LambdaFunctionProps;
+    functionProps?: NodejsFunctionProps;
     queueProps?: QueueProps;
     sqsEventSourceProps?: SqsEventSourceProps;
     customQueueName?: string;
@@ -38,6 +38,7 @@ interface ExistingQueueConfig {
 interface HandlerQueueConfig {
     type: 'handler';
     queueHandlerPath: string;
+    functionProps?: NodejsFunctionProps;
 }
 
 type QueueConfig = NewQueueConfig | ExistingQueueConfig | HandlerQueueConfig;
@@ -95,13 +96,14 @@ export interface SearchIndexingConfig extends IConstructConfig {
      */
     engineConfig: SearchEngineConfig;
     /**
-     * Custom lambda function properties for search indexing processing.
-     * When provided, completely replaces the default search indexer handler.
-     * Custom handlers can extend base classes and reuse framework utilities.
+     * Custom function properties for the search indexing Lambda.
+     * Allows overriding function configuration like VPC, memory, timeout, etc.
      * 
-     * **Note:** Ignored when `existingQueueName` is provided (existing queues have their own handlers)
+     * **Note:** 
+     * - Properties specified here will override the queue's @Queue decorator functionProps
+     * - Ignored when `existingQueueName` is provided (existing queues have their own handlers)
      */
-    lambdaFunctionProps?: LambdaFunctionProps;
+    functionProps?: NodejsFunctionProps;
     /**
      * Custom queue name for creating a new search indexing queue.
      * If not provided, defaults to `${tableName}-search-indexer`
@@ -327,13 +329,14 @@ export interface AuditConfig extends IConstructConfig {
      */
     type?: AuditLoggerType;
     /**
-     * Custom lambda function properties for audit processing.
-     * When provided, completely replaces the default audit handler.
-     * Custom handlers can extend base classes and reuse framework utilities.
+     * Custom function properties for the audit Lambda.
+     * Allows overriding function configuration like VPC, memory, timeout, etc.
      * 
-     * **Note:** Ignored when `existingQueueName` is provided (existing queues have their own handlers)
+     * **Note:** 
+     * - Properties specified here will override the queue's @Queue decorator functionProps
+     * - Ignored when `existingQueueName` is provided (existing queues have their own handlers)
      */
-    lambdaFunctionProps?: LambdaFunctionProps;
+    functionProps?: NodejsFunctionProps;
     /**
      * Options for the audit logger.
      */
@@ -569,11 +572,11 @@ export class DynamoDBConstruct implements FW24Construct {
         this.validateQueueConfig(config, consumerName);
 
         if (queueConfig.type === 'handler') {
-            await this.setupWithQueueHandler(queueConfig.queueHandlerPath, consumerName, environmentVariables);
+            await this.setupWithQueueHandler(queueConfig.queueHandlerPath, consumerName, environmentVariables, queueConfig.functionProps);
         } else if (queueConfig.type === 'existing') {
             this.setupWithExistingQueue(queueConfig.existingQueueName, consumerName);
         } else {
-            const commonConfig = this.buildCommonLambdaConfig(defaultHandlerEntry, environmentVariables, resourceAccess, queueConfig.customLambdaProps);
+            const commonConfig = this.buildCommonLambdaConfig(defaultHandlerEntry, environmentVariables, resourceAccess, queueConfig.functionProps);
             this.setupWithNewQueue(queueConfig, consumerName, commonConfig);
         }
 
@@ -591,8 +594,8 @@ export class DynamoDBConstruct implements FW24Construct {
             if (searchConfig.existingQueueName && searchConfig.queueProps) {
                 this.logger.warn(`${consumerName}: 'queueProps' provided with 'existingQueueName'. Queue properties are ignored when using existing queues.`);
             }
-            if (searchConfig.existingQueueName && searchConfig.lambdaFunctionProps) {
-                this.logger.warn(`${consumerName}: 'lambdaFunctionProps' provided with 'existingQueueName'. Lambda properties are ignored when using existing queues (they have their own handlers).`);
+            if (searchConfig.existingQueueName && searchConfig.functionProps) {
+                this.logger.warn(`${consumerName}: 'functionProps' provided with 'existingQueueName'. Function properties are ignored when using existing queues (they have their own handlers).`);
             }
         } else {
             const auditConfig = config as AuditConfig;
@@ -603,8 +606,8 @@ export class DynamoDBConstruct implements FW24Construct {
             if (options?.existingQueueName && options?.queueProps) {
                 this.logger.warn(`${consumerName}: 'queueProps' provided with 'existingQueueName'. Queue properties are ignored when using existing queues.`);
             }
-            if (options?.existingQueueName && auditConfig.lambdaFunctionProps) {
-                this.logger.warn(`${consumerName}: 'lambdaFunctionProps' provided with 'existingQueueName'. Lambda properties are ignored when using existing queues (they have their own handlers).`);
+            if (options?.existingQueueName && auditConfig.functionProps) {
+                this.logger.warn(`${consumerName}: 'functionProps' provided with 'existingQueueName'. Function properties are ignored when using existing queues (they have their own handlers).`);
             }
         }
     }
@@ -620,6 +623,7 @@ export class DynamoDBConstruct implements FW24Construct {
                 return {
                     type: 'handler',
                     queueHandlerPath: searchConfig.queueHandlerPath,
+                    functionProps: searchConfig.functionProps,
                 };
             } else if ('existingQueueName' in searchConfig && searchConfig.existingQueueName) {
                 return {
@@ -629,7 +633,7 @@ export class DynamoDBConstruct implements FW24Construct {
             } else {
                 return {
                     type: 'new',
-                    customLambdaProps: searchConfig.lambdaFunctionProps,
+                    functionProps: searchConfig.functionProps,
                     queueProps: searchConfig.queueProps,
                     sqsEventSourceProps: searchConfig.sqsEventSourceProps,
                     customQueueName: searchConfig.queueName,
@@ -644,6 +648,7 @@ export class DynamoDBConstruct implements FW24Construct {
                 return {
                     type: 'handler',
                     queueHandlerPath: options.queueHandlerPath,
+                    functionProps: auditConfig.functionProps,
                 };
             } else if (options && 'existingQueueName' in options && options.existingQueueName) {
                 return {
@@ -653,7 +658,7 @@ export class DynamoDBConstruct implements FW24Construct {
             } else {
                 return {
                     type: 'new',
-                    customLambdaProps: auditConfig.lambdaFunctionProps,
+                    functionProps: auditConfig.functionProps,
                     queueProps: options?.queueProps,
                     sqsEventSourceProps: options?.sqsEventSourceProps,
                     customQueueName: options?.queueName,
@@ -666,20 +671,13 @@ export class DynamoDBConstruct implements FW24Construct {
         defaultHandlerEntry: string,
         environmentVariables: Record<string, string>,
         resourceAccess: any,
-        customLambdaProps?: LambdaFunctionProps
+        functionProps?: NodejsFunctionProps
     ): LambdaFunctionProps {
-        const props = customLambdaProps || {} as LambdaFunctionProps;
         return {
-            ...props,
-            entry: props.entry || defaultHandlerEntry,
-            environmentVariables: {
-                ...environmentVariables,
-                ...props.environmentVariables,
-            },
-            resourceAccess: {
-                ...resourceAccess,
-                ...props.resourceAccess,
-            },
+            entry: defaultHandlerEntry,
+            environmentVariables,
+            resourceAccess,
+            functionProps,
         };
     }
 
@@ -706,7 +704,8 @@ export class DynamoDBConstruct implements FW24Construct {
     private async setupWithQueueHandler(
         queueHandlerPath: string,
         consumerName: string,
-        environmentVariables: Record<string, string>
+        environmentVariables: Record<string, string>,
+        functionProps?: NodejsFunctionProps
     ): Promise<void> {
         this.logger.info(`Loading queue handler from: ${queueHandlerPath}`);
         
@@ -747,6 +746,10 @@ export class DynamoDBConstruct implements FW24Construct {
             ...this.fw24.resolveEnvVariables(queueConfig.env)
         };
         
+        // Merge function props (same pattern as QueueConstruct)
+        // functionProps from searchIndexing/audit config take precedence
+        const mergedFunctionProps = { ...queueConfig.functionProps, ...functionProps };
+        
         // Create queue + lambda (same pattern as QueueConstruct, but with subscription to stream topic)
         const queue = new QueueLambda(this.mainStack, `${queueName}-queue`, {
             queueName: queueName,
@@ -766,7 +769,7 @@ export class DynamoDBConstruct implements FW24Construct {
                 entry: absolutePath,
                 environmentVariables: mergedEnvVars,
                 resourceAccess: queueConfig.resourceAccess,
-                functionProps: queueConfig.functionProps,
+                functionProps: mergedFunctionProps,
                 functionTimeout: queueConfig.functionTimeout,
                 policies: queueConfig.policies,
                 logRemovalPolicy: queueConfig.logRemovalPolicy,

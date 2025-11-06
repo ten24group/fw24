@@ -48,6 +48,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
         label: Template;
         url?: string;
     }[];
+    routePattern: string;
     pageHeaderActions: {
         label: string;
         template: string;

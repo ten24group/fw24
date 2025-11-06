@@ -1884,6 +1884,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
 }
 
+const entityAttributeLogger = createLogger('entityAttributeToIOSchemaAttribute');
+
 export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAttribute): Partial<EntityAttribute> & {
     id: string,
     name: string,
@@ -1896,7 +1898,38 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
 
     const relationMeta = relatedEntityName ? { ...restRelation, entityName: relatedEntityName } : undefined;
 
-    const { items, type, properties, addNewOption, addNewOptionConfig, ...restRestMeta } = restMeta as any;
+    const { items, type, properties, addNewOption, addNewOptionConfig, fieldType: explicitFieldType, options, ...restRestMeta } = restMeta as any;
+
+    // Infer fieldType from type if not explicitly provided
+    let inferredFieldType: string | undefined = explicitFieldType;
+    if (!inferredFieldType && type) {
+        if (type === 'boolean') {
+            inferredFieldType = 'boolean';
+        } else if (type === 'number') {
+            inferredFieldType = 'number';
+        } else if (Array.isArray(type)) {
+            // Enum type like ['active', 'inactive']
+            inferredFieldType = 'select';
+        } else if (type === 'string' && options && Array.isArray(options) && options.length > 0) {
+            // String with options is a select
+            inferredFieldType = 'select';
+        } else if (type === 'any') {
+            inferredFieldType = 'json';
+        } else if (type === 'map') {
+            inferredFieldType = 'map';
+        } else if (type === 'list') {
+            inferredFieldType = 'list';
+        }
+        // For date fields, check attribute name as hint
+        else if (type === 'string') {
+            const lowerAttId = attId.toLowerCase();
+            if (lowerAttId.includes('date') || lowerAttId === 'createdat' || lowerAttId === 'updatedat' || lowerAttId === 'deletedat') {
+                inferredFieldType = 'datetime';
+            }
+        }
+
+        entityAttributeLogger.debug(`inferredFieldType: ${inferredFieldType} for entity attribute "${attId}" with type "${typeof type === 'object' ? JSON.stringify(type) : type}"`);
+    }
 
     const formatted: any = {
         ...restRestMeta,
@@ -1912,6 +1945,19 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         isCreatable: !('isCreatable' in att) ? true : att.isCreatable,
         isFilterable: !('isFilterable' in att) ? true : att.isFilterable,
         isSearchable: !('isSearchable' in att) ? true : att.isSearchable,
+    }
+
+    // Add inferred or explicit fieldType
+    if (inferredFieldType) {
+        formatted.fieldType = inferredFieldType;
+    } else if (!explicitFieldType && type && type !== 'string') {
+        // Log warning for non-string types we couldn't infer
+        entityAttributeLogger.warn(`⚠️ Could not infer fieldType for attribute "${attId}" with type "${typeof type === 'object' ? JSON.stringify(type) : type}". Consider adding explicit fieldType.`);
+    }
+    
+    // Add options back if they exist
+    if (options) {
+        formatted.options = options;
     }
 
     // Pass through both old and new addNewOption formats

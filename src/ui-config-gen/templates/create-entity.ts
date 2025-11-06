@@ -58,6 +58,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         pageTitle: pageTitle || `Create ${entityNamePascalCase}`,
         pageType:   'form',
         breadcrumbs: breadcrumbs || [],
+        routePattern: `create-${entityNameLower}`,
         pageHeaderActions: [
             {
                 label:  "Back",

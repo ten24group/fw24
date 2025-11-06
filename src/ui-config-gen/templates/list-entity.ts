@@ -86,7 +86,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         // Use custom pageTitle if provided, otherwise default
         pageTitle: pageTitle || `${entityNamePascalCase} Listing`,
         pageType: "list",
-        routePattern: undefined,
+        routePattern: `list-${entityNameLower}`,
         breadcrumbs: breadcrumbs || [],
         pageHeaderActions,
         listPageConfig
