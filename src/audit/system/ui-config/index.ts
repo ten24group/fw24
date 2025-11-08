@@ -17,7 +17,7 @@ const listingUiConfig = MakeListEntityConfig({
   excludeFromAdminCreate: true,
   excludeFromAdminUpdate: true,
   excludeFromAdminDelete: true,
-});
+}, auditService);
 
 const viewUiConfig = MakeViewEntityConfig({
   entityName: entitySchema.model.entity,

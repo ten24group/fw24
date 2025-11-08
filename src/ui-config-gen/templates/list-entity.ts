@@ -1,15 +1,7 @@
-import { EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { BaseEntityService, EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
 import { IEntityPageAction, Template } from "../../entity/base-entity";
 import { pascalCase } from "../../utils";
 import { formatEntityAttributesForList, mergeColumnVisibility } from "./util";
-
-export type ListingPropConfig = {
-    name: string,
-    dataIndex: string,
-    fieldType: "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json",
-    hidden?: boolean,
-    actions?: Array<IEntityPageAction>
-};
 
 export type ListEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string,
@@ -58,14 +50,15 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
 }
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
-    options: ListEntityPageOptions<S>
+    options: ListEntityPageOptions<S>,
+    entityService: BaseEntityService<S>
 ) => {
 
     const { entityName, entityNamePlural, properties, breadcrumbs, pageTitle } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
 
-    const listPageConfig = makeViewEntityListConfig(options);
+    const listPageConfig = makeViewEntityListConfig(options, entityService);
 
     // Build default page header actions with templates
     const defaultPageHeaderActions: IEntityPageAction[] = [];
@@ -94,7 +87,8 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 };
 
 export function makeViewEntityListConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
-    options: ListEntityPageOptions<S>
+    options: ListEntityPageOptions<S>,
+    entityService: BaseEntityService<S>
 ) {
 
     const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch, defaultSort, tableConfig } = options;
@@ -131,7 +125,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     };
 
     // 1. Generate base properties from schema with merged row actions
-    let formattedProps = formatEntityAttributesForList(entityName, Array.from(properties.values()), {
+    let formattedProps = formatEntityAttributesForList(entityName, Array.from(properties.values()), entityService, {
         CRUDApiPath,
         excludeFromAdminUpdate,
         excludeFromAdminDelete,
@@ -149,6 +143,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
         propertiesConfig: formattedProps,  // Row actions are merged into identifier field's actions
         entityName,  // Add entityName to config for evaluation system
         ...(tableConfig?.bulkActions && { bulkActions: tableConfig.bulkActions }),  // Include bulkActions if provided
-        ...(tableConfig?.rowSelection && { rowSelection: tableConfig.rowSelection })  // Include rowSelection if provided
+        ...(tableConfig?.rowSelection && { rowSelection: tableConfig.rowSelection }),  // Include rowSelection if provided
+        ...(tableConfig?.expandable && { expandableConfig: tableConfig.expandable })  // Include expandable config if provided
     };
 }

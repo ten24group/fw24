@@ -211,7 +211,7 @@ export class EntityUIConfigGen {
                     breadcrumbs: entitySchema.model.listPageConfig?.breadcrumbs || entitySchema.model.listPageBreadcrumbs,
                     defaultSort: entitySchema.model.listPageConfig?.defaultSort || entitySchema.model.listPageDefaultSort,
                     tableConfig: entitySchema.model.listPageConfig?.tableConfig,
-                });
+                }, service);
                 entityConfigs[ `list-${entityName.toLowerCase()}` ] = listConfig;
             }
 

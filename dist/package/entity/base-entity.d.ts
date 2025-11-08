@@ -1649,6 +1649,119 @@ export type SpecialAttributeType = keyof typeof SpecialAttributeTypes;
  * List page nested configuration (RECOMMENDED)
  * Replaces: listPageActions, listPageBreadcrumbs, listPageDefaultSort
  */
+/**
+ * Expandable row configuration for list pages.
+ * Allows displaying nested data (e.g., to-many relations) within table rows.
+ *
+ * Uses the existing Table component to render nested data, providing:
+ * - Full table features (pagination, filters, sorting)
+ * - Consistent UI/UX
+ * - Performance optimizations (lazy loading, virtualization)
+ *
+ * @example
+ * // Expand team rows to show players
+ * expandable: {
+ *   mode: 'nested-table',
+ *   relationField: 'players',  // Field containing relation data or API URL
+ *   tableConfig: {
+ *     apiUrl: '/api/player?teamId.eq=:teamId',
+ *     columns: ['playerName', 'position', 'jerseyNumber'],
+ *     pageSize: 5,
+ *     showPagination: true
+ *   },
+ *   rowExpandable: {
+ *     record: { playerCount: { gt: 0 } }  // Only expand if team has players
+ *   }
+ * }
+ */
+export interface ITableExpandableConfig {
+    /**
+     * Mode for expandable content.
+     * - 'nested-table': Render another table (for to-many relations)
+     * - 'details': Render detail view of nested data
+     * - 'custom': Use custom pageType rendering
+     */
+    mode: 'nested-table' | 'details' | 'custom';
+    /**
+     * Field name containing relation data or used to construct API URL.
+     * Supports placeholder substitution (e.g., 'teamId' in '/api/player?teamId.eq=:teamId')
+     */
+    relationField?: string;
+    /**
+     * Configuration for nested table mode.
+     * Reuses existing Table component with all its features.
+     */
+    tableConfig?: {
+        /** API URL for fetching nested data. Supports placeholders like :teamId */
+        apiUrl: string;
+        /** API method. Default: 'GET' */
+        apiMethod?: 'GET' | 'POST';
+        /** Response key for data extraction. Default: 'data' */
+        responseKey?: string;
+        /** Column field names to display. If omitted, shows all columns */
+        columns?: ReadonlyArray<string> | Array<string>;
+        /** Number of items per page. Default: 5 */
+        pageSize?: number;
+        /** Show pagination controls. Default: true */
+        showPagination?: boolean;
+        /** Pre-applied filters (supports placeholders like ':teamId') */
+        defaultFilters?: Record<string, any>;
+        /** Show "View All" link that opens full list in modal */
+        showViewAll?: boolean;
+        /** Modal width for "View All" link. Default: 1200 */
+        viewAllModalWidth?: number | string;
+    };
+    /**
+     * Configuration for details mode.
+     * Shows detail view of nested data.
+     */
+    detailsConfig?: {
+        /** Field names to display. If omitted, shows all fields */
+        fields?: ReadonlyArray<string> | Array<string>;
+        /** Number of columns for layout. Default: 2 */
+        numColumns?: number;
+    };
+    /**
+     * Configuration for custom page type mode.
+     * Allows rendering any page type (list, details, form, dashboard, etc.)
+     */
+    customConfig?: {
+        /** Page type to render */
+        pageType: 'list' | 'details' | 'form' | 'dashboard' | 'accordion';
+        /** Page configuration */
+        pageConfig?: Record<string, any>;
+    };
+    /**
+     * Condition to determine if a row is expandable.
+     * Uses visibility evaluation system for conditional expansion.
+     *
+     * @example
+     * // Only expand if team has players
+     * rowExpandable: {
+     *   record: { playerCount: { gt: 0 } }
+     * }
+     *
+     * @example
+     * // Only expand for admin users
+     * rowExpandable: {
+     *   actor: { role: { inList: ['admin'] } }
+     * }
+     */
+    rowExpandable?: VisibilityConfig;
+    /**
+     * Default expand state. If true, rows are expanded by default.
+     * Default: false
+     */
+    defaultExpanded?: boolean;
+    /**
+     * Icon for expand button. Default: uses Ant Design default
+     */
+    expandIcon?: string;
+    /**
+     * Indent size for nested content. Default: 60
+     */
+    indentSize?: number;
+}
 export interface EntityListPageConfig {
     readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
     readonly breadcrumbs?: ReadonlyArray<{
@@ -1672,17 +1785,46 @@ export interface EntityListPageConfig {
             enabled: boolean;
             visibility?: VisibilityConfig;
         };
+        /**
+         * Column configuration including visibility, width, fixed position, and grouping.
+         *
+         * Column Grouping:
+         * - Set `groupTitle` on multiple columns to group them under a common header
+         * - Columns with the same `groupTitle` will be grouped together
+         * - Uses Ant Design's native `children` property
+         *
+         * @example
+         * columns: [
+         *   { field: 'playerName', groupTitle: 'Player Info' },
+         *   { field: 'position', groupTitle: 'Player Info' },
+         *   { field: 'jerseyNumber', groupTitle: 'Player Info' },
+         *   { field: 'points', groupTitle: 'Statistics' },
+         *   { field: 'assists', groupTitle: 'Statistics' },
+         *   { field: 'email' }  // No group - stays ungrouped
+         * ]
+         */
         readonly columns?: ReadonlyArray<{
             field: string;
             visibility?: VisibilityConfig;
             width?: string | number;
             fixed?: 'left' | 'right';
+            /** Group title for column grouping. Columns with same groupTitle will be grouped together. */
+            groupTitle?: string;
         }> | Array<{
             field: string;
             visibility?: VisibilityConfig;
             width?: string | number;
             fixed?: 'left' | 'right';
+            /** Group title for column grouping. Columns with same groupTitle will be grouped together. */
+            groupTitle?: string;
         }>;
+        /**
+         * Expandable row configuration.
+         * Allows displaying nested data within table rows.
+         *
+         * Common use case: Show to-many relations (e.g., Team → Players)
+         */
+        readonly expandable?: ITableExpandableConfig;
     };
 }
 /**

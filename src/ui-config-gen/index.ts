@@ -20,7 +20,6 @@ export type {
 // Export list entity types
 export type {
     ListEntityPageOptions,
-    ListingPropConfig,
 } from './templates/list-entity';
 
 // Export create entity types

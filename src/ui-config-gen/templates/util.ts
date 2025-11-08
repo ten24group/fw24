@@ -7,12 +7,54 @@ import {
     EntityAttribute,
     IRelationFieldConfig
 } from "../../entity";
-import type { IEntityPageAction } from '../../entity/base-entity';
+import type { IEntityPageAction, Template } from '../../entity/base-entity';
 import { DefaultLogger } from "../../logging";
 import { pascalCase } from "../../utils";
 import { makeCreateEntityFormConfig } from "./create-entity";
 import { makeViewEntityListConfig } from "./list-entity";
 import { makeViewEntityDetailConfig } from "./view-entity";
+
+/**
+ * Detect if there's a duplicated relation field (e.g., 'teamName' for 'teamId' relation).
+ * Returns a template using the duplicated field if found.
+ * 
+ * Common patterns:
+ * - teamId → teamName → template: '{teamName}'
+ * - userId → userName → template: '{userName}'  
+ * - gameId → gameName → template: '{gameName}'
+ * 
+ * @param allProperties - All properties in the parent entity
+ * @param relationFieldId - The relation field name (e.g., 'teamId')
+ * @param relatedEntityName - Related entity name (e.g., 'team')
+ * @returns Template string if duplicated field found, undefined otherwise
+ */
+function detectDuplicatedRelationFieldTemplate(
+    allProperties: TIOSchemaAttribute[],
+    relationFieldId: string,
+    relatedEntityName: string
+): string | undefined {
+    const entityNameLower = relatedEntityName.toLowerCase();
+    
+    // Try common patterns: {entity}Name, {entity}Title, {relatedField}Name
+    const commonSuffixes = ['Name', 'Title', 'Label'];
+    
+    for (const suffix of commonSuffixes) {
+        // Pattern 1: {entityName}{suffix} (e.g., teamName for teamId relation to 'team')
+        const pattern1 = `${entityNameLower}${suffix}`;
+        const found1 = allProperties.find(p => p.id?.toLowerCase() === pattern1);
+        if (found1) return `{${found1.id}}`;
+        
+        // Pattern 2: Replace 'Id' with {suffix} (e.g., teamName for teamId)
+        if (relationFieldId.toLowerCase().endsWith('id')) {
+            const baseName = relationFieldId.substring(0, relationFieldId.length - 2);
+            const pattern2 = `${baseName}${suffix}`;
+            const found2 = allProperties.find(p => p.id?.toLowerCase() === pattern2.toLowerCase());
+            if (found2) return `{${found2.id}}`;
+        }
+    }
+    
+    return undefined;
+}
 
 /**
  * Generate smart fallback configuration for relation display when only ID is available.
@@ -53,11 +95,12 @@ export function generateRelationFallback(
 export function formatEntityAttributeForFormOrDetail(
     thisProp: TIOSchemaAttribute,
     type: 'create' | 'update' | 'detail',
-    entityService: BaseEntityService<any>
+    entityService: BaseEntityService<any>,
+    allProperties?: TIOSchemaAttribute[]  // Optional: for detecting duplicated relation fields
 ) {
     const formatted: any = {
         ...thisProp,
-        label: thisProp.name,
+        label: thisProp.name,  // Respect custom label from entity attribute
         column: thisProp.id,
         fieldType: thisProp.fieldType || 'text',  // fieldType should already be inferred in base-service
         hidden: thisProp.hasOwnProperty('isVisible') && !thisProp.isVisible
@@ -155,6 +198,11 @@ export function formatEntityAttributeForFormOrDetail(
                 relatedEntityService
             );
 
+            // Auto-detect duplicated relation field (e.g., teamName for teamId)
+            const autoTemplate = allProperties 
+                ? detectDuplicatedRelationFieldTemplate(allProperties, thisProp.id, entityName)
+                : undefined;
+
             const generatedRelationConfig: IRelationFieldConfig = {
                 routePattern: routePattern,
                 // Pass ALL identifier mappings (supports composite keys)
@@ -169,8 +217,8 @@ export function formatEntityAttributeForFormOrDetail(
                 modalWidth: userRelationConfig?.modalWidth,
                 modalTitle: userRelationConfig?.modalTitle,
                 displayConfig: {
-                    // User can override with custom template
-                    template: userRelationConfig?.displayConfig?.template,
+                    // Priority: User custom template > Auto-detected duplicated field > undefined (use fallback)
+                    template: userRelationConfig?.displayConfig?.template || autoTemplate,
                     // Smart fallback pre-generated from entity metadata
                     fallback: userRelationConfig?.displayConfig?.fallback || fallbackConfig,
                     // Icon from entity metadata or user override
@@ -319,21 +367,31 @@ export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' 
     dataIndex: string,
     hidden?: boolean,
     actions?: Array<IEntityPageAction>,
+    relationConfig?: IRelationFieldConfig,  // For rendering relations with links/modals
+    template?: Template,  // For template-based rendering
+    isIdentifier?: boolean,  // For identifier fields
+    isLink?: boolean,  // For backward compatibility
+    linkConfig?: { routePattern: string; displayText?: string },  // For backward compatibility
 };
 
-export function formatEntityAttributesForList(entityName: string, properties: TIOSchemaAttribute[], {
-    CRUDApiPath,
-    excludeFromAdminUpdate,
-    excludeFromAdminDelete,
-    excludeFromAdminDetail,
-    customRowActions
-}: {
-    CRUDApiPath?: string,
-    excludeFromAdminUpdate?: boolean,
-    excludeFromAdminDelete?: boolean,
-    excludeFromAdminDetail?: boolean,
-    customRowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
-}) {
+export function formatEntityAttributesForList(
+    entityName: string, 
+    properties: TIOSchemaAttribute[], 
+    entityService: BaseEntityService<any>,
+    {
+        CRUDApiPath,
+        excludeFromAdminUpdate,
+        excludeFromAdminDelete,
+        excludeFromAdminDetail,
+        customRowActions
+    }: {
+        CRUDApiPath?: string,
+        excludeFromAdminUpdate?: boolean,
+        excludeFromAdminDelete?: boolean,
+        excludeFromAdminDetail?: boolean,
+        customRowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
+    }
+) {
 
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
@@ -341,10 +399,16 @@ export function formatEntityAttributesForList(entityName: string, properties: TI
     return properties
         .filter(prop => prop && prop.isListable)
         .map(prop => {
+            // Use same formatting logic as details/forms (includes relationConfig generation)
+            // Pass all properties so it can detect duplicated relation fields (e.g., teamName for teamId)
+            const formatted = formatEntityAttributeForFormOrDetail(prop, 'detail', entityService, properties);
+            
+            // Override/add list-specific properties
             const propConfig: ListingPropConfig = {
-                ...prop,
+                ...formatted,
+                name: formatted.label || formatted.name,  // Ensure name is set for table column header
                 dataIndex: `${prop.id}`,
-                fieldType: prop.fieldType || 'text',  // fieldType should already be inferred in base-service
+                fieldType: formatted.fieldType || 'text',
                 hidden: prop.hasOwnProperty('isVisible') && !prop.isVisible
             };
 
@@ -527,11 +591,13 @@ export function mergeColumnVisibility<T extends { name: string }>(
         readonly visibility?: any;
         readonly width?: string | number;
         readonly fixed?: 'left' | 'right';
+        readonly groupTitle?: string;
     }> | Array<{
         field: string;
         visibility?: any;
         width?: string | number;
         fixed?: 'left' | 'right';
+        groupTitle?: string;
     }> = []
 ): Array<T> {
     const overrideMap = new Map(
@@ -554,7 +620,8 @@ export function mergeColumnVisibility<T extends { name: string }>(
             ...prop,
             ...(override.visibility !== undefined && { visibility: override.visibility }),
             ...(override.width !== undefined && { width: override.width }),
-            ...(override.fixed !== undefined && { fixed: override.fixed })
+            ...(override.fixed !== undefined && { fixed: override.fixed }),
+            ...(override.groupTitle !== undefined && { groupTitle: override.groupTitle })
         };
     });
 }

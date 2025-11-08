@@ -1,5 +1,5 @@
 import { BaseEntityService, FieldMetadata, TIOSchemaAttribute, IRelationFieldConfig } from "../../entity";
-import type { IEntityPageAction } from '../../entity/base-entity';
+import type { IEntityPageAction, Template } from '../../entity/base-entity';
 /**
  * Generate smart fallback configuration for relation display when only ID is available.
  * Uses entity metadata (icon, entityNamePlural) to create user-friendly fallback text.
@@ -19,7 +19,7 @@ import type { IEntityPageAction } from '../../entity/base-entity';
  * // }
  */
 export declare function generateRelationFallback(entityName: string, idField: string, entityService?: BaseEntityService<any>): NonNullable<IRelationFieldConfig['displayConfig']>['fallback'];
-export declare function formatEntityAttributeForFormOrDetail(thisProp: TIOSchemaAttribute, type: 'create' | 'update' | 'detail', entityService: BaseEntityService<any>): any;
+export declare function formatEntityAttributeForFormOrDetail(thisProp: TIOSchemaAttribute, type: 'create' | 'update' | 'detail', entityService: BaseEntityService<any>, allProperties?: TIOSchemaAttribute[]): any;
 export declare function formatEntityAttributesForFormOrDetail(properties: TIOSchemaAttribute[], type: 'create' | 'update' | 'detail', entityService: BaseEntityService<any>): any[];
 export declare function formatEntityAttributesForCreate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>): any[];
 export declare function formatEntityAttributesForUpdate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>): any[];
@@ -29,8 +29,16 @@ export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' 
     dataIndex: string;
     hidden?: boolean;
     actions?: Array<IEntityPageAction>;
+    relationConfig?: IRelationFieldConfig;
+    template?: Template;
+    isIdentifier?: boolean;
+    isLink?: boolean;
+    linkConfig?: {
+        routePattern: string;
+        displayText?: string;
+    };
 };
-export declare function formatEntityAttributesForList(entityName: string, properties: TIOSchemaAttribute[], { CRUDApiPath, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, customRowActions }: {
+export declare function formatEntityAttributesForList(entityName: string, properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, { CRUDApiPath, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, customRowActions }: {
     CRUDApiPath?: string;
     excludeFromAdminUpdate?: boolean;
     excludeFromAdminDelete?: boolean;
@@ -102,9 +110,11 @@ export declare function mergeColumnVisibility<T extends {
     readonly visibility?: any;
     readonly width?: string | number;
     readonly fixed?: 'left' | 'right';
+    readonly groupTitle?: string;
 }> | Array<{
     field: string;
     visibility?: any;
     width?: string | number;
     fixed?: 'left' | 'right';
+    groupTitle?: string;
 }>): Array<T>;

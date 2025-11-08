@@ -1,12 +1,5 @@
-import { EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { BaseEntityService, EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
 import { IEntityPageAction, Template } from "../../entity/base-entity";
-export type ListingPropConfig = {
-    name: string;
-    dataIndex: string;
-    fieldType: "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json";
-    hidden?: boolean;
-    actions?: Array<IEntityPageAction>;
-};
 export type ListEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string;
     entityNamePlural: string;
@@ -64,7 +57,7 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
      */
     tableConfig?: EntityListPageConfig['tableConfig'];
 };
-declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>) => {
+declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     readonly pageTitle: Template;
     readonly pageType: "list";
     readonly routePattern: `list-${string}`;
@@ -74,6 +67,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
     }[];
     readonly pageHeaderActions: IEntityPageAction[];
     readonly listPageConfig: {
+        expandableConfig?: import("../../entity").ITableExpandableConfig | undefined;
         rowSelection?: {
             enabled: boolean;
             visibility?: import("../../entity").VisibilityConfig;
@@ -124,7 +118,8 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
     };
 };
 export default _default;
-export declare function makeViewEntityListConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>): {
+export declare function makeViewEntityListConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>, entityService: BaseEntityService<S>): {
+    expandableConfig?: import("../../entity").ITableExpandableConfig | undefined;
     rowSelection?: {
         enabled: boolean;
         visibility?: import("../../entity").VisibilityConfig;
