@@ -1,5 +1,6 @@
 import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, EntityViewPageConfig } from "../../entity";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
+import { IApplicationConfig } from "../../interfaces/config";
 export type ViewEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string;
     entityNamePlural: string;
@@ -36,6 +37,10 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
      * Field-level visibility overrides
      */
     fields?: EntityViewPageConfig['fields'];
+    /**
+     * Global UI config options (NEW: for passing global duplicatedFieldDetection config)
+    */
+    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ViewEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     readonly pageTitle: Template;

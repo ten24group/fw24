@@ -1,5 +1,6 @@
 import { BaseEntityService, EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
 import { IEntityPageAction, Template } from "../../entity/base-entity";
+import type { IApplicationConfig } from "../../interfaces/config";
 import { pascalCase } from "../../utils";
 import { formatEntityAttributesForList, mergeColumnVisibility } from "./util";
 
@@ -47,6 +48,10 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
      * Table configuration including row actions, bulk actions, row selection, and column visibility
      */
     tableConfig?: EntityListPageConfig['tableConfig'];
+    /**
+     * Global UI config options (NEW: for passing global duplicatedFieldDetection config)
+     */
+    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
 }
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
@@ -91,7 +96,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     entityService: BaseEntityService<S>
 ) {
 
-    const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch, defaultSort, tableConfig } = options;
+    const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch, defaultSort, tableConfig, globalUIConfigOptions } = options;
     const entityNameLower = entityName.toLowerCase();
 
     const baseApiUrl = `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`;
@@ -130,7 +135,8 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
         excludeFromAdminUpdate,
         excludeFromAdminDelete,
         excludeFromAdminDetail,
-        customRowActions: tableConfig?.rowActions
+        customRowActions: tableConfig?.rowActions,
+        globalUIConfigOptions  // NEW: Pass global config for duplicated field detection
     });
 
     // 2. Merge column visibility from tableConfig.columns

@@ -153,6 +153,9 @@ export class EntityUIConfigGen {
 
         this.logger.debug(`Ui-config-gen::: Process::: all-services: `, Array.from(services.keys()));
 
+        // Get global UI config options (including duplicatedFieldDetection)
+        const globalUIConfigOptions = Fw24.getInstance().getConfig().uiConfigGenOptions;
+        
         let menuIndex = 1;
         // generate UI configs
         services.forEach((service, entityName) => {
@@ -211,6 +214,7 @@ export class EntityUIConfigGen {
                     breadcrumbs: entitySchema.model.listPageConfig?.breadcrumbs || entitySchema.model.listPageBreadcrumbs,
                     defaultSort: entitySchema.model.listPageConfig?.defaultSort || entitySchema.model.listPageDefaultSort,
                     tableConfig: entitySchema.model.listPageConfig?.tableConfig,
+                    globalUIConfigOptions,  // NEW: Pass global config
                 }, service);
                 entityConfigs[ `list-${entityName.toLowerCase()}` ] = listConfig;
             }
@@ -226,6 +230,7 @@ export class EntityUIConfigGen {
                     breadcrumbs: entitySchema.model.viewPageConfig?.breadcrumbs || entitySchema.model.viewPageBreadcrumbs,
                     columnsConfig: entitySchema.model.viewPageConfig?.columnsConfig || entitySchema.model.viewPageColumnsConfig,
                     fields: entitySchema.model.viewPageConfig?.fields,
+                    globalUIConfigOptions,  // NEW: Pass global config
                 }, service);
                 entityConfigs[ `view-${entityName.toLowerCase()}` ] = viewConfig;
             }

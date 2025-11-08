@@ -1,5 +1,6 @@
 import { BaseEntityService, FieldMetadata, TIOSchemaAttribute, IRelationFieldConfig } from "../../entity";
 import type { IEntityPageAction, Template } from '../../entity/base-entity';
+import type { IApplicationConfig } from '../../interfaces/config';
 /**
  * Generate smart fallback configuration for relation display when only ID is available.
  * Uses entity metadata (icon, entityNamePlural) to create user-friendly fallback text.
@@ -19,11 +20,12 @@ import type { IEntityPageAction, Template } from '../../entity/base-entity';
  * // }
  */
 export declare function generateRelationFallback(entityName: string, idField: string, entityService?: BaseEntityService<any>): NonNullable<IRelationFieldConfig['displayConfig']>['fallback'];
-export declare function formatEntityAttributeForFormOrDetail(thisProp: TIOSchemaAttribute, type: 'create' | 'update' | 'detail', entityService: BaseEntityService<any>, allProperties?: TIOSchemaAttribute[]): any;
+export declare function formatEntityAttributeForFormOrDetail(thisProp: TIOSchemaAttribute, type: 'create' | 'update' | 'detail', entityService: BaseEntityService<any>, allProperties?: TIOSchemaAttribute[], // Optional: for detecting duplicated relation fields
+globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): any;
 export declare function formatEntityAttributesForFormOrDetail(properties: TIOSchemaAttribute[], type: 'create' | 'update' | 'detail', entityService: BaseEntityService<any>): any[];
-export declare function formatEntityAttributesForCreate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>): any[];
-export declare function formatEntityAttributesForUpdate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>): any[];
-export declare function formatEntityAttributesForDetail(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>): any[];
+export declare function formatEntityAttributesForCreate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): any[];
+export declare function formatEntityAttributesForUpdate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): any[];
+export declare function formatEntityAttributesForDetail(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): any[];
 export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' | 'helpText' | 'filterConfig'> & {
     name: string;
     dataIndex: string;
@@ -38,12 +40,13 @@ export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' 
         displayText?: string;
     };
 };
-export declare function formatEntityAttributesForList(entityName: string, properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, { CRUDApiPath, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, customRowActions }: {
+export declare function formatEntityAttributesForList(entityName: string, properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, { CRUDApiPath, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, customRowActions, globalUIConfigOptions }: {
     CRUDApiPath?: string;
     excludeFromAdminUpdate?: boolean;
     excludeFromAdminDelete?: boolean;
     excludeFromAdminDetail?: boolean;
     customRowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
 }): ListingPropConfig[];
 /**
  * MERGE UTILITY FUNCTIONS

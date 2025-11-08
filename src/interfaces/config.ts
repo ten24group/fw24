@@ -6,6 +6,48 @@ import type { ILayerVersion } from "aws-cdk-lib/aws-lambda";
 import { IDIContainer } from "./di";
 import { AuthorizerTypeMetadata, IControllerConfig } from '../decorators';
 
+/**
+ * Configuration for smart duplicated field detection.
+ * Automatically detects fields like 'teamName' for 'teamId' relations.
+ */
+export interface IDuplicatedFieldDetectionConfig {
+    /** Enable/disable auto-detection globally. Default: true */
+    enabled?: boolean;
+    
+    /** Suffix patterns to search for */
+    suffixes?: {
+        /** Display field suffixes. Default: ['Name', 'Title', 'Label', 'DisplayName'] */
+        display?: string[];
+        /** Visual field suffixes. Default: ['Logo', 'Image', 'Icon', 'Avatar', 'Picture'] */
+        visual?: string[];
+        /** Meta field suffixes. Default: ['Code', 'Slug', 'Key', 'Identifier'] */
+        meta?: string[];
+    };
+    
+    /** 
+     * Domain-specific prefixes for pattern matching.
+     * Framework provides generic prefixes (parent, child, source, target, owner, etc.)
+     * Add your domain-specific patterns here (e.g., 'player', 'team' for sports; 'customer', 'order' for e-commerce)
+     * 
+     * @example Sports app: ['player', 'team', 'league', 'season', 'venue']
+     * @example E-commerce: ['product', 'customer', 'order', 'invoice']
+     */
+    prefixes?: string[];
+    
+    /** 
+     * Template generation style. Default: 'simple'
+     * - simple: {teamName}
+     * - composite: {teamName} ({teamCode}) if both exist
+     */
+    templateStyle?: 'simple' | 'composite';
+    
+    /** Minimum confidence to use detection. Default: 'medium' */
+    confidenceThreshold?: 'low' | 'medium' | 'high';
+    
+    /** Enable debug logging. Default: false */
+    debug?: boolean;
+}
+
 export interface IApplicationConfig {
     name?: string;
     region?: string;
@@ -19,6 +61,9 @@ export interface IApplicationConfig {
         disableAccountVerification?: boolean;
         signInMethods?: ('EMAIL_PASSWORD' | 'EMAIL_OTP' | 'SMS_OTP' | 'PASSKEY')[];
         customPagesDirectory?: string;
+        
+        /** Smart duplicated field detection configuration */
+        duplicatedFieldDetection?: IDuplicatedFieldDetectionConfig;
     };
     defaultAuthorizationType?: any;
     defaultAdminGroups?: string[];

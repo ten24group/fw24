@@ -8,52 +8,507 @@ import {
     IRelationFieldConfig
 } from "../../entity";
 import type { IEntityPageAction, Template } from '../../entity/base-entity';
+import type { IApplicationConfig, IDuplicatedFieldDetectionConfig } from '../../interfaces/config';
 import { DefaultLogger } from "../../logging";
 import { pascalCase } from "../../utils";
 import { makeCreateEntityFormConfig } from "./create-entity";
 import { makeViewEntityListConfig } from "./list-entity";
 import { makeViewEntityDetailConfig } from "./view-entity";
 
+// =======================================================================================
+// SMART DUPLICATED FIELD DETECTION - ENHANCED ALGORITHM
+// =======================================================================================
+
 /**
- * Detect if there's a duplicated relation field (e.g., 'teamName' for 'teamId' relation).
- * Returns a template using the duplicated field if found.
+ * Detection result with rich metadata
+ */
+interface DuplicatedFieldDetectionResult {
+    /** Primary display field detected (e.g., 'teamName') */
+    primaryField?: string;
+    
+    /** Generated template string (e.g., '{teamName}' or '{teamName} ({teamCode})') */
+    template?: string;
+    
+    /** All detected fields by category */
+    detectedFields: {
+        /** Display fields: Name, Title, Label */
+        display?: string[];
+        /** Visual fields: Logo, Image, Icon */
+        visual?: string[];
+        /** Meta fields: Code, Slug, Key */
+        meta?: string[];
+    };
+    
+    /** Confidence level */
+    confidence: 'high' | 'medium' | 'low';
+    
+    /** Detection method used */
+    method: string;
+    
+    /** Pattern that matched */
+    pattern: string;
+}
+
+/**
+ * Parsed components from relation field name
+ */
+interface ParsedRelationField {
+    /** Prefix (e.g., 'home', 'away', 'competitor1') */
+    prefix?: string;
+    /** Base name without prefix and 'Id' suffix (e.g., 'Team') */
+    baseName: string;
+    /** Whether field ends with 'Id' */
+    hasIdSuffix: boolean;
+    /** Original field name */
+    originalField: string;
+}
+
+/**
+ * Smart default configuration
+ */
+/**
+ * Framework-level default detection config.
+ * Contains ONLY domain-agnostic patterns that work across any application.
  * 
- * Common patterns:
- * - teamId → teamName → template: '{teamName}'
- * - userId → userName → template: '{userName}'  
- * - gameId → gameName → template: '{gameName}'
+ * Applications should provide domain-specific prefixes via uiConfigOptions.
+ * 
+ * @example Application-specific config (in backend index.ts):
+ * ```typescript
+ * const uiConfigOptions = {
+ *   duplicatedFieldDetection: {
+ *     prefixes: [
+ *       // Domain-specific prefixes for your app
+ *       'player', 'team', 'league', 'season', 'venue', 'sport',  // Sports app
+ *       // OR: 'customer', 'order', 'product', 'invoice'  // E-commerce app
+ *       // OR: 'author', 'book', 'publisher', 'genre'  // Library app
+ *     ]
+ *   }
+ * };
+ * ```
+ */
+const DEFAULT_DETECTION_CONFIG: Required<IDuplicatedFieldDetectionConfig> = {
+    enabled: true,
+    suffixes: {
+        // Generic display text patterns (universal)
+        display: ['Name', 'Title', 'Label', 'DisplayName'],
+        // Generic visual asset patterns (universal)
+        visual: ['Logo', 'Image', 'Icon', 'Avatar', 'Picture'],
+        // Generic metadata patterns (universal)
+        meta: ['Code', 'Slug', 'Key', 'Identifier', 'RemoteId']
+    },
+    prefixes: [
+        // Generic relational patterns (universal)
+        'parent', 'child',
+        'source', 'target', 'destination',
+        'primary', 'secondary', 'tertiary',
+        'main', 'alternate', 'fallback',
+        'owner', 'creator', 'modifier',
+        'first', 'second', 'third', 'last',
+        'previous', 'next', 'current',
+        'old', 'new',
+        'original', 'copy', 'draft',
+        
+        // Generic directional patterns (universal)
+        'home', 'away',
+        'left', 'right',
+        'top', 'bottom',
+        'inner', 'outer',
+        
+        // Generic competitive patterns (universal)
+        'winner', 'loser',
+        'competitor', 'opponent'
+        
+        // NOTE: Domain-specific prefixes (player, team, customer, order, etc.)
+        // should be provided via uiConfigOptions in your application's backend
+    ],
+    templateStyle: 'simple',
+    confidenceThreshold: 'medium',
+    debug: false
+};
+
+/**
+ * Merge configurations with priority: hints > entity > global > defaults
+ */
+function mergeDetectionConfigs(
+    globalConfig?: IDuplicatedFieldDetectionConfig,
+    entityConfig?: IDuplicatedFieldDetectionConfig,
+    relationHints?: {
+        preferredFields?: string[];
+        excludeFields?: string[];
+        templateStyle?: 'simple' | 'composite';
+    }
+): Required<IDuplicatedFieldDetectionConfig> & { preferredFields?: string[]; excludeFields?: string[] } {
+    // Start with defaults
+    let merged = { ...DEFAULT_DETECTION_CONFIG };
+    
+    // Apply global config
+    if (globalConfig) {
+        merged = {
+            ...merged,
+            ...globalConfig,
+            suffixes: { ...merged.suffixes, ...globalConfig.suffixes },
+            prefixes: globalConfig.prefixes || merged.prefixes
+        };
+    }
+    
+    // Apply entity config (higher priority)
+    if (entityConfig) {
+        merged = {
+            ...merged,
+            ...entityConfig,
+            suffixes: { ...merged.suffixes, ...entityConfig.suffixes },
+            prefixes: entityConfig.prefixes || merged.prefixes
+        };
+    }
+    
+    // Apply relation hints (highest priority)
+    const result: any = { ...merged };
+    if (relationHints) {
+        if (relationHints.templateStyle) {
+            result.templateStyle = relationHints.templateStyle;
+        }
+        if (relationHints.preferredFields) {
+            result.preferredFields = relationHints.preferredFields;
+        }
+        if (relationHints.excludeFields) {
+            result.excludeFields = relationHints.excludeFields;
+        }
+    }
+    
+    return result;
+}
+
+/**
+ * Parse relation field to extract prefix and base name.
+ * 
+ * Examples:
+ * - 'teamId' → { baseName: 'Team', hasIdSuffix: true }
+ * - 'homeTeamId' → { prefix: 'home', baseName: 'Team', hasIdSuffix: true }
+ * - 'competitor1TeamId' → { prefix: 'competitor1', baseName: 'Team', hasIdSuffix: true }
+ * - 'sport' → { baseName: 'sport', hasIdSuffix: false }
+ */
+function parseRelationField(
+    fieldId: string,
+    prefixes: string[]
+): ParsedRelationField {
+    // Build regex for prefix detection: ^(prefix1|prefix2|...)(\\d*)(.+)$
+    // Use case-insensitive matching
+    const prefixPattern = new RegExp(
+        `^(${prefixes.join('|')})(\\d*)(.+)$`,
+        'i'
+    );
+    
+    const match = fieldId.match(prefixPattern);
+    
+    if (match) {
+        const [, prefix, num, rest] = match;
+        const hasIdSuffix = rest.toLowerCase().endsWith('id');
+        const baseName = hasIdSuffix 
+            ? rest.substring(0, rest.length - 2)
+            : rest;
+        
+        return {
+            prefix: prefix + num,  // 'home' or 'competitor1'
+            baseName,
+            hasIdSuffix,
+            originalField: fieldId
+        };
+    }
+    
+    // No prefix detected
+    const hasIdSuffix = fieldId.toLowerCase().endsWith('id');
+    const baseName = hasIdSuffix 
+        ? fieldId.substring(0, fieldId.length - 2)
+        : fieldId;
+    
+    return {
+        baseName,
+        hasIdSuffix,
+        originalField: fieldId
+    };
+}
+
+/**
+ * Generate search patterns for candidate field names.
+ * 
+ * Priority:
+ * 1. Preferred fields (from hints)
+ * 2. Exact prefix match: {prefix}{baseName}{suffix}
+ * 3. Entity name match: {entityName}{suffix}
+ * 4. Base name match: {baseName}{suffix}
+ */
+function generateSearchPatterns(
+    parsed: ParsedRelationField,
+    entityName: string,
+    suffixes: string[],
+    preferredFields?: string[]
+): string[] {
+    const patterns: string[] = [];
+    const entityNameLower = entityName.toLowerCase();
+    const baseNameLower = parsed.baseName.toLowerCase();
+    
+    // Priority 1: Preferred fields (exact match)
+    if (preferredFields && preferredFields.length > 0) {
+        patterns.push(...preferredFields);
+    }
+    
+    // Priority 2: With prefix (e.g., homeTeamName, awayTeamName)
+    if (parsed.prefix) {
+        const prefixLower = parsed.prefix.toLowerCase();
+        for (const suffix of suffixes) {
+            patterns.push(`${prefixLower}${baseNameLower}${suffix.toLowerCase()}`);
+            patterns.push(`${prefixLower}${entityNameLower}${suffix.toLowerCase()}`);
+        }
+    }
+    
+    // Priority 3: Entity name (e.g., teamName for relation to 'team')
+    for (const suffix of suffixes) {
+        patterns.push(`${entityNameLower}${suffix.toLowerCase()}`);
+    }
+    
+    // Priority 4: Base name (e.g., teamName for 'teamId')
+    for (const suffix of suffixes) {
+        patterns.push(`${baseNameLower}${suffix.toLowerCase()}`);
+    }
+    
+    return patterns;
+}
+
+/**
+ * Search for fields matching patterns, excluding specified fields.
+ */
+function searchFieldsByPatterns(
+    allProperties: TIOSchemaAttribute[],
+    patterns: string[],
+    excludeFields?: string[]
+): string[] {
+    const excludeSet = new Set(excludeFields?.map(f => f.toLowerCase()) || []);
+    const found: string[] = [];
+    const seenLower = new Set<string>();
+    
+    for (const pattern of patterns) {
+        const patternLower = pattern.toLowerCase();
+        
+        // Skip if already found or excluded
+        if (seenLower.has(patternLower) || excludeSet.has(patternLower)) {
+            continue;
+        }
+        
+        // Find matching field (case-insensitive)
+        const match = allProperties.find(p => 
+            p.id?.toLowerCase() === patternLower &&
+            !excludeSet.has(p.id.toLowerCase())
+        );
+        
+        if (match) {
+            found.push(match.id);
+            seenLower.add(match.id.toLowerCase());
+        }
+    }
+    
+    return found;
+}
+
+/**
+ * Calculate confidence based on detection method and pattern
+ */
+function calculateConfidence(
+    detectedField: string,
+    parsed: ParsedRelationField,
+    entityName: string,
+    method: 'preferred' | 'prefix' | 'entity' | 'base'
+): 'high' | 'medium' | 'low' {
+    // Preferred fields = high confidence (developer explicitly specified)
+    if (method === 'preferred') return 'high';
+    
+    const fieldLower = detectedField.toLowerCase();
+    const entityLower = entityName.toLowerCase();
+    const baseLower = parsed.baseName.toLowerCase();
+    
+    // Exact prefix + entity/base match = high
+    if (method === 'prefix') {
+        if (fieldLower.includes(entityLower) || fieldLower.includes(baseLower)) {
+            return 'high';
+        }
+        return 'medium';
+    }
+    
+    // Entity name match = high
+    if (method === 'entity') return 'high';
+    
+    // Base name match = medium (could be coincidental)
+    if (method === 'base') return 'medium';
+    
+    return 'low';
+}
+
+/**
+ * Generate template string from detected fields.
+ */
+function generateTemplate(
+    primaryField: string,
+    allDetectedFields: DuplicatedFieldDetectionResult['detectedFields'],
+    templateStyle: 'simple' | 'composite'
+): string {
+    if (templateStyle === 'simple') {
+        return `{${primaryField}}`;
+    }
+    
+    // Composite: try to include meta field (code/slug) if available
+    if (templateStyle === 'composite' && allDetectedFields.meta && allDetectedFields.meta.length > 0) {
+        const metaField = allDetectedFields.meta[0];
+        return `{${primaryField}} ({${metaField}})`;
+    }
+    
+    // Fallback to simple if no meta field
+    return `{${primaryField}}`;
+}
+
+/**
+ * Enhanced smart duplicated field detection.
+ * 
+ * Detects fields like 'teamName' for 'teamId' relations with support for:
+ * - Prefixes (home, away, competitor1, etc.)
+ * - Multiple suffixes (Name, Title, Label, Logo, Code, etc.)
+ * - Preferred fields and exclusions
+ * - Confidence scoring
+ * - Composite templates
  * 
  * @param allProperties - All properties in the parent entity
- * @param relationFieldId - The relation field name (e.g., 'teamId')
+ * @param relationFieldId - The relation field name (e.g., 'teamId', 'homeTeamId')
  * @param relatedEntityName - Related entity name (e.g., 'team')
- * @returns Template string if duplicated field found, undefined otherwise
+ * @param globalConfig - Global detection configuration
+ * @param entityConfig - Entity-level detection configuration
+ * @param relationHints - Relation-specific hints
+ * @returns Detection result with template and metadata
+ */
+function detectDuplicatedRelationFields(
+    allProperties: TIOSchemaAttribute[],
+    relationFieldId: string,
+    relatedEntityName: string,
+    globalConfig?: IDuplicatedFieldDetectionConfig,
+    entityConfig?: IDuplicatedFieldDetectionConfig,
+    relationHints?: {
+        preferredFields?: string[];
+        excludeFields?: string[];
+        templateStyle?: 'simple' | 'composite';
+    }
+): DuplicatedFieldDetectionResult | undefined {
+    // Merge configurations
+    const config = mergeDetectionConfigs(globalConfig, entityConfig, relationHints);
+    
+    // Check if detection is enabled
+    if (!config.enabled) {
+        return undefined;
+    }
+    
+    // Parse relation field
+    const parsed = parseRelationField(relationFieldId, config.prefixes);
+    
+    // Search for display fields (Name, Title, Label)
+    const displayPatterns = generateSearchPatterns(
+        parsed,
+        relatedEntityName,
+        config.suffixes?.display || [],
+        config.preferredFields
+    );
+    const displayFields = searchFieldsByPatterns(allProperties, displayPatterns, config.excludeFields);
+    
+    // Search for visual fields (Logo, Image, Icon)
+    const visualPatterns = generateSearchPatterns(
+        parsed,
+        relatedEntityName,
+        config.suffixes?.visual || []
+    );
+    const visualFields = searchFieldsByPatterns(allProperties, visualPatterns, config.excludeFields);
+    
+    // Search for meta fields (Code, Slug, Key)
+    const metaPatterns = generateSearchPatterns(
+        parsed,
+        relatedEntityName,
+        config.suffixes?.meta || []
+    );
+    const metaFields = searchFieldsByPatterns(allProperties, metaPatterns, config.excludeFields);
+    
+    // No fields detected
+    if (displayFields.length === 0) {
+        return undefined;
+    }
+    
+    // Determine detection method
+    const primaryField = displayFields[0];
+    let method: 'preferred' | 'prefix' | 'entity' | 'base' = 'base';
+    let pattern = 'unknown';
+    
+    if (config.preferredFields && config.preferredFields.includes(primaryField)) {
+        method = 'preferred';
+        pattern = 'preferred_field';
+    } else if (parsed.prefix && primaryField.toLowerCase().startsWith(parsed.prefix.toLowerCase())) {
+        method = 'prefix';
+        pattern = `${parsed.prefix}{entity}{suffix}`;
+    } else if (primaryField.toLowerCase().startsWith(relatedEntityName.toLowerCase())) {
+        method = 'entity';
+        pattern = `{entity}{suffix}`;
+    } else {
+        method = 'base';
+        pattern = `{base}{suffix}`;
+    }
+    
+    // Calculate confidence
+    const confidence = calculateConfidence(primaryField, parsed, relatedEntityName, method);
+    
+    // Check confidence threshold
+    const thresholdOrder = { low: 0, medium: 1, high: 2 };
+    if (thresholdOrder[confidence] < thresholdOrder[config.confidenceThreshold]) {
+        // Confidence too low
+        if (config.debug) {
+            DefaultLogger.info(`[DuplicatedFieldDetection] Skipping ${relationFieldId}: confidence ${confidence} < threshold ${config.confidenceThreshold}`);
+        }
+        return undefined;
+    }
+    
+    // Generate template
+    const template = generateTemplate(
+        primaryField,
+        { display: displayFields, visual: visualFields, meta: metaFields },
+        config.templateStyle
+    );
+    
+    // Debug logging
+    if (config.debug) {
+        DefaultLogger.info(`[DuplicatedFieldDetection] ${relationFieldId} → ${template} (confidence: ${confidence}, method: ${method})`);
+    }
+    
+    return {
+        primaryField,
+        template,
+        detectedFields: {
+            display: displayFields,
+            visual: visualFields.length > 0 ? visualFields : undefined,
+            meta: metaFields.length > 0 ? metaFields : undefined
+        },
+        confidence,
+        method,
+        pattern
+    };
+}
+
+/**
+ * Legacy wrapper function for backward compatibility.
+ * 
+ * @deprecated Use detectDuplicatedRelationFields() for richer results
  */
 function detectDuplicatedRelationFieldTemplate(
     allProperties: TIOSchemaAttribute[],
     relationFieldId: string,
     relatedEntityName: string
 ): string | undefined {
-    const entityNameLower = relatedEntityName.toLowerCase();
-    
-    // Try common patterns: {entity}Name, {entity}Title, {relatedField}Name
-    const commonSuffixes = ['Name', 'Title', 'Label'];
-    
-    for (const suffix of commonSuffixes) {
-        // Pattern 1: {entityName}{suffix} (e.g., teamName for teamId relation to 'team')
-        const pattern1 = `${entityNameLower}${suffix}`;
-        const found1 = allProperties.find(p => p.id?.toLowerCase() === pattern1);
-        if (found1) return `{${found1.id}}`;
-        
-        // Pattern 2: Replace 'Id' with {suffix} (e.g., teamName for teamId)
-        if (relationFieldId.toLowerCase().endsWith('id')) {
-            const baseName = relationFieldId.substring(0, relationFieldId.length - 2);
-            const pattern2 = `${baseName}${suffix}`;
-            const found2 = allProperties.find(p => p.id?.toLowerCase() === pattern2.toLowerCase());
-            if (found2) return `{${found2.id}}`;
-        }
-    }
-    
-    return undefined;
+    const result = detectDuplicatedRelationFields(
+        allProperties,
+        relationFieldId,
+        relatedEntityName
+    );
+    return result?.template;
 }
 
 /**
@@ -96,7 +551,8 @@ export function formatEntityAttributeForFormOrDetail(
     thisProp: TIOSchemaAttribute,
     type: 'create' | 'update' | 'detail',
     entityService: BaseEntityService<any>,
-    allProperties?: TIOSchemaAttribute[]  // Optional: for detecting duplicated relation fields
+    allProperties?: TIOSchemaAttribute[],  // Optional: for detecting duplicated relation fields
+    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']  // Optional: global UI config options
 ) {
     const formatted: any = {
         ...thisProp,
@@ -199,9 +655,50 @@ export function formatEntityAttributeForFormOrDetail(
             );
 
             // Auto-detect duplicated relation field (e.g., teamName for teamId)
-            const autoTemplate = allProperties 
-                ? detectDuplicatedRelationFieldTemplate(allProperties, thisProp.id, entityName)
-                : undefined;
+            // NEW: Use enhanced detection with config support
+            let autoTemplate: string | undefined = undefined;
+            let detectionMetadata: any = undefined;
+            
+            // Check if auto-detection is enabled (default: true)
+            const autoDetectEnabled = userRelationConfig?.displayConfig?.autoDetect !== false;
+            
+            if (autoDetectEnabled && allProperties) {
+                // Get global config (passed from fw24 initialization)
+                const globalConfig = globalUIConfigOptions?.duplicatedFieldDetection;
+                
+                // Get entity-level config from entity metadata
+                const entityConfig = relatedEntityMetadata?.metadata?.duplicatedFieldDetection;
+                
+                // Get relation-level hints
+                const relationHints = userRelationConfig?.displayConfig?.autoDetectHints;
+                
+                // Run enhanced detection
+                const detectionResult = detectDuplicatedRelationFields(
+                    allProperties,
+                    thisProp.id,
+                    entityName,
+                    globalConfig,
+                    entityConfig,
+                    relationHints
+                );
+                
+                if (detectionResult) {
+                    autoTemplate = detectionResult.template;
+                    
+                    // Store metadata for debugging and future features
+                    detectionMetadata = {
+                        detectedFields: {
+                            primary: detectionResult.primaryField,
+                            alternatives: detectionResult.detectedFields.display?.slice(1),
+                            visual: detectionResult.detectedFields.visual,
+                            meta: detectionResult.detectedFields.meta
+                        },
+                        confidence: detectionResult.confidence,
+                        method: detectionResult.method,
+                        pattern: detectionResult.pattern
+                    };
+                }
+            }
 
             const generatedRelationConfig: IRelationFieldConfig = {
                 routePattern: routePattern,
@@ -225,10 +722,16 @@ export function formatEntityAttributeForFormOrDetail(
                     icon: userRelationConfig?.displayConfig?.icon || defaultIcon || 'EyeOutlined',
                     showModalIcon: userRelationConfig?.displayConfig?.showModalIcon !== false,
                     showLink: userRelationConfig?.displayConfig?.showLink !== false,
+                    // Pass through autoDetect and autoDetectHints
+                    autoDetect: userRelationConfig?.displayConfig?.autoDetect,
+                    autoDetectHints: userRelationConfig?.displayConfig?.autoDetectHints,
                     // Pass through any custom actions
                     actions: userRelationConfig?.displayConfig?.actions
                 }
             };
+            if(globalUIConfigOptions?.duplicatedFieldDetection?.debug) {
+                generatedRelationConfig.displayConfig!['_detectionMetadata'] = detectionMetadata;
+            }
 
             formatted[ 'relationConfig' ] = generatedRelationConfig;
 
@@ -344,22 +847,22 @@ export function formatEntityAttributesForFormOrDetail(
     throw (`Invalid type [${type}] provided to formatEntityAttributesForFormOrDetail`);
 }
 
-export function formatEntityAttributesForCreate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
+export function formatEntityAttributesForCreate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']) {
     return properties
         .filter(prop => prop && (!prop.hasOwnProperty('isCreatable') || prop.isCreatable))
-        .map((att) => formatEntityAttributeForFormOrDetail(att, 'create', entityService));
+        .map((att) => formatEntityAttributeForFormOrDetail(att, 'create', entityService, properties, globalUIConfigOptions));
 }
 
-export function formatEntityAttributesForUpdate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
+export function formatEntityAttributesForUpdate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']) {
     return properties
         .filter(prop => prop && (!prop.hasOwnProperty('isEditable') || prop.isEditable))
-        .map((att) => formatEntityAttributeForFormOrDetail(att, 'update', entityService));
+        .map((att) => formatEntityAttributeForFormOrDetail(att, 'update', entityService, properties, globalUIConfigOptions));
 }
 
-export function formatEntityAttributesForDetail(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>) {
+export function formatEntityAttributesForDetail(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']) {
     return properties
         .filter(prop => prop && (!prop.hasOwnProperty('isVisible') || prop.isVisible))
-        .map((att) => formatEntityAttributeForFormOrDetail(att, 'detail', entityService));
+        .map((att) => formatEntityAttributeForFormOrDetail(att, 'detail', entityService, properties, globalUIConfigOptions));
 }
 
 export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' | 'helpText' | 'filterConfig'> & {
@@ -383,13 +886,15 @@ export function formatEntityAttributesForList(
         excludeFromAdminUpdate,
         excludeFromAdminDelete,
         excludeFromAdminDetail,
-        customRowActions
+        customRowActions,
+        globalUIConfigOptions
     }: {
         CRUDApiPath?: string,
         excludeFromAdminUpdate?: boolean,
         excludeFromAdminDelete?: boolean,
         excludeFromAdminDetail?: boolean,
         customRowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
+        globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']  // NEW: Global config options
     }
 ) {
 
@@ -401,7 +906,7 @@ export function formatEntityAttributesForList(
         .map(prop => {
             // Use same formatting logic as details/forms (includes relationConfig generation)
             // Pass all properties so it can detect duplicated relation fields (e.g., teamName for teamId)
-            const formatted = formatEntityAttributeForFormOrDetail(prop, 'detail', entityService, properties);
+            const formatted = formatEntityAttributeForFormOrDetail(prop, 'detail', entityService, properties, globalUIConfigOptions);
             
             // Override/add list-specific properties
             const propConfig: ListingPropConfig = {

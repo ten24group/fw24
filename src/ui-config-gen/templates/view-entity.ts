@@ -4,6 +4,7 @@ import { camelCase, pascalCase } from "../../utils";
 import { formatEntityAttributesForDetail, mergeFieldVisibility } from "./util";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
 import { DefaultLogger } from "../../logging";
+import { IApplicationConfig } from "../../interfaces/config";
 
 export type ViewEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string;
@@ -35,6 +36,11 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
      * Field-level visibility overrides
      */
     fields?: EntityViewPageConfig['fields'];
+
+    /**
+     * Global UI config options (NEW: for passing global duplicatedFieldDetection config)
+    */
+    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
 }
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
@@ -82,12 +88,12 @@ export function makeViewEntityDetailConfig<S extends EntitySchema<string, string
     options: ViewEntityPageOptions<S>,
     entityService: BaseEntityService<S>
 ){
-    const{ entityName, properties, CRUDApiPath, fields } = options;
+    const{ entityName, properties, CRUDApiPath, fields, globalUIConfigOptions } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
 
     // 1. Generate base properties from schema
-    let formattedProps = formatEntityAttributesForDetail(Array.from(properties.values()), entityService);
+    let formattedProps = formatEntityAttributesForDetail(Array.from(properties.values()), entityService, globalUIConfigOptions);
 
     // 2. Merge field-level visibility/helpText from viewPageConfig.fields
     if (fields) {

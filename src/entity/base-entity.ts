@@ -972,6 +972,8 @@ export interface IRelationFieldConfig {
      * Template for displaying relation value when hydrated data is available.
      * Falls back to fallback.template if data not available, then raw value.
      * 
+     * If not provided, auto-detection will try to find duplicated fields.
+     * 
      * @example '{team.name} ({team.city})'
      * @example { composite: ['team.name', 'team.city'], template: '{team.name} ({team.city})' }
      */
@@ -1017,6 +1019,67 @@ export interface IRelationFieldConfig {
         icon?: string;
         onClick: string;
       }>;
+    };
+    
+    /**
+     * Control auto-detection of duplicated fields for this specific relation.
+     * - undefined or true: Enable auto-detection (default)
+     * - false: Disable auto-detection
+     * 
+     * Only used if template is not explicitly provided.
+     * 
+     * @example
+     * autoDetect: false  // Disable auto-detection
+     */
+    autoDetect?: boolean;
+    
+    /**
+     * Hints to guide auto-detection when enabled.
+     * Only used if autoDetect !== false and template is not provided.
+     * 
+     * @example
+     * autoDetectHints: {
+     *   preferredFields: ['homeTeamName', 'homeTeamTitle'],
+     *   excludeFields: ['homeTeamInternalCode'],
+     *   templateStyle: 'composite'
+     * }
+     */
+    autoDetectHints?: {
+      /**
+       * Preferred field names to use (in priority order).
+       * Auto-detection will try these first.
+       * @example ['homeTeamName', 'homeTeamTitle']
+       */
+      preferredFields?: string[];
+      
+      /**
+       * Field names to exclude from detection.
+       * @example ['homeTeamInternalCode']
+       */
+      excludeFields?: string[];
+      
+      /**
+       * Template style for this specific relation.
+       * Overrides global/entity-level templateStyle.
+       */
+      templateStyle?: 'simple' | 'composite';
+    };
+    
+    /**
+     * Internal: Detection metadata (populated by backend).
+     * Stored for debugging and future features.
+     * @internal
+     */
+    _detectionMetadata?: {
+      detectedFields: {
+        primary: string;
+        alternatives?: string[];
+        visual?: string[];
+        meta?: string[];
+      };
+      confidence: 'high' | 'medium' | 'low';
+      method: string;
+      pattern: string;
     };
   };
 }
@@ -2178,6 +2241,33 @@ export interface EntitySchema<
       color?: string;
       /** Short description for tooltips and help text */
       description?: string;
+      
+      /** 
+       * Entity-level duplicated field detection configuration.
+       * Overrides global settings for this specific entity.
+       * 
+       * @example
+       * duplicatedFieldDetection: {
+       *   prefixes: ['home', 'away', 'opponent'],  // Add custom prefixes
+       *   templateStyle: 'simple'                   // Override global style
+       * }
+       */
+      duplicatedFieldDetection?: {
+        /** Enable/disable detection for this entity. Overrides global setting. */
+        enabled?: boolean;
+        /** Override suffix patterns for this entity */
+        suffixes?: {
+          display?: string[];
+          visual?: string[];
+          meta?: string[];
+        };
+        /** Override recognized prefixes for this entity */
+        prefixes?: string[];
+        /** Override template style for this entity */
+        templateStyle?: 'simple' | 'composite';
+        /** Override confidence threshold for this entity */
+        confidenceThreshold?: 'low' | 'medium' | 'high';
+      };
     };
 
     // Menu configuration
