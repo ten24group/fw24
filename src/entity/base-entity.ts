@@ -6,7 +6,7 @@ import type { BaseEntityService } from "./base-service";
 import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
 import { EntitySearchService } from '../search/services';
-import { DepIdentifier } from "../interfaces";
+import { DepIdentifier, IFilterAutoGenerationConfig, ISegmentAutoGenerationConfig } from "../interfaces";
 import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure } from '../ui-config-gen/templates/custom-page';
 
 /**
@@ -581,11 +581,26 @@ export interface BaseFieldMetadata {
   
   // Filter configuration options
   filterConfig?: {
-    filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean'; // Filter input type
-    defaultOperator?: FilterOperatorsExtended<any>; // Default filter operator (e.g., 'contains', 'eq', 'in')
-    availableOperators?: ReadonlyArray<FilterOperatorsExtended<any>> | Array<FilterOperatorsExtended<any>>; // Restrict available operators for this column
-    predefinedOptions?: ReadonlyArray<{ label: string; value: string }> | Array<{ label: string; value: string }>; // For dropdown/select filters
+    filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean' | 'relation'; // Filter input type
+    defaultOperator?: keyof FilterOperatorsExtended<any> | string; // Default filter operator (e.g., 'contains', 'eq', 'in')
+    availableOperators?: ReadonlyArray<keyof FilterOperatorsExtended<any> | string> | Array<keyof FilterOperatorsExtended<any> | string>; // Restrict available operators for this column
+    predefinedOptions?: FieldOptionsAPIConfig<any> | FieldOption[]; // For filters: API config OR inline options
   };
+  
+  /**
+   * Custom labels for boolean field segments.
+   * Used when generating filter segments for boolean fields.
+   * If not provided, framework uses global defaults from config.
+   * 
+   * @example
+   * ```ts
+   * isLive: {
+   *   type: 'boolean',
+   *   booleanLabels: { true: 'Live', false: 'Not Live' }
+   * }
+   * ```
+   */
+  booleanLabels?: BooleanFieldLabels;
   
   // Link configuration for rendering field as internal link (non-relation fields)
   isLink?: boolean;
@@ -1671,11 +1686,32 @@ interface CodeEditorFieldMetadata extends BaseFieldMetadata {
   fieldType?: 'code' | 'markdown' | 'json';
 }
 
-export type FieldOptions<E extends EntitySchema<any, any, any> = any> = ReadonlyArray<FieldOption> | Array<FieldOption> | FieldOptionsAPIConfig<E>;
+export type FieldOptions<E extends EntitySchema<any, any, any> = any> = 
+  | ReadonlyArray<FieldOption> 
+  | Array<FieldOption> 
+  | FieldOptionsAPIConfig<E>
+  | RelationEntityOptionConfig<E>;
 
 export type FieldOption = {
   value: string,
   label: string,
+}
+
+/**
+ * Custom labels for boolean field segments.
+ * Allows defining user-friendly labels instead of "True"/"False".
+ * 
+ * @example
+ * ```ts
+ * isLive: {
+ *   type: 'boolean',
+ *   booleanLabels: { true: 'Live', false: 'Not Live' }
+ * }
+ * ```
+ */
+export interface BooleanFieldLabels {
+  true: string;
+  false: string;
 }
 
 /**
@@ -1818,6 +1854,44 @@ export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
 }
 
 /**
+ * Minimal configuration for relation-based options.
+ * Framework automatically resolves CRUD path and option mapping from entity metadata.
+ * Extends FieldOptionsAPIConfig but omits fields that are auto-generated (apiUrl, apiMethod, responseKey).
+ * 
+ * @template E - The related entity schema type
+ * 
+ * @example
+ * ```ts
+ * // Minimal - framework auto-detects everything
+ * createRelationOptions({
+ *   entityName: 'Team'
+ * })
+ * 
+ * // With custom mapping
+ * createRelationOptions({
+ *   entityName: 'Team',
+ *   optionMapping: {
+ *     label: 'teamName',
+ *     value: 'teamId'
+ *   }
+ * })
+ * 
+ * // With custom API URL
+ * createRelationOptions({
+ *   entityName: 'Team',
+ *   customApiUrl: '/custom/teams'
+ * })
+ * ```
+ */
+export type RelationEntityOptionConfig<E extends EntitySchema<any, any, any> = any> = 
+  Omit<FieldOptionsAPIConfig<E>, 'apiUrl' | 'apiMethod' | 'responseKey'> & {
+    /** Name of the related entity (required) */
+    entityName: string;
+    /** Custom API URL (optional - overrides auto-detected CRUD path) */
+    customApiUrl?: string;
+  };
+
+/**
  * Creates type-safe field options configuration for API-loaded select/radio/checkbox options.
  * Provides full type safety for attribute references in option mappings and filters.
  * 
@@ -1908,6 +1982,41 @@ export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
 export function createFieldOptions<E extends EntitySchema<any, any, any>>(
   config: FieldOptionsAPIConfig<E>
 ): FieldOptionsAPIConfig<E> {
+  return config;
+}
+
+/**
+ * Creates type-safe relation-based options configuration.
+ * Framework automatically resolves CRUD path and option mapping from entity metadata.
+ * 
+ * Use this for relation fields where you want the framework to handle:
+ * - CRUD API path resolution from entity schema
+ * - Label field detection from entityNameAttribute metadata
+ * - Value field resolution from relation identifiers
+ * 
+ * @example
+ * ```ts
+ * // Minimal - framework figures out everything
+ * teamId: {
+ *   fieldType: 'select',
+ *   options: createRelationOptions({ entityName: 'Team' }),
+ *   relation: { ... }
+ * }
+ * 
+ * // With custom mapping override
+ * teamId: {
+ *   fieldType: 'select',
+ *   options: createRelationOptions({
+ *     entityName: 'Team',
+ *     optionMapping: { label: 'teamName', value: 'teamId' }
+ *   }),
+ *   relation: { ... }
+ * }
+ * ```
+ */
+export function createRelationOptions<E extends EntitySchema<any, any, any> = any>(
+  config: RelationEntityOptionConfig<E>
+): RelationEntityOptionConfig<E> {
   return config;
 }
 
@@ -2128,6 +2237,128 @@ export interface IFilterSegment {
   badgeStatus?: 'success' | 'processing' | 'error' | 'warning' | 'default';
 }
 
+/**
+ * Filter segment group configuration.
+ * Groups related segments together with a label (e.g., "By Status", "By League").
+ * Each group manages its own filter state independently.
+ */
+export interface IFilterSegmentGroup {
+  /**
+   * Unique identifier for the group
+   */
+  id: string;
+  
+  /**
+   * Display label for the group (e.g., "By Status", "By League", "By Priority")
+   */
+  label: string;
+  
+  /**
+   * Segments within this group
+   */
+  segments: IFilterSegment[];
+  
+  /**
+   * Default segment ID for this group (if different from first segment)
+   */
+  defaultSegmentId?: string;
+  
+  /**
+   * Maximum number of segments to show before "More..." dropdown
+   * Default: 10
+   */
+  maxVisible?: number;
+}
+
+/**
+ * Entity-level table UI configuration.
+ * Controls auto-generation of filters, segments, and other table features for a specific entity.
+ */
+export interface IEntityTableUIConfig {
+  /** Override filter auto-generation for this entity */
+  filterAutoGeneration?: Partial<IFilterAutoGenerationConfig>;
+  
+  /** Override segment auto-generation for this entity */
+  segmentAutoGeneration?: Partial<ISegmentAutoGenerationConfig> & {
+    /** 
+     * Explicitly specify which field(s) to use for segments (highest priority).
+     * - Single string: Creates one segment group from that field
+     * - Array of strings: Creates multiple groups, one per field
+     */
+    segmentFields?: string | string[];
+    
+    /** 
+     * @deprecated Use segmentFields (plural) instead for consistency 
+     */
+    segmentField?: string;
+    
+    /** Only consider these fields for segment detection */
+    includeFields?: string[];
+    
+    /** Exclude these fields from segment detection */
+    excludeFields?: string[];
+    
+    /** 
+     * Only include these enum values in segments (global filter).
+     * For field-specific filtering, use includeValuesByField.
+     */
+    includeValues?: string[];
+    
+    /**
+     * Field-specific value inclusion.
+     * @example
+     * includeValuesByField: {
+     *   status: ['active', 'inactive'],
+     *   league: ['nfl', 'nba']
+     * }
+     */
+    includeValuesByField?: Record<string, string[]>;
+    
+    /** 
+     * Exclude these enum values from segments (global filter).
+     * For field-specific filtering, use excludeValuesByField.
+     */
+    excludeValues?: string[];
+    
+    /**
+     * Field-specific value exclusion.
+     */
+    excludeValuesByField?: Record<string, string[]>;
+    
+    /** 
+     * Global sort order for segment values (applied to all fields).
+     * For field-specific sorting, use sortOrderByField.
+     */
+    sortOrder?: string[];
+    
+    /**
+     * Field-specific sort order for segment values.
+     * @example
+     * sortOrderByField: {
+     *   status: ['active', 'pending', 'inactive'],
+     *   priority: ['high', 'medium', 'low']
+     * }
+     */
+    sortOrderByField?: Record<string, string[]>;
+    
+    /**
+     * Custom labels for segment groups (overrides auto-generated labels).
+     * @example
+     * groupLabels: {
+     *   status: 'Filter by Status',
+     *   league: 'Select League'
+     * }
+     */
+    groupLabels?: Record<string, string>;
+    
+    /** Custom icon mapping for this entity's segments */
+    iconMapping?: Record<string, string>;
+    
+    /** Disable auto-generation, require manual segments */
+    requireManual?: boolean;
+  };
+}
+
 export interface EntityListPageConfig {
   readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
   readonly breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
@@ -2184,19 +2415,45 @@ export interface EntityListPageConfig {
      * Filter segments (quick filter tabs) displayed above the table.
      * Provides quick access to common filter sets.
      * 
+     * Supports two formats:
+     * 1. Flat array (legacy): Single group of segments
+     * 2. Grouped array: Multiple independent segment groups
+     * 
      * Supports placeholder syntax for dynamic values:
      * - `:actor.actorId` - Current user ID
      * - `:startOfToday` - Date expressions
      * - `:paramName` - Route parameters
      * 
      * @example
+     * // Legacy flat format (single group)
      * segments: [
      *   { id: 'all', label: 'All Items', filters: {}, default: true },
      *   { id: 'active', label: 'Active', icon: 'check', filters: { status: { eq: 'active' } } },
      *   { id: 'my-items', label: 'My Items', filters: { createdBy: ':actor.actorId' } }
      * ]
+     * 
+     * @example
+     * // Grouped format (multiple independent groups)
+     * segments: [
+     *   {
+     *     id: 'status-group',
+     *     label: 'By Status',
+     *     segments: [
+     *       { id: 'all-status', label: 'All', filters: {}, default: true },
+     *       { id: 'active', label: 'Active', filters: { status: { eq: 'active' } } }
+     *     ]
+     *   },
+     *   {
+     *     id: 'league-group',
+     *     label: 'By League',
+     *     segments: [
+     *       { id: 'all-league', label: 'All', filters: {} },
+     *       { id: 'nfl', label: 'NFL', filters: { league: { eq: 'nfl' } } }
+     *     ]
+     *   }
+     * ]
      */
-    readonly segments?: ReadonlyArray<IFilterSegment> | Array<IFilterSegment>;
+    readonly segments?: ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup>;
   };
 }
 
@@ -2355,6 +2612,20 @@ export interface EntitySchema<
         /** Override confidence threshold for this entity */
         confidenceThreshold?: 'low' | 'medium' | 'high';
       };
+      
+      /**
+       * Table UI auto-generation overrides for this entity.
+       * Controls automatic generation of filters, segments, and other table features.
+       * 
+       * @example
+       * tableUI: {
+       *   segmentAutoGeneration: {
+       *     segmentField: 'status',
+       *     iconMapping: { 'active': 'check-circle', 'paused': 'pause-circle' }
+       *   }
+       * }
+       */
+      tableUI?: IEntityTableUIConfig;
     };
 
     // Menu configuration

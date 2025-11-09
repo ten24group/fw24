@@ -72,7 +72,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
     }[];
     readonly pageHeaderActions: IEntityPageAction[];
     readonly listPageConfig: {
-        segments?: IFilterSegment[] | readonly IFilterSegment[] | undefined;
+        segments?: readonly (IFilterSegment | import("../../entity").IFilterSegmentGroup)[] | (IFilterSegment | import("../../entity").IFilterSegmentGroup)[] | undefined;
         expandableConfig?: import("../../entity").ITableExpandableConfig | undefined;
         rowSelection?: {
             enabled: boolean;
@@ -125,7 +125,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
 };
 export default _default;
 export declare function makeViewEntityListConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>, entityService: BaseEntityService<S>): {
-    segments?: IFilterSegment[] | readonly IFilterSegment[] | undefined;
+    segments?: readonly (IFilterSegment | import("../../entity").IFilterSegmentGroup)[] | (IFilterSegment | import("../../entity").IFilterSegmentGroup)[] | undefined;
     expandableConfig?: import("../../entity").ITableExpandableConfig | undefined;
     rowSelection?: {
         enabled: boolean;

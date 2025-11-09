@@ -1,5 +1,5 @@
-import { BaseEntityService, FieldMetadata, TIOSchemaAttribute, IRelationFieldConfig } from "../../entity";
-import type { IEntityPageAction, Template } from '../../entity/base-entity';
+import { BaseEntityService, FieldMetadata, TIOSchemaAttribute, IRelationFieldConfig, TIOSchemaAttributesMap, EntitySchema, IFilterSegment } from "../../entity";
+import type { RelationEntityOptionConfig, FieldOptionsAPIConfig, IEntityPageAction, Template, IFilterSegmentGroup } from '../../entity/base-entity';
 import type { IApplicationConfig } from '../../interfaces/config';
 /**
  * Generate smart fallback configuration for relation display when only ID is available.
@@ -20,6 +20,45 @@ import type { IApplicationConfig } from '../../interfaces/config';
  * // }
  */
 export declare function generateRelationFallback(entityName: string, idField: string, entityService?: BaseEntityService<any>): NonNullable<IRelationFieldConfig['displayConfig']>['fallback'];
+/**
+ * Resolves RelationEntityOptionConfig into FieldOptionsAPIConfig by auto-detecting:
+ * - CRUD API path from entity schema
+ * - Label field from entityNameAttribute metadata
+ * - Value field from relation identifiers
+ *
+ * @param relationConfig - Minimal relation option config
+ * @param relationAttribute - The relation attribute (to get identifiers)
+ * @param entityService - Entity service for schema lookup
+ * @returns Fully resolved FieldOptionsAPIConfig or undefined if entity not found
+ */
+export declare function resolveRelationOptionConfig(relationConfig: RelationEntityOptionConfig, relationAttribute: TIOSchemaAttribute & {
+    relation: NonNullable<TIOSchemaAttribute['relation']>;
+}, entityService: BaseEntityService<any>): FieldOptionsAPIConfig<any> | undefined;
+/**
+ * Auto-generates filterConfig for entity attributes based on field type.
+ *
+ * Algorithm:
+ * 1. Check if explicit filterConfig already exists → use it
+ * 2. Check if field is explicitly non-filterable → skip
+ * 3. Detect field type and generate appropriate config
+ * 4. Merge with global and entity-level overrides
+ *
+ * @param attribute - The attribute to generate filter config for
+ * @param entityService - Entity service for accessing entity metadata
+ * @param globalUIConfigOptions - Global UI configuration options
+ * @returns Generated filter configuration or undefined
+ */
+export declare function generateFilterConfig(attribute: TIOSchemaAttribute, entityService?: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): FieldMetadata['filterConfig'] | undefined;
+/**
+ * Auto-generate filter segments based on entity attributes using smart detection.
+ *
+ * Algorithm:
+ * 1. If custom segments provided → use them (highest priority)
+ * 2. If entity requires manual segments → skip auto-generation
+ * 3. Detect best field using scoring algorithm
+ * 4. Generate segments from detected field with smart icons
+ */
+export declare function generateSegments<S extends EntitySchema<string, string, string>>(properties: TIOSchemaAttributesMap<S>, entityService?: BaseEntityService<S>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'], customSegments?: ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup>): ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup> | undefined;
 export declare function formatEntityAttributeForFormOrDetail(thisProp: TIOSchemaAttribute, type: 'create' | 'update' | 'detail', entityService: BaseEntityService<any>, allProperties?: TIOSchemaAttribute[], // Optional: for detecting duplicated relation fields
 globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): any;
 export declare function formatEntityAttributesForFormOrDetail(properties: TIOSchemaAttribute[], type: 'create' | 'update' | 'detail', entityService: BaseEntityService<any>): any[];

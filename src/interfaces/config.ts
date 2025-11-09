@@ -48,6 +48,168 @@ export interface IDuplicatedFieldDetectionConfig {
     debug?: boolean;
 }
 
+/**
+ * Configuration for auto-generating column filters.
+ * 
+ * Follows same pattern as duplicatedFieldDetection:
+ * - Global defaults
+ * - Entity-level overrides
+ * - Attribute-level overrides (via explicit filterConfig)
+ */
+export interface IFilterAutoGenerationConfig {
+    /** Enable/disable globally. Default: true */
+    enabled?: boolean;
+    
+    /** Date field filter configuration */
+    dateFields?: {
+        enabled?: boolean;  // Default: true
+        /** Default operators for date fields */
+        defaultOperators?: Array<'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'between'>;  // Default: ['gte', 'lte', 'between']
+        /** Generate quick date options (Today, This Week, etc.) */
+        quickFilters?: boolean;  // Default: true
+    };
+    
+    /** Enum/Select field filter configuration */
+    enumFields?: {
+        enabled?: boolean;  // Default: true
+        /** Default operator for enum filters */
+        defaultOperator?: 'eq' | 'inList';  // Default: 'eq'
+        /** Available operators for enum filters */
+        availableOperators?: Array<'eq' | 'neq' | 'inList' | 'notInList'>;  // Default: ['eq', 'neq', 'inList', 'notInList']
+    };
+    
+    /** Boolean field filter configuration */
+    booleanFields?: {
+        enabled?: boolean;  // Default: true
+    };
+    
+    /** Relation field filter configuration */
+    relationFields?: {
+        enabled?: boolean;  // Default: true
+        /** Default operators for relation filters */
+        defaultOperators?: Array<'eq' | 'neq' | 'inList' | 'notInList'>;  // Default: ['eq', 'inList']
+        /** Limit options shown in selector */
+        optionsLimit?: number;  // Default: 100
+    };
+    
+    /** Number field filter configuration */
+    numberFields?: {
+        enabled?: boolean;  // Default: true
+        defaultOperators?: Array<'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'between'>;  // Default: ['eq', 'gte', 'lte']
+    };
+    
+    /** Text field filter configuration */
+    textFields?: {
+        enabled?: boolean;  // Default: true
+        defaultOperators?: Array<'eq' | 'neq' | 'contains' | 'startsWith' | 'endsWith'>;  // Default: ['contains', 'eq']
+    };
+    
+    /** Debug logging */
+    debug?: boolean;  // Default: false
+}
+
+/**
+ * Default boolean labels for segment generation.
+ * Maps field name patterns to appropriate true/false labels.
+ */
+export interface BooleanLabelPattern {
+    /** Field name pattern (regex or contains) */
+    pattern: string | RegExp;
+    /** Label for true value */
+    trueLabel: string;
+    /** Label for false value */
+    falseLabel: string;
+}
+
+/**
+ * Configuration for smart segment field detection.
+ * 
+ * Intelligently selects which field(s) should be used for auto-generating segments.
+ * Supports multiple segment groups for richer filtering UX.
+ */
+export interface ISegmentAutoGenerationConfig {
+    /** Enable/disable globally. Default: true */
+    enabled?: boolean;
+    
+    /** 
+     * Preferred field names for segments (in order of priority).
+     * Framework tries these first before applying scoring algorithm.
+     * 
+     * Default: ['status', 'state', 'type', 'category', 'priority']
+     */
+    preferredFields?: string[];
+    
+    /** 
+     * Maximum number of segment groups to generate per table.
+     * Each group represents a different field (e.g., one group for "status", another for "league").
+     * Set to 1 for legacy single-group behavior.
+     * Default: 2
+     */
+    maxSegmentGroups?: number;
+    
+    /** 
+     * Maximum number of segment values per group.
+     * Default: 10
+     */
+    maxSegmentsPerGroup?: number;
+    
+    /** Minimum number of values required to generate segments. Default: 2 */
+    minValues?: number;
+    
+    /** 
+     * Global icon mapping for segment values.
+     * Static map only (functions not supported due to JSON serialization).
+     * Entity-level config can override these.
+     * 
+     * @example
+     * iconMapping: {
+     *   'active': 'check-circle',
+     *   'paused': 'pause-circle',
+     *   'completed': 'check',
+     *   'cancelled': 'close-circle'
+     * }
+     */
+    iconMapping?: Record<string, string>;
+    
+    /**
+     * Default boolean label patterns.
+     * Framework matches field names against these patterns to generate appropriate labels.
+     * Can be overridden per-field using `booleanLabels` in attribute metadata.
+     * 
+     * @example
+     * booleanLabelPatterns: [
+     *   { pattern: /active|enabled/i, trueLabel: 'Active', falseLabel: 'Inactive' },
+     *   { pattern: /live/i, trueLabel: 'Live', falseLabel: 'Not Live' },
+     *   { pattern: /public/i, trueLabel: 'Public', falseLabel: 'Private' }
+     * ]
+     */
+    booleanLabelPatterns?: BooleanLabelPattern[];
+    
+    /**
+     * Default fallback labels for boolean fields when no pattern matches.
+     * Default: { true: 'Yes', false: 'No' }
+     */
+    defaultBooleanLabels?: { true: string; false: string };
+    
+    /** Always include "All" segment in each group. Default: true */
+    includeAllSegment?: boolean;
+    
+    /** Debug logging */
+    debug?: boolean;  // Default: false
+}
+
+/**
+ * Complete table UI auto-generation config.
+ * Added to IApplicationConfig.uiConfigGenOptions
+ */
+export interface ITableUIAutoGenerationConfig {
+    /** Filter auto-generation configuration */
+    filterAutoGeneration?: IFilterAutoGenerationConfig;
+    
+    /** Segment auto-generation configuration */
+    segmentAutoGeneration?: ISegmentAutoGenerationConfig;
+}
+
 export interface IApplicationConfig {
     name?: string;
     region?: string;
@@ -64,6 +226,9 @@ export interface IApplicationConfig {
         
         /** Smart duplicated field detection configuration */
         duplicatedFieldDetection?: IDuplicatedFieldDetectionConfig;
+        
+        /** Table UI auto-generation configuration */
+        tableUI?: ITableUIAutoGenerationConfig;
     };
     defaultAuthorizationType?: any;
     defaultAdminGroups?: string[];

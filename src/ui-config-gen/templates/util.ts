@@ -5,15 +5,17 @@ import {
     isSelectFieldMetadata,
     SelectFieldMetadata,
     EntityAttribute,
-    IRelationFieldConfig
+    IRelationFieldConfig,
+    TIOSchemaAttributesMap,
+    EntitySchema,
+    IFilterSegment,
+    createFieldOptions
 } from "../../entity";
-import type { IEntityPageAction, Template } from '../../entity/base-entity';
-import type { IApplicationConfig, IDuplicatedFieldDetectionConfig } from '../../interfaces/config';
+import type { RelationEntityOptionConfig, FieldOptionsAPIConfig, IEntityPageAction, Template, FieldOption, IFilterSegmentGroup } from '../../entity/base-entity';
+import { FrameworkError } from "../../errors";
+import type { IApplicationConfig, IDuplicatedFieldDetectionConfig, ISegmentAutoGenerationConfig } from '../../interfaces/config';
 import { DefaultLogger } from "../../logging";
-import { pascalCase } from "../../utils";
-import { makeCreateEntityFormConfig } from "./create-entity";
-import { makeViewEntityListConfig } from "./list-entity";
-import { makeViewEntityDetailConfig } from "./view-entity";
+import { pascalCase, toHumanReadableName } from "../../utils";
 
 // =======================================================================================
 // SMART DUPLICATED FIELD DETECTION - ENHANCED ALGORITHM
@@ -547,6 +549,1072 @@ export function generateRelationFallback(
     };
 }
 
+/**
+ * Smart label field detection for entity options.
+ * Uses generic patterns to find the best display field when entity metadata is missing.
+ * 
+ * Priority order:
+ * 1. Entity metadata (entityNameAttribute)
+ * 2. Common display field patterns (name, title, label, displayName)
+ * 3. Entity-specific patterns ({entityName}Name, {entityName}Title)
+ * 4. Fields ending with name-like suffixes (Name, Title, Label, Code)
+ * 5. Scored selection of best display field (prefers: strings > enums > booleans > numbers)
+ * 
+ * Automatically excludes:
+ * - Technical fields (metadata, currency, gateway, remoteId, etc.)
+ * - Sensitive fields (password, token, secret, key, hash)
+ * - Timestamp fields (createdAt, updatedAt, deletedAt)
+ * - JSON fields (fieldType: 'json')
+ * - Relation fields (already ID fields)
+ * - Hidden fields (isVisible: false, isListable: false)
+ * 
+ * @example
+ * // Entity with clear name field
+ * Team: teamName (Priority 3)
+ * 
+ * @example
+ * // Entity without name field - uses scoring
+ * Subscription: status (enum, score: 130) instead of currency (excluded)
+ * PaymentMethod: provider (string, score: 150) instead of metadata (excluded)
+ * 
+ * @param schema - Entity schema
+ * @param entityName - Entity name (e.g., 'team', 'user')
+ * @returns Best label field name or undefined
+ */
+function findLabelField(schema: EntitySchema<any, any, any>, entityName: string): string | undefined {
+    // Priority 1: Use entity metadata if available
+    const entityNameAttribute = schema.model.entityNameAttribute;
+    if (entityNameAttribute) {
+        return entityNameAttribute;
+    }
+    
+    // Get all attributes from schema
+    const attributes = schema.attributes;
+    const attributeNames = Object.keys(attributes);
+    
+    // Priority 2: Exact match on common display patterns (case-insensitive)
+    const commonPatterns = ['name', 'title', 'label', 'displayName', 'displayname'];
+    for (const pattern of commonPatterns) {
+        const match = attributeNames.find(attr => attr.toLowerCase() === pattern);
+        if (match) {
+            return match;
+        }
+    }
+    
+    // Priority 3: Entity-specific patterns ({entityName}Name, {entityName}Title)
+    const entityLower = entityName.toLowerCase();
+    const entitySpecificSuffixes = ['Name', 'Title', 'Label'];
+    
+    for (const suffix of entitySpecificSuffixes) {
+        // Try exact match: e.g., 'teamName' for entity 'team'
+        const exactMatch = attributeNames.find(attr => 
+            attr.toLowerCase() === `${entityLower}${suffix.toLowerCase()}`
+        );
+        if (exactMatch) {
+            return exactMatch;
+        }
+    }
+    
+    // Priority 4: Fields ending with name-like suffixes
+    // Look for any field ending with 'Name', 'Title', 'Label' (e.g., 'displayName', 'fullName', 'userName',)
+    const displayNameSuffixPattern = /DisplayName$/;
+    const nameSuffixPattern = /Name$/;
+    const titleSuffixPattern = /Title$/;
+    const labelSuffixPattern = /Label$/;
+    const codeSuffixPattern = /Code$/;
+    
+    for (const pattern of [displayNameSuffixPattern, labelSuffixPattern, titleSuffixPattern, nameSuffixPattern, codeSuffixPattern]) {
+        const match = attributeNames.find(attr => pattern.test(attr));
+        if (match) {
+            return match;
+        }
+    }
+    
+    // Priority 5: First suitable display field
+    // Build list of candidates with scoring
+    const candidates: Array<{ field: string; score: number }> = [];
+    
+    for (const attrName of attributeNames) {
+        const attr = attributes[attrName];
+        let score = 0;
+        
+        // Skip if explicitly hidden from lists
+        if (attr.isListable === false) continue;
+        
+        // Skip if hidden/not visible
+        if (attr.isVisible === false) continue;
+        
+        // Skip ID fields (unless it's the only option)
+        if (attrName.toLowerCase().includes('id')) continue;
+        
+        // Skip sensitive/technical fields
+        const technicalFields = [
+            'password', 'token', 'secret', 'key', 'hash',
+            'metadata', 'remoteid', 'currency', 'gateway',
+            'createdat', 'updatedat', 'deletedat'
+        ];
+        if (technicalFields.some(tech => attrName.toLowerCase().includes(tech))) continue;
+        
+        // Skip JSON fields
+        if (attr.fieldType === 'json') continue;
+        
+        // Skip relations (these are IDs)
+        if (attr.relation) continue;
+        
+        // String fields get highest score
+        if (attr.type === 'string') {
+            score += 100;
+            
+            // Prefer required strings
+            if (attr.required === true) {
+                score += 50;
+            }
+            
+            // Prioritize fields that sound like identifiers (but not IDs)
+            if (attrName.toLowerCase().includes('number')) score += 30;
+            if (attrName.toLowerCase().includes('code')) score += 20;
+            if (attrName.toLowerCase().includes('identifier')) score += 20;
+            if (attrName.toLowerCase().includes('slug')) score += 20;
+        }
+        
+        // Enum fields get good score
+        if (Array.isArray(attr.type) && attr.type.length > 0) {
+            score += 80;
+            
+            // Prefer enums with reasonable counts
+            if (attr.type.length <= 10) {
+                score += 20;
+            }
+            
+            // Prefer required enums
+            if (attr.required === true) {
+                score += 30;
+            }
+        }
+        
+        // Boolean fields get lower score
+        if (attr.type === 'boolean') {
+            score += 40;
+        }
+        
+        // Number fields get even lower score
+        if (attr.type === 'number') {
+            score += 30;
+        }
+        
+        if (score > 0) {
+            candidates.push({ field: attrName, score });
+        }
+    }
+    
+    // Sort by score (highest first)
+    candidates.sort((a, b) => b.score - a.score);
+    
+    // Return the best candidate
+    return candidates.length > 0 ? candidates[0].field : undefined;
+}
+
+// =======================================================================================
+// RELATION OPTION CONFIG RESOLUTION
+// =======================================================================================
+
+/**
+ * Resolves RelationEntityOptionConfig into FieldOptionsAPIConfig by auto-detecting:
+ * - CRUD API path from entity schema
+ * - Label field from entityNameAttribute metadata
+ * - Value field from relation identifiers
+ * 
+ * @param relationConfig - Minimal relation option config
+ * @param relationAttribute - The relation attribute (to get identifiers)
+ * @param entityService - Entity service for schema lookup
+ * @returns Fully resolved FieldOptionsAPIConfig or undefined if entity not found
+ */
+export function resolveRelationOptionConfig(
+    relationConfig: RelationEntityOptionConfig,
+    relationAttribute: TIOSchemaAttribute & { relation: NonNullable<TIOSchemaAttribute['relation']> },
+    entityService: BaseEntityService<any>
+): FieldOptionsAPIConfig<any> | undefined {
+    const { entityName, customApiUrl, optionMapping, ...rest } = relationConfig;
+    const relation = relationAttribute.relation;
+    
+    // Get related entity service
+    if (!entityService.hasEntityServiceByEntityName(entityName)) {
+        DefaultLogger.warn(`[resolveRelationOptionConfig] Entity service not found for: ${entityName}`);
+        return undefined;
+    }
+    
+    const relatedService = entityService.getEntityServiceByEntityName(entityName);
+    const relatedSchema = relatedService?.getEntitySchema?.();
+    
+    if (!relatedSchema) {
+        DefaultLogger.warn(`[resolveRelationOptionConfig] Schema not found for entity: ${entityName}`);
+        return undefined;
+    }
+    
+    // 1. Resolve API URL
+    const entityNameLower = entityName.toLowerCase();
+    const crudPath = relatedSchema.model.CRUDApiPath || '';
+    const apiUrl = customApiUrl || `${crudPath}/${entityNameLower}`;
+    
+    // 2. Resolve value field from relation identifiers
+    const resolvedIdentifiers = typeof relation.identifiers === 'function' ? relation.identifiers() : relation.identifiers;
+    const identifierMappings = Array.isArray(resolvedIdentifiers) ? resolvedIdentifiers : [resolvedIdentifiers];
+    const primaryIdentifier = identifierMappings[0];
+    const valueField = String(primaryIdentifier.target);
+    
+    // 3. Resolve label field from entity metadata or custom mapping
+    let labelField = valueField; // Default fallback to value field
+    
+    if (optionMapping?.label) {
+        // Custom label provided - use it
+        labelField = optionMapping.label as string;
+    } else {
+        // Auto-detect using smart pattern matching
+        labelField = findLabelField(relatedSchema, entityName) || valueField;
+    }
+    
+    // 4. Build complete FieldOptionsAPIConfig
+    return {
+        apiMethod: 'GET',
+        apiUrl,
+        responseKey: 'items',
+        optionMapping: optionMapping || {
+            label: labelField,
+            value: (optionMapping as any)?.value || valueField
+        },
+        ...rest // Pass through filters, count, disableSearch, etc.
+    };
+}
+
+// =======================================================================================
+// FILTER AUTO-GENERATION
+// =======================================================================================
+
+/**
+ * Auto-generates filterConfig for entity attributes based on field type.
+ * 
+ * Algorithm:
+ * 1. Check if explicit filterConfig already exists → use it
+ * 2. Check if field is explicitly non-filterable → skip
+ * 3. Detect field type and generate appropriate config
+ * 4. Merge with global and entity-level overrides
+ * 
+ * @param attribute - The attribute to generate filter config for
+ * @param entityService - Entity service for accessing entity metadata
+ * @param globalUIConfigOptions - Global UI configuration options
+ * @returns Generated filter configuration or undefined
+ */
+export function generateFilterConfig(
+    attribute: TIOSchemaAttribute,
+    entityService?: BaseEntityService<any>,
+    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']
+): FieldMetadata['filterConfig'] | undefined {
+    // 1. If explicit filterConfig exists, use it (highest priority)
+    if (attribute.filterConfig) {
+        return attribute.filterConfig;
+    }
+    
+    // 2. If field has explicit options config, use it
+    if ('options' in attribute) {
+        const options = (attribute as SelectFieldMetadata).options;
+        
+        // RelationEntityOptionConfig (has entityName) → resolve to FieldOptionsAPIConfig
+        const isRelationConfig = typeof options === 'object' && !Array.isArray(options) && 'entityName' in options;
+
+        let resolvedConfig: FieldOptionsAPIConfig<any> | FieldOption[] | undefined;
+
+        // Inline array → use as is
+        if (Array.isArray(options) && options.length > 0) {
+            resolvedConfig = options as FieldOption[];
+        }
+
+        // FieldOptionsAPIConfig (has apiMethod, apiUrl, responseKey) → pass through
+        const isApiConfig = typeof options === 'object' && !Array.isArray(options) && 'apiMethod' in options;
+        if (isApiConfig) {
+            resolvedConfig = options as FieldOptionsAPIConfig<any>;
+        }
+
+        if (isRelationConfig && attribute.relation && entityService) {
+            resolvedConfig = resolveRelationOptionConfig(
+                options as RelationEntityOptionConfig,
+                attribute as TIOSchemaAttribute & { relation: NonNullable<TIOSchemaAttribute['relation']> },
+                entityService
+            );
+        }
+
+        if(resolvedConfig) {
+            return {
+                filterType: 'select',
+                defaultOperator: 'eq' as const,
+                availableOperators: ['eq', 'neq', 'inList', 'notInList', 'isEmpty', 'isNull'],
+                predefinedOptions: resolvedConfig
+            };
+        }
+        
+        // else log error
+        throw new FrameworkError(`[generateFilterConfig] No resolved config found for attribute: ${attribute.id}`, {
+            attribute: attribute,
+            options: options,
+        });
+    }
+    
+    // 3. If field is explicitly non-filterable, skip
+    if (attribute.isFilterable === false) {
+        return undefined;
+    }
+    
+    // 3. Get global and entity-level config
+    const globalFilterConfig = globalUIConfigOptions?.tableUI?.filterAutoGeneration;
+    const entityMetadata = entityService?.getEntitySchema?.().model?.metadata as EntitySchema<any, any, any>['model']['metadata'];
+    const entityFilterConfig = entityMetadata?.tableUI?.filterAutoGeneration;
+    
+    // Merge configs (entity > global > defaults)
+    const mergedConfig = {
+        enabled: entityFilterConfig?.enabled ?? globalFilterConfig?.enabled ?? true,
+        dateFields: {
+            ...globalFilterConfig?.dateFields,
+            ...entityFilterConfig?.dateFields
+        },
+        enumFields: {
+            ...globalFilterConfig?.enumFields,
+            ...entityFilterConfig?.enumFields
+        },
+        booleanFields: {
+            ...globalFilterConfig?.booleanFields,
+            ...entityFilterConfig?.booleanFields
+        },
+        relationFields: {
+            ...globalFilterConfig?.relationFields,
+            ...entityFilterConfig?.relationFields
+        },
+        numberFields: {
+            ...globalFilterConfig?.numberFields,
+            ...entityFilterConfig?.numberFields
+        },
+        textFields: {
+            ...globalFilterConfig?.textFields,
+            ...entityFilterConfig?.textFields
+        },
+        debug: entityFilterConfig?.debug ?? globalFilterConfig?.debug ?? false
+    };
+    
+    // If globally disabled, skip
+    if (!mergedConfig.enabled) {
+        return undefined;
+    }
+    
+    const attrType = attribute.type;
+    const fieldType = attribute.fieldType;
+    
+    // **1. Boolean fields**
+    if (attrType === 'boolean' && mergedConfig.booleanFields?.enabled !== false) {
+        return {
+            filterType: 'boolean',
+            defaultOperator: 'eq',
+            availableOperators: ['eq', 'neq', 'isEmpty', 'isNull'],
+            predefinedOptions: [
+                { label: 'Yes', value: "true" },
+                { label: 'No', value: "false" }
+            ]
+        };
+    }
+    
+    // **2. Enum fields (array of strings/numbers)**
+    if (Array.isArray(attrType) && mergedConfig.enumFields?.enabled !== false) {
+        const defaultEnumOps = ['eq', 'neq', 'inList', 'notInList', 'isEmpty', 'isNull'] as const;
+        const defaultOp = mergedConfig.enumFields?.defaultOperator || ('eq');
+        const availableOps = mergedConfig.enumFields?.availableOperators || defaultEnumOps;
+        
+        return {
+            filterType: 'select',
+            defaultOperator: defaultOp,
+            availableOperators: availableOps,
+            predefinedOptions: attrType.map(val => ({
+                label: String(val),
+                value: String(val)  // Always convert to string for consistency
+            }))
+        };
+    }
+    
+    
+    // **3. Date/Datetime fields**
+    if ((fieldType === 'date' || fieldType === 'datetime' || (attrType === 'string' && (attribute.id.toLowerCase().includes('date') || attribute.id.toLowerCase().includes('time'))))
+        && mergedConfig.dateFields?.enabled !== false) {
+        const defaultDateOps = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'between', 'isEmpty', 'isNull'] as const;
+        const operators = mergedConfig.dateFields?.defaultOperators || defaultDateOps;
+        
+        const filterConfig: any = {
+            filterType: 'datetime',
+            defaultOperator: operators[0] || ('gte'),
+            availableOperators: operators
+        };
+        
+        // Add quick date filters if enabled
+        if (mergedConfig.dateFields?.quickFilters !== false) {
+            filterConfig.predefinedOptions = [
+                { label: 'Today', value: ':startOfToday' },
+                { label: 'Yesterday', value: ':startOfYesterday' },
+                { label: 'This Week', value: ':startOfWeek' },
+                { label: 'Last Week', value: ':startOfLastWeek' },
+                { label: 'This Month', value: ':startOfMonth' },
+                { label: 'Last Month', value: ':startOfLastMonth' },
+                { label: 'This Quarter', value: ':startOfQuarter' },
+                { label: 'Last Quarter', value: ':startOfLastQuarter' },
+                { label: 'This Year', value: ':startOfYear' },
+                { label: 'Last Year', value: ':startOfLastYear' },
+                { label: 'Last 7 Days', value: ':nowMinus7Days' },
+                { label: 'Last 30 Days', value: ':nowMinus30Days' },
+                { label: 'Last 90 Days', value: ':nowMinus90Days' },
+                { label: 'Custom Date', value: null }  // Triggers datetime-local input
+            ];
+        }
+        
+        return filterConfig;
+    }
+    
+    // **5. Number fields**
+    if (attrType === 'number' && mergedConfig.numberFields?.enabled !== false) {
+        const defaultNumberOps = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'between', 'isEmpty', 'isNull'] as const;
+        const operators = mergedConfig.numberFields?.defaultOperators || defaultNumberOps;
+        return {
+            filterType: 'number',
+            defaultOperator: operators[0] || ('eq'),
+            availableOperators: operators
+        };
+    }
+    
+    // **4. Relation fields (without explicit options) - auto-generate from relation metadata**
+    if (attribute.relation && mergedConfig.relationFields?.enabled !== false && entityService) {
+        const relationConfig: RelationEntityOptionConfig = { entityName: attribute.relation.entityName };
+        const resolved = resolveRelationOptionConfig(
+            relationConfig,
+            attribute as TIOSchemaAttribute & { relation: NonNullable<TIOSchemaAttribute['relation']> },
+            entityService
+        );
+        
+        if (resolved) {
+            return {
+                filterType: 'relation',
+                defaultOperator: 'eq' as const,
+                availableOperators: ['eq', 'neq', 'inList', 'notInList', 'isEmpty', 'isNull'],
+                predefinedOptions: resolved
+            };
+        }
+    }
+    
+    // **6. Text fields (default fallback)**
+    if (attrType === 'string' && mergedConfig.textFields?.enabled !== false) {
+        const defaultTextOps = ['contains', 'notContains', 'eq', 'neq', 'startsWith', 'endsWith', 'like', 'isEmpty', 'isNull'];
+        const operators = mergedConfig.textFields?.defaultOperators || defaultTextOps;
+        return {
+            filterType: 'text',
+            defaultOperator: operators[0] || ('contains'),
+            availableOperators: operators
+        };
+    }
+    
+    // Debug logging
+    if (mergedConfig.debug) {
+        DefaultLogger.info(`[FilterAutoGen] ${attribute.id}: No filter config generated (type: ${attrType})`);
+    }
+    
+    return undefined;
+}
+
+// =======================================================================================
+// SEGMENT AUTO-GENERATION
+// =======================================================================================
+
+/**
+ * Smart icon mapping for segment values.
+ * Provides sensible defaults for common status/state patterns.
+ * Icons match ui24/src/core/common/Icons/Icons.tsx naming conventions.
+ */
+const DEFAULT_ICON_MAPPING: Record<string, string> = {
+    // Active/Inactive patterns
+    'active': 'CheckCircleOutlined',
+    'inactive': 'CloseCircleOutlined',
+    'enabled': 'CheckCircleOutlined',
+    'disabled': 'CloseCircleOutlined',
+    
+    // Status patterns
+    'pending': 'ClockCircleOutlined',
+    'in-progress': 'SyncOutlined',
+    'inprogress': 'SyncOutlined',
+    'completed': 'CheckCircleOutlined',
+    'done': 'CheckOutlined',
+    'finished': 'CheckCircleOutlined',
+    'cancelled': 'CloseCircleOutlined',
+    'canceled': 'CloseCircleOutlined',
+    'failed': 'CloseCircleOutlined',
+    'error': 'ExclamationCircleOutlined',
+    'paused': 'PauseCircleOutlined',
+    
+    // Scheduling patterns
+    'scheduled': 'CalendarOutlined',
+    'upcoming': 'CalendarOutlined',
+    'live': 'PlayCircleOutlined',
+    'draft': 'FileOutlined',
+    'published': 'CheckCircleOutlined',
+    'archived': 'FolderOutlined',
+    
+    // Priority patterns
+    'low': 'DownOutlined',
+    'medium': 'MinusOutlined',
+    'high': 'UpOutlined',
+    'critical': 'WarningOutlined',
+    'urgent': 'FireOutlined',
+    
+    // Approval patterns
+    'approved': 'CheckCircleOutlined',
+    'rejected': 'CloseCircleOutlined',
+    'review': 'EyeOutlined',
+    
+    // Boolean True/False
+    'true': 'CheckCircleOutlined',
+    'false': 'CloseCircleOutlined'
+};
+
+/**
+ * Intelligently extract boolean labels from field name patterns.
+ * Supports common boolean prefixes like is/has/can/should/will/etc.
+ * 
+ * @example
+ * - isActive → "Active" / "Inactive"
+ * - hasPermission → "Has Permission" / "No Permission"
+ * - canEdit → "Can Edit" / "Cannot Edit"
+ * - isLive → "Live" / "Not Live"
+ * - shouldNotify → "Should Notify" / "Should Not Notify"
+ */
+function extractBooleanLabelsFromFieldName(fieldName: string): { trueLabel: string; falseLabel: string } | null {
+    // Common boolean prefixes with their negative forms
+    const patterns = [
+        // Pattern: is + XXX
+        {
+            regex: /^is([A-Z][a-zA-Z0-9]*)/,
+            getTrueLabel: (match: RegExpMatchArray) => toHumanReadableName(match[1]),
+            getFalseLabel: (match: RegExpMatchArray) => {
+                const base = toHumanReadableName(match[1]);
+                // Special cases for better negation
+                if (base.toLowerCase() === 'active') return 'Inactive';
+                if (base.toLowerCase() === 'enabled') return 'Disabled';
+                if (base.toLowerCase() === 'visible') return 'Hidden';
+                if (base.toLowerCase() === 'public') return 'Private';
+                if (base.toLowerCase() === 'available') return 'Unavailable';
+                return `Not ${base}`;
+            }
+        },
+        // Pattern: has + XXX
+        {
+            regex: /^has([A-Z][a-zA-Z0-9]*)/,
+            getTrueLabel: (match: RegExpMatchArray) => `Has ${toHumanReadableName(match[1])}`,
+            getFalseLabel: (match: RegExpMatchArray) => `No ${toHumanReadableName(match[1])}`
+        },
+        // Pattern: can + XXX
+        {
+            regex: /^can([A-Z][a-zA-Z0-9]*)/,
+            getTrueLabel: (match: RegExpMatchArray) => `Can ${toHumanReadableName(match[1])}`,
+            getFalseLabel: (match: RegExpMatchArray) => `Cannot ${toHumanReadableName(match[1])}`
+        },
+        // Pattern: should + XXX
+        {
+            regex: /^should([A-Z][a-zA-Z0-9]*)/,
+            getTrueLabel: (match: RegExpMatchArray) => `Should ${toHumanReadableName(match[1])}`,
+            getFalseLabel: (match: RegExpMatchArray) => `Should Not ${toHumanReadableName(match[1])}`
+        },
+        // Pattern: will + XXX
+        {
+            regex: /^will([A-Z][a-zA-Z0-9]*)/,
+            getTrueLabel: (match: RegExpMatchArray) => `Will ${toHumanReadableName(match[1])}`,
+            getFalseLabel: (match: RegExpMatchArray) => `Will Not ${toHumanReadableName(match[1])}`
+        },
+        // Pattern: allows + XXX
+        {
+            regex: /^allows([A-Z][a-zA-Z0-9]*)/,
+            getTrueLabel: (match: RegExpMatchArray) => `Allows ${toHumanReadableName(match[1])}`,
+            getFalseLabel: (match: RegExpMatchArray) => `Does Not Allow ${toHumanReadableName(match[1])}`
+        },
+        // Pattern: needs + XXX
+        {
+            regex: /^needs([A-Z][a-zA-Z0-9]*)/,
+            getTrueLabel: (match: RegExpMatchArray) => `Needs ${toHumanReadableName(match[1])}`,
+            getFalseLabel: (match: RegExpMatchArray) => `Does Not Need ${toHumanReadableName(match[1])}`
+        },
+        // Pattern: requires + XXX
+        {
+            regex: /^requires([A-Z][a-zA-Z0-9]*)/,
+            getTrueLabel: (match: RegExpMatchArray) => `Requires ${toHumanReadableName(match[1])}`,
+            getFalseLabel: (match: RegExpMatchArray) => `Does Not Require ${toHumanReadableName(match[1])}`
+        }
+    ];
+    
+    for (const pattern of patterns) {
+        const match = fieldName.match(pattern.regex);
+        if (match) {
+            return {
+                trueLabel: pattern.getTrueLabel(match),
+                falseLabel: pattern.getFalseLabel(match)
+            };
+        }
+    }
+    
+    return null;
+}
+
+/**
+ * Get the number of options for a field.
+ */
+function getFieldOptionCount(field: TIOSchemaAttribute): number {
+    // 1. Enum type array
+    if (Array.isArray(field.type)) {
+        return field.type.length;
+    }
+    
+    // 2. Boolean field
+    if (field.type === 'boolean') {
+        return 2;
+    }
+    
+    // 3. Select/radio/checkbox field with inline options
+    const fieldType = field.fieldType;
+    if (fieldType === 'select' || fieldType === 'radio' || fieldType === 'checkbox' || fieldType === 'multi-select') {
+        const options = (field as any).options;
+        if (Array.isArray(options)) {
+            return options.length;
+        }
+    }
+    
+    return 0;
+}
+
+/**
+ * Check if a field is viable for segment generation.
+ * Supports:
+ * - Enum types: type: ['value1', 'value2']
+ * - Boolean types: type: 'boolean'
+ * - Select/radio/checkbox fields with options: fieldType: 'select' + options: [...]
+ * 
+ * STRICTLY enforces: minValues <= optionCount <= maxSegmentsPerGroup
+ */
+function isViableSegmentField(
+    field: TIOSchemaAttribute,
+    config: Required<ISegmentAutoGenerationConfig> & { maxSegmentsPerGroup?: number }
+): boolean {
+    const maxValues = config.maxSegmentsPerGroup || 10;
+    const optionCount = getFieldOptionCount(field);
+    
+    // Must have options AND be within bounds
+    if (optionCount === 0) {
+        return false;
+    }
+    
+    // STRICT: Reject if outside bounds
+    return optionCount >= config.minValues && optionCount <= maxValues;
+}
+
+/**
+ * Intelligently detect the best field(s) for generating segments.
+ * Returns multiple fields if maxSegmentGroups > 1.
+ * 
+ * Priority:
+ * 1. Explicit segmentFields (entity config) → Use those fields
+ * 2. includeFields filter (entity config) → Only consider these
+ * 3. excludeFields filter (entity config) → Skip these
+ * 4. preferredFields (global/entity config) → Try these first
+ * 5. Scoring algorithm → Score all candidates and pick top N
+ */
+function detectSegmentFields<S extends EntitySchema<string, string, string>>(
+    properties: TIOSchemaAttributesMap<S>,
+    globalConfig?: ISegmentAutoGenerationConfig,
+    entityConfig?: NonNullable<ReturnType<typeof BaseEntityService.prototype.getEntitySchema>['model']['metadata']>['tableUI']
+): Array<{ field: TIOSchemaAttribute; score: number; reason: string }> {
+    const segmentConfig = entityConfig?.segmentAutoGeneration;
+    
+    // Merge configs (entity > global > defaults)
+    const mergedConfig: Required<ISegmentAutoGenerationConfig> & { maxSegmentGroups: number; maxSegmentsPerGroup: number } = {
+        enabled: segmentConfig?.enabled ?? globalConfig?.enabled ?? true,
+        preferredFields: segmentConfig?.preferredFields || globalConfig?.preferredFields || ['status', 'state', 'type', 'category', 'priority'],
+        maxSegmentGroups: segmentConfig?.maxSegmentGroups ?? globalConfig?.maxSegmentGroups ?? 2,
+        maxSegmentsPerGroup: segmentConfig?.maxSegmentsPerGroup ?? globalConfig?.maxSegmentsPerGroup ?? 10,
+        minValues: segmentConfig?.minValues ?? globalConfig?.minValues ?? 2,
+        iconMapping: { ...DEFAULT_ICON_MAPPING, ...globalConfig?.iconMapping, ...segmentConfig?.iconMapping },
+        booleanLabelPatterns: segmentConfig?.booleanLabelPatterns || globalConfig?.booleanLabelPatterns || [],
+        defaultBooleanLabels: segmentConfig?.defaultBooleanLabels || globalConfig?.defaultBooleanLabels || { true: 'Yes', false: 'No' },
+        includeAllSegment: segmentConfig?.includeAllSegment ?? globalConfig?.includeAllSegment ?? true,
+        debug: segmentConfig?.debug ?? globalConfig?.debug ?? false
+    };
+    
+    if (!mergedConfig.enabled) {
+        return [];
+    }
+    
+    // === PRIORITY 1: Explicit segment fields ===
+    const explicitFields = segmentConfig?.segmentFields || segmentConfig?.segmentField;
+    if (explicitFields) {
+        const fieldNames = typeof explicitFields === 'string' ? [explicitFields] : explicitFields;
+        const results: Array<{ field: TIOSchemaAttribute; score: number; reason: string }> = [];
+        
+        for (const fieldName of fieldNames) {
+            const field = Array.from(properties.values()).find(p => p.id === fieldName);
+            if (field) {
+                results.push({ field, score: 1000, reason: 'explicit configuration' });
+            }
+        }
+        
+        if (results.length > 0) {
+            return results.slice(0, mergedConfig.maxSegmentGroups);
+        }
+    }
+    
+    // === Filter properties based on include/exclude ===
+    let candidateProperties = Array.from(properties.values());
+    
+    // Apply includeFields filter (if provided, ONLY consider these)
+    if (segmentConfig?.includeFields && segmentConfig.includeFields.length > 0) {
+        candidateProperties = candidateProperties.filter(p => 
+            segmentConfig.includeFields!.includes(p.id)
+        );
+    }
+    
+    // Apply excludeFields filter
+    if (segmentConfig?.excludeFields && segmentConfig.excludeFields.length > 0) {
+        candidateProperties = candidateProperties.filter(p => 
+            !segmentConfig.excludeFields!.includes(p.id)
+        );
+    }
+    
+    // === PRIORITY 2: Preferred fields ===
+    const preferredFields = mergedConfig.preferredFields;
+    const preferredMatches: Array<{ field: TIOSchemaAttribute; score: number; reason: string }> = [];
+    
+    for (const preferredName of preferredFields) {
+        const field = candidateProperties.find(p => p.id === preferredName);
+        if (field && isViableSegmentField(field, mergedConfig)) {
+            preferredMatches.push({ field, score: 900, reason: `preferred field: ${preferredName}` });
+        }
+    }
+    
+    // If we have enough preferred matches, return them
+    if (preferredMatches.length >= mergedConfig.maxSegmentGroups) {
+        return preferredMatches.slice(0, mergedConfig.maxSegmentGroups);
+    }
+    
+    // === PRIORITY 3: Scoring algorithm ===
+    const candidates: Array<{ field: TIOSchemaAttribute; score: number; reason: string; optionCount: number }> = [];
+    
+    // Add preferredMatches with their option counts
+    for (const pm of preferredMatches) {
+        const optionCount = getFieldOptionCount(pm.field);
+        candidates.push({ ...pm, optionCount });
+    }
+    
+    for (const prop of candidateProperties) {
+        // Skip if already in preferredMatches
+        if (preferredMatches.some(pm => pm.field.id === prop.id)) {
+            continue;
+        }
+        
+        // Skip if not viable (this filters out fields with too many options)
+        if (!isViableSegmentField(prop, mergedConfig)) {
+            continue;
+        }
+        
+        let score = 0;
+        const reasons: string[] = [];
+        const optionCount = getFieldOptionCount(prop);
+        
+        // **Score 1: Field name match** (partial match with preferred names)
+        for (const preferred of preferredFields) {
+            if (prop.id.toLowerCase().includes(preferred.toLowerCase())) {
+                score += 50;
+                reasons.push(`name contains "${preferred}"`);
+                break;
+            }
+        }
+        
+        // **Score 2: Prefer fewer options (inverse scoring)**
+        // Fields with fewer options get higher scores
+        const minValues = mergedConfig.minValues;
+        const maxValues = mergedConfig.maxSegmentsPerGroup;
+        
+        if (optionCount >= minValues && optionCount <= maxValues) {
+            // Score inversely proportional to option count
+            // 2 options = +40, 5 options = +25, 10 options = +10
+            const optionScore = Math.max(10, 40 - (optionCount - minValues) * 3);
+            score += optionScore;
+            reasons.push(`${optionCount} options`);
+        }
+        
+        // **Score 3: Boolean field gets high priority (only 2 options)**
+        if (prop.type === 'boolean') {
+            score += 5;  // Small bonus since option count already factors in
+            reasons.push('boolean field');
+        }
+        
+        // **Score 4: Name position (earlier = slightly higher priority)**
+        const fieldIndex = candidateProperties.indexOf(prop);
+        score -= Math.min(fieldIndex, 5);  // Cap penalty at 5
+        
+        candidates.push({ 
+            field: prop, 
+            score, 
+            reason: reasons.join(', '),
+            optionCount
+        });
+    }
+    
+    // Sort by: 1) score (highest first), 2) option count (lowest first)
+    candidates.sort((a, b) => {
+        if (b.score !== a.score) {
+            return b.score - a.score;
+        }
+        return a.optionCount - b.optionCount;  // Prefer fewer options
+    });
+    
+    const topNResults = candidates.slice(0, mergedConfig.maxSegmentGroups);
+    
+    if (topNResults.length > 0 && mergedConfig.debug) {
+        DefaultLogger.info(`[SegmentDetection] Selected ${topNResults.length} field(s):`, topNResults.map(c => ({
+            field: c.field.id,
+            score: c.score,
+            optionCount: c.optionCount,
+            reason: c.reason
+        })));
+    }
+    
+    return topNResults;
+}
+
+/**
+ * Auto-generate filter segments based on entity attributes using smart detection.
+ * 
+ * Algorithm:
+ * 1. If custom segments provided → use them (highest priority)
+ * 2. If entity requires manual segments → skip auto-generation
+ * 3. Detect best field using scoring algorithm
+ * 4. Generate segments from detected field with smart icons
+ */
+export function generateSegments<S extends EntitySchema<string, string, string>>(
+    properties: TIOSchemaAttributesMap<S>,
+    entityService?: BaseEntityService<S>,
+    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'],
+    customSegments?: ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup>
+): ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup> | undefined {
+    // 1. If custom segments provided, use those (highest priority)
+    if (customSegments && customSegments.length > 0) {
+        return customSegments;
+    }
+    
+    // Get configuration
+    const globalSegmentConfig = globalUIConfigOptions?.tableUI?.segmentAutoGeneration;
+    const entityMetadata = entityService?.getEntitySchema?.().model?.metadata;
+    const entitySegmentConfig = entityMetadata?.tableUI;
+    
+    // 2. If entity requires manual segments, skip auto-generation
+    if (entitySegmentConfig?.segmentAutoGeneration?.requireManual) {
+        return undefined;
+    }
+    
+    // 3. Detect best segment fields (returns array now)
+    const detectedFields = detectSegmentFields(properties, globalSegmentConfig, entitySegmentConfig);
+    
+    if (detectedFields.length === 0) {
+        // No suitable fields found
+        if (globalSegmentConfig?.debug || entitySegmentConfig?.segmentAutoGeneration?.debug) {
+            DefaultLogger.info(`[SegmentGeneration] No suitable fields detected for segments`);
+        }
+        return undefined;
+    }
+    
+    // Get merged config for this entity
+    const mergedConfig: Required<ISegmentAutoGenerationConfig> & { maxSegmentGroups: number; maxSegmentsPerGroup: number } = {
+        enabled: entitySegmentConfig?.segmentAutoGeneration?.enabled ?? globalSegmentConfig?.enabled ?? true,
+        preferredFields: entitySegmentConfig?.segmentAutoGeneration?.preferredFields || globalSegmentConfig?.preferredFields || ['status', 'state', 'type', 'category', 'priority'],
+        maxSegmentGroups: entitySegmentConfig?.segmentAutoGeneration?.maxSegmentGroups ?? globalSegmentConfig?.maxSegmentGroups ?? 2,
+        maxSegmentsPerGroup: entitySegmentConfig?.segmentAutoGeneration?.maxSegmentsPerGroup ?? globalSegmentConfig?.maxSegmentsPerGroup ?? 10,
+        minValues: entitySegmentConfig?.segmentAutoGeneration?.minValues ?? globalSegmentConfig?.minValues ?? 2,
+        iconMapping: {
+            ...DEFAULT_ICON_MAPPING,
+            ...globalSegmentConfig?.iconMapping,
+            ...entitySegmentConfig?.segmentAutoGeneration?.iconMapping
+        },
+        booleanLabelPatterns: entitySegmentConfig?.segmentAutoGeneration?.booleanLabelPatterns || globalSegmentConfig?.booleanLabelPatterns || [],
+        defaultBooleanLabels: entitySegmentConfig?.segmentAutoGeneration?.defaultBooleanLabels || globalSegmentConfig?.defaultBooleanLabels || { true: 'Yes', false: 'No' },
+        includeAllSegment: entitySegmentConfig?.segmentAutoGeneration?.includeAllSegment ?? globalSegmentConfig?.includeAllSegment ?? true,
+        debug: entitySegmentConfig?.segmentAutoGeneration?.debug ?? globalSegmentConfig?.debug ?? false
+    };
+    
+    if (mergedConfig.debug) {
+        DefaultLogger.info(`[SegmentGeneration] Generating segments for ${detectedFields.length} field(s):`, detectedFields.map(d => d.field.id));
+    }
+    
+    // 4. Generate segment groups (one per detected field)
+    const segmentGroups: Array<IFilterSegmentGroup> = [];
+    
+    for (const detection of detectedFields) {
+        const { field } = detection;
+        
+        // Generate segments for this field
+        const segments: Array<IFilterSegment> = [];
+        
+        // Add "All" segment if enabled
+        if (mergedConfig.includeAllSegment) {
+            segments.push({
+                id: `all-${field.id}`,
+                label: 'All',
+                filters: {},
+                default: true
+            });
+        }
+        
+        // Get values from field
+        let values: (string | number | boolean)[] = [];
+        let valueLabels: Record<string, string> = {};  // For custom boolean labels
+        
+        if (Array.isArray(field.type)) {
+            // Enum type array
+            values = field.type;
+        } else if (field.type === 'boolean') {
+            // Boolean field with optional custom labels
+            values = [true, false];
+            
+            // 1. Check for explicit field-level booleanLabels
+            const fieldBooleanLabels = 'booleanLabels' in field ? field.booleanLabels : undefined;
+            if (fieldBooleanLabels && typeof fieldBooleanLabels === 'object') {
+                valueLabels['true'] = fieldBooleanLabels.true || 'Yes';
+                valueLabels['false'] = fieldBooleanLabels.false || 'No';
+            } else {
+                // 2. Try intelligent extraction from field name
+                const fieldName = field.id;
+                const extracted = extractBooleanLabelsFromFieldName(fieldName);
+                
+                if (extracted) {
+                    valueLabels['true'] = extracted.trueLabel;
+                    valueLabels['false'] = extracted.falseLabel;
+                } else {
+                    // 3. Try to match against configured patterns
+                    const patterns = mergedConfig.booleanLabelPatterns;
+                    let matched = false;
+                    
+                    if (patterns && patterns.length > 0) {
+                        for (const pattern of patterns) {
+                            const regex = pattern.pattern instanceof RegExp 
+                                ? pattern.pattern 
+                                : new RegExp(pattern.pattern, 'i');
+                            
+                            if (regex.test(fieldName)) {
+                                valueLabels['true'] = pattern.trueLabel;
+                                valueLabels['false'] = pattern.falseLabel;
+                                matched = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // 4. Use default fallback if no pattern matched
+                    if (!matched) {
+                        const defaults = mergedConfig.defaultBooleanLabels || { true: 'Yes', false: 'No' };
+                        valueLabels['true'] = defaults.true;
+                        valueLabels['false'] = defaults.false;
+                    }
+                }
+            }
+        } else if ((field.fieldType === 'select' || field.fieldType === 'radio' || field.fieldType === 'checkbox' || field.fieldType === 'multi-select') && Array.isArray((field as any).options)) {
+            // Select/radio/checkbox field with inline options
+            const options = (field as any).options as Array<{ label: string; value: string }>;
+            values = options.map(opt => opt.value);
+            // Store labels for later use
+            options.forEach(opt => {
+                valueLabels[String(opt.value)] = opt.label;
+            });
+        }
+        
+        // Apply field-specific value filters first, then global
+        const includeValuesByField = entitySegmentConfig?.segmentAutoGeneration?.includeValuesByField;
+        const includeValues = includeValuesByField?.[field.id] || entitySegmentConfig?.segmentAutoGeneration?.includeValues;
+        if (includeValues) {
+            values = values.filter(v => includeValues.includes(String(v)));
+        }
+        
+        const excludeValuesByField = entitySegmentConfig?.segmentAutoGeneration?.excludeValuesByField;
+        const excludeValues = excludeValuesByField?.[field.id] || entitySegmentConfig?.segmentAutoGeneration?.excludeValues;
+        if (excludeValues) {
+            values = values.filter(v => !excludeValues.includes(String(v)));
+        }
+        
+        // Apply field-specific sort order first, then global
+        const sortOrderByField = entitySegmentConfig?.segmentAutoGeneration?.sortOrderByField;
+        const sortOrder = sortOrderByField?.[field.id] || entitySegmentConfig?.segmentAutoGeneration?.sortOrder;
+        if (sortOrder) {
+            values.sort((a, b) => {
+                const aIndex = sortOrder.indexOf(String(a));
+                const bIndex = sortOrder.indexOf(String(b));
+                
+                // If both in sortOrder, use that order
+                if (aIndex >= 0 && bIndex >= 0) {
+                    return aIndex - bIndex;
+                }
+                // If only one in sortOrder, it comes first
+                if (aIndex >= 0) return -1;
+                if (bIndex >= 0) return 1;
+                // Neither in sortOrder, maintain original order
+                return 0;
+            });
+        }
+        
+        // Generate segment for each value
+        for (const value of values) {
+            const valueStr = String(value);
+            const valueLower = valueStr.toLowerCase();
+            
+            // Use custom label if available, otherwise format the value
+            const segmentLabel = valueLabels[valueStr] || pascalCase(valueStr);
+            
+            segments.push({
+                id: `${field.id}-${valueLower.replace(/[^a-z0-9]+/g, '-')}`,  // Unique ID
+                label: segmentLabel,  // Custom or formatted label
+                icon: mergedConfig.iconMapping[valueLower],  // Smart icon lookup
+                filters: {
+                    [field.id]: { eq: value }
+                }
+            });
+        }
+        
+        // Only add group if we have segments
+        const minSegments = mergedConfig.includeAllSegment ? 1 : 0;
+        if (segments.length > minSegments) {
+            // Auto-generate label or use explicit groupLabels
+            const customGroupLabels = entitySegmentConfig?.segmentAutoGeneration?.groupLabels;
+            const label = customGroupLabels?.[field.id] || `By ${pascalCase(field.id)}`;
+            
+            segmentGroups.push({
+                id: `${field.id}-group`,
+                label,
+                segments,
+                defaultSegmentId: segments.find(s => s.default)?.id,
+                maxVisible: mergedConfig.maxSegmentsPerGroup
+            });
+        }
+    }
+    
+    // Return segment groups (or undefined if none generated)
+    if (segmentGroups.length === 0) {
+        return undefined;
+    }
+    
+    // If only 1 group with simple config, return flat segments for backwards compatibility
+    // This maintains legacy behavior when maxSegmentGroups = 1
+    if (segmentGroups.length === 1 && mergedConfig.maxSegmentGroups === 1) {
+        return segmentGroups[0].segments;
+    }
+    
+    return segmentGroups;
+}
+
+// =======================================================================================
+// ENTITY ATTRIBUTE FORMATTING
+// =======================================================================================
+
 export function formatEntityAttributeForFormOrDetail(
     thisProp: TIOSchemaAttribute,
     type: 'create' | 'update' | 'detail',
@@ -577,7 +1645,7 @@ export function formatEntityAttributeForFormOrDetail(
             if (entityName && entityService.hasEntityServiceByEntityName(entityName)) {
                 formatted[ 'addNewOptionConfig' ] = {
                     entityName: entityName,
-                    pageType: 'create' as const,
+                    pageType: 'create',
                     overrideConfig: overrideConfig || {
                         submitSuccessRedirect: undefined,  // Stay in modal after creation
                         formButtons: [
@@ -708,7 +1776,7 @@ export function formatEntityAttributeForFormOrDetail(
                     : identifierMappings,     // Multiple: return array
                 modalConfigRef: userRelationConfig?.modalConfigRef || {
                     entityName: entityName,
-                    pageType: 'view' as const,
+                    pageType: 'view',
                     overrideConfig: {}
                 },
                 modalWidth: userRelationConfig?.modalWidth,
@@ -771,7 +1839,7 @@ export function formatEntityAttributeForFormOrDetail(
                     : identifierMappings,     // Multiple: return array
                 modalConfigRef: userRelationConfig?.modalConfigRef || {
                     entityName: entityName,
-                    pageType: 'list' as const,
+                    pageType: 'list',
                     overrideConfig: {
                         defaultFilters: defaultFilters
                     }
@@ -882,18 +1950,18 @@ export function formatEntityAttributesForList(
     properties: TIOSchemaAttribute[], 
     entityService: BaseEntityService<any>,
     {
-        CRUDApiPath,
-        excludeFromAdminUpdate,
-        excludeFromAdminDelete,
-        excludeFromAdminDetail,
+    CRUDApiPath,
+    excludeFromAdminUpdate,
+    excludeFromAdminDelete,
+    excludeFromAdminDetail,
         customRowActions,
         globalUIConfigOptions
-    }: {
-        CRUDApiPath?: string,
-        excludeFromAdminUpdate?: boolean,
-        excludeFromAdminDelete?: boolean,
-        excludeFromAdminDetail?: boolean,
-        customRowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
+}: {
+    CRUDApiPath?: string,
+    excludeFromAdminUpdate?: boolean,
+    excludeFromAdminDelete?: boolean,
+    excludeFromAdminDetail?: boolean,
+    customRowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
         globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']  // NEW: Global config options
     }
 ) {
@@ -908,12 +1976,18 @@ export function formatEntityAttributesForList(
             // Pass all properties so it can detect duplicated relation fields (e.g., teamName for teamId)
             const formatted = formatEntityAttributeForFormOrDetail(prop, 'detail', entityService, properties, globalUIConfigOptions);
             
+            // Auto-generate filterConfig if not already present and field is filterable
+            const autoGeneratedFilterConfig = !formatted.filterConfig && prop.isFilterable !== false
+                ? generateFilterConfig(prop, entityService, globalUIConfigOptions)
+                : undefined;
+            
             // Override/add list-specific properties
             const propConfig: ListingPropConfig = {
                 ...formatted,
                 name: formatted.label || formatted.name,  // Ensure name is set for table column header
                 dataIndex: `${prop.id}`,
                 fieldType: formatted.fieldType || 'text',
+                filterConfig: formatted.filterConfig || autoGeneratedFilterConfig,  // Use explicit or auto-generated
                 hidden: prop.hasOwnProperty('isVisible') && !prop.isVisible
             };
 

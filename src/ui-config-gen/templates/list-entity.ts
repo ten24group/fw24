@@ -2,7 +2,7 @@ import { BaseEntityService, EntityListPageConfig, EntitySchema, TIOSchemaAttribu
 import { IEntityPageAction, Template } from "../../entity/base-entity";
 import type { IApplicationConfig } from "../../interfaces/config";
 import { pascalCase } from "../../utils";
-import { formatEntityAttributesForList, mergeColumnVisibility } from "./util";
+import { formatEntityAttributesForList, generateSegments, mergeColumnVisibility } from "./util";
 
 export type ListEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string,
@@ -145,7 +145,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     }
 
     // 3. Auto-generate or pass through segments
-    const segments = generateSegments(properties, tableConfig?.segments);
+    const segments = generateSegments(properties, entityService, globalUIConfigOptions, tableConfig?.segments);
 
     return {
         apiConfig,
@@ -156,64 +156,4 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
         ...(tableConfig?.expandable && { expandableConfig: tableConfig.expandable }),  // Include expandable config if provided
         ...(segments && segments.length > 0 && { segments })  // Include segments if generated/provided
     };
-}
-
-/**
- * Auto-generate filter segments based on entity attributes
- * Looks for common patterns like status fields, date fields, etc.
- * 
- * Custom segments can include badges for enhanced UX:
- * @example
- * segments: [
- *   { id: 'new', label: 'New', filters: {...}, badge: 'NEW', badgeStatus: 'success' },
- *   { id: 'hot', label: 'Trending', filters: {...}, badge: 'HOT', badgeStatus: 'error' },
- *   { id: 'pro', label: 'Premium', filters: {...}, badge: 'PRO', badgeStatus: 'processing' }
- * ]
- */
-function generateSegments<S extends EntitySchema<string, string, string>>(
-    properties: TIOSchemaAttributesMap<S>,
-    customSegments?: ReadonlyArray<IFilterSegment> | Array<IFilterSegment>
-): ReadonlyArray<IFilterSegment> | Array<IFilterSegment> | undefined {
-    // If custom segments provided, use those
-    if (customSegments && customSegments.length > 0) {
-        return customSegments;
-    }
-
-    const segments: Array<IFilterSegment> = [];
-
-    // Always add "All" segment as default
-    segments.push({
-        id: 'all',
-        label: 'All',
-        filters: {},
-        default: true
-    });
-
-    // Look for common boolean flags (isActive, isPublished, etc.)
-    const activeField = Array.from(properties.values()).find(prop => 
-        (prop.id === 'isActive' || prop.id === 'active') && prop.type === 'boolean'
-    );
-
-    if (activeField) {
-        segments.push({
-            id: 'active',
-            label: 'Active',
-            icon: 'check-circle',
-            filters: {
-                [activeField.id]: { eq: true }
-            }
-        });
-        
-        segments.push({
-            id: 'inactive',
-            label: 'Inactive',
-            icon: 'stop',
-            filters: {
-                [activeField.id]: { eq: false }
-            }
-        });
-    }
-
-    // Return segments only if we generated more than just "All"
-    return segments.length > 1 ? segments : undefined;
 }
