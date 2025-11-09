@@ -53,6 +53,7 @@ export declare const AuditCustomPageConfigs: {
                 readonly search?: undefined;
                 readonly database?: undefined;
             };
+            readonly segments?: import("../../../entity").IFilterSegment[] | readonly import("../../../entity").IFilterSegment[] | undefined;
             readonly expandableConfig?: import("../../../entity").ITableExpandableConfig | undefined;
             readonly rowSelection?: {
                 enabled: boolean;

@@ -2059,6 +2059,75 @@ export interface ITableExpandableConfig {
   indentSize?: number;
 }
 
+/**
+ * Filter segment (quick filter tab) for tables.
+ * 
+ * Segments provide quick access to common filter sets displayed as tabs above the table.
+ * Supports visibility conditions and placeholder resolution for dynamic filters.
+ */
+export interface IFilterSegment {
+  /**
+   * Unique identifier for the segment
+   */
+  id: string;
+  
+  /**
+   * Display label for the segment tab
+   */
+  label: string;
+  
+  /**
+   * Optional icon name (Ant Design icon)
+   */
+  icon?: string;
+  
+  /**
+   * Filters to apply when this segment is active.
+   * Supports placeholder syntax (`:actor.actorId`, `:startOfToday`, etc.)
+   * 
+   * @example
+   * filters: {
+   *   status: { eq: 'active' },
+   *   createdBy: ':actor.actorId',
+   *   createdAt: { gte: ':startOfMonth' }
+   * }
+   */
+  filters: Record<string, any>;
+  
+  /**
+   * Whether this segment should be selected by default
+   * Default: false (first segment is default if none specified)
+   */
+  default?: boolean;
+  
+  /**
+   * Visibility condition for this segment.
+   * Can be used to show segments only to certain roles or in certain contexts.
+   * 
+   * @example
+   * visibility: {
+   *   actor: { role: { inList: ['admin', 'team-admin'] } }
+   * }
+   */
+  visibility?: VisibilityConfig;
+  
+  /**
+   * Badge count to display on the segment.
+   * Can be a static number or a placeholder.
+   * 
+   * @example
+   * badge: 5  // Static count
+   * badge: ':record.activeCount'  // Dynamic from context
+   */
+  badge?: number | string;
+  
+  /**
+   * Badge color (Ant Design status colors)
+   * Default: 'default'
+   */
+  badgeStatus?: 'success' | 'processing' | 'error' | 'warning' | 'default';
+}
+
 export interface EntityListPageConfig {
   readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
   readonly breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
@@ -2110,6 +2179,24 @@ export interface EntityListPageConfig {
      * Common use case: Show to-many relations (e.g., Team → Players)
      */
     readonly expandable?: ITableExpandableConfig;
+    
+    /**
+     * Filter segments (quick filter tabs) displayed above the table.
+     * Provides quick access to common filter sets.
+     * 
+     * Supports placeholder syntax for dynamic values:
+     * - `:actor.actorId` - Current user ID
+     * - `:startOfToday` - Date expressions
+     * - `:paramName` - Route parameters
+     * 
+     * @example
+     * segments: [
+     *   { id: 'all', label: 'All Items', filters: {}, default: true },
+     *   { id: 'active', label: 'Active', icon: 'check', filters: { status: { eq: 'active' } } },
+     *   { id: 'my-items', label: 'My Items', filters: { createdBy: ':actor.actorId' } }
+     * ]
+     */
+    readonly segments?: ReadonlyArray<IFilterSegment> | Array<IFilterSegment>;
   };
 }
 

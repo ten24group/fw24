@@ -1,4 +1,4 @@
-import { EntitySchema, FieldOptions, FieldOptionsAPIConfig, ApiMethod, ModalType, IModalApiConfig, IConfirmModal, Template, IRelationFieldConfig, ITableExpandableConfig } from "../../entity";
+import { EntitySchema, FieldOptions, FieldOptionsAPIConfig, ApiMethod, ModalType, IModalApiConfig, IConfirmModal, Template, IRelationFieldConfig, ITableExpandableConfig, VisibilityConfig, IFilterSegment } from "../../entity";
 import { IEntityPageColumnConfig } from "../../entity/base-entity";
 
 export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion" | "menu";
@@ -173,6 +173,19 @@ export interface ListPageConfigStructure {
      * Allows displaying nested data (e.g., to-many relations) within table rows.
      */
     expandableConfig?: ITableExpandableConfig;
+    
+    /**
+     * Filter segments (quick filter tabs) for the table.
+     * Provides quick access to common filter sets.
+     * 
+     * @example
+     * segments: [
+     *   { id: 'all', label: 'All', filters: {}, default: true },
+     *   { id: 'active', label: 'Active', filters: { isActive: { eq: true } } },
+     *   { id: 'hot', label: 'Trending', filters: {...}, badge: 'HOT', badgeStatus: 'error' }
+     * ]
+     */
+    segments?: Array<IFilterSegment>;
 }
 
 export interface DetailsPageConfigStructure {

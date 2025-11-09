@@ -1,4 +1,4 @@
-import { BaseEntityService, EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { BaseEntityService, EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap, IFilterSegment } from "../../entity";
 import { IEntityPageAction, Template } from "../../entity/base-entity";
 import type { IApplicationConfig } from "../../interfaces/config";
 export type ListEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
@@ -72,6 +72,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
     }[];
     readonly pageHeaderActions: IEntityPageAction[];
     readonly listPageConfig: {
+        segments?: IFilterSegment[] | readonly IFilterSegment[] | undefined;
         expandableConfig?: import("../../entity").ITableExpandableConfig | undefined;
         rowSelection?: {
             enabled: boolean;
@@ -124,6 +125,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
 };
 export default _default;
 export declare function makeViewEntityListConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>, entityService: BaseEntityService<S>): {
+    segments?: IFilterSegment[] | readonly IFilterSegment[] | undefined;
     expandableConfig?: import("../../entity").ITableExpandableConfig | undefined;
     rowSelection?: {
         enabled: boolean;
