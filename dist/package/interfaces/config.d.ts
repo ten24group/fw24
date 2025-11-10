@@ -198,6 +198,17 @@ export interface IApplicationConfig {
         customPagesDirectory?: string;
         /** Smart duplicated field detection configuration */
         duplicatedFieldDetection?: IDuplicatedFieldDetectionConfig;
+        /** Label field detection configuration for relation options */
+        labelFieldDetection?: {
+            /**
+             * Minimum confidence level required (default: 'medium')
+             * - 'high': Only metadata, exact name/title/label matches
+             * - 'medium': Also includes *Name, *Title, *Label, *Code suffixes
+             */
+            minConfidence?: 'high' | 'medium';
+            /** Enable debug logging (default: false) */
+            debug?: boolean;
+        };
         /** Table UI auto-generation configuration */
         tableUI?: ITableUIAutoGenerationConfig;
     };

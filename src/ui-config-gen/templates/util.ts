@@ -550,168 +550,187 @@ export function generateRelationFallback(
 }
 
 /**
+ * Label field detection result with confidence scoring
+ */
+interface LabelFieldDetectionResult {
+    field: string;
+    confidence: 'high' | 'medium';  // Only high or medium - no low confidence results returned
+    method: 'metadata' | 'common-pattern' | 'entity-pattern' | 'suffix-pattern';
+}
+
+/**
  * Smart label field detection for entity options.
- * Uses generic patterns to find the best display field when entity metadata is missing.
+ * Uses generic patterns to find display fields that are actual identifiers/names.
  * 
- * Priority order:
- * 1. Entity metadata (entityNameAttribute)
- * 2. Common display field patterns (name, title, label, displayName)
- * 3. Entity-specific patterns ({entityName}Name, {entityName}Title)
- * 4. Fields ending with name-like suffixes (Name, Title, Label, Code)
- * 5. Scored selection of best display field (prefers: strings > enums > booleans > numbers)
+ * **HIGHLY CONSERVATIVE**: Only returns fields that are clearly meant for display.
+ * Returns undefined if no proper name field is found - better to show ID than confuse users.
  * 
- * Automatically excludes:
- * - Technical fields (metadata, currency, gateway, remoteId, etc.)
- * - Sensitive fields (password, token, secret, key, hash)
- * - Timestamp fields (createdAt, updatedAt, deletedAt)
- * - JSON fields (fieldType: 'json')
- * - Relation fields (already ID fields)
- * - Hidden fields (isVisible: false, isListable: false)
+ * Detection order (all HIGH or MEDIUM confidence):
+ * 1. Entity metadata (entityNameAttribute) - HIGH confidence
+ * 2. Common display field patterns (name, title, label, displayName) - HIGH confidence  
+ * 3. Entity-specific patterns ({entityName}Name, {entityName}Title) - HIGH confidence
+ * 4. Fields ending with name-like suffixes (Name, Title, Label, Code) - MEDIUM confidence
+ * 
+ * **NO FALLBACK**: If none of the above match, returns undefined.
+ * We do NOT pick generic fields like 'status', 'type', or random enums/strings.
+ * 
+ * Why no fallback?
+ * - Showing "active"/"cancelled" for subscriptions is confusing (which subscription?)
+ * - Showing "credit_card"/"paypal" for payment methods is not an identifier
+ * - Better to show subscriptionId than misleading fields
+ * 
+ * For entities without name fields, use one of:
+ * - Set entityNameAttribute in schema metadata
+ * - Use optionMapping in relation config
+ * - Let it fall back to ID (clearest option)
  * 
  * @example
- * // Entity with clear name field
- * Team: teamName (Priority 3)
+ * // Entities with clear name fields - DETECTED ✅
+ * Team → teamName (Priority 3, HIGH confidence)
+ * User → name (Priority 2, HIGH confidence)
+ * Post → postTitle (Priority 4, MEDIUM confidence)
  * 
- * @example
- * // Entity without name field - uses scoring
- * Subscription: status (enum, score: 130) instead of currency (excluded)
- * PaymentMethod: provider (string, score: 150) instead of metadata (excluded)
+ * @example  
+ * // Entities without name fields - RETURNS undefined ✅
+ * Subscription → undefined (falls back to subscriptionId - clear!)
+ * PaymentMethod → undefined (falls back to paymentMethodId - clear!)
+ * AuditLog → undefined (falls back to auditLogId - clear!)
  * 
  * @param schema - Entity schema
  * @param entityName - Entity name (e.g., 'team', 'user')
- * @returns Best label field name or undefined
+ * @param options - Detection options
+ * @returns Best label field name or undefined (will fall back to ID field)
  */
-function findLabelField(schema: EntitySchema<any, any, any>, entityName: string): string | undefined {
-    // Priority 1: Use entity metadata if available
-    const entityNameAttribute = schema.model.entityNameAttribute;
-    if (entityNameAttribute) {
-        return entityNameAttribute;
+function findLabelField(
+    schema: EntitySchema<any, any, any>, 
+    entityName: string,
+    options?: {
+        /** Minimum confidence level required (default: 'medium') */
+        minConfidence?: 'high' | 'medium';
+        /** Enable debug logging (default: false) */
+        debug?: boolean;
     }
+): string | undefined {
+    const minConfidence = options?.minConfidence || 'medium';
+    const debug = options?.debug || false;
+    
+    let result: LabelFieldDetectionResult | undefined;
     
     // Get all attributes from schema
     const attributes = schema.attributes;
     const attributeNames = Object.keys(attributes);
     
-    // Priority 2: Exact match on common display patterns (case-insensitive)
-    const commonPatterns = ['name', 'title', 'label', 'displayName', 'displayname'];
-    for (const pattern of commonPatterns) {
-        const match = attributeNames.find(attr => attr.toLowerCase() === pattern);
-        if (match) {
-            return match;
+    // Priority 1: Entity metadata - HIGH confidence
+    const entityNameAttribute = schema.model.entityNameAttribute;
+    if (entityNameAttribute && attributes[entityNameAttribute]) {
+        result = {
+            field: entityNameAttribute,
+            confidence: 'high',
+            method: 'metadata'
+        };
+        if (debug) {
+            DefaultLogger.info(`[findLabelField] ${entityName}: Found via metadata - ${entityNameAttribute} (HIGH confidence)`);
         }
     }
     
-    // Priority 3: Entity-specific patterns ({entityName}Name, {entityName}Title)
-    const entityLower = entityName.toLowerCase();
-    const entitySpecificSuffixes = ['Name', 'Title', 'Label'];
-    
-    for (const suffix of entitySpecificSuffixes) {
-        // Try exact match: e.g., 'teamName' for entity 'team'
-        const exactMatch = attributeNames.find(attr => 
-            attr.toLowerCase() === `${entityLower}${suffix.toLowerCase()}`
-        );
-        if (exactMatch) {
-            return exactMatch;
+    // Priority 2: Common display patterns - HIGH confidence
+    if (!result) {
+        const commonPatterns = ['name', 'title', 'label', 'displayName', 'displayname'];
+        for (const pattern of commonPatterns) {
+            const match = attributeNames.find(attr => attr.toLowerCase() === pattern);
+            if (match) {
+                result = {
+                    field: match,
+                    confidence: 'high',
+                    method: 'common-pattern'
+                };
+                if (debug) {
+                    DefaultLogger.info(`[findLabelField] ${entityName}: Found via common pattern '${pattern}' - ${match} (HIGH confidence)`);
+                }
+                break;
+            }
         }
     }
     
-    // Priority 4: Fields ending with name-like suffixes
+    // Priority 3: Entity-specific patterns - HIGH confidence
+    if (!result) {
+        const entityLower = entityName.toLowerCase();
+        const entitySpecificSuffixes = ['Name', 'Title', 'Label'];
+        
+        for (const suffix of entitySpecificSuffixes) {
+            // Try exact match: e.g., 'teamName' for entity 'team'
+            const exactMatch = attributeNames.find(attr => 
+                attr.toLowerCase() === `${entityLower}${suffix.toLowerCase()}`
+            );
+            if (exactMatch) {
+                result = {
+                    field: exactMatch,
+                    confidence: 'high',
+                    method: 'entity-pattern'
+                };
+                if (debug) {
+                    DefaultLogger.info(`[findLabelField] ${entityName}: Found via entity-specific pattern - ${exactMatch} (HIGH confidence)`);
+                }
+                break;
+            }
+        }
+    }
+    
+    // Priority 4: Fields ending with name-like suffixes - MEDIUM confidence
     // Look for any field ending with 'Name', 'Title', 'Label' (e.g., 'displayName', 'fullName', 'userName',)
-    const displayNameSuffixPattern = /DisplayName$/;
-    const nameSuffixPattern = /Name$/;
-    const titleSuffixPattern = /Title$/;
-    const labelSuffixPattern = /Label$/;
-    const codeSuffixPattern = /Code$/;
-    
-    for (const pattern of [displayNameSuffixPattern, labelSuffixPattern, titleSuffixPattern, nameSuffixPattern, codeSuffixPattern]) {
-        const match = attributeNames.find(attr => pattern.test(attr));
-        if (match) {
-            return match;
+    if (!result) {
+        const displayNameSuffixPattern = /DisplayName$/;
+        const nameSuffixPattern = /Name$/;
+        const titleSuffixPattern = /Title$/;
+        const labelSuffixPattern = /Label$/;
+        const codeSuffixPattern = /Code$/;
+        
+        for (const pattern of [displayNameSuffixPattern, labelSuffixPattern, titleSuffixPattern, nameSuffixPattern, codeSuffixPattern]) {
+            const match = attributeNames.find(attr => pattern.test(attr));
+            if (match) {
+                result = {
+                    field: match,
+                    confidence: 'medium',
+                    method: 'suffix-pattern'
+                };
+                if (debug) {
+                    DefaultLogger.info(`[findLabelField] ${entityName}: Found via suffix pattern - ${match} (MEDIUM confidence)`);
+                }
+                break;
+            }
         }
     }
     
-    // Priority 5: First suitable display field
-    // Build list of candidates with scoring
-    const candidates: Array<{ field: string; score: number }> = [];
+    // Priority 5: NO FALLBACK - If we can't find a proper name field, return undefined
+    // Better to show ID than to show confusing fields like 'status', 'type', etc.
+    // 
+    // Entities like Subscription, PaymentMethod don't have traditional name fields.
+    // Showing "active" or "credit_card" in a dropdown is confusing - users can't distinguish items.
+    // It's clearer to show the ID (subscriptionId, paymentMethodId) in such cases.
+    //
+    // If you need custom labels for these entities, explicitly set entityNameAttribute in the schema
+    // or use optionMapping in the relation config.
     
-    for (const attrName of attributeNames) {
-        const attr = attributes[attrName];
-        let score = 0;
-        
-        // Skip if explicitly hidden from lists
-        if (attr.isListable === false) continue;
-        
-        // Skip if hidden/not visible
-        if (attr.isVisible === false) continue;
-        
-        // Skip ID fields (unless it's the only option)
-        if (attrName.toLowerCase().includes('id')) continue;
-        
-        // Skip sensitive/technical fields
-        const technicalFields = [
-            'password', 'token', 'secret', 'key', 'hash',
-            'metadata', 'remoteid', 'currency', 'gateway',
-            'createdat', 'updatedat', 'deletedat'
-        ];
-        if (technicalFields.some(tech => attrName.toLowerCase().includes(tech))) continue;
-        
-        // Skip JSON fields
-        if (attr.fieldType === 'json') continue;
-        
-        // Skip relations (these are IDs)
-        if (attr.relation) continue;
-        
-        // String fields get highest score
-        if (attr.type === 'string') {
-            score += 100;
-            
-            // Prefer required strings
-            if (attr.required === true) {
-                score += 50;
+    // Check confidence threshold
+    if (result) {
+        // Only return if confidence meets minimum requirement
+        // minConfidence: 'high' → only return HIGH confidence results
+        // minConfidence: 'medium' → return HIGH or MEDIUM confidence results (default)
+        if (minConfidence === 'high' && result.confidence === 'medium') {
+            if (debug) {
+                DefaultLogger.warn(`[findLabelField] ${entityName}: Field '${result.field}' found with MEDIUM confidence, but HIGH confidence required. Returning undefined.`);
             }
-            
-            // Prioritize fields that sound like identifiers (but not IDs)
-            if (attrName.toLowerCase().includes('number')) score += 30;
-            if (attrName.toLowerCase().includes('code')) score += 20;
-            if (attrName.toLowerCase().includes('identifier')) score += 20;
-            if (attrName.toLowerCase().includes('slug')) score += 20;
+            return undefined;
         }
         
-        // Enum fields get good score
-        if (Array.isArray(attr.type) && attr.type.length > 0) {
-            score += 80;
-            
-            // Prefer enums with reasonable counts
-            if (attr.type.length <= 10) {
-                score += 20;
-            }
-            
-            // Prefer required enums
-            if (attr.required === true) {
-                score += 30;
-            }
-        }
-        
-        // Boolean fields get lower score
-        if (attr.type === 'boolean') {
-            score += 40;
-        }
-        
-        // Number fields get even lower score
-        if (attr.type === 'number') {
-            score += 30;
-        }
-        
-        if (score > 0) {
-            candidates.push({ field: attrName, score });
-        }
+        return result.field;
     }
     
-    // Sort by score (highest first)
-    candidates.sort((a, b) => b.score - a.score);
-    
-    // Return the best candidate
-    return candidates.length > 0 ? candidates[0].field : undefined;
+    // No suitable field found
+    if (debug) {
+        DefaultLogger.warn(`[findLabelField] ${entityName}: No suitable label field found with sufficient confidence.`);
+    }
+    return undefined;
 }
 
 // =======================================================================================
@@ -721,18 +740,20 @@ function findLabelField(schema: EntitySchema<any, any, any>, entityName: string)
 /**
  * Resolves RelationEntityOptionConfig into FieldOptionsAPIConfig by auto-detecting:
  * - CRUD API path from entity schema
- * - Label field from entityNameAttribute metadata
+ * - Label field from entityNameAttribute metadata or smart detection
  * - Value field from relation identifiers
  * 
  * @param relationConfig - Minimal relation option config
  * @param relationAttribute - The relation attribute (to get identifiers)
  * @param entityService - Entity service for schema lookup
+ * @param globalUIConfigOptions - Global UI config options (for label field detection)
  * @returns Fully resolved FieldOptionsAPIConfig or undefined if entity not found
  */
 export function resolveRelationOptionConfig(
     relationConfig: RelationEntityOptionConfig,
     relationAttribute: TIOSchemaAttribute & { relation: NonNullable<TIOSchemaAttribute['relation']> },
-    entityService: BaseEntityService<any>
+    entityService: BaseEntityService<any>,
+    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']
 ): FieldOptionsAPIConfig<any> | undefined {
     const { entityName, customApiUrl, optionMapping, ...rest } = relationConfig;
     const relation = relationAttribute.relation;
@@ -769,8 +790,12 @@ export function resolveRelationOptionConfig(
         // Custom label provided - use it
         labelField = optionMapping.label as string;
     } else {
-        // Auto-detect using smart pattern matching
-        labelField = findLabelField(relatedSchema, entityName) || valueField;
+        // Auto-detect using smart pattern matching with global config
+        const labelFieldConfig = globalUIConfigOptions?.labelFieldDetection;
+        labelField = findLabelField(relatedSchema, entityName, {
+            minConfidence: labelFieldConfig?.minConfidence || 'medium',
+            debug: labelFieldConfig?.debug || false
+        }) || valueField;
     }
     
     // 4. Build complete FieldOptionsAPIConfig
@@ -838,7 +863,8 @@ export function generateFilterConfig(
             resolvedConfig = resolveRelationOptionConfig(
                 options as RelationEntityOptionConfig,
                 attribute as TIOSchemaAttribute & { relation: NonNullable<TIOSchemaAttribute['relation']> },
-                entityService
+                entityService,
+                globalUIConfigOptions
             );
         }
 
@@ -989,7 +1015,8 @@ export function generateFilterConfig(
         const resolved = resolveRelationOptionConfig(
             relationConfig,
             attribute as TIOSchemaAttribute & { relation: NonNullable<TIOSchemaAttribute['relation']> },
-            entityService
+            entityService,
+            globalUIConfigOptions
         );
         
         if (resolved) {

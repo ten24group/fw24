@@ -23,17 +23,18 @@ export declare function generateRelationFallback(entityName: string, idField: st
 /**
  * Resolves RelationEntityOptionConfig into FieldOptionsAPIConfig by auto-detecting:
  * - CRUD API path from entity schema
- * - Label field from entityNameAttribute metadata
+ * - Label field from entityNameAttribute metadata or smart detection
  * - Value field from relation identifiers
  *
  * @param relationConfig - Minimal relation option config
  * @param relationAttribute - The relation attribute (to get identifiers)
  * @param entityService - Entity service for schema lookup
+ * @param globalUIConfigOptions - Global UI config options (for label field detection)
  * @returns Fully resolved FieldOptionsAPIConfig or undefined if entity not found
  */
 export declare function resolveRelationOptionConfig(relationConfig: RelationEntityOptionConfig, relationAttribute: TIOSchemaAttribute & {
     relation: NonNullable<TIOSchemaAttribute['relation']>;
-}, entityService: BaseEntityService<any>): FieldOptionsAPIConfig<any> | undefined;
+}, entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): FieldOptionsAPIConfig<any> | undefined;
 /**
  * Auto-generates filterConfig for entity attributes based on field type.
  *
