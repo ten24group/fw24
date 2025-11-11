@@ -545,34 +545,109 @@ export type ModalPageConfig = IConfirmModal | FormPageConfigStructure | ListPage
  * ```
  */
 export interface IPageAction {
+    /**
+     * Unique identifier for this action. Used for override matching in merge logic.
+     * When defaults are generated, they use standard IDs like 'view', 'edit', 'delete'.
+     * Custom actions with the same ID will override defaults.
+     */
+    id?: string;
+    
     label: string;
+    
     /**
      * Dynamic label template (evaluated from routeParams or record context).
      * If provided, overrides static `label` field.
      * Can be simple string or complex template object.
      */
     template?: Template;
+    
     url?: string;
     icon?: string;
     type?: 'button' | 'dropdown';
     items?: Array<Omit<IPageAction, 'items'>>;  // Items cannot have sub-items
+    
+    /** Open action in modal instead of navigating */
     openInModal?: boolean;
+    
+    /** Modal configuration (inline config or resolved from url) */
     modalConfig?: {
         modalType: ModalType;
         modalPageConfig?: ModalPageConfig;
         apiConfig?: IModalApiConfig;
         submitSuccessRedirect?: string;
+        
+        /** OPTIONAL: Display API response in modal (instead of just toast) */
+        responseConfig?: {
+            /** If true, show response in modal instead of just toast */
+            showModal?: boolean;
+            /** Custom title for response modal */
+            modalTitle?: string;
+            /** Custom modal width for response display */
+            modalWidth?: number | string;
+        };
+        
+        /**
+         * Pre-populate form fields from context (route params + record data).
+         * Values are evaluated when modal opens. Supports:
+         * - Static values: `{ isActive: true, priority: 1 }`
+         * - Template strings: `{ teamId: '{teamId}', sport: '{sport}' }`
+         * - Nested paths: `{ teamName: '{team.name}' }`
+         */
+        initialValues?: Record<string, any>;
+        
+        /**
+         * If true, parent component will be refreshed after successful operation.
+         * Triggers onSuccessCallback with API response data.
+         * @default false
+         */
+        refreshParentOnSuccess?: boolean;
+        
         /**
          * Custom success message template.
          * @example successMessage: '{entityName} created successfully!'
          */
         successMessage?: Template;
+        
         /**
          * Custom error message template.
          * @example errorMessage: 'Failed to create {entityName}'
          */
         errorMessage?: Template;
     };
+    
+    /** Custom modal width. Default: auto-detect from page type */
+    modalWidth?: number | string;
+    
+    /** Override resolved page title when opened in modal */
+    modalTitle?: string;
+    
+    /** Hide this action when rendered inside a modal. Default: false */
+    hideInModal?: boolean;
+    
+    /** Only open in modal on specified screen size. Default: always */
+    openInModalCondition?: 'sm' | 'md' | 'lg' | 'xl';
+    
+    /**
+     * Visibility configuration for this action.
+     * Controls visibility and enablement based on actor roles, record state, context, and custom logic.
+     * 
+     * When undefined, action is visible and enabled by default.
+     * 
+     * @example
+     * // Simple role check
+     * visibility: {
+     *   requiredRoles: ['admin']
+     * }
+     * 
+     * @example
+     * // Record-based condition
+     * visibility: {
+     *   record: {
+     *     status: { eq: 'active' }
+     *   }
+     * }
+     */
+    visibility?: VisibilityConfig;
 }
 
 /**
