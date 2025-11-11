@@ -19,6 +19,27 @@ import type { IApplicationConfig } from '../../interfaces/config';
  * //   modalButtonText: 'Team Details'
  * // }
  */
+/**
+ * Generates fallback display configuration for relation fields.
+ *
+ * Creates user-friendly fallback text to display when only the ID of a related entity is available.
+ * Uses the entity's plural display name (from metadata) or generates it from the entity name.
+ *
+ * @param entityName - Name of the related entity (e.g., 'team', 'user')
+ * @param idField - ID field name (e.g., 'teamId', 'userId')
+ * @param entityService - Optional entity service to fetch metadata for better naming
+ * @returns Fallback configuration with template, link text, and modal button text
+ *
+ * @example
+ * ```typescript
+ * const fallback = generateRelationFallback('team', 'teamId');
+ * // Returns: {
+ * //   template: "Teams: {teamId}",
+ * //   linkText: "View Teams",
+ * //   modalButtonText: "Teams Details"
+ * // }
+ * ```
+ */
 export declare function generateRelationFallback(entityName: string, idField: string, entityService?: BaseEntityService<any>): NonNullable<IRelationFieldConfig['displayConfig']>['fallback'];
 /**
  * Resolves RelationEntityOptionConfig into FieldOptionsAPIConfig by auto-detecting:
@@ -60,12 +81,92 @@ export declare function generateFilterConfig(attribute: TIOSchemaAttribute, enti
  * 4. Generate segments from detected field with smart icons
  */
 export declare function generateSegments<S extends EntitySchema<string, string, string>>(properties: TIOSchemaAttributesMap<S>, entityService?: BaseEntityService<S>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'], customSegments?: ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup>): ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup> | undefined;
+/**
+ * Formats a single entity attribute for form or detail page display.
+ *
+ * Transforms schema attributes into UI-ready field configurations with proper field types,
+ * relation configs, options, visibility, and validation rules. Auto-generates relation
+ * display configurations and filter configs when not explicitly provided.
+ *
+ * @param thisProp - The entity attribute to format
+ * @param type - Page type: 'create', 'update', or 'detail'
+ * @param entityService - Entity service for accessing related schemas
+ * @param allProperties - Optional array of all properties for detecting duplicated relation fields
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Formatted field metadata ready for UI rendering
+ *
+ * @example
+ * ```typescript
+ * const formattedField = formatEntityAttributeForFormOrDetail(
+ *   {
+ *     id: 'teamId',
+ *     name: 'teamId',
+ *     type: 'string',
+ *     relation: { type: 'one', entity: 'team' }
+ *   },
+ *   'create',
+ *   entityService
+ * );
+ * // Returns field with relationConfig, filterConfig, and proper field type
+ * ```
+ */
 export declare function formatEntityAttributeForFormOrDetail(thisProp: TIOSchemaAttribute, type: 'create' | 'update' | 'detail', entityService: BaseEntityService<any>, allProperties?: TIOSchemaAttribute[], // Optional: for detecting duplicated relation fields
 globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): any;
+/**
+ * Routes attribute formatting to the appropriate type-specific formatter.
+ *
+ * Convenience function that delegates to formatEntityAttributesForCreate,
+ * formatEntityAttributesForUpdate, or formatEntityAttributesForDetail based on type.
+ *
+ * @param properties - Array of entity attributes to format
+ * @param type - Page type: 'create', 'update', or 'detail'
+ * @param entityService - Entity service for accessing schemas
+ * @returns Array of formatted field metadata
+ * @throws Error if invalid type is provided
+ */
 export declare function formatEntityAttributesForFormOrDetail(properties: TIOSchemaAttribute[], type: 'create' | 'update' | 'detail', entityService: BaseEntityService<any>): any[];
+/**
+ * Formats entity attributes for create form pages.
+ *
+ * Filters attributes to include only creatable fields (respects isCreatable flag)
+ * and formats each for create form display.
+ *
+ * @param properties - Array of entity attributes from schema
+ * @param entityService - Entity service for accessing related schemas
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Array of formatted field metadata for create forms
+ */
 export declare function formatEntityAttributesForCreate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): any[];
+/**
+ * Formats entity attributes for update/edit form pages.
+ *
+ * Filters attributes to include only editable fields (respects isEditable flag)
+ * and formats each for update form display.
+ *
+ * @param properties - Array of entity attributes from schema
+ * @param entityService - Entity service for accessing related schemas
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Array of formatted field metadata for update forms
+ */
 export declare function formatEntityAttributesForUpdate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): any[];
+/**
+ * Formats entity attributes for detail/view pages.
+ *
+ * Filters attributes to include only visible fields (respects isVisible flag)
+ * and formats each for detail page display.
+ *
+ * @param properties - Array of entity attributes from schema
+ * @param entityService - Entity service for accessing related schemas
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Array of formatted field metadata for detail views
+ */
 export declare function formatEntityAttributesForDetail(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): any[];
+/**
+ * Type definition for list/table column configuration.
+ *
+ * Extends FieldMetadata with list-specific properties like actions, templates,
+ * and relation rendering configurations.
+ */
 export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' | 'helpText' | 'filterConfig'> & {
     name: string;
     dataIndex: string;
@@ -80,6 +181,34 @@ export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' 
         displayText?: string;
     };
 };
+/**
+ * Formats entity attributes for list/table display.
+ *
+ * Transforms schema attributes into table column configurations with:
+ * - Auto-generated filter configurations for filterable columns
+ * - Relation display configurations with links and modal support
+ * - Template-based rendering for duplicated relation fields
+ * - Proper field types and visibility handling
+ *
+ * This is the main entry point for generating table column configurations from entity schemas.
+ *
+ * @param entityName - Name of the entity (for generating route patterns)
+ * @param properties - Array of entity attributes from schema
+ * @param entityService - Entity service for accessing related schemas
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Array of formatted column configurations for table display
+ *
+ * @example
+ * ```typescript
+ * const columns = formatEntityAttributesForList(
+ *   'game',
+ *   gameSchema.attributes,
+ *   gameService,
+ *   globalConfig
+ * );
+ * // Returns array of column configs with filters, relations, and templates
+ * ```
+ */
 export declare function formatEntityAttributesForList(entityName: string, properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, { CRUDApiPath, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, customRowActions, globalUIConfigOptions }: {
     CRUDApiPath?: string;
     excludeFromAdminUpdate?: boolean;
@@ -103,26 +232,92 @@ export declare function formatEntityAttributesForList(entityName: string, proper
  * @param customs - Custom buttons (from entity schema)
  * @returns Merged button array
  */
+/**
+ * Merges default buttons with custom buttons using ID-based override logic.
+ *
+ * Custom buttons with matching IDs override defaults, and new custom buttons are appended.
+ * Buttons without IDs are always included (no deduplication).
+ *
+ * @template T - Button type with optional id property
+ * @param defaults - Default button configurations
+ * @param customs - Custom button configurations to merge
+ * @returns Merged array with custom overrides applied
+ *
+ * @example
+ * ```typescript
+ * const defaults = [
+ *   { id: 'save', label: 'Save', action: 'submit' },
+ *   { id: 'cancel', label: 'Cancel', action: 'cancel' }
+ * ];
+ * const customs = [
+ *   { id: 'save', label: 'Save Changes', action: 'submit' }, // Override
+ *   { id: 'delete', label: 'Delete', action: 'delete' }      // New
+ * ];
+ * const merged = mergeButtons(defaults, customs);
+ * // Returns: [
+ * //   { id: 'save', label: 'Save Changes', action: 'submit' },
+ * //   { id: 'cancel', label: 'Cancel', action: 'cancel' },
+ * //   { id: 'delete', label: 'Delete', action: 'delete' }
+ * // ]
+ * ```
+ */
 export declare function mergeButtons<T extends {
     id?: string;
 }>(defaults: Array<T>, customs?: ReadonlyArray<T> | Array<T>): Array<T>;
 /**
- * Merge default actions with custom actions using identifier-based override.
- * Same logic as mergeButtons but semantically named for actions.
+ * Merges default actions with custom actions using ID-based override logic.
  *
- * @param defaults - Default actions (from generator)
- * @param customs - Custom actions (from entity schema)
- * @returns Merged action array
+ * Delegates to mergeButtons with the same behavior: custom actions with matching IDs
+ * override defaults, and new custom actions are appended. Semantically named for row/table actions.
+ *
+ * @template T - Action type with optional id property
+ * @param defaults - Default action configurations
+ * @param customs - Custom action configurations to merge
+ * @returns Merged array with custom overrides applied
+ *
+ * @example
+ * ```typescript
+ * const defaults = [
+ *   { id: 'edit', label: 'Edit', action: 'edit' },
+ *   { id: 'delete', label: 'Delete', action: 'delete' }
+ * ];
+ * const customs = [
+ *   { id: 'delete', label: 'Remove', action: 'delete', confirm: true } // Override
+ * ];
+ * const merged = mergeActions(defaults, customs);
+ * // Returns: [
+ * //   { id: 'edit', label: 'Edit', action: 'edit' },
+ * //   { id: 'delete', label: 'Remove', action: 'delete', confirm: true }
+ * // ]
+ * ```
  */
 export declare function mergeActions<T extends {
     id?: string;
 }>(defaults: Array<T>, customs?: ReadonlyArray<T> | Array<T>): Array<T>;
 /**
- * Merge field-level visibility/enablement/helpText/placeholder into base properties.
+ * Merges field-level visibility, enablement, help text, and placeholder overrides into base properties.
  *
- * @param baseProperties - Base properties from schema
- * @param fieldOverrides - Field overrides from formConfig.fields
- * @returns Properties with overrides merged
+ * Applies custom field configurations from form/detail config to base schema properties.
+ * Only merges overrides for fields that exist in base properties (warns about non-existent fields).
+ *
+ * @template T - Property type with required name field
+ * @param baseProperties - Base field properties from entity schema
+ * @param fieldOverrides - Custom field overrides from form/detail configuration
+ * @returns Base properties with overrides merged in
+ *
+ * @example
+ * ```typescript
+ * const baseProps = [
+ *   { name: 'email', type: 'string', required: true },
+ *   { name: 'bio', type: 'string', required: false }
+ * ];
+ * const overrides = [
+ *   { name: 'email', helpText: 'Enter a valid email address' },
+ *   { name: 'bio', visibility: { create: false } }
+ * ];
+ * const merged = mergeFieldVisibility(baseProps, overrides);
+ * // Returns baseProps with helpText and visibility merged
+ * ```
  */
 export declare function mergeFieldVisibility<T extends {
     name: string;
@@ -140,11 +335,31 @@ export declare function mergeFieldVisibility<T extends {
     placeholder?: string;
 }>): Array<T>;
 /**
- * Merge column-level visibility/width/fixed into base properties.
+ * Merges column-level visibility, width, fixed position, and grouping overrides into base properties.
  *
- * @param baseProperties - Base properties from schema
- * @param columnOverrides - Column overrides from tableConfig.columns
- * @returns Properties with column overrides merged
+ * Applies custom column configurations from table config to base schema properties.
+ * Only merges overrides for columns that exist in base properties (warns about non-existent columns).
+ *
+ * @template T - Property type with required name field
+ * @param baseProperties - Base column properties from entity schema
+ * @param columnOverrides - Custom column overrides from table configuration
+ * @returns Base properties with overrides merged in
+ *
+ * @example
+ * ```typescript
+ * const baseProps = [
+ *   { name: 'name', type: 'string' },
+ *   { name: 'email', type: 'string' },
+ *   { name: 'status', type: 'string' }
+ * ];
+ * const overrides = [
+ *   { field: 'name', width: 200, fixed: 'left' },
+ *   { field: 'email', visibility: { list: false } },
+ *   { field: 'status', groupTitle: 'Account Status' }
+ * ];
+ * const merged = mergeColumnVisibility(baseProps, overrides);
+ * // Returns baseProps with width, fixed, visibility, and groupTitle merged
+ * ```
  */
 export declare function mergeColumnVisibility<T extends {
     name: string;

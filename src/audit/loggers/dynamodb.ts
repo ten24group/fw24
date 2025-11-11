@@ -194,9 +194,8 @@ export class DynamoDbAuditLogger implements IAuditLogger {
 
         try {
 
-            this.logger.info('Writing to DynamoDB:', {
+            this.logger.debug('Writing to DynamoDB:', {
                 auditEntry,
-                DefaultDynamoDBAuditEntityConfiguration: DynamoDBAuditEntityConfiguration
             });
 
             const auditService = createElectroDBEntity({

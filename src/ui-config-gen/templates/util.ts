@@ -1,7 +1,7 @@
-import { 
-    BaseEntityService, 
-    FieldMetadata, 
-    TIOSchemaAttribute, 
+import {
+    BaseEntityService,
+    FieldMetadata,
+    TIOSchemaAttribute,
     isSelectFieldMetadata,
     SelectFieldMetadata,
     EntityAttribute,
@@ -27,10 +27,10 @@ import { pascalCase, toHumanReadableName } from "../../utils";
 interface DuplicatedFieldDetectionResult {
     /** Primary display field detected (e.g., 'teamName') */
     primaryField?: string;
-    
+
     /** Generated template string (e.g., '{teamName}' or '{teamName} ({teamCode})') */
     template?: string;
-    
+
     /** All detected fields by category */
     detectedFields: {
         /** Display fields: Name, Title, Label */
@@ -40,13 +40,13 @@ interface DuplicatedFieldDetectionResult {
         /** Meta fields: Code, Slug, Key */
         meta?: string[];
     };
-    
+
     /** Confidence level */
     confidence: 'high' | 'medium' | 'low';
-    
+
     /** Detection method used */
     method: string;
-    
+
     /** Pattern that matched */
     pattern: string;
 }
@@ -92,11 +92,11 @@ const DEFAULT_DETECTION_CONFIG: Required<IDuplicatedFieldDetectionConfig> = {
     enabled: true,
     suffixes: {
         // Generic display text patterns (universal)
-        display: ['Name', 'Title', 'Label', 'DisplayName'],
+        display: [ 'Name', 'Title', 'Label', 'DisplayName' ],
         // Generic visual asset patterns (universal)
-        visual: ['Logo', 'Image', 'Icon', 'Avatar', 'Picture'],
+        visual: [ 'Logo', 'Image', 'Icon', 'Avatar', 'Picture' ],
         // Generic metadata patterns (universal)
-        meta: ['Code', 'Slug', 'Key', 'Identifier', 'RemoteId']
+        meta: [ 'Code', 'Slug', 'Key', 'Identifier', 'RemoteId' ]
     },
     prefixes: [
         // Generic relational patterns (universal)
@@ -109,17 +109,17 @@ const DEFAULT_DETECTION_CONFIG: Required<IDuplicatedFieldDetectionConfig> = {
         'previous', 'next', 'current',
         'old', 'new',
         'original', 'copy', 'draft',
-        
+
         // Generic directional patterns (universal)
         'home', 'away',
         'left', 'right',
         'top', 'bottom',
         'inner', 'outer',
-        
+
         // Generic competitive patterns (universal)
         'winner', 'loser',
         'competitor', 'opponent'
-        
+
         // NOTE: Domain-specific prefixes (player, team, customer, order, etc.)
         // should be provided via uiConfigOptions in your application's backend
     ],
@@ -142,7 +142,7 @@ function mergeDetectionConfigs(
 ): Required<IDuplicatedFieldDetectionConfig> & { preferredFields?: string[]; excludeFields?: string[] } {
     // Start with defaults
     let merged = { ...DEFAULT_DETECTION_CONFIG };
-    
+
     // Apply global config
     if (globalConfig) {
         merged = {
@@ -152,7 +152,7 @@ function mergeDetectionConfigs(
             prefixes: globalConfig.prefixes || merged.prefixes
         };
     }
-    
+
     // Apply entity config (higher priority)
     if (entityConfig) {
         merged = {
@@ -162,7 +162,7 @@ function mergeDetectionConfigs(
             prefixes: entityConfig.prefixes || merged.prefixes
         };
     }
-    
+
     // Apply relation hints (highest priority)
     const result: any = { ...merged };
     if (relationHints) {
@@ -176,7 +176,7 @@ function mergeDetectionConfigs(
             result.excludeFields = relationHints.excludeFields;
         }
     }
-    
+
     return result;
 }
 
@@ -199,16 +199,16 @@ function parseRelationField(
         `^(${prefixes.join('|')})(\\d*)(.+)$`,
         'i'
     );
-    
+
     const match = fieldId.match(prefixPattern);
-    
+
     if (match) {
-        const [, prefix, num, rest] = match;
+        const [ , prefix, num, rest ] = match;
         const hasIdSuffix = rest.toLowerCase().endsWith('id');
-        const baseName = hasIdSuffix 
+        const baseName = hasIdSuffix
             ? rest.substring(0, rest.length - 2)
             : rest;
-        
+
         return {
             prefix: prefix + num,  // 'home' or 'competitor1'
             baseName,
@@ -216,13 +216,13 @@ function parseRelationField(
             originalField: fieldId
         };
     }
-    
+
     // No prefix detected
     const hasIdSuffix = fieldId.toLowerCase().endsWith('id');
-    const baseName = hasIdSuffix 
+    const baseName = hasIdSuffix
         ? fieldId.substring(0, fieldId.length - 2)
         : fieldId;
-    
+
     return {
         baseName,
         hasIdSuffix,
@@ -248,12 +248,12 @@ function generateSearchPatterns(
     const patterns: string[] = [];
     const entityNameLower = entityName.toLowerCase();
     const baseNameLower = parsed.baseName.toLowerCase();
-    
+
     // Priority 1: Preferred fields (exact match)
     if (preferredFields && preferredFields.length > 0) {
         patterns.push(...preferredFields);
     }
-    
+
     // Priority 2: With prefix (e.g., homeTeamName, awayTeamName)
     if (parsed.prefix) {
         const prefixLower = parsed.prefix.toLowerCase();
@@ -262,17 +262,17 @@ function generateSearchPatterns(
             patterns.push(`${prefixLower}${entityNameLower}${suffix.toLowerCase()}`);
         }
     }
-    
+
     // Priority 3: Entity name (e.g., teamName for relation to 'team')
     for (const suffix of suffixes) {
         patterns.push(`${entityNameLower}${suffix.toLowerCase()}`);
     }
-    
+
     // Priority 4: Base name (e.g., teamName for 'teamId')
     for (const suffix of suffixes) {
         patterns.push(`${baseNameLower}${suffix.toLowerCase()}`);
     }
-    
+
     return patterns;
 }
 
@@ -287,27 +287,27 @@ function searchFieldsByPatterns(
     const excludeSet = new Set(excludeFields?.map(f => f.toLowerCase()) || []);
     const found: string[] = [];
     const seenLower = new Set<string>();
-    
+
     for (const pattern of patterns) {
         const patternLower = pattern.toLowerCase();
-        
+
         // Skip if already found or excluded
         if (seenLower.has(patternLower) || excludeSet.has(patternLower)) {
             continue;
         }
-        
+
         // Find matching field (case-insensitive)
-        const match = allProperties.find(p => 
+        const match = allProperties.find(p =>
             p.id?.toLowerCase() === patternLower &&
             !excludeSet.has(p.id.toLowerCase())
         );
-        
+
         if (match) {
             found.push(match.id);
             seenLower.add(match.id.toLowerCase());
         }
     }
-    
+
     return found;
 }
 
@@ -322,11 +322,11 @@ function calculateConfidence(
 ): 'high' | 'medium' | 'low' {
     // Preferred fields = high confidence (developer explicitly specified)
     if (method === 'preferred') return 'high';
-    
+
     const fieldLower = detectedField.toLowerCase();
     const entityLower = entityName.toLowerCase();
     const baseLower = parsed.baseName.toLowerCase();
-    
+
     // Exact prefix + entity/base match = high
     if (method === 'prefix') {
         if (fieldLower.includes(entityLower) || fieldLower.includes(baseLower)) {
@@ -334,13 +334,13 @@ function calculateConfidence(
         }
         return 'medium';
     }
-    
+
     // Entity name match = high
     if (method === 'entity') return 'high';
-    
+
     // Base name match = medium (could be coincidental)
     if (method === 'base') return 'medium';
-    
+
     return 'low';
 }
 
@@ -349,19 +349,19 @@ function calculateConfidence(
  */
 function generateTemplate(
     primaryField: string,
-    allDetectedFields: DuplicatedFieldDetectionResult['detectedFields'],
+    allDetectedFields: DuplicatedFieldDetectionResult[ 'detectedFields' ],
     templateStyle: 'simple' | 'composite'
 ): string {
     if (templateStyle === 'simple') {
         return `{${primaryField}}`;
     }
-    
+
     // Composite: try to include meta field (code/slug) if available
     if (templateStyle === 'composite' && allDetectedFields.meta && allDetectedFields.meta.length > 0) {
-        const metaField = allDetectedFields.meta[0];
+        const metaField = allDetectedFields.meta[ 0 ];
         return `{${primaryField}} ({${metaField}})`;
     }
-    
+
     // Fallback to simple if no meta field
     return `{${primaryField}}`;
 }
@@ -398,15 +398,15 @@ function detectDuplicatedRelationFields(
 ): DuplicatedFieldDetectionResult | undefined {
     // Merge configurations
     const config = mergeDetectionConfigs(globalConfig, entityConfig, relationHints);
-    
+
     // Check if detection is enabled
     if (!config.enabled) {
         return undefined;
     }
-    
+
     // Parse relation field
     const parsed = parseRelationField(relationFieldId, config.prefixes);
-    
+
     // Search for display fields (Name, Title, Label)
     const displayPatterns = generateSearchPatterns(
         parsed,
@@ -415,7 +415,7 @@ function detectDuplicatedRelationFields(
         config.preferredFields
     );
     const displayFields = searchFieldsByPatterns(allProperties, displayPatterns, config.excludeFields);
-    
+
     // Search for visual fields (Logo, Image, Icon)
     const visualPatterns = generateSearchPatterns(
         parsed,
@@ -423,7 +423,7 @@ function detectDuplicatedRelationFields(
         config.suffixes?.visual || []
     );
     const visualFields = searchFieldsByPatterns(allProperties, visualPatterns, config.excludeFields);
-    
+
     // Search for meta fields (Code, Slug, Key)
     const metaPatterns = generateSearchPatterns(
         parsed,
@@ -431,17 +431,17 @@ function detectDuplicatedRelationFields(
         config.suffixes?.meta || []
     );
     const metaFields = searchFieldsByPatterns(allProperties, metaPatterns, config.excludeFields);
-    
+
     // No fields detected
     if (displayFields.length === 0) {
         return undefined;
     }
-    
+
     // Determine detection method
-    const primaryField = displayFields[0];
+    const primaryField = displayFields[ 0 ];
     let method: 'preferred' | 'prefix' | 'entity' | 'base' = 'base';
     let pattern = 'unknown';
-    
+
     if (config.preferredFields && config.preferredFields.includes(primaryField)) {
         method = 'preferred';
         pattern = 'preferred_field';
@@ -455,32 +455,32 @@ function detectDuplicatedRelationFields(
         method = 'base';
         pattern = `{base}{suffix}`;
     }
-    
+
     // Calculate confidence
     const confidence = calculateConfidence(primaryField, parsed, relatedEntityName, method);
-    
+
     // Check confidence threshold
     const thresholdOrder = { low: 0, medium: 1, high: 2 };
-    if (thresholdOrder[confidence] < thresholdOrder[config.confidenceThreshold]) {
+    if (thresholdOrder[ confidence ] < thresholdOrder[ config.confidenceThreshold ]) {
         // Confidence too low
         if (config.debug) {
             DefaultLogger.info(`[DuplicatedFieldDetection] Skipping ${relationFieldId}: confidence ${confidence} < threshold ${config.confidenceThreshold}`);
         }
         return undefined;
     }
-    
+
     // Generate template
     const template = generateTemplate(
         primaryField,
         { display: displayFields, visual: visualFields, meta: metaFields },
         config.templateStyle
     );
-    
+
     // Debug logging
     if (config.debug) {
         DefaultLogger.info(`[DuplicatedFieldDetection] ${relationFieldId} → ${template} (confidence: ${confidence}, method: ${method})`);
     }
-    
+
     return {
         primaryField,
         template,
@@ -531,15 +531,36 @@ function detectDuplicatedRelationFieldTemplate(
  * //   modalButtonText: 'Team Details'
  * // }
  */
+/**
+ * Generates fallback display configuration for relation fields.
+ * 
+ * Creates user-friendly fallback text to display when only the ID of a related entity is available.
+ * Uses the entity's plural display name (from metadata) or generates it from the entity name.
+ * 
+ * @param entityName - Name of the related entity (e.g., 'team', 'user')
+ * @param idField - ID field name (e.g., 'teamId', 'userId')
+ * @param entityService - Optional entity service to fetch metadata for better naming
+ * @returns Fallback configuration with template, link text, and modal button text
+ * 
+ * @example
+ * ```typescript
+ * const fallback = generateRelationFallback('team', 'teamId');
+ * // Returns: {
+ * //   template: "Teams: {teamId}",
+ * //   linkText: "View Teams",
+ * //   modalButtonText: "Teams Details"
+ * // }
+ * ```
+ */
 export function generateRelationFallback(
     entityName: string,
     idField: string,
     entityService?: BaseEntityService<any>
-): NonNullable<IRelationFieldConfig['displayConfig']>['fallback'] {
+): NonNullable<IRelationFieldConfig[ 'displayConfig' ]>[ 'fallback' ] {
     // Try to get entity metadata for better fallback text
     const entityMetadata = entityService?.getEntitySchema?.().model;
     const displayName = entityMetadata?.entityNamePlural || pascalCase(entityName);
-    
+
     return {
         // Backend pre-generates fallback template (intentionally string-only, not Template type)
         // Frontend will use this when only ID is available
@@ -602,7 +623,7 @@ interface LabelFieldDetectionResult {
  * @returns Best label field name or undefined (will fall back to ID field)
  */
 function findLabelField(
-    schema: EntitySchema<any, any, any>, 
+    schema: EntitySchema<any, any, any>,
     entityName: string,
     options?: {
         /** Minimum confidence level required (default: 'medium') */
@@ -613,16 +634,16 @@ function findLabelField(
 ): string | undefined {
     const minConfidence = options?.minConfidence || 'medium';
     const debug = options?.debug || false;
-    
+
     let result: LabelFieldDetectionResult | undefined;
-    
+
     // Get all attributes from schema
     const attributes = schema.attributes;
     const attributeNames = Object.keys(attributes);
-    
+
     // Priority 1: Entity metadata - HIGH confidence
     const entityNameAttribute = schema.model.entityNameAttribute;
-    if (entityNameAttribute && attributes[entityNameAttribute]) {
+    if (entityNameAttribute && attributes[ entityNameAttribute ]) {
         result = {
             field: entityNameAttribute,
             confidence: 'high',
@@ -632,10 +653,10 @@ function findLabelField(
             DefaultLogger.info(`[findLabelField] ${entityName}: Found via metadata - ${entityNameAttribute} (HIGH confidence)`);
         }
     }
-    
+
     // Priority 2: Common display patterns - HIGH confidence
     if (!result) {
-        const commonPatterns = ['name', 'title', 'label', 'displayName', 'displayname'];
+        const commonPatterns = [ 'name', 'title', 'label', 'displayName', 'displayname' ];
         for (const pattern of commonPatterns) {
             const match = attributeNames.find(attr => attr.toLowerCase() === pattern);
             if (match) {
@@ -651,15 +672,15 @@ function findLabelField(
             }
         }
     }
-    
+
     // Priority 3: Entity-specific patterns - HIGH confidence
     if (!result) {
         const entityLower = entityName.toLowerCase();
-        const entitySpecificSuffixes = ['Name', 'Title', 'Label'];
-        
+        const entitySpecificSuffixes = [ 'Name', 'Title', 'Label' ];
+
         for (const suffix of entitySpecificSuffixes) {
             // Try exact match: e.g., 'teamName' for entity 'team'
-            const exactMatch = attributeNames.find(attr => 
+            const exactMatch = attributeNames.find(attr =>
                 attr.toLowerCase() === `${entityLower}${suffix.toLowerCase()}`
             );
             if (exactMatch) {
@@ -675,7 +696,7 @@ function findLabelField(
             }
         }
     }
-    
+
     // Priority 4: Fields ending with name-like suffixes - MEDIUM confidence
     // Look for any field ending with 'Name', 'Title', 'Label' (e.g., 'displayName', 'fullName', 'userName',)
     if (!result) {
@@ -684,8 +705,8 @@ function findLabelField(
         const titleSuffixPattern = /Title$/;
         const labelSuffixPattern = /Label$/;
         const codeSuffixPattern = /Code$/;
-        
-        for (const pattern of [displayNameSuffixPattern, labelSuffixPattern, titleSuffixPattern, nameSuffixPattern, codeSuffixPattern]) {
+
+        for (const pattern of [ displayNameSuffixPattern, labelSuffixPattern, titleSuffixPattern, nameSuffixPattern, codeSuffixPattern ]) {
             const match = attributeNames.find(attr => pattern.test(attr));
             if (match) {
                 result = {
@@ -700,7 +721,7 @@ function findLabelField(
             }
         }
     }
-    
+
     // Priority 5: NO FALLBACK - If we can't find a proper name field, return undefined
     // Better to show ID than to show confusing fields like 'status', 'type', etc.
     // 
@@ -710,7 +731,7 @@ function findLabelField(
     //
     // If you need custom labels for these entities, explicitly set entityNameAttribute in the schema
     // or use optionMapping in the relation config.
-    
+
     // Check confidence threshold
     if (result) {
         // Only return if confidence meets minimum requirement
@@ -722,10 +743,10 @@ function findLabelField(
             }
             return undefined;
         }
-        
+
         return result.field;
     }
-    
+
     // No suitable field found
     if (debug) {
         DefaultLogger.warn(`[findLabelField] ${entityName}: No suitable label field found with sufficient confidence.`);
@@ -751,41 +772,41 @@ function findLabelField(
  */
 export function resolveRelationOptionConfig(
     relationConfig: RelationEntityOptionConfig,
-    relationAttribute: TIOSchemaAttribute & { relation: NonNullable<TIOSchemaAttribute['relation']> },
+    relationAttribute: TIOSchemaAttribute & { relation: NonNullable<TIOSchemaAttribute[ 'relation' ]> },
     entityService: BaseEntityService<any>,
-    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']
+    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]
 ): FieldOptionsAPIConfig<any> | undefined {
     const { entityName, customApiUrl, optionMapping, ...rest } = relationConfig;
     const relation = relationAttribute.relation;
-    
+
     // Get related entity service
     if (!entityService.hasEntityServiceByEntityName(entityName)) {
         DefaultLogger.warn(`[resolveRelationOptionConfig] Entity service not found for: ${entityName}`);
         return undefined;
     }
-    
+
     const relatedService = entityService.getEntityServiceByEntityName(entityName);
     const relatedSchema = relatedService?.getEntitySchema?.();
-    
+
     if (!relatedSchema) {
         DefaultLogger.warn(`[resolveRelationOptionConfig] Schema not found for entity: ${entityName}`);
         return undefined;
     }
-    
+
     // 1. Resolve API URL
     const entityNameLower = entityName.toLowerCase();
     const crudPath = relatedSchema.model.CRUDApiPath || '';
     const apiUrl = customApiUrl || `${crudPath}/${entityNameLower}`;
-    
+
     // 2. Resolve value field from relation identifiers
     const resolvedIdentifiers = typeof relation.identifiers === 'function' ? relation.identifiers() : relation.identifiers;
-    const identifierMappings = Array.isArray(resolvedIdentifiers) ? resolvedIdentifiers : [resolvedIdentifiers];
-    const primaryIdentifier = identifierMappings[0];
+    const identifierMappings = Array.isArray(resolvedIdentifiers) ? resolvedIdentifiers : [ resolvedIdentifiers ];
+    const primaryIdentifier = identifierMappings[ 0 ];
     const valueField = String(primaryIdentifier.target);
-    
+
     // 3. Resolve label field from entity metadata or custom mapping
     let labelField = valueField; // Default fallback to value field
-    
+
     if (optionMapping?.label) {
         // Custom label provided - use it
         labelField = optionMapping.label as string;
@@ -797,7 +818,7 @@ export function resolveRelationOptionConfig(
             debug: labelFieldConfig?.debug || false
         }) || valueField;
     }
-    
+
     // 4. Build complete FieldOptionsAPIConfig
     return {
         apiMethod: 'GET',
@@ -832,17 +853,17 @@ export function resolveRelationOptionConfig(
 export function generateFilterConfig(
     attribute: TIOSchemaAttribute,
     entityService?: BaseEntityService<any>,
-    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']
-): FieldMetadata['filterConfig'] | undefined {
+    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]
+): FieldMetadata[ 'filterConfig' ] | undefined {
     // 1. If explicit filterConfig exists, use it (highest priority)
     if (attribute.filterConfig) {
         return attribute.filterConfig;
     }
-    
+
     // 2. If field has explicit options config, use it
     if ('options' in attribute) {
         const options = (attribute as SelectFieldMetadata).options;
-        
+
         // RelationEntityOptionConfig (has entityName) → resolve to FieldOptionsAPIConfig
         const isRelationConfig = typeof options === 'object' && !Array.isArray(options) && 'entityName' in options;
 
@@ -862,38 +883,38 @@ export function generateFilterConfig(
         if (isRelationConfig && attribute.relation && entityService) {
             resolvedConfig = resolveRelationOptionConfig(
                 options as RelationEntityOptionConfig,
-                attribute as TIOSchemaAttribute & { relation: NonNullable<TIOSchemaAttribute['relation']> },
+                attribute as TIOSchemaAttribute & { relation: NonNullable<TIOSchemaAttribute[ 'relation' ]> },
                 entityService,
                 globalUIConfigOptions
             );
         }
 
-        if(resolvedConfig) {
+        if (resolvedConfig) {
             return {
                 filterType: 'select',
                 defaultOperator: 'eq' as const,
-                availableOperators: ['eq', 'neq', 'inList', 'notInList', 'isEmpty', 'isNull'],
+                availableOperators: [ 'eq', 'neq', 'inList', 'notInList', 'isEmpty', 'isNull' ],
                 predefinedOptions: resolvedConfig
             };
         }
-        
+
         // else log error
         throw new FrameworkError(`[generateFilterConfig] No resolved config found for attribute: ${attribute.id}`, {
             attribute: attribute,
             options: options,
         });
     }
-    
+
     // 3. If field is explicitly non-filterable, skip
     if (attribute.isFilterable === false) {
         return undefined;
     }
-    
+
     // 3. Get global and entity-level config
     const globalFilterConfig = globalUIConfigOptions?.tableUI?.filterAutoGeneration;
-    const entityMetadata = entityService?.getEntitySchema?.().model?.metadata as EntitySchema<any, any, any>['model']['metadata'];
+    const entityMetadata = entityService?.getEntitySchema?.().model?.metadata as EntitySchema<any, any, any>[ 'model' ][ 'metadata' ];
     const entityFilterConfig = entityMetadata?.tableUI?.filterAutoGeneration;
-    
+
     // Merge configs (entity > global > defaults)
     const mergedConfig = {
         enabled: entityFilterConfig?.enabled ?? globalFilterConfig?.enabled ?? true,
@@ -923,34 +944,34 @@ export function generateFilterConfig(
         },
         debug: entityFilterConfig?.debug ?? globalFilterConfig?.debug ?? false
     };
-    
+
     // If globally disabled, skip
     if (!mergedConfig.enabled) {
         return undefined;
     }
-    
+
     const attrType = attribute.type;
     const fieldType = attribute.fieldType;
-    
+
     // **1. Boolean fields**
     if (attrType === 'boolean' && mergedConfig.booleanFields?.enabled !== false) {
         return {
             filterType: 'boolean',
             defaultOperator: 'eq',
-            availableOperators: ['eq', 'neq', 'isEmpty', 'isNull'],
+            availableOperators: [ 'eq', 'neq', 'isEmpty', 'isNull' ],
             predefinedOptions: [
                 { label: 'Yes', value: "true" },
                 { label: 'No', value: "false" }
             ]
         };
     }
-    
+
     // **2. Enum fields (array of strings/numbers)**
     if (Array.isArray(attrType) && mergedConfig.enumFields?.enabled !== false) {
-        const defaultEnumOps = ['eq', 'neq', 'inList', 'notInList', 'isEmpty', 'isNull'] as const;
+        const defaultEnumOps = [ 'eq', 'neq', 'inList', 'notInList', 'isEmpty', 'isNull' ] as const;
         const defaultOp = mergedConfig.enumFields?.defaultOperator || ('eq');
         const availableOps = mergedConfig.enumFields?.availableOperators || defaultEnumOps;
-        
+
         return {
             filterType: 'select',
             defaultOperator: defaultOp,
@@ -961,20 +982,20 @@ export function generateFilterConfig(
             }))
         };
     }
-    
-    
+
+
     // **3. Date/Datetime fields**
     if ((fieldType === 'date' || fieldType === 'datetime' || (attrType === 'string' && (attribute.id.toLowerCase().includes('date') || attribute.id.toLowerCase().includes('time'))))
         && mergedConfig.dateFields?.enabled !== false) {
-        const defaultDateOps = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'between', 'isEmpty', 'isNull'] as const;
+        const defaultDateOps = [ 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'between', 'isEmpty', 'isNull' ] as const;
         const operators = mergedConfig.dateFields?.defaultOperators || defaultDateOps;
-        
+
         const filterConfig: any = {
             filterType: 'datetime',
-            defaultOperator: operators[0] || ('gte'),
+            defaultOperator: operators[ 0 ] || ('gte'),
             availableOperators: operators
         };
-        
+
         // Add quick date filters if enabled
         if (mergedConfig.dateFields?.quickFilters !== false) {
             filterConfig.predefinedOptions = [
@@ -994,57 +1015,57 @@ export function generateFilterConfig(
                 { label: 'Custom Date', value: null }  // Triggers datetime-local input
             ];
         }
-        
+
         return filterConfig;
     }
-    
+
     // **5. Number fields**
     if (attrType === 'number' && mergedConfig.numberFields?.enabled !== false) {
-        const defaultNumberOps = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'between', 'isEmpty', 'isNull'] as const;
+        const defaultNumberOps = [ 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'between', 'isEmpty', 'isNull' ] as const;
         const operators = mergedConfig.numberFields?.defaultOperators || defaultNumberOps;
         return {
             filterType: 'number',
-            defaultOperator: operators[0] || ('eq'),
+            defaultOperator: operators[ 0 ] || ('eq'),
             availableOperators: operators
         };
     }
-    
+
     // **4. Relation fields (without explicit options) - auto-generate from relation metadata**
     if (attribute.relation && mergedConfig.relationFields?.enabled !== false && entityService) {
         const relationConfig: RelationEntityOptionConfig = { entityName: attribute.relation.entityName };
         const resolved = resolveRelationOptionConfig(
             relationConfig,
-            attribute as TIOSchemaAttribute & { relation: NonNullable<TIOSchemaAttribute['relation']> },
+            attribute as TIOSchemaAttribute & { relation: NonNullable<TIOSchemaAttribute[ 'relation' ]> },
             entityService,
             globalUIConfigOptions
         );
-        
+
         if (resolved) {
             return {
                 filterType: 'relation',
                 defaultOperator: 'eq' as const,
-                availableOperators: ['eq', 'neq', 'inList', 'notInList', 'isEmpty', 'isNull'],
+                availableOperators: [ 'eq', 'neq', 'inList', 'notInList', 'isEmpty', 'isNull' ],
                 predefinedOptions: resolved
             };
         }
     }
-    
+
     // **6. Text fields (default fallback)**
     if (attrType === 'string' && mergedConfig.textFields?.enabled !== false) {
-        const defaultTextOps = ['contains', 'notContains', 'eq', 'neq', 'startsWith', 'endsWith', 'like', 'isEmpty', 'isNull'];
+        const defaultTextOps = [ 'contains', 'notContains', 'eq', 'neq', 'startsWith', 'endsWith', 'like', 'isEmpty', 'isNull' ];
         const operators = mergedConfig.textFields?.defaultOperators || defaultTextOps;
         return {
             filterType: 'text',
-            defaultOperator: operators[0] || ('contains'),
+            defaultOperator: operators[ 0 ] || ('contains'),
             availableOperators: operators
         };
     }
-    
+
     // Debug logging
     if (mergedConfig.debug) {
         DefaultLogger.info(`[FilterAutoGen] ${attribute.id}: No filter config generated (type: ${attrType})`);
     }
-    
+
     return undefined;
 }
 
@@ -1063,7 +1084,7 @@ const DEFAULT_ICON_MAPPING: Record<string, string> = {
     'inactive': 'CloseCircleOutlined',
     'enabled': 'CheckCircleOutlined',
     'disabled': 'CloseCircleOutlined',
-    
+
     // Status patterns
     'pending': 'ClockCircleOutlined',
     'in-progress': 'SyncOutlined',
@@ -1076,7 +1097,7 @@ const DEFAULT_ICON_MAPPING: Record<string, string> = {
     'failed': 'CloseCircleOutlined',
     'error': 'ExclamationCircleOutlined',
     'paused': 'PauseCircleOutlined',
-    
+
     // Scheduling patterns
     'scheduled': 'CalendarOutlined',
     'upcoming': 'CalendarOutlined',
@@ -1084,19 +1105,19 @@ const DEFAULT_ICON_MAPPING: Record<string, string> = {
     'draft': 'FileOutlined',
     'published': 'CheckCircleOutlined',
     'archived': 'FolderOutlined',
-    
+
     // Priority patterns
     'low': 'DownOutlined',
     'medium': 'MinusOutlined',
     'high': 'UpOutlined',
     'critical': 'WarningOutlined',
     'urgent': 'FireOutlined',
-    
+
     // Approval patterns
     'approved': 'CheckCircleOutlined',
     'rejected': 'CloseCircleOutlined',
     'review': 'EyeOutlined',
-    
+
     // Boolean True/False
     'true': 'CheckCircleOutlined',
     'false': 'CloseCircleOutlined'
@@ -1119,9 +1140,9 @@ function extractBooleanLabelsFromFieldName(fieldName: string): { trueLabel: stri
         // Pattern: is + XXX
         {
             regex: /^is([A-Z][a-zA-Z0-9]*)/,
-            getTrueLabel: (match: RegExpMatchArray) => toHumanReadableName(match[1]),
+            getTrueLabel: (match: RegExpMatchArray) => toHumanReadableName(match[ 1 ]),
             getFalseLabel: (match: RegExpMatchArray) => {
-                const base = toHumanReadableName(match[1]);
+                const base = toHumanReadableName(match[ 1 ]);
                 // Special cases for better negation
                 if (base.toLowerCase() === 'active') return 'Inactive';
                 if (base.toLowerCase() === 'enabled') return 'Disabled';
@@ -1134,47 +1155,47 @@ function extractBooleanLabelsFromFieldName(fieldName: string): { trueLabel: stri
         // Pattern: has + XXX
         {
             regex: /^has([A-Z][a-zA-Z0-9]*)/,
-            getTrueLabel: (match: RegExpMatchArray) => `Has ${toHumanReadableName(match[1])}`,
-            getFalseLabel: (match: RegExpMatchArray) => `No ${toHumanReadableName(match[1])}`
+            getTrueLabel: (match: RegExpMatchArray) => `Has ${toHumanReadableName(match[ 1 ])}`,
+            getFalseLabel: (match: RegExpMatchArray) => `No ${toHumanReadableName(match[ 1 ])}`
         },
         // Pattern: can + XXX
         {
             regex: /^can([A-Z][a-zA-Z0-9]*)/,
-            getTrueLabel: (match: RegExpMatchArray) => `Can ${toHumanReadableName(match[1])}`,
-            getFalseLabel: (match: RegExpMatchArray) => `Cannot ${toHumanReadableName(match[1])}`
+            getTrueLabel: (match: RegExpMatchArray) => `Can ${toHumanReadableName(match[ 1 ])}`,
+            getFalseLabel: (match: RegExpMatchArray) => `Cannot ${toHumanReadableName(match[ 1 ])}`
         },
         // Pattern: should + XXX
         {
             regex: /^should([A-Z][a-zA-Z0-9]*)/,
-            getTrueLabel: (match: RegExpMatchArray) => `Should ${toHumanReadableName(match[1])}`,
-            getFalseLabel: (match: RegExpMatchArray) => `Should Not ${toHumanReadableName(match[1])}`
+            getTrueLabel: (match: RegExpMatchArray) => `Should ${toHumanReadableName(match[ 1 ])}`,
+            getFalseLabel: (match: RegExpMatchArray) => `Should Not ${toHumanReadableName(match[ 1 ])}`
         },
         // Pattern: will + XXX
         {
             regex: /^will([A-Z][a-zA-Z0-9]*)/,
-            getTrueLabel: (match: RegExpMatchArray) => `Will ${toHumanReadableName(match[1])}`,
-            getFalseLabel: (match: RegExpMatchArray) => `Will Not ${toHumanReadableName(match[1])}`
+            getTrueLabel: (match: RegExpMatchArray) => `Will ${toHumanReadableName(match[ 1 ])}`,
+            getFalseLabel: (match: RegExpMatchArray) => `Will Not ${toHumanReadableName(match[ 1 ])}`
         },
         // Pattern: allows + XXX
         {
             regex: /^allows([A-Z][a-zA-Z0-9]*)/,
-            getTrueLabel: (match: RegExpMatchArray) => `Allows ${toHumanReadableName(match[1])}`,
-            getFalseLabel: (match: RegExpMatchArray) => `Does Not Allow ${toHumanReadableName(match[1])}`
+            getTrueLabel: (match: RegExpMatchArray) => `Allows ${toHumanReadableName(match[ 1 ])}`,
+            getFalseLabel: (match: RegExpMatchArray) => `Does Not Allow ${toHumanReadableName(match[ 1 ])}`
         },
         // Pattern: needs + XXX
         {
             regex: /^needs([A-Z][a-zA-Z0-9]*)/,
-            getTrueLabel: (match: RegExpMatchArray) => `Needs ${toHumanReadableName(match[1])}`,
-            getFalseLabel: (match: RegExpMatchArray) => `Does Not Need ${toHumanReadableName(match[1])}`
+            getTrueLabel: (match: RegExpMatchArray) => `Needs ${toHumanReadableName(match[ 1 ])}`,
+            getFalseLabel: (match: RegExpMatchArray) => `Does Not Need ${toHumanReadableName(match[ 1 ])}`
         },
         // Pattern: requires + XXX
         {
             regex: /^requires([A-Z][a-zA-Z0-9]*)/,
-            getTrueLabel: (match: RegExpMatchArray) => `Requires ${toHumanReadableName(match[1])}`,
-            getFalseLabel: (match: RegExpMatchArray) => `Does Not Require ${toHumanReadableName(match[1])}`
+            getTrueLabel: (match: RegExpMatchArray) => `Requires ${toHumanReadableName(match[ 1 ])}`,
+            getFalseLabel: (match: RegExpMatchArray) => `Does Not Require ${toHumanReadableName(match[ 1 ])}`
         }
     ];
-    
+
     for (const pattern of patterns) {
         const match = fieldName.match(pattern.regex);
         if (match) {
@@ -1184,7 +1205,7 @@ function extractBooleanLabelsFromFieldName(fieldName: string): { trueLabel: stri
             };
         }
     }
-    
+
     return null;
 }
 
@@ -1196,12 +1217,12 @@ function getFieldOptionCount(field: TIOSchemaAttribute): number {
     if (Array.isArray(field.type)) {
         return field.type.length;
     }
-    
+
     // 2. Boolean field
     if (field.type === 'boolean') {
         return 2;
     }
-    
+
     // 3. Select/radio/checkbox field with inline options
     const fieldType = field.fieldType;
     if (fieldType === 'select' || fieldType === 'radio' || fieldType === 'checkbox' || fieldType === 'multi-select') {
@@ -1210,7 +1231,7 @@ function getFieldOptionCount(field: TIOSchemaAttribute): number {
             return options.length;
         }
     }
-    
+
     return 0;
 }
 
@@ -1229,12 +1250,12 @@ function isViableSegmentField(
 ): boolean {
     const maxValues = config.maxSegmentsPerGroup || 10;
     const optionCount = getFieldOptionCount(field);
-    
+
     // Must have options AND be within bounds
     if (optionCount === 0) {
         return false;
     }
-    
+
     // STRICT: Reject if outside bounds
     return optionCount >= config.minValues && optionCount <= maxValues;
 }
@@ -1253,14 +1274,14 @@ function isViableSegmentField(
 function detectSegmentFields<S extends EntitySchema<string, string, string>>(
     properties: TIOSchemaAttributesMap<S>,
     globalConfig?: ISegmentAutoGenerationConfig,
-    entityConfig?: NonNullable<ReturnType<typeof BaseEntityService.prototype.getEntitySchema>['model']['metadata']>['tableUI']
+    entityConfig?: NonNullable<ReturnType<typeof BaseEntityService.prototype.getEntitySchema>[ 'model' ][ 'metadata' ]>[ 'tableUI' ]
 ): Array<{ field: TIOSchemaAttribute; score: number; reason: string }> {
     const segmentConfig = entityConfig?.segmentAutoGeneration;
-    
+
     // Merge configs (entity > global > defaults)
     const mergedConfig: Required<ISegmentAutoGenerationConfig> & { maxSegmentGroups: number; maxSegmentsPerGroup: number } = {
         enabled: segmentConfig?.enabled ?? globalConfig?.enabled ?? true,
-        preferredFields: segmentConfig?.preferredFields || globalConfig?.preferredFields || ['status', 'state', 'type', 'category', 'priority'],
+        preferredFields: segmentConfig?.preferredFields || globalConfig?.preferredFields || [ 'status', 'state', 'type', 'category', 'priority' ],
         maxSegmentGroups: segmentConfig?.maxSegmentGroups ?? globalConfig?.maxSegmentGroups ?? 2,
         maxSegmentsPerGroup: segmentConfig?.maxSegmentsPerGroup ?? globalConfig?.maxSegmentsPerGroup ?? 10,
         minValues: segmentConfig?.minValues ?? globalConfig?.minValues ?? 2,
@@ -1270,86 +1291,86 @@ function detectSegmentFields<S extends EntitySchema<string, string, string>>(
         includeAllSegment: segmentConfig?.includeAllSegment ?? globalConfig?.includeAllSegment ?? true,
         debug: segmentConfig?.debug ?? globalConfig?.debug ?? false
     };
-    
+
     if (!mergedConfig.enabled) {
         return [];
     }
-    
+
     // === PRIORITY 1: Explicit segment fields ===
     const explicitFields = segmentConfig?.segmentFields || segmentConfig?.segmentField;
     if (explicitFields) {
-        const fieldNames = typeof explicitFields === 'string' ? [explicitFields] : explicitFields;
+        const fieldNames = typeof explicitFields === 'string' ? [ explicitFields ] : explicitFields;
         const results: Array<{ field: TIOSchemaAttribute; score: number; reason: string }> = [];
-        
+
         for (const fieldName of fieldNames) {
             const field = Array.from(properties.values()).find(p => p.id === fieldName);
             if (field) {
                 results.push({ field, score: 1000, reason: 'explicit configuration' });
             }
         }
-        
+
         if (results.length > 0) {
             return results.slice(0, mergedConfig.maxSegmentGroups);
         }
     }
-    
+
     // === Filter properties based on include/exclude ===
     let candidateProperties = Array.from(properties.values());
-    
+
     // Apply includeFields filter (if provided, ONLY consider these)
     if (segmentConfig?.includeFields && segmentConfig.includeFields.length > 0) {
-        candidateProperties = candidateProperties.filter(p => 
+        candidateProperties = candidateProperties.filter(p =>
             segmentConfig.includeFields!.includes(p.id)
         );
     }
-    
+
     // Apply excludeFields filter
     if (segmentConfig?.excludeFields && segmentConfig.excludeFields.length > 0) {
-        candidateProperties = candidateProperties.filter(p => 
+        candidateProperties = candidateProperties.filter(p =>
             !segmentConfig.excludeFields!.includes(p.id)
         );
     }
-    
+
     // === PRIORITY 2: Preferred fields ===
     const preferredFields = mergedConfig.preferredFields;
     const preferredMatches: Array<{ field: TIOSchemaAttribute; score: number; reason: string }> = [];
-    
+
     for (const preferredName of preferredFields) {
         const field = candidateProperties.find(p => p.id === preferredName);
         if (field && isViableSegmentField(field, mergedConfig)) {
             preferredMatches.push({ field, score: 900, reason: `preferred field: ${preferredName}` });
         }
     }
-    
+
     // If we have enough preferred matches, return them
     if (preferredMatches.length >= mergedConfig.maxSegmentGroups) {
         return preferredMatches.slice(0, mergedConfig.maxSegmentGroups);
     }
-    
+
     // === PRIORITY 3: Scoring algorithm ===
     const candidates: Array<{ field: TIOSchemaAttribute; score: number; reason: string; optionCount: number }> = [];
-    
+
     // Add preferredMatches with their option counts
     for (const pm of preferredMatches) {
         const optionCount = getFieldOptionCount(pm.field);
         candidates.push({ ...pm, optionCount });
     }
-    
+
     for (const prop of candidateProperties) {
         // Skip if already in preferredMatches
         if (preferredMatches.some(pm => pm.field.id === prop.id)) {
             continue;
         }
-        
+
         // Skip if not viable (this filters out fields with too many options)
         if (!isViableSegmentField(prop, mergedConfig)) {
             continue;
         }
-        
+
         let score = 0;
         const reasons: string[] = [];
         const optionCount = getFieldOptionCount(prop);
-        
+
         // **Score 1: Field name match** (partial match with preferred names)
         for (const preferred of preferredFields) {
             if (prop.id.toLowerCase().includes(preferred.toLowerCase())) {
@@ -1358,12 +1379,12 @@ function detectSegmentFields<S extends EntitySchema<string, string, string>>(
                 break;
             }
         }
-        
+
         // **Score 2: Prefer fewer options (inverse scoring)**
         // Fields with fewer options get higher scores
         const minValues = mergedConfig.minValues;
         const maxValues = mergedConfig.maxSegmentsPerGroup;
-        
+
         if (optionCount >= minValues && optionCount <= maxValues) {
             // Score inversely proportional to option count
             // 2 options = +40, 5 options = +25, 10 options = +10
@@ -1371,25 +1392,25 @@ function detectSegmentFields<S extends EntitySchema<string, string, string>>(
             score += optionScore;
             reasons.push(`${optionCount} options`);
         }
-        
+
         // **Score 3: Boolean field gets high priority (only 2 options)**
         if (prop.type === 'boolean') {
             score += 5;  // Small bonus since option count already factors in
             reasons.push('boolean field');
         }
-        
+
         // **Score 4: Name position (earlier = slightly higher priority)**
         const fieldIndex = candidateProperties.indexOf(prop);
         score -= Math.min(fieldIndex, 5);  // Cap penalty at 5
-        
-        candidates.push({ 
-            field: prop, 
-            score, 
+
+        candidates.push({
+            field: prop,
+            score,
             reason: reasons.join(', '),
             optionCount
         });
     }
-    
+
     // Sort by: 1) score (highest first), 2) option count (lowest first)
     candidates.sort((a, b) => {
         if (b.score !== a.score) {
@@ -1397,9 +1418,9 @@ function detectSegmentFields<S extends EntitySchema<string, string, string>>(
         }
         return a.optionCount - b.optionCount;  // Prefer fewer options
     });
-    
+
     const topNResults = candidates.slice(0, mergedConfig.maxSegmentGroups);
-    
+
     if (topNResults.length > 0 && mergedConfig.debug) {
         DefaultLogger.info(`[SegmentDetection] Selected ${topNResults.length} field(s):`, topNResults.map(c => ({
             field: c.field.id,
@@ -1408,7 +1429,7 @@ function detectSegmentFields<S extends EntitySchema<string, string, string>>(
             reason: c.reason
         })));
     }
-    
+
     return topNResults;
 }
 
@@ -1424,27 +1445,27 @@ function detectSegmentFields<S extends EntitySchema<string, string, string>>(
 export function generateSegments<S extends EntitySchema<string, string, string>>(
     properties: TIOSchemaAttributesMap<S>,
     entityService?: BaseEntityService<S>,
-    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'],
+    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ],
     customSegments?: ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup>
 ): ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup> | undefined {
     // 1. If custom segments provided, use those (highest priority)
     if (customSegments && customSegments.length > 0) {
         return customSegments;
     }
-    
+
     // Get configuration
     const globalSegmentConfig = globalUIConfigOptions?.tableUI?.segmentAutoGeneration;
     const entityMetadata = entityService?.getEntitySchema?.().model?.metadata;
     const entitySegmentConfig = entityMetadata?.tableUI;
-    
+
     // 2. If entity requires manual segments, skip auto-generation
     if (entitySegmentConfig?.segmentAutoGeneration?.requireManual) {
         return undefined;
     }
-    
+
     // 3. Detect best segment fields (returns array now)
     const detectedFields = detectSegmentFields(properties, globalSegmentConfig, entitySegmentConfig);
-    
+
     if (detectedFields.length === 0) {
         // No suitable fields found
         if (globalSegmentConfig?.debug || entitySegmentConfig?.segmentAutoGeneration?.debug) {
@@ -1452,11 +1473,11 @@ export function generateSegments<S extends EntitySchema<string, string, string>>
         }
         return undefined;
     }
-    
+
     // Get merged config for this entity
     const mergedConfig: Required<ISegmentAutoGenerationConfig> & { maxSegmentGroups: number; maxSegmentsPerGroup: number } = {
         enabled: entitySegmentConfig?.segmentAutoGeneration?.enabled ?? globalSegmentConfig?.enabled ?? true,
-        preferredFields: entitySegmentConfig?.segmentAutoGeneration?.preferredFields || globalSegmentConfig?.preferredFields || ['status', 'state', 'type', 'category', 'priority'],
+        preferredFields: entitySegmentConfig?.segmentAutoGeneration?.preferredFields || globalSegmentConfig?.preferredFields || [ 'status', 'state', 'type', 'category', 'priority' ],
         maxSegmentGroups: entitySegmentConfig?.segmentAutoGeneration?.maxSegmentGroups ?? globalSegmentConfig?.maxSegmentGroups ?? 2,
         maxSegmentsPerGroup: entitySegmentConfig?.segmentAutoGeneration?.maxSegmentsPerGroup ?? globalSegmentConfig?.maxSegmentsPerGroup ?? 10,
         minValues: entitySegmentConfig?.segmentAutoGeneration?.minValues ?? globalSegmentConfig?.minValues ?? 2,
@@ -1470,20 +1491,20 @@ export function generateSegments<S extends EntitySchema<string, string, string>>
         includeAllSegment: entitySegmentConfig?.segmentAutoGeneration?.includeAllSegment ?? globalSegmentConfig?.includeAllSegment ?? true,
         debug: entitySegmentConfig?.segmentAutoGeneration?.debug ?? globalSegmentConfig?.debug ?? false
     };
-    
+
     if (mergedConfig.debug) {
         DefaultLogger.info(`[SegmentGeneration] Generating segments for ${detectedFields.length} field(s):`, detectedFields.map(d => d.field.id));
     }
-    
+
     // 4. Generate segment groups (one per detected field)
     const segmentGroups: Array<IFilterSegmentGroup> = [];
-    
+
     for (const detection of detectedFields) {
         const { field } = detection;
-        
+
         // Generate segments for this field
         const segments: Array<IFilterSegment> = [];
-        
+
         // Add "All" segment if enabled
         if (mergedConfig.includeAllSegment) {
             segments.push({
@@ -1493,56 +1514,56 @@ export function generateSegments<S extends EntitySchema<string, string, string>>
                 default: true
             });
         }
-        
+
         // Get values from field
         let values: (string | number | boolean)[] = [];
         let valueLabels: Record<string, string> = {};  // For custom boolean labels
-        
+
         if (Array.isArray(field.type)) {
             // Enum type array
             values = field.type;
         } else if (field.type === 'boolean') {
             // Boolean field with optional custom labels
-            values = [true, false];
-            
+            values = [ true, false ];
+
             // 1. Check for explicit field-level booleanLabels
             const fieldBooleanLabels = 'booleanLabels' in field ? field.booleanLabels : undefined;
             if (fieldBooleanLabels && typeof fieldBooleanLabels === 'object') {
-                valueLabels['true'] = fieldBooleanLabels.true || 'Yes';
-                valueLabels['false'] = fieldBooleanLabels.false || 'No';
+                valueLabels[ 'true' ] = fieldBooleanLabels.true || 'Yes';
+                valueLabels[ 'false' ] = fieldBooleanLabels.false || 'No';
             } else {
                 // 2. Try intelligent extraction from field name
                 const fieldName = field.id;
                 const extracted = extractBooleanLabelsFromFieldName(fieldName);
-                
+
                 if (extracted) {
-                    valueLabels['true'] = extracted.trueLabel;
-                    valueLabels['false'] = extracted.falseLabel;
+                    valueLabels[ 'true' ] = extracted.trueLabel;
+                    valueLabels[ 'false' ] = extracted.falseLabel;
                 } else {
                     // 3. Try to match against configured patterns
                     const patterns = mergedConfig.booleanLabelPatterns;
                     let matched = false;
-                    
+
                     if (patterns && patterns.length > 0) {
                         for (const pattern of patterns) {
-                            const regex = pattern.pattern instanceof RegExp 
-                                ? pattern.pattern 
+                            const regex = pattern.pattern instanceof RegExp
+                                ? pattern.pattern
                                 : new RegExp(pattern.pattern, 'i');
-                            
+
                             if (regex.test(fieldName)) {
-                                valueLabels['true'] = pattern.trueLabel;
-                                valueLabels['false'] = pattern.falseLabel;
+                                valueLabels[ 'true' ] = pattern.trueLabel;
+                                valueLabels[ 'false' ] = pattern.falseLabel;
                                 matched = true;
                                 break;
                             }
                         }
                     }
-                    
+
                     // 4. Use default fallback if no pattern matched
                     if (!matched) {
                         const defaults = mergedConfig.defaultBooleanLabels || { true: 'Yes', false: 'No' };
-                        valueLabels['true'] = defaults.true;
-                        valueLabels['false'] = defaults.false;
+                        valueLabels[ 'true' ] = defaults.true;
+                        valueLabels[ 'false' ] = defaults.false;
                     }
                 }
             }
@@ -1552,31 +1573,31 @@ export function generateSegments<S extends EntitySchema<string, string, string>>
             values = options.map(opt => opt.value);
             // Store labels for later use
             options.forEach(opt => {
-                valueLabels[String(opt.value)] = opt.label;
+                valueLabels[ String(opt.value) ] = opt.label;
             });
         }
-        
+
         // Apply field-specific value filters first, then global
         const includeValuesByField = entitySegmentConfig?.segmentAutoGeneration?.includeValuesByField;
-        const includeValues = includeValuesByField?.[field.id] || entitySegmentConfig?.segmentAutoGeneration?.includeValues;
+        const includeValues = includeValuesByField?.[ field.id ] || entitySegmentConfig?.segmentAutoGeneration?.includeValues;
         if (includeValues) {
             values = values.filter(v => includeValues.includes(String(v)));
         }
-        
+
         const excludeValuesByField = entitySegmentConfig?.segmentAutoGeneration?.excludeValuesByField;
-        const excludeValues = excludeValuesByField?.[field.id] || entitySegmentConfig?.segmentAutoGeneration?.excludeValues;
+        const excludeValues = excludeValuesByField?.[ field.id ] || entitySegmentConfig?.segmentAutoGeneration?.excludeValues;
         if (excludeValues) {
             values = values.filter(v => !excludeValues.includes(String(v)));
         }
-        
+
         // Apply field-specific sort order first, then global
         const sortOrderByField = entitySegmentConfig?.segmentAutoGeneration?.sortOrderByField;
-        const sortOrder = sortOrderByField?.[field.id] || entitySegmentConfig?.segmentAutoGeneration?.sortOrder;
+        const sortOrder = sortOrderByField?.[ field.id ] || entitySegmentConfig?.segmentAutoGeneration?.sortOrder;
         if (sortOrder) {
             values.sort((a, b) => {
                 const aIndex = sortOrder.indexOf(String(a));
                 const bIndex = sortOrder.indexOf(String(b));
-                
+
                 // If both in sortOrder, use that order
                 if (aIndex >= 0 && bIndex >= 0) {
                     return aIndex - bIndex;
@@ -1588,32 +1609,32 @@ export function generateSegments<S extends EntitySchema<string, string, string>>
                 return 0;
             });
         }
-        
+
         // Generate segment for each value
         for (const value of values) {
             const valueStr = String(value);
             const valueLower = valueStr.toLowerCase();
-            
+
             // Use custom label if available, otherwise format the value
-            const segmentLabel = valueLabels[valueStr] || pascalCase(valueStr);
-            
+            const segmentLabel = valueLabels[ valueStr ] || pascalCase(valueStr);
+
             segments.push({
                 id: `${field.id}-${valueLower.replace(/[^a-z0-9]+/g, '-')}`,  // Unique ID
                 label: segmentLabel,  // Custom or formatted label
-                icon: mergedConfig.iconMapping[valueLower],  // Smart icon lookup
+                icon: mergedConfig.iconMapping[ valueLower ],  // Smart icon lookup
                 filters: {
-                    [field.id]: { eq: value }
+                    [ field.id ]: { eq: value }
                 }
             });
         }
-        
+
         // Only add group if we have segments
         const minSegments = mergedConfig.includeAllSegment ? 1 : 0;
         if (segments.length > minSegments) {
             // Auto-generate label or use explicit groupLabels
             const customGroupLabels = entitySegmentConfig?.segmentAutoGeneration?.groupLabels;
-            const label = customGroupLabels?.[field.id] || `By ${pascalCase(field.id)}`;
-            
+            const label = customGroupLabels?.[ field.id ] || `By ${pascalCase(field.id)}`;
+
             segmentGroups.push({
                 id: `${field.id}-group`,
                 label,
@@ -1623,18 +1644,18 @@ export function generateSegments<S extends EntitySchema<string, string, string>>
             });
         }
     }
-    
+
     // Return segment groups (or undefined if none generated)
     if (segmentGroups.length === 0) {
         return undefined;
     }
-    
+
     // If only 1 group with simple config, return flat segments for backwards compatibility
     // This maintains legacy behavior when maxSegmentGroups = 1
     if (segmentGroups.length === 1 && mergedConfig.maxSegmentGroups === 1) {
-        return segmentGroups[0].segments;
+        return segmentGroups[ 0 ].segments;
     }
-    
+
     return segmentGroups;
 }
 
@@ -1642,12 +1663,41 @@ export function generateSegments<S extends EntitySchema<string, string, string>>
 // ENTITY ATTRIBUTE FORMATTING
 // =======================================================================================
 
+/**
+ * Formats a single entity attribute for form or detail page display.
+ * 
+ * Transforms schema attributes into UI-ready field configurations with proper field types,
+ * relation configs, options, visibility, and validation rules. Auto-generates relation
+ * display configurations and filter configs when not explicitly provided.
+ * 
+ * @param thisProp - The entity attribute to format
+ * @param type - Page type: 'create', 'update', or 'detail'
+ * @param entityService - Entity service for accessing related schemas
+ * @param allProperties - Optional array of all properties for detecting duplicated relation fields
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Formatted field metadata ready for UI rendering
+ * 
+ * @example
+ * ```typescript
+ * const formattedField = formatEntityAttributeForFormOrDetail(
+ *   {
+ *     id: 'teamId',
+ *     name: 'teamId',
+ *     type: 'string',
+ *     relation: { type: 'one', entity: 'team' }
+ *   },
+ *   'create',
+ *   entityService
+ * );
+ * // Returns field with relationConfig, filterConfig, and proper field type
+ * ```
+ */
 export function formatEntityAttributeForFormOrDetail(
     thisProp: TIOSchemaAttribute,
     type: 'create' | 'update' | 'detail',
     entityService: BaseEntityService<any>,
     allProperties?: TIOSchemaAttribute[],  // Optional: for detecting duplicated relation fields
-    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']  // Optional: global UI config options
+    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]  // Optional: global UI config options
 ) {
     const formatted: any = {
         ...thisProp,
@@ -1660,11 +1710,11 @@ export function formatEntityAttributeForFormOrDetail(
     // Handle addNewOption (OLD - deprecated, generates embedded config) or addNewOptionConfig (NEW - just pass through reference)
     if (isSelectFieldMetadata(thisProp) && [ 'create', 'update' ].includes(type)) {
         const selectField = thisProp as SelectFieldMetadata;
-        
+
         if (selectField.addNewOptionConfig) {
             // NEW WAY: User provided addNewOptionConfig reference - just pass it through
             formatted[ 'addNewOptionConfig' ] = selectField.addNewOptionConfig;
-            
+
         } else if (selectField.addNewOption) {
             // OLD WAY (DEPRECATED): Transform addNewOption to addNewOptionConfig for backward compatibility
             const { entityName, overrideConfig } = selectField.addNewOption;
@@ -1710,28 +1760,28 @@ export function formatEntityAttributeForFormOrDetail(
         }
 
         // Handle both single and multiple identifiers for composite keys
-        const identifierMappings = Array.isArray(resolvedIdentifiers) 
+        const identifierMappings = Array.isArray(resolvedIdentifiers)
             ? resolvedIdentifiers.map(id => ({
                 source: String(id.source),
                 target: String(id.target)
-              }))
-            : [{
+            }))
+            : [ {
                 source: String(resolvedIdentifiers.source),
                 target: String(resolvedIdentifiers.target)
-              }];
+            } ];
 
         // For route pattern and default filters, use the first identifier
         // (most entities have single identifier; composite keys need explicit routePattern)
-        const primaryIdentifier = identifierMappings[0];
+        const primaryIdentifier = identifierMappings[ 0 ];
 
         // Check if user provided custom UI config in relationConfig (optional override)
         const userRelationConfig = thisProp.relationConfig as IRelationFieldConfig | undefined;
 
         // Get related entity service for metadata (icon, etc.)
-        const relatedEntityService = entityService.hasEntityServiceByEntityName(entityName) 
+        const relatedEntityService = entityService.hasEntityServiceByEntityName(entityName)
             ? entityService.getEntityServiceByEntityName(entityName)
             : undefined;
-        
+
         // Get entity metadata for icon and fallback generation
         const relatedEntityMetadata = relatedEntityService?.getEntitySchema?.().model;
         const defaultIcon = relatedEntityMetadata?.metadata?.icon;
@@ -1739,7 +1789,7 @@ export function formatEntityAttributeForFormOrDetail(
         if (relationType.endsWith('to-one')) {
             // TO-ONE: Show value as link + modal icon
             // Route pattern: Use custom (from relationConfig) or default to /view-{entity}/:targetId
-            const routePattern = userRelationConfig?.routePattern 
+            const routePattern = userRelationConfig?.routePattern
                 || `/view-${entityNameLower}/:${primaryIdentifier.target}`;
 
             // Generate fallback configuration for when only ID is available
@@ -1753,20 +1803,20 @@ export function formatEntityAttributeForFormOrDetail(
             // NEW: Use enhanced detection with config support
             let autoTemplate: string | undefined = undefined;
             let detectionMetadata: any = undefined;
-            
+
             // Check if auto-detection is enabled (default: true)
             const autoDetectEnabled = userRelationConfig?.displayConfig?.autoDetect !== false;
-            
+
             if (autoDetectEnabled && allProperties) {
                 // Get global config (passed from fw24 initialization)
                 const globalConfig = globalUIConfigOptions?.duplicatedFieldDetection;
-                
+
                 // Get entity-level config from entity metadata
                 const entityConfig = relatedEntityMetadata?.metadata?.duplicatedFieldDetection;
-                
+
                 // Get relation-level hints
                 const relationHints = userRelationConfig?.displayConfig?.autoDetectHints;
-                
+
                 // Run enhanced detection
                 const detectionResult = detectDuplicatedRelationFields(
                     allProperties,
@@ -1776,10 +1826,10 @@ export function formatEntityAttributeForFormOrDetail(
                     entityConfig,
                     relationHints
                 );
-                
+
                 if (detectionResult) {
                     autoTemplate = detectionResult.template;
-                    
+
                     // Store metadata for debugging and future features
                     detectionMetadata = {
                         detectedFields: {
@@ -1798,8 +1848,8 @@ export function formatEntityAttributeForFormOrDetail(
             const generatedRelationConfig: IRelationFieldConfig = {
                 routePattern: routePattern,
                 // Pass ALL identifier mappings (supports composite keys)
-                identifierMapping: identifierMappings.length === 1 
-                    ? identifierMappings[0]  // Single: return object
+                identifierMapping: identifierMappings.length === 1
+                    ? identifierMappings[ 0 ]  // Single: return object
                     : identifierMappings,     // Multiple: return array
                 modalConfigRef: userRelationConfig?.modalConfigRef || {
                     entityName: entityName,
@@ -1824,8 +1874,8 @@ export function formatEntityAttributeForFormOrDetail(
                     actions: userRelationConfig?.displayConfig?.actions
                 }
             };
-            if(globalUIConfigOptions?.duplicatedFieldDetection?.debug) {
-                generatedRelationConfig.displayConfig!['_detectionMetadata'] = detectionMetadata;
+            if (globalUIConfigOptions?.duplicatedFieldDetection?.debug) {
+                generatedRelationConfig.displayConfig![ '_detectionMetadata' ] = detectionMetadata;
             }
 
             formatted[ 'relationConfig' ] = generatedRelationConfig;
@@ -1848,7 +1898,7 @@ export function formatEntityAttributeForFormOrDetail(
             // For composite keys, add all identifiers as filters
             const defaultFilters: Record<string, any> = {};
             identifierMappings.forEach(mapping => {
-                defaultFilters[mapping.target] = `:${mapping.source}`;
+                defaultFilters[ mapping.target ] = `:${mapping.source}`;
             });
 
             // Generate fallback configuration for to-many (shows count)
@@ -1861,8 +1911,8 @@ export function formatEntityAttributeForFormOrDetail(
             const generatedRelationConfig: IRelationFieldConfig = {
                 routePattern: routePattern,
                 // Pass ALL identifier mappings (supports composite keys)
-                identifierMapping: identifierMappings.length === 1 
-                    ? identifierMappings[0]  // Single: return object
+                identifierMapping: identifierMappings.length === 1
+                    ? identifierMappings[ 0 ]  // Single: return object
                     : identifierMappings,     // Multiple: return array
                 modalConfigRef: userRelationConfig?.modalConfigRef || {
                     entityName: entityName,
@@ -1899,7 +1949,7 @@ export function formatEntityAttributeForFormOrDetail(
             }
 
             formatted[ 'relationConfig' ] = generatedRelationConfig;
-         }
+        }
     }
 
     // Handle nested structures (map and list types)
@@ -1922,6 +1972,18 @@ export function formatEntityAttributeForFormOrDetail(
     return formatted;
 }
 
+/**
+ * Routes attribute formatting to the appropriate type-specific formatter.
+ * 
+ * Convenience function that delegates to formatEntityAttributesForCreate,
+ * formatEntityAttributesForUpdate, or formatEntityAttributesForDetail based on type.
+ * 
+ * @param properties - Array of entity attributes to format
+ * @param type - Page type: 'create', 'update', or 'detail'
+ * @param entityService - Entity service for accessing schemas
+ * @returns Array of formatted field metadata
+ * @throws Error if invalid type is provided
+ */
 export function formatEntityAttributesForFormOrDetail(
     properties: TIOSchemaAttribute[],
     type: 'create' | 'update' | 'detail',
@@ -1942,24 +2004,63 @@ export function formatEntityAttributesForFormOrDetail(
     throw (`Invalid type [${type}] provided to formatEntityAttributesForFormOrDetail`);
 }
 
-export function formatEntityAttributesForCreate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']) {
+/**
+ * Formats entity attributes for create form pages.
+ * 
+ * Filters attributes to include only creatable fields (respects isCreatable flag)
+ * and formats each for create form display.
+ * 
+ * @param properties - Array of entity attributes from schema
+ * @param entityService - Entity service for accessing related schemas
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Array of formatted field metadata for create forms
+ */
+export function formatEntityAttributesForCreate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]) {
     return properties
         .filter(prop => prop && (!prop.hasOwnProperty('isCreatable') || prop.isCreatable))
         .map((att) => formatEntityAttributeForFormOrDetail(att, 'create', entityService, properties, globalUIConfigOptions));
 }
 
-export function formatEntityAttributesForUpdate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']) {
+/**
+ * Formats entity attributes for update/edit form pages.
+ * 
+ * Filters attributes to include only editable fields (respects isEditable flag)
+ * and formats each for update form display.
+ * 
+ * @param properties - Array of entity attributes from schema
+ * @param entityService - Entity service for accessing related schemas
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Array of formatted field metadata for update forms
+ */
+export function formatEntityAttributesForUpdate(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]) {
     return properties
         .filter(prop => prop && (!prop.hasOwnProperty('isEditable') || prop.isEditable))
         .map((att) => formatEntityAttributeForFormOrDetail(att, 'update', entityService, properties, globalUIConfigOptions));
 }
 
-export function formatEntityAttributesForDetail(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']) {
+/**
+ * Formats entity attributes for detail/view pages.
+ * 
+ * Filters attributes to include only visible fields (respects isVisible flag)
+ * and formats each for detail page display.
+ * 
+ * @param properties - Array of entity attributes from schema
+ * @param entityService - Entity service for accessing related schemas
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Array of formatted field metadata for detail views
+ */
+export function formatEntityAttributesForDetail(properties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]) {
     return properties
         .filter(prop => prop && (!prop.hasOwnProperty('isVisible') || prop.isVisible))
         .map((att) => formatEntityAttributeForFormOrDetail(att, 'detail', entityService, properties, globalUIConfigOptions));
 }
 
+/**
+ * Type definition for list/table column configuration.
+ * 
+ * Extends FieldMetadata with list-specific properties like actions, templates,
+ * and relation rendering configurations.
+ */
 export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' | 'helpText' | 'filterConfig'> & {
     name: string,
     dataIndex: string,
@@ -1972,24 +2073,52 @@ export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' 
     linkConfig?: { routePattern: string; displayText?: string },  // For backward compatibility
 };
 
+/**
+ * Formats entity attributes for list/table display.
+ * 
+ * Transforms schema attributes into table column configurations with:
+ * - Auto-generated filter configurations for filterable columns
+ * - Relation display configurations with links and modal support
+ * - Template-based rendering for duplicated relation fields
+ * - Proper field types and visibility handling
+ * 
+ * This is the main entry point for generating table column configurations from entity schemas.
+ * 
+ * @param entityName - Name of the entity (for generating route patterns)
+ * @param properties - Array of entity attributes from schema
+ * @param entityService - Entity service for accessing related schemas
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Array of formatted column configurations for table display
+ * 
+ * @example
+ * ```typescript
+ * const columns = formatEntityAttributesForList(
+ *   'game',
+ *   gameSchema.attributes,
+ *   gameService,
+ *   globalConfig
+ * );
+ * // Returns array of column configs with filters, relations, and templates
+ * ```
+ */
 export function formatEntityAttributesForList(
-    entityName: string, 
-    properties: TIOSchemaAttribute[], 
+    entityName: string,
+    properties: TIOSchemaAttribute[],
     entityService: BaseEntityService<any>,
     {
-    CRUDApiPath,
-    excludeFromAdminUpdate,
-    excludeFromAdminDelete,
-    excludeFromAdminDetail,
+        CRUDApiPath,
+        excludeFromAdminUpdate,
+        excludeFromAdminDelete,
+        excludeFromAdminDetail,
         customRowActions,
         globalUIConfigOptions
-}: {
-    CRUDApiPath?: string,
-    excludeFromAdminUpdate?: boolean,
-    excludeFromAdminDelete?: boolean,
-    excludeFromAdminDetail?: boolean,
-    customRowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
-        globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']  // NEW: Global config options
+    }: {
+        CRUDApiPath?: string,
+        excludeFromAdminUpdate?: boolean,
+        excludeFromAdminDelete?: boolean,
+        excludeFromAdminDetail?: boolean,
+        customRowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
+        globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]  // NEW: Global config options
     }
 ) {
 
@@ -2002,12 +2131,12 @@ export function formatEntityAttributesForList(
             // Use same formatting logic as details/forms (includes relationConfig generation)
             // Pass all properties so it can detect duplicated relation fields (e.g., teamName for teamId)
             const formatted = formatEntityAttributeForFormOrDetail(prop, 'detail', entityService, properties, globalUIConfigOptions);
-            
+
             // Auto-generate filterConfig if not already present and field is filterable
             const autoGeneratedFilterConfig = !formatted.filterConfig && prop.isFilterable !== false
                 ? generateFilterConfig(prop, entityService, globalUIConfigOptions)
                 : undefined;
-            
+
             // Override/add list-specific properties
             const propConfig: ListingPropConfig = {
                 ...formatted,
@@ -2068,7 +2197,7 @@ export function formatEntityAttributesForList(
                 }
 
                 // Merge custom row actions using identifier-based override
-                propConfig.actions = customRowActions 
+                propConfig.actions = customRowActions
                     ? mergeActions(defaultActions, customRowActions)
                     : defaultActions;
             }
@@ -2093,53 +2222,119 @@ export function formatEntityAttributesForList(
  * @param customs - Custom buttons (from entity schema)
  * @returns Merged button array
  */
+/**
+ * Merges default buttons with custom buttons using ID-based override logic.
+ * 
+ * Custom buttons with matching IDs override defaults, and new custom buttons are appended.
+ * Buttons without IDs are always included (no deduplication).
+ * 
+ * @template T - Button type with optional id property
+ * @param defaults - Default button configurations
+ * @param customs - Custom button configurations to merge
+ * @returns Merged array with custom overrides applied
+ * 
+ * @example
+ * ```typescript
+ * const defaults = [
+ *   { id: 'save', label: 'Save', action: 'submit' },
+ *   { id: 'cancel', label: 'Cancel', action: 'cancel' }
+ * ];
+ * const customs = [
+ *   { id: 'save', label: 'Save Changes', action: 'submit' }, // Override
+ *   { id: 'delete', label: 'Delete', action: 'delete' }      // New
+ * ];
+ * const merged = mergeButtons(defaults, customs);
+ * // Returns: [
+ * //   { id: 'save', label: 'Save Changes', action: 'submit' },
+ * //   { id: 'cancel', label: 'Cancel', action: 'cancel' },
+ * //   { id: 'delete', label: 'Delete', action: 'delete' }
+ * // ]
+ * ```
+ */
 export function mergeButtons<T extends { id?: string }>(
     defaults: Array<T>,
     customs: ReadonlyArray<T> | Array<T> = []
 ): Array<T> {
-    const customsArray = [...customs];  // Convert to mutable array
+    const customsArray = [ ...customs ];  // Convert to mutable array
     const customMap = new Map(
-        customsArray.filter(c => c.id).map(c => [c.id, c])
+        customsArray.filter(c => c.id).map(c => [ c.id, c ])
     );
-    
+
     // Start with defaults, replace if custom has same id
-    const merged = defaults.map(defaultBtn => 
+    const merged = defaults.map(defaultBtn =>
         defaultBtn.id && customMap.has(defaultBtn.id)
             ? customMap.get(defaultBtn.id)!  // Override
             : defaultBtn
     );
-    
+
     // Add custom buttons that don't override defaults
     customsArray.forEach(customBtn => {
         if (!customBtn.id || !defaults.some(d => d.id === customBtn.id)) {
             merged.push(customBtn);  // Add new
         }
     });
-    
+
     return merged;
 }
 
 /**
- * Merge default actions with custom actions using identifier-based override.
- * Same logic as mergeButtons but semantically named for actions.
+ * Merges default actions with custom actions using ID-based override logic.
  * 
- * @param defaults - Default actions (from generator)
- * @param customs - Custom actions (from entity schema)
- * @returns Merged action array
+ * Delegates to mergeButtons with the same behavior: custom actions with matching IDs
+ * override defaults, and new custom actions are appended. Semantically named for row/table actions.
+ * 
+ * @template T - Action type with optional id property
+ * @param defaults - Default action configurations
+ * @param customs - Custom action configurations to merge
+ * @returns Merged array with custom overrides applied
+ * 
+ * @example
+ * ```typescript
+ * const defaults = [
+ *   { id: 'edit', label: 'Edit', action: 'edit' },
+ *   { id: 'delete', label: 'Delete', action: 'delete' }
+ * ];
+ * const customs = [
+ *   { id: 'delete', label: 'Remove', action: 'delete', confirm: true } // Override
+ * ];
+ * const merged = mergeActions(defaults, customs);
+ * // Returns: [
+ * //   { id: 'edit', label: 'Edit', action: 'edit' },
+ * //   { id: 'delete', label: 'Remove', action: 'delete', confirm: true }
+ * // ]
+ * ```
  */
 export function mergeActions<T extends { id?: string }>(
     defaults: Array<T>,
     customs: ReadonlyArray<T> | Array<T> = []
 ): Array<T> {
-    return mergeButtons(defaults, [...customs]);  // Spread to handle both readonly and mutable
+    return mergeButtons(defaults, [ ...customs ]);  // Spread to handle both readonly and mutable
 }
 
 /**
- * Merge field-level visibility/enablement/helpText/placeholder into base properties.
+ * Merges field-level visibility, enablement, help text, and placeholder overrides into base properties.
  * 
- * @param baseProperties - Base properties from schema
- * @param fieldOverrides - Field overrides from formConfig.fields
- * @returns Properties with overrides merged
+ * Applies custom field configurations from form/detail config to base schema properties.
+ * Only merges overrides for fields that exist in base properties (warns about non-existent fields).
+ * 
+ * @template T - Property type with required name field
+ * @param baseProperties - Base field properties from entity schema
+ * @param fieldOverrides - Custom field overrides from form/detail configuration
+ * @returns Base properties with overrides merged in
+ * 
+ * @example
+ * ```typescript
+ * const baseProps = [
+ *   { name: 'email', type: 'string', required: true },
+ *   { name: 'bio', type: 'string', required: false }
+ * ];
+ * const overrides = [
+ *   { name: 'email', helpText: 'Enter a valid email address' },
+ *   { name: 'bio', visibility: { create: false } }
+ * ];
+ * const merged = mergeFieldVisibility(baseProps, overrides);
+ * // Returns baseProps with helpText and visibility merged
+ * ```
  */
 export function mergeFieldVisibility<T extends { name: string }>(
     baseProperties: Array<T>,
@@ -2158,21 +2353,21 @@ export function mergeFieldVisibility<T extends { name: string }>(
     }> = []
 ): Array<T> {
     const overrideMap = new Map(
-        [...fieldOverrides].map(f => [f.name, f])
+        [ ...fieldOverrides ].map(f => [ f.name, f ])
     );
-    
+
     // Validation: Warn if field override references non-existent field
     fieldOverrides.forEach(override => {
         if (!baseProperties.some(p => p.name === override.name)) {
             DefaultLogger.warn(`Field override "${override.name}" not found in schema properties. This override will be ignored.`);
         }
     });
-    
+
     return baseProperties.map(prop => {
         const override = overrideMap.get(prop.name);
-        
+
         if (!override) return prop;
-        
+
         return {
             ...prop,
             ...(override.visibility !== undefined && { visibility: override.visibility }),
@@ -2184,11 +2379,31 @@ export function mergeFieldVisibility<T extends { name: string }>(
 }
 
 /**
- * Merge column-level visibility/width/fixed into base properties.
+ * Merges column-level visibility, width, fixed position, and grouping overrides into base properties.
  * 
- * @param baseProperties - Base properties from schema
- * @param columnOverrides - Column overrides from tableConfig.columns
- * @returns Properties with column overrides merged
+ * Applies custom column configurations from table config to base schema properties.
+ * Only merges overrides for columns that exist in base properties (warns about non-existent columns).
+ * 
+ * @template T - Property type with required name field
+ * @param baseProperties - Base column properties from entity schema
+ * @param columnOverrides - Custom column overrides from table configuration
+ * @returns Base properties with overrides merged in
+ * 
+ * @example
+ * ```typescript
+ * const baseProps = [
+ *   { name: 'name', type: 'string' },
+ *   { name: 'email', type: 'string' },
+ *   { name: 'status', type: 'string' }
+ * ];
+ * const overrides = [
+ *   { field: 'name', width: 200, fixed: 'left' },
+ *   { field: 'email', visibility: { list: false } },
+ *   { field: 'status', groupTitle: 'Account Status' }
+ * ];
+ * const merged = mergeColumnVisibility(baseProps, overrides);
+ * // Returns baseProps with width, fixed, visibility, and groupTitle merged
+ * ```
  */
 export function mergeColumnVisibility<T extends { name: string }>(
     baseProperties: Array<T>,
@@ -2207,21 +2422,21 @@ export function mergeColumnVisibility<T extends { name: string }>(
     }> = []
 ): Array<T> {
     const overrideMap = new Map(
-        [...columnOverrides].map(c => [c.field, c])
+        [ ...columnOverrides ].map(c => [ c.field, c ])
     );
-    
+
     // Validation: Warn if column override references non-existent column
     columnOverrides.forEach(override => {
         if (!baseProperties.some(p => p.name === override.field)) {
             DefaultLogger.warn(`Column override "${override.field}" not found in schema properties. This override will be ignored.`);
         }
     });
-    
+
     return baseProperties.map(prop => {
         const override = overrideMap.get(prop.name);
-        
+
         if (!override) return prop;
-        
+
         return {
             ...prop,
             ...(override.visibility !== undefined && { visibility: override.visibility }),

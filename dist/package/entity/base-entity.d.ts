@@ -1,4 +1,4 @@
-import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem, UpsertItem } from "electrodb";
+import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem } from "electrodb";
 import { Entity } from "electrodb";
 import type { EntityQuery, FilterOperatorsExtended, EntityFilterCriteria } from './query-types';
 import type { BaseEntityService } from "./base-service";
@@ -156,25 +156,90 @@ import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfi
  * It can be a string representing the entity name,
  * or an object with additional attributes and hydrate options.
 */
+/**
+ * Utility type to extract only relation attributes from an entity schema.
+ * Filters out hidden attributes and non-relation attributes.
+ *
+ * @template T - The entity schema type
+ */
 export type RelationalAttributes<T extends EntitySchema<any, any, any, any>> = OmitNever<{
     [K in keyof T['attributes']]: T['attributes'][K]['hidden'] extends true ? never : PickRelation<T, K> extends never ? never : PickRelation<T, K>;
 }>;
+/**
+ * Utility type to extract only non-relation attributes from an entity schema.
+ * Filters out hidden attributes and relation attributes.
+ *
+ * @template T - The entity schema type
+ */
 export type NonRelationalAttributes<T extends EntitySchema<any, any, any, any>> = OmitNever<{
     [K in keyof T['attributes']]: T['attributes'][K]['hidden'] extends true ? never : PickRelation<T, K> extends never ? T['attributes'][K] : never;
 }>;
+/**
+ * Utility type to extract the relation type from an entity attribute.
+ * Returns the Relation<E> type if the attribute has a relation, otherwise never.
+ *
+ * @template E - The entity schema type
+ * @template A - The attribute key
+ */
 export type PickRelation<E extends EntitySchema<any, any, any, any>, A extends keyof E['attributes']> = E['attributes'][A]['relation'] extends Relation<infer R> ? Relation<R> : never;
-type _EntityAttributePaths<E extends EntitySchema<any, any, any, any>> = {
-    [K in keyof NonRelationalAttributes<E>]?: K;
-} & {
-    [K in keyof RelationalAttributes<E>]?: _EntityAttributePaths<RelToRelatedEntity<RelationalAttributes<E>[K]>>;
-};
+/**
+ * Utility type representing all possible attribute paths for an entity.
+ * Includes nested paths for relations (e.g., 'team.name', 'team.city').
+ *
+ * @template E - The entity schema type
+ * @example
+ * ```ts
+ * type GamePaths = EntityAttributePaths<GameSchema>;
+ * // 'gameId' | 'gameDate' | 'homeTeam' | 'homeTeam.teamId' | 'homeTeam.teamName' | ...
+ * ```
+ */
 export type EntityAttributePaths<E extends EntitySchema<any, any, any, any>> = Paths<_EntityAttributePaths<E>>;
+/**
+ * Utility type representing hydration options as a map.
+ * Maps attribute names to boolean (simple hydration) or HydrateOptionForRelation (nested hydration).
+ *
+ * @template T - The entity schema type
+ */
 export type HydrateOptionsMapForEntity<T extends EntitySchema<any, any, any, any>> = {
     [K in keyof NonRelationalAttributes<T>]?: boolean;
 } & {
     [K in keyof RelationalAttributes<T>]?: boolean | HydrateOptionForRelation<RelationalAttributes<T>[K]>;
 };
+/**
+ * Utility type representing hydration options for an entity.
+ * Can be either a map (object) or an array of attribute paths.
+ *
+ * @template E - The entity schema type
+ * @example
+ * ```ts
+ * // Map format
+ * const hydrate1: HydrateOptionForEntity<GameSchema> = {
+ *   gameId: true,
+ *   homeTeam: { attributes: { teamId: true, teamName: true } }
+ * };
+ *
+ * // Array format
+ * const hydrate2: HydrateOptionForEntity<GameSchema> = [
+ *   'gameId',
+ *   'homeTeam.teamId',
+ *   'homeTeam.teamName'
+ * ];
+ * ```
+ */
 export type HydrateOptionForEntity<E extends EntitySchema<any, any, any, any>> = HydrateOptionsMapForEntity<E> | Array<EntityAttributePaths<E>>;
+/**
+ * Utility type representing hydration options for a specific relation.
+ * Used when you want to control which attributes of a related entity to load.
+ *
+ * @template Rel - The relation type
+ * @example
+ * ```ts
+ * const relationHydrate: HydrateOptionForRelation = {
+ *   entityName: 'team',
+ *   attributes: { teamId: true, teamName: true, city: true }
+ * };
+ * ```
+ */
 export type HydrateOptionForRelation<Rel extends Relation<any> = any> = {
     entityName?: Rel['entityName'];
     relationType?: Rel['type'];
@@ -376,6 +441,16 @@ export type ResolveEntitySchema<T> = T extends () => infer E ? E extends EntityS
  * }
  */
 export declare function createEntityRelation<T extends EntitySchema<any, any, any, any> | (() => EntitySchema<any, any, any, any>)>(relation: Relation<ResolveEntitySchema<T>>): Relation<ResolveEntitySchema<T>>;
+/**
+ * Utility type to extract the related entity schema from a Relation type.
+ *
+ * @template Rel - The relation type
+ * @example
+ * ```ts
+ * type TeamRelation = Relation<TeamSchema>;
+ * type Team = RelToRelatedEntity<TeamRelation>;  // TeamSchema
+ * ```
+ */
 export type RelToRelatedEntity<Rel> = Rel extends Relation<infer E> ? E : never;
 /**
  * Represents a relation between entities (DATA LAYER ONLY).
@@ -498,10 +573,43 @@ export interface FW24AttributeExtensions {
     readonly validations?: ReadonlyArray<any> | Array<any>;
 }
 /**
- * Represents an entity attribute
- * Extends ElectroDB's Attribute with FW24-specific properties and FieldMetadata
+ * Represents an entity attribute with full type safety and UI metadata.
+ * Combines ElectroDB's base Attribute with FW24-specific extensions and UI field metadata.
+ *
+ * This is the complete attribute type used in entity schemas, providing:
+ * - Database configuration (from ElectroDB's Attribute)
+ * - Data layer configuration (from FW24AttributeExtensions: relations, validations)
+ * - UI layer configuration (from FieldMetadata: visibility, filtering, rendering)
+ *
+ * @example
+ * ```ts
+ * const teamNameAttr: EntityAttribute = {
+ *   type: 'string',
+ *   required: true,
+ *   name: 'Team Name',
+ *   isVisible: true,
+ *   isEditable: true,
+ *   isFilterable: true,
+ *   fieldType: 'text',
+ *   placeholder: 'Enter team name'
+ * };
+ * ```
  */
 export type EntityAttribute = Attribute & FW24AttributeExtensions & FieldMetadata;
+/**
+ * Union type of all possible field metadata configurations.
+ * Represents the UI-specific configuration for different field types.
+ *
+ * Each field type has its own metadata interface with type-specific options:
+ * - Text fields: maxLength, mask
+ * - Number fields: min, max, step
+ * - Date fields: minDate, maxDate, dateFormat
+ * - Select fields: options (static or API-loaded)
+ * - File/Image fields: accept, maxFileSize, upload configuration
+ * - Rich text/code editors: editor configuration
+ *
+ * The appropriate metadata type is determined by the `fieldType` property.
+ */
 export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldMetadata | TimeFieldMetadata | DateTimeFieldMetadata | BooleanFieldMetadata | SelectFieldMetadata | RadioFieldMetadata | CheckboxFieldMetadata | FileFieldMetadata | RangeFieldMetadata | ColorFieldMetadata | ImageFieldMetadata | HiddenFieldMetadata | CustomFieldMetadata | RatingFieldMetadata | EditorFieldMetadata | CodeEditorFieldMetadata;
 /**
  * UI Metadata for entity attributes.
@@ -2677,7 +2785,29 @@ export declare function createElectroDBEntity<S extends EntitySchema<any, any, a
     schema: S;
     symbol: symbol;
 };
+/**
+ * Utility type to infer ElectroDB Entity type from an entity schema.
+ * Extracts the Entity type with proper generic parameters from the schema.
+ *
+ * @template TSchema - The entity schema type
+ * @example
+ * ```ts
+ * const teamSchema = createEntitySchema({...});
+ * type TeamEntity = EntityTypeFromSchema<typeof teamSchema>;
+ * ```
+ */
 export type EntityTypeFromSchema<TSchema> = TSchema extends EntitySchema<infer A, infer F, infer C> ? Entity<A, F, C, TSchema> : never;
+/**
+ * Utility type to infer ElectroDB ResponseItem type from an entity schema.
+ * ResponseItem is the type returned by ElectroDB query operations.
+ *
+ * @template TSchema - The entity schema type
+ * @example
+ * ```ts
+ * const teamSchema = createEntitySchema({...});
+ * type TeamResponse = EntityResponseItemTypeFromSchema<typeof teamSchema>;
+ * ```
+ */
 export type EntityResponseItemTypeFromSchema<TSchema> = TSchema extends EntitySchema<infer A, infer F, infer C> ? ResponseItem<A, F, C, TSchema> : never;
 /**
  * Utility type to extract the value type of a specific attribute from an entity schema.
@@ -2695,11 +2825,96 @@ export type AttributeValueType<E extends EntitySchema<any, any, any>, K extends 
 export type EntityAttributeValueMap<E extends EntitySchema<any, any, any>> = {
     [K in keyof E['attributes']]: AttributeValueType<E, K>;
 };
-export type UpsertEntityItem<E extends Entity<any, any, any, any>> = E extends Entity<infer A, infer F, infer C, infer S> ? UpsertItem<A, F, C, S> : never;
+/**
+ * Utility type to infer the entity record type from an entity schema.
+ * This is the type of actual record instances (with all computed properties).
+ *
+ * @template Sch - The entity schema type
+ * @example
+ * ```ts
+ * const teamSchema = createEntitySchema({...});
+ * type TeamRecord = EntityRecordTypeFromSchema<typeof teamSchema>;
+ * // Use for typed record instances
+ * const team: TeamRecord = { teamId: '123', teamName: 'Lakers', ... };
+ * ```
+ */
 export type EntityRecordTypeFromSchema<Sch extends EntitySchema<any, any, any>> = EntityItem<EntityTypeFromSchema<Sch>>;
+/**
+ * Utility type to infer the entity service type from an entity schema.
+ * Used for type-safe service references in dependency injection.
+ *
+ * @template TSchema - The entity schema type
+ * @example
+ * ```ts
+ * const teamSchema = createEntitySchema({...});
+ * type TeamService = EntityServiceTypeFromSchema<typeof teamSchema>;
+ * ```
+ */
 export type EntityServiceTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = BaseEntityService<TSchema>;
+/**
+ * Utility type to infer the entity identifiers type from an entity schema.
+ * Used for get/delete operations that require entity identifiers.
+ *
+ * @template TSchema - The entity schema type
+ * @example
+ * ```ts
+ * const teamSchema = createEntitySchema({...});
+ * type TeamIdentifiers = EntityIdentifiersTypeFromSchema<typeof teamSchema>;
+ * // Use for get/delete operations
+ * const ids: TeamIdentifiers = { teamId: '123' };
+ * await teamService.get(ids);
+ * ```
+ */
 export type EntityIdentifiersTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<EntityIdentifiers<EntityTypeFromSchema<TSchema>>>;
+/**
+ * Utility type to infer the create entity item type from an entity schema.
+ * Used for type-safe entity creation operations.
+ *
+ * @template TSchema - The entity schema type
+ * @example
+ * ```ts
+ * const teamSchema = createEntitySchema({...});
+ * type CreateTeam = CreateEntityItemTypeFromSchema<typeof teamSchema>;
+ * const newTeam: CreateTeam = {
+ *   teamName: 'Lakers',
+ *   city: 'Los Angeles'
+ * };
+ * await teamService.create(newTeam);
+ * ```
+ */
 export type CreateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<CreateEntityItem<EntityTypeFromSchema<TSchema>>>;
+/**
+ * Utility type to infer the upsert entity item type from an entity schema.
+ * Used for type-safe entity upsert operations (create or update).
+ *
+ * @template TSchema - The entity schema type
+ * @example
+ * ```ts
+ * const teamSchema = createEntitySchema({...});
+ * type UpsertTeam = UpsertEntityItemTypeFromSchema<typeof teamSchema>;
+ * const teamData: UpsertTeam = {
+ *   teamId: '123',
+ *   teamName: 'Lakers',
+ *   city: 'Los Angeles'
+ * };
+ * await teamService.upsert(teamData);
+ * ```
+ */
 export type UpsertEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<UpsertEntityItem<EntityTypeFromSchema<TSchema>>>;
+/**
+ * Utility type to infer the update entity item type from an entity schema.
+ * Used for type-safe entity update operations.
+ *
+ * @template TSchema - The entity schema type
+ * @example
+ * ```ts
+ * const teamSchema = createEntitySchema({...});
+ * type UpdateTeam = UpdateEntityItemTypeFromSchema<typeof teamSchema>;
+ * const updates: UpdateTeam = {
+ *   city: 'Los Angeles'  // Only fields being updated
+ * };
+ * await teamService.update({ teamId: '123' }, updates);
+ * ```
+ */
 export type UpdateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<UpdateEntityItem<EntityTypeFromSchema<TSchema>>>;
 export {};
