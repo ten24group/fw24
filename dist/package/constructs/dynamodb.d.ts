@@ -2,12 +2,12 @@ import { TablePropsV2 } from "aws-cdk-lib/aws-dynamodb";
 import { TopicProps } from "aws-cdk-lib/aws-sns";
 import { DynamoEventSourceProps, SqsEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
 import { LogGroupProps } from "aws-cdk-lib/aws-logs";
+import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Stack } from "aws-cdk-lib";
 import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
 import { IConstructConfig } from "../interfaces/construct-config";
 import { AuditLoggerType } from "../audit/interfaces";
-import { LambdaFunctionProps } from "./lambda-function";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
 export type SearchEngineConfig = {
     type: 'meili';
@@ -25,14 +25,16 @@ export interface SearchIndexingConfig extends IConstructConfig {
     enabled?: boolean;
     /**
      * List of allowed entity names to be indexed.
-     * If not provided, all entities will be indexed.
+     * If not provided, all entities will be indexed except those in excludedEntityNames or system entities.
+     * Takes precedence over excludedEntityNames if both are provided.
      */
     allowedEntityNames?: string[];
     /**
-     * List of entity names to be ignored from indexing.
-     * Takes precedence over allowedEntityNames - if an entity is in both lists, it will be ignored.
+     * List of entity names to exclude from indexing.
+     * If allowedEntityNames is provided, this field is ignored.
+     * If neither allowedEntityNames nor excludedEntityNames is provided, defaults to excluding system entities like 'auditLog'.
      */
-    ignoredEntityNames?: string[];
+    excludedEntityNames?: string[];
     /**
      * Search engine configuration that defines which search provider to use and its connection details.
      *
@@ -49,13 +51,14 @@ export interface SearchIndexingConfig extends IConstructConfig {
      */
     engineConfig: SearchEngineConfig;
     /**
-     * Custom lambda function properties for search indexing processing.
-     * When provided, completely replaces the default search indexer handler.
-     * Custom handlers can extend base classes and reuse framework utilities.
+     * Custom function properties for the search indexing Lambda.
+     * Allows overriding function configuration like VPC, memory, timeout, etc.
      *
-     * **Note:** Ignored when `existingQueueName` is provided (existing queues have their own handlers)
+     * **Note:**
+     * - Properties specified here will override the queue's @Queue decorator functionProps
+     * - Ignored when `existingQueueName` is provided (existing queues have their own handlers)
      */
-    lambdaFunctionProps?: LambdaFunctionProps;
+    functionProps?: NodejsFunctionProps;
     /**
      * Custom queue name for creating a new search indexing queue.
      * If not provided, defaults to `${tableName}-search-indexer`
@@ -86,9 +89,35 @@ export interface SearchIndexingConfig extends IConstructConfig {
      */
     existingQueueName?: string;
     /**
+     * Path to queue handler file for manual registration.
+     * The queue handler must have `manualRegistration: true` in its @Queue config.
+     * DynamoDB construct will create the queue and automatically subscribe it to the stream topic.
+     *
+     * **Example:**
+     * ```typescript
+     * // In src/queues/meilisearch-sync.ts:
+     * @Queue('MeilisearchSync', {
+     *   manualRegistration: true,
+     *   resourceAccess: { tables: ['plusfan'] },
+     *   // ... other queue config
+     * })
+     * export class MeilisearchSync extends BaseSearchIndexer { ... }
+     *
+     * // In index.ts:
+     * searchIndexing: [{
+     *   enabled: true,
+     *   queueHandlerPath: './src/queues/meilisearch-sync.ts',
+     *   engineConfig: { type: 'meili', host: '...', masterKey: '...' }
+     * }]
+     * ```
+     *
+     * **Note:** Cannot be used with `queueName`, `existingQueueName`, or `lambdaFunctionProps`
+     */
+    queueHandlerPath?: string;
+    /**
      * Search indexing queue properties (only used when creating a new queue)
      *
-     * **Note:** Ignored when `existingQueueName` is provided
+     * **Note:** Ignored when `existingQueueName` or `queueHandlerPath` is provided
      */
     queueProps?: QueueProps;
     /**
@@ -235,27 +264,30 @@ interface AuditConfig extends IConstructConfig {
     enabled?: boolean;
     /**
      * List of allowed entity names to be audited.
-     * If not provided, all entities will be audited. except `auditLog`.
+     * If not provided, all entities will be audited except those in excludedEntityNames or system entities.
+     * Takes precedence over excludedEntityNames if both are provided.
      */
     allowedEntityNames?: string[];
     /**
-     * List of entity names to be ignored from auditing.
-     * Takes precedence over allowedEntityNames - if an entity is in both lists, it will be ignored.
+     * List of entity names to exclude from auditing.
+     * If allowedEntityNames is provided, this field is ignored.
+     * If neither allowedEntityNames nor excludedEntityNames is provided, defaults to excluding system entities like 'auditLog'.
      */
-    ignoredEntityNames?: string[];
+    excludedEntityNames?: string[];
     /**
      * The type of audit logger to use.
      * @default 'console'
      */
     type?: AuditLoggerType;
     /**
-     * Custom lambda function properties for audit processing.
-     * When provided, completely replaces the default audit handler.
-     * Custom handlers can extend base classes and reuse framework utilities.
+     * Custom function properties for the audit Lambda.
+     * Allows overriding function configuration like VPC, memory, timeout, etc.
      *
-     * **Note:** Ignored when `existingQueueName` is provided (existing queues have their own handlers)
+     * **Note:**
+     * - Properties specified here will override the queue's @Queue decorator functionProps
+     * - Ignored when `existingQueueName` is provided (existing queues have their own handlers)
      */
-    lambdaFunctionProps?: LambdaFunctionProps;
+    functionProps?: NodejsFunctionProps;
     /**
      * Options for the audit logger.
      */
@@ -312,9 +344,37 @@ interface AuditConfig extends IConstructConfig {
          */
         existingQueueName?: string;
         /**
+         * Path to queue handler file for manual registration.
+         * The queue handler must have `manualRegistration: true` in its @Queue config.
+         * DynamoDB construct will create the queue and automatically subscribe it to the stream topic.
+         *
+         * **Example:**
+         * ```typescript
+         * // In src/queues/custom-audit.ts:
+         * @Queue('CustomAudit', {
+         *   manualRegistration: true,
+         *   resourceAccess: { tables: ['plusfan'] },
+         *   // ... other queue config
+         * })
+         * export class CustomAudit extends BaseAuditLogger { ... }
+         *
+         * // In index.ts:
+         * audit: {
+         *   enabled: true,
+         *   type: AuditLoggerType.DYNAMODB,
+         *   dynamodbstreamOptions: {
+         *     queueHandlerPath: './src/queues/custom-audit.ts'
+         *   }
+         * }
+         * ```
+         *
+         * **Note:** Cannot be used with `queueName`, `existingQueueName`, or custom `lambdaFunctionProps`
+         */
+        queueHandlerPath?: string;
+        /**
          * Audit queue properties (only used when creating a new queue)
          *
-         * **Note:** Ignored when `existingQueueName` is provided
+         * **Note:** Ignored when `existingQueueName` or `queueHandlerPath` is provided
          */
         queueProps?: QueueProps;
         /**
@@ -350,6 +410,7 @@ export declare class DynamoDBConstruct implements FW24Construct {
     private extractQueueConfig;
     private buildCommonLambdaConfig;
     private setupWithExistingQueue;
+    private setupWithQueueHandler;
     private setupWithNewQueue;
     private buildSqsEventSourceProps;
     private setupAuditProcessing;

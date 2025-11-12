@@ -1,10 +1,10 @@
-import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
-import type { EntityQuery } from "./query-types";
 import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
 import { ILogger } from "../logging";
 import { type IValidator } from "../validation";
+import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
 import { Actor } from "../core/types/execution-context";
+import type { EntityQuery } from "./query-types";
 /**
  *
  * Serializer/formatter
@@ -124,12 +124,14 @@ export interface UpsertEntityArgs<Sch extends EntitySchema<any, any, any>, OpsSc
 }
 export type UpsertEntityResponse<Sch extends EntitySchema<any, any, any>> = {
     data?: EntityResponseItemTypeFromSchema<Sch>;
+    wasCreated?: boolean;
+    oldData?: EntityResponseItemTypeFromSchema<Sch>;
 };
 /**
  * Creates an entity using the provided options.
  *
  * @param options - The options for creating-OR-updating the entity.
- * @returns The created entity.
+ * @returns The created entity with wasCreated flag indicating if it was a new record.
  * @throws Error if no data is provided for upsert operation, validation fails, or authorization fails.
  */
 export declare function upsertEntity<S extends EntitySchema<any, any, any>>(options: UpsertEntityArgs<S>): Promise<UpsertEntityResponse<S>>;
@@ -219,14 +221,14 @@ export interface UpdateEntityOperators {
  */
 export declare function updateEntity<S extends EntitySchema<any, any, any>>(options: UpdateEntityArgs<S>): Promise<{
     data: Partial<import("electrodb").ResponseItem<any, any, any, EntitySchema<any, any, any, {
-        get: string;
-        list: string;
-        query: string;
-        create: string;
-        upsert: string;
-        update: string;
-        delete: string;
-        duplicate: string;
+        readonly get: "get";
+        readonly list: "list";
+        readonly query: "query";
+        readonly create: "create";
+        readonly upsert: "upsert";
+        readonly update: "update";
+        readonly delete: "delete";
+        readonly duplicate: "duplicate";
     }>>>;
 }>;
 /**
@@ -247,15 +249,47 @@ export interface DeleteEntityArgs<Sch extends EntitySchema<any, any, any>, OpsSc
  */
 export declare function deleteEntity<S extends EntitySchema<any, any, any>>(options: DeleteEntityArgs<S>): Promise<{
     data: import("electrodb").AllTableIndexCompositeAttributes<any, any, any, EntitySchema<any, any, any, {
-        get: string;
-        list: string;
-        query: string;
-        create: string;
-        upsert: string;
-        update: string;
-        delete: string;
-        duplicate: string;
+        readonly get: "get";
+        readonly list: "list";
+        readonly query: "query";
+        readonly create: "create";
+        readonly upsert: "upsert";
+        readonly update: "update";
+        readonly delete: "delete";
+        readonly duplicate: "duplicate";
     }>> | null;
+}>;
+/**
+ * Represents the arguments for batch deleting entities.
+ * @template Sch - The entity schema type.
+ * @template OpsSchema - The input schemas for entity operations.
+ */
+export interface DeleteBatchEntityArgs<Sch extends EntitySchema<any, any, any>, OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>> extends BaseEntityCrudArgs<Sch> {
+    /**
+     * Array of entity IDs to delete.
+     */
+    ids: Array<OpsSchema['delete']>;
+    /**
+     * Optional number of concurrent batch operations (default: 1).
+     */
+    concurrent?: number;
+}
+/**
+ * Deletes multiple entities in a batch operation.
+ * @param options - The options for deleting the entities.
+ * @returns The unprocessed items that couldn't be deleted.
+ */
+export declare function deleteBatchEntity<S extends EntitySchema<any, any, any>>(options: DeleteBatchEntityArgs<S>): Promise<{
+    data: import("electrodb").AllTableIndexCompositeAttributes<any, any, any, EntitySchema<any, any, any, {
+        readonly get: "get";
+        readonly list: "list";
+        readonly query: "query";
+        readonly create: "create";
+        readonly upsert: "upsert";
+        readonly update: "update";
+        readonly delete: "delete";
+        readonly duplicate: "duplicate";
+    }>>;
 }>;
 /**
  * Converts a filter object with eq operators to a simplified form.

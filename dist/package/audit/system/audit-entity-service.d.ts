@@ -16,14 +16,14 @@ export declare class DynamoDBAuditEntityService extends BaseEntityService<AuditE
                 readonly entity: "auditLog";
                 readonly entityNamePlural: "auditLogs";
                 readonly entityOperations: {
-                    get: string;
-                    list: string;
-                    query: string;
-                    create: string;
-                    upsert: string;
-                    update: string;
-                    delete: string;
-                    duplicate: string;
+                    readonly get: "get";
+                    readonly list: "list";
+                    readonly query: "query";
+                    readonly create: "create";
+                    readonly upsert: "upsert";
+                    readonly update: "update";
+                    readonly delete: "delete";
+                    readonly duplicate: "duplicate";
                 };
                 readonly service: "auditLog";
                 readonly excludeFromAdminUpdate: true;

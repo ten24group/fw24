@@ -16,7 +16,7 @@ export declare const AUDIT_ENV_KEYS: {
     readonly REGION: "AUDIT_REGION";
     readonly AUDIT_TABLE_NAME: "AUDIT_TABLE_NAME";
     readonly ALLOWED_ENTITY_NAMES: "AUDIT_ALLOWED_ENTITY_NAMES";
-    readonly IGNORED_ENTITY_NAMES: "AUDIT_IGNORED_ENTITY_NAMES";
+    readonly EXCLUDED_ENTITY_NAMES: "AUDIT_EXCLUDED_ENTITY_NAMES";
 };
 export interface AuditLoggerConfig {
     type: AuditLoggerType;

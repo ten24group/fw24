@@ -1,13 +1,14 @@
-import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas, EntityTypeFromSchema } from "./base-entity";
-import type { EntityQuery } from "./query-types";
+import type { BulkOptions } from "electrodb";
 import { Authorizer } from "../authorize";
 import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
 import { isEmptyObject, removeEmpty } from "../utils";
 import { DefaultValidator, type IValidator } from "../validation";
-import { entityFilterCriteriaToExpression } from "./query";
+import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
 import { EntityValidationError } from "./errors/validation-error";
 import { Actor } from "../core/types/execution-context";
+import { entityFilterCriteriaToExpression } from "./query";
+import type { EntityQuery } from "./query-types";
 
 /**
  * 
@@ -317,13 +318,15 @@ export interface UpsertEntityArgs<
 
 export type UpsertEntityResponse<Sch extends EntitySchema<any, any, any>> = {
     data?: EntityResponseItemTypeFromSchema<Sch>
+    wasCreated?: boolean  // true if record was created, false if already existed
+    oldData?: EntityResponseItemTypeFromSchema<Sch>  // previous data if it was an update (undefined for creates)
 }
 
 /**
  * Creates an entity using the provided options.
  * 
  * @param options - The options for creating-OR-updating the entity.
- * @returns The created entity.
+ * @returns The created entity with wasCreated flag indicating if it was a new record.
  * @throws Error if no data is provided for upsert operation, validation fails, or authorization fails.
  */
 export async function upsertEntity<S extends EntitySchema<any, any, any>>(options: UpsertEntityArgs<S>): Promise<UpsertEntityResponse<S>> {
@@ -372,15 +375,26 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
     //     throw new Error("Authorization failed for upsert: " + { cause: authorization });
     // }
 
-    const entity = await entityService.getRepository().upsert(data as any).go();
+    // Use "all_old" to get the previous item state - allows us to detect create vs update
+    // If oldData is empty/null, it was a CREATE. If it has data, it was an UPDATE.
+    const entity = await entityService.getRepository().upsert(data as any).go({ response: "all_old" });
+
+    const wasCreated = !entity.data || Object.keys(entity.data).length === 0;
+    const oldData = wasCreated ? undefined : entity.data;
 
     // post events
     // await eventDispatcher?.dispatch({ event: 'afterUpsert', context: {...arguments, entity} });
 
     // return entity;
-    logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data, entity.data);
+    logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ wasCreated: ${wasCreated}`);
 
-    return entity as UpsertEntityResponse<S>;
+    // Note: with "all_old", entity.data contains the OLD data, we need to return the NEW data
+    // Since we don't have the new data from DynamoDB, we return the input data as the new data
+    return { 
+        data: data as any,  // The new data we just upserted
+        wasCreated, 
+        oldData 
+    } as UpsertEntityResponse<S>;
 }
 
 /**
@@ -690,7 +704,7 @@ async function prepareCompositeAttributesForUpdate<S extends EntitySchema<any, a
     });
 
     if (attributesToFetch.size > 0) {
-        logger.info(`Need to fetch attributes for composite keys:`, Array.from(attributesToFetch));
+        logger.debug(`Need to fetch attributes for composite keys:`, Array.from(attributesToFetch));
 
         try {
             const existingRecordContainer = await entityService.getRepository()
@@ -805,7 +819,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     if (allReferencedCompositeAttributes.size > 0) {
         if (compositeKeyData && typeof compositeKeyData === 'object') {
 
-            logger.info(`Using provided compositeKeyData for update.`, compositeKeyData);
+            logger.debug(`Using provided compositeKeyData for update.`, compositeKeyData);
 
             finalCompositeKeyValuesForElectroDB = compositeKeyData;
 
@@ -826,7 +840,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
 
         } else {
 
-            logger.info(`No compositeKeyData provided, preparing composite attributes internally. Required:`, Array.from(allReferencedCompositeAttributes));
+            logger.debug(`No compositeKeyData provided, preparing composite attributes internally. Required:`, Array.from(allReferencedCompositeAttributes));
 
             finalCompositeKeyValuesForElectroDB = await prepareCompositeAttributesForUpdate({
                 entityName,
@@ -839,7 +853,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         }
 
     } else {
-        logger.info(`No composite attributes defined in schema or needed for this update.`);
+        logger.debug(`No composite attributes defined in schema or needed for this update.`);
     }
     // --- End Composite Key Handling ---
 
@@ -849,7 +863,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     const query = entityService.getRepository().patch(identifiers).set(data);
 
     if (Object.keys(finalCompositeKeyValuesForElectroDB).length > 0) {
-        logger.info(`Using composite values for ElectroDB patch:`, finalCompositeKeyValuesForElectroDB);
+        logger.debug(`Using composite values for ElectroDB patch:`, finalCompositeKeyValuesForElectroDB);
         query.composite(finalCompositeKeyValuesForElectroDB);
     }
 
@@ -941,6 +955,92 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
     logger.debug(`Completed EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
 
     return entity;
+}
+
+/**
+ * Represents the arguments for batch deleting entities.
+ * @template Sch - The entity schema type.
+ * @template OpsSchema - The input schemas for entity operations.
+ */
+export interface DeleteBatchEntityArgs<
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> extends BaseEntityCrudArgs<Sch> {
+    /**
+     * Array of entity IDs to delete.
+     */
+    ids: Array<OpsSchema[ 'delete' ]>;
+    /**
+     * Optional number of concurrent batch operations (default: 1).
+     */
+    concurrent?: number;
+}
+
+/**
+ * Deletes multiple entities in a batch operation.
+ * @param options - The options for deleting the entities.
+ * @returns The unprocessed items that couldn't be deleted.
+ */
+export async function deleteBatchEntity<S extends EntitySchema<any, any, any>>(options: DeleteBatchEntityArgs<S>) {
+    const {
+        ids,
+        entityName,
+        entityService,
+        concurrent = 1,
+
+        actor,
+        tenant,
+
+        crudType = 'delete',
+        logger = createLogger('CRUD-service:deleteBatchEntity'),
+        validator = DefaultValidator,
+        authorizer = Authorizer.Default,
+        eventDispatcher = EventDispatcher.Default,
+    } = options;
+
+    logger.debug(`Called EntityCrud ~ deleteBatchEntity ~ entityName: ${entityName}:`, { ids, concurrent });
+
+    // Extract identifiers for all items in the batch
+    const identifiersBatch = ids.map(id => entityService.extractEntityIdentifiers(id));
+
+    // Validate each item in the batch
+    const validations = await Promise.all(identifiersBatch.map(async identifiers =>
+        validator.validateEntity({
+            operationName: crudType,
+            entityName,
+            entityValidations: entityService.getEntityValidations(),
+            overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+            input: identifiers,
+            actor: actor
+        })
+    ));
+
+    // Check for validation errors
+    const validationErrors = validations
+        .map((validation, index) => ({ validation, index }))
+        .filter(({ validation }) => !validation.pass);
+
+    if (validationErrors.length > 0) {
+        throw new EntityValidationError(validationErrors.flatMap(({ validation, index }) =>
+            (validation.errors || []).map(error => ({
+                ...error,
+                message: `Item ${index}: ${error.message}`
+            }))
+        ));
+    }
+
+    // Perform batch delete operation with concurrency control
+    // Per ElectroDB docs: http://electrodb.dev/en/mutations/batch-delete/
+    // Note: ElectroDB types use 'concurrency' while docs show 'concurrent'
+    const bulkOptions: Partial<BulkOptions> = {
+        concurrency: concurrent
+    };
+    
+    const electroResult = await entityService.getRepository().delete(identifiersBatch).go(bulkOptions);
+
+    logger.debug(`Completed EntityCrud ~ deleteBatchEntity ~ entityName: ${entityName} ~ ids:`, ids);
+
+    return electroResult;
 }
 
 /**

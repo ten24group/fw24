@@ -1,13 +1,25 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { randomUUID } from 'crypto';
 import { EntityConfiguration } from 'electrodb';
 import { DefaultEntityOperations, createElectroDBEntity, createEntitySchema } from '../../entity/base-entity';
 import { createLogger } from '../../logging';
 import { AuditLoggerConfig, AuditOptions, IAuditLogger } from '../interfaces';
 
+const client = new DynamoDBClient({});
+
+const docClient = DynamoDBDocumentClient.from(client,{
+    // to make sure missing stuff in audits does not cause errors
+    marshallOptions: {
+        convertClassInstanceToMap: true,
+        removeUndefinedValues: true,
+        convertEmptyValues: true,
+    },
+})
+
 export const DynamoDBAuditEntityConfiguration: EntityConfiguration = {
     table: process.env[ `${process.env.AUDIT_TABLE_NAME?.toUpperCase()}_TABLE` ],
-    client: new DynamoDBClient({}),
+    client: docClient,
 };
 
 export const DynamoDBAuditEntitySchema = createEntitySchema({
@@ -351,9 +363,8 @@ export class DynamoDbAuditLogger implements IAuditLogger {
 
         try {
 
-            this.logger.info('Writing to DynamoDB:', {
+            this.logger.debug('Writing to DynamoDB:', {
                 auditEntry,
-                DefaultDynamoDBAuditEntityConfiguration: DynamoDBAuditEntityConfiguration
             });
 
             const auditService = createElectroDBEntity({

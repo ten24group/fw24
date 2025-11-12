@@ -685,7 +685,6 @@ export class DIContainer implements IDIContainer {
         });
 
         if (bestProviders.length === 0) {
-            this.logProviders(true);
             throw new NoProviderFoundError(token, this, criteria);
         }
         const options = bestProviders[ 0 ];
@@ -1169,7 +1168,7 @@ export class DIContainer implements IDIContainer {
                     provide: (ip._provider.provide as any).name ? (ip._provider.provide as any).name : ip._provider.provide
                 }
             };
-            this.logger.debug(`Provider: [${ip._container.containerId}] - ${ip._provider._token}:`, { options: filtered });
+            this.logger.debug(`Provider: [${ip._container.containerId}] - ${ip._provider._token}:`);
         }
     }
 

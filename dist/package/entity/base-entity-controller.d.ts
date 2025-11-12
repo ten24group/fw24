@@ -88,6 +88,72 @@ export declare class BaseEntityController<Sch extends EntitySchema<any, any, any
      */
     delete(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response>;
     /**
+     * BULK DELETE OPERATIONS
+     * =======================
+     *
+     * The following methods are commented out by default as they are dangerous operations
+     * that can delete multiple records at once. To enable them in your controller:
+     *
+     * 1. Uncomment the method(s) you need
+     * 2. Add appropriate authorization checks
+     * 3. Consider adding additional safety measures (e.g., dry-run mode, confirmation tokens)
+     * 4. Add audit logging
+     *
+     * Example usage in a specific entity controller:
+     *
+     * ```typescript
+     * export class MyEntityController extends BaseEntityController<MyEntitySchema> {
+     *     // Uncomment and customize the bulk delete methods below
+     * }
+     * ```
+     */
+    /**
+     * Batch deletes multiple entities by their IDs.
+     *
+     * ⚠️ DANGEROUS OPERATION - Enable only in specific controllers with proper authorization
+     *
+     * @param {Request} req - The request object with body: { ids: Array<identifiers>, concurrent?: number }
+     * @param {Response} res - The response object.
+     * @returns {Promise<Response>} A promise that resolves with the response.
+     *
+     * @example
+     * // Request body:
+     * {
+     *   "ids": [
+     *     { "id": "item1" },
+     *     { "id": "item2" },
+     *     { "id": "item3" }
+     *   ],
+     *   "concurrent": 2
+     * }
+     */
+    batchDelete(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response>;
+    /**
+     * Deletes entities based on filter criteria.
+     *
+     * ⚠️ EXTREMELY DANGEROUS OPERATION - Enable only in specific controllers with strict authorization
+     *
+     * This endpoint queries for entities matching the filters and batch deletes them.
+     * It includes safety measures like requiring filters and optional maxItems limit.
+     *
+     * @param {Request} req - The request object with body containing filters and options
+     * @param {Response} res - The response object.
+     * @returns {Promise<Response>} A promise that resolves with the response.
+     *
+     * @example
+     * // Request body:
+     * {
+     *   "filters": {
+     *     "status": { "eq": "inactive" },
+     *     "lastLoginAt": { "lt": "2023-01-01" }
+     *   },
+     *   "batchSize": 50,
+     *   "concurrent": 2,
+     *   "maxItems": 1000
+     * }
+     */
+    deleteByQuery(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response>;
+    /**
      * Performs a custom query on the entity.
      * @param {Request} req - The request object.
      * @param {Response} res - The response object.

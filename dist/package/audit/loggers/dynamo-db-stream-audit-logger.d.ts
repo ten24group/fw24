@@ -14,7 +14,16 @@ export declare class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<Dyn
     protected initializeAuditLogger(): void;
     protected getAuditLogger(): IAuditLogger;
     protected getAllowedEntityNames(): string[] | undefined;
-    protected getIgnoredEntityNames(): string[] | undefined;
+    protected getExcludedEntityNames(): string[] | undefined;
+    /**
+     * Determines if an entity should be audited based on allowed/excluded lists.
+     * Logic:
+     * - If allowedEntityNames is provided, only audit entities in that list
+     * - If excludedEntityNames is provided (and no allowedEntityNames), audit all except excluded
+     * - If neither is provided, audit all except 'auditLog' (default behavior)
+     * - allowedEntityNames takes precedence over excludedEntityNames
+     */
+    protected shouldAuditEntity(entityName: string): boolean;
     protected preprocessRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<BaseEventRecord<ChangeStreamPayload> | null>;
     protected processRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<void>;
     protected processRecordsBatch(records: BaseEventRecord<ChangeStreamPayload>[]): Promise<void>;

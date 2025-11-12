@@ -27,12 +27,12 @@ abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayl
 
   async LambdaHandler(event: TEvent | SQSEvent, context: Context) {
     const eventSource = event.Records && event.Records.length > 0 ? event.Records[ 0 ].eventSource : 'Unknown';
-    this.logger.info('Processing incoming stream event', {
+    this.logger.debug('Processing incoming stream event', {
       eventSourceFromRecord: eventSource,
       recordCount: event.Records?.length,
       processMode: this.processMode,
       event: event,
-      context: context
+      // context: context
     });
 
     this.logger.debug('Initializing event processor');
@@ -48,7 +48,7 @@ abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayl
 
     const records: BaseEventRecord<TPayload>[] = this.eventDataExtractor.extractData(event);
 
-    this.logger.info('Extracted records for processing', { recordCount: records.length, processMode: this.processMode });
+    this.logger.debug('Extracted records for processing', { recordCount: records.length, processMode: this.processMode });
 
     if (records.length === 0) {
       this.logger.info('No records extracted for processing from the event.');
@@ -61,7 +61,7 @@ abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayl
   protected async processRecords(records: BaseEventRecord<TPayload>[]) {
 
     const startTime = Date.now();
-    this.logger.info('Starting record processing', { recordCount: records.length, processMode: this.processMode });
+    this.logger.debug('Starting record processing', { recordCount: records.length, processMode: this.processMode });
 
     // Preprocess and filter
     const preprocessed: BaseEventRecord<TPayload>[] = [];
@@ -74,7 +74,7 @@ abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayl
       preprocessed.push(processed);
     }
 
-    this.logger.info('Preprocessing completed', { 
+    this.logger.debug('Preprocessing completed', { 
       originalCount: records.length, 
       preprocessedCount: preprocessed.length, 
       filteredCount: records.length - preprocessed.length,
@@ -87,14 +87,14 @@ abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayl
     }
 
     if (this.processMode === 'batch') {
-      this.logger.info('Executing batch processing mode', { recordCount: preprocessed.length });
+      this.logger.debug('Executing batch processing mode', { recordCount: preprocessed.length });
       await this.processRecordsBatch(preprocessed);
-      this.logger.info('Batch processing completed, running postprocessors');
+      this.logger.debug('Batch processing completed, running postprocessors');
       for (const rec of preprocessed) {
         await this.postprocessRecord(rec);
       }
     } else {
-      this.logger.info('Executing record-by-record processing mode', { recordCount: preprocessed.length });
+      this.logger.debug('Executing record-by-record processing mode', { recordCount: preprocessed.length });
       const processPromises = preprocessed.map(async (processedRecord) => {
         await this.processRecord(processedRecord);
         await this.postprocessRecord(processedRecord);
@@ -103,7 +103,7 @@ abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayl
     }
 
     const duration = Date.now() - startTime;
-    this.logger.info('Record processing completed', { 
+    this.logger.debug('Record processing completed', { 
       processedCount: preprocessed.length, 
       processMode: this.processMode, 
       durationMs: duration,

@@ -2,11 +2,12 @@ import { TablePropsV2, TableV2 } from "aws-cdk-lib/aws-dynamodb";
 import { TopicProps } from "aws-cdk-lib/aws-sns";
 import { DynamoEventSource, DynamoEventSourceProps, SqsEventSource, SqsEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
 import { LogGroup, LogGroupProps, RetentionDays } from "aws-cdk-lib/aws-logs";
-import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { StartingPosition } from "aws-cdk-lib/aws-lambda";
 import { RemovalPolicy, Stack } from "aws-cdk-lib";
-import { join } from "path";
+import { join, resolve } from "path";
 import { Duration } from "aws-cdk-lib";
+import { Queue } from "aws-cdk-lib/aws-sqs";
 
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
@@ -23,7 +24,7 @@ import { removeEmpty } from "../utils";
 
 interface NewQueueConfig {
     type: 'new';
-    customLambdaProps?: LambdaFunctionProps;
+    functionProps?: NodejsFunctionProps;
     queueProps?: QueueProps;
     sqsEventSourceProps?: SqsEventSourceProps;
     customQueueName?: string;
@@ -34,7 +35,13 @@ interface ExistingQueueConfig {
     existingQueueName: string;
 }
 
-type QueueConfig = NewQueueConfig | ExistingQueueConfig;
+interface HandlerQueueConfig {
+    type: 'handler';
+    queueHandlerPath: string;
+    functionProps?: NodejsFunctionProps;
+}
+
+type QueueConfig = NewQueueConfig | ExistingQueueConfig | HandlerQueueConfig;
 
 export type SearchEngineConfig = {
     type: 'meili',
@@ -63,14 +70,16 @@ export interface SearchIndexingConfig extends IConstructConfig {
     enabled?: boolean;
     /**
      * List of allowed entity names to be indexed.
-     * If not provided, all entities will be indexed.
+     * If not provided, all entities will be indexed except those in excludedEntityNames or system entities.
+     * Takes precedence over excludedEntityNames if both are provided.
      */
     allowedEntityNames?: string[];
     /**
-     * List of entity names to be ignored from indexing.
-     * Takes precedence over allowedEntityNames - if an entity is in both lists, it will be ignored.
+     * List of entity names to exclude from indexing.
+     * If allowedEntityNames is provided, this field is ignored.
+     * If neither allowedEntityNames nor excludedEntityNames is provided, defaults to excluding system entities like 'auditLog'.
      */
-    ignoredEntityNames?: string[];
+    excludedEntityNames?: string[];
     /**
      * Search engine configuration that defines which search provider to use and its connection details.
      * 
@@ -87,13 +96,14 @@ export interface SearchIndexingConfig extends IConstructConfig {
      */
     engineConfig: SearchEngineConfig;
     /**
-     * Custom lambda function properties for search indexing processing.
-     * When provided, completely replaces the default search indexer handler.
-     * Custom handlers can extend base classes and reuse framework utilities.
+     * Custom function properties for the search indexing Lambda.
+     * Allows overriding function configuration like VPC, memory, timeout, etc.
      * 
-     * **Note:** Ignored when `existingQueueName` is provided (existing queues have their own handlers)
+     * **Note:** 
+     * - Properties specified here will override the queue's @Queue decorator functionProps
+     * - Ignored when `existingQueueName` is provided (existing queues have their own handlers)
      */
-    lambdaFunctionProps?: LambdaFunctionProps;
+    functionProps?: NodejsFunctionProps;
     /**
      * Custom queue name for creating a new search indexing queue.
      * If not provided, defaults to `${tableName}-search-indexer`
@@ -124,9 +134,35 @@ export interface SearchIndexingConfig extends IConstructConfig {
      */
     existingQueueName?: string;
     /**
+     * Path to queue handler file for manual registration.
+     * The queue handler must have `manualRegistration: true` in its @Queue config.
+     * DynamoDB construct will create the queue and automatically subscribe it to the stream topic.
+     * 
+     * **Example:**
+     * ```typescript
+     * // In src/queues/meilisearch-sync.ts:
+     * @Queue('MeilisearchSync', {
+     *   manualRegistration: true,
+     *   resourceAccess: { tables: ['plusfan'] },
+     *   // ... other queue config
+     * })
+     * export class MeilisearchSync extends BaseSearchIndexer { ... }
+     * 
+     * // In index.ts:
+     * searchIndexing: [{
+     *   enabled: true,
+     *   queueHandlerPath: './src/queues/meilisearch-sync.ts',
+     *   engineConfig: { type: 'meili', host: '...', masterKey: '...' }
+     * }]
+     * ```
+     * 
+     * **Note:** Cannot be used with `queueName`, `existingQueueName`, or `lambdaFunctionProps`
+     */
+    queueHandlerPath?: string;
+    /**
      * Search indexing queue properties (only used when creating a new queue)
      * 
-     * **Note:** Ignored when `existingQueueName` is provided
+     * **Note:** Ignored when `existingQueueName` or `queueHandlerPath` is provided
      */
     queueProps?: QueueProps;
     /**
@@ -277,27 +313,30 @@ interface AuditConfig extends IConstructConfig {
     enabled?: boolean;
     /**
      * List of allowed entity names to be audited.
-     * If not provided, all entities will be audited. except `auditLog`.
+     * If not provided, all entities will be audited except those in excludedEntityNames or system entities.
+     * Takes precedence over excludedEntityNames if both are provided.
      */
     allowedEntityNames?: string[];
     /**
-     * List of entity names to be ignored from auditing.
-     * Takes precedence over allowedEntityNames - if an entity is in both lists, it will be ignored.
+     * List of entity names to exclude from auditing.
+     * If allowedEntityNames is provided, this field is ignored.
+     * If neither allowedEntityNames nor excludedEntityNames is provided, defaults to excluding system entities like 'auditLog'.
      */
-    ignoredEntityNames?: string[];
+    excludedEntityNames?: string[];
     /**
      * The type of audit logger to use.
      * @default 'console'
      */
     type?: AuditLoggerType;
     /**
-     * Custom lambda function properties for audit processing.
-     * When provided, completely replaces the default audit handler.
-     * Custom handlers can extend base classes and reuse framework utilities.
+     * Custom function properties for the audit Lambda.
+     * Allows overriding function configuration like VPC, memory, timeout, etc.
      * 
-     * **Note:** Ignored when `existingQueueName` is provided (existing queues have their own handlers)
+     * **Note:** 
+     * - Properties specified here will override the queue's @Queue decorator functionProps
+     * - Ignored when `existingQueueName` is provided (existing queues have their own handlers)
      */
-    lambdaFunctionProps?: LambdaFunctionProps;
+    functionProps?: NodejsFunctionProps;
     /**
      * Options for the audit logger.
      */
@@ -354,9 +393,37 @@ interface AuditConfig extends IConstructConfig {
          */
         existingQueueName?: string;
         /**
+         * Path to queue handler file for manual registration.
+         * The queue handler must have `manualRegistration: true` in its @Queue config.
+         * DynamoDB construct will create the queue and automatically subscribe it to the stream topic.
+         * 
+         * **Example:**
+         * ```typescript
+         * // In src/queues/custom-audit.ts:
+         * @Queue('CustomAudit', {
+         *   manualRegistration: true,
+         *   resourceAccess: { tables: ['plusfan'] },
+         *   // ... other queue config
+         * })
+         * export class CustomAudit extends BaseAuditLogger { ... }
+         * 
+         * // In index.ts:
+         * audit: {
+         *   enabled: true,
+         *   type: AuditLoggerType.DYNAMODB,
+         *   dynamodbstreamOptions: {
+         *     queueHandlerPath: './src/queues/custom-audit.ts'
+         *   }
+         * }
+         * ```
+         * 
+         * **Note:** Cannot be used with `queueName`, `existingQueueName`, or custom `lambdaFunctionProps`
+         */
+        queueHandlerPath?: string;
+        /**
          * Audit queue properties (only used when creating a new queue)
          * 
-         * **Note:** Ignored when `existingQueueName` is provided
+         * **Note:** Ignored when `existingQueueName` or `queueHandlerPath` is provided
          */
         queueProps?: QueueProps;
         /**
@@ -426,13 +493,13 @@ export class DynamoDBConstruct implements FW24Construct {
         }
 
         if (this.dynamoDBConfig.table.audit?.enabled) {
-            this.setupAuditProcessing(this.dynamoDBConfig.table.audit, tableInstance);
+            await this.setupAuditProcessing(this.dynamoDBConfig.table.audit, tableInstance);
         }
 
         if (hasSearchIndexingEnabled) {
-            this.dynamoDBConfig.table.searchIndexing?.forEach(config => {
-                this.setupSearchIndexingProcessing(config, tableInstance);
-            });
+            for (const config of this.dynamoDBConfig.table.searchIndexing || []) {
+                await this.setupSearchIndexingProcessing(config, tableInstance);
+            }
         }
     }
 
@@ -486,14 +553,14 @@ export class DynamoDBConstruct implements FW24Construct {
         this.logger.info('Stream processing setup completed for table:', this.dynamoDBConfig.table.name);
     }
 
-    private setupStreamEventConsumers(
+    private async setupStreamEventConsumers(
         tableInstance: TableV2,
         consumerName: string,
         config: AuditConfig | SearchIndexingConfig,
         defaultHandlerEntry: string,
         environmentVariables: Record<string, string>,
         resourceAccess?: any,
-    ): void {
+    ): Promise<void> {
         if (!tableInstance.tableStreamArn) {
             this.logger.warn(`Stream ARN not found for table ${this.dynamoDBConfig.table.name}, cannot set up ${consumerName}`);
             return;
@@ -504,10 +571,12 @@ export class DynamoDBConstruct implements FW24Construct {
         // Validate configuration
         this.validateQueueConfig(config, consumerName);
 
-        if (queueConfig.type === 'existing') {
+        if (queueConfig.type === 'handler') {
+            await this.setupWithQueueHandler(queueConfig.queueHandlerPath, consumerName, environmentVariables, queueConfig.functionProps);
+        } else if (queueConfig.type === 'existing') {
             this.setupWithExistingQueue(queueConfig.existingQueueName, consumerName);
         } else {
-            const commonConfig = this.buildCommonLambdaConfig(defaultHandlerEntry, environmentVariables, resourceAccess, queueConfig.customLambdaProps);
+            const commonConfig = this.buildCommonLambdaConfig(defaultHandlerEntry, environmentVariables, resourceAccess, queueConfig.functionProps);
             this.setupWithNewQueue(queueConfig, consumerName, commonConfig);
         }
 
@@ -525,8 +594,8 @@ export class DynamoDBConstruct implements FW24Construct {
             if (searchConfig.existingQueueName && searchConfig.queueProps) {
                 this.logger.warn(`${consumerName}: 'queueProps' provided with 'existingQueueName'. Queue properties are ignored when using existing queues.`);
             }
-            if (searchConfig.existingQueueName && searchConfig.lambdaFunctionProps) {
-                this.logger.warn(`${consumerName}: 'lambdaFunctionProps' provided with 'existingQueueName'. Lambda properties are ignored when using existing queues (they have their own handlers).`);
+            if (searchConfig.existingQueueName && searchConfig.functionProps) {
+                this.logger.warn(`${consumerName}: 'functionProps' provided with 'existingQueueName'. Function properties are ignored when using existing queues (they have their own handlers).`);
             }
         } else {
             const auditConfig = config as AuditConfig;
@@ -537,8 +606,8 @@ export class DynamoDBConstruct implements FW24Construct {
             if (options?.existingQueueName && options?.queueProps) {
                 this.logger.warn(`${consumerName}: 'queueProps' provided with 'existingQueueName'. Queue properties are ignored when using existing queues.`);
             }
-            if (options?.existingQueueName && auditConfig.lambdaFunctionProps) {
-                this.logger.warn(`${consumerName}: 'lambdaFunctionProps' provided with 'existingQueueName'. Lambda properties are ignored when using existing queues (they have their own handlers).`);
+            if (options?.existingQueueName && auditConfig.functionProps) {
+                this.logger.warn(`${consumerName}: 'functionProps' provided with 'existingQueueName'. Function properties are ignored when using existing queues (they have their own handlers).`);
             }
         }
     }
@@ -550,7 +619,13 @@ export class DynamoDBConstruct implements FW24Construct {
         if (isSearchConfig) {
             const searchConfig = config as SearchIndexingConfig;
             
-            if ('existingQueueName' in searchConfig && searchConfig.existingQueueName) {
+            if ('queueHandlerPath' in searchConfig && searchConfig.queueHandlerPath) {
+                return {
+                    type: 'handler',
+                    queueHandlerPath: searchConfig.queueHandlerPath,
+                    functionProps: searchConfig.functionProps,
+                };
+            } else if ('existingQueueName' in searchConfig && searchConfig.existingQueueName) {
                 return {
                     type: 'existing',
                     existingQueueName: searchConfig.existingQueueName,
@@ -558,7 +633,7 @@ export class DynamoDBConstruct implements FW24Construct {
             } else {
                 return {
                     type: 'new',
-                    customLambdaProps: searchConfig.lambdaFunctionProps,
+                    functionProps: searchConfig.functionProps,
                     queueProps: searchConfig.queueProps,
                     sqsEventSourceProps: searchConfig.sqsEventSourceProps,
                     customQueueName: searchConfig.queueName,
@@ -569,7 +644,13 @@ export class DynamoDBConstruct implements FW24Construct {
             const auditConfig = config as AuditConfig;
             const options = auditConfig.dynamodbstreamOptions;
             
-            if (options && 'existingQueueName' in options && options.existingQueueName) {
+            if (options && 'queueHandlerPath' in options && options.queueHandlerPath) {
+                return {
+                    type: 'handler',
+                    queueHandlerPath: options.queueHandlerPath,
+                    functionProps: auditConfig.functionProps,
+                };
+            } else if (options && 'existingQueueName' in options && options.existingQueueName) {
                 return {
                     type: 'existing',
                     existingQueueName: options.existingQueueName,
@@ -577,7 +658,7 @@ export class DynamoDBConstruct implements FW24Construct {
             } else {
                 return {
                     type: 'new',
-                    customLambdaProps: auditConfig.lambdaFunctionProps,
+                    functionProps: auditConfig.functionProps,
                     queueProps: options?.queueProps,
                     sqsEventSourceProps: options?.sqsEventSourceProps,
                     customQueueName: options?.queueName,
@@ -590,20 +671,13 @@ export class DynamoDBConstruct implements FW24Construct {
         defaultHandlerEntry: string,
         environmentVariables: Record<string, string>,
         resourceAccess: any,
-        customLambdaProps?: LambdaFunctionProps
+        functionProps?: NodejsFunctionProps
     ): LambdaFunctionProps {
-        const props = customLambdaProps || {} as LambdaFunctionProps;
         return {
-            ...props,
-            entry: props.entry || defaultHandlerEntry,
-            environmentVariables: {
-                ...environmentVariables,
-                ...props.environmentVariables,
-            },
-            resourceAccess: {
-                ...resourceAccess,
-                ...props.resourceAccess,
-            },
+            entry: defaultHandlerEntry,
+            environmentVariables,
+            resourceAccess,
+            functionProps,
         };
     }
 
@@ -625,6 +699,88 @@ export class DynamoDBConstruct implements FW24Construct {
             this.logger.error(`Queue '${existingQueueName}' not found for ${consumerName}. Ensure it's defined with @Queue('${existingQueueName}') decorator.`);
             throw error;
         }
+    }
+
+    private async setupWithQueueHandler(
+        queueHandlerPath: string,
+        consumerName: string,
+        environmentVariables: Record<string, string>,
+        functionProps?: NodejsFunctionProps
+    ): Promise<void> {
+        this.logger.info(`Loading queue handler from: ${queueHandlerPath}`);
+        
+        // Dynamic import (same pattern as QueueConstruct uses via Helper.registerHandlers)
+        const absolutePath = resolve(queueHandlerPath);
+        const queueModule = await import(absolutePath);
+        
+        // Find queue class (same logic as Helper.registerHandlers)
+        let QueueClass : (new (...args: any[]) => any) | undefined;
+        for (const exportedItem of Object.values(queueModule)) {
+            if (typeof exportedItem === "function" && exportedItem.name !== "handler") {
+                QueueClass = exportedItem as new (...args: any[]) => any;
+                break;
+            }
+        }
+        
+        if (!QueueClass) {
+            throw new Error(`No queue class found in ${queueHandlerPath}`);
+        }
+        
+        // Instantiate to get config (same as QueueConstruct does)
+        const handlerInstance = new QueueClass();
+        const queueName = handlerInstance.queueName;
+        const queueConfig = handlerInstance.queueConfig || {};
+        
+        // Validate manual registration flag
+        if (!queueConfig.manualRegistration) {
+            throw new Error(
+                `Queue '${queueName}' must have manualRegistration: true in its @Queue config to use queueHandlerPath`
+            );
+        }
+        
+        this.logger.info(`Creating queue ${queueName} for ${consumerName}`);
+        
+        // Merge environment variables
+        const mergedEnvVars = {
+            ...environmentVariables,
+            ...this.fw24.resolveEnvVariables(queueConfig.env)
+        };
+        
+        // Merge function props (same pattern as QueueConstruct)
+        // functionProps from searchIndexing/audit config take precedence
+        const mergedFunctionProps = { ...queueConfig.functionProps, ...functionProps };
+        
+        // Create queue + lambda (same pattern as QueueConstruct, but with subscription to stream topic)
+        const queue = new QueueLambda(this.mainStack, `${queueName}-queue`, {
+            queueName: queueName,
+            queueProps: queueConfig.queueProps,
+            visibilityTimeoutSeconds: queueConfig.visibilityTimeoutSeconds,
+            receiveMessageWaitTimeSeconds: queueConfig.receiveMessageWaitTimeSeconds,
+            retentionPeriodDays: queueConfig.retentionPeriodDays,
+            maxReceiveCount: queueConfig.maxReceiveCount,
+            sqsEventSourceProps: queueConfig.sqsEventSourceProps,
+            subscriptions: {
+                topics: [{
+                    name: this.getStreamTopicName(),
+                    filters: [],
+                }],
+            },
+            lambdaFunctionProps: {
+                entry: absolutePath,
+                environmentVariables: mergedEnvVars,
+                resourceAccess: queueConfig.resourceAccess,
+                functionProps: mergedFunctionProps,
+                functionTimeout: queueConfig.functionTimeout,
+                policies: queueConfig.policies,
+                logRemovalPolicy: queueConfig.logRemovalPolicy,
+                logRetentionDays: queueConfig.logRetentionDays,
+            }
+        }) as Queue;
+        
+        // Register output (same as QueueConstruct does)
+        this.fw24.setConstructOutput(this, queueName, queue, OutputType.QUEUE, 'queueName');
+        
+        this.logger.info(`${consumerName} queue created successfully: ${queueName}`);
     }
 
     private setupWithNewQueue(
@@ -658,7 +814,7 @@ export class DynamoDBConstruct implements FW24Construct {
         };
     }
 
-    private setupAuditProcessing(config: AuditConfig, tableInstance: TableV2): void {
+    private async setupAuditProcessing(config: AuditConfig, tableInstance: TableV2): Promise<void> {
         // Set audit configuration in environment variables for lambda functions
         const envVars: Record<string, string> = {
             [ AUDIT_ENV_KEYS.TYPE ]: config.type || AuditLoggerType.CLOUDWATCH,
@@ -669,8 +825,8 @@ export class DynamoDBConstruct implements FW24Construct {
             envVars[ AUDIT_ENV_KEYS.ALLOWED_ENTITY_NAMES ] = config.allowedEntityNames.join(',');
         }
 
-        if (config.ignoredEntityNames && config.ignoredEntityNames.length > 0) {
-            envVars[ AUDIT_ENV_KEYS.IGNORED_ENTITY_NAMES ] = config.ignoredEntityNames.join(',');
+        if (config.excludedEntityNames && config.excludedEntityNames.length > 0) {
+            envVars[ AUDIT_ENV_KEYS.EXCLUDED_ENTITY_NAMES ] = config.excludedEntityNames.join(',');
         }
 
         if (config.type === AuditLoggerType.DYNAMODB) {
@@ -698,7 +854,7 @@ export class DynamoDBConstruct implements FW24Construct {
 
         removeEmpty(envVars);
 
-        this.setupStreamEventConsumers(
+        await this.setupStreamEventConsumers(
             tableInstance,
             'entity-audit',
             config,
@@ -724,7 +880,7 @@ export class DynamoDBConstruct implements FW24Construct {
         }
     }
 
-    private setupSearchIndexingProcessing(config: SearchIndexingConfig, tableInstance: TableV2): void {
+    private async setupSearchIndexingProcessing(config: SearchIndexingConfig, tableInstance: TableV2): Promise<void> {
         // Set search indexing configuration in environment variables for lambda functions
         this.logger.info('Setting up search indexing processing for table:', this.dynamoDBConfig.table.name);
 
@@ -747,12 +903,12 @@ export class DynamoDBConstruct implements FW24Construct {
             envVars[ SEARCH_INDEXER_ENV_KEYS.ALLOWED_ENTITY_NAMES ] = config.allowedEntityNames.join(',');
         }
 
-        if (config.ignoredEntityNames && config.ignoredEntityNames.length > 0) {
-            envVars[ SEARCH_INDEXER_ENV_KEYS.IGNORED_ENTITY_NAMES ] = config.ignoredEntityNames.join(',');
+        if (config.excludedEntityNames && config.excludedEntityNames.length > 0) {
+            envVars[ SEARCH_INDEXER_ENV_KEYS.EXCLUDED_ENTITY_NAMES ] = config.excludedEntityNames.join(',');
         }
 
         // Create QueueLambda for processing search indexing events from the stream topic
-        this.setupStreamEventConsumers(
+        await this.setupStreamEventConsumers(
             tableInstance,
             'search-indexer',
             config,

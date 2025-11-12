@@ -5,6 +5,7 @@ export * from './dynamodb';
 export * from './layer';
 export * from './di-layer';
 export * from './fargate';
+export * from './ec2';
 export * from './mailer';
 export * from './queue';
 export * from './scheduler';

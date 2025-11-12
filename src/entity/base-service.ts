@@ -12,7 +12,7 @@ import { EntitySearchQuery } from '../search/types';
 import { makeEntitySearchIndexName } from '../search/search-utils';
 import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
-import { UpdateEntityOperators, createEntity, deleteEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
+import { UpdateEntityOperators, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
 import { EntitySchemaValidator } from "./entity-schema-validator";
 import { DatabaseError, EntityValidationError } from './errors';
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
@@ -434,11 +434,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 continue;
             }
 
-            if (formattedAtt.isVisible) {
+            if (formattedAtt.isVisible || formattedAtt.isIdentifier) {
                 outputSchemaAttributes.detail.set(attName, { ...formattedAtt });
             }
 
-            if (formattedAtt.isListable) {
+            if (formattedAtt.isListable || formattedAtt.isIdentifier) {
                 outputSchemaAttributes.list.set(attName, { ...formattedAtt });
             }
 
@@ -632,7 +632,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         return pickKeys<T>(record, ...keys);
     }
 
-    public serializeRecords<T extends Record<string, any>>(record: Array<T>, attributes = this.getDefaultSerializationAttributeNames()): Array<Partial<T>> {
+    public serializeRecords<T extends Record<string, any>>(record: Array<T> | null, attributes = this.getDefaultSerializationAttributeNames()): Array<Partial<T>> {
+        if (!record || !Array.isArray(record)) {
+            return [];
+        }
         return record.map(record => this.serializeRecord<T>(record, attributes));
     }
 
@@ -1133,7 +1136,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     ): T {
 
         if (!ctx?.actor) {
-            this.logger.warn('BaseEntityService: No actor context found, skipping injection');
+            this.logger.debug('BaseEntityService: No actor context found, skipping injection');
             return data;
         }
 
@@ -1258,18 +1261,21 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      *   - It's the responsibility of the caller to ensure the read ony attributes are not provided if the record is being upsert.
      * 
      * @param payload - The payload for creating-OR-updating the entity.
-     * @returns The created-OR-updated entity.
+     * @returns Object containing:
+     *   - data: The upserted entity data
+     *   - wasCreated: true if record was created, false if updated
+     *   - oldData: previous data if it was an update (undefined for creates)
      */
     public async upsert(payload: UpsertEntityItemTypeFromSchema<S>) {
         this.logger.debug(`Called ~ upsert ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
 
-        const entity = await upsertEntity<S>({
+        const result = await upsertEntity<S>({
             data: payload,
             entityName: this.getEntityName(),
             entityService: this,
         });
 
-        return entity;
+        return result;
     }
 
     /**
@@ -1550,6 +1556,181 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
 
     /**
+     * Deletes multiple entities in a batch operation.
+     * 
+     * @param options - The options for batch deleting entities.
+     * @param options.identifiers - Array of entity identifiers to delete.
+     * @param options.concurrent - Optional number of concurrent batch operations to perform (default: 1).
+     * @param ctx - Optional execution context containing actor information.
+     * @returns A promise that resolves to an object containing any unprocessed items.
+     * 
+     * @example
+     * ```typescript
+     * // Delete multiple entities
+     * const result = await service.batchDelete({
+     *   identifiers: [
+     *     { id: 'item1' },
+     *     { id: 'item2' },
+     *     { id: 'item3' }
+     *   ],
+     *   concurrent: 2
+     * });
+     * 
+     * if (result.unprocessed.length > 0) {
+     *   console.log('Some items were not deleted:', result.unprocessed);
+     * }
+     * ```
+     */
+    public async batchDelete(options: {
+        identifiers: Array<EntityIdentifiersTypeFromSchema<S>>,
+        concurrent?: number
+    }, ctx?: ExecutionContext) {
+        try {
+            const { identifiers, concurrent = 1 } = options;
+            
+            this.logger.debug(`Called ~ batchDelete ~ entityName: ${this.getEntityName()} ~ count: ${identifiers.length}`, {
+                concurrent
+            });
+
+            const result = await deleteBatchEntity<S>({
+                ids: identifiers,
+                entityName: this.getEntityName(),
+                entityService: this,
+                actor: ctx?.actor,
+                tenant: ctx?.actor?.tenantId,
+                concurrent
+            });
+
+            // ElectroDB batch delete returns { unprocessed: Array }
+            const unprocessedCount = (result as any)?.unprocessed?.length || 0;
+            const dataCount = result.data?.length;
+            this.logger.debug(`Completed ~ batchDelete ~ entityName: ${this.getEntityName()} ~ processed: ${identifiers.length}, dataCount: ${dataCount}, unprocessed: ${unprocessedCount}`);
+
+            return result;
+        } catch (error: any) {
+            throw new DatabaseError(`Failed to batch delete ${this.getEntityName()}: ${error.message}`);
+        }
+    }
+
+    /**
+     * Deletes entities based on a query filter.
+     * This method queries for entities matching the filter and then batch deletes them.
+     * 
+     * @param options - The options for deleting by query.
+     * @param options.filters - The filter criteria to match entities for deletion.
+     * @param options.batchSize - The number of items to delete in each batch (default: 25).
+     * @param options.concurrent - Number of concurrent batch operations (default: 1).
+     * @param options.maxItems - Optional maximum number of items to delete (safety limit).
+     * @param ctx - Optional execution context containing actor information.
+     * @returns A promise that resolves to an object with deletion statistics.
+     * 
+     * @example
+     * ```typescript
+     * // Delete all inactive users
+     * const result = await userService.deleteByQuery({
+     *   filters: {
+     *     status: { eq: 'inactive' },
+     *     lastLoginAt: { lt: '2023-01-01' }
+     *   },
+     *   batchSize: 50,
+     *   maxItems: 1000
+     * });
+     * 
+     * console.log(`Deleted ${result.deletedCount} items, ${result.failedCount} failed`);
+     * ```
+     */
+    public async deleteByQuery(options: {
+        filters: EntityFilterCriteria<S>,
+        batchSize?: number,
+        concurrent?: number,
+        maxItems?: number
+    }, ctx?: ExecutionContext) {
+        try {
+            const { filters, batchSize = 25, concurrent = 1, maxItems } = options;
+            
+            this.logger.info(`Called ~ deleteByQuery ~ entityName: ${this.getEntityName()}`, {
+                filters,
+                batchSize,
+                maxItems
+            });
+
+            // Safety check: require filters to prevent accidental deletion of all records
+            if (!filters || isEmptyObjectDeep(filters)) {
+                throw new Error('deleteByQuery requires filters to prevent accidental deletion of all records. Use scan with explicit confirmation if you need to delete all records.');
+            }
+
+            let deletedCount = 0;
+            let failedCount = 0;
+            let cursor: string | null = null;
+            let totalProcessed = 0;
+
+            // Query and delete in batches
+            do {
+                // Fetch a batch of items to delete
+                const queryResult = await this.query({
+                    filters,
+                    pagination: {
+                        count: batchSize,
+                        cursor: cursor || undefined,
+                        order: 'asc',
+                        pager: 'cursor'
+                    }
+                }, ctx);
+
+                const itemsToDelete = queryResult.data;
+                
+                if (!itemsToDelete || itemsToDelete.length === 0) {
+                    break;
+                }
+
+                this.logger.debug(`Deleting batch of ${itemsToDelete.length} items`);
+
+                // Extract identifiers from the fetched items
+                const identifiers = itemsToDelete.map(item => 
+                    this.extractEntityIdentifiers(item as any)
+                ) as Array<EntityIdentifiersTypeFromSchema<S>>;
+
+                // Batch delete the items
+                const deleteResult = await this.batchDelete({
+                    identifiers,
+                    concurrent
+                }, ctx);
+
+                const unprocessedCount = (deleteResult as any)?.unprocessed?.length || 0;
+                const dataCount = deleteResult.data?.length;
+                const batchDeletedCount = identifiers.length - unprocessedCount;
+                deletedCount += batchDeletedCount;
+                failedCount += unprocessedCount;
+                totalProcessed += itemsToDelete.length;
+
+                this.logger.debug(`Batch result: ${batchDeletedCount} deleted, ${unprocessedCount} failed`);
+
+                // Check if we've hit the max items limit
+                if (maxItems && totalProcessed >= maxItems) {
+                    this.logger.warn(`Reached maxItems limit of ${maxItems}, stopping deletion`);
+                    break;
+                }
+
+                // Update cursor for next iteration
+                cursor = queryResult.cursor || null;
+
+            } while (cursor);
+
+            this.logger.info(`Completed ~ deleteByQuery ~ entityName: ${this.getEntityName()} ~ deleted: ${deletedCount}, failed: ${failedCount}`);
+
+            return {
+                deletedCount,
+                failedCount,
+                totalProcessed
+            };
+
+        } catch (error: any) {
+            this.logger.error(`Failed to delete by query for ${this.getEntityName()}:`, error);
+            throw new DatabaseError(`Failed to delete by query for ${this.getEntityName()}: ${error.message}`);
+        }
+    }
+
+    /**
      * Rebuilds all indexes for the entity by writing to the primary index.
      * This method is useful for maintaining data integrity and ensuring indexes are properly updated.
      * 
@@ -1711,6 +1892,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
 }
 
+const entityAttributeLogger = createLogger('entityAttributeToIOSchemaAttribute');
+
 export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAttribute): Partial<EntityAttribute> & {
     id: string,
     name: string,
@@ -1723,7 +1906,38 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
 
     const relationMeta = relatedEntityName ? { ...restRelation, entityName: relatedEntityName } : undefined;
 
-    const { items, type, properties, addNewOption, ...restRestMeta } = restMeta as any;
+    const { items, type, properties, addNewOption, addNewOptionConfig, fieldType: explicitFieldType, options, ...restRestMeta } = restMeta as any;
+
+    // Infer fieldType from type if not explicitly provided
+    let inferredFieldType: string | undefined = explicitFieldType;
+    if (!inferredFieldType && type) {
+        if (type === 'boolean') {
+            inferredFieldType = 'boolean';
+        } else if (type === 'number') {
+            inferredFieldType = 'number';
+        } else if (Array.isArray(type)) {
+            // Enum type like ['active', 'inactive']
+            inferredFieldType = 'select';
+        } else if (type === 'string' && options && Array.isArray(options) && options.length > 0) {
+            // String with options is a select
+            inferredFieldType = 'select';
+        } else if (type === 'any') {
+            inferredFieldType = 'json';
+        } else if (type === 'map') {
+            inferredFieldType = 'map';
+        } else if (type === 'list') {
+            inferredFieldType = 'list';
+        }
+        // For date fields, check attribute name as hint
+        else if (type === 'string') {
+            const lowerAttId = attId.toLowerCase();
+            if (lowerAttId.includes('date') || lowerAttId === 'createdat' || lowerAttId === 'updatedat' || lowerAttId === 'deletedat') {
+                inferredFieldType = 'datetime';
+            }
+        }
+
+        entityAttributeLogger.debug(`inferredFieldType: ${inferredFieldType} for entity attribute "${attId}" with type "${typeof type === 'object' ? JSON.stringify(type) : type}"`);
+    }
 
     const formatted: any = {
         ...restRestMeta,
@@ -1741,6 +1955,23 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         isSearchable: !('isSearchable' in att) ? true : att.isSearchable,
     }
 
+    // Add inferred or explicit fieldType
+    if (inferredFieldType) {
+        formatted.fieldType = inferredFieldType;
+    } else if (!explicitFieldType && type && type !== 'string') {
+        // Log warning for non-string types we couldn't infer
+        entityAttributeLogger.warn(`⚠️ Could not infer fieldType for attribute "${attId}" with type "${typeof type === 'object' ? JSON.stringify(type) : type}". Consider adding explicit fieldType.`);
+    }
+    
+    // Add options back if they exist
+    if (options) {
+        formatted.options = options;
+    }
+
+    // Pass through both old and new addNewOption formats
+    if (addNewOptionConfig) {
+        formatted[ 'addNewOptionConfig' ] = addNewOptionConfig;
+    }
     if (addNewOption) {
         formatted[ 'addNewOption' ] = addNewOption;
     }

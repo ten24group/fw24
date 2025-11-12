@@ -11,7 +11,7 @@ export declare class DynamoDBStreamSearchIndexer extends BaseSearchIndexer<Dynam
     private isEnabled;
     constructor();
     protected getAllowedEntityNames(): string[] | undefined;
-    protected getIgnoredEntityNames(): string[] | undefined;
+    protected getExcludedEntityNames(): string[] | undefined;
     initialize(_event: DynamoDBStreamEvent | SQSEvent): Promise<void>;
     protected processRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<void>;
     private extractSearchableData;

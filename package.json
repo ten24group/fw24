@@ -1,7 +1,7 @@
 {
     "name": "@ten24group/fw24",
     "description": "A modern, serverless, framework to launch software products quickly and scale seamlessly",
-    "version": "1.0.4-beta.3",
+    "version": "1.0.4-beta.15",
     "main": "./dist/package/fw24.js",
     "types": "./dist/package/fw24.d.ts",
     "repository": {
@@ -27,7 +27,7 @@
         "test": "jest",
         "release": "npm run build && standard-version && git push --follow-tags && npm publish",
         "release:BE:github": "npm run build && standard-version --prerelease beta && git push --follow-tags",
-        "release:BE": "release:BE:github && npm publish --tag bleeding-edge",
+        "release:BE": "npm run release:BE:github && npm publish --tag bleeding-edge",
         "layer:build": "esbuild --bundle --platform=node --sourcemap ./src/layer/fw24.ts --outdir=dist/layer/nodejs/node_modules",
         "layer:release": "npm run layer:build && cdk deploy"
     },

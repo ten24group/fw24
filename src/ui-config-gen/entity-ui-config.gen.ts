@@ -19,6 +19,7 @@ import {
 import { Fw24 } from '../core/fw24';
 import { Helper } from '../core/helper';
 import { LogDuration, createLogger } from '../logging';
+import { toSlug } from '../utils/cases';
 
 export class EntityUIConfigGen {
     readonly logger = createLogger(EntityUIConfigGen.name);
@@ -94,21 +95,31 @@ export class EntityUIConfigGen {
     }
 
     private getPageNameFromConfig(config: CustomPageOptions): string | null {
+        if (config.pageName) {
+            return toSlug(config.pageName);
+        }
+        
+        // For template-based page titles (objects), pageName MUST be provided
+        // Extract string from pageTitle (handles both string and Template types)
+        const pageTitleString = typeof config.pageTitle === 'string' 
+            ? config.pageTitle 
+            : 'custom-page'; // Fallback for Template objects
+        
         switch (config.pageType) {
             case 'list':
-                return `list-${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+                return `list-${toSlug(pageTitleString)}`;
             case 'form':
-                return config.pageTitle.toLowerCase().includes('add')
-                    ? `create-${config.pageTitle.toLowerCase().replace(/\s+/g, '-').replace('add-', '')}`
-                    : `edit-${config.pageTitle.toLowerCase().replace(/\s+/g, '-').replace('edit-', '')}`;
+                return pageTitleString.toLowerCase().includes('add')
+                    ? `create-${toSlug(pageTitleString)}`
+                    : `edit-${toSlug(pageTitleString)}`;
             case 'details':
-                return `view-${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+                return `view-${toSlug(pageTitleString)}`;
             case 'dashboard':
-                return `${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+                return `${toSlug(pageTitleString)}`;
             case 'accordion':
-                return `accordion-${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+                return `accordion-${toSlug(pageTitleString)}`;
             case 'menu':
-                return `${config.pageTitle.toLowerCase().replace(/\s+/g, '-')}`;
+                return `${toSlug(pageTitleString)}`;
             default:
                 return null;
         }
@@ -142,11 +153,20 @@ export class EntityUIConfigGen {
 
         this.logger.debug(`Ui-config-gen::: Process::: all-services: `, Array.from(services.keys()));
 
+        // Get global UI config options (including duplicatedFieldDetection)
+        const globalUIConfigOptions = Fw24.getInstance().getConfig().uiConfigGenOptions;
+        
         let menuIndex = 1;
         // generate UI configs
         services.forEach((service, entityName) => {
 
-            const entitySchema = service.getEntitySchema() as EntitySchema<any, any, any>;
+            let entitySchema = service.getEntitySchema() as EntitySchema<any, any, any>;
+            
+            // Check for deprecated usage and warn
+            this.checkDeprecatedUsage(entitySchema);
+            
+            // Transform legacy config structure to new nested structure if needed
+            entitySchema = this.transformLegacyConfig(entitySchema);
             const entityDefaultOpsSchema = service.getOpsDefaultIOSchema();
 
             if (!entitySchema.model.excludeFromAdminCreate) {
@@ -154,7 +174,11 @@ export class EntityUIConfigGen {
                     entityName,
                     entityNamePlural: entitySchema.model.entityNamePlural,
                     CRUDApiPath: entitySchema.model.CRUDApiPath,
-                    properties: entityDefaultOpsSchema.create.input
+                    properties: entityDefaultOpsSchema.create.input,
+                    // Use new nested config if available, fallback to old
+                    breadcrumbs: entitySchema.model.createPageConfig?.breadcrumbs || entitySchema.model.createPageBreadcrumbs,
+                    columnsConfig: entitySchema.model.createPageConfig?.columnsConfig || entitySchema.model.createPageColumnsConfig,
+                    formConfig: entitySchema.model.createPageConfig?.formConfig,
                 }, service);
                 entityConfigs[ `create-${entityName.toLowerCase()}` ] = createConfig;
             }
@@ -165,9 +189,11 @@ export class EntityUIConfigGen {
                     entityNamePlural: entitySchema.model.entityNamePlural,
                     CRUDApiPath: entitySchema.model.CRUDApiPath,
                     properties: entityDefaultOpsSchema.update.input,
-                    actions: entitySchema.model.editPageActions,
-                    breadcrumbs: entitySchema.model.editPageBreadcrumbs,
-                    columnsConfig: entitySchema.model.editPageColumnsConfig,
+                    // Use new nested config if available, fallback to old
+                    actions: entitySchema.model.editPageConfig?.actions || entitySchema.model.editPageActions,
+                    breadcrumbs: entitySchema.model.editPageConfig?.breadcrumbs || entitySchema.model.editPageBreadcrumbs,
+                    columnsConfig: entitySchema.model.editPageConfig?.columnsConfig || entitySchema.model.editPageColumnsConfig,
+                    formConfig: entitySchema.model.editPageConfig?.formConfig,
                 }, service);
                 entityConfigs[ `edit-${entityName.toLowerCase()}` ] = updateConfig;
             }
@@ -182,8 +208,14 @@ export class EntityUIConfigGen {
                     excludeFromAdminCreate: entitySchema.model.excludeFromAdminCreate,
                     excludeFromAdminUpdate: entitySchema.model.excludeFromAdminUpdate,
                     excludeFromAdminDelete: entitySchema.model.excludeFromAdminDelete,
-                    excludeFromAdminDetail: entitySchema.model.excludeFromAdminDetail
-                });
+                    excludeFromAdminDetail: entitySchema.model.excludeFromAdminDetail,
+                    // Use new nested config if available, fallback to old
+                    pageHeaderActions: entitySchema.model.listPageConfig?.actions || entitySchema.model.listPageActions,
+                    breadcrumbs: entitySchema.model.listPageConfig?.breadcrumbs || entitySchema.model.listPageBreadcrumbs,
+                    defaultSort: entitySchema.model.listPageConfig?.defaultSort || entitySchema.model.listPageDefaultSort,
+                    tableConfig: entitySchema.model.listPageConfig?.tableConfig,
+                    globalUIConfigOptions,  // NEW: Pass global config
+                }, service);
                 entityConfigs[ `list-${entityName.toLowerCase()}` ] = listConfig;
             }
 
@@ -193,9 +225,12 @@ export class EntityUIConfigGen {
                     entityNamePlural: entitySchema.model.entityNamePlural,
                     properties: entityDefaultOpsSchema.get.output,
                     CRUDApiPath: entitySchema.model.CRUDApiPath,
-                    actions: entitySchema.model.viewPageActions,
-                    breadcrumbs: entitySchema.model.viewPageBreadcrumbs,
-                    columnsConfig: entitySchema.model.viewPageColumnsConfig,
+                    // Use new nested config if available, fallback to old
+                    actions: entitySchema.model.viewPageConfig?.actions || entitySchema.model.viewPageActions,
+                    breadcrumbs: entitySchema.model.viewPageConfig?.breadcrumbs || entitySchema.model.viewPageBreadcrumbs,
+                    columnsConfig: entitySchema.model.viewPageConfig?.columnsConfig || entitySchema.model.viewPageColumnsConfig,
+                    fields: entitySchema.model.viewPageConfig?.fields,
+                    globalUIConfigOptions,  // NEW: Pass global config
                 }, service);
                 entityConfigs[ `view-${entityName.toLowerCase()}` ] = viewConfig;
             }
@@ -237,7 +272,9 @@ export class EntityUIConfigGen {
         // Look for a dashboard custom page
         let dashboardConfig: DashboardPageConfig | any = null;
         for (const [ , options ] of this.customPages) {
-            if (options.pageType === 'dashboard' && options.pageTitle.toLowerCase() === 'dashboard') {
+            // Check if this is a dashboard page - handle both string and Template pageTitle
+            const pageTitleStr = typeof options.pageTitle === 'string' ? options.pageTitle : '';
+            if (options.pageType === 'dashboard' && pageTitleStr.toLowerCase() === 'dashboard') {
                 dashboardConfig = options;
                 break;
             }
@@ -249,7 +286,9 @@ export class EntityUIConfigGen {
         // Look for a menu custom page
         let menuConfig: any = null;
         for (const [ pageName, options ] of this.customPages) {
-            if (options.pageType === 'menu' && options.pageTitle.toLowerCase() === 'menu') {
+            // Check if this is a menu page - handle both string and Template pageTitle
+            const pageTitleStr = typeof options.pageTitle === 'string' ? options.pageTitle : '';
+            if (options.pageType === 'menu' && pageTitleStr.toLowerCase() === 'menu') {
                 menuConfig = options;
                 break;
             }
@@ -306,6 +345,116 @@ export class EntityUIConfigGen {
         });
 
         await this.writeToFiles(allMenuItems, entityConfigs, authConfigs, dashboardConfig);
+    }
+
+    /**
+     * Transform legacy flat config structure to new nested structure
+     * Supports backward compatibility by transforming old properties to new format
+     */
+    private transformLegacyConfig(schema: EntitySchema<any, any, any>): EntitySchema<any, any, any> {
+        const model = schema.model;
+        
+        // If already using new format, return as-is
+        if (model.listPageConfig || model.viewPageConfig || model.editPageConfig || model.createPageConfig) {
+            return schema;
+        }
+        
+        // Transform old format to new nested structure
+        const transformedModel = {
+            ...model,
+            // List page transformation
+            listPageConfig: (model.listPageActions || model.listPageBreadcrumbs || model.listPageDefaultSort)
+                ? {
+                    actions: model.listPageActions,
+                    breadcrumbs: model.listPageBreadcrumbs,
+                    defaultSort: model.listPageDefaultSort
+                }
+                : undefined,
+            
+            // View page transformation
+            viewPageConfig: (model.viewPageActions || model.viewPageBreadcrumbs || model.viewPageColumnsConfig)
+                ? {
+                    actions: model.viewPageActions,
+                    breadcrumbs: model.viewPageBreadcrumbs,
+                    columnsConfig: model.viewPageColumnsConfig
+                }
+                : undefined,
+            
+            // Edit page transformation
+            editPageConfig: (model.editPageActions || model.editPageBreadcrumbs || model.editPageColumnsConfig)
+                ? {
+                    actions: model.editPageActions,
+                    breadcrumbs: model.editPageBreadcrumbs,
+                    columnsConfig: model.editPageColumnsConfig
+                }
+                : undefined,
+            
+            // Create page transformation
+            createPageConfig: (model.createPageBreadcrumbs || model.createPageColumnsConfig)
+                ? {
+                    breadcrumbs: model.createPageBreadcrumbs,
+                    columnsConfig: model.createPageColumnsConfig
+                }
+                : undefined,
+        };
+        
+        return { ...schema, model: transformedModel };
+    }
+    
+    /**
+     * Check for deprecated configuration usage and emit warnings
+     */
+    private checkDeprecatedUsage(schema: EntitySchema<any, any, any>): void {
+        const model = schema.model;
+        const warnings: string[] = [];
+        
+        // Check list page deprecated fields
+        if (model.listPageActions) {
+            warnings.push('listPageActions is deprecated. Use listPageConfig.actions instead.');
+        }
+        if (model.listPageBreadcrumbs) {
+            warnings.push('listPageBreadcrumbs is deprecated. Use listPageConfig.breadcrumbs instead.');
+        }
+        if (model.listPageDefaultSort) {
+            warnings.push('listPageDefaultSort is deprecated. Use listPageConfig.defaultSort instead.');
+        }
+        
+        // Check view page deprecated fields
+        if (model.viewPageActions) {
+            warnings.push('viewPageActions is deprecated. Use viewPageConfig.actions instead.');
+        }
+        if (model.viewPageBreadcrumbs) {
+            warnings.push('viewPageBreadcrumbs is deprecated. Use viewPageConfig.breadcrumbs instead.');
+        }
+        if (model.viewPageColumnsConfig) {
+            warnings.push('viewPageColumnsConfig is deprecated. Use viewPageConfig.columnsConfig instead.');
+        }
+        
+        // Check edit page deprecated fields
+        if (model.editPageActions) {
+            warnings.push('editPageActions is deprecated. Use editPageConfig.actions instead.');
+        }
+        if (model.editPageBreadcrumbs) {
+            warnings.push('editPageBreadcrumbs is deprecated. Use editPageConfig.breadcrumbs instead.');
+        }
+        if (model.editPageColumnsConfig) {
+            warnings.push('editPageColumnsConfig is deprecated. Use editPageConfig.columnsConfig instead.');
+        }
+        
+        // Check create page deprecated fields
+        if (model.createPageBreadcrumbs) {
+            warnings.push('createPageBreadcrumbs is deprecated. Use createPageConfig.breadcrumbs instead.');
+        }
+        if (model.createPageColumnsConfig) {
+            warnings.push('createPageColumnsConfig is deprecated. Use createPageConfig.columnsConfig instead.');
+        }
+        
+        // Emit warnings if any deprecated fields found
+        if (warnings.length > 0) {
+            this.logger.warn(`\n⚠️  Entity "${model.entity}" uses deprecated configuration:`);
+            warnings.forEach(w => this.logger.warn(`   - ${w}`));
+            this.logger.warn(`   📖 Migration guide: https://docs.fw24.io/migration/nested-config\n`);
+        }
     }
 
     @LogDuration()

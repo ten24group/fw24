@@ -2,6 +2,47 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.0.4-beta.15](https://github.com/ten24group/fw24/compare/v1.0.4-beta.14...v1.0.4-beta.15) (2025-11-11)
+
+### [1.0.4-beta.14](https://github.com/ten24group/fw24/compare/v1.0.4-beta.13...v1.0.4-beta.14) (2025-11-11)
+
+### [1.0.4-beta.13](https://github.com/ten24group/fw24/compare/v1.0.4-beta.12...v1.0.4-beta.13) (2025-11-07)
+
+### [1.0.4-beta.12](https://github.com/ten24group/fw24/compare/v1.0.4-beta.11...v1.0.4-beta.12) (2025-11-06)
+
+### [1.0.4-beta.11](https://github.com/ten24group/fw24/compare/v1.0.4-beta.10...v1.0.4-beta.11) (2025-11-05)
+
+### [1.0.4-beta.10](https://github.com/ten24group/fw24/compare/v1.0.4-beta.9...v1.0.4-beta.10) (2025-11-05)
+
+### [1.0.4-beta.9](https://github.com/ten24group/fw24/compare/v1.0.4-beta.8...v1.0.4-beta.9) (2025-11-05)
+
+### [1.0.4-beta.8](https://github.com/ten24group/fw24/compare/v1.0.4-beta.7...v1.0.4-beta.8) (2025-11-04)
+
+### [1.0.4-beta.7](https://github.com/ten24group/fw24/compare/v1.0.4-beta.6...v1.0.4-beta.7) (2025-11-04)
+
+### [1.0.4-beta.6](https://github.com/ten24group/fw24/compare/v1.0.4-beta.5...v1.0.4-beta.6) (2025-11-04)
+
+
+### Bug Fixes
+
+* bugs in ui-config ([e168dc3](https://github.com/ten24group/fw24/commit/e168dc39e3ad41d1d29cf6ecaa4889e394f85aac))
+* default sort and types ([593a618](https://github.com/ten24group/fw24/commit/593a6183682b9541ff9d1307116f582331363efe))
+* read-only vs mutable Array types for entity-schema ([350652b](https://github.com/ten24group/fw24/commit/350652b5ab12df82d803fea13570a65c874eee31))
+
+### [1.0.4-beta.5](https://github.com/ten24group/fw24/compare/v1.0.4-beta.4...v1.0.4-beta.5) (2025-10-27)
+
+### [1.0.4-beta.4](https://github.com/ten24group/fw24/compare/v1.0.4-beta.3...v1.0.4-beta.4) (2025-10-27)
+
+
+### Bug Fixes
+
+* audit-log detail not working and updated custom pages slug generation ([4ee8d1a](https://github.com/ten24group/fw24/commit/4ee8d1a12ccae3bf2116c88ccaa80d4b4db22e93))
+* duplicate warning for menu key generation ([1eb80fb](https://github.com/ten24group/fw24/commit/1eb80fb81049c29718f428b993a2a8a02d59c762))
+* failing tests and cleaned up the actor context ([65102ba](https://github.com/ten24group/fw24/commit/65102ba198496ac21638d1e4b194cbd802eaff6b))
+* layer import order ([173a507](https://github.com/ten24group/fw24/commit/173a507cf887e0901262271e649037191976d6b7))
+* list API not returning some keys, and hard error; cleanup logging ([c81c353](https://github.com/ten24group/fw24/commit/c81c353cbcdb841a16b82cf7f686949d6392224f))
+* modal default width ([b4426a0](https://github.com/ten24group/fw24/commit/b4426a0413df61dff41e08cf0b5fd7d4bd24a952))
+
 ### [1.0.4-beta.3](https://github.com/ten24group/fw24/compare/v1.0.4-beta.2...v1.0.4-beta.3) (2025-08-25)
 
 
