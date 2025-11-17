@@ -1,5 +1,5 @@
 import { BaseEntityService, FieldMetadata, TIOSchemaAttribute, IRelationFieldConfig, TIOSchemaAttributesMap, EntitySchema, IFilterSegment } from "../../entity";
-import type { RelationEntityOptionConfig, FieldOptionsAPIConfig, IEntityPageAction, Template, IFilterSegmentGroup } from '../../entity/base-entity';
+import type { RelationEntityOptionConfig, FieldOptionsAPIConfig, IEntityPageAction, Template, IFilterSegmentGroup, ITableColumns } from '../../entity/base-entity';
 import type { IApplicationConfig } from '../../interfaces/config';
 /**
  * Generate smart fallback configuration for relation display when only ID is available.
@@ -335,44 +335,15 @@ export declare function mergeFieldVisibility<T extends {
     placeholder?: string;
 }>): Array<T>;
 /**
- * Merges column-level visibility, width, fixed position, and grouping overrides into base properties.
+ * Merges column visibility configuration with base properties.
+ * Controls which columns are visible by default and their display order.
  *
- * Applies custom column configurations from table config to base schema properties.
- * Only merges overrides for columns that exist in base properties (warns about non-existent columns).
- *
- * @template T - Property type with required name field
- * @param baseProperties - Base column properties from entity schema
- * @param columnOverrides - Custom column overrides from table configuration
- * @returns Base properties with overrides merged in
- *
- * @example
- * ```typescript
- * const baseProps = [
- *   { name: 'name', type: 'string' },
- *   { name: 'email', type: 'string' },
- *   { name: 'status', type: 'string' }
- * ];
- * const overrides = [
- *   { field: 'name', width: 200, fixed: 'left' },
- *   { field: 'email', visibility: { list: false } },
- *   { field: 'status', groupTitle: 'Account Status' }
- * ];
- * const merged = mergeColumnVisibility(baseProps, overrides);
- * // Returns baseProps with width, fixed, visibility, and groupTitle merged
- * ```
+ * @template T - Base property type with name and dataIndex
+ * @param baseProperties - Base properties from entity schema
+ * @param columnOverrides - Column configuration overrides (string or object format)
+ * @returns Merged properties with visibility and order applied
  */
 export declare function mergeColumnVisibility<T extends {
     name: string;
-}>(baseProperties: Array<T>, columnOverrides?: ReadonlyArray<{
-    readonly field: string;
-    readonly visibility?: any;
-    readonly width?: string | number;
-    readonly fixed?: 'left' | 'right';
-    readonly groupTitle?: string;
-}> | Array<{
-    field: string;
-    visibility?: any;
-    width?: string | number;
-    fixed?: 'left' | 'right';
-    groupTitle?: string;
-}>): Array<T>;
+    dataIndex?: string;
+}>(baseProperties: Array<T>, columnOverrides?: ITableColumns): Array<T>;

@@ -11,7 +11,7 @@ import {
     IFilterSegment,
     createFieldOptions
 } from "../../entity";
-import type { RelationEntityOptionConfig, FieldOptionsAPIConfig, IEntityPageAction, Template, FieldOption, IFilterSegmentGroup } from '../../entity/base-entity';
+import type { RelationEntityOptionConfig, FieldOptionsAPIConfig, IEntityPageAction, Template, FieldOption, IFilterSegmentGroup, ITableColumns, ITableColumn, ITableColumnConfig } from '../../entity/base-entity';
 import { FrameworkError } from "../../errors";
 import type { IApplicationConfig, IDuplicatedFieldDetectionConfig, ISegmentAutoGenerationConfig } from '../../interfaces/config';
 import { DefaultLogger } from "../../logging";
@@ -2379,70 +2379,152 @@ export function mergeFieldVisibility<T extends { name: string }>(
 }
 
 /**
- * Merges column-level visibility, width, fixed position, and grouping overrides into base properties.
+ * Merges column-level visibility, width, fixed position, grouping overrides, and ordering into base properties.
  * 
  * Applies custom column configurations from table config to base schema properties.
  * Only merges overrides for columns that exist in base properties (warns about non-existent columns).
  * 
+ * **Visibility Logic:**
+ * - When columnOverrides is provided:
+ *   - Fields IN the array: Use `defaultVisible` (defaults to true if not specified)
+ *   - Fields NOT IN the array: Set `defaultVisible: false` (available in Column Settings but not shown by default)
+ * - When columnOverrides is empty/undefined: All fields visible (backward compatible)
+ * 
+ * **Ordering Logic:**
+ * - When columnOverrides is provided:
+ *   - Columns are ordered according to their position in the columnOverrides array
+ *   - Columns not in the array appear at the end in their original order
+ * - When columnOverrides is empty/undefined: Original order is preserved
+ * 
  * @template T - Property type with required name field
  * @param baseProperties - Base column properties from entity schema
  * @param columnOverrides - Custom column overrides from table configuration
- * @returns Base properties with overrides merged in
+ * @returns Base properties with overrides merged in and reordered
  * 
  * @example
  * ```typescript
  * const baseProps = [
- *   { name: 'name', type: 'string' },
- *   { name: 'email', type: 'string' },
- *   { name: 'status', type: 'string' }
+ *   { name: 'orderId', dataIndex: 'orderId', type: 'string' },
+ *   { name: 'status', dataIndex: 'status', type: 'string' },
+ *   { name: 'userId', dataIndex: 'userId', type: 'string' },
+ *   { name: 'metadata', dataIndex: 'metadata', type: 'string' }
  * ];
  * const overrides = [
- *   { field: 'name', width: 200, fixed: 'left' },
- *   { field: 'email', visibility: { list: false } },
- *   { field: 'status', groupTitle: 'Account Status' }
+ *   { field: 'status', defaultVisible: true },         // 1st position
+ *   { field: 'orderId', width: 200, defaultVisible: true }, // 2nd position
+ *   { field: 'metadata', defaultVisible: false }       // 3rd position (hidden)
+ *   // userId not listed - will be at the end and hidden by default
  * ];
  * const merged = mergeColumnVisibility(baseProps, overrides);
- * // Returns baseProps with width, fixed, visibility, and groupTitle merged
+ * // Result (in order):
+ * // 1. status: defaultVisible: true
+ * // 2. orderId: defaultVisible: true, width: 200
+ * // 3. metadata: defaultVisible: false
+ * // 4. userId: defaultVisible: false (not in overrides, at the end)
  * ```
  */
-export function mergeColumnVisibility<T extends { name: string }>(
+/**
+ * Normalized column configuration with defaultVisible always defined.
+ * Internal type for processing column overrides.
+ */
+type NormalizedColumnConfig = Omit<ITableColumnConfig, 'defaultVisible'> & { 
+    defaultVisible: boolean;
+    _order?: number;
+};
+
+/**
+ * Normalizes column overrides to a consistent format.
+ * Supports both string shorthand ('fieldName') and object syntax ({ field: 'fieldName', ... })
+ * 
+ * @param columnOverrides - Column configurations (string or object format)
+ * @returns Normalized array of column config objects
+ */
+function normalizeColumnOverrides(
+    columnOverrides: ITableColumns
+): Array<NormalizedColumnConfig> {
+    return (columnOverrides as Array<ITableColumn>).map(col => {
+        // String shorthand: 'fieldName' → { field: 'fieldName', defaultVisible: true }
+        if (typeof col === 'string') {
+            return { 
+                field: col, 
+                defaultVisible: true
+            };
+        }
+        // Object syntax: already normalized, just ensure defaultVisible defaults to true
+        return {
+            field: col.field,
+            visibility: col.visibility,
+            width: col.width,
+            fixed: col.fixed,
+            groupTitle: col.groupTitle,
+            defaultVisible: col.defaultVisible !== false // Defaults to true
+        };
+    });
+}
+
+/**
+ * Merges column visibility configuration with base properties.
+ * Controls which columns are visible by default and their display order.
+ * 
+ * @template T - Base property type with name and dataIndex
+ * @param baseProperties - Base properties from entity schema
+ * @param columnOverrides - Column configuration overrides (string or object format)
+ * @returns Merged properties with visibility and order applied
+ */
+export function mergeColumnVisibility<T extends { name: string; dataIndex?: string }>(
     baseProperties: Array<T>,
-    columnOverrides: ReadonlyArray<{
-        readonly field: string;
-        readonly visibility?: any;
-        readonly width?: string | number;
-        readonly fixed?: 'left' | 'right';
-        readonly groupTitle?: string;
-    }> | Array<{
-        field: string;
-        visibility?: any;
-        width?: string | number;
-        fixed?: 'left' | 'right';
-        groupTitle?: string;
-    }> = []
+    columnOverrides: ITableColumns = []
 ): Array<T> {
+    // If no columnOverrides provided, return properties as-is (backward compatible)
+    if (!columnOverrides || columnOverrides.length === 0) {
+        return baseProperties;
+    }
+
+    // Normalize column overrides (handle string shorthand)
+    const normalizedOverrides = normalizeColumnOverrides(columnOverrides);
+
     const overrideMap = new Map(
-        [ ...columnOverrides ].map(c => [ c.field, c ])
+        normalizedOverrides.map((c, index) => [ c.field, { ...c, _order: index } ])
     );
 
     // Validation: Warn if column override references non-existent column
-    columnOverrides.forEach(override => {
-        if (!baseProperties.some(p => p.name === override.field)) {
+    normalizedOverrides.forEach(override => {
+        // Compare with dataIndex (actual field name) if available, otherwise fall back to name
+        if (!baseProperties.some(p => (p.dataIndex || p.name) === override.field)) {
             DefaultLogger.warn(`Column override "${override.field}" not found in schema properties. This override will be ignored.`);
         }
     });
 
-    return baseProperties.map(prop => {
-        const override = overrideMap.get(prop.name);
+    // Merge overrides into properties
+    const mergedProperties = baseProperties.map(prop => {
+        // Use dataIndex (actual field name) if available, otherwise fall back to name
+        const fieldName = prop.dataIndex || prop.name;
+        const override = overrideMap.get(fieldName);
 
-        if (!override) return prop;
+        if (!override) {
+            // Field not in tableConfig.columns - hide by default but keep available
+            return {
+                ...prop,
+                defaultVisible: false,
+                _order: Number.MAX_SAFE_INTEGER // Put at the end
+            };
+        }
 
+        // Field is in tableConfig.columns - apply overrides
         return {
             ...prop,
             ...(override.visibility !== undefined && { visibility: override.visibility }),
             ...(override.width !== undefined && { width: override.width }),
             ...(override.fixed !== undefined && { fixed: override.fixed }),
-            ...(override.groupTitle !== undefined && { groupTitle: override.groupTitle })
+            ...(override.groupTitle !== undefined && { groupTitle: override.groupTitle }),
+            defaultVisible: override.defaultVisible !== false,  // Defaults to true
+            _order: override._order
         };
     });
+
+    // Sort by order from columnOverrides (columns not in overrides go to end)
+    mergedProperties.sort((a: any, b: any) => (a._order ?? Number.MAX_SAFE_INTEGER) - (b._order ?? Number.MAX_SAFE_INTEGER));
+
+    // Remove temporary _order property
+    return mergedProperties.map(({ _order, ...rest }: any) => rest);
 }

@@ -1420,12 +1420,12 @@ export interface IEntityPageAction {
     visibility?: VisibilityConfig;
 }
 export interface IEntityPageColumn {
-    sortOrder: number;
-    fields: string[];
+    readonly sortOrder: number;
+    readonly fields: ReadonlyArray<string> | Array<string>;
 }
 export interface IEntityPageColumnConfig {
-    numColumns?: number;
-    columns: IEntityPageColumn[];
+    readonly numColumns?: number;
+    readonly columns: ReadonlyArray<IEntityPageColumn> | Array<IEntityPageColumn>;
 }
 interface TextFieldMetadata extends BaseFieldMetadata {
     fieldType?: 'text' | 'textarea' | 'password' | 'email';
@@ -2092,6 +2092,42 @@ export interface IFilterSegmentGroup {
     maxVisible?: number;
 }
 /**
+ * Column configuration object with full control.
+ * Provides explicit control over visibility, width, grouping, and other column properties.
+ */
+export interface ITableColumnConfig {
+    /** Field name (attribute name from entity schema) */
+    field: string;
+    /** Visibility configuration for role-based/conditional display */
+    visibility?: VisibilityConfig;
+    /** Column width in pixels or CSS string (e.g., '150px', '20%') */
+    width?: string | number;
+    /** Pin column to left or right side of table */
+    fixed?: 'left' | 'right';
+    /** Group title for column grouping. Columns with same groupTitle will be grouped together. */
+    groupTitle?: string;
+    /**
+     * Controls initial visibility in the UI.
+     * - true: Column is visible by default
+     * - false: Column is hidden by default but available in Column Settings
+     * - undefined: Defaults to true (visible)
+     */
+    defaultVisible?: boolean;
+}
+/**
+ * Column configuration with flexible syntax.
+ * Supports both string shorthand and full object configuration.
+ *
+ * - String shorthand: `'fieldName'` - visible by default with default settings
+ * - Object syntax: Full control over all column properties
+ */
+export type ITableColumn = string | ITableColumnConfig;
+/**
+ * Array of column configurations.
+ * Determines column order, visibility, and display properties.
+ */
+export type ITableColumns = ReadonlyArray<ITableColumn> | Array<ITableColumn>;
+/**
  * Entity-level table UI configuration.
  * Controls auto-generation of filters, segments, and other table features for a specific entity.
  */
@@ -2190,38 +2226,74 @@ export interface EntityListPageConfig {
             visibility?: VisibilityConfig;
         };
         /**
-         * Column configuration including visibility, width, fixed position, and grouping.
+         * Column configuration with flexible syntax for improved developer experience.
          *
-         * Column Grouping:
+         * **Syntax Options:**
+         * 1. **String shorthand**: `'fieldName'` - visible by default with default settings
+         * 2. **Object syntax**: Full control over width, visibility, grouping, etc.
+         *
+         * **Behavior:**
+         * - Fields listed here determine column order in the table
+         * - `defaultVisible` defaults to `true` if not specified
+         * - Fields not listed become hidden but available in Column Settings
+         * - If `columns` is not defined, all `isListable` fields are visible (backward compatible)
+         *
+         * **Column Grouping:**
          * - Set `groupTitle` on multiple columns to group them under a common header
          * - Columns with the same `groupTitle` will be grouped together
          * - Uses Ant Design's native `children` property
          *
          * @example
+         * // Clean and simple - most common case
+         * columns: [
+         *   'orderId',           // Visible with defaults
+         *   'orderDate',         // Visible with defaults
+         *   'status',            // Visible with defaults
+         * ]
+         *
+         * @example
+         * // Mixed syntax with full control
+         * columns: [
+         *   'orderId',                              // Visible, default width
+         *   { field: 'total', width: 150 },         // Visible, custom width
+         *   { field: 'playerName', groupTitle: 'Player Info' },  // Visible, grouped
+         *   { field: 'metadata', defaultVisible: false }         // Hidden but ordered
+         * ]
+         *
+         * @example
+         * // Column grouping
          * columns: [
          *   { field: 'playerName', groupTitle: 'Player Info' },
          *   { field: 'position', groupTitle: 'Player Info' },
          *   { field: 'jerseyNumber', groupTitle: 'Player Info' },
          *   { field: 'points', groupTitle: 'Statistics' },
-         *   { field: 'assists', groupTitle: 'Statistics' },
-         *   { field: 'email' }  // No group - stays ungrouped
+         *   { field: 'assists', groupTitle: 'Statistics', defaultVisible: false },
+         *   'email'  // No group - stays ungrouped
          * ]
          */
-        readonly columns?: ReadonlyArray<{
-            field: string;
-            visibility?: VisibilityConfig;
-            width?: string | number;
-            fixed?: 'left' | 'right';
-            /** Group title for column grouping. Columns with same groupTitle will be grouped together. */
-            groupTitle?: string;
-        }> | Array<{
-            field: string;
-            visibility?: VisibilityConfig;
-            width?: string | number;
-            fixed?: 'left' | 'right';
-            /** Group title for column grouping. Columns with same groupTitle will be grouped together. */
-            groupTitle?: string;
-        }>;
+        readonly columns?: ITableColumns;
+        /**
+         * Controls how column data is fetched from the API.
+         *
+         * - `'eager'` (default): Fetches all `isListable` columns in a single request.
+         *   Users can instantly toggle column visibility without additional API calls.
+         *   Recommended for most admin panels and data tables.
+         *
+         * - `'lazy'`: Only fetches visible columns initially. When users show hidden columns,
+         *   the table will refetch data with the new column set.
+         *   Use for tables with 50+ columns or expensive computed fields.
+         *
+         * @default 'eager'
+         *
+         * @example
+         * // Eager fetching (default) - fetch all columns upfront
+         * fetchStrategy: 'eager'
+         *
+         * @example
+         * // Lazy fetching - only fetch visible columns
+         * fetchStrategy: 'lazy'
+         */
+        readonly fetchStrategy?: 'eager' | 'lazy';
         /**
          * Expandable row configuration.
          * Allows displaying nested data within table rows.
@@ -2532,7 +2604,7 @@ export interface EntitySchema<A extends string, F extends string, C extends stri
          * Note: For DynamoDB (non-search) mode, use 'asc' | 'desc' to indicate the expected
          * index order direction. DynamoDB returns data in index (PK/SK) order, not arbitrary sort.
          *
-         * @deprecated Use listPageConfig.defaultSort instead
+         * @deprecated Use listPageConfig.defaultSort {@link EntityListPageConfig.defaultSort} instead
          */
         readonly listPageDefaultSort?: {
             readonly field: string;

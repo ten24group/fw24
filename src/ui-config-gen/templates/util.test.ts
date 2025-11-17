@@ -327,59 +327,150 @@ describe('UI Config Generation Utilities', () => {
   });
 
   describe('mergeColumnVisibility', () => {
-    it('should merge column overrides into base properties', () => {
-      const baseProperties = [
-        { name: 'col1', type: 'string' },
-        { name: 'col2', type: 'string' }
+    it('should merge column overrides and set defaultVisible correctly', () => {
+      const baseProperties: Array<{ name: string; dataIndex: string; type: string; defaultVisible?: boolean; width?: number; visibility?: any }> = [
+        { name: 'Column 1', dataIndex: 'col1', type: 'string' },
+        { name: 'Column 2', dataIndex: 'col2', type: 'string' },
+        { name: 'Column 3', dataIndex: 'col3', type: 'string' }
       ];
 
       const columnOverrides = [
-        { field: 'col2', visibility: { list: false }, width: 200 },
-        { field: 'col3', visibility: { list: true } }
+        { field: 'col1', defaultVisible: true },
+        { field: 'col2', width: 200, defaultVisible: false }
       ];
 
       const result = mergeColumnVisibility(baseProperties, columnOverrides);
 
-      expect(result).toHaveLength(2);
-      expect(result[0].name).toBe('col1');
-      expect(result[1].name).toBe('col2');
+      expect(result).toHaveLength(3);
+      expect(result[0].dataIndex).toBe('col1');
+      expect(result[0].defaultVisible).toBe(true);
+      expect(result[1].dataIndex).toBe('col2');
+      expect(result[1].defaultVisible).toBe(false);
+      expect(result[1].width).toBe(200);
+      // col3 not in overrides - should be hidden by default
+      expect(result[2].dataIndex).toBe('col3');
+      expect(result[2].defaultVisible).toBe(false);
     });
 
-    it('should handle undefined column overrides', () => {
-      const baseProperties = [
-        { name: 'col1', type: 'string' }
+    it('should handle undefined column overrides (backward compatible)', () => {
+      const baseProperties: Array<{ name: string; dataIndex?: string; type: string; defaultVisible?: boolean }> = [
+        { name: 'col1', dataIndex: 'col1', type: 'string' }
       ];
 
       const result = mergeColumnVisibility(baseProperties, undefined);
 
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('col1');
+      // No defaultVisible set when no overrides
+      expect(result[0].defaultVisible).toBeUndefined();
     });
 
-    it('should handle empty column overrides', () => {
-      const baseProperties = [
-        { name: 'col1', type: 'string' }
+    it('should handle empty column overrides (backward compatible)', () => {
+      const baseProperties: Array<{ name: string; dataIndex?: string; type: string; defaultVisible?: boolean }> = [
+        { name: 'col1', dataIndex: 'col1', type: 'string' }
       ];
 
       const result = mergeColumnVisibility(baseProperties, []);
 
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('col1');
+      // No defaultVisible set when empty overrides array
+      expect(result[0].defaultVisible).toBeUndefined();
     });
 
-    it('should preserve base properties without overrides', () => {
-      const baseProperties = [
-        { name: 'col1', type: 'string', sortable: true }
+    it('should handle string shorthand syntax', () => {
+      const baseProperties: Array<{ name: string; dataIndex: string; type: string; defaultVisible?: boolean; width?: number }> = [
+        { name: 'Column 1', dataIndex: 'col1', type: 'string' },
+        { name: 'Column 2', dataIndex: 'col2', type: 'string' },
+        { name: 'Column 3', dataIndex: 'col3', type: 'string' }
+      ];
+
+      // String shorthand - all visible
+      const columnOverrides = ['col1', 'col2'];
+
+      const result = mergeColumnVisibility(baseProperties, columnOverrides);
+
+      expect(result).toHaveLength(3);
+      // col1: string shorthand → visible
+      expect(result[0].dataIndex).toBe('col1');
+      expect(result[0].defaultVisible).toBe(true);
+      // col2: string shorthand → visible
+      expect(result[1].dataIndex).toBe('col2');
+      expect(result[1].defaultVisible).toBe(true);
+      // col3: not in overrides → hidden
+      expect(result[2].dataIndex).toBe('col3');
+      expect(result[2].defaultVisible).toBe(false);
+    });
+
+    it('should handle mixed string and object syntax', () => {
+      const baseProperties: Array<{ name: string; dataIndex: string; type: string; defaultVisible?: boolean; width?: number }> = [
+        { name: 'Column 1', dataIndex: 'col1', type: 'string' },
+        { name: 'Column 2', dataIndex: 'col2', type: 'string' },
+        { name: 'Column 3', dataIndex: 'col3', type: 'string' },
+        { name: 'Column 4', dataIndex: 'col4', type: 'string' }
       ];
 
       const columnOverrides = [
-        { field: 'col2', width: 150 }
+        'col1',                              // String: visible with defaults
+        { field: 'col2', width: 200 },       // Object: visible with custom width
+        { field: 'col3', defaultVisible: false },  // Object: explicitly hidden
+      ];
+
+      const result = mergeColumnVisibility(baseProperties, columnOverrides);
+
+      expect(result).toHaveLength(4);
+      // col1: string shorthand → visible
+      expect(result[0].dataIndex).toBe('col1');
+      expect(result[0].defaultVisible).toBe(true);
+      expect(result[0].width).toBeUndefined();
+      // col2: object with width → visible
+      expect(result[1].dataIndex).toBe('col2');
+      expect(result[1].defaultVisible).toBe(true);
+      expect(result[1].width).toBe(200);
+      // col3: explicitly hidden
+      expect(result[2].dataIndex).toBe('col3');
+      expect(result[2].defaultVisible).toBe(false);
+      // col4: not in overrides → hidden
+      expect(result[3].dataIndex).toBe('col4');
+      expect(result[3].defaultVisible).toBe(false);
+    });
+
+    it('should default defaultVisible to true for object syntax', () => {
+      const baseProperties: Array<{ name: string; dataIndex: string; type: string; defaultVisible?: boolean; width?: number }> = [
+        { name: 'Column 1', dataIndex: 'col1', type: 'string' },
+        { name: 'Column 2', dataIndex: 'col2', type: 'string' }
+      ];
+
+      const columnOverrides = [
+        { field: 'col1' },  // No defaultVisible specified
+        { field: 'col2', width: 150 },  // No defaultVisible specified
+      ];
+
+      const result = mergeColumnVisibility(baseProperties, columnOverrides);
+
+      expect(result).toHaveLength(2);
+      // Both should be visible by default
+      expect(result[0].defaultVisible).toBe(true);
+      expect(result[1].defaultVisible).toBe(true);
+    });
+
+    it('should hide fields not listed in column overrides', () => {
+      const baseProperties: Array<{ name: string; dataIndex: string; type: string; sortable: boolean; defaultVisible?: boolean }> = [
+        { name: 'col1', dataIndex: 'col1', type: 'string', sortable: true }
+      ];
+
+      const columnOverrides = [
+        { field: 'col2', width: 150 }  // col2 doesn't exist, col1 not listed
       ];
 
       const result = mergeColumnVisibility(baseProperties, columnOverrides);
 
       expect(result).toHaveLength(1);
-      expect(result[0]).toEqual(baseProperties[0]);
+      // col1 not in overrides → should be hidden but preserved
+      expect(result[0].name).toBe('col1');
+      expect(result[0].type).toBe('string');
+      expect(result[0].sortable).toBe(true);
+      expect(result[0].defaultVisible).toBe(false);  // Hidden because not in overrides
     });
   });
 
