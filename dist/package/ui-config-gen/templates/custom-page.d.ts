@@ -296,7 +296,7 @@ export interface ListPageConfigStructure {
         responseKey?: string;
         apiUrl: string;
     };
-    propertiesConfig: Array<{
+    propertiesConfig: ReadonlyArray<{
         type?: ConfigPropertyType;
         id?: string;
         name: string;

@@ -7,7 +7,7 @@ import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
 import { EntitySearchService } from '../search/services';
 import { DepIdentifier, IFilterAutoGenerationConfig, ISegmentAutoGenerationConfig } from "../interfaces";
-import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure } from '../ui-config-gen/templates/custom-page';
+import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig } from '../ui-config-gen/templates/custom-page';
 
 /**
  * @fileoverview Entity Schema and Type-Safe Helper Functions
@@ -957,6 +957,75 @@ export interface IEntityConfigReference {
     
     /** Show only specific fields (mutually exclusive with hideFields) */
     showOnlyFields?: ReadonlyArray<string> | Array<string>;
+    
+    /** 
+     * Override the API configuration for fetching data.
+     * - For view pages: Overrides detailApiConfig
+     * - For list pages: Overrides apiConfig (supports both single and dual search/database configs)
+     * 
+     * @example
+     * // View page - simple API config
+     * apiConfig: {
+     *   apiMethod: 'GET',
+     *   apiUrl: '/admin/subscription/:id',
+     *   responseKey: 'subscription'
+     * }
+     * 
+     * @example
+     * // List page - single API config
+     * apiConfig: {
+     *   apiMethod: 'GET',
+     *   apiUrl: '/admin/orders',
+     *   responseKey: 'items',
+     *   useSearch: false
+     * }
+     * 
+     * @example
+     * // List page - dual API config (search + database)
+     * apiConfig: {
+     *   search: {
+     *     apiMethod: 'GET',
+     *     apiUrl: '/admin/orders/search',
+     *     responseKey: 'items'
+     *   },
+     *   database: {
+     *     apiMethod: 'GET',
+     *     apiUrl: '/admin/orders',
+     *     responseKey: 'items'
+     *   }
+     * }
+     */
+    apiConfig?: IModalApiConfig | {
+      search: IModalApiConfig;
+      database: IModalApiConfig;
+    } | {
+      apiMethod: ApiMethod;
+      apiUrl: string;
+      responseKey?: string;
+      useSearch?: boolean;
+      defaultSort?: { field: string; order: 'asc' | 'desc' };
+    };
+    
+    /** 
+     * Map parent route params to different names for the child section.
+     * Uses the same pattern as relation identifierMapping for consistency.
+     * 
+     * @example
+     * // Single identifier mapping
+     * identifierMapping: { source: 'subscriptionId', target: 'id' }
+     * 
+     * @example
+     * // Multiple identifier mappings
+     * identifierMapping: [
+     *   { source: 'subscriptionId', target: 'id' },
+     *   { source: 'userId', target: 'customerId' }
+     * ]
+     * 
+     * @example
+     * // Nested path mapping (if needed in future)
+     * identifierMapping: { source: 'order.subscriptionId', target: 'id' }
+     */
+    identifierMapping?: { source: string; target: string } | Array<{ source: string; target: string }>;
   };
 }
 
@@ -2513,10 +2582,171 @@ export interface IEntityTableUIConfig {
   };
 }
 
+/**
+ * Section configuration for any page type (list, detail, form, etc.)
+ * Allows breaking pages into tabbed or accordion-based sections.
+ * 
+ * Each section can render a different page type and has access to the parent page's data
+ * via `routeParams` (which contains merged parent record/state).
+ */
+export interface ISectionConfig {
+  /** Section label - supports templates (e.g., 'Players ({playerCount})') */
+  readonly label: Template;
+  /** Optional icon for the section tab/accordion header */
+  readonly icon?: string;
+  /** Optional badge text - supports templates (e.g., '{errorCount}') */
+  readonly badge?: Template;
+  /** Visibility conditions for this section */
+  readonly visibility?: VisibilityConfig;
+  /** Sort order for section display */
+  readonly sortOrder?: number;
+  
+  /** The type of page to render in this section */
+  readonly pageType: 'list' | 'details' | 'form' | 'dashboard';
+  
+  /** 
+   * Reference to existing entity config (recommended - avoids duplication)
+   * Use this instead of inline configs to reference entity's list/view/create configs with optional overrides.
+   * 
+   * @example
+   * entityConfigRef: {
+   *   entityName: 'order',
+   *   pageType: 'list',
+   *   overrideConfig: {
+   *     defaultFilters: { userId: ':userId' }
+   *   }
+   * }
+   */
+  readonly entityConfigRef?: IEntityConfigReference;
+  
+  /** List page config (if pageType === 'list' and not using entityConfigRef) */
+  readonly listPageConfig?: ListPageConfigStructure;
+  /** Detail page config (if pageType === 'details' and not using entityConfigRef) */
+  readonly detailsPageConfig?: {
+    readonly title?: string;
+    readonly helpText?: string;
+    /** If true, section reuses parent's loaded record data (organizational sections) */
+    readonly useParentData?: boolean;
+    /** API config for fetching data (optional if useParentData is true) */
+    readonly detailApiConfig?: DetailsPageConfigStructure['detailApiConfig'];
+    /** Column grouping config */
+    readonly columnsConfig?: DetailsPageConfigStructure['columnsConfig'];
+    /** Properties to display */
+    readonly propertiesConfig: ReadonlyArray<DetailsPageConfigStructure['propertiesConfig'][number]> | DetailsPageConfigStructure['propertiesConfig'];
+  };
+  /** Form page config (if pageType === 'form' and not using entityConfigRef) */
+  readonly formPageConfig?: FormPageConfigStructure;
+  /** Dashboard config (if pageType === 'dashboard' and not using entityConfigRef) */
+  readonly dashboardPageConfig?: DashboardPageConfig['dashboardPageConfig'];
+}
+
+/**
+ * Section group configuration for organizing sections into cards.
+ * Each group renders as a separate card with its own tabs/accordion.
+ */
+export interface ISectionGroup {
+  /** Unique identifier for the group */
+  readonly id: string;
+  /** Group label/title for the card header - supports templates */
+  readonly label?: Template;
+  /** Optional icon for the group card header */
+  readonly icon?: string;
+  /** Visibility conditions for this entire group */
+  readonly visibility?: VisibilityConfig;
+  /** Sort order for group display */
+  readonly sortOrder?: number;
+  /** How to render sections within this group: tabs or accordion */
+  readonly renderMode?: 'tabs' | 'accordion';
+  /** Lazy load section content (only load when activated) */
+  readonly lazyLoad?: boolean;
+  /** Keep mounted sections in DOM when hidden (preserves state) */
+  readonly keepMounted?: boolean;
+  /** Sections within this group */
+  readonly sections: Record<string, ISectionConfig>;
+}
+
+/**
+ * Sections configuration for all page types.
+ * Enables multi-section pages with tabs or accordion UI.
+ * 
+ * Supports two formats:
+ * 1. Single group (backward compatible): Use `sections` directly
+ * 2. Multiple groups: Use `sectionGroups` array
+ * 
+ * @example
+ * // Single group (backward compatible)
+ * sectionsConfig: {
+ *   renderMode: 'tabs',
+ *   sections: {
+ *     players: { label: 'Players', pageType: 'list', ... },
+ *     metadata: { label: 'Metadata', pageType: 'details', ... }
+ *   }
+ * }
+ * 
+ * @example
+ * // Multiple groups (new)
+ * sectionsConfig: {
+ *   sectionGroups: [
+ *     {
+ *       id: 'basic',
+ *       label: 'Basic Info',
+ *       icon: 'InfoCircleOutlined',
+ *       renderMode: 'tabs',
+ *       sections: {
+ *         details: { label: 'Details', pageType: 'details', ... },
+ *         metadata: { label: 'Metadata', pageType: 'details', ... }
+ *       }
+ *     },
+ *     {
+ *       id: 'relations',
+ *       label: 'Related Data',
+ *       icon: 'LinkOutlined',
+ *       visibility: { requiredRoles: ['admin'] },
+ *       renderMode: 'accordion',
+ *       sections: {
+ *         players: { label: 'Players', pageType: 'list', ... },
+ *         games: { label: 'Games', pageType: 'list', ... }
+ *       }
+ *     }
+ *   ]
+ * }
+ */
+export interface ISectionsConfig {
+  // ===== SINGLE GROUP FORMAT (Backward Compatible) =====
+  /** How to render sections: tabs or accordion (for single group format) */
+  readonly renderMode?: 'tabs' | 'accordion';
+  /** Lazy load section content (for single group format) */
+  readonly lazyLoad?: boolean;
+  /** Keep mounted sections in DOM when hidden (for single group format) */
+  readonly keepMounted?: boolean;
+  /** Sections to render (single group format - backward compatible) */
+  readonly sections?: Record<string, ISectionConfig>;
+  
+  // ===== MULTIPLE GROUPS FORMAT (New) =====
+  /** Array of section groups (each renders as a separate card) */
+  readonly sectionGroups?: ReadonlyArray<ISectionGroup> | Array<ISectionGroup>;
+  
+  // ===== COMMON PROPERTIES =====
+  /** Position relative to main content (not yet implemented) */
+  readonly position?: 'below' | 'right';
+  
+  /** 
+   * Maximum nesting depth for sections (default: 4).
+   * Prevents infinite recursion when sections reference pages with their own sections.
+   * When depth is exceeded, a warning is shown instead of rendering nested sections.
+   */
+  readonly maxDepth?: number;
+}
+
 export interface EntityListPageConfig {
   readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
   readonly breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
   readonly defaultSort?: { readonly field: string; readonly order: 'asc' | 'desc' } | ReadonlyArray<{ readonly field: string; readonly order: 'asc' | 'desc' }> | 'asc' | 'desc';
+  /**
+   * Additional sections to display below or alongside the main list table.
+   * Enables multi-section pages with tabs or accordion UI.
+   */
+  readonly sectionsConfig?: ISectionsConfig;
   readonly tableConfig?: {
     readonly rowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
     readonly bulkActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
@@ -2664,6 +2894,15 @@ export interface EntityViewPageConfig {
     visibility?: VisibilityConfig;
     helpText?: string;
   }>;
+  /**
+   * Additional sections to display below or alongside the main detail view.
+   * Enables multi-section detail pages with tabs or accordion UI.
+   * 
+   * Sections have access to the parent record via routeParams.
+   * Use `useParentData: true` in detailsPageConfig for organizational sections
+   * that display parts of the same record (e.g., metadata, large JSON fields).
+   */
+  readonly sectionsConfig?: ISectionsConfig;
 }
 
 /**
@@ -2702,6 +2941,14 @@ export interface EntityEditPageConfig {
       placeholder?: string;
     }>;
   };
+  /**
+   * Additional sections to display below or alongside the main form.
+   * Enables multi-section edit pages with tabs or accordion UI.
+   * 
+   * Sections have access to the parent record and live formValues via routeParams.
+   * Use for features like live preview, help documentation, or related data.
+   */
+  readonly sectionsConfig?: ISectionsConfig;
 }
 
 /**
@@ -2737,6 +2984,14 @@ export interface EntityCreatePageConfig {
       placeholder?: string;
     }>;
   };
+  /**
+   * Additional sections to display below or alongside the create form.
+   * Enables multi-section create pages with tabs or accordion UI.
+   * 
+   * Sections have access to live formValues via routeParams.
+   * Use for features like live preview or help documentation.
+   */
+  readonly sectionsConfig?: ISectionsConfig;
 }
 
 export interface EntitySchema<

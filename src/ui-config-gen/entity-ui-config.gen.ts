@@ -230,6 +230,7 @@ export class EntityUIConfigGen {
                     breadcrumbs: entitySchema.model.viewPageConfig?.breadcrumbs || entitySchema.model.viewPageBreadcrumbs,
                     columnsConfig: entitySchema.model.viewPageConfig?.columnsConfig || entitySchema.model.viewPageColumnsConfig,
                     fields: entitySchema.model.viewPageConfig?.fields,
+                    sectionsConfig: entitySchema.model.viewPageConfig?.sectionsConfig,
                     globalUIConfigOptions,  // NEW: Pass global config
                 }, service);
                 entityConfigs[ `view-${entityName.toLowerCase()}` ] = viewConfig;
