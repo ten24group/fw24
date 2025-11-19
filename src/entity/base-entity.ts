@@ -2412,7 +2412,7 @@ export interface IFilterSegment {
    * badge: 5  // Static count
    * badge: ':record.activeCount'  // Dynamic from context
    */
-  badge?: number | string;
+  badge?: number | Template;
   
   /**
    * Badge color (Ant Design status colors)
@@ -2589,13 +2589,90 @@ export interface IEntityTableUIConfig {
  * Each section can render a different page type and has access to the parent page's data
  * via `routeParams` (which contains merged parent record/state).
  */
+/**
+ * Badge configuration for sections.
+ * Supports:
+ * - Templates with JSONPath: '{$.lineItems.length()} items'
+ * - Advanced config: { template: '{$.items.length()}', showZero: true }
+ * - API-based counts: { apiEndpoint: '/admin/order/count', responseKey: 'count' }
+ */
+export type SectionBadgeConfig = 
+  | Template  // Template with JSONPath support: '{$.lineItems.length()} items', '{$.items[?(@.status=="active")].length()}'
+  | {
+      /** Template for badge text with JSONPath support */
+      template: Template;
+      /** Show badge even if evaluated to 0. Default: false */
+      showZero?: boolean;
+    }
+  | {
+      /** API endpoint to fetch count/value from (e.g., '/admin/order/count?userId.eq=:userId') */
+      apiEndpoint: string;
+      /** Key in response to extract value from. Supports JSONPath. Default: 'count' */
+      responseKey?: string;
+      /** Optional template for formatting the badge text (e.g., '{count} orders') */
+      template?: string;
+      /** Show badge even if count is 0. Default: false */
+      showZero?: boolean;
+    };
+
 export interface ISectionConfig {
   /** Section label - supports templates (e.g., 'Players ({playerCount})') */
   readonly label: Template;
   /** Optional icon for the section tab/accordion header */
   readonly icon?: string;
-  /** Optional badge text - supports templates (e.g., '{errorCount}') */
-  readonly badge?: Template;
+  /** 
+   * Optional badge for the section tab/accordion header.
+   * Supports:
+   * - Static text: 'New'
+   * - JSONPath templates: '{$.lineItems.length()} items' (shows 0 by default)
+   * - Filtered counts: '{$.items[?(@.status=="active")].length()} active'
+   * - API fetching: { apiEndpoint: '/admin/order/count', responseKey: 'count' }
+   * - Multiple badges: ['{$.lineItems.length()}', '{$.errors.length()}']
+   * 
+   * JSONPath Examples:
+   * - Array length: '{$.lineItems.length()}'
+   * - Filtered: '{$.lineItems[?(@.type=="subscription")].length()}'
+   * - Nested: '{$.order.items.length()}'
+   * - Sum: '{$.lineItems[*].quantity}' (returns array, use .length() for count)
+   * 
+   * Note: Simple templates show "0" by default. Use advanced config to hide zeros.
+   * 
+   * @example
+   * // Static badge
+   * badge: 'New'
+   * 
+   * @example
+   * // JSONPath: Count array length (shows "0 items" if array is empty)
+   * badge: '{$.lineItems.length()} items'
+   * 
+   * @example
+   * // JSONPath: Hide when 0
+   * badge: {
+   *   template: '{$.lineItems.length()} items',
+   *   showZero: false
+   * }
+   * 
+   * @example
+   * // JSONPath: Filtered count
+   * badge: '{$.lineItems[?(@.type=="subscription")].length()} subscriptions'
+   * 
+   * @example
+   * // Fetch from API (hides 0 by default)
+   * badge: {
+   *   apiEndpoint: '/admin/order/count?userId.eq=:userId',
+   *   responseKey: 'count',
+   *   template: '{count} orders',
+   *   showZero: true  // Show "0 orders"
+   * }
+   * 
+   * @example
+   * // Multiple badges
+   * badge: [
+   *   '{$.lineItems.length()} items',
+   *   '{$.errors.length()} errors'
+   * ]
+   */
+  readonly badge?: SectionBadgeConfig | ReadonlyArray<SectionBadgeConfig> | Array<SectionBadgeConfig>;
   /** Visibility conditions for this section */
   readonly visibility?: VisibilityConfig;
   /** Sort order for section display */
@@ -2663,6 +2740,18 @@ export interface ISectionGroup {
   readonly keepMounted?: boolean;
   /** Sections within this group */
   readonly sections: Record<string, ISectionConfig>;
+  
+  // Collapsible card behavior
+  /** Start collapsed (default: false for first group, true for others) */
+  readonly defaultCollapsed?: boolean;
+  /** Show this text when collapsed - supports templates (e.g., 'Total: {total}') */
+  readonly collapsedSummary?: Template;
+  /** Allow users to collapse/expand this card (default: true) */
+  readonly allowCollapse?: boolean;
+  /** Allow users to maximize this card to full screen (default: true) */
+  readonly allowMaximize?: boolean;
+  /** Auto-collapse when another accordion-mode group opens (default: false) */
+  readonly autoCollapse?: boolean;
 }
 
 /**
@@ -2736,6 +2825,12 @@ export interface ISectionsConfig {
    * When depth is exceeded, a warning is shown instead of rendering nested sections.
    */
   readonly maxDepth?: number;
+  
+  // ===== UI BEHAVIOR =====
+  /** Remember collapsed/expanded state in localStorage (default: true) */
+  readonly rememberState?: boolean;
+  /** Highlight card that's currently in viewport (default: true) */
+  readonly scrollSpyHighlight?: boolean;
 }
 
 export interface EntityListPageConfig {
