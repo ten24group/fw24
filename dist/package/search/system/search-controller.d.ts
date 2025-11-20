@@ -56,6 +56,22 @@ export declare class SearchSystemController extends APIController {
             entityName: string;
         };
     }>, res: Response): Promise<Response>;
+    initSingleEntityIndex(req: Request<{
+        path: {
+            entityName: string;
+        };
+    }>, res: Response): Promise<Response>;
+    recreateIndex(req: Request<{
+        path: {
+            entityName: string;
+        };
+        body: {
+            resyncDocuments?: boolean;
+            syncMethod?: 'direct' | 'queue';
+            batchSize?: number;
+            queueUrl?: string;
+        };
+    }>, res: Response): Promise<Response>;
     deleteIndex(req: Request<{
         path: {
             entityName: string;
@@ -76,6 +92,11 @@ export declare class SearchSystemController extends APIController {
             byBatch?: boolean;
         };
     }>, res: Response): Promise<Response>;
+    /**
+     * Queue documents for async resync via SQS
+     * Shared logic used by resync and recreate endpoints
+     */
+    private queueDocumentsForResync;
     getQueueInfo(req: Request<{
         path: {
             queueUrl: string;

@@ -538,7 +538,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
 
     /**
-     * Returns the default attribute names to be used for keyword search. Defaults to all string attributes which are not hidden and are not identifiers.
+     * Returns the default attribute names to be used for keyword search.
+     * Includes string fields and enum fields with string values.
+     * Excludes identifiers, hidden fields, date/datetime fields, relations, and select fields by default.
+     * 
      * @returns {Array<string>} attribute names to be used for keyword search
     */
     public getSearchableAttributeNames(): Array<string> {
@@ -547,10 +550,48 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         for (const attName in schema.attributes) {
             const att = schema.attributes[ attName ];
-            if (!att.hidden && !att.isIdentifier && att.type === 'string'
-                &&
-                (!('isSearchable' in att) || att.isSearchable)
-            ) {
+            
+            // Skip if hidden, identifier, or explicitly not searchable
+            if (att.hidden || att.isIdentifier || att.isSearchable === false) {
+                continue;
+            }
+
+            const attrType = att.type;
+            const fieldType = att.fieldType;
+
+            // Exclude date/datetime fields (they're for filtering, not text search)
+            if (fieldType === 'date' || fieldType === 'datetime') {
+                continue;
+            }
+
+            // Exclude date-like field names (createdAt, publishedDate, etc.)
+            const lowerName = attName.toLowerCase();
+            if (attrType === 'string' && (lowerName.includes('date') || lowerName.includes('time'))) {
+                continue;
+            }
+
+            // Exclude relation fields (they're IDs, not searchable text)
+            if ('relation' in att && att.relation) {
+                continue;
+            }
+
+            // Exclude select/radio/checkbox fields with options (they're for filtering, not full-text search)
+            if ((fieldType === 'select' || fieldType === 'radio' || fieldType === 'checkbox' || fieldType === 'multi-select') && 
+                'options' in att && att.options) {
+                continue;
+            }
+
+            // Include searchable text-based field types
+            const isSearchableType = (
+                // String fields (primary searchable type)
+                (typeof attrType === 'string' && attrType === 'string') ||
+                
+                // Enum fields can be searched by their string values
+                (Array.isArray(attrType) && attrType.length > 0 && attrType.every(v => typeof v === 'string'))
+            );
+
+            // Include if searchable by default (isSearchable not explicitly set) or explicitly enabled
+            if (isSearchableType && (!('isSearchable' in att) || att.isSearchable)) {
                 attributeNames.push(attName);
             }
         }
@@ -588,9 +629,12 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
 
     /**
-     * Returns the default attribute names that can be used for filtering the records. Defaults to all string attributes which are not hidden.
+     * Returns the default attribute names that can be used for filtering the records.
+     * Includes all filterable field types: string, number, boolean, enums, dates, and relations.
      * 
-     * @returns {Array<string>} attribute names to be used for keyword search
+     * This matches the comprehensive filtering support in the UI filter generation.
+     * 
+     * @returns {Array<string>} attribute names to be used for filtering
     */
     public getFilterableAttributeNames(): Array<string> {
         const attributeNames = [];
@@ -598,11 +642,53 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         for (const attName in schema.attributes) {
             const att = schema.attributes[ attName ];
-            if (
-                !att.hidden && [ 'string', 'number' ].includes(att.type as string)
-                &&
-                (!('isFilterable' in att) || att.isFilterable)
-            ) {
+            
+            // Skip if explicitly marked as not filterable or hidden
+            if (att.hidden || att.isFilterable === false) {
+                continue;
+            }
+
+            const attrType = att.type;
+            const fieldType = att.fieldType;
+            let isFilterableType = false;
+
+            // Check basic scalar types
+            if (attrType === 'string' || attrType === 'number' || attrType === 'boolean') {
+                isFilterableType = true;
+            }
+            
+            // Check for enum types (array of values)
+            if (!isFilterableType && Array.isArray(attrType)) {
+                isFilterableType = true;
+            }
+            
+            // Check for date/datetime fields
+            if (!isFilterableType && (fieldType === 'date' || fieldType === 'datetime')) {
+                isFilterableType = true;
+            }
+            
+            // Check for date-like field names
+            if (!isFilterableType && attrType === 'string') {
+                const lowerName = attName.toLowerCase();
+                if (lowerName.includes('date') || lowerName.includes('time')) {
+                    isFilterableType = true;
+                }
+            }
+            
+            // Check for relation fields
+            if (!isFilterableType && 'relation' in att && att.relation) {
+                isFilterableType = true;
+            }
+            
+            // Check for select/radio/checkbox fields with options
+            if (!isFilterableType && 
+                (fieldType === 'select' || fieldType === 'radio' || fieldType === 'checkbox' || fieldType === 'multi-select') &&
+                'options' in att && att.options) {
+                isFilterableType = true;
+            }
+
+            // Include if filterable by default (isFilterable not explicitly set) or explicitly enabled
+            if (isFilterableType && (!('isFilterable' in att) || att.isFilterable)) {
                 attributeNames.push(attName);
             }
         }

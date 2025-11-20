@@ -184,7 +184,10 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      */
     getListingAttributeNames(): EntitySelections<S>;
     /**
-     * Returns the default attribute names to be used for keyword search. Defaults to all string attributes which are not hidden and are not identifiers.
+     * Returns the default attribute names to be used for keyword search.
+     * Includes string fields and enum fields with string values.
+     * Excludes identifiers, hidden fields, date/datetime fields, relations, and select fields by default.
+     *
      * @returns {Array<string>} attribute names to be used for keyword search
     */
     getSearchableAttributeNames(): Array<string>;
@@ -197,9 +200,12 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
     */
     getUniqueAttributes(): Array<EntityAttribute>;
     /**
-     * Returns the default attribute names that can be used for filtering the records. Defaults to all string attributes which are not hidden.
+     * Returns the default attribute names that can be used for filtering the records.
+     * Includes all filterable field types: string, number, boolean, enums, dates, and relations.
      *
-     * @returns {Array<string>} attribute names to be used for keyword search
+     * This matches the comprehensive filtering support in the UI filter generation.
+     *
+     * @returns {Array<string>} attribute names to be used for filtering
     */
     getFilterableAttributeNames(): Array<string>;
     serializeRecord<T extends Record<string, any>>(record: T, attributes?: EntitySelections<S>): Partial<T>;
