@@ -302,6 +302,16 @@ export class SearchSystemController extends APIController {
           throw new Error(`EntityService could not be resolved for entity ${entityName}`);
         }
 
+        // Check if search is enabled before attempting to initialize
+        if (!service.isSearchEnabled()) {
+          results.push({
+            entityName,
+            success: false,
+            message: `Search is not enabled for entity ${entityName}`,
+          });
+          return;
+        }
+
         const searchService = service.getSearchService();
         if (!searchService) {
           throw new Error(`Search service not found for entity ${entityName}`);
@@ -452,6 +462,8 @@ export class SearchSystemController extends APIController {
     let failedCount = 0;
     let processedCount = 0;
     let cursor: string | undefined = 'init';
+    let iterationCount = 0;
+    const maxIterations = 10000; // Safety limit to prevent infinite loops
 
     while (!!cursor) {
 

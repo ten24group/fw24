@@ -1,10 +1,11 @@
 import {  Schema } from "electrodb";
-import { BaseEntityService, EntitySchema, TIOSchemaAttribute, TIOSchemaAttributesMap, EntityViewPageConfig } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttribute, TIOSchemaAttributesMap, EntityViewPageConfig, ISectionsConfig, ISectionConfig, IEntityConfigReference } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
-import { formatEntityAttributesForDetail, mergeFieldVisibility } from "./util";
+import { formatEntityAttributesForDetail, mergeFieldVisibility, processSectionsConfig } from "./util";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
 import { DefaultLogger } from "../../logging";
 import { IApplicationConfig } from "../../interfaces/config";
+import { makeViewEntityListConfig } from "./list-entity";
 
 export type ViewEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string;
@@ -36,6 +37,10 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
      * Field-level visibility overrides
      */
     fields?: EntityViewPageConfig['fields'];
+    /**
+     * Sections configuration for multi-section detail pages
+     */
+    sectionsConfig?: ISectionsConfig;
 
     /**
      * Global UI config options (NEW: for passing global duplicatedFieldDetection config)
@@ -113,6 +118,16 @@ export function makeViewEntityDetailConfig<S extends EntitySchema<string, string
     // Add columnsConfig if provided
     if (options.columnsConfig) {
         detailsPageConfig.columnsConfig = options.columnsConfig;
+    }
+
+    // Add sectionsConfig if provided - process to expand shorthand propertiesConfig
+    if (options.sectionsConfig) {
+        detailsPageConfig.sectionsConfig = processSectionsConfig(
+            options.sectionsConfig,
+            Array.from(properties.values()),
+            entityService,
+            globalUIConfigOptions
+        );
     }
 
     return detailsPageConfig;
