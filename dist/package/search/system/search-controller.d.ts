@@ -43,6 +43,16 @@ export declare class SearchSystemController extends APIController {
             entityName: string;
         };
     }>, res: Response): Promise<Response>;
+    /**
+     * Deep normalize any value for consistent comparison
+     * Recursively sorts object keys and handles arrays/primitives
+     */
+    private deepNormalize;
+    /**
+     * Calculate deep diff between current and auto-generated settings
+     * Dynamically compares all fields regardless of type
+     */
+    private calculateSettingsDiff;
     updateIndexSettings(req: Request<{
         path: {
             entityName: string;
@@ -52,6 +62,11 @@ export declare class SearchSystemController extends APIController {
         };
     }>, res: Response): Promise<Response>;
     resetIndexSettings(req: Request<{
+        path: {
+            entityName: string;
+        };
+    }>, res: Response): Promise<Response>;
+    applyDefaultSettings(req: Request<{
         path: {
             entityName: string;
         };
