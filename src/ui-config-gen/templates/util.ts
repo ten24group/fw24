@@ -1701,7 +1701,8 @@ export function formatEntityAttributeForFormOrDetail(
 ) {
     const formatted: any = {
         ...thisProp,
-        label: thisProp.name,  // Respect custom label from entity attribute
+        // Use custom label if provided in schema (thisProp.label), otherwise format the name to human-readable
+        label: (thisProp as any).label || toHumanReadableName(thisProp.name),
         column: thisProp.id,
         fieldType: thisProp.fieldType || 'text',  // fieldType should already be inferred in base-service
         hidden: thisProp.hasOwnProperty('isVisible') && !thisProp.isVisible
@@ -2002,6 +2003,279 @@ export function formatEntityAttributesForFormOrDetail(
         return formatEntityAttributesForDetail(properties, entityService);
     }
     throw (`Invalid type [${type}] provided to formatEntityAttributesForFormOrDetail`);
+}
+
+/**
+ * Expands shorthand field references into full PropertyConfig objects.
+ * 
+ * **Enterprise-Grade Pattern Supporting:**
+ * 
+ * 1. **String shorthand (schema fields only):** `'fieldName'` → looks up in schema, expands to full config
+ * 2. **Object with schema field:** `{ name: 'status', fieldType: 'badge' }` → merges overrides with schema defaults
+ * 3. **JSON path (nested data):** `{ name: 'userEmail', column: 'user.email', label: 'Email', fieldType: 'text' }`
+ * 4. **Multiple renderings:** `{ name: 'statusBadge', column: 'status', fieldType: 'badge' }` + `{ name: 'statusText', column: 'status', fieldType: 'text' }`
+ * 5. **Custom/computed fields:** `{ name: 'confirmPassword', label: 'Confirm', column: 'confirmPassword', fieldType: 'password' }`
+ * 6. **Visibility control:** All configs support `visibility: VisibilityConfig` for role-based/conditional display
+ * 
+ * **Key Concepts:**
+ * - `name`: Unique UI identifier (must be unique within a single propertiesConfig)
+ * - `column`: Data path - can be direct field, JSON path (`user.email`), or custom field
+ * - Frontend uses `getNestedValue(record, column)` for data access (supports JSON paths)
+ * 
+ * This is the property equivalent of `normalizeColumnOverrides()`.
+ * 
+ * @param fieldReferences - Array containing strings (field names) or PropertyConfig objects
+ * @param allProperties - All entity attributes from schema for field lookup
+ * @param type - Page type: 'create', 'update', or 'detail' (determines formatting)
+ * @param entityService - Entity service for accessing related schemas
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Array of full PropertyConfig objects
+ * 
+ * @example
+ * // 1. String shorthand (schema fields only)
+ * propertiesConfig: ['teamName', 'city', 'status']
+ * 
+ * @example
+ * // 2. Override schema field display
+ * propertiesConfig: [
+ *   'teamName',
+ *   { name: 'status', fieldType: 'badge' },  // Same field, different rendering
+ *   'total'
+ * ]
+ * 
+ * @example
+ * // 3. Multiple renderings of same field
+ * propertiesConfig: [
+ *   { name: 'progressBar', column: 'progress', label: 'Progress', fieldType: 'progress' },
+ *   { name: 'progressValue', column: 'progress', label: 'Value', fieldType: 'number' }
+ * ]
+ * 
+ * @example
+ * // 4. JSON paths (nested data)
+ * propertiesConfig: [
+ *   'teamName',
+ *   { name: 'userEmail', column: 'user.email', label: 'Email', fieldType: 'text' },
+ *   { name: 'settingsTheme', column: 'metadata.settings.theme', label: 'Theme', fieldType: 'text' }
+ * ]
+ * 
+ * @example
+ * // 5. Custom/computed fields (not in schema, API provides them)
+ * propertiesConfig: [
+ *   'password',
+ *   {
+ *     name: 'confirmPassword',
+ *     label: 'Confirm Password',
+ *     column: 'confirmPassword',
+ *     fieldType: 'password',
+ *     required: true
+ *   }
+ * ]
+ * 
+ * @example
+ * // 6. With visibility config
+ * propertiesConfig: [
+ *   'teamName',
+ *   {
+ *     name: 'adminNotes',
+ *     label: 'Admin Notes',
+ *     column: 'adminNotes',
+ *     fieldType: 'textarea',
+ *     visibility: { requiredRoles: ['admin'] }
+ *   }
+ * ]
+ */
+export function expandPropertyReferences(
+    fieldReferences: ReadonlyArray<string | any> | Array<string | any>,
+    allProperties: TIOSchemaAttribute[],
+    type: 'create' | 'update' | 'detail',
+    entityService: BaseEntityService<any>,
+    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']
+): any[] {
+    const propertyMap = new Map<string, TIOSchemaAttribute>();
+    allProperties.forEach(prop => {
+        if (prop.id) { // Use prop.id (field identifier) not prop.name (human-readable label)
+            propertyMap.set(prop.id, prop);
+        }
+    });
+    
+    return fieldReferences.map(propRef => {
+        // Case 1: String shorthand → MUST be a direct schema field (convenience shortcut)
+        if (typeof propRef === 'string') {
+            const fieldAttribute = propertyMap.get(propRef);
+            if (!fieldAttribute) {
+                throw new Error(
+                    `Field '${propRef}' not found in entity schema. ` +
+                    `Available field IDs: ${Array.from(propertyMap.keys()).join(', ')}. ` +
+                    `\nFor non-schema fields (JSON paths, custom fields, multiple renderings), use object syntax:\n` +
+                    `  { name: 'uniqueName', column: '${propRef}', label: '...', fieldType: '...' }`
+                );
+            }
+            return formatEntityAttributeForFormOrDetail(fieldAttribute, type, entityService, allProperties, globalUIConfigOptions);
+        }
+        
+        // Case 2-5: Object syntax (permissive - supports everything)
+        if (typeof propRef === 'object' && propRef !== null) {
+            // Validate minimum required properties
+            if (!propRef.name) {
+                DefaultLogger.warn(`Property config missing 'name' field (required for UI identification). Skipping:`, propRef);
+                return propRef; // Return as-is, let frontend handle
+            }
+            
+            // Determine the data path (column can be: direct field, JSON path, or custom field)
+            const column = propRef.column || propRef.name;
+            
+            // Extract just the root field name for schema lookup (handles JSON paths like "user.email" → "user")
+            const rootFieldName = column.split('.')[0];
+            const fieldAttribute = propertyMap.get(rootFieldName);
+            
+            // If root field exists in schema AND column is the exact field (not a path), merge with schema
+            if (fieldAttribute && column === rootFieldName) {
+                // Schema field with overrides - merge defaults + overrides
+                const schemaDefaults = formatEntityAttributeForFormOrDetail(fieldAttribute, type, entityService, allProperties, globalUIConfigOptions);
+                return { 
+                    ...schemaDefaults,
+                    ...propRef,  // User overrides take precedence
+                    column  // Ensure column is set
+                };
+            }
+            
+            // Otherwise: JSON path, custom field, or multiple rendering of same field
+            // Auto-generate missing properties with proper formatting
+            const label = propRef.label || toHumanReadableName(propRef.name);
+            const fieldType = propRef.fieldType || 'text';
+            
+            // Warn if label was auto-generated
+            if (!propRef.label) {
+                DefaultLogger.debug(
+                    `Property '${propRef.name}' missing 'label'. Auto-generated: '${label}'. ` +
+                    `For custom fields, explicitly provide: name, label, column, fieldType.`
+                );
+            }
+            if (!propRef.fieldType) {
+                DefaultLogger.debug(
+                    `Property '${propRef.name}' missing 'fieldType'. Defaulted to 'text'. ` +
+                    `Recommended field types: text, number, select, badge, progress, etc.`
+                );
+            }
+            
+            // Return with proper formatting
+            return {
+                ...propRef,
+                column,
+                label,
+                fieldType
+            };
+        }
+        
+        // Fallback: unknown type, return as-is with warning
+        DefaultLogger.warn(`Unknown property reference type:`, propRef);
+        return propRef;
+    });
+}
+
+/**
+ * Processes sectionsConfig and expands any shorthand propertiesConfig arrays.
+ * 
+ * **Unified with column processing:**
+ * - Uses `expandPropertyReferences()` (same pattern as `normalizeColumnOverrides()`)
+ * - String shorthand `'fieldName'` → expands from schema
+ * - Object syntax → merges with schema defaults
+ * 
+ * Recursively walks through section groups and sections.
+ * 
+ * @param sectionsConfig - Sections configuration from entity schema
+ * @param allProperties - All entity attributes from schema for field lookup
+ * @param entityService - Entity service for accessing related schemas
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Processed sections config with expanded properties
+ */
+export function processSectionsConfig(
+    sectionsConfig: any,
+    allProperties: TIOSchemaAttribute[],
+    entityService: BaseEntityService<any>,
+    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']
+): any {
+    if (!sectionsConfig) return sectionsConfig;
+    
+    const processed = { ...sectionsConfig };
+    
+    // Process sections in single group format (backward compatible)
+    if (processed.sections) {
+        processed.sections = Object.entries(processed.sections).reduce((acc, [key, section]: [string, any]) => {
+            acc[key] = processSectionConfig(section, allProperties, entityService, globalUIConfigOptions);
+            return acc;
+        }, {} as Record<string, any>);
+    }
+    
+    // Process section groups (new format)
+    if (processed.sectionGroups) {
+        processed.sectionGroups = processed.sectionGroups.map((group: any) => {
+            if (!group.sections) return group;
+            
+            return {
+                ...group,
+                sections: Object.entries(group.sections).reduce((acc, [key, section]: [string, any]) => {
+                    acc[key] = processSectionConfig(section, allProperties, entityService, globalUIConfigOptions);
+                    return acc;
+                }, {} as Record<string, any>)
+            };
+        });
+    }
+    
+    return processed;
+}
+
+/**
+ * Processes a single section config and expands shorthand propertiesConfig.
+ * 
+ * Uses unified `expandPropertyReferences()` function.
+ * 
+ * @param section - Section configuration
+ * @param allProperties - All entity attributes from schema
+ * @param entityService - Entity service
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Processed section with expanded properties
+ */
+function processSectionConfig(
+    section: any,
+    allProperties: TIOSchemaAttribute[],
+    entityService: BaseEntityService<any>,
+    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']
+): any {
+    const processed = { ...section };
+    
+    // Process detailsPageConfig with propertiesConfig
+    if (processed.pageType === 'details' && processed.detailsPageConfig?.propertiesConfig) {
+        const config = processed.detailsPageConfig;
+        processed.detailsPageConfig = {
+            ...config,
+            propertiesConfig: expandPropertyReferences(
+                config.propertiesConfig,
+                allProperties,
+                'detail',
+                entityService,
+                globalUIConfigOptions
+            )
+        };
+    }
+    
+    // Process formPageConfig
+    if (processed.pageType === 'form' && processed.formPageConfig?.propertiesConfig) {
+        const config = processed.formPageConfig;
+        // Forms in sections are typically 'create' forms
+        processed.formPageConfig = {
+            ...config,
+            propertiesConfig: expandPropertyReferences(
+                config.propertiesConfig,
+                allProperties,
+                'create',
+                entityService,
+                globalUIConfigOptions
+            )
+        };
+    }
+    
+    return processed;
 }
 
 /**
@@ -2466,10 +2740,15 @@ function normalizeColumnOverrides(
  * Merges column visibility configuration with base properties.
  * Controls which columns are visible by default and their display order.
  * 
+ * **Supports:**
+ * - Schema fields (from base properties)
+ * - JSON paths (e.g., 'user.email', 'metadata.score')
+ * - Custom/computed columns (not in schema, provided by API or frontend)
+ * 
  * @template T - Base property type with name and dataIndex
  * @param baseProperties - Base properties from entity schema
  * @param columnOverrides - Column configuration overrides (string or object format)
- * @returns Merged properties with visibility and order applied
+ * @returns Merged properties with visibility and order applied, including custom columns
  */
 export function mergeColumnVisibility<T extends { name: string; dataIndex?: string }>(
     baseProperties: Array<T>,
@@ -2487,15 +2766,10 @@ export function mergeColumnVisibility<T extends { name: string; dataIndex?: stri
         normalizedOverrides.map((c, index) => [ c.field, { ...c, _order: index } ])
     );
 
-    // Validation: Warn if column override references non-existent column
-    normalizedOverrides.forEach(override => {
-        // Compare with dataIndex (actual field name) if available, otherwise fall back to name
-        if (!baseProperties.some(p => (p.dataIndex || p.name) === override.field)) {
-            DefaultLogger.warn(`Column override "${override.field}" not found in schema properties. This override will be ignored.`);
-        }
-    });
+    // Track which overrides match existing schema columns
+    const matchedOverrides = new Set<string>();
 
-    // Merge overrides into properties
+    // Merge overrides into existing schema properties
     const mergedProperties = baseProperties.map(prop => {
         // Use dataIndex (actual field name) if available, otherwise fall back to name
         const fieldName = prop.dataIndex || prop.name;
@@ -2511,6 +2785,7 @@ export function mergeColumnVisibility<T extends { name: string; dataIndex?: stri
         }
 
         // Field is in tableConfig.columns - apply overrides
+        matchedOverrides.add(override.field);
         return {
             ...prop,
             ...(override.visibility !== undefined && { visibility: override.visibility }),
@@ -2520,6 +2795,34 @@ export function mergeColumnVisibility<T extends { name: string; dataIndex?: stri
             defaultVisible: override.defaultVisible !== false,  // Defaults to true
             _order: override._order
         };
+    });
+
+    // Add custom columns (JSON paths, computed fields)
+    normalizedOverrides.forEach(override => {
+        if (!matchedOverrides.has(override.field)) {
+            // This is a custom column (JSON path or computed field)
+            const isJsonPath = override.field.includes('.');
+            
+            // Log info about custom column
+            if (isJsonPath) {
+                DefaultLogger.debug(`Adding JSON path column: "${override.field}"`);
+            } else {
+                DefaultLogger.debug(`Adding custom column: "${override.field}" (not in schema, assumes API provides it)`);
+            }
+
+            // Add as new custom column
+            mergedProperties.push({
+                name: override.field,  // Use field as name
+                dataIndex: override.field,  // Frontend will use getNestedValue()
+                defaultVisible: override.defaultVisible,
+                fieldType: 'text',  // Default to text for custom columns
+                ...(override.visibility !== undefined && { visibility: override.visibility }),
+                ...(override.width !== undefined && { width: override.width }),
+                ...(override.fixed !== undefined && { fixed: override.fixed }),
+                ...(override.groupTitle !== undefined && { groupTitle: override.groupTitle }),
+                _order: override._order
+            } as any);
+        }
     });
 
     // Sort by order from columnOverrides (columns not in overrides go to end)

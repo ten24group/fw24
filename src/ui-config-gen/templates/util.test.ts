@@ -10,6 +10,8 @@ import {
   formatEntityAttributeForFormOrDetail,
   formatEntityAttributesForList,
   resolveRelationOptionConfig,
+  expandPropertyReferences,
+  processSectionsConfig,
 } from './util';
 import { BaseEntityService } from '../../entity/base-service';
 import { createEntitySchema } from '../../entity';
@@ -454,23 +456,39 @@ describe('UI Config Generation Utilities', () => {
       expect(result[1].defaultVisible).toBe(true);
     });
 
-    it('should hide fields not listed in column overrides', () => {
+    it('should hide schema fields not listed and add custom columns', () => {
       const baseProperties: Array<{ name: string; dataIndex: string; type: string; sortable: boolean; defaultVisible?: boolean }> = [
         { name: 'col1', dataIndex: 'col1', type: 'string', sortable: true }
       ];
 
       const columnOverrides = [
-        { field: 'col2', width: 150 }  // col2 doesn't exist, col1 not listed
+        { field: 'col2', width: 150 }  // col2 doesn't exist in schema - custom column
       ];
 
-      const result = mergeColumnVisibility(baseProperties, columnOverrides);
+      const result = mergeColumnVisibility(baseProperties, columnOverrides) as any[];
 
-      expect(result).toHaveLength(1);
-      // col1 not in overrides → should be hidden but preserved
-      expect(result[0].name).toBe('col1');
-      expect(result[0].type).toBe('string');
-      expect(result[0].sortable).toBe(true);
-      expect(result[0].defaultVisible).toBe(false);  // Hidden because not in overrides
+      // Should have 2 items: col2 (custom, visible) comes first due to _order:0, col1 (schema, hidden) at end
+      expect(result).toHaveLength(2);
+      
+      // After sorting by _order: col2 has _order:0, col1 has _order:Number.MAX_SAFE_INTEGER
+      // So col2 should be first after sort
+      const col2 = result.find(r => r.name === 'col2');
+      const col1 = result.find(r => r.name === 'col1');
+      
+      // col2 (custom column) should exist with proper properties
+      expect(col2).toBeDefined();
+      expect(col2.name).toBe('col2');
+      expect(col2.dataIndex).toBe('col2');
+      expect(col2.width).toBe(150);
+      expect(col2.defaultVisible).toBe(true); // Custom columns visible by default
+      expect(col2.fieldType).toBe('text'); // Default fieldType
+      
+      // col1 (schema field) should be hidden
+      expect(col1).toBeDefined();
+      expect(col1.name).toBe('col1');
+      expect(col1.type).toBe('string');
+      expect(col1.sortable).toBe(true);
+      expect(col1.defaultVisible).toBe(false);  // Hidden because not in overrides
     });
   });
 
@@ -1539,6 +1557,364 @@ describe('UI Config Generation Utilities', () => {
         const result = generateSegments(mockProperties, mockEntityService);
 
         expect(result).toBeUndefined();
+      });
+    });
+  });
+
+  describe('expandPropertyReferences', () => {
+    let mockEntityService: any;
+    let mockProperties: any[];
+
+    beforeEach(() => {
+      mockEntityService = {
+        getEntitySchema: jest.fn(() => ({
+          model: { entity: 'testEntity' }
+        }))
+      };
+
+      mockProperties = [
+        {
+          id: 'teamName',
+          name: 'teamName',
+          label: 'Team Name',
+          type: 'string',
+          fieldType: 'text',
+          required: true
+        },
+        {
+          id: 'status',
+          name: 'status',
+          label: 'Status',
+          type: ['active', 'inactive'],
+          fieldType: 'select',
+          required: false
+        },
+        {
+          id: 'progress',
+          name: 'progress',
+          label: 'Progress',
+          type: 'number',
+          fieldType: 'number',
+          required: false
+        }
+      ];
+    });
+
+    describe('String shorthand expansion', () => {
+      it('should expand string shorthand from schema', () => {
+        const fieldReferences = ['teamName', 'status'];
+        const result = expandPropertyReferences(fieldReferences, mockProperties, 'detail', mockEntityService);
+
+        expect(result).toHaveLength(2);
+        expect(result[0].name).toBe('teamName');
+        expect(result[0].label).toBe('Team Name');
+        expect(result[0].fieldType).toBe('text');
+        expect(result[1].name).toBe('status');
+      });
+
+      it('should throw error for non-existent field in string shorthand', () => {
+        const fieldReferences = ['nonExistentField'];
+        
+        expect(() => {
+          expandPropertyReferences(fieldReferences, mockProperties, 'detail', mockEntityService);
+        }).toThrow(/Field 'nonExistentField' not found in entity schema/);
+      });
+    });
+
+    describe('Object syntax with schema field override', () => {
+      it('should merge object overrides with schema defaults', () => {
+        const fieldReferences = [
+          { name: 'status', fieldType: 'badge', helpText: 'Current status' }
+        ];
+        const result = expandPropertyReferences(fieldReferences, mockProperties, 'detail', mockEntityService);
+
+        expect(result).toHaveLength(1);
+        expect(result[0].name).toBe('status');
+        expect(result[0].fieldType).toBe('badge'); // Override
+        expect(result[0].helpText).toBe('Current status'); // Override
+        expect(result[0].label).toBe('Status'); // From schema
+      });
+
+      it('should handle multiple renderings of same field', () => {
+        const fieldReferences = [
+          { name: 'progressBar', column: 'progress', label: 'Progress Bar', fieldType: 'progress' },
+          { name: 'progressValue', column: 'progress', label: 'Progress %', fieldType: 'number' }
+        ];
+        const result = expandPropertyReferences(fieldReferences, mockProperties, 'detail', mockEntityService);
+
+        expect(result).toHaveLength(2);
+        expect(result[0].name).toBe('progressBar');
+        expect(result[0].column).toBe('progress');
+        expect(result[0].fieldType).toBe('progress');
+        expect(result[1].name).toBe('progressValue');
+        expect(result[1].column).toBe('progress');
+        expect(result[1].fieldType).toBe('number');
+      });
+    });
+
+    describe('JSON path support', () => {
+      it('should handle JSON paths for nested data', () => {
+        const fieldReferences = [
+          { name: 'userEmail', column: 'user.email', label: 'Email', fieldType: 'text' },
+          { name: 'settingsTheme', column: 'metadata.settings.theme', label: 'Theme', fieldType: 'text' }
+        ];
+        const result = expandPropertyReferences(fieldReferences, mockProperties, 'detail', mockEntityService);
+
+        expect(result).toHaveLength(2);
+        expect(result[0].column).toBe('user.email');
+        expect(result[0].fieldType).toBe('text');
+        expect(result[1].column).toBe('metadata.settings.theme');
+      });
+    });
+
+    describe('Custom/computed fields', () => {
+      it('should handle custom fields not in schema', () => {
+        const fieldReferences = [
+          { 
+            name: 'confirmPassword', 
+            column: 'confirmPassword', 
+            label: 'Confirm Password', 
+            fieldType: 'password',
+            required: true 
+          }
+        ];
+        const result = expandPropertyReferences(fieldReferences, mockProperties, 'create', mockEntityService);
+
+        expect(result).toHaveLength(1);
+        expect(result[0].name).toBe('confirmPassword');
+        expect(result[0].column).toBe('confirmPassword');
+        expect(result[0].fieldType).toBe('password');
+      });
+
+      it('should default fieldType to text for custom fields missing it', () => {
+        const fieldReferences = [
+          { name: 'customField', column: 'customField', label: 'Custom' }
+        ];
+        const result = expandPropertyReferences(fieldReferences, mockProperties, 'detail', mockEntityService);
+
+        expect(result).toHaveLength(1);
+        expect(result[0].fieldType).toBe('text');
+      });
+    });
+
+    describe('Visibility config', () => {
+      it('should preserve visibility config in expanded properties', () => {
+        const fieldReferences = [
+          { 
+            name: 'adminNotes', 
+            column: 'adminNotes',
+            label: 'Admin Notes', 
+            fieldType: 'textarea',
+            visibility: { requiredRoles: ['admin'] }
+          }
+        ];
+        const result = expandPropertyReferences(fieldReferences, mockProperties, 'detail', mockEntityService);
+
+        expect(result).toHaveLength(1);
+        expect(result[0].visibility).toEqual({ requiredRoles: ['admin'] });
+      });
+    });
+
+    describe('Mixed usage', () => {
+      it('should handle mix of string shorthand and object syntax', () => {
+        const fieldReferences = [
+          'teamName',  // String shorthand
+          { name: 'status', fieldType: 'badge' },  // Override
+          { name: 'progressBar', column: 'progress', label: 'Progress', fieldType: 'progress' },  // Custom rendering
+          { name: 'confirmPassword', column: 'confirmPassword', label: 'Confirm', fieldType: 'password' }  // Custom field
+        ];
+        const result = expandPropertyReferences(fieldReferences, mockProperties, 'create', mockEntityService);
+
+        expect(result).toHaveLength(4);
+        expect(result[0].name).toBe('teamName'); // From schema
+        expect(result[1].fieldType).toBe('badge'); // Override
+        expect(result[2].column).toBe('progress'); // Same field, different rendering
+        expect(result[3].name).toBe('confirmPassword'); // Custom field
+      });
+    });
+  });
+
+  describe('processSectionsConfig', () => {
+    let mockEntityService: any;
+    let mockProperties: any[];
+
+    beforeEach(() => {
+      mockEntityService = {
+        getEntitySchema: jest.fn(() => ({
+          model: { entity: 'testEntity' }
+        }))
+      };
+
+      mockProperties = [
+        {
+          id: 'teamName',
+          name: 'teamName',
+          label: 'Team Name',
+          type: 'string',
+          fieldType: 'text',
+          required: true
+        },
+        {
+          id: 'city',
+          name: 'city',
+          label: 'City',
+          type: 'string',
+          fieldType: 'text'
+        },
+        {
+          id: 'status',
+          name: 'status',
+          label: 'Status',
+          type: ['active', 'inactive'],
+          fieldType: 'select'
+        }
+      ];
+    });
+
+    describe('Single section group format', () => {
+      it('should expand propertiesConfig in detailsPageConfig', () => {
+        const sectionsConfig = {
+          sections: {
+            basic: {
+              pageType: 'details',
+              detailsPageConfig: {
+                propertiesConfig: ['teamName', 'city']
+              }
+            }
+          }
+        };
+
+        const result = processSectionsConfig(sectionsConfig, mockProperties, mockEntityService);
+
+        expect(result.sections.basic.detailsPageConfig.propertiesConfig).toHaveLength(2);
+        expect(result.sections.basic.detailsPageConfig.propertiesConfig[0].name).toBe('teamName');
+        expect(result.sections.basic.detailsPageConfig.propertiesConfig[1].name).toBe('city');
+      });
+
+      it('should expand propertiesConfig in formPageConfig', () => {
+        const sectionsConfig = {
+          sections: {
+            create: {
+              pageType: 'form',
+              formPageConfig: {
+                propertiesConfig: [
+                  'teamName',
+                  { name: 'status', fieldType: 'badge' }
+                ]
+              }
+            }
+          }
+        };
+
+        const result = processSectionsConfig(sectionsConfig, mockProperties, mockEntityService);
+
+        expect(result.sections.create.formPageConfig.propertiesConfig).toHaveLength(2);
+        expect(result.sections.create.formPageConfig.propertiesConfig[0].name).toBe('teamName');
+        expect(result.sections.create.formPageConfig.propertiesConfig[1].fieldType).toBe('badge');
+      });
+    });
+
+    describe('Section groups format', () => {
+      it('should expand properties in nested sectionGroups', () => {
+        const sectionsConfig = {
+          sectionGroups: [
+            {
+              id: 'info',
+              sections: {
+                basic: {
+                  pageType: 'details',
+                  detailsPageConfig: {
+                    propertiesConfig: ['teamName', { name: 'status', fieldType: 'badge' }]
+                  }
+                },
+                location: {
+                  pageType: 'details',
+                  detailsPageConfig: {
+                    propertiesConfig: ['city']
+                  }
+                }
+              }
+            }
+          ]
+        };
+
+        const result = processSectionsConfig(sectionsConfig, mockProperties, mockEntityService);
+
+        expect(result.sectionGroups).toHaveLength(1);
+        expect(result.sectionGroups[0].sections.basic.detailsPageConfig.propertiesConfig).toHaveLength(2);
+        expect(result.sectionGroups[0].sections.location.detailsPageConfig.propertiesConfig).toHaveLength(1);
+      });
+
+      it('should handle multiple section groups', () => {
+        const sectionsConfig = {
+          sectionGroups: [
+            {
+              id: 'group1',
+              sections: {
+                section1: {
+                  pageType: 'details',
+                  detailsPageConfig: {
+                    propertiesConfig: ['teamName']
+                  }
+                }
+              }
+            },
+            {
+              id: 'group2',
+              sections: {
+                section2: {
+                  pageType: 'form',
+                  formPageConfig: {
+                    propertiesConfig: ['city']
+                  }
+                }
+              }
+            }
+          ]
+        };
+
+        const result = processSectionsConfig(sectionsConfig, mockProperties, mockEntityService);
+
+        expect(result.sectionGroups).toHaveLength(2);
+        expect(result.sectionGroups[0].sections.section1).toBeDefined();
+        expect(result.sectionGroups[1].sections.section2).toBeDefined();
+      });
+    });
+
+    describe('Edge cases', () => {
+      it('should return undefined for null/undefined config', () => {
+        expect(processSectionsConfig(null, mockProperties, mockEntityService)).toBeNull();
+        expect(processSectionsConfig(undefined, mockProperties, mockEntityService)).toBeUndefined();
+      });
+
+      it('should handle sections without propertiesConfig', () => {
+        const sectionsConfig = {
+          sections: {
+            empty: {
+              pageType: 'details',
+              detailsPageConfig: {}
+            }
+          }
+        };
+
+        const result = processSectionsConfig(sectionsConfig, mockProperties, mockEntityService);
+
+        expect(result.sections.empty).toBeDefined();
+      });
+
+      it('should handle pageType other than details/form', () => {
+        const sectionsConfig = {
+          sections: {
+            custom: {
+              pageType: 'custom',
+              customConfig: {}
+            }
+          }
+        };
+
+        const result = processSectionsConfig(sectionsConfig, mockProperties, mockEntityService);
+
+        expect(result.sections.custom.pageType).toBe('custom');
       });
     });
   });

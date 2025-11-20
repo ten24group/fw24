@@ -1,4 +1,5 @@
-import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, IEntityPageColumnConfig, Template, EntityEditPageConfig } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, IEntityPageColumnConfig, Template, EntityEditPageConfig, ISectionsConfig } from "../../entity";
+import { IApplicationConfig } from "../../interfaces/config";
 export type CreateEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string;
     entityNamePlural: string;
@@ -40,6 +41,14 @@ export type CreateEntityPageOptions<S extends EntitySchema<string, string, strin
      * Form configuration including custom buttons and field-level visibility
      */
     formConfig?: EntityEditPageConfig['formConfig'];
+    /**
+     * Sections configuration for multi-section create pages with tabs/accordions
+     */
+    sectionsConfig?: ISectionsConfig;
+    /**
+     * Global UI config options (for passing global configuration like duplicatedFieldDetection)
+     */
+    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: CreateEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     pageTitle: Template;

@@ -2708,8 +2708,23 @@ export interface ISectionConfig {
     readonly detailApiConfig?: DetailsPageConfigStructure['detailApiConfig'];
     /** Column grouping config */
     readonly columnsConfig?: DetailsPageConfigStructure['columnsConfig'];
-    /** Properties to display */
-    readonly propertiesConfig: ReadonlyArray<DetailsPageConfigStructure['propertiesConfig'][number]> | DetailsPageConfigStructure['propertiesConfig'];
+    /** 
+     * Properties to display.
+     * Supports string shorthand for field names or full PropertyConfig objects.
+     * 
+     * @example
+     * // String shorthand
+     * propertiesConfig: ['orderDate', 'status', 'total']
+     * 
+     * @example
+     * // Mixed usage
+     * propertiesConfig: [
+     *   'orderDate',
+     *   { name: 'status', label: 'Order Status', column: 'status', fieldType: 'badge' },
+     *   'total'
+     * ]
+     */
+    readonly propertiesConfig: DetailsPageConfigStructure['propertiesConfig'];
   };
   /** Form page config (if pageType === 'form' and not using entityConfigRef) */
   readonly formPageConfig?: FormPageConfigStructure;

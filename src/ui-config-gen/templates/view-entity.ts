@@ -1,7 +1,7 @@
 import {  Schema } from "electrodb";
 import { BaseEntityService, EntitySchema, TIOSchemaAttribute, TIOSchemaAttributesMap, EntityViewPageConfig, ISectionsConfig, ISectionConfig, IEntityConfigReference } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
-import { formatEntityAttributesForDetail, mergeFieldVisibility } from "./util";
+import { formatEntityAttributesForDetail, mergeFieldVisibility, processSectionsConfig } from "./util";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
 import { DefaultLogger } from "../../logging";
 import { IApplicationConfig } from "../../interfaces/config";
@@ -120,9 +120,14 @@ export function makeViewEntityDetailConfig<S extends EntitySchema<string, string
         detailsPageConfig.columnsConfig = options.columnsConfig;
     }
 
-    // Add sectionsConfig if provided (resolve entityConfigRef if needed)
+    // Add sectionsConfig if provided - process to expand shorthand propertiesConfig
     if (options.sectionsConfig) {
-        detailsPageConfig.sectionsConfig = options.sectionsConfig;
+        detailsPageConfig.sectionsConfig = processSectionsConfig(
+            options.sectionsConfig,
+            Array.from(properties.values()),
+            entityService,
+            globalUIConfigOptions
+        );
     }
 
     return detailsPageConfig;

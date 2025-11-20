@@ -126,6 +126,103 @@ globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): any;
  */
 export declare function formatEntityAttributesForFormOrDetail(properties: TIOSchemaAttribute[], type: 'create' | 'update' | 'detail', entityService: BaseEntityService<any>): any[];
 /**
+ * Expands shorthand field references into full PropertyConfig objects.
+ *
+ * **Enterprise-Grade Pattern Supporting:**
+ *
+ * 1. **String shorthand (schema fields only):** `'fieldName'` → looks up in schema, expands to full config
+ * 2. **Object with schema field:** `{ name: 'status', fieldType: 'badge' }` → merges overrides with schema defaults
+ * 3. **JSON path (nested data):** `{ name: 'userEmail', column: 'user.email', label: 'Email', fieldType: 'text' }`
+ * 4. **Multiple renderings:** `{ name: 'statusBadge', column: 'status', fieldType: 'badge' }` + `{ name: 'statusText', column: 'status', fieldType: 'text' }`
+ * 5. **Custom/computed fields:** `{ name: 'confirmPassword', label: 'Confirm', column: 'confirmPassword', fieldType: 'password' }`
+ * 6. **Visibility control:** All configs support `visibility: VisibilityConfig` for role-based/conditional display
+ *
+ * **Key Concepts:**
+ * - `name`: Unique UI identifier (must be unique within a single propertiesConfig)
+ * - `column`: Data path - can be direct field, JSON path (`user.email`), or custom field
+ * - Frontend uses `getNestedValue(record, column)` for data access (supports JSON paths)
+ *
+ * This is the property equivalent of `normalizeColumnOverrides()`.
+ *
+ * @param fieldReferences - Array containing strings (field names) or PropertyConfig objects
+ * @param allProperties - All entity attributes from schema for field lookup
+ * @param type - Page type: 'create', 'update', or 'detail' (determines formatting)
+ * @param entityService - Entity service for accessing related schemas
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Array of full PropertyConfig objects
+ *
+ * @example
+ * // 1. String shorthand (schema fields only)
+ * propertiesConfig: ['teamName', 'city', 'status']
+ *
+ * @example
+ * // 2. Override schema field display
+ * propertiesConfig: [
+ *   'teamName',
+ *   { name: 'status', fieldType: 'badge' },  // Same field, different rendering
+ *   'total'
+ * ]
+ *
+ * @example
+ * // 3. Multiple renderings of same field
+ * propertiesConfig: [
+ *   { name: 'progressBar', column: 'progress', label: 'Progress', fieldType: 'progress' },
+ *   { name: 'progressValue', column: 'progress', label: 'Value', fieldType: 'number' }
+ * ]
+ *
+ * @example
+ * // 4. JSON paths (nested data)
+ * propertiesConfig: [
+ *   'teamName',
+ *   { name: 'userEmail', column: 'user.email', label: 'Email', fieldType: 'text' },
+ *   { name: 'settingsTheme', column: 'metadata.settings.theme', label: 'Theme', fieldType: 'text' }
+ * ]
+ *
+ * @example
+ * // 5. Custom/computed fields (not in schema, API provides them)
+ * propertiesConfig: [
+ *   'password',
+ *   {
+ *     name: 'confirmPassword',
+ *     label: 'Confirm Password',
+ *     column: 'confirmPassword',
+ *     fieldType: 'password',
+ *     required: true
+ *   }
+ * ]
+ *
+ * @example
+ * // 6. With visibility config
+ * propertiesConfig: [
+ *   'teamName',
+ *   {
+ *     name: 'adminNotes',
+ *     label: 'Admin Notes',
+ *     column: 'adminNotes',
+ *     fieldType: 'textarea',
+ *     visibility: { requiredRoles: ['admin'] }
+ *   }
+ * ]
+ */
+export declare function expandPropertyReferences(fieldReferences: ReadonlyArray<string | any> | Array<string | any>, allProperties: TIOSchemaAttribute[], type: 'create' | 'update' | 'detail', entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): any[];
+/**
+ * Processes sectionsConfig and expands any shorthand propertiesConfig arrays.
+ *
+ * **Unified with column processing:**
+ * - Uses `expandPropertyReferences()` (same pattern as `normalizeColumnOverrides()`)
+ * - String shorthand `'fieldName'` → expands from schema
+ * - Object syntax → merges with schema defaults
+ *
+ * Recursively walks through section groups and sections.
+ *
+ * @param sectionsConfig - Sections configuration from entity schema
+ * @param allProperties - All entity attributes from schema for field lookup
+ * @param entityService - Entity service for accessing related schemas
+ * @param globalUIConfigOptions - Optional global UI configuration options
+ * @returns Processed sections config with expanded properties
+ */
+export declare function processSectionsConfig(sectionsConfig: any, allProperties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): any;
+/**
  * Formats entity attributes for create form pages.
  *
  * Filters attributes to include only creatable fields (respects isCreatable flag)
@@ -338,10 +435,15 @@ export declare function mergeFieldVisibility<T extends {
  * Merges column visibility configuration with base properties.
  * Controls which columns are visible by default and their display order.
  *
+ * **Supports:**
+ * - Schema fields (from base properties)
+ * - JSON paths (e.g., 'user.email', 'metadata.score')
+ * - Custom/computed columns (not in schema, provided by API or frontend)
+ *
  * @template T - Base property type with name and dataIndex
  * @param baseProperties - Base properties from entity schema
  * @param columnOverrides - Column configuration overrides (string or object format)
- * @returns Merged properties with visibility and order applied
+ * @returns Merged properties with visibility and order applied, including custom columns
  */
 export declare function mergeColumnVisibility<T extends {
     name: string;
