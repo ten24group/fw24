@@ -53,9 +53,41 @@ export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "a
  * **Important**: Should NOT include structural types like "list" or "object".
  * Use `ConfigPropertyType` for structural types instead.
  *
+ * **Field Type Categories:**
+ *
+ * **Basic Text Input:**
+ * - text, textarea, password, email, hidden
+ *
+ * **Numeric Input:**
+ * - number, currency, percentage, range, slider, rating
+ *
+ * **Date & Time:**
+ * - date, time, datetime, duration
+ *
+ * **Boolean & Toggle:**
+ * - boolean, switch, toggle, checkbox
+ *
+ * **Selection & Options:**
+ * - select, multi-select, autocomplete, radio
+ *
+ * **Visual & Display:**
+ * - badge, tag, tags, progress, avatar, color, image, video, audio, qrcode
+ *
+ * **Structured Data:**
+ * - json, code, markdown, rich-text, wysiwyg
+ *
+ * **Links & URLs:**
+ * - url, phone, link
+ *
+ * **Files & Media:**
+ * - file, image, video, audio
+ *
+ * **Special:**
+ * - custom, icon
+ *
  * @see {@link ConfigPropertyType} for structural types
  */
-export type ConfigFieldType = "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json";
+export type ConfigFieldType = "text" | "textarea" | "password" | "email" | "url" | "phone" | "hidden" | "number" | "currency" | "percentage" | "range" | "slider" | "rating" | "date" | "time" | "datetime" | "duration" | "boolean" | "switch" | "toggle" | "checkbox" | "select" | "multi-select" | "autocomplete" | "radio" | "badge" | "tag" | "tags" | "progress" | "avatar" | "color" | "icon" | "json" | "code" | "markdown" | "rich-text" | "wysiwyg" | "link" | "file" | "image" | "video" | "audio" | "qrcode" | "custom";
 /**
  * Data structure types for nested/complex properties.
  * These types represent the shape of data, not how it's rendered.

@@ -669,10 +669,13 @@ export type EntityAttribute = Attribute & FW24AttributeExtensions & FieldMetadat
  * The appropriate metadata type is determined by the `fieldType` property.
  */
 export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldMetadata
-  | TimeFieldMetadata | DateTimeFieldMetadata | BooleanFieldMetadata
+  | TimeFieldMetadata | DateTimeFieldMetadata | DurationFieldMetadata | BooleanFieldMetadata
   | SelectFieldMetadata | RadioFieldMetadata | CheckboxFieldMetadata
-  | FileFieldMetadata | RangeFieldMetadata | ColorFieldMetadata
-  | ImageFieldMetadata | HiddenFieldMetadata | CustomFieldMetadata
+  | FileFieldMetadata | RangeFieldMetadata | SliderFieldMetadata | ColorFieldMetadata
+  | ImageFieldMetadata | VideoFieldMetadata | AudioFieldMetadata
+  | BadgeFieldMetadata | TagFieldMetadata | ProgressFieldMetadata | AvatarFieldMetadata | IconFieldMetadata
+  | LinkFieldMetadata | QRCodeFieldMetadata
+  | HiddenFieldMetadata | CustomFieldMetadata
   | RatingFieldMetadata | EditorFieldMetadata | CodeEditorFieldMetadata;
 
 /**
@@ -1653,16 +1656,34 @@ export interface IEntityPageColumnConfig {
 }
 
 interface TextFieldMetadata extends BaseFieldMetadata {
-  fieldType?: 'text' | 'textarea' | 'password' | 'email';
+  fieldType?: 'text' | 'textarea' | 'password' | 'email' | 'url' | 'phone';
   maxLength?: number;
   mask?: string;
+  /**
+   * For 'url' type: validate URL format
+   * For 'phone' type: phone number format/mask
+   */
+  format?: string;
 }
 
 interface NumberFieldMetadata extends BaseFieldMetadata {
-  fieldType?: 'number';
+  fieldType?: 'number' | 'currency' | 'percentage';
   min?: number;
   max?: number;
   step?: number;
+  /**
+   * For 'currency' type: currency code (e.g., 'USD', 'EUR')
+   * For 'percentage' type: display format (e.g., '0.00%')
+   */
+  format?: string;
+  /**
+   * For 'currency' type: currency symbol (e.g., '$', '€')
+   */
+  currencySymbol?: string;
+  /**
+   * For 'currency' type: symbol position ('before' | 'after')
+   */
+  symbolPosition?: 'before' | 'after';
 }
 
 interface DateFieldMetadata extends BaseFieldMetadata {
@@ -1685,6 +1706,23 @@ interface DateTimeFieldMetadata extends BaseFieldMetadata {
   minDateTime?: Date;
   maxDateTime?: Date;
   dateTimeFormat?: string; // format to display the date and time
+}
+
+interface DurationFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'duration';
+  /**
+   * Duration format: 'seconds', 'minutes', 'hours', 'days', 'human' (e.g., '2h 30m')
+   * Default: 'human'
+   */
+  format?: 'seconds' | 'minutes' | 'hours' | 'days' | 'human';
+  /**
+   * Minimum duration value (in seconds)
+   */
+  minDuration?: number;
+  /**
+   * Maximum duration value (in seconds)
+   */
+  maxDuration?: number;
 }
 
 interface ColorFieldMetadata extends BaseFieldMetadata {
@@ -1842,6 +1880,178 @@ interface RangeFieldMetadata extends BaseFieldMetadata {
   max?: number;
   step?: number;
   showValue?: boolean; // whether to show the current value
+}
+
+interface SliderFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'slider';
+  min?: number;
+  max?: number;
+  step?: number;
+  showValue?: boolean; // whether to show the current value
+  /**
+   * Show marks on slider (e.g., { 0: '0°C', 26: '26°C', 37: '37°C', 100: '100°C' })
+   */
+  marks?: Record<number, string>;
+  /**
+   * Enable vertical slider
+   */
+  vertical?: boolean;
+}
+
+interface BadgeFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'badge';
+  /**
+   * Badge status/color: 'success', 'processing', 'error', 'warning', 'default'
+   */
+  status?: 'success' | 'processing' | 'error' | 'warning' | 'default';
+  /**
+   * Custom color (hex code) - overrides status color
+   */
+  color?: string;
+  /**
+   * Show count/dot indicator
+   */
+  showDot?: boolean;
+}
+
+interface TagFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'tag' | 'tags';
+  /**
+   * Tag color: 'success', 'processing', 'error', 'warning', 'default', or custom hex
+   */
+  color?: 'success' | 'processing' | 'error' | 'warning' | 'default' | string;
+  /**
+   * Closeable tags (for editable lists)
+   */
+  closable?: boolean;
+  /**
+   * Icon to display in tag
+   */
+  icon?: string;
+}
+
+interface ProgressFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'progress';
+  /**
+   * Progress type: 'line', 'circle', 'dashboard'
+   */
+  type?: 'line' | 'circle' | 'dashboard';
+  /**
+   * Progress status color: 'success', 'exception', 'normal', 'active'
+   */
+  status?: 'success' | 'exception' | 'normal' | 'active';
+  /**
+   * Show percentage text
+   */
+  showInfo?: boolean;
+  /**
+   * Custom format for percentage text
+   */
+  format?: string;
+}
+
+interface AvatarFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'avatar';
+  /**
+   * Avatar shape: 'circle', 'square'
+   */
+  shape?: 'circle' | 'square';
+  /**
+   * Avatar size: number (pixels) or 'small', 'default', 'large'
+   */
+  size?: number | 'small' | 'default' | 'large';
+  /**
+   * Fallback icon when no image
+   */
+  icon?: string;
+  /**
+   * Fallback text when no image (e.g., initials)
+   */
+  text?: string;
+}
+
+interface IconFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'icon';
+  /**
+   * Icon size in pixels
+   */
+  size?: number;
+  /**
+   * Icon color (hex code)
+   */
+  color?: string;
+  /**
+   * Icon library: 'antd', 'custom'
+   */
+  library?: 'antd' | 'custom';
+}
+
+interface LinkFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'link';
+  /**
+   * Target for link: '_blank', '_self', '_parent', '_top'
+   */
+  target?: '_blank' | '_self' | '_parent' | '_top';
+  /**
+   * Link template/pattern (supports placeholders)
+   */
+  urlPattern?: string;
+}
+
+interface VideoFieldMetadata extends BaseFieldMetadata, CommonFileFieldMetadata {
+  fieldType?: 'video';
+  /**
+   * Accepted video formats
+   */
+  accept?: 'video/*' | 'video/mp4' | 'video/webm' | 'video/ogg';
+  /**
+   * Show video player controls
+   */
+  controls?: boolean;
+  /**
+   * Autoplay video
+   */
+  autoplay?: boolean;
+  /**
+   * Maximum duration in seconds
+   */
+  maxDuration?: number;
+}
+
+interface AudioFieldMetadata extends BaseFieldMetadata, CommonFileFieldMetadata {
+  fieldType?: 'audio';
+  /**
+   * Accepted audio formats
+   */
+  accept?: 'audio/*' | 'audio/mpeg' | 'audio/wav' | 'audio/ogg';
+  /**
+   * Show audio player controls
+   */
+  controls?: boolean;
+  /**
+   * Maximum duration in seconds
+   */
+  maxDuration?: number;
+}
+
+interface QRCodeFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'qrcode';
+  /**
+   * QR code size in pixels
+   */
+  size?: number;
+  /**
+   * Error correction level: 'L', 'M', 'Q', 'H'
+   */
+  errorLevel?: 'L' | 'M' | 'Q' | 'H';
+  /**
+   * Include logo in QR code
+   */
+  includeImage?: boolean;
+  /**
+   * Logo image URL
+   */
+  logoImage?: string;
 }
 
 export type GetSignedUploadUrlAPIConfig = {

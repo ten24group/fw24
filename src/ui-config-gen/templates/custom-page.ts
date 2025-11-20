@@ -56,9 +56,104 @@ export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "a
  * **Important**: Should NOT include structural types like "list" or "object".
  * Use `ConfigPropertyType` for structural types instead.
  * 
+ * **Field Type Categories:**
+ * 
+ * **Basic Text Input:**
+ * - text, textarea, password, email, hidden
+ * 
+ * **Numeric Input:**
+ * - number, currency, percentage, range, slider, rating
+ * 
+ * **Date & Time:**
+ * - date, time, datetime, duration
+ * 
+ * **Boolean & Toggle:**
+ * - boolean, switch, toggle, checkbox
+ * 
+ * **Selection & Options:**
+ * - select, multi-select, autocomplete, radio
+ * 
+ * **Visual & Display:**
+ * - badge, tag, tags, progress, avatar, color, image, video, audio, qrcode
+ * 
+ * **Structured Data:**
+ * - json, code, markdown, rich-text, wysiwyg
+ * 
+ * **Links & URLs:**
+ * - url, phone, link
+ * 
+ * **Files & Media:**
+ * - file, image, video, audio
+ * 
+ * **Special:**
+ * - custom, icon
+ * 
  * @see {@link ConfigPropertyType} for structural types
  */
-export type ConfigFieldType = "text" | "textarea" | "password" | "email" | "number" | "date" | "time" | "datetime" | "boolean" | "switch" | "toggle" | "select" | "multi-select" | "autocomplete" | "radio" | "checkbox" | "color" | "range" | "hidden" | "custom" | "rating" | "file" | "image" | "rich-text" | "wysiwyg" | "code" | "markdown" | "json";
+export type ConfigFieldType = 
+    // Basic text input
+    | "text" 
+    | "textarea" 
+    | "password" 
+    | "email" 
+    | "url"
+    | "phone"
+    | "hidden"
+    
+    // Numeric input
+    | "number" 
+    | "currency"
+    | "percentage"
+    | "range" 
+    | "slider"
+    | "rating"
+    
+    // Date & time
+    | "date" 
+    | "time" 
+    | "datetime"
+    | "duration"
+    
+    // Boolean & toggle
+    | "boolean" 
+    | "switch" 
+    | "toggle"
+    | "checkbox"
+    
+    // Selection & options
+    | "select" 
+    | "multi-select" 
+    | "autocomplete" 
+    | "radio"
+    
+    // Visual & display
+    | "badge"
+    | "tag"
+    | "tags"
+    | "progress"
+    | "avatar"
+    | "color"
+    | "icon"
+    
+    // Structured data
+    | "json"
+    | "code" 
+    | "markdown"
+    | "rich-text" 
+    | "wysiwyg"
+    
+    // Links & navigation
+    | "link"
+    
+    // Files & media
+    | "file" 
+    | "image"
+    | "video"
+    | "audio"
+    | "qrcode"
+    
+    // Special
+    | "custom";
 
 /**
  * Data structure types for nested/complex properties.
