@@ -34,7 +34,7 @@
  * @see {@link ui24/src/pages/PostAuth/PostAuthPage.tsx} for page rendering
  */
 
-import { EntitySchema, FieldOptions, FieldOptionsAPIConfig, ApiMethod, ModalType, IModalApiConfig, IConfirmModal, Template, IRelationFieldConfig, ITableExpandableConfig, VisibilityConfig, IFilterSegment } from "../../entity";
+import type { FieldOptions, IConfirmModal, IFilterSegment, IModalApiConfig, IRelationFieldConfig, ISectionsConfig, ITableExpandableConfig, ModalType, Template, VisibilityConfig } from "../../entity";
 import { IEntityPageColumnConfig } from "../../entity/base-entity";
 
 /**
@@ -595,6 +595,7 @@ export interface DetailsPageConfigStructure {
     detailApiConfig: IModalApiConfig;
     columnsConfig?: IEntityPageColumnConfig;
     propertiesConfig: PropertiesConfig;
+    sectionsConfig?: ISectionsConfig;
 }
 
 /**

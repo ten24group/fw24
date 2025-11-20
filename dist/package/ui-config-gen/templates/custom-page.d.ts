@@ -33,7 +33,7 @@
  * @see {@link fw24/src/entity/base-entity.ts} for entity schema definitions
  * @see {@link ui24/src/pages/PostAuth/PostAuthPage.tsx} for page rendering
  */
-import { FieldOptions, ModalType, IModalApiConfig, IConfirmModal, Template, IRelationFieldConfig, ITableExpandableConfig, VisibilityConfig, IFilterSegment } from "../../entity";
+import type { FieldOptions, IConfirmModal, IFilterSegment, IModalApiConfig, IRelationFieldConfig, ISectionsConfig, ITableExpandableConfig, ModalType, Template, VisibilityConfig } from "../../entity";
 import { IEntityPageColumnConfig } from "../../entity/base-entity";
 /**
  * Supported page types for dynamic page rendering.
@@ -522,6 +522,7 @@ export interface DetailsPageConfigStructure {
     detailApiConfig: IModalApiConfig;
     columnsConfig?: IEntityPageColumnConfig;
     propertiesConfig: PropertiesConfig;
+    sectionsConfig?: ISectionsConfig;
 }
 /**
  * Union type for modal page configurations.

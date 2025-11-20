@@ -49,8 +49,8 @@ export declare class SearchSystemController extends APIController {
      */
     private deepNormalize;
     /**
-     * Calculate deep diff between current and auto-generated settings
-     * Dynamically compares all fields regardless of type
+     * Calculate diff between current index settings and schema-derived settings
+     * Only compares fields that exist in schema settings (framework-managed fields)
      */
     private calculateSettingsDiff;
     updateIndexSettings(req: Request<{
