@@ -12,6 +12,79 @@ export const searchIndexDetailsConfig: AccordionPageConfig = {
   ],
   pageHeaderActions: [
     { label: "View Settings", url: "/system/search/indices/:entityName/settings-details", type: "button" },
+    {
+      label: "Initialize Index",
+      openInModal: true,
+      modalConfig: {
+        modalType: "confirm",
+        modalPageConfig: {
+          title: "Initialize Search Index",
+          content: "This will initialize/update the search index configuration from code. Existing data will be preserved."
+        },
+        apiConfig: {
+          apiMethod: "POST",
+          apiUrl: "/system/search/indices/:entityName/init"
+        },
+        responseConfig: {
+          showModal: true,
+          modalTitle: "Index Initialized",
+        },
+        submitSuccessRedirect: "/system/search/indices/:entityName"
+      }
+    },
+    {
+      label: "Recreate Index",
+      openInModal: true,
+      modalConfig: {
+        modalType: "form",
+        modalPageConfig: {
+          title: "Recreate Search Index",
+          helpText: "⚠️ This will delete and recreate the index with new configuration. Use when primary key or other structural changes are needed.",
+          propertiesConfig: [
+            {
+              name: "resyncDocuments",
+              label: "Resync Documents",
+              column: "resyncDocuments",
+              fieldType: "switch",
+              required: false,
+              defaultValue: false,
+              helpText: "Automatically resync all documents after recreation"
+            },
+            {
+              name: "syncMethod",
+              label: "Sync Method",
+              column: "syncMethod",
+              fieldType: "select",
+              required: false,
+              defaultValue: "direct",
+              options: [
+                { label: "Direct (Synchronous)", value: "direct" },
+                { label: "Queue (Asynchronous via SQS)", value: "queue" }
+              ],
+              helpText: "Choose how to resync documents"
+            },
+            {
+              name: "batchSize",
+              label: "Batch Size",
+              column: "batchSize",
+              fieldType: "number",
+              required: false,
+              defaultValue: 50,
+              helpText: "Number of records to process per batch"
+            }
+          ],
+          apiConfig: {
+            apiMethod: "POST",
+            apiUrl: "/system/search/indices/:entityName/recreate"
+          },
+          formButtons: ["submit", "reset", "cancel"]
+        },
+        responseConfig: {
+          showModal: true,
+          modalTitle: "Index Recreation Result",
+        }
+      }
+    },
     { 
       label: "Resync Records", 
       openInModal: true,
@@ -19,11 +92,16 @@ export const searchIndexDetailsConfig: AccordionPageConfig = {
         modalType: "confirm",
         modalPageConfig: {
           title: "Re-sync All Records",
-          content: "This will re-sync all records from the database to the search index. This may take some time."
+          content: "This will queue all records for re-indexing. Processing happens asynchronously via SQS."
         },
         apiConfig: {
           apiMethod: "POST",
           apiUrl: "/system/search/indices/:entityName/resync"
+        },
+        responseConfig: {
+          showModal: true,
+          modalTitle: "Resync Queued",
+          modalWidth: 700
         },
         submitSuccessRedirect: "/system/search/indices/:entityName"
       }
