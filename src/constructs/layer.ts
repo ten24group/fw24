@@ -6,7 +6,8 @@ import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/co
 import { DefaultLogger, LogDuration, createLogger } from "../logging";
 import { Architecture, Code, LayerVersion, LayerVersionProps, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { basename as pathBaseName, resolve as pathResolve, join as pathJoin, extname as pathExtname } from 'path';
-import { existsSync, mkdirSync, readdirSync, statSync, rmSync, lstatSync, copyFileSync, renameSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, statSync, rmSync, lstatSync, copyFileSync, renameSync, readFileSync, writeFileSync } from 'fs';
+import { execSync } from 'child_process';
 import { build, BuildOptions } from 'esbuild';
 import { LayerEntry } from "../decorators";
 import { IConstructConfig } from "../interfaces/construct-config";
@@ -240,6 +241,7 @@ export class LayerConstruct implements FW24Construct {
 
     }
 
+
     /**
      * Scans a directory for TypeScript files and creates Lambda layers for them.
      * @param layerConfig - The configuration for the layer.
@@ -307,22 +309,42 @@ export class LayerConstruct implements FW24Construct {
         // Build to temporary directory first
         await bundleWithEsbuild(file, tempOutputFile, buildOptions);
 
+        // Install external dependencies if specified in buildOptions
+        if (buildOptions.external && Array.isArray(buildOptions.external) && buildOptions.external.length > 0) {
+            await installExternalDependencies(tempDir, buildOptions.external, this.logger);
+        }
+
+        // Move the entire nodejs directory (which contains both bundled code and npm packages)
+        const tempNodejsDir = pathJoin(tempDir, 'nodejs');
+        const outputNodejsDir = pathJoin(bundleDir, 'nodejs');
+        
         // Check if output directory exists and compare contents
-        const shouldUpdateOutput = !existsSync(outputDir) || !areDirectoriesIdentical(tempOutputDir, outputDir);
+        const shouldUpdateOutput = !existsSync(outputNodejsDir) || !areDirectoriesIdentical(tempNodejsDir, outputNodejsDir);
 
         if (shouldUpdateOutput) {
             this.logger.info(`Content changed for layer ${layerName}, updating output`);
             
             // Clean existing output if it exists
-            if (existsSync(outputDir)) {
-                rmSync(outputDir, { recursive: true });
+            if (existsSync(outputNodejsDir)) {
+                rmSync(outputNodejsDir, { recursive: true });
             }
             
-            // Move contents from temp to output
-            moveDirectoryContents(tempOutputDir, outputDir);
+            // Ensure parent directory exists
+            if (!existsSync(bundleDir)) {
+                mkdirSync(bundleDir, { recursive: true });
+            }
+            
+            // Move entire nodejs directory from temp to output
+            renameSync(tempNodejsDir, outputNodejsDir);
 
         } else {
             this.logger.warn(`No changes detected for layer ${layerName}, keeping existing code`);
+        }
+
+        // Clean up the temp directory for this layer
+        if (existsSync(tempDir)) {
+            rmSync(tempDir, { recursive: true });
+            this.logger.info(`Cleaned up temp directory for layer ${layerName}`);
         }
 
         // this is the path that will be used in the layer import statement
@@ -517,4 +539,142 @@ function cleanupDirectory(directory: string) {
     } catch (error) {
         DefaultLogger.error(`bundleWithEsbuild: Failed to clean up directory ${directory}:`, error);
     }
+}
+
+/**
+ * Installs external dependencies into the layer's node_modules directory.
+ * This is called when buildOptions.external contains packages that should not be bundled.
+ * 
+ * @param layerTempDir - The temporary directory for the layer (e.g., dist/layers_temp/shared-layer)
+ * @param externalPackages - Array of package names to install (e.g., ['axios', 'firebase-admin'])
+ * @param logger - Logger instance for output
+ */
+async function installExternalDependencies(layerTempDir: string, externalPackages: (string | RegExp)[], logger: any) {
+    // Filter out regex patterns and framework/built-in modules
+    const packageNames = externalPackages.filter(pkg => 
+        typeof pkg === 'string' && 
+        !pkg.startsWith('@aws-sdk') && 
+        !pkg.startsWith('@smithy') &&
+        !pkg.startsWith('aws-cdk-lib') &&
+        pkg !== 'esbuild' &&
+        pkg !== '@ten24group/fw24'
+    ) as string[];
+
+    if (packageNames.length === 0) {
+        return;
+    }
+
+    logger.info(`Installing external dependencies: ${packageNames.join(', ')}`);
+
+    const nodejsDir = pathJoin(layerTempDir, 'nodejs');
+    const nodeModulesDir = pathJoin(nodejsDir, 'node_modules');
+    
+    // Backup bundled code if it exists (npm install will wipe node_modules)
+    const bundledCodeBackup = pathJoin(layerTempDir, '_bundled_code_backup');
+    if (existsSync(nodeModulesDir)) {
+        // Move entire node_modules to backup
+        renameSync(nodeModulesDir, bundledCodeBackup);
+    }
+
+    // Ensure directories exist for npm install
+    if (!existsSync(nodeModulesDir)) {
+        mkdirSync(nodeModulesDir, { recursive: true });
+    }
+
+    // Create a temporary package.json with only the external dependencies
+    const tempPackageJson: any = {
+        name: 'layer-dependencies',
+        version: '1.0.0',
+        dependencies: {}
+    };
+
+    // Read the project's package.json to get version numbers
+    const projectRoot = pathResolve(process.cwd());
+    const projectPackageJsonPath = pathJoin(projectRoot, 'package.json');
+    
+    if (!existsSync(projectPackageJsonPath)) {
+        logger.warn(`package.json not found at ${projectPackageJsonPath}, installing latest versions`);
+        packageNames.forEach(pkg => {
+            tempPackageJson.dependencies[pkg] = 'latest';
+        });
+    } else {
+        const projectPackageJson = JSON.parse(readFileSync(projectPackageJsonPath, 'utf-8'));
+        const allDeps = {
+            ...(projectPackageJson.dependencies || {}),
+            ...(projectPackageJson.devDependencies || {})
+        };
+
+        packageNames.forEach(pkg => {
+            if (allDeps[pkg]) {
+                tempPackageJson.dependencies[pkg] = allDeps[pkg];
+            } else {
+                logger.warn(`Package ${pkg} not found in project package.json, using latest`);
+                tempPackageJson.dependencies[pkg] = 'latest';
+            }
+        });
+    }
+
+    // Write the temporary package.json
+    const tempPackageJsonPath = pathJoin(nodejsDir, 'package.json');
+    writeFileSync(tempPackageJsonPath, JSON.stringify(tempPackageJson, null, 2));
+
+    // Install dependencies
+    try {
+        logger.info(`Running npm install in ${nodejsDir}`);
+        execSync('npm install --omit=dev --no-package-lock', {
+            cwd: nodejsDir,
+            stdio: 'inherit'
+        });
+        logger.info('External dependencies installed successfully');
+    } catch (error) {
+        logger.error('Failed to install external dependencies:', error);
+        throw error;
+    }
+
+    // Remove the temporary package.json (but keep node_modules)
+    if (existsSync(tempPackageJsonPath)) {
+        rmSync(tempPackageJsonPath);
+    }
+
+    // Restore bundled code from backup
+    if (existsSync(bundledCodeBackup)) {
+        logger.info('Restoring bundled code into node_modules');
+        // Copy contents from backup into node_modules
+        const backupContents = readdirSync(bundledCodeBackup);
+        backupContents.forEach(item => {
+            const sourcePath = pathJoin(bundledCodeBackup, item);
+            const targetPath = pathJoin(nodeModulesDir, item);
+            // Only copy if target doesn't exist (don't overwrite npm-installed packages)
+            if (!existsSync(targetPath)) {
+                if (lstatSync(sourcePath).isDirectory()) {
+                    // Copy directory recursively
+                    copyDirectory(sourcePath, targetPath);
+                } else {
+                    copyFileSync(sourcePath, targetPath);
+                }
+            }
+        });
+        // Clean up backup
+        rmSync(bundledCodeBackup, { recursive: true });
+        logger.info('Bundled code restored successfully');
+    }
+}
+
+/**
+ * Recursively copy a directory
+ */
+function copyDirectory(source: string, target: string) {
+    if (!existsSync(target)) {
+        mkdirSync(target, { recursive: true });
+    }
+    const items = readdirSync(source);
+    items.forEach(item => {
+        const sourcePath = pathJoin(source, item);
+        const targetPath = pathJoin(target, item);
+        if (lstatSync(sourcePath).isDirectory()) {
+            copyDirectory(sourcePath, targetPath);
+        } else {
+            copyFileSync(sourcePath, targetPath);
+        }
+    });
 }
