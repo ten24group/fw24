@@ -1,17 +1,17 @@
-import { CfnOutput, Stack } from "aws-cdk-lib";
+import { Stack } from "aws-cdk-lib";
 
 import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { DefaultLogger, LogDuration, createLogger, ILogger } from "../logging";
 import { Architecture, Code, LayerVersion, LayerVersionProps, Runtime } from 'aws-cdk-lib/aws-lambda';
-import { basename as pathBaseName, resolve as pathResolve, join as pathJoin, extname as pathExtname, relative as pathRelative } from 'path';
-import { existsSync, mkdirSync, readdirSync, statSync, rmSync, lstatSync, copyFileSync, renameSync, readFileSync, writeFileSync } from 'fs';
-import { execSync } from 'child_process';
+import { basename as pathBaseName, resolve as pathResolve, join as pathJoin, extname as pathExtname, relative as pathRelative } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, statSync, rmSync, lstatSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import { build, BuildOptions } from 'esbuild';
 import { LayerEntry } from "../decorators";
 import { IConstructConfig } from "../interfaces/construct-config";
-import { createHash } from "crypto";
+import { createHash } from "node:crypto";
 import { merge } from "../utils/merge";
 
 
@@ -185,7 +185,7 @@ export class LayerConstruct implements FW24Construct {
      * Creates a new LayerConstruct instance.
      * @param config - The configuration for the LayerConstruct.
      */
-    constructor(private config: ILayerConstructConfig[], verboseLog ?: number) {
+    constructor(private readonly config: ILayerConstructConfig[], verboseLog ?: number) {
 
         if(verboseLog){
             this.logger = createLogger(LayerConstruct.name, 1);
@@ -194,12 +194,12 @@ export class LayerConstruct implements FW24Construct {
         }
         
         // add defaults
-        config.forEach((layerConfig) => {
+        for(const layerConfig of config) {
             layerConfig.mode = layerConfig.mode || 'PACKAGE_DIRECTORY';
             if (layerConfig.mode === 'BUILD_AND_PACKAGE') {
                 layerConfig.clearOutputDir = layerConfig.clearOutputDir ?? false;
             }
-        });
+        }
 
         Helper.hydrateConfig(config, 'LAYER');
     }
@@ -209,11 +209,11 @@ export class LayerConstruct implements FW24Construct {
         // Assign priority to each layer: use explicit priority if set, otherwise use array index + 10
         // Priority 0-9 reserved for framework layers (fw24 core = 0)
         // User layers start at 10+ to ensure framework layers always load first
-        this.config.forEach((layerConfig, index) => {
+        for(const [index, layerConfig] of this.config.entries()) {
             if (!layerConfig.priority && layerConfig.priority !== 0) {
                 layerConfig.priority = index + 10;
             }
-        });
+        }
 
         // Process layers in parallel for speed while respecting priority-based loading order
         await Promise.all(this.config.map(async (layerConfig) => {
@@ -226,7 +226,7 @@ export class LayerConstruct implements FW24Construct {
             } else if (layerConfig.mode === 'BUILD_AND_PACKAGE') {
                 await this.scanAndPackageFiles(layerConfig);
             } else {
-                throw new Error(`Invalid mode for layer ${layerConfig}`);
+                throw new Error(`Invalid mode for layer ${JSON.stringify(layerConfig)}`);
             }
         }));
     }
@@ -309,7 +309,7 @@ export class LayerConstruct implements FW24Construct {
             defaultBuildOptions,
             constructBuildOptions || {},
             decoratorBuildOptions || {}
-        ]) || defaultBuildOptions) as BuildOptions;
+        ]) ?? defaultBuildOptions);
 
         // Log merged configuration
         this.logger.debug(`[${layerName}] Build options merged:`, {
@@ -539,8 +539,17 @@ function calculateFileHash(filePath: string): string {
  * @param dirPath - Directory to hash (typically a dist folder)
  * @returns SHA-256 hash of all file contents
  */
+/**
+ * Recursively hashes the contents of a directory for change detection.
+ * Skips common non-runtime directories (node_modules, .git, test, etc.)
+ * Returns consistent SHA-256 hash even for empty directories.
+ * 
+ * @param dirPath - Absolute path to directory to hash
+ * @returns SHA-256 hash (64 hex characters)
+ */
 function hashDirectoryContents(dirPath: string): string {
     const hash = createHash('sha256');
+    let fileCount = 0;
     
     const hashDirRecursive = (currentPath: string) => {
         if (!existsSync(currentPath)) return;
@@ -548,20 +557,23 @@ function hashDirectoryContents(dirPath: string): string {
         const stat = lstatSync(currentPath);
         
         if (stat.isSymbolicLink()) {
-            // Skip symlinks to avoid infinite loops
+            // Skip symlinks to avoid infinite loops and inconsistent behavior
             return;
         }
         
         if (stat.isDirectory()) {
-            const items = readdirSync(currentPath).sort(); // Sort for deterministic hashing
-            items.forEach(item => {
+            const items = readdirSync(currentPath).sort((a, b) => a.localeCompare(b)); // Sort for deterministic hashing
+            for(const item of items) {
                 // Skip common directories that don't affect runtime
-                if (item === 'node_modules' || item === '.git' || item === 'test' || item === '__tests__' || item === 'coverage') {
+                if (item === 'node_modules' || item === '.git' || 
+                    item === 'test' || item === '__tests__' || 
+                    item === 'coverage' || item === '.DS_Store') {
                     return;
                 }
                 hashDirRecursive(pathJoin(currentPath, item));
-            });
+            }
         } else if (stat.isFile()) {
+            fileCount++;
             // Hash file path (relative) for uniqueness
             const relativePath = pathRelative(dirPath, currentPath);
             hash.update(relativePath);
@@ -570,7 +582,16 @@ function hashDirectoryContents(dirPath: string): string {
         }
     };
     
+    // Hash the directory path itself first for uniqueness
+    hash.update(dirPath);
     hashDirRecursive(dirPath);
+    
+    // If no files were found, update hash with sentinel value
+    // This ensures empty directories have a different hash than non-existent ones
+    if (fileCount === 0) {
+        hash.update('__EMPTY_DIRECTORY__');
+    }
+    
     return hash.digest('hex');
 }
 
@@ -603,7 +624,7 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
         !pkg.startsWith('@smithy') &&       // Provided by Lambda runtime
         !pkg.startsWith('aws-cdk-lib') &&   // Build-time only
         pkg !== 'esbuild' &&                // Build-time only
-        pkg !== '@ten24group/fw24'          // Provided by fw24 runtime layer
+        pkg !== '@ten24group/fw24'          // Provided by fw24 runtime layer (not di layer)
     ) as string[];
 
     if (packageNames.length === 0) {
@@ -631,15 +652,15 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
     
     if (!existsSync(projectPackageJsonPath)) {
         logger.warn(`package.json not found at ${projectPackageJsonPath}, installing latest versions`);
-        packageNames.forEach(pkg => {
+        for(const pkg of packageNames) {
             packageJson.dependencies[pkg] = 'latest';
-        });
+        }
     } else {
         const projectPackageJson = JSON.parse(readFileSync(projectPackageJsonPath, 'utf-8'));
         // ONLY use runtime dependencies - devDependencies are build-time tools, not Lambda runtime!
         const runtimeDeps = projectPackageJson.dependencies || {};
 
-        packageNames.forEach(pkg => {
+        for(const pkg of packageNames) {
             if (runtimeDeps[pkg]) {
                 let depValue = runtimeDeps[pkg];
                 
@@ -655,27 +676,47 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
                     // Resolve absolute path of the local package
                     const absolutePath = pathResolve(projectRoot, localPath);
                     
-                    if (existsSync(absolutePath)) {
-                        // Calculate relative path from nodejsDir to the local package
-                        const relativePathFromLayer = pathRelative(nodejsDir, absolutePath);
-                        depValue = relativePathFromLayer;
-                        
-                        // CRITICAL: Hash the contents of the local package to detect changes
-                        // Check if package has a dist folder (built packages)
-                        const distPath = pathJoin(absolutePath, 'dist');
-                        if (existsSync(distPath)) {
-                            logger.info(`   → Hashing local package "${pkg}" dist folder for change detection...`);
-                            const contentHash = hashDirectoryContents(distPath);
-                            localPackageHashes[pkg] = contentHash;
-                            logger.debug(`   → Local package "${pkg}" content hash: ${contentHash.substring(0, 8)}...`);
-                        } else {
-                            logger.warn(`   ⚠️  Local package "${pkg}" has no dist folder, change detection may miss updates`);
-                        }
-                        
-                        logger.info(`   → Resolved local package "${pkg}": ${relativePathFromLayer}`);
-                    } else {
-                        logger.warn(`⚠️  Local package path not found: ${absolutePath}`);
+                    // Validate local package exists
+                    if (!existsSync(absolutePath)) {
+                        const errorMsg = [
+                            `❌ Local package "${pkg}" path does not exist: ${absolutePath}`,
+                            `   Specified in package.json as: ${depValue}`,
+                            `   Resolved from project root: ${projectRoot}`,
+                            `   Please ensure the local package path is correct.`
+                        ].join('\n');
+                        logger.error(errorMsg);
+                        throw new Error(`Local package path not found: ${pkg} -> ${absolutePath}`);
                     }
+                    
+                    // CRITICAL: Validate that local package is built (has dist folder)
+                    const distPath = pathJoin(absolutePath, 'dist');
+                    if (!existsSync(distPath)) {
+                        const errorMsg = [
+                            `❌ Local package "${pkg}" has no dist folder: ${distPath}`,
+                            `   Local packages MUST be built before being used as dependencies.`,
+                            `   Please run the build command in: ${absolutePath}`,
+                            `   Example: cd ${absolutePath} && npm run build`
+                        ].join('\n');
+                        logger.error(errorMsg);
+                        throw new Error(`Local package not built: ${pkg} (missing dist folder)`);
+                    }
+                    
+                    // Hash the dist folder contents for change detection
+                    logger.info(`   → Hashing local package "${pkg}" dist folder...`);
+                    const contentHash = hashDirectoryContents(distPath);
+                    
+                    // Validate hash is non-empty (dist folder has actual files)
+                    if (contentHash?.length !== 64) {
+                        logger.warn(`   ⚠️  Unexpected hash for "${pkg}": ${contentHash}`);
+                    }
+                    
+                    localPackageHashes[pkg] = contentHash;
+                    logger.info(`   → Local package "${pkg}" hash: ${contentHash.substring(0, 12)}... (${pkg})`);
+                    
+                    // Calculate relative path from layer's nodejs dir to local package
+                    const relativePathFromLayer = pathRelative(nodejsDir, absolutePath);
+                    depValue = relativePathFromLayer;
+                    logger.info(`   → Resolved local package "${pkg}": ${relativePathFromLayer}`);
                 }
                 
                 packageJson.dependencies[pkg] = depValue;
@@ -692,7 +733,7 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
                 logger.error(errorMsg);
                 throw new Error(`Missing runtime dependency: ${pkg}`);
             }
-        });
+        };
     }
 
     const packageJsonContent = JSON.stringify(packageJson, null, 2);
@@ -703,9 +744,9 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
     // This ensures we reinstall when local packages change (e.g., fw24 updates)
     if (Object.keys(localPackageHashes).length > 0) {
         logger.debug(`   → Including ${Object.keys(localPackageHashes).length} local package content hashes in cache key`);
-        Object.keys(localPackageHashes).sort().forEach(pkg => {
+        for(const pkg of Object.keys(localPackageHashes).sort((a, b) => a.localeCompare(b))) {
             hash.update(`${pkg}:${localPackageHashes[pkg]}`);
-        });
+        }
     }
     
     const currentPackageHash = hash.digest('hex');
@@ -713,27 +754,38 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
     // ═══════════════════════════════════════════════════════════════
     // FAST PATH: Check if we can skip npm install
     // ═══════════════════════════════════════════════════════════════
-    if (existsSync(packageHashPath) && existsSync(nodeModulesDir)) {
+    let skipReason: string | null = null;
+    if (!existsSync(packageHashPath)) {
+        skipReason = 'No previous hash file found (first build)';
+    } else if (!existsSync(nodeModulesDir)) {
+        skipReason = 'node_modules directory not found';
+    } else {
         try {
             const previousHash = readFileSync(packageHashPath, 'utf-8').trim();
             // Validate hash format (SHA-256 = 64 hex chars)
-            if (previousHash.length === 64 && /^[0-9a-f]{64}$/.test(previousHash)) {
-                if (previousHash === currentPackageHash) {
-                    logger.info(`   ✓ Dependencies already installed, skipping npm install`);
-                    return; // SAVED 11+ SECONDS!
-                }
+            if (previousHash.length !== 64 || !/^[0-9a-f]{64}$/.test(previousHash)) {
+                skipReason = `Invalid hash format in cache file (got ${previousHash.length} chars)`;
+            } else if (previousHash === currentPackageHash) {
+                logger.info(`   ✓ Dependencies unchanged, skipping npm install (saved ~11s)`);
+                return; // FAST PATH SUCCESS!
             } else {
-                logger.warn(`   ⚠️  Invalid hash in ${packageHashPath}, rebuilding for safety`);
+                skipReason = 'Dependency changes detected';
+                logger.info(`   → Previous hash: ${previousHash.substring(0, 12)}...`);
+                logger.info(`   → Current hash:  ${currentPackageHash.substring(0, 12)}...`);
+                if (Object.keys(localPackageHashes).length > 0) {
+                    logger.info(`   → Local packages included in hash: ${Object.keys(localPackageHashes).join(', ')}`);
+                }
             }
-        } catch (error) {
-            logger.warn(`   ⚠️  Failed to read hash file, rebuilding for safety:`, error);
+        } catch (error: any) {
+            skipReason = `Failed to read hash file: ${error.message}`;
         }
     }
     
     // ═══════════════════════════════════════════════════════════════
     // SLOW PATH: Need to run npm install
     // ═══════════════════════════════════════════════════════════════
-    logger.info(`   Installing ${packageNames.length} packages: ${packageNames.join(', ')}`);
+    logger.info(`   📦 Running npm install (reason: ${skipReason})`);
+    logger.info(`   → Installing ${packageNames.length} package(s): ${packageNames.join(', ')}`);
     
     const installStartTime = Date.now();
 
@@ -776,7 +828,7 @@ function copyDirectory(source: string, target: string) {
         mkdirSync(target, { recursive: true });
     }
     const items = readdirSync(source);
-    items.forEach(item => {
+    for(const item of items) {
         const sourcePath = pathJoin(source, item);
         const targetPath = pathJoin(target, item);
         if (lstatSync(sourcePath).isDirectory()) {
@@ -784,5 +836,5 @@ function copyDirectory(source: string, target: string) {
         } else {
             copyFileSync(sourcePath, targetPath);
         }
-    });
+    }
 }

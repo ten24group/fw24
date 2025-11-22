@@ -149,7 +149,7 @@ export type ILayerConstructConfig = IPackageDirectoryConfig | IBuildAndPackageCo
  * ```
  */
 export declare class LayerConstruct implements FW24Construct {
-    private config;
+    private readonly config;
     readonly logger: ILogger;
     readonly fw24: Fw24;
     name: string;
