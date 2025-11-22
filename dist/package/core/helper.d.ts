@@ -39,14 +39,14 @@ export declare class Helper {
      * @param config - Configuration for parallel loading
      *
      * @example
-     * // Use default concurrency (10)
+     * // Use default concurrency (5)
      * await Helper.registerHandlers('./src/controllers', registerController);
      *
      * // Override concurrency via environment variable FW24_HANDLER_LOAD_CONCURRENCY
-     * process.env.FW24_HANDLER_LOAD_CONCURRENCY = '20';
+     * process.env.FW24_HANDLER_LOAD_CONCURRENCY = '10';
      *
      * // Or pass config directly
-     * await Helper.registerHandlers('./src/controllers', registerController, [], { maxConcurrency: 20 });
+     * await Helper.registerHandlers('./src/controllers', registerController, [], { maxConcurrency: 5 });
      */
     static registerHandlers(path: string, handlerRegistrar: (handlerInfo: HandlerDescriptor) => void | Promise<void>, files?: string[], config?: ParallelLoadConfig): Promise<void>;
 }

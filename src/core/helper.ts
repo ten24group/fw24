@@ -1,5 +1,5 @@
 import { readdirSync, existsSync, readFile, readFileSync, statSync } from "fs";
-import { resolve, join, relative, } from "path";
+import { resolve, join, relative, basename as pathBasename } from "path";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { IFw24Module } from "./runtime/module";
 import { createLogger, LogDuration } from "../logging";
@@ -197,7 +197,7 @@ export class Helper {
             
             // Calculate module hash
             const fileBuffer = readFileSync(fullPath);
-            const moduleHash = createHash('md5').update(JSON.stringify(fileBuffer)).digest('hex');
+            const moduleHash = createHash('md5').update(fileBuffer).digest('hex');
             
             Helper.logger.debug(`[Parallel] Loaded module ${handlerPath}, hash: ${moduleHash}`);
 
@@ -238,14 +238,14 @@ export class Helper {
      * @param config - Configuration for parallel loading
      * 
      * @example
-     * // Use default concurrency (10)
+     * // Use default concurrency (5)
      * await Helper.registerHandlers('./src/controllers', registerController);
      * 
      * // Override concurrency via environment variable FW24_HANDLER_LOAD_CONCURRENCY
-     * process.env.FW24_HANDLER_LOAD_CONCURRENCY = '20';
+     * process.env.FW24_HANDLER_LOAD_CONCURRENCY = '10';
      * 
      * // Or pass config directly
-     * await Helper.registerHandlers('./src/controllers', registerController, [], { maxConcurrency: 20 });
+     * await Helper.registerHandlers('./src/controllers', registerController, [], { maxConcurrency: 5 });
      */
     static async registerHandlers(
         path: string, 
@@ -253,24 +253,11 @@ export class Helper {
         files: string[] = [],
         config: ParallelLoadConfig = {}
     ) {
-        // Allow environment variable to override concurrency
-        const envConcurrency = process.env.FW24_HANDLER_LOAD_CONCURRENCY 
-            ? parseInt(process.env.FW24_HANDLER_LOAD_CONCURRENCY, 10) 
-            : undefined;
-        
-        const maxConcurrency = config.maxConcurrency ?? envConcurrency ?? 10;
-        const failFast = config.failFast ?? false;
-
-        // Safety check
-        if (maxConcurrency < 1 || maxConcurrency > 50) {
-            Helper.logger.warn(
-                `Invalid maxConcurrency: ${maxConcurrency}. Using safe default of 10. ` +
-                `Valid range: 1-50`
-            );
+        // Validate inputs
+        if (typeof handlerRegistrar !== 'function') {
+            throw new Error('handlerRegistrar must be a function');
         }
         
-        const safeConcurrency = Math.max(1, Math.min(50, maxConcurrency));
-
         const loadTimer = Timer.start();
         Helper.logger.info(`Registering Lambda Handlers from: ${path}`);
         
@@ -291,7 +278,36 @@ export class Helper {
             return;
         }
 
-        Helper.logger.info(`📦 Loading ${handlerPaths.length} handler files in parallel (concurrency: ${safeConcurrency})...`);
+        // Concurrency configuration
+        // Default: 5 (conservative, avoids module resolution contention for large files like di.ts)
+        // Override via config.maxConcurrency or env var FW24_HANDLER_LOAD_CONCURRENCY
+        let envConcurrency: number | undefined = undefined;
+        if (process.env.FW24_HANDLER_LOAD_CONCURRENCY) {
+            const parsed = parseInt(process.env.FW24_HANDLER_LOAD_CONCURRENCY, 10);
+            if (!isNaN(parsed) && parsed > 0) {
+                envConcurrency = parsed;
+            } else {
+                Helper.logger.warn(
+                    `Invalid FW24_HANDLER_LOAD_CONCURRENCY: "${process.env.FW24_HANDLER_LOAD_CONCURRENCY}". Using default.`
+                );
+            }
+        }
+        
+        const maxConcurrency = config.maxConcurrency ?? envConcurrency ?? 5;
+        const failFast = config.failFast ?? false;
+
+        // Clamp to safe range
+        const safeConcurrency = Math.max(1, Math.min(50, maxConcurrency));
+        
+        if (safeConcurrency !== maxConcurrency) {
+            Helper.logger.warn(`Concurrency ${maxConcurrency} clamped to ${safeConcurrency} (valid range: 1-50)`);
+        }
+
+        const totalChunks = Math.ceil(handlerPaths.length / safeConcurrency);
+        Helper.logger.info(
+            `📦 Loading ${handlerPaths.length} handler file(s) ` +
+            `[concurrency: ${safeConcurrency}, chunks: ${totalChunks}]...`
+        );
 
         // PHASE 1: Load all files in parallel (with concurrency limit)
         const loadResults: HandlerLoadResult[] = [];
@@ -301,9 +317,13 @@ export class Helper {
         for (let i = 0; i < handlerPaths.length; i += safeConcurrency) {
             const chunk = handlerPaths.slice(i, i + safeConcurrency);
             const chunkNum = Math.floor(i / safeConcurrency) + 1;
-            const totalChunks = Math.ceil(handlerPaths.length / safeConcurrency);
+            const chunkStartTime = Date.now();
             
-            Helper.logger.debug(`[Parallel] Loading chunk ${chunkNum}/${totalChunks} (${chunk.length} files)`);
+            // Show which files we're loading in this chunk
+            const chunkFileNames = chunk.map(p => pathBasename(p, '.ts')).join(', ');
+            Helper.logger.info(
+                `   [${chunkNum}/${totalChunks}] Loading: ${chunkFileNames}`
+            );
             
             const chunkResults = await Promise.all(
                 chunk.map(handlerPath => 
@@ -312,6 +332,15 @@ export class Helper {
             );
 
             loadResults.push(...chunkResults);
+            
+            // Show chunk completion with timing
+            const chunkTimeMs = Date.now() - chunkStartTime;
+            const loadedSoFar = loadResults.length;
+            const chunkDescriptors = chunkResults.reduce((sum, r) => sum + r.descriptors.length, 0);
+            Helper.logger.info(
+                `   [${chunkNum}/${totalChunks}] ✓ Loaded ${loadedSoFar}/${handlerPaths.length} ` +
+                `(+${chunkDescriptors} handler${chunkDescriptors !== 1 ? 's' : ''}) in ${chunkTimeMs}ms`
+            );
 
             // Check for errors in this chunk
             const chunkErrors = chunkResults.filter(r => !r.success);
@@ -319,11 +348,12 @@ export class Helper {
                 chunkErrors.forEach(r => {
                     if (r.error) {
                         errors.push({ file: r.handlerPath, error: r.error });
+                        Helper.logger.error(`   ❌ Failed to load ${pathBasename(r.handlerPath)}: ${r.error.message}`);
                     }
                 });
 
                 if (failFast) {
-                    Helper.logger.error(`[Parallel] ❌ Fail-fast enabled, stopping after ${errors.length} error(s)`);
+                    Helper.logger.error(`   ❌ Fail-fast enabled, stopping after ${errors.length} error(s)`);
                     break;
                 }
             }
@@ -352,12 +382,16 @@ export class Helper {
             );
         }
 
-        // PHASE 2: Register handlers sequentially (CDK is not thread-safe)
+        // PHASE 2: Register handlers with CDK
+        // Note: JavaScript is single-threaded, so even "parallel" registration is serialized by event loop
+        // But we keep it sequential to be safe with CDK/Fw24 internal state management
         const registerTimer = Timer.start();
-        Helper.logger.info(`🔧 Registering ${totalDescriptors} handler(s) sequentially...`);
+        Helper.logger.info(`🔧 Registering ${totalDescriptors} handler(s) with CDK...`);
 
         let registeredCount = 0;
         const registrationErrors: Array<{ descriptor: HandlerDescriptor; error: Error }> = [];
+        let lastProgressLog = Date.now();
+        const progressIntervalMs = 2000; // Log progress every 2 seconds
 
         for (const result of loadResults) {
             if (!result.success) continue;
@@ -365,11 +399,25 @@ export class Helper {
             for (const descriptor of result.descriptors) {
                 try {
                     Helper.logger.debug(
-                        `[Sequential] Registering handler from ${descriptor.fileName}: ${descriptor.handlerClass.name}`
+                        `Registering ${descriptor.handlerClass.name} from ${descriptor.fileName}`
                     );
                     
                     await handlerRegistrar(descriptor);
                     registeredCount++;
+                    
+                    // Show progress periodically for long-running registrations
+                    const now = Date.now();
+                    if (now - lastProgressLog > progressIntervalMs && registeredCount < totalDescriptors) {
+                        const elapsedMs = registerTimer.elapsed();
+                        const avgMs = elapsedMs / registeredCount;
+                        const remainingCount = totalDescriptors - registeredCount;
+                        const estimatedRemainingMs = Math.round(avgMs * remainingCount);
+                        Helper.logger.info(
+                            `   ⏳ Progress: ${registeredCount}/${totalDescriptors} registered ` +
+                            `(~${Math.round(estimatedRemainingMs / 1000)}s remaining)`
+                        );
+                        lastProgressLog = now;
+                    }
                     
                 } catch (error) {
                     const err = error as Error;
@@ -404,10 +452,14 @@ export class Helper {
             );
         }
 
+        const totalTimeMs = loadTimeMs + registerTimeMs;
+        const totalTimeSec = (totalTimeMs / 1000).toFixed(1);
         Helper.logger.info(
-            `✅ Successfully registered ${registeredCount} handler(s) in ${registerTimeMs.toFixed(0)}ms ` +
-            `(Total: ${(loadTimeMs + registerTimeMs).toFixed(0)}ms, ` +
-            `${((loadTimeMs + registerTimeMs) / handlerPaths.length).toFixed(0)}ms per file)`
+            `✅ Successfully registered ${registeredCount} handler(s)\n` +
+            `   📊 Load time: ${(loadTimeMs / 1000).toFixed(1)}s | ` +
+            `Register time: ${(registerTimeMs / 1000).toFixed(1)}s | ` +
+            `Total: ${totalTimeSec}s` +
+            `${handlerPaths.length > 1 ? ` (${(totalTimeMs / handlerPaths.length).toFixed(0)}ms per file)` : ''}`
         );
     }
 }

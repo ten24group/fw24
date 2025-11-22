@@ -273,90 +273,6 @@ export class LayerConstruct implements FW24Construct {
         }));
     }
 
-/**
- * Calculate source hash for cache invalidation
- */
-    private calculateLayerSourceHash(file: string, externalPackages: (string | RegExp)[]): string {
-        this.logger.info(`Calculating source hash for...`, { file, externalPackages });
-        const hash = createHash('sha256');
-        
-        // Hash source file
-        if (existsSync(file)) {
-            hash.update(readFileSync(file));
-        }
-        
-        // Hash external packages list
-        const pkgNames = externalPackages
-            .filter((pkg): pkg is string => typeof pkg === 'string')
-            .sort();
-        hash.update(JSON.stringify(pkgNames));
-        
-        // Hash package versions - include ALL dependencies if they exist in package.json
-        const projectRoot = pathResolve(process.cwd());
-        const projectPkgPath = pathJoin(projectRoot, 'package.json');
-        if (existsSync(projectPkgPath)) {
-            const projectPkg = JSON.parse(readFileSync(projectPkgPath, 'utf-8'));
-            const runtimeDeps = projectPkg.dependencies || {};
-            
-            // For each dependency, check if it's a local file reference
-            // If so, hash the actual directory contents instead of the version string
-            Object.keys(runtimeDeps).sort().forEach(pkgName => {
-                const version = runtimeDeps[pkgName];
-                
-                // Check if it's a local file reference (e.g., "file:../fw24", "../fw24", or "/absolute/path")
-                const isLocalRef = version.startsWith('file:') || 
-                                   version.startsWith('./') || 
-                                   version.startsWith('../') ||
-                                   version.startsWith('/');
-                
-                if (isLocalRef) {
-                    const pkgPath = pathJoin(projectRoot, 'node_modules', pkgName);
-                    if (existsSync(pkgPath)) {
-                        this.logger.info(`   → Detecting changes in local package: ${pkgName}`);
-                        const dirHash = this.hashDirectory(pkgPath);
-                        hash.update(`${pkgName}:${dirHash}`);
-                    } else {
-                        // Package not installed yet, hash the version string
-                        hash.update(`${pkgName}:${version}`);
-                    }
-                } else {
-                    // Regular versioned dependency
-                    hash.update(`${pkgName}:${version}`);
-                }
-            });
-        }
-        
-        return hash.digest('hex');
-    }
-
-    /**
-     * Hash a directory's contents recursively
-     */
-    private hashDirectory(dirPath: string): string {
-        const hash = createHash('sha256');
-        
-        const hashDirRecursive = (currentPath: string) => {
-            if (!existsSync(currentPath)) return;
-            
-            const stat = lstatSync(currentPath);
-            
-            if (stat.isDirectory()) {
-                const items = readdirSync(currentPath).sort();
-                items.forEach(item => {
-                    // Skip node_modules subdirectories to avoid infinite recursion
-                    if (item === 'node_modules') return;
-                    hashDirRecursive(pathJoin(currentPath, item));
-                });
-            } else if (stat.isFile()) {
-                // Hash file path and contents
-                hash.update(currentPath);
-                hash.update(readFileSync(currentPath));
-            }
-        };
-        
-        hashDirRecursive(dirPath);
-        return hash.digest('hex');
-    }
 
     /**
      * Merges build options with proper priority: defaults < construct-level < decorator-level
@@ -460,70 +376,11 @@ export class LayerConstruct implements FW24Construct {
     
         const outputDir = pathJoin(distDirectory, layerName, configuredOutputPath);
         const bundleDir = pathJoin(distDirectory, layerName);
-        const outputNodejsDir = pathJoin(bundleDir, 'nodejs');
-        const hashFile = pathJoin(bundleDir, '.build-hash');
 
         // ═══════════════════════════════════════════════════════════════
-        // OPTIMIZATION: Check if rebuild needed via source hash
+        // BUILD LAYER: esbuild + npm install (with npm install caching)
         // ═══════════════════════════════════════════════════════════════
-        const externalPackages = (buildOptions.external && Array.isArray(buildOptions.external)) ? buildOptions.external : [];
-        const currentHash = this.calculateLayerSourceHash(file, externalPackages);
-        
-        let needsRebuild = true;
-        let rebuildReason = 'First build';
-        
-        if (existsSync(outputNodejsDir) && existsSync(hashFile)) {
-            const previousHash = readFileSync(hashFile, 'utf-8').trim();
-            if (previousHash === currentHash) {
-                needsRebuild = false;
-                rebuildReason = 'No source changes detected';
-            } else {
-                rebuildReason = 'Source code or dependencies changed';
-            }
-        } else if (existsSync(outputNodejsDir)) {
-            rebuildReason = 'Build hash missing (rebuilding for safety)';
-        }
-        
-        if (!needsRebuild) {
-            this.logger.info(`[${layerName}] ✓ ${rebuildReason} - using cached build`);
-            
-            // Still need to register layer with CDK, but skip expensive rebuild
-            const layerProps = getLayerProps(layerDescriptor);
-            const defaultLayerProps: LayerVersionProps = {
-                layerVersionName: layerName,
-                compatibleRuntimes: [ Runtime.NODEJS_22_X ],
-                code: Code.fromAsset(bundleDir),
-                compatibleArchitectures: [Architecture.ARM_64],
-            };
-
-            const layer = new LayerVersion(this.mainStack, layerName + '-layer', {
-                ...defaultLayerProps,
-                ...layerConfig.layerProps,
-                ...layerProps,
-            });
-
-            this.fw24.setConstructOutput(this, layerName, layer, OutputType.LAYER, 'layerVersionArn');
-
-            // Import path: /opt/nodejs/node_modules/{packageName}/index.js
-            // Node.js will resolve this to the bundled entry point
-            const layerImportPath = pathJoin('/opt', configuredOutputPath, 'index.js');
-            this.fw24.setEnvironmentVariable(layerName, layerImportPath, 'layerImportPath');
-
-            if(isGlobalLayer(layerDescriptor)){
-                this.fw24.addGlobalLambdaLayerNames(layerName);
-                if (layerConfig.priority === undefined) {
-                    throw new Error(`Layer ${layerName} has no priority. This should never happen.`);
-                }
-                this.fw24.addGlobalLambdaEntryPackage(`env:layerImportPath:${layerName}`, layerConfig.priority);
-            }
-            
-            return; // DONE - saved ~15 seconds!
-        }
-
-        // ═══════════════════════════════════════════════════════════════
-        // REBUILD NEEDED: Do the expensive work
-        // ═══════════════════════════════════════════════════════════════
-        this.logger.info(`[${layerName}] Rebuilding: ${rebuildReason}`);
+        this.logger.info(`[${layerName}] Building layer...`);
         const buildStartTime = Date.now();
 
         // Ensure output directory exists
@@ -531,20 +388,17 @@ export class LayerConstruct implements FW24Construct {
             mkdirSync(outputDir, { recursive: true });
         }
 
-        // Install external dependencies FIRST (so npm install doesn't delete bundled code!)
+        // Install external dependencies FIRST (with smart caching to skip if unchanged)
+        const externalPackages = (buildOptions.external && Array.isArray(buildOptions.external)) ? buildOptions.external : [];
         if (externalPackages.length > 0) {
-            this.logger.info(`[${layerName}] [1/3] Installing external dependencies...`);
+            this.logger.info(`[${layerName}] [1/2] Installing external dependencies...`);
             await installExternalDependenciesOptimized(bundleDir, externalPackages, this.logger);
         }
 
         // Then bundle application code into node_modules
         const outputFile = pathJoin(outputDir, 'index.js');
-        this.logger.info(`[${layerName}] [2/3] Bundling with esbuild...`);
+        this.logger.info(`[${layerName}] [2/2] Bundling with esbuild...`);
         await bundleWithEsbuild(file, outputFile, buildOptions);
-
-        // Save hash for next run
-        this.logger.info(`[${layerName}] [3/3] Saving build metadata...`);
-        writeFileSync(hashFile, currentHash);
         
         const elapsed = ((Date.now() - buildStartTime) / 1000).toFixed(1);
         this.logger.info(`[${layerName}] ✓ Build complete in ${elapsed}s`)
@@ -562,12 +416,12 @@ export class LayerConstruct implements FW24Construct {
             
             // Only add as entry package if it needs to execute at module initialization
             if (isEntryPackage(layerDescriptor)) {
-                // collect global entry-packages for lambdas with priority for correct loading order
-                // Priority is always set in construct(), so it must be defined here
-                if (layerConfig.priority === undefined) {
-                    throw new Error(`Layer ${layerName} has no priority. This should never happen.`);
-                }
-                this.fw24.addGlobalLambdaEntryPackage(`env:layerImportPath:${layerName}`, layerConfig.priority);
+            // collect global entry-packages for lambdas with priority for correct loading order
+            // Priority is always set in construct(), so it must be defined here
+            if (layerConfig.priority === undefined) {
+                throw new Error(`Layer ${layerName} has no priority. This should never happen.`);
+            }
+            this.fw24.addGlobalLambdaEntryPackage(`env:layerImportPath:${layerName}`, layerConfig.priority);
                 this.logger.info(`[${layerName}] Registered as entry package (priority: ${layerConfig.priority})`);
             } else {
                 this.logger.info(`[${layerName}] Layer attached but NOT an entry package (available for import only)`);
@@ -662,7 +516,13 @@ async function bundleWithEsbuild(entryFile: string, outputFile: string, buildOpt
     };
 
     DefaultLogger.debug(`bundleWithEsbuild: ${entryFile} → ${outputFile}`);
-    await build(finalOptions);
+    
+    try {
+        await build(finalOptions);
+    } catch (error) {
+        DefaultLogger.error(`Failed to bundle ${entryFile}:`, error);
+        throw new Error(`esbuild failed for ${entryFile}: ${error instanceof Error ? error.message : String(error)}`);
+    }
 }
 
 /**
@@ -671,6 +531,47 @@ async function bundleWithEsbuild(entryFile: string, outputFile: string, buildOpt
 function calculateFileHash(filePath: string): string {
     const content = readFileSync(filePath);
     return createHash('sha256').update(content).digest('hex');
+}
+
+/**
+ * Hashes a directory's contents recursively for change detection
+ * Used for local package dependencies to detect when they've been rebuilt
+ * @param dirPath - Directory to hash (typically a dist folder)
+ * @returns SHA-256 hash of all file contents
+ */
+function hashDirectoryContents(dirPath: string): string {
+    const hash = createHash('sha256');
+    
+    const hashDirRecursive = (currentPath: string) => {
+        if (!existsSync(currentPath)) return;
+        
+        const stat = lstatSync(currentPath);
+        
+        if (stat.isSymbolicLink()) {
+            // Skip symlinks to avoid infinite loops
+            return;
+        }
+        
+        if (stat.isDirectory()) {
+            const items = readdirSync(currentPath).sort(); // Sort for deterministic hashing
+            items.forEach(item => {
+                // Skip common directories that don't affect runtime
+                if (item === 'node_modules' || item === '.git' || item === 'test' || item === '__tests__' || item === 'coverage') {
+                    return;
+                }
+                hashDirRecursive(pathJoin(currentPath, item));
+            });
+        } else if (stat.isFile()) {
+            // Hash file path (relative) for uniqueness
+            const relativePath = pathRelative(dirPath, currentPath);
+            hash.update(relativePath);
+            // Hash file contents
+            hash.update(readFileSync(currentPath));
+        }
+    };
+    
+    hashDirRecursive(dirPath);
+    return hash.digest('hex');
 }
 
 
@@ -725,6 +626,9 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
     const projectRoot = pathResolve(process.cwd());
     const projectPackageJsonPath = pathJoin(projectRoot, 'package.json');
     
+    // Track local package content hashes for change detection
+    const localPackageHashes: Record<string, string> = {};
+    
     if (!existsSync(projectPackageJsonPath)) {
         logger.warn(`package.json not found at ${projectPackageJsonPath}, installing latest versions`);
         packageNames.forEach(pkg => {
@@ -739,8 +643,14 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
             if (runtimeDeps[pkg]) {
                 let depValue = runtimeDeps[pkg];
                 
-                // Handle local filesystem dependencies (e.g., "../fw24/" or "file:../fw24")
-                if (depValue.startsWith('file:') || depValue.startsWith('../') || depValue.startsWith('./')) {
+                // Handle local filesystem dependencies (e.g., "../fw24/", "file:../fw24", or "..\fw24" on Windows)
+                const isLocalDep = depValue.startsWith('file:') || 
+                                    depValue.startsWith('../') || 
+                                    depValue.startsWith('./') ||
+                                    depValue.startsWith('..\\') || 
+                                    depValue.startsWith('.\\');
+                
+                if (isLocalDep) {
                     const localPath = depValue.replace('file:', '');
                     // Resolve absolute path of the local package
                     const absolutePath = pathResolve(projectRoot, localPath);
@@ -749,6 +659,19 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
                         // Calculate relative path from nodejsDir to the local package
                         const relativePathFromLayer = pathRelative(nodejsDir, absolutePath);
                         depValue = relativePathFromLayer;
+                        
+                        // CRITICAL: Hash the contents of the local package to detect changes
+                        // Check if package has a dist folder (built packages)
+                        const distPath = pathJoin(absolutePath, 'dist');
+                        if (existsSync(distPath)) {
+                            logger.info(`   → Hashing local package "${pkg}" dist folder for change detection...`);
+                            const contentHash = hashDirectoryContents(distPath);
+                            localPackageHashes[pkg] = contentHash;
+                            logger.debug(`   → Local package "${pkg}" content hash: ${contentHash.substring(0, 8)}...`);
+                        } else {
+                            logger.warn(`   ⚠️  Local package "${pkg}" has no dist folder, change detection may miss updates`);
+                        }
+                        
                         logger.info(`   → Resolved local package "${pkg}": ${relativePathFromLayer}`);
                     } else {
                         logger.warn(`⚠️  Local package path not found: ${absolutePath}`);
@@ -757,24 +680,53 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
                 
                 packageJson.dependencies[pkg] = depValue;
             } else {
-                logger.warn(`⚠️  Package "${pkg}" not found in runtime dependencies`);
-                logger.warn(`   Add "${pkg}" to dependencies in package.json or it will use 'latest'`);
-                packageJson.dependencies[pkg] = 'latest';
+                // Package not found in dependencies - this is a configuration error
+                const errorMsg = [
+                    `❌ Package "${pkg}" not found in runtime dependencies.`,
+                    `   This package is marked as 'external' in the layer build but is not in package.json dependencies.`,
+                    `   Add "${pkg}" to dependencies in package.json with a specific version.`,
+                    `   Example: npm install ${pkg} --save`,
+                    `   Then rebuild the layer.`
+                ].join('\n');
+                
+                logger.error(errorMsg);
+                throw new Error(`Missing runtime dependency: ${pkg}`);
             }
         });
     }
 
     const packageJsonContent = JSON.stringify(packageJson, null, 2);
-    const currentPackageHash = createHash('sha256').update(packageJsonContent).digest('hex');
+    const hash = createHash('sha256');
+    hash.update(packageJsonContent);
+    
+    // CRITICAL: Include local package content hashes in the cache key
+    // This ensures we reinstall when local packages change (e.g., fw24 updates)
+    if (Object.keys(localPackageHashes).length > 0) {
+        logger.debug(`   → Including ${Object.keys(localPackageHashes).length} local package content hashes in cache key`);
+        Object.keys(localPackageHashes).sort().forEach(pkg => {
+            hash.update(`${pkg}:${localPackageHashes[pkg]}`);
+        });
+    }
+    
+    const currentPackageHash = hash.digest('hex');
     
     // ═══════════════════════════════════════════════════════════════
     // FAST PATH: Check if we can skip npm install
     // ═══════════════════════════════════════════════════════════════
     if (existsSync(packageHashPath) && existsSync(nodeModulesDir)) {
-        const previousHash = readFileSync(packageHashPath, 'utf-8').trim();
-        if (previousHash === currentPackageHash) {
-            logger.info(`   ✓ Dependencies already installed, skipping npm install`);
-            return; // SAVED 11+ SECONDS!
+        try {
+            const previousHash = readFileSync(packageHashPath, 'utf-8').trim();
+            // Validate hash format (SHA-256 = 64 hex chars)
+            if (previousHash.length === 64 && /^[0-9a-f]{64}$/.test(previousHash)) {
+                if (previousHash === currentPackageHash) {
+                    logger.info(`   ✓ Dependencies already installed, skipping npm install`);
+                    return; // SAVED 11+ SECONDS!
+                }
+            } else {
+                logger.warn(`   ⚠️  Invalid hash in ${packageHashPath}, rebuilding for safety`);
+            }
+        } catch (error) {
+            logger.warn(`   ⚠️  Failed to read hash file, rebuilding for safety:`, error);
         }
     }
     

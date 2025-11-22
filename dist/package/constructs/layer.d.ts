@@ -175,14 +175,6 @@ export declare class LayerConstruct implements FW24Construct {
      */
     private scanAndPackageFiles;
     /**
-     * Calculate source hash for cache invalidation
-     */
-    private calculateLayerSourceHash;
-    /**
-     * Hash a directory's contents recursively
-     */
-    private hashDirectory;
-    /**
      * Merges build options with proper priority: defaults < construct-level < decorator-level
      * @param layerName - Layer name for logging
      * @param constructBuildOptions - Build options from construct config
