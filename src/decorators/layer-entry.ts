@@ -16,6 +16,19 @@ export type LayerEntryOptions = {
      */
     notGlobal?: boolean,
     /**
+     * Whether this layer should be loaded as an entry package (code executes at module initialization).
+     * If false, the layer is only available for imports but doesn't execute.
+     * Defaults to false.
+     * 
+     * @example
+     * // fw24 runtime layer - available for import but doesn't execute
+     * @LayerEntry({ isEntryPackage: false })
+     * 
+     * // di layer - executes DIContainer.ROOT.module() at init
+     * @LayerEntry({ isEntryPackage: true })
+     */
+    isEntryPackage?: boolean,
+    /**
      * specify esbuild options for this layer.
      */
     buildOptions?: BuildOptions
@@ -29,10 +42,11 @@ export type LayerEntryOptions = {
 export function LayerEntry( options: LayerEntryOptions = {} ) {
     return function (target: Function) {
 
-        let { layerName, props={}, buildOptions={}, notGlobal=false } = options;
+        let { layerName, props={}, buildOptions={}, notGlobal=false, isEntryPackage=false } = options;
         
         Reflect.set(target, 'layerName', layerName);
         Reflect.set(target, 'notGlobal', notGlobal);
+        Reflect.set(target, 'isEntryPackage', isEntryPackage);
         Reflect.set(target, 'layerProps', props);
 
         if(!buildOptions.external){

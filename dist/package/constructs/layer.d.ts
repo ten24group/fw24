@@ -1,28 +1,55 @@
 import { Stack } from "aws-cdk-lib";
 import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
+import { ILogger } from "../logging";
 import { LayerVersionProps } from 'aws-cdk-lib/aws-lambda';
+import { BuildOptions } from 'esbuild';
 import { IConstructConfig } from "../interfaces/construct-config";
 /**
- * Configuration for the PACKAGE_DIRECTORY mode.
+ * Common layer configuration properties
  */
-export interface IPackageDirectoryConfig extends IConstructConfig {
+interface IBaseLayerConfig extends IConstructConfig {
     /**
-     * The name of the layer.
-     */
-    layerName: string;
-    /**
-     * The source path of the layer directory.
+     * The source path of the layer directory or file.
      */
     sourcePath: string;
-    /**
-     * The mode of packaging: package the whole directory.
-     */
-    mode?: 'PACKAGE_DIRECTORY';
     /**
      * Optional properties for the layer version.
      */
     layerProps?: Omit<LayerVersionProps, 'code'>;
+    /**
+     * Custom build options for esbuild bundling.
+     * Merged in priority order: defaults < construct-level < decorator-level
+     *
+     * @example
+     * {
+     *   buildOptions: {
+     *     sourcemap: true,
+     *     minify: false,
+     *     external: ['@aws-sdk', 'some-native-module']
+     *   }
+     * }
+     */
+    buildOptions?: BuildOptions;
+    /**
+     * Whether this layer should NOT be added as a global layer.
+     * If false or undefined, the layer will be automatically attached to all Lambda functions.
+     * Defaults to false (layer IS global).
+     */
+    notGlobal?: boolean;
+    /**
+     * Whether this layer should be loaded as an entry package (code executes at module initialization).
+     * If false, the layer is only available for imports but doesn't execute.
+     * Defaults to false.
+     *
+     * @example
+     * // fw24 runtime layer - available for import but doesn't execute
+     * { sourcePath: './fw24.js', isEntryPackage: false }
+     *
+     * // di layer - executes DIContainer.ROOT.module() at init
+     * { sourcePath: './di.ts', isEntryPackage: true }
+     */
+    isEntryPackage?: boolean;
     /**
      * Priority for layer loading order. Lower numbers load first.
      * If not specified, priority is auto-assigned as (array_index + 10).
@@ -33,14 +60,14 @@ export interface IPackageDirectoryConfig extends IConstructConfig {
      *
      * @example
      * // Auto-assigned priorities (recommended):
-     * const layers = new DILayerConstruct([
+     * const layers = new LayerConstruct([
      *   { sourcePath: './di.ts' },        // priority: 10
      *   { sourcePath: './shared.ts' },    // priority: 11
      *   { sourcePath: './firebase.ts' }   // priority: 12
      * ]);
      *
      * // Explicit priorities (for special cases):
-     * const layers = new DILayerConstruct([
+     * const layers = new LayerConstruct([
      *   { sourcePath: './di.ts', priority: 10 },      // Load first
      *   { sourcePath: './firebase.ts', priority: 20 }, // Load last
      *   { sourcePath: './shared.ts', priority: 15 }   // Load in between
@@ -49,17 +76,24 @@ export interface IPackageDirectoryConfig extends IConstructConfig {
     priority?: number;
 }
 /**
- * Configuration for the BUILD_AND_PACKAGE mode.
+ * Configuration for the PACKAGE_DIRECTORY mode.
+ * Packages a pre-built directory as-is without bundling.
  */
-export interface IBuildAndPackageConfig extends IConstructConfig {
+export interface IPackageDirectoryConfig extends IBaseLayerConfig {
     /**
-     * The source path of the layer, which can be a directory or a file.
+     * The name of the layer.
      */
-    sourcePath: string;
+    layerName: string;
     /**
-     * Optional properties for the layer version.
+     * The mode of packaging: package the whole directory.
      */
-    layerProps?: Omit<LayerVersionProps, 'code'>;
+    mode?: 'PACKAGE_DIRECTORY';
+}
+/**
+ * Configuration for the BUILD_AND_PACKAGE mode.
+ * Bundles source files with esbuild before packaging.
+ */
+export interface IBuildAndPackageConfig extends IBaseLayerConfig {
     /**
      * The mode of packaging: scan and build individual files.
      */
@@ -76,31 +110,6 @@ export interface IBuildAndPackageConfig extends IConstructConfig {
      * Configurable output path for the package.
      */
     packagePath?: string;
-    notGlobal?: boolean;
-    /**
-     * Priority for layer loading order. Lower numbers load first.
-     * If not specified, priority is auto-assigned as (array_index + 10).
-     *
-     * Priority ranges:
-     * - 0-9: Reserved for framework layers (fw24 core = 0)
-     * - 10+: User/application layers (auto-assigned or explicit)
-     *
-     * @example
-     * // Auto-assigned priorities (recommended):
-     * const layers = new DILayerConstruct([
-     *   { sourcePath: './di.ts' },        // priority: 10
-     *   { sourcePath: './shared.ts' },    // priority: 11
-     *   { sourcePath: './firebase.ts' }   // priority: 12
-     * ]);
-     *
-     * // Explicit priorities (for special cases):
-     * const layers = new DILayerConstruct([
-     *   { sourcePath: './di.ts', priority: 10 },      // Load first
-     *   { sourcePath: './firebase.ts', priority: 20 }, // Load last
-     *   { sourcePath: './shared.ts', priority: 15 }   // Load in between
-     * ]);
-     */
-    priority?: number;
 }
 /**
  * Configuration for layer construct.
@@ -141,7 +150,7 @@ export type ILayerConstructConfig = IPackageDirectoryConfig | IBuildAndPackageCo
  */
 export declare class LayerConstruct implements FW24Construct {
     private config;
-    readonly logger: import("tslog").Logger<import("tslog").ILogObj>;
+    readonly logger: ILogger;
     readonly fw24: Fw24;
     name: string;
     dependencies: string[];
@@ -151,7 +160,7 @@ export declare class LayerConstruct implements FW24Construct {
      * Creates a new LayerConstruct instance.
      * @param config - The configuration for the LayerConstruct.
      */
-    constructor(config: ILayerConstructConfig[]);
+    constructor(config: ILayerConstructConfig[], verboseLog?: number);
     construct(): Promise<void>;
     /**
      * Packages a directory as a Lambda layer.
@@ -166,6 +175,22 @@ export declare class LayerConstruct implements FW24Construct {
      */
     private scanAndPackageFiles;
     /**
+     * Calculate source hash for cache invalidation
+     */
+    private calculateLayerSourceHash;
+    /**
+     * Hash a directory's contents recursively
+     */
+    private hashDirectory;
+    /**
+     * Merges build options with proper priority: defaults < construct-level < decorator-level
+     * @param layerName - Layer name for logging
+     * @param constructBuildOptions - Build options from construct config
+     * @param decoratorBuildOptions - Build options from @LayerEntry decorator
+     * @returns Merged build options
+     */
+    private mergeBuildOptions;
+    /**
      * Attempts to create a Lambda layer for a given TypeScript file.
      * @param file - The path to the TypeScript file.
      * @param distDirectory - The output directory for the build.
@@ -175,3 +200,4 @@ export declare class LayerConstruct implements FW24Construct {
     private tryCreateLayerForFile;
 }
 export declare function getLayerProps(target: Function): LayerVersionProps | undefined;
+export {};

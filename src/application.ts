@@ -7,6 +7,7 @@ import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
 import { ILogger, LogDuration, createLogger } from "./logging";
 import { LayerConstruct } from "./constructs";
 import { randomUUID } from 'crypto';
+import { join as pathJoin } from 'path';
 
 export class Application {
     readonly logger: ILogger;
@@ -83,12 +84,22 @@ export class Application {
     public async run() {
         this.logger.info("Running fw24 infrastructure...");
 
-        // build fw24 layer
-        this.logger.info("Building fw24 layer...");
+        // Create default fw24 runtime layer (ONLY runtime code, not infrastructure)
+        // This layer is automatically attached to all Lambda functions
+        // It's NOT an entry package - it's just available for imports
+        this.logger.info("Building fw24 runtime layer...");
         const fw24Layer = new LayerConstruct([ {
-            layerName: 'fw24',
-            sourcePath: './dist/layer',
-            priority: 0
+            mode: 'BUILD_AND_PACKAGE',
+            // Bundle the fw24 runtime source (has imports, needs bundling with esbuild)
+            sourcePath: './node_modules/@ten24group/fw24/dist/package/layer/fw24.js',
+            packagePath: '@ten24group/fw24',
+            priority: 0,
+            // Output to application's dist/layers directory, not framework's directory
+            distDirectory: pathJoin(process.cwd(), 'dist/layers'),
+            buildOptions: {
+                sourcemap: true,
+                external: ['@aws-sdk', '@smithy'] // AWS SDK is provided by Lambda runtime
+            }
         } ]);
         fw24Layer.construct();
 
