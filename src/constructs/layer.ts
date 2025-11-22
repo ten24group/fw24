@@ -4,6 +4,7 @@ import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { DefaultLogger, LogDuration, createLogger, ILogger } from "../logging";
+import { Timer } from "../utils/timer";
 import { Architecture, Code, LayerVersion, LayerVersionProps, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { basename as pathBaseName, resolve as pathResolve, join as pathJoin, extname as pathExtname, relative as pathRelative } from 'node:path';
 import { existsSync, mkdirSync, readdirSync, statSync, rmSync, lstatSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
@@ -381,7 +382,7 @@ export class LayerConstruct implements FW24Construct {
         // BUILD LAYER: esbuild + npm install (with npm install caching)
         // ═══════════════════════════════════════════════════════════════
         this.logger.info(`[${layerName}] Building layer...`);
-        const buildStartTime = Date.now();
+        const buildTimer = Timer.start();
 
         // Ensure output directory exists
         if (!existsSync(outputDir)) {
@@ -391,17 +392,20 @@ export class LayerConstruct implements FW24Construct {
         // Install external dependencies FIRST (with smart caching to skip if unchanged)
         const externalPackages = (buildOptions.external && Array.isArray(buildOptions.external)) ? buildOptions.external : [];
         if (externalPackages.length > 0) {
+            const installTimer = Timer.start();
             this.logger.info(`[${layerName}] [1/2] Installing external dependencies...`);
             await installExternalDependenciesOptimized(bundleDir, externalPackages, this.logger);
+            this.logger.info(`[${layerName}]    ✓ Dependencies installed (${installTimer.elapsedSeconds()})`);
         }
 
         // Then bundle application code into node_modules
         const outputFile = pathJoin(outputDir, 'index.js');
+        const bundleTimer = Timer.start();
         this.logger.info(`[${layerName}] [2/2] Bundling with esbuild...`);
         await bundleWithEsbuild(file, outputFile, buildOptions);
+        this.logger.info(`[${layerName}]    ✓ Bundle complete (${bundleTimer.elapsedSeconds()})`);
         
-        const elapsed = ((Date.now() - buildStartTime) / 1000).toFixed(1);
-        this.logger.info(`[${layerName}] ✓ Build complete in ${elapsed}s`)
+        this.logger.info(`[${layerName}] ✓ Build complete in ${buildTimer.elapsedSeconds()}`)
 
         // Import path: /opt/nodejs/node_modules/{packageName}/index.js
         // Node.js will resolve this to the bundled entry point

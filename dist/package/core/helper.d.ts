@@ -16,6 +16,9 @@ interface ParallelLoadConfig {
      */
     failFast?: boolean;
 }
+/**
+ * Simple timer utility for measuring durations
+ */
 export declare class Helper {
     static readonly logger: import("tslog").Logger<import("tslog").ILogObj>;
     static hydrateConfig<T>(config: T, prefix?: string): void;

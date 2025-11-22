@@ -6,6 +6,7 @@ export * from './merge';
 export * from './parse';
 export * from './serialize';
 export * from './types';
+export * from './timer';
 export * from './metadata';
 export * from './keys';
 export * from './env';

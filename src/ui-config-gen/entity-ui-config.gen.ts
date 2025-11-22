@@ -27,7 +27,7 @@ export class EntityUIConfigGen {
     // while scanning and loading stuff
     readonly uiGenDIContainer = Fw24.getInstance().getAppDIContainer();
 
-    private customPages: Map<string, CustomPageOptions> = new Map();
+    private readonly customPages: Map<string, CustomPageOptions> = new Map();
 
     @LogDuration()
     async scanCustomPages() {
@@ -44,6 +44,8 @@ export class EntityUIConfigGen {
             }
         }
 
+        const registeredPages: string[] = [];
+
         for (const dir of customPagesDirectories) {
             if (!existsSync(dir)) {
                 this.logger.debug(`Custom pages directory does not exist: ${dir}`);
@@ -55,12 +57,13 @@ export class EntityUIConfigGen {
             for (const file of customPageFiles) {
                 try {
                     const module = await import(pathJoin(dir, file));
-                    for (const [ key, value ] of Object.entries(module)) {
+                    for (const [ _, value ] of Object.entries(module)) {
                         if (this.isValidCustomPageConfig(value)) {
                             const pageName = this.getPageNameFromConfig(value);
                             if (pageName) {
                                 this.registerCustomPage(value);
-                                this.logger.info(`Registered custom page: ${pageName}`);
+                                registeredPages.push(pageName);
+                                this.logger.debug(`Registered custom page: ${pageName}`);
                             }
                         }
                     }
@@ -68,6 +71,10 @@ export class EntityUIConfigGen {
                     this.logger.error(`Error loading custom page from ${file}:`, e);
                 }
             }
+        }
+
+        if (registeredPages.length > 0) {
+            this.logger.info(`✅ Registered ${registeredPages.length} custom page(s): ${registeredPages.slice(0, 5).join(', ')}${registeredPages.length > 5 ? `, +${registeredPages.length - 5} more` : ''}`);
         }
     }
 

@@ -76,13 +76,13 @@ export class QueueConstruct implements FW24Construct {
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;
-    private queueMap = new Map<string, Queue>();
+    private readonly queueMap = new Map<string, Queue>();
 
     /**
      * Default constructor to initialize the stack configuration.
      * @param queueConstructConfig The configuration for the QueueConstruct.
      */
-    constructor(private queueConstructConfig: IQueueConstructConfig) {
+    constructor(private readonly queueConstructConfig: IQueueConstructConfig) {
         this.logger.debug("constructor", queueConstructConfig);
         Helper.hydrateConfig(queueConstructConfig,'SQS');
     }
@@ -125,21 +125,37 @@ export class QueueConstruct implements FW24Construct {
         }
 
         // Phase 2: Create queues without lambdas and register their URLs
+        this.logger.info(`📋 Creating ${queueDescriptors.length} queue(s)...`);
         for (const queueInfo of queueDescriptors) {
             this.createAndRegisterQueue(queueInfo);
         }
 
         // Phase 3: Create lambda functions for queues (now all queue URLs are registered)
+        this.logger.info(`🔧 Creating Lambda functions for ${queueDescriptors.length} queue(s)...`);
+        let createdCount = 0;
+        let skippedCount = 0;
+
         for (const queueInfo of queueDescriptors) {
+            const queueName = queueInfo.handlerInstance.queueConfig?.queueName || queueInfo.handlerClass.name;
+            const isManual = queueInfo.handlerInstance.queueConfig?.manualRegistration;
+            
             this.createQueueLambda(queueInfo);
+            
+            if (isManual) {
+                skippedCount++;
+            } else {
+                createdCount++;
+            }
         }
+
+        this.logger.info(`✅ Queue setup complete: ${createdCount} active, ${skippedCount} manual`);
     }
 
     /**
      * Phase 2: Creates queue without lambda and registers its URL
      * @param queueInfo The information about the queue to be registered.
      */
-    private createAndRegisterQueue = (queueInfo: HandlerDescriptor) => {
+    private readonly createAndRegisterQueue = (queueInfo: HandlerDescriptor) => {
         queueInfo.handlerInstance = new queueInfo.handlerClass();
         this.logger.debug(":::Queue instance: ", queueInfo.fileName, queueInfo.filePath);
         
@@ -148,13 +164,13 @@ export class QueueConstruct implements FW24Construct {
         
         // Skip queues marked for manual registration
         if (queueConfig.manualRegistration) {
-            this.logger.info(`:::Skipping manual registration queue ${queueName} from ${queueInfo.filePath}/${queueInfo.fileName}`);
+            this.logger.debug(`Skipping manual registration queue ${queueName}`);
             return;
         }
         
         const queueProps = {...this.queueConstructConfig.queueProps, ...queueConfig.queueProps};
 
-        this.logger.info(`:::Creating queue ${queueName} from ${queueInfo.filePath}/${queueInfo.fileName}`);
+        this.logger.debug(`Creating queue ${queueName}`);
 
         // Create queue without lambda (lambdaFunctionProps: undefined)
         const queue = new QueueLambda(this.mainStack, queueName + "-queue", {
@@ -183,7 +199,7 @@ export class QueueConstruct implements FW24Construct {
      * Phase 3: Creates lambda function for the queue (after all queues are registered)
      * @param queueInfo The information about the queue to be registered.
      */
-    private createQueueLambda = (queueInfo: HandlerDescriptor) => {
+    private readonly createQueueLambda = (queueInfo: HandlerDescriptor) => {
         const queueName = queueInfo.handlerInstance.queueName;
         const queueConfig = queueInfo.handlerInstance.queueConfig || {};
 
@@ -193,7 +209,7 @@ export class QueueConstruct implements FW24Construct {
             return;
         }
 
-        this.logger.info(`:::Creating lambda for queue ${queueName}`);
+        this.logger.debug(`Creating lambda for queue ${queueName}`);
 
         // Get the already-created queue
         const queue = this.queueMap.get(queueName);

@@ -1,11 +1,11 @@
-import { readdirSync, existsSync, readFile, readFileSync, statSync } from "fs";
-import { resolve, join, relative, basename as pathBasename } from "path";
+import { readdirSync, existsSync, readFileSync } from "node:fs";
+import { resolve, join, relative, basename as pathBasename } from "node:path";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 import { IFw24Module } from "./runtime/module";
-import { createLogger, LogDuration } from "../logging";
+import { createLogger } from "../logging";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
-import { isString } from "../utils";
-import { createHash } from "crypto";
+import { isString, Timer } from "../utils";
+import { createHash } from "node:crypto";
 
 /**
  * Result of loading a single handler file
@@ -37,24 +37,6 @@ interface ParallelLoadConfig {
 /**
  * Simple timer utility for measuring durations
  */
-class Timer {
-    private startTime: number;
-
-    constructor() {
-        this.startTime = Date.now();
-    }
-
-    elapsed(): number {
-        return Date.now() - this.startTime;
-    }
-
-    static start(): Timer {
-        return new Timer();
-    }
-}
-
-
-
 export class Helper {
 
     static readonly logger = createLogger(Helper.name);

@@ -65,6 +65,7 @@ export function Controller(controllerName: string, controllerConfig: IController
 
 
 	return function <T extends { new(...args: any[]): {} }>(target: T) {
+		console.log('Trying to import entry packages for controller: ', controllerName);
 		tryImportingEntryPackagesFor();
 
 		// Default autoExportLambdaHandler to true if undefined
