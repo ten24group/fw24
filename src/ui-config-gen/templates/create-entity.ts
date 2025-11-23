@@ -1,6 +1,7 @@
-import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, IEntityPageColumnConfig, Template, EntityEditPageConfig } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, IEntityPageColumnConfig, Template, EntityEditPageConfig, ISectionsConfig } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
-import { formatEntityAttributesForCreate, mergeButtons, mergeFieldVisibility } from "./util";
+import { formatEntityAttributesForCreate, mergeButtons, mergeFieldVisibility, processSectionsConfig } from "./util";
+import { IApplicationConfig } from "../../interfaces/config";
 
 export type CreateEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string,
@@ -37,6 +38,14 @@ export type CreateEntityPageOptions<S extends EntitySchema<string, string, strin
      * Form configuration including custom buttons and field-level visibility
      */
     formConfig?: EntityEditPageConfig['formConfig'];
+    /**
+     * Sections configuration for multi-section create pages with tabs/accordions
+     */
+    sectionsConfig?: ISectionsConfig;
+    /**
+     * Global UI config options (for passing global configuration like duplicatedFieldDetection)
+     */
+    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
 }
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
@@ -80,7 +89,7 @@ export function makeCreateEntityFormConfig<S extends EntitySchema<string, string
     entityService: BaseEntityService<S>
 ){
 
-    const{ entityName, properties, CRUDApiPath, columnsConfig, formConfig } = options;
+    const{ entityName, properties, CRUDApiPath, columnsConfig, formConfig, sectionsConfig, globalUIConfigOptions } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
 
@@ -114,6 +123,16 @@ export function makeCreateEntityFormConfig<S extends EntitySchema<string, string
         entityName,  // Add entityName to config for evaluation system
         ...(columnsConfig && { columnsConfig })
     };
+
+    // Add sectionsConfig if provided - process to expand shorthand propertiesConfig
+    if (sectionsConfig) {
+        config.sectionsConfig = processSectionsConfig(
+            sectionsConfig,
+            Array.from(properties.values()),
+            entityService,
+            globalUIConfigOptions
+        );
+    }
 
     return config;
 }

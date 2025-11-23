@@ -245,14 +245,14 @@ export const DynamoDBAuditEntitySchema = createEntitySchema({
             required: false,
             isEditable: false,
             watch: ['actor'],
-            set: (_, { actor }) => actor?.actorId || undefined
+            set: (_: any, { actor }: any) => actor?.actorId || undefined
         },
         tenantId: {
             type: 'string',
             required: false,
             isEditable: false,
             watch: ['actor'],
-            set: (_, { actor }) => actor?.tenantId || undefined
+            set: (_: any, { actor }: any) => actor?.tenantId || undefined
         },
         
         // === TTL (Time To Live) ===

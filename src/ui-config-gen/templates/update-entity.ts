@@ -1,8 +1,10 @@
-import { BaseEntityService, EntityEditPageConfig, EntitySchema, TIOSchemaAttributesMap } from "../../entity";
+import { BaseEntityService, EntityEditPageConfig, EntitySchema, TIOSchemaAttributesMap, ISectionsConfig } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
-import { formatEntityAttributesForUpdate, mergeButtons, mergeFieldVisibility } from "./util";
+import { formatEntityAttributesForUpdate, mergeButtons, mergeFieldVisibility, processSectionsConfig } from "./util";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
 import { DefaultLogger } from "../../logging";
+import { IApplicationConfig } from "../../interfaces/config";
+
 export type UpdateEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string,
     entityNamePlural: string,
@@ -40,6 +42,14 @@ export type UpdateEntityPageOptions<S extends EntitySchema<string, string, strin
      * Form configuration including custom buttons and field-level visibility
      */
     formConfig?: EntityEditPageConfig['formConfig'];
+    /**
+     * Sections configuration for multi-section update pages with tabs/accordions
+     */
+    sectionsConfig?: ISectionsConfig;
+    /**
+     * Global UI config options (for passing global configuration like duplicatedFieldDetection)
+     */
+    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
 };
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
@@ -133,7 +143,7 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
     entityService: BaseEntityService<S>
 ){
 
-    const{ entityName, properties, CRUDApiPath, formConfig } = options;
+    const{ entityName, properties, CRUDApiPath, formConfig, sectionsConfig, globalUIConfigOptions } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
 
@@ -175,6 +185,16 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
     // Add columnsConfig if provided
     if (options.columnsConfig) {
         formPageConfig.columnsConfig = options.columnsConfig;
+    }
+
+    // Add sectionsConfig if provided - process to expand shorthand propertiesConfig
+    if (sectionsConfig) {
+        formPageConfig.sectionsConfig = processSectionsConfig(
+            sectionsConfig,
+            Array.from(properties.values()),
+            entityService,
+            globalUIConfigOptions
+        );
     }
 
     return formPageConfig;

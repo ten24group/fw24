@@ -58,4 +58,71 @@ export class EntitySearchService<S extends EntitySchema<any, any, any>> extends 
 
     return await super.transformDocumentForIndexing(entity);
   }
+
+  /**
+   * Resync all entity documents from database to search index
+   * Uses cursor-based pagination to handle large datasets efficiently
+   */
+  async resyncAllDocuments(options?: {
+    batchSize?: number;
+    ctx?: ExecutionContext;
+  }): Promise<{
+    processedCount: number;
+    failedCount: number;
+    totalIterations: number;
+  }> {
+    const { batchSize = 50, ctx } = options || {};
+    const searchConfig = this.getSearchIndexConfig();
+    
+    let processedCount = 0;
+    let failedCount = 0;
+    let cursor: string | undefined = 'init';
+    const maxIterations = 10000;
+    let iterationCount = 0;
+
+    this.logger.info(`Starting resync for ${this.entityService.getEntityName()}`);
+
+    while (!!cursor && iterationCount < maxIterations) {
+      iterationCount++;
+
+      const queryResult = await this.entityService.query({
+        pagination: {
+          limit: batchSize,
+          cursor: cursor === 'init' ? undefined : cursor
+        }
+      }, ctx);
+
+      if (!queryResult.data || queryResult.data.length === 0) {
+        break;
+      }
+
+      try {
+        await this.bulkSync(queryResult.data as EntityRecordTypeFromSchema<S>[], searchConfig, ctx, true);
+        processedCount += queryResult.data.length;
+        
+        this.logger.info(`Synced batch of ${queryResult.data.length} documents`, {
+          entityName: this.entityService.getEntityName(),
+          processedCount,
+          iteration: iterationCount
+        });
+      } catch (error: any) {
+        this.logger.error(`Error syncing batch: ${error.message}`, { error });
+        failedCount += queryResult.data.length;
+      }
+
+      cursor = queryResult.cursor ?? undefined;
+    }
+
+    this.logger.info(`Resync completed for ${this.entityService.getEntityName()}`, {
+      processedCount,
+      failedCount,
+      totalIterations: iterationCount
+    });
+
+    return {
+      processedCount,
+      failedCount,
+      totalIterations: iterationCount,
+    };
+  }
 } 

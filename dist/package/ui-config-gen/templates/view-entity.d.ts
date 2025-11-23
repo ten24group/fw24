@@ -1,4 +1,4 @@
-import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, EntityViewPageConfig } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, EntityViewPageConfig, ISectionsConfig } from "../../entity";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
 import { IApplicationConfig } from "../../interfaces/config";
 export type ViewEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
@@ -37,6 +37,10 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
      * Field-level visibility overrides
      */
     fields?: EntityViewPageConfig['fields'];
+    /**
+     * Sections configuration for multi-section detail pages
+     */
+    sectionsConfig?: ISectionsConfig;
     /**
      * Global UI config options (NEW: for passing global duplicatedFieldDetection config)
     */

@@ -187,14 +187,14 @@ export declare const DynamoDBAuditEntitySchema: {
             readonly required: false;
             readonly isEditable: false;
             readonly watch: readonly ["actor"];
-            readonly set: (_: string | undefined, { actor }: any) => any;
+            readonly set: (_: any, { actor }: any) => any;
         };
         readonly tenantId: {
             readonly type: "string";
             readonly required: false;
             readonly isEditable: false;
             readonly watch: readonly ["actor"];
-            readonly set: (_: string | undefined, { actor }: any) => any;
+            readonly set: (_: any, { actor }: any) => any;
         };
         readonly ttl: {
             readonly type: "number";

@@ -655,7 +655,27 @@ export class DIContainer implements IDIContainer {
 
         // Filter and sort providers based on criteria and conflict resolution strategies
         const bestProvidersArray = Array.from(bestProviders.values());
-        return filterAndSortProviders(bestProvidersArray, criteria);
+        const filteredAndSorted = filterAndSortProviders(bestProvidersArray, criteria);
+        
+        // Deduplicate providers by composite key (provide, type, forEntity)
+        // Keep only the highest priority provider for each unique combination
+        const uniqueProviders = new Map<string, InternalProviderOptions<T>>();
+        
+        for (const provider of filteredAndSorted) {
+            // Create a composite key from provide token, type, and forEntity
+            const provideToken = this.createToken(provider._provider.provide);
+            const type = provider._provider.type || 'default';
+            const forEntity = provider._provider.forEntity || '';
+            const compositeKey = `${provideToken}::${type}::${forEntity}`;
+            
+            if (!uniqueProviders.has(compositeKey)) {
+                uniqueProviders.set(compositeKey, provider);
+            }
+            // Note: Since filteredAndSorted is already sorted by priority (highest first),
+            // the first provider we encounter for each composite key is the best one
+        }
+        
+        return Array.from(uniqueProviders.values());
     }
 
     resolve<T, Async extends boolean = false>(

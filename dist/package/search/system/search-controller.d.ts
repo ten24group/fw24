@@ -43,6 +43,16 @@ export declare class SearchSystemController extends APIController {
             entityName: string;
         };
     }>, res: Response): Promise<Response>;
+    /**
+     * Deep normalize any value for consistent comparison
+     * Recursively sorts object keys and handles arrays/primitives
+     */
+    private deepNormalize;
+    /**
+     * Calculate diff between current index settings and schema-derived settings
+     * Only compares fields that exist in schema settings (framework-managed fields)
+     */
+    private calculateSettingsDiff;
     updateIndexSettings(req: Request<{
         path: {
             entityName: string;
@@ -54,6 +64,27 @@ export declare class SearchSystemController extends APIController {
     resetIndexSettings(req: Request<{
         path: {
             entityName: string;
+        };
+    }>, res: Response): Promise<Response>;
+    applyDefaultSettings(req: Request<{
+        path: {
+            entityName: string;
+        };
+    }>, res: Response): Promise<Response>;
+    initSingleEntityIndex(req: Request<{
+        path: {
+            entityName: string;
+        };
+    }>, res: Response): Promise<Response>;
+    recreateIndex(req: Request<{
+        path: {
+            entityName: string;
+        };
+        body: {
+            resyncDocuments?: boolean;
+            syncMethod?: 'direct' | 'queue';
+            batchSize?: number;
+            queueUrl?: string;
         };
     }>, res: Response): Promise<Response>;
     deleteIndex(req: Request<{
@@ -76,13 +107,11 @@ export declare class SearchSystemController extends APIController {
             byBatch?: boolean;
         };
     }>, res: Response): Promise<Response>;
-    protected resyncRecordsForEntity(entityName: string, queueUrl: string | undefined, byBatch?: boolean, batchSize?: number): Promise<{
-        message: string;
-        success: boolean;
-        entityName: string;
-        failedCount: number;
-        processedCount: number;
-    }>;
+    /**
+     * Queue documents for async resync via SQS
+     * Shared logic used by resync and recreate endpoints
+     */
+    private queueDocumentsForResync;
     getQueueInfo(req: Request<{
         path: {
             queueUrl: string;

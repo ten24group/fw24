@@ -28,4 +28,16 @@ export declare class EntitySearchService<S extends EntitySchema<any, any, any>> 
     deleteFromIndex(entityId: string, searchIndexConfig?: import("../types").SearchIndexConfig, ctx?: ExecutionContext, synchronous?: boolean): Promise<void>;
     bulkSync(entities: EntityRecordTypeFromSchema<S>[], searchIndexConfig?: import("../types").SearchIndexConfig, ctx?: ExecutionContext, synchronous?: boolean): Promise<void>;
     transformDocumentForIndexing(entity: EntityRecordTypeFromSchema<S>): Promise<Record<string, any>>;
+    /**
+     * Resync all entity documents from database to search index
+     * Uses cursor-based pagination to handle large datasets efficiently
+     */
+    resyncAllDocuments(options?: {
+        batchSize?: number;
+        ctx?: ExecutionContext;
+    }): Promise<{
+        processedCount: number;
+        failedCount: number;
+        totalIterations: number;
+    }>;
 }

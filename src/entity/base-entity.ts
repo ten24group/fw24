@@ -7,7 +7,7 @@ import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
 import { EntitySearchService } from '../search/services';
 import { DepIdentifier, IFilterAutoGenerationConfig, ISegmentAutoGenerationConfig } from "../interfaces";
-import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure } from '../ui-config-gen/templates/custom-page';
+import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig } from '../ui-config-gen/templates/custom-page';
 
 /**
  * @fileoverview Entity Schema and Type-Safe Helper Functions
@@ -669,10 +669,13 @@ export type EntityAttribute = Attribute & FW24AttributeExtensions & FieldMetadat
  * The appropriate metadata type is determined by the `fieldType` property.
  */
 export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldMetadata
-  | TimeFieldMetadata | DateTimeFieldMetadata | BooleanFieldMetadata
+  | TimeFieldMetadata | DateTimeFieldMetadata | DurationFieldMetadata | BooleanFieldMetadata
   | SelectFieldMetadata | RadioFieldMetadata | CheckboxFieldMetadata
-  | FileFieldMetadata | RangeFieldMetadata | ColorFieldMetadata
-  | ImageFieldMetadata | HiddenFieldMetadata | CustomFieldMetadata
+  | FileFieldMetadata | RangeFieldMetadata | SliderFieldMetadata | ColorFieldMetadata
+  | ImageFieldMetadata | VideoFieldMetadata | AudioFieldMetadata
+  | BadgeFieldMetadata | TagFieldMetadata | ProgressFieldMetadata | AvatarFieldMetadata | IconFieldMetadata
+  | LinkFieldMetadata | QRCodeFieldMetadata
+  | HiddenFieldMetadata | CustomFieldMetadata
   | RatingFieldMetadata | EditorFieldMetadata | CodeEditorFieldMetadata;
 
 /**
@@ -957,6 +960,75 @@ export interface IEntityConfigReference {
     
     /** Show only specific fields (mutually exclusive with hideFields) */
     showOnlyFields?: ReadonlyArray<string> | Array<string>;
+    
+    /** 
+     * Override the API configuration for fetching data.
+     * - For view pages: Overrides detailApiConfig
+     * - For list pages: Overrides apiConfig (supports both single and dual search/database configs)
+     * 
+     * @example
+     * // View page - simple API config
+     * apiConfig: {
+     *   apiMethod: 'GET',
+     *   apiUrl: '/admin/subscription/:id',
+     *   responseKey: 'subscription'
+     * }
+     * 
+     * @example
+     * // List page - single API config
+     * apiConfig: {
+     *   apiMethod: 'GET',
+     *   apiUrl: '/admin/orders',
+     *   responseKey: 'items',
+     *   useSearch: false
+     * }
+     * 
+     * @example
+     * // List page - dual API config (search + database)
+     * apiConfig: {
+     *   search: {
+     *     apiMethod: 'GET',
+     *     apiUrl: '/admin/orders/search',
+     *     responseKey: 'items'
+     *   },
+     *   database: {
+     *     apiMethod: 'GET',
+     *     apiUrl: '/admin/orders',
+     *     responseKey: 'items'
+     *   }
+     * }
+     */
+    apiConfig?: IModalApiConfig | {
+      search: IModalApiConfig;
+      database: IModalApiConfig;
+    } | {
+      apiMethod: ApiMethod;
+      apiUrl: string;
+      responseKey?: string;
+      useSearch?: boolean;
+      defaultSort?: { field: string; order: 'asc' | 'desc' };
+    };
+    
+    /** 
+     * Map parent route params to different names for the child section.
+     * Uses the same pattern as relation identifierMapping for consistency.
+     * 
+     * @example
+     * // Single identifier mapping
+     * identifierMapping: { source: 'subscriptionId', target: 'id' }
+     * 
+     * @example
+     * // Multiple identifier mappings
+     * identifierMapping: [
+     *   { source: 'subscriptionId', target: 'id' },
+     *   { source: 'userId', target: 'customerId' }
+     * ]
+     * 
+     * @example
+     * // Nested path mapping (if needed in future)
+     * identifierMapping: { source: 'order.subscriptionId', target: 'id' }
+     */
+    identifierMapping?: { source: string; target: string } | Array<{ source: string; target: string }>;
   };
 }
 
@@ -1574,26 +1646,44 @@ export interface IEntityPageAction {
 }
 
 export interface IEntityPageColumn {
-  sortOrder: number;
-  fields: string[];
+  readonly sortOrder: number;
+  readonly fields: ReadonlyArray<string> | Array<string>;
 }
 
 export interface IEntityPageColumnConfig {
-  numColumns?: number;
-  columns: IEntityPageColumn[];
+  readonly numColumns?: number;
+  readonly columns: ReadonlyArray<IEntityPageColumn> | Array<IEntityPageColumn>;
 }
 
 interface TextFieldMetadata extends BaseFieldMetadata {
-  fieldType?: 'text' | 'textarea' | 'password' | 'email';
+  fieldType?: 'text' | 'textarea' | 'password' | 'email' | 'url' | 'phone';
   maxLength?: number;
   mask?: string;
+  /**
+   * For 'url' type: validate URL format
+   * For 'phone' type: phone number format/mask
+   */
+  format?: string;
 }
 
 interface NumberFieldMetadata extends BaseFieldMetadata {
-  fieldType?: 'number';
+  fieldType?: 'number' | 'currency' | 'percentage';
   min?: number;
   max?: number;
   step?: number;
+  /**
+   * For 'currency' type: currency code (e.g., 'USD', 'EUR')
+   * For 'percentage' type: display format (e.g., '0.00%')
+   */
+  format?: string;
+  /**
+   * For 'currency' type: currency symbol (e.g., '$', '€')
+   */
+  currencySymbol?: string;
+  /**
+   * For 'currency' type: symbol position ('before' | 'after')
+   */
+  symbolPosition?: 'before' | 'after';
 }
 
 interface DateFieldMetadata extends BaseFieldMetadata {
@@ -1616,6 +1706,23 @@ interface DateTimeFieldMetadata extends BaseFieldMetadata {
   minDateTime?: Date;
   maxDateTime?: Date;
   dateTimeFormat?: string; // format to display the date and time
+}
+
+interface DurationFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'duration';
+  /**
+   * Duration format: 'seconds', 'minutes', 'hours', 'days', 'human' (e.g., '2h 30m')
+   * Default: 'human'
+   */
+  format?: 'seconds' | 'minutes' | 'hours' | 'days' | 'human';
+  /**
+   * Minimum duration value (in seconds)
+   */
+  minDuration?: number;
+  /**
+   * Maximum duration value (in seconds)
+   */
+  maxDuration?: number;
 }
 
 interface ColorFieldMetadata extends BaseFieldMetadata {
@@ -1773,6 +1880,178 @@ interface RangeFieldMetadata extends BaseFieldMetadata {
   max?: number;
   step?: number;
   showValue?: boolean; // whether to show the current value
+}
+
+interface SliderFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'slider';
+  min?: number;
+  max?: number;
+  step?: number;
+  showValue?: boolean; // whether to show the current value
+  /**
+   * Show marks on slider (e.g., { 0: '0°C', 26: '26°C', 37: '37°C', 100: '100°C' })
+   */
+  marks?: Record<number, string>;
+  /**
+   * Enable vertical slider
+   */
+  vertical?: boolean;
+}
+
+interface BadgeFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'badge';
+  /**
+   * Badge status/color: 'success', 'processing', 'error', 'warning', 'default'
+   */
+  status?: 'success' | 'processing' | 'error' | 'warning' | 'default';
+  /**
+   * Custom color (hex code) - overrides status color
+   */
+  color?: string;
+  /**
+   * Show count/dot indicator
+   */
+  showDot?: boolean;
+}
+
+interface TagFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'tag' | 'tags';
+  /**
+   * Tag color: 'success', 'processing', 'error', 'warning', 'default', or custom hex
+   */
+  color?: 'success' | 'processing' | 'error' | 'warning' | 'default' | string;
+  /**
+   * Closeable tags (for editable lists)
+   */
+  closable?: boolean;
+  /**
+   * Icon to display in tag
+   */
+  icon?: string;
+}
+
+interface ProgressFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'progress';
+  /**
+   * Progress type: 'line', 'circle', 'dashboard'
+   */
+  type?: 'line' | 'circle' | 'dashboard';
+  /**
+   * Progress status color: 'success', 'exception', 'normal', 'active'
+   */
+  status?: 'success' | 'exception' | 'normal' | 'active';
+  /**
+   * Show percentage text
+   */
+  showInfo?: boolean;
+  /**
+   * Custom format for percentage text
+   */
+  format?: string;
+}
+
+interface AvatarFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'avatar';
+  /**
+   * Avatar shape: 'circle', 'square'
+   */
+  shape?: 'circle' | 'square';
+  /**
+   * Avatar size: number (pixels) or 'small', 'default', 'large'
+   */
+  size?: number | 'small' | 'default' | 'large';
+  /**
+   * Fallback icon when no image
+   */
+  icon?: string;
+  /**
+   * Fallback text when no image (e.g., initials)
+   */
+  text?: string;
+}
+
+interface IconFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'icon';
+  /**
+   * Icon size in pixels
+   */
+  size?: number;
+  /**
+   * Icon color (hex code)
+   */
+  color?: string;
+  /**
+   * Icon library: 'antd', 'custom'
+   */
+  library?: 'antd' | 'custom';
+}
+
+interface LinkFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'link';
+  /**
+   * Target for link: '_blank', '_self', '_parent', '_top'
+   */
+  target?: '_blank' | '_self' | '_parent' | '_top';
+  /**
+   * Link template/pattern (supports placeholders)
+   */
+  urlPattern?: string;
+}
+
+interface VideoFieldMetadata extends BaseFieldMetadata, CommonFileFieldMetadata {
+  fieldType?: 'video';
+  /**
+   * Accepted video formats
+   */
+  accept?: 'video/*' | 'video/mp4' | 'video/webm' | 'video/ogg';
+  /**
+   * Show video player controls
+   */
+  controls?: boolean;
+  /**
+   * Autoplay video
+   */
+  autoplay?: boolean;
+  /**
+   * Maximum duration in seconds
+   */
+  maxDuration?: number;
+}
+
+interface AudioFieldMetadata extends BaseFieldMetadata, CommonFileFieldMetadata {
+  fieldType?: 'audio';
+  /**
+   * Accepted audio formats
+   */
+  accept?: 'audio/*' | 'audio/mpeg' | 'audio/wav' | 'audio/ogg';
+  /**
+   * Show audio player controls
+   */
+  controls?: boolean;
+  /**
+   * Maximum duration in seconds
+   */
+  maxDuration?: number;
+}
+
+interface QRCodeFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'qrcode';
+  /**
+   * QR code size in pixels
+   */
+  size?: number;
+  /**
+   * Error correction level: 'L', 'M', 'Q', 'H'
+   */
+  errorLevel?: 'L' | 'M' | 'Q' | 'H';
+  /**
+   * Include logo in QR code
+   */
+  includeImage?: boolean;
+  /**
+   * Logo image URL
+   */
+  logoImage?: string;
 }
 
 export type GetSignedUploadUrlAPIConfig = {
@@ -2343,7 +2622,7 @@ export interface IFilterSegment {
    * badge: 5  // Static count
    * badge: ':record.activeCount'  // Dynamic from context
    */
-  badge?: number | string;
+  badge?: number | Template;
   
   /**
    * Badge color (Ant Design status colors)
@@ -2384,6 +2663,45 @@ export interface IFilterSegmentGroup {
    */
   maxVisible?: number;
 }
+
+/**
+ * Column configuration object with full control.
+ * Provides explicit control over visibility, width, grouping, and other column properties.
+ */
+export interface ITableColumnConfig {
+  /** Field name (attribute name from entity schema) */
+  field: string;
+  /** Visibility configuration for role-based/conditional display */
+  visibility?: VisibilityConfig;
+  /** Column width in pixels or CSS string (e.g., '150px', '20%') */
+  width?: string | number;
+  /** Pin column to left or right side of table */
+  fixed?: 'left' | 'right';
+  /** Group title for column grouping. Columns with same groupTitle will be grouped together. */
+  groupTitle?: string;
+  /** 
+   * Controls initial visibility in the UI. 
+   * - true: Column is visible by default
+   * - false: Column is hidden by default but available in Column Settings
+   * - undefined: Defaults to true (visible)
+   */
+  defaultVisible?: boolean;
+}
+
+/**
+ * Column configuration with flexible syntax.
+ * Supports both string shorthand and full object configuration.
+ * 
+ * - String shorthand: `'fieldName'` - visible by default with default settings
+ * - Object syntax: Full control over all column properties
+ */
+export type ITableColumn = string | ITableColumnConfig;
+
+/**
+ * Array of column configurations.
+ * Determines column order, visibility, and display properties.
+ */
+export type ITableColumns = ReadonlyArray<ITableColumn> | Array<ITableColumn>;
 
 /**
  * Entity-level table UI configuration.
@@ -2474,10 +2792,281 @@ export interface IEntityTableUIConfig {
   };
 }
 
+/**
+ * Section configuration for any page type (list, detail, form, etc.)
+ * Allows breaking pages into tabbed or accordion-based sections.
+ * 
+ * Each section can render a different page type and has access to the parent page's data
+ * via `routeParams` (which contains merged parent record/state).
+ */
+/**
+ * Badge configuration for sections.
+ * Supports:
+ * - Templates with JSONPath: '{$.lineItems.length()} items'
+ * - Advanced config: { template: '{$.items.length()}', showZero: true }
+ * - API-based counts: { apiEndpoint: '/admin/order/count', responseKey: 'count' }
+ */
+export type SectionBadgeConfig = 
+  | Template  // Template with JSONPath support: '{$.lineItems.length()} items', '{$.items[?(@.status=="active")].length()}'
+  | {
+      /** Template for badge text with JSONPath support */
+      template: Template;
+      /** Show badge even if evaluated to 0. Default: false */
+      showZero?: boolean;
+    }
+  | {
+      /** API endpoint to fetch count/value from (e.g., '/admin/order/count?userId.eq=:userId') */
+      apiEndpoint: string;
+      /** Key in response to extract value from. Supports JSONPath. Default: 'count' */
+      responseKey?: string;
+      /** Optional template for formatting the badge text (e.g., '{count} orders') */
+      template?: string;
+      /** Show badge even if count is 0. Default: false */
+      showZero?: boolean;
+    };
+
+export interface ISectionConfig {
+  /** Section label - supports templates (e.g., 'Players ({playerCount})') */
+  readonly label: Template;
+  /** Optional icon for the section tab/accordion header */
+  readonly icon?: string;
+  /** 
+   * Optional badge for the section tab/accordion header.
+   * Supports:
+   * - Static text: 'New'
+   * - JSONPath templates: '{$.lineItems.length()} items' (shows 0 by default)
+   * - Filtered counts: '{$.items[?(@.status=="active")].length()} active'
+   * - API fetching: { apiEndpoint: '/admin/order/count', responseKey: 'count' }
+   * - Multiple badges: ['{$.lineItems.length()}', '{$.errors.length()}']
+   * 
+   * JSONPath Examples:
+   * - Array length: '{$.lineItems.length()}'
+   * - Filtered: '{$.lineItems[?(@.type=="subscription")].length()}'
+   * - Nested: '{$.order.items.length()}'
+   * - Sum: '{$.lineItems[*].quantity}' (returns array, use .length() for count)
+   * 
+   * Note: Simple templates show "0" by default. Use advanced config to hide zeros.
+   * 
+   * @example
+   * // Static badge
+   * badge: 'New'
+   * 
+   * @example
+   * // JSONPath: Count array length (shows "0 items" if array is empty)
+   * badge: '{$.lineItems.length()} items'
+   * 
+   * @example
+   * // JSONPath: Hide when 0
+   * badge: {
+   *   template: '{$.lineItems.length()} items',
+   *   showZero: false
+   * }
+   * 
+   * @example
+   * // JSONPath: Filtered count
+   * badge: '{$.lineItems[?(@.type=="subscription")].length()} subscriptions'
+   * 
+   * @example
+   * // Fetch from API (hides 0 by default)
+   * badge: {
+   *   apiEndpoint: '/admin/order/count?userId.eq=:userId',
+   *   responseKey: 'count',
+   *   template: '{count} orders',
+   *   showZero: true  // Show "0 orders"
+   * }
+   * 
+   * @example
+   * // Multiple badges
+   * badge: [
+   *   '{$.lineItems.length()} items',
+   *   '{$.errors.length()} errors'
+   * ]
+   */
+  readonly badge?: SectionBadgeConfig | ReadonlyArray<SectionBadgeConfig> | Array<SectionBadgeConfig>;
+  /** Visibility conditions for this section */
+  readonly visibility?: VisibilityConfig;
+  /** Sort order for section display */
+  readonly sortOrder?: number;
+  
+  /** The type of page to render in this section */
+  readonly pageType: 'list' | 'details' | 'form' | 'dashboard';
+  
+  /** 
+   * Reference to existing entity config (recommended - avoids duplication)
+   * Use this instead of inline configs to reference entity's list/view/create configs with optional overrides.
+   * 
+   * @example
+   * entityConfigRef: {
+   *   entityName: 'order',
+   *   pageType: 'list',
+   *   overrideConfig: {
+   *     defaultFilters: { userId: ':userId' }
+   *   }
+   * }
+   */
+  readonly entityConfigRef?: IEntityConfigReference;
+  
+  /** List page config (if pageType === 'list' and not using entityConfigRef) */
+  readonly listPageConfig?: ListPageConfigStructure;
+  /** Detail page config (if pageType === 'details' and not using entityConfigRef) */
+  readonly detailsPageConfig?: {
+    readonly title?: string;
+    readonly helpText?: string;
+    /** If true, section reuses parent's loaded record data (organizational sections) */
+    readonly useParentData?: boolean;
+    /** API config for fetching data (optional if useParentData is true) */
+    readonly detailApiConfig?: DetailsPageConfigStructure['detailApiConfig'];
+    /** Column grouping config */
+    readonly columnsConfig?: DetailsPageConfigStructure['columnsConfig'];
+    /** 
+     * Properties to display.
+     * Supports string shorthand for field names or full PropertyConfig objects.
+     * 
+     * @example
+     * // String shorthand
+     * propertiesConfig: ['orderDate', 'status', 'total']
+     * 
+     * @example
+     * // Mixed usage
+     * propertiesConfig: [
+     *   'orderDate',
+     *   { name: 'status', label: 'Order Status', column: 'status', fieldType: 'badge' },
+     *   'total'
+     * ]
+     */
+    readonly propertiesConfig: DetailsPageConfigStructure['propertiesConfig'];
+  };
+  /** Form page config (if pageType === 'form' and not using entityConfigRef) */
+  readonly formPageConfig?: FormPageConfigStructure;
+  /** Dashboard config (if pageType === 'dashboard' and not using entityConfigRef) */
+  readonly dashboardPageConfig?: DashboardPageConfig['dashboardPageConfig'];
+}
+
+/**
+ * Section group configuration for organizing sections into cards.
+ * Each group renders as a separate card with its own tabs/accordion.
+ */
+export interface ISectionGroup {
+  /** Unique identifier for the group */
+  readonly id: string;
+  /** Group label/title for the card header - supports templates */
+  readonly label?: Template;
+  /** Optional icon for the group card header */
+  readonly icon?: string;
+  /** Visibility conditions for this entire group */
+  readonly visibility?: VisibilityConfig;
+  /** Sort order for group display */
+  readonly sortOrder?: number;
+  /** How to render sections within this group: tabs or accordion */
+  readonly renderMode?: 'tabs' | 'accordion';
+  /** Lazy load section content (only load when activated) */
+  readonly lazyLoad?: boolean;
+  /** Keep mounted sections in DOM when hidden (preserves state) */
+  readonly keepMounted?: boolean;
+  /** Sections within this group */
+  readonly sections: Record<string, ISectionConfig>;
+  
+  // Collapsible card behavior
+  /** Start collapsed (default: false for first group, true for others) */
+  readonly defaultCollapsed?: boolean;
+  /** Show this text when collapsed - supports templates (e.g., 'Total: {total}') */
+  readonly collapsedSummary?: Template;
+  /** Allow users to collapse/expand this card (default: true) */
+  readonly allowCollapse?: boolean;
+  /** Allow users to maximize this card to full screen (default: true) */
+  readonly allowMaximize?: boolean;
+  /** Auto-collapse when another accordion-mode group opens (default: false) */
+  readonly autoCollapse?: boolean;
+}
+
+/**
+ * Sections configuration for all page types.
+ * Enables multi-section pages with tabs or accordion UI.
+ * 
+ * Supports two formats:
+ * 1. Single group (backward compatible): Use `sections` directly
+ * 2. Multiple groups: Use `sectionGroups` array
+ * 
+ * @example
+ * // Single group (backward compatible)
+ * sectionsConfig: {
+ *   renderMode: 'tabs',
+ *   sections: {
+ *     players: { label: 'Players', pageType: 'list', ... },
+ *     metadata: { label: 'Metadata', pageType: 'details', ... }
+ *   }
+ * }
+ * 
+ * @example
+ * // Multiple groups (new)
+ * sectionsConfig: {
+ *   sectionGroups: [
+ *     {
+ *       id: 'basic',
+ *       label: 'Basic Info',
+ *       icon: 'InfoCircleOutlined',
+ *       renderMode: 'tabs',
+ *       sections: {
+ *         details: { label: 'Details', pageType: 'details', ... },
+ *         metadata: { label: 'Metadata', pageType: 'details', ... }
+ *       }
+ *     },
+ *     {
+ *       id: 'relations',
+ *       label: 'Related Data',
+ *       icon: 'LinkOutlined',
+ *       visibility: { requiredRoles: ['admin'] },
+ *       renderMode: 'accordion',
+ *       sections: {
+ *         players: { label: 'Players', pageType: 'list', ... },
+ *         games: { label: 'Games', pageType: 'list', ... }
+ *       }
+ *     }
+ *   ]
+ * }
+ */
+export interface ISectionsConfig {
+  // ===== SINGLE GROUP FORMAT (Backward Compatible) =====
+  /** How to render sections: tabs or accordion (for single group format) */
+  readonly renderMode?: 'tabs' | 'accordion';
+  /** Lazy load section content (for single group format) */
+  readonly lazyLoad?: boolean;
+  /** Keep mounted sections in DOM when hidden (for single group format) */
+  readonly keepMounted?: boolean;
+  /** Sections to render (single group format - backward compatible) */
+  readonly sections?: Record<string, ISectionConfig>;
+  
+  // ===== MULTIPLE GROUPS FORMAT (New) =====
+  /** Array of section groups (each renders as a separate card) */
+  readonly sectionGroups?: ReadonlyArray<ISectionGroup> | Array<ISectionGroup>;
+  
+  // ===== COMMON PROPERTIES =====
+  /** Position relative to main content (not yet implemented) */
+  readonly position?: 'below' | 'right';
+  
+  /** 
+   * Maximum nesting depth for sections (default: 4).
+   * Prevents infinite recursion when sections reference pages with their own sections.
+   * When depth is exceeded, a warning is shown instead of rendering nested sections.
+   */
+  readonly maxDepth?: number;
+  
+  // ===== UI BEHAVIOR =====
+  /** Remember collapsed/expanded state in localStorage (default: true) */
+  readonly rememberState?: boolean;
+  /** Highlight card that's currently in viewport (default: true) */
+  readonly scrollSpyHighlight?: boolean;
+}
+
 export interface EntityListPageConfig {
   readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
   readonly breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
   readonly defaultSort?: { readonly field: string; readonly order: 'asc' | 'desc' } | ReadonlyArray<{ readonly field: string; readonly order: 'asc' | 'desc' }> | 'asc' | 'desc';
+  /**
+   * Additional sections to display below or alongside the main list table.
+   * Enables multi-section pages with tabs or accordion UI.
+   */
+  readonly sectionsConfig?: ISectionsConfig;
   readonly tableConfig?: {
     readonly rowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
     readonly bulkActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
@@ -2486,38 +3075,74 @@ export interface EntityListPageConfig {
       visibility?: VisibilityConfig;
     };
     /**
-     * Column configuration including visibility, width, fixed position, and grouping.
+     * Column configuration with flexible syntax for improved developer experience.
      * 
-     * Column Grouping:
+     * **Syntax Options:**
+     * 1. **String shorthand**: `'fieldName'` - visible by default with default settings
+     * 2. **Object syntax**: Full control over width, visibility, grouping, etc.
+     * 
+     * **Behavior:**
+     * - Fields listed here determine column order in the table
+     * - `defaultVisible` defaults to `true` if not specified
+     * - Fields not listed become hidden but available in Column Settings
+     * - If `columns` is not defined, all `isListable` fields are visible (backward compatible)
+     * 
+     * **Column Grouping:**
      * - Set `groupTitle` on multiple columns to group them under a common header
      * - Columns with the same `groupTitle` will be grouped together
      * - Uses Ant Design's native `children` property
      * 
      * @example
+     * // Clean and simple - most common case
+     * columns: [
+     *   'orderId',           // Visible with defaults
+     *   'orderDate',         // Visible with defaults
+     *   'status',            // Visible with defaults
+     * ]
+     * 
+     * @example
+     * // Mixed syntax with full control
+     * columns: [
+     *   'orderId',                              // Visible, default width
+     *   { field: 'total', width: 150 },         // Visible, custom width
+     *   { field: 'playerName', groupTitle: 'Player Info' },  // Visible, grouped
+     *   { field: 'metadata', defaultVisible: false }         // Hidden but ordered
+     * ]
+     * 
+     * @example
+     * // Column grouping
      * columns: [
      *   { field: 'playerName', groupTitle: 'Player Info' },
      *   { field: 'position', groupTitle: 'Player Info' },
      *   { field: 'jerseyNumber', groupTitle: 'Player Info' },
      *   { field: 'points', groupTitle: 'Statistics' },
-     *   { field: 'assists', groupTitle: 'Statistics' },
-     *   { field: 'email' }  // No group - stays ungrouped
+     *   { field: 'assists', groupTitle: 'Statistics', defaultVisible: false },
+     *   'email'  // No group - stays ungrouped
      * ]
      */
-    readonly columns?: ReadonlyArray<{
-      field: string;
-      visibility?: VisibilityConfig;
-      width?: string | number;
-      fixed?: 'left' | 'right';
-      /** Group title for column grouping. Columns with same groupTitle will be grouped together. */
-      groupTitle?: string;
-    }> | Array<{
-      field: string;
-      visibility?: VisibilityConfig;
-      width?: string | number;
-      fixed?: 'left' | 'right';
-      /** Group title for column grouping. Columns with same groupTitle will be grouped together. */
-      groupTitle?: string;
-    }>;
+    readonly columns?: ITableColumns;
+    /**
+     * Controls how column data is fetched from the API.
+     * 
+     * - `'eager'` (default): Fetches all `isListable` columns in a single request.
+     *   Users can instantly toggle column visibility without additional API calls.
+     *   Recommended for most admin panels and data tables.
+     * 
+     * - `'lazy'`: Only fetches visible columns initially. When users show hidden columns,
+     *   the table will refetch data with the new column set.
+     *   Use for tables with 50+ columns or expensive computed fields.
+     * 
+     * @default 'eager'
+     * 
+     * @example
+     * // Eager fetching (default) - fetch all columns upfront
+     * fetchStrategy: 'eager'
+     * 
+     * @example
+     * // Lazy fetching - only fetch visible columns
+     * fetchStrategy: 'lazy'
+     */
+    readonly fetchStrategy?: 'eager' | 'lazy';
     /**
      * Expandable row configuration.
      * Allows displaying nested data within table rows.
@@ -2589,6 +3214,15 @@ export interface EntityViewPageConfig {
     visibility?: VisibilityConfig;
     helpText?: string;
   }>;
+  /**
+   * Additional sections to display below or alongside the main detail view.
+   * Enables multi-section detail pages with tabs or accordion UI.
+   * 
+   * Sections have access to the parent record via routeParams.
+   * Use `useParentData: true` in detailsPageConfig for organizational sections
+   * that display parts of the same record (e.g., metadata, large JSON fields).
+   */
+  readonly sectionsConfig?: ISectionsConfig;
 }
 
 /**
@@ -2627,6 +3261,14 @@ export interface EntityEditPageConfig {
       placeholder?: string;
     }>;
   };
+  /**
+   * Additional sections to display below or alongside the main form.
+   * Enables multi-section edit pages with tabs or accordion UI.
+   * 
+   * Sections have access to the parent record and live formValues via routeParams.
+   * Use for features like live preview, help documentation, or related data.
+   */
+  readonly sectionsConfig?: ISectionsConfig;
 }
 
 /**
@@ -2662,6 +3304,14 @@ export interface EntityCreatePageConfig {
       placeholder?: string;
     }>;
   };
+  /**
+   * Additional sections to display below or alongside the create form.
+   * Enables multi-section create pages with tabs or accordion UI.
+   * 
+   * Sections have access to live formValues via routeParams.
+   * Use for features like live preview or help documentation.
+   */
+  readonly sectionsConfig?: ISectionsConfig;
 }
 
 export interface EntitySchema<
@@ -2819,7 +3469,7 @@ export interface EntitySchema<
      * Note: For DynamoDB (non-search) mode, use 'asc' | 'desc' to indicate the expected
      * index order direction. DynamoDB returns data in index (PK/SK) order, not arbitrary sort.
      * 
-     * @deprecated Use listPageConfig.defaultSort instead
+     * @deprecated Use listPageConfig.defaultSort {@link EntityListPageConfig.defaultSort} instead
      */
     readonly listPageDefaultSort?: { readonly field: string; readonly order: 'asc' | 'desc' } | ReadonlyArray<{ readonly field: string; readonly order: 'asc' | 'desc' }> | 'asc' | 'desc',
     

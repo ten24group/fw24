@@ -14,6 +14,7 @@ export declare const AuditCustomPageConfigs: {
         readonly pageType: "list";
         readonly pageHeaderActions: import("../../../ui-config-gen").IEntityPageAction[];
         readonly listPageConfig: {
+            fetchStrategy: "eager" | "lazy";
             segments?: readonly (import("../../../fw24").IFilterSegment | import("../../../fw24").IFilterSegmentGroup)[] | (import("../../../fw24").IFilterSegment | import("../../../fw24").IFilterSegmentGroup)[] | undefined;
             expandableConfig?: import("../../../fw24").ITableExpandableConfig | undefined;
             rowSelection?: {

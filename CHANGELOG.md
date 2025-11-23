@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.0.4-beta.18](https://github.com/ten24group/fw24/compare/v1.0.4-beta.17...v1.0.4-beta.18) (2025-11-20)
+
+### [1.0.4-beta.17](https://github.com/ten24group/fw24/compare/v1.0.4-beta.16...v1.0.4-beta.17) (2025-11-20)
+
+
+### Features
+
+* search index-setting drift and apply-default-settings ([7bca2d6](https://github.com/ten24group/fw24/commit/7bca2d61b55f2ad8489a8f302570421aa6b4b5f2))
+
+### [1.0.4-beta.16](https://github.com/ten24group/fw24/compare/v1.0.4-beta.15...v1.0.4-beta.16) (2025-11-20)
+
 ### [1.0.4-beta.15](https://github.com/ten24group/fw24/compare/v1.0.4-beta.14...v1.0.4-beta.15) (2025-11-11)
 
 ### [1.0.4-beta.14](https://github.com/ten24group/fw24/compare/v1.0.4-beta.13...v1.0.4-beta.14) (2025-11-11)
