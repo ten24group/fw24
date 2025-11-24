@@ -16,6 +16,7 @@ export * from './const';
 export * from './audit';
 export * from './search';
 export * from './ui-config-gen';
+export * from './observability';
 
 // Errors
 export * from './errors';

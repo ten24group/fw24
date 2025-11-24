@@ -12,6 +12,7 @@ import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErr
 import { ExecutionContext, Actor } from '../types/execution-context';
 import { AuditContext, RequestAuditContext, AuditConfig } from '../../audit/interfaces';
 import { AuditCaptureService } from '../../audit/helpers/audit-helpers';
+import { extractTraceContextFromHeaders, ObservabilityManager, Span } from '../../observability';
 
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 
@@ -191,18 +192,47 @@ export abstract class APIController extends AbstractLambdaHandler {
    */
   async LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult> {
 
+    ObservabilityManager.initializeInvocation();
+
     const request = await this.makeRequestContext(event, context);
     const response = await this.makeResponseContext(request);
 
     // Build the execution context
     const ctx = this.buildCtx(event, context, request, response);
 
+    const traceHeaders = extractTraceContextFromHeaders(request.headers || {});
+    const requestSpan = new Span(`HTTP ${request.httpMethod} ${request.path}`, {
+      traceId: traceHeaders.traceId,
+      parentSpanId: traceHeaders.parentSpanId,
+      
+      attributes: {
+        'http.method': request.httpMethod,
+        'http.path': request.path,
+        'http.requestId': request.requestId,
+      },
+    });
+    let spanEnded = false;
+    const finalizeObservability = async (success: boolean, error?: Error) => {
+      if (!spanEnded) {
+        await requestSpan.end({ success, error });
+        spanEnded = true;
+      }
+      await ObservabilityManager.flush();
+    };
+
+    ctx.observability = {
+      traceId: requestSpan.traceId,
+      spanId: requestSpan.spanId,
+      parentSpanId: requestSpan.parentSpanId,
+      span: requestSpan,
+    };
+
     // Find the matching route first for method-level audit config
     const route = this.findMatchingRoute(request);
 
     // Create audit context with route information for method-level config
     const auditContext = this.makeAuditContext(ctx, route);
-    
+
     if (auditContext) {
       await this.captureStart(auditContext, this.buildRequestContext(ctx, auditContext.auditConfig));
     }
@@ -240,6 +270,7 @@ export abstract class APIController extends AbstractLambdaHandler {
 
       // If the controller returned anything (ResponseContext or raw API result), emit that
       if (controllerResponse != null) {
+        await finalizeObservability(true);
         return this.handleResponse(controllerResponse);
       }
 
@@ -256,10 +287,12 @@ export abstract class APIController extends AbstractLambdaHandler {
         await this.captureEnd(auditContext, response, errorObj);
       }
 
+      await finalizeObservability(false, errorObj);
       return this.handleException(request, errorObj, response);
     }
 
     // Fallback to the in-memory responseContext
+    await finalizeObservability(true);
     return response.build();
   }
 
@@ -484,7 +517,7 @@ export abstract class APIController extends AbstractLambdaHandler {
    */
   protected buildCtx(event: APIGatewayEvent, context: Context, request: Request, response: Response): ExecutionContext {
     const actor = this.extractActorContext(event, request);
-    
+
     const ctx: ExecutionContext = {
       event,
       lambdaContext: context,
@@ -492,7 +525,7 @@ export abstract class APIController extends AbstractLambdaHandler {
       response,
       actor,
       debugInfo: {},
-      
+
       // Simple actor enhancement method
       enhanceActor: (enhancement: Partial<Actor>) => {
         if (ctx.actor) {
@@ -512,21 +545,21 @@ export abstract class APIController extends AbstractLambdaHandler {
    */
   protected makeAuditContext(ctx: ExecutionContext, route?: Route | null): AuditContext | null {
     const config = this.getControllerConfig();
-    
+
     // Merge controller-level and method-level audit configs
     const controllerAudit = config?.audit;
     const methodAudit = route?.audit;
     const mergedAuditConfig = this.mergeAuditConfigs(controllerAudit, methodAudit);
-    
+
     if (!mergedAuditConfig?.enabled) return null;
-    
-    const correlationId = ctx.actor?.correlationId || 
-                         ctx.request.headers?.['x-correlation-id'] || 
-                         ctx.request.requestId;
-    
+
+    const correlationId = ctx.actor?.correlationId ||
+      ctx.request.headers?.[ 'x-correlation-id' ] ||
+      ctx.request.requestId;
+
     const operationName = `${ctx.request.httpMethod.toLowerCase()}_${ctx.request.path}`;
     const operationId = `${this.constructor.name}.${operationName}`;
-    
+
     return {
       enabled: true,
       logType: 'log',
@@ -538,7 +571,7 @@ export abstract class APIController extends AbstractLambdaHandler {
       correlation: {
         correlationId,
         operationId,
-        parentOperationId: ctx.request.headers?.['x-parent-operation-id'],
+        parentOperationId: ctx.request.headers?.[ 'x-parent-operation-id' ],
         operationType: 'api',
         operationName,
         startTimestamp: new Date().toISOString()
@@ -558,46 +591,46 @@ export abstract class APIController extends AbstractLambdaHandler {
     if (!controllerAudit && !methodAudit) return undefined;
     if (!controllerAudit) return methodAudit;
     if (!methodAudit) return controllerAudit;
-    
+
     // Deep merge with method-level config taking precedence
     const merged: AuditConfig = {
       ...controllerAudit,
       ...methodAudit
     };
-    
+
     // Special handling for nested objects
     if (controllerAudit.includes || methodAudit.includes) {
       merged.includes = {
         ...controllerAudit.includes,
         ...methodAudit.includes
       };
-      
+
       // Merge request and response arrays if both exist and are arrays
       if (controllerAudit.includes?.request && methodAudit.includes?.request) {
         const controllerRequest = Array.isArray(controllerAudit.includes.request) ? controllerAudit.includes.request : [];
         const methodRequest = Array.isArray(methodAudit.includes.request) ? methodAudit.includes.request : [];
-        merged.includes.request = [...new Set([...controllerRequest, ...methodRequest])];
+        merged.includes.request = [ ...new Set([ ...controllerRequest, ...methodRequest ]) ];
       }
       if (controllerAudit.includes?.response && methodAudit.includes?.response) {
         const controllerResponse = Array.isArray(controllerAudit.includes.response) ? controllerAudit.includes.response : [];
         const methodResponse = Array.isArray(methodAudit.includes.response) ? methodAudit.includes.response : [];
-        merged.includes.response = [...new Set([...controllerResponse, ...methodResponse])];
+        merged.includes.response = [ ...new Set([ ...controllerResponse, ...methodResponse ]) ];
       }
     }
-    
+
     if (controllerAudit.dataProtection || methodAudit.dataProtection) {
       merged.dataProtection = {
         ...controllerAudit.dataProtection,
         ...methodAudit.dataProtection
       };
-      
+
       // Merge deepRedact config
       if (controllerAudit.dataProtection?.deepRedact || methodAudit.dataProtection?.deepRedact) {
         merged.dataProtection.deepRedact = {
           ...controllerAudit.dataProtection?.deepRedact,
           ...methodAudit.dataProtection?.deepRedact
         };
-        
+
         // Merge blacklistedKeys arrays
         if (controllerAudit.dataProtection?.deepRedact?.blacklistedKeys && methodAudit.dataProtection?.deepRedact?.blacklistedKeys) {
           merged.dataProtection.deepRedact.blacklistedKeys = [
@@ -609,14 +642,14 @@ export abstract class APIController extends AbstractLambdaHandler {
         }
       }
     }
-    
+
     if (controllerAudit.customContext || methodAudit.customContext) {
       merged.customContext = {
         ...controllerAudit.customContext,
         ...methodAudit.customContext
       };
     }
-    
+
     return merged;
   }
 
@@ -636,7 +669,7 @@ export abstract class APIController extends AbstractLambdaHandler {
       responseSize: response.body?.length || 0,
       response: this.buildResponseContext(response, auditContext.auditConfig)
     };
-    
+
     await AuditCaptureService.captureEnd(auditContext, null, error, responseContext);
   }
 
@@ -645,7 +678,7 @@ export abstract class APIController extends AbstractLambdaHandler {
    */
   private buildRequestContext(ctx: ExecutionContext, auditConfig: AuditConfig): RequestAuditContext {
     const requestIncludes = auditConfig.includes?.request;
-    
+
     // Determine what to include based on the configuration format
     let includeHeaders = false, includeBody = false, includeQuery = false;
     let headerFields: string[] = [], bodyFields: string[] = [], queryFields: string[] = [];
@@ -671,13 +704,13 @@ export abstract class APIController extends AbstractLambdaHandler {
     return {
       method: ctx.request.httpMethod,
       path: ctx.request.path,
-      userAgent: ctx.event.headers?.['user-agent'],
+      userAgent: ctx.event.headers?.[ 'user-agent' ],
       sourceIp: ctx.event.requestContext?.identity?.sourceIp,
-      headers: includeHeaders ? 
+      headers: includeHeaders ?
         this.selectivelyIncludeFields(ctx.request.headers, headerFields) : undefined,
-      body: includeBody ? 
+      body: includeBody ?
         this.selectivelyIncludeFields(ctx.request.body, bodyFields) : undefined,
-      query: includeQuery ? 
+      query: includeQuery ?
         this.selectivelyIncludeFields(ctx.request.queryStringParameters, queryFields) : undefined
     };
   }
@@ -690,20 +723,20 @@ export abstract class APIController extends AbstractLambdaHandler {
     if (!obj || typeof obj !== 'object') {
       return obj;
     }
-    
+
     // If no specific fields requested, return entire object
     if (!fields.length) {
       return obj;
     }
-    
+
     // Extract only specified fields
     const result: any = {};
     for (const field of fields) {
       if (obj.hasOwnProperty(field)) {
-        result[field] = obj[field];
+        result[ field ] = obj[ field ];
       }
     }
-    
+
     return result;
   }
 
@@ -715,12 +748,12 @@ export abstract class APIController extends AbstractLambdaHandler {
     if (!body || typeof body !== 'string') {
       return body;
     }
-    
+
     // If no specific fields requested, return entire body
     if (!fields.length) {
       return body;
     }
-    
+
     try {
       // Try to parse as JSON
       const bodyObj = JSON.parse(body);
@@ -732,7 +765,7 @@ export abstract class APIController extends AbstractLambdaHandler {
     } catch (error) {
       // Not valid JSON, return as-is
     }
-    
+
     return body;
   }
 
@@ -742,7 +775,7 @@ export abstract class APIController extends AbstractLambdaHandler {
   private buildResponseContext(response: Response, auditConfig: AuditConfig) {
     const responseIncludes = auditConfig.includes?.response;
     if (!responseIncludes) return undefined;
-    
+
     // Determine what to include based on the configuration format
     let includeHeaders = false, includeBody = false;
     let headerFields: string[] = [], bodyFields: string[] = [];
@@ -761,12 +794,12 @@ export abstract class APIController extends AbstractLambdaHandler {
       // Boolean true - include headers by default (legacy behavior)
       includeHeaders = true;
     }
-      
+
     return {
       statusCode: response.statusCode,
-      headers: includeHeaders ? 
+      headers: includeHeaders ?
         this.selectivelyIncludeFields(response.headers, headerFields) : undefined,
-      body: includeBody ? 
+      body: includeBody ?
         this.selectivelyIncludeResponseBody(response.body, bodyFields) : undefined
     };
   }
@@ -790,13 +823,13 @@ export abstract class APIController extends AbstractLambdaHandler {
   protected extractActorContext(event: APIGatewayEvent, request: Request): Actor {
     const timestamp = new Date().toISOString();
     const requestId = request.requestId;
-    
+
     const actor: Actor = {
       requestId,
       timestamp,
       sourceIp: event.requestContext?.identity?.sourceIp,
-      userAgent: event.headers?.['user-agent'] || event.headers?.['User-Agent'],
-      correlationId: request.headers?.['x-correlation-id'] || requestId,
+      userAgent: event.headers?.[ 'user-agent' ] || event.headers?.[ 'User-Agent' ],
+      correlationId: request.headers?.[ 'x-correlation-id' ] || requestId,
     };
 
     // Cognito authentication with focused enhancements
@@ -804,7 +837,7 @@ export abstract class APIController extends AbstractLambdaHandler {
       this.extractCognitoContext(event.requestContext.authorizer.claims, actor);
     }
     // API Key authentication
-    else if (event.requestContext?.identity?.apiKey || request.headers?.['x-api-key']) {
+    else if (event.requestContext?.identity?.apiKey || request.headers?.[ 'x-api-key' ]) {
       this.extractApiKeyContext(event, request, actor);
     }
     // IAM authentication 
@@ -820,11 +853,11 @@ export abstract class APIController extends AbstractLambdaHandler {
 
     // Session and tenant context
     this.extractSessionAndTenantContext(event, request, actor);
-    
+
     // API Gateway context
     actor.apiStage = event.requestContext?.stage;
     actor.apiId = event.requestContext?.apiId;
-    
+
     return actor;
   }
 
@@ -839,10 +872,10 @@ export abstract class APIController extends AbstractLambdaHandler {
     try {
       actor.authMethod = 'cognito';
       actor.actorType = 'user';
-      
+
       // Actor ID with documented fallback strategy: cognito:username -> email -> sub
-      actor.actorId = claims['cognito:username'] || claims.email || claims.sub;
-      
+      actor.actorId = claims[ 'cognito:username' ] || claims.email || claims.sub;
+
       // Standard user attributes (documented Cognito user attributes)
       actor.email = claims.email;
       actor.emailVerified = claims.email_verified === 'true';
@@ -850,29 +883,29 @@ export abstract class APIController extends AbstractLambdaHandler {
       actor.phoneVerified = claims.phone_number_verified === 'true';
       actor.name = claims.name;
       actor.locale = claims.locale;
-      
+
       // Parse Cognito groups (documented as comma-separated string)
-      const groups = this.parseGroups(claims['cognito:groups']);
-      
+      const groups = this.parseGroups(claims[ 'cognito:groups' ]);
+
       // Extract custom attributes (documented pattern: custom:*)
       const customAttributes = this.extractCustomAttributes(claims);
-      
+
       // Build Cognito context with only documented fields
       actor.cognito = {
         sub: claims.sub,
-        username: claims['cognito:username'],
+        username: claims[ 'cognito:username' ],
         groups: groups, // Always include groups array (empty or populated)
         customAttributes: Object.keys(customAttributes).length > 0 ? customAttributes : undefined
       };
-      
+
       // Extract tenant ID from custom attributes (common multi-tenant pattern)
       actor.tenantId = customAttributes.tenantId;
-      
+
       actor.rawAuthContext = claims;
-      
+
     } catch (error) {
       this.logger.warn('Error extracting Cognito actor context', { error, claims });
-      
+
       // Minimal fallback extraction
       actor.authMethod = 'cognito';
       actor.actorType = 'user';
@@ -896,27 +929,27 @@ export abstract class APIController extends AbstractLambdaHandler {
    */
   protected extractCustomAttributes(claims: any): Record<string, any> {
     const customAttributes: Record<string, any> = {};
-    
+
     Object.keys(claims).forEach(key => {
       if (key.startsWith('custom:')) {
         const attributeName = key.replace('custom:', '');
-        customAttributes[attributeName] = claims[key];
+        customAttributes[ attributeName ] = claims[ key ];
       }
     });
-    
+
     return customAttributes;
   }
 
-    /**
-   * Extract session and tenant context - focused approach
-   */
+  /**
+ * Extract session and tenant context - focused approach
+ */
   protected extractSessionAndTenantContext(event: APIGatewayEvent, request: Request, actor: Actor): void {
     // Session context
-    actor.sessionId = request.headers?.['x-session-id'];
-    
+    actor.sessionId = request.headers?.[ 'x-session-id' ];
+
     // Tenant context - check custom attributes first, then headers
-    actor.tenantId = request.headers?.['x-tenant-id'] || 
-                    event.requestContext?.authorizer?.claims?.['custom:tenantId'];
+    actor.tenantId = request.headers?.[ 'x-tenant-id' ] ||
+      event.requestContext?.authorizer?.claims?.[ 'custom:tenantId' ];
   }
 
   /**
@@ -925,18 +958,18 @@ export abstract class APIController extends AbstractLambdaHandler {
   protected extractApiKeyContext(event: APIGatewayEvent, request: Request, actor: Actor): void {
     actor.authMethod = 'api-key';
     actor.actorType = 'service';
-    
+
     let apiKeyId: string;
     let source: 'request-context' | 'header';
-    
+
     if (event.requestContext?.identity?.apiKey) {
       apiKeyId = event.requestContext.identity.apiKeyId || event.requestContext.identity.apiKey;
       source = 'request-context';
     } else {
-      apiKeyId = request.headers['x-api-key']!;
+      apiKeyId = request.headers[ 'x-api-key' ]!;
       source = 'header';
     }
-    
+
     actor.actorId = `api-key:${apiKeyId}`;
     actor.apiKey = {
       id: apiKeyId,
@@ -950,10 +983,10 @@ export abstract class APIController extends AbstractLambdaHandler {
   protected extractIamContext(event: APIGatewayEvent, actor: Actor): void {
     actor.authMethod = 'iam';
     actor.actorType = 'service';
-    actor.actorId = event.requestContext?.identity?.user || 
-                   event.requestContext?.identity?.userArn || 
-                   'unknown-iam-user';
-    
+    actor.actorId = event.requestContext?.identity?.user ||
+      event.requestContext?.identity?.userArn ||
+      'unknown-iam-user';
+
     actor.iam = {
       userArn: event.requestContext?.identity?.userArn || undefined,
       userId: event.requestContext?.identity?.user || undefined,
