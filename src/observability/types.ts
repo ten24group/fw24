@@ -34,6 +34,13 @@ export interface ObservabilityEventBase {
   entityName?: string;
   entityId?: string; // Replaces spanId for span records
   subType?: string;
+  
+  // High-cardinality metadata for filtering (e.g., region, version, environment)
+  tags?: Record<string, string>;
+  
+  // Source tracking (origin of event: lambda:functionName, controller:ClassName.methodName, etc.)
+  source?: string;
+  
   metrics?: Record<string, number>;
   attributes?: Record<string, any>;
   data?: Record<string, any>;

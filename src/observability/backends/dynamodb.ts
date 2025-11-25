@@ -79,8 +79,12 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
         entityName: event.entityName,
         entityId: event.entityId,
         
-        // Operation
+        // Operation & Source
         operation: event.operation,
+        source: event.source,
+        
+        // Tags for filtering
+        tags: event.tags,
         
         // Outcome
         success: event.success,

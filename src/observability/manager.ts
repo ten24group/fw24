@@ -9,6 +9,7 @@ import {
 import { DynamoDBObservabilityBackend } from './backends/dynamodb';
 import { OTELObservabilityBackend } from './backends/otel';
 import { stringToLevel } from './utils/level-utils';
+import { detectSource, mergeTags } from './utils/source-utils';
 
 const logger = createLogger('ObservabilityManager');
 
@@ -86,6 +87,14 @@ export class ObservabilityManager {
 
     const config = this.getConfig();
     if (!config.enabled) return;
+
+    // Auto-inject source if not provided
+    if (!event.source) {
+      event.source = detectSource();
+    }
+
+    // Auto-merge environment tags with event tags
+    event.tags = mergeTags(event.tags, true);
 
     if (!ObservabilityManager.shouldCapture(event, config)) {
       return;
@@ -293,3 +302,16 @@ export const withObservability = <T extends (...args: any[]) => Promise<any>>(ha
     }
   }) as T;
 };
+
+/**
+ * Alias for ObservabilityManager (follows Observer design pattern)
+ * 
+ * Usage:
+ * ```typescript
+ * import { Observer } from '@ten24group/fw24/observability';
+ * 
+ * Observer.capture({ ... });
+ * await Observer.flush();
+ * ```
+ */
+export const Observer = ObservabilityManager;

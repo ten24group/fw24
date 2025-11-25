@@ -67,6 +67,10 @@ ObservabilityManager
   entityId?: string,       // Specific instance ID
   operation?: string,      // Action/operation name
   
+  // Source Tracking (2 fields)
+  source?: string,         // Origin: lambda:functionName, controller:Class.method, etc.
+  tags?: object,           // High-cardinality metadata for filtering (region, version, etc.)
+  
   // Outcome (3 fields)
   success?: boolean,       // Operation outcome
   status?: string,         // Status code/message
@@ -100,6 +104,7 @@ ObservabilityManager
 3. **GSI3 (byEntity)**: Query by entityName + entityId → Get all logs for a resource
 4. **GSI4 (byLevel)**: Query by level → Get all errors, warnings, etc.
 5. **GSI5 (byType)**: Query by type → Get all audits, spans, metrics, etc.
+6. **GSI6 (bySource)**: Query by source → Get all logs from a specific function/controller
 
 ---
 
@@ -417,6 +422,130 @@ export const handler = withObservability(async (event, context) => {
 - ✅ `initializeInvocation()` - Clears buffers, detects cold start
 - ✅ `flush()` - Writes all buffered events before Lambda ends
 - ✅ Error handling - Flushes even on errors
+
+---
+
+## Source Tracking & Tags
+
+### Automatic Source Detection
+
+The observability system automatically tracks the **origin** of events using the `source` field:
+
+```typescript
+// Automatic detection (from Lambda environment)
+const span = new Span('processOrder');
+// source: "lambda:order-processor-prod"
+
+// Automatic detection (from @Traced decorator)
+@Traced()
+async processPayment() {
+  // source: "controller:PaymentController.processPayment"
+}
+
+// Explicit source
+const span = new Span('operation', {
+  source: 'service:PaymentService.charge'
+});
+```
+
+**Source Formats:**
+- `lambda:functionName` - From Lambda environment
+- `controller:ClassName.methodName` - From @Traced on controllers
+- `service:ServiceName.methodName` - From services
+- `queue:queueName.handlerName` - From queue handlers
+- `task:taskName` - From scheduled tasks
+- Custom: Any string you provide
+
+### Helper Functions
+
+```typescript
+import { 
+  createControllerSource,
+  createServiceSource,
+  createQueueSource,
+  createTaskSource 
+} from '@ten24group/fw24/observability';
+
+// In your code
+const source = createControllerSource('UserController', 'createUser');
+// Result: "controller:UserController.createUser"
+
+const source = createServiceSource('EmailService', 'sendWelcome');
+// Result: "service:EmailService.sendWelcome"
+```
+
+### Tags for Filtering
+
+Use **tags** for high-cardinality metadata that helps with filtering and grouping:
+
+```typescript
+// Environment tags (auto-added)
+// - region: 'us-east-1'
+// - stage: 'prod'
+// - functionVersion: '$LATEST'
+// - environment: 'production'
+
+// Custom tags
+const span = new Span('operation', {
+  tags: {
+    customerId: 'cust_123',
+    paymentMethod: 'credit_card',
+    region: 'us-west-2',  // Override environment tag
+  }
+});
+
+// With @Traced decorator
+@Traced({
+  tags: {
+    feature: 'checkout',
+    version: 'v2',
+  }
+})
+async processCheckout() {
+  // ...
+}
+```
+
+### Query by Source
+
+```typescript
+import { ObservabilityQueryService } from '@ten24group/fw24/observability';
+
+const service = new ObservabilityQueryService();
+
+// Get all logs from a specific Lambda function
+const logs = await service.query.bySource({
+  source: 'lambda:order-processor-prod'
+}).go();
+
+// Get all logs from a controller method
+const logs = await service.query.bySource({
+  source: 'controller:OrderController.create'
+}).go();
+```
+
+### Environment Tags
+
+The system automatically includes these environment tags (when available):
+- `region` - AWS Region
+- `functionVersion` - Lambda function version
+- `environment` - NODE_ENV value
+- `stage` - Deployment stage
+- `service` - Service name
+- `version` - App version
+- `deployment` - Deployment ID
+
+**Control environment tags:**
+
+```typescript
+import { mergeTags } from '@ten24group/fw24/observability';
+
+// Include environment tags
+const tags = mergeTags({ custom: 'value' }, true);
+
+// Exclude environment tags
+const tags = mergeTags({ custom: 'value' }, false);
+```
 
 ---
 

@@ -1,6 +1,8 @@
 export interface TracedOptions {
     operation?: string;
     level?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'critical';
+    source?: string;
+    tags?: Record<string, string>;
 }
 /**
  * Decorator to automatically trace method execution

@@ -21,6 +21,8 @@ export interface ObservabilityEventBase {
     entityName?: string;
     entityId?: string;
     subType?: string;
+    tags?: Record<string, string>;
+    source?: string;
     metrics?: Record<string, number>;
     attributes?: Record<string, any>;
     data?: Record<string, any>;

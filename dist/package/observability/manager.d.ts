@@ -16,3 +16,15 @@ export declare class ObservabilityManager {
     private static ensureInitialized;
 }
 export declare const withObservability: <T extends (...args: any[]) => Promise<any>>(handler: T) => T;
+/**
+ * Alias for ObservabilityManager (follows Observer design pattern)
+ *
+ * Usage:
+ * ```typescript
+ * import { Observer } from '@ten24group/fw24/observability';
+ *
+ * Observer.capture({ ... });
+ * await Observer.flush();
+ * ```
+ */
+export declare const Observer: typeof ObservabilityManager;

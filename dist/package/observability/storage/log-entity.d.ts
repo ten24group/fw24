@@ -79,6 +79,15 @@ export declare const ObservabilityLogEntitySchema: {
             readonly type: "string";
             readonly required: false;
         };
+        readonly source: {
+            readonly type: "string";
+            readonly required: false;
+        };
+        readonly tags: {
+            readonly type: "map";
+            readonly required: false;
+            readonly properties: {};
+        };
         readonly metrics: {
             readonly type: "map";
             readonly required: false;
@@ -193,6 +202,17 @@ export declare const ObservabilityLogEntitySchema: {
             };
             readonly sk: {
                 readonly field: "gsi5sk";
+                readonly composite: readonly ["timestampMs"];
+            };
+        };
+        readonly bySource: {
+            readonly index: "gsi6";
+            readonly pk: {
+                readonly field: "gsi6pk";
+                readonly composite: readonly ["source"];
+            };
+            readonly sk: {
+                readonly field: "gsi6sk";
                 readonly composite: readonly ["timestampMs"];
             };
         };
@@ -277,6 +297,15 @@ export declare const ObservabilityLogEntity: () => import("electrodb").Entity<st
             readonly type: "string";
             readonly required: false;
         };
+        readonly source: {
+            readonly type: "string";
+            readonly required: false;
+        };
+        readonly tags: {
+            readonly type: "map";
+            readonly required: false;
+            readonly properties: {};
+        };
         readonly metrics: {
             readonly type: "map";
             readonly required: false;
@@ -391,6 +420,17 @@ export declare const ObservabilityLogEntity: () => import("electrodb").Entity<st
             };
             readonly sk: {
                 readonly field: "gsi5sk";
+                readonly composite: readonly ["timestampMs"];
+            };
+        };
+        readonly bySource: {
+            readonly index: "gsi6";
+            readonly pk: {
+                readonly field: "gsi6pk";
+                readonly composite: readonly ["source"];
+            };
+            readonly sk: {
+                readonly field: "gsi6sk";
                 readonly composite: readonly ["timestampMs"];
             };
         };

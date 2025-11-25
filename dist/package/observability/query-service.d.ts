@@ -29,6 +29,8 @@ export declare class ObservabilityQueryService {
         readonly status?: string | undefined;
         readonly entityName?: string | undefined;
         readonly actor?: ({} & {}) | undefined;
+        readonly tags?: ({} & {}) | undefined;
+        readonly source?: string | undefined;
         readonly data?: ({} & {}) | undefined;
         readonly error?: ({} & {
             readonly type?: string | undefined;
@@ -59,6 +61,8 @@ export declare class ObservabilityQueryService {
         readonly status?: string | undefined;
         readonly entityName?: string | undefined;
         readonly actor?: ({} & {}) | undefined;
+        readonly tags?: ({} & {}) | undefined;
+        readonly source?: string | undefined;
         readonly data?: ({} & {}) | undefined;
         readonly error?: ({} & {
             readonly type?: string | undefined;
@@ -89,6 +93,8 @@ export declare class ObservabilityQueryService {
         readonly status?: string | undefined;
         readonly entityName?: string | undefined;
         readonly actor?: ({} & {}) | undefined;
+        readonly tags?: ({} & {}) | undefined;
+        readonly source?: string | undefined;
         readonly data?: ({} & {}) | undefined;
         readonly error?: ({} & {
             readonly type?: string | undefined;
@@ -119,6 +125,8 @@ export declare class ObservabilityQueryService {
         readonly status?: string | undefined;
         readonly entityName?: string | undefined;
         readonly actor?: ({} & {}) | undefined;
+        readonly tags?: ({} & {}) | undefined;
+        readonly source?: string | undefined;
         readonly data?: ({} & {}) | undefined;
         readonly error?: ({} & {
             readonly type?: string | undefined;

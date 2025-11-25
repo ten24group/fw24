@@ -7,6 +7,8 @@ export interface SpanOptions {
   parentSpanId?: string;
   level?: ObservabilityEvent['level'];
   attributes?: Record<string, any>;
+  source?: string;
+  tags?: Record<string, string>;
 }
 
 export class Span {
@@ -17,6 +19,8 @@ export class Span {
   private readonly startTime: number;
   private attributes: Record<string, any>;
   private operation: string;
+  private readonly source?: string;
+  private readonly tags?: Record<string, string>;
 
   constructor(operation: string, options: SpanOptions = {}) {
     this.operation = operation;
@@ -25,6 +29,8 @@ export class Span {
     this._parentSpanId = options.parentSpanId;
     this.level = options.level ?? 'info';
     this.attributes = options.attributes ?? {};
+    this.source = options.source;
+    this.tags = options.tags;
     this.startTime = Date.now();
 
     void ObservabilityManager.capture({
@@ -37,6 +43,8 @@ export class Span {
       timestampMs: this.startTime,
       operation: this.operation,
       attributes: this.attributes,
+      source: this.source,
+      tags: this.tags,
     });
   }
 
@@ -68,6 +76,8 @@ export class Span {
       timestampMs: Date.now(),
       operation: name,
       attributes,
+      source: this.source,
+      tags: this.tags,
     });
     return this;
   }
@@ -88,6 +98,8 @@ export class Span {
       success: options?.success ?? options?.error === undefined,
       status: options?.error ? 'failed' : 'completed',
       attributes: this.attributes,
+      source: this.source,
+      tags: this.tags,
       error: options?.error
         ? {
             type: options.error.name,
@@ -110,6 +122,9 @@ export class Span {
       operation,
       fn,
       {
+        // Inherit parent span's source and tags if not overridden
+        source: this.source,
+        tags: this.tags,
         ...options,
         traceId: this._traceId,
         parentSpanId: this._spanId,

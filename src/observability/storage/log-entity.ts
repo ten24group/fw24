@@ -89,6 +89,15 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       type: 'string',
       required: false,
     },
+    source: {
+      type: 'string',
+      required: false,
+    },
+    tags: {
+      type: 'map',
+      required: false,
+      properties: {},
+    },
     metrics: {
       type: 'map',
       required: false,
@@ -163,6 +172,11 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       index: 'gsi5',
       pk: { field: 'gsi5pk', composite: ['type'] },
       sk: { field: 'gsi5sk', composite: ['timestampMs'] },
+    },
+    bySource: {
+      index: 'gsi6',
+      pk: { field: 'gsi6pk', composite: ['source'] },
+      sk: { field: 'gsi6sk', composite: ['timestampMs'] },
     },
   },
 } as const);

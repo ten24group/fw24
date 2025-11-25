@@ -13,3 +13,6 @@ export * from './storage/log-entity';
 export * from './backends/cloudwatch';
 export * from './backends/dynamodb';
 export * from './backends/otel';
+
+// Utilities
+export * from './utils/source-utils';

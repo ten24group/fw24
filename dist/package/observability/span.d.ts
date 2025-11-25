@@ -4,6 +4,8 @@ export interface SpanOptions {
     parentSpanId?: string;
     level?: ObservabilityEvent['level'];
     attributes?: Record<string, any>;
+    source?: string;
+    tags?: Record<string, string>;
 }
 export declare class Span {
     private readonly _spanId;
@@ -13,6 +15,8 @@ export declare class Span {
     private readonly startTime;
     private attributes;
     private operation;
+    private readonly source?;
+    private readonly tags?;
     constructor(operation: string, options?: SpanOptions);
     get spanId(): string;
     get traceId(): string;
