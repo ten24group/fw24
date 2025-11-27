@@ -3,7 +3,7 @@ import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { AuditContext, QueueAuditContext } from '../../audit/interfaces';
 import { AuditCaptureService } from '../../audit/helpers/audit-helpers';
 import { IQueueConfig } from '../../decorators/queue';
-import { ObservabilityManager, Span, extractTraceContextFromSqs } from '../../observability';
+import { ObservabilityManager, SpanObserver, extractTraceContextFromSqs } from '../../observability';
 
 /**
  * Base class for handling SQS events.
@@ -114,9 +114,10 @@ abstract class QueueController extends AbstractLambdaHandler {
     const queueName = this.getQueueName() || this.constructor.name;
     const messageAttributes = event.Records?.[ 0 ]?.messageAttributes || {};
     const traceContext = extractTraceContextFromSqs(messageAttributes);
-    const queueSpan = new Span(`SQS ${queueName}`, {
-      traceId: traceContext.traceId,
-      parentSpanId: traceContext.parentSpanId,
+    const correlationId = traceContext?.correlationId || context.awsRequestId || crypto.randomUUID();
+    const queueSpan = SpanObserver.start(`SQS ${queueName}`, {
+      correlationId,
+      parentSpanId: traceContext?.parentLogId,
       
       attributes: {
         'sqs.batchSize': event.Records.length,
@@ -125,7 +126,7 @@ abstract class QueueController extends AbstractLambdaHandler {
     let spanEnded = false;
     const finalizeObservability = async (success: boolean, error?: Error) => {
       if (!spanEnded) {
-        await queueSpan.end({ success, error });
+        queueSpan.end({ success, error });
         spanEnded = true;
       }
       await ObservabilityManager.flush();

@@ -2,7 +2,7 @@ import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { AuditContext, TaskAuditContext } from '../../audit/interfaces';
 import { AuditCaptureService } from '../../audit/helpers/audit-helpers';
 import { ITaskConfig } from '../../decorators/task';
-import { ObservabilityManager, Span } from '../../observability';
+import { ObservabilityManager, SpanObserver } from '../../observability';
 
 /**
  * Base class for handling Schedule Tasks.
@@ -87,13 +87,17 @@ abstract class TaskController extends AbstractLambdaHandler {
   async LambdaHandler(): Promise<any> {
     ObservabilityManager.initializeInvocation();
     const taskName = this.getTaskName() || this.constructor.name;
-    const taskSpan = new Span(`Task ${taskName}`, {
-      
+    const correlationId = `task-${taskName}-${Date.now()}`;
+    const taskSpan = SpanObserver.start(`Task ${taskName}`, {
+      correlationId,
+      attributes: {
+        'task.name': taskName,
+      },
     });
     let spanEnded = false;
     const finalizeObservability = async (success: boolean, error?: Error) => {
       if (!spanEnded) {
-        await taskSpan.end({ success, error });
+        taskSpan.end({ success, error });
         spanEnded = true;
       }
       await ObservabilityManager.flush();

@@ -12,7 +12,7 @@ import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErr
 import { ExecutionContext, Actor } from '../types/execution-context';
 import { AuditContext, RequestAuditContext, AuditConfig } from '../../audit/interfaces';
 import { AuditCaptureService } from '../../audit/helpers/audit-helpers';
-import { extractTraceContextFromHeaders, ObservabilityManager, Span } from '../../observability';
+import { extractTraceContextFromHeaders, ObservabilityManager, SpanObserver } from '../../observability';
 
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 
@@ -200,10 +200,11 @@ export abstract class APIController extends AbstractLambdaHandler {
     // Build the execution context
     const ctx = this.buildCtx(event, context, request, response);
 
-    const traceHeaders = extractTraceContextFromHeaders(request.headers || {});
-    const requestSpan = new Span(`HTTP ${request.httpMethod} ${request.path}`, {
-      traceId: traceHeaders.traceId,
-      parentSpanId: traceHeaders.parentSpanId,
+    const traceContext = extractTraceContextFromHeaders(request.headers || {});
+    const correlationId = traceContext?.correlationId || request.requestId || crypto.randomUUID();
+    const requestSpan = SpanObserver.start(`HTTP ${request.httpMethod} ${request.path}`, {
+      correlationId,
+      parentSpanId: traceContext?.parentLogId,
       
       attributes: {
         'http.method': request.httpMethod,
@@ -214,16 +215,15 @@ export abstract class APIController extends AbstractLambdaHandler {
     let spanEnded = false;
     const finalizeObservability = async (success: boolean, error?: Error) => {
       if (!spanEnded) {
-        await requestSpan.end({ success, error });
+        requestSpan.end({ success, error });
         spanEnded = true;
       }
       await ObservabilityManager.flush();
     };
 
     ctx.observability = {
-      traceId: requestSpan.traceId,
-      spanId: requestSpan.spanId,
-      parentSpanId: requestSpan.parentSpanId,
+      correlationId: requestSpan.traceId,
+      spanId: requestSpan.id,
       span: requestSpan,
     };
 

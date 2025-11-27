@@ -2,6 +2,8 @@
  * Utility functions for automatic source tracking
  */
 
+import { ConfigManager } from '../config';
+
 /**
  * Auto-detect the source of an observability event
  * 
@@ -16,13 +18,13 @@ export function detectSource(explicitSource?: string): string | undefined {
   if (explicitSource) {
     return explicitSource;
   }
-  
+
   // Try Lambda function name
   const functionName = process.env.AWS_LAMBDA_FUNCTION_NAME;
   if (functionName) {
     return `lambda:${functionName}`;
   }
-  
+
   // In development, try to get caller info from stack trace
   if (process.env.NODE_ENV === 'development' || process.env.OBSERVABILITY_CAPTURE_STACK) {
     try {
@@ -34,7 +36,7 @@ export function detectSource(explicitSource?: string): string | undefined {
       // Ignore errors in stack parsing
     }
   }
-  
+
   return undefined;
 }
 
@@ -46,16 +48,16 @@ export function detectSource(explicitSource?: string): string | undefined {
  */
 function getCallerInfo(): string | undefined {
   const originalPrepareStackTrace = Error.prepareStackTrace;
-  
+
   try {
     Error.prepareStackTrace = (_, stack) => stack;
     const stack = new Error().stack as unknown as NodeJS.CallSite[];
-    
+
     // Skip our own utility files
     for (const frame of stack) {
       const fileName = frame.getFileName();
       if (!fileName) continue;
-      
+
       // Skip internal/framework files
       if (
         fileName.includes('node_modules') ||
@@ -66,12 +68,12 @@ function getCallerInfo(): string | undefined {
       ) {
         continue;
       }
-      
+
       // Extract useful info
       const functionName = frame.getFunctionName() || 'anonymous';
       const lineNumber = frame.getLineNumber();
       const shortFileName = fileName.split('/').slice(-2).join('/'); // Last 2 parts
-      
+
       return `${shortFileName}:${functionName}:${lineNumber}`;
     }
   } catch (error) {
@@ -80,7 +82,7 @@ function getCallerInfo(): string | undefined {
   } finally {
     Error.prepareStackTrace = originalPrepareStackTrace;
   }
-  
+
   return undefined;
 }
 
@@ -114,52 +116,80 @@ export function createQueueSource(queueName: string, handlerName?: string): stri
 }
 
 /**
- * Create a source identifier for a task
+ * Create a source identifier for a queue handler
  */
-export function createTaskSource(taskName: string): string {
-  return `task:${taskName}`;
+export function createTaskSource(taskName: string, handlerName?: string): string {
+  return handlerName ? `task:${taskName}.${handlerName}` : `task:${taskName}`;
 }
+
+// Cached environment tags - computed once, reused for all events
+let _cachedEnvTags: Record<string, string> | null = null;
 
 /**
  * Extract common tags from environment
  * 
- * Useful for consistent tagging across all events
+ * CACHED: Computed once on first call, reused for all subsequent calls.
+ * This is safe because environment variables don't change during Lambda execution.
+ * 
+ * NOTE: Most of these are AWS runtime environment variables that are
+ * automatically set by the Lambda runtime, not application config.
+ * Application-level config (like serviceName) comes from ConfigManager.
  */
 export function getEnvironmentTags(): Record<string, string> {
+  if (_cachedEnvTags !== null) {
+    return _cachedEnvTags;
+  }
+
   const tags: Record<string, string> = {};
-  
-  // AWS environment
-  if (process.env.AWS_REGION) {
-    tags.region = process.env.AWS_REGION;
+
+  // AWS Lambda runtime environment (automatically set by AWS)
+  const awsRegion = process.env.AWS_REGION;
+  if (awsRegion) {
+    tags.region = awsRegion;
   }
-  
-  if (process.env.AWS_LAMBDA_FUNCTION_VERSION) {
-    tags.functionVersion = process.env.AWS_LAMBDA_FUNCTION_VERSION;
+
+  const functionVersion = process.env.AWS_LAMBDA_FUNCTION_VERSION;
+  if (functionVersion) {
+    tags.functionVersion = functionVersion;
   }
-  
+
   // Application environment
-  if (process.env.NODE_ENV) {
-    tags.environment = process.env.NODE_ENV;
+  const nodeEnv = process.env.NODE_ENV;
+  if (nodeEnv) {
+    tags.environment = nodeEnv;
   }
-  
-  if (process.env.STAGE) {
-    tags.stage = process.env.STAGE;
+
+  const stage = process.env.STAGE;
+  if (stage) {
+    tags.stage = stage;
   }
-  
-  if (process.env.SERVICE_NAME) {
-    tags.service = process.env.SERVICE_NAME;
+
+  // Service name - from ConfigManager (single source of truth)
+  const serviceName = ConfigManager.fromEnvironment().serviceName;
+  if (serviceName) {
+    tags.service = serviceName;
   }
-  
+
   // Version/deployment
-  if (process.env.APP_VERSION) {
-    tags.version = process.env.APP_VERSION;
+  const appVersion = process.env.APP_VERSION;
+  if (appVersion) {
+    tags.version = appVersion;
   }
-  
-  if (process.env.DEPLOYMENT_ID) {
-    tags.deployment = process.env.DEPLOYMENT_ID;
+
+  const deploymentId = process.env.DEPLOYMENT_ID;
+  if (deploymentId) {
+    tags.deployment = deploymentId;
   }
-  
+
+  _cachedEnvTags = tags;
   return tags;
+}
+
+/**
+ * Clear cached environment tags (for testing)
+ */
+export function clearEnvironmentTagsCache(): void {
+  _cachedEnvTags = null;
 }
 
 /**
@@ -174,13 +204,13 @@ export function mergeTags(
   if (!includeEnvironment && !eventTags) {
     return undefined;
   }
-  
+
   const merged = includeEnvironment ? getEnvironmentTags() : {};
-  
+
   if (eventTags) {
     Object.assign(merged, eventTags);
   }
-  
+
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 

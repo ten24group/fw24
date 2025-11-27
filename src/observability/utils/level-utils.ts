@@ -23,28 +23,32 @@ export function levelToString(level: ObservabilityLevel): 'trace' | 'debug' | 'i
 }
 
 /**
+ * String to enum level mapping for type safety
+ */
+const stringToLevelMap: Record<string, ObservabilityLevel> = {
+  trace: ObservabilityLevel.TRACE,
+  debug: ObservabilityLevel.DEBUG,
+  info: ObservabilityLevel.INFO,
+  warn: ObservabilityLevel.WARN,
+  error: ObservabilityLevel.ERROR,
+  critical: ObservabilityLevel.CRITICAL,
+  // Also support enum name versions
+  TRACE: ObservabilityLevel.TRACE,
+  DEBUG: ObservabilityLevel.DEBUG,
+  INFO: ObservabilityLevel.INFO,
+  WARN: ObservabilityLevel.WARN,
+  ERROR: ObservabilityLevel.ERROR,
+  CRITICAL: ObservabilityLevel.CRITICAL,
+};
+
+/**
  * Convert string level to ObservabilityLevel enum value
  */
 export function stringToLevel(
   level: string | 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'critical',
 ): ObservabilityLevel {
   const normalized = level.toLowerCase();
-  switch (normalized) {
-    case 'trace':
-      return ObservabilityLevel.TRACE;
-    case 'debug':
-      return ObservabilityLevel.DEBUG;
-    case 'info':
-      return ObservabilityLevel.INFO;
-    case 'warn':
-      return ObservabilityLevel.WARN;
-    case 'error':
-      return ObservabilityLevel.ERROR;
-    case 'critical':
-      return ObservabilityLevel.CRITICAL;
-    default:
-      return (ObservabilityLevel as any)[level] ?? ObservabilityLevel.INFO;
-  }
+  return stringToLevelMap[normalized] ?? stringToLevelMap[level] ?? ObservabilityLevel.INFO;
 }
 
 /**
