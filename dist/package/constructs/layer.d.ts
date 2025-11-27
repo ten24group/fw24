@@ -6,6 +6,25 @@ import { LayerVersionProps } from 'aws-cdk-lib/aws-lambda';
 import { BuildOptions } from 'esbuild';
 import { IConstructConfig } from "../interfaces/construct-config";
 /**
+ * Extended build options that support separating npm install packages from esbuild externals
+ */
+export interface ExtendedBuildOptions extends BuildOptions {
+    /**
+     * Packages to npm install in the layer's node_modules (runtime dependencies).
+     * If not provided, falls back to using `external` for backward compatibility.
+     *
+     * Use this to separate packages that should be npm installed from packages
+     * that are provided by other layers (e.g., @ten24group/fw24 from fw24 layer).
+     *
+     * @example
+     * {
+     *   external: ['@ten24group/fw24', 'axios'],           // Don't bundle these
+     *   externalPackages: ['axios']                        // Only npm install axios
+     * }                                                    // fw24 comes from fw24 layer
+     */
+    externalPackages?: (string | RegExp)[];
+}
+/**
  * Common layer configuration properties
  */
 interface IBaseLayerConfig extends IConstructConfig {
@@ -26,11 +45,12 @@ interface IBaseLayerConfig extends IConstructConfig {
      *   buildOptions: {
      *     sourcemap: true,
      *     minify: false,
-     *     external: ['@aws-sdk', 'some-native-module']
+     *     external: ['@aws-sdk', '@ten24group/fw24', 'axios'],  // Don't bundle
+     *     externalPackages: ['axios']                           // Only npm install axios
      *   }
      * }
      */
-    buildOptions?: BuildOptions;
+    buildOptions?: ExtendedBuildOptions;
     /**
      * Whether this layer should NOT be added as a global layer.
      * If false or undefined, the layer will be automatically attached to all Lambda functions.

@@ -1,6 +1,6 @@
 // decorators/layer-entry.ts
 import type { LayerVersionProps } from 'aws-cdk-lib/aws-lambda';
-import type { BuildOptions } from 'esbuild';
+import type { ExtendedBuildOptions } from '../constructs/layer';
 
 export type LayerEntryOptions = {
     /**
@@ -30,8 +30,9 @@ export type LayerEntryOptions = {
     isEntryPackage?: boolean,
     /**
      * specify esbuild options for this layer.
+     * Use externalPackages to separate npm install from esbuild external.
      */
-    buildOptions?: BuildOptions
+    buildOptions?: ExtendedBuildOptions
 }
 
 /**

@@ -1,5 +1,5 @@
 import type { LayerVersionProps } from 'aws-cdk-lib/aws-lambda';
-import type { BuildOptions } from 'esbuild';
+import type { ExtendedBuildOptions } from '../constructs/layer';
 export type LayerEntryOptions = {
     /**
      * specify the layer version props for aws.
@@ -28,8 +28,9 @@ export type LayerEntryOptions = {
     isEntryPackage?: boolean;
     /**
      * specify esbuild options for this layer.
+     * Use externalPackages to separate npm install from esbuild external.
      */
-    buildOptions?: BuildOptions;
+    buildOptions?: ExtendedBuildOptions;
 };
 /**
  * Decorator to mark a class as an entry point for a Lambda layer.

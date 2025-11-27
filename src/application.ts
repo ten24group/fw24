@@ -99,10 +99,11 @@ export class Application {
             distDirectory: pathJoin(process.cwd(), 'dist/layers'),
             buildOptions: {
                 sourcemap: true,
-                external: ['@aws-sdk', '@smithy'] // AWS SDK is provided by Lambda runtime
-            }
+                external: [ '@aws-sdk', '@smithy' ] // AWS SDK is NOT provided by Lambda runtime
+            },
+            isEntryPackage: false,
         } ]);
-        fw24Layer.construct();
+        await fw24Layer.construct();
 
         // *** order is important here, modules need to be processed first, before constructs ***
         this.processModules();

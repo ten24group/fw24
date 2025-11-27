@@ -15,6 +15,25 @@ import { IConstructConfig } from "../interfaces/construct-config";
 import { createHash } from "node:crypto";
 import { merge } from "../utils/merge";
 
+/**
+ * Extended build options that support separating npm install packages from esbuild externals
+ */
+export interface ExtendedBuildOptions extends BuildOptions {
+    /**
+     * Packages to npm install in the layer's node_modules (runtime dependencies).
+     * If not provided, falls back to using `external` for backward compatibility.
+     * 
+     * Use this to separate packages that should be npm installed from packages
+     * that are provided by other layers (e.g., @ten24group/fw24 from fw24 layer).
+     * 
+     * @example
+     * {
+     *   external: ['@ten24group/fw24', 'axios'],           // Don't bundle these
+     *   externalPackages: ['axios']                        // Only npm install axios
+     * }                                                    // fw24 comes from fw24 layer
+     */
+    externalPackages?: (string | RegExp)[];
+}
 
 /**
  * Common layer configuration properties
@@ -39,11 +58,12 @@ interface IBaseLayerConfig extends IConstructConfig {
      *   buildOptions: {
      *     sourcemap: true,
      *     minify: false,
-     *     external: ['@aws-sdk', 'some-native-module']
+     *     external: ['@aws-sdk', '@ten24group/fw24', 'axios'],  // Don't bundle
+     *     externalPackages: ['axios']                           // Only npm install axios
      *   }
      * }
      */
-    buildOptions?: BuildOptions;
+    buildOptions?: ExtendedBuildOptions;
 
     /**
      * Whether this layer should NOT be added as a global layer.
@@ -284,9 +304,9 @@ export class LayerConstruct implements FW24Construct {
      */
     private mergeBuildOptions(
         layerName: string,
-        constructBuildOptions?: BuildOptions,
-        decoratorBuildOptions?: BuildOptions
-    ): BuildOptions {
+        constructBuildOptions?: ExtendedBuildOptions,
+        decoratorBuildOptions?: ExtendedBuildOptions
+    ): ExtendedBuildOptions {
         // Default build options for all layers
         const defaultBuildOptions: BuildOptions = {
             bundle: true,
@@ -390,7 +410,12 @@ export class LayerConstruct implements FW24Construct {
         }
 
         // Install external dependencies FIRST (with smart caching to skip if unchanged)
-        const externalPackages = (buildOptions.external && Array.isArray(buildOptions.external)) ? buildOptions.external : [];
+        // Use buildOptions.externalPackages if provided, otherwise fall back to buildOptions.external for backward compatibility
+        // This allows separating packages to npm install from packages to mark as external in esbuild
+        const externalPackages = buildOptions.externalPackages 
+            ? (Array.isArray(buildOptions.externalPackages) ? buildOptions.externalPackages : [])
+            : (buildOptions.external && Array.isArray(buildOptions.external)) ? buildOptions.external : [];
+        
         if (externalPackages.length > 0) {
             const installTimer = Timer.start();
             this.logger.info(`[${layerName}] [1/2] Installing external dependencies...`);
@@ -404,6 +429,18 @@ export class LayerConstruct implements FW24Construct {
         this.logger.info(`[${layerName}] [2/2] Bundling with esbuild...`);
         await bundleWithEsbuild(file, outputFile, buildOptions);
         this.logger.info(`[${layerName}]    ✓ Bundle complete (${bundleTimer.elapsedSeconds()})`);
+        
+        // Create package.json for Node.js module resolution
+        // Without this, require('@package/name') won't work even if index.js exists
+        const packageJsonPath = pathJoin(outputDir, 'package.json');
+        const packageJson = {
+            name: packageName,
+            version: "1.0.0",
+            main: "index.js",
+            type: "commonjs"
+        };
+        writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
+        this.logger.info(`[${layerName}]    ✓ Created package.json for module resolution`);
         
         this.logger.info(`[${layerName}] ✓ Build complete in ${buildTimer.elapsedSeconds()}`)
 
@@ -489,8 +526,9 @@ function isGlobalLayer(target: Function): boolean {
 
 function isEntryPackage(target: Function): boolean {
     const value = Reflect.get(target, 'isEntryPackage');
-    // Default to true if not specified
-    return value !== false;
+    // Default to FALSE - layers are NOT entry packages unless explicitly marked
+    // Entry packages execute code at Lambda init; most layers are just runtime libraries
+    return value === true;
 }
 
 function getLayerName(target: Function) {
@@ -510,11 +548,14 @@ export function getLayerProps(target: Function): LayerVersionProps | undefined {
  * Build options should already be merged via mergeBuildOptions().
  * @param entryFile - The entry file to bundle.
  * @param outputFile - The output file path for the bundle.
- * @param buildOptions - Pre-merged build options for esbuild.
+ * @param buildOptions - Pre-merged build options (may include custom fields like externalPackages).
  */
-async function bundleWithEsbuild(entryFile: string, outputFile: string, buildOptions: BuildOptions) {
+async function bundleWithEsbuild(entryFile: string, outputFile: string, buildOptions: ExtendedBuildOptions) {
+    // Strip out custom fields that esbuild doesn't recognize
+    const { externalPackages: _externalPackages, ...esbuildOptions } = buildOptions;
+    
     const finalOptions: BuildOptions = {
-        ...buildOptions,
+        ...esbuildOptions,
         outfile: outputFile,
         entryPoints: [entryFile],
     };
@@ -807,7 +848,8 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
         // --prefer-offline is needed to speed up the installation
         // --no-package-lock is needed to avoid package-lock.json conflicts
         // --omit=dev is needed to avoid installing dev dependencies
-        execSync('npm install --omit=dev --no-package-lock --install-links --prefer-offline', {
+        // --legacy-peer-deps is needed to skip peer dependencies (e.g., @ten24group/fw24 from fw24-auth-cognito)
+        execSync('npm install --omit=dev --no-package-lock --install-links --prefer-offline --legacy-peer-deps', {
             cwd: nodejsDir,
             stdio: 'inherit'
         });
