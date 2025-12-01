@@ -15,11 +15,13 @@ export enum SEARCH_CONTROLLER_ENV_KEYS {
   MEILISEARCH_SYNC_QUEUE_NAME = 'MEILISEARCH_SYNC_QUEUE_NAME',
 }
 
-@Controller('system/search', {
-  env: [ {
-    name: SEARCH_CONTROLLER_ENV_KEYS.MEILISEARCH_SYNC_QUEUE_NAME,
-  } ],
-})
+// the implemenitng controller must define this.. 
+// hte controller decortator here causes errors due to dynamic layer imports and pollutes automatic lambda handler
+// @Controller('system/search', {
+//   env: [ {
+//     name: SEARCH_CONTROLLER_ENV_KEYS.MEILISEARCH_SYNC_QUEUE_NAME,
+//   } ],
+// })
 export class SearchSystemController extends APIController {
   constructor(@InjectContainer() protected container: IDIContainer) {
     super();

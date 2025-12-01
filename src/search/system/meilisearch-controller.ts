@@ -56,9 +56,9 @@ function createNextCursor(offset: number, limit: number, hasMore: boolean) {
 
 //* Note: this is a more focused [towards meilisearch] version of the search controller
 //* at any given point only one of the controllers will be registered with the same route
-@Controller('system/search', {
-  // Config will be merged from construct registration
-})
+// @Controller('system/search', {
+//   // Config will be merged from construct registration
+// })
 export class MeiliSearchSystemController extends SearchSystemController {
 
   private getMeiliEngine(): MeiliSearchEngine {

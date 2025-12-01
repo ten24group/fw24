@@ -1,6 +1,9 @@
+import { App, Stack } from 'aws-cdk-lib';
 import { IAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2';
 import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
+import { Vpc } from 'aws-cdk-lib/aws-ec2';
 import { PolicyStatement, type PolicyStatementProps } from 'aws-cdk-lib/aws-iam';
+import { IHostedZone } from 'aws-cdk-lib/aws-route53';
 import type { ITopic } from 'aws-cdk-lib/aws-sns';
 import { IQueue } from 'aws-cdk-lib/aws-sqs';
 import { type ILambdaEnvConfig } from '../interfaces';
@@ -8,9 +11,6 @@ import { IApplicationConfig, SystemControllerDefinition, SystemUIPageDefinition 
 import { FW24Construct, OutputType } from '../interfaces/construct';
 import { type IDIContainer } from '../interfaces/di';
 import { type IFw24Module } from './runtime/module';
-import { App, Stack } from 'aws-cdk-lib';
-import { Vpc } from 'aws-cdk-lib/aws-ec2';
-import { IHostedZone } from 'aws-cdk-lib/aws-route53';
 export declare class Fw24 {
     readonly logger: import("tslog").Logger<import("tslog").ILogObj>;
     appName: string;
@@ -20,17 +20,17 @@ export declare class Fw24 {
     private stacks;
     private apis;
     private environmentVariables;
-    private globalEnvironmentVariables;
-    private policyStatements;
+    private readonly globalEnvironmentVariables;
+    private readonly policyStatements;
     private defaultAuthorizer;
     private cognitoAuthorizers;
     private jwtAuthorizer;
     private dynamoTables;
     private static instance;
-    private queues;
-    private topics;
-    private modules;
-    private constructs;
+    private readonly queues;
+    private readonly topics;
+    private readonly modules;
+    private readonly constructs;
     private readonly globalLambdaLayerNames;
     private readonly globalLambdaEntryPackages;
     private readonly systemUIConfigs;
@@ -50,7 +50,7 @@ export declare class Fw24 {
     addGlobalLambdaLayerNames(layerName: string): void;
     hasGlobalLambdaLayerNames(layerName: string): boolean;
     removeGlobalLambdaLayerNames(layerName: string): void;
-    addStack(name: string, stack: any): Fw24;
+    addStack(name: string, stack: any): this;
     /**
      * Get a stack by name. If the stack does not exist, create it.
      *
@@ -61,7 +61,7 @@ export declare class Fw24 {
     getStack(name?: string, parentStackName?: string): any;
     getDefaultStackName(): string;
     useMultiStackSetup: (currentStackName?: string, resourceStack?: Stack) => boolean;
-    addAPI(apiConstructName: string, name: string, api: any, isImported?: boolean): Fw24;
+    addAPI(apiConstructName: string, name: string, api: any, isImported?: boolean): this;
     getAPI(apiConstructName: string, name: string): any;
     getAPIs(apiConstructName: string): any;
     hasImportedAPI(apiConstructName: string): boolean;

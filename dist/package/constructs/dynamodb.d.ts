@@ -1,14 +1,14 @@
-import { TablePropsV2 } from "aws-cdk-lib/aws-dynamodb";
-import { TopicProps } from "aws-cdk-lib/aws-sns";
-import { DynamoEventSourceProps, SqsEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
-import { LogGroupProps } from "aws-cdk-lib/aws-logs";
-import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Stack } from "aws-cdk-lib";
-import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
-import { Fw24 } from "../core/fw24";
-import { IConstructConfig } from "../interfaces/construct-config";
-import { AuditLoggerType } from "../audit/interfaces";
+import { TablePropsV2 } from "aws-cdk-lib/aws-dynamodb";
+import { DynamoEventSourceProps, SqsEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
+import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import { LogGroupProps } from "aws-cdk-lib/aws-logs";
+import { TopicProps } from "aws-cdk-lib/aws-sns";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
+import { AuditLoggerType } from "../audit/interfaces";
+import { Fw24 } from "../core/fw24";
+import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
+import { IConstructConfig } from "../interfaces/construct-config";
 export type SearchEngineConfig = {
     type: 'meili';
     host: string;
@@ -384,7 +384,7 @@ export interface AuditConfig extends IConstructConfig {
     };
 }
 export declare class DynamoDBConstruct implements FW24Construct {
-    private dynamoDBConfig;
+    private readonly dynamoDBConfig;
     readonly logger: import("tslog").Logger<import("tslog").ILogObj>;
     readonly fw24: Fw24;
     name: string;

@@ -52,14 +52,14 @@ export interface IQueueConstructConfig extends IConstructConfig {
  * ```
  */
 export declare class QueueConstruct implements FW24Construct {
-    private queueConstructConfig;
+    private readonly queueConstructConfig;
     readonly logger: import("tslog").Logger<import("tslog").ILogObj>;
     readonly fw24: Fw24;
     name: string;
     dependencies: string[];
     output: FW24ConstructOutput;
     mainStack: Stack;
-    private queueMap;
+    private readonly queueMap;
     /**
      * Default constructor to initialize the stack configuration.
      * @param queueConstructConfig The configuration for the QueueConstruct.
@@ -73,10 +73,10 @@ export declare class QueueConstruct implements FW24Construct {
      * Phase 2: Creates queue without lambda and registers its URL
      * @param queueInfo The information about the queue to be registered.
      */
-    private createAndRegisterQueue;
+    private readonly createAndRegisterQueue;
     /**
      * Phase 3: Creates lambda function for the queue (after all queues are registered)
      * @param queueInfo The information about the queue to be registered.
      */
-    private createQueueLambda;
+    private readonly createQueueLambda;
 }

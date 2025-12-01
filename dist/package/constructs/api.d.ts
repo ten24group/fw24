@@ -1,12 +1,11 @@
 import type { RestApiProps } from "aws-cdk-lib/aws-apigateway";
-import { RestApi } from "aws-cdk-lib/aws-apigateway";
+import { RestApi, ApiKey, Period, UsagePlan } from "aws-cdk-lib/aws-apigateway";
 import { RemovalPolicy, Stack } from "aws-cdk-lib";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { IConstructConfig } from "../interfaces/construct-config";
-import { ApiKey, UsagePlan, Period } from "aws-cdk-lib/aws-apigateway";
 /**
  * Represents the configuration options for an API construct.
  */
@@ -126,7 +125,7 @@ interface IUsagePlanConfig {
     apiKeys?: IUsagePlanApiKeyConfig;
 }
 export declare class APIConstruct implements FW24Construct {
-    private apiConstructConfig;
+    private readonly apiConstructConfig;
     readonly logger: import("tslog").Logger<import("tslog").ILogObj>;
     readonly fw24: Fw24;
     name: string;
@@ -142,28 +141,28 @@ export declare class APIConstruct implements FW24Construct {
     keyValues: Map<string, ApiKey>;
     private resources;
     private methods;
-    private controllerStacks;
+    private readonly controllerStacks;
     constructor(apiConstructConfig: IAPIConstructConfig);
     construct(): Promise<void>;
-    private getAPI;
+    private readonly getAPI;
     private registerControllers;
     private copyAndRegisterSystemControllers;
     private prepareEntryPackages;
-    private registerController;
-    private getStageName;
+    private readonly registerController;
+    private readonly getStageName;
     private createDeployments;
     private createSingleDeployment;
     private getCorsPreflightOptions;
     private getCorsOrigins;
-    private getOrCreateControllerResource;
-    private createLambdaFunction;
-    private extractDefaultAuthorizer;
-    private getOrCreateRouteResource;
-    private extractRouteAuthorizer;
-    private createMethodOptions;
-    private createSQSIntegration;
-    private createSNSIntegration;
-    private outputApiEndpoint;
+    private readonly getOrCreateControllerResource;
+    private readonly createLambdaFunction;
+    private readonly extractDefaultAuthorizer;
+    private readonly getOrCreateRouteResource;
+    private readonly extractRouteAuthorizer;
+    private readonly createMethodOptions;
+    private readonly createSQSIntegration;
+    private readonly createSNSIntegration;
+    private readonly outputApiEndpoint;
     private setupUsagePlan;
 }
 export {};
