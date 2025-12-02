@@ -103,7 +103,7 @@ export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3
 				entry.default && typeof entry.default === 'function' && entry.default();
 				DefaultLogger.debug(`Controller[${controllerName}]: successfully imported entry-package: ${entryPackageName}`);
 			} catch (error) {
-				DefaultLogger.error(`Controller[${controllerName}]: failed to import entry-package: ${entryPackageName}`, error);
+				DefaultLogger.warn(`Controller[${controllerName}]: failed to import entry-package: ${entryPackageName}`, error);
 			}
 		});
 	} catch (e) {

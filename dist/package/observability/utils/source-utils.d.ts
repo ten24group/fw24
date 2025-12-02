@@ -32,15 +32,24 @@ export declare function createServiceSource(serviceName: string, methodName: str
  */
 export declare function createQueueSource(queueName: string, handlerName?: string): string;
 /**
- * Create a source identifier for a task
+ * Create a source identifier for a queue handler
  */
-export declare function createTaskSource(taskName: string): string;
+export declare function createTaskSource(taskName: string, handlerName?: string): string;
 /**
  * Extract common tags from environment
  *
- * Useful for consistent tagging across all events
+ * CACHED: Computed once on first call, reused for all subsequent calls.
+ * This is safe because environment variables don't change during Lambda execution.
+ *
+ * NOTE: Most of these are AWS runtime environment variables that are
+ * automatically set by the Lambda runtime, not application config.
+ * Application-level config (like serviceName) comes from ConfigManager.
  */
 export declare function getEnvironmentTags(): Record<string, string>;
+/**
+ * Clear cached environment tags (for testing)
+ */
+export declare function clearEnvironmentTagsCache(): void;
 /**
  * Merge tags with defaults
  *

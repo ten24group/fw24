@@ -1,15 +1,15 @@
-import { CfnOutput, Stack, aws_events_targets } from "aws-cdk-lib";
+import { Stack, aws_events_targets } from "aws-cdk-lib";
+import { Fw24 } from "../core/fw24";
 import { Helper } from "../core/helper";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
-import { Fw24 } from "../core/fw24";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 
+import { Rule, Schedule } from "aws-cdk-lib/aws-events";
+import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import { IConstructConfig } from "../interfaces/construct-config";
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { LogDuration, createLogger } from "../logging";
-import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { LambdaFunction } from "./lambda-function";
-import { Rule, Schedule } from "aws-cdk-lib/aws-events";
-import { IConstructConfig } from "../interfaces/construct-config";
 import { VpcConstruct } from "./vpc";
 
 /**
@@ -54,7 +54,7 @@ export class SchedulerConstruct implements FW24Construct {
     mainStack!: Stack;
 
     // default constructor to initialize the stack configuration
-    constructor(private schedulerConstructConfig: ISchedulerConstructConfig) {
+    constructor(private readonly schedulerConstructConfig: ISchedulerConstructConfig) {
         Helper.hydrateConfig(schedulerConstructConfig,'SCHEDULER');
     }
 
@@ -85,7 +85,7 @@ export class SchedulerConstruct implements FW24Construct {
 
     }
 
-    private registerTask= (taskInfo: HandlerDescriptor) => {
+    private readonly registerTask = (taskInfo: HandlerDescriptor) => {
         taskInfo.handlerInstance = new taskInfo.handlerClass();
         this.logger.debug("Task instance: ", taskInfo.handlerInstance);
         
@@ -94,7 +94,7 @@ export class SchedulerConstruct implements FW24Construct {
         const taskProps = {...this.schedulerConstructConfig.functionProps, ...taskConfig.functionProps};
         const taskConfigEnv = [...(this.schedulerConstructConfig.env ?? []),...taskConfig.env ?? []];
 
-        this.logger.info(`Registering task ${taskName} from ${taskInfo.filePath}/${taskInfo.fileName}`);
+        this.logger.debug(`Registering task ${taskName}`);
 
         const task = new LambdaFunction(this.mainStack, taskName + "-task", {
             entry: taskInfo.filePath + "/" + taskInfo.fileName,

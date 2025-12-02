@@ -3,7 +3,7 @@ import { CustomPageOptions } from './templates/custom-page';
 export declare class EntityUIConfigGen {
     readonly logger: import("tslog").Logger<import("tslog").ILogObj>;
     readonly uiGenDIContainer: import("../fw24").IDIContainer;
-    private customPages;
+    private readonly customPages;
     scanCustomPages(): Promise<void>;
     isValidCustomPageConfig(value: unknown): value is CustomPageOptions;
     private getPageNameFromConfig;

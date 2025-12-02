@@ -253,6 +253,11 @@ export class LambdaFunction extends Construct {
     // remove duplicates
     const deDupLayers = Array.from(new Set(layers));
 
+    // Ensure fw24 layer is included (if not already in the list)
+    if (!deDupLayers.includes('fw24')) {
+      deDupLayers.push('fw24');
+    }
+
     // map layers to actual layer objects
     const resolvedLayers = deDupLayers.map(layerName => {
       if (typeof layerName === 'string') {
@@ -262,11 +267,7 @@ export class LambdaFunction extends Construct {
       return layerName;
     })
 
-    // make sure to add fw24 layer
-    additionalProps.layers = [
-      ...resolvedLayers,
-      LayerVersion.fromLayerVersionArn(this, `${id}-Fw24CoreLayer`, fw24.getEnvironmentVariable('fw24_layerVersionArn', 'layer', scope))
-    ];
+    additionalProps.layers = resolvedLayers;
 
     additionalProps.bundling = {
       ...defaultProps.bundling,

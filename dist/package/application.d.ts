@@ -12,12 +12,12 @@ export declare class Application {
     readonly uiConfigGen: EntityUIConfigGen;
     private readonly constructs;
     private readonly modules;
-    private processedConstructs;
-    private resourceConstructMaxConcurrency;
+    private readonly processedConstructs;
+    private readonly resourceConstructMaxConcurrency;
     private resourceConstructCurrentConcurrency;
     constructor(config?: IApplicationConfig);
-    use(construct: FW24Construct): Application;
-    useModule(module: IFw24Module): Application;
+    use(construct: FW24Construct): this;
+    useModule(module: IFw24Module): this;
     run(): Promise<void>;
     private registerConstruct;
     private processModules;

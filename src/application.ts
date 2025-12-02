@@ -6,7 +6,9 @@ import { IFw24Module } from "./core/runtime/module";
 import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
 import { ILogger, LogDuration, createLogger } from "./logging";
 import { LayerConstruct } from "./constructs";
-import { randomUUID } from 'crypto';
+import { Timer } from "./utils";
+import { randomUUID } from 'node:crypto';
+import { join as pathJoin } from 'node:path';
 
 export class Application {
     readonly logger: ILogger;
@@ -16,8 +18,8 @@ export class Application {
     public readonly uiConfigGen: EntityUIConfigGen;
     private readonly constructs: Map<string, FW24Construct>;
     private readonly modules: Map<string, IFw24Module>;
-    private processedConstructs: Map<string, Promise<void>> = new Map();
-    private resourceConstructMaxConcurrency: number = 10;
+    private readonly processedConstructs: Map<string, Promise<void>> = new Map();
+    private readonly resourceConstructMaxConcurrency: number = 10;
     private resourceConstructCurrentConcurrency = 0;
 
     constructor(config: IApplicationConfig = {}) {
@@ -56,12 +58,12 @@ export class Application {
 
     }
 
-    public use(construct: FW24Construct): Application {
+    public use(construct: FW24Construct): this {
         this.registerConstruct(construct);
         return this;
     }
 
-    public useModule(module: IFw24Module): Application {
+    public useModule(module: IFw24Module): this {
         this.logger.debug("Called UseModule with module: ", { moduleName: module.getName() });
 
         if (this.modules.has(module.getName())) {
@@ -83,14 +85,25 @@ export class Application {
     public async run() {
         this.logger.info("Running fw24 infrastructure...");
 
-        // build fw24 layer
-        this.logger.info("Building fw24 layer...");
+        // Create default fw24 runtime layer (ONLY runtime code, not infrastructure)
+        // This layer is automatically attached to all Lambda functions
+        // It's NOT an entry package - it's just available for imports
+        this.logger.info("Building fw24 runtime layer...");
         const fw24Layer = new LayerConstruct([ {
-            layerName: 'fw24',
-            sourcePath: './dist/layer',
-            priority: 0
+            mode: 'BUILD_AND_PACKAGE',
+            // Bundle the fw24 runtime source (has imports, needs bundling with esbuild)
+            sourcePath: './node_modules/@ten24group/fw24/dist/package/layer/fw24.js',
+            packagePath: '@ten24group/fw24',
+            priority: 0,
+            // Output to application's dist/layers directory, not framework's directory
+            distDirectory: pathJoin(process.cwd(), 'dist/layers'),
+            buildOptions: {
+                sourcemap: true,
+                external: [ '@aws-sdk', '@smithy' ] // AWS SDK is NOT provided by Lambda runtime
+            },
+            isEntryPackage: false,
         } ]);
-        fw24Layer.construct();
+        await fw24Layer.construct();
 
         // *** order is important here, modules need to be processed first, before constructs ***
         this.processModules();
@@ -109,9 +122,16 @@ export class Application {
             return;
         }
 
+        const totalConstructs = this.constructs.size;
+        this.logger.info(`${'='.repeat(60)}`);
+        this.logger.info(`🚀 Building ${totalConstructs} construct(s)...`);
+        this.logger.info(`${'='.repeat(60)}\n`);
+
         await this.constructAllResources()
 
-        this.logger.info('All construct resource creation completed');
+        this.logger.info(`${'='.repeat(60)}`);
+        this.logger.info(`✅ All constructs completed successfully`);
+        this.logger.info(`${'='.repeat(60)}\n`);
     }
 
 
@@ -148,18 +168,24 @@ export class Application {
             await new Promise(resolve => setTimeout(resolve, 100)); // Throttle if concurrency limit is reached
         }
 
-        this.logger.info(`Processing construct ${constructName}...`);
+        // Only log if there are actual dependencies
+        if (construct.dependencies && construct.dependencies.length > 0) {
+            this.logger.debug(`⏳ ${constructName}: Waiting for dependencies: ${construct.dependencies.join(', ')}`);
+        }
 
         // Wait for dependencies to resolve
         await this.waitForDependencies(construct.dependencies, constructName);
 
+        this.logger.info(`🔨 Building ${constructName}...`);
+
         this.resourceConstructCurrentConcurrency++;
+        const timer = Timer.start();
         const constructCompletionPromise = (async () => {
             try {
                 await construct.construct();
-                this.logger.info(`Successfully completed construct ${constructName}`);
+                this.logger.info(`✅ ${constructName} completed in ${timer.elapsedSeconds()}`);
             } catch (error) {
-                this.logger.error(`Failed to construct ${constructName}:`, error);
+                this.logger.error(`❌ ${constructName} failed:`, error);
                 throw error; // Re-throw to ensure deployment fails
             } finally {
                 this.resourceConstructCurrentConcurrency--;
@@ -171,21 +197,23 @@ export class Application {
     }
 
     private async waitForDependencies(dependencies: string[], constructName: string): Promise<void> {
+        if (!dependencies || dependencies.length === 0) {
+            return;
+        }
+
         const promises = dependencies.map(dependency => {
             // if dependency construct does not exists in the construct list, mark it as processed
             if (!this.constructs.has(dependency)) {
-                this.logger.info(`Dependency construct ${dependency} not found, marking it resolved.`);
+                this.logger.debug(`${constructName}: Dependency ${dependency} not registered (optional dependency)`);
                 this.processedConstructs.set(dependency, Promise.resolve());
             }
             if (!this.processedConstructs.has(dependency)) {
-                this.logger.info(`Construct ${constructName}: Waiting for dependency to be resolved ${dependency}...`);
                 // If dependency not scheduled yet, listen for its addition
                 return new Promise<void>((resolve, reject) => {
                     const interval = setInterval(() => {
                         if (this.processedConstructs.has(dependency)) {
                             clearInterval(interval);
                             this.processedConstructs.get(dependency)!.then(resolve, reject);
-                            this.logger.info(`Construct ${constructName}: Dependency ${dependency} resolved.`);
                         }
                     }, 100); // Check every 100ms
                 });

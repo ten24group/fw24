@@ -1,20 +1,30 @@
+/**
+ * DynamoDB Backend for Observability
+ *
+ * Stores all observability events in DynamoDB using ObservabilityLogService.
+ * Service is self-contained - no DI dependency.
+ */
 import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel } from '../types';
 export interface DynamoDBBackendOptions {
+    ttlDays: number;
     minLevel?: ObservabilityLevel;
-    ttlDays?: number;
 }
 export declare class DynamoDBObservabilityBackend implements ObservabilityBackend {
     private readonly options;
     readonly name = "dynamodb";
-    private readonly entity;
     readonly minLevel?: ObservabilityLevel;
     private buffer;
-    private readonly BATCH_SIZE;
-    private readonly MAX_BUFFER_SIZE;
-    constructor(options?: DynamoDBBackendOptions);
+    private ttlDays;
+    constructor(options: DynamoDBBackendOptions);
+    /**
+     * Get service instance (self-contained, no DI)
+     */
+    private getService;
     initializeInvocation(): void;
     capture(event: ObservabilityEvent): Promise<void>;
     flush(): Promise<void>;
+    private static readonly RETRYABLE_ERRORS;
+    private isRetryableError;
     private writeBatch;
-    private chunkArray;
+    private mapEventToItem;
 }

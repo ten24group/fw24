@@ -30,6 +30,19 @@
  * - Development: Can test locally with OTEL packages installed
  * - Production: Uses packages from ADOT layer (zero bundle size)
  *
+ * ## Supported Event Types
+ *
+ * This backend handles the following events:
+ * - span.* → OTEL Traces (spans with parent-child relationships)
+ * - metric → OTEL Metrics (counters, gauges, histograms)
+ * - log → OTEL Logs (structured log events)
+ *
+ * NOT handled (use DynamoDB backend for persistence):
+ * - audit.* → Business records (not telemetry)
+ * - decision.* → Business records (not telemetry)
+ * - access.* → Business records (not telemetry)
+ * - workflow.* → Long-running state (doesn't fit OTEL's ephemeral span model)
+ *
  * ## Setup in CDK/SAM
  *
  * ```typescript
@@ -70,17 +83,15 @@ export interface OTELBackendOptions {
  * This backend works alongside the AWS ADOT Lambda layer to add custom
  * spans, events, and attributes to traces.
  *
+ * Supports all three OTEL signals:
+ * - Traces: Custom spans from our Span API
+ * - Metrics: Counters, gauges, histograms from our Metric API
+ * - Logs: Structured logs from our Log API
+ *
  * The ADOT layer handles:
  * - Automatic instrumentation of AWS SDK, HTTP, and Lambda
- * - Exporting traces to X-Ray via OTLP
+ * - Exporting to X-Ray/CloudWatch via OTLP
  * - Context propagation (W3C Trace Context + X-Ray)
- * - Trace ID generation (X-Ray format)
- *
- * This backend adds:
- * - Custom spans for our Span API
- * - Span events from our observability events
- * - Attributes and metrics from our universal logging system
- * - Integration with workflows, decisions, and audits
  */
 export declare class OTELObservabilityBackend implements ObservabilityBackend {
     private readonly options;
@@ -88,17 +99,60 @@ export declare class OTELObservabilityBackend implements ObservabilityBackend {
     readonly minLevel?: ObservabilityLevel;
     private tracer;
     private trace;
-    private SpanStatusCode;
+    private contextApi;
+    private spanStatusCode;
     private activeSpans;
+    private meter;
+    private otelLogger;
     private isOTELAvailable;
+    private isMetricsAvailable;
+    private isLogsAvailable;
     private invocationCount;
+    private initializationPromise;
     constructor(options: OTELBackendOptions);
     private initializeOpenTelemetry;
+    /**
+     * Ensure initialization is complete before using OTEL
+     */
+    private ensureInitialized;
     initializeInvocation(): void;
     capture(event: ObservabilityEvent): Promise<void>;
-    private handleSpanStart;
     private handleSpanEvent;
+    private handleSpanStart;
+    private handleSpanEventInternal;
     private handleSpanEnd;
+    /**
+     * Handle metric events using OTEL's Metrics API
+     *
+     * OTEL SDK internally caches instrument instances by name - no manual caching needed.
+     */
+    private handleMetricEvent;
+    private handleLogEvent;
+    /**
+     * Safely extract log message from event data
+     */
+    private extractLogMessage;
+    /**
+     * Type guard for string array
+     */
+    private isStringArray;
+    /**
+     * Type guard for number array
+     */
+    private isNumberArray;
+    /**
+     * Type guard for boolean array
+     */
+    private isBooleanArray;
+    private static readonly MAX_ATTRIBUTE_SIZE;
+    /**
+     * Convert Record<string, unknown> to OTEL Attributes (only primitive values allowed)
+     */
+    private toOtelAttributes;
+    /**
+     * Safely JSON stringify with size limit for OTEL attributes
+     */
+    private safeJsonStringify;
     flush(): Promise<void>;
     destroy(): void;
 }

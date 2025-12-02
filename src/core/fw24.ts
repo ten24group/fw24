@@ -1,22 +1,22 @@
+import { App, CfnOutput, NestedStack, Stack } from 'aws-cdk-lib';
 import { IAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2';
 import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
+import { Vpc } from 'aws-cdk-lib/aws-ec2';
 import { Effect, PolicyStatement, type PolicyStatementProps, type Role } from 'aws-cdk-lib/aws-iam';
+import { HostedZone, IHostedZone } from 'aws-cdk-lib/aws-route53';
 import type { ITopic } from 'aws-cdk-lib/aws-sns';
 import { Topic } from 'aws-cdk-lib/aws-sns';
 import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
+import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { DIContainer } from '../di';
 import { type ILambdaEnvConfig } from '../interfaces';
 import { IApplicationConfig, SystemControllerDefinition, SystemUIPageDefinition } from '../interfaces/config';
 import { FW24Construct, OutputType } from '../interfaces/construct';
 import { type IDIContainer } from '../interfaces/di';
 import { createLogger } from '../logging';
+import { ensureNoSpecialChars, ensureValidEnvKey } from '../utils/keys';
 import { Helper } from './helper';
 import { type IFw24Module } from './runtime/module';
-import { ensureNoSpecialChars, ensureValidEnvKey } from '../utils/keys';
-import { App, CfnOutput, Fn, NestedStack, Stack } from 'aws-cdk-lib';
-import { StringParameter } from 'aws-cdk-lib/aws-ssm';
-import { Vpc } from 'aws-cdk-lib/aws-ec2';
-import { IHostedZone, HostedZone } from 'aws-cdk-lib/aws-route53';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
@@ -29,18 +29,18 @@ export class Fw24 {
     private stacks: Record<string, Stack> = {};
     private apis: { [ apiConstructName: string ]: { [ name: string ]: any } } = {};
     private environmentVariables: Record<string, any> = {};
-    private globalEnvironmentVariables: string[] = [];
-    private policyStatements = new Map<string, PolicyStatementProps | PolicyStatement>();
+    private readonly globalEnvironmentVariables: string[] = [];
+    private readonly policyStatements = new Map<string, PolicyStatementProps | PolicyStatement>();
     private defaultAuthorizer: IAuthorizer | undefined;
     private cognitoAuthorizers: { [ key: string ]: IAuthorizer } = {};
     private jwtAuthorizer: IAuthorizer | undefined;
     private dynamoTables: { [ key: string ]: TableV2 } = {};
     private static instance: Fw24;
 
-    private queues = new Map<string, IQueue>();
-    private topics = new Map<string, ITopic>();
-    private modules = new Map<string, IFw24Module>();
-    private constructs = new Map<string, FW24Construct>();
+    private readonly queues = new Map<string, IQueue>();
+    private readonly topics = new Map<string, ITopic>();
+    private readonly modules = new Map<string, IFw24Module>();
+    private readonly constructs = new Map<string, FW24Construct>();
 
     private readonly globalLambdaLayerNames = new Set<string>();
     private readonly globalLambdaEntryPackages = new Map<string, number>(); // package -> priority
@@ -121,7 +121,7 @@ export class Fw24 {
         this.globalLambdaLayerNames.delete(layerName);
     }
 
-    addStack(name: string, stack: any): Fw24 {
+    addStack(name: string, stack: any): this {
         this.logger.debug("addStack:", { name });
         this.stacks[ name ] = stack;
         return this;
@@ -136,7 +136,7 @@ export class Fw24 {
      * @returns The stack.
      */
     getStack(name?: string, parentStackName?: string): any {
-        let stackName: string = name ? name : this.getDefaultStackName();
+        let stackName: string =  name || this.getDefaultStackName();
         // don't allow nested stacks if multiStack is true, multistack is used for creating independent stacks
         if (this.config.multiStack && parentStackName) {
             throw new Error('Nested stacks are not allowed when multiStack is true. Please use multiStack: false or remove the parentStackName parameter.');
@@ -192,7 +192,7 @@ export class Fw24 {
         ) || false;
     }
 
-    addAPI(apiConstructName: string, name: string, api: any, isImported: boolean = false): Fw24 {
+    addAPI(apiConstructName: string, name: string, api: any, isImported: boolean = false): this {
         // Initialize the apiConstructName object if it doesn't exist
         if (!this.apis[ apiConstructName ]) {
             this.apis[ apiConstructName ] = {};
@@ -204,7 +204,7 @@ export class Fw24 {
 
     getAPI(apiConstructName: string, name: string): any {
         // Check if API exists for the given name and stack
-        if (!this.apis[ apiConstructName ] || !this.apis[ apiConstructName ][ name ]) {
+        if (!this.apis[apiConstructName]?.[name]) {
             this.logger.debug(`API not found: construct name ${apiConstructName} and name ${name}`);
             return undefined;
         }
@@ -268,7 +268,7 @@ export class Fw24 {
     }
 
     getCognitoAuthorizer(name?: string): IAuthorizer | undefined {
-        this.logger.info("getCognitoAuthorizer: ", { name });
+        this.logger.debug("getCognitoAuthorizer: ", { name });
         // If no name is provided and no default authorizer is set, throw an error
         if (name === undefined && this.defaultAuthorizer === undefined) {
             throw new Error('No Authorizer exists for cognito user pools. For policy based authentication, use AWS_IAM authoriser.');
@@ -391,7 +391,7 @@ export class Fw24 {
      * @param value The value of the environment variable.
      */
     setGlobalEnvironmentVariable(name: string, value: any) {
-        this.logger.info("setGlobalEnvironmentVariable:", name, value);
+        this.logger.debug("setGlobalEnvironmentVariable:", name, value);
         this.setEnvironmentVariable(name, value, '');
         this.globalEnvironmentVariables.push(ensureValidEnvKey(name, ''));
     }
@@ -522,7 +522,7 @@ export class Fw24 {
         let routeAddedToGroupPolicy = false;
         for (const groupName of groups) {
             // if requireRouteInGroupConfig is true, check if the route is in the group config
-            if (requireRouteInGroupConfig && (!this.getEnvironmentVariable('Routes', 'cognito_' + groupName) || !this.getEnvironmentVariable('Routes', 'cognito_' + groupName).includes(route))) {
+            if (requireRouteInGroupConfig && (!this.getEnvironmentVariable('Routes', 'cognito_' + groupName)?.includes(route))) {
                 continue;
             }
             // get role

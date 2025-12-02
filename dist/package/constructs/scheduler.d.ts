@@ -1,9 +1,9 @@
 import { Stack } from "aws-cdk-lib";
-import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { Fw24 } from "../core/fw24";
-import { ILambdaEnvConfig } from "../interfaces/lambda-env";
+import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { IConstructConfig } from "../interfaces/construct-config";
+import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 /**
  * Represents the configuration for the Scheduler construct.
  */
@@ -33,7 +33,7 @@ export interface ISchedulerConstructConfig extends IConstructConfig {
  * ```
  */
 export declare class SchedulerConstruct implements FW24Construct {
-    private schedulerConstructConfig;
+    private readonly schedulerConstructConfig;
     readonly logger: import("tslog").Logger<import("tslog").ILogObj>;
     readonly fw24: Fw24;
     name: string;
@@ -42,5 +42,5 @@ export declare class SchedulerConstruct implements FW24Construct {
     mainStack: Stack;
     constructor(schedulerConstructConfig: ISchedulerConstructConfig);
     construct(): Promise<void>;
-    private registerTask;
+    private readonly registerTask;
 }
