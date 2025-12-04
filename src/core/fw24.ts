@@ -17,6 +17,7 @@ import { createLogger } from '../logging';
 import { ensureNoSpecialChars, ensureValidEnvKey } from '../utils/keys';
 import { Helper } from './helper';
 import { type IFw24Module } from './runtime/module';
+import type { TImportedPolicy, TPolicyStatementOrProps, IFunctionResourceAccess } from '../constructs/lambda-function';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
@@ -30,6 +31,8 @@ export class Fw24 {
     private apis: { [ apiConstructName: string ]: { [ name: string ]: any } } = {};
     private environmentVariables: Record<string, any> = {};
     private readonly globalEnvironmentVariables: string[] = [];
+    private readonly globalPolicies: Set<TPolicyStatementOrProps | TImportedPolicy> = new Set();
+    private globalResourceAccess: IFunctionResourceAccess = {};
     private readonly policyStatements = new Map<string, PolicyStatementProps | PolicyStatement>();
     private defaultAuthorizer: IAuthorizer | undefined;
     private cognitoAuthorizers: { [ key: string ]: IAuthorizer } = {};
@@ -86,11 +89,11 @@ export class Fw24 {
         if (this.config.lambdaEntryPackages) {
             return this.config.lambdaEntryPackages;
         }
-        
+
         // Sort entry packages by priority (lower number = loaded first)
         return Array.from(this.globalLambdaEntryPackages.entries())
-            .sort((a, b) => a[1] - b[1])  // Sort by priority
-            .map(([packageName]) => packageName);
+            .sort((a, b) => a[ 1 ] - b[ 1 ])  // Sort by priority
+            .map(([ packageName ]) => packageName);
     }
 
     addGlobalLambdaEntryPackage(packageName: string, priority: number = 999) {
@@ -136,7 +139,7 @@ export class Fw24 {
      * @returns The stack.
      */
     getStack(name?: string, parentStackName?: string): any {
-        let stackName: string =  name || this.getDefaultStackName();
+        let stackName: string = name || this.getDefaultStackName();
         // don't allow nested stacks if multiStack is true, multistack is used for creating independent stacks
         if (this.config.multiStack && parentStackName) {
             throw new Error('Nested stacks are not allowed when multiStack is true. Please use multiStack: false or remove the parentStackName parameter.');
@@ -204,7 +207,7 @@ export class Fw24 {
 
     getAPI(apiConstructName: string, name: string): any {
         // Check if API exists for the given name and stack
-        if (!this.apis[apiConstructName]?.[name]) {
+        if (!this.apis[ apiConstructName ]?.[ name ]) {
             this.logger.debug(`API not found: construct name ${apiConstructName} and name ${name}`);
             return undefined;
         }
@@ -400,9 +403,132 @@ export class Fw24 {
         return this.globalEnvironmentVariables;
     }
 
+    /**
+     * Add a policy statement that should be attached to ALL Lambda functions in the application.
+     * This is useful for cross-cutting concerns like observability, logging, or shared resources.
+     * 
+     * @example
+     * // Add an imported policy by name
+     * fw24.addGlobalPolicy('my-policy-name');
+     * fw24.addGlobalPolicy('my-policy-name', 'my-prefix');
+     * fw24.addGlobalPolicy({ name: 'my-policy-name', prefix: 'my-prefix', isOptional: true });
+     * 
+     * // Add a direct policy statement
+     * fw24.addGlobalPolicy(new PolicyStatement({
+     *   effect: Effect.ALLOW,
+     *   actions: ['s3:GetObject'],
+     *   resources: ['*']
+     * }));
+     * 
+     * // Add policy statement props
+     * fw24.addGlobalPolicy({
+     *   effect: Effect.ALLOW,
+     *   actions: ['s3:GetObject'],
+     *   resources: ['*']
+     * });
+     * 
+     * @param policy The policy to add - can be a name string, TImportedPolicy, PolicyStatement, or PolicyStatementProps
+     * @param prefix The prefix for imported policy name (optional, only used when policy is a string)
+     * @param isOptional Whether the policy is optional (optional, only used when policy is a string)
+     */
+    addGlobalPolicy(policy: string | TPolicyStatementOrProps | TImportedPolicy, prefix: string = '', isOptional: boolean = false) {
+        if (typeof policy === 'string') {
+            // Treat as imported policy name for backward compatibility
+            this.logger.debug("addGlobalPolicy (imported):", { name: policy, prefix, isOptional });
+            this.globalPolicies.add({ name: policy, prefix, isOptional });
+        } else {
+            // Direct policy statement or PolicyStatementProps or TImportedPolicy
+            this.logger.debug("addGlobalPolicy (direct):", { policy });
+            this.globalPolicies.add(policy);
+        }
+    }
+
+    /**
+     * Get all global policies that should be attached to ALL Lambda functions.
+     * @returns Set of policies (can be TPolicyStatementOrProps or TImportedPolicy)
+     */
+    getGlobalPolicies(): Set<TPolicyStatementOrProps | TImportedPolicy> {
+        return this.globalPolicies;
+    }
+
+    /**
+     * Set global resource access that should be applied to ALL Lambda functions.
+     * This replaces any existing global resource access configuration.
+     * 
+     * @example
+     * fw24.setGlobalResourceAccess({
+     *   tables: ['users-table', { name: 'orders-table', access: ['read'] }],
+     *   buckets: ['assets-bucket'],
+     *   queues: ['notifications-queue'],
+     *   topics: ['events-topic']
+     * });
+     * 
+     * @param resourceAccess The resource access configuration
+     */
+    setGlobalResourceAccess(resourceAccess: IFunctionResourceAccess) {
+        this.logger.debug("setGlobalResourceAccess:", resourceAccess);
+        this.globalResourceAccess = resourceAccess;
+    }
+
+    /**
+     * Add to global resource access configuration.
+     * This merges with existing global resource access configuration.
+     * 
+     * @example
+     * fw24.addGlobalResourceAccess({
+     *   tables: ['users-table'],
+     *   buckets: ['assets-bucket']
+     * });
+     * 
+     * @param resourceAccess The resource access to add
+     */
+    addGlobalResourceAccess(resourceAccess: Partial<IFunctionResourceAccess>) {
+        this.logger.debug("addGlobalResourceAccess:", resourceAccess);
+        
+        if (resourceAccess.tables) {
+            this.globalResourceAccess.tables = [
+                ...(this.globalResourceAccess.tables || []),
+                ...resourceAccess.tables
+            ];
+        }
+        
+        if (resourceAccess.buckets) {
+            this.globalResourceAccess.buckets = [
+                ...(this.globalResourceAccess.buckets || []),
+                ...resourceAccess.buckets
+            ];
+        }
+        
+        if (resourceAccess.queues) {
+            this.globalResourceAccess.queues = [
+                ...(this.globalResourceAccess.queues || []),
+                ...resourceAccess.queues
+            ];
+        }
+        
+        if (resourceAccess.topics) {
+            this.globalResourceAccess.topics = [
+                ...(this.globalResourceAccess.topics || []),
+                ...resourceAccess.topics
+            ];
+        }
+    }
+
+    /**
+     * Get global resource access configuration.
+     * @returns The global resource access configuration
+     */
+    getGlobalResourceAccess(): IFunctionResourceAccess {
+        return this.globalResourceAccess;
+    }
+
     setPolicy(policyName: string, value: PolicyStatementProps | PolicyStatement, prefix: string = '') {
         this.logger.debug("setPolicy:", prefix, policyName, value);
-        this.policyStatements.set(ensureValidEnvKey(policyName, prefix), value);
+        const policyKey = ensureValidEnvKey(policyName, prefix);
+        if (this.policyStatements.has(policyKey)) {
+            this.logger.warn(`Policy ${policyName} already exists in fw24 scope. Overwriting with new policy.`);
+        }
+        this.policyStatements.set(policyKey, value);
     }
 
     getPolicy(policyName: string, prefix: string = ''): PolicyStatementProps | PolicyStatement | undefined {

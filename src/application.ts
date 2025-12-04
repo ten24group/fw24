@@ -43,6 +43,18 @@ export class Application {
             })
         }
 
+        // Apply global policies from config
+        if (config.globalPolicies) {
+            config.globalPolicies.forEach(policy => {
+                this.fw24.addGlobalPolicy(policy);
+            });
+        }
+
+        // Apply global resource access from config
+        if (config.globalResourceAccess) {
+            this.fw24.setGlobalResourceAccess(config.globalResourceAccess);
+        }
+
         // ensure there's a log-level set in the fw24 scope so that the constructs can ask for this value
         // this's only the global value, and can be overridden by each lambda function.
         if (!this.fw24.hasEnvironmentVariable('LOG_LEVEL')) {

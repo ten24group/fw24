@@ -247,6 +247,38 @@ export interface IApplicationConfig {
     environment?: string; // local, dev, prod
     environmentVariables?: Record<string, string>;
     globalEnvironmentVariables?: Record<string, string>;
+    
+    /**
+     * Global policies that should be attached to ALL Lambda functions in the application.
+     * Useful for cross-cutting concerns like observability, logging, or shared resources.
+     * 
+     * @example
+     * globalPolicies: [
+     *   // Imported policy by name
+     *   { name: 'my-policy', prefix: 'my-module' },
+     *   // Direct policy statement props
+     *   { effect: Effect.ALLOW, actions: ['s3:GetObject'], resources: ['*'] }
+     * ]
+     */
+    globalPolicies?: Array<TPolicyStatementOrProps | TImportedPolicy>;
+    
+    /**
+     * Global resource access that should be applied to ALL Lambda functions in the application.
+     * Useful for resources that need to be accessed by multiple functions (e.g., shared tables, buckets).
+     * 
+     * @example
+     * globalResourceAccess: {
+     *   tables: [
+     *     'users-table',  // shorthand for read/write access
+     *     { name: 'audit-table', access: ['read'] }  // explicit read-only
+     *   ],
+     *   buckets: ['assets-bucket'],
+     *   queues: ['notifications-queue'],
+     *   topics: ['events-topic']
+     * }
+     */
+    globalResourceAccess?: IFunctionResourceAccess;
+    
     logRetentionDays?: number;
     logRemovalPolicy?: RemovalPolicy;
     functionProps?: Omit<NodejsFunctionProps, 'layers'> & {

@@ -82,32 +82,48 @@ export type CommonLambdaHandlerOptions = {
 	module?: RegisterDIModuleMetadataOptions
 }
 
+// Track if entry packages have been loaded (prevent duplicate loading)
+let entryPackagesLoaded = false;
+
+/**
+ * Loads entry packages specified in ENTRY_PACKAGES environment variable.
+ * Called automatically by fw24 layer on import, and by decorators for backward compatibility.
+ * Safe to call multiple times - only loads once.
+ */
 export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3)?.path) {
+	// Only load once - guard prevents duplicate loading
+	if (entryPackagesLoaded) {
+		DefaultLogger.info("Entry packages already loaded, skipping", { controllerName });
+		return;
+	}
+	entryPackagesLoaded = true;
 
 	try {
-		DefaultLogger.debug("trying to import entry-packages for", { controllerName });
+		DefaultLogger.debug("Loading entry packages", { controllerName });
 		const entryPackageNames = resolveEnvValueFor({ key: ENV_KEYS.ENTRY_PACKAGES });
 
-		DefaultLogger.debug("Entry-package-names", { entryPackageNames });
 		if (!entryPackageNames) {
+			DefaultLogger.debug("No ENTRY_PACKAGES environment variable found");
 			return;
 		}
 
-		const packageNamesArray = entryPackageNames.split(',').map((pkg: string) => pkg.trim()); // Split and trim package names
+		const packageNamesArray = entryPackageNames.split(',').map((pkg: string) => pkg.trim()).filter(Boolean);
 
 		packageNamesArray.forEach((entryPackageName: string) => {
 			try {
-				DefaultLogger.debug("trying to import entry", { entryPackageName });
+				DefaultLogger.debug("Loading entry package", { entryPackageName });
 				const entry = require(entryPackageName);
-				// call the default export if available
-				entry.default && typeof entry.default === 'function' && entry.default();
-				DefaultLogger.debug(`Controller[${controllerName}]: successfully imported entry-package: ${entryPackageName}`);
+				// Call the default export if available
+				if (entry.default && typeof entry.default === 'function') {
+					entry.default();
+				}
+				DefaultLogger.debug(`Successfully loaded entry package: ${entryPackageName}`);
 			} catch (error) {
-				DefaultLogger.warn(`Controller[${controllerName}]: failed to import entry-package: ${entryPackageName}`, error);
+				DefaultLogger.warn(`Failed to load entry package: ${entryPackageName}`, error);
 			}
 		});
 	} catch (e) {
-		DefaultLogger.error(`Controller[${controllerName}]: Error importing entry packages in controller.ts`, e);
+		DefaultLogger.error(`Error loading entry packages`, e);
 	}
 }
 
