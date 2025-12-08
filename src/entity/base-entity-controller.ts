@@ -17,7 +17,6 @@ import { createErrorHandler } from '../errors/handlers';
 import { ExecutionContext } from '../core/types/execution-context';
 import { EntitySearchQuery, parseSearchQuery, SearchResult } from '../search';
 import { EntityRecordTypeFromSchema } from './base-entity';
-import { AuditContext } from '../audit/interfaces';
 
 type seconds = number;
 
@@ -76,78 +75,6 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 */
 	async initialize(_event: any, _context: any): Promise<void> {
 		// this.logger.debug(`BaseEntityController.initialize - done: ${event} ${context}`);
-	}
-
-	/**
-	 * Enhanced audit context with entity-specific information
-	 * Leverages entity service capabilities to provide rich audit context
-	 */
-	protected makeAuditContext(ctx: ExecutionContext, route?: Route | null): AuditContext | null {
-		const baseContext = super.makeAuditContext(ctx, route);
-		if (!baseContext) return null;
-
-		// Extract entity identifiers from path parameters when available
-		let entityId: string | undefined;
-		let identifiers: any = null;
-		
-		try {
-			if (ctx.request.pathParameters) {
-				identifiers = this.getEntityService()?.extractEntityIdentifiers(ctx.request.pathParameters);
-				if (identifiers) {
-					// Serialize identifiers to string for entityId field
-					entityId = typeof identifiers === 'object' 
-						? JSON.stringify(identifiers)
-						: String(identifiers);
-				}
-			}
-		} catch (error) {
-			// Not all operations have entity identifiers (e.g., list, create)
-			this.logger.debug('No entity identifiers available for audit context', error);
-		}
-
-		// Detect CRUD operation from HTTP method and path
-		const operation = this.detectOperation(ctx.request.httpMethod, ctx.request.path);
-
-		// Enhanced audit context with entity-specific data  
-		const enhancedContext = {
-			...baseContext,
-			entityName: this.getEntityName(),
-			entityId: entityId,
-			operation: operation,
-			category: baseContext.category || `${this.getEntityName().toLowerCase()}-management`
-		};
-
-		return enhancedContext;
-	}
-
-	/**
-	 * Detects the operation type from HTTP method and path
-	 */
-	private detectOperation(httpMethod: string, path: string): string {
-		const method = httpMethod.toUpperCase();
-		const pathLower = path.toLowerCase();
-
-		// Special operations first
-		if (pathLower.includes('/search')) return 'search';
-		if (pathLower.includes('/query')) return 'query'; 
-		if (pathLower.includes('/duplicate')) return 'duplicate';
-
-		// Standard CRUD operations based on method + presence of ID
-		const hasId = path.includes('{') || /\/[a-f0-9-]{8,}/i.test(path);
-		
-		switch (method) {
-			case 'POST':
-				return hasId ? 'update' : 'create';
-			case 'GET':
-				return hasId ? 'read' : 'list';
-			case 'PATCH':
-			case 'PUT':
-				return 'update';
-			case 'DELETE':
-				return 'delete';
-			default:
-				return `${method.toLowerCase()}_${this.getEntityName().toLowerCase()}`;
-		}
 	}
 
 	/**

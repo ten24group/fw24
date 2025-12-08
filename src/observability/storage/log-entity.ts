@@ -6,14 +6,16 @@
  */
 
 import { randomUUID } from 'crypto';
-import { DefaultEntityOperations, createEntitySchema } from '../../entity';
-import { ConfigManager } from '../config';
+// Import directly from base-entity to avoid circular dependency
+// (entity/index.ts exports base-entity-controller which imports APIController which imports observability)
+import { DefaultEntityOperations, createEntitySchema } from '../../entity/base-entity';
+import { ObservabilityConfigManager } from '../config';
 
 /**
  * Get TTL in days from config
  */
 export function getTtlDays(): number {
-  return ConfigManager.fromEnvironment().dynamodb.ttlDays;
+  return ObservabilityConfigManager.fromEnvironment().dynamodb.ttlDays;
 }
 
 /**

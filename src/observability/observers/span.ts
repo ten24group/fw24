@@ -4,7 +4,7 @@
  * DESIGN PRINCIPLES:
  * - Requires correlationId from context or explicit option
  * - No auto-generation of correlationId (must be propagated)
- * - Hierarchical spans via parentSpanId
+ * - Hierarchical spans via parentLogId
  * - Fire-and-forget capture via capturer pattern (testable)
  * 
  * Usage:
@@ -52,8 +52,8 @@ const OBSERVER_NAME = 'SpanObserver';
 export interface SpanOptions {
   /** Correlation ID - if not provided, must come from context */
   correlationId?: string;
-  /** Parent span ID for nested spans */
-  parentSpanId?: string;
+  /** Parent log ID for nested spans */
+  parentLogId?: string;
   /** Severity level for the span */
   level?: ObservabilityLevelString;
   /** Additional attributes */
@@ -79,18 +79,18 @@ export interface ISpanObserver {
   withChild<T>(
     operation: string,
     fn: (span: ISpanObserver) => Promise<T>,
-    options?: Omit<SpanOptions, 'correlationId' | 'parentSpanId'>
+    options?: Omit<SpanOptions, 'correlationId' | 'parentLogId'>
   ): Promise<T>;
   createChild(
     operation: string,
-    options?: Omit<SpanOptions, 'correlationId' | 'parentSpanId'>
+    options?: Omit<SpanOptions, 'correlationId' | 'parentLogId'>
   ): ISpanObserver;
 }
 
 export class SpanObserver implements ISpanObserver {
   private readonly spanId: string;
   private readonly correlationId: string;
-  private readonly parentSpanId?: string;
+  private readonly parentLogId?: string;
   private readonly level: ObservabilityLevelString;
   private readonly startTime: number;
   private readonly source?: string;
@@ -106,7 +106,7 @@ export class SpanObserver implements ISpanObserver {
     this.operation = operation;
     this.spanId = generateId();
     this.correlationId = fields.correlationId;
-    this.parentSpanId = options.parentSpanId ?? context?.parentLogId;
+    this.parentLogId = options.parentLogId ?? context?.parentLogId;
     this.level = options.level ?? 'info';
     this.attributes = options.attributes ?? {};
     this.source = options.source ?? fields.source;
@@ -118,7 +118,7 @@ export class SpanObserver implements ISpanObserver {
     captureEvent(fields, {
       type: 'span.start',
       level: this.level,
-      parentLogId: this.parentSpanId,
+      parentLogId: this.parentLogId,
       entityName: 'span',
       entityId: this.spanId,
       timestampMs: this.startTime,
@@ -134,22 +134,18 @@ export class SpanObserver implements ISpanObserver {
    * Start a new span
    * 
    * @param operation - Name of the operation being traced
-   * @param options - Span options (correlationId required if no context)
-   * @returns SpanObserver instance, or NoOp span if correlationId not available
+   * @param options - Span options (correlationId auto-generated if no context)
+   * @returns SpanObserver instance (always succeeds)
    */
   static start(operation: string, options?: SpanOptions): ISpanObserver {
     // Build common fields using base utilities
+    // Note: buildCommonFields now always returns fields (auto-generates correlationId if needed)
     const fields = buildCommonFields(OBSERVER_NAME, {
       correlationId: options?.correlationId,
       actor: options?.actor,
       source: options?.source,
       tags: options?.tags,
     });
-
-    if (!fields) {
-      // Return a no-op span that won't crash but won't record anything
-      return new NoOpSpanObserver(operation);
-    }
 
     return new SpanObserver(operation, fields, options);
   }
@@ -229,7 +225,7 @@ export class SpanObserver implements ISpanObserver {
       {
         type: 'span.end',
         level: options?.error ? 'error' : this.level,
-        parentLogId: this.parentSpanId,
+        parentLogId: this.parentLogId,
         entityName: 'span',
         entityId: this.spanId,
         timestampMs: endTime,
@@ -252,12 +248,12 @@ export class SpanObserver implements ISpanObserver {
   async withChild<T>(
     operation: string,
     fn: (span: ISpanObserver) => Promise<T>,
-    options?: Omit<SpanOptions, 'correlationId' | 'parentSpanId'>
+    options?: Omit<SpanOptions, 'correlationId' | 'parentLogId'>
   ): Promise<T> {
     return SpanObserver.withSpan(operation, fn, {
       ...options,
       correlationId: this.correlationId,
-      parentSpanId: this.spanId,
+      parentLogId: this.spanId,
       source: options?.source ?? this.source,
       tags: { ...this.tags, ...options?.tags },
       actor: options?.actor ?? this.actor,
@@ -269,68 +265,16 @@ export class SpanObserver implements ISpanObserver {
    */
   createChild(
     operation: string,
-    options?: Omit<SpanOptions, 'correlationId' | 'parentSpanId'>
+    options?: Omit<SpanOptions, 'correlationId' | 'parentLogId'>
   ): ISpanObserver {
     return SpanObserver.start(operation, {
       ...options,
       correlationId: this.correlationId,
-      parentSpanId: this.spanId,
+      parentLogId: this.spanId,
       source: options?.source ?? this.source,
       tags: { ...this.tags, ...options?.tags },
       actor: options?.actor ?? this.actor,
     });
-  }
-}
-
-/**
- * No-op span for when correlationId is not available
- * Implements ISpanObserver interface properly (no type casts)
- */
-class NoOpSpanObserver implements ISpanObserver {
-  private readonly operation: string;
-
-  constructor(operation: string) {
-    this.operation = operation;
-    logger.warn(`NoOp span created for operation: ${operation}`);
-  }
-
-  get id(): string {
-    return 'noop';
-  }
-
-  get traceId(): string {
-    return 'noop';
-  }
-
-  setAttribute(_key: string, _value: unknown): this {
-    return this;
-  }
-
-  setAttributes(_attrs: Record<string, unknown>): this {
-    return this;
-  }
-
-  addEvent(_name: string, _eventAttributes?: Record<string, unknown>): this {
-    return this;
-  }
-
-  end(_options?: { success?: boolean; error?: Error; status?: string }): void {
-    // No-op
-  }
-
-  async withChild<T>(
-    _operation: string,
-    fn: (span: ISpanObserver) => Promise<T>,
-    _options?: Omit<SpanOptions, 'correlationId' | 'parentSpanId'>
-  ): Promise<T> {
-    return fn(this);
-  }
-
-  createChild(
-    operation: string,
-    _options?: Omit<SpanOptions, 'correlationId' | 'parentSpanId'>
-  ): ISpanObserver {
-    return new NoOpSpanObserver(operation);
   }
 }
 

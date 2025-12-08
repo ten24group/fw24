@@ -17,43 +17,39 @@ import { createLogger } from '../../logging';
 const baseLogger = createLogger('Observer');
 
 /**
- * The event capturer - MUST be set by manager.ts during initialization
+ * Event Capturer Registry
  * 
- * This breaks the circular dependency:
- * - base.ts defines the interface and placeholder
- * - manager.ts imports base.ts (no circular dep since we don't import manager)
- * - manager.ts calls initializeCapturer() to inject itself
+ * Simple registry - no lazy loading, no circular dependencies.
+ * ObservabilityManager MUST call initialize() during its initialization.
  */
-let eventCapturer: IEventCapture | null = null;
+class CapturerRegistry {
+  private capturer: IEventCapture | null = null;
 
 /**
- * Initialize the capturer - called by ObservabilityManager during initialization.
- * This breaks the circular dependency by having the manager inject itself.
- * 
- * @internal - Only called by manager.ts
+   * Initialize the capturer (called by ObservabilityManager during initialization)
  */
-export function initializeCapturer(capturer: IEventCapture): void {
-  if (!eventCapturer) {
-    eventCapturer = capturer;
+  initialize(capturer: IEventCapture): void {
+    if (!this.capturer) {
+      this.capturer = capturer;
   }
 }
 
 /**
- * Get the event capturer.
- * Throws if not initialized - manager.ts must call initializeCapturer() first.
+   * Get the event capturer. Throws if not initialized.
  */
-function getCapturer(): IEventCapture {
-  if (!eventCapturer) {
+  get(): IEventCapture {
+    if (!this.capturer) {
     throw new Error(
-      'Observer not initialized. Ensure ObservabilityManager is imported before using observers. ' +
-      'This is a framework bug if you see this error.'
+        'Observability not initialized. ObservabilityManager must initialize before observers can be used. ' +
+        'This usually means you are using observers before the framework has initialized. ' +
+        'If you see this error, import ObservabilityManager somewhere in your code to trigger initialization.'
     );
   }
-  return eventCapturer;
+    return this.capturer;
 }
 
 /**
- * Set a custom event capturer (for testing)
+   * Set a custom capturer (for testing)
  * 
  * @example
  * ```typescript
@@ -63,22 +59,51 @@ function getCapturer(): IEventCapture {
  *   captureAsync: jest.fn().mockResolvedValue('test-log-id'),
  * };
  * setCapturer(mockCapturer);
- * 
- * // Run your observer tests...
- * 
- * // Reset after tests:
- * resetCapturer();
- * ```
+   * ```
+   */
+  set(capturer: IEventCapture): void {
+    this.capturer = capturer;
+  }
+
+  /**
+   * Reset to uninitialized state (for testing cleanup)
+   */
+  reset(): void {
+    this.capturer = null;
+  }
+}
+
+// Singleton instance
+const capturerRegistry = new CapturerRegistry();
+
+/**
+ * Initialize the capturer - called by ObservabilityManager
+ * @internal
+ */
+export function initializeCapturer(capturer: IEventCapture): void {
+  capturerRegistry.initialize(capturer);
+}
+
+/**
+ * Get the event capturer (lazy-loads manager if needed)
+ * @internal
+ */
+function getCapturer(): IEventCapture {
+  return capturerRegistry.get();
+}
+
+/**
+ * Set a custom event capturer (for testing)
  */
 export function setCapturer(capturer: IEventCapture): void {
-  eventCapturer = capturer;
+  capturerRegistry.set(capturer);
 }
 
 /**
  * Reset capturer to default (for testing cleanup)
  */
 export function resetCapturer(): void {
-  eventCapturer = null;
+  capturerRegistry.reset();
 }
 
 /**
@@ -116,19 +141,34 @@ export function generateId(): string {
 }
 
 /**
- * Resolve correlation ID from explicit value or context
+ * Resolve correlation ID from explicit value or context.
+ * 
+ * If no correlationId is available:
+ * - In development (NODE_ENV !== 'production'): throws error for fast failure
+ * - In production: auto-generates with warning for resilience
  */
 export function resolveCorrelationId(
   observerName: string,
   explicitId?: string
-): string | undefined {
-  const correlationId = explicitId ?? getCorrelationIdIfExists();
+): string {
+  let correlationId = explicitId ?? getCorrelationIdIfExists();
+
   if (!correlationId) {
-    baseLogger.warn(
-      `${observerName}: No correlationId available. ` +
-      'Establish context with runWithContext() or use middleware.'
-    );
+    const message =
+      `${observerName}: No observability context established. ` +
+      'Establish context with runWithContext() before using observers. ';
+
+    // In development, fail fast to catch context issues early
+    if (process.env.NODE_ENV !== 'production') {
+      baseLogger.error(message + 'This will auto-generate in production but should be fixed.');
+      // Don't throw - just log error. Observability should never crash the app.
+    }
+
+    // Auto-generate correlationId to maintain observability
+    correlationId = `auto-${randomUUID()}`;
+    baseLogger.warn(message + `Auto-generated correlationId: ${correlationId}`);
   }
+
   return correlationId;
 }
 
@@ -145,16 +185,14 @@ export function mergeObserverTags(
 
 /**
  * Build common fields from context and options.
- * Returns undefined if correlationId is not available.
+ * Always returns fields - auto-generates correlationId if needed.
  */
 export function buildCommonFields(
   observerName: string,
   options?: BaseObserverOptions
-): CommonFields | undefined {
+): CommonFields {
   const context = getCurrentContext();
   const correlationId = resolveCorrelationId(observerName, options?.correlationId);
-  
-  if (!correlationId) return undefined;
 
   return {
     correlationId,
@@ -166,18 +204,25 @@ export function buildCommonFields(
 }
 
 /**
- * Extract BaseObserverOptions from ExecutionContext or pass through if already options
+ * Extract BaseObserverOptions from ExecutionContext or pass through if already options.
+ * 
+ * When an ExecutionContext (the handler context with event/request/response) is passed,
+ * extracts correlationId from executionContext first (the AsyncLocalStorage context),
+ * then falls back to actor.correlationId.
  */
 export function extractObserverOptions(
   ctx?: ExecutionContext | BaseObserverOptions
 ): BaseObserverOptions {
   if (!ctx) return {};
 
+  // Check if this is a handler ExecutionContext (has event and lambdaContext)
   if ('event' in ctx && 'lambdaContext' in ctx) {
-    const execCtx = ctx as ExecutionContext;
+    const handlerCtx = ctx as ExecutionContext;
     return {
-      correlationId: execCtx.actor?.correlationId,
-      actor: execCtx.actor,
+      // Prefer executionContext.correlationId (the real trace ID from AsyncLocalStorage)
+      // Fall back to actor.correlationId for backward compatibility
+      correlationId: handlerCtx.executionContext?.correlationId ?? handlerCtx.actor?.correlationId,
+      actor: handlerCtx.actor,
     };
   }
 

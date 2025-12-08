@@ -226,7 +226,18 @@ describe('BaseSQSEventProcessor', () => {
       await processor.LambdaHandler(mockSQSEvent, mockContext);
 
       expect(initializeSpy).toHaveBeenCalledWith(mockSQSEvent, mockContext);
-      expect(processSpy).toHaveBeenCalledWith(mockSQSEvent, mockContext);
+      // process now receives a third argument: the EventProcessorContext
+      expect(processSpy).toHaveBeenCalledWith(
+        mockSQSEvent,
+        mockContext,
+        expect.objectContaining({
+          event: mockSQSEvent,
+          lambdaContext: mockContext,
+          executionContext: expect.objectContaining({
+            correlationId: expect.any(String),
+          }),
+        })
+      );
     });
   });
 

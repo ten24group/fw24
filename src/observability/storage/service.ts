@@ -10,7 +10,7 @@ import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { BaseEntityService } from '../../entity/base-service';
 import { Pagination } from '../../entity/query-types';
 import { ObservabilityLogEntitySchema, ObservabilityLogSchema } from './log-entity';
-import { ConfigManager } from '../config';
+import { ObservabilityConfigManager } from '../config';
 import { CreateEntityItemTypeFromSchema, EntityRecordTypeFromSchema } from '../../entity/base-entity';
 
 type ObservabilityLogCreateItem = CreateEntityItemTypeFromSchema<ObservabilityLogSchema>;
@@ -21,7 +21,7 @@ type ObservabilityLogCreateItem = CreateEntityItemTypeFromSchema<ObservabilityLo
 export interface ReconstructedSpan {
   spanId: string;
   traceId: string;
-  parentSpanId?: string;
+  parentLogId?: string;
   operation: string;
   startTime: number;
   endTime?: number;
@@ -61,7 +61,7 @@ export class ObservabilityLogService extends BaseEntityService<ObservabilityLogS
   private static instance: ObservabilityLogService | null = null;
 
   private constructor() {
-    const config = ConfigManager.fromEnvironment();
+    const config = ObservabilityConfigManager.fromEnvironment();
     super(
       ObservabilityLogEntitySchema,
       {
@@ -257,7 +257,7 @@ export class ObservabilityLogService extends BaseEntityService<ObservabilityLogS
       spanMap.set(spanId, {
         spanId,
         traceId: String(startRecord.correlationId ?? ''),
-        parentSpanId: startRecord.parentLogId ? String(startRecord.parentLogId) : undefined,
+        parentLogId: startRecord.parentLogId ? String(startRecord.parentLogId) : undefined,
         operation: String(startRecord.operation ?? 'unknown'),
         startTime: Number(startRecord.timestampMs ?? 0),
         endTime: endRecord?.timestampMs ? Number(endRecord.timestampMs) : undefined,
@@ -278,8 +278,8 @@ export class ObservabilityLogService extends BaseEntityService<ObservabilityLogS
     // Build tree
     const roots: ReconstructedSpan[] = [];
     for (const span of spanMap.values()) {
-      if (span.parentSpanId && spanMap.has(span.parentSpanId)) {
-        spanMap.get(span.parentSpanId)!.children.push(span);
+      if (span.parentLogId && spanMap.has(span.parentLogId)) {
+        spanMap.get(span.parentLogId)!.children.push(span);
       } else {
         roots.push(span);
       }

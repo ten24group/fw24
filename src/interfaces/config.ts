@@ -5,6 +5,8 @@ import type { DIContainer } from "../di/container";
 import type { ILayerVersion } from "aws-cdk-lib/aws-lambda";
 import { IDIContainer } from "./di";
 import { AuthorizerTypeMetadata, IControllerConfig } from '../decorators';
+import type { IFunctionResourceAccess, TPolicyStatementOrProps, TImportedPolicy } from '../constructs/lambda-function';
+import type { IDynamoDBConfig } from '../constructs/dynamodb';
 
 /**
  * Configuration for smart duplicated field detection.
@@ -210,6 +212,82 @@ export interface ITableUIAutoGenerationConfig {
     segmentAutoGeneration?: ISegmentAutoGenerationConfig;
 }
 
+/**
+ * Application-level observability configuration (CDK/Infrastructure)
+ * 
+ * This configures INFRASTRUCTURE only:
+ * - Creates DynamoDB table with 8 GSIs (optional)
+ * - Grants all Lambdas access to the table
+ * - Sets OBSERVABILITY_TABLE_NAME env var
+ * 
+ * Runtime configuration (backends, data protection, sampling) is done via DI layer:
+ * ```typescript
+ * // In src/di.ts:
+ * import { registerObservabilityConfig } from '@ten24group/fw24/observability';
+ * registerObservabilityConfig(DIContainer.ROOT, {
+ *   backends: ['dynamodb', 'cloudwatch', 'otel'],  // Which backends to use
+ *   dataProtection: { enabled: true },
+ *   sampling: { enabled: false },
+ * });
+ * ```
+ * 
+ * @example With DynamoDB table (recommended)
+ * ```typescript
+ * const app = new Application({
+ *   observability: {
+ *     table: { name: 'observability' },
+ *   },
+ * });
+ * ```
+ * 
+ * @example Without table (CloudWatch/OTEL only)
+ * ```typescript
+ * const app = new Application({
+ *   observability: {
+ *     enabled: true,  // No table config
+ *   },
+ * });
+ * // Then in DI layer: backends: ['cloudwatch', 'otel']
+ * ```
+ * 
+ * @example With search indexing
+ * ```typescript
+ * const app = new Application({
+ *   observability: {
+ *     table: {
+ *       name: 'observability',
+ *       searchIndexing: [{
+ *         enabled: true,
+ *         engineConfig: { type: 'meili', host: '...', masterKey: '...' },
+ *       }],
+ *     },
+ *     stackName: 'observability',  // Custom stack
+ *   },
+ * });
+ * ```
+ * 
+ * IMPORTANT: DO NOT enable audit on the observability table - it would be recursive!
+ */
+export type IObservabilityConfig = Omit<IDynamoDBConfig, 'table'> & {
+    /** Enable observability infrastructure (default: true if config provided) */
+    enabled?: boolean;
+    
+    /** TTL in days for log retention (default: 90, only used if table is configured) */
+    ttlDays?: number;
+    
+    /**
+     * DynamoDB table configuration (OPTIONAL).
+     * If omitted, observability works with CloudWatch/OTEL only.
+     * Framework provides default props (pk/sk, 8 GSIs) - you can override via `props`.
+     * 
+     * WARNING: DO NOT configure `audit` on this table - it would be recursive!
+     */
+    table?: Omit<IDynamoDBConfig['table'], 'props'> & {
+        /** Override/extend default table props (pk/sk, 8 GSIs provided by default) */
+        props?: Partial<IDynamoDBConfig['table']['props']>;
+    };
+};
+
 export interface IApplicationConfig {
     name?: string;
     region?: string;
@@ -284,6 +362,13 @@ export interface IApplicationConfig {
     functionProps?: Omit<NodejsFunctionProps, 'layers'> & {
         readonly layers?: Array<ILayerVersion | string>;
     }
+
+    /**
+     * Observability infrastructure configuration.
+     * Creates DynamoDB table and grants access to all Lambdas.
+     */
+    observability?: IObservabilityConfig;
+    
     /**
      * The timeout duration for the Lambda function in seconds.
      * Use this timeout to avoid importing the duration class from aws-cdk-lib.

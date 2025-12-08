@@ -2,7 +2,7 @@
  * Utility functions for automatic source tracking
  */
 
-import { ConfigManager } from '../config';
+import { ObservabilityConfigManager } from '../config';
 
 /**
  * Auto-detect the source of an observability event
@@ -51,10 +51,18 @@ function getCallerInfo(): string | undefined {
 
   try {
     Error.prepareStackTrace = (_, stack) => stack;
-    const stack = new Error().stack as unknown as NodeJS.CallSite[];
+    const error = new Error();
+    const stack = error.stack as unknown;
+
+    // Verify we actually got an array (CallSite[]), not a string
+    if (!Array.isArray(stack)) {
+      return undefined;
+    }
+
+    const callSites = stack as NodeJS.CallSite[];
 
     // Skip our own utility files
-    for (const frame of stack) {
+    for (const frame of callSites) {
       const fileName = frame.getFileName();
       if (!fileName) continue;
 
@@ -133,7 +141,7 @@ let _cachedEnvTags: Record<string, string> | null = null;
  * 
  * NOTE: Most of these are AWS runtime environment variables that are
  * automatically set by the Lambda runtime, not application config.
- * Application-level config (like serviceName) comes from ConfigManager.
+ * Application-level config (like serviceName) comes from ObservabilityConfigManager.
  */
 export function getEnvironmentTags(): Record<string, string> {
   if (_cachedEnvTags !== null) {
@@ -164,8 +172,8 @@ export function getEnvironmentTags(): Record<string, string> {
     tags.stage = stage;
   }
 
-  // Service name - from ConfigManager (single source of truth)
-  const serviceName = ConfigManager.fromEnvironment().serviceName;
+  // Service name - from ObservabilityConfigManager (single source of truth)
+  const serviceName = ObservabilityConfigManager.fromEnvironment().serviceName;
   if (serviceName) {
     tags.service = serviceName;
   }

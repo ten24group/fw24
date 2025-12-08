@@ -24,9 +24,31 @@
  */
 
 import { SpanObserver, SpanOptions } from '../observers/span';
-import { createControllerSource, createServiceSource, createQueueSource, createTaskSource } from '../utils/source-utils';
+import { createControllerSource, createServiceSource, createQueueSource, createTaskSource, detectSource } from '../utils/source-utils';
 import { safeSerialize } from '../utils/payload';
 import { normalizeError } from '../observers/base';
+
+/**
+ * Auto-detect source type from class name
+ */
+function autoDetectSourceType(className: string): 'controller' | 'service' | 'queue' | 'task' | 'handler' {
+  const lowerName = className.toLowerCase();
+  
+  if (lowerName.includes('controller')) {
+    return 'controller';
+  }
+  if (lowerName.includes('service')) {
+    return 'service';
+  }
+  if (lowerName.includes('queue') || lowerName.includes('queuehandler')) {
+    return 'queue';
+  }
+  if (lowerName.includes('task') || lowerName.includes('taskhandler')) {
+    return 'task';
+  }
+  
+  return 'handler';
+}
 
 export interface TracedOptions {
   /** Custom span name (defaults to ClassName.methodName) */
@@ -41,7 +63,15 @@ export interface TracedOptions {
   captureArgs?: boolean;
   /** Whether to capture return value in span attributes */
   captureResult?: boolean;
-  /** Source type for the span (controller, service, queue, task, etc.) */
+  /** 
+   * Source type for the span (auto-detected if not provided)
+   * Auto-detection rules:
+   * - *Controller → 'controller'
+   * - *Service → 'service'
+   * - *Queue, *QueueHandler → 'queue'
+   * - *Task, *TaskHandler → 'task'
+   * - Default → 'handler'
+   */
   sourceType?: 'controller' | 'service' | 'handler' | 'queue' | 'task';
 }
 
@@ -66,9 +96,12 @@ export function Traced(options: TracedOptions = {}) {
     const methodName = String(propertyKey);
     const spanName = options.name ?? `${className}.${methodName}`;
 
-    // Determine source based on sourceType option
+    // Auto-detect source type if not explicitly provided
+    const sourceType = options.sourceType ?? autoDetectSourceType(className);
+    
+    // Determine source based on sourceType
     let source: string;
-    switch (options.sourceType) {
+    switch (sourceType) {
       case 'controller':
         source = createControllerSource(className, methodName);
         break;
@@ -76,7 +109,7 @@ export function Traced(options: TracedOptions = {}) {
         source = createServiceSource(className, methodName);
         break;
       case 'queue':
-        source = createQueueSource(className, methodName);  // className as queue name, methodName as handler
+        source = createQueueSource(className, methodName);
         break;
       case 'task':
         source = createTaskSource(className, methodName);

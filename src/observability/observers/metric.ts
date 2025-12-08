@@ -148,7 +148,6 @@ export class MetricObserver {
     }
 
     const fields = buildCommonFields(OBSERVER_NAME, options);
-    if (!fields) return undefined;
 
     return captureEvent(fields, {
       type: 'metric',
@@ -189,7 +188,6 @@ export class MetricObserver {
     }
 
     const fields = buildCommonFields(OBSERVER_NAME, options);
-    if (!fields) return undefined;
 
     return captureEvent(fields, {
       type: 'metric',

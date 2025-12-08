@@ -68,14 +68,36 @@ export const handler = async (event: DynamoDBStreamEvent): Promise<void> => {
             }
 
             // Continue processing for all non-audit records
+            const messageAttributes: Record<string, any> = {
+                eventType: record.eventName
+            };
+
+            // Extract trace context from DynamoDB record (try NewImage first, then OldImage)
+            const image = record.dynamodb?.NewImage || record.dynamodb?.OldImage;
+            if (image) {
+                // Try _actor field (Map -> correlationId String)
+                const actorMap = image._actor?.M;
+                const correlationId = actorMap?.correlationId?.S;
+                
+                if (correlationId) {
+                    messageAttributes.correlationId = correlationId;
+                    
+                    // Optional trace fields
+                    if (actorMap.parentLogId?.S) {
+                        messageAttributes.parentLogId = actorMap.parentLogId.S;
+                    }
+                    if (actorMap.sampled?.BOOL !== undefined) {
+                        messageAttributes.sampled = actorMap.sampled.BOOL;
+                    }
+                }
+            }
+
             const message = {
                 eventID: record.eventID,
                 eventName: record.eventName,
                 eventSource: record.eventSource,
                 dynamodb: record.dynamodb,
-                messageAttributes: {
-                    eventType: record.eventName
-                },
+                messageAttributes,
                 ...fifoProps // Add FIFO properties only if FIFO is enabled
             };
 

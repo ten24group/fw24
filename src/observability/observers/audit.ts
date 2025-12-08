@@ -58,7 +58,6 @@ export class AuditObserver {
   ): string | undefined {
     const options = extractObserverOptions(ctx);
     const fields = buildCommonFields(OBSERVER_NAME, options);
-    if (!fields) return undefined;
 
     return captureEvent(fields, {
       type: 'audit.entity',
@@ -83,7 +82,6 @@ export class AuditObserver {
   ): string | undefined {
     const options = extractObserverOptions(ctx);
     const fields = buildCommonFields(OBSERVER_NAME, options);
-    if (!fields) return undefined;
 
     return captureEvent(fields, {
       type: 'audit.entity',
@@ -110,7 +108,6 @@ export class AuditObserver {
   ): string | undefined {
     const options = extractObserverOptions(ctx);
     const fields = buildCommonFields(OBSERVER_NAME, options);
-    if (!fields) return undefined;
 
     // Deletions are critical - must not be sampled out
     return captureEvent(fields, {
@@ -138,7 +135,6 @@ export class AuditObserver {
   ): Promise<string | undefined> {
     const options = extractObserverOptions(ctx);
     const fields = buildCommonFields(OBSERVER_NAME, options);
-    if (!fields) return undefined;
 
     return captureEventAsync(fields, {
       type: 'audit.entity',
@@ -162,7 +158,6 @@ export class AuditObserver {
   ): string | undefined {
     const options = extractObserverOptions(ctx);
     const fields = buildCommonFields(OBSERVER_NAME, options);
-    if (!fields) return undefined;
 
     return captureEvent(fields, {
       type: 'audit.entity',
@@ -186,7 +181,6 @@ export class AuditObserver {
   ): string | undefined {
     const options = extractObserverOptions(ctx);
     const fields = buildCommonFields(OBSERVER_NAME, options);
-    if (!fields) return undefined;
 
     return captureEvent(fields, {
       type: 'audit.entity',
@@ -223,7 +217,6 @@ export class AuditObserver {
       tags: options.tags,
       metadata: options.metadata,
     });
-    if (!fields) return undefined;
 
     return captureEvent(fields, {
       type: 'audit',
@@ -259,7 +252,6 @@ export class AuditObserver {
       tags: options.tags,
       metadata: options.metadata,
     });
-    if (!fields) return undefined;
 
     // Compliance events are critical - must not be sampled out
     return captureEvent(fields, {
@@ -298,7 +290,6 @@ export class AuditObserver {
       tags: options.tags,
       metadata: options.metadata,
     });
-    if (!fields) return undefined;
 
     return captureEventAsync(fields, {
       type: 'audit.compliance',
@@ -331,7 +322,6 @@ export class AuditObserver {
       tags: options.tags,
       metadata: options.metadata,
     });
-    if (!fields) return undefined;
 
     return captureEvent(fields, {
       type: 'audit.access',

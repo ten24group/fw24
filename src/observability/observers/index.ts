@@ -1,16 +1,14 @@
 /**
- * Specialized Observers
+ * Core Observers
  * 
- * High-level APIs built on top of the core Observer
+ * Essential observability primitives. Applications can build specialized
+ * observers (WorkflowObserver, DecisionObserver, etc.) on top of these core primitives.
  */
 
-// Observer implementations
+// Core Observer implementations
 export { SpanObserver, withSpan, SpanOptions, ISpanObserver } from './span';
 export { AuditObserver, AuditObserverOptions } from './audit';
 export { MetricObserver, MetricOptions } from './metric';
-export { WorkflowObserver, WorkflowOptions, StepOptions, IWorkflowObserver } from './workflow';
-export { DecisionObserver, DecisionRule } from './decision';
-export { AccessLogObserver, AccessLogOptions } from './access-log';
 export { LogObserver, LogOptions, ChildLogObserver } from './log';
 
 // Base utilities for building custom observers

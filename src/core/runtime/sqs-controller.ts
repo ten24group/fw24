@@ -1,169 +1,113 @@
 import { SQSEvent, Context } from "aws-lambda";
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
-import { AuditContext, QueueAuditContext } from '../../audit/interfaces';
-import { AuditCaptureService } from '../../audit/helpers/audit-helpers';
 import { IQueueConfig } from '../../decorators/queue';
-import { ObservabilityManager, SpanObserver, extractTraceContextFromSqs } from '../../observability';
+import { SpanObserver } from '../../observability';
+import {
+  ExecutionContextData,
+  createExecutionContext,
+  runWithExecutionContext,
+  extractFromSqs,
+} from './execution-context';
+
+/**
+ * Queue execution context - contains queue-specific data AND execution context.
+ */
+export interface QueueExecutionContext {
+  /** The SQS event */
+  readonly event: SQSEvent;
+  /** Lambda context */
+  readonly lambdaContext: Context;
+  /** Execution context (also available via getCurrentExecutionContext()) */
+  readonly executionContext: ExecutionContextData;
+}
 
 /**
  * Base class for handling SQS events.
+ * 
+ * Generic TEvent allows subclasses to specify more specific event types
+ * while maintaining type safety.
+ * 
+ * All handler execution is wrapped in execution context.
  */
-abstract class QueueController extends AbstractLambdaHandler {
+abstract class QueueController<TEvent extends SQSEvent = SQSEvent> extends AbstractLambdaHandler {
 
-  protected initialize(_event: SQSEvent, _context: Context): Promise<any> {
+  protected initialize(_event: TEvent, _context: Context): Promise<void> {
     return Promise.resolve();
   }
 
-  abstract process(event: any, context: any): Promise<any>;
-
   /**
-   * Creates audit context for the queue processing following the existing pattern
-   * @param event - The SQS event
-   * @param context - The Lambda context
-   * @returns AuditContext or null if audit is disabled
+   * Process the queue event.
+   * @param event - The event
+   * @param context - The Lambda context  
+   * @param ctx - Queue execution context
    */
-  protected makeAuditContext(event: SQSEvent, context: Context): AuditContext | null {
-    const config = this.getQueueConfig();
-    if (!config?.audit?.enabled) return null;
+  abstract process(event: TEvent, context: Context, ctx?: QueueExecutionContext): Promise<void>;
 
-    const correlationId = this.extractCorrelationFromMessages(event) || context.awsRequestId;
-    const operationName = this.getQueueName() || 'process_batch';
-    const operationId = `${this.constructor.name}.${operationName}`;
-
-    return {
-      enabled: true,
-      logType: 'event',
-      subType: 'queue_processing',
-      entityName: this.constructor.name,
-      operation: operationName,
-      category: config.audit.category,
-      correlation: {
-        correlationId,
-        operationId,
-        parentOperationId: this.extractParentOperationFromMessages(event) || undefined,
-        operationType: 'queue',
-        operationName,
-        startTimestamp: new Date().toISOString()
-      },
-      auditConfig: config.audit
-    };
-  }
-
-  /**
-   * Applications override this to extract correlation from their message format
-   */
-  protected extractCorrelationFromMessages(event: SQSEvent): string | null {
-    try {
-      const firstMessage = JSON.parse(event.Records[ 0 ].body);
-      return firstMessage.correlationId || null;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Applications override this to extract parent operation from their message format
-   */
-  protected extractParentOperationFromMessages(event: SQSEvent): string | null {
-    try {
-      const firstMessage = JSON.parse(event.Records[ 0 ].body);
-      return firstMessage.parentOperationId || null;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Captures audit log for queue processing start
-   */
-  protected async captureStart(auditContext: AuditContext, queueContext: QueueAuditContext): Promise<void> {
-    await AuditCaptureService.captureStart(auditContext, queueContext);
-  }
-
-  /**
-   * Captures audit log for queue processing end (success or error)
-   */
-  protected async captureEnd(auditContext: AuditContext, _result: any, error: Error | null): Promise<void> {
-    await AuditCaptureService.captureEnd(auditContext, _result, error);
-  }
-
-  /**
-   * Gets the queue configuration
-   */
   protected getQueueConfig(): IQueueConfig {
     return Reflect.get(this, 'queueConfig') || {};
   }
 
-  /**
-   * Gets the queue name
-   */
   protected getQueueName(): string | undefined {
     return Reflect.get(this, 'queueName') as string | undefined;
   }
 
-  /**
-   * Lambda handler for the queue.
-   * Handles incoming SQS events.
-   * @param event - The event object from the SQS.
-   * @param context - The context object from the SQS.
-   * @returns The SQS response object.
-   */
-  async LambdaHandler(event: SQSEvent, context: Context): Promise<any> {
-    this.logger.debug("SQS-LambdaHandler Received event:", JSON.stringify(event, null, 2));
-    ObservabilityManager.initializeInvocation();
+  async LambdaHandler(event: TEvent, context: Context): Promise<void> {
+    this.logger.debug("SQS-LambdaHandler received", { recordCount: event.Records?.length });
+    this.initializeObservability();
+    
     const queueName = this.getQueueName() || this.constructor.name;
-    const messageAttributes = event.Records?.[ 0 ]?.messageAttributes || {};
-    const traceContext = extractTraceContextFromSqs(messageAttributes);
+    const messageAttributes = event.Records?.[0]?.messageAttributes || {};
+    const traceContext = extractFromSqs(messageAttributes);
     const correlationId = traceContext?.correlationId || context.awsRequestId || crypto.randomUUID();
-    const queueSpan = SpanObserver.start(`SQS ${queueName}`, {
+
+    // Create execution context
+    const execCtx = createExecutionContext({
       correlationId,
-      parentSpanId: traceContext?.parentLogId,
-      
-      attributes: {
-        'sqs.batchSize': event.Records.length,
-      },
+      parentLogId: traceContext?.parentLogId,
+      sampled: traceContext?.sampled,
+      source: `${this.constructor.name}.process`,
     });
-    let spanEnded = false;
-    const finalizeObservability = async (success: boolean, error?: Error) => {
-      if (!spanEnded) {
-        queueSpan.end({ success, error });
-        spanEnded = true;
+
+    // Run handler within execution context
+    return runWithExecutionContext(execCtx, async () => {
+      // Create span
+      const queueSpan = SpanObserver.start(`SQS ${queueName}`, {
+        correlationId,
+        parentLogId: traceContext?.parentLogId,
+        attributes: {
+          'sqs.queueName': queueName,
+          'sqs.batchSize': event.Records.length,
+        },
+      });
+
+      // Store span ID in execution context for child spans
+      execCtx.parentLogId = queueSpan.id;
+
+      // Build queue execution context
+      const ctx: QueueExecutionContext = {
+        event: event as SQSEvent,
+        lambdaContext: context,
+        executionContext: execCtx,
+      };
+
+      let spanEnded = false;
+      const endSpan = async (success: boolean, error?: Error): Promise<void> => {
+        if (!spanEnded) {
+          queueSpan.end({ success, error });
+          spanEnded = true;
+        }
+        await this.flushObservability();
+      };
+
+      try {
+        await this.initialize(event, context);
+        await this.process(event, context, ctx);
+        await endSpan(true);
+      } catch (error) {
+        await endSpan(false, error as Error);
+        throw error;
       }
-      await ObservabilityManager.flush();
-    };
-
-    // Create audit context
-    const auditContext = this.makeAuditContext(event, context);
-    const queueContext: QueueAuditContext = {
-      queueName: this.getQueueName(),
-      batchSize: event.Records.length,
-      messageIds: event.Records.map(r => r.messageId),
-      approximateReceiveCount: parseInt(event.Records[ 0 ].attributes?.ApproximateReceiveCount || '1')
-    };
-
-    if (auditContext) {
-      await this.captureStart(auditContext, queueContext);
-    }
-
-    try {
-      // hook for the application to initialize it's state, Dependencies, config etc
-      await this.initialize(event, context);
-      // Execute the associated route function
-      const result = await this.process(event, context);
-
-      if (auditContext) {
-        await this.captureEnd(auditContext, result, null);
-      }
-
-      await finalizeObservability(true);
-      return result;
-    } catch (error) {
-      if (auditContext) {
-        await this.captureEnd(auditContext, null, error as Error);
-      }
-      await finalizeObservability(false, error as Error);
-      throw error;
-    }
+    });
   }
 }
 

@@ -1,140 +1,101 @@
+import { Context, ScheduledEvent } from "aws-lambda";
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
-import { AuditContext, TaskAuditContext } from '../../audit/interfaces';
-import { AuditCaptureService } from '../../audit/helpers/audit-helpers';
 import { ITaskConfig } from '../../decorators/task';
-import { ObservabilityManager, SpanObserver } from '../../observability';
+import { SpanObserver } from '../../observability';
+import {
+  ExecutionContextData,
+  createExecutionContext,
+  runWithExecutionContext,
+} from './execution-context';
+
+/**
+ * Task execution context - contains task-specific data AND execution context.
+ */
+export interface TaskExecutionContext {
+  /** The scheduled event (if available) */
+  readonly event?: ScheduledEvent;
+  /** Lambda context (if available) */
+  readonly lambdaContext?: Context;
+  /** Execution context (also available via getCurrentExecutionContext()) */
+  readonly executionContext: ExecutionContextData;
+}
 
 /**
  * Base class for handling Schedule Tasks.
+ * 
+ * All handler execution is wrapped in execution context.
  */
 abstract class TaskController extends AbstractLambdaHandler {
 
-  protected initialize(): Promise<any> {
+  protected initialize(): Promise<void> {
     return Promise.resolve();
   }
 
-  abstract process(): Promise<any>;
-
   /**
-   * Creates audit context for the task execution following the existing pattern
-   * @returns AuditContext or null if audit is disabled
+   * Process the scheduled task.
+   * @param ctx - Task execution context
    */
-  protected makeAuditContext(): AuditContext | null {
-    const config = this.getTaskConfig();
-    if (!config?.audit?.enabled) return null;
+  abstract process(ctx?: TaskExecutionContext): Promise<void>;
 
-    const operationName = this.getTaskName() || 'execute';
-    const operationId = `${this.constructor.name}.${operationName}`;
-    const correlationId = `${operationId}-${Date.now()}`;
-
-    return {
-      enabled: true,
-      logType: 'event',
-      subType: 'task_execution',
-      entityName: this.constructor.name,
-      operation: operationName,
-      category: config.audit.category,
-      actor: {
-        actorType: 'service',
-        actorId: 'scheduler',
-        authMethod: 'system',
-        requestId: correlationId,
-        timestamp: new Date().toISOString()
-      },
-      correlation: {
-        correlationId,
-        operationId,
-        parentOperationId: undefined, // Tasks typically don't have parents
-        operationType: 'task',
-        operationName,
-        startTimestamp: new Date().toISOString()
-      },
-      auditConfig: config.audit
-    };
-  }
-
-  /**
-   * Captures audit log for task execution start
-   */
-  protected async captureStart(auditContext: AuditContext, taskContext: TaskAuditContext): Promise<void> {
-    await AuditCaptureService.captureStart(auditContext, taskContext);
-  }
-
-  /**
-   * Captures audit log for task execution end (success or error)
-   */
-  protected async captureEnd(auditContext: AuditContext, _result: any, error: Error | null): Promise<void> {
-    await AuditCaptureService.captureEnd(auditContext, _result, error);
-  }
-
-  /**
-   * Gets the task configuration
-   */
   protected getTaskConfig(): ITaskConfig {
     return (Reflect.get(this, 'taskConfig') as ITaskConfig) || { schedule: '' };
   }
 
-  /**
-   * Gets the task name
-   */
   protected getTaskName(): string | undefined {
     return Reflect.get(this, 'taskName') as string | undefined;
   }
 
-  /**
-   * Lambda handler for the task.
-   */
-  async LambdaHandler(): Promise<any> {
-    ObservabilityManager.initializeInvocation();
+  async LambdaHandler(_event?: ScheduledEvent, context?: Context): Promise<void> {
+    this.initializeObservability();
+    
     const taskName = this.getTaskName() || this.constructor.name;
-    const correlationId = `task-${taskName}-${Date.now()}`;
-    const taskSpan = SpanObserver.start(`Task ${taskName}`, {
+    const correlationId = context?.awsRequestId || `task-${taskName}-${Date.now()}`;
+
+    // Create execution context
+    const execCtx = createExecutionContext({
       correlationId,
-      attributes: {
-        'task.name': taskName,
-      },
+      source: `${this.constructor.name}.process`,
     });
-    let spanEnded = false;
-    const finalizeObservability = async (success: boolean, error?: Error) => {
-      if (!spanEnded) {
-        taskSpan.end({ success, error });
-        spanEnded = true;
+
+    // Run handler within execution context
+    return runWithExecutionContext(execCtx, async () => {
+      // Create span
+      const taskSpan = SpanObserver.start(`Task ${taskName}`, {
+        correlationId,
+        attributes: {
+          'task.name': taskName,
+          'task.schedule': this.getTaskConfig().schedule,
+        },
+      });
+
+      // Store span ID in execution context for child spans
+      execCtx.parentLogId = taskSpan.id;
+
+      // Build task execution context
+      const ctx: TaskExecutionContext = {
+        event: _event,
+        lambdaContext: context,
+        executionContext: execCtx,
+      };
+
+      let spanEnded = false;
+      const endSpan = async (success: boolean, error?: Error): Promise<void> => {
+        if (!spanEnded) {
+          taskSpan.end({ success, error });
+          spanEnded = true;
+        }
+        await this.flushObservability();
+      };
+
+      try {
+        await this.initialize();
+        await this.process(ctx);
+        await endSpan(true);
+      } catch (error) {
+        await endSpan(false, error as Error);
+        throw error;
       }
-      await ObservabilityManager.flush();
-    };
-
-    // Create audit context
-    const auditContext = this.makeAuditContext();
-    const taskContext: TaskAuditContext = {
-      taskName: this.getTaskName(),
-      schedule: this.getTaskConfig().schedule,
-      triggerSource: 'scheduled',
-      environment: process.env.NODE_ENV
-    };
-
-    if (auditContext) {
-      await this.captureStart(auditContext, taskContext);
-    }
-
-    try {
-      // hook for the application to initialize it's state, Dependencies, config etc
-      await this.initialize();
-      // Execute the associated function
-      const result = await this.process();
-
-      if (auditContext) {
-        await this.captureEnd(auditContext, result, null);
-      }
-
-      await finalizeObservability(true);
-      return result;
-    } catch (error) {
-      if (auditContext) {
-        await this.captureEnd(auditContext, null, error as Error);
-      }
-      await finalizeObservability(false, error as Error);
-      throw error;
-    }
+    });
   }
 }
 

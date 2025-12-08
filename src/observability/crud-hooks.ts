@@ -4,8 +4,8 @@
  * These can be called from crud-service.ts to emit observability events.
  * Uses AuditObserver for entity audits and SpanObserver for detailed tracing.
  * 
- * NOTE: All methods require a correlationId in the context. Without it,
- * they will log a warning and skip the observability event.
+ * NOTE: Methods will auto-generate correlationId if not in context,
+ * logging a warning to encourage proper context establishment.
  */
 
 import { Actor } from '../core/types/execution-context';
@@ -30,13 +30,9 @@ export class CrudObservabilityHooks {
     entityId: string,
     context?: CrudObservabilityContext,
   ): void {
-    if (!context?.correlationId) {
-      logger.debug(`captureEntityRead(${entityName}): No correlationId, skipping audit`);
-      return;
-    }
     AuditObserver.entityRead(entityName, entityId, {
-      correlationId: context.correlationId,
-      actor: context.actor,
+      correlationId: context?.correlationId,
+      actor: context?.actor,
     });
   }
 
@@ -49,13 +45,9 @@ export class CrudObservabilityHooks {
     data: unknown,
     context?: CrudObservabilityContext,
   ): void {
-    if (!context?.correlationId) {
-      logger.debug(`captureEntityCreate(${entityName}): No correlationId, skipping audit`);
-      return;
-    }
     AuditObserver.entityCreate(entityName, entityId, data, {
-      correlationId: context.correlationId,
-      actor: context.actor,
+      correlationId: context?.correlationId,
+      actor: context?.actor,
     });
   }
 
@@ -68,13 +60,9 @@ export class CrudObservabilityHooks {
     changes: { before?: unknown; after?: unknown; diff?: unknown },
     context?: CrudObservabilityContext,
   ): void {
-    if (!context?.correlationId) {
-      logger.debug(`captureEntityUpdate(${entityName}): No correlationId, skipping audit`);
-      return;
-    }
     AuditObserver.entityUpdate(entityName, entityId, changes, {
-      correlationId: context.correlationId,
-      actor: context.actor,
+      correlationId: context?.correlationId,
+      actor: context?.actor,
     });
   }
 
@@ -87,13 +75,9 @@ export class CrudObservabilityHooks {
     deletedData?: unknown,
     context?: CrudObservabilityContext,
   ): void {
-    if (!context?.correlationId) {
-      logger.debug(`captureEntityDelete(${entityName}): No correlationId, skipping audit`);
-      return;
-    }
     AuditObserver.entityDelete(entityName, entityId, deletedData, {
-      correlationId: context.correlationId,
-      actor: context.actor,
+      correlationId: context?.correlationId,
+      actor: context?.actor,
     });
   }
 
@@ -106,13 +90,9 @@ export class CrudObservabilityHooks {
     resultCount: number,
     context?: CrudObservabilityContext,
   ): void {
-    if (!context?.correlationId) {
-      logger.debug(`captureEntityQuery(${entityName}): No correlationId, skipping audit`);
-      return;
-    }
     AuditObserver.entityList(entityName, filters, resultCount, {
-      correlationId: context.correlationId,
-      actor: context.actor,
+      correlationId: context?.correlationId,
+      actor: context?.actor,
     });
   }
 
@@ -120,20 +100,16 @@ export class CrudObservabilityHooks {
    * Create a span for entity operation (for more detailed tracing)
    * 
    * @returns ISpanObserver instance for tracking the operation.
-   *          Returns NoOp span if no correlationId (will log debug warning).
+   *          Auto-generates correlationId if not in context.
    */
   static createEntitySpan(
     operation: string,
     entityName: string,
     context?: CrudObservabilityContext,
   ): ISpanObserver {
-    if (!context?.correlationId) {
-      logger.debug(`createEntitySpan(${entityName}.${operation}): No correlationId, returning NoOp span`);
-    }
     return SpanObserver.start(`${entityName}.${operation}`, {
       correlationId: context?.correlationId,
-      // Note: parentSpanId maps to parentLogId in the context
-      parentSpanId: context?.parentLogId,
+      parentLogId: context?.parentLogId,
       level: 'debug',
       attributes: {
         'entity.name': entityName,
@@ -156,10 +132,6 @@ export class CrudObservabilityHooks {
     count: number,
     context?: CrudObservabilityContext,
   ): void {
-    if (!context?.correlationId) {
-      logger.debug(`captureEntityBulkCreate(${entityName}): No correlationId, skipping audit`);
-      return;
-    }
     AuditObserver.record({
       operation: `${entityName}.bulkCreate`,
       entityName,
@@ -168,8 +140,8 @@ export class CrudObservabilityHooks {
         count,
       },
       level: 'info',
-      correlationId: context.correlationId,
-      actor: context.actor,
+      correlationId: context?.correlationId,
+      actor: context?.actor,
     });
   }
 
@@ -182,10 +154,6 @@ export class CrudObservabilityHooks {
     count: number,
     context?: CrudObservabilityContext,
   ): void {
-    if (!context?.correlationId) {
-      logger.debug(`captureEntityBulkUpdate(${entityName}): No correlationId, skipping audit`);
-      return;
-    }
     AuditObserver.record({
       operation: `${entityName}.bulkUpdate`,
       entityName,
@@ -194,8 +162,8 @@ export class CrudObservabilityHooks {
         count,
       },
       level: 'info',
-      correlationId: context.correlationId,
-      actor: context.actor,
+      correlationId: context?.correlationId,
+      actor: context?.actor,
     });
   }
 
@@ -208,10 +176,6 @@ export class CrudObservabilityHooks {
     count: number,
     context?: CrudObservabilityContext,
   ): void {
-    if (!context?.correlationId) {
-      logger.debug(`captureEntityBulkDelete(${entityName}): No correlationId, skipping audit`);
-      return;
-    }
     AuditObserver.record({
       operation: `${entityName}.bulkDelete`,
       entityName,
@@ -220,24 +184,9 @@ export class CrudObservabilityHooks {
         count,
       },
       level: 'warn', // Bulk deletes are more significant
-      correlationId: context.correlationId,
-      actor: context.actor,
+      correlationId: context?.correlationId,
+      actor: context?.actor,
     });
   }
 
-  // ============================================================================
-  // Aliases
-  // ============================================================================
-
-  /**
-   * Alias for captureEntityQuery for consistent naming
-   */
-  static captureEntityList(
-    entityName: string,
-    filters: Record<string, unknown>,
-    resultCount: number,
-    context?: CrudObservabilityContext,
-  ): void {
-    return this.captureEntityQuery(entityName, filters, resultCount, context);
-  }
 }

@@ -1,5 +1,5 @@
 import type { HttpRequestValidations, InputValidationRule } from "../validation";
-import type { AuditConfig } from "../audit/interfaces";
+import type { ControllerObservabilityConfig } from "../observability/controller-config";
 
 export interface Route {
   httpMethod: string;
@@ -13,7 +13,8 @@ export interface Route {
 	} | string;
   validations ?: InputValidationRule | HttpRequestValidations;
   target?: string;
-  audit?: AuditConfig;
+  /** Method-level observability configuration */
+  observability?: ControllerObservabilityConfig;
 }
 
 export type Routes = Route[];

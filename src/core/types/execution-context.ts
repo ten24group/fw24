@@ -1,22 +1,38 @@
 import { APIGatewayEvent, Context } from 'aws-lambda';
 import { Request, Response } from '../../interfaces';
+import type { ExecutionContextData } from '../runtime/execution-context';
 
-export interface ExecutionContext<TObservability = unknown, TDebugInfo = unknown> {
-  event: APIGatewayEvent;
-  lambdaContext: Context;
-  request: Request;
-  response: Response;
-  actor?: Actor; // current actor extracted from request context
-  observability?: TObservability; // TODO: observability, traces, metrics, etc.
-  debugInfo?: TDebugInfo; // TODO: debug info 
-  
-  // Simple actor enhancement method
+/**
+ * Handler execution context for API Gateway handlers.
+ * 
+ * Contains handler-specific data (request, response) plus the execution context.
+ * The execution context is also available via getCurrentExecutionContext().
+ */
+export interface ExecutionContext<TDebugInfo = unknown> {
+  readonly event: APIGatewayEvent;
+  readonly lambdaContext: Context;
+  readonly request: Request;
+  readonly response: Response;
+
+  /** Current actor extracted from request context */
+  actor?: Actor;
+
+  /** 
+   * Execution context - the framework context for cross-cutting concerns.
+   * Same object is available via getCurrentExecutionContext().
+   */
+  executionContext?: ExecutionContextData;
+
+  /** Debug info (for development) */
+  debugInfo?: TDebugInfo;
+
+  /** Simple actor enhancement method */
   enhanceActor?: (enhancement: Partial<Actor>) => void;
 }
 
 /**
- * Actor represents the entity performing an action
- * Focused on practical identity and authorization context
+ * Actor represents the entity performing an action.
+ * Focused on practical identity and authorization context.
  */
 export interface Actor {
   // Core identity
@@ -41,11 +57,11 @@ export interface Actor {
 
   // Auth-specific data nested
   cognito?: {
-    sub?: string; // Subject - unique user identifier
-    username?: string; // cognito:username claim
-    groups?: string[]; // cognito:groups claim (parsed)
-    customAttributes?: Record<string, any>; // custom:* claims
-    [ key: string ]: any; // For any other cognito-specific fields
+    sub?: string;
+    username?: string;
+    groups?: string[];
+    customAttributes?: Record<string, any>;
+    [ key: string ]: any;
   };
 
   apiKey?: {
@@ -74,4 +90,3 @@ export interface Actor {
   // Allow any additional fields
   [ key: string ]: any;
 }
- 

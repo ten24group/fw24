@@ -244,7 +244,9 @@ export interface TypeSpecificConfig {
  */
 export interface SamplingConfig {
   enabled: boolean;
-  rates: Record<ObservabilityLevel, number>;
+  /** Sampling rates by level name (0-1). Missing levels default to 1.0 (100%) */
+  rates?: Partial<Record<ObservabilityLevelString, number>>;
+  /** Sampling rates by operation pattern */
   operations?: Record<string, number>;
 }
 
@@ -264,10 +266,37 @@ export interface DynamoDBConfig {
 }
 
 /**
+ * Data protection configuration for observability events
+ * Reuses @hackylabs/deep-redact library for redaction
+ */
+export interface ObservabilityDataProtectionConfig {
+  /** Enable/disable data protection (default: true) */
+  enabled: boolean;
+  /** Keys to redact (strings or regex patterns) */
+  blacklistedKeys?: (string | RegExp)[];
+  /** 
+   * Fuzzy key matching - checks if blacklisted key is contained in actual key
+   * e.g., "pass" matches "password", "userPassword", etc.
+   * (default: true)
+   */
+  fuzzyKeyMatch?: boolean;
+  /** Case sensitive key matching (default: false) */
+  caseSensitiveKeyMatch?: boolean;
+  /** Replacement string (default: '[REDACTED]') */
+  replacement?: string;
+  /** 
+   * Fields to protect in ObservabilityEvent
+   * Default: ['data', 'attributes', 'metadata', 'context']
+   */
+  fields?: ('data' | 'attributes' | 'metadata' | 'context' | 'error')[];
+}
+
+
+/**
  * Main observability configuration
  * 
  * ALL fields are REQUIRED - no optional fields with fallbacks.
- * ConfigManager.fromEnvironment() provides defaults from env vars.
+ * ObservabilityConfigManager.fromEnvironment() provides defaults from env vars.
  */
 export interface ObservabilityConfig {
   /** Enable/disable observability system */
@@ -278,15 +307,12 @@ export interface ObservabilityConfig {
   sampling: SamplingConfig;
   /** Backend configurations */
   backends: ObservabilityBackendConfig[];
-  /** Type-specific overrides */
+  /** Type-specific overrides for core observers */
   types?: {
     span?: TypeSpecificConfig;
     metric?: TypeSpecificConfig;
     audit?: TypeSpecificConfig;
     log?: TypeSpecificConfig;
-    decision?: TypeSpecificConfig;
-    workflow?: TypeSpecificConfig;
-    access?: TypeSpecificConfig;
   };
 
   /** Service name (used by CloudWatch, OTEL) */
@@ -297,6 +323,9 @@ export interface ObservabilityConfig {
 
   /** DynamoDB configuration */
   dynamodb: DynamoDBConfig;
+
+  /** Data protection configuration */
+  dataProtection: ObservabilityDataProtectionConfig;
 }
 
 /**
@@ -305,44 +334,14 @@ export interface ObservabilityConfig {
 export const DefaultSamplingConfig: SamplingConfig = {
   enabled: false,
   rates: {
-    [ ObservabilityLevel.CRITICAL ]: 1,
-    [ ObservabilityLevel.ERROR ]: 1,
-    [ ObservabilityLevel.WARN ]: 1,
-    [ ObservabilityLevel.INFO ]: 1,
-    [ ObservabilityLevel.DEBUG ]: 1,
-    [ ObservabilityLevel.TRACE ]: 1,
-    [ ObservabilityLevel.OFF ]: 0,
+    critical: 1,
+    error: 1,
+    warn: 1,
+    info: 1,
+    debug: 1,
+    trace: 1,
   },
 };
-
-/**
- * Observation context for automatic context propagation
- * Used with AsyncLocalStorage for automatic injection into all observations
- * 
- * correlationId is REQUIRED - must be set when context is created
- */
-export interface ObservationContext {
-  /** Correlation ID for distributed tracing - REQUIRED */
-  correlationId: string;
-  /** Parent log ID for hierarchical relationships */
-  parentLogId?: string;
-  /** Actor from ExecutionContext */
-  actor?: Actor;
-  /** Additional tags to propagate */
-  tags?: Record<string, string>;
-  /** Source identifier */
-  source?: string;
-  /** Tenant ID (from Actor) */
-  tenantId?: string;
-  /** Session ID (from Actor) */
-  sessionId?: string;
-  /** 
-   * Whether this trace is sampled (for propagation headers).
-   * Extracted from incoming trace headers, used when creating outgoing headers.
-   * Defaults to true if not specified.
-   */
-  sampled?: boolean;
-}
 
 /**
  * Capture options for observe/capture methods

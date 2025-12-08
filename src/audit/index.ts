@@ -1,62 +1,29 @@
-export {
-  AuditLoggerType,
-  AuditLoggerConfig,
-  AuditOptions,
-  AuditEntry,
-  IAuditLogger,
-} from './interfaces';
+/**
+ * Audit Module - DynamoDB Stream Entity Auditing ONLY
+ * 
+ * For request/event/metrics logging, use the observability module directly.
+ */
+
+// ============================================================================
+// ENTITY FILTERING CONFIG
+// ============================================================================
+
+export { AUDIT_ENV_KEYS } from './interfaces';
+
+// ============================================================================
+// STREAM HANDLER
+// ============================================================================
 
 export {
-  DynamoDbAuditLogger,
-  CloudWatchAuditLogger,
-  AuditLoggerFactory,
-  ConsoleAuditLogger,
-  DummyAuditLogger,
-  DefaultAuditHandler,
-  DynamoDBAuditEntitySchema,
-  getChangedProperties,
-  AUDIT_ENV_KEYS,
+    DynamoDBStreamAuditLogger,
+    DynamoDBStreamAuditLogger as DefaultAuditHandler,
 } from './loggers';
 
-export {
-  DynamoDBAuditEntityService,
-} from './system/audit-entity-service';
+// ============================================================================
+// CHANGE DETECTION UTILITIES
+// ============================================================================
 
 export {
-  captureLog,
-  captureError,
-} from './helpers/audit-helpers';
-
-export type { CaptureLogOptions } from './helpers/audit-helpers';
-
-export {
-  type AuditConfig,
-  type AuditContext,
-  type CorrelationContext,
-  type RequestAuditContext,
-  type QueueAuditContext,
-  type TaskAuditContext,
-  type SamplingFunction
-} from './interfaces';
-
-export {
-  createHashBasedSampling,
-  createRandomSampling,
-  createAlwaysSample,
-  createNeverSample
-} from './helpers/sampling';
-
-export {
-  protectAuditData,
-  createRedactConfig
-} from './helpers/data-protection';
-
-export type { DataProtectionConfig, DeepRedactConfig } from './helpers/data-protection';
-
-export {
-  AuditCustomPageConfigs
-} from './system/ui-config';
-
-export {
-  DynamoDBAuditSystemController,
-} from './system/audit-controller';
+    getChangedProperties,
+    DEFAULT_IGNORED_FIELDS,
+} from './helpers/change-detection';

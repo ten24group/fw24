@@ -79,13 +79,6 @@ export function Audited(options: AuditedOptions = {}) {
     // Wrap method - handles both sync and async via result checking
     // This is more robust than checking constructor.name which can break with transpilation
     const wrappedMethod = function (this: unknown, ...args: unknown[]): unknown {
-      const correlationId = getCorrelationIdIfExists();
-
-      if (!correlationId) {
-        logger.warn(`@Audited on ${operation}: No correlationId. Establish context with runWithContext().`);
-        return (originalMethod as (...a: unknown[]) => unknown).apply(this, args);
-      }
-
       const startTime = Date.now();
 
       try {

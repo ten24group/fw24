@@ -2,7 +2,6 @@ import type { QueueProps } from "aws-cdk-lib/aws-sqs";
 import type { IQueueSubscriptions } from "../constructs/queue-lambda";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
 import type { ILambdaEnvConfig } from "../interfaces";
-import type { AuditConfig } from '../audit/interfaces';
 import { resolveAndExportHandler, setupDIModuleForController } from "./decorator-utils";
 
 /**
@@ -66,11 +65,6 @@ export type IQueueConfig = CommonLambdaHandlerOptions & {
 	 * The subscriptions for the queue.
 	 */
 	subscriptions?: IQueueSubscriptions;
-
-	/**
-	 * Audit configuration for this queue
-	 */
-	audit?: AuditConfig;
 	
 	/**
 	 * Skip automatic registration by QueueConstruct.

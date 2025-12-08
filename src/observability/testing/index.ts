@@ -40,9 +40,10 @@
 
 import { randomUUID } from 'crypto';
 import { Actor } from '../../core/types/execution-context';
-import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel, ObservationContext } from '../types';
+import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel, DefaultSamplingConfig } from '../types';
 import { ObservabilityManager } from '../manager';
 import {
+  ObservationContext,
   createObservationContext,
   runWithContext,
   runWithContextSync,
@@ -173,27 +174,15 @@ export function setupTestObservability(options?: {
   // Clear cached environment tags
   clearEnvironmentTagsCache();
 
-  // Create and register mock backend
+  // Create mock backend
   const mockBackend = new MockBackend({ minLevel: options?.minLevel });
 
-  // Initialize with mock backend - disable sampling for tests
-  ObservabilityManager.initialize(
+  // Initialize for testing with mock backend
+  ObservabilityManager.initializeForTesting(
     {
       enabled: options?.enabled ?? true,
       minLevel: options?.minLevel ?? ObservabilityLevel.TRACE,
-      sampling: {
-        enabled: false,
-        rates: {
-          [ ObservabilityLevel.TRACE ]: 1,
-          [ ObservabilityLevel.DEBUG ]: 1,
-          [ ObservabilityLevel.INFO ]: 1,
-          [ ObservabilityLevel.WARN ]: 1,
-          [ ObservabilityLevel.ERROR ]: 1,
-          [ ObservabilityLevel.CRITICAL ]: 1,
-          [ ObservabilityLevel.OFF ]: 0,
-        },
-      },
-      backends: [],
+      sampling: DefaultSamplingConfig,
     },
     [ mockBackend ]
   );
@@ -327,13 +316,17 @@ export function createTestActor(overrides?: Partial<Actor>): Actor {
 
 /**
  * Create a test observation context object
- * ObservationContext requires correlationId, we provide a default for convenience
  */
 export function createTestObservationContext(overrides?: Partial<ObservationContext>): ObservationContext {
-  const base: ObservationContext = {
-    correlationId: `test-${randomUUID()}`,
-    source: 'test',
-  };
-  return { ...base, ...overrides };
+  return createObservationContext(
+    overrides?.correlationId ?? `test-${randomUUID()}`,
+    {
+      source: overrides?.source ?? 'test',
+      actor: overrides?.actor,
+      tags: overrides?.tags,
+      sampled: overrides?.sampled,
+      parentLogId: overrides?.parentLogId,
+    }
+  );
 }
 

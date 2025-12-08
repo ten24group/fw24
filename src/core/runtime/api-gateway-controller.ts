@@ -10,9 +10,20 @@ import { ResponseContext } from "./response-context";
 import { ResponseConfig, mergeResponseConfig } from "./response-config";
 import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErrorHandler } from "../../errors/";
 import { ExecutionContext, Actor } from '../types/execution-context';
-import { AuditContext, RequestAuditContext, AuditConfig } from '../../audit/interfaces';
-import { AuditCaptureService } from '../../audit/helpers/audit-helpers';
-import { extractTraceContextFromHeaders, ObservabilityManager, SpanObserver } from '../../observability';
+import { SpanObserver, redactSensitiveData } from '../../observability';
+import {
+  ControllerObservabilityConfig,
+  mergeObservabilityConfigs,
+  normalizeIncludes,
+  selectFields,
+  selectFieldsFromBody
+} from '../../observability/controller-config';
+import {
+  createExecutionContext,
+  runWithExecutionContext,
+  extractFromHeaders,
+  ExecutionContextData,
+} from './execution-context';
 
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 
@@ -186,13 +197,16 @@ export abstract class APIController extends AbstractLambdaHandler {
   /**
    * Lambda handler for the controller.
    * Handles incoming API Gateway events.
+   * 
+   * All handler execution is wrapped in execution context, making
+   * getCurrentExecutionContext() available throughout the request lifecycle.
+   * 
    * @param event - The event object from the API Gateway.
    * @param context - The context object from the API Gateway.
    * @returns The API Gateway response object.
    */
   async LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult> {
-
-    ObservabilityManager.initializeInvocation();
+    this.initializeObservability();
 
     const request = await this.makeRequestContext(event, context);
     const response = await this.makeResponseContext(request);
@@ -200,100 +214,215 @@ export abstract class APIController extends AbstractLambdaHandler {
     // Build the execution context
     const ctx = this.buildCtx(event, context, request, response);
 
-    const traceContext = extractTraceContextFromHeaders(request.headers || {});
-    const correlationId = traceContext?.correlationId || request.requestId || crypto.randomUUID();
-    const requestSpan = SpanObserver.start(`HTTP ${request.httpMethod} ${request.path}`, {
-      correlationId,
-      parentSpanId: traceContext?.parentLogId,
-      
-      attributes: {
-        'http.method': request.httpMethod,
-        'http.path': request.path,
-        'http.requestId': request.requestId,
-      },
-    });
-    let spanEnded = false;
-    const finalizeObservability = async (success: boolean, error?: Error) => {
-      if (!spanEnded) {
-        requestSpan.end({ success, error });
-        spanEnded = true;
-      }
-      await ObservabilityManager.flush();
-    };
-
-    ctx.observability = {
-      correlationId: requestSpan.traceId,
-      spanId: requestSpan.id,
-      span: requestSpan,
-    };
-
-    // Find the matching route first for method-level audit config
+    // Find the matching route (needed for observability config)
     const route = this.findMatchingRoute(request);
 
-    // Create audit context with route information for method-level config
-    const auditContext = this.makeAuditContext(ctx, route);
+    // Get merged observability config
+    const observabilityConfig = this.getObservabilityConfig(route);
 
-    if (auditContext) {
-      await this.captureStart(auditContext, this.buildRequestContext(ctx, auditContext.auditConfig));
-    }
+    // Extract trace context from incoming headers
+    const traceContext = extractFromHeaders(request.headers || {});
+    const correlationId = traceContext?.correlationId || request.requestId || crypto.randomUUID();
 
-    try {
+    // Create execution context
+    const execCtx = createExecutionContext({
+      correlationId,
+      parentLogId: traceContext?.parentLogId,
+      actor: ctx.actor,
+      sampled: traceContext?.sampled,
+      source: `${this.constructor.name}.${route?.functionName || 'handler'}`,
+    });
 
-      // Legacy initialize method for backward compatibility
-      await this.initialize(event, context);
+    // Run entire handler within execution context
+    return runWithExecutionContext(execCtx, async () => {
+      // Build span attributes
+      const spanAttributes = this.buildSpanAttributes(event, request, observabilityConfig);
 
-      // Execute before middleware
-      await this.executeMiddlewarePipeline('before', request, response, ctx);
+      // Create root span for this request
+      const requestSpan = SpanObserver.start(`HTTP ${request.httpMethod} ${request.path}`, {
+        correlationId,
+        parentLogId: traceContext?.parentLogId,
+        actor: ctx.actor,
+        attributes: spanAttributes,
+      });
 
-      // Validate the request if validations are defined
-      if (route?.validations) {
-        const validationResult = await this.validate(request, route.validations);
-        if (!validationResult.pass) {
-          throw new ValidationFailedError(validationResult.errors);
+      // Store span ID in execution context for child spans
+      execCtx.parentLogId = requestSpan.id;
+
+      // Set ctx.executionContext to point to the execution context
+      ctx.executionContext = execCtx;
+
+      // Sync actor.correlationId with the resolved correlationId
+      // This ensures actor stored in _actor field has the correct trace ID
+      if (ctx.actor) {
+        ctx.actor.correlationId = correlationId;
+      }
+
+      let spanEnded = false;
+      const endSpan = async (success: boolean, error?: Error, finalResponse?: Response) => {
+        if (!spanEnded) {
+          if (finalResponse && observabilityConfig?.enabled !== false) {
+            const responseAttrs = this.buildResponseAttributes(finalResponse, observabilityConfig);
+            if (responseAttrs) {
+              requestSpan.setAttributes(responseAttrs);
+            }
+          }
+          requestSpan.end({ success, error });
+          spanEnded = true;
         }
+        await this.flushObservability();
+      };
+
+      try {
+        // Legacy initialize method for backward compatibility
+        await this.initialize(event, context);
+
+        // Execute before middleware
+        await this.executeMiddlewarePipeline('before', request, response, ctx);
+
+        // Validate the request if validations are defined
+        if (route?.validations) {
+          const validationResult = await this.validate(request, route.validations);
+          if (!validationResult.pass) {
+            throw new ValidationFailedError(validationResult.errors);
+          }
+        }
+
+        // Call the route function
+        const routeFunction = this.getRouteFunction(route);
+        let controllerResponse: any = routeFunction.call(this, request, response, ctx);
+        if (controllerResponse instanceof Promise) {
+          controllerResponse = await controllerResponse;
+        }
+
+        // Execute after middleware
+        await this.executeMiddlewarePipeline('after', request, response, ctx);
+
+        // If the controller returned anything, emit that
+        if (controllerResponse != null) {
+          await endSpan(true, undefined, response);
+          return this.handleResponse(controllerResponse);
+        }
+
+      } catch (err) {
+        const errorObj = err instanceof Error ? err : new Error(String(err));
+        this.logger.error('LambdaHandler error: ', errorObj);
+
+        // Execute error middleware
+        await this.executeMiddlewarePipeline('onError', request, response, ctx, errorObj);
+
+        await endSpan(false, errorObj, response);
+        return this.handleException(request, errorObj, response);
       }
 
-      // call the route function
-      const routeFunction = this.getRouteFunction(route);
-      let controllerResponse: any = routeFunction.call(this, request, response, ctx);
-      if (controllerResponse instanceof Promise) {
-        controllerResponse = await controllerResponse;
-      }
+      // Fallback to the in-memory responseContext
+      await endSpan(true, undefined, response);
+      return response.build();
+    });
+  }
 
-      // Execute after middleware
-      await this.executeMiddlewarePipeline('after', request, response, ctx);
+  /**
+   * Gets merged observability config from controller and method level
+   */
+  protected getObservabilityConfig(route?: Route | null): ControllerObservabilityConfig | undefined {
+    const controllerConfig = this.getControllerConfig();
+    return mergeObservabilityConfigs(controllerConfig?.observability, route?.observability);
+  }
 
-      // Capture successful response
-      if (auditContext) {
-        await this.captureEnd(auditContext, response, null);
-      }
+  /**
+   * Build span attributes based on observability config.
+   * Always includes basic HTTP info. Request body/headers/query are only
+   * included if explicitly configured via `includes`.
+   */
+  protected buildSpanAttributes(
+    event: APIGatewayEvent,
+    request: Request,
+    config?: ControllerObservabilityConfig
+  ): Record<string, unknown> {
+    // Always include basic HTTP attributes
+    const attrs: Record<string, unknown> = {
+      'http.method': request.httpMethod,
+      'http.path': request.path,
+      'http.requestId': request.requestId,
+      'http.userAgent': event.headers?.[ 'user-agent' ] || event.headers?.[ 'User-Agent' ],
+      'http.sourceIp': event.requestContext?.identity?.sourceIp,
+    };
 
-      // If the controller returned anything (ResponseContext or raw API result), emit that
-      if (controllerResponse != null) {
-        await finalizeObservability(true);
-        return this.handleResponse(controllerResponse);
-      }
-
-    } catch (err) {
-
-      const errorObj = err instanceof Error ? err : new Error(String(err));
-      this.logger.error('LambdaHandler error: ', errorObj);
-
-      // Execute error middleware
-      await this.executeMiddlewarePipeline('onError', request, response, ctx, errorObj);
-
-      // Capture error response
-      if (auditContext) {
-        await this.captureEnd(auditContext, response, errorObj);
-      }
-
-      await finalizeObservability(false, errorObj);
-      return this.handleException(request, errorObj, response);
+    // If disabled or no includes config, return basic attrs only
+    if (config?.enabled === false || !config?.includes) {
+      return attrs;
     }
 
-    // Fallback to the in-memory responseContext
-    await finalizeObservability(true);
-    return response.build();
+    // Build request data based on includes config
+    const includes = normalizeIncludes(config.includes);
+    const requestData: Record<string, unknown> = {};
+
+    if (includes.request.headers) {
+      const headerData = selectFields(request.headers as Record<string, unknown>, includes.request.headers);
+      if (headerData) requestData.headers = headerData;
+    }
+
+    if (includes.request.body && request.body) {
+      const bodyData = typeof request.body === 'string'
+        ? selectFieldsFromBody(request.body, includes.request.body)
+        : selectFields(request.body as Record<string, unknown>, includes.request.body);
+      if (bodyData) requestData.body = bodyData;
+    }
+
+    if (includes.request.query && request.queryStringParameters) {
+      const queryData = selectFields(request.queryStringParameters as Record<string, unknown>, includes.request.query);
+      if (queryData) requestData.query = queryData;
+    }
+
+    // Apply data protection and add to attributes
+    if (Object.keys(requestData).length > 0) {
+      attrs[ 'request' ] = config.dataProtection?.enabled !== false
+        ? redactSensitiveData(requestData, config.dataProtection)
+        : requestData;
+    }
+
+    return attrs;
+  }
+
+  /**
+   * Build response attributes based on observability config.
+   * Only captures response body/headers if explicitly configured via `includes`.
+   */
+  protected buildResponseAttributes(
+    response: Response,
+    config?: ControllerObservabilityConfig
+  ): Record<string, unknown> | undefined {
+    // Always include status code
+    const attrs: Record<string, unknown> = {
+      'http.statusCode': response.statusCode,
+    };
+
+    // If disabled or no includes config, return just status code
+    if (config?.enabled === false || !config?.includes) {
+      return attrs;
+    }
+
+    const includes = normalizeIncludes(config.includes);
+    const responseData: Record<string, unknown> = {};
+
+    if (includes.response.headers && response.headers) {
+      const headerData = selectFields(response.headers as Record<string, unknown>, includes.response.headers);
+      if (headerData) responseData.headers = headerData;
+    }
+
+    if (includes.response.body && response.body) {
+      const bodyData = selectFieldsFromBody(response.body, includes.response.body);
+      if (bodyData) responseData.body = bodyData;
+    }
+
+    // Apply data protection and add to attributes
+    if (Object.keys(responseData).length > 0) {
+      attrs[ 'response' ] = config.dataProtection?.enabled !== false
+        ? redactSensitiveData(responseData, config.dataProtection)
+        : responseData;
+    }
+
+    return attrs;
   }
 
   /**
@@ -538,273 +667,6 @@ export abstract class APIController extends AbstractLambdaHandler {
   }
 
   /**
-   * Creates audit context for the request following the existing buildCtx pattern
-   * @param ctx - The execution context
-   * @param route - The matched route (optional, for method-level audit config)
-   * @returns AuditContext or null if audit is disabled
-   */
-  protected makeAuditContext(ctx: ExecutionContext, route?: Route | null): AuditContext | null {
-    const config = this.getControllerConfig();
-
-    // Merge controller-level and method-level audit configs
-    const controllerAudit = config?.audit;
-    const methodAudit = route?.audit;
-    const mergedAuditConfig = this.mergeAuditConfigs(controllerAudit, methodAudit);
-
-    if (!mergedAuditConfig?.enabled) return null;
-
-    const correlationId = ctx.actor?.correlationId ||
-      ctx.request.headers?.[ 'x-correlation-id' ] ||
-      ctx.request.requestId;
-
-    const operationName = `${ctx.request.httpMethod.toLowerCase()}_${ctx.request.path}`;
-    const operationId = `${this.constructor.name}.${operationName}`;
-
-    return {
-      enabled: true,
-      logType: 'log',
-      subType: 'api_request',
-      entityName: this.constructor.name,
-      operation: operationName,
-      category: mergedAuditConfig.category,
-      actor: ctx.actor,
-      correlation: {
-        correlationId,
-        operationId,
-        parentOperationId: ctx.request.headers?.[ 'x-parent-operation-id' ],
-        operationType: 'api',
-        operationName,
-        startTimestamp: new Date().toISOString()
-      },
-      auditConfig: mergedAuditConfig
-    };
-  }
-
-  /**
-   * Merges controller-level and method-level audit configurations
-   * Method-level config takes precedence over controller-level config
-   * @param controllerAudit - Controller-level audit config
-   * @param methodAudit - Method-level audit config  
-   * @returns Merged audit configuration
-   */
-  private mergeAuditConfigs(controllerAudit?: AuditConfig, methodAudit?: AuditConfig): AuditConfig | undefined {
-    if (!controllerAudit && !methodAudit) return undefined;
-    if (!controllerAudit) return methodAudit;
-    if (!methodAudit) return controllerAudit;
-
-    // Deep merge with method-level config taking precedence
-    const merged: AuditConfig = {
-      ...controllerAudit,
-      ...methodAudit
-    };
-
-    // Special handling for nested objects
-    if (controllerAudit.includes || methodAudit.includes) {
-      merged.includes = {
-        ...controllerAudit.includes,
-        ...methodAudit.includes
-      };
-
-      // Merge request and response arrays if both exist and are arrays
-      if (controllerAudit.includes?.request && methodAudit.includes?.request) {
-        const controllerRequest = Array.isArray(controllerAudit.includes.request) ? controllerAudit.includes.request : [];
-        const methodRequest = Array.isArray(methodAudit.includes.request) ? methodAudit.includes.request : [];
-        merged.includes.request = [ ...new Set([ ...controllerRequest, ...methodRequest ]) ];
-      }
-      if (controllerAudit.includes?.response && methodAudit.includes?.response) {
-        const controllerResponse = Array.isArray(controllerAudit.includes.response) ? controllerAudit.includes.response : [];
-        const methodResponse = Array.isArray(methodAudit.includes.response) ? methodAudit.includes.response : [];
-        merged.includes.response = [ ...new Set([ ...controllerResponse, ...methodResponse ]) ];
-      }
-    }
-
-    if (controllerAudit.dataProtection || methodAudit.dataProtection) {
-      merged.dataProtection = {
-        ...controllerAudit.dataProtection,
-        ...methodAudit.dataProtection
-      };
-
-      // Merge deepRedact config
-      if (controllerAudit.dataProtection?.deepRedact || methodAudit.dataProtection?.deepRedact) {
-        merged.dataProtection.deepRedact = {
-          ...controllerAudit.dataProtection?.deepRedact,
-          ...methodAudit.dataProtection?.deepRedact
-        };
-
-        // Merge blacklistedKeys arrays
-        if (controllerAudit.dataProtection?.deepRedact?.blacklistedKeys && methodAudit.dataProtection?.deepRedact?.blacklistedKeys) {
-          merged.dataProtection.deepRedact.blacklistedKeys = [
-            ...new Set([
-              ...controllerAudit.dataProtection.deepRedact.blacklistedKeys,
-              ...methodAudit.dataProtection.deepRedact.blacklistedKeys
-            ])
-          ];
-        }
-      }
-    }
-
-    if (controllerAudit.customContext || methodAudit.customContext) {
-      merged.customContext = {
-        ...controllerAudit.customContext,
-        ...methodAudit.customContext
-      };
-    }
-
-    return merged;
-  }
-
-  /**
-   * Captures audit log for request start
-   */
-  protected async captureStart(auditContext: AuditContext, requestContext: RequestAuditContext): Promise<void> {
-    await AuditCaptureService.captureStart(auditContext, requestContext);
-  }
-
-  /**
-   * Captures audit log for request end (success or error)
-   */
-  protected async captureEnd(auditContext: AuditContext, response: Response, error: Error | null): Promise<void> {
-    const responseContext = {
-      statusCode: response.statusCode,
-      responseSize: response.body?.length || 0,
-      response: this.buildResponseContext(response, auditContext.auditConfig)
-    };
-
-    await AuditCaptureService.captureEnd(auditContext, null, error, responseContext);
-  }
-
-  /**
-   * Builds request context for audit logging
-   */
-  private buildRequestContext(ctx: ExecutionContext, auditConfig: AuditConfig): RequestAuditContext {
-    const requestIncludes = auditConfig.includes?.request;
-
-    // Determine what to include based on the configuration format
-    let includeHeaders = false, includeBody = false, includeQuery = false;
-    let headerFields: string[] = [], bodyFields: string[] = [], queryFields: string[] = [];
-
-    if (Array.isArray(requestIncludes)) {
-      // Legacy format: ['headers', 'body', 'query']
-      includeHeaders = requestIncludes.includes('headers');
-      includeBody = requestIncludes.includes('body');
-      includeQuery = requestIncludes.includes('query');
-    } else if (typeof requestIncludes === 'object' && requestIncludes !== null) {
-      // New selective format: { headers: ['auth'], body: ['email'], query: ['page'] }
-      includeHeaders = !!requestIncludes.headers;
-      includeBody = !!requestIncludes.body;
-      includeQuery = !!requestIncludes.query;
-      headerFields = requestIncludes.headers || [];
-      bodyFields = requestIncludes.body || [];
-      queryFields = requestIncludes.query || [];
-    } else if (requestIncludes === true) {
-      // Boolean true - include headers by default (legacy behavior)
-      includeHeaders = true;
-    }
-
-    return {
-      method: ctx.request.httpMethod,
-      path: ctx.request.path,
-      userAgent: ctx.event.headers?.[ 'user-agent' ],
-      sourceIp: ctx.event.requestContext?.identity?.sourceIp,
-      headers: includeHeaders ?
-        this.selectivelyIncludeFields(ctx.request.headers, headerFields) : undefined,
-      body: includeBody ?
-        this.selectivelyIncludeFields(ctx.request.body, bodyFields) : undefined,
-      query: includeQuery ?
-        this.selectivelyIncludeFields(ctx.request.queryStringParameters, queryFields) : undefined
-    };
-  }
-
-  /**
-   * Selectively includes fields from an object based on field list
-   * If no fields specified, returns the entire object
-   */
-  private selectivelyIncludeFields(obj: any, fields: string[]): any {
-    if (!obj || typeof obj !== 'object') {
-      return obj;
-    }
-
-    // If no specific fields requested, return entire object
-    if (!fields.length) {
-      return obj;
-    }
-
-    // Extract only specified fields
-    const result: any = {};
-    for (const field of fields) {
-      if (obj.hasOwnProperty(field)) {
-        result[ field ] = obj[ field ];
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Selectively includes fields from response body (handles JSON string bodies)
-   * If no fields specified, returns the entire body
-   */
-  private selectivelyIncludeResponseBody(body: string, fields: string[]): any {
-    if (!body || typeof body !== 'string') {
-      return body;
-    }
-
-    // If no specific fields requested, return entire body
-    if (!fields.length) {
-      return body;
-    }
-
-    try {
-      // Try to parse as JSON
-      const bodyObj = JSON.parse(body);
-      if (typeof bodyObj === 'object' && bodyObj !== null) {
-        // Apply field selection and stringify back
-        const selected = this.selectivelyIncludeFields(bodyObj, fields);
-        return JSON.stringify(selected);
-      }
-    } catch (error) {
-      // Not valid JSON, return as-is
-    }
-
-    return body;
-  }
-
-  /**
-   * Builds response context for audit logging
-   */
-  private buildResponseContext(response: Response, auditConfig: AuditConfig) {
-    const responseIncludes = auditConfig.includes?.response;
-    if (!responseIncludes) return undefined;
-
-    // Determine what to include based on the configuration format
-    let includeHeaders = false, includeBody = false;
-    let headerFields: string[] = [], bodyFields: string[] = [];
-
-    if (Array.isArray(responseIncludes)) {
-      // Legacy format: ['headers', 'body']
-      includeHeaders = responseIncludes.includes('headers');
-      includeBody = responseIncludes.includes('body');
-    } else if (typeof responseIncludes === 'object' && responseIncludes !== null) {
-      // New selective format: { headers: ['content-type'], body: ['id', 'status'] }
-      includeHeaders = !!responseIncludes.headers;
-      includeBody = !!responseIncludes.body;
-      headerFields = responseIncludes.headers || [];
-      bodyFields = responseIncludes.body || [];
-    } else if (responseIncludes === true) {
-      // Boolean true - include headers by default (legacy behavior)
-      includeHeaders = true;
-    }
-
-    return {
-      statusCode: response.statusCode,
-      headers: includeHeaders ?
-        this.selectivelyIncludeFields(response.headers, headerFields) : undefined,
-      body: includeBody ?
-        this.selectivelyIncludeResponseBody(response.body, bodyFields) : undefined
-    };
-  }
-
-  /**
    * Gets the controller configuration
    */
   protected getControllerConfig(): IControllerConfig {
@@ -812,13 +674,16 @@ export abstract class APIController extends AbstractLambdaHandler {
   }
 
   /**
-   * Extracts actor context from the request
-   * Override this method for custom actor extraction logic
+   * Extracts actor context from the request.
+   * Override this method for custom actor extraction logic.
+   * 
+   * Note: correlationId is NOT set here - it's determined from trace context
+   * extraction and set on the ExecutionContext. The actor.correlationId is
+   * synced later in LambdaHandler after trace context is resolved.
    *
    * @param event - The event object from the API Gateway.
    * @param request - The request object from the API Gateway.
    * @returns The actor context.
-   * ```
    */
   protected extractActorContext(event: APIGatewayEvent, request: Request): Actor {
     const timestamp = new Date().toISOString();
@@ -829,7 +694,7 @@ export abstract class APIController extends AbstractLambdaHandler {
       timestamp,
       sourceIp: event.requestContext?.identity?.sourceIp,
       userAgent: event.headers?.[ 'user-agent' ] || event.headers?.[ 'User-Agent' ],
-      correlationId: request.headers?.[ 'x-correlation-id' ] || requestId,
+      // Note: correlationId is set later after trace context extraction
     };
 
     // Cognito authentication with focused enhancements

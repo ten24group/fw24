@@ -87,7 +87,6 @@ export class LogObserver {
     options?: LogOptions
   ): string | undefined {
     const fields = buildCommonFields(OBSERVER_NAME, options);
-    if (!fields) return undefined;
 
     const isError = errorOrData instanceof Error;
     const data = isError ? { errorMessage: errorOrData.message } : errorOrData;
@@ -115,7 +114,6 @@ export class LogObserver {
     options?: LogOptions
   ): string | undefined {
     const fields = buildCommonFields(OBSERVER_NAME, options);
-    if (!fields) return undefined;
 
     const isError = errorOrData instanceof Error;
     const data = isError ? { errorMessage: errorOrData.message } : errorOrData;
@@ -144,7 +142,6 @@ export class LogObserver {
     options?: LogOptions
   ): string | undefined {
     const fields = buildCommonFields(OBSERVER_NAME, options);
-    if (!fields) return undefined;
 
     // Don't duplicate message - it's already in `operation`
     return captureEvent(fields, {

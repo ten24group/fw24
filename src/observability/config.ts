@@ -9,10 +9,13 @@ import { createLogger } from '../logging';
 import {
   ObservabilityConfig,
   ObservabilityLevel,
+  ObservabilityLevelString,
   SamplingConfig,
   TypeSpecificConfig,
   DefaultSamplingConfig,
+  ObservabilityDataProtectionConfig,
 } from './types';
+import { DEFAULT_BLACKLISTED_KEYS, DEFAULT_PROTECTED_FIELDS } from './utils/data-protection';
 
 const logger = createLogger('ObservabilityConfig');
 
@@ -28,6 +31,12 @@ export const CONFIG_DEFAULTS = {
   backends: [ 'cloudwatch' ] as const,
   minLevel: ObservabilityLevel.INFO,
   enabled: true,
+  dataProtection: {
+    enabled: true,
+    fuzzyKeyMatch: true,
+    caseSensitiveKeyMatch: false,
+    replacement: '[REDACTED]',
+  },
 } as const;
 
 /**
@@ -45,7 +54,7 @@ export type ValidBackend = typeof VALID_BACKENDS[ number ];
  * - Runtime configuration updates
  * - Type-specific configuration
  */
-export class ConfigManager {
+export class ObservabilityConfigManager {
   private config: ObservabilityConfig;
 
   /** Cached environment config to avoid double parsing */
@@ -56,18 +65,23 @@ export class ConfigManager {
     // Validate the constructed config
     const errors = validateConfig(this.config);
     if (errors.length > 0) {
-      logger.warn('ConfigManager created with potentially invalid config:', errors);
+      logger.warn('ObservabilityConfigManager created with potentially invalid config:', errors);
     }
   }
 
   /**
-   * Create ConfigManager from environment variables.
+   * Create ObservabilityConfigManager from environment variables.
+   * 
+   * Environment variables provide operational configuration (table names, service names).
+   * DI configuration provides logical configuration (backends, sampling, levels).
+   * They work together - env vars for deployment settings, DI for business logic.
+   * 
    * Results are cached to avoid repeated parsing on each instantiation.
    */
   static fromEnvironment(): ObservabilityConfig {
     // Return cached config if available
-    if (ConfigManager.cachedEnvConfig) {
-      return ConfigManager.cachedEnvConfig;
+    if (ObservabilityConfigManager.cachedEnvConfig) {
+      return ObservabilityConfigManager.cachedEnvConfig;
     }
 
     const enabled = (process.env.OBSERVABILITY_ENABLED ?? String(CONFIG_DEFAULTS.enabled)).toLowerCase() !== 'false';
@@ -82,10 +96,10 @@ export class ConfigManager {
     const minLevel = parsedLevel ?? CONFIG_DEFAULTS.minLevel;
 
     // Parse sampling configuration
-    const sampling = ConfigManager.parseSamplingConfig();
+    const sampling = ObservabilityConfigManager.parseSamplingConfig();
 
     // Parse type-specific backends
-    const types = ConfigManager.parseTypeSpecificConfig();
+    const types = ObservabilityConfigManager.parseTypeSpecificConfig();
 
     // Parse backend list (just names for config, actual instances created separately)
     const rawBackendNames = (process.env.OBSERVABILITY_BACKENDS ?? CONFIG_DEFAULTS.backends.join(','))
@@ -139,6 +153,9 @@ export class ConfigManager {
       ttlDays,
     };
 
+    // Data protection configuration
+    const dataProtection = ObservabilityConfigManager.parseDataProtectionConfig();
+
     const config: ObservabilityConfig = {
       enabled,
       minLevel,
@@ -151,6 +168,7 @@ export class ConfigManager {
       serviceName,
       cloudwatch,
       dynamodb,
+      dataProtection,
     };
 
     // Validate the final configuration
@@ -162,7 +180,7 @@ export class ConfigManager {
     }
 
     // Cache the result
-    ConfigManager.cachedEnvConfig = config;
+    ObservabilityConfigManager.cachedEnvConfig = config;
 
     return config;
   }
@@ -171,36 +189,30 @@ export class ConfigManager {
    * Clear the cached environment config (for testing)
    */
   static clearCache(): void {
-    ConfigManager.cachedEnvConfig = null;
+    ObservabilityConfigManager.cachedEnvConfig = null;
   }
 
   /**
    * Parse sampling configuration from environment
    */
-  private static parseSamplingConfig(): SamplingConfig {
+  static parseSamplingConfig(): SamplingConfig {
     const enabled = process.env.OBSERVABILITY_SAMPLING_ENABLED === 'true';
 
     if (!enabled) {
       return DefaultSamplingConfig;
     }
 
-    const rates: Record<ObservabilityLevel, number> = {
-      [ ObservabilityLevel.CRITICAL ]: 1,
-      [ ObservabilityLevel.ERROR ]: 1,
-      [ ObservabilityLevel.WARN ]: 1,
-      [ ObservabilityLevel.INFO ]: 1,
-      [ ObservabilityLevel.DEBUG ]: 1,
-      [ ObservabilityLevel.TRACE ]: 1,
-      [ ObservabilityLevel.OFF ]: 0,
-    };
+    // Start with default rates, then override from env
+    const rates = { ...DefaultSamplingConfig.rates };
 
-    // Parse level-specific rates
-    const levelEnvMappings: Array<[ string, ObservabilityLevel ]> = [
-      [ 'OBSERVABILITY_SAMPLING_TRACE', ObservabilityLevel.TRACE ],
-      [ 'OBSERVABILITY_SAMPLING_DEBUG', ObservabilityLevel.DEBUG ],
-      [ 'OBSERVABILITY_SAMPLING_INFO', ObservabilityLevel.INFO ],
-      [ 'OBSERVABILITY_SAMPLING_WARN', ObservabilityLevel.WARN ],
-      [ 'OBSERVABILITY_SAMPLING_ERROR', ObservabilityLevel.ERROR ],
+    // Parse level-specific rates from env
+    const levelEnvMappings: Array<[ string, ObservabilityLevelString ]> = [
+      [ 'OBSERVABILITY_SAMPLING_TRACE', 'trace' ],
+      [ 'OBSERVABILITY_SAMPLING_DEBUG', 'debug' ],
+      [ 'OBSERVABILITY_SAMPLING_INFO', 'info' ],
+      [ 'OBSERVABILITY_SAMPLING_WARN', 'warn' ],
+      [ 'OBSERVABILITY_SAMPLING_ERROR', 'error' ],
+      [ 'OBSERVABILITY_SAMPLING_CRITICAL', 'critical' ],
     ];
 
     for (const [ envVar, level ] of levelEnvMappings) {
@@ -208,11 +220,11 @@ export class ConfigManager {
       if (value) {
         const rate = parseFloat(value);
         if (!isNaN(rate) && rate >= 0 && rate <= 1) {
-          rates[ level ] = rate;
+          rates![ level ] = rate;
         } else {
           logger.warn(
             `Invalid sampling rate for ${envVar}: '${value}'. ` +
-            'Must be a number between 0 and 1. Using default rate 1.0.'
+            'Must be a number between 0 and 1. Using default.'
           );
         }
       }
@@ -279,9 +291,6 @@ export class ConfigManager {
       [ 'OBSERVABILITY_METRIC_BACKENDS', 'metric' ],
       [ 'OBSERVABILITY_AUDIT_BACKENDS', 'audit' ],
       [ 'OBSERVABILITY_LOG_BACKENDS', 'log' ],
-      [ 'OBSERVABILITY_DECISION_BACKENDS', 'decision' ],
-      [ 'OBSERVABILITY_WORKFLOW_BACKENDS', 'workflow' ],
-      [ 'OBSERVABILITY_ACCESS_BACKENDS', 'access' ],
     ];
 
     for (const [ envVar, typeKey ] of typeEnvMappings) {
@@ -312,9 +321,6 @@ export class ConfigManager {
       [ 'OBSERVABILITY_METRIC_LEVEL', 'metric' ],
       [ 'OBSERVABILITY_AUDIT_LEVEL', 'audit' ],
       [ 'OBSERVABILITY_LOG_LEVEL', 'log' ],
-      [ 'OBSERVABILITY_DECISION_LEVEL', 'decision' ],
-      [ 'OBSERVABILITY_WORKFLOW_LEVEL', 'workflow' ],
-      [ 'OBSERVABILITY_ACCESS_LEVEL', 'access' ],
     ];
 
     for (const [ envVar, typeKey ] of levelEnvMappings) {
@@ -339,6 +345,78 @@ export class ConfigManager {
   }
 
   /**
+   * Parse data protection configuration from environment
+   */
+  private static parseDataProtectionConfig(): ObservabilityDataProtectionConfig {
+    const enabled = (process.env.OBSERVABILITY_DATA_PROTECTION_ENABLED ?? 'true').toLowerCase() !== 'false';
+    const fuzzyKeyMatch = (process.env.OBSERVABILITY_DATA_PROTECTION_FUZZY ?? 'true').toLowerCase() !== 'false';
+    const caseSensitiveKeyMatch = (process.env.OBSERVABILITY_DATA_PROTECTION_CASE_SENSITIVE ?? 'false').toLowerCase() === 'true';
+    const replacement = process.env.OBSERVABILITY_DATA_PROTECTION_REPLACEMENT ?? CONFIG_DEFAULTS.dataProtection.replacement;
+
+    // Parse custom blacklisted keys from environment (comma-separated)
+    let blacklistedKeys: (string | RegExp)[] | undefined;
+    const customKeys = process.env.OBSERVABILITY_DATA_PROTECTION_KEYS;
+    if (customKeys) {
+      // Split by comma and trim, support regex patterns with /pattern/ syntax
+      blacklistedKeys = customKeys.split(',').map((key) => {
+        const trimmed = key.trim();
+        // Check if it's a regex pattern (starts and ends with /)
+        if (trimmed.startsWith('/') && trimmed.lastIndexOf('/') > 0) {
+          const lastSlash = trimmed.lastIndexOf('/');
+          const pattern = trimmed.slice(1, lastSlash);
+          const flags = trimmed.slice(lastSlash + 1);
+          try {
+            return new RegExp(pattern, flags);
+          } catch (error) {
+            logger.warn(`Invalid regex pattern in OBSERVABILITY_DATA_PROTECTION_KEYS: ${trimmed}. Using as string.`);
+            return trimmed;
+          }
+        }
+        return trimmed;
+      }).filter(Boolean);
+
+      // Merge with defaults if OBSERVABILITY_DATA_PROTECTION_KEYS_EXTEND is true
+      const extend = (process.env.OBSERVABILITY_DATA_PROTECTION_KEYS_EXTEND ?? 'true').toLowerCase() !== 'false';
+      if (extend) {
+        blacklistedKeys = [...DEFAULT_BLACKLISTED_KEYS, ...blacklistedKeys];
+      }
+    }
+
+    // Parse protected fields from environment
+    type ProtectedField = 'data' | 'attributes' | 'metadata' | 'context' | 'error';
+    const validProtectedFields: ProtectedField[] = ['data', 'attributes', 'metadata', 'context', 'error'];
+    
+    let parsedFields: ProtectedField[] | undefined;
+    const customFields = process.env.OBSERVABILITY_DATA_PROTECTION_FIELDS;
+    if (customFields) {
+      parsedFields = customFields
+        .split(',')
+        .map((f) => f.trim().toLowerCase())
+        .filter((f): f is ProtectedField => {
+          if (validProtectedFields.includes(f as ProtectedField)) {
+            return true;
+          }
+          logger.warn(
+            `Invalid field '${f}' in OBSERVABILITY_DATA_PROTECTION_FIELDS. ` +
+            `Valid values: ${validProtectedFields.join(', ')}. Ignoring.`
+          );
+          return false;
+        });
+    }
+
+    const finalFields = (parsedFields && parsedFields.length > 0) ? parsedFields : DEFAULT_PROTECTED_FIELDS;
+
+    return {
+      enabled,
+      blacklistedKeys,
+      fuzzyKeyMatch,
+      caseSensitiveKeyMatch,
+      replacement,
+      fields: finalFields,
+    };
+  }
+
+  /**
    * Build complete configuration
    * 
    * Uses fromEnvironment() defaults if partial config is incomplete.
@@ -346,7 +424,7 @@ export class ConfigManager {
    */
   private buildConfig(partial: Partial<ObservabilityConfig>): ObservabilityConfig {
     // Get defaults from environment as baseline
-    const defaults = ConfigManager.fromEnvironment();
+    const defaults = ObservabilityConfigManager.fromEnvironment();
 
     return {
       enabled: partial.enabled !== undefined ? partial.enabled : defaults.enabled,
@@ -357,6 +435,7 @@ export class ConfigManager {
       serviceName: partial.serviceName ?? defaults.serviceName,
       cloudwatch: partial.cloudwatch ?? defaults.cloudwatch,
       dynamodb: partial.dynamodb ?? defaults.dynamodb,
+      dataProtection: partial.dataProtection ?? defaults.dataProtection,
     };
   }
 
@@ -436,7 +515,7 @@ export function validateConfig(config: ObservabilityConfig): string[] {
   }
 
   // Validate sampling rates
-  if (config.sampling.enabled) {
+  if (config.sampling.enabled && config.sampling.rates) {
     Object.entries(config.sampling.rates).forEach(([ level, rate ]) => {
       if (typeof rate !== 'number' || rate < 0 || rate > 1) {
         errors.push(`Invalid sampling rate for ${level}: ${rate}. Must be between 0 and 1.`);
