@@ -331,6 +331,39 @@ describe('query-test', () => {
             const exp = attributeFilterToExpression(filter, attributes, operations);
             expect(exp).toEqual('( ageRef==30 AND ageRef>20 )');
         });
+
+        // Tests for exists/notExists operators
+        describe('exists and notExists operators', () => {
+            const attributes = { status: 'statusRef', parentId: 'parentIdRef' } as any;
+            const operations = {
+                exists: (attr: string) => `attribute_exists(${attr})`,
+                notExists: (attr: string) => `attribute_not_exists(${attr})`,
+            } as any;
+
+            it('should handle exists: true (attribute exists)', () => {
+                const filter = { attribute: 'parentId', exists: true } as any;
+                const exp = attributeFilterToExpression(filter, attributes, operations);
+                expect(exp).toEqual('attribute_exists(parentIdRef)');
+            });
+
+            it('should handle exists: false (attribute does not exist)', () => {
+                const filter = { attribute: 'parentId', exists: false } as any;
+                const exp = attributeFilterToExpression(filter, attributes, operations);
+                expect(exp).toEqual('attribute_not_exists(parentIdRef)');
+            });
+
+            it('should handle notExists: true (attribute does not exist)', () => {
+                const filter = { attribute: 'parentId', notExists: true } as any;
+                const exp = attributeFilterToExpression(filter, attributes, operations);
+                expect(exp).toEqual('attribute_not_exists(parentIdRef)');
+            });
+
+            it('should handle notExists: false (attribute exists)', () => {
+                const filter = { attribute: 'parentId', notExists: false } as any;
+                const exp = attributeFilterToExpression(filter, attributes, operations);
+                expect(exp).toEqual('attribute_exists(parentIdRef)');
+            });
+        });
     });
 
     describe('entityFilterToExpression', () => {

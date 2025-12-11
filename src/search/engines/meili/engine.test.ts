@@ -93,7 +93,7 @@ describe("MeiliSearchEngine", () => {
       mockIndex.addDocuments.mockImplementation(() => {
         throw new Error("addDocsFail");
       });
-      
+
       await expect(engine.indexDocuments([ { id: "x" } ], searchConfig)).rejects.toThrow("addDocsFail");
     });
 
@@ -102,7 +102,7 @@ describe("MeiliSearchEngine", () => {
       mockIndex.updateSettings.mockImplementation(() => {
         throw new Error("settingsFail");
       });
-      
+
       await expect(engine.indexDocuments([], searchConfig)).rejects.toThrow("settingsFail");
     });
   });
@@ -192,14 +192,14 @@ describe("MeiliSearchEngine", () => {
         ).toContain("price 10 TO 20");
       });
 
-      it("supports EXISTS, IS EMPTY, IS NULL", async () => {
+      it("supports exists and notExists operators", async () => {
         await engine.search(
           {
             search: "",
             filters: {
               f: { exists: true },
-              g: { isEmpty: true },
-              h: { isNull: true },
+              g: { exists: false },
+              h: { notExists: true },
             },
           },
           searchConfig
@@ -207,8 +207,9 @@ describe("MeiliSearchEngine", () => {
 
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchParams)
           .filter;
-        expect(fstr).toContain("f EXISTS");
-        expect(fstr).toContain("g IS EMPTY");
+        // exists: true uses NOT (f IS NULL) in MeiliSearch
+        expect(fstr).toContain("NOT (f IS NULL)");
+        expect(fstr).toContain("g IS NULL");
         expect(fstr).toContain("h IS NULL");
       });
 
@@ -378,7 +379,7 @@ describe("MeiliSearchEngine", () => {
             stringField: { eq: "text" },
             numberField: { gt: 42 },
             booleanField: { eq: true },
-            nullField: { isNull: true }
+            nullField: { notExists: true }
           };
           await engine.search({ search: "", filters }, searchConfig);
           const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchParams).filter;
@@ -523,7 +524,7 @@ describe("MeiliSearchEngine", () => {
       mockIndex.search.mockImplementation(() => {
         throw new Error("fail");
       });
-      
+
       await expect(engine.search({ search: "" }, searchConfig)).rejects.toThrow(
         "fail",
       );

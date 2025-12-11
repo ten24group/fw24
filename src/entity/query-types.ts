@@ -70,8 +70,14 @@ export type FilterOperators<T> = {
 
     'bt': FilterOperatorValue<[ from: T, to: T ]> | FilterOperatorValue<{ from: T, to: T }>,
 
-    'isNull': FilterOperatorValue<true>,
-    'isEmpty': FilterOperatorValue<true>,
+    'exists': FilterOperatorValue<boolean>,
+    'notExists': FilterOperatorValue<boolean>,
+
+    // Backward compatibility aliases (all map to exists/notExists)
+    'isNull': FilterOperatorValue<boolean>,    // alias for notExists
+    'notNull': FilterOperatorValue<boolean>,   // alias for exists
+    'empty': FilterOperatorValue<boolean>,     // alias for notExists
+    'notEmpty': FilterOperatorValue<boolean>,  // alias for exists
 
     'contains': FilterOperatorValue<T | Array<T>>,
     'notContains': FilterOperatorValue<T | Array<T>>,
@@ -120,7 +126,6 @@ export type FilterOperatorsExtended<T> = FilterOperators<T> & {
     'notInList': FilterOperators<T>[ 'nin' ],
     'notIn': FilterOperators<T>[ 'nin' ],
 
-    'exists': FilterOperators<T>[ 'isNull' ],
 
     'begins': FilterOperators<T>[ 'startsWith' ],
     'beginsWith': FilterOperators<T>[ 'startsWith' ],
@@ -185,9 +190,11 @@ export const allFilterOperators: Array<keyof FilterOperatorsExtended<any>> = [
     'notHas',
 
     'exists',
-    'isNull',
-
-    'isEmpty',
+    'notExists',
+    'isNull',      // backward compat alias
+    'notNull',     // backward compat alias
+    'empty',       // backward compat alias
+    'notEmpty',    // backward compat alias
 
     'like',
     'startsWith',
