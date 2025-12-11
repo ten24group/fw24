@@ -1663,6 +1663,123 @@ describe('DIContainer', () => {
         it('should throw for non-existent configuration paths', () => {
             expect(() => rootContainer.resolveConfig('non.existent.path')).toThrow();
         });
+
+        it('should preserve arrays in configuration (not convert to objects)', () => {
+            const configWithArrays: ConfigProviderOptions = {
+                provide: 'observability',
+                useConfig: {
+                    enabled: true,
+                    backends: [
+                        { type: 'cloudwatch', enabled: true },
+                        { type: 'dynamodb', enabled: true }
+                    ],
+                    dataProtection: {
+                        blacklistedKeys: ['password', 'secret', 'apiKey']
+                    }
+                },
+                priority: 1,
+            };
+
+            rootContainer.registerConfigProvider(configWithArrays);
+
+            const resolvedConfig: any = rootContainer.resolveConfig('observability');
+            
+            // Verify arrays are preserved as arrays, not converted to objects
+            expect(Array.isArray(resolvedConfig.backends)).toBe(true);
+            expect(resolvedConfig.backends).toHaveLength(2);
+            expect(resolvedConfig.backends[0].type).toBe('cloudwatch');
+            expect(resolvedConfig.backends[1].type).toBe('dynamodb');
+            
+            // Verify array methods work
+            expect(resolvedConfig.backends.filter((b: any) => b.type === 'cloudwatch')).toHaveLength(1);
+            expect(resolvedConfig.backends.map((b: any) => b.type)).toEqual(['cloudwatch', 'dynamodb']);
+            
+            // Verify nested arrays
+            expect(Array.isArray(resolvedConfig.dataProtection.blacklistedKeys)).toBe(true);
+            expect(resolvedConfig.dataProtection.blacklistedKeys).toContain('password');
+            expect(resolvedConfig.dataProtection.blacklistedKeys.includes('secret')).toBe(true);
+        });
+
+        it('should preserve arrays when merging configs with different priorities', () => {
+            // Framework default (priority 0)
+            const frameworkConfig: ConfigProviderOptions = {
+                provide: 'observability',
+                useConfig: {
+                    enabled: false,
+                    backends: [{ type: 'cloudwatch', enabled: true }],
+                    serviceName: 'default-service'
+                },
+                priority: 0,
+            };
+
+            // App override (priority 10)
+            const appConfig: ConfigProviderOptions = {
+                provide: 'observability',
+                useConfig: {
+                    enabled: true,
+                    backends: [
+                        { type: 'cloudwatch', enabled: true },
+                        { type: 'dynamodb', enabled: true }
+                    ],
+                    serviceName: 'my-app'
+                },
+                priority: 10,
+            };
+
+            rootContainer.registerConfigProvider(frameworkConfig);
+            rootContainer.registerConfigProvider(appConfig);
+
+            const resolvedConfig: any = rootContainer.resolveConfig('observability');
+            
+            // Higher priority config should win
+            expect(resolvedConfig.enabled).toBe(true);
+            expect(resolvedConfig.serviceName).toBe('my-app');
+            
+            // Arrays should be preserved from the winning config
+            expect(Array.isArray(resolvedConfig.backends)).toBe(true);
+            expect(resolvedConfig.backends).toHaveLength(2);
+        });
+
+        it('should preserve empty arrays in configuration', () => {
+            const configWithEmptyArray: ConfigProviderOptions = {
+                provide: 'test',
+                useConfig: {
+                    items: [],
+                    nested: {
+                        emptyList: []
+                    }
+                },
+                priority: 1,
+            };
+
+            rootContainer.registerConfigProvider(configWithEmptyArray);
+
+            const resolvedConfig: any = rootContainer.resolveConfig('test');
+            
+            expect(Array.isArray(resolvedConfig.items)).toBe(true);
+            expect(resolvedConfig.items).toHaveLength(0);
+            expect(Array.isArray(resolvedConfig.nested.emptyList)).toBe(true);
+        });
+
+        it('should preserve arrays of primitives', () => {
+            const configWithPrimitiveArrays: ConfigProviderOptions = {
+                provide: 'test',
+                useConfig: {
+                    strings: ['a', 'b', 'c'],
+                    numbers: [1, 2, 3],
+                    mixed: ['a', 1, true, null]
+                },
+                priority: 1,
+            };
+
+            rootContainer.registerConfigProvider(configWithPrimitiveArrays);
+
+            const resolvedConfig: any = rootContainer.resolveConfig('test');
+            
+            expect(resolvedConfig.strings).toEqual(['a', 'b', 'c']);
+            expect(resolvedConfig.numbers).toEqual([1, 2, 3]);
+            expect(resolvedConfig.mixed).toEqual(['a', 1, true, null]);
+        });
     });
 
 
