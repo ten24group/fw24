@@ -893,7 +893,7 @@ export function generateFilterConfig(
             return {
                 filterType: 'select',
                 defaultOperator: 'eq' as const,
-                availableOperators: [ 'eq', 'neq', 'inList', 'notInList', 'isEmpty', 'isNull' ],
+                availableOperators: [ 'eq', 'neq', 'inList', 'notInList', 'exists', 'notExists' ],
                 predefinedOptions: resolvedConfig
             };
         }
@@ -958,7 +958,7 @@ export function generateFilterConfig(
         return {
             filterType: 'boolean',
             defaultOperator: 'eq',
-            availableOperators: [ 'eq', 'neq', 'isEmpty', 'isNull' ],
+            availableOperators: [ 'eq', 'neq', 'exists', 'notExists' ],
             predefinedOptions: [
                 { label: 'Yes', value: "true" },
                 { label: 'No', value: "false" }
@@ -968,7 +968,7 @@ export function generateFilterConfig(
 
     // **2. Enum fields (array of strings/numbers)**
     if (Array.isArray(attrType) && mergedConfig.enumFields?.enabled !== false) {
-        const defaultEnumOps = [ 'eq', 'neq', 'inList', 'notInList', 'isEmpty', 'isNull' ] as const;
+        const defaultEnumOps = [ 'eq', 'neq', 'inList', 'notInList', 'exists', 'notExists' ] as const;
         const defaultOp = mergedConfig.enumFields?.defaultOperator || ('eq');
         const availableOps = mergedConfig.enumFields?.availableOperators || defaultEnumOps;
 
@@ -987,7 +987,7 @@ export function generateFilterConfig(
     // **3. Date/Datetime fields**
     if ((fieldType === 'date' || fieldType === 'datetime' || (attrType === 'string' && (attribute.id.toLowerCase().includes('date') || attribute.id.toLowerCase().includes('time'))))
         && mergedConfig.dateFields?.enabled !== false) {
-        const defaultDateOps = [ 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'between', 'isEmpty', 'isNull' ] as const;
+        const defaultDateOps = [ 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'between', 'exists', 'notExists' ] as const;
         const operators = mergedConfig.dateFields?.defaultOperators || defaultDateOps;
 
         const filterConfig: any = {
@@ -1021,7 +1021,7 @@ export function generateFilterConfig(
 
     // **5. Number fields**
     if (attrType === 'number' && mergedConfig.numberFields?.enabled !== false) {
-        const defaultNumberOps = [ 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'between', 'isEmpty', 'isNull' ] as const;
+        const defaultNumberOps = [ 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'between', 'exists', 'notExists' ] as const;
         const operators = mergedConfig.numberFields?.defaultOperators || defaultNumberOps;
         return {
             filterType: 'number',
@@ -1044,7 +1044,7 @@ export function generateFilterConfig(
             return {
                 filterType: 'relation',
                 defaultOperator: 'eq' as const,
-                availableOperators: [ 'eq', 'neq', 'inList', 'notInList', 'isEmpty', 'isNull' ],
+                availableOperators: [ 'eq', 'neq', 'inList', 'notInList', 'exists', 'notExists' ],
                 predefinedOptions: resolved
             };
         }
@@ -1052,7 +1052,7 @@ export function generateFilterConfig(
 
     // **6. Text fields (default fallback)**
     if (attrType === 'string' && mergedConfig.textFields?.enabled !== false) {
-        const defaultTextOps = [ 'contains', 'notContains', 'eq', 'neq', 'startsWith', 'endsWith', 'like', 'isEmpty', 'isNull' ];
+        const defaultTextOps = [ 'contains', 'notContains', 'eq', 'neq', 'startsWith', 'endsWith', 'like', 'exists', 'notExists' ];
         const operators = mergedConfig.textFields?.defaultOperators || defaultTextOps;
         return {
             filterType: 'text',
@@ -2089,7 +2089,7 @@ export function expandPropertyReferences(
     allProperties: TIOSchemaAttribute[],
     type: 'create' | 'update' | 'detail',
     entityService: BaseEntityService<any>,
-    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']
+    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]
 ): any[] {
     const propertyMap = new Map<string, TIOSchemaAttribute>();
     allProperties.forEach(prop => {
@@ -2097,7 +2097,7 @@ export function expandPropertyReferences(
             propertyMap.set(prop.id, prop);
         }
     });
-    
+
     return fieldReferences.map(propRef => {
         // Case 1: String shorthand → MUST be a direct schema field (convenience shortcut)
         if (typeof propRef === 'string') {
@@ -2112,7 +2112,7 @@ export function expandPropertyReferences(
             }
             return formatEntityAttributeForFormOrDetail(fieldAttribute, type, entityService, allProperties, globalUIConfigOptions);
         }
-        
+
         // Case 2-5: Object syntax (permissive - supports everything)
         if (typeof propRef === 'object' && propRef !== null) {
             // Validate minimum required properties
@@ -2120,30 +2120,30 @@ export function expandPropertyReferences(
                 DefaultLogger.warn(`Property config missing 'name' field (required for UI identification). Skipping:`, propRef);
                 return propRef; // Return as-is, let frontend handle
             }
-            
+
             // Determine the data path (column can be: direct field, JSON path, or custom field)
             const column = propRef.column || propRef.name;
-            
+
             // Extract just the root field name for schema lookup (handles JSON paths like "user.email" → "user")
-            const rootFieldName = column.split('.')[0];
+            const rootFieldName = column.split('.')[ 0 ];
             const fieldAttribute = propertyMap.get(rootFieldName);
-            
+
             // If root field exists in schema AND column is the exact field (not a path), merge with schema
             if (fieldAttribute && column === rootFieldName) {
                 // Schema field with overrides - merge defaults + overrides
                 const schemaDefaults = formatEntityAttributeForFormOrDetail(fieldAttribute, type, entityService, allProperties, globalUIConfigOptions);
-                return { 
+                return {
                     ...schemaDefaults,
                     ...propRef,  // User overrides take precedence
                     column  // Ensure column is set
                 };
             }
-            
+
             // Otherwise: JSON path, custom field, or multiple rendering of same field
             // Auto-generate missing properties with proper formatting
             const label = propRef.label || toHumanReadableName(propRef.name);
             const fieldType = propRef.fieldType || 'text';
-            
+
             // Warn if label was auto-generated
             if (!propRef.label) {
                 DefaultLogger.debug(
@@ -2157,7 +2157,7 @@ export function expandPropertyReferences(
                     `Recommended field types: text, number, select, badge, progress, etc.`
                 );
             }
-            
+
             // Return with proper formatting
             return {
                 ...propRef,
@@ -2166,7 +2166,7 @@ export function expandPropertyReferences(
                 fieldType
             };
         }
-        
+
         // Fallback: unknown type, return as-is with warning
         DefaultLogger.warn(`Unknown property reference type:`, propRef);
         return propRef;
@@ -2193,35 +2193,35 @@ export function processSectionsConfig(
     sectionsConfig: any,
     allProperties: TIOSchemaAttribute[],
     entityService: BaseEntityService<any>,
-    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']
+    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]
 ): any {
     if (!sectionsConfig) return sectionsConfig;
-    
+
     const processed = { ...sectionsConfig };
-    
+
     // Process sections in single group format (backward compatible)
     if (processed.sections) {
-        processed.sections = Object.entries(processed.sections).reduce((acc, [key, section]: [string, any]) => {
-            acc[key] = processSectionConfig(section, allProperties, entityService, globalUIConfigOptions);
+        processed.sections = Object.entries(processed.sections).reduce((acc, [ key, section ]: [ string, any ]) => {
+            acc[ key ] = processSectionConfig(section, allProperties, entityService, globalUIConfigOptions);
             return acc;
         }, {} as Record<string, any>);
     }
-    
+
     // Process section groups (new format)
     if (processed.sectionGroups) {
         processed.sectionGroups = processed.sectionGroups.map((group: any) => {
             if (!group.sections) return group;
-            
+
             return {
                 ...group,
-                sections: Object.entries(group.sections).reduce((acc, [key, section]: [string, any]) => {
-                    acc[key] = processSectionConfig(section, allProperties, entityService, globalUIConfigOptions);
+                sections: Object.entries(group.sections).reduce((acc, [ key, section ]: [ string, any ]) => {
+                    acc[ key ] = processSectionConfig(section, allProperties, entityService, globalUIConfigOptions);
                     return acc;
                 }, {} as Record<string, any>)
             };
         });
     }
-    
+
     return processed;
 }
 
@@ -2240,10 +2240,10 @@ function processSectionConfig(
     section: any,
     allProperties: TIOSchemaAttribute[],
     entityService: BaseEntityService<any>,
-    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']
+    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]
 ): any {
     const processed = { ...section };
-    
+
     // Process detailsPageConfig with propertiesConfig
     if (processed.pageType === 'details' && processed.detailsPageConfig?.propertiesConfig) {
         const config = processed.detailsPageConfig;
@@ -2258,7 +2258,7 @@ function processSectionConfig(
             )
         };
     }
-    
+
     // Process formPageConfig
     if (processed.pageType === 'form' && processed.formPageConfig?.propertiesConfig) {
         const config = processed.formPageConfig;
@@ -2274,7 +2274,7 @@ function processSectionConfig(
             )
         };
     }
-    
+
     return processed;
 }
 
@@ -2701,7 +2701,7 @@ export function mergeFieldVisibility<T extends { name: string }>(
  * Normalized column configuration with defaultVisible always defined.
  * Internal type for processing column overrides.
  */
-type NormalizedColumnConfig = Omit<ITableColumnConfig, 'defaultVisible'> & { 
+type NormalizedColumnConfig = Omit<ITableColumnConfig, 'defaultVisible'> & {
     defaultVisible: boolean;
     _order?: number;
 };
@@ -2719,8 +2719,8 @@ function normalizeColumnOverrides(
     return (columnOverrides as Array<ITableColumn>).map(col => {
         // String shorthand: 'fieldName' → { field: 'fieldName', defaultVisible: true }
         if (typeof col === 'string') {
-            return { 
-                field: col, 
+            return {
+                field: col,
                 defaultVisible: true
             };
         }
@@ -2802,7 +2802,7 @@ export function mergeColumnVisibility<T extends { name: string; dataIndex?: stri
         if (!matchedOverrides.has(override.field)) {
             // This is a custom column (JSON path or computed field)
             const isJsonPath = override.field.includes('.');
-            
+
             // Log info about custom column
             if (isJsonPath) {
                 DefaultLogger.debug(`Adding JSON path column: "${override.field}"`);

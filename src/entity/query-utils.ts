@@ -79,8 +79,14 @@ export const OPERATOR_ALIASES: Record<string, string> = {
   'notIncludes': 'notContains',
   'notHas': 'notContains',
 
-  // Existence aliases
-  'exists': 'exists', // Keep as-is, special handling needed per context
+  // Existence check - maps to DynamoDB attribute_exists/attribute_not_exists
+  'exists': 'exists',
+  'notExists': 'notExists',
+  // Backward compatibility aliases
+  'isNull': 'notExists',
+  'notNull': 'exists',
+  'empty': 'notExists',
+  'notEmpty': 'exists',
 };
 
 /**
@@ -88,8 +94,8 @@ export const OPERATOR_ALIASES: Record<string, string> = {
  */
 export const CORE_OPERATORS = new Set([
   'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'nin', 'bt',
-  'isNull', 'isEmpty', 'exists', 'contains', 'notContains',
-  'containsSome', 'like', 'endsWith', 'startsWith'
+  'exists', 'notExists', 'isNull', 'notNull', 'empty', 'notEmpty',
+  'contains', 'notContains', 'containsSome', 'like', 'endsWith', 'startsWith'
 ]);
 
 /**

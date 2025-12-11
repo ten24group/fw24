@@ -105,13 +105,13 @@ export class EntityUIConfigGen {
         if (config.pageName) {
             return toSlug(config.pageName);
         }
-        
+
         // For template-based page titles (objects), pageName MUST be provided
         // Extract string from pageTitle (handles both string and Template types)
-        const pageTitleString = typeof config.pageTitle === 'string' 
-            ? config.pageTitle 
+        const pageTitleString = typeof config.pageTitle === 'string'
+            ? config.pageTitle
             : 'custom-page'; // Fallback for Template objects
-        
+
         switch (config.pageType) {
             case 'list':
                 return `list-${toSlug(pageTitleString)}`;
@@ -162,16 +162,16 @@ export class EntityUIConfigGen {
 
         // Get global UI config options (including duplicatedFieldDetection)
         const globalUIConfigOptions = Fw24.getInstance().getConfig().uiConfigGenOptions;
-        
+
         let menuIndex = 1;
         // generate UI configs
         services.forEach((service, entityName) => {
 
             let entitySchema = service.getEntitySchema() as EntitySchema<any, any, any>;
-            
+
             // Check for deprecated usage and warn
             this.checkDeprecatedUsage(entitySchema);
-            
+
             // Transform legacy config structure to new nested structure if needed
             entitySchema = this.transformLegacyConfig(entitySchema);
             const entityDefaultOpsSchema = service.getOpsDefaultIOSchema();
@@ -219,7 +219,8 @@ export class EntityUIConfigGen {
                     // Use new nested config if available, fallback to old
                     pageHeaderActions: entitySchema.model.listPageConfig?.actions || entitySchema.model.listPageActions,
                     breadcrumbs: entitySchema.model.listPageConfig?.breadcrumbs || entitySchema.model.listPageBreadcrumbs,
-                    defaultSort: entitySchema.model.listPageConfig?.defaultSort || entitySchema.model.listPageDefaultSort,
+                    // Legacy sort fallback (tableConfig.defaultSort is handled directly in list-entity.ts)
+                    defaultSort: entitySchema.model.listPageConfig?.defaultSort ?? entitySchema.model.listPageDefaultSort,
                     tableConfig: entitySchema.model.listPageConfig?.tableConfig,
                     globalUIConfigOptions,  // NEW: Pass global config
                 }, service);
@@ -342,7 +343,7 @@ export class EntityUIConfigGen {
         menuGroups.forEach((items, groupName) => {
             // Sort items within group by order
             items.sort((a, b) => (a.order || 0) - (b.order || 0));
-            
+
             // Create group item
             allMenuItems.push({
                 label: groupName,
@@ -361,12 +362,12 @@ export class EntityUIConfigGen {
      */
     private transformLegacyConfig(schema: EntitySchema<any, any, any>): EntitySchema<any, any, any> {
         const model = schema.model;
-        
+
         // If already using new format, return as-is
         if (model.listPageConfig || model.viewPageConfig || model.editPageConfig || model.createPageConfig) {
             return schema;
         }
-        
+
         // Transform old format to new nested structure
         const transformedModel = {
             ...model,
@@ -378,7 +379,7 @@ export class EntityUIConfigGen {
                     defaultSort: model.listPageDefaultSort
                 }
                 : undefined,
-            
+
             // View page transformation
             viewPageConfig: (model.viewPageActions || model.viewPageBreadcrumbs || model.viewPageColumnsConfig)
                 ? {
@@ -387,7 +388,7 @@ export class EntityUIConfigGen {
                     columnsConfig: model.viewPageColumnsConfig
                 }
                 : undefined,
-            
+
             // Edit page transformation
             editPageConfig: (model.editPageActions || model.editPageBreadcrumbs || model.editPageColumnsConfig)
                 ? {
@@ -396,7 +397,7 @@ export class EntityUIConfigGen {
                     columnsConfig: model.editPageColumnsConfig
                 }
                 : undefined,
-            
+
             // Create page transformation
             createPageConfig: (model.createPageBreadcrumbs || model.createPageColumnsConfig)
                 ? {
@@ -405,17 +406,17 @@ export class EntityUIConfigGen {
                 }
                 : undefined,
         };
-        
+
         return { ...schema, model: transformedModel };
     }
-    
+
     /**
      * Check for deprecated configuration usage and emit warnings
      */
     private checkDeprecatedUsage(schema: EntitySchema<any, any, any>): void {
         const model = schema.model;
         const warnings: string[] = [];
-        
+
         // Check list page deprecated fields
         if (model.listPageActions) {
             warnings.push('listPageActions is deprecated. Use listPageConfig.actions instead.');
@@ -426,7 +427,7 @@ export class EntityUIConfigGen {
         if (model.listPageDefaultSort) {
             warnings.push('listPageDefaultSort is deprecated. Use listPageConfig.defaultSort instead.');
         }
-        
+
         // Check view page deprecated fields
         if (model.viewPageActions) {
             warnings.push('viewPageActions is deprecated. Use viewPageConfig.actions instead.');
@@ -437,7 +438,7 @@ export class EntityUIConfigGen {
         if (model.viewPageColumnsConfig) {
             warnings.push('viewPageColumnsConfig is deprecated. Use viewPageConfig.columnsConfig instead.');
         }
-        
+
         // Check edit page deprecated fields
         if (model.editPageActions) {
             warnings.push('editPageActions is deprecated. Use editPageConfig.actions instead.');
@@ -448,7 +449,7 @@ export class EntityUIConfigGen {
         if (model.editPageColumnsConfig) {
             warnings.push('editPageColumnsConfig is deprecated. Use editPageConfig.columnsConfig instead.');
         }
-        
+
         // Check create page deprecated fields
         if (model.createPageBreadcrumbs) {
             warnings.push('createPageBreadcrumbs is deprecated. Use createPageConfig.breadcrumbs instead.');
@@ -456,7 +457,7 @@ export class EntityUIConfigGen {
         if (model.createPageColumnsConfig) {
             warnings.push('createPageColumnsConfig is deprecated. Use createPageConfig.columnsConfig instead.');
         }
-        
+
         // Emit warnings if any deprecated fields found
         if (warnings.length > 0) {
             this.logger.warn(`\n⚠️  Entity "${model.entity}" uses deprecated configuration:`);

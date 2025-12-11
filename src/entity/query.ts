@@ -208,14 +208,12 @@ export function attributeFilterToExpression<
 
             filterFragments.push(makeParenthesesGroup(listFilters, 'AND'));
 
-        } else if (isOperatorAlias(filterKey, 'exists') || isOperatorAlias(filterKey, 'isNull')) {
-
-            filterFragments.push(filterVal ? exists(attributeRef) : notExists(attributeRef));
-
-        } else if (isOperatorAlias(filterKey, 'isEmpty')) {
-
-            filterFragments.push(filterVal ? eq(attributeRef as string, '' as string) : ne(attributeRef as string, '' as string));
-
+        } else if ([ 'exists', 'notExists', 'isNull', 'notNull', 'empty', 'notEmpty' ].includes(filterKey)) {
+            // Primary: exists/notExists
+            // Aliases: isNull/empty → notExists, notNull/notEmpty → exists
+            const isExistsOp = [ 'exists', 'notNull', 'notEmpty' ].includes(filterKey);
+            const wantExists = isExistsOp ? filterVal : !filterVal;
+            filterFragments.push(wantExists ? exists(attributeRef) : notExists(attributeRef));
         }
     }
 

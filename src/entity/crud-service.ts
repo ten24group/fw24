@@ -390,10 +390,10 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
 
     // Note: with "all_old", entity.data contains the OLD data, we need to return the NEW data
     // Since we don't have the new data from DynamoDB, we return the input data as the new data
-    return { 
+    return {
         data: data as any,  // The new data we just upserted
-        wasCreated, 
-        oldData 
+        wasCreated,
+        oldData
     } as UpsertEntityResponse<S>;
 }
 
@@ -403,6 +403,57 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
  */
 export interface ListEntityArgs<Sch extends EntitySchema<any, any, any>> extends BaseEntityCrudArgs<Sch> {
     query: EntityQuery<Sch>
+}
+
+/**
+ * Operators that should NOT be used for index matching.
+ * These operators look for records where the attribute doesn't exist or is empty,
+ * but those records won't be in a sparse GSI where that attribute is the PK.
+ */
+const INDEX_EXCLUDED_OPERATORS = new Set([
+    'notExists', 'exists', 'isNull', 'notNull', 'empty', 'notEmpty'
+]);
+
+/**
+ * Convert FilterGroup format to simple object format for index matching.
+ * FilterGroup: { and: [{ attribute: 'foo', eq: 'bar' }] }
+ * Simple: { foo: { eq: 'bar' } }
+ * 
+ * Only extracts filters from the 'and' array as those are the ones
+ * that can be used for GSI partition key matching.
+ * 
+ * Excludes existence/null filters (notExists, isNull, empty, etc.) from index
+ * matching since records with missing attributes won't be in sparse GSIs.
+ * 
+ * @param filters - The filters in FilterGroup or simple format
+ * @returns Filters in simple object format { attr: { op: val } }
+ */
+export function filterGroupToSimpleFormat(filters: Record<string, any>): Record<string, any> {
+    // Already in simple format or empty
+    if (!filters || !('and' in filters)) {
+        return filters || {};
+    }
+
+    const simple: Record<string, any> = {};
+
+    // Extract from 'and' array - these are AND conditions that could match GSI PK
+    for (const item of filters.and || []) {
+        if (item.attribute) {
+            const operators: Record<string, any> = {};
+            for (const [ key, value ] of Object.entries(item)) {
+                // Skip the 'attribute' key and exclude existence/null operators from index matching
+                // Records with missing attributes won't be in sparse GSIs
+                if (key !== 'attribute' && !INDEX_EXCLUDED_OPERATORS.has(key)) {
+                    operators[ key ] = value;
+                }
+            }
+            if (Object.keys(operators).length > 0) {
+                simple[ item.attribute ] = operators;
+            }
+        }
+    }
+
+    return simple;
 }
 
 /**
@@ -422,19 +473,23 @@ export function findMatchingIndex(
     const logger = createLogger('CRUD-service:findMatchingIndex');
     if (!filters) filters = {};
 
+    // Convert FilterGroup format to simple format for index matching
+    const simpleFilters = filterGroupToSimpleFormat(filters);
+    logger.debug(`Converted filters for index matching:`, { original: filters, simple: simpleFilters });
+
     // First try ElectroDB's index matching
     const repository = entityService.getRepository();
-    const { keys, index, shouldScan } = (repository as any)._findBestIndexKeyMatch(filters);
+    const { keys, index, shouldScan } = (repository as any)._findBestIndexKeyMatch(simpleFilters);
 
-    logger.debug(`Found ElectroDB index: ${index} with ${keys.length} attribute matches for entity: ${entityName} with filters and scan: ${shouldScan} - `, keys, filters);
+    logger.debug(`Found ElectroDB index: ${index} with ${keys.length} attribute matches for entity: ${entityName} with filters and scan: ${shouldScan} - `, keys, simpleFilters);
 
     // If we found a matching index, use it
     if (!shouldScan) {
         const indexFilters: Record<string, any> = {};
 
-        // Add matched keys to indexFilters
+        // Add matched keys to indexFilters (use simpleFilters which has the right format)
         keys.forEach((key: { name: string; type: string }) => {
-            const filterValue = filters![ key.name ];
+            const filterValue = simpleFilters[ key.name ];
             if (filterValue) {
                 // Handle both { eq: value } and direct value formats
                 indexFilters[ key.name ] = filterValue.eq !== undefined ? filterValue.eq : filterValue;
@@ -858,7 +913,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     // --- End Composite Key Handling ---
 
 
-    
+
     // Use ElectroDB for all fields including _actor (now in schema)
     const query = entityService.getRepository().patch(identifiers).set(data);
 
@@ -1035,7 +1090,7 @@ export async function deleteBatchEntity<S extends EntitySchema<any, any, any>>(o
     const bulkOptions: Partial<BulkOptions> = {
         concurrency: concurrent
     };
-    
+
     const electroResult = await entityService.getRepository().delete(identifiersBatch).go(bulkOptions);
 
     logger.debug(`Completed EntityCrud ~ deleteBatchEntity ~ entityName: ${entityName} ~ ids:`, ids);
