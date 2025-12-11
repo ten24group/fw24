@@ -273,11 +273,16 @@ export function matchesPriority(providerPriority: number | undefined, criteria: 
 }
 
 // Flatten the configuration object into key-value pairs with paths as keys
+// IMPORTANT: Arrays are treated as leaf values (not recursed into) to preserve their structure
 export function flattenConfig(config: Record<any, any>, basePath: string = ''): Map<string, any> {
     const entries = new Map<string, any>();
 
     const recurse = (obj: any, path: string) => {
-        if (typeof obj === 'object' && obj !== null) {
+        // Arrays should be stored as-is (not flattened into indexed paths)
+        // This preserves array structure when configs are merged back together
+        if (Array.isArray(obj)) {
+            entries.set(path, obj);
+        } else if (typeof obj === 'object' && obj !== null) {
             for (const key in obj) {
                 if (obj.hasOwnProperty(key)) {
                     recurse(obj[ key ], path ? `${path}.${key}` : key);
