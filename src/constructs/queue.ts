@@ -12,6 +12,7 @@ import { LogDuration, createLogger } from "../logging";
 import { DynamoDBConstruct } from "./dynamodb";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { IConstructConfig } from "../interfaces/construct-config";
+import { LayerConstruct } from "./layer";
 import { VpcConstruct } from "./vpc";
 import { LambdaFunction } from "./lambda-function";
 import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
@@ -72,7 +73,7 @@ export class QueueConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
     
     name: string = QueueConstruct.name;
-    dependencies: string[] = [DynamoDBConstruct.name, VpcConstruct.name];
+    dependencies: string[] = [DynamoDBConstruct.name, VpcConstruct.name, LayerConstruct.name];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;
