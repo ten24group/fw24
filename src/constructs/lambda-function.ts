@@ -366,7 +366,9 @@ export class LambdaFunction extends Construct {
     ) {
       const entryPackages = fw24.getLambdaEntryPackages();
       if (entryPackages.length > 0) {
-        const entryPackagesValue = entryPackages.join(',');
+        // Resolve env key templates (e.g., env:layerImportPath:di -> /opt/nodejs/node_modules/di/index.js)
+        const resolvedPackages = entryPackages.map(pkg => fw24.tryResolveEnvKeyTemplate(pkg));
+        const entryPackagesValue = resolvedPackages.join(',');
         this.logger?.debug(`Auto-setting ENTRY_PACKAGES: ${entryPackagesValue}`, id);
         addEnvironmentKeyValueForFunction({
           fn,
@@ -560,15 +562,21 @@ function addPolicyToFunction(options: {
   let resolvedPolicy: TPolicyStatementOrProps | TImportedPolicy = policy;
 
   if (isImportedPolicy(policy)) {
-    if (!policy.isOptional && !fw24.hasPolicy(policy.name, policy.prefix)) {
-      throw new Error(`Policy ${policy} not found in fw24 scope`);
+    const policyExists = fw24.hasPolicy(policy.name, policy.prefix);
+    
+    if (!policyExists) {
+      if (policy.isOptional) {
+        // Skip optional policies that don't exist
+        return;
+      }
+      throw new Error(`Policy ${policy.name} not found in fw24 scope`);
     }
 
     resolvedPolicy = fw24.getPolicy(policy.name, policy.prefix) as PolicyStatementProps | PolicyStatement;
   }
 
   if (!(resolvedPolicy instanceof PolicyStatement)) {
-    resolvedPolicy = new PolicyStatement(policy as PolicyStatementProps);
+    resolvedPolicy = new PolicyStatement(resolvedPolicy as PolicyStatementProps);
   }
 
   fn.addToRolePolicy(resolvedPolicy as PolicyStatement);
