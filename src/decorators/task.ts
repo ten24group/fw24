@@ -44,11 +44,8 @@ export type ITaskConfig = CommonLambdaHandlerOptions & {
  */
 export function Task(taskName: string, taskConfig: ITaskConfig) {
 	return function <T extends { new(...args: any[]): {} }>(target: T) {
-		// Entry packages are auto-loaded by fw24 layer - no need to call here
-		
 		// Default autoExportLambdaHandler to true if undefined
 		taskConfig.autoExportLambdaHandler = taskConfig.autoExportLambdaHandler ?? true;
-
 
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {

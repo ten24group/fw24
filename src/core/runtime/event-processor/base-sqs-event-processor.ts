@@ -192,7 +192,7 @@ abstract class BaseSQSEventProcessor<
     });
 
     if (preprocessed.length === 0) {
-      this.logger.info('No records to process after preprocessing.');
+      this.logger.debug('No records to process after preprocessing.');
       return;
     }
 

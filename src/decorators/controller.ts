@@ -87,7 +87,6 @@ export function Controller(controllerName: string, controllerConfig: IController
 
 	return function <T extends { new(...args: any[]): {} }>(target: T) {
 		// Entry packages are auto-loaded by fw24 layer - no need to call here
-		
 		// Default autoExportLambdaHandler to true if undefined
 		controllerConfig.autoExportLambdaHandler = controllerConfig.autoExportLambdaHandler ?? true;
 

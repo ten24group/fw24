@@ -63,7 +63,7 @@ export type IQueueConfig = CommonLambdaHandlerOptions & {
 	 * The subscriptions for the queue.
 	 */
 	subscriptions?: IQueueSubscriptions;
-	
+
 	/**
 	 * Skip automatic registration by QueueConstruct.
 	 * When true, this queue will not be automatically created during QueueConstruct's construct phase.
@@ -99,11 +99,8 @@ export type IQueueConfig = CommonLambdaHandlerOptions & {
  */
 export function Queue(queueName: string, queueConfig: IQueueConfig = {}) {
 	return function <T extends { new(...args: any[]): {} }>(target: T) {
-		// Entry packages are auto-loaded by fw24 layer - no need to call here
-		
 		// Default autoExportLambdaHandler to true if undefined
 		queueConfig.autoExportLambdaHandler = queueConfig.autoExportLambdaHandler ?? true;
-
 
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {
