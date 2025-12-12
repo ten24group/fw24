@@ -24,7 +24,6 @@ export * from '../const/';
 export * from '../errors';
 export * from '../search';
 export * from '../audit';
-export * from '../observability';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AUTO-INITIALIZATION
