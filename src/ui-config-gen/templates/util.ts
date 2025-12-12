@@ -2584,6 +2584,36 @@ export function mergeActions<T extends { id?: string }>(
 }
 
 /**
+ * Merges default filter segments with custom segments using ID-based override logic.
+ * 
+ * Follows the same pattern as mergeButtons/mergeActions: custom segments with matching IDs
+ * override defaults, and new custom segments are appended.
+ * 
+ * @param defaults - Default segment configurations
+ * @param customs - Custom segment configurations to merge
+ * @returns Merged array with custom overrides applied
+ * 
+ * @example
+ * ```typescript
+ * const defaults = [
+ *   { id: 'active', label: 'Active', filters: { status: { eq: 'active' } } },
+ *   { id: 'inactive', label: 'Inactive', filters: { status: { eq: 'inactive' } } }
+ * ];
+ * const customs = [
+ *   { id: 'archived', label: 'Archived', filters: { archived: { eq: true } } }
+ * ];
+ * const result = mergeSegments(defaults, customs);
+ * // Returns: [active, inactive, archived]
+ * ```
+ */
+export function mergeSegments<T extends { id: string }>(
+    defaults: Array<T>,
+    customs: ReadonlyArray<T> | Array<T> = []
+): Array<T> {
+    return mergeButtons(defaults, [ ...customs ]);  // Reuse mergeButtons logic with id-based override
+}
+
+/**
  * Merges field-level visibility, enablement, help text, and placeholder overrides into base properties.
  * 
  * Applies custom field configurations from form/detail config to base schema properties.
