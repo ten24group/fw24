@@ -17,7 +17,7 @@ const logger = createLogger('CrudObservabilityHooks');
 
 export interface CrudObservabilityContext {
   correlationId?: string;
-  parentLogId?: string;
+  parentObservabilityLogId?: string;
   actor?: Actor;
 }
 
@@ -109,7 +109,7 @@ export class CrudObservabilityHooks {
   ): ISpanObserver {
     return SpanObserver.start(`${entityName}.${operation}`, {
       correlationId: context?.correlationId,
-      parentLogId: context?.parentLogId,
+      parentObservabilityLogId: context?.parentObservabilityLogId,
       level: 'debug',
       attributes: {
         'entity.name': entityName,

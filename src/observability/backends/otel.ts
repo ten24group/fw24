@@ -73,26 +73,20 @@
  * - https://opentelemetry.io/docs/languages/js/
  */
 
+import { Injectable, InjectConfig } from '../../di';
 import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel, ObservabilityLevelString } from '../types';
 import { createLogger } from '../../logging';
 import { getSpanKind } from '../utils/span-utils';
 
-// Import types from @opentelemetry/api (available as devDependency for type checking)
+// Import types from @opentelemetry/api
 import type { Tracer, Span, SpanStatusCode, TraceAPI, ContextAPI, Attributes } from '@opentelemetry/api';
-// Import types for metrics (optional - may not be available in all ADOT versions)
 import type { Meter } from '@opentelemetry/api';
-// Import types for logs (optional - experimental API)
 import type { Logger as OTELLogger } from '@opentelemetry/api-logs';
 
 const logger = createLogger('OTELObservabilityBackend');
 
-// Module-level cold start flag (per-container, not per-class)
+// Module-level cold start flag
 let coldStartFlag = true;
-
-export interface OTELBackendOptions {
-  serviceName: string;
-  minLevel?: ObservabilityLevel;
-}
 
 // OTEL Severity mapping for logs
 const LOG_LEVEL_TO_SEVERITY: Record<ObservabilityLevelString, number> = {
@@ -104,25 +98,16 @@ const LOG_LEVEL_TO_SEVERITY: Record<ObservabilityLevelString, number> = {
   critical: 21, // FATAL
 };
 
-/**
- * OTEL/ADOT Backend - Uses OpenTelemetry API for custom instrumentation
- * 
- * This backend works alongside the AWS ADOT Lambda layer to add custom
- * spans, events, and attributes to traces.
- * 
- * Supports all three OTEL signals:
- * - Traces: Custom spans from our Span API
- * - Metrics: Counters, gauges, histograms from our Metric API
- * - Logs: Structured logs from our Log API
- * 
- * The ADOT layer handles:
- * - Automatic instrumentation of AWS SDK, HTTP, and Lambda
- * - Exporting to X-Ray/CloudWatch via OTLP
- * - Context propagation (W3C Trace Context + X-Ray)
- */
+@Injectable({
+  provide: 'ObservabilityBackend',
+  providedIn: 'ROOT',
+  tags: [ 'observability', 'backend', 'otel' ]
+})
 export class OTELObservabilityBackend implements ObservabilityBackend {
   public readonly name = 'otel';
   public readonly minLevel?: ObservabilityLevel;
+
+  private readonly serviceName: string;
 
   // Trace components
   private tracer: Tracer | null = null;
@@ -131,7 +116,7 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
   private spanStatusCode: typeof SpanStatusCode | null = null;
   private activeSpans = new Map<string, Span>();
 
-  // Metrics component (OTEL SDK handles instrument caching internally)
+  // Metrics component
   private meter: Meter | null = null;
 
   // Logs components
@@ -144,9 +129,12 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
   private invocationCount: number = 0;
   private initializationPromise: Promise<void> | null = null;
 
-  constructor(private readonly options: OTELBackendOptions) {
-    this.minLevel = options.minLevel;
-    // Start async initialization immediately
+  constructor(
+    @InjectConfig('observability.serviceName') serviceName: string,
+    @InjectConfig('observability.minLevel') minLevel: ObservabilityLevel
+  ) {
+    this.serviceName = serviceName;
+    this.minLevel = minLevel;
     this.initializationPromise = this.initializeOpenTelemetry();
   }
 
@@ -158,9 +146,8 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
       this.contextApi = otel.context;
       this.spanStatusCode = otel.SpanStatusCode;
 
-      // Get the tracer from the global provider (initialized by ADOT layer)
       this.tracer = otel.trace.getTracer(
-        this.options.serviceName,
+        this.serviceName,
         process.env.npm_package_version || '1.0.0'
       );
 
@@ -168,19 +155,17 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
       logger.info('OpenTelemetry Traces API available');
     } catch (error) {
       this.isOTELAvailable = false;
-      // Log actual error for debugging
-      logger.warn('OpenTelemetry Traces API not available - trace instrumentation disabled', {
+      logger.warn('OpenTelemetry Traces API not available', {
         error: error instanceof Error ? error.message : String(error),
       });
     }
 
-    // Initialize Metrics (separate try-catch since it may not be available)
+    // Initialize Metrics
     try {
       const otelMetrics = await import('@opentelemetry/api');
-      // metrics API is on the same module in OTEL 1.x
       if (otelMetrics.metrics) {
         this.meter = otelMetrics.metrics.getMeter(
-          this.options.serviceName,
+          this.serviceName,
           process.env.npm_package_version || '1.0.0'
         );
         this.isMetricsAvailable = true;
@@ -188,17 +173,17 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
       }
     } catch (error) {
       this.isMetricsAvailable = false;
-      logger.debug('OpenTelemetry Metrics API not available - metric instrumentation disabled', {
+      logger.debug('OpenTelemetry Metrics API not available', {
         error: error instanceof Error ? error.message : String(error),
       });
     }
 
-    // Initialize Logs (experimental API - optional package)
+    // Initialize Logs
     try {
       const otelLogs = await import('@opentelemetry/api-logs');
       if (otelLogs.logs) {
         this.otelLogger = otelLogs.logs.getLogger(
-          this.options.serviceName,
+          this.serviceName,
           process.env.npm_package_version || '1.0.0'
         );
         this.isLogsAvailable = true;
@@ -206,13 +191,13 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
       }
     } catch (error) {
       this.isLogsAvailable = false;
-      logger.debug('OpenTelemetry Logs API not available - log instrumentation disabled', {
+      logger.debug('OpenTelemetry Logs API not available', {
         error: error instanceof Error ? error.message : String(error),
       });
     }
 
     if (this.isOTELAvailable) {
-      logger.info(`OTEL Backend initialized for: ${this.options.serviceName}`, {
+      logger.info(`OTEL Backend initialized for: ${this.serviceName}`, {
         traces: this.isOTELAvailable,
         metrics: this.isMetricsAvailable,
         logs: this.isLogsAvailable,
@@ -221,9 +206,6 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
     }
   }
 
-  /**
-   * Ensure initialization is complete before using OTEL
-   */
   private async ensureInitialized(): Promise<void> {
     if (this.initializationPromise) {
       await this.initializationPromise;
@@ -232,10 +214,8 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
   }
 
   initializeInvocation(): void {
-    // Increment invocation count
     this.invocationCount++;
 
-    // Detect cold start (module-level flag)
     const isColdStart = coldStartFlag;
     if (coldStartFlag) {
       coldStartFlag = false;
@@ -245,7 +225,6 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
       });
     }
 
-    // Clean up any orphaned spans from previous invocations (warm start)
     if (this.activeSpans.size > 0) {
       logger.warn(`Cleaning up ${this.activeSpans.size} orphaned spans from previous invocation`);
       this.activeSpans.forEach((span, entityId) => {
@@ -260,35 +239,27 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
   }
 
   async capture(event: ObservabilityEvent): Promise<void> {
-    // Ensure async initialization is complete
     await this.ensureInitialized();
 
-    // Route to appropriate handler based on event type
     const type = event.type;
 
-    // Span events → OTEL Traces
     if (type.startsWith('span.')) {
       if (!this.isOTELAvailable) return;
       await this.handleSpanEvent(event);
       return;
     }
 
-    // Metric events → OTEL Metrics
     if (type === 'metric') {
       if (!this.isMetricsAvailable) return;
       this.handleMetricEvent(event);
       return;
     }
 
-    // Log events → OTEL Logs
     if (type === 'log') {
       if (!this.isLogsAvailable) return;
       this.handleLogEvent(event);
       return;
     }
-
-    // Other event types (audit, decision, access, workflow) are not handled by OTEL
-    // They go to DynamoDB backend for persistence
   }
 
   // ==================== SPAN HANDLING ====================
@@ -313,50 +284,39 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
     if (!event.entityId || !this.tracer || !this.trace || !this.contextApi) return;
 
     try {
-      // Detect if this is a root span (no parent)
-      const isRootSpan = !event.parentLogId;
+      const isRootSpan = !event.parentObservabilityLogId;
       const isColdStart = this.invocationCount === 1;
 
-      // Get parent context if exists
       let context = this.contextApi.active();
-      if (event.parentLogId) {
-        const parentSpan = this.activeSpans.get(event.parentLogId);
+      if (event.parentObservabilityLogId) {
+        const parentSpan = this.activeSpans.get(event.parentObservabilityLogId);
         if (parentSpan) {
           context = this.trace.setSpan(context, parentSpan);
         }
       }
 
-      // Build attributes, filtering out undefined values (OTEL doesn't accept undefined)
       const spanAttributes: Attributes = {
-        // Service name annotation (inspired by AWS Powertools)
-        'service.name': this.options.serviceName,
-
-        // Add FW24-specific attributes (only if defined)
+        'service.name': this.serviceName,
         'fw24.correlation_id': event.correlationId,
         'fw24.invocation': this.invocationCount,
       };
 
-      // Cold start annotation (only on root spans)
       if (isRootSpan) {
         spanAttributes[ 'coldStart' ] = isColdStart;
       }
 
-      // Add optional FW24 attributes only if defined
       if (event.entityId) spanAttributes[ 'fw24.entity_id' ] = event.entityId;
       if (event.entityName) spanAttributes[ 'fw24.entity_name' ] = event.entityName;
-      if (event.parentLogId) spanAttributes[ 'fw24.parent_log_id' ] = event.parentLogId;
+      if (event.parentObservabilityLogId) spanAttributes[ 'fw24.parent_observability_log_id' ] = event.parentObservabilityLogId;
 
-      // Add custom attributes from event (converted to OTEL-compatible types)
       Object.assign(spanAttributes, this.toOtelAttributes(event.attributes));
 
-      // Add Lambda context (OTEL semantic conventions) - only if defined
       if (process.env.AWS_LAMBDA_FUNCTION_NAME) spanAttributes[ 'faas.name' ] = process.env.AWS_LAMBDA_FUNCTION_NAME;
       if (process.env.AWS_LAMBDA_FUNCTION_VERSION) spanAttributes[ 'faas.version' ] = process.env.AWS_LAMBDA_FUNCTION_VERSION;
       if (process.env.AWS_LAMBDA_LOG_STREAM_NAME) spanAttributes[ 'faas.instance' ] = process.env.AWS_LAMBDA_LOG_STREAM_NAME;
       if (process.env.AWS_ACCOUNT_ID) spanAttributes[ 'cloud.account.id' ] = process.env.AWS_ACCOUNT_ID;
       if (process.env.AWS_REGION) spanAttributes[ 'cloud.region' ] = process.env.AWS_REGION;
 
-      // Create a new span using OpenTelemetry API with parent context
       const span = this.tracer.startSpan(
         event.operation || 'operation',
         {
@@ -364,10 +324,9 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
           attributes: spanAttributes,
           startTime: event.timestampMs,
         },
-        context, // Pass parent context
+        context,
       );
 
-      // Store the span for future events/end
       this.activeSpans.set(event.entityId, span);
 
       logger.debug(`Created OpenTelemetry span: ${event.operation} (${event.entityId})`, {
@@ -389,10 +348,8 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
     }
 
     try {
-      // Add event to span - OTEL signature: addEvent(name, attributes?, timestamp?)
       const attrs = this.toOtelAttributes(event.attributes);
       span.addEvent(event.operation || 'event', attrs, event.timestampMs);
-
       logger.debug(`Added event to span ${event.entityId}: ${event.operation}`);
     } catch (error) {
       logger.error('Error adding event to OpenTelemetry span:', error);
@@ -409,33 +366,28 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
     }
 
     try {
-      // Add final attributes
       if (event.attributes) {
         span.setAttributes(this.toOtelAttributes(event.attributes));
       }
 
-      // Add metrics as attributes (X-Ray doesn't have separate metric concept)
       if (event.metrics) {
         Object.entries(event.metrics).forEach(([ key, value ]) => {
           span.setAttribute(`metric.${key}`, value);
         });
       }
 
-      // Add duration
       if (event.durationMs) {
         span.setAttribute('duration_ms', event.durationMs);
       }
 
       const statusCode = this.spanStatusCode;
 
-      // Set status based on success/error
       if (event.error) {
         span.setStatus({
           code: statusCode.ERROR,
           message: event.error.message,
         });
 
-        // Record exception with full stack trace
         span.recordException({
           name: event.error.type,
           message: event.error.message,
@@ -450,12 +402,8 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
         span.setStatus({ code: statusCode.OK });
       }
 
-      // End the span with the correct timestamp
       span.end(event.timestampMs);
-
-      // Remove from active spans
       this.activeSpans.delete(event.entityId);
-
       logger.debug(`Ended OpenTelemetry span: ${event.entityId}`);
     } catch (error) {
       logger.error('Error ending OpenTelemetry span:', error);
@@ -464,11 +412,6 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
 
   // ==================== METRIC HANDLING ====================
 
-  /**
-   * Handle metric events using OTEL's Metrics API
-   * 
-   * OTEL SDK internally caches instrument instances by name - no manual caching needed.
-   */
   private handleMetricEvent(event: ObservabilityEvent): void {
     if (!this.meter || !event.metrics) return;
 
@@ -480,7 +423,6 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
         switch (metricType) {
           case 'counter':
             if (value < 0) {
-              // OTEL Counter is monotonic - use UpDownCounter for negative values
               this.meter.createUpDownCounter(name).add(value, attrs);
             } else {
               this.meter.createCounter(name).add(value, attrs);
@@ -488,7 +430,6 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
             break;
 
           case 'gauge':
-            // OTEL Gauge API (1.4+) - records absolute value
             this.meter.createGauge(name).record(value, attrs);
             break;
 
@@ -516,23 +457,18 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
     if (!this.otelLogger) return;
 
     try {
-      const severity = LOG_LEVEL_TO_SEVERITY[ event.level ] || 9; // Default to INFO
-
-      // Safely extract message (avoid unsafe cast)
+      const severity = LOG_LEVEL_TO_SEVERITY[ event.level ] || 9;
       const message = this.extractLogMessage(event);
 
-      // Build attributes (filtering undefined)
       const logAttributes: Attributes = {
         ...this.toOtelAttributes(event.attributes),
         ...this.toOtelAttributes(event.data),
         'fw24.correlation_id': event.correlationId,
-        'fw24.log_id': event.logId,
+        'fw24.observability_log_id': event.observabilityLogId,
       };
 
-      // Add optional attributes only if defined
       if (event.source) logAttributes[ 'fw24.source' ] = event.source;
 
-      // Add error attributes if present
       if (event.error) {
         if (event.error.type) logAttributes[ 'exception.type' ] = event.error.type;
         if (event.error.message) logAttributes[ 'exception.message' ] = event.error.message;
@@ -553,9 +489,6 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
     }
   }
 
-  /**
-   * Safely extract log message from event data
-   */
   private extractLogMessage(event: ObservabilityEvent): string {
     if (event.data && typeof event.data.message === 'string') {
       return event.data.message;
@@ -565,47 +498,31 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
 
   // ==================== UTILITY METHODS ====================
 
-  /**
-   * Type guard for string array
-   */
   private isStringArray(arr: unknown[]): arr is string[] {
     return arr.every((v): v is string => typeof v === 'string');
   }
 
-  /**
-   * Type guard for number array
-   */
   private isNumberArray(arr: unknown[]): arr is number[] {
     return arr.every((v): v is number => typeof v === 'number');
   }
 
-  /**
-   * Type guard for boolean array
-   */
   private isBooleanArray(arr: unknown[]): arr is boolean[] {
     return arr.every((v): v is boolean => typeof v === 'boolean');
   }
 
-  // Max size for JSON stringified attributes (X-Ray has ~4KB limit per attribute)
   private static readonly MAX_ATTRIBUTE_SIZE = 4000;
 
-  /**
-   * Convert Record<string, unknown> to OTEL Attributes (only primitive values allowed)
-   */
   private toOtelAttributes(attrs?: Record<string, unknown>): Attributes {
     if (!attrs) return {};
     const result: Attributes = {};
     for (const [ key, value ] of Object.entries(attrs)) {
-      // OTEL only accepts primitives and homogeneous arrays of primitives
       if (typeof value === 'string') {
-        // Truncate long strings
         result[ key ] = value.length > OTELObservabilityBackend.MAX_ATTRIBUTE_SIZE
           ? value.substring(0, OTELObservabilityBackend.MAX_ATTRIBUTE_SIZE) + '...[truncated]'
           : value;
       } else if (typeof value === 'number' || typeof value === 'boolean') {
         result[ key ] = value;
       } else if (Array.isArray(value)) {
-        // OTEL requires homogeneous arrays - use type guards
         if (value.length === 0) {
           result[ key ] = [];
         } else if (this.isStringArray(value)) {
@@ -615,20 +532,15 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
         } else if (this.isBooleanArray(value)) {
           result[ key ] = value;
         } else {
-          // Mixed array - stringify with size limit
           result[ key ] = this.safeJsonStringify(value);
         }
       } else if (value !== null && value !== undefined) {
-        // Convert complex values to JSON string with size limit
         result[ key ] = this.safeJsonStringify(value);
       }
     }
     return result;
   }
 
-  /**
-   * Safely JSON stringify with size limit for OTEL attributes
-   */
   private safeJsonStringify(value: unknown): string {
     try {
       const json = JSON.stringify(value);
@@ -642,7 +554,6 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
   }
 
   async flush(): Promise<void> {
-    // End any remaining active spans
     if (this.activeSpans.size > 0 && this.spanStatusCode) {
       logger.warn(`Force ending ${this.activeSpans.size} active spans`);
       const statusCode = this.spanStatusCode;
@@ -660,8 +571,6 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
       this.activeSpans.clear();
     }
 
-    // The ADOT layer's OpenTelemetry Collector handles flushing automatically
-    // We don't need to manually flush - the collector batches and exports to X-Ray
     logger.debug('OTEL backend flush complete (ADOT collector handles export)');
   }
 
@@ -670,10 +579,7 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
   }
 }
 
-/**
- * Reset cold start flag (for testing)
- * @internal
- */
+/** Reset cold start flag (for testing) */
 export function resetColdStartFlag(): void {
   coldStartFlag = true;
 }

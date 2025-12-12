@@ -2,17 +2,17 @@
  * Storage Layer
  * 
  * Entity schema and service for observability data.
- * Service is self-contained - creates its own DynamoDB client.
+ * Apps extend BaseEntityController<ObservabilityLogSchema> directly for admin UIs.
  */
 
 export { 
   ObservabilityLogEntitySchema, 
   ObservabilityLogSchema,
-  getTtlDays,
-} from './log-entity';
+} from './observability-log-entity';
 
 export { 
-  ObservabilityLogService, 
+  ObservabilityLogService,
   ReconstructedSpan,
   LogRecord,
+  ObservabilityLogCreateItem,
 } from './service';

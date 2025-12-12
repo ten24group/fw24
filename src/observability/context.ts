@@ -26,7 +26,7 @@ export {
   setAttribute,
   setAttributes,
   setSource,
-  setParentLogId,
+  setParentObservabilityLogId,
 
   // Propagation - Extraction
   extractFromHeaders,

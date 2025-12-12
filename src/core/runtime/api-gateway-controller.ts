@@ -219,35 +219,42 @@ export abstract class APIController extends AbstractLambdaHandler {
 
     // Get merged observability config
     const observabilityConfig = this.getObservabilityConfig(route);
+    const defaultSource = `${this.constructor.name}.${route?.functionName || 'handler'}`;
 
     // Extract trace context from incoming headers
     const traceContext = extractFromHeaders(request.headers || {});
     const correlationId = traceContext?.correlationId || request.requestId || crypto.randomUUID();
 
-    // Create execution context
+    // Create execution context with custom source and tags from decorator
     const execCtx = createExecutionContext({
       correlationId,
-      parentLogId: traceContext?.parentLogId,
+      parentObservabilityLogId: traceContext?.parentObservabilityLogId,
       actor: ctx.actor,
       sampled: traceContext?.sampled,
-      source: `${this.constructor.name}.${route?.functionName || 'handler'}`,
+      source: observabilityConfig?.source || defaultSource,
+      tags: observabilityConfig?.tags,
     });
 
     // Run entire handler within execution context
     return runWithExecutionContext(execCtx, async () => {
-      // Build span attributes
+      // Build span attributes (includes request data capture)
       const spanAttributes = this.buildSpanAttributes(event, request, observabilityConfig);
 
-      // Create root span for this request
+      // Create root span with custom source, tags, and attributes from decorator
       const requestSpan = SpanObserver.start(`HTTP ${request.httpMethod} ${request.path}`, {
         correlationId,
-        parentLogId: traceContext?.parentLogId,
+        parentObservabilityLogId: traceContext?.parentObservabilityLogId,
         actor: ctx.actor,
-        attributes: spanAttributes,
+        source: observabilityConfig?.source || defaultSource,
+        tags: observabilityConfig?.tags,
+        attributes: {
+          ...spanAttributes,
+          ...observabilityConfig?.attributes,
+        },
       });
 
       // Store span ID in execution context for child spans
-      execCtx.parentLogId = requestSpan.id;
+      execCtx.parentObservabilityLogId = requestSpan.id;
 
       // Set ctx.executionContext to point to the execution context
       ctx.executionContext = execCtx;

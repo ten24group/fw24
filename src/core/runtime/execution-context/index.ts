@@ -59,7 +59,7 @@ export {
   setAttribute,
   setAttributes,
   setSource,
-  setParentLogId,
+  setParentObservabilityLogId,
 } from './storage';
 
 // Propagation - Extraction

@@ -7,9 +7,3 @@ import { makeDIToken } from "../di/utils";
  */
 export const DYNAMO_ENTITY_CONFIGURATIONS = makeDIToken('DYNAMO_ENTITY_CONFIGURATIONS');
 export const DI_CONTAINER = makeDIToken('CURRENT_DI_CONTAINER');
-
-/**
- * Observability configuration token
- * Register your config with: DIContainer.ROOT.register({ provide: OBSERVABILITY_CONFIG, useValue: config })
- */
-export const OBSERVABILITY_CONFIG = makeDIToken('OBSERVABILITY_CONFIG');

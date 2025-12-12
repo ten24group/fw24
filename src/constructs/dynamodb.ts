@@ -302,8 +302,17 @@ export interface IDynamoDBConfig extends IConstructConfig {
  * Backend routing (DynamoDB, CloudWatch, OTEL) is configured via observability:
  * ```typescript
  * // In your DI layer:
- * registerObservabilityConfig(DIContainer.ROOT, {
- *   backends: ['dynamodb', 'cloudwatch'],
+ * import { createObservabilityConfig } from '@ten24group/fw24/observability';
+ * 
+ * DIContainer.ROOT.registerConfigProvider({
+ *   provide: 'observability',
+ *   useConfig: createObservabilityConfig({
+ *     backends: [
+ *       { type: 'dynamodb'},
+ *       { type: 'cloudwatch'}
+ *     ]
+ *   }),
+ *   priority: 10
  * });
  * ```
  */
@@ -313,14 +322,14 @@ interface AuditConfig extends IConstructConfig {
      * @default false
      */
     enabled?: boolean;
-    
+
     /**
      * List of allowed entity names to be audited.
      * If not provided, all entities will be audited except those in excludedEntityNames or system entities.
      * Takes precedence over excludedEntityNames if both are provided.
      */
     allowedEntityNames?: string[];
-    
+
     /**
      * List of entity names to exclude from auditing.
      * If allowedEntityNames is provided, this field is ignored.
@@ -328,36 +337,36 @@ interface AuditConfig extends IConstructConfig {
      * defaults to excluding system entities like 'auditLog' and 'observabilityLog'.
      */
     excludedEntityNames?: string[];
-    
+
     /**
      * Custom function properties for the audit Lambda.
      * Allows overriding function configuration like VPC, memory, timeout, etc.
      */
     functionProps?: NodejsFunctionProps;
-    
+
     /**
      * Custom queue name for creating a new audit queue.
      * If not provided, defaults to `${tableName}-entity-audit`
      */
     queueName?: string;
-    
+
     /**
      * Name of an existing framework-managed queue to use for audit processing.
      * The existing queue must be defined with @Queue decorator and subscribe to the stream topic.
      */
     existingQueueName?: string;
-    
+
     /**
      * Path to queue handler file for manual registration.
      * The queue handler must have `manualRegistration: true` in its @Queue config.
      */
     queueHandlerPath?: string;
-    
+
     /**
      * Audit queue properties (only used when creating a new queue)
      */
     queueProps?: QueueProps;
-    
+
     /**
      * SQS event source properties
      */
@@ -760,11 +769,11 @@ export class DynamoDBConstruct implements FW24Construct {
         const envVars: Record<string, string> = {};
 
         if (config.allowedEntityNames && config.allowedEntityNames.length > 0) {
-            envVars[AUDIT_ENV_KEYS.ALLOWED_ENTITY_NAMES] = config.allowedEntityNames.join(',');
+            envVars[ AUDIT_ENV_KEYS.ALLOWED_ENTITY_NAMES ] = config.allowedEntityNames.join(',');
         }
 
         if (config.excludedEntityNames && config.excludedEntityNames.length > 0) {
-            envVars[AUDIT_ENV_KEYS.EXCLUDED_ENTITY_NAMES] = config.excludedEntityNames.join(',');
+            envVars[ AUDIT_ENV_KEYS.EXCLUDED_ENTITY_NAMES ] = config.excludedEntityNames.join(',');
         }
 
         // No resource access needed - observability system handles its own table access via global resource access
@@ -777,10 +786,10 @@ export class DynamoDBConstruct implements FW24Construct {
             {} // No additional resource access - observability handles it
         );
 
-        this.logger.info('Audit processing enabled (observability-backed)', { 
+        this.logger.info('Audit processing enabled (observability-backed)', {
             table: this.dynamoDBConfig.table.name,
             allowedEntities: config.allowedEntityNames,
-            excludedEntities: config.excludedEntityNames 
+            excludedEntities: config.excludedEntityNames
         });
     }
 

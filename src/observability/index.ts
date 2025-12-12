@@ -16,6 +16,23 @@
  * ```
  */
 
+import { DIContainer } from '../di';
+import { createObservabilityConfig } from './config';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REGISTER DEFAULT CONFIG (priority 0 - apps can override with higher priority)
+// ═══════════════════════════════════════════════════════════════════════════
+
+DIContainer.ROOT.registerConfigProvider({
+  provide: 'observability',
+  useConfig: createObservabilityConfig(), // Factory returns complete typed config with defaults
+  priority: 0
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXPORTS
+// ═══════════════════════════════════════════════════════════════════════════
+
 // === CORE TYPES ===
 export {
   ObservabilityLevel,
@@ -41,45 +58,32 @@ export { ObservabilityManager, Observer, withObservability } from './manager';
 
 // === CONFIGURATION ===
 export {
-  ObservabilityConfigManager,
+  createObservabilityConfig,
   validateConfig,
   CONFIG_DEFAULTS,
   VALID_BACKENDS,
   ValidBackend,
+  ObservabilityConfigInput,
 } from './config';
 
-// === DI SETUP ===
+// === CONTEXT ===
 export {
-  createObservabilityConfig,
-  registerObservabilityConfig,
-  ObservabilityConfigOptions,
-} from './di-setup';
-
-// === CONTEXT (re-exported from core/runtime/execution-context) ===
-export {
-  // Types
   type ExecutionContextData,
   type CreateExecutionContextOptions,
   type ParsedTraceContext,
   type Actor,
   type ObservationContext,
-
-  // Storage & Lifecycle
   createExecutionContext,
   runWithExecutionContext,
   runWithExecutionContextSync,
   getCurrentExecutionContext,
-
-  // Enrichment
   setActor,
   enrichActor,
   addTags,
   setAttribute,
   setAttributes,
   setSource,
-  setParentLogId,
-
-  // Propagation - Extraction
+  setParentObservabilityLogId,
   extractFromHeaders,
   extractFromSqs,
   extractFromSns,
@@ -87,8 +91,6 @@ export {
   extractFromStepFunctions,
   extractFromKinesis,
   extractFromDynamoDBStream,
-
-  // Propagation - Creation
   createHttpHeaders,
   createSqsAttributes,
   createSnsAttributes,
@@ -96,8 +98,6 @@ export {
   createStepFunctionsContext,
   toW3CTraceId,
   toW3CParentId,
-
-  // Convenience aliases
   getCurrentContext,
   getCorrelationIdIfExists,
   createObservationContext,
@@ -120,19 +120,10 @@ export {
   ChildLogObserver,
 } from './observers';
 
-// === STORAGE ===
-export {
-  ObservabilityLogEntitySchema,
-  ObservabilityLogSchema,
-  ObservabilityLogService,
-  ReconstructedSpan,
-  LogRecord,
-} from './storage';
-
-// === BACKENDS ===
-export { CloudWatchBackend, CloudWatchBackendOptions } from './backends/cloudwatch';
-export { DynamoDBObservabilityBackend, DynamoDBBackendOptions } from './backends/dynamodb';
-export { OTELObservabilityBackend, OTELBackendOptions } from './backends/otel';
+// === BACKENDS (DI-managed, exported for type references) ===
+export { CloudWatchBackend } from './backends/cloudwatch';
+export { DynamoDBObservabilityBackend } from './backends/dynamodb';
+export { OTELObservabilityBackend } from './backends/otel';
 
 // === UTILITIES ===
 export { stringToLevel, levelToString, levelToPowertoolsLogLevel } from './utils/level-utils';
@@ -150,8 +141,16 @@ export { CrudObservabilityHooks, CrudObservabilityContext } from './crud-hooks';
 export { captureBusinessEvent, captureBusinessError, captureMetric, CaptureEventOptions } from './helpers/capture';
 
 // === CONTROLLER CONFIG ===
-export type { ControllerObservabilityConfig, ObservabilityIncludesConfig } from './controller-config';
+export type { SpanMetadata, ControllerObservabilityConfig, ObservabilityIncludesConfig } from './controller-config';
 export { mergeObservabilityConfigs } from './controller-config';
+
+// === STORAGE (Entity, Service) ===
+// For admin UIs, extend BaseEntityController<ObservabilityLogSchema> directly
+export {
+  ObservabilityLogEntitySchema,
+  ObservabilityLogService,
+} from './storage';
+export type { ObservabilityLogSchema, ReconstructedSpan, LogRecord, ObservabilityLogCreateItem } from './storage';
 
 // === TESTING ===
 export { MockBackend, setupTestObservability, cleanupTestObservability, createTestContext, createTestContextSync, assertEventCaptured, assertNoEventCaptured, assertEventCount, createTestActor, createTestObservationContext } from './testing';

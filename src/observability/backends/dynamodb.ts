@@ -1,18 +1,15 @@
 /**
  * DynamoDB Backend for Observability
  * 
- * Stores all observability events in DynamoDB using ObservabilityLogService.
- * Service is self-contained - no DI dependency.
+ * Stores all observability events in DynamoDB.
+ * All config injected via DI - no fallbacks.
  */
 
-import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel } from '../types';
-import { ObservabilityLogSchema } from '../storage/log-entity';
-import { ObservabilityLogService } from '../storage/service';
-import { CreateEntityItemTypeFromSchema } from '../../entity/base-entity';
-import { truncatePayload, estimateItemSize } from '../utils/payload';
+import { Inject, Injectable, InjectConfig } from '../../di';
 import { createLogger } from '../../logging';
-
-type ObservabilityLogCreateItem = CreateEntityItemTypeFromSchema<ObservabilityLogSchema>;
+import { ObservabilityLogCreateItem, ObservabilityLogService } from '../storage/service';
+import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel } from '../types';
+import { estimateItemSize, truncatePayload } from '../utils/payload';
 
 const logger = createLogger('DynamoDBObservabilityBackend');
 
@@ -21,28 +18,25 @@ const DYNAMO_BATCH_SIZE = 25;
 const DYNAMO_MAX_ITEM_SIZE = 400 * 1024; // 400KB per item
 const MAX_BUFFER_SIZE = 1000;
 
-export interface DynamoDBBackendOptions {
-  ttlDays: number;
-  minLevel?: ObservabilityLevel;
-}
-
+@Injectable({
+  provide: 'ObservabilityBackend',
+  providedIn: 'ROOT',
+  tags: [ 'observability', 'backend', 'dynamodb' ]
+})
 export class DynamoDBObservabilityBackend implements ObservabilityBackend {
   public readonly name = 'dynamodb';
   public readonly minLevel?: ObservabilityLevel;
 
   private buffer: ObservabilityEvent[] = [];
-  private ttlDays: number;
+  private readonly ttlDays: number;
 
-  constructor(private readonly options: DynamoDBBackendOptions) {
-    this.minLevel = options.minLevel;
-    this.ttlDays = options.ttlDays;
-  }
-
-  /**
-   * Get service instance (self-contained, no DI)
-   */
-  private getService(): ObservabilityLogService {
-    return ObservabilityLogService.getInstance();
+  constructor(
+    @InjectConfig('observability.dynamodb.ttlDays') ttlDays: number,
+    @InjectConfig('observability.minLevel') minLevel: ObservabilityLevel,
+    @Inject(ObservabilityLogService) private readonly service: ObservabilityLogService
+  ) {
+    this.minLevel = minLevel;
+    this.ttlDays = ttlDays;
   }
 
   initializeInvocation(): void {
@@ -114,7 +108,7 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
         const size = estimateItemSize(item);
         if (size > DYNAMO_MAX_ITEM_SIZE) {
           logger.warn(`Item too large (${size} bytes), skipping:`, {
-            logId: item.logId,
+            observabilityLogId: item.observabilityLogId,
             type: item.type,
             size,
           });
@@ -125,8 +119,7 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
 
       if (validItems.length === 0) return;
 
-      const service = this.getService();
-      await service.batchCreate(validItems);
+      await this.service.batchCreate(validItems);
     } catch (error) {
       if (this.isRetryableError(error) && retryCount < MAX_RETRIES) {
         logger.warn(`DynamoDB transient error, retrying (${retryCount + 1}/${MAX_RETRIES}):`, {
@@ -141,7 +134,7 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
         error: error instanceof Error ? error.message : String(error),
         errorName: (error as { name?: string }).name,
         eventCount: events.length,
-        eventIds: events.map(e => e.logId),
+        eventIds: events.map(e => e.observabilityLogId),
         retried: retryCount > 0,
       });
     }
@@ -149,8 +142,8 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
 
   private mapEventToItem(event: ObservabilityEvent, ttlSeconds: number): ObservabilityLogCreateItem {
     return {
-      logId: event.logId,
-      parentLogId: event.parentLogId,
+      observabilityLogId: event.observabilityLogId,
+      parentObservabilityLogId: event.parentObservabilityLogId,
       correlationId: event.correlationId,
       type: event.type,
       subType: event.subType,

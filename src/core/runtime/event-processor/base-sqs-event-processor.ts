@@ -94,7 +94,7 @@ abstract class BaseSQSEventProcessor<
         },
       });
 
-      execCtx.parentLogId = span.id;
+      execCtx.parentObservabilityLogId = span.id;
 
       const ctx: EventProcessorContext<TEvent> = {
         event,

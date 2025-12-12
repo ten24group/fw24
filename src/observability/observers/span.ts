@@ -4,7 +4,7 @@
  * DESIGN PRINCIPLES:
  * - Requires correlationId from context or explicit option
  * - No auto-generation of correlationId (must be propagated)
- * - Hierarchical spans via parentLogId
+ * - Hierarchical spans via parentObservabilityLogId
  * - Fire-and-forget capture via capturer pattern (testable)
  * 
  * Usage:
@@ -52,8 +52,8 @@ const OBSERVER_NAME = 'SpanObserver';
 export interface SpanOptions {
   /** Correlation ID - if not provided, must come from context */
   correlationId?: string;
-  /** Parent log ID for nested spans */
-  parentLogId?: string;
+  /** Parent observability log ID for nested spans */
+  parentObservabilityLogId?: string;
   /** Severity level for the span */
   level?: ObservabilityLevelString;
   /** Additional attributes */
@@ -79,18 +79,18 @@ export interface ISpanObserver {
   withChild<T>(
     operation: string,
     fn: (span: ISpanObserver) => Promise<T>,
-    options?: Omit<SpanOptions, 'correlationId' | 'parentLogId'>
+    options?: Omit<SpanOptions, 'correlationId' | 'parentObservabilityLogId'>
   ): Promise<T>;
   createChild(
     operation: string,
-    options?: Omit<SpanOptions, 'correlationId' | 'parentLogId'>
+    options?: Omit<SpanOptions, 'correlationId' | 'parentObservabilityLogId'>
   ): ISpanObserver;
 }
 
 export class SpanObserver implements ISpanObserver {
   private readonly spanId: string;
   private readonly correlationId: string;
-  private readonly parentLogId?: string;
+  private readonly parentObservabilityLogId: string | null;
   private readonly level: ObservabilityLevelString;
   private readonly startTime: number;
   private readonly source?: string;
@@ -106,7 +106,9 @@ export class SpanObserver implements ISpanObserver {
     this.operation = operation;
     this.spanId = generateId();
     this.correlationId = fields.correlationId;
-    this.parentLogId = options.parentLogId ?? context?.parentLogId;
+    // Store parent at construction time - use null to mean "no parent" (not undefined)
+    // This prevents buildEvent from falling back to mutated context
+    this.parentObservabilityLogId = options.parentObservabilityLogId ?? context?.parentObservabilityLogId ?? null;
     this.level = options.level ?? 'info';
     this.attributes = options.attributes ?? {};
     this.source = options.source ?? fields.source;
@@ -115,10 +117,13 @@ export class SpanObserver implements ISpanObserver {
     this.startTime = Date.now();
 
     // Emit span.start event using capturer pattern
+    // CRITICAL: observabilityLogId MUST equal spanId for parent-child linking to work
+    // Child spans reference parentObservabilityLogId = parent.spanId, which must match parent's observabilityLogId
     captureEvent(fields, {
       type: 'span.start',
+      observabilityLogId: this.spanId,  // Use spanId as the DB record ID for parent-child linking
       level: this.level,
-      parentLogId: this.parentLogId,
+      parentObservabilityLogId: this.parentObservabilityLogId,
       entityName: 'span',
       entityId: this.spanId,
       timestampMs: this.startTime,
@@ -200,8 +205,9 @@ export class SpanObserver implements ISpanObserver {
       },
       {
         type: 'span.event',
+        observabilityLogId: generateId(),  // Events get their own unique ID
         level: this.level,
-        parentLogId: this.spanId,
+        parentObservabilityLogId: this.spanId,  // Parent is this span
         entityName: 'span',
         entityId: this.spanId,
         timestampMs: Date.now(),
@@ -224,10 +230,11 @@ export class SpanObserver implements ISpanObserver {
       { correlationId: this.correlationId, actor: this.actor, source: this.source, tags: this.tags },
       {
         type: 'span.end',
+        observabilityLogId: generateId(),  // span.end gets its own unique ID
         level: options?.error ? 'error' : this.level,
-        parentLogId: this.parentLogId,
+        parentObservabilityLogId: this.spanId,  // Parent is THIS span (span.start record), consistent with span.event
         entityName: 'span',
-        entityId: this.spanId,
+        entityId: this.spanId,  // References the same span
         timestampMs: endTime,
         durationMs: duration,
         operation: this.operation,
@@ -248,12 +255,12 @@ export class SpanObserver implements ISpanObserver {
   async withChild<T>(
     operation: string,
     fn: (span: ISpanObserver) => Promise<T>,
-    options?: Omit<SpanOptions, 'correlationId' | 'parentLogId'>
+    options?: Omit<SpanOptions, 'correlationId' | 'parentObservabilityLogId'>
   ): Promise<T> {
     return SpanObserver.withSpan(operation, fn, {
       ...options,
       correlationId: this.correlationId,
-      parentLogId: this.spanId,
+      parentObservabilityLogId: this.spanId,
       source: options?.source ?? this.source,
       tags: { ...this.tags, ...options?.tags },
       actor: options?.actor ?? this.actor,
@@ -265,12 +272,12 @@ export class SpanObserver implements ISpanObserver {
    */
   createChild(
     operation: string,
-    options?: Omit<SpanOptions, 'correlationId' | 'parentLogId'>
+    options?: Omit<SpanOptions, 'correlationId' | 'parentObservabilityLogId'>
   ): ISpanObserver {
     return SpanObserver.start(operation, {
       ...options,
       correlationId: this.correlationId,
-      parentLogId: this.spanId,
+      parentObservabilityLogId: this.spanId,
       source: options?.source ?? this.source,
       tags: { ...this.tags, ...options?.tags },
       actor: options?.actor ?? this.actor,

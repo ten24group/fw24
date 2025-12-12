@@ -22,12 +22,20 @@ const app = new Application({
 
 ```typescript
 // di.ts
-import { registerObservabilityConfig } from '@ten24group/fw24/observability';
+import { DIContainer } from '@ten24group/fw24';
+import { createObservabilityConfig } from '@ten24group/fw24/observability';
 
-registerObservabilityConfig(DIContainer.ROOT, {
-  backends: ['dynamodb', 'cloudwatch'],
-  dataProtection: { enabled: true },
-  sampling: { enabled: false },
+DIContainer.ROOT.registerConfigProvider({
+  provide: 'observability',
+  useConfig: createObservabilityConfig({
+    serviceName: 'my-app',
+    backends: [
+      { type: 'dynamodb', enabled: true },
+      { type: 'cloudwatch', enabled: true }
+    ],
+    dataProtection: { enabled: true },
+  }),
+  priority: 10  // Override framework defaults
 });
 ```
 
@@ -334,50 +342,61 @@ const app = new Application({
 ### Runtime Config (DI)
 
 ```typescript
-registerObservabilityConfig(DIContainer.ROOT, {
-  // Backends
-  backends: ['dynamodb', 'cloudwatch', 'otel'],
-  
-  // Service name
-  serviceName: 'my-service',
-  
-  // Minimum level
-  minLevel: 'info',
-  
-  // Sampling
-  sampling: {
-    enabled: true,
-    rates: {
-      trace: 0.01,
-      debug: 0.1,
-      info: 1.0,
-      warn: 1.0,
-      error: 1.0,
-      critical: 1.0,
+import { DIContainer } from '@ten24group/fw24';
+import { createObservabilityConfig, ObservabilityLevel } from '@ten24group/fw24/observability';
+
+DIContainer.ROOT.registerConfigProvider({
+  provide: 'observability',
+  useConfig: createObservabilityConfig({
+    // Service name
+    serviceName: 'my-service',
+    
+    // Minimum level
+    minLevel: ObservabilityLevel.INFO,
+    
+    // Backends
+    backends: [
+      { type: 'dynamodb', enabled: true },
+      { type: 'cloudwatch', enabled: true },
+      { type: 'otel', enabled: true }
+    ],
+    
+    // Sampling
+    sampling: {
+      enabled: true,
+      rates: {
+        trace: 0.01,
+        debug: 0.1,
+        info: 1.0,
+        warn: 1.0,
+        error: 1.0,
+        critical: 1.0,
+      },
+      operations: {
+        'payment.*': 1.0,      // Always capture
+        'healthCheck': 0.01,   // 1% sampling
+      },
     },
-    operations: {
-      'payment.*': 1.0,      // Always capture
-      'healthCheck': 0.01,   // 1% sampling
+    
+    // Data protection
+    dataProtection: {
+      enabled: true,
+      blacklistedKeys: ['apiKey', 'secret', 'token'],
+      fuzzyKeyMatch: true,
+      caseSensitiveKeyMatch: false,
     },
-  },
-  
-  // Data protection
-  dataProtection: {
-    enabled: true,
-    additionalKeys: ['apiKey', 'secret', 'token'],
-    fuzzyKeyMatch: true,
-    caseSensitiveKeyMatch: false,
-  },
-  
-  // CloudWatch
-  cloudwatch: {
-    namespace: 'MyApp',
-  },
-  
-  // DynamoDB
-  dynamodb: {
-    ttlDays: 90,
-  },
+    
+    // CloudWatch
+    cloudwatch: {
+      namespace: 'MyApp',
+    },
+    
+    // DynamoDB
+    dynamodb: {
+      ttlDays: 90,
+    },
+  }),
+  priority: 10  // Override framework defaults
 });
 ```
 
@@ -441,7 +460,7 @@ const entityLogs = await service.getByEntity('User', userId);
 const audits = await service.getByType('audit.entity');
 
 // Get child logs
-const children = await service.getChildren(parentLogId);
+const children = await service.getChildren(parentObservabilityLogId);
 
 // Reconstruct span hierarchy
 const spans = await service.getTraceWithSpans(correlationId);

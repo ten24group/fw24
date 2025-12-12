@@ -25,42 +25,42 @@ const baseLogger = createLogger('Observer');
 class CapturerRegistry {
   private capturer: IEventCapture | null = null;
 
-/**
-   * Initialize the capturer (called by ObservabilityManager during initialization)
- */
+  /**
+     * Initialize the capturer (called by ObservabilityManager during initialization)
+   */
   initialize(capturer: IEventCapture): void {
     if (!this.capturer) {
       this.capturer = capturer;
+    }
   }
-}
 
-/**
-   * Get the event capturer. Throws if not initialized.
- */
+  /**
+     * Get the event capturer. Throws if not initialized.
+   */
   get(): IEventCapture {
     if (!this.capturer) {
-    throw new Error(
+      throw new Error(
         'Observability not initialized. ObservabilityManager must initialize before observers can be used. ' +
         'This usually means you are using observers before the framework has initialized. ' +
         'If you see this error, import ObservabilityManager somewhere in your code to trigger initialization.'
-    );
-  }
+      );
+    }
     return this.capturer;
-}
+  }
 
-/**
-   * Set a custom capturer (for testing)
- * 
- * @example
- * ```typescript
- * // In tests:
- * const mockCapturer = {
- *   capture: jest.fn().mockReturnValue('test-log-id'),
- *   captureAsync: jest.fn().mockResolvedValue('test-log-id'),
- * };
- * setCapturer(mockCapturer);
-   * ```
-   */
+  /**
+     * Set a custom capturer (for testing)
+   * 
+   * @example
+   * ```typescript
+   * // In tests:
+   * const mockCapturer = {
+   *   capture: jest.fn().mockReturnValue('test-log-id'),
+   *   captureAsync: jest.fn().mockResolvedValue('test-log-id'),
+   * };
+   * setCapturer(mockCapturer);
+     * ```
+     */
   set(capturer: IEventCapture): void {
     this.capturer = capturer;
   }
@@ -290,8 +290,8 @@ export function mapError(error: Error): ObservabilityError {
  */
 export function captureEvent(
   fields: CommonFields,
-  event: Omit<CaptureInput, 'correlationId' | 'logId' | 'timestampMs'> & {
-    logId?: string;
+  event: Omit<CaptureInput, 'correlationId' | 'observabilityLogId' | 'timestampMs'> & {
+    observabilityLogId?: string;
     timestampMs?: number;
   },
   options?: CaptureOptions
@@ -300,7 +300,7 @@ export function captureEvent(
     {
       ...event,
       correlationId: fields.correlationId,
-      logId: event.logId ?? generateId(),
+      observabilityLogId: event.observabilityLogId ?? generateId(),
       timestampMs: event.timestampMs ?? Date.now(),
       actor: event.actor ?? fields.actor,
       source: event.source ?? fields.source,
@@ -317,8 +317,8 @@ export function captureEvent(
  */
 export async function captureEventAsync(
   fields: CommonFields,
-  event: Omit<CaptureInput, 'correlationId' | 'logId' | 'timestampMs'> & {
-    logId?: string;
+  event: Omit<CaptureInput, 'correlationId' | 'observabilityLogId' | 'timestampMs'> & {
+    observabilityLogId?: string;
     timestampMs?: number;
   },
   options?: Omit<CaptureOptions, 'sync'>
@@ -327,7 +327,7 @@ export async function captureEventAsync(
     {
       ...event,
       correlationId: fields.correlationId,
-      logId: event.logId ?? generateId(),
+      observabilityLogId: event.observabilityLogId ?? generateId(),
       timestampMs: event.timestampMs ?? Date.now(),
       actor: event.actor ?? fields.actor,
       source: event.source ?? fields.source,

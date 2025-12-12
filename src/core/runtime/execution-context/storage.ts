@@ -39,7 +39,7 @@ export function createExecutionContext(
 
   return {
     correlationId,
-    parentLogId: options.parentLogId?.trim(),
+    parentObservabilityLogId: options.parentObservabilityLogId?.trim(),
     sampled: options.sampled ?? true,
     actor: options.actor,
     tags,
@@ -104,7 +104,7 @@ export function setActor(actor: Actor): void {
 export function enrichActor(partial: Partial<Actor>): void {
   const ctx = storage.getStore();
   if (!ctx) return;
-  
+
   if (ctx.actor) {
     Object.assign(ctx.actor, partial);
   } else {
@@ -128,7 +128,7 @@ export function addTags(tags: Record<string, string>): void {
 export function setAttribute(key: string, value: unknown): void {
   const ctx = storage.getStore();
   if (ctx) {
-    ctx.attributes[key] = value;
+    ctx.attributes[ key ] = value;
   }
 }
 
@@ -153,13 +153,13 @@ export function setSource(source: string): void {
 }
 
 /**
- * Set parent log ID on current context.
+ * Set parent observability log ID on current context.
  * Used for tracking span hierarchy.
  */
-export function setParentLogId(logId: string): void {
+export function setParentObservabilityLogId(observabilityLogId: string): void {
   const ctx = storage.getStore();
   if (ctx) {
-    ctx.parentLogId = logId;
+    ctx.parentObservabilityLogId = observabilityLogId;
   }
 }
 

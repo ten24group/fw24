@@ -59,7 +59,7 @@ export const handler = async (event: DynamoDBStreamEvent): Promise<void> => {
                 const oldImage = record.dynamodb?.OldImage;
                 const entityName = ((newImage?.__edb_e__ || oldImage?.__edb_e__) as { S?: string })?.S;
                 logger.info('Stream entity name', entityName);
-                
+
                 // Skip processing only audit log records
                 if (entityName === 'auditLog') {
                     logger.info('Skipping audit log record', { eventID: record.eventID });
@@ -78,13 +78,13 @@ export const handler = async (event: DynamoDBStreamEvent): Promise<void> => {
                 // Try _actor field (Map -> correlationId String)
                 const actorMap = image._actor?.M;
                 const correlationId = actorMap?.correlationId?.S;
-                
+
                 if (correlationId) {
                     messageAttributes.correlationId = correlationId;
-                    
+
                     // Optional trace fields
-                    if (actorMap.parentLogId?.S) {
-                        messageAttributes.parentLogId = actorMap.parentLogId.S;
+                    if (actorMap.parentObservabilityLogId?.S) {
+                        messageAttributes.parentObservabilityLogId = actorMap.parentObservabilityLogId.S;
                     }
                     if (actorMap.sampled?.BOOL !== undefined) {
                         messageAttributes.sampled = actorMap.sampled.BOOL;
@@ -102,9 +102,9 @@ export const handler = async (event: DynamoDBStreamEvent): Promise<void> => {
             };
 
             await sendTopicMessage(topicArn, message);
-            
-            logger.info('Successfully published stream record to SNS', { 
-                eventID: record.eventID, 
+
+            logger.info('Successfully published stream record to SNS', {
+                eventID: record.eventID,
                 eventName: record.eventName,
                 ...(isTopicFifo() && { fifoProps }) // Log FIFO properties only if enabled
             });

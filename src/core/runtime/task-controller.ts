@@ -24,6 +24,19 @@ export interface TaskExecutionContext {
  * Base class for handling Schedule Tasks.
  * 
  * All handler execution is wrapped in execution context.
+ * Configure observability via the @Task decorator:
+ * 
+ * @example
+ * ```typescript
+ * @Task('my-task', {
+ *   schedule: 'rate(1 minute)',
+ *   observability: {
+ *     source: 'domain:task-type',
+ *     tags: { domain: 'sports', frequency: 'frequent' }
+ *   }
+ * })
+ * export class MyTask extends TaskController { }
+ * ```
  */
 abstract class TaskController extends AbstractLambdaHandler {
 
@@ -49,27 +62,36 @@ abstract class TaskController extends AbstractLambdaHandler {
     this.initializeObservability();
     
     const taskName = this.getTaskName() || this.constructor.name;
+    const taskConfig = this.getTaskConfig();
+    const obsConfig = taskConfig.observability || {};
     const correlationId = context?.awsRequestId || `task-${taskName}-${Date.now()}`;
 
-    // Create execution context
+    // Create execution context with custom source and tags from decorator
     const execCtx = createExecutionContext({
       correlationId,
-      source: `${this.constructor.name}.process`,
+      source: obsConfig.source || `task:${taskName}`,
+      tags: {
+        taskName,
+        ...obsConfig.tags,
+      },
     });
 
     // Run handler within execution context
     return runWithExecutionContext(execCtx, async () => {
-      // Create span
+      // Create span with custom attributes from decorator
       const taskSpan = SpanObserver.start(`Task ${taskName}`, {
         correlationId,
+        source: obsConfig.source || `task:${taskName}`,
+        tags: obsConfig.tags,
         attributes: {
           'task.name': taskName,
-          'task.schedule': this.getTaskConfig().schedule,
+          'task.schedule': taskConfig.schedule,
+          ...obsConfig.attributes,
         },
       });
 
       // Store span ID in execution context for child spans
-      execCtx.parentLogId = taskSpan.id;
+      execCtx.parentObservabilityLogId = taskSpan.id;
 
       // Build task execution context
       const ctx: TaskExecutionContext = {

@@ -40,8 +40,9 @@
 
 import { randomUUID } from 'crypto';
 import { Actor } from '../../core/types/execution-context';
-import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel, DefaultSamplingConfig } from '../types';
+import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel } from '../types';
 import { ObservabilityManager } from '../manager';
+import { createObservabilityConfig } from '../config';
 import {
   ObservationContext,
   createObservationContext,
@@ -179,11 +180,10 @@ export function setupTestObservability(options?: {
 
   // Initialize for testing with mock backend
   ObservabilityManager.initializeForTesting(
-    {
+    createObservabilityConfig({
       enabled: options?.enabled ?? true,
       minLevel: options?.minLevel ?? ObservabilityLevel.TRACE,
-      sampling: DefaultSamplingConfig,
-    },
+    }),
     [ mockBackend ]
   );
 
@@ -325,7 +325,7 @@ export function createTestObservationContext(overrides?: Partial<ObservationCont
       actor: overrides?.actor,
       tags: overrides?.tags,
       sampled: overrides?.sampled,
-      parentLogId: overrides?.parentLogId,
+      parentObservabilityLogId: overrides?.parentObservabilityLogId,
     }
   );
 }

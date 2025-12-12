@@ -1,24 +1,43 @@
 /**
- * Controller Observability Configuration
+ * Observability Configuration
  * 
- * Configures what request/response data to capture in spans.
- * 
- * Usage:
- * ```typescript
- * @Controller('payments', {
- *   observability: {
- *     includes: {
- *       request: { headers: ['content-type'], body: true },
- *       response: { body: ['id', 'status'] }
- *     },
- *     dataProtection: { enabled: true }
- *   }
- * })
- * export class PaymentsController extends APIController { }
- * ```
+ * Shared types for configuring observability across controllers, tasks, and queues.
  */
 
 import { DataProtectionConfig } from './utils/data-protection';
+
+// ============================================================================
+// Base Span Metadata (shared by Task, Queue, Controller)
+// ============================================================================
+
+/**
+ * Base span metadata configuration.
+ * Used by @Task, @Queue, and @Controller decorators for custom span context.
+ */
+export interface SpanMetadata {
+  /**
+   * Custom source identifier for observability context.
+   * Defaults to handler name (task/queue/controller).
+   * @example 'sports:scheduler:frequent'
+   */
+  source?: string;
+
+  /**
+   * Custom tags to add to spans and context.
+   * @example { domain: 'sports', priority: 'high' }
+   */
+  tags?: Record<string, string>;
+
+  /**
+   * Additional attributes to add to the span.
+   * @example { 'task.category': 'data-sync' }
+   */
+  attributes?: Record<string, unknown>;
+}
+
+// ============================================================================
+// Controller-specific Configuration (extends base with HTTP data capture)
+// ============================================================================
 
 /**
  * Request/response include configuration.
@@ -58,8 +77,9 @@ export interface ObservabilityIncludesConfig {
 
 /**
  * Controller/method observability configuration.
+ * Extends base span metadata with HTTP request/response data capture options.
  */
-export interface ControllerObservabilityConfig {
+export interface ControllerObservabilityConfig extends SpanMetadata {
   /** 
    * Disable request/response capture for this controller/method.
    * Spans are still created; this only controls data capture.
@@ -102,6 +122,25 @@ export function mergeObservabilityConfigs(
     merged.dataProtection = {
       ...controllerConfig.dataProtection,
       ...methodConfig.dataProtection,
+    };
+  }
+
+  // Method source takes precedence
+  merged.source = methodConfig.source ?? controllerConfig.source;
+
+  // Merge tags (method takes precedence for same keys)
+  if (controllerConfig.tags || methodConfig.tags) {
+    merged.tags = {
+      ...controllerConfig.tags,
+      ...methodConfig.tags,
+    };
+  }
+
+  // Merge attributes (method takes precedence for same keys)
+  if (controllerConfig.attributes || methodConfig.attributes) {
+    merged.attributes = {
+      ...controllerConfig.attributes,
+      ...methodConfig.attributes,
     };
   }
 

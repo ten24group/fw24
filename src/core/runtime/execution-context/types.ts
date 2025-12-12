@@ -15,25 +15,25 @@ import { Actor } from '../../types/execution-context';
 export interface ExecutionContextData {
   /** Correlation ID for distributed tracing (required) */
   readonly correlationId: string;
-  
-  /** Parent log ID for trace hierarchy */
-  parentLogId?: string;
-  
+
+  /** Parent observability log ID for trace hierarchy */
+  parentObservabilityLogId?: string;
+
   /** Whether this trace is sampled */
   readonly sampled: boolean;
-  
+
   /** Actor performing the operation */
   actor?: Actor;
-  
+
   /** Tags for filtering/categorization */
   readonly tags: Record<string, string>;
-  
+
   /** Custom attributes for application data */
   readonly attributes: Record<string, unknown>;
-  
+
   /** Source identifier (e.g., 'OrderController.create') */
   source?: string;
-  
+
   /** Context creation timestamp */
   readonly startTime: number;
 }
@@ -44,8 +44,8 @@ export interface ExecutionContextData {
 export interface CreateExecutionContextOptions {
   /** Correlation ID (required) */
   correlationId: string;
-  /** Parent log ID for trace hierarchy */
-  parentLogId?: string;
+  /** Parent observability log ID for trace hierarchy */
+  parentObservabilityLogId?: string;
   /** Whether trace is sampled (default: true) */
   sampled?: boolean;
   /** Actor performing the operation */
@@ -64,8 +64,8 @@ export interface CreateExecutionContextOptions {
 export interface ParsedTraceContext {
   /** Correlation/trace ID */
   correlationId: string;
-  /** Parent log ID */
-  parentLogId?: string;
+  /** Parent observability log ID */
+  parentObservabilityLogId?: string;
   /** Whether trace is sampled */
   sampled?: boolean;
 }

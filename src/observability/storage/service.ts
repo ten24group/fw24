@@ -1,27 +1,31 @@
 /**
- * ObservabilityLogService - Self-contained service for observability data
+ * ObservabilityLogService - Service for observability data storage
  * 
- * Extends BaseEntityService but creates its own DynamoDB client internally.
- * This allows observability to work BEFORE DI is initialized.
+ * Registered via DI with @Service decorator.
+ * Config injected via @InjectConfig.
  */
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { registerEntitySchema, Service } from '../../decorators';
+import { DIContainer, InjectConfig, InjectContainer, InjectEntitySchema } from '../../di';
 import { BaseEntityService } from '../../entity/base-service';
-import { Pagination } from '../../entity/query-types';
-import { ObservabilityLogEntitySchema, ObservabilityLogSchema } from './log-entity';
-import { ObservabilityConfigManager } from '../config';
+import { EntityQuery } from '../../entity/query-types';
+import { EntitySearchQuery } from '../../search/types';
+import { ExecutionContext } from '../../core/types/execution-context';
+import { ObservabilityLogEntitySchema, ObservabilityLogSchema } from './observability-log-entity';
 import { CreateEntityItemTypeFromSchema, EntityRecordTypeFromSchema } from '../../entity/base-entity';
+import { resolveEnvValueFor } from '../../utils/env';
+import { IDIContainer } from '../../interfaces';
 
-type ObservabilityLogCreateItem = CreateEntityItemTypeFromSchema<ObservabilityLogSchema>;
+export type ObservabilityLogCreateItem = CreateEntityItemTypeFromSchema<ObservabilityLogSchema>;
+export type LogRecord = EntityRecordTypeFromSchema<ObservabilityLogSchema>;
 
-/**
- * Reconstructed span with hierarchy for trace visualization
- */
+/** Reconstructed span with hierarchy for trace visualization */
 export interface ReconstructedSpan {
   spanId: string;
   traceId: string;
-  parentLogId?: string;
+  parentObservabilityLogId?: string;
   operation: string;
   startTime: number;
   endTime?: number;
@@ -34,282 +38,145 @@ export interface ReconstructedSpan {
   children: ReconstructedSpan[];
 }
 
-/**
- * Type for log record from query results
+/** Register the observability log entity schema into the DI container; 
+ * so the app have option to override things if needed 
  */
-export type LogRecord = EntityRecordTypeFromSchema<ObservabilityLogSchema>;
-
-// Module-level lazy client
-let _docClient: DynamoDBDocumentClient | null = null;
-
-function getDocClient(): DynamoDBDocumentClient {
-  if (!_docClient) {
-    const client = new DynamoDBClient({});
-    _docClient = DynamoDBDocumentClient.from(client, {
-      marshallOptions: { removeUndefinedValues: true },
-    });
-  }
-  return _docClient;
-}
+registerEntitySchema({
+  forEntity: 'observabilityLog',
+  providedIn: DIContainer.ROOT,
+  useValue: ObservabilityLogEntitySchema,
+});
 
 /**
  * ObservabilityLogService
  * 
- * Self-contained service - creates its own DynamoDB client.
+ * DI-managed service for observability log storage.
+ * tableName and ttlDays injected via @InjectConfig.
  */
+@Service({ forEntity: 'observabilityLog' })
 export class ObservabilityLogService extends BaseEntityService<ObservabilityLogSchema> {
-  private static instance: ObservabilityLogService | null = null;
 
-  private constructor() {
-    const config = ObservabilityConfigManager.fromEnvironment();
-    super(
-      ObservabilityLogEntitySchema,
-      {
-        table: config.dynamodb.tableName,
-        client: getDocClient(),
-      },
-    );
+  constructor(
+    @InjectConfig('observability.dynamodb.tableKey')
+    readonly tableKey: string,
+
+    @InjectConfig('observability.dynamodb.ttlDays')
+    readonly ttlDays: number,
+
+    @InjectEntitySchema('observabilityLog')
+    readonly schema: ObservabilityLogSchema,
+
+    @InjectContainer()
+    readonly container: IDIContainer
+  ) {
+
+    const client = new DynamoDBClient({});
+    const docClient = DynamoDBDocumentClient.from(client, {
+      marshallOptions: { removeUndefinedValues: true, convertEmptyValues: true },
+    });
+
+    // Resolve actual table name from env using framework convention
+    // Env var: {tableKey}_table (special chars replaced with _)
+    const tableName = resolveEnvValueFor({ key: tableKey, suffix: 'table', defaultValue: tableKey });
+
+    super(schema, {
+      table: tableName,
+      client: docClient,
+    }, container);
   }
 
-  static getInstance(): ObservabilityLogService {
-    if (!ObservabilityLogService.instance) {
-      ObservabilityLogService.instance = new ObservabilityLogService();
-    }
-    return ObservabilityLogService.instance;
-  }
-
-  /**
-   * Reset for testing
-   * @internal
-   */
-  static resetInstance(): void {
-    ObservabilityLogService.instance = null;
-    _docClient = null;
-  }
-
-  /**
-   * Batch create - used by DynamoDB backend
-   */
+  /** Batch create - used by DynamoDB backend */
   async batchCreate(items: ObservabilityLogCreateItem[]): Promise<void> {
     const repo = this.getRepository();
     await repo.put(items).go();
   }
 
-  /**
-   * Get by trace/correlation
-   */
-  async getByTrace(correlationId: string, pagination?: Pagination) {
-    return this.query({
+  /** Override list to default to desc order (latest first) */
+  public async list(query: EntityQuery<ObservabilityLogSchema> = {}, ctx?: ExecutionContext) {
+    return super.list({
+      ...query,
+      pagination: { ...query.pagination, order: query.pagination?.order ?? 'desc' },
+    }, ctx);
+  }
+
+  /** Override search to default sort by timestamp desc */
+  public async search(query: EntitySearchQuery<ObservabilityLogSchema>, ctx?: ExecutionContext) {
+    return super.search({
+      ...query,
+      sort: query.sort?.length ? query.sort : [ { field: 'timestampMs' as const, dir: 'desc' as const } ],
+    }, ctx);
+  }
+
+  /** Get trace with reconstructed span tree */
+  async getTraceWithSpans(correlationId: string, ctx?: ExecutionContext): Promise<ReconstructedSpan[]> {
+    const result = await this.query({
       filters: { correlationId: { eq: correlationId } },
-      pagination: { order: 'asc', ...pagination },
+      pagination: { order: 'asc' },
       index: { name: 'byTrace' },
-    });
-  }
-
-  /**
-   * Get by entity
-   */
-  async getByEntity(entityName: string, entityId: string, pagination?: Pagination) {
-    return this.query({
-      filters: { entityName: { eq: entityName }, entityId: { eq: entityId } },
-      pagination: { order: 'desc', ...pagination },
-      index: { name: 'byEntity' },
-    });
-  }
-
-  /**
-   * Get by type
-   */
-  async getByType(type: string, pagination?: Pagination) {
-    return this.query({
-      filters: { type: { eq: type } },
-      pagination: { order: 'desc', ...pagination },
-      index: { name: 'byType' },
-    });
-  }
-
-  /**
-   * Get children
-   */
-  async getChildren(parentLogId: string, pagination?: Pagination) {
-    return this.query({
-      filters: { parentLogId: { eq: parentLogId } },
-      pagination: { order: 'asc', ...pagination },
-      index: { name: 'byParent' },
-    });
-  }
-
-  /**
-   * Get by source
-   */
-  async getBySource(source: string, pagination?: Pagination) {
-    return this.query({
-      filters: { source: { eq: source } },
-      pagination: { order: 'desc', ...pagination },
-      index: { name: 'bySource' },
-    });
-  }
-
-  /**
-   * Get by tenant
-   */
-  async getByTenant(tenantId: string, pagination?: Pagination) {
-    return this.query({
-      filters: { tenantId: { eq: tenantId } },
-      pagination: { order: 'desc', ...pagination },
-      index: { name: 'byTenant' },
-    });
-  }
-
-  /**
-   * Get by actor
-   */
-  async getByActor(actorId: string, pagination?: Pagination) {
-    return this.query({
-      filters: { actorId: { eq: actorId } },
-      pagination: { order: 'desc', ...pagination },
-      index: { name: 'byActor' },
-    });
-  }
-
-  /**
-   * Get by level
-   */
-  async getByLevel(level: string, pagination?: Pagination) {
-    return this.query({
-      filters: { level: { eq: level } },
-      pagination: { order: 'desc', ...pagination },
-      index: { name: 'byLevel' },
-    });
-  }
-
-  /**
-   * Get errors
-   */
-  async getErrors(pagination?: Pagination) {
-    return this.getByLevel('error', pagination);
-  }
-
-  /**
-   * Get audit history for entity
-   */
-  async getAuditHistory(entityName: string, entityId: string, pagination?: Pagination) {
-    return this.query({
-      filters: {
-        entityName: { eq: entityName },
-        entityId: { eq: entityId },
-        type: { beginsWith: 'audit' },
-      },
-      pagination: { order: 'desc', ...pagination },
-      index: { name: 'byEntity' },
-    });
-  }
-
-  /**
-   * Get workflow history
-   */
-  async getWorkflowHistory(workflowId: string, pagination?: Pagination) {
-    return this.query({
-      filters: { entityName: { eq: 'workflow' }, entityId: { eq: workflowId } },
-      pagination: { order: 'asc', ...pagination },
-      index: { name: 'byEntity' },
-    });
-  }
-
-  /**
-   * Get trace with reconstructed spans
-   */
-  async getTraceWithSpans(correlationId: string): Promise<ReconstructedSpan[]> {
-    const result = await this.getByTrace(correlationId);
+    }, ctx);
     return this.reconstructSpans((result.data ?? []) as LogRecord[]);
   }
 
-  /**
-   * Reconstruct span hierarchy from flat records
-   */
+  /** Reconstruct span hierarchy from flat log records */
   reconstructSpans(records: ReadonlyArray<LogRecord>): ReconstructedSpan[] {
     const spanMap = new Map<string, ReconstructedSpan>();
-
-    // Group by entityId for span records
     const grouped = new Map<string, LogRecord[]>();
+
     for (const record of records) {
-      if (record.entityName !== 'span' || !record.entityId) continue;
-      const entityId = String(record.entityId);
-      const existing = grouped.get(entityId);
-      if (existing) {
-        existing.push(record);
-      } else {
-        grouped.set(entityId, [ record ]);
-      }
+      // Filter by type (span.start, span.end, span.event) and group by entityId (spanId)
+      if (!record.type?.startsWith('span.')) continue;
+      const id = String(record.entityId);
+      (grouped.get(id) ?? grouped.set(id, []).get(id)!).push(record);
     }
 
-    // Build span objects
     for (const [ spanId, spanRecords ] of grouped) {
-      const startRecord = spanRecords.find(r => r.type === 'span.start');
-      const endRecord = spanRecords.find(r => r.type === 'span.end');
-      const eventRecords = spanRecords.filter(r => r.type === 'span.event');
-
-      if (!startRecord) continue;
-
-      const startData = this.toRecord(startRecord.data);
-      const endData = this.toRecord(endRecord?.data);
+      const start = spanRecords.find(r => r.type === 'span.start');
+      const end = spanRecords.find(r => r.type === 'span.end');
+      if (!start) continue;
 
       spanMap.set(spanId, {
         spanId,
-        traceId: String(startRecord.correlationId ?? ''),
-        parentLogId: startRecord.parentLogId ? String(startRecord.parentLogId) : undefined,
-        operation: String(startRecord.operation ?? 'unknown'),
-        startTime: Number(startRecord.timestampMs ?? 0),
-        endTime: endRecord?.timestampMs ? Number(endRecord.timestampMs) : undefined,
-        duration: endRecord?.durationMs ? Number(endRecord.durationMs) : undefined,
-        status: endRecord?.status ? String(endRecord.status) : undefined,
-        success: typeof endRecord?.success === 'boolean' ? endRecord.success : undefined,
-        attributes: { ...startData, ...endData },
-        events: eventRecords.map(e => ({
+        traceId: String(start.correlationId ?? ''),
+        parentObservabilityLogId: start.parentObservabilityLogId ? String(start.parentObservabilityLogId) : undefined,
+        operation: String(start.operation ?? 'unknown'),
+        startTime: Number(start.timestampMs ?? 0),
+        endTime: end?.timestampMs ? Number(end.timestampMs) : undefined,
+        duration: end?.durationMs ? Number(end.durationMs) : undefined,
+        status: end?.status ? String(end.status) : undefined,
+        success: typeof end?.success === 'boolean' ? end.success : undefined,
+        attributes: { ...toRecord(start.data), ...toRecord(end?.data) },
+        events: spanRecords.filter(r => r.type === 'span.event').map(e => ({
           name: String(e.operation ?? 'event'),
           timestamp: Number(e.timestampMs ?? 0),
-          attributes: this.toRecord(e.data),
+          attributes: toRecord(e.data),
         })),
-        metrics: this.toNumberRecord(endRecord?.metrics),
+        metrics: toNumberRecord(end?.metrics),
         children: [],
       });
     }
 
-    // Build tree
     const roots: ReconstructedSpan[] = [];
     for (const span of spanMap.values()) {
-      if (span.parentLogId && spanMap.has(span.parentLogId)) {
-        spanMap.get(span.parentLogId)!.children.push(span);
-      } else {
-        roots.push(span);
-      }
+      const parent = span.parentObservabilityLogId && spanMap.get(span.parentObservabilityLogId);
+      parent ? parent.children.push(span) : roots.push(span);
     }
 
-    // Sort children
-    const sortChildren = (span: ReconstructedSpan): void => {
-      span.children.sort((a, b) => a.startTime - b.startTime);
-      span.children.forEach(sortChildren);
+    const sortChildren = (s: ReconstructedSpan): void => {
+      s.children.sort((a, b) => a.startTime - b.startTime).forEach(sortChildren);
     };
     roots.forEach(sortChildren);
 
     return roots;
   }
+}
 
-  private toRecord(value: unknown): Record<string, unknown> {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      return value as Record<string, unknown>;
-    }
-    return {};
-  }
+function toRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
 
-  private toNumberRecord(value: unknown): Record<string, number> {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      const result: Record<string, number> = {};
-      for (const [ k, v ] of Object.entries(value)) {
-        if (typeof v === 'number') result[ k ] = v;
-      }
-      return result;
-    }
-    return {};
-  }
+function toNumberRecord(value: unknown): Record<string, number> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const result: Record<string, number> = {};
+  for (const [ k, v ] of Object.entries(value)) if (typeof v === 'number') result[ k ] = v;
+  return result;
 }

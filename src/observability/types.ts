@@ -92,12 +92,12 @@ export interface ObservabilityEvent {
   correlationId: string;
   /** Timestamp in milliseconds */
   timestampMs: number;
-  /** Unique ID for this log entry */
-  logId: string;
+  /** Unique ID for this observability log entry */
+  observabilityLogId: string;
 
   // === TRACING (optional - depends on context) ===
-  /** Parent log ID for hierarchical relationships */
-  parentLogId?: string;
+  /** Parent observability log ID for hierarchical relationships */
+  parentObservabilityLogId?: string | null;
 
   // === ENTITY CONTEXT (optional - depends on what's being observed) ===
   /** Entity type being observed (user, order, span, workflow) */
@@ -156,11 +156,12 @@ export interface CaptureInput {
   correlationId: string;
 
   // Auto-generated if not provided
-  logId?: string;
+  observabilityLogId?: string;
   timestampMs?: number;
 
   // Optional fields (same as ObservabilityEvent)
-  parentLogId?: string;
+  // null = explicitly no parent (don't fall back to context)
+  parentObservabilityLogId?: string | null;
   entityName?: string;
   entityId?: string;
   operation?: string;
@@ -207,7 +208,8 @@ export interface CloudWatchBackendOptions {
  * DynamoDB backend-specific options
  */
 export interface DynamoDBBackendOptions {
-  tableName?: string;
+  /** Logical table key - resolved to actual table name via env var {tableKey}_table */
+  tableKey?: string;
   ttlDays?: number;
 }
 
@@ -261,7 +263,8 @@ export interface CloudWatchConfig {
  * DynamoDB configuration
  */
 export interface DynamoDBConfig {
-  tableName: string;
+  /** Logical table key - resolved to actual table name via env var {tableKey}_table */
+  tableKey: string;
   ttlDays: number;
 }
 
@@ -296,7 +299,7 @@ export interface ObservabilityDataProtectionConfig {
  * Main observability configuration
  * 
  * ALL fields are REQUIRED - no optional fields with fallbacks.
- * ObservabilityConfigManager.fromEnvironment() provides defaults from env vars.
+ * Defaults are registered in DI by the observability module.
  */
 export interface ObservabilityConfig {
   /** Enable/disable observability system */
@@ -360,14 +363,14 @@ export interface CaptureOptions {
 export interface IEventCapture {
   /**
    * Capture an observability event (fire-and-forget)
-   * @returns logId if captured, undefined if filtered/sampled out
+   * @returns observabilityLogId if captured, undefined if filtered/sampled out
    */
   capture(input: CaptureInput, options?: CaptureOptions): string | undefined;
 
   /**
    * Capture an observability event asynchronously
    * Use when you need to await backend completion
-   * @returns Promise<logId> if captured, undefined if filtered/sampled out
+   * @returns Promise<observabilityLogId> if captured, undefined if filtered/sampled out
    */
   captureAsync(input: CaptureInput, options?: Omit<CaptureOptions, 'sync'>): Promise<string | undefined>;
 }

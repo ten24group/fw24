@@ -15,7 +15,7 @@ import type { IDynamoDBConfig } from '../constructs/dynamodb';
 export interface IDuplicatedFieldDetectionConfig {
     /** Enable/disable auto-detection globally. Default: true */
     enabled?: boolean;
-    
+
     /** Suffix patterns to search for */
     suffixes?: {
         /** Display field suffixes. Default: ['Name', 'Title', 'Label', 'DisplayName'] */
@@ -25,7 +25,7 @@ export interface IDuplicatedFieldDetectionConfig {
         /** Meta field suffixes. Default: ['Code', 'Slug', 'Key', 'Identifier'] */
         meta?: string[];
     };
-    
+
     /** 
      * Domain-specific prefixes for pattern matching.
      * Framework provides generic prefixes (parent, child, source, target, owner, etc.)
@@ -35,17 +35,17 @@ export interface IDuplicatedFieldDetectionConfig {
      * @example E-commerce: ['product', 'customer', 'order', 'invoice']
      */
     prefixes?: string[];
-    
+
     /** 
      * Template generation style. Default: 'simple'
      * - simple: {teamName}
      * - composite: {teamName} ({teamCode}) if both exist
      */
     templateStyle?: 'simple' | 'composite';
-    
+
     /** Minimum confidence to use detection. Default: 'medium' */
     confidenceThreshold?: 'low' | 'medium' | 'high';
-    
+
     /** Enable debug logging. Default: false */
     debug?: boolean;
 }
@@ -61,7 +61,7 @@ export interface IDuplicatedFieldDetectionConfig {
 export interface IFilterAutoGenerationConfig {
     /** Enable/disable globally. Default: true */
     enabled?: boolean;
-    
+
     /** Date field filter configuration */
     dateFields?: {
         enabled?: boolean;  // Default: true
@@ -70,7 +70,7 @@ export interface IFilterAutoGenerationConfig {
         /** Generate quick date options (Today, This Week, etc.) */
         quickFilters?: boolean;  // Default: true
     };
-    
+
     /** Enum/Select field filter configuration */
     enumFields?: {
         enabled?: boolean;  // Default: true
@@ -79,12 +79,12 @@ export interface IFilterAutoGenerationConfig {
         /** Available operators for enum filters */
         availableOperators?: Array<'eq' | 'neq' | 'inList' | 'notInList'>;  // Default: ['eq', 'neq', 'inList', 'notInList']
     };
-    
+
     /** Boolean field filter configuration */
     booleanFields?: {
         enabled?: boolean;  // Default: true
     };
-    
+
     /** Relation field filter configuration */
     relationFields?: {
         enabled?: boolean;  // Default: true
@@ -93,19 +93,19 @@ export interface IFilterAutoGenerationConfig {
         /** Limit options shown in selector */
         optionsLimit?: number;  // Default: 100
     };
-    
+
     /** Number field filter configuration */
     numberFields?: {
         enabled?: boolean;  // Default: true
         defaultOperators?: Array<'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'between'>;  // Default: ['eq', 'gte', 'lte']
     };
-    
+
     /** Text field filter configuration */
     textFields?: {
         enabled?: boolean;  // Default: true
         defaultOperators?: Array<'eq' | 'neq' | 'contains' | 'startsWith' | 'endsWith'>;  // Default: ['contains', 'eq']
     };
-    
+
     /** Debug logging */
     debug?: boolean;  // Default: false
 }
@@ -132,7 +132,7 @@ export interface BooleanLabelPattern {
 export interface ISegmentAutoGenerationConfig {
     /** Enable/disable globally. Default: true */
     enabled?: boolean;
-    
+
     /** 
      * Preferred field names for segments (in order of priority).
      * Framework tries these first before applying scoring algorithm.
@@ -140,7 +140,7 @@ export interface ISegmentAutoGenerationConfig {
      * Default: ['status', 'state', 'type', 'category', 'priority']
      */
     preferredFields?: string[];
-    
+
     /** 
      * Maximum number of segment groups to generate per table.
      * Each group represents a different field (e.g., one group for "status", another for "league").
@@ -148,16 +148,16 @@ export interface ISegmentAutoGenerationConfig {
      * Default: 2
      */
     maxSegmentGroups?: number;
-    
+
     /** 
      * Maximum number of segment values per group.
      * Default: 10
      */
     maxSegmentsPerGroup?: number;
-    
+
     /** Minimum number of values required to generate segments. Default: 2 */
     minValues?: number;
-    
+
     /** 
      * Global icon mapping for segment values.
      * Static map only (functions not supported due to JSON serialization).
@@ -172,7 +172,7 @@ export interface ISegmentAutoGenerationConfig {
      * }
      */
     iconMapping?: Record<string, string>;
-    
+
     /**
      * Default boolean label patterns.
      * Framework matches field names against these patterns to generate appropriate labels.
@@ -186,16 +186,16 @@ export interface ISegmentAutoGenerationConfig {
      * ]
      */
     booleanLabelPatterns?: BooleanLabelPattern[];
-    
+
     /**
      * Default fallback labels for boolean fields when no pattern matches.
      * Default: { true: 'Yes', false: 'No' }
      */
     defaultBooleanLabels?: { true: string; false: string };
-    
+
     /** Always include "All" segment in each group. Default: true */
     includeAllSegment?: boolean;
-    
+
     /** Debug logging */
     debug?: boolean;  // Default: false
 }
@@ -207,86 +207,67 @@ export interface ISegmentAutoGenerationConfig {
 export interface ITableUIAutoGenerationConfig {
     /** Filter auto-generation configuration */
     filterAutoGeneration?: IFilterAutoGenerationConfig;
-    
+
     /** Segment auto-generation configuration */
     segmentAutoGeneration?: ISegmentAutoGenerationConfig;
 }
 
 /**
- * Application-level observability configuration (CDK/Infrastructure)
+ * Observability infrastructure configuration (CDK/Application level).
  * 
- * This configures INFRASTRUCTURE only:
- * - Creates DynamoDB table with 8 GSIs (optional)
- * - Grants all Lambdas access to the table
- * - Sets OBSERVABILITY_TABLE_NAME env var
- * 
- * Runtime configuration (backends, data protection, sampling) is done via DI layer:
+ * @example Simple - defaults
  * ```typescript
- * // In src/di.ts:
- * import { registerObservabilityConfig } from '@ten24group/fw24/observability';
- * registerObservabilityConfig(DIContainer.ROOT, {
- *   backends: ['dynamodb', 'cloudwatch', 'otel'],  // Which backends to use
- *   dataProtection: { enabled: true },
- *   sampling: { enabled: false },
- * });
+ * observability: true  // Creates 'observabilitylogs' table
  * ```
  * 
- * @example With DynamoDB table (recommended)
+ * @example Custom table name
  * ```typescript
- * const app = new Application({
- *   observability: {
- *     table: { name: 'observability' },
- *   },
- * });
+ * observability: { dynamodb: { name: 'my-app-logs' } }  // Creates 'my-app-logs' table
  * ```
  * 
- * @example Without table (CloudWatch/OTEL only)
+ * @example With search indexing (same structure as IDynamoDBConfig['table'])
  * ```typescript
- * const app = new Application({
- *   observability: {
- *     enabled: true,  // No table config
- *   },
- * });
- * // Then in DI layer: backends: ['cloudwatch', 'otel']
+ * observability: {
+ *   dynamodb: {
+ *     searchIndexing: [{ enabled: true, engineConfig: { type: 'meili', ... } }]
+ *   }
+ * }
  * ```
- * 
- * @example With search indexing
- * ```typescript
- * const app = new Application({
- *   observability: {
- *     table: {
- *       name: 'observability',
- *       searchIndexing: [{
- *         enabled: true,
- *         engineConfig: { type: 'meili', host: '...', masterKey: '...' },
- *       }],
- *     },
- *     stackName: 'observability',  // Custom stack
- *   },
- * });
- * ```
- * 
- * IMPORTANT: DO NOT enable audit on the observability table - it would be recursive!
  */
-export type IObservabilityConfig = Omit<IDynamoDBConfig, 'table'> & {
-    /** Enable observability infrastructure (default: true if config provided) */
-    enabled?: boolean;
-    
-    /** TTL in days for log retention (default: 90, only used if table is configured) */
-    ttlDays?: number;
-    
+export interface IObservabilityInfraConfig {
+    /** Stack name (default: 'persistent') */
+    stackName?: string;
+    /** Parent stack name */
+    parentStackName?: string;
+
     /**
-     * DynamoDB table configuration (OPTIONAL).
-     * If omitted, observability works with CloudWatch/OTEL only.
-     * Framework provides default props (pk/sk, 8 GSIs) - you can override via `props`.
-     * 
-     * WARNING: DO NOT configure `audit` on this table - it would be recursive!
+     * DynamoDB table config - same as IDynamoDBConfig['table'] but:
+     * - `name` optional (default: 'observabilitylogs')
+     * - `props` optional (framework provides pk/sk, 6 GSIs)
+     * - `audit` excluded (would be recursive)
      */
-    table?: Omit<IDynamoDBConfig['table'], 'props'> & {
-        /** Override/extend default table props (pk/sk, 8 GSIs provided by default) */
-        props?: Partial<IDynamoDBConfig['table']['props']>;
+    dynamodb?: Omit<IDynamoDBConfig[ 'table' ], 'audit' | 'name' | 'props'> & {
+        /** Enable/disable DynamoDB table (default: true) */
+        enabled?: boolean;
+        /** Table name suffix (default: 'observability') */
+        name?: string;
+        /** Override default table props */
+        props?: Partial<IDynamoDBConfig[ 'table' ][ 'props' ]>;
     };
-};
+
+    /** CloudWatch infrastructure (future) */
+    cloudwatch?: {
+        enabled?: boolean;
+        logGroupName?: string;
+        retentionDays?: number;
+    };
+}
+
+/**
+ * - `true`: Create DynamoDB table with defaults
+ * - `IObservabilityInfraConfig`: Customize
+ */
+export type IObservabilityConfig = boolean | IObservabilityInfraConfig;
 
 export interface IApplicationConfig {
     name?: string;
@@ -301,10 +282,10 @@ export interface IApplicationConfig {
         disableAccountVerification?: boolean;
         signInMethods?: ('EMAIL_PASSWORD' | 'EMAIL_OTP' | 'SMS_OTP' | 'PASSKEY')[];
         customPagesDirectory?: string;
-        
+
         /** Smart duplicated field detection configuration */
         duplicatedFieldDetection?: IDuplicatedFieldDetectionConfig;
-        
+
         /** Label field detection configuration for relation options */
         labelFieldDetection?: {
             /** 
@@ -316,7 +297,7 @@ export interface IApplicationConfig {
             /** Enable debug logging (default: false) */
             debug?: boolean;
         };
-        
+
         /** Table UI auto-generation configuration */
         tableUI?: ITableUIAutoGenerationConfig;
     };
@@ -325,7 +306,7 @@ export interface IApplicationConfig {
     environment?: string; // local, dev, prod
     environmentVariables?: Record<string, string>;
     globalEnvironmentVariables?: Record<string, string>;
-    
+
     /**
      * Global policies that should be attached to ALL Lambda functions in the application.
      * Useful for cross-cutting concerns like observability, logging, or shared resources.
@@ -339,7 +320,7 @@ export interface IApplicationConfig {
      * ]
      */
     globalPolicies?: Array<TPolicyStatementOrProps | TImportedPolicy>;
-    
+
     /**
      * Global resource access that should be applied to ALL Lambda functions in the application.
      * Useful for resources that need to be accessed by multiple functions (e.g., shared tables, buckets).
@@ -356,7 +337,7 @@ export interface IApplicationConfig {
      * }
      */
     globalResourceAccess?: IFunctionResourceAccess;
-    
+
     logRetentionDays?: number;
     logRemovalPolicy?: RemovalPolicy;
     functionProps?: Omit<NodejsFunctionProps, 'layers'> & {
@@ -368,7 +349,7 @@ export interface IApplicationConfig {
      * Creates DynamoDB table and grants access to all Lambdas.
      */
     observability?: IObservabilityConfig;
-    
+
     /**
      * The timeout duration for the Lambda function in seconds.
      * Use this timeout to avoid importing the duration class from aws-cdk-lib.

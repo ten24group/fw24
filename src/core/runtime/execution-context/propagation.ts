@@ -65,7 +65,7 @@ export function extractFromHeaders(
   if (customId) {
     return {
       correlationId: customId,
-      parentLogId: normalized[ 'x-parent-log-id' ]?.trim(),
+      parentObservabilityLogId: normalized[ 'x-parent-log-id' ]?.trim(),
     };
   }
 
@@ -75,7 +75,7 @@ export function extractFromHeaders(
     const parts = traceparent.split('-');
     return {
       correlationId: parts[ 1 ],
-      parentLogId: parts[ 2 ],
+      parentObservabilityLogId: parts[ 2 ],
       sampled: parts[ 3 ] === '01',
     };
   }
@@ -89,7 +89,7 @@ export function extractFromHeaders(
     if (rootMatch) {
       return {
         correlationId: rootMatch[ 1 ].replace(/^1-/, '').replace(/-/g, ''),
-        parentLogId: parentMatch?.[ 1 ],
+        parentObservabilityLogId: parentMatch?.[ 1 ],
         sampled: sampledMatch?.[ 1 ] === '1',
       };
     }
@@ -116,7 +116,7 @@ export function extractFromSqs(
     if (rootMatch) {
       return {
         correlationId: rootMatch[ 1 ].replace(/^1-/, '').replace(/-/g, ''),
-        parentLogId: parentMatch?.[ 1 ],
+        parentObservabilityLogId: parentMatch?.[ 1 ],
         sampled: sampledMatch?.[ 1 ] === '1',
       };
     }
@@ -126,11 +126,11 @@ export function extractFromSqs(
   const correlationAttr = messageAttributes[ 'correlationId' ];
   const correlationId = (correlationAttr?.stringValue || correlationAttr?.StringValue)?.trim();
   if (correlationId) {
-    const parentAttr = messageAttributes[ 'parentLogId' ];
+    const parentAttr = messageAttributes[ 'parentObservabilityLogId' ];
     const sampledAttr = messageAttributes[ 'sampled' ];
     return {
       correlationId,
-      parentLogId: (parentAttr?.stringValue || parentAttr?.StringValue)?.trim(),
+      parentObservabilityLogId: (parentAttr?.stringValue || parentAttr?.StringValue)?.trim(),
       sampled: (sampledAttr?.stringValue || sampledAttr?.StringValue) === 'true',
     };
   }
@@ -148,11 +148,11 @@ export function extractFromSns(
 
   const correlationAttr = messageAttributes[ 'correlationId' ];
   if (correlationAttr?.Value?.trim()) {
-    const parentAttr = messageAttributes[ 'parentLogId' ];
+    const parentAttr = messageAttributes[ 'parentObservabilityLogId' ];
     const sampledAttr = messageAttributes[ 'sampled' ];
     return {
       correlationId: correlationAttr.Value.trim(),
-      parentLogId: parentAttr?.Value?.trim(),
+      parentObservabilityLogId: parentAttr?.Value?.trim(),
       sampled: sampledAttr?.Value === 'true',
     };
   }
@@ -172,11 +172,11 @@ export function extractFromEventBridge(
   // Direct fields
   const correlationId = detail[ 'correlationId' ] || detail[ 'traceId' ];
   if (typeof correlationId === 'string' && correlationId.trim()) {
-    const parentLogId = detail[ 'parentLogId' ];
+    const parentObservabilityLogId = detail[ 'parentObservabilityLogId' ];
     const sampled = detail[ 'sampled' ];
     return {
       correlationId: correlationId.trim(),
-      parentLogId: typeof parentLogId === 'string' ? parentLogId.trim() : undefined,
+      parentObservabilityLogId: typeof parentObservabilityLogId === 'string' ? parentObservabilityLogId.trim() : undefined,
       sampled: typeof sampled === 'boolean' ? sampled : sampled === 'true',
     };
   }
@@ -186,8 +186,8 @@ export function extractFromEventBridge(
   if (traceContext && typeof traceContext.correlationId === 'string') {
     return {
       correlationId: (traceContext.correlationId as string).trim(),
-      parentLogId: typeof traceContext.parentLogId === 'string'
-        ? (traceContext.parentLogId as string).trim()
+      parentObservabilityLogId: typeof traceContext.parentObservabilityLogId === 'string'
+        ? (traceContext.parentObservabilityLogId as string).trim()
         : undefined,
       sampled: typeof traceContext.sampled === 'boolean'
         ? traceContext.sampled
@@ -209,11 +209,11 @@ export function extractFromStepFunctions(
   // Direct fields
   const correlationId = input[ 'correlationId' ] || input[ 'traceId' ];
   if (typeof correlationId === 'string' && correlationId.trim()) {
-    const parentLogId = input[ 'parentLogId' ];
+    const parentObservabilityLogId = input[ 'parentObservabilityLogId' ];
     const sampled = input[ 'sampled' ];
     return {
       correlationId: correlationId.trim(),
-      parentLogId: typeof parentLogId === 'string' ? parentLogId.trim() : undefined,
+      parentObservabilityLogId: typeof parentObservabilityLogId === 'string' ? parentObservabilityLogId.trim() : undefined,
       sampled: typeof sampled === 'boolean' ? sampled : sampled === 'true',
     };
   }
@@ -223,8 +223,8 @@ export function extractFromStepFunctions(
   if (traceContext && typeof traceContext.correlationId === 'string') {
     return {
       correlationId: (traceContext.correlationId as string).trim(),
-      parentLogId: typeof traceContext.parentLogId === 'string'
-        ? (traceContext.parentLogId as string).trim()
+      parentObservabilityLogId: typeof traceContext.parentObservabilityLogId === 'string'
+        ? (traceContext.parentObservabilityLogId as string).trim()
         : undefined,
       sampled: typeof traceContext.sampled === 'boolean'
         ? traceContext.sampled
@@ -255,11 +255,11 @@ export function extractFromKinesis(
     const data = JSON.parse(decoded) as Record<string, unknown>;
     const correlationId = data[ 'correlationId' ] || data[ 'traceId' ];
     if (typeof correlationId === 'string' && correlationId.trim()) {
-      const parentLogId = data[ 'parentLogId' ];
+      const parentObservabilityLogId = data[ 'parentObservabilityLogId' ];
       const sampled = data[ 'sampled' ];
       return {
         correlationId: correlationId.trim(),
-        parentLogId: typeof parentLogId === 'string' ? parentLogId.trim() : undefined,
+        parentObservabilityLogId: typeof parentObservabilityLogId === 'string' ? parentObservabilityLogId.trim() : undefined,
         sampled: typeof sampled === 'boolean' ? sampled : sampled === 'true',
       };
     }
@@ -290,11 +290,11 @@ export function extractFromDynamoDBStream(
   if (newImage) {
     const correlationId = newImage[ 'correlationId' ]?.S || newImage[ 'traceId' ]?.S;
     if (correlationId?.trim()) {
-      const parentLogId = newImage[ 'parentLogId' ]?.S;
+      const parentObservabilityLogId = newImage[ 'parentObservabilityLogId' ]?.S;
       const sampled = newImage[ 'sampled' ]?.BOOL ?? newImage[ 'sampled' ]?.S === 'true';
       return {
         correlationId: correlationId.trim(),
-        parentLogId: parentLogId?.trim(),
+        parentObservabilityLogId: parentObservabilityLogId?.trim(),
         sampled: typeof sampled === 'boolean' ? sampled : undefined,
       };
     }
@@ -373,15 +373,15 @@ export function createHttpHeaders(ctx: ExecutionContextData): Record<string, str
     'x-correlation-id': ctx.correlationId,
   };
 
-  if (ctx.parentLogId) {
-    headers[ 'x-parent-log-id' ] = ctx.parentLogId;
+  if (ctx.parentObservabilityLogId) {
+    headers[ 'x-parent-log-id' ] = ctx.parentObservabilityLogId;
   }
 
   // W3C traceparent
   const sampledFlag = ctx.sampled ? '01' : '00';
   const traceId = toW3CTraceId(ctx.correlationId);
-  const parentId = ctx.parentLogId
-    ? toW3CParentId(ctx.parentLogId)
+  const parentId = ctx.parentObservabilityLogId
+    ? toW3CParentId(ctx.parentObservabilityLogId)
     : toW3CParentId(ctx.correlationId);
   headers[ 'traceparent' ] = `00-${traceId}-${parentId}-${sampledFlag}`;
 
@@ -398,8 +398,8 @@ export function createSqsAttributes(
     correlationId: { DataType: 'String', StringValue: ctx.correlationId },
     sampled: { DataType: 'String', StringValue: String(ctx.sampled) },
   };
-  if (ctx.parentLogId) {
-    attrs[ 'parentLogId' ] = { DataType: 'String', StringValue: ctx.parentLogId };
+  if (ctx.parentObservabilityLogId) {
+    attrs[ 'parentObservabilityLogId' ] = { DataType: 'String', StringValue: ctx.parentObservabilityLogId };
   }
   return attrs;
 }
@@ -423,8 +423,8 @@ export function createEventBridgeContext(
     correlationId: ctx.correlationId,
     sampled: ctx.sampled,
   };
-  if (ctx.parentLogId) {
-    traceContext[ 'parentLogId' ] = ctx.parentLogId;
+  if (ctx.parentObservabilityLogId) {
+    traceContext[ 'parentObservabilityLogId' ] = ctx.parentObservabilityLogId;
   }
   return traceContext;
 }

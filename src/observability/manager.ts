@@ -1,28 +1,7 @@
 /**
  * ObservabilityManager - Core Observer for the observability system
  * 
- * DESIGN PRINCIPLES:
- * - Self-initializing: Initializes when module is imported
- * - Never crash the application - log errors and continue
- * - Fire-and-forget capture for non-blocking operation
- * 
- * INITIALIZATION:
- * - Manager auto-initializes when this module is imported
- * - Registers itself with base.ts capturer registry
- * - No circular dependencies: base.ts doesn't import manager.ts
- * 
- * Usage:
- * ```typescript
- * // Establish context with correlationId first
- * await runWithContext(
- *   createObservationContext(requestId),
- *   async () => {
- *     // Use observers (auto-generates correlationId if needed)
- *     SpanObserver.start('operation');
- *     AuditObserver.entityCreate('User', userId, data);
- *   }
- * );
- * ```
+ * All config and backends resolved from DI - no manual instantiation.
  */
 
 import { randomUUID } from 'crypto';
@@ -36,28 +15,16 @@ import {
   ObservabilityEvent,
   ObservabilityLevel,
 } from './types';
-import { ObservabilityConfigManager } from './config';
 import { stringToLevel, levelToString } from './utils/level-utils';
 import { detectSource, mergeTags } from './utils/source-utils';
 import { redactSensitiveData } from './utils/data-protection';
 import { getCurrentContext, getCorrelationIdIfExists } from './context';
-
-// Static imports for backends (enables tree-shaking and compile-time type checking)
-import { CloudWatchBackend } from './backends/cloudwatch';
-import { DynamoDBObservabilityBackend } from './backends/dynamodb';
-import { OTELObservabilityBackend } from './backends/otel';
-
-// Import base observer utilities to inject ourselves
 import { initializeCapturer, resetCapturer } from './observers/base';
 import { DIContainer } from '../di';
-import { DI_TOKENS } from '../const';
 import { NoProviderFoundError } from '../di/errors';
 
 const logger = createLogger('ObservabilityManager');
 
-/**
- * Validation error structure
- */
 interface ValidationError {
   field: string;
   message: string;
@@ -65,10 +32,9 @@ interface ValidationError {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PRIVATE MODULE STATE
-// All state is module-scoped, not class properties
 // ═══════════════════════════════════════════════════════════════════════════
 
-let configManager: ObservabilityConfigManager | null = null;
+let config: ObservabilityConfig | null = null;
 let backends: ObservabilityBackend[] = [];
 let invocationCount = 0;
 let initialized = false;
@@ -90,7 +56,6 @@ function validateInput(input: CaptureInput): ValidationError[] {
     errors.push({ field: 'level', message: 'level is required' });
   }
 
-  // correlationId must come from input or context
   if (!input.correlationId && !context?.correlationId) {
     errors.push({
       field: 'correlationId',
@@ -103,7 +68,7 @@ function validateInput(input: CaptureInput): ValidationError[] {
 
 function applyDataProtection(
   input: CaptureInput,
-  config: ObservabilityConfig[ 'dataProtection' ]
+  dataProtection?: ObservabilityConfig[ 'dataProtection' ]
 ): {
   data?: Record<string, unknown>;
   attributes?: Record<string, unknown>;
@@ -111,7 +76,7 @@ function applyDataProtection(
   context?: Record<string, unknown>;
   error?: ObservabilityError;
 } {
-  if (!config.enabled) {
+  if (!dataProtection?.enabled) {
     return {
       data: input.data,
       attributes: input.attributes,
@@ -121,23 +86,23 @@ function applyDataProtection(
     };
   }
 
-  const fields = config.fields ?? [ 'data', 'attributes', 'metadata', 'context' ];
+  const fields = dataProtection.fields ?? [ 'data', 'attributes', 'metadata', 'context' ];
 
   return {
     data: fields.includes('data') && input.data
-      ? redactSensitiveData(input.data, config)
+      ? redactSensitiveData(input.data, dataProtection)
       : input.data,
     attributes: fields.includes('attributes') && input.attributes
-      ? redactSensitiveData(input.attributes, config)
+      ? redactSensitiveData(input.attributes, dataProtection)
       : input.attributes,
     metadata: fields.includes('metadata') && input.metadata
-      ? redactSensitiveData(input.metadata, config)
+      ? redactSensitiveData(input.metadata, dataProtection)
       : input.metadata,
     context: fields.includes('context') && input.context
-      ? redactSensitiveData(input.context, config)
+      ? redactSensitiveData(input.context, dataProtection)
       : input.context,
     error: fields.includes('error') && input.error
-      ? redactSensitiveData(input.error, config)
+      ? redactSensitiveData(input.error, dataProtection)
       : input.error,
   };
 }
@@ -151,10 +116,9 @@ function buildEvent(input: CaptureInput): ObservabilityEvent {
     throw new Error('correlationId is required - this should have been caught by validation');
   }
 
-  const config = configManager!.getAll();
   const { data, attributes, metadata, context: eventContext, error } = applyDataProtection(
     input,
-    config.dataProtection
+    config?.dataProtection
   );
 
   return {
@@ -162,8 +126,11 @@ function buildEvent(input: CaptureInput): ObservabilityEvent {
     level: input.level,
     correlationId,
     timestampMs: input.timestampMs ?? now,
-    logId: input.logId ?? randomUUID(),
-    parentLogId: input.parentLogId ?? context?.parentLogId,
+    observabilityLogId: input.observabilityLogId ?? randomUUID(),
+    // null = explicitly no parent (don't fall back), undefined = use context
+    parentObservabilityLogId: input.parentObservabilityLogId === null 
+      ? undefined 
+      : (input.parentObservabilityLogId ?? context?.parentObservabilityLogId),
     actor: input.actor ?? context?.actor,
     source: input.source ?? context?.source ?? detectSource(),
     tags: mergeTags({ ...context?.tags, ...input.tags }, true),
@@ -183,7 +150,7 @@ function buildEvent(input: CaptureInput): ObservabilityEvent {
   };
 }
 
-function getTypeCategory(type: string): keyof NonNullable<ObservabilityConfig[ 'types' ]> {
+function getTypeCategory(type: string): 'span' | 'metric' | 'audit' | 'log' {
   if (type.startsWith('span.')) return 'span';
   if (type === 'metric') return 'metric';
   if (type.startsWith('audit')) return 'audit';
@@ -192,7 +159,7 @@ function getTypeCategory(type: string): keyof NonNullable<ObservabilityConfig[ '
 
 function getBackendsForType(type: string): ObservabilityBackend[] {
   const typeCategory = getTypeCategory(type);
-  const typeConfig = configManager?.getTypeConfig(typeCategory);
+  const typeConfig = config?.types?.[ typeCategory ];
 
   if (typeConfig?.backends && typeConfig.backends.length > 0) {
     return backends.filter((b) => typeConfig.backends!.includes(b.name as 'cloudwatch' | 'dynamodb' | 'otel'));
@@ -237,10 +204,15 @@ async function dispatchToBackendsSync(event: ObservabilityEvent, targetBackends:
   );
 }
 
-function shouldCapture(event: ObservabilityEvent, config: ObservabilityConfig): boolean {
+function getEffectiveLevelForType(type: 'span' | 'metric' | 'audit' | 'log'): ObservabilityLevel {
+  const typeConfig = config?.types?.[ type ];
+  return typeConfig?.minLevel ?? config?.minLevel ?? ObservabilityLevel.INFO;
+}
+
+function shouldCapture(event: ObservabilityEvent, cfg: ObservabilityConfig): boolean {
   const levelValue = stringToLevel(event.level);
   const typeCategory = getTypeCategory(event.type);
-  const effectiveLevel = configManager?.getEffectiveLevelForType(typeCategory) ?? config.minLevel;
+  const effectiveLevel = getEffectiveLevelForType(typeCategory);
 
   if (levelValue < effectiveLevel) {
     return false;
@@ -250,17 +222,17 @@ function shouldCapture(event: ObservabilityEvent, config: ObservabilityConfig): 
     return true;
   }
 
-  if (!config.sampling.enabled) {
+  if (!cfg.sampling?.enabled) {
     return true;
   }
 
-  const typeConfig = configManager?.getTypeConfig(typeCategory);
+  const typeConfig = cfg.types?.[ typeCategory ];
   if (typeConfig?.sampling?.enabled) {
     return Math.random() < typeConfig.sampling.rate;
   }
 
-  if (event.operation && config.sampling.operations) {
-    for (const [ pattern, rate ] of Object.entries(config.sampling.operations)) {
+  if (event.operation && cfg.sampling.operations) {
+    for (const [ pattern, rate ] of Object.entries(cfg.sampling.operations)) {
       const regex = getOrCreateSamplingRegex(pattern);
       if (regex.test(event.operation)) {
         return Math.random() < rate;
@@ -269,7 +241,7 @@ function shouldCapture(event: ObservabilityEvent, config: ObservabilityConfig): 
   }
 
   const levelName = levelToString(levelValue);
-  const rate = config.sampling.rates?.[ levelName ];
+  const rate = cfg.sampling.rates?.[ levelName ];
   if (rate === undefined || rate >= 1) return true;
   if (rate <= 0) return false;
 
@@ -285,79 +257,54 @@ function getOrCreateSamplingRegex(pattern: string): RegExp {
   return regex;
 }
 
-function initializeBackendsFromConfig(config: ObservabilityConfig): void {
-  const minLevel = config.minLevel;
-  const backendConfigs = config.backends;
-  const backendNames = backendConfigs.map(b => b.type);
+/**
+ * Initialize backends from DI based on config
+ */
+function initializeBackendsFromConfig(cfg: ObservabilityConfig): void {
+  backends = [];
+  const enabledTypes = cfg.backends?.filter(b => b.enabled !== false).map(b => b.type) ?? [ 'cloudwatch' ];
 
-  for (const type of backendNames) {
+  for (const type of enabledTypes) {
     try {
-      switch (type) {
-        case 'dynamodb':
-          backends.push(
-            new DynamoDBObservabilityBackend({
-              minLevel,
-              ttlDays: config.dynamodb.ttlDays,
-            }),
-          );
-          break;
-        case 'otel':
-          backends.push(
-            new OTELObservabilityBackend({
-              serviceName: config.serviceName,
-              minLevel,
-            }),
-          );
-          break;
-        case 'cloudwatch':
-          backends.push(
-            new CloudWatchBackend({
-              serviceName: config.serviceName,
-              minLevel,
-              namespace: config.cloudwatch.namespace,
-            }),
-          );
-          break;
-        default:
-          logger.warn(`Unknown backend type: ${type}`);
-      }
+      const backend = DIContainer.ROOT.resolve<ObservabilityBackend>(
+        'ObservabilityBackend',
+        { tags: [ 'observability', 'backend', type ] }
+      );
+      backends.push(backend);
+      logger.debug(`Initialized backend: ${backend.name}`);
     } catch (error) {
-      logger.error(`Failed to initialize backend ${type}:`, error);
+      if (error instanceof NoProviderFoundError) {
+        logger.warn(`Backend '${type}' not found in DI, skipping`);
+      } else {
+        logger.error(`Failed to initialize backend '${type}':`, error);
+      }
     }
   }
 
+  // Fallback to CloudWatch if no backends enabled
   if (backends.length === 0) {
+    logger.warn('No backends enabled, attempting CloudWatch fallback');
     try {
-      backends.push(
-        new CloudWatchBackend({
-          serviceName: config.serviceName,
-          minLevel,
-          namespace: config.cloudwatch.namespace,
-        }),
+      const backend = DIContainer.ROOT.resolve<ObservabilityBackend>(
+        'ObservabilityBackend',
+        { tags: [ 'observability', 'backend', 'cloudwatch' ] }
       );
+      backends.push(backend);
     } catch (error) {
-      logger.error('Failed to initialize default CloudWatch backend:', error);
+      logger.error('Failed to resolve fallback CloudWatch backend:', error);
     }
   }
 }
 
 function doInitialize(): void {
-  let config: ObservabilityConfig;
+  // Resolve config from DI (defaults registered in index.ts guarantee all required fields)
+  config = DIContainer.ROOT.resolveConfig<ObservabilityConfig>('observability') as ObservabilityConfig;
+  logger.debug('Observability config loaded from DI');
 
-  try {
-    config = DIContainer.ROOT.resolve(DI_TOKENS.OBSERVABILITY_CONFIG) as ObservabilityConfig;
-    logger.debug('Observability config loaded from DI');
-  } catch (e) {
-    if (!(e instanceof NoProviderFoundError)) {
-      logger.warn('Error resolving observability config from DI:', e);
-    }
-    config = ObservabilityConfigManager.fromEnvironment();
-    logger.debug('Observability config loaded from environment');
-  }
+  // Initialize backends from DI
+  initializeBackendsFromConfig(config!);
 
-  configManager = new ObservabilityConfigManager(config);
-  initializeBackendsFromConfig(config);
-
+  // Register capturer for observers
   initializeCapturer({
     capture: (input, options) => ObservabilityManager.capture(input, options),
     captureAsync: (input, options) => ObservabilityManager.captureAsync(input, options),
@@ -368,23 +315,14 @@ function doInitialize(): void {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC API - ObservabilityManager
-// Clean static methods that use module-scoped state
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * ObservabilityManager - core static class for the observability system.
- * 
- * All state is module-scoped for proper encapsulation.
- * Static methods provide the public API.
- */
 export class ObservabilityManager {
 
-  // Prevent instantiation
   private constructor() { }
 
   /**
-   * Initialize for a new Lambda invocation.
-   * THIS IS THE MAIN ENTRY POINT - called by all controllers.
+   * Initialize for a new Lambda invocation
    */
   static initializeInvocation(): void {
     if (!initialized) {
@@ -401,50 +339,29 @@ export class ObservabilityManager {
     }
   }
 
-  /**
-   * Check if initialized
-   */
   static isInitialized(): boolean {
     return initialized;
   }
 
-  /**
-   * Check if this is a cold start
-   */
   static isColdStart(): boolean {
     return invocationCount === 1;
   }
 
-  /**
-   * Get current invocation count
-   */
   static getInvocationCount(): number {
     return invocationCount;
   }
 
-  /**
-   * Get current configuration
-   */
-  static getConfig(): ObservabilityConfig {
-    if (!initialized) {
-      throw new Error('ObservabilityManager not initialized. Controllers must call initializeInvocation() first.');
-    }
-    return configManager!.getAll();
+  static getConfig(): ObservabilityConfig | null {
+    return config;
   }
 
-  /**
-   * Update configuration at runtime
-   */
   static configure(updates: Partial<ObservabilityConfig>): void {
-    if (!initialized) {
-      throw new Error('ObservabilityManager not initialized. Controllers must call initializeInvocation() first.');
+    if (!config) {
+      throw new Error('ObservabilityManager not initialized');
     }
-    configManager!.update(updates);
+    config = { ...config, ...updates };
   }
 
-  /**
-   * Register a custom backend
-   */
   static registerBackend(backend: ObservabilityBackend): void {
     if (backends.find((b) => b.name === backend.name)) {
       logger.warn(`Backend ${backend.name} already registered`);
@@ -453,9 +370,6 @@ export class ObservabilityManager {
     backends.push(backend);
   }
 
-  /**
-   * Unregister a backend
-   */
   static unregisterBackend(name: string): void {
     backends = backends.filter((b) => b.name !== name);
   }
@@ -476,8 +390,7 @@ export class ObservabilityManager {
         return undefined;
       }
 
-      const config = configManager!.getAll();
-      if (!config.enabled) return undefined;
+      if (!config?.enabled) return undefined;
 
       const event = buildEvent(input);
 
@@ -488,7 +401,7 @@ export class ObservabilityManager {
       const targetBackends = getBackendsForType(event.type);
       dispatchToBackends(event, targetBackends);
 
-      return event.logId;
+      return event.observabilityLogId;
     } catch (error) {
       logger.error('Unexpected error in capture:', error);
       return undefined;
@@ -511,8 +424,7 @@ export class ObservabilityManager {
         return undefined;
       }
 
-      const config = configManager!.getAll();
-      if (!config.enabled) return undefined;
+      if (!config?.enabled) return undefined;
 
       const event = buildEvent(input);
 
@@ -523,15 +435,15 @@ export class ObservabilityManager {
       const targetBackends = getBackendsForType(event.type);
       await dispatchToBackendsSync(event, targetBackends);
 
-      return event.logId;
-    } catch (error) {
+      return event.observabilityLogId;
+    } catch (error) { 
       logger.error('Unexpected error in captureAsync:', error);
       return undefined;
     }
   }
 
   /**
-   * Observe an event (alias for capture with Partial<ObservabilityEvent>)
+   * Observe an event
    */
   static observe(
     event: Partial<ObservabilityEvent> & { type: string; level: string; correlationId?: string },
@@ -540,7 +452,7 @@ export class ObservabilityManager {
     const correlationId = event.correlationId ?? getCorrelationIdIfExists();
 
     if (!correlationId) {
-      logger.warn('observe() called without correlationId. Establish context with runWithContext() first.');
+      logger.warn('observe() called without correlationId');
       return undefined;
     }
 
@@ -553,7 +465,7 @@ export class ObservabilityManager {
   }
 
   /**
-   * Flush all backends - called before Lambda returns
+   * Flush all backends
    */
   static async flush(): Promise<void> {
     const flushPromises = backends.map(async (backend) => {
@@ -573,7 +485,7 @@ export class ObservabilityManager {
    * Reset manager state (for testing)
    */
   static reset(): void {
-    configManager = null;
+    config = null;
     backends = [];
     invocationCount = 0;
     initialized = false;
@@ -582,27 +494,14 @@ export class ObservabilityManager {
   }
 
   /**
-   * Initialize for testing with mock backends.
-   * @internal
+   * Initialize for testing with mock config and backends
    */
   static initializeForTesting(
-    config: Partial<ObservabilityConfig>,
+    testConfig: ObservabilityConfig,
     testBackends: ObservabilityBackend[] = []
   ): void {
     ObservabilityManager.reset();
-
-    const fullConfig: ObservabilityConfig = {
-      enabled: config.enabled ?? true,
-      minLevel: config.minLevel ?? ObservabilityLevel.TRACE,
-      serviceName: config.serviceName ?? 'test-service',
-      sampling: config.sampling ?? { enabled: false },
-      backends: config.backends ?? [],
-      cloudwatch: config.cloudwatch ?? { namespace: 'test' },
-      dynamodb: config.dynamodb ?? { tableName: 'test-table', ttlDays: 1 },
-      dataProtection: config.dataProtection ?? { enabled: false },
-    };
-
-    configManager = new ObservabilityConfigManager(fullConfig);
+    config = testConfig;
     backends = testBackends;
     initialized = true;
 
@@ -627,7 +526,4 @@ export const withObservability = <T extends (...args: unknown[]) => Promise<unkn
   }) as T;
 };
 
-/**
- * Alias for ObservabilityManager
- */
 export const Observer = ObservabilityManager;

@@ -2,7 +2,7 @@
  * Utility functions for automatic source tracking
  */
 
-import { ObservabilityConfigManager } from '../config';
+import { DIContainer } from '../../di';
 
 /**
  * Auto-detect the source of an observability event
@@ -141,7 +141,7 @@ let _cachedEnvTags: Record<string, string> | null = null;
  * 
  * NOTE: Most of these are AWS runtime environment variables that are
  * automatically set by the Lambda runtime, not application config.
- * Application-level config (like serviceName) comes from ObservabilityConfigManager.
+ * Application-level config (like serviceName) comes from DI config.
  */
 export function getEnvironmentTags(): Record<string, string> {
   if (_cachedEnvTags !== null) {
@@ -172,10 +172,14 @@ export function getEnvironmentTags(): Record<string, string> {
     tags.stage = stage;
   }
 
-  // Service name - from ObservabilityConfigManager (single source of truth)
-  const serviceName = ObservabilityConfigManager.fromEnvironment().serviceName;
-  if (serviceName) {
-    tags.service = serviceName;
+  // Service name from DI config
+  try {
+    const serviceName = DIContainer.ROOT.resolveConfig<string>('observability.serviceName');
+    if (serviceName) {
+      tags.service = serviceName;
+    }
+  } catch {
+    // Config not yet registered, skip
   }
 
   // Version/deployment
@@ -203,7 +207,9 @@ export function clearEnvironmentTagsCache(): void {
 /**
  * Merge tags with defaults
  * 
- * Event-specific tags override environment tags
+ * Event-specific tags override environment tags.
+ * 
+ * IMPORTANT: Always creates a new object to avoid mutating cached environment tags.
  */
 export function mergeTags(
   eventTags?: Record<string, string>,
@@ -213,7 +219,9 @@ export function mergeTags(
     return undefined;
   }
 
-  const merged = includeEnvironment ? getEnvironmentTags() : {};
+  // Create a shallow copy to avoid mutating the cached environment tags!
+  // getEnvironmentTags() returns a cached object that must not be modified.
+  const merged = includeEnvironment ? { ...getEnvironmentTags() } : {};
 
   if (eventTags) {
     Object.assign(merged, eventTags);
