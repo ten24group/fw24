@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.0.4-beta.20](https://github.com/ten24group/fw24/compare/v1.0.4-beta.19...v1.0.4-beta.20) (2025-12-12)
+
+
+### Bug Fixes
+
+* DI container for  array configuration handling ([cfa9dcd](https://github.com/ten24group/fw24/commit/cfa9dcde7db80a9f20e0eb53ed33ff2da4d36139))
+* empty/non-empty filters, default sorting ([a18c873](https://github.com/ten24group/fw24/commit/a18c873da5d35fe762fa227c2e8e01b5eb79ee89))
+* entry file import for scheduler and queue controllers ([2e883bb](https://github.com/ten24group/fw24/commit/2e883bb8ada9ffce1a602e68c9287dbdc8be3bab))
+* type errors after cherry picking stuff ([05830d0](https://github.com/ten24group/fw24/commit/05830d04998e9a1bd7a6df9483318b2436849f3c))
+
 ### [1.0.4-beta.19](https://github.com/ten24group/fw24/compare/v1.0.4-beta.18...v1.0.4-beta.19) (2025-12-02)
 
 ### [1.0.4-beta.18](https://github.com/ten24group/fw24/compare/v1.0.4-beta.17...v1.0.4-beta.18) (2025-11-20)
