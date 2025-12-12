@@ -1,7 +1,7 @@
 import type { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import type { AuthorizerTypeMetadata } from "./authorizer";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
-import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor } from "./decorator-utils";
+import { resolveAndExportHandler, setupDIModuleForController } from "./decorator-utils";
 
 /**
  * Represents the configuration options for a controller.
@@ -65,8 +65,7 @@ export function Controller(controllerName: string, controllerConfig: IController
 
 
 	return function <T extends { new(...args: any[]): {} }>(target: T) {
-		// console.log('Trying to import entry packages for controller: ', controllerName);
-		tryImportingEntryPackagesFor();
+		// Entry packages are auto-loaded by fw24 layer - no need to call here
 
 		// Default autoExportLambdaHandler to true if undefined
 		controllerConfig.autoExportLambdaHandler = controllerConfig.autoExportLambdaHandler ?? true;

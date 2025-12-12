@@ -1,5 +1,5 @@
 import { BaseEntityService, EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap, IFilterSegment } from "../../entity";
-import { IEntityPageAction, Template } from "../../entity/base-entity";
+import { IEntityPageAction, Template, SortConfig, FieldSortConfig, SortOrder, TableSortConfig, SearchSortConfig, DatabaseSortConfig, DualSortConfig } from "../../entity/base-entity";
 import type { IApplicationConfig } from "../../interfaces/config";
 import { pascalCase } from "../../utils";
 import { formatEntityAttributesForList, generateSegments, mergeColumnVisibility } from "./util";
@@ -39,19 +39,51 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
      */
     pageTitle?: Template,
     /**
-     * Default sort configuration
-     * - Object/Array: for search mode with field+order
-     * - 'asc' | 'desc': for DynamoDB mode (index order direction only)
+     * @deprecated Use tableConfig.defaultSort instead
      */
-    defaultSort?: { readonly field: string; readonly order: 'asc' | 'desc' } | ReadonlyArray<{ readonly field: string; readonly order: 'asc' | 'desc' }> | 'asc' | 'desc',
+    defaultSort?: SortConfig,
     /**
-     * Table configuration including row actions, bulk actions, row selection, and column visibility
+     * Table configuration including row actions, bulk actions, row selection, column visibility, and sorting
      */
-    tableConfig?: EntityListPageConfig['tableConfig'];
+    tableConfig?: EntityListPageConfig[ 'tableConfig' ];
     /**
      * Global UI config options (NEW: for passing global duplicatedFieldDetection config)
      */
-    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
+    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ];
+}
+
+/**
+ * Check if sort config is a DualSortConfig (has search/database keys)
+ */
+function isDualSortConfig(sort: TableSortConfig): sort is DualSortConfig {
+    return typeof sort === 'object' && !Array.isArray(sort) && ('search' in sort || 'database' in sort);
+}
+
+/**
+ * Extract search sort config from TableSortConfig
+ */
+function getSearchSort(sort: TableSortConfig): SearchSortConfig | undefined {
+    if (isDualSortConfig(sort)) return sort.search;
+    return sort; // Simple format - use as-is for search
+}
+
+/**
+ * Extract database sort direction from TableSortConfig
+ */
+function getDatabaseSort(sort: TableSortConfig): DatabaseSortConfig {
+    if (isDualSortConfig(sort)) return sort.database ?? 'desc';
+    // Simple format - extract order from first field
+    if (Array.isArray(sort)) return sort[ 0 ]?.order ?? 'desc';
+    return (sort as FieldSortConfig).order;
+}
+
+/**
+ * @deprecated Extract just the order direction from legacy SortConfig
+ */
+function extractSortOrder(sort: SortConfig): SortOrder {
+    if (typeof sort === 'string') return sort;
+    if (Array.isArray(sort)) return sort[ 0 ]?.order ?? 'desc';
+    return (sort as FieldSortConfig).order;
 }
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
@@ -76,8 +108,8 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     }
 
     // Combine default actions with custom actions (custom actions take precedence)
-    const pageHeaderActions = options.pageHeaderActions 
-        ? [...defaultPageHeaderActions, ...options.pageHeaderActions]
+    const pageHeaderActions = options.pageHeaderActions
+        ? [ ...defaultPageHeaderActions, ...options.pageHeaderActions ]
         : defaultPageHeaderActions;
 
     return {
@@ -96,29 +128,37 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     entityService: BaseEntityService<S>
 ) {
 
-    const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch, defaultSort, tableConfig, globalUIConfigOptions } = options;
+    const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch, tableConfig, globalUIConfigOptions } = options;
     const entityNameLower = entityName.toLowerCase();
 
     const baseApiUrl = `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`;
     const searchApiUrl = `${baseApiUrl}/search`;
 
-    // Check if dual API configuration is enabled
-    const isDualApiEnabled = useSearch; // Note: we can make it configurable in future
+    // Get sort config: prefer tableConfig.defaultSort, fall back to deprecated top-level
+    const sortConfig = tableConfig?.defaultSort;
+    const legacySortConfig = options.defaultSort;
 
-    // Build API config with optional defaultSort
+    // Check if dual API configuration is enabled
+    const isDualApiEnabled = useSearch;
+
+    // Resolve sort configs for each mode
+    const searchSort = sortConfig ? getSearchSort(sortConfig) : legacySortConfig;
+    const databaseSort = sortConfig ? getDatabaseSort(sortConfig) : (legacySortConfig ? extractSortOrder(legacySortConfig) : undefined);
+
+    // Build API config with properly formatted defaultSort for each mode
     const apiConfig = isDualApiEnabled ? {
         // Dual API configuration
         search: {
             apiMethod: 'GET' as const,
             responseKey: 'items',
             apiUrl: searchApiUrl,
-            ...(defaultSort && { defaultSort })
+            ...(searchSort && { defaultSort: searchSort })
         },
         database: {
             apiMethod: 'GET' as const,
             responseKey: 'items',
             apiUrl: baseApiUrl,
-            ...(defaultSort && { defaultSort })
+            ...(databaseSort && { defaultSort: databaseSort })
         }
     } : {
         // Single API configuration (backward compatible)
@@ -126,7 +166,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
         responseKey: 'items',
         useSearch: useSearch ?? false,
         apiUrl: useSearch ? searchApiUrl : baseApiUrl,
-        ...(defaultSort && { defaultSort })
+        ...((useSearch ? searchSort : databaseSort) && { defaultSort: useSearch ? searchSort : databaseSort })
     };
 
     // 1. Generate base properties from schema with merged row actions
@@ -155,6 +195,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
         ...(tableConfig?.rowSelection && { rowSelection: tableConfig.rowSelection }),  // Include rowSelection if provided
         ...(tableConfig?.expandable && { expandableConfig: tableConfig.expandable }),  // Include expandable config if provided
         ...(segments && segments.length > 0 && { segments }),  // Include segments if generated/provided
-        fetchStrategy: tableConfig?.fetchStrategy || 'eager' // Default to 'eager' fetching
+        fetchStrategy: tableConfig?.fetchStrategy || 'eager', // Default to 'eager' fetching
+        ...(tableConfig?.pageSize && { pageSize: tableConfig.pageSize })  // Include pageSize if provided
     };
 }

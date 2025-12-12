@@ -5,6 +5,7 @@ import type { DIContainer } from "../di/container";
 import type { ILayerVersion } from "aws-cdk-lib/aws-lambda";
 import { IDIContainer } from "./di";
 import { AuthorizerTypeMetadata, IControllerConfig } from '../decorators';
+import { IFunctionResourceAccess, TImportedPolicy, TPolicyStatementOrProps } from '../constructs/lambda-function';
 
 /**
  * Configuration for smart duplicated field detection.
@@ -13,7 +14,7 @@ import { AuthorizerTypeMetadata, IControllerConfig } from '../decorators';
 export interface IDuplicatedFieldDetectionConfig {
     /** Enable/disable auto-detection globally. Default: true */
     enabled?: boolean;
-    
+
     /** Suffix patterns to search for */
     suffixes?: {
         /** Display field suffixes. Default: ['Name', 'Title', 'Label', 'DisplayName'] */
@@ -23,7 +24,7 @@ export interface IDuplicatedFieldDetectionConfig {
         /** Meta field suffixes. Default: ['Code', 'Slug', 'Key', 'Identifier'] */
         meta?: string[];
     };
-    
+
     /** 
      * Domain-specific prefixes for pattern matching.
      * Framework provides generic prefixes (parent, child, source, target, owner, etc.)
@@ -33,17 +34,17 @@ export interface IDuplicatedFieldDetectionConfig {
      * @example E-commerce: ['product', 'customer', 'order', 'invoice']
      */
     prefixes?: string[];
-    
+
     /** 
      * Template generation style. Default: 'simple'
      * - simple: {teamName}
      * - composite: {teamName} ({teamCode}) if both exist
      */
     templateStyle?: 'simple' | 'composite';
-    
+
     /** Minimum confidence to use detection. Default: 'medium' */
     confidenceThreshold?: 'low' | 'medium' | 'high';
-    
+
     /** Enable debug logging. Default: false */
     debug?: boolean;
 }
@@ -59,7 +60,7 @@ export interface IDuplicatedFieldDetectionConfig {
 export interface IFilterAutoGenerationConfig {
     /** Enable/disable globally. Default: true */
     enabled?: boolean;
-    
+
     /** Date field filter configuration */
     dateFields?: {
         enabled?: boolean;  // Default: true
@@ -68,7 +69,7 @@ export interface IFilterAutoGenerationConfig {
         /** Generate quick date options (Today, This Week, etc.) */
         quickFilters?: boolean;  // Default: true
     };
-    
+
     /** Enum/Select field filter configuration */
     enumFields?: {
         enabled?: boolean;  // Default: true
@@ -77,12 +78,12 @@ export interface IFilterAutoGenerationConfig {
         /** Available operators for enum filters */
         availableOperators?: Array<'eq' | 'neq' | 'inList' | 'notInList'>;  // Default: ['eq', 'neq', 'inList', 'notInList']
     };
-    
+
     /** Boolean field filter configuration */
     booleanFields?: {
         enabled?: boolean;  // Default: true
     };
-    
+
     /** Relation field filter configuration */
     relationFields?: {
         enabled?: boolean;  // Default: true
@@ -91,19 +92,19 @@ export interface IFilterAutoGenerationConfig {
         /** Limit options shown in selector */
         optionsLimit?: number;  // Default: 100
     };
-    
+
     /** Number field filter configuration */
     numberFields?: {
         enabled?: boolean;  // Default: true
         defaultOperators?: Array<'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'between'>;  // Default: ['eq', 'gte', 'lte']
     };
-    
+
     /** Text field filter configuration */
     textFields?: {
         enabled?: boolean;  // Default: true
         defaultOperators?: Array<'eq' | 'neq' | 'contains' | 'startsWith' | 'endsWith'>;  // Default: ['contains', 'eq']
     };
-    
+
     /** Debug logging */
     debug?: boolean;  // Default: false
 }
@@ -130,7 +131,7 @@ export interface BooleanLabelPattern {
 export interface ISegmentAutoGenerationConfig {
     /** Enable/disable globally. Default: true */
     enabled?: boolean;
-    
+
     /** 
      * Preferred field names for segments (in order of priority).
      * Framework tries these first before applying scoring algorithm.
@@ -138,7 +139,7 @@ export interface ISegmentAutoGenerationConfig {
      * Default: ['status', 'state', 'type', 'category', 'priority']
      */
     preferredFields?: string[];
-    
+
     /** 
      * Maximum number of segment groups to generate per table.
      * Each group represents a different field (e.g., one group for "status", another for "league").
@@ -146,16 +147,16 @@ export interface ISegmentAutoGenerationConfig {
      * Default: 2
      */
     maxSegmentGroups?: number;
-    
+
     /** 
      * Maximum number of segment values per group.
      * Default: 10
      */
     maxSegmentsPerGroup?: number;
-    
+
     /** Minimum number of values required to generate segments. Default: 2 */
     minValues?: number;
-    
+
     /** 
      * Global icon mapping for segment values.
      * Static map only (functions not supported due to JSON serialization).
@@ -170,7 +171,7 @@ export interface ISegmentAutoGenerationConfig {
      * }
      */
     iconMapping?: Record<string, string>;
-    
+
     /**
      * Default boolean label patterns.
      * Framework matches field names against these patterns to generate appropriate labels.
@@ -184,16 +185,16 @@ export interface ISegmentAutoGenerationConfig {
      * ]
      */
     booleanLabelPatterns?: BooleanLabelPattern[];
-    
+
     /**
      * Default fallback labels for boolean fields when no pattern matches.
      * Default: { true: 'Yes', false: 'No' }
      */
     defaultBooleanLabels?: { true: string; false: string };
-    
+
     /** Always include "All" segment in each group. Default: true */
     includeAllSegment?: boolean;
-    
+
     /** Debug logging */
     debug?: boolean;  // Default: false
 }
@@ -205,7 +206,7 @@ export interface ISegmentAutoGenerationConfig {
 export interface ITableUIAutoGenerationConfig {
     /** Filter auto-generation configuration */
     filterAutoGeneration?: IFilterAutoGenerationConfig;
-    
+
     /** Segment auto-generation configuration */
     segmentAutoGeneration?: ISegmentAutoGenerationConfig;
 }
@@ -223,10 +224,10 @@ export interface IApplicationConfig {
         disableAccountVerification?: boolean;
         signInMethods?: ('EMAIL_PASSWORD' | 'EMAIL_OTP' | 'SMS_OTP' | 'PASSKEY')[];
         customPagesDirectory?: string;
-        
+
         /** Smart duplicated field detection configuration */
         duplicatedFieldDetection?: IDuplicatedFieldDetectionConfig;
-        
+
         /** Label field detection configuration for relation options */
         labelFieldDetection?: {
             /** 
@@ -238,7 +239,7 @@ export interface IApplicationConfig {
             /** Enable debug logging (default: false) */
             debug?: boolean;
         };
-        
+
         /** Table UI auto-generation configuration */
         tableUI?: ITableUIAutoGenerationConfig;
     };
@@ -247,6 +248,38 @@ export interface IApplicationConfig {
     environment?: string; // local, dev, prod
     environmentVariables?: Record<string, string>;
     globalEnvironmentVariables?: Record<string, string>;
+
+    /**
+     * Global policies that should be attached to ALL Lambda functions in the application.
+     * Useful for cross-cutting concerns like observability, logging, or shared resources.
+     * 
+     * @example
+     * globalPolicies: [
+     *   // Imported policy by name
+     *   { name: 'my-policy', prefix: 'my-module' },
+     *   // Direct policy statement props
+     *   { effect: Effect.ALLOW, actions: ['s3:GetObject'], resources: ['*'] }
+     * ]
+     */
+    globalPolicies?: Array<TPolicyStatementOrProps | TImportedPolicy>;
+
+    /**
+     * Global resource access that should be applied to ALL Lambda functions in the application.
+     * Useful for resources that need to be accessed by multiple functions (e.g., shared tables, buckets).
+     * 
+     * @example
+     * globalResourceAccess: {
+     *   tables: [
+     *     'users-table',  // shorthand for read/write access
+     *     { name: 'audit-table', access: ['read'] }  // explicit read-only
+     *   ],
+     *   buckets: ['assets-bucket'],
+     *   queues: ['notifications-queue'],
+     *   topics: ['events-topic']
+     * }
+     */
+    globalResourceAccess?: IFunctionResourceAccess;
+
     logRetentionDays?: number;
     logRemovalPolicy?: RemovalPolicy;
     functionProps?: Omit<NodejsFunctionProps, 'layers'> & {

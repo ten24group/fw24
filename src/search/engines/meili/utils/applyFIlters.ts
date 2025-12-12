@@ -119,16 +119,16 @@ function applyFilterOperation(qb: QueryBuilder<any>, field: string, op: string, 
       throw new SearchQueryError(`Invalid range value format for '${field}'`, { field, op, val, error });
     }
 
-  } else if (isOperatorAlias(op, 'exists') || isOperatorAlias(op, 'isNull')) {
-    // Handle the semantic difference: 'exists' means field exists (not null), 'isNull' means field is null
-    if (isOperatorAlias(op, 'exists')) {
-      qb.where(field).exists();
+  } else if ([ 'exists', 'notExists', 'isNull', 'notNull', 'empty', 'notEmpty' ].includes(op)) {
+    // Primary: exists/notExists
+    // Aliases: isNull/empty → notExists, notNull/notEmpty → exists
+    const isExistsOp = [ 'exists', 'notNull', 'notEmpty' ].includes(op);
+    const wantExists = isExistsOp ? val : !val;
+    if (wantExists) {
+      qb.where(field).isNotNull();
     } else {
       qb.where(field).isNull();
     }
-
-  } else if (isOperatorAlias(op, 'isEmpty')) {
-    qb.where(field).isEmpty();
 
   } else if (isContainsOp(op)) {
     qb.where(field).contains(String(val));

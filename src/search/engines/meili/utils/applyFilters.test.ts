@@ -28,9 +28,8 @@ describe("MeiliSearch:applyFilters", () => {
       in: jest.fn().mockReturnThis(),
       notIn: jest.fn().mockReturnThis(),
       rangeTo: jest.fn().mockReturnThis(),
-      exists: jest.fn().mockReturnThis(),
-      isEmpty: jest.fn().mockReturnThis(),
       isNull: jest.fn().mockReturnThis(),
+      isNotNull: jest.fn().mockReturnThis(),
       contains: jest.fn().mockReturnThis(),
       startsWith: jest.fn().mockReturnThis(),
     };
@@ -104,17 +103,15 @@ describe("MeiliSearch:applyFilters", () => {
       expect(mockWhereBuilder.contains).toHaveBeenCalledWith("test");
     });
 
-    it("should handle existence operators", () => {
-      const filters: GenericFilterCriteria<{ field1: any, field2: any, field3: any }> = {
+    it("should handle exists and notExists operators", () => {
+      const filters: GenericFilterCriteria<{ field1: any, field2: any }> = {
         field1: { exists: true },
-        field2: { isEmpty: true },
-        field3: { isNull: true }
+        field2: { notExists: true }
       };
 
       applyFilters(mockQueryBuilder, filters);
 
-      expect(mockWhereBuilder.exists).toHaveBeenCalled();
-      expect(mockWhereBuilder.isEmpty).toHaveBeenCalled();
+      expect(mockWhereBuilder.isNotNull).toHaveBeenCalled();
       expect(mockWhereBuilder.isNull).toHaveBeenCalled();
     });
   });

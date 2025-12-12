@@ -1,4 +1,4 @@
-import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem, UpsertItem  } from "electrodb";
+import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem, UpsertItem } from "electrodb";
 import { createSchema, Entity } from "electrodb";
 
 import type { EntityQuery, FilterOperatorsExtended, EntityFilterCriteria } from './query-types';
@@ -390,23 +390,23 @@ export function createEntityQuery<E extends EntitySchema<any, any, any>>(
  * Utility type to extract only visible (non-hidden) attribute keys from an entity schema
  */
 export type VisibleAttributeKeys<E extends EntitySchema<any, any, any, any>> = {
-  [K in keyof E['attributes']]: E['attributes'][K]['hidden'] extends true ? never : K
-}[keyof E['attributes']];
+  [ K in keyof E[ 'attributes' ] ]: E[ 'attributes' ][ K ][ 'hidden' ] extends true ? never : K
+}[ keyof E[ 'attributes' ] ];
 
 /**
  * Utility type to extract only writable (non-readonly) attribute keys from an entity schema
  */
 export type WritableAttributeKeys<E extends EntitySchema<any, any, any, any>> = {
-  [K in keyof E['attributes']]: E['attributes'][K]['readOnly'] extends true ? never : K
-}[keyof E['attributes']];
+  [ K in keyof E[ 'attributes' ] ]: E[ 'attributes' ][ K ][ 'readOnly' ] extends true ? never : K
+}[ keyof E[ 'attributes' ] ];
 
 /**
  * Represents an identifier mapping between source and target entity attributes.
  * The target is constrained to valid attribute keys of the target entity.
  */
-export type RelationIdentifier<E extends EntitySchema<any, any, any, any> = any> = { 
-  source: string, 
-  target: keyof E[ 'attributes' ] 
+export type RelationIdentifier<E extends EntitySchema<any, any, any, any> = any> = {
+  source: string,
+  target: keyof E[ 'attributes' ]
 };
 
 export type RelationIdentifiers<E extends EntitySchema<any, any, any, any> = any> = RelationIdentifier<E> | Array<RelationIdentifier<E>>
@@ -414,7 +414,7 @@ export type RelationIdentifiers<E extends EntitySchema<any, any, any, any> = any
 /**
  * Helper type to resolve entity schema from either direct type or lazy function
  */
-export type ResolveEntitySchema<T> = T extends () => infer E 
+export type ResolveEntitySchema<T> = T extends () => infer E
   ? E extends EntitySchema<any, any, any, any> ? E : never
   : T extends EntitySchema<any, any, any, any> ? T : never;
 
@@ -691,12 +691,12 @@ export interface BaseFieldMetadata {
   isFilterable?: boolean; // if the field is filterable
   isSearchable?: boolean; // if the field is searchable
   isSortable?: boolean; // if the field is sortable
-  
+
   // Display configuration
   placeholder?: string;
   helpText?: string;
   tooltip?: string; // maybe this can be inferred from the helpText
-  
+
   // Filter configuration options
   filterConfig?: {
     filterType?: 'text' | 'select' | 'datetime' | 'number' | 'boolean' | 'relation'; // Filter input type
@@ -704,7 +704,7 @@ export interface BaseFieldMetadata {
     availableOperators?: ReadonlyArray<keyof FilterOperatorsExtended<any> | string> | Array<keyof FilterOperatorsExtended<any> | string>; // Restrict available operators for this column
     predefinedOptions?: FieldOptionsAPIConfig<any> | FieldOption[]; // For filters: API config OR inline options
   };
-  
+
   /**
    * Custom labels for boolean field segments.
    * Used when generating filter segments for boolean fields.
@@ -719,14 +719,14 @@ export interface BaseFieldMetadata {
    * ```
    */
   booleanLabels?: BooleanFieldLabels;
-  
+
   // Link configuration for rendering field as internal link (non-relation fields)
   isLink?: boolean;
   linkConfig?: {
     routePattern: string;
     displayText?: string;
   };
-  
+
   /**
    * Template for rendering column values (list pages only).
    * Supports nested paths and composite templates.
@@ -744,7 +744,7 @@ export interface BaseFieldMetadata {
    * }
    */
   template?: Template;
-  
+
   /**
    * UI Configuration for relation fields (UI LAYER ONLY).
    * 
@@ -809,7 +809,7 @@ export interface IConfirmModal {
    * @example title: { composite: ['teamName', 'city'], template: 'Delete {teamName} ({city})?' }
    */
   title: Template;
-  
+
   /**
    * Modal content - can be static string or dynamic template.
    * 
@@ -840,32 +840,32 @@ export interface IModalApiConfig {
 export interface INavigateToConfig {
   /** Target route pattern, e.g., "/list-game" or "/view-user/:userId" */
   routePattern: string;
-  
+
   /** Whether to use form values for route/query params. Default: true */
   useFormValues?: boolean;
-  
+
   /** Maps form field paths to query parameters. 
    * Example: { "status.eq": "statusFilter", "teamIds.in": "selectedTeams" }
    */
   queryParamMapping?: Record<string, string>;
-  
+
   /** Maps form field paths to route parameters.
    * Example: { userId: "selectedUser.id" }
    */
   routeParamMapping?: Record<string, string>;
-  
+
   /** Use sessionStorage for large parameter sets (>1500 chars). Default: false */
   useLargeParamStorage?: boolean;
-  
+
   /** Date format for date fields. Default: 'ISO' */
   dateFormat?: 'ISO' | 'unix' | 'YYYY-MM-DD';
-  
+
   /** Array field to extract (e.g., 'id' extracts IDs from object arrays). Default: auto-detect */
   arrayValuePath?: string;
-  
+
   /** Use replace instead of push in navigation history. Default: false */
   replace?: boolean;
-  
+
   /** Pre-populate form from query params on modal open. Default: false */
   inverseMapping?: boolean;
 }
@@ -882,20 +882,20 @@ export interface INavigateToConfig {
 export interface IResponseDisplayConfig {
   /** Whether to show response in a modal. If false, only toast notification shows. Default: false */
   showModal?: boolean;
-  
+
   /** Title for response modal. If not provided, appends " - Results" to action modal title */
   modalTitle?: string;
-  
+
   /** Width of response modal in pixels. Default: 800 */
   modalWidth?: number;
-  
+
   /** OPTION 1: Render response using existing page type system (recommended) */
   pageType?: 'details' | 'list' | 'dashboard' | 'accordion';
   pageConfig?: DetailsPageConfigStructure | ListPageConfigStructure | Record<string, any>;
-  
+
   /** OPTION 2: Show raw JSON response (useful for debugging/testing) */
   showRawJson?: boolean;
-  
+
   /** Path to extract data from response. Default: uses response root
    * Example: "data.results" will use response.data.results as the data source
    */
@@ -931,36 +931,83 @@ export interface IResponseDisplayConfig {
 export interface IEntityConfigReference {
   /** Entity name (e.g., 'team', 'game', 'user') */
   entityName: string;
-  
+
   /** Which page config to reference: 'view', 'create', or 'list' */
   pageType: 'view' | 'create' | 'list';
-  
+
   /** Optional overrides to apply to the referenced config */
   overrideConfig?: {
     /** Override page title */
     pageTitle?: string;
-    
+
     /** Override columns configuration (for view pages) */
     columnsConfig?: IEntityPageColumnConfig;
-    
+
     /** Override breadcrumbs */
     breadcrumbs?: ReadonlyArray<{ label: string; url?: string }> | Array<{ label: string; url?: string }>;
-    
+
     /** Override form success redirect (for create pages) */
     submitSuccessRedirect?: string;
-    
+
     /** Override form buttons (for create pages) */
     formButtons?: ReadonlyArray<{ text: string; action: string; url?: string }> | Array<{ text: string; action: string; url?: string }>;
-    
+
     /** Add default filters (for list pages) */
     defaultFilters?: Record<string, any>;
-    
+
+    /**
+     * Override filter segments completely (for list pages).
+     * When provided, replaces all segments from base config.
+     * Set to empty array [] to disable segments entirely.
+     * 
+     * @example
+     * // Disable segments (useful in modal/section contexts)
+     * segments: []
+     * 
+     * @example
+     * // Replace with custom segments
+     * segments: [
+     *   { id: 'active', label: 'Active', filters: { status: { eq: 'active' } } },
+     *   { id: 'inactive', label: 'Inactive', filters: { status: { eq: 'inactive' } } }
+     * ]
+     */
+    segments?: ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup>;
+
+    /**
+     * Hide specific segments by ID (for list pages).
+     * Keeps all other segments from base config.
+     * 
+     * @example
+     * hideSegments: ['root-only', 'child-only']
+     */
+    hideSegments?: ReadonlyArray<string> | Array<string>;
+
+    /**
+     * Show only these segments by ID (for list pages).
+     * Mutually exclusive with hideSegments.
+     * 
+     * @example
+     * showOnlySegments: ['all-levels', 'errors']
+     */
+    showOnlySegments?: ReadonlyArray<string> | Array<string>;
+
+    /**
+     * Add additional segments to base config (for list pages).
+     * Merged with base segments using mergeSegments logic (ID-based override).
+     * 
+     * @example
+     * additionalSegments: [
+     *   { id: 'archived', label: 'Archived', filters: { archived: { eq: true } } }
+     * ]
+     */
+    additionalSegments?: ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup>;
+
     /** Hide specific fields from rendering */
     hideFields?: ReadonlyArray<string> | Array<string>;
-    
+
     /** Show only specific fields (mutually exclusive with hideFields) */
     showOnlyFields?: ReadonlyArray<string> | Array<string>;
-    
+
     /** 
      * Override the API configuration for fetching data.
      * - For view pages: Overrides detailApiConfig
@@ -1008,7 +1055,7 @@ export interface IEntityConfigReference {
       useSearch?: boolean;
       defaultSort?: { field: string; order: 'asc' | 'desc' };
     };
-    
+
     /** 
      * Map parent route params to different names for the child section.
      * Uses the same pattern as relation identifierMapping for consistency.
@@ -1131,7 +1178,7 @@ export interface IRelationFieldConfig {
    * Backend auto-generates if not provided
    */
   routePattern: string;
-  
+
   /** 
    * Identifier mappings from source fields to target params.
    * Backend auto-extracts from `Relation.identifiers` if not provided.
@@ -1152,19 +1199,19 @@ export interface IRelationFieldConfig {
    * identifierMapping: { source: 'order.userId', target: 'userId' }
    */
   identifierMapping?: RelationIdentifier | RelationIdentifier[];
-  
+
   /** 
    * Reference to entity config for modal display.
    * Backend auto-generates if not provided.
    */
   modalConfigRef?: IEntityConfigReference;
-  
+
   /** Modal width in pixels or CSS string. Default: 800 for to-one, 1200 for to-many */
   modalWidth?: number | string;
-  
+
   /** Modal title override. Default: uses page title from config */
   modalTitle?: string;
-  
+
   /**
    * Display configuration for relation fields.
    * Controls templates, fallbacks, icons, and actions.
@@ -1180,7 +1227,7 @@ export interface IRelationFieldConfig {
      * @example { composite: ['team.name', 'team.city'], template: '{team.name} ({team.city})' }
      */
     template?: Template;
-    
+
     /**
      * Fallback configuration when only ID available.
      * Backend pre-resolves this using entity metadata.
@@ -1200,16 +1247,16 @@ export interface IRelationFieldConfig {
       /** Modal button text (e.g., "Team Details") */
       modalButtonText?: string;
     };
-    
+
     /** Icon (defaults to entity metadata icon if not provided) */
     icon?: string;
-    
+
     /** Show navigation link? Default: true for to-one, false for to-many */
     showLink?: boolean;
-    
+
     /** Show modal button? Default: true */
     showModalIcon?: boolean;
-    
+
     /** Configure which actions to render */
     actions?: {
       link?: boolean;
@@ -1222,7 +1269,7 @@ export interface IRelationFieldConfig {
         onClick: string;
       }>;
     };
-    
+
     /**
      * Control auto-detection of duplicated fields for this specific relation.
      * - undefined or true: Enable auto-detection (default)
@@ -1234,7 +1281,7 @@ export interface IRelationFieldConfig {
      * autoDetect: false  // Disable auto-detection
      */
     autoDetect?: boolean;
-    
+
     /**
      * Hints to guide auto-detection when enabled.
      * Only used if autoDetect !== false and template is not provided.
@@ -1253,20 +1300,20 @@ export interface IRelationFieldConfig {
        * @example ['homeTeamName', 'homeTeamTitle']
        */
       preferredFields?: string[];
-      
+
       /**
        * Field names to exclude from detection.
        * @example ['homeTeamInternalCode']
        */
       excludeFields?: string[];
-      
+
       /**
        * Template style for this specific relation.
        * Overrides global/entity-level templateStyle.
        */
       templateStyle?: 'simple' | 'composite';
     };
-    
+
     /**
      * Internal: Detection metadata (populated by backend).
      * Stored for debugging and future features.
@@ -1289,19 +1336,19 @@ export interface IRelationFieldConfig {
 export interface IEntityPageActionModalConfig {
   modalType: ModalType;
   modalPageConfig?: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure;
-  
+
   /** EITHER: Make API call (existing pattern) */
   apiConfig?: IModalApiConfig;
   submitSuccessRedirect?: string;
-  
+
   /** OR: Navigate without API call (new pattern) */
   navigateTo?: INavigateToConfig | string;  // String shorthand: "/list-game?status={status}"
-  
+
   /** OPTIONAL: Display API response in a modal (instead of just toast notification)
    * Note: Only applies when apiConfig is present. Ignored for navigateTo.
    */
   responseConfig?: IResponseDisplayConfig;
-  
+
   /**
    * Pre-populate form fields from context (route params + record data).
    * 
@@ -1345,7 +1392,7 @@ export interface IEntityPageActionModalConfig {
    * - record (table row data when action is triggered from a table row)
    */
   initialValues?: Record<string, any>;
-  
+
   /**
    * If true, parent component will be notified to refresh after successful operation.
    * This triggers the onSuccessCallback with the API response data.
@@ -1370,7 +1417,7 @@ export interface IEntityPageActionModalConfig {
    * }
    */
   refreshParentOnSuccess?: boolean;
-  
+
   /**
    * Modal title - can be static string or dynamic template.
    * If string: used as-is or evaluated as template if contains {...}
@@ -1381,7 +1428,7 @@ export interface IEntityPageActionModalConfig {
    * @example modalTitle: { composite: ['teamName', 'city'], template: 'Edit {teamName} ({city})' }
    */
   modalTitle?: Template;
-  
+
   /**
    * Success message - can be static string or dynamic template.
    * Evaluated from API response data.
@@ -1391,7 +1438,7 @@ export interface IEntityPageActionModalConfig {
    * @example successMessage: '{teamName} created successfully!'
    */
   successMessage?: Template;
-  
+
   /**
    * Error message - can be static string or dynamic template.
    * Evaluated from API error data.
@@ -1434,7 +1481,12 @@ export type EvaluationRule<T = any> = {
   readonly custom?: string;
   readonly pattern?: string;
   readonly exists?: boolean;
+  readonly notExists?: boolean;
+  // Backward compatibility aliases
+  readonly isNull?: boolean;
+  readonly notNull?: boolean;
   readonly empty?: boolean;
+  readonly notEmpty?: boolean;
 };
 
 /**
@@ -1536,7 +1588,7 @@ export type ShortcutVisibilityCondition = {
  *   scope: 'any'
  * }
  */
-export type VisibilityConfig = 
+export type VisibilityConfig =
   | InlineVisibilityCondition
   | CustomVisibilityCondition
   | NamedVisibilityCondition
@@ -1560,9 +1612,9 @@ export interface IEntityPageAction {
    * Custom actions with the same ID will override defaults.
    */
   id?: string;
-  
+
   label: string;
-  
+
   /**
    * Dynamic label template (evaluated from routeParams or record context).
    * If provided, overrides static `label` field.
@@ -1579,30 +1631,71 @@ export interface IEntityPageAction {
    * }
    */
   template?: Template;
-  
+
+  /**
+   * Tooltip text (shown on hover).
+   * Can be static string or dynamic template evaluated from routeParams/record context.
+   * 
+   * @example
+   * // Static tooltip
+   * tooltip: 'View all child spans'
+   * 
+   * @example
+   * // Dynamic tooltip
+   * tooltip: 'View trace for {correlationId}'
+   * 
+   * @example
+   * // Complex template
+   * tooltip: {
+   *   composite: ['teamName', 'status'],
+   *   template: 'Edit {teamName} (Status: {status})'
+   * }
+   */
+  tooltip?: Template;
+
   url?: string;
   icon?: string;
   type?: 'button' | 'dropdown';
   items?: ReadonlyArray<Omit<IEntityPageAction, 'items'>> | Array<Omit<IEntityPageAction, 'items'>>;  // Items cannot have sub-items
-  
+
   /** Open action in modal instead of navigating */
   openInModal?: boolean;
-  
+
   /** Modal configuration (inline config or resolved from url) */
   modalConfig?: IEntityPageActionModalConfig;
-  
+
+  /** 
+   * Entity config reference for modal route resolution (when using url + openInModal).
+   * Provides overrideConfig support for defaultFilters, hideSegments, etc.
+   * Only used when modalConfig is NOT provided (route resolution pattern).
+   * 
+   * @example
+   * {
+   *   url: '/list-observabilitylog?parentObservabilityLogId.eq=:observabilityLogId',
+   *   openInModal: true,
+   *   modalConfigRef: {
+   *     entityName: 'observabilityLog',
+   *     pageType: 'list',
+   *     overrideConfig: {
+   *       hideSegments: ['hierarchy-group']
+   *     }
+   *   }
+   * }
+   */
+  modalConfigRef?: IEntityConfigReference;
+
   /** Custom modal width. Default: auto-detect from page type */
   modalWidth?: number | string;
-  
+
   /** Override resolved page title when opened in modal */
   modalTitle?: string;
-  
+
   /** Hide this action when rendered inside a modal. Default: false */
   hideInModal?: boolean;
-  
+
   /** Only open in modal on specified screen size. Default: always */
   openInModalCondition?: 'sm' | 'md' | 'lg' | 'xl';
-  
+
   /**
    * Visibility configuration for this action.
    * Controls visibility and enablement based on actor roles, record state, context, and custom logic.
@@ -1711,16 +1804,30 @@ interface DateTimeFieldMetadata extends BaseFieldMetadata {
 interface DurationFieldMetadata extends BaseFieldMetadata {
   fieldType?: 'duration';
   /**
+   * Input unit of the duration value stored in the database.
+   * The renderer will convert from this unit to human-readable format.
+   * Default: 'seconds'
+   * 
+   * @example
+   * // For a field storing milliseconds (e.g., durationMs: 1500)
+   * durationUnit: 'ms'  // Displays as "1.5s"
+   * 
+   * @example
+   * // For a field storing seconds (e.g., duration: 90)
+   * durationUnit: 'seconds'  // Displays as "1m 30s"
+   */
+  durationUnit?: 'ms' | 'seconds' | 'minutes' | 'hours';
+  /**
    * Duration format: 'seconds', 'minutes', 'hours', 'days', 'human' (e.g., '2h 30m')
    * Default: 'human'
    */
   format?: 'seconds' | 'minutes' | 'hours' | 'days' | 'human';
   /**
-   * Minimum duration value (in seconds)
+   * Minimum duration value (in the specified unit)
    */
   minDuration?: number;
   /**
-   * Maximum duration value (in seconds)
+   * Maximum duration value (in the specified unit)
    */
   maxDuration?: number;
 }
@@ -1740,7 +1847,7 @@ export interface SelectFieldMetadata<E extends EntitySchema<any, any, any> = any
   fieldType?: 'select' | 'multi-select' | 'autocomplete';
   options: FieldOptions<E>;
   maxSelections?: number; // maximum number of selections
-  
+
   // DEPRECATED: Use addNewOptionConfig instead (this generates embedded config - causes JSON bloat)
   addNewOption?: {
     entityName: string; // entity name to create new option
@@ -1755,7 +1862,7 @@ export interface SelectFieldMetadata<E extends EntitySchema<any, any, any> = any
       showOnlyFields?: ReadonlyArray<string> | Array<string>;
     };
   };
-  
+
   // NEW: Reference entity config instead of embedding (recommended - reduces JSON size)
   addNewOptionConfig?: IEntityConfigReference;
 }
@@ -2080,9 +2187,9 @@ interface CodeEditorFieldMetadata extends BaseFieldMetadata {
   fieldType?: 'code' | 'markdown' | 'json';
 }
 
-export type FieldOptions<E extends EntitySchema<any, any, any> = any> = 
-  | ReadonlyArray<FieldOption> 
-  | Array<FieldOption> 
+export type FieldOptions<E extends EntitySchema<any, any, any> = any> =
+  | ReadonlyArray<FieldOption>
+  | Array<FieldOption>
   | FieldOptionsAPIConfig<E>
   | RelationEntityOptionConfig<E>;
 
@@ -2155,7 +2262,7 @@ export type AttributesTemplate<E extends EntitySchema<any, any, any> = any> = {
    * Supports dot notation for nested access (e.g., 'team.name', 'address.city')
    */
   // composite: Array<keyof E['attributes'] & string>,
-  composite: ReadonlyArray<keyof E['attributes'] & string> | Array<keyof E['attributes'] & string>,
+  composite: ReadonlyArray<keyof E[ 'attributes' ] & string> | Array<keyof E[ 'attributes' ] & string>,
 
   /** 
    * Template string with {attributePath} placeholders.
@@ -2184,7 +2291,7 @@ export type AttributesTemplate<E extends EntitySchema<any, any, any> = any> = {
  *   template: '{firstName} {lastName} ({team.name})'
  * }
  */
-export type Template<E extends EntitySchema<any, any, any> = any> = 
+export type Template<E extends EntitySchema<any, any, any> = any> =
   | string  // Simple: '{field1} {field2}' or static 'My Title'
   | AttributesTemplate<E>;  // Complex: { composite: [...], template: '...' }
 
@@ -2221,8 +2328,8 @@ export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
    * - Complex templates: { composite: ['name', 'team.city'], template: '{name} ({team.city})' }
    */
   optionMapping?: {
-    label: (keyof E['attributes'] & string) | AttributesTemplate<E>,
-    value: (keyof E['attributes'] & string) | AttributesTemplate<E>,
+    label: (keyof E[ 'attributes' ] & string) | AttributesTemplate<E>,
+    value: (keyof E[ 'attributes' ] & string) | AttributesTemplate<E>,
   },
   /** Number of options to fetch per request (default: 50) */
   count?: number,
@@ -2277,7 +2384,7 @@ export type FieldOptionsAPIConfig<E extends EntitySchema<any, any, any>> = {
  * })
  * ```
  */
-export type RelationEntityOptionConfig<E extends EntitySchema<any, any, any> = any> = 
+export type RelationEntityOptionConfig<E extends EntitySchema<any, any, any> = any> =
   Omit<FieldOptionsAPIConfig<E>, 'apiUrl' | 'apiMethod' | 'responseKey'> & {
     /** Name of the related entity (required) */
     entityName: string;
@@ -2471,15 +2578,16 @@ export interface ITableExpandableConfig {
    * - 'nested-table': Render another table (for to-many relations)
    * - 'details': Render detail view of nested data
    * - 'custom': Use custom pageType rendering
+   * - 'json': Render raw JSON view of the entire record
    */
-  mode: 'nested-table' | 'details' | 'custom';
-  
+  mode: 'nested-table' | 'details' | 'custom' | 'json';
+
   /**
    * Field name containing relation data or used to construct API URL.
    * Supports placeholder substitution (e.g., 'teamId' in '/api/player?teamId.eq=:teamId')
    */
   relationField?: string;
-  
+
   /**
    * Configuration for nested table mode.
    * Reuses existing Table component with all its features.
@@ -2504,7 +2612,7 @@ export interface ITableExpandableConfig {
     /** Modal width for "View All" link. Default: 1200 */
     viewAllModalWidth?: number | string;
   };
-  
+
   /**
    * Configuration for details mode.
    * Shows detail view of nested data.
@@ -2515,7 +2623,7 @@ export interface ITableExpandableConfig {
     /** Number of columns for layout. Default: 2 */
     numColumns?: number;
   };
-  
+
   /**
    * Configuration for custom page type mode.
    * Allows rendering any page type (list, details, form, dashboard, etc.)
@@ -2526,7 +2634,7 @@ export interface ITableExpandableConfig {
     /** Page configuration */
     pageConfig?: Record<string, any>;
   };
-  
+
   /**
    * Condition to determine if a row is expandable.
    * Uses visibility evaluation system for conditional expansion.
@@ -2544,18 +2652,18 @@ export interface ITableExpandableConfig {
    * }
    */
   rowExpandable?: VisibilityConfig;
-  
+
   /**
    * Default expand state. If true, rows are expanded by default.
    * Default: false
    */
   defaultExpanded?: boolean;
-  
+
   /**
    * Icon for expand button. Default: uses Ant Design default
    */
   expandIcon?: string;
-  
+
   /**
    * Indent size for nested content. Default: 60
    */
@@ -2573,17 +2681,17 @@ export interface IFilterSegment {
    * Unique identifier for the segment
    */
   id: string;
-  
+
   /**
    * Display label for the segment tab
    */
   label: string;
-  
+
   /**
    * Optional icon name (Ant Design icon)
    */
   icon?: string;
-  
+
   /**
    * Filters to apply when this segment is active.
    * Supports placeholder syntax (`:actor.actorId`, `:startOfToday`, etc.)
@@ -2596,13 +2704,13 @@ export interface IFilterSegment {
    * }
    */
   filters: Record<string, any>;
-  
+
   /**
    * Whether this segment should be selected by default
    * Default: false (first segment is default if none specified)
    */
   default?: boolean;
-  
+
   /**
    * Visibility condition for this segment.
    * Can be used to show segments only to certain roles or in certain contexts.
@@ -2613,7 +2721,7 @@ export interface IFilterSegment {
    * }
    */
   visibility?: VisibilityConfig;
-  
+
   /**
    * Badge count to display on the segment.
    * Can be a static number or a placeholder.
@@ -2623,7 +2731,7 @@ export interface IFilterSegment {
    * badge: ':record.activeCount'  // Dynamic from context
    */
   badge?: number | Template;
-  
+
   /**
    * Badge color (Ant Design status colors)
    * Default: 'default'
@@ -2641,22 +2749,22 @@ export interface IFilterSegmentGroup {
    * Unique identifier for the group
    */
   id: string;
-  
+
   /**
    * Display label for the group (e.g., "By Status", "By League", "By Priority")
    */
   label: string;
-  
+
   /**
    * Segments within this group
    */
   segments: IFilterSegment[];
-  
+
   /**
    * Default segment ID for this group (if different from first segment)
    */
   defaultSegmentId?: string;
-  
+
   /**
    * Maximum number of segments to show before "More..." dropdown
    * Default: 10
@@ -2710,7 +2818,7 @@ export type ITableColumns = ReadonlyArray<ITableColumn> | Array<ITableColumn>;
 export interface IEntityTableUIConfig {
   /** Override filter auto-generation for this entity */
   filterAutoGeneration?: Partial<IFilterAutoGenerationConfig>;
-  
+
   /** Override segment auto-generation for this entity */
   segmentAutoGeneration?: Partial<ISegmentAutoGenerationConfig> & {
     /** 
@@ -2719,24 +2827,24 @@ export interface IEntityTableUIConfig {
      * - Array of strings: Creates multiple groups, one per field
      */
     segmentFields?: string | string[];
-    
+
     /** 
      * @deprecated Use segmentFields (plural) instead for consistency 
      */
     segmentField?: string;
-    
+
     /** Only consider these fields for segment detection */
     includeFields?: string[];
-    
+
     /** Exclude these fields from segment detection */
     excludeFields?: string[];
-    
+
     /** 
      * Only include these enum values in segments (global filter).
      * For field-specific filtering, use includeValuesByField.
      */
     includeValues?: string[];
-    
+
     /**
      * Field-specific value inclusion.
      * @example
@@ -2746,24 +2854,24 @@ export interface IEntityTableUIConfig {
      * }
      */
     includeValuesByField?: Record<string, string[]>;
-    
+
     /** 
      * Exclude these enum values from segments (global filter).
      * For field-specific filtering, use excludeValuesByField.
      */
     excludeValues?: string[];
-    
+
     /**
      * Field-specific value exclusion.
      */
     excludeValuesByField?: Record<string, string[]>;
-    
+
     /** 
      * Global sort order for segment values (applied to all fields).
      * For field-specific sorting, use sortOrderByField.
      */
     sortOrder?: string[];
-    
+
     /**
      * Field-specific sort order for segment values.
      * @example
@@ -2773,7 +2881,7 @@ export interface IEntityTableUIConfig {
      * }
      */
     sortOrderByField?: Record<string, string[]>;
-    
+
     /**
      * Custom labels for segment groups (overrides auto-generated labels).
      * @example
@@ -2783,10 +2891,10 @@ export interface IEntityTableUIConfig {
      * }
      */
     groupLabels?: Record<string, string>;
-    
+
     /** Custom icon mapping for this entity's segments */
     iconMapping?: Record<string, string>;
-    
+
     /** Disable auto-generation, require manual segments */
     requireManual?: boolean;
   };
@@ -2806,24 +2914,24 @@ export interface IEntityTableUIConfig {
  * - Advanced config: { template: '{$.items.length()}', showZero: true }
  * - API-based counts: { apiEndpoint: '/admin/order/count', responseKey: 'count' }
  */
-export type SectionBadgeConfig = 
+export type SectionBadgeConfig =
   | Template  // Template with JSONPath support: '{$.lineItems.length()} items', '{$.items[?(@.status=="active")].length()}'
   | {
-      /** Template for badge text with JSONPath support */
-      template: Template;
-      /** Show badge even if evaluated to 0. Default: false */
-      showZero?: boolean;
-    }
+    /** Template for badge text with JSONPath support */
+    template: Template;
+    /** Show badge even if evaluated to 0. Default: false */
+    showZero?: boolean;
+  }
   | {
-      /** API endpoint to fetch count/value from (e.g., '/admin/order/count?userId.eq=:userId') */
-      apiEndpoint: string;
-      /** Key in response to extract value from. Supports JSONPath. Default: 'count' */
-      responseKey?: string;
-      /** Optional template for formatting the badge text (e.g., '{count} orders') */
-      template?: string;
-      /** Show badge even if count is 0. Default: false */
-      showZero?: boolean;
-    };
+    /** API endpoint to fetch count/value from (e.g., '/admin/order/count?userId.eq=:userId') */
+    apiEndpoint: string;
+    /** Key in response to extract value from. Supports JSONPath. Default: 'count' */
+    responseKey?: string;
+    /** Optional template for formatting the badge text (e.g., '{count} orders') */
+    template?: string;
+    /** Show badge even if count is 0. Default: false */
+    showZero?: boolean;
+  };
 
 export interface ISectionConfig {
   /** Section label - supports templates (e.g., 'Players ({playerCount})') */
@@ -2887,10 +2995,10 @@ export interface ISectionConfig {
   readonly visibility?: VisibilityConfig;
   /** Sort order for section display */
   readonly sortOrder?: number;
-  
+
   /** The type of page to render in this section */
   readonly pageType: 'list' | 'details' | 'form' | 'dashboard';
-  
+
   /** 
    * Reference to existing entity config (recommended - avoids duplication)
    * Use this instead of inline configs to reference entity's list/view/create configs with optional overrides.
@@ -2905,7 +3013,7 @@ export interface ISectionConfig {
    * }
    */
   readonly entityConfigRef?: IEntityConfigReference;
-  
+
   /** List page config (if pageType === 'list' and not using entityConfigRef) */
   readonly listPageConfig?: ListPageConfigStructure;
   /** Detail page config (if pageType === 'details' and not using entityConfigRef) */
@@ -2915,9 +3023,9 @@ export interface ISectionConfig {
     /** If true, section reuses parent's loaded record data (organizational sections) */
     readonly useParentData?: boolean;
     /** API config for fetching data (optional if useParentData is true) */
-    readonly detailApiConfig?: DetailsPageConfigStructure['detailApiConfig'];
+    readonly detailApiConfig?: DetailsPageConfigStructure[ 'detailApiConfig' ];
     /** Column grouping config */
-    readonly columnsConfig?: DetailsPageConfigStructure['columnsConfig'];
+    readonly columnsConfig?: DetailsPageConfigStructure[ 'columnsConfig' ];
     /** 
      * Properties to display.
      * Supports string shorthand for field names or full PropertyConfig objects.
@@ -2934,12 +3042,12 @@ export interface ISectionConfig {
      *   'total'
      * ]
      */
-    readonly propertiesConfig: DetailsPageConfigStructure['propertiesConfig'];
+    readonly propertiesConfig: DetailsPageConfigStructure[ 'propertiesConfig' ];
   };
   /** Form page config (if pageType === 'form' and not using entityConfigRef) */
   readonly formPageConfig?: FormPageConfigStructure;
   /** Dashboard config (if pageType === 'dashboard' and not using entityConfigRef) */
-  readonly dashboardPageConfig?: DashboardPageConfig['dashboardPageConfig'];
+  readonly dashboardPageConfig?: DashboardPageConfig[ 'dashboardPageConfig' ];
 }
 
 /**
@@ -2965,7 +3073,7 @@ export interface ISectionGroup {
   readonly keepMounted?: boolean;
   /** Sections within this group */
   readonly sections: Record<string, ISectionConfig>;
-  
+
   // Collapsible card behavior
   /** Start collapsed (default: false for first group, true for others) */
   readonly defaultCollapsed?: boolean;
@@ -3035,22 +3143,22 @@ export interface ISectionsConfig {
   readonly keepMounted?: boolean;
   /** Sections to render (single group format - backward compatible) */
   readonly sections?: Record<string, ISectionConfig>;
-  
+
   // ===== MULTIPLE GROUPS FORMAT (New) =====
   /** Array of section groups (each renders as a separate card) */
   readonly sectionGroups?: ReadonlyArray<ISectionGroup> | Array<ISectionGroup>;
-  
+
   // ===== COMMON PROPERTIES =====
   /** Position relative to main content (not yet implemented) */
   readonly position?: 'below' | 'right';
-  
+
   /** 
    * Maximum nesting depth for sections (default: 4).
    * Prevents infinite recursion when sections reference pages with their own sections.
    * When depth is exceeded, a warning is shown instead of rendering nested sections.
    */
   readonly maxDepth?: number;
-  
+
   // ===== UI BEHAVIOR =====
   /** Remember collapsed/expanded state in localStorage (default: true) */
   readonly rememberState?: boolean;
@@ -3058,10 +3166,48 @@ export interface ISectionsConfig {
   readonly scrollSpyHighlight?: boolean;
 }
 
+/** Sort order direction */
+export type SortOrder = 'asc' | 'desc';
+
+/** Single field sort configuration (for search engines) */
+export type FieldSortConfig = { readonly field: string; readonly order: SortOrder };
+
+/** Search mode sort - field+order, supports multi-field */
+export type SearchSortConfig = FieldSortConfig | ReadonlyArray<FieldSortConfig>;
+
+/** Database mode sort - just direction (DynamoDB sorts by index SK) */
+export type DatabaseSortConfig = SortOrder;
+
+/**
+ * Dual-mode sort configuration for explicit control over both modes
+ */
+export type DualSortConfig = {
+  /** Sort config for search mode (MeiliSearch) - supports field + order */
+  readonly search?: SearchSortConfig;
+  /** Sort direction for database mode (DynamoDB) - just 'asc' or 'desc' */
+  readonly database?: DatabaseSortConfig;
+};
+
+/**
+ * Table sort configuration - flexible format supporting:
+ * 1. Simple: `{ field, order }` - auto-extracts order for DB mode
+ * 2. Multi-field: `[{ field, order }, ...]` - search only, DB uses first item's order
+ * 3. Explicit: `{ search: {...}, database: 'desc' }` - full control over both modes
+ */
+export type TableSortConfig = SearchSortConfig | DualSortConfig;
+
+/** @deprecated Use TableSortConfig instead */
+export type SortConfig = FieldSortConfig | ReadonlyArray<FieldSortConfig> | SortOrder;
+
 export interface EntityListPageConfig {
   readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
   readonly breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
-  readonly defaultSort?: { readonly field: string; readonly order: 'asc' | 'desc' } | ReadonlyArray<{ readonly field: string; readonly order: 'asc' | 'desc' }> | 'asc' | 'desc';
+
+  /**
+   * @deprecated Use tableConfig.defaultSort instead
+   * Default sort configuration (legacy - kept for backward compatibility)
+   */
+  readonly defaultSort?: SortConfig;
   /**
    * Additional sections to display below or alongside the main list table.
    * Enables multi-section pages with tabs or accordion UI.
@@ -3150,7 +3296,39 @@ export interface EntityListPageConfig {
      * Common use case: Show to-many relations (e.g., Team → Players)
      */
     readonly expandable?: ITableExpandableConfig;
-    
+
+    /**
+     * Default sort configuration for the table.
+     * 
+     * Supports three formats:
+     * 
+     * **1. Simple (both modes use same direction):**
+     * ```ts
+     * defaultSort: { field: 'createdAt', order: 'desc' }
+     * // Search: sorts by createdAt desc
+     * // Database: sorts desc (by index SK)
+     * ```
+     * 
+     * **2. Multi-field (search mode only):**
+     * ```ts
+     * defaultSort: [
+     *   { field: 'publishDate', order: 'desc' },
+     *   { field: 'likeCount', order: 'desc' }
+     * ]
+     * // Search: multi-field sort
+     * // Database: uses first item's order ('desc')
+     * ```
+     * 
+     * **3. Explicit (different config per mode):**
+     * ```ts
+     * defaultSort: {
+     *   search: { field: 'relevanceScore', order: 'desc' },
+     *   database: 'asc'  // Index designed for ascending
+     * }
+     * ```
+     */
+    readonly defaultSort?: TableSortConfig;
+
     /**
      * Filter segments (quick filter tabs) displayed above the table.
      * Provides quick access to common filter sets.
@@ -3194,6 +3372,17 @@ export interface EntityListPageConfig {
      * ]
      */
     readonly segments?: ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup>;
+
+    /**
+     * Default number of records per page.
+     * Users can change this via the pagination controls (options: 10, 20, 50, 100).
+     * 
+     * @default 10
+     * 
+     * @example
+     * pageSize: 20  // Show 20 records per page by default
+     */
+    readonly pageSize?: number;
   };
 }
 
@@ -3350,7 +3539,7 @@ export interface EntitySchema<
       color?: string;
       /** Short description for tooltips and help text */
       description?: string;
-      
+
       /** 
        * Entity-level duplicated field detection configuration.
        * Overrides global settings for this specific entity.
@@ -3377,7 +3566,7 @@ export interface EntitySchema<
         /** Override confidence threshold for this entity */
         confidenceThreshold?: 'low' | 'medium' | 'high';
       };
-      
+
       /**
        * Table UI auto-generation overrides for this entity.
        * Controls automatic generation of filters, segments, and other table features.
@@ -3406,14 +3595,14 @@ export interface EntitySchema<
      * @deprecated Use createPageConfig.columnsConfig instead
      */
     readonly createPageColumnsConfig?: IEntityPageColumnConfig,
-    
+
     /**
      * List page configuration
      * 
      * These properties configure the entity's list/index page (e.g., `/list-game`).
      * All properties are transformed to unified names in the generated UI config.
      */
-    
+
     /**
      * Actions for the list page header (page-level actions only, not table row actions).
      * 
@@ -3471,15 +3660,15 @@ export interface EntitySchema<
      * 
      * @deprecated Use listPageConfig.defaultSort {@link EntityListPageConfig.defaultSort} instead
      */
-    readonly listPageDefaultSort?: { readonly field: string; readonly order: 'asc' | 'desc' } | ReadonlyArray<{ readonly field: string; readonly order: 'asc' | 'desc' }> | 'asc' | 'desc',
-    
+    readonly listPageDefaultSort?: SortConfig,
+
     /**
      * View/Detail page configuration
      * 
      * These properties configure the entity's detail/view page (e.g., `/view-game/:id`).
      * All properties are transformed to unified names in the generated UI config.
      */
-    
+
     /**
      * Actions for the view/detail page header (page-level actions for this specific record).
      * 
@@ -3523,14 +3712,14 @@ export interface EntitySchema<
      * @deprecated Use viewPageConfig.columnsConfig instead
      */
     readonly viewPageColumnsConfig?: IEntityPageColumnConfig,
-    
+
     /**
      * Edit/Update page configuration
      * 
      * These properties configure the entity's edit/update page (e.g., `/edit-game/:id`).
      * All properties are transformed to unified names in the generated UI config.
      */
-    
+
     /**
      * Actions for the edit/update page header (page-level actions while editing this record).
      * 
@@ -3570,7 +3759,7 @@ export interface EntitySchema<
      * @deprecated Use editPageConfig.columnsConfig instead
      */
     readonly editPageColumnsConfig?: IEntityPageColumnConfig,
-    
+
     /**
      * NEW NESTED STRUCTURE (RECOMMENDED)
      * 
@@ -3578,25 +3767,25 @@ export interface EntitySchema<
      * evaluation system, including visibility/enablement configs for actions, form
      * buttons, fields, and more.
      */
-    
+
     /**
      * List page nested configuration
      * Replaces: listPageActions, listPageBreadcrumbs, listPageDefaultSort
      */
     readonly listPageConfig?: EntityListPageConfig;
-    
+
     /**
      * View page nested configuration
      * Replaces: viewPageActions, viewPageBreadcrumbs, viewPageColumnsConfig
      */
     readonly viewPageConfig?: EntityViewPageConfig;
-    
+
     /**
      * Edit page nested configuration
      * Replaces: editPageActions, editPageBreadcrumbs, editPageColumnsConfig
      */
     readonly editPageConfig?: EntityEditPageConfig;
-    
+
     /**
      * Create page nested configuration
      * Replaces: createPageBreadcrumbs, createPageColumnsConfig
@@ -3814,15 +4003,15 @@ export type EntityResponseItemTypeFromSchema<TSchema> = TSchema extends EntitySc
  */
 export type AttributeValueType<
   E extends EntitySchema<any, any, any>,
-  K extends keyof E['attributes']
-> = E['attributes'][K]['type'] extends 'string' ? string
-  : E['attributes'][K]['type'] extends 'number' ? number
-  : E['attributes'][K]['type'] extends 'boolean' ? boolean
-  : E['attributes'][K]['type'] extends Array<infer T> ? T
-  : E['attributes'][K]['type'] extends 'any' ? any
-  : E['attributes'][K]['type'] extends 'set' ? Set<string>
-  : E['attributes'][K]['type'] extends 'list' ? Array<any>
-  : E['attributes'][K]['type'] extends 'map' ? Record<string, any>
+  K extends keyof E[ 'attributes' ]
+> = E[ 'attributes' ][ K ][ 'type' ] extends 'string' ? string
+  : E[ 'attributes' ][ K ][ 'type' ] extends 'number' ? number
+  : E[ 'attributes' ][ K ][ 'type' ] extends 'boolean' ? boolean
+  : E[ 'attributes' ][ K ][ 'type' ] extends Array<infer T> ? T
+  : E[ 'attributes' ][ K ][ 'type' ] extends 'any' ? any
+  : E[ 'attributes' ][ K ][ 'type' ] extends 'set' ? Set<string>
+  : E[ 'attributes' ][ K ][ 'type' ] extends 'list' ? Array<any>
+  : E[ 'attributes' ][ K ][ 'type' ] extends 'map' ? Record<string, any>
   : any;
 
 /**
@@ -3831,7 +4020,7 @@ export type AttributeValueType<
  * @template E - The entity schema
  */
 export type EntityAttributeValueMap<E extends EntitySchema<any, any, any>> = {
-  [K in keyof E['attributes']]: AttributeValueType<E, K>
+  [ K in keyof E[ 'attributes' ] ]: AttributeValueType<E, K>
 };
 
 

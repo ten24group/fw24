@@ -48,8 +48,12 @@ export type FilterOperators<T> = {
         from: T;
         to: T;
     }>;
-    'isNull': FilterOperatorValue<true>;
-    'isEmpty': FilterOperatorValue<true>;
+    'exists': FilterOperatorValue<boolean>;
+    'notExists': FilterOperatorValue<boolean>;
+    'isNull': FilterOperatorValue<boolean>;
+    'notNull': FilterOperatorValue<boolean>;
+    'empty': FilterOperatorValue<boolean>;
+    'notEmpty': FilterOperatorValue<boolean>;
     'contains': FilterOperatorValue<T | Array<T>>;
     'notContains': FilterOperatorValue<T | Array<T>>;
     'containsSome': FilterOperatorValue<T | Array<T>>;
@@ -84,7 +88,6 @@ export type FilterOperatorsExtended<T> = FilterOperators<T> & {
     'inList': FilterOperators<T>['in'];
     'notInList': FilterOperators<T>['nin'];
     'notIn': FilterOperators<T>['nin'];
-    'exists': FilterOperators<T>['isNull'];
     'begins': FilterOperators<T>['startsWith'];
     'beginsWith': FilterOperators<T>['startsWith'];
     'includes': FilterOperators<T>['contains'];

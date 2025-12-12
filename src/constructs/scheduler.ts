@@ -10,6 +10,7 @@ import { IConstructConfig } from "../interfaces/construct-config";
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { LogDuration, createLogger } from "../logging";
 import { LambdaFunction } from "./lambda-function";
+import { LayerConstruct } from "./layer";
 import { VpcConstruct } from "./vpc";
 
 /**
@@ -48,7 +49,7 @@ export class SchedulerConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
     
     name: string = SchedulerConstruct.name;
-    dependencies: string[] = [VpcConstruct.name];
+    dependencies: string[] = [VpcConstruct.name, LayerConstruct.name];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;

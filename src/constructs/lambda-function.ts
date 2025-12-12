@@ -10,6 +10,7 @@ import { MailerConstruct } from "./mailer";
 import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { createLogger, ILogger } from "../logging";
+import * as ENV_KEYS from "../const/env";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { ensureNoSpecialChars, ensureSuffix, ensureValidEnvKey } from "../utils/keys";
 export type TPolicyStatementOrProps = PolicyStatement | PolicyStatementProps;
@@ -75,52 +76,57 @@ export interface LambdaFunctionProps {
 }
 
 /**
+ * Represents a resource access entry - either a simple string name or an object with name and access permissions.
+ */
+export type TResourceAccessEntry = string | { name: string; access?: string[] };
+
+/**
  * Represents the access permissions for various resources that can be accessed by a function.
  */
 export interface IFunctionResourceAccess {
   /**
    * Access permissions for tables.
-   * Each table can have a name and an optional array of access permissions.
+   * Each table can be a string (name only, defaults to readwrite) or an object with name and access permissions.
    * The access permissions can be 'read', 'write', or 'readwrite'.
    * If no access permissions are specified, the default is 'readwrite'.
+   * 
+   * @example
+   * tables: ['users-table', { name: 'orders-table', access: ['read'] }]
    */
-  tables?: Array<{
-    name: string;
-    access?: string[];
-  }> | string[];
+  tables?: TResourceAccessEntry[];
 
   /**
    * Access permissions for buckets.
-   * Each bucket can have a name and an optional array of access permissions.
+   * Each bucket can be a string (name only, defaults to readwrite) or an object with name and access permissions.
    * The access permissions can be 'read', 'write', or 'readwrite'.
    * If no access permissions are specified, the default is 'readwrite'.
+   * 
+   * @example
+   * buckets: ['assets-bucket', { name: 'logs-bucket', access: ['write'] }]
    */
-  buckets?: Array<{
-    name: string;
-    access?: string[];
-  }> | string[];
+  buckets?: TResourceAccessEntry[];
 
   /**
    * Access permissions for topics.
-   * Each topic can have a name and an optional array of access permissions.
+   * Each topic can be a string (name only, defaults to publish) or an object with name and access permissions.
    * The access permissions can be 'publish'.
    * If no access permissions are specified, the default is 'publish'.
+   * 
+   * @example
+   * topics: ['events-topic', { name: 'notifications-topic', access: ['publish'] }]
    */
-  topics?: Array<{
-    name: string;
-    access?: string[];
-  }> | string[];
+  topics?: TResourceAccessEntry[];
 
   /**
    * Access permissions for queues.
-   * Each queue can have a name and an optional array of access permissions.
+   * Each queue can be a string (name only, defaults to send) or an object with name and access permissions.
    * The access permissions can be 'send', 'receive', or 'delete'.
    * If no access permissions are specified, the default is 'send'.
+   * 
+   * @example
+   * queues: ['notifications-queue', { name: 'processing-queue', access: ['send', 'receive'] }]
    */
-  queues?: Array<{
-    name: string;
-    access?: string[];
-  }> | string[];
+  queues?: TResourceAccessEntry[];
 }
 
 
@@ -350,25 +356,49 @@ export class LambdaFunction extends Construct {
       });
     });
 
+    // Auto-set ENTRY_PACKAGES for ALL Lambdas (ensures DI initialization)
+    // Only set if not already configured in props or global env vars
+    const globalEnvKeys = fw24.getGlobalEnvironmentVariables();
+    if (
+      !(ENV_KEYS.ENTRY_PACKAGES in props.environmentVariables)
+      &&
+      !globalEnvKeys.includes(ENV_KEYS.ENTRY_PACKAGES)
+    ) {
+      const entryPackages = fw24.getLambdaEntryPackages();
+      if (entryPackages.length > 0) {
+        // Resolve env key templates (e.g., env:layerImportPath:di -> /opt/nodejs/node_modules/di/index.js)
+        const resolvedPackages = entryPackages.map(pkg => fw24.tryResolveEnvKeyTemplate(pkg));
+        const entryPackagesValue = resolvedPackages.join(',');
+        this.logger?.debug(`Auto-setting ENTRY_PACKAGES: ${entryPackagesValue}`, id);
+        addEnvironmentKeyValueForFunction({
+          fn,
+          key: ENV_KEYS.ENTRY_PACKAGES,
+          value: entryPackagesValue
+        });
+      }
+    }
+
+    // Add global policies to the function
+    fw24.getGlobalPolicies().forEach(policy => {
+      addPolicyToFunction({
+        fn,
+        fw24,
+        policy
+      });
+    });
+
     // Attach policies to the function
     (props.policies ?? []).forEach(policy => {
-
-      if (isImportedPolicy(policy)) {
-
-        if (!policy.isOptional && !fw24.hasPolicy(policy.name, policy.prefix)) {
-          throw new Error(`Policy ${policy} not found in fw24 scope`);
-        }
-
-        policy = fw24.getPolicy(policy.name, policy.prefix) as PolicyStatementProps | PolicyStatement;
-      }
-
-      if (!(policy instanceof PolicyStatement)) {
-        policy = new PolicyStatement(policy);
-      }
-
-      fn.addToRolePolicy(policy as PolicyStatement);
-
+      addPolicyToFunction({
+        fn,
+        fw24,
+        policy
+      });
     });
+
+    // Merge global resource access with per-function resource access
+    const globalResourceAccess = fw24.getGlobalResourceAccess();
+    const mergedResourceAccess = mergeResourceAccess(globalResourceAccess, props.resourceAccess);
 
     // If we are using SES, then we need to add the email queue url to the environment
     if (props.allowSendEmail && fw24.emailProvider instanceof MailerConstruct) {
@@ -384,7 +414,7 @@ export class LambdaFunction extends Construct {
     }
 
     // Logic for adding DynamoDB table access to the controller
-    props.resourceAccess?.tables?.forEach((table: any) => {
+    mergedResourceAccess?.tables?.forEach((table: any) => {
       let tableName = typeof table === 'string' ? table : table.name;
 
       // ensure the placeholder env keys are resolved from the fw24 scope
@@ -423,7 +453,7 @@ export class LambdaFunction extends Construct {
     });
 
     // Logic for adding S3 bucket access to the controller
-    props.resourceAccess?.buckets?.forEach((bucket: any) => {
+    mergedResourceAccess?.buckets?.forEach((bucket: any) => {
       let bucketName = typeof bucket === 'string' ? bucket : bucket.name;
 
       // ensure the placeholder env keys are resolved from the fw24 scope
@@ -458,7 +488,7 @@ export class LambdaFunction extends Construct {
     });
 
     // Logic for adding SQS queue access to the controller
-    props.resourceAccess?.queues?.forEach((queue: any) => {
+    mergedResourceAccess?.queues?.forEach((queue: any) => {
       let queueName = typeof queue === 'string' ? queue : queue.name;
 
       // ensure the placeholder env keys are resolved from the fw24 scope
@@ -492,7 +522,7 @@ export class LambdaFunction extends Construct {
     });
 
     // Add SNS topic permission
-    props.resourceAccess?.topics?.forEach((topic: any) => {
+    mergedResourceAccess?.topics?.forEach((topic: any) => {
       let topicName = typeof topic === 'string' ? topic : topic.name;
 
       // ensure the placeholder env keys are resolved from the fw24 scope
@@ -522,6 +552,37 @@ export class LambdaFunction extends Construct {
   }
 }
 
+function addPolicyToFunction(options: {
+  fn: NodejsFunction,
+  fw24: Fw24,
+  policy: TPolicyStatementOrProps | TImportedPolicy,
+}) {
+  const { fn, fw24, policy } = options;
+
+  let resolvedPolicy: TPolicyStatementOrProps | TImportedPolicy = policy;
+
+  if (isImportedPolicy(policy)) {
+    const policyExists = fw24.hasPolicy(policy.name, policy.prefix);
+    
+    if (!policyExists) {
+      if (policy.isOptional) {
+        // Skip optional policies that don't exist
+        return;
+      }
+      throw new Error(`Policy ${policy.name} not found in fw24 scope`);
+    }
+
+    resolvedPolicy = fw24.getPolicy(policy.name, policy.prefix) as PolicyStatementProps | PolicyStatement;
+  }
+
+  if (!(resolvedPolicy instanceof PolicyStatement)) {
+    resolvedPolicy = new PolicyStatement(resolvedPolicy as PolicyStatementProps);
+  }
+
+  fn.addToRolePolicy(resolvedPolicy as PolicyStatement);
+
+}
+
 function addEnvironmentKeyValueForFunction(options: {
   fn: NodejsFunction,
   key: string,
@@ -534,4 +595,95 @@ function addEnvironmentKeyValueForFunction(options: {
 
   const envKey = ensureValidEnvKey(key, prefix, suffix);
   fn.addEnvironment(envKey, value);
+}
+
+/**
+ * Merges global resource access with per-function resource access.
+ * Per-function resource access takes precedence (comes after global in the merged array).
+ * Deduplication is handled at the resource level - if the same resource appears in both
+ * global and per-function access, both entries are kept (allowing for different access levels).
+ * 
+ * @param globalAccess - Global resource access configuration from fw24
+ * @param functionAccess - Per-function resource access configuration
+ * @returns Merged resource access configuration
+ */
+function mergeResourceAccess(
+  globalAccess: IFunctionResourceAccess | undefined,
+  functionAccess: IFunctionResourceAccess | undefined
+): IFunctionResourceAccess {
+  if (!globalAccess && !functionAccess) {
+    return {};
+  }
+
+  if (!globalAccess) {
+    return functionAccess!;
+  }
+
+  if (!functionAccess) {
+    return globalAccess;
+  }
+
+  return {
+    tables: deduplicateResourceArray([
+      ...(globalAccess.tables || []),
+      ...(functionAccess.tables || [])
+    ]),
+    buckets: deduplicateResourceArray([
+      ...(globalAccess.buckets || []),
+      ...(functionAccess.buckets || [])
+    ]),
+    queues: deduplicateResourceArray([
+      ...(globalAccess.queues || []),
+      ...(functionAccess.queues || [])
+    ]),
+    topics: deduplicateResourceArray([
+      ...(globalAccess.topics || []),
+      ...(functionAccess.topics || [])
+    ])
+  };
+}
+
+/**
+ * Deduplicates resource array entries by name, preferring entries with explicit access over implicit.
+ * When the same resource appears multiple times:
+ * - If both have explicit access arrays, merge the access arrays
+ * - If one has explicit access and one doesn't, use the explicit one
+ * - If both are strings (implicit readwrite), keep only one
+ * 
+ * @param resources - Array of resource entries (string or { name, access? })
+ * @returns Deduplicated array
+ */
+function deduplicateResourceArray<T extends string | { name: string; access?: string[] }>(
+  resources: T[]
+): T[] {
+  if (!resources || resources.length === 0) {
+    return [];
+  }
+
+  const resourceMap = new Map<string, T>();
+
+  for (const resource of resources) {
+    const name = typeof resource === 'string' ? resource : resource.name;
+    const existingResource = resourceMap.get(name);
+
+    if (!existingResource) {
+      resourceMap.set(name, resource);
+    } else {
+      // Merge logic: prefer explicit access over implicit
+      const existingAccess = typeof existingResource === 'string' ? undefined : existingResource.access;
+      const newAccess = typeof resource === 'string' ? undefined : resource.access;
+
+      if (existingAccess && newAccess) {
+        // Both have explicit access - merge and deduplicate
+        const mergedAccess = Array.from(new Set([ ...existingAccess, ...newAccess ]));
+        resourceMap.set(name, { name, access: mergedAccess } as T);
+      } else if (newAccess) {
+        // New has explicit access, existing doesn't - prefer new
+        resourceMap.set(name, resource);
+      }
+      // else: existing has explicit access or both implicit - keep existing
+    }
+  }
+
+  return Array.from(resourceMap.values());
 }
