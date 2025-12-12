@@ -101,11 +101,11 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     if (!this.shouldAuditEntity(entityName)) {
       const allowedEntityNames = this.getAllowedEntityNames();
       const excludedEntityNames = this.getExcludedEntityNames();
-      this.logger.warn('Skipping audit log for entity based on filtering rules', { 
-        entityName, 
-        allowedEntityNames, 
-        excludedEntityNames 
-      });
+      // this.logger.warn('Skipping audit log for entity based on filtering rules', { 
+      //   entityName, 
+      //   allowedEntityNames, 
+      //   excludedEntityNames 
+      // });
       return null;
     }
 
@@ -129,7 +129,7 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
   protected async processRecordsBatch(records: BaseEventRecord<ChangeStreamPayload>[]): Promise<void> {
     // For audit logging, process each record individually to maintain detailed audit trail
     const auditLogger = this.getAuditLogger();
-    
+
     for (const record of records) {
       const auditEntry = this.makeAuditEntry(record);
       if (auditEntry) {
@@ -140,58 +140,58 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
   }
 
   protected makeAuditEntry(record: BaseEventRecord<ChangeStreamPayload>): AuditEntry | undefined {
-        const { entityName, eventType, timestamp, entityId, payload: { newImage, oldImage } } = record;
-        // Get only the changed properties
-        const changes = getChangedProperties(oldImage, newImage);
+    const { entityName, eventType, timestamp, entityId, payload: { newImage, oldImage } } = record;
+    // Get only the changed properties
+    const changes = getChangedProperties(oldImage, newImage);
 
-        // Skip if no changes were detected
-        if (Object.keys(changes).length === 0) {
-            this.logger.debug('No changes detected, skipping audit entry');
-            return;
-        }
+    // Skip if no changes were detected
+    if (Object.keys(changes).length === 0) {
+      this.logger.debug('No changes detected, skipping audit entry');
+      return;
+    }
 
-        // Extract actor context from the _actor field
-        const rawActorContext = newImage?._actor || oldImage?._actor;
-        
-        const actorContext = rawActorContext;
-        
-        // Fallback to visible actor fields if _actor not available (backward compatibility)
-        const fallbackActor: any = {};
-        if (newImage?.updatedBy || newImage?.createdBy || oldImage?.updatedBy || oldImage?.createdBy) {
-            fallbackActor.actorId = newImage?.updatedBy || newImage?.createdBy || oldImage?.updatedBy || oldImage?.createdBy;
-        }
-        if (newImage?.tenantId || oldImage?.tenantId) {
-            fallbackActor.tenantId = newImage?.tenantId || oldImage?.tenantId;
-        }
+    // Extract actor context from the _actor field
+    const rawActorContext = newImage?._actor || oldImage?._actor;
 
-        // Create audit entry
-        // Note: timestamp is already in milliseconds (converted from DynamoDB seconds in the data extractor)
-        // Example: timestamp = 1734567890000 (milliseconds) -> "2024-12-19T10:31:30.000Z"
-        const timestampDate = timestamp ? new Date(timestamp) : new Date();
-        const timestampIso = timestampDate.toISOString();
-        const timestampMs = timestampDate.getTime();
-        
-        // Determine success and severity based on event type
-        // Database change events are typically successful operations
-        const success = true; // Stream events represent completed database operations
-        const severity = eventType === 'delete' ? 'warn' : 'info'; // Deletions might be more significant
-        
-        const auditEntry: AuditEntry = {
-            auditType: 'audit',
-            timestamp: timestampIso,
-            timestampMs,
-            entityName,
-            eventType,
-            severity,
-            success,
-            data: changes,
-            identifiers: {
-                id: entityId as string
-            },
-            actor: actorContext || (Object.keys(fallbackActor).length > 0 ? fallbackActor : { actorType: 'unknown' })
-        };
+    const actorContext = rawActorContext;
 
-        return auditEntry;
+    // Fallback to visible actor fields if _actor not available (backward compatibility)
+    const fallbackActor: any = {};
+    if (newImage?.updatedBy || newImage?.createdBy || oldImage?.updatedBy || oldImage?.createdBy) {
+      fallbackActor.actorId = newImage?.updatedBy || newImage?.createdBy || oldImage?.updatedBy || oldImage?.createdBy;
+    }
+    if (newImage?.tenantId || oldImage?.tenantId) {
+      fallbackActor.tenantId = newImage?.tenantId || oldImage?.tenantId;
+    }
+
+    // Create audit entry
+    // Note: timestamp is already in milliseconds (converted from DynamoDB seconds in the data extractor)
+    // Example: timestamp = 1734567890000 (milliseconds) -> "2024-12-19T10:31:30.000Z"
+    const timestampDate = timestamp ? new Date(timestamp) : new Date();
+    const timestampIso = timestampDate.toISOString();
+    const timestampMs = timestampDate.getTime();
+
+    // Determine success and severity based on event type
+    // Database change events are typically successful operations
+    const success = true; // Stream events represent completed database operations
+    const severity = eventType === 'delete' ? 'warn' : 'info'; // Deletions might be more significant
+
+    const auditEntry: AuditEntry = {
+      auditType: 'audit',
+      timestamp: timestampIso,
+      timestampMs,
+      entityName,
+      eventType,
+      severity,
+      success,
+      data: changes,
+      identifiers: {
+        id: entityId as string
+      },
+      actor: actorContext || (Object.keys(fallbackActor).length > 0 ? fallbackActor : { actorType: 'unknown' })
+    };
+
+    return auditEntry;
   }
 
   protected async writeAuditEntry(auditEntry: AuditEntry): Promise<void> {

@@ -75,15 +75,15 @@ abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayl
       preprocessed.push(processed);
     }
 
-    this.logger.debug('Preprocessing completed', { 
-      originalCount: records.length, 
-      preprocessedCount: preprocessed.length, 
+    this.logger.debug('Preprocessing completed', {
+      originalCount: records.length,
+      preprocessedCount: preprocessed.length,
       filteredCount: records.length - preprocessed.length,
-      processMode: this.processMode 
+      processMode: this.processMode
     });
 
     if (preprocessed.length === 0) {
-      this.logger.info('No records to process after preprocessing.');
+      this.logger.debug('No records to process after preprocessing.');
       return;
     }
 
@@ -104,11 +104,11 @@ abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayl
     }
 
     const duration = Date.now() - startTime;
-    this.logger.debug('Record processing completed', { 
-      processedCount: preprocessed.length, 
-      processMode: this.processMode, 
+    this.logger.debug('Record processing completed', {
+      processedCount: preprocessed.length,
+      processMode: this.processMode,
       durationMs: duration,
-      avgTimePerRecord: duration / preprocessed.length 
+      avgTimePerRecord: duration / preprocessed.length
     });
   }
 
