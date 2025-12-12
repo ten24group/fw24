@@ -58,10 +58,10 @@ export interface ObservabilityEvent {
     correlationId: string;
     /** Timestamp in milliseconds */
     timestampMs: number;
-    /** Unique ID for this log entry */
-    logId: string;
-    /** Parent log ID for hierarchical relationships */
-    parentLogId?: string;
+    /** Unique ID for this observability log entry */
+    observabilityLogId: string;
+    /** Parent observability log ID for hierarchical relationships */
+    parentObservabilityLogId?: string | null;
     /** Entity type being observed (user, order, span, workflow) */
     entityName?: string;
     /** Specific entity instance ID */
@@ -102,9 +102,9 @@ export interface CaptureInput {
     type: ObservabilityEventType;
     level: ObservabilityLevelString;
     correlationId: string;
-    logId?: string;
+    observabilityLogId?: string;
     timestampMs?: number;
-    parentLogId?: string;
+    parentObservabilityLogId?: string | null;
     entityName?: string;
     entityId?: string;
     operation?: string;
@@ -148,7 +148,8 @@ export interface CloudWatchBackendOptions {
  * DynamoDB backend-specific options
  */
 export interface DynamoDBBackendOptions {
-    tableName?: string;
+    /** Logical table key - resolved to actual table name via env var {tableKey}_table */
+    tableKey?: string;
     ttlDays?: number;
 }
 /**
@@ -193,7 +194,9 @@ export interface TypeSpecificConfig {
  */
 export interface SamplingConfig {
     enabled: boolean;
-    rates: Record<ObservabilityLevel, number>;
+    /** Sampling rates by level name (0-1). Missing levels default to 1.0 (100%) */
+    rates?: Partial<Record<ObservabilityLevelString, number>>;
+    /** Sampling rates by operation pattern */
     operations?: Record<string, number>;
 }
 /**
@@ -206,14 +209,40 @@ export interface CloudWatchConfig {
  * DynamoDB configuration
  */
 export interface DynamoDBConfig {
-    tableName: string;
+    /** Logical table key - resolved to actual table name via env var {tableKey}_table */
+    tableKey: string;
     ttlDays: number;
+}
+/**
+ * Data protection configuration for observability events
+ * Reuses @hackylabs/deep-redact library for redaction
+ */
+export interface ObservabilityDataProtectionConfig {
+    /** Enable/disable data protection (default: true) */
+    enabled: boolean;
+    /** Keys to redact (strings or regex patterns) */
+    blacklistedKeys?: (string | RegExp)[];
+    /**
+     * Fuzzy key matching - checks if blacklisted key is contained in actual key
+     * e.g., "pass" matches "password", "userPassword", etc.
+     * (default: true)
+     */
+    fuzzyKeyMatch?: boolean;
+    /** Case sensitive key matching (default: false) */
+    caseSensitiveKeyMatch?: boolean;
+    /** Replacement string (default: '[REDACTED]') */
+    replacement?: string;
+    /**
+     * Fields to protect in ObservabilityEvent
+     * Default: ['data', 'attributes', 'metadata', 'context']
+     */
+    fields?: ('data' | 'attributes' | 'metadata' | 'context' | 'error')[];
 }
 /**
  * Main observability configuration
  *
  * ALL fields are REQUIRED - no optional fields with fallbacks.
- * ConfigManager.fromEnvironment() provides defaults from env vars.
+ * Defaults are registered in DI by the observability module.
  */
 export interface ObservabilityConfig {
     /** Enable/disable observability system */
@@ -224,15 +253,12 @@ export interface ObservabilityConfig {
     sampling: SamplingConfig;
     /** Backend configurations */
     backends: ObservabilityBackendConfig[];
-    /** Type-specific overrides */
+    /** Type-specific overrides for core observers */
     types?: {
         span?: TypeSpecificConfig;
         metric?: TypeSpecificConfig;
         audit?: TypeSpecificConfig;
         log?: TypeSpecificConfig;
-        decision?: TypeSpecificConfig;
-        workflow?: TypeSpecificConfig;
-        access?: TypeSpecificConfig;
     };
     /** Service name (used by CloudWatch, OTEL) */
     serviceName: string;
@@ -240,39 +266,13 @@ export interface ObservabilityConfig {
     cloudwatch: CloudWatchConfig;
     /** DynamoDB configuration */
     dynamodb: DynamoDBConfig;
+    /** Data protection configuration */
+    dataProtection: ObservabilityDataProtectionConfig;
 }
 /**
  * Default sampling configuration - all levels at 100%
  */
 export declare const DefaultSamplingConfig: SamplingConfig;
-/**
- * Observation context for automatic context propagation
- * Used with AsyncLocalStorage for automatic injection into all observations
- *
- * correlationId is REQUIRED - must be set when context is created
- */
-export interface ObservationContext {
-    /** Correlation ID for distributed tracing - REQUIRED */
-    correlationId: string;
-    /** Parent log ID for hierarchical relationships */
-    parentLogId?: string;
-    /** Actor from ExecutionContext */
-    actor?: Actor;
-    /** Additional tags to propagate */
-    tags?: Record<string, string>;
-    /** Source identifier */
-    source?: string;
-    /** Tenant ID (from Actor) */
-    tenantId?: string;
-    /** Session ID (from Actor) */
-    sessionId?: string;
-    /**
-     * Whether this trace is sampled (for propagation headers).
-     * Extracted from incoming trace headers, used when creating outgoing headers.
-     * Defaults to true if not specified.
-     */
-    sampled?: boolean;
-}
 /**
  * Capture options for observe/capture methods
  */
@@ -289,13 +289,13 @@ export interface CaptureOptions {
 export interface IEventCapture {
     /**
      * Capture an observability event (fire-and-forget)
-     * @returns logId if captured, undefined if filtered/sampled out
+     * @returns observabilityLogId if captured, undefined if filtered/sampled out
      */
     capture(input: CaptureInput, options?: CaptureOptions): string | undefined;
     /**
      * Capture an observability event asynchronously
      * Use when you need to await backend completion
-     * @returns Promise<logId> if captured, undefined if filtered/sampled out
+     * @returns Promise<observabilityLogId> if captured, undefined if filtered/sampled out
      */
     captureAsync(input: CaptureInput, options?: Omit<CaptureOptions, 'sync'>): Promise<string | undefined>;
 }

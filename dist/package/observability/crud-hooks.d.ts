@@ -4,14 +4,14 @@
  * These can be called from crud-service.ts to emit observability events.
  * Uses AuditObserver for entity audits and SpanObserver for detailed tracing.
  *
- * NOTE: All methods require a correlationId in the context. Without it,
- * they will log a warning and skip the observability event.
+ * NOTE: Methods will auto-generate correlationId if not in context,
+ * logging a warning to encourage proper context establishment.
  */
 import { Actor } from '../core/types/execution-context';
 import { ISpanObserver } from './observers/span';
 export interface CrudObservabilityContext {
     correlationId?: string;
-    parentLogId?: string;
+    parentObservabilityLogId?: string;
     actor?: Actor;
 }
 export declare class CrudObservabilityHooks {
@@ -43,7 +43,7 @@ export declare class CrudObservabilityHooks {
      * Create a span for entity operation (for more detailed tracing)
      *
      * @returns ISpanObserver instance for tracking the operation.
-     *          Returns NoOp span if no correlationId (will log debug warning).
+     *          Auto-generates correlationId if not in context.
      */
     static createEntitySpan(operation: string, entityName: string, context?: CrudObservabilityContext): ISpanObserver;
     /**
@@ -58,8 +58,4 @@ export declare class CrudObservabilityHooks {
      * Emit observability event for bulk entity delete operation
      */
     static captureEntityBulkDelete(entityName: string, entityIds: string[], count: number, context?: CrudObservabilityContext): void;
-    /**
-     * Alias for captureEntityQuery for consistent naming
-     */
-    static captureEntityList(entityName: string, filters: Record<string, unknown>, resultCount: number, context?: CrudObservabilityContext): void;
 }

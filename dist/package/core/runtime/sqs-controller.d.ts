@@ -1,51 +1,61 @@
-import { SQSEvent, Context } from "aws-lambda";
+import { SQSEvent, SQSBatchResponse, Context } from "aws-lambda";
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
-import { AuditContext, QueueAuditContext } from '../../audit/interfaces';
 import { IQueueConfig } from '../../decorators/queue';
+import { ExecutionContextData } from './execution-context';
+/**
+ * Result type for queue processing.
+ * - void: All messages processed successfully
+ * - SQSBatchResponse: Partial batch failure (some messages need retry)
+ */
+export type QueueProcessResult = void | SQSBatchResponse;
+/**
+ * Queue execution context - contains queue-specific data AND execution context.
+ */
+export interface QueueExecutionContext {
+    /** The SQS event */
+    readonly event: SQSEvent;
+    /** Lambda context */
+    readonly lambdaContext: Context;
+    /** Execution context (also available via getCurrentExecutionContext()) */
+    readonly executionContext: ExecutionContextData;
+}
 /**
  * Base class for handling SQS events.
+ *
+ * Generic TEvent allows subclasses to specify more specific event types
+ * while maintaining type safety.
+ *
+ * All handler execution is wrapped in execution context.
+ * Configure observability via the @Queue decorator:
+ *
+ * @example
+ * ```typescript
+ * @Queue('my-queue', {
+ *   observability: {
+ *     source: 'domain:queue-type',
+ *     tags: { domain: 'sports', priority: 'high' }
+ *   }
+ * })
+ * export class MyQueue extends QueueController { }
+ * ```
  */
-declare abstract class QueueController extends AbstractLambdaHandler {
-    protected initialize(_event: SQSEvent, _context: Context): Promise<any>;
-    abstract process(event: any, context: any): Promise<any>;
+declare abstract class QueueController<TEvent extends SQSEvent = SQSEvent> extends AbstractLambdaHandler {
+    protected initialize(_event: TEvent, _context: Context): Promise<void>;
     /**
-     * Creates audit context for the queue processing following the existing pattern
-     * @param event - The SQS event
+     * Process the queue event.
+     *
+     * Return `void` if all messages processed successfully.
+     * Return `SQSBatchResponse` with `batchItemFailures` for partial batch failures
+     * (requires `reportBatchItemFailures: true` in queue config).
+     *
+     * @param event - The event
      * @param context - The Lambda context
-     * @returns AuditContext or null if audit is disabled
+     * @param ctx - Queue execution context
+     * @returns void or SQSBatchResponse for partial batch failures
      */
-    protected makeAuditContext(event: SQSEvent, context: Context): AuditContext | null;
-    /**
-     * Applications override this to extract correlation from their message format
-     */
-    protected extractCorrelationFromMessages(event: SQSEvent): string | null;
-    /**
-     * Applications override this to extract parent operation from their message format
-     */
-    protected extractParentOperationFromMessages(event: SQSEvent): string | null;
-    /**
-     * Captures audit log for queue processing start
-     */
-    protected captureStart(auditContext: AuditContext, queueContext: QueueAuditContext): Promise<void>;
-    /**
-     * Captures audit log for queue processing end (success or error)
-     */
-    protected captureEnd(auditContext: AuditContext, _result: any, error: Error | null): Promise<void>;
-    /**
-     * Gets the queue configuration
-     */
+    abstract process(event: TEvent, context: Context, ctx?: QueueExecutionContext): Promise<QueueProcessResult>;
     protected getQueueConfig(): IQueueConfig;
-    /**
-     * Gets the queue name
-     */
     protected getQueueName(): string | undefined;
-    /**
-     * Lambda handler for the queue.
-     * Handles incoming SQS events.
-     * @param event - The event object from the SQS.
-     * @param context - The context object from the SQS.
-     * @returns The SQS response object.
-     */
-    LambdaHandler(event: SQSEvent, context: Context): Promise<any>;
+    LambdaHandler(event: TEvent, context: Context): Promise<QueueProcessResult>;
 }
 export { QueueController };

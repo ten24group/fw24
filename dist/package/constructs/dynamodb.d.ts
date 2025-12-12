@@ -2,10 +2,8 @@ import { Stack } from "aws-cdk-lib";
 import { TablePropsV2 } from "aws-cdk-lib/aws-dynamodb";
 import { DynamoEventSourceProps, SqsEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
 import { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
-import { LogGroupProps } from "aws-cdk-lib/aws-logs";
 import { TopicProps } from "aws-cdk-lib/aws-sns";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
-import { AuditLoggerType } from "../audit/interfaces";
 import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { IConstructConfig } from "../interfaces/construct-config";
@@ -197,29 +195,21 @@ export interface IDynamoDBConfig extends IConstructConfig {
  *
  * ```
  *
- * Custom audit queue name:
+ * Audit logging (via observability system):
  * ```ts
  * audit: {
  *   enabled: true,
- *   type: AuditLoggerType.CLOUDWATCH,
- *   dynamodbstreamOptions: {
- *     queueName: 'my-custom-audit-queue'
- *   }
+ *   allowedEntityNames: ['user', 'order', 'payment'],
+ *   // Backend routing configured via observability DI layer
  * }
  * ```
  *
- * Existing framework-managed audit queue:
+ * Custom audit queue:
  * ```ts
- * // First define the queue handler:
- * // @Queue('AuditProcessor', { subscriptions: { topics: [{ name: 'myTable-stream' }] } })
- * // export class AuditProcessor extends BaseAuditLogger { ... }
- *
  * audit: {
  *   enabled: true,
- *   type: AuditLoggerType.CLOUDWATCH,
- *   dynamodbstreamOptions: {
- *     existingQueueName: 'AuditProcessor'  // References the @Queue('AuditProcessor')
- *   }
+ *   allowedEntityNames: ['user', 'order'],
+ *   queueName: 'my-custom-audit-queue'
  * }
  * ```
  *
@@ -254,11 +244,32 @@ export interface IDynamoDBConfig extends IConstructConfig {
  * ```
  */
 /**
- * Configuration for audit logging.
+ * Configuration for audit logging via DynamoDB streams.
+ *
+ * Audit events are captured by the observability system - this config only controls:
+ * - Which entities to audit (entity filtering)
+ * - Stream processing queue configuration
+ *
+ * Backend routing (DynamoDB, CloudWatch, OTEL) is configured via observability:
+ * ```typescript
+ * // In your DI layer:
+ * import { createObservabilityConfig } from '@ten24group/fw24/observability';
+ *
+ * DIContainer.ROOT.registerConfigProvider({
+ *   provide: 'observability',
+ *   useConfig: createObservabilityConfig({
+ *     backends: [
+ *       { type: 'dynamodb'},
+ *       { type: 'cloudwatch'}
+ *     ]
+ *   }),
+ *   priority: 10
+ * });
+ * ```
  */
 interface AuditConfig extends IConstructConfig {
     /**
-     * Whether to enable audit logging.
+     * Whether to enable audit logging for DynamoDB streams.
      * @default false
      */
     enabled?: boolean;
@@ -271,117 +282,38 @@ interface AuditConfig extends IConstructConfig {
     /**
      * List of entity names to exclude from auditing.
      * If allowedEntityNames is provided, this field is ignored.
-     * If neither allowedEntityNames nor excludedEntityNames is provided, defaults to excluding system entities like 'auditLog'.
+     * If neither allowedEntityNames nor excludedEntityNames is provided,
+     * defaults to excluding system entities like 'auditLog' and 'observabilityLog'.
      */
     excludedEntityNames?: string[];
     /**
-     * The type of audit logger to use.
-     * @default 'console'
-     */
-    type?: AuditLoggerType;
-    /**
      * Custom function properties for the audit Lambda.
      * Allows overriding function configuration like VPC, memory, timeout, etc.
-     *
-     * **Note:**
-     * - Properties specified here will override the queue's @Queue decorator functionProps
-     * - Ignored when `existingQueueName` is provided (existing queues have their own handlers)
      */
     functionProps?: NodejsFunctionProps;
     /**
-     * Options for the audit logger.
+     * Custom queue name for creating a new audit queue.
+     * If not provided, defaults to `${tableName}-entity-audit`
      */
-    cloudwatchOptions?: {
-        /**
-         * CloudWatch specific options
-         */
-        logGroupName?: string;
-        /**
-         * AWS region for the service (CloudWatch or DynamoDB)
-         */
-        region?: string;
-        /**
-         * Log Group Options
-         */
-        logGroupOptions?: LogGroupProps;
-    };
-    dynamodbstreamOptions?: {
-        /**
-         * Table to use for audit logs, defaults to the same table as the one being audited
-         */
-        auditTableName?: string;
-        /**
-         * TTL in seconds for DynamoDB records
-         */
-        ttl?: number;
-        /**
-         * Custom queue name for creating a new audit queue.
-         * If not provided, defaults to `${tableName}-entity-audit`
-         *
-         * **Note:** Cannot be used with `existingQueueName`
-         */
-        queueName?: string;
-        /**
-         * Name of an existing framework-managed queue to use for audit processing.
-         *
-         * **Important:** The existing queue must:
-         * - Be defined with @Queue('QueueName') decorator in your src/queues directory
-         * - Already be registered by the framework's QueueConstruct
-         * - Be configured to subscribe to the stream topic in its @Queue subscriptions
-         *
-         * **Example:**
-         * ```typescript
-         * @Queue('AuditProcessor', {
-         *   subscriptions: {
-         *     topics: [{ name: 'myTable-stream' }]
-         *   }
-         * })
-         * export class AuditProcessor extends BaseAuditLogger { ... }
-         * ```
-         * Then use: `existingQueueName: 'AuditProcessor'`
-         *
-         * **Note:** Cannot be used with `queueName` or `queueProps`
-         */
-        existingQueueName?: string;
-        /**
-         * Path to queue handler file for manual registration.
-         * The queue handler must have `manualRegistration: true` in its @Queue config.
-         * DynamoDB construct will create the queue and automatically subscribe it to the stream topic.
-         *
-         * **Example:**
-         * ```typescript
-         * // In src/queues/custom-audit.ts:
-         * @Queue('CustomAudit', {
-         *   manualRegistration: true,
-         *   resourceAccess: { tables: ['plusfan'] },
-         *   // ... other queue config
-         * })
-         * export class CustomAudit extends BaseAuditLogger { ... }
-         *
-         * // In index.ts:
-         * audit: {
-         *   enabled: true,
-         *   type: AuditLoggerType.DYNAMODB,
-         *   dynamodbstreamOptions: {
-         *     queueHandlerPath: './src/queues/custom-audit.ts'
-         *   }
-         * }
-         * ```
-         *
-         * **Note:** Cannot be used with `queueName`, `existingQueueName`, or custom `lambdaFunctionProps`
-         */
-        queueHandlerPath?: string;
-        /**
-         * Audit queue properties (only used when creating a new queue)
-         *
-         * **Note:** Ignored when `existingQueueName` or `queueHandlerPath` is provided
-         */
-        queueProps?: QueueProps;
-        /**
-         * SQS event source properties
-         */
-        sqsEventSourceProps?: SqsEventSourceProps;
-    };
+    queueName?: string;
+    /**
+     * Name of an existing framework-managed queue to use for audit processing.
+     * The existing queue must be defined with @Queue decorator and subscribe to the stream topic.
+     */
+    existingQueueName?: string;
+    /**
+     * Path to queue handler file for manual registration.
+     * The queue handler must have `manualRegistration: true` in its @Queue config.
+     */
+    queueHandlerPath?: string;
+    /**
+     * Audit queue properties (only used when creating a new queue)
+     */
+    queueProps?: QueueProps;
+    /**
+     * SQS event source properties
+     */
+    sqsEventSourceProps?: SqsEventSourceProps;
 }
 export declare class DynamoDBConstruct implements FW24Construct {
     private readonly dynamoDBConfig;

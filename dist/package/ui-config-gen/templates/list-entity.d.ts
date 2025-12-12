@@ -1,5 +1,5 @@
 import { BaseEntityService, EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap, IFilterSegment } from "../../entity";
-import { IEntityPageAction, Template } from "../../entity/base-entity";
+import { IEntityPageAction, Template, SortConfig, FieldSortConfig, SortOrder } from "../../entity/base-entity";
 import type { IApplicationConfig } from "../../interfaces/config";
 export type ListEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string;
@@ -42,19 +42,11 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
      */
     pageTitle?: Template;
     /**
-     * Default sort configuration
-     * - Object/Array: for search mode with field+order
-     * - 'asc' | 'desc': for DynamoDB mode (index order direction only)
+     * @deprecated Use tableConfig.defaultSort instead
      */
-    defaultSort?: {
-        readonly field: string;
-        readonly order: 'asc' | 'desc';
-    } | ReadonlyArray<{
-        readonly field: string;
-        readonly order: 'asc' | 'desc';
-    }> | 'asc' | 'desc';
+    defaultSort?: SortConfig;
     /**
-     * Table configuration including row actions, bulk actions, row selection, and column visibility
+     * Table configuration including row actions, bulk actions, row selection, column visibility, and sorting
      */
     tableConfig?: EntityListPageConfig['tableConfig'];
     /**
@@ -72,6 +64,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
     }[];
     readonly pageHeaderActions: IEntityPageAction[];
     readonly listPageConfig: {
+        pageSize?: number | undefined;
         fetchStrategy: "eager" | "lazy";
         segments?: readonly (IFilterSegment | import("../../entity").IFilterSegmentGroup)[] | (IFilterSegment | import("../../entity").IFilterSegmentGroup)[] | undefined;
         expandableConfig?: import("../../entity").ITableExpandableConfig | undefined;
@@ -82,37 +75,19 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
         bulkActions?: readonly IEntityPageAction[] | IEntityPageAction[] | undefined;
         apiConfig: {
             search: {
-                defaultSort?: "asc" | "desc" | {
-                    readonly field: string;
-                    readonly order: "asc" | "desc";
-                } | readonly {
-                    readonly field: string;
-                    readonly order: "asc" | "desc";
-                }[] | undefined;
+                defaultSort?: FieldSortConfig | readonly FieldSortConfig[] | "asc" | "desc" | undefined;
                 apiMethod: "GET";
                 responseKey: string;
                 apiUrl: string;
             };
             database: {
-                defaultSort?: "asc" | "desc" | {
-                    readonly field: string;
-                    readonly order: "asc" | "desc";
-                } | readonly {
-                    readonly field: string;
-                    readonly order: "asc" | "desc";
-                }[] | undefined;
+                defaultSort?: SortOrder | undefined;
                 apiMethod: "GET";
                 responseKey: string;
                 apiUrl: string;
             };
         } | {
-            defaultSort?: "asc" | "desc" | {
-                readonly field: string;
-                readonly order: "asc" | "desc";
-            } | readonly {
-                readonly field: string;
-                readonly order: "asc" | "desc";
-            }[] | undefined;
+            defaultSort?: FieldSortConfig | readonly FieldSortConfig[] | SortOrder | undefined;
             apiMethod: "GET";
             responseKey: string;
             useSearch: false;
@@ -126,6 +101,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
 };
 export default _default;
 export declare function makeViewEntityListConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>, entityService: BaseEntityService<S>): {
+    pageSize?: number | undefined;
     fetchStrategy: "eager" | "lazy";
     segments?: readonly (IFilterSegment | import("../../entity").IFilterSegmentGroup)[] | (IFilterSegment | import("../../entity").IFilterSegmentGroup)[] | undefined;
     expandableConfig?: import("../../entity").ITableExpandableConfig | undefined;
@@ -136,37 +112,19 @@ export declare function makeViewEntityListConfig<S extends EntitySchema<string, 
     bulkActions?: readonly IEntityPageAction[] | IEntityPageAction[] | undefined;
     apiConfig: {
         search: {
-            defaultSort?: "asc" | "desc" | {
-                readonly field: string;
-                readonly order: "asc" | "desc";
-            } | readonly {
-                readonly field: string;
-                readonly order: "asc" | "desc";
-            }[] | undefined;
+            defaultSort?: FieldSortConfig | readonly FieldSortConfig[] | "asc" | "desc" | undefined;
             apiMethod: "GET";
             responseKey: string;
             apiUrl: string;
         };
         database: {
-            defaultSort?: "asc" | "desc" | {
-                readonly field: string;
-                readonly order: "asc" | "desc";
-            } | readonly {
-                readonly field: string;
-                readonly order: "asc" | "desc";
-            }[] | undefined;
+            defaultSort?: SortOrder | undefined;
             apiMethod: "GET";
             responseKey: string;
             apiUrl: string;
         };
     } | {
-        defaultSort?: "asc" | "desc" | {
-            readonly field: string;
-            readonly order: "asc" | "desc";
-        } | readonly {
-            readonly field: string;
-            readonly order: "asc" | "desc";
-        }[] | undefined;
+        defaultSort?: FieldSortConfig | readonly FieldSortConfig[] | SortOrder | undefined;
         apiMethod: "GET";
         responseKey: string;
         useSearch: false;

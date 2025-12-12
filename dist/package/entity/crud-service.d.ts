@@ -143,6 +143,21 @@ export interface ListEntityArgs<Sch extends EntitySchema<any, any, any>> extends
     query: EntityQuery<Sch>;
 }
 /**
+ * Convert FilterGroup format to simple object format for index matching.
+ * FilterGroup: { and: [{ attribute: 'foo', eq: 'bar' }] }
+ * Simple: { foo: { eq: 'bar' } }
+ *
+ * Only extracts filters from the 'and' array as those are the ones
+ * that can be used for GSI partition key matching.
+ *
+ * Excludes existence/null filters (notExists, isNull, empty, etc.) from index
+ * matching since records with missing attributes won't be in sparse GSIs.
+ *
+ * @param filters - The filters in FilterGroup or simple format
+ * @returns Filters in simple object format { attr: { op: val } }
+ */
+export declare function filterGroupToSimpleFormat(filters: Record<string, any>): Record<string, any>;
+/**
  * Finds a matching index based on the provided filters and schema.
  * @param schema - The entity schema
  * @param filters - The filters to match against

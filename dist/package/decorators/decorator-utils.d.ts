@@ -63,6 +63,11 @@ export type CommonLambdaHandlerOptions = {
      */
     module?: RegisterDIModuleMetadataOptions;
 };
+/**
+ * Loads entry packages specified in ENTRY_PACKAGES environment variable.
+ * Called automatically by fw24 layer on import, and by decorators for backward compatibility.
+ * Safe to call multiple times - only loads once.
+ */
 export declare function tryImportingEntryPackagesFor(controllerName?: string | undefined): void;
 /**
  * Sets up Dependency Injection (DI) for a class and returns the DI container.

@@ -7,7 +7,7 @@ import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { ResponseConfig } from "./response-config";
 import { createErrorHandler } from "../../errors/";
 import { ExecutionContext, Actor } from '../types/execution-context';
-import { AuditContext, RequestAuditContext } from '../../audit/interfaces';
+import { ControllerObservabilityConfig } from '../../observability/controller-config';
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 export interface APIControllerMiddleware {
     before?: (request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
@@ -74,11 +74,30 @@ export declare abstract class APIController extends AbstractLambdaHandler {
     /**
      * Lambda handler for the controller.
      * Handles incoming API Gateway events.
+     *
+     * All handler execution is wrapped in execution context, making
+     * getCurrentExecutionContext() available throughout the request lifecycle.
+     *
      * @param event - The event object from the API Gateway.
      * @param context - The context object from the API Gateway.
      * @returns The API Gateway response object.
      */
     LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult>;
+    /**
+     * Gets merged observability config from controller and method level
+     */
+    protected getObservabilityConfig(route?: Route | null): ControllerObservabilityConfig | undefined;
+    /**
+     * Build span attributes based on observability config.
+     * Always includes basic HTTP info. Request body/headers/query are only
+     * included if explicitly configured via `includes`.
+     */
+    protected buildSpanAttributes(event: APIGatewayEvent, request: Request, config?: ControllerObservabilityConfig): Record<string, unknown>;
+    /**
+     * Build response attributes based on observability config.
+     * Only captures response body/headers if explicitly configured via `includes`.
+     */
+    protected buildResponseAttributes(response: Response, config?: ControllerObservabilityConfig): Record<string, unknown> | undefined;
     /**
      * Finds the route that matches the HTTP method and resource.
      * @param requestData - The request data object.
@@ -147,58 +166,20 @@ export declare abstract class APIController extends AbstractLambdaHandler {
      */
     protected buildCtx(event: APIGatewayEvent, context: Context, request: Request, response: Response): ExecutionContext;
     /**
-     * Creates audit context for the request following the existing buildCtx pattern
-     * @param ctx - The execution context
-     * @param route - The matched route (optional, for method-level audit config)
-     * @returns AuditContext or null if audit is disabled
-     */
-    protected makeAuditContext(ctx: ExecutionContext, route?: Route | null): AuditContext | null;
-    /**
-     * Merges controller-level and method-level audit configurations
-     * Method-level config takes precedence over controller-level config
-     * @param controllerAudit - Controller-level audit config
-     * @param methodAudit - Method-level audit config
-     * @returns Merged audit configuration
-     */
-    private mergeAuditConfigs;
-    /**
-     * Captures audit log for request start
-     */
-    protected captureStart(auditContext: AuditContext, requestContext: RequestAuditContext): Promise<void>;
-    /**
-     * Captures audit log for request end (success or error)
-     */
-    protected captureEnd(auditContext: AuditContext, response: Response, error: Error | null): Promise<void>;
-    /**
-     * Builds request context for audit logging
-     */
-    private buildRequestContext;
-    /**
-     * Selectively includes fields from an object based on field list
-     * If no fields specified, returns the entire object
-     */
-    private selectivelyIncludeFields;
-    /**
-     * Selectively includes fields from response body (handles JSON string bodies)
-     * If no fields specified, returns the entire body
-     */
-    private selectivelyIncludeResponseBody;
-    /**
-     * Builds response context for audit logging
-     */
-    private buildResponseContext;
-    /**
      * Gets the controller configuration
      */
     protected getControllerConfig(): IControllerConfig;
     /**
-     * Extracts actor context from the request
-     * Override this method for custom actor extraction logic
+     * Extracts actor context from the request.
+     * Override this method for custom actor extraction logic.
+     *
+     * Note: correlationId is NOT set here - it's determined from trace context
+     * extraction and set on the ExecutionContext. The actor.correlationId is
+     * synced later in LambdaHandler after trace context is resolved.
      *
      * @param event - The event object from the API Gateway.
      * @param request - The request object from the API Gateway.
      * @returns The actor context.
-     * ```
      */
     protected extractActorContext(event: APIGatewayEvent, request: Request): Actor;
     /**

@@ -4,7 +4,7 @@
  * DESIGN PRINCIPLES:
  * - Requires correlationId from context or explicit option
  * - No auto-generation of correlationId (must be propagated)
- * - Hierarchical spans via parentSpanId
+ * - Hierarchical spans via parentObservabilityLogId
  * - Fire-and-forget capture via capturer pattern (testable)
  *
  * Usage:
@@ -35,8 +35,8 @@ import { ObservabilityLevelString } from '../types';
 export interface SpanOptions {
     /** Correlation ID - if not provided, must come from context */
     correlationId?: string;
-    /** Parent span ID for nested spans */
-    parentSpanId?: string;
+    /** Parent observability log ID for nested spans */
+    parentObservabilityLogId?: string;
     /** Severity level for the span */
     level?: ObservabilityLevelString;
     /** Additional attributes */
@@ -62,13 +62,13 @@ export interface ISpanObserver {
         error?: Error;
         status?: string;
     }): void;
-    withChild<T>(operation: string, fn: (span: ISpanObserver) => Promise<T>, options?: Omit<SpanOptions, 'correlationId' | 'parentSpanId'>): Promise<T>;
-    createChild(operation: string, options?: Omit<SpanOptions, 'correlationId' | 'parentSpanId'>): ISpanObserver;
+    withChild<T>(operation: string, fn: (span: ISpanObserver) => Promise<T>, options?: Omit<SpanOptions, 'correlationId' | 'parentObservabilityLogId'>): Promise<T>;
+    createChild(operation: string, options?: Omit<SpanOptions, 'correlationId' | 'parentObservabilityLogId'>): ISpanObserver;
 }
 export declare class SpanObserver implements ISpanObserver {
     private readonly spanId;
     private readonly correlationId;
-    private readonly parentSpanId?;
+    private readonly parentObservabilityLogId;
     private readonly level;
     private readonly startTime;
     private readonly source?;
@@ -82,8 +82,8 @@ export declare class SpanObserver implements ISpanObserver {
      * Start a new span
      *
      * @param operation - Name of the operation being traced
-     * @param options - Span options (correlationId required if no context)
-     * @returns SpanObserver instance, or NoOp span if correlationId not available
+     * @param options - Span options (correlationId auto-generated if no context)
+     * @returns SpanObserver instance (always succeeds)
      */
     static start(operation: string, options?: SpanOptions): ISpanObserver;
     /**
@@ -103,10 +103,10 @@ export declare class SpanObserver implements ISpanObserver {
     /**
      * Execute function within a child span
      */
-    withChild<T>(operation: string, fn: (span: ISpanObserver) => Promise<T>, options?: Omit<SpanOptions, 'correlationId' | 'parentSpanId'>): Promise<T>;
+    withChild<T>(operation: string, fn: (span: ISpanObserver) => Promise<T>, options?: Omit<SpanOptions, 'correlationId' | 'parentObservabilityLogId'>): Promise<T>;
     /**
      * Create a child span
      */
-    createChild(operation: string, options?: Omit<SpanOptions, 'correlationId' | 'parentSpanId'>): ISpanObserver;
+    createChild(operation: string, options?: Omit<SpanOptions, 'correlationId' | 'parentObservabilityLogId'>): ISpanObserver;
 }
 export declare const withSpan: typeof SpanObserver.withSpan;

@@ -863,6 +863,49 @@ export interface IEntityConfigReference {
         }>;
         /** Add default filters (for list pages) */
         defaultFilters?: Record<string, any>;
+        /**
+         * Override filter segments completely (for list pages).
+         * When provided, replaces all segments from base config.
+         * Set to empty array [] to disable segments entirely.
+         *
+         * @example
+         * // Disable segments (useful in modal/section contexts)
+         * segments: []
+         *
+         * @example
+         * // Replace with custom segments
+         * segments: [
+         *   { id: 'active', label: 'Active', filters: { status: { eq: 'active' } } },
+         *   { id: 'inactive', label: 'Inactive', filters: { status: { eq: 'inactive' } } }
+         * ]
+         */
+        segments?: ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup>;
+        /**
+         * Hide specific segments by ID (for list pages).
+         * Keeps all other segments from base config.
+         *
+         * @example
+         * hideSegments: ['root-only', 'child-only']
+         */
+        hideSegments?: ReadonlyArray<string> | Array<string>;
+        /**
+         * Show only these segments by ID (for list pages).
+         * Mutually exclusive with hideSegments.
+         *
+         * @example
+         * showOnlySegments: ['all-levels', 'errors']
+         */
+        showOnlySegments?: ReadonlyArray<string> | Array<string>;
+        /**
+         * Add additional segments to base config (for list pages).
+         * Merged with base segments using mergeSegments logic (ID-based override).
+         *
+         * @example
+         * additionalSegments: [
+         *   { id: 'archived', label: 'Archived', filters: { archived: { eq: true } } }
+         * ]
+         */
+        additionalSegments?: ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup>;
         /** Hide specific fields from rendering */
         hideFields?: ReadonlyArray<string> | Array<string>;
         /** Show only specific fields (mutually exclusive with hideFields) */
@@ -1305,7 +1348,11 @@ export type EvaluationRule<T = any> = {
     readonly custom?: string;
     readonly pattern?: string;
     readonly exists?: boolean;
+    readonly notExists?: boolean;
+    readonly isNull?: boolean;
+    readonly notNull?: boolean;
     readonly empty?: boolean;
+    readonly notEmpty?: boolean;
 };
 /**
  * Inline visibility condition (full structure).
@@ -1438,6 +1485,26 @@ export interface IEntityPageAction {
      * }
      */
     template?: Template;
+    /**
+     * Tooltip text (shown on hover).
+     * Can be static string or dynamic template evaluated from routeParams/record context.
+     *
+     * @example
+     * // Static tooltip
+     * tooltip: 'View all child spans'
+     *
+     * @example
+     * // Dynamic tooltip
+     * tooltip: 'View trace for {correlationId}'
+     *
+     * @example
+     * // Complex template
+     * tooltip: {
+     *   composite: ['teamName', 'status'],
+     *   template: 'Edit {teamName} (Status: {status})'
+     * }
+     */
+    tooltip?: Template;
     url?: string;
     icon?: string;
     type?: 'button' | 'dropdown';
@@ -1446,6 +1513,25 @@ export interface IEntityPageAction {
     openInModal?: boolean;
     /** Modal configuration (inline config or resolved from url) */
     modalConfig?: IEntityPageActionModalConfig;
+    /**
+     * Entity config reference for modal route resolution (when using url + openInModal).
+     * Provides overrideConfig support for defaultFilters, hideSegments, etc.
+     * Only used when modalConfig is NOT provided (route resolution pattern).
+     *
+     * @example
+     * {
+     *   url: '/list-observabilitylog?parentObservabilityLogId.eq=:observabilityLogId',
+     *   openInModal: true,
+     *   modalConfigRef: {
+     *     entityName: 'observabilityLog',
+     *     pageType: 'list',
+     *     overrideConfig: {
+     *       hideSegments: ['hierarchy-group']
+     *     }
+     *   }
+     * }
+     */
+    modalConfigRef?: IEntityConfigReference;
     /** Custom modal width. Default: auto-detect from page type */
     modalWidth?: number | string;
     /** Override resolved page title when opened in modal */
@@ -1553,16 +1639,30 @@ interface DateTimeFieldMetadata extends BaseFieldMetadata {
 interface DurationFieldMetadata extends BaseFieldMetadata {
     fieldType?: 'duration';
     /**
+     * Input unit of the duration value stored in the database.
+     * The renderer will convert from this unit to human-readable format.
+     * Default: 'seconds'
+     *
+     * @example
+     * // For a field storing milliseconds (e.g., durationMs: 1500)
+     * durationUnit: 'ms'  // Displays as "1.5s"
+     *
+     * @example
+     * // For a field storing seconds (e.g., duration: 90)
+     * durationUnit: 'seconds'  // Displays as "1m 30s"
+     */
+    durationUnit?: 'ms' | 'seconds' | 'minutes' | 'hours';
+    /**
      * Duration format: 'seconds', 'minutes', 'hours', 'days', 'human' (e.g., '2h 30m')
      * Default: 'human'
      */
     format?: 'seconds' | 'minutes' | 'hours' | 'days' | 'human';
     /**
-     * Minimum duration value (in seconds)
+     * Minimum duration value (in the specified unit)
      */
     minDuration?: number;
     /**
-     * Maximum duration value (in seconds)
+     * Maximum duration value (in the specified unit)
      */
     maxDuration?: number;
 }
@@ -2192,8 +2292,9 @@ export interface ITableExpandableConfig {
      * - 'nested-table': Render another table (for to-many relations)
      * - 'details': Render detail view of nested data
      * - 'custom': Use custom pageType rendering
+     * - 'json': Render raw JSON view of the entire record
      */
-    mode: 'nested-table' | 'details' | 'custom';
+    mode: 'nested-table' | 'details' | 'custom' | 'json';
     /**
      * Field name containing relation data or used to construct API URL.
      * Supports placeholder substitution (e.g., 'teamId' in '/api/player?teamId.eq=:teamId')
@@ -2720,6 +2821,35 @@ export interface ISectionsConfig {
     /** Highlight card that's currently in viewport (default: true) */
     readonly scrollSpyHighlight?: boolean;
 }
+/** Sort order direction */
+export type SortOrder = 'asc' | 'desc';
+/** Single field sort configuration (for search engines) */
+export type FieldSortConfig = {
+    readonly field: string;
+    readonly order: SortOrder;
+};
+/** Search mode sort - field+order, supports multi-field */
+export type SearchSortConfig = FieldSortConfig | ReadonlyArray<FieldSortConfig>;
+/** Database mode sort - just direction (DynamoDB sorts by index SK) */
+export type DatabaseSortConfig = SortOrder;
+/**
+ * Dual-mode sort configuration for explicit control over both modes
+ */
+export type DualSortConfig = {
+    /** Sort config for search mode (MeiliSearch) - supports field + order */
+    readonly search?: SearchSortConfig;
+    /** Sort direction for database mode (DynamoDB) - just 'asc' or 'desc' */
+    readonly database?: DatabaseSortConfig;
+};
+/**
+ * Table sort configuration - flexible format supporting:
+ * 1. Simple: `{ field, order }` - auto-extracts order for DB mode
+ * 2. Multi-field: `[{ field, order }, ...]` - search only, DB uses first item's order
+ * 3. Explicit: `{ search: {...}, database: 'desc' }` - full control over both modes
+ */
+export type TableSortConfig = SearchSortConfig | DualSortConfig;
+/** @deprecated Use TableSortConfig instead */
+export type SortConfig = FieldSortConfig | ReadonlyArray<FieldSortConfig> | SortOrder;
 export interface EntityListPageConfig {
     readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
     readonly breadcrumbs?: ReadonlyArray<{
@@ -2729,13 +2859,11 @@ export interface EntityListPageConfig {
         label: Template;
         url?: string;
     }>;
-    readonly defaultSort?: {
-        readonly field: string;
-        readonly order: 'asc' | 'desc';
-    } | ReadonlyArray<{
-        readonly field: string;
-        readonly order: 'asc' | 'desc';
-    }> | 'asc' | 'desc';
+    /**
+     * @deprecated Use tableConfig.defaultSort instead
+     * Default sort configuration (legacy - kept for backward compatibility)
+     */
+    readonly defaultSort?: SortConfig;
     /**
      * Additional sections to display below or alongside the main list table.
      * Enables multi-section pages with tabs or accordion UI.
@@ -2825,6 +2953,37 @@ export interface EntityListPageConfig {
          */
         readonly expandable?: ITableExpandableConfig;
         /**
+         * Default sort configuration for the table.
+         *
+         * Supports three formats:
+         *
+         * **1. Simple (both modes use same direction):**
+         * ```ts
+         * defaultSort: { field: 'createdAt', order: 'desc' }
+         * // Search: sorts by createdAt desc
+         * // Database: sorts desc (by index SK)
+         * ```
+         *
+         * **2. Multi-field (search mode only):**
+         * ```ts
+         * defaultSort: [
+         *   { field: 'publishDate', order: 'desc' },
+         *   { field: 'likeCount', order: 'desc' }
+         * ]
+         * // Search: multi-field sort
+         * // Database: uses first item's order ('desc')
+         * ```
+         *
+         * **3. Explicit (different config per mode):**
+         * ```ts
+         * defaultSort: {
+         *   search: { field: 'relevanceScore', order: 'desc' },
+         *   database: 'asc'  // Index designed for ascending
+         * }
+         * ```
+         */
+        readonly defaultSort?: TableSortConfig;
+        /**
          * Filter segments (quick filter tabs) displayed above the table.
          * Provides quick access to common filter sets.
          *
@@ -2867,6 +3026,16 @@ export interface EntityListPageConfig {
          * ]
          */
         readonly segments?: ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup>;
+        /**
+         * Default number of records per page.
+         * Users can change this via the pagination controls (options: 10, 20, 50, 100).
+         *
+         * @default 10
+         *
+         * @example
+         * pageSize: 20  // Show 20 records per page by default
+         */
+        readonly pageSize?: number;
     };
 }
 /**
@@ -3154,13 +3323,7 @@ export interface EntitySchema<A extends string, F extends string, C extends stri
          *
          * @deprecated Use listPageConfig.defaultSort {@link EntityListPageConfig.defaultSort} instead
          */
-        readonly listPageDefaultSort?: {
-            readonly field: string;
-            readonly order: 'asc' | 'desc';
-        } | ReadonlyArray<{
-            readonly field: string;
-            readonly order: 'asc' | 'desc';
-        }> | 'asc' | 'desc';
+        readonly listPageDefaultSort?: SortConfig;
         /**
          * View/Detail page configuration
          *

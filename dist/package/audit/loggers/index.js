@@ -1,23 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getChangedProperties = exports.DefaultAuditHandler = exports.DynamoDBAuditEntitySchema = exports.AUDIT_ENV_KEYS = exports.DummyAuditLogger = exports.ConsoleAuditLogger = exports.AuditLoggerFactory = exports.CloudWatchAuditLogger = exports.DefaultDynamoDBAuditEntityConfiguration = exports.DefaultDynamoDBAuditEntitySchema = exports.DynamoDbAuditLogger = void 0;
-var dynamodb_1 = require("./dynamodb");
-Object.defineProperty(exports, "DynamoDbAuditLogger", { enumerable: true, get: function () { return dynamodb_1.DynamoDbAuditLogger; } });
-Object.defineProperty(exports, "DefaultDynamoDBAuditEntitySchema", { enumerable: true, get: function () { return dynamodb_1.DynamoDBAuditEntitySchema; } });
-Object.defineProperty(exports, "DefaultDynamoDBAuditEntityConfiguration", { enumerable: true, get: function () { return dynamodb_1.DynamoDBAuditEntityConfiguration; } });
-var cloudwatch_1 = require("./cloudwatch");
-Object.defineProperty(exports, "CloudWatchAuditLogger", { enumerable: true, get: function () { return cloudwatch_1.CloudWatchAuditLogger; } });
-var factory_1 = require("./factory");
-Object.defineProperty(exports, "AuditLoggerFactory", { enumerable: true, get: function () { return factory_1.AuditLoggerFactory; } });
-var console_1 = require("./console");
-Object.defineProperty(exports, "ConsoleAuditLogger", { enumerable: true, get: function () { return console_1.ConsoleAuditLogger; } });
-var dummy_1 = require("./dummy");
-Object.defineProperty(exports, "DummyAuditLogger", { enumerable: true, get: function () { return dummy_1.DummyAuditLogger; } });
-var interfaces_1 = require("../interfaces");
-Object.defineProperty(exports, "AUDIT_ENV_KEYS", { enumerable: true, get: function () { return interfaces_1.AUDIT_ENV_KEYS; } });
-var dynamodb_2 = require("./dynamodb");
-Object.defineProperty(exports, "DynamoDBAuditEntitySchema", { enumerable: true, get: function () { return dynamodb_2.DynamoDBAuditEntitySchema; } });
+exports.DefaultAuditHandler = exports.DynamoDBStreamAuditLogger = void 0;
+// Main exports - interfaces and utilities are exported from audit/index.ts
 var dynamo_db_stream_audit_logger_1 = require("./dynamo-db-stream-audit-logger");
+Object.defineProperty(exports, "DynamoDBStreamAuditLogger", { enumerable: true, get: function () { return dynamo_db_stream_audit_logger_1.DynamoDBStreamAuditLogger; } });
 Object.defineProperty(exports, "DefaultAuditHandler", { enumerable: true, get: function () { return dynamo_db_stream_audit_logger_1.DynamoDBStreamAuditLogger; } });
-Object.defineProperty(exports, "getChangedProperties", { enumerable: true, get: function () { return dynamo_db_stream_audit_logger_1.getChangedProperties; } });
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiaW5kZXguanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyIuLi8uLi8uLi8uLi9zcmMvYXVkaXQvbG9nZ2Vycy9pbmRleC50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOzs7QUFBQSx1Q0FJb0I7QUFIbEIsK0dBQUEsbUJBQW1CLE9BQUE7QUFDbkIsNEhBQUEseUJBQXlCLE9BQW9DO0FBQzdELG1JQUFBLGdDQUFnQyxPQUEyQztBQUc3RSwyQ0FBcUQ7QUFBNUMsbUhBQUEscUJBQXFCLE9BQUE7QUFFOUIscUNBQStDO0FBQXRDLDZHQUFBLGtCQUFrQixPQUFBO0FBRTNCLHFDQUErQztBQUF0Qyw2R0FBQSxrQkFBa0IsT0FBQTtBQUUzQixpQ0FBMkM7QUFBbEMseUdBQUEsZ0JBQWdCLE9BQUE7QUFFekIsNENBQStDO0FBQXRDLDRHQUFBLGNBQWMsT0FBQTtBQUV2Qix1Q0FFb0I7QUFEbEIscUhBQUEseUJBQXlCLE9BQUE7QUFHM0IsaUZBR3lDO0FBRnZDLG9JQUFBLHlCQUF5QixPQUF1QjtBQUNoRCxxSUFBQSxvQkFBb0IsT0FBQSIsInNvdXJjZXNDb250ZW50IjpbImV4cG9ydCB7XG4gIER5bmFtb0RiQXVkaXRMb2dnZXIsXG4gIER5bmFtb0RCQXVkaXRFbnRpdHlTY2hlbWEgYXMgRGVmYXVsdER5bmFtb0RCQXVkaXRFbnRpdHlTY2hlbWEsXG4gIER5bmFtb0RCQXVkaXRFbnRpdHlDb25maWd1cmF0aW9uIGFzIERlZmF1bHREeW5hbW9EQkF1ZGl0RW50aXR5Q29uZmlndXJhdGlvbixcbn0gZnJvbSAnLi9keW5hbW9kYic7XG5cbmV4cG9ydCB7IENsb3VkV2F0Y2hBdWRpdExvZ2dlciB9IGZyb20gJy4vY2xvdWR3YXRjaCc7XG5cbmV4cG9ydCB7IEF1ZGl0TG9nZ2VyRmFjdG9yeSB9IGZyb20gJy4vZmFjdG9yeSc7XG5cbmV4cG9ydCB7IENvbnNvbGVBdWRpdExvZ2dlciB9IGZyb20gJy4vY29uc29sZSc7XG5cbmV4cG9ydCB7IER1bW15QXVkaXRMb2dnZXIgfSBmcm9tICcuL2R1bW15JztcblxuZXhwb3J0IHsgQVVESVRfRU5WX0tFWVMgfSBmcm9tICcuLi9pbnRlcmZhY2VzJztcblxuZXhwb3J0IHtcbiAgRHluYW1vREJBdWRpdEVudGl0eVNjaGVtYSxcbn0gZnJvbSAnLi9keW5hbW9kYic7XG5cbmV4cG9ydCB7XG4gIER5bmFtb0RCU3RyZWFtQXVkaXRMb2dnZXIgYXMgRGVmYXVsdEF1ZGl0SGFuZGxlcixcbiAgZ2V0Q2hhbmdlZFByb3BlcnRpZXMsXG59IGZyb20gJy4vZHluYW1vLWRiLXN0cmVhbS1hdWRpdC1sb2dnZXInOyJdfQ==
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiaW5kZXguanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyIuLi8uLi8uLi8uLi9zcmMvYXVkaXQvbG9nZ2Vycy9pbmRleC50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOzs7QUFBQSwyRUFBMkU7QUFDM0UsaUZBR3lDO0FBRnJDLDBJQUFBLHlCQUF5QixPQUFBO0FBQ3pCLG9JQUFBLHlCQUF5QixPQUF1QiIsInNvdXJjZXNDb250ZW50IjpbIi8vIE1haW4gZXhwb3J0cyAtIGludGVyZmFjZXMgYW5kIHV0aWxpdGllcyBhcmUgZXhwb3J0ZWQgZnJvbSBhdWRpdC9pbmRleC50c1xuZXhwb3J0IHtcbiAgICBEeW5hbW9EQlN0cmVhbUF1ZGl0TG9nZ2VyLFxuICAgIER5bmFtb0RCU3RyZWFtQXVkaXRMb2dnZXIgYXMgRGVmYXVsdEF1ZGl0SGFuZGxlcixcbn0gZnJvbSAnLi9keW5hbW8tZGItc3RyZWFtLWF1ZGl0LWxvZ2dlcic7XG4iXX0=

@@ -73,30 +73,10 @@
  * - https://opentelemetry.io/docs/languages/js/
  */
 import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel } from '../types';
-export interface OTELBackendOptions {
-    serviceName: string;
-    minLevel?: ObservabilityLevel;
-}
-/**
- * OTEL/ADOT Backend - Uses OpenTelemetry API for custom instrumentation
- *
- * This backend works alongside the AWS ADOT Lambda layer to add custom
- * spans, events, and attributes to traces.
- *
- * Supports all three OTEL signals:
- * - Traces: Custom spans from our Span API
- * - Metrics: Counters, gauges, histograms from our Metric API
- * - Logs: Structured logs from our Log API
- *
- * The ADOT layer handles:
- * - Automatic instrumentation of AWS SDK, HTTP, and Lambda
- * - Exporting to X-Ray/CloudWatch via OTLP
- * - Context propagation (W3C Trace Context + X-Ray)
- */
 export declare class OTELObservabilityBackend implements ObservabilityBackend {
-    private readonly options;
     readonly name = "otel";
     readonly minLevel?: ObservabilityLevel;
+    private readonly serviceName;
     private tracer;
     private trace;
     private contextApi;
@@ -109,11 +89,8 @@ export declare class OTELObservabilityBackend implements ObservabilityBackend {
     private isLogsAvailable;
     private invocationCount;
     private initializationPromise;
-    constructor(options: OTELBackendOptions);
+    constructor(serviceName: string, minLevel: ObservabilityLevel);
     private initializeOpenTelemetry;
-    /**
-     * Ensure initialization is complete before using OTEL
-     */
     private ensureInitialized;
     initializeInvocation(): void;
     capture(event: ObservabilityEvent): Promise<void>;
@@ -121,38 +98,17 @@ export declare class OTELObservabilityBackend implements ObservabilityBackend {
     private handleSpanStart;
     private handleSpanEventInternal;
     private handleSpanEnd;
-    /**
-     * Handle metric events using OTEL's Metrics API
-     *
-     * OTEL SDK internally caches instrument instances by name - no manual caching needed.
-     */
     private handleMetricEvent;
     private handleLogEvent;
-    /**
-     * Safely extract log message from event data
-     */
     private extractLogMessage;
-    /**
-     * Type guard for string array
-     */
     private isStringArray;
-    /**
-     * Type guard for number array
-     */
     private isNumberArray;
-    /**
-     * Type guard for boolean array
-     */
     private isBooleanArray;
     private static readonly MAX_ATTRIBUTE_SIZE;
-    /**
-     * Convert Record<string, unknown> to OTEL Attributes (only primitive values allowed)
-     */
     private toOtelAttributes;
-    /**
-     * Safely JSON stringify with size limit for OTEL attributes
-     */
     private safeJsonStringify;
     flush(): Promise<void>;
     destroy(): void;
 }
+/** Reset cold start flag (for testing) */
+export declare function resetColdStartFlag(): void;

@@ -38,7 +38,8 @@
  * ```
  */
 import { Actor } from '../../core/types/execution-context';
-import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel, ObservationContext } from '../types';
+import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel } from '../types';
+import { ObservationContext } from '../context';
 /**
  * Mock backend that captures all events for testing
  */
@@ -145,6 +146,5 @@ export declare function assertEventCount(backend: MockBackend, count: number, fi
 export declare function createTestActor(overrides?: Partial<Actor>): Actor;
 /**
  * Create a test observation context object
- * ObservationContext requires correlationId, we provide a default for convenience
  */
 export declare function createTestObservationContext(overrides?: Partial<ObservationContext>): ObservationContext;

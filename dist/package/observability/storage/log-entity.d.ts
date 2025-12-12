@@ -5,10 +5,6 @@
  * Used by ObservabilityLogService which is self-contained (no DI dependency).
  */
 /**
- * Get TTL in days from config
- */
-export declare function getTtlDays(): number;
-/**
  * Observability Log Entity Schema
  *
  * Universal schema for all observability event types:

@@ -1,18 +1,32 @@
 import { APIGatewayEvent, Context } from 'aws-lambda';
 import { Request, Response } from '../../interfaces';
-export interface ExecutionContext<TObservability = unknown, TDebugInfo = unknown> {
-    event: APIGatewayEvent;
-    lambdaContext: Context;
-    request: Request;
-    response: Response;
+import type { ExecutionContextData } from '../runtime/execution-context';
+/**
+ * Handler execution context for API Gateway handlers.
+ *
+ * Contains handler-specific data (request, response) plus the execution context.
+ * The execution context is also available via getCurrentExecutionContext().
+ */
+export interface ExecutionContext<TDebugInfo = unknown> {
+    readonly event: APIGatewayEvent;
+    readonly lambdaContext: Context;
+    readonly request: Request;
+    readonly response: Response;
+    /** Current actor extracted from request context */
     actor?: Actor;
-    observability?: TObservability;
+    /**
+     * Execution context - the framework context for cross-cutting concerns.
+     * Same object is available via getCurrentExecutionContext().
+     */
+    executionContext?: ExecutionContextData;
+    /** Debug info (for development) */
     debugInfo?: TDebugInfo;
+    /** Simple actor enhancement method */
     enhanceActor?: (enhancement: Partial<Actor>) => void;
 }
 /**
- * Actor represents the entity performing an action
- * Focused on practical identity and authorization context
+ * Actor represents the entity performing an action.
+ * Focused on practical identity and authorization context.
  */
 export interface Actor {
     actorId?: string;

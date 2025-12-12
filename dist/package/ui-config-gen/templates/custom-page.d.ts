@@ -960,7 +960,7 @@ export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageCon
 export declare function makeCustomPageConfig(options: CustomPageOptions): {
     pageName: string | undefined;
     pageTitle: Template;
-    pageType: "list" | "dashboard" | "details" | "form" | "accordion" | "menu";
+    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -971,7 +971,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     listPageConfig: ListPageConfigStructure;
     pageName: string | undefined;
     pageTitle: Template;
-    pageType: "list" | "dashboard" | "details" | "form" | "accordion" | "menu";
+    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -985,7 +985,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     formPageConfig: FormPageConfigStructure;
     pageName: string | undefined;
     pageTitle: Template;
-    pageType: "list" | "dashboard" | "details" | "form" | "accordion" | "menu";
+    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -996,7 +996,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     detailsPageConfig: DetailsPageConfigStructure;
     pageName: string | undefined;
     pageTitle: Template;
-    pageType: "list" | "dashboard" | "details" | "form" | "accordion" | "menu";
+    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1015,7 +1015,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     };
     pageName: string | undefined;
     pageTitle: Template;
-    pageType: "list" | "dashboard" | "details" | "form" | "accordion" | "menu";
+    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1038,7 +1038,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     }>;
     pageName: string | undefined;
     pageTitle: Template;
-    pageType: "list" | "dashboard" | "details" | "form" | "accordion" | "menu";
+    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1064,7 +1064,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     };
     pageName: string | undefined;
     pageTitle: Template;
-    pageType: "list" | "dashboard" | "details" | "form" | "accordion" | "menu";
+    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;

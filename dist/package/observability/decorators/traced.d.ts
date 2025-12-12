@@ -36,7 +36,15 @@ export interface TracedOptions {
     captureArgs?: boolean;
     /** Whether to capture return value in span attributes */
     captureResult?: boolean;
-    /** Source type for the span (controller, service, queue, task, etc.) */
+    /**
+     * Source type for the span (auto-detected if not provided)
+     * Auto-detection rules:
+     * - *Controller → 'controller'
+     * - *Service → 'service'
+     * - *Queue, *QueueHandler → 'queue'
+     * - *Task, *TaskHandler → 'task'
+     * - Default → 'handler'
+     */
     sourceType?: 'controller' | 'service' | 'handler' | 'queue' | 'task';
 }
 /**

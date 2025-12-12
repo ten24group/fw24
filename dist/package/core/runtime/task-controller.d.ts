@@ -1,36 +1,45 @@
+import { Context, ScheduledEvent } from "aws-lambda";
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
-import { AuditContext, TaskAuditContext } from '../../audit/interfaces';
 import { ITaskConfig } from '../../decorators/task';
+import { ExecutionContextData } from './execution-context';
+/**
+ * Task execution context - contains task-specific data AND execution context.
+ */
+export interface TaskExecutionContext {
+    /** The scheduled event (if available) */
+    readonly event?: ScheduledEvent;
+    /** Lambda context (if available) */
+    readonly lambdaContext?: Context;
+    /** Execution context (also available via getCurrentExecutionContext()) */
+    readonly executionContext: ExecutionContextData;
+}
 /**
  * Base class for handling Schedule Tasks.
+ *
+ * All handler execution is wrapped in execution context.
+ * Configure observability via the @Task decorator:
+ *
+ * @example
+ * ```typescript
+ * @Task('my-task', {
+ *   schedule: 'rate(1 minute)',
+ *   observability: {
+ *     source: 'domain:task-type',
+ *     tags: { domain: 'sports', frequency: 'frequent' }
+ *   }
+ * })
+ * export class MyTask extends TaskController { }
+ * ```
  */
 declare abstract class TaskController extends AbstractLambdaHandler {
-    protected initialize(): Promise<any>;
-    abstract process(): Promise<any>;
+    protected initialize(): Promise<void>;
     /**
-     * Creates audit context for the task execution following the existing pattern
-     * @returns AuditContext or null if audit is disabled
+     * Process the scheduled task.
+     * @param ctx - Task execution context
      */
-    protected makeAuditContext(): AuditContext | null;
-    /**
-     * Captures audit log for task execution start
-     */
-    protected captureStart(auditContext: AuditContext, taskContext: TaskAuditContext): Promise<void>;
-    /**
-     * Captures audit log for task execution end (success or error)
-     */
-    protected captureEnd(auditContext: AuditContext, _result: any, error: Error | null): Promise<void>;
-    /**
-     * Gets the task configuration
-     */
+    abstract process(ctx?: TaskExecutionContext): Promise<void>;
     protected getTaskConfig(): ITaskConfig;
-    /**
-     * Gets the task name
-     */
     protected getTaskName(): string | undefined;
-    /**
-     * Lambda handler for the task.
-     */
-    LambdaHandler(): Promise<any>;
+    LambdaHandler(_event?: ScheduledEvent, context?: Context): Promise<void>;
 }
 export { TaskController };

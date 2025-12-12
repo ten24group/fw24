@@ -10,7 +10,7 @@ export declare class EntitySearchService<S extends EntitySchema<any, any, any>> 
     protected getEntitySearchConfig(): {
         enabled: boolean;
         indexConfig?: import("../types").SearchIndexConfig;
-        serviceClass?: import("../../fw24").DepIdentifier<EntitySearchService<any>> | typeof EntitySearchService | EntitySearchService<any>;
+        serviceClass?: import("../../interfaces").DepIdentifier<EntitySearchService<any>> | typeof EntitySearchService | EntitySearchService<any>;
         documentTransformer?: ((entity: import("electrodb").ResponseItem<any, any, any, EntitySchema<any, any, any, {
             readonly get: "get";
             readonly list: "list";

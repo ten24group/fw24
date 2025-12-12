@@ -1,5 +1,5 @@
 import type { HttpRequestValidations, InputValidationRule } from "../validation";
-import type { AuditConfig } from "../audit/interfaces";
+import type { ControllerObservabilityConfig } from "../observability/controller-config";
 /**
  * Decorator function for defining a GET route.
  *
@@ -15,10 +15,10 @@ export declare const Get: (route: string, options?: {
      */
     target?: string;
     /**
-     * Audit configuration for this route
-     * Will override/enhance controller-level audit config
+     * Observability config override for this method.
+     * Takes precedence over controller-level config.
      */
-    audit?: AuditConfig;
+    observability?: ControllerObservabilityConfig;
 }) => (target: any, methodToDecorate: any) => void;
 /**
  * Decorator function for creating a POST route.
@@ -33,10 +33,10 @@ export declare const Post: (route: string, options?: {
      */
     target?: string;
     /**
-     * Audit configuration for this route
-     * Will override/enhance controller-level audit config
+     * Observability config override for this method.
+     * Takes precedence over controller-level config.
      */
-    audit?: AuditConfig;
+    observability?: ControllerObservabilityConfig;
 }) => (target: any, methodToDecorate: any) => void;
 /**
  * Decorator function for defining a PUT route.
@@ -53,10 +53,10 @@ export declare const Put: (route: string, options?: {
      */
     target?: string;
     /**
-     * Audit configuration for this route
-     * Will override/enhance controller-level audit config
+     * Observability config override for this method.
+     * Takes precedence over controller-level config.
      */
-    audit?: AuditConfig;
+    observability?: ControllerObservabilityConfig;
 }) => (target: any, methodToDecorate: any) => void;
 /**
  * Decorator function for defining a DELETE route.
@@ -73,10 +73,10 @@ export declare const Delete: (route: string, options?: {
      */
     target?: string;
     /**
-     * Audit configuration for this route
-     * Will override/enhance controller-level audit config
+     * Observability config override for this method.
+     * Takes precedence over controller-level config.
      */
-    audit?: AuditConfig;
+    observability?: ControllerObservabilityConfig;
 }) => (target: any, methodToDecorate: any) => void;
 /**
  * Decorator function for PATCH routes.
@@ -93,10 +93,10 @@ export declare const Patch: (route: string, options?: {
      */
     target?: string;
     /**
-     * Audit configuration for this route
-     * Will override/enhance controller-level audit config
+     * Observability config override for this method.
+     * Takes precedence over controller-level config.
      */
-    audit?: AuditConfig;
+    observability?: ControllerObservabilityConfig;
 }) => (target: any, methodToDecorate: any) => void;
 /**
  * Represents a decorator that creates a route decorator with the specified HTTP method "OPTIONS".
@@ -113,9 +113,9 @@ export declare const Options: (route: string, options?: {
      */
     target?: string;
     /**
-     * Audit configuration for this route
-     * Will override/enhance controller-level audit config
+     * Observability config override for this method.
+     * Takes precedence over controller-level config.
      */
-    audit?: AuditConfig;
+    observability?: ControllerObservabilityConfig;
 }) => (target: any, methodToDecorate: any) => void;
 export type RouteMethods = typeof Options | typeof Patch | typeof Delete | typeof Put | typeof Post | typeof Get;

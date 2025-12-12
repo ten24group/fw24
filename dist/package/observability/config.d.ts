@@ -1,94 +1,74 @@
 /**
- * Configuration Management for Observability
+ * Observability Configuration
  *
- * Provides a structured way to manage observability configuration
- * with environment variable parsing and runtime updates.
+ * Factory function for creating typed, validated observability config.
  */
-import { ObservabilityConfig, ObservabilityLevel, TypeSpecificConfig } from './types';
-/**
- * Centralized configuration defaults
- * All magic strings in one place for easy reference and modification
- */
-export declare const CONFIG_DEFAULTS: {
-    readonly serviceName: "fw24-service";
-    readonly cloudwatchNamespace: "FW24";
-    readonly tableName: "ObservabilityLogs";
-    readonly ttlDays: 90;
-    readonly backends: readonly ["cloudwatch"];
-    readonly minLevel: ObservabilityLevel.INFO;
-    readonly enabled: true;
-};
+import { ObservabilityConfig, ObservabilityLevel, SamplingConfig, ObservabilityDataProtectionConfig } from './types';
 /**
  * Valid backend types
  */
 export declare const VALID_BACKENDS: readonly ["cloudwatch", "dynamodb", "otel"];
 export type ValidBackend = typeof VALID_BACKENDS[number];
 /**
- * Configuration Manager for Observability
- *
- * Handles:
- * - Environment variable parsing (cached to avoid repeated parsing)
- * - Configuration validation
- * - Runtime configuration updates
- * - Type-specific configuration
+ * Centralized configuration defaults
  */
-export declare class ConfigManager {
-    private config;
-    /** Cached environment config to avoid double parsing */
-    private static cachedEnvConfig;
-    constructor(config: Partial<ObservabilityConfig>);
-    /**
-     * Create ConfigManager from environment variables.
-     * Results are cached to avoid repeated parsing on each instantiation.
-     */
-    static fromEnvironment(): ObservabilityConfig;
-    /**
-     * Clear the cached environment config (for testing)
-     */
-    static clearCache(): void;
-    /**
-     * Parse sampling configuration from environment
-     */
-    private static parseSamplingConfig;
-    /**
-     * Parse type-specific backend configuration
-     */
-    private static parseTypeSpecificConfig;
-    /**
-     * Build complete configuration
-     *
-     * Uses fromEnvironment() defaults if partial config is incomplete.
-     * This ensures all fields are always populated.
-     */
-    private buildConfig;
-    /**
-     * Get a specific configuration value
-     */
-    get<K extends keyof ObservabilityConfig>(key: K): ObservabilityConfig[K];
-    /**
-     * Get the full configuration
-     */
-    getAll(): ObservabilityConfig;
-    /**
-     * Update configuration at runtime
-     * @param updates - Partial configuration to merge
-     * @param validate - Whether to validate the resulting config (default: true)
-     * @throws Error if validation is enabled and config is invalid
-     */
-    update(updates: Partial<ObservabilityConfig>, validate?: boolean): void;
-    /**
-     * Get type-specific configuration
-     */
-    getTypeConfig(type: keyof NonNullable<ObservabilityConfig['types']>): TypeSpecificConfig | undefined;
-    /**
-     * Check if a specific backend is enabled for a type
-     */
-    isBackendEnabledForType(backendName: 'cloudwatch' | 'dynamodb' | 'otel', type: keyof NonNullable<ObservabilityConfig['types']>): boolean;
-    /**
-     * Get effective minimum level for a type
-     */
-    getEffectiveLevelForType(type: keyof NonNullable<ObservabilityConfig['types']>): ObservabilityLevel;
+export declare const CONFIG_DEFAULTS: {
+    readonly serviceName: "fw24-service";
+    readonly cloudwatchNamespace: "FW24";
+    readonly tableKey: "observabilitylogs";
+    readonly ttlDays: 90;
+    readonly minLevel: ObservabilityLevel.INFO;
+    readonly enabled: false;
+};
+/**
+ * Input type for createObservabilityConfig - all fields optional
+ */
+export interface ObservabilityConfigInput {
+    enabled?: boolean;
+    minLevel?: ObservabilityLevel;
+    serviceName?: string;
+    backends?: Array<{
+        type: ValidBackend;
+        enabled?: boolean;
+        minLevel?: ObservabilityLevel;
+    }>;
+    sampling?: Partial<SamplingConfig>;
+    cloudwatch?: {
+        namespace?: string;
+    };
+    dynamodb?: {
+        /** Logical table key - resolved to actual table name via env var {tableKey}_table */
+        tableKey?: string;
+        ttlDays?: number;
+    };
+    dataProtection?: Partial<ObservabilityDataProtectionConfig>;
+    types?: ObservabilityConfig['types'];
 }
+/**
+ * Create a complete, validated ObservabilityConfig from partial input
+ *
+ * @param input - Partial config from application
+ * @returns Complete ObservabilityConfig with defaults merged
+ * @throws Error if validation fails
+ *
+ * @example
+ * ```typescript
+ * // In your app's di.ts:
+ * import { DIContainer } from '@ten24group/fw24';
+ * import { createObservabilityConfig } from '@ten24group/fw24/observability';
+ *
+ * DIContainer.ROOT.registerConfigProvider({
+ *   provide: 'observability',
+ *   useConfig: createObservabilityConfig({
+ *     serviceName: 'my-app',
+ *     backends: [{ type: 'cloudwatch' }, { type: 'dynamodb' }],
+ *     // tableKey defaults to 'observabilitylogs'
+ *   }),
+ *   priority: 10
+ * });
+ * ```
+ */
+export declare function createObservabilityConfig(input?: ObservabilityConfigInput): ObservabilityConfig;
 /**
  * Validate observability configuration
  * Returns array of validation errors (empty if valid)

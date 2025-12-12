@@ -43,7 +43,7 @@ export declare function createTaskSource(taskName: string, handlerName?: string)
  *
  * NOTE: Most of these are AWS runtime environment variables that are
  * automatically set by the Lambda runtime, not application config.
- * Application-level config (like serviceName) comes from ConfigManager.
+ * Application-level config (like serviceName) comes from DI config.
  */
 export declare function getEnvironmentTags(): Record<string, string>;
 /**
@@ -53,6 +53,8 @@ export declare function clearEnvironmentTagsCache(): void;
 /**
  * Merge tags with defaults
  *
- * Event-specific tags override environment tags
+ * Event-specific tags override environment tags.
+ *
+ * IMPORTANT: Always creates a new object to avoid mutating cached environment tags.
  */
 export declare function mergeTags(eventTags?: Record<string, string>, includeEnvironment?: boolean): Record<string, string> | undefined;

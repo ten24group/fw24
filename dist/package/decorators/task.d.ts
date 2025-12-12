@@ -1,6 +1,6 @@
 import type { ILambdaEnvConfig } from "../interfaces";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
-import type { AuditConfig } from '../audit/interfaces';
+import type { SpanMetadata } from "../observability/controller-config";
 /**
  * Represents the configuration for a task.
  */
@@ -14,9 +14,22 @@ export type ITaskConfig = CommonLambdaHandlerOptions & {
      */
     env?: Array<ILambdaEnvConfig>;
     /**
-     * Audit configuration for this task
+     * Observability configuration for the task.
+     * Allows specifying custom tags, source, and attributes for spans.
+     *
+     * @example
+     * ```typescript
+     * @Task('sports-poll', {
+     *   schedule: 'rate(1 minute)',
+     *   observability: {
+     *     source: 'sports:scheduler:frequent',
+     *     tags: { domain: 'sports', frequency: 'frequent' },
+     *     attributes: { 'task.category': 'data-sync' }
+     *   }
+     * })
+     * ```
      */
-    audit?: AuditConfig;
+    observability?: SpanMetadata;
 };
 /**
  * Decorator function to define a scheduled task.

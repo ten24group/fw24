@@ -11,21 +11,6 @@ import { Actor, ExecutionContext } from '../../core/types/execution-context';
 import { CaptureInput, CaptureOptions, IEventCapture, ObservabilityError } from '../types';
 /**
  * Set a custom event capturer (for testing)
- *
- * @example
- * ```typescript
- * // In tests:
- * const mockCapturer = {
- *   capture: jest.fn().mockReturnValue('test-log-id'),
- *   captureAsync: jest.fn().mockResolvedValue('test-log-id'),
- * };
- * setCapturer(mockCapturer);
- *
- * // Run your observer tests...
- *
- * // Reset after tests:
- * resetCapturer();
- * ```
  */
 export declare function setCapturer(capturer: IEventCapture): void;
 /**
@@ -62,20 +47,28 @@ export interface CommonFields {
  */
 export declare function generateId(): string;
 /**
- * Resolve correlation ID from explicit value or context
+ * Resolve correlation ID from explicit value or context.
+ *
+ * If no correlationId is available:
+ * - In development (NODE_ENV !== 'production'): throws error for fast failure
+ * - In production: auto-generates with warning for resilience
  */
-export declare function resolveCorrelationId(observerName: string, explicitId?: string): string | undefined;
+export declare function resolveCorrelationId(observerName: string, explicitId?: string): string;
 /**
  * Merge tags from context and options
  */
 export declare function mergeObserverTags(contextTags?: Record<string, string>, optionTags?: Record<string, string>): Record<string, string> | undefined;
 /**
  * Build common fields from context and options.
- * Returns undefined if correlationId is not available.
+ * Always returns fields - auto-generates correlationId if needed.
  */
-export declare function buildCommonFields(observerName: string, options?: BaseObserverOptions): CommonFields | undefined;
+export declare function buildCommonFields(observerName: string, options?: BaseObserverOptions): CommonFields;
 /**
- * Extract BaseObserverOptions from ExecutionContext or pass through if already options
+ * Extract BaseObserverOptions from ExecutionContext or pass through if already options.
+ *
+ * When an ExecutionContext (the handler context with event/request/response) is passed,
+ * extracts correlationId from executionContext first (the AsyncLocalStorage context),
+ * then falls back to actor.correlationId.
  */
 export declare function extractObserverOptions(ctx?: ExecutionContext | BaseObserverOptions): BaseObserverOptions;
 /**
@@ -103,15 +96,15 @@ export declare function mapError(error: Error): ObservabilityError;
  *
  * Uses getCapturer() for testability - in tests, call setCapturer(mockCapturer) first.
  */
-export declare function captureEvent(fields: CommonFields, event: Omit<CaptureInput, 'correlationId' | 'logId' | 'timestampMs'> & {
-    logId?: string;
+export declare function captureEvent(fields: CommonFields, event: Omit<CaptureInput, 'correlationId' | 'observabilityLogId' | 'timestampMs'> & {
+    observabilityLogId?: string;
     timestampMs?: number;
 }, options?: CaptureOptions): string | undefined;
 /**
  * Capture an event asynchronously using common fields.
  * Use when you need to await backend completion (e.g., for critical audits).
  */
-export declare function captureEventAsync(fields: CommonFields, event: Omit<CaptureInput, 'correlationId' | 'logId' | 'timestampMs'> & {
-    logId?: string;
+export declare function captureEventAsync(fields: CommonFields, event: Omit<CaptureInput, 'correlationId' | 'observabilityLogId' | 'timestampMs'> & {
+    observabilityLogId?: string;
     timestampMs?: number;
 }, options?: Omit<CaptureOptions, 'sync'>): Promise<string | undefined>;
