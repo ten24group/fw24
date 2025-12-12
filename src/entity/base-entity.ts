@@ -955,6 +955,53 @@ export interface IEntityConfigReference {
     /** Add default filters (for list pages) */
     defaultFilters?: Record<string, any>;
 
+    /**
+     * Override filter segments completely (for list pages).
+     * When provided, replaces all segments from base config.
+     * Set to empty array [] to disable segments entirely.
+     * 
+     * @example
+     * // Disable segments (useful in modal/section contexts)
+     * segments: []
+     * 
+     * @example
+     * // Replace with custom segments
+     * segments: [
+     *   { id: 'active', label: 'Active', filters: { status: { eq: 'active' } } },
+     *   { id: 'inactive', label: 'Inactive', filters: { status: { eq: 'inactive' } } }
+     * ]
+     */
+    segments?: ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup>;
+
+    /**
+     * Hide specific segments by ID (for list pages).
+     * Keeps all other segments from base config.
+     * 
+     * @example
+     * hideSegments: ['root-only', 'child-only']
+     */
+    hideSegments?: ReadonlyArray<string> | Array<string>;
+
+    /**
+     * Show only these segments by ID (for list pages).
+     * Mutually exclusive with hideSegments.
+     * 
+     * @example
+     * showOnlySegments: ['all-levels', 'errors']
+     */
+    showOnlySegments?: ReadonlyArray<string> | Array<string>;
+
+    /**
+     * Add additional segments to base config (for list pages).
+     * Merged with base segments using mergeSegments logic (ID-based override).
+     * 
+     * @example
+     * additionalSegments: [
+     *   { id: 'archived', label: 'Archived', filters: { archived: { eq: true } } }
+     * ]
+     */
+    additionalSegments?: ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup>;
+
     /** Hide specific fields from rendering */
     hideFields?: ReadonlyArray<string> | Array<string>;
 
@@ -1585,6 +1632,27 @@ export interface IEntityPageAction {
    */
   template?: Template;
 
+  /**
+   * Tooltip text (shown on hover).
+   * Can be static string or dynamic template evaluated from routeParams/record context.
+   * 
+   * @example
+   * // Static tooltip
+   * tooltip: 'View all child spans'
+   * 
+   * @example
+   * // Dynamic tooltip
+   * tooltip: 'View trace for {correlationId}'
+   * 
+   * @example
+   * // Complex template
+   * tooltip: {
+   *   composite: ['teamName', 'status'],
+   *   template: 'Edit {teamName} (Status: {status})'
+   * }
+   */
+  tooltip?: Template;
+
   url?: string;
   icon?: string;
   type?: 'button' | 'dropdown';
@@ -1595,6 +1663,26 @@ export interface IEntityPageAction {
 
   /** Modal configuration (inline config or resolved from url) */
   modalConfig?: IEntityPageActionModalConfig;
+
+  /** 
+   * Entity config reference for modal route resolution (when using url + openInModal).
+   * Provides overrideConfig support for defaultFilters, hideSegments, etc.
+   * Only used when modalConfig is NOT provided (route resolution pattern).
+   * 
+   * @example
+   * {
+   *   url: '/list-observabilitylog?parentObservabilityLogId.eq=:observabilityLogId',
+   *   openInModal: true,
+   *   modalConfigRef: {
+   *     entityName: 'observabilityLog',
+   *     pageType: 'list',
+   *     overrideConfig: {
+   *       hideSegments: ['hierarchy-group']
+   *     }
+   *   }
+   * }
+   */
+  modalConfigRef?: IEntityConfigReference;
 
   /** Custom modal width. Default: auto-detect from page type */
   modalWidth?: number | string;
@@ -1716,16 +1804,30 @@ interface DateTimeFieldMetadata extends BaseFieldMetadata {
 interface DurationFieldMetadata extends BaseFieldMetadata {
   fieldType?: 'duration';
   /**
+   * Input unit of the duration value stored in the database.
+   * The renderer will convert from this unit to human-readable format.
+   * Default: 'seconds'
+   * 
+   * @example
+   * // For a field storing milliseconds (e.g., durationMs: 1500)
+   * durationUnit: 'ms'  // Displays as "1.5s"
+   * 
+   * @example
+   * // For a field storing seconds (e.g., duration: 90)
+   * durationUnit: 'seconds'  // Displays as "1m 30s"
+   */
+  durationUnit?: 'ms' | 'seconds' | 'minutes' | 'hours';
+  /**
    * Duration format: 'seconds', 'minutes', 'hours', 'days', 'human' (e.g., '2h 30m')
    * Default: 'human'
    */
   format?: 'seconds' | 'minutes' | 'hours' | 'days' | 'human';
   /**
-   * Minimum duration value (in seconds)
+   * Minimum duration value (in the specified unit)
    */
   minDuration?: number;
   /**
-   * Maximum duration value (in seconds)
+   * Maximum duration value (in the specified unit)
    */
   maxDuration?: number;
 }
@@ -2476,8 +2578,9 @@ export interface ITableExpandableConfig {
    * - 'nested-table': Render another table (for to-many relations)
    * - 'details': Render detail view of nested data
    * - 'custom': Use custom pageType rendering
+   * - 'json': Render raw JSON view of the entire record
    */
-  mode: 'nested-table' | 'details' | 'custom';
+  mode: 'nested-table' | 'details' | 'custom' | 'json';
 
   /**
    * Field name containing relation data or used to construct API URL.
@@ -3269,6 +3372,17 @@ export interface EntityListPageConfig {
      * ]
      */
     readonly segments?: ReadonlyArray<IFilterSegment | IFilterSegmentGroup> | Array<IFilterSegment | IFilterSegmentGroup>;
+
+    /**
+     * Default number of records per page.
+     * Users can change this via the pagination controls (options: 10, 20, 50, 100).
+     * 
+     * @default 10
+     * 
+     * @example
+     * pageSize: 20  // Show 20 records per page by default
+     */
+    readonly pageSize?: number;
   };
 }
 
