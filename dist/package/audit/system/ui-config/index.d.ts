@@ -15,44 +15,27 @@ export declare const AuditCustomPageConfigs: {
             readonly apiConfig: {
                 readonly apiUrl: "/system/auditlog";
                 readonly search: {
-                    defaultSort?: "desc" | "asc" | {
-                        readonly field: string;
-                        readonly order: "asc" | "desc";
-                    } | readonly {
-                        readonly field: string;
-                        readonly order: "asc" | "desc";
-                    }[] | undefined;
+                    defaultSort?: "desc" | "asc" | import("../../../entity").FieldSortConfig | readonly import("../../../entity").FieldSortConfig[] | undefined;
                     apiMethod: "GET";
                     responseKey: string;
                     apiUrl: string;
                 };
                 readonly database: {
-                    defaultSort?: "desc" | "asc" | {
-                        readonly field: string;
-                        readonly order: "asc" | "desc";
-                    } | readonly {
-                        readonly field: string;
-                        readonly order: "asc" | "desc";
-                    }[] | undefined;
+                    defaultSort?: import("../../../entity").SortOrder | undefined;
                     apiMethod: "GET";
                     responseKey: string;
                     apiUrl: string;
                 };
             } | {
                 readonly apiUrl: "/system/auditlog";
-                readonly defaultSort?: "desc" | "asc" | {
-                    readonly field: string;
-                    readonly order: "asc" | "desc";
-                } | readonly {
-                    readonly field: string;
-                    readonly order: "asc" | "desc";
-                }[] | undefined;
+                readonly defaultSort?: import("../../../entity").FieldSortConfig | readonly import("../../../entity").FieldSortConfig[] | import("../../../entity").SortOrder | undefined;
                 readonly apiMethod: "GET";
                 readonly responseKey: string;
                 readonly useSearch: false;
                 readonly search?: undefined;
                 readonly database?: undefined;
             };
+            readonly pageSize?: number | undefined;
             readonly fetchStrategy: "eager" | "lazy";
             readonly segments?: readonly (import("../../../entity").IFilterSegment | import("../../../entity").IFilterSegmentGroup)[] | (import("../../../entity").IFilterSegment | import("../../../entity").IFilterSegmentGroup)[] | undefined;
             readonly expandableConfig?: import("../../../entity").ITableExpandableConfig | undefined;

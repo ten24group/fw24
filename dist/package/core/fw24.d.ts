@@ -11,6 +11,7 @@ import { IApplicationConfig, SystemControllerDefinition, SystemUIPageDefinition 
 import { FW24Construct, OutputType } from '../interfaces/construct';
 import { type IDIContainer } from '../interfaces/di';
 import { type IFw24Module } from './runtime/module';
+import type { TImportedPolicy, TPolicyStatementOrProps, IFunctionResourceAccess } from '../constructs/lambda-function';
 export declare class Fw24 {
     readonly logger: import("tslog").Logger<import("tslog").ILogObj>;
     appName: string;
@@ -21,6 +22,8 @@ export declare class Fw24 {
     private apis;
     private environmentVariables;
     private readonly globalEnvironmentVariables;
+    private readonly globalPolicies;
+    private globalResourceAccess;
     private readonly policyStatements;
     private defaultAuthorizer;
     private cognitoAuthorizers;
@@ -94,6 +97,73 @@ export declare class Fw24 {
      */
     setGlobalEnvironmentVariable(name: string, value: any): void;
     getGlobalEnvironmentVariables(): string[];
+    /**
+     * Add a policy statement that should be attached to ALL Lambda functions in the application.
+     * This is useful for cross-cutting concerns like observability, logging, or shared resources.
+     *
+     * @example
+     * // Add an imported policy by name
+     * fw24.addGlobalPolicy('my-policy-name');
+     * fw24.addGlobalPolicy('my-policy-name', 'my-prefix');
+     * fw24.addGlobalPolicy({ name: 'my-policy-name', prefix: 'my-prefix', isOptional: true });
+     *
+     * // Add a direct policy statement
+     * fw24.addGlobalPolicy(new PolicyStatement({
+     *   effect: Effect.ALLOW,
+     *   actions: ['s3:GetObject'],
+     *   resources: ['*']
+     * }));
+     *
+     * // Add policy statement props
+     * fw24.addGlobalPolicy({
+     *   effect: Effect.ALLOW,
+     *   actions: ['s3:GetObject'],
+     *   resources: ['*']
+     * });
+     *
+     * @param policy The policy to add - can be a name string, TImportedPolicy, PolicyStatement, or PolicyStatementProps
+     * @param prefix The prefix for imported policy name (optional, only used when policy is a string)
+     * @param isOptional Whether the policy is optional (optional, only used when policy is a string)
+     */
+    addGlobalPolicy(policy: string | TPolicyStatementOrProps | TImportedPolicy, prefix?: string, isOptional?: boolean): void;
+    /**
+     * Get all global policies that should be attached to ALL Lambda functions.
+     * @returns Set of policies (can be TPolicyStatementOrProps or TImportedPolicy)
+     */
+    getGlobalPolicies(): Set<TPolicyStatementOrProps | TImportedPolicy>;
+    /**
+     * Set global resource access that should be applied to ALL Lambda functions.
+     * This replaces any existing global resource access configuration.
+     *
+     * @example
+     * fw24.setGlobalResourceAccess({
+     *   tables: ['users-table', { name: 'orders-table', access: ['read'] }],
+     *   buckets: ['assets-bucket'],
+     *   queues: ['notifications-queue'],
+     *   topics: ['events-topic']
+     * });
+     *
+     * @param resourceAccess The resource access configuration
+     */
+    setGlobalResourceAccess(resourceAccess: IFunctionResourceAccess): void;
+    /**
+     * Add to global resource access configuration.
+     * This merges with existing global resource access configuration.
+     *
+     * @example
+     * fw24.addGlobalResourceAccess({
+     *   tables: ['users-table'],
+     *   buckets: ['assets-bucket']
+     * });
+     *
+     * @param resourceAccess The resource access to add
+     */
+    addGlobalResourceAccess(resourceAccess: Partial<IFunctionResourceAccess>): void;
+    /**
+     * Get global resource access configuration.
+     * @returns The global resource access configuration
+     */
+    getGlobalResourceAccess(): IFunctionResourceAccess;
     setPolicy(policyName: string, value: PolicyStatementProps | PolicyStatement, prefix?: string): void;
     getPolicy(policyName: string, prefix?: string): PolicyStatementProps | PolicyStatement | undefined;
     hasPolicy(policyName: string, prefix?: string): boolean;

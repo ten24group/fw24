@@ -60,49 +60,56 @@ export interface LambdaFunctionProps {
     };
 }
 /**
+ * Represents a resource access entry - either a simple string name or an object with name and access permissions.
+ */
+export type TResourceAccessEntry = string | {
+    name: string;
+    access?: string[];
+};
+/**
  * Represents the access permissions for various resources that can be accessed by a function.
  */
 export interface IFunctionResourceAccess {
     /**
      * Access permissions for tables.
-     * Each table can have a name and an optional array of access permissions.
+     * Each table can be a string (name only, defaults to readwrite) or an object with name and access permissions.
      * The access permissions can be 'read', 'write', or 'readwrite'.
      * If no access permissions are specified, the default is 'readwrite'.
+     *
+     * @example
+     * tables: ['users-table', { name: 'orders-table', access: ['read'] }]
      */
-    tables?: Array<{
-        name: string;
-        access?: string[];
-    }> | string[];
+    tables?: TResourceAccessEntry[];
     /**
      * Access permissions for buckets.
-     * Each bucket can have a name and an optional array of access permissions.
+     * Each bucket can be a string (name only, defaults to readwrite) or an object with name and access permissions.
      * The access permissions can be 'read', 'write', or 'readwrite'.
      * If no access permissions are specified, the default is 'readwrite'.
+     *
+     * @example
+     * buckets: ['assets-bucket', { name: 'logs-bucket', access: ['write'] }]
      */
-    buckets?: Array<{
-        name: string;
-        access?: string[];
-    }> | string[];
+    buckets?: TResourceAccessEntry[];
     /**
      * Access permissions for topics.
-     * Each topic can have a name and an optional array of access permissions.
+     * Each topic can be a string (name only, defaults to publish) or an object with name and access permissions.
      * The access permissions can be 'publish'.
      * If no access permissions are specified, the default is 'publish'.
+     *
+     * @example
+     * topics: ['events-topic', { name: 'notifications-topic', access: ['publish'] }]
      */
-    topics?: Array<{
-        name: string;
-        access?: string[];
-    }> | string[];
+    topics?: TResourceAccessEntry[];
     /**
      * Access permissions for queues.
-     * Each queue can have a name and an optional array of access permissions.
+     * Each queue can be a string (name only, defaults to send) or an object with name and access permissions.
      * The access permissions can be 'send', 'receive', or 'delete'.
      * If no access permissions are specified, the default is 'send'.
+     *
+     * @example
+     * queues: ['notifications-queue', { name: 'processing-queue', access: ['send', 'receive'] }]
      */
-    queues?: Array<{
-        name: string;
-        access?: string[];
-    }> | string[];
+    queues?: TResourceAccessEntry[];
 }
 /**
  * Represents a Lambda function construct.
