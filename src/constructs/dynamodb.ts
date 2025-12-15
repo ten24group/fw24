@@ -19,6 +19,7 @@ import { ensureNoSpecialChars, ensureSuffix } from "../utils/keys";
 import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
 import { QueueLambda } from "./queue-lambda";
 import { ITopicConstructConfig, TopicConstruct } from "./topic";
+import { LayerConstruct } from "./layer";
 
 interface NewQueueConfig {
     type: 'new';
@@ -436,7 +437,7 @@ export class DynamoDBConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = DynamoDBConstruct.name;
-    dependencies: string[] = [];
+    dependencies: string[] = [ LayerConstruct.name ];  // Wait for layers so entry packages are registered
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;

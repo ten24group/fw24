@@ -134,6 +134,11 @@ export class Application {
             return;
         }
 
+
+        // Build user-defined layers BEFORE any other constructs
+        // This ensures layers and entry packages are available for any lambdas created by any construct
+        await this.buildUserLayers();
+
         const totalConstructs = this.constructs.size;
         this.logger.info(`${'='.repeat(60)}`);
         this.logger.info(`🚀 Building ${totalConstructs} construct(s)...`);
@@ -144,6 +149,26 @@ export class Application {
         this.logger.info(`${'='.repeat(60)}`);
         this.logger.info(`✅ All constructs completed successfully`);
         this.logger.info(`${'='.repeat(60)}\n`);
+    }
+
+    /**
+     * Build user-defined layer constructs before other constructs.
+     * This ensures entry packages are registered before any lambdas are created.
+     */
+    private async buildUserLayers(): Promise<void> {
+        const layerConstructs = Array.from(this.constructs.entries())
+            .filter(([ _, construct ]) => construct.name === 'LayerConstruct')
+            .map(([ name ]) => name);
+
+        if (layerConstructs.length === 0) {
+            return;
+        }
+
+        this.logger.info(`Building ${layerConstructs.length} user layer(s) first...`);
+
+        for (const constructName of layerConstructs) {
+            await this.constructResources(constructName);
+        }
     }
 
 
@@ -171,6 +196,11 @@ export class Application {
     }
 
     async constructResources(constructName: string): Promise<void> {
+        // Check if already processed or in progress - prevent duplicate builds
+        if (this.processedConstructs.has(constructName)) {
+            return this.processedConstructs.get(constructName)!;
+        }
+
         const construct = this.constructs.get(constructName);
         if (!construct) {
             throw new Error(`Construct ${constructName} not found`);
