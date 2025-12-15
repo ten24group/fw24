@@ -19,6 +19,11 @@ export declare class Application {
     use(construct: FW24Construct): this;
     useModule(module: IFw24Module): this;
     run(): Promise<void>;
+    /**
+     * Build user-defined layer constructs before other constructs.
+     * This ensures entry packages are registered before any lambdas are created.
+     */
+    private buildUserLayers;
     private registerConstruct;
     private processModules;
     private constructAllResources;
