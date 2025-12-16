@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.0.4-beta.21](https://github.com/ten24group/fw24/compare/v1.0.4-beta.20...v1.0.4-beta.21) (2025-12-15)
+
+
+### Bug Fixes
+
+* some lambdas missing the entry layers due to race conditions. ([9a27bfd](https://github.com/ten24group/fw24/commit/9a27bfd96adfe3ca2b9548810721138fb6ea0230))
+
 ### [1.0.4-beta.20](https://github.com/ten24group/fw24/compare/v1.0.4-beta.19...v1.0.4-beta.20) (2025-12-12)
 
 
