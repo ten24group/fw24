@@ -13,6 +13,9 @@ import { createLogger, ILogger } from "../logging";
 import * as ENV_KEYS from "../const/env";
 import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 import { ensureNoSpecialChars, ensureSuffix, ensureValidEnvKey } from "../utils/keys";
+import { merge } from "../utils";
+
+type ResourceAccessItem = string | { name: string; access?: string[] };
 export type TPolicyStatementOrProps = PolicyStatement | PolicyStatementProps;
 export type TImportedPolicy = { name: string, isOptional?: boolean, prefix?: string };
 
@@ -242,7 +245,7 @@ export class LambdaFunction extends Construct {
       });
     }
 
-    let additionalProps: any = {
+    const additionalProps: Record<string, any> = {
       entry: props.entry,
     }
 
@@ -275,16 +278,18 @@ export class LambdaFunction extends Construct {
 
     additionalProps.layers = resolvedLayers;
 
-    additionalProps.bundling = {
-      ...defaultProps.bundling,
-      ...props.functionProps?.bundling,
-      sourceMap: true,
-      externalModules: [
-        ...(defaultProps?.bundling?.externalModules ?? []),
-        ...(props.functionProps?.bundling?.externalModules ?? []),
-        "@ten24group/fw24"
-      ],
-    };
+    additionalProps.bundling = merge([
+      defaultProps.bundling ?? {},
+      props.functionProps?.bundling ?? {},
+      {
+        sourceMap: true,
+        externalModules: [
+          ...(defaultProps?.bundling?.externalModules ?? []),
+          ...(props.functionProps?.bundling?.externalModules ?? []),
+          "@ten24group/fw24"
+        ],
+      }
+    ])!;
     additionalProps.logGroup = logGroup;
     if (props.functionTimeout) {
       additionalProps.timeout = Duration.seconds(props.functionTimeout);
@@ -295,11 +300,11 @@ export class LambdaFunction extends Construct {
     }
 
     // Create the Node.js function
-    const fn = new NodejsFunction(this, id, {
-      ...defaultProps,
-      ...props.functionProps,
-      ...additionalProps,
-    });
+    const fn = new NodejsFunction(this, id, merge([
+      defaultProps,
+      props.functionProps ?? {},
+      additionalProps
+    ])!);
 
     props.environmentVariables = props.environmentVariables ?? {};
 
@@ -414,7 +419,7 @@ export class LambdaFunction extends Construct {
     }
 
     // Logic for adding DynamoDB table access to the controller
-    mergedResourceAccess?.tables?.forEach((table: any) => {
+    mergedResourceAccess?.tables?.forEach((table: ResourceAccessItem) => {
       let tableName = typeof table === 'string' ? table : table.name;
 
       // ensure the placeholder env keys are resolved from the fw24 scope
@@ -453,7 +458,7 @@ export class LambdaFunction extends Construct {
     });
 
     // Logic for adding S3 bucket access to the controller
-    mergedResourceAccess?.buckets?.forEach((bucket: any) => {
+    mergedResourceAccess?.buckets?.forEach((bucket: ResourceAccessItem) => {
       let bucketName = typeof bucket === 'string' ? bucket : bucket.name;
 
       // ensure the placeholder env keys are resolved from the fw24 scope
@@ -462,7 +467,7 @@ export class LambdaFunction extends Construct {
       const access = typeof bucket === 'string' ? [ 'readwrite' ] : bucket.access || [ 'readwrite' ];
 
       const bucketFullName = fw24.getUniqueName(bucketName);
-      const bucketInstance: any = Bucket.fromBucketName(this, bucketName + id + '-bucket', bucketFullName);
+      const bucketInstance = Bucket.fromBucketName(this, bucketName + id + '-bucket', bucketFullName);
       // Grant the lambda function access to the bucket
       access.forEach((accessType: string) => {
         switch (accessType) {
@@ -488,7 +493,7 @@ export class LambdaFunction extends Construct {
     });
 
     // Logic for adding SQS queue access to the controller
-    mergedResourceAccess?.queues?.forEach((queue: any) => {
+    mergedResourceAccess?.queues?.forEach((queue: ResourceAccessItem) => {
       let queueName = typeof queue === 'string' ? queue : queue.name;
 
       // ensure the placeholder env keys are resolved from the fw24 scope
@@ -522,7 +527,7 @@ export class LambdaFunction extends Construct {
     });
 
     // Add SNS topic permission
-    mergedResourceAccess?.topics?.forEach((topic: any) => {
+    mergedResourceAccess?.topics?.forEach((topic: ResourceAccessItem) => {
       let topicName = typeof topic === 'string' ? topic : topic.name;
 
       // ensure the placeholder env keys are resolved from the fw24 scope
@@ -563,7 +568,7 @@ function addPolicyToFunction(options: {
 
   if (isImportedPolicy(policy)) {
     const policyExists = fw24.hasPolicy(policy.name, policy.prefix);
-    
+
     if (!policyExists) {
       if (policy.isOptional) {
         // Skip optional policies that don't exist

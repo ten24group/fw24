@@ -11,6 +11,7 @@ import { Fw24 } from "../core/fw24";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { LogDuration, createLogger } from "../logging";
+import { merge } from "../utils";
 import { QueueConstruct } from "./queue";
 import { Certificate, CertificateValidation } from "aws-cdk-lib/aws-certificatemanager";
 import { CloudFrontWebDistribution, ViewerCertificate, SecurityPolicyProtocol, SSLMethod } from "aws-cdk-lib/aws-cloudfront";
@@ -32,7 +33,7 @@ export interface IBucketConstructConfig extends IConstructConfig {
     /**
      * The removal policy for the bucket.
      */
-    removalPolicy?: any;
+    removalPolicy?: RemovalPolicy;
 
     /**
      * Specifies whether to automatically delete objects in the bucket when the bucket is deleted.
@@ -168,22 +169,25 @@ export class BucketConstruct implements FW24Construct {
         this.logger.debug("Creating bucket: ", bucketConfig.bucketName);
         const bucketName = this.fw24.getUniqueName(bucketConfig.bucketName);
         this.logger.info("Creating bucket name: ", bucketName);
-        var bucketParams: any = {
+
+        const baseParams: Record<string, any> = {
             bucketName: bucketName,
             removalPolicy: bucketConfig.removalPolicy || RemovalPolicy.DESTROY,
             autoDeleteObjects: bucketConfig.autoDeleteObjects || true,
         };
+
         if (bucketConfig.publicReadAccess === true) {
-            bucketParams.blockPublicAccess = new BlockPublicAccess({
+            baseParams.blockPublicAccess = new BlockPublicAccess({
                 blockPublicAcls: false,
                 blockPublicPolicy: false,
                 ignorePublicAcls: false,
                 restrictPublicBuckets: false,
             });
         }
-        if (bucketConfig.bucketProps) {
-            bucketParams = { ...bucketParams, ...bucketConfig.bucketProps };
-        }
+
+        const bucketParams: BucketProps = bucketConfig.bucketProps
+            ? merge([ baseParams, bucketConfig.bucketProps ])!
+            : baseParams;
 
         const bucket = new Bucket(this.mainStack, bucketConfig.bucketName + '-bucket', bucketParams);
         this.fw24.setConstructOutput(this, bucketConfig.bucketName, bucket, OutputType.BUCKET);

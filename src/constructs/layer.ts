@@ -15,6 +15,12 @@ import { IConstructConfig } from "../interfaces/construct-config";
 import { createHash } from "node:crypto";
 import { merge } from "../utils/merge";
 
+interface IPackageJson {
+    name: string;
+    version: string;
+    dependencies?: Record<string, string>;
+}
+
 /**
  * Extended build options that support separating npm install packages from esbuild externals
  */
@@ -121,7 +127,7 @@ export interface IPackageDirectoryConfig extends IBaseLayerConfig {
      * The name of the layer.
      */
     layerName: string;
-    
+
     /**
      * The mode of packaging: package the whole directory.
      */
@@ -150,7 +156,7 @@ export interface IBuildAndPackageConfig extends IBaseLayerConfig {
 
     /**
      * Configurable output path for the package.
-     */ 
+     */
     packagePath?: string;
 }
 
@@ -195,7 +201,7 @@ export type ILayerConstructConfig = IPackageDirectoryConfig | IBuildAndPackageCo
 export class LayerConstruct implements FW24Construct {
     readonly logger: ILogger;
     readonly fw24: Fw24 = Fw24.getInstance();
-    
+
     name = LayerConstruct.name;
     dependencies: string[] = [];
     output!: FW24ConstructOutput;
@@ -206,16 +212,16 @@ export class LayerConstruct implements FW24Construct {
      * Creates a new LayerConstruct instance.
      * @param config - The configuration for the LayerConstruct.
      */
-    constructor(private readonly config: ILayerConstructConfig[], verboseLog ?: number) {
+    constructor(private readonly config: ILayerConstructConfig[], verboseLog?: number) {
 
-        if(verboseLog){
+        if (verboseLog) {
             this.logger = createLogger(LayerConstruct.name, 1);
         } else {
             this.logger = createLogger(LayerConstruct.name);
         }
-        
+
         // add defaults
-        for(const layerConfig of config) {
+        for (const layerConfig of config) {
             layerConfig.mode = layerConfig.mode || 'PACKAGE_DIRECTORY';
             if (layerConfig.mode === 'BUILD_AND_PACKAGE') {
                 layerConfig.clearOutputDir = layerConfig.clearOutputDir ?? false;
@@ -230,7 +236,7 @@ export class LayerConstruct implements FW24Construct {
         // Assign priority to each layer: use explicit priority if set, otherwise use array index + 10
         // Priority 0-9 reserved for framework layers (fw24 core = 0)
         // User layers start at 10+ to ensure framework layers always load first
-        for(const [index, layerConfig] of this.config.entries()) {
+        for (const [ index, layerConfig ] of this.config.entries()) {
             if (!layerConfig.priority && layerConfig.priority !== 0) {
                 layerConfig.priority = index + 10;
             }
@@ -262,14 +268,14 @@ export class LayerConstruct implements FW24Construct {
             layerVersionName: layerConfig.layerName,
             compatibleRuntimes: [ Runtime.NODEJS_22_X ],
             code: Code.fromAsset(layerConfig.sourcePath),
-            compatibleArchitectures: [Architecture.ARM_64],
+            compatibleArchitectures: [ Architecture.ARM_64 ],
         };
-        
+
         const layer = new LayerVersion(this.mainStack, layerConfig.layerName + '-layer', {
             ...defaultLayerProps,
             ...layerConfig.layerProps,
         });
-        
+
         this.fw24.setConstructOutput(this, layerConfig.layerName, layer, OutputType.LAYER, 'layerVersionArn');
 
     }
@@ -286,7 +292,7 @@ export class LayerConstruct implements FW24Construct {
         const sourceDirectoryOrFileName = pathResolve(layerConfig.sourcePath);
         const tsFiles = lstatSync(sourceDirectoryOrFileName).isDirectory()
             ? scanDirectory(sourceDirectoryOrFileName)
-            : [sourceDirectoryOrFileName];
+            : [ sourceDirectoryOrFileName ];
 
         // Process files in parallel now that we have priority-based ordering
         await Promise.all(tsFiles.map(async (file) => {
@@ -354,33 +360,33 @@ export class LayerConstruct implements FW24Construct {
     private async tryCreateLayerForFile(file: string, distDirectory: string, layerConfig: IBuildAndPackageConfig) {
         const fileBaseName = pathBaseName(file, pathExtname(file));
         this.logger.info(`Processing layer: ${fileBaseName}`);
-        
+
         this.logger.debug(`Loading layer descriptor from ${file}...`);
         const moduleExports = await import(file);
         this.logger.debug(`Layer descriptor loaded`);
 
         const foundLayerDescriptorName = Object.keys(moduleExports).find((key) => {
-            const exported = moduleExports[key];
+            const exported = moduleExports[ key ];
             if (typeof exported === 'function' && isLayerEntry(exported)) {
                 return exported;
             }
         });
-  
-        if(!foundLayerDescriptorName){
+
+        if (!foundLayerDescriptorName) {
             this.logger.warn(`No LayerEntry found in file ${file}. Will use Default options.`);
         }
 
-        LayerEntry({ 
+        LayerEntry({
             notGlobal: layerConfig.notGlobal ?? false,
             isEntryPackage: layerConfig.isEntryPackage ?? false
         })
-        class EmptyLayerDescriptor {}
+        class EmptyLayerDescriptor { }
 
         // if no layer descriptor found in the file, create an empty class which will use default options
-        const layerDescriptor = foundLayerDescriptorName ? moduleExports[foundLayerDescriptorName] : EmptyLayerDescriptor;
+        const layerDescriptor = foundLayerDescriptorName ? moduleExports[ foundLayerDescriptorName ] : EmptyLayerDescriptor;
 
         const layerName = getLayerName(layerDescriptor) || fileBaseName;
-        
+
         // Merge build options: defaults < construct-level < decorator-level
         const decoratorBuildOptions = getLayerBuildOptions(layerDescriptor);
         const buildOptions = this.mergeBuildOptions(
@@ -388,13 +394,13 @@ export class LayerConstruct implements FW24Construct {
             layerConfig.buildOptions,
             decoratorBuildOptions
         );
-        
+
         // Determine package structure:
         // - If packagePath is set: use it as the full module path (e.g., @ten24group/fw24)
         // - If not set: use fileBaseName as the package name (e.g., di, shared)
         const packageName = layerConfig.packagePath || fileBaseName;
         const configuredOutputPath = `nodejs/node_modules/${packageName}`;
-    
+
         const outputDir = pathJoin(distDirectory, layerName, configuredOutputPath);
         const bundleDir = pathJoin(distDirectory, layerName);
 
@@ -412,10 +418,10 @@ export class LayerConstruct implements FW24Construct {
         // Install external dependencies FIRST (with smart caching to skip if unchanged)
         // Use buildOptions.externalPackages if provided, otherwise fall back to buildOptions.external for backward compatibility
         // This allows separating packages to npm install from packages to mark as external in esbuild
-        const externalPackages = buildOptions.externalPackages 
+        const externalPackages = buildOptions.externalPackages
             ? (Array.isArray(buildOptions.externalPackages) ? buildOptions.externalPackages : [])
             : (buildOptions.external && Array.isArray(buildOptions.external)) ? buildOptions.external : [];
-        
+
         if (externalPackages.length > 0) {
             const installTimer = Timer.start();
             this.logger.info(`[${layerName}] [1/2] Installing external dependencies...`);
@@ -429,7 +435,7 @@ export class LayerConstruct implements FW24Construct {
         this.logger.info(`[${layerName}] [2/2] Bundling with esbuild...`);
         await bundleWithEsbuild(file, outputFile, buildOptions);
         this.logger.info(`[${layerName}]    ✓ Bundle complete (${bundleTimer.elapsedSeconds()})`);
-        
+
         // Create package.json for Node.js module resolution
         // Without this, require('@package/name') won't work even if index.js exists
         const packageJsonPath = pathJoin(outputDir, 'package.json');
@@ -441,7 +447,7 @@ export class LayerConstruct implements FW24Construct {
         };
         writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
         this.logger.info(`[${layerName}]    ✓ Created package.json for module resolution`);
-        
+
         this.logger.info(`[${layerName}] ✓ Build complete in ${buildTimer.elapsedSeconds()}`)
 
         // Import path: /opt/nodejs/node_modules/{packageName}/index.js
@@ -451,18 +457,18 @@ export class LayerConstruct implements FW24Construct {
 
         this.fw24.setEnvironmentVariable(layerName, layerImportPath, 'layerImportPath');
 
-        if(isGlobalLayer(layerDescriptor)){
+        if (isGlobalLayer(layerDescriptor)) {
             // Attach this layer to all Lambda functions
             this.fw24.addGlobalLambdaLayerNames(layerName);
-            
+
             // Only add as entry package if it needs to execute at module initialization
             if (isEntryPackage(layerDescriptor)) {
-            // collect global entry-packages for lambdas with priority for correct loading order
-            // Priority is always set in construct(), so it must be defined here
-            if (layerConfig.priority === undefined) {
-                throw new Error(`Layer ${layerName} has no priority. This should never happen.`);
-            }
-            this.fw24.addGlobalLambdaEntryPackage(`env:layerImportPath:${layerName}`, layerConfig.priority);
+                // collect global entry-packages for lambdas with priority for correct loading order
+                // Priority is always set in construct(), so it must be defined here
+                if (layerConfig.priority === undefined) {
+                    throw new Error(`Layer ${layerName} has no priority. This should never happen.`);
+                }
+                this.fw24.addGlobalLambdaEntryPackage(`env:layerImportPath:${layerName}`, layerConfig.priority);
                 this.logger.info(`[${layerName}] Registered as entry package (priority: ${layerConfig.priority})`);
             } else {
                 this.logger.info(`[${layerName}] Layer attached but NOT an entry package (available for import only)`);
@@ -475,7 +481,7 @@ export class LayerConstruct implements FW24Construct {
             layerVersionName: layerName,
             compatibleRuntimes: [ Runtime.NODEJS_22_X ],
             code: Code.fromAsset(bundleDir),
-            compatibleArchitectures: [Architecture.ARM_64],
+            compatibleArchitectures: [ Architecture.ARM_64 ],
         };
 
         const layer = new LayerVersion(this.mainStack, layerName + '-layer', {
@@ -553,15 +559,15 @@ export function getLayerProps(target: Function): LayerVersionProps | undefined {
 async function bundleWithEsbuild(entryFile: string, outputFile: string, buildOptions: ExtendedBuildOptions) {
     // Strip out custom fields that esbuild doesn't recognize
     const { externalPackages: _externalPackages, ...esbuildOptions } = buildOptions;
-    
+
     const finalOptions: BuildOptions = {
         ...esbuildOptions,
         outfile: outputFile,
-        entryPoints: [entryFile],
+        entryPoints: [ entryFile ],
     };
 
     DefaultLogger.debug(`bundleWithEsbuild: ${entryFile} → ${outputFile}`);
-    
+
     try {
         await build(finalOptions);
     } catch (error) {
@@ -595,23 +601,23 @@ function calculateFileHash(filePath: string): string {
 function hashDirectoryContents(dirPath: string): string {
     const hash = createHash('sha256');
     let fileCount = 0;
-    
+
     const hashDirRecursive = (currentPath: string) => {
         if (!existsSync(currentPath)) return;
-        
+
         const stat = lstatSync(currentPath);
-        
+
         if (stat.isSymbolicLink()) {
             // Skip symlinks to avoid infinite loops and inconsistent behavior
             return;
         }
-        
+
         if (stat.isDirectory()) {
             const items = readdirSync(currentPath).sort((a, b) => a.localeCompare(b)); // Sort for deterministic hashing
-            for(const item of items) {
+            for (const item of items) {
                 // Skip common directories that don't affect runtime
-                if (item === 'node_modules' || item === '.git' || 
-                    item === 'test' || item === '__tests__' || 
+                if (item === 'node_modules' || item === '.git' ||
+                    item === 'test' || item === '__tests__' ||
                     item === 'coverage' || item === '.DS_Store') {
                     return;
                 }
@@ -626,17 +632,17 @@ function hashDirectoryContents(dirPath: string): string {
             hash.update(readFileSync(currentPath));
         }
     };
-    
+
     // Hash the directory path itself first for uniqueness
     hash.update(dirPath);
     hashDirRecursive(dirPath);
-    
+
     // If no files were found, update hash with sentinel value
     // This ensures empty directories have a different hash than non-existent ones
     if (fileCount === 0) {
         hash.update('__EMPTY_DIRECTORY__');
     }
-    
+
     return hash.digest('hex');
 }
 
@@ -661,10 +667,10 @@ function cleanupDirectory(directory: string) {
  * @param externalPackages - Array of package names to install (e.g., ['axios', 'firebase-admin'])
  * @param logger - Logger instance for output
  */
-async function installExternalDependenciesOptimized(layerOutputDir: string, externalPackages: (string | RegExp)[], logger: any) {
+async function installExternalDependenciesOptimized(layerOutputDir: string, externalPackages: (string | RegExp)[], logger: ILogger) {
     // Filter out regex patterns, framework packages, and packages provided by other layers
-    const packageNames = externalPackages.filter(pkg => 
-        typeof pkg === 'string' && 
+    const packageNames = externalPackages.filter(pkg =>
+        typeof pkg === 'string' &&
         !pkg.startsWith('@aws-sdk') &&      // Provided by Lambda runtime
         !pkg.startsWith('@smithy') &&       // Provided by Lambda runtime
         !pkg.startsWith('aws-cdk-lib') &&   // Build-time only
@@ -680,9 +686,9 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
     const nodeModulesDir = pathJoin(nodejsDir, 'node_modules');
     const packageJsonPath = pathJoin(nodejsDir, 'package.json');
     const packageHashPath = pathJoin(nodejsDir, '.package-hash');
-    
+
     // Build desired package.json
-    const packageJson: any = {
+    const packageJson: IPackageJson = {
         name: 'layer-dependencies',
         version: '1.0.0',
         dependencies: {}
@@ -691,36 +697,39 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
     // Read the project's package.json to get version numbers
     const projectRoot = pathResolve(process.cwd());
     const projectPackageJsonPath = pathJoin(projectRoot, 'package.json');
-    
+
     // Track local package content hashes for change detection
     const localPackageHashes: Record<string, string> = {};
-    
+
     if (!existsSync(projectPackageJsonPath)) {
         logger.warn(`package.json not found at ${projectPackageJsonPath}, installing latest versions`);
-        for(const pkg of packageNames) {
-            packageJson.dependencies[pkg] = 'latest';
+        if (!packageJson.dependencies) {
+            packageJson.dependencies = {};
+        }
+        for (const pkg of packageNames) {
+            packageJson.dependencies[ pkg ] = 'latest';
         }
     } else {
         const projectPackageJson = JSON.parse(readFileSync(projectPackageJsonPath, 'utf-8'));
         // ONLY use runtime dependencies - devDependencies are build-time tools, not Lambda runtime!
         const runtimeDeps = projectPackageJson.dependencies || {};
 
-        for(const pkg of packageNames) {
-            if (runtimeDeps[pkg]) {
-                let depValue = runtimeDeps[pkg];
-                
+        for (const pkg of packageNames) {
+            if (runtimeDeps[ pkg ]) {
+                let depValue = runtimeDeps[ pkg ];
+
                 // Handle local filesystem dependencies (e.g., "../fw24/", "file:../fw24", or "..\fw24" on Windows)
-                const isLocalDep = depValue.startsWith('file:') || 
-                                    depValue.startsWith('../') || 
-                                    depValue.startsWith('./') ||
-                                    depValue.startsWith('..\\') || 
-                                    depValue.startsWith('.\\');
-                
+                const isLocalDep = depValue.startsWith('file:') ||
+                    depValue.startsWith('../') ||
+                    depValue.startsWith('./') ||
+                    depValue.startsWith('..\\') ||
+                    depValue.startsWith('.\\');
+
                 if (isLocalDep) {
                     const localPath = depValue.replace('file:', '');
                     // Resolve absolute path of the local package
                     const absolutePath = pathResolve(projectRoot, localPath);
-                    
+
                     // Validate local package exists
                     if (!existsSync(absolutePath)) {
                         const errorMsg = [
@@ -732,7 +741,7 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
                         logger.error(errorMsg);
                         throw new Error(`Local package path not found: ${pkg} -> ${absolutePath}`);
                     }
-                    
+
                     // CRITICAL: Validate that local package is built (has dist folder)
                     const distPath = pathJoin(absolutePath, 'dist');
                     if (!existsSync(distPath)) {
@@ -745,26 +754,29 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
                         logger.error(errorMsg);
                         throw new Error(`Local package not built: ${pkg} (missing dist folder)`);
                     }
-                    
+
                     // Hash the dist folder contents for change detection
                     logger.info(`   → Hashing local package "${pkg}" dist folder...`);
                     const contentHash = hashDirectoryContents(distPath);
-                    
+
                     // Validate hash is non-empty (dist folder has actual files)
                     if (contentHash?.length !== 64) {
                         logger.warn(`   ⚠️  Unexpected hash for "${pkg}": ${contentHash}`);
                     }
-                    
-                    localPackageHashes[pkg] = contentHash;
+
+                    localPackageHashes[ pkg ] = contentHash;
                     logger.info(`   → Local package "${pkg}" hash: ${contentHash.substring(0, 12)}... (${pkg})`);
-                    
+
                     // Calculate relative path from layer's nodejs dir to local package
                     const relativePathFromLayer = pathRelative(nodejsDir, absolutePath);
                     depValue = relativePathFromLayer;
                     logger.info(`   → Resolved local package "${pkg}": ${relativePathFromLayer}`);
                 }
-                
-                packageJson.dependencies[pkg] = depValue;
+
+                if (!packageJson.dependencies) {
+                    packageJson.dependencies = {};
+                }
+                packageJson.dependencies[ pkg ] = depValue;
             } else {
                 // Package not found in dependencies - this is a configuration error
                 const errorMsg = [
@@ -774,7 +786,7 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
                     `   Example: npm install ${pkg} --save`,
                     `   Then rebuild the layer.`
                 ].join('\n');
-                
+
                 logger.error(errorMsg);
                 throw new Error(`Missing runtime dependency: ${pkg}`);
             }
@@ -784,18 +796,18 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
     const packageJsonContent = JSON.stringify(packageJson, null, 2);
     const hash = createHash('sha256');
     hash.update(packageJsonContent);
-    
+
     // CRITICAL: Include local package content hashes in the cache key
     // This ensures we reinstall when local packages change (e.g., fw24 updates)
     if (Object.keys(localPackageHashes).length > 0) {
         logger.debug(`   → Including ${Object.keys(localPackageHashes).length} local package content hashes in cache key`);
-        for(const pkg of Object.keys(localPackageHashes).sort((a, b) => a.localeCompare(b))) {
-            hash.update(`${pkg}:${localPackageHashes[pkg]}`);
+        for (const pkg of Object.keys(localPackageHashes).sort((a, b) => a.localeCompare(b))) {
+            hash.update(`${pkg}:${localPackageHashes[ pkg ]}`);
         }
     }
-    
+
     const currentPackageHash = hash.digest('hex');
-    
+
     // ═══════════════════════════════════════════════════════════════
     // FAST PATH: Check if we can skip npm install
     // ═══════════════════════════════════════════════════════════════
@@ -821,17 +833,17 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
                     logger.info(`   → Local packages included in hash: ${Object.keys(localPackageHashes).join(', ')}`);
                 }
             }
-        } catch (error: any) {
-            skipReason = `Failed to read hash file: ${error.message}`;
+        } catch (error: unknown) {
+            skipReason = `Failed to read hash file: ${error instanceof Error ? error.message : 'Unknown error'}`;
         }
     }
-    
+
     // ═══════════════════════════════════════════════════════════════
     // SLOW PATH: Need to run npm install
     // ═══════════════════════════════════════════════════════════════
     logger.info(`   📦 Running npm install (reason: ${skipReason})`);
     logger.info(`   → Installing ${packageNames.length} package(s): ${packageNames.join(', ')}`);
-    
+
     const installStartTime = Date.now();
 
     // Ensure directory exists
@@ -853,13 +865,13 @@ async function installExternalDependenciesOptimized(layerOutputDir: string, exte
             cwd: nodejsDir,
             stdio: 'inherit'
         });
-        
+
         const elapsed = ((Date.now() - installStartTime) / 1000).toFixed(1);
         logger.info(`   ✓ npm install complete in ${elapsed}s`);
-        
+
         // Save hash for next run
         writeFileSync(packageHashPath, currentPackageHash);
-        
+
     } catch (error) {
         logger.error('Failed to install external dependencies:', error);
         throw error;
@@ -874,7 +886,7 @@ function copyDirectory(source: string, target: string) {
         mkdirSync(target, { recursive: true });
     }
     const items = readdirSync(source);
-    for(const item of items) {
+    for (const item of items) {
         const sourcePath = pathJoin(source, item);
         const targetPath = pathJoin(target, item);
         if (lstatSync(sourcePath).isDirectory()) {

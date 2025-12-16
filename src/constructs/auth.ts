@@ -25,10 +25,26 @@ import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/co
 import { createLogger, LogDuration } from "../logging";
 import { Helper } from "../core";
 import { IConstructConfig } from "../interfaces/construct-config";
+import { merge } from "../utils";
 import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
 import { VpcConstruct } from "./vpc";
 import { MailerConstruct } from "./mailer";
 import { LayerConstruct } from "./layer";
+
+interface IRoleAttachmentConfig {
+    identityPoolId: string;
+    roles?: {
+        authenticated?: string;
+        unauthenticated?: string;
+    };
+    roleMappings?: {
+        [ key: string ]: {
+            type: string;
+            ambiguousRoleResolution: string;
+            identityProvider: string;
+        };
+    };
+}
 
 export type TriggerType =
     | 'CUSTOM_MESSAGE'
@@ -272,7 +288,10 @@ export class AuthConstruct implements FW24Construct {
             return;
         }
 
-        const userPoolConfig = { ...AuthConstructConfigDefaults.userPool?.props, ...this.authConstructConfig.userPool?.props };
+        const userPoolConfig = merge([
+            AuthConstructConfigDefaults.userPool?.props ?? {},
+            this.authConstructConfig.userPool?.props ?? {}
+        ])!;
         const userPoolName = this.authConstructConfig.userPool?.props?.userPoolName || 'default';
         this.logger.info("Creating user pool: ", userPoolName);
         this.logger.debug("user pool config: ", userPoolName, userPoolConfig);
@@ -283,7 +302,7 @@ export class AuthConstruct implements FW24Construct {
 
         // TODO: Add ability to create multi-tenant user pools
         const userPool: UserPool = new UserPool(this.mainStack, `${userPoolName}-userPool`, {
-            ...userPoolConfig,
+            ...(userPoolConfig as UserPoolProps),
             userPoolName: this.createUniqueUserPoolName(userPoolName),
         });
 
@@ -292,11 +311,11 @@ export class AuthConstruct implements FW24Construct {
 
         this.fw24.setConstructOutput(this, userPoolName, userPool, OutputType.USERPOOL, 'userPoolId');
 
-        const userPoolClientConfig: UserPoolClientProps = {
-            userPool: userPool,
-            ...AuthConstructConfigDefaults.userPoolClient?.props,
-            ...this.authConstructConfig.userPoolClient?.props,
-        };
+        const userPoolClientConfig: UserPoolClientProps = merge([
+            { userPool: userPool },
+            AuthConstructConfigDefaults.userPoolClient?.props ?? {},
+            this.authConstructConfig.userPoolClient?.props ?? {}
+        ])!;
 
         const userPoolClient = new UserPoolClient(this.mainStack, `${userPoolName}-userPoolclient`, userPoolClientConfig);
 
@@ -349,7 +368,7 @@ export class AuthConstruct implements FW24Construct {
 
         // configure identity pool role attachment
         const identityProvider = userPool.userPoolProviderName + ':' + userPoolClient.userPoolClientId;
-        const roleAttachment: any = {
+        const roleAttachment: IRoleAttachmentConfig = {
             identityPoolId: identityPool.ref,
         }
 
@@ -397,13 +416,13 @@ export class AuthConstruct implements FW24Construct {
                         }
                     ]
                 }
-                const lambdaFunctionProps = {
-                    ...autoGroupsAddHandler,
-                    ...props
-                }
+                const lambdaFunctionProps = merge([
+                    autoGroupsAddHandler,
+                    props
+                ])!;
                 this.logger.debug("autoUserSignupGroupsHandler: ", lambdaFunctionProps);
                 const lambdaTrigger = new LambdaFunction(this.mainStack, `${userPoolName}-auto-post-confirmation-lambdaFunction`, {
-                    ...lambdaFunctionProps,
+                    ...(lambdaFunctionProps as LambdaFunctionProps),
                 }) as NodejsFunction;
                 userPool.addTrigger(UserPoolOperation.POST_CONFIRMATION, lambdaTrigger);
             }

@@ -14,6 +14,13 @@ import { IConstructConfig } from "../interfaces/construct-config";
 import { VpcConstruct } from "./vpc";
 import { LayerConstruct } from "./layer";
 
+interface ISESTemplateConfig {
+    subjectPart: string;
+    templateName: string;
+    htmlPart: string;
+    textPart?: string;
+}
+
 /**
  * Represents the configuration for the Mailer construct.
  */
@@ -167,7 +174,7 @@ export class MailerConstruct implements FW24Construct {
                 const titleMatch = templateHTMLContent.match(/<title>(.*?)<\/title>/);
                 const subject = titleMatch ? titleMatch[ 1 ] : "";
 
-                const template: any = {
+                const template: ISESTemplateConfig = {
                     subjectPart: subject,
                     templateName: templateName,
                     htmlPart: templateHTMLContent,
