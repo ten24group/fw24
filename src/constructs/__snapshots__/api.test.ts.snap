@@ -1,0 +1,1030 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`APIConstruct Snapshot Tests - CloudFormation Consistency should generate consistent CloudFormation for API with usage plan 1`] = `
+{
+  "Outputs": {
+    "apiRESTAPIrestApiId": {
+      "Export": {
+        "Name": "TestStack-apiRESTAPIrestApiId",
+      },
+      "Value": {
+        "Ref": "testapiappapiCF968FAD",
+      },
+    },
+    "apiRESTAPIrestApiRootResourceId": {
+      "Export": {
+        "Name": "TestStack-apiRESTAPIrestApiRootResourceId",
+      },
+      "Value": {
+        "Fn::GetAtt": [
+          "testapiappapiCF968FAD",
+          "RootResourceId",
+        ],
+      },
+    },
+    "testapiappapiEndpoint8400B99E": {
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            "https://",
+            {
+              "Ref": "testapiappapiCF968FAD",
+            },
+            ".execute-api.us-east-1.",
+            {
+              "Ref": "AWS::URLSuffix",
+            },
+            "/",
+            {
+              "Ref": "testapiappapiDeploymentStageprodD90533C3",
+            },
+            "/",
+          ],
+        ],
+      },
+    },
+    "testapiapptestapiappapikey0id": {
+      "Description": "API Key 1 ID for test-api-app",
+      "Value": {
+        "Ref": "testapiapptestapiappapikey0apikeyC4BA80E7",
+      },
+    },
+  },
+  "Parameters": {
+    "BootstrapVersion": {
+      "Default": "/cdk-bootstrap/hnb659fds/version",
+      "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+  },
+  "Resources": {
+    "testapiappapiAccount028880A4": {
+      "DeletionPolicy": "Retain",
+      "DependsOn": [
+        "testapiappapiCF968FAD",
+      ],
+      "Properties": {
+        "CloudWatchRoleArn": {
+          "Fn::GetAtt": [
+            "testapiappapiCloudWatchRole3A7B0A9D",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::ApiGateway::Account",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "testapiappapiCF968FAD": {
+      "Properties": {
+        "Name": "test-api-app-api",
+      },
+      "Type": "AWS::ApiGateway::RestApi",
+    },
+    "testapiappapiCloudWatchRole3A7B0A9D": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "apigateway.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "testapiappapiDeployment9F8DA5834a7936021c2813ff3eb127419666e358": {
+      "DependsOn": [
+        "testapiappapihealthGET85F76E98",
+        "testapiappapihealthB3E92FF8",
+      ],
+      "Metadata": {
+        "aws:cdk:do-not-refactor": true,
+      },
+      "Properties": {
+        "Description": "Automatically created by the RestApi construct",
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::Deployment",
+    },
+    "testapiappapiDeploymentStageprodD90533C3": {
+      "DependsOn": [
+        "testapiappapiAccount028880A4",
+      ],
+      "Properties": {
+        "DeploymentId": {
+          "Ref": "testapiappapiDeployment9F8DA5834a7936021c2813ff3eb127419666e358",
+        },
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+        "StageName": "prod",
+      },
+      "Type": "AWS::ApiGateway::Stage",
+    },
+    "testapiappapihealthB3E92FF8": {
+      "Properties": {
+        "ParentId": {
+          "Fn::GetAtt": [
+            "testapiappapiCF968FAD",
+            "RootResourceId",
+          ],
+        },
+        "PathPart": "health",
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::Resource",
+    },
+    "testapiappapihealthGET85F76E98": {
+      "Properties": {
+        "AuthorizationType": "NONE",
+        "HttpMethod": "GET",
+        "Integration": {
+          "IntegrationResponses": [
+            {
+              "StatusCode": "200",
+            },
+          ],
+          "PassthroughBehavior": "NEVER",
+          "RequestTemplates": {
+            "application/json": "{"statusCode": 200}",
+          },
+          "Type": "MOCK",
+        },
+        "MethodResponses": [
+          {
+            "StatusCode": "200",
+          },
+        ],
+        "ResourceId": {
+          "Ref": "testapiappapihealthB3E92FF8",
+        },
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::Method",
+    },
+    "testapiappsnapshotplanusageplan84DD6BD7": {
+      "Properties": {
+        "ApiStages": [
+          {
+            "ApiId": {
+              "Ref": "testapiappapiCF968FAD",
+            },
+            "Stage": {
+              "Ref": "testapiappapiDeploymentStageprodD90533C3",
+            },
+            "Throttle": {},
+          },
+        ],
+        "Description": "Usage plan for test-api-app",
+        "Quota": {
+          "Limit": 10000,
+          "Period": "DAY",
+        },
+        "Throttle": {
+          "BurstLimit": 200,
+          "RateLimit": 100,
+        },
+        "UsagePlanName": "snapshot-plan",
+      },
+      "Type": "AWS::ApiGateway::UsagePlan",
+    },
+    "testapiappsnapshotplanusageplanUsagePlanKeyResourceTestStacktestapiapptestapiappapikey0apikey32B46C91380F62CE": {
+      "Properties": {
+        "KeyId": {
+          "Ref": "testapiapptestapiappapikey0apikeyC4BA80E7",
+        },
+        "KeyType": "API_KEY",
+        "UsagePlanId": {
+          "Ref": "testapiappsnapshotplanusageplan84DD6BD7",
+        },
+      },
+      "Type": "AWS::ApiGateway::UsagePlanKey",
+    },
+    "testapiapptestapiappapikey0apikeyC4BA80E7": {
+      "Properties": {
+        "Description": "API key 1 for test-api-app",
+        "Enabled": true,
+        "Value": "snapshot-key-123",
+      },
+      "Type": "AWS::ApiGateway::ApiKey",
+    },
+  },
+  "Rules": {
+    "CheckBootstrapVersion": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Contains": [
+                  [
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                  ],
+                  {
+                    "Ref": "BootstrapVersion",
+                  },
+                ],
+              },
+            ],
+          },
+          "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI.",
+        },
+      ],
+    },
+  },
+}
+`;
+
+exports[`APIConstruct Snapshot Tests - CloudFormation Consistency should generate consistent CloudFormation for basic API 1`] = `
+{
+  "Outputs": {
+    "apiRESTAPIrestApiId": {
+      "Export": {
+        "Name": "TestStack-apiRESTAPIrestApiId",
+      },
+      "Value": {
+        "Ref": "testapiappapiCF968FAD",
+      },
+    },
+    "apiRESTAPIrestApiRootResourceId": {
+      "Export": {
+        "Name": "TestStack-apiRESTAPIrestApiRootResourceId",
+      },
+      "Value": {
+        "Fn::GetAtt": [
+          "testapiappapiCF968FAD",
+          "RootResourceId",
+        ],
+      },
+    },
+    "testapiappapiEndpoint8400B99E": {
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            "https://",
+            {
+              "Ref": "testapiappapiCF968FAD",
+            },
+            ".execute-api.us-east-1.",
+            {
+              "Ref": "AWS::URLSuffix",
+            },
+            "/",
+            {
+              "Ref": "testapiappapiDeploymentStageprodD90533C3",
+            },
+            "/",
+          ],
+        ],
+      },
+    },
+  },
+  "Parameters": {
+    "BootstrapVersion": {
+      "Default": "/cdk-bootstrap/hnb659fds/version",
+      "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+  },
+  "Resources": {
+    "testapiappapiAccount028880A4": {
+      "DeletionPolicy": "Retain",
+      "DependsOn": [
+        "testapiappapiCF968FAD",
+      ],
+      "Properties": {
+        "CloudWatchRoleArn": {
+          "Fn::GetAtt": [
+            "testapiappapiCloudWatchRole3A7B0A9D",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::ApiGateway::Account",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "testapiappapiCF968FAD": {
+      "Properties": {
+        "Description": "Snapshot Test API",
+        "Name": "snapshot-api",
+      },
+      "Type": "AWS::ApiGateway::RestApi",
+    },
+    "testapiappapiCloudWatchRole3A7B0A9D": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "apigateway.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "testapiappapiDeployment9F8DA583e0e40954495aa88f904cfd3b3c1ec815": {
+      "DependsOn": [
+        "testapiappapihealthGET85F76E98",
+        "testapiappapihealthOPTIONSF3003BCB",
+        "testapiappapihealthB3E92FF8",
+        "testapiappapiOPTIONS8187826D",
+        "testapiappapidefault4xxF2556E08",
+        "testapiappapidefault5xxF1367D9E",
+      ],
+      "Metadata": {
+        "aws:cdk:do-not-refactor": true,
+      },
+      "Properties": {
+        "Description": "Snapshot Test API",
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::Deployment",
+    },
+    "testapiappapiDeploymentStageprodD90533C3": {
+      "DependsOn": [
+        "testapiappapiAccount028880A4",
+      ],
+      "Properties": {
+        "DeploymentId": {
+          "Ref": "testapiappapiDeployment9F8DA583e0e40954495aa88f904cfd3b3c1ec815",
+        },
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+        "StageName": "prod",
+      },
+      "Type": "AWS::ApiGateway::Stage",
+    },
+    "testapiappapiOPTIONS8187826D": {
+      "Properties": {
+        "ApiKeyRequired": false,
+        "AuthorizationType": "NONE",
+        "HttpMethod": "OPTIONS",
+        "Integration": {
+          "IntegrationResponses": [
+            {
+              "ResponseParameters": {
+                "method.response.header.Access-Control-Allow-Credentials": "'true'",
+                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Api-Key,X-Amz-Date,X-Amz-Content-Sha256,X-Amz-Security-Token,Access-Control-Allow-Credentials,Access-Control-Allow-Headers,Access-Control-Allow-Origin,Impersonating-User-Sub'",
+                "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,POST,PUT,PATCH,DELETE'",
+                "method.response.header.Access-Control-Allow-Origin": "'*'",
+              },
+              "StatusCode": "204",
+            },
+          ],
+          "RequestTemplates": {
+            "application/json": "{ statusCode: 200 }",
+          },
+          "Type": "MOCK",
+        },
+        "MethodResponses": [
+          {
+            "ResponseParameters": {
+              "method.response.header.Access-Control-Allow-Credentials": true,
+              "method.response.header.Access-Control-Allow-Headers": true,
+              "method.response.header.Access-Control-Allow-Methods": true,
+              "method.response.header.Access-Control-Allow-Origin": true,
+            },
+            "StatusCode": "204",
+          },
+        ],
+        "ResourceId": {
+          "Fn::GetAtt": [
+            "testapiappapiCF968FAD",
+            "RootResourceId",
+          ],
+        },
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::Method",
+    },
+    "testapiappapidefault4xxF2556E08": {
+      "Properties": {
+        "ResponseParameters": {
+          "gatewayresponse.header.Access-Control-Allow-Origin": "'*'",
+        },
+        "ResponseType": "DEFAULT_4XX",
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::GatewayResponse",
+    },
+    "testapiappapidefault5xxF1367D9E": {
+      "Properties": {
+        "ResponseParameters": {
+          "gatewayresponse.header.Access-Control-Allow-Origin": "'*'",
+        },
+        "ResponseType": "DEFAULT_5XX",
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::GatewayResponse",
+    },
+    "testapiappapihealthB3E92FF8": {
+      "Properties": {
+        "ParentId": {
+          "Fn::GetAtt": [
+            "testapiappapiCF968FAD",
+            "RootResourceId",
+          ],
+        },
+        "PathPart": "health",
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::Resource",
+    },
+    "testapiappapihealthGET85F76E98": {
+      "Properties": {
+        "AuthorizationType": "NONE",
+        "HttpMethod": "GET",
+        "Integration": {
+          "IntegrationResponses": [
+            {
+              "StatusCode": "200",
+            },
+          ],
+          "PassthroughBehavior": "NEVER",
+          "RequestTemplates": {
+            "application/json": "{"statusCode": 200}",
+          },
+          "Type": "MOCK",
+        },
+        "MethodResponses": [
+          {
+            "StatusCode": "200",
+          },
+        ],
+        "ResourceId": {
+          "Ref": "testapiappapihealthB3E92FF8",
+        },
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::Method",
+    },
+    "testapiappapihealthOPTIONSF3003BCB": {
+      "Properties": {
+        "ApiKeyRequired": false,
+        "AuthorizationType": "NONE",
+        "HttpMethod": "OPTIONS",
+        "Integration": {
+          "IntegrationResponses": [
+            {
+              "ResponseParameters": {
+                "method.response.header.Access-Control-Allow-Credentials": "'true'",
+                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Api-Key,X-Amz-Date,X-Amz-Content-Sha256,X-Amz-Security-Token,Access-Control-Allow-Credentials,Access-Control-Allow-Headers,Access-Control-Allow-Origin,Impersonating-User-Sub'",
+                "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,POST,PUT,PATCH,DELETE'",
+                "method.response.header.Access-Control-Allow-Origin": "'*'",
+              },
+              "StatusCode": "204",
+            },
+          ],
+          "RequestTemplates": {
+            "application/json": "{ statusCode: 200 }",
+          },
+          "Type": "MOCK",
+        },
+        "MethodResponses": [
+          {
+            "ResponseParameters": {
+              "method.response.header.Access-Control-Allow-Credentials": true,
+              "method.response.header.Access-Control-Allow-Headers": true,
+              "method.response.header.Access-Control-Allow-Methods": true,
+              "method.response.header.Access-Control-Allow-Origin": true,
+            },
+            "StatusCode": "204",
+          },
+        ],
+        "ResourceId": {
+          "Ref": "testapiappapihealthB3E92FF8",
+        },
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::Method",
+    },
+  },
+  "Rules": {
+    "CheckBootstrapVersion": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Contains": [
+                  [
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                  ],
+                  {
+                    "Ref": "BootstrapVersion",
+                  },
+                ],
+              },
+            ],
+          },
+          "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI.",
+        },
+      ],
+    },
+  },
+}
+`;
+
+exports[`APIConstruct Snapshot Tests - CloudFormation Consistency should generate consistent CloudFormation for complete configuration 1`] = `
+{
+  "Outputs": {
+    "apiRESTAPIrestApiId": {
+      "Export": {
+        "Name": "TestStack-apiRESTAPIrestApiId",
+      },
+      "Value": {
+        "Ref": "testapiappapiCF968FAD",
+      },
+    },
+    "apiRESTAPIrestApiRootResourceId": {
+      "Export": {
+        "Name": "TestStack-apiRESTAPIrestApiRootResourceId",
+      },
+      "Value": {
+        "Fn::GetAtt": [
+          "testapiappapiCF968FAD",
+          "RootResourceId",
+        ],
+      },
+    },
+    "testapiappapiEndpoint8400B99E": {
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            "https://",
+            {
+              "Ref": "testapiappapiCF968FAD",
+            },
+            ".execute-api.us-east-1.",
+            {
+              "Ref": "AWS::URLSuffix",
+            },
+            "/",
+            {
+              "Ref": "testapiappapiDeploymentStageprodD90533C3",
+            },
+            "/",
+          ],
+        ],
+      },
+    },
+    "testapiapptestapiappapikey0id": {
+      "Description": "API Key 1 ID for test-api-app",
+      "Value": {
+        "Ref": "testapiapptestapiappapikey0apikeyC4BA80E7",
+      },
+    },
+    "testapiapptestapiappapikey1id": {
+      "Description": "API Key 2 ID for test-api-app",
+      "Value": {
+        "Ref": "testapiapptestapiappapikey1apikey1FF043DF",
+      },
+    },
+  },
+  "Parameters": {
+    "BootstrapVersion": {
+      "Default": "/cdk-bootstrap/hnb659fds/version",
+      "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+  },
+  "Resources": {
+    "testapiappapiAccount028880A4": {
+      "DeletionPolicy": "Retain",
+      "DependsOn": [
+        "testapiappapiCF968FAD",
+      ],
+      "Properties": {
+        "CloudWatchRoleArn": {
+          "Fn::GetAtt": [
+            "testapiappapiCloudWatchRole3A7B0A9D",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::ApiGateway::Account",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "testapiappapiCF968FAD": {
+      "Properties": {
+        "Description": "Complete API Configuration",
+        "Name": "complete-api",
+      },
+      "Type": "AWS::ApiGateway::RestApi",
+    },
+    "testapiappapiCloudWatchRole3A7B0A9D": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "apigateway.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "testapiappapiDeployment9F8DA58398ad98577e03bfaa2ec9f8336ef60c71": {
+      "DependsOn": [
+        "testapiappapihealthGET85F76E98",
+        "testapiappapihealthOPTIONSF3003BCB",
+        "testapiappapihealthB3E92FF8",
+        "testapiappapiOPTIONS8187826D",
+        "testapiappapidefault4xxF2556E08",
+        "testapiappapidefault5xxF1367D9E",
+      ],
+      "Metadata": {
+        "aws:cdk:do-not-refactor": true,
+      },
+      "Properties": {
+        "Description": "Complete API Configuration",
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::Deployment",
+    },
+    "testapiappapiDeploymentStageprodD90533C3": {
+      "DependsOn": [
+        "testapiappapiAccount028880A4",
+      ],
+      "Properties": {
+        "DeploymentId": {
+          "Ref": "testapiappapiDeployment9F8DA58398ad98577e03bfaa2ec9f8336ef60c71",
+        },
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+        "StageName": "prod",
+      },
+      "Type": "AWS::ApiGateway::Stage",
+    },
+    "testapiappapiOPTIONS8187826D": {
+      "Properties": {
+        "ApiKeyRequired": false,
+        "AuthorizationType": "NONE",
+        "HttpMethod": "OPTIONS",
+        "Integration": {
+          "IntegrationResponses": [
+            {
+              "ResponseParameters": {
+                "method.response.header.Access-Control-Allow-Credentials": "'true'",
+                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Api-Key,X-Amz-Date,X-Amz-Content-Sha256,X-Amz-Security-Token,Access-Control-Allow-Credentials,Access-Control-Allow-Headers,Access-Control-Allow-Origin,Impersonating-User-Sub'",
+                "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,POST,PUT,PATCH,DELETE'",
+                "method.response.header.Access-Control-Allow-Origin": "'https://example.com'",
+                "method.response.header.Vary": "'Origin'",
+              },
+              "ResponseTemplates": {
+                "application/json": "#set($origin = $input.params().header.get("Origin"))
+#if($origin == "")
+  #set($origin = $input.params().header.get("origin"))
+#end
+#if($origin == "https://app.example.com")
+  #set($context.responseOverride.header.Access-Control-Allow-Origin = $origin)
+#end",
+              },
+              "StatusCode": "204",
+            },
+          ],
+          "RequestTemplates": {
+            "application/json": "{ statusCode: 200 }",
+          },
+          "Type": "MOCK",
+        },
+        "MethodResponses": [
+          {
+            "ResponseParameters": {
+              "method.response.header.Access-Control-Allow-Credentials": true,
+              "method.response.header.Access-Control-Allow-Headers": true,
+              "method.response.header.Access-Control-Allow-Methods": true,
+              "method.response.header.Access-Control-Allow-Origin": true,
+              "method.response.header.Vary": true,
+            },
+            "StatusCode": "204",
+          },
+        ],
+        "ResourceId": {
+          "Fn::GetAtt": [
+            "testapiappapiCF968FAD",
+            "RootResourceId",
+          ],
+        },
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::Method",
+    },
+    "testapiappapidefault4xxF2556E08": {
+      "Properties": {
+        "ResponseParameters": {
+          "gatewayresponse.header.Access-Control-Allow-Origin": "'https://example.com,https://app.example.com'",
+        },
+        "ResponseType": "DEFAULT_4XX",
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::GatewayResponse",
+    },
+    "testapiappapidefault5xxF1367D9E": {
+      "Properties": {
+        "ResponseParameters": {
+          "gatewayresponse.header.Access-Control-Allow-Origin": "'https://example.com,https://app.example.com'",
+        },
+        "ResponseType": "DEFAULT_5XX",
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::GatewayResponse",
+    },
+    "testapiappapihealthB3E92FF8": {
+      "Properties": {
+        "ParentId": {
+          "Fn::GetAtt": [
+            "testapiappapiCF968FAD",
+            "RootResourceId",
+          ],
+        },
+        "PathPart": "health",
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::Resource",
+    },
+    "testapiappapihealthGET85F76E98": {
+      "Properties": {
+        "AuthorizationType": "NONE",
+        "HttpMethod": "GET",
+        "Integration": {
+          "IntegrationResponses": [
+            {
+              "StatusCode": "200",
+            },
+          ],
+          "PassthroughBehavior": "NEVER",
+          "RequestTemplates": {
+            "application/json": "{"statusCode": 200}",
+          },
+          "Type": "MOCK",
+        },
+        "MethodResponses": [
+          {
+            "StatusCode": "200",
+          },
+        ],
+        "ResourceId": {
+          "Ref": "testapiappapihealthB3E92FF8",
+        },
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::Method",
+    },
+    "testapiappapihealthOPTIONSF3003BCB": {
+      "Properties": {
+        "ApiKeyRequired": false,
+        "AuthorizationType": "NONE",
+        "HttpMethod": "OPTIONS",
+        "Integration": {
+          "IntegrationResponses": [
+            {
+              "ResponseParameters": {
+                "method.response.header.Access-Control-Allow-Credentials": "'true'",
+                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Api-Key,X-Amz-Date,X-Amz-Content-Sha256,X-Amz-Security-Token,Access-Control-Allow-Credentials,Access-Control-Allow-Headers,Access-Control-Allow-Origin,Impersonating-User-Sub'",
+                "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,POST,PUT,PATCH,DELETE'",
+                "method.response.header.Access-Control-Allow-Origin": "'https://example.com'",
+                "method.response.header.Vary": "'Origin'",
+              },
+              "ResponseTemplates": {
+                "application/json": "#set($origin = $input.params().header.get("Origin"))
+#if($origin == "")
+  #set($origin = $input.params().header.get("origin"))
+#end
+#if($origin == "https://app.example.com")
+  #set($context.responseOverride.header.Access-Control-Allow-Origin = $origin)
+#end",
+              },
+              "StatusCode": "204",
+            },
+          ],
+          "RequestTemplates": {
+            "application/json": "{ statusCode: 200 }",
+          },
+          "Type": "MOCK",
+        },
+        "MethodResponses": [
+          {
+            "ResponseParameters": {
+              "method.response.header.Access-Control-Allow-Credentials": true,
+              "method.response.header.Access-Control-Allow-Headers": true,
+              "method.response.header.Access-Control-Allow-Methods": true,
+              "method.response.header.Access-Control-Allow-Origin": true,
+              "method.response.header.Vary": true,
+            },
+            "StatusCode": "204",
+          },
+        ],
+        "ResourceId": {
+          "Ref": "testapiappapihealthB3E92FF8",
+        },
+        "RestApiId": {
+          "Ref": "testapiappapiCF968FAD",
+        },
+      },
+      "Type": "AWS::ApiGateway::Method",
+    },
+    "testapiappcompleteplanusageplanDD674CDB": {
+      "Properties": {
+        "ApiStages": [
+          {
+            "ApiId": {
+              "Ref": "testapiappapiCF968FAD",
+            },
+            "Stage": {
+              "Ref": "testapiappapiDeploymentStageprodD90533C3",
+            },
+            "Throttle": {},
+          },
+        ],
+        "Description": "Usage plan for test-api-app",
+        "Quota": {
+          "Limit": 50000,
+          "Period": "MONTH",
+        },
+        "Throttle": {
+          "BurstLimit": 1000,
+          "RateLimit": 500,
+        },
+        "UsagePlanName": "complete-plan",
+      },
+      "Type": "AWS::ApiGateway::UsagePlan",
+    },
+    "testapiappcompleteplanusageplanUsagePlanKeyResourceTestStacktestapiapptestapiappapikey0apikey32B46C91076AC676": {
+      "Properties": {
+        "KeyId": {
+          "Ref": "testapiapptestapiappapikey0apikeyC4BA80E7",
+        },
+        "KeyType": "API_KEY",
+        "UsagePlanId": {
+          "Ref": "testapiappcompleteplanusageplanDD674CDB",
+        },
+      },
+      "Type": "AWS::ApiGateway::UsagePlanKey",
+    },
+    "testapiappcompleteplanusageplanUsagePlanKeyResourceTestStacktestapiapptestapiappapikey1apikeyCFB0255B339745F6": {
+      "Properties": {
+        "KeyId": {
+          "Ref": "testapiapptestapiappapikey1apikey1FF043DF",
+        },
+        "KeyType": "API_KEY",
+        "UsagePlanId": {
+          "Ref": "testapiappcompleteplanusageplanDD674CDB",
+        },
+      },
+      "Type": "AWS::ApiGateway::UsagePlanKey",
+    },
+    "testapiapptestapiappapikey0apikeyC4BA80E7": {
+      "Properties": {
+        "Description": "API key 1 for test-api-app",
+        "Enabled": true,
+        "Value": "complete-key-123",
+      },
+      "Type": "AWS::ApiGateway::ApiKey",
+    },
+    "testapiapptestapiappapikey1apikey1FF043DF": {
+      "Properties": {
+        "Description": "API key 2 for test-api-app",
+        "Enabled": true,
+        "Value": "complete-key-456",
+      },
+      "Type": "AWS::ApiGateway::ApiKey",
+    },
+  },
+  "Rules": {
+    "CheckBootstrapVersion": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Contains": [
+                  [
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                  ],
+                  {
+                    "Ref": "BootstrapVersion",
+                  },
+                ],
+              },
+            ],
+          },
+          "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI.",
+        },
+      ],
+    },
+  },
+}
+`;
