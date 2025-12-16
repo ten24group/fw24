@@ -1,12 +1,15 @@
 import { Construct } from "constructs";
 import { Duration } from "aws-cdk-lib";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import { Queue } from "aws-cdk-lib/aws-sqs";
 import { QueueProps } from "aws-cdk-lib/aws-sqs";
 import { LambdaFunctionProps } from "./lambda-function";
+import { SqsEventSourceProps } from "aws-cdk-lib/aws-lambda-event-sources";
 import { ILogger } from "../logging";
 /**
  * Represents the properties for a QueueLambdaFunction.
  */
-interface QueueLambdaFunctionProps {
+export interface QueueLambdaFunctionProps {
     /**
      * The name of the queue.
      */
@@ -33,6 +36,7 @@ interface QueueLambdaFunctionProps {
     maxReceiveCount?: number;
     /**
      * The properties for the SQS event source.
+     * Supports both Duration (maxBatchingWindow) and number (maxBatchingWindowSeconds).
      */
     sqsEventSourceProps?: {
         /**
@@ -40,9 +44,14 @@ interface QueueLambdaFunctionProps {
          */
         batchSize?: number;
         /**
-         * The maximum amount of time to wait before triggering a batch of messages.
+         * The maximum amount of time to wait before triggering a batch of messages (CDK Duration object).
          */
         maxBatchingWindow?: Duration;
+        /**
+         * The maximum amount of time to wait before triggering a batch of messages (in seconds).
+         * This is a convenience property that will be converted to Duration internally.
+         */
+        maxBatchingWindowSeconds?: number;
         /**
          * Whether to report failures for individual batch items.
          */
@@ -107,6 +116,62 @@ export interface IQueueSubscriptions {
  */
 export declare class QueueLambda extends Construct {
     readonly logger?: ILogger;
+    /**
+     * Default SQS event source configuration values
+     */
+    private static readonly DEFAULTS;
+    /**
+     * Normalizes SQS event source props with defaults and type conversions.
+     * Handles conversion of maxBatchingWindowSeconds to Duration.
+     * FIFO queues return empty object (they don't support event source props).
+     *
+     * @param props - Event source props (can have maxBatchingWindowSeconds)
+     * @param isFifoQueue - Whether the queue is FIFO
+     * @returns Normalized SqsEventSourceProps for CDK
+     */
+    static normalizeSqsEventSourceProps(props: QueueLambdaFunctionProps['sqsEventSourceProps'], isFifoQueue: boolean): SqsEventSourceProps;
+    /**
+     * Creates an SQS Queue with proper DLQ setup, timeout configuration, and SNS subscriptions.
+     * This is a static helper for creating queues independently (useful for two-phase construction).
+     *
+     * @param scope - CDK construct scope
+     * @param id - Construct ID
+     * @param props - Queue configuration props
+     * @param subscriptions - Optional SNS topic subscriptions
+     * @returns CDK Queue instance
+     *
+     * @example
+     * ```typescript
+     * // Create queue with subscriptions in one call
+     * const queue = QueueLambda.createQueue(stack, 'my-queue', {
+     *   queueName: 'myQueue',
+     *   queueProps: { fifo: true }
+     * }, {
+     *   topics: ['myTopic']
+     * });
+     * ```
+     */
+    static createQueue(scope: Construct, id: string, props: Pick<QueueLambdaFunctionProps, 'queueName' | 'queueProps' | 'visibilityTimeoutSeconds' | 'receiveMessageWaitTimeSeconds' | 'retentionPeriodDays' | 'maxReceiveCount'>, subscriptions?: IQueueSubscriptions): Queue;
+    /**
+     * Attaches an SQS Queue as an event source to a Lambda function with proper event source configuration.
+     * Handles FIFO queue detection, event source props normalization, and attachment.
+     *
+     * @param lambda - The Lambda function to attach the queue to
+     * @param queue - The SQS Queue to attach
+     * @param queueProps - Queue properties for FIFO detection
+     * @param queueName - Name of the queue
+     * @param sqsEventSourceProps - Optional SQS event source configuration
+     *
+     * @example
+     * ```typescript
+     * const lambda = new LambdaFunction(...);
+     * const queue = QueueLambda.createQueue(...);
+     * QueueLambda.attachQueueToLambda(lambda, queue, queueProps, 'myQueue', {
+     *   batchSize: 20,
+     *   maxBatchingWindowSeconds: 10
+     * });
+     * ```
+     */
+    static attachQueueToLambda(lambda: NodejsFunction, queue: Queue, queueProps: QueueProps | undefined, queueName: string, sqsEventSourceProps?: QueueLambdaFunctionProps['sqsEventSourceProps']): void;
     constructor(scope: Construct, id: string, queueLambdaProps: QueueLambdaFunctionProps);
 }
-export {};

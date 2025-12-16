@@ -1,4 +1,5 @@
 import { Stack } from "aws-cdk-lib";
+import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
 import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { IConstructConfig } from "../interfaces/construct-config";
@@ -29,7 +30,7 @@ export interface ISiteConstructConfig extends IConstructConfig {
     /**
      * The build specification for the site.
      */
-    buildSpec: any;
+    buildSpec: BuildSpec;
     /**
      * The domain for the site.
      */
