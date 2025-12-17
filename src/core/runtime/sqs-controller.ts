@@ -83,18 +83,21 @@ abstract class QueueController<TEvent extends SQSEvent = SQSEvent> extends Abstr
     const queueName = this.getQueueName() || this.constructor.name;
     const queueConfig = this.getQueueConfig();
     const obsConfig = queueConfig.observability || {};
-    const messageAttributes = event.Records?.[0]?.messageAttributes || {};
-    const traceContext = extractFromSqs(messageAttributes);
-    const correlationId = traceContext?.correlationId || context.awsRequestId || crypto.randomUUID();
+
+    // CRITICAL FIX: Do not use Records[0] for context.
+    // Each record has its own trace. The Lambda invocation itself represents a "Batch"
+    // and should have its own unique correlation ID (Lambda Request ID).
+    // Individual record processing should extract context per record.
+    const correlationId = context.awsRequestId || crypto.randomUUID();
 
     // Create execution context with custom source and tags from decorator
     const execCtx = createExecutionContext({
       correlationId,
-      parentObservabilityLogId: traceContext?.parentObservabilityLogId,
-      sampled: traceContext?.sampled,
+      // Batch doesn't have a parent log ID from SQS (records do)
       source: obsConfig.source || `queue:${queueName}`,
       tags: {
         queueName,
+        isBatch: 'true',
         ...obsConfig.tags,
       },
     });
@@ -102,14 +105,14 @@ abstract class QueueController<TEvent extends SQSEvent = SQSEvent> extends Abstr
     // Run handler within execution context
     return runWithExecutionContext(execCtx, async () => {
       // Create span with custom attributes from decorator
-      const queueSpan = SpanObserver.start(`SQS ${queueName}`, {
+      const queueSpan = SpanObserver.start(`SQS Batch ${queueName}`, {
         correlationId,
-        parentObservabilityLogId: traceContext?.parentObservabilityLogId,
         source: obsConfig.source || `queue:${queueName}`,
         tags: obsConfig.tags,
         attributes: {
           'sqs.queueName': queueName,
           'sqs.batchSize': event.Records.length,
+          'faas.execution': context.awsRequestId,
           ...obsConfig.attributes,
         },
       });
@@ -136,11 +139,11 @@ abstract class QueueController<TEvent extends SQSEvent = SQSEvent> extends Abstr
       try {
         await this.initialize(event, context);
         const result = await this.process(event, context, ctx);
-        
+
         // Determine success based on result
         const hasFailures = result && 'batchItemFailures' in result && result.batchItemFailures.length > 0;
         await endSpan(!hasFailures);
-        
+
         return result;
       } catch (error) {
         await endSpan(false, error as Error);

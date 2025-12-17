@@ -13,6 +13,7 @@ import { Actor, ExecutionContext } from '../../core/types/execution-context';
 import { getCurrentContext, getCorrelationIdIfExists } from '../context';
 import { CaptureInput, CaptureOptions, IEventCapture, ObservabilityError } from '../types';
 import { createLogger } from '../../logging';
+import { generateTraceId, generateSpanId } from '../utils/id-generator';
 
 const baseLogger = createLogger('Observer');
 
@@ -137,7 +138,8 @@ export interface CommonFields {
  * Generate a unique ID
  */
 export function generateId(): string {
-  return randomUUID();
+  // Use W3C Span ID format (16 hex chars) by default for compatibility
+  return generateSpanId();
 }
 
 /**
@@ -165,7 +167,8 @@ export function resolveCorrelationId(
     }
 
     // Auto-generate correlationId to maintain observability
-    correlationId = `auto-${randomUUID()}`;
+    // Use W3C Trace ID format (32 hex chars)
+    correlationId = generateTraceId();
     baseLogger.warn(message + `Auto-generated correlationId: ${correlationId}`);
   }
 

@@ -34,6 +34,7 @@
 import { Actor } from '../../core/types/execution-context';
 import { getCurrentContext } from '../context';
 import { ObservabilityLevelString } from '../types';
+import { generateTraceId } from '../utils/id-generator';
 import {
   resolveCorrelationId,
   generateId,
@@ -74,6 +75,17 @@ export interface ISpanObserver {
   readonly traceId: string;
   setAttribute(key: string, value: unknown): this;
   setAttributes(attrs: Record<string, unknown>): this;
+  /**
+   * Set span status (OTEL compliant)
+   * @param code - Status code ('OK' | 'ERROR' | 'UNSET')
+   * @param message - Optional description
+   */
+  setStatus(code: 'OK' | 'ERROR' | 'UNSET', message?: string): this;
+  /**
+   * Record an exception (OTEL compliant)
+   * Adds an exception event to the span
+   */
+  recordException(exception: Error | string): this;
   addEvent(name: string, eventAttributes?: Record<string, unknown>): this;
   end(options?: { success?: boolean; error?: Error; status?: string }): void;
   withChild<T>(
@@ -146,7 +158,8 @@ export class SpanObserver implements ISpanObserver {
     // Build common fields using base utilities
     // Note: buildCommonFields now always returns fields (auto-generates correlationId if needed)
     const fields = buildCommonFields(OBSERVER_NAME, {
-      correlationId: options?.correlationId,
+      // Use W3C Trace ID if no correlationId provided
+      correlationId: options?.correlationId ?? generateTraceId(),
       actor: options?.actor,
       source: options?.source,
       tags: options?.tags,
@@ -191,6 +204,29 @@ export class SpanObserver implements ISpanObserver {
 
   setAttributes(attrs: Record<string, unknown>): this {
     Object.assign(this.attributes, attrs);
+    return this;
+  }
+
+  // === OTEL Compliance ===
+  setStatus(code: 'OK' | 'ERROR' | 'UNSET', message?: string): this {
+    // We map OTEL status to our internal attributes/status
+    // Note: Actual end() call will finalize the status, but this allows intermediate updates
+    this.attributes['otel.status_code'] = code;
+    if (message) {
+      this.attributes['otel.status_description'] = message;
+    }
+    return this;
+  }
+
+  recordException(exception: Error | string): this {
+    const error = normalizeError(exception);
+    this.addEvent('exception', {
+      'exception.type': error.name,
+      'exception.message': error.message,
+      'exception.stacktrace': error.stack,
+    });
+    // Also track the last error on the span itself for easy access
+    this.setAttribute('error', true);
     return this;
   }
 

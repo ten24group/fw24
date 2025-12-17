@@ -75,6 +75,7 @@ export interface ObservabilityIncludesConfig {
   };
 }
 
+
 /**
  * Controller/method observability configuration.
  * Extends base span metadata with HTTP request/response data capture options.
@@ -215,16 +216,16 @@ function normalizeResponseIncludes(
  * Select specific fields from an object.
  */
 export function selectFields(
-  obj: Record<string, unknown> | undefined, 
+  obj: Record<string, unknown> | undefined,
   fields: string[] | boolean
 ): Record<string, unknown> | undefined {
   if (!obj || fields === false) return undefined;
   if (fields === true) return obj;
-  
+
   const result: Record<string, unknown> = {};
   for (const field of fields) {
     if (field in obj) {
-      result[field] = obj[field];
+      result[ field ] = obj[ field ];
     }
   }
   return Object.keys(result).length > 0 ? result : undefined;
@@ -234,11 +235,11 @@ export function selectFields(
  * Select fields from a JSON string body.
  */
 export function selectFieldsFromBody(
-  body: string | undefined, 
+  body: string | undefined,
   fields: string[] | boolean
 ): unknown {
   if (!body || fields === false) return undefined;
-  
+
   try {
     const parsed = JSON.parse(body);
     if (fields === true) return parsed;

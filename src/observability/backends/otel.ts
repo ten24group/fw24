@@ -135,12 +135,15 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
   ) {
     this.serviceName = serviceName;
     this.minLevel = minLevel;
-    this.initializationPromise = this.initializeOpenTelemetry();
+    // Lazy initialization - do not start async process in constructor
   }
 
   private async initializeOpenTelemetry(): Promise<void> {
+    if (this.isOTELAvailable) return;
+
     // Initialize Traces
     try {
+      // Dynamic import wrapped in try-catch to safely handle missing layer
       const otel = await import('@opentelemetry/api');
       this.trace = otel.trace;
       this.contextApi = otel.context;
@@ -155,9 +158,12 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
       logger.info('OpenTelemetry Traces API available');
     } catch (error) {
       this.isOTELAvailable = false;
-      logger.warn('OpenTelemetry Traces API not available', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      // Only warn once
+      if (!this.initializationPromise) {
+        logger.warn('OpenTelemetry Traces API not available', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     // Initialize Metrics
@@ -207,10 +213,10 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
   }
 
   private async ensureInitialized(): Promise<void> {
-    if (this.initializationPromise) {
-      await this.initializationPromise;
-      this.initializationPromise = null;
+    if (!this.initializationPromise) {
+      this.initializationPromise = this.initializeOpenTelemetry();
     }
+    await this.initializationPromise;
   }
 
   initializeInvocation(): void {

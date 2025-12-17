@@ -25,7 +25,7 @@ const MAX_DIMENSION_VALUE_LENGTH = 1024;
 @Injectable({
   provide: 'ObservabilityBackend',
   providedIn: 'ROOT',
-  tags: ['observability', 'backend', 'cloudwatch']
+  tags: [ 'observability', 'backend', 'cloudwatch' ]
 })
 export class CloudWatchBackend implements ObservabilityBackend {
   public readonly name = 'cloudwatch';
@@ -130,7 +130,7 @@ export class CloudWatchBackend implements ObservabilityBackend {
     const dimensions: Array<{ name: string; value: string }> = [];
 
     if (event.attributes) {
-      for (const [key, value] of Object.entries(event.attributes)) {
+      for (const [ key, value ] of Object.entries(event.attributes)) {
         if (dimensions.length >= MAX_DIMENSIONS) {
           internalLogger.warn(`Dimension limit reached (${MAX_DIMENSIONS}), skipping remaining`);
           break;
@@ -147,14 +147,14 @@ export class CloudWatchBackend implements ObservabilityBackend {
 
     const unit = this.mapUnit(event.attributes?.unit as string | undefined);
 
-    for (const [name, value] of Object.entries(event.metrics)) {
+    for (const [ name, value ] of Object.entries(event.metrics)) {
       try {
         const singleMetric = this.metrics.singleMetric();
-        
+
         for (const dim of dimensions) {
           singleMetric.addDimension(dim.name, dim.value);
         }
-        
+
         singleMetric.addMetric(name, unit, value);
       } catch (error) {
         internalLogger.warn(`Failed to add metric ${name}:`, error);
@@ -174,7 +174,7 @@ export class CloudWatchBackend implements ObservabilityBackend {
     // Powertools handles per-invocation state automatically
   }
 
-  private mapUnit(unit?: string): (typeof MetricUnit)[keyof typeof MetricUnit] {
+  private mapUnit(unit?: string): (typeof MetricUnit)[ keyof typeof MetricUnit ] {
     if (!unit) return MetricUnit.Count;
 
     const normalized = unit.toLowerCase();

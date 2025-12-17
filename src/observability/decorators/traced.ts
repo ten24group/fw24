@@ -33,7 +33,7 @@ import { normalizeError } from '../observers/base';
  */
 function autoDetectSourceType(className: string): 'controller' | 'service' | 'queue' | 'task' | 'handler' {
   const lowerName = className.toLowerCase();
-  
+
   if (lowerName.includes('controller')) {
     return 'controller';
   }
@@ -46,7 +46,7 @@ function autoDetectSourceType(className: string): 'controller' | 'service' | 'qu
   if (lowerName.includes('task') || lowerName.includes('taskhandler')) {
     return 'task';
   }
-  
+
   return 'handler';
 }
 
@@ -73,6 +73,14 @@ export interface TracedOptions {
    * - Default → 'handler'
    */
   sourceType?: 'controller' | 'service' | 'handler' | 'queue' | 'task';
+  /**
+   * Conditionally enable/disable tracing.
+   * - Static boolean: `enabled: false` to disable
+   * - Dynamic function: `enabled: () => someCondition()`
+   * Function receives no arguments but can access getCurrentContext() internally.
+   * Default: true (enabled)
+   */
+  enabled?: boolean | (() => boolean);
 }
 
 /**
@@ -98,7 +106,7 @@ export function Traced(options: TracedOptions = {}) {
 
     // Auto-detect source type if not explicitly provided
     const sourceType = options.sourceType ?? autoDetectSourceType(className);
-    
+
     // Determine source based on sourceType
     let source: string;
     switch (sourceType) {
@@ -121,6 +129,18 @@ export function Traced(options: TracedOptions = {}) {
     // Wrap method - handles both sync and async via result checking
     // This is more robust than checking constructor.name which can break with transpilation
     const wrappedMethod = function (this: unknown, ...args: unknown[]): unknown {
+      // Check if tracing is enabled (static or dynamic)
+      if (options.enabled !== undefined) {
+        const isEnabled = typeof options.enabled === 'function'
+          ? options.enabled()
+          : options.enabled;
+
+        if (!isEnabled) {
+          // Tracing disabled - execute method without span
+          return (originalMethod as (...a: unknown[]) => unknown).apply(this, args);
+        }
+      }
+
       const spanOptions: SpanOptions = {
         level: options.level,
         attributes: {

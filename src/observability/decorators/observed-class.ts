@@ -36,47 +36,56 @@ import { Observed, ObservedOptions } from './observed';
 export interface ObservedClassOptions {
   /** Source type for all methods in the class */
   sourceType?: 'controller' | 'service' | 'handler' | 'queue' | 'task';
-  
+
   /** Default level for all observations */
   level?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
-  
+
   /** Enable tracing for all methods */
   traceAll?: boolean;
-  
+
   /** Enable tracing with specific options */
   trace?: boolean | {
     level?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
     captureArgs?: boolean;
     captureResult?: boolean;
   };
-  
+
   /** Enable audit for all methods */
   audit?: boolean | {
     level?: 'info' | 'warn' | 'error';
     captureArgs?: boolean;
     captureResult?: boolean;
   };
-  
+
   /** Enable metrics for all methods */
   metric?: boolean | {
     type?: 'counter' | 'timing';
     unit?: string;
   };
-  
+
   /** Methods to exclude from observability */
   exclude?: string[];
-  
+
   /** Methods to include (if provided, only these will be observed) */
   include?: string[];
-  
+
   /** Tags applied to all observations in this class */
   tags?: Record<string, string>;
-  
+
   /** Capture arguments for all methods */
   captureArgs?: boolean;
-  
+
   /** Capture results for all methods */
   captureResult?: boolean;
+
+  /**
+   * Conditionally enable/disable observability for all methods.
+   * - Static boolean: `enabled: false` to disable
+   * - Dynamic function: `enabled: () => someCondition()`
+   * Function receives no arguments but can access getCurrentContext() internally.
+   * Default: true (enabled)
+   */
+  enabled?: boolean | (() => boolean);
 }
 
 /**
@@ -87,27 +96,27 @@ export interface ObservedClassOptions {
 export function ObservedClass(options: ObservedClassOptions = {}) {
   return function <T extends { new(...args: any[]): {} }>(constructor: T): T {
     const className = constructor.name;
-    
+
     // Get all method names from prototype
     const prototype = constructor.prototype;
     const methodNames = Object.getOwnPropertyNames(prototype)
       .filter(name => {
         // Skip constructor
         if (name === 'constructor') return false;
-        
+
         // Skip if not a function
         const descriptor = Object.getOwnPropertyDescriptor(prototype, name);
         if (!descriptor || typeof descriptor.value !== 'function') return false;
-        
+
         // Apply include/exclude filters
         if (options.include && options.include.length > 0) {
           return options.include.includes(name);
         }
-        
+
         if (options.exclude && options.exclude.includes(name)) {
           return false;
         }
-        
+
         return true;
       });
 
@@ -123,6 +132,7 @@ export function ObservedClass(options: ObservedClassOptions = {}) {
         tags: options.tags,
         captureArgs: options.captureArgs,
         captureResult: options.captureResult,
+        enabled: options.enabled, // Pass through enabled from class level
       };
 
       // Configure tracing

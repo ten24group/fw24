@@ -222,12 +222,25 @@ export interface OTELBackendOptions {
 }
 
 /**
+ * Per-type backend filtering
+ * Allows control over which event types this backend receives
+ */
+export interface BackendTypeFilter {
+  /** Whether this type is enabled for this backend (default: true) */
+  enabled?: boolean;
+  /** Minimum level for this type on this backend (overrides backend-level minLevel) */
+  minLevel?: ObservabilityLevel;
+  /** Sampling rate override for this type on this backend (0.0-1.0) */
+  sampling?: number;
+}
+
+/**
  * Backend configuration - discriminated union for type-safe config
  */
 export type ObservabilityBackendConfig =
-  | { type: 'cloudwatch'; enabled: boolean; minLevel?: ObservabilityLevel; config?: CloudWatchBackendOptions }
-  | { type: 'dynamodb'; enabled: boolean; minLevel?: ObservabilityLevel; config?: DynamoDBBackendOptions }
-  | { type: 'otel'; enabled: boolean; minLevel?: ObservabilityLevel; config?: OTELBackendOptions };
+  | { type: 'cloudwatch'; enabled: boolean; minLevel?: ObservabilityLevel; config?: CloudWatchBackendOptions; types?: { span?: BackendTypeFilter; metric?: BackendTypeFilter; audit?: BackendTypeFilter; log?: BackendTypeFilter } }
+  | { type: 'dynamodb'; enabled: boolean; minLevel?: ObservabilityLevel; config?: DynamoDBBackendOptions; types?: { span?: BackendTypeFilter; metric?: BackendTypeFilter; audit?: BackendTypeFilter; log?: BackendTypeFilter } }
+  | { type: 'otel'; enabled: boolean; minLevel?: ObservabilityLevel; config?: OTELBackendOptions; types?: { span?: BackendTypeFilter; metric?: BackendTypeFilter; audit?: BackendTypeFilter; log?: BackendTypeFilter } };
 
 /**
  * Type-specific configuration
@@ -246,10 +259,41 @@ export interface TypeSpecificConfig {
  */
 export interface SamplingConfig {
   enabled: boolean;
+  /** 
+   * Enable smart tail-based sampling (capture full trace on error).
+   * When enabled, logs/spans that would be sampled out are buffered.
+   * If an ERROR/CRITICAL event occurs, the buffer is flushed.
+   * Default: false
+   */
+  smart?: boolean;
+  /**
+   * Maximum buffer size for smart sampling (number of events).
+   * When buffer exceeds this size, oldest events are dropped.
+   * Default: 1000
+   */
+  maxBufferSize?: number;
   /** Sampling rates by level name (0-1). Missing levels default to 1.0 (100%) */
   rates?: Partial<Record<ObservabilityLevelString, number>>;
   /** Sampling rates by operation pattern */
   operations?: Record<string, number>;
+  /** 
+   * Rule-based sampling configuration.
+   * Rules are evaluated in order. First match determines the sampling rate.
+   */
+  rules?: SamplingRule[];
+}
+
+export interface SamplingRule {
+  /** Target field to match against */
+  target: 'tenant' | 'route' | 'tag' | 'actor' | 'source';
+  /** 
+   * Value pattern to match.
+   * Can be a string (exact match) or regex pattern.
+   * For tags, use "key:value" format.
+   */
+  pattern: string | RegExp;
+  /** Sampling rate (0.0 to 1.0) */
+  rate: number;
 }
 
 /**

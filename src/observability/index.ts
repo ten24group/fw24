@@ -66,6 +66,17 @@ export {
   ObservabilityConfigInput,
 } from './config';
 
+// === PRESETS ===
+export {
+  type ObservabilityPreset,
+  createObservabilityConfig as createObservabilityConfigFromPreset,
+  getPreset,
+  productionPreset,
+  developmentPreset,
+  debugPreset,
+  minimalPreset,
+} from './presets';
+
 // === CONTEXT ===
 export {
   type ExecutionContextData,

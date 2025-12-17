@@ -45,13 +45,13 @@ const logger = createLogger('ObservedDecorator');
 export interface ObservedOptions {
   /** Method name (defaults to ClassName.methodName) */
   name?: string;
-  
+
   /** Create span for tracing */
   trace?: boolean | {
-    level?: SpanOptions['level'];
+    level?: SpanOptions[ 'level' ];
     attributes?: Record<string, unknown>;
   };
-  
+
   /** Create audit record */
   audit?: boolean | {
     action?: string;
@@ -60,7 +60,7 @@ export interface ObservedOptions {
     captureArgs?: boolean;
     captureResult?: boolean;
   };
-  
+
   /** Record metric */
   metric?: {
     name?: string;
@@ -68,18 +68,27 @@ export interface ObservedOptions {
     unit?: string;
     tags?: Record<string, string>;
   };
-  
+
   /** Source type for the operation */
   sourceType?: 'controller' | 'service' | 'handler' | 'queue' | 'task';
-  
+
   /** Tags applied to all observability events */
   tags?: Record<string, string>;
-  
+
   /** Capture method arguments */
   captureArgs?: boolean;
-  
+
   /** Capture return value */
   captureResult?: boolean;
+
+  /**
+   * Conditionally enable/disable observability.
+   * - Static boolean: `enabled: false` to disable
+   * - Dynamic function: `enabled: () => someCondition()`
+   * Function receives no arguments but can access getCurrentContext() internally.
+   * Default: true (enabled)
+   */
+  enabled?: boolean | (() => boolean);
 }
 
 /**
@@ -123,13 +132,25 @@ export function Observed(options: ObservedOptions = {}) {
     }
 
     const wrappedMethod = function (this: unknown, ...args: unknown[]): unknown {
+      // Check if observability is enabled (static or dynamic)
+      if (options.enabled !== undefined) {
+        const isEnabled = typeof options.enabled === 'function'
+          ? options.enabled()
+          : options.enabled;
+
+        if (!isEnabled) {
+          // Observability disabled - execute method without instrumentation
+          return (originalMethod as (...a: unknown[]) => unknown).apply(this, args);
+        }
+      }
+
       const startTime = Date.now();
       let span: ReturnType<typeof SpanObserver.start> | null = null;
 
       // Start span if tracing enabled
       if (options.trace) {
         const traceOptions = typeof options.trace === 'boolean' ? {} : options.trace;
-        
+
         const spanOptions: SpanOptions = {
           level: traceOptions.level,
           attributes: {
@@ -361,10 +382,10 @@ function recordTimingMetric(params: {
   if (!options.metric || options.metric.type !== 'timing') return;
 
   const metricName = options.metric.name ?? `${operationName}.duration`;
-  
+
   MetricObserver.timing(metricName, durationMs, {
-    tags: { 
-      ...options.tags, 
+    tags: {
+      ...options.tags,
       ...options.metric.tags,
       success: String(success),
     },

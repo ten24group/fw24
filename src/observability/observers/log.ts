@@ -51,48 +51,30 @@ export interface LogOptions extends BaseObserverOptions {
 export class LogObserver {
 
   /**
-   * Log at TRACE level (most verbose)
-   */
-  static trace(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined {
-    return this.log('trace', message, data, options);
-  }
-
-  /**
-   * Log at DEBUG level
-   */
-  static debug(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined {
-    return this.log('debug', message, data, options);
-  }
-
-  /**
    * Log at INFO level
    */
-  static info(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined {
-    return this.log('info', message, data, options);
+  static info(message: string, ...args: unknown[]): string | undefined {
+    return this.logWithArgs('info', message, args);
   }
 
   /**
    * Log at WARN level
    */
-  static warn(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined {
-    return this.log('warn', message, data, options);
+  static warn(message: string, ...args: unknown[]): string | undefined {
+    return this.logWithArgs('warn', message, args);
   }
 
   /**
    * Log at ERROR level
    */
-  static error(
-    message: string,
-    errorOrData?: Error | Record<string, unknown>,
-    options?: LogOptions
-  ): string | undefined {
+  static error(message: string, errorOrData?: Error | Record<string, unknown>, options?: LogOptions): string | undefined {
+    // Keep backward compatibility for error() as it has special signature
     const fields = buildCommonFields(OBSERVER_NAME, options);
 
     const isError = errorOrData instanceof Error;
     const data = isError ? { errorMessage: errorOrData.message } : errorOrData;
     const error = isError ? mapError(errorOrData) : undefined;
 
-    // Don't duplicate message - it's already in `operation`
     return captureEvent(fields, {
       type: 'log',
       level: 'error',
@@ -103,6 +85,43 @@ export class LogObserver {
       entityId: options?.entityId,
       error,
     });
+  }
+
+  /**
+   * Log at DEBUG level
+   */
+  static debug(message: string, ...args: unknown[]): string | undefined {
+    return this.logWithArgs('debug', message, args);
+  }
+
+  /**
+   * Log at TRACE level
+   */
+  static trace(message: string, ...args: unknown[]): string | undefined {
+    return this.logWithArgs('trace', message, args);
+  }
+
+  // Helper to handle variable arguments
+  private static logWithArgs(level: ObservabilityLevelString, message: string, args: unknown[]): string | undefined {
+    let data: Record<string, unknown> | undefined;
+    let options: LogOptions | undefined;
+
+    // Parse args similar to console.log but extracting options if last arg
+    if (args.length > 0) {
+      const lastArg = args[args.length - 1];
+      // Heuristic: if last arg has 'tags', 'source', or 'attributes', treat as options
+      if (lastArg && typeof lastArg === 'object' && ('tags' in lastArg || 'attributes' in lastArg || 'source' in lastArg)) {
+        options = args.pop() as LogOptions;
+      }
+      
+      if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null) {
+        data = args[0] as Record<string, unknown>;
+      } else if (args.length > 0) {
+        data = { args };
+      }
+    }
+
+    return this.log(level, message, data, options);
   }
 
   /**
