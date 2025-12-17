@@ -36,7 +36,7 @@ function getFifoProperties(record: any) {
 }
 
 export const handler = async (event: DynamoDBStreamEvent): Promise<void> => {
-    logger.info('Processing DynamoDB Stream event', { event });
+    logger.debug('Processing DynamoDB Stream event', { event });
 
     try {
         // Get topic ARN from environment variable
@@ -58,11 +58,11 @@ export const handler = async (event: DynamoDBStreamEvent): Promise<void> => {
                 const newImage = record.dynamodb?.NewImage;
                 const oldImage = record.dynamodb?.OldImage;
                 const entityName = ((newImage?.__edb_e__ || oldImage?.__edb_e__) as { S?: string })?.S;
-                logger.info('Stream entity name', entityName);
+                logger.debug('Stream entity name', entityName);
 
                 // Skip processing only audit log records
                 if (entityName === 'auditLog') {
-                    logger.info('Skipping audit log record', { eventID: record.eventID });
+                    logger.debug('Skipping audit log record', { eventID: record.eventID });
                     return Promise.resolve();
                 }
             }
@@ -103,7 +103,7 @@ export const handler = async (event: DynamoDBStreamEvent): Promise<void> => {
 
             await sendTopicMessage(topicArn, message);
 
-            logger.info('Successfully published stream record to SNS', {
+            logger.debug('Successfully published stream record to SNS', {
                 eventID: record.eventID,
                 eventName: record.eventName,
                 ...(isTopicFifo() && { fifoProps }) // Log FIFO properties only if enabled
