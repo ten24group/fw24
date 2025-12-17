@@ -162,10 +162,24 @@ export class DIContainer implements IDIContainer {
         return this._proxies
     }
 
+    /**
+     * Global ROOT container shared across ALL fw24 instances (bundled + layer).
+     * Stored in global object to ensure singleton behavior even when multiple
+     * fw24 module graphs exist (e.g., bundled in Lambda + layer).
+     */
     private static _rootInstance: DIContainer;
     static get ROOT(): IDIContainer {
+        // Check global first for cross-instance sharing
+        const globalRoot = (global as any).__fw24_di_root_container__;
+        if (globalRoot) {
+            return globalRoot;
+        }
+
+        // Create if doesn't exist
         if (!this._rootInstance) {
             this._rootInstance = new DIContainer();
+            // Store in global for cross-instance access
+            (global as any).__fw24_di_root_container__ = this._rootInstance;
         }
         return this._rootInstance;
     }
@@ -656,25 +670,25 @@ export class DIContainer implements IDIContainer {
         // Filter and sort providers based on criteria and conflict resolution strategies
         const bestProvidersArray = Array.from(bestProviders.values());
         const filteredAndSorted = filterAndSortProviders(bestProvidersArray, criteria);
-        
+
         // Deduplicate providers by composite key (provide, type, forEntity)
         // Keep only the highest priority provider for each unique combination
         const uniqueProviders = new Map<string, InternalProviderOptions<T>>();
-        
+
         for (const provider of filteredAndSorted) {
             // Create a composite key from provide token, type, and forEntity
             const provideToken = this.createToken(provider._provider.provide);
             const type = provider._provider.type || 'default';
             const forEntity = provider._provider.forEntity || '';
             const compositeKey = `${provideToken}::${type}::${forEntity}`;
-            
+
             if (!uniqueProviders.has(compositeKey)) {
                 uniqueProviders.set(compositeKey, provider);
             }
             // Note: Since filteredAndSorted is already sorted by priority (highest first),
             // the first provider we encounter for each composite key is the best one
         }
-        
+
         return Array.from(uniqueProviders.values());
     }
 

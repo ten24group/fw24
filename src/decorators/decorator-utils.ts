@@ -86,16 +86,36 @@ export type CommonLambdaHandlerOptions = {
 let entryPackagesLoaded = false;
 
 /**
+ * Global lock key for cross-instance coordination.
+ * Shared across ALL fw24 instances (bundled + layer) via Node.js global object.
+ */
+const GLOBAL_LOCK_KEY = '__fw24_entry_packages_loading__';
+const GLOBAL_LOADED_KEY = '__fw24_entry_packages_loaded__';
+
+/**
  * Loads entry packages specified in ENTRY_PACKAGES environment variable.
  * Called automatically by fw24 layer on import, and by decorators for backward compatibility.
  * Safe to call multiple times - only loads once.
+ * 
+ * Uses global locking to prevent race conditions when multiple fw24 instances
+ * (bundled in Lambda + layer) try to load entry packages simultaneously.
  */
 export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3)?.path) {
-	// Only load once - guard prevents duplicate loading
-	if (entryPackagesLoaded) {
+	// Check if another fw24 instance is currently loading
+	if ((global as any)[ GLOBAL_LOCK_KEY ]) {
+		DefaultLogger.debug("Entry packages currently loading by another fw24 instance, skipping", { controllerName });
+		return;
+	}
+
+	// Check if already loaded (global check across all instances)
+	if ((global as any)[ GLOBAL_LOADED_KEY ] || entryPackagesLoaded) {
 		DefaultLogger.info("Entry packages already loaded, skipping", { controllerName });
 		return;
 	}
+
+	// Acquire global lock and mark as loaded
+	(global as any)[ GLOBAL_LOCK_KEY ] = true;
+	(global as any)[ GLOBAL_LOADED_KEY ] = true;
 	entryPackagesLoaded = true;
 
 	try {
@@ -124,6 +144,9 @@ export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3
 		});
 	} catch (e) {
 		DefaultLogger.error(`Error loading entry packages`, e);
+	} finally {
+		// Always release the lock, even if loading fails
+		(global as any)[ GLOBAL_LOCK_KEY ] = false;
 	}
 }
 
