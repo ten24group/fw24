@@ -38,25 +38,26 @@ export interface LogOptions extends BaseObserverOptions {
 }
 export declare class LogObserver {
     /**
-     * Log at TRACE level (most verbose)
-     */
-    static trace(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined;
-    /**
-     * Log at DEBUG level
-     */
-    static debug(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined;
-    /**
      * Log at INFO level
      */
-    static info(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined;
+    static info(message: string, ...args: unknown[]): string | undefined;
     /**
      * Log at WARN level
      */
-    static warn(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined;
+    static warn(message: string, ...args: unknown[]): string | undefined;
     /**
      * Log at ERROR level
      */
     static error(message: string, errorOrData?: Error | Record<string, unknown>, options?: LogOptions): string | undefined;
+    /**
+     * Log at DEBUG level
+     */
+    static debug(message: string, ...args: unknown[]): string | undefined;
+    /**
+     * Log at TRACE level
+     */
+    static trace(message: string, ...args: unknown[]): string | undefined;
+    private static logWithArgs;
     /**
      * Log at CRITICAL level (most severe, bypasses sampling)
      */

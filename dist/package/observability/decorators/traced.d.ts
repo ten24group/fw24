@@ -46,6 +46,14 @@ export interface TracedOptions {
      * - Default → 'handler'
      */
     sourceType?: 'controller' | 'service' | 'handler' | 'queue' | 'task';
+    /**
+     * Conditionally enable/disable tracing.
+     * - Static boolean: `enabled: false` to disable
+     * - Dynamic function: `enabled: () => someCondition()`
+     * Function receives no arguments but can access getCurrentContext() internally.
+     * Default: true (enabled)
+     */
+    enabled?: boolean | (() => boolean);
 }
 /**
  * Method decorator that wraps a method in a trace span

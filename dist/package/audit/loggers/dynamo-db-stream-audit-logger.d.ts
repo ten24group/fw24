@@ -43,7 +43,7 @@ export declare class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<Dyn
      * Extract actor context from entity images.
      * Tries _actor field first, then falls back to visible actor fields.
      */
-    protected extractActor(newImage: Record<string, any> | undefined, oldImage: Record<string, any> | undefined): Actor | undefined;
+    protected extractActor(newImage: Record<string, any> | undefined): Actor | undefined;
     /**
      * Extract or generate correlationId for the audit event.
      * Priority:
@@ -51,6 +51,6 @@ export declare class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<Dyn
      * 2. From DynamoDB eventID (unique per stream record)
      * 3. Generated fallback
      */
-    protected extractCorrelationId(record: BaseEventRecord<ChangeStreamPayload>, newImage: Record<string, any> | undefined, oldImage: Record<string, any> | undefined): string;
+    protected extractCorrelationId(record: BaseEventRecord<ChangeStreamPayload>, newImage: Record<string, any> | undefined): string;
 }
 export declare const logger: import("tslog").Logger<import("tslog").ILogObj>;

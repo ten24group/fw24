@@ -10,8 +10,11 @@ export declare abstract class AbstractLambdaHandler {
     /**
      * Initialize observability for this invocation.
      * Called at the start of each handler execution.
+     *
+     * Ensure entry packages are loaded proeprly, before
+     * before observability initialization attempts to resolve config.
      */
-    protected initializeObservability(): void;
+    protected initializeEntryPackagesAndObservability(): void;
     /**
      * Flush observability data at the end of handler execution.
      */

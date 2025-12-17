@@ -62,6 +62,14 @@ export interface ObservedOptions {
     captureArgs?: boolean;
     /** Capture return value */
     captureResult?: boolean;
+    /**
+     * Conditionally enable/disable observability.
+     * - Static boolean: `enabled: false` to disable
+     * - Dynamic function: `enabled: () => someCondition()`
+     * Function receives no arguments but can access getCurrentContext() internally.
+     * Default: true (enabled)
+     */
+    enabled?: boolean | (() => boolean);
 }
 /**
  * Unified observability decorator that combines tracing, auditing, and metrics

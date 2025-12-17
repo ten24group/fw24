@@ -56,6 +56,17 @@ export interface ISpanObserver {
     readonly traceId: string;
     setAttribute(key: string, value: unknown): this;
     setAttributes(attrs: Record<string, unknown>): this;
+    /**
+     * Set span status (OTEL compliant)
+     * @param code - Status code ('OK' | 'ERROR' | 'UNSET')
+     * @param message - Optional description
+     */
+    setStatus(code: 'OK' | 'ERROR' | 'UNSET', message?: string): this;
+    /**
+     * Record an exception (OTEL compliant)
+     * Adds an exception event to the span
+     */
+    recordException(exception: Error | string): this;
     addEvent(name: string, eventAttributes?: Record<string, unknown>): this;
     end(options?: {
         success?: boolean;
@@ -94,6 +105,8 @@ export declare class SpanObserver implements ISpanObserver {
     get traceId(): string;
     setAttribute(key: string, value: unknown): this;
     setAttributes(attrs: Record<string, unknown>): this;
+    setStatus(code: 'OK' | 'ERROR' | 'UNSET', message?: string): this;
+    recordException(exception: Error | string): this;
     addEvent(name: string, eventAttributes?: Record<string, unknown>): this;
     end(options?: {
         success?: boolean;

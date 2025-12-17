@@ -189,12 +189,14 @@ export interface PropertyConfig {
     visibility?: VisibilityConfig;
     /**
      * Link configuration for navigable fields (e.g., clickable IDs)
-     * When isLink is true, the field will be rendered as a link using linkConfig
+     * Note: presence of linkConfig is sufficient - isLink is optional/deprecated
      */
+    /** @deprecated Optional - presence of linkConfig is sufficient to indicate a link */
     isLink?: boolean;
     linkConfig?: {
         routePattern: string;
-        displayText?: string;
+        /** Display text for the link - supports templates like "View {entityName}: {entityId}" */
+        displayText?: Template;
     };
     /**
      * Relation field configuration for rendering related entities.
@@ -457,10 +459,12 @@ export interface ListPageConfigStructure {
                 errorMessage?: Template;
             };
         }>;
+        /** @deprecated Optional - presence of linkConfig is sufficient to indicate a link */
         isLink?: boolean;
         linkConfig?: {
             routePattern: string;
-            displayText?: string;
+            /** Display text for the link - supports templates like "View {entityName}: {entityId}" */
+            displayText?: Template;
         };
     }>;
     /**

@@ -85,7 +85,7 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                             readonly id: "quick-view";
                             readonly label: "Quick View";
                             readonly icon: "ExpandAltOutlined";
-                            readonly tooltip: "View details";
+                            readonly tooltip: "Quick View";
                             readonly url: "/view-observabilitylog/:observabilityLogId";
                             readonly openInModal: true;
                             readonly modalTitle: "Log Details";
@@ -170,7 +170,6 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                         readonly eq: true;
                                     };
                                 };
-                                readonly default: true;
                             }, {
                                 readonly id: "child-only";
                                 readonly label: "Child Spans";
@@ -185,6 +184,7 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                 readonly label: "All Events";
                                 readonly icon: "UnorderedListOutlined";
                                 readonly filters: {};
+                                readonly default: true;
                             }];
                         }, {
                             readonly id: "level-group";
@@ -269,7 +269,7 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                             readonly renderMode: "tabs";
                             readonly defaultCollapsed: true;
                             readonly lazyLoad: true;
-                            readonly keepMounted: true;
+                            readonly keepMounted: false;
                             readonly sections: {
                                 readonly parentSpan: {
                                     readonly label: "Parent Span";
@@ -289,7 +289,7 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                         readonly overrideConfig: {
                                             readonly identifierMapping: {
                                                 readonly source: "parentObservabilityLogId";
-                                                readonly target: "observabilityLogId";
+                                                readonly target: "id";
                                             };
                                         };
                                     };
@@ -311,7 +311,7 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                     };
                                 };
                                 readonly traceLogs: {
-                                    readonly label: "Full Trace";
+                                    readonly label: "This Trace";
                                     readonly icon: "ShareAltOutlined";
                                     readonly sortOrder: 3;
                                     readonly pageType: "list";
@@ -323,6 +323,48 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                                 readonly correlationId: ":correlationId";
                                             };
                                             readonly hideSegments: ["hierarchy-group"];
+                                            readonly description: "All events in this Lambda invocation";
+                                        };
+                                    };
+                                };
+                                readonly causedByTrace: {
+                                    readonly label: "Causing Request Trace";
+                                    readonly icon: "LinkOutlined";
+                                    readonly sortOrder: 4;
+                                    readonly pageType: "list";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly causedBy: {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly entityConfigRef: {
+                                        readonly entityName: "observabilityLog";
+                                        readonly pageType: "list";
+                                        readonly overrideConfig: {
+                                            readonly defaultFilters: {
+                                                readonly correlationId: ":causedBy";
+                                            };
+                                            readonly hideSegments: ["hierarchy-group"];
+                                            readonly description: "View the original request trace that caused this event";
+                                        };
+                                    };
+                                };
+                                readonly causedEvents: {
+                                    readonly label: "Events Caused By This";
+                                    readonly icon: "ApiOutlined";
+                                    readonly sortOrder: 5;
+                                    readonly pageType: "list";
+                                    readonly entityConfigRef: {
+                                        readonly entityName: "observabilityLog";
+                                        readonly pageType: "list";
+                                        readonly overrideConfig: {
+                                            readonly defaultFilters: {
+                                                readonly causedBy: ":correlationId";
+                                            };
+                                            readonly hideSegments: ["hierarchy-group"];
+                                            readonly description: "Events in other invocations caused by this request";
                                         };
                                     };
                                 };
@@ -493,7 +535,7 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                             readonly renderMode: "tabs";
                             readonly defaultCollapsed: true;
                             readonly lazyLoad: false;
-                            readonly keepMounted: true;
+                            readonly keepMounted: false;
                             readonly sections: {
                                 readonly byEntity: {
                                     readonly label: "Entity Logs";
@@ -654,6 +696,28 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                         readonly displayText: "View Correlated Logs";
                     };
                 };
+                readonly causedBy: {
+                    readonly type: "string";
+                    readonly required: false;
+                    readonly label: "Caused By";
+                    readonly helpText: "Correlation ID that caused this event (cross-invocation tracing)";
+                    readonly isFilterable: true;
+                    readonly isLink: true;
+                    readonly linkConfig: {
+                        readonly routePattern: "/list-observabilitylog?correlationId.eq=:causedBy";
+                        readonly displayText: "View Causing Request";
+                    };
+                };
+                readonly relatedTraces: {
+                    readonly type: "list";
+                    readonly items: {
+                        readonly type: "string";
+                    };
+                    readonly required: false;
+                    readonly label: "Related Traces";
+                    readonly helpText: "All related correlation IDs for complex workflows spanning multiple invocations";
+                    readonly isFilterable: false;
+                };
                 readonly type: {
                     readonly type: "string";
                     readonly required: true;
@@ -693,10 +757,9 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                         entityName?: string;
                         entityId?: string;
                     }) => string | undefined;
-                    readonly isLink: true;
                     readonly linkConfig: {
                         readonly routePattern: "/view-:entityName/:entityId";
-                        readonly displayText: "View Entity";
+                        readonly displayText: "View {entityName}";
                     };
                 };
                 readonly operation: {
@@ -881,6 +944,17 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                     };
                     readonly sk: {
                         readonly field: "gsi7sk";
+                        readonly composite: readonly ["timestampMs"];
+                    };
+                };
+                readonly byCausedBy: {
+                    readonly index: "gsi8";
+                    readonly pk: {
+                        readonly field: "gsi8pk";
+                        readonly composite: readonly ["causedBy"];
+                    };
+                    readonly sk: {
+                        readonly field: "gsi8sk";
                         readonly composite: readonly ["timestampMs"];
                     };
                 };

@@ -64,6 +64,14 @@ export interface ObservedClassOptions {
     captureArgs?: boolean;
     /** Capture results for all methods */
     captureResult?: boolean;
+    /**
+     * Conditionally enable/disable observability for all methods.
+     * - Static boolean: `enabled: false` to disable
+     * - Dynamic function: `enabled: () => someCondition()`
+     * Function receives no arguments but can access getCurrentContext() internally.
+     * Default: true (enabled)
+     */
+    enabled?: boolean | (() => boolean);
 }
 /**
  * Class decorator that automatically applies observability to methods

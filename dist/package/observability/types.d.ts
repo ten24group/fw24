@@ -30,8 +30,45 @@ export type ObservabilityLevelString = 'trace' | 'debug' | 'info' | 'warn' | 'er
 export type BaseEventType = 'span.start' | 'span.event' | 'span.end' | 'log' | 'metric' | 'audit' | 'audit.entity' | 'audit.access' | 'audit.compliance' | 'workflow.start' | 'workflow.step' | 'workflow.end' | 'decision' | 'decision.rule' | 'decision.algorithm' | 'decision.feature_flag' | 'decision.ab_test' | 'access.request' | 'access.response';
 /**
  * All supported event types (base + custom)
+ *
+ * Custom event types are fully supported without registration!
+ * Use Observer.capture() or Manager.capture() with any type:
+ *
+ * @example
+ * ```typescript
+ * import { Observer } from '@ten24group/fw24';
+ *
+ * // Business event
+ * Observer.capture({
+ *   type: 'business.order_placed',
+ *   level: 'info',
+ *   entityName: 'order',
+ *   entityId: order.id,
+ *   data: { orderId, amount, customer },
+ *   metrics: { amount: 99.99 },
+ * });
+ *
+ * // Payment transaction
+ * Observer.capture({
+ *   type: 'payment.transaction',
+ *   level: 'info',
+ *   data: { transactionId, status },
+ *   success: status === 'completed',
+ * });
+ *
+ * // Or use existing observers if the type matches:
+ * SpanObserver.start('operation');  // Creates 'span.start'
+ * LogObserver.info('message');      // Creates 'log'
+ * AuditObserver.entityCreate(...);  // Creates 'audit.entity'
+ * ```
+ *
+ * Type categorization (for backend routing and sampling):
+ * - Starts with 'span.': categorized as 'span'
+ * - Equals 'metric': categorized as 'metric'
+ * - Starts with 'audit': categorized as 'audit'
+ * - Everything else: categorized as 'log'
  */
-export type ObservabilityEventType = BaseEventType | `custom.${string}`;
+export type ObservabilityEventType = BaseEventType | (string & {});
 /**
  * Error details for observability events
  */
@@ -60,8 +97,18 @@ export interface ObservabilityEvent {
     timestampMs: number;
     /** Unique ID for this observability log entry */
     observabilityLogId: string;
-    /** Parent observability log ID for hierarchical relationships */
+    /** Parent observability log ID for hierarchical relationships (within same invocation) */
     parentObservabilityLogId?: string | null;
+    /**
+     * Correlation ID that caused this event (cross-invocation tracing)
+     * Example: DynamoDB stream audit caused by original API request
+     */
+    causedBy?: string;
+    /**
+     * All related trace IDs (for complex workflows spanning multiple invocations)
+     * Allows querying "show me everything related to this business transaction"
+     */
+    relatedTraces?: string[];
     /** Entity type being observed (user, order, span, workflow) */
     entityName?: string;
     /** Specific entity instance ID */
@@ -94,6 +141,11 @@ export interface ObservabilityEvent {
     context?: Record<string, unknown>;
     /** Error details if applicable */
     error?: ObservabilityError;
+    /**
+     * Mark as critical - bypasses sampling and prevents buffer eviction
+     * Use for: payment processing, security audits, critical business flows
+     */
+    critical?: boolean;
 }
 /**
  * Input for capturing events - allows some fields to be auto-generated
@@ -105,6 +157,8 @@ export interface CaptureInput {
     observabilityLogId?: string;
     timestampMs?: number;
     parentObservabilityLogId?: string | null;
+    causedBy?: string;
+    relatedTraces?: string[];
     entityName?: string;
     entityId?: string;
     operation?: string;
@@ -121,6 +175,7 @@ export interface CaptureInput {
     metrics?: Record<string, number>;
     context?: Record<string, unknown>;
     error?: ObservabilityError;
+    critical?: boolean;
 }
 /**
  * Backend interface - what backends must implement
@@ -160,6 +215,18 @@ export interface OTELBackendOptions {
     endpoint?: string;
 }
 /**
+ * Per-type backend filtering
+ * Allows control over which event types this backend receives
+ */
+export interface BackendTypeFilter {
+    /** Whether this type is enabled for this backend (default: true) */
+    enabled?: boolean;
+    /** Minimum level for this type on this backend (overrides backend-level minLevel) */
+    minLevel?: ObservabilityLevel;
+    /** Sampling rate override for this type on this backend (0.0-1.0) */
+    sampling?: number;
+}
+/**
  * Backend configuration - discriminated union for type-safe config
  */
 export type ObservabilityBackendConfig = {
@@ -167,16 +234,34 @@ export type ObservabilityBackendConfig = {
     enabled: boolean;
     minLevel?: ObservabilityLevel;
     config?: CloudWatchBackendOptions;
+    types?: {
+        span?: BackendTypeFilter;
+        metric?: BackendTypeFilter;
+        audit?: BackendTypeFilter;
+        log?: BackendTypeFilter;
+    };
 } | {
     type: 'dynamodb';
     enabled: boolean;
     minLevel?: ObservabilityLevel;
     config?: DynamoDBBackendOptions;
+    types?: {
+        span?: BackendTypeFilter;
+        metric?: BackendTypeFilter;
+        audit?: BackendTypeFilter;
+        log?: BackendTypeFilter;
+    };
 } | {
     type: 'otel';
     enabled: boolean;
     minLevel?: ObservabilityLevel;
     config?: OTELBackendOptions;
+    types?: {
+        span?: BackendTypeFilter;
+        metric?: BackendTypeFilter;
+        audit?: BackendTypeFilter;
+        log?: BackendTypeFilter;
+    };
 };
 /**
  * Type-specific configuration
@@ -194,10 +279,46 @@ export interface TypeSpecificConfig {
  */
 export interface SamplingConfig {
     enabled: boolean;
+    /**
+     * Enable smart tail-based sampling (capture full trace on error).
+     * When enabled, logs/spans that would be sampled out are buffered.
+     * If an ERROR/CRITICAL event occurs, the buffer is flushed.
+     * Default: false
+     */
+    smart?: boolean;
+    /**
+     * Maximum buffer size for smart sampling (number of events).
+     * When buffer exceeds this size, lowest priority events are evicted.
+     * Default: 1000
+     */
+    maxBufferSize?: number;
+    /**
+     * Minimum level to capture when flushing buffer on error.
+     * Prevents overwhelming backends with thousands of TRACE/DEBUG events.
+     * Default: ObservabilityLevel.INFO
+     */
+    minLevelOnError?: ObservabilityLevel;
     /** Sampling rates by level name (0-1). Missing levels default to 1.0 (100%) */
     rates?: Partial<Record<ObservabilityLevelString, number>>;
     /** Sampling rates by operation pattern */
     operations?: Record<string, number>;
+    /**
+     * Rule-based sampling configuration.
+     * Rules are evaluated in order. First match determines the sampling rate.
+     */
+    rules?: SamplingRule[];
+}
+export interface SamplingRule {
+    /** Target field to match against */
+    target: 'tenant' | 'route' | 'tag' | 'actor' | 'source';
+    /**
+     * Value pattern to match.
+     * Can be a string (exact match) or regex pattern.
+     * For tags, use "key:value" format.
+     */
+    pattern: string | RegExp;
+    /** Sampling rate (0.0 to 1.0) */
+    rate: number;
 }
 /**
  * CloudWatch configuration

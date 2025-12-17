@@ -3,6 +3,7 @@
  *
  * Core types for the framework's execution context system.
  */
+import type { ObservabilityEvent } from '../../../observability/types';
 import { Actor } from '../../types/execution-context';
 /**
  * Execution context data - stored in AsyncLocalStorage.
@@ -27,6 +28,30 @@ export interface ExecutionContextData {
     source?: string;
     /** Context creation timestamp */
     readonly startTime: number;
+    /**
+     * Buffer for smart tail-based sampling.
+     * Stores all events during execution. On flush:
+     * - If error occurred: all events are captured (buffer already flushed on error)
+     * - If no error: sampling rules applied to buffer before capture
+     */
+    observabilityBuffer?: ObservabilityEvent[];
+    /**
+     * Flag indicating if an error (ERROR/CRITICAL) has occurred in this invocation.
+     * Once set, all subsequent events bypass buffering and are captured immediately.
+     */
+    errorOccurred?: boolean;
+    /**
+     * Observability metrics for this invocation.
+     * Tracks buffer usage, dropped events, etc.
+     */
+    observabilitySummary?: {
+        /** Number of events evicted from buffer due to size limits */
+        evicted?: number;
+        /** Number of events buffered */
+        buffered?: number;
+        /** Number of events captured immediately */
+        captured?: number;
+    };
 }
 /**
  * Options for creating execution context

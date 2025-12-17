@@ -22,7 +22,7 @@ export declare class ObservabilityManager {
      */
     static capture(input: CaptureInput, options?: CaptureOptions): string | undefined;
     /**
-     * Capture an observability event asynchronously
+     * Capture an observability event asynchronously (waits for backend capture)
      */
     static captureAsync(input: CaptureInput, options?: Omit<CaptureOptions, 'sync'>): Promise<string | undefined>;
     /**
@@ -34,7 +34,7 @@ export declare class ObservabilityManager {
         correlationId?: string;
     }, options?: CaptureOptions): string | undefined;
     /**
-     * Flush all backends
+     * Flush all backends and buffered events (called at end of Lambda invocation)
      */
     static flush(): Promise<void>;
     /**

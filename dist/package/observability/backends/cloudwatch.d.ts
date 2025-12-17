@@ -19,6 +19,11 @@ export declare class CloudWatchBackend implements ObservabilityBackend {
     private extractMessage;
     private logAtLevel;
     private handleMetric;
+    /**
+     * Publish span duration as a CloudWatch metric
+     * Allows creating dashboards/alarms on operation durations
+     */
+    private publishSpanDurationMetric;
     flush(): Promise<void>;
     initializeInvocation(): void;
     private mapUnit;
