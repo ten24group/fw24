@@ -54,9 +54,20 @@ export class CloudWatchBackend implements ObservabilityBackend {
 
   async capture(event: ObservabilityEvent): Promise<void> {
     try {
-      if (event.type === 'metric') {
+      // ALWAYS extract and publish metrics via EMF if present, regardless of event type
+      // This ensures metrics embedded in spans, audits, or logs are published as CloudWatch metrics
+      if (event.metrics && Object.keys(event.metrics).length > 0) {
         this.handleMetric(event);
-      } else {
+      }
+
+      // For span events, publish durationMs as a separate metric ONLY if not already in metrics
+      // This avoids duplicate metric publishing (span.end includes { metrics: { duration } })
+      if (event.type.startsWith('span.') && event.durationMs !== undefined && !event.metrics?.duration) {
+        this.publishSpanDurationMetric(event);
+      }
+
+      // Log the event (unless it's a pure metric event with no other data)
+      if (event.type !== 'metric') {
         this.handleLog(event);
       }
     } catch (error) {
@@ -78,6 +89,8 @@ export class CloudWatchBackend implements ObservabilityBackend {
     if (event.success !== undefined) context.success = event.success;
     if (event.status) context.status = event.status;
     if (event.parentObservabilityLogId) context.parentObservabilityLogId = event.parentObservabilityLogId;
+    if (event.causedBy) context.causedBy = event.causedBy;
+    if (event.relatedTraces) context.relatedTraces = event.relatedTraces;
     if (event.source) context.source = event.source;
     if (event.tags) context.tags = event.tags;
     if (event.attributes) context.attributes = event.attributes;
@@ -129,6 +142,20 @@ export class CloudWatchBackend implements ObservabilityBackend {
 
     const dimensions: Array<{ name: string; value: string }> = [];
 
+    // Add common dimensions from tags (tenant, entity, operation, etc.)
+    if (event.tags) {
+      for (const [ key, value ] of Object.entries(event.tags)) {
+        if (dimensions.length >= MAX_DIMENSIONS) break;
+        if (typeof value === 'string') {
+          dimensions.push({
+            name: key.slice(0, MAX_DIMENSION_NAME_LENGTH),
+            value: value.slice(0, MAX_DIMENSION_VALUE_LENGTH)
+          });
+        }
+      }
+    }
+
+    // Add dimensions from attributes
     if (event.attributes) {
       for (const [ key, value ] of Object.entries(event.attributes)) {
         if (dimensions.length >= MAX_DIMENSIONS) {
@@ -145,6 +172,11 @@ export class CloudWatchBackend implements ObservabilityBackend {
       }
     }
 
+    // Add entity context as dimensions
+    if (event.entityName && dimensions.length < MAX_DIMENSIONS) {
+      dimensions.push({ name: 'entityName', value: event.entityName });
+    }
+
     const unit = this.mapUnit(event.attributes?.unit as string | undefined);
 
     for (const [ name, value ] of Object.entries(event.metrics)) {
@@ -159,6 +191,41 @@ export class CloudWatchBackend implements ObservabilityBackend {
       } catch (error) {
         internalLogger.warn(`Failed to add metric ${name}:`, error);
       }
+    }
+  }
+
+  /**
+   * Publish span duration as a CloudWatch metric
+   * Allows creating dashboards/alarms on operation durations
+   */
+  private publishSpanDurationMetric(event: ObservabilityEvent): void {
+    if (!event.durationMs || !event.operation) return;
+
+    try {
+      const singleMetric = this.metrics.singleMetric();
+
+      // Add dimensions for filtering
+      if (event.operation) {
+        singleMetric.addDimension('operation', event.operation.slice(0, MAX_DIMENSION_VALUE_LENGTH));
+      }
+      if (event.source) {
+        singleMetric.addDimension('source', event.source.slice(0, MAX_DIMENSION_VALUE_LENGTH));
+      }
+      if (event.success !== undefined) {
+        singleMetric.addDimension('success', String(event.success));
+      }
+      if (event.entityName) {
+        singleMetric.addDimension('entityName', event.entityName);
+      }
+
+      // Add tenant/actor dimensions if available
+      if (event.actor?.tenantId) {
+        singleMetric.addDimension('tenantId', event.actor.tenantId.slice(0, MAX_DIMENSION_VALUE_LENGTH));
+      }
+
+      singleMetric.addMetric('span.duration', MetricUnit.Milliseconds, event.durationMs);
+    } catch (error) {
+      internalLogger.warn('Failed to publish span duration metric:', error);
     }
   }
 

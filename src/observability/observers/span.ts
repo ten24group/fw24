@@ -136,8 +136,8 @@ export class SpanObserver implements ISpanObserver {
       observabilityLogId: this.spanId,  // Use spanId as the DB record ID for parent-child linking
       level: this.level,
       parentObservabilityLogId: this.parentObservabilityLogId,
-      entityName: 'span',
-      entityId: this.spanId,
+      // NOTE: entityName/entityId NOT set for spans - spans are observability primitives, not business entities
+      // If you need to track which business entity a span is for, use tags or attributes
       timestampMs: this.startTime,
       operation: this.operation,
       attributes: this.attributes,
@@ -211,9 +211,9 @@ export class SpanObserver implements ISpanObserver {
   setStatus(code: 'OK' | 'ERROR' | 'UNSET', message?: string): this {
     // We map OTEL status to our internal attributes/status
     // Note: Actual end() call will finalize the status, but this allows intermediate updates
-    this.attributes['otel.status_code'] = code;
+    this.attributes[ 'otel.status_code' ] = code;
     if (message) {
-      this.attributes['otel.status_description'] = message;
+      this.attributes[ 'otel.status_description' ] = message;
     }
     return this;
   }
@@ -244,8 +244,7 @@ export class SpanObserver implements ISpanObserver {
         observabilityLogId: generateId(),  // Events get their own unique ID
         level: this.level,
         parentObservabilityLogId: this.spanId,  // Parent is this span
-        entityName: 'span',
-        entityId: this.spanId,
+        // NOTE: entityName/entityId NOT set - span events are observability primitives
         timestampMs: Date.now(),
         operation: name,
         attributes: eventAttributes,
@@ -269,8 +268,7 @@ export class SpanObserver implements ISpanObserver {
         observabilityLogId: generateId(),  // span.end gets its own unique ID
         level: options?.error ? 'error' : this.level,
         parentObservabilityLogId: this.spanId,  // Parent is THIS span (span.start record), consistent with span.event
-        entityName: 'span',
-        entityId: this.spanId,  // References the same span
+        // NOTE: entityName/entityId NOT set - spans are observability primitives
         timestampMs: endTime,
         durationMs: duration,
         operation: this.operation,

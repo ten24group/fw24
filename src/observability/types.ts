@@ -61,8 +61,45 @@ export type BaseEventType =
 
 /**
  * All supported event types (base + custom)
+ * 
+ * Custom event types are fully supported without registration!
+ * Use Observer.capture() or Manager.capture() with any type:
+ * 
+ * @example
+ * ```typescript
+ * import { Observer } from '@ten24group/fw24';
+ * 
+ * // Business event
+ * Observer.capture({
+ *   type: 'business.order_placed',
+ *   level: 'info',
+ *   entityName: 'order',
+ *   entityId: order.id,
+ *   data: { orderId, amount, customer },
+ *   metrics: { amount: 99.99 },
+ * });
+ * 
+ * // Payment transaction
+ * Observer.capture({
+ *   type: 'payment.transaction',
+ *   level: 'info',
+ *   data: { transactionId, status },
+ *   success: status === 'completed',
+ * });
+ * 
+ * // Or use existing observers if the type matches:
+ * SpanObserver.start('operation');  // Creates 'span.start'
+ * LogObserver.info('message');      // Creates 'log'
+ * AuditObserver.entityCreate(...);  // Creates 'audit.entity'
+ * ```
+ * 
+ * Type categorization (for backend routing and sampling):
+ * - Starts with 'span.': categorized as 'span'
+ * - Equals 'metric': categorized as 'metric'
+ * - Starts with 'audit': categorized as 'audit'
+ * - Everything else: categorized as 'log'
  */
-export type ObservabilityEventType = BaseEventType | `custom.${string}`;
+export type ObservabilityEventType = BaseEventType | (string & {});
 
 /**
  * Error details for observability events
@@ -96,8 +133,18 @@ export interface ObservabilityEvent {
   observabilityLogId: string;
 
   // === TRACING (optional - depends on context) ===
-  /** Parent observability log ID for hierarchical relationships */
+  /** Parent observability log ID for hierarchical relationships (within same invocation) */
   parentObservabilityLogId?: string | null;
+  /** 
+   * Correlation ID that caused this event (cross-invocation tracing)
+   * Example: DynamoDB stream audit caused by original API request
+   */
+  causedBy?: string;
+  /** 
+   * All related trace IDs (for complex workflows spanning multiple invocations)
+   * Allows querying "show me everything related to this business transaction"
+   */
+  relatedTraces?: string[];
 
   // === ENTITY CONTEXT (optional - depends on what's being observed) ===
   /** Entity type being observed (user, order, span, workflow) */
@@ -144,6 +191,13 @@ export interface ObservabilityEvent {
   // === ERROR (optional) ===
   /** Error details if applicable */
   error?: ObservabilityError;
+
+  // === SAMPLING CONTROL (optional) ===
+  /** 
+   * Mark as critical - bypasses sampling and prevents buffer eviction
+   * Use for: payment processing, security audits, critical business flows
+   */
+  critical?: boolean;
 }
 
 /**
@@ -162,6 +216,8 @@ export interface CaptureInput {
   // Optional fields (same as ObservabilityEvent)
   // null = explicitly no parent (don't fall back to context)
   parentObservabilityLogId?: string | null;
+  causedBy?: string;
+  relatedTraces?: string[];
   entityName?: string;
   entityId?: string;
   operation?: string;
@@ -178,6 +234,7 @@ export interface CaptureInput {
   metrics?: Record<string, number>;
   context?: Record<string, unknown>;
   error?: ObservabilityError;
+  critical?: boolean;
 }
 
 /**
@@ -268,10 +325,16 @@ export interface SamplingConfig {
   smart?: boolean;
   /**
    * Maximum buffer size for smart sampling (number of events).
-   * When buffer exceeds this size, oldest events are dropped.
+   * When buffer exceeds this size, lowest priority events are evicted.
    * Default: 1000
    */
   maxBufferSize?: number;
+  /**
+   * Minimum level to capture when flushing buffer on error.
+   * Prevents overwhelming backends with thousands of TRACE/DEBUG events.
+   * Default: ObservabilityLevel.INFO
+   */
+  minLevelOnError?: ObservabilityLevel;
   /** Sampling rates by level name (0-1). Missing levels default to 1.0 (100%) */
   rates?: Partial<Record<ObservabilityLevelString, number>>;
   /** Sampling rates by operation pattern */

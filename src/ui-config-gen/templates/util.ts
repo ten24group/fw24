@@ -2341,8 +2341,9 @@ export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' 
     relationConfig?: IRelationFieldConfig,  // For rendering relations with links/modals
     template?: Template,  // For template-based rendering
     isIdentifier?: boolean,  // For identifier fields
+    /** @deprecated Optional - presence of linkConfig is sufficient */
     isLink?: boolean,  // For backward compatibility
-    linkConfig?: { routePattern: string; displayText?: string },  // For backward compatibility
+    linkConfig?: { routePattern: string; displayText?: Template },  // For backward compatibility - supports templates
 };
 
 /**

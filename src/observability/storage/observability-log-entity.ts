@@ -51,7 +51,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
             id: 'quick-view',
             label: 'Quick View',
             icon: 'ExpandAltOutlined',
-            tooltip: 'View details',
+            tooltip: 'Quick View',
             // Open view page in modal - URL will be resolved to fetch config
             url: '/view-observabilitylog/:observabilityLogId',
             openInModal: true,
@@ -116,7 +116,6 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                 id: 'root-only', label: 'Root Spans', icon: 'ApartmentOutlined',
                 // Use isRoot for efficient GSI query instead of notExists filter
                 filters: { isRoot: { eq: true } },
-                default: true
               },
               {
                 id: 'child-only', label: 'Child Spans', icon: 'BranchesOutlined',
@@ -124,7 +123,8 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
               },
               {
                 id: 'all-spans', label: 'All Events', icon: 'UnorderedListOutlined',
-                filters: {}
+                filters: {},
+                default: true
               },
             ],
           },
@@ -190,7 +190,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
             renderMode: 'tabs',
             defaultCollapsed: true,
             lazyLoad: true,
-            keepMounted: true,
+            keepMounted: false,
             sections: {
               parentSpan: {
                 label: 'Parent Span',
@@ -202,7 +202,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                   entityName: 'observabilityLog',
                   pageType: 'view',
                   overrideConfig: {
-                    identifierMapping: { source: 'parentObservabilityLogId', target: 'observabilityLogId' },
+                    identifierMapping: { source: 'parentObservabilityLogId', target: 'id' },
                   },
                 },
               },
@@ -221,7 +221,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                 },
               },
               traceLogs: {
-                label: 'Full Trace',
+                label: 'This Trace',
                 icon: 'ShareAltOutlined',
                 sortOrder: 3,
                 pageType: 'list',
@@ -231,6 +231,38 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                   overrideConfig: {
                     defaultFilters: { correlationId: ':correlationId' },
                     hideSegments: [ 'hierarchy-group' ],
+                    description: 'All events in this Lambda invocation',
+                  },
+                },
+              },
+              causedByTrace: {
+                label: 'Causing Request Trace',
+                icon: 'LinkOutlined',
+                sortOrder: 4,
+                pageType: 'list',
+                visibility: { record: { causedBy: { exists: true } } },
+                entityConfigRef: {
+                  entityName: 'observabilityLog',
+                  pageType: 'list',
+                  overrideConfig: {
+                    defaultFilters: { correlationId: ':causedBy' },
+                    hideSegments: [ 'hierarchy-group' ],
+                    description: 'View the original request trace that caused this event',
+                  },
+                },
+              },
+              causedEvents: {
+                label: 'Events Caused By This',
+                icon: 'ApiOutlined',
+                sortOrder: 5,
+                pageType: 'list',
+                entityConfigRef: {
+                  entityName: 'observabilityLog',
+                  pageType: 'list',
+                  overrideConfig: {
+                    defaultFilters: { causedBy: ':correlationId' },
+                    hideSegments: [ 'hierarchy-group' ],
+                    description: 'Events in other invocations caused by this request',
                   },
                 },
               },
@@ -359,7 +391,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
             renderMode: 'tabs',
             defaultCollapsed: true,
             lazyLoad: false,
-            keepMounted: true,
+            keepMounted: false,
             sections: {
               byEntity: {
                 label: 'Entity Logs',
@@ -501,6 +533,29 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
         displayText: 'View Correlated Logs',
       },
     },
+    // Cross-invocation tracing: Correlation ID that caused this event
+    // Example: DynamoDB stream audit caused by original API request
+    causedBy: {
+      type: 'string',
+      required: false,
+      label: 'Caused By',
+      helpText: 'Correlation ID that caused this event (cross-invocation tracing)',
+      isFilterable: true,
+      isLink: true,
+      linkConfig: {
+        routePattern: '/list-observabilitylog?correlationId.eq=:causedBy',
+        displayText: 'View Causing Request',
+      },
+    },
+    // All related trace IDs for complex workflows
+    relatedTraces: {
+      type: 'list',
+      items: { type: 'string' },
+      required: false,
+      label: 'Related Traces',
+      helpText: 'All related correlation IDs for complex workflows spanning multiple invocations',
+      isFilterable: false, // List field, not filterable
+    },
 
     // === CLASSIFICATION ===
     type: {
@@ -547,10 +602,9 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       set: (_: unknown, data: { entityName?: string; entityId?: string }) =>
         data.entityId || (data.entityName ? '_' : undefined),
       // Dynamic link to the related entity based on entityName
-      isLink: true,
       linkConfig: {
         routePattern: '/view-:entityName/:entityId',
-        displayText: 'View Entity',
+        displayText: 'View {entityName}',
       },
     },
 
@@ -642,7 +696,6 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       helpText: 'Error details if the operation failed',
       // Structure: { type: string, message: string, stack?: string, code?: string }
     },
-
     // === ACTOR (stored as-is from existing Actor type) ===
     actor: {
       type: 'any',
@@ -714,6 +767,12 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       index: 'gsi7',
       pk: { field: 'gsi7pk', composite: [ 'isRoot' ] },
       sk: { field: 'gsi7sk', composite: [ 'timestampMs' ] },
+    },
+    // GSI8 - by causedBy - find all events caused by a specific request (cross-invocation tracing)
+    byCausedBy: {
+      index: 'gsi8',
+      pk: { field: 'gsi8pk', composite: [ 'causedBy' ] },
+      sk: { field: 'gsi8sk', composite: [ 'timestampMs' ] },
     },
     // For source/actor/tenant queries - use search engine sync
   },

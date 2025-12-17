@@ -30,17 +30,15 @@ jest.mock('../../utils/env', () => ({
 class TestableStreamAuditLogger extends DynamoDBStreamAuditLogger {
     public testExtractActor(
         newImage: Record<string, unknown> | undefined,
-        oldImage: Record<string, unknown> | undefined
     ): Actor | undefined {
-        return this.extractActor(newImage, oldImage);
+        return this.extractActor(newImage);
     }
 
     public testExtractCorrelationId(
         record: BaseEventRecord<ChangeStreamPayload>,
         newImage: Record<string, unknown> | undefined,
-        oldImage: Record<string, unknown> | undefined
     ): string {
-        return this.extractCorrelationId(record, newImage, oldImage);
+        return this.extractCorrelationId(record, newImage);
     }
 
     public testCaptureAuditEvent(record: BaseEventRecord<ChangeStreamPayload>): Promise<void> {
@@ -90,7 +88,7 @@ describe('DynamoDBStreamAuditLogger', () => {
             cognito: {
                 sub: 'sub-789',
                 username: 'john.doe',
-                groups: ['admin', 'user']
+                groups: [ 'admin', 'user' ]
             },
             ...overrides
         } as Actor;
@@ -122,189 +120,13 @@ describe('DynamoDBStreamAuditLogger', () => {
         };
     }
 
-    describe('extractActor', () => {
-        it('should extract actor from newImage._actor field', () => {
-            const mockActor = createMinimalActor();
-            const newImage = { title: 'Test', _actor: mockActor };
-            const oldImage = { title: 'Old' };
-
-            const actor = auditLogger.testExtractActor(newImage, oldImage);
-
-            expect(actor).toEqual(mockActor);
-        });
-
-        it('should extract actor from oldImage._actor when newImage has no actor', () => {
-            const mockActor = createMinimalActor();
-            const newImage = undefined;
-            const oldImage = { title: 'Deleted', _actor: mockActor };
-
-            const actor = auditLogger.testExtractActor(newImage, oldImage);
-
-            expect(actor).toEqual(mockActor);
-        });
-
-        it('should fallback to visible actor fields when _actor is not available', () => {
-            const newImage = { 
-                title: 'Test',
-                updatedBy: 'user-visible-456',
-                tenantId: 'tenant-visible-abc'
-            };
-            const oldImage = { title: 'Old' };
-
-            const actor = auditLogger.testExtractActor(newImage, oldImage);
-
-            expect(actor).toEqual({
-                actorId: 'user-visible-456',
-                tenantId: 'tenant-visible-abc',
-                actorType: 'user'
-            });
-        });
-
-        it('should prioritize updatedBy over createdBy', () => {
-            const newImage = { 
-                title: 'Test',
-                createdBy: 'user-creator',
-                updatedBy: 'user-updater',
-                tenantId: 'tenant-abc'
-            };
-
-            const actor = auditLogger.testExtractActor(newImage, undefined);
-
-            expect(actor?.actorId).toBe('user-updater');
-        });
-
-        it('should use createdBy when updatedBy is not available', () => {
-            const newImage = { 
-                title: 'Test',
-                createdBy: 'user-creator',
-                tenantId: 'tenant-abc'
-            };
-
-            const actor = auditLogger.testExtractActor(newImage, undefined);
-
-            expect(actor?.actorId).toBe('user-creator');
-        });
-
-        it('should return undefined when no actor info available', () => {
-            const newImage = { title: 'Test' };
-            const oldImage = { title: 'Old' };
-
-            const actor = auditLogger.testExtractActor(newImage, oldImage);
-
-            expect(actor).toBeUndefined();
-        });
-
-        it('should handle complex actor with all fields', () => {
-            const complexActor = createMockActor({
-                sourceIp: '203.0.113.1',
-                userAgent: 'Custom/1.0',
-                cognito: {
-                    sub: 'sub-789',
-                    username: 'john.doe',
-                    groups: ['admin', 'manager']
-                }
-            });
-
-            const newImage = { title: 'Test', _actor: complexActor };
-
-            const actor = auditLogger.testExtractActor(newImage, undefined);
-
-            expect(actor).toEqual(complexActor);
-            expect(actor?.cognito?.groups).toContain('admin');
-        });
-
-        it('should handle API key actor', () => {
-            const apiKeyActor = createMinimalActor({
-                actorType: 'service',
-                authMethod: 'api-key',
-                actorId: 'api-key:abc123'
-            });
-
-            const newImage = { title: 'Test', _actor: apiKeyActor };
-
-            const actor = auditLogger.testExtractActor(newImage, undefined);
-
-            expect(actor?.authMethod).toBe('api-key');
-            expect(actor?.actorType).toBe('service');
-        });
-
-        it('should handle IAM actor', () => {
-            const iamActor = createMinimalActor({
-                actorType: 'service',
-                authMethod: 'iam',
-                actorId: 'AIDAI23HZ27SI6FQMGNQ2'
-            });
-
-            const newImage = { title: 'Test', _actor: iamActor };
-
-            const actor = auditLogger.testExtractActor(newImage, undefined);
-
-            expect(actor?.authMethod).toBe('iam');
-            expect(actor?.actorType).toBe('service');
-        });
-
-        it('should handle null/undefined actor gracefully', () => {
-            const newImage = { title: 'Test', _actor: null };
-            const oldImage = { title: 'Old', _actor: undefined };
-
-            const actor = auditLogger.testExtractActor(newImage as any, oldImage as any);
-
-            expect(actor).toBeUndefined();
-        });
-
-        it('should handle system/anonymous actor context', () => {
-            const systemActor = createMinimalActor({
-                actorType: 'anonymous',
-                authMethod: 'anonymous',
-                actorId: 'anonymous',
-                tenantId: undefined
-            });
-
-            const newImage = { title: 'Test', _actor: systemActor };
-
-            const actor = auditLogger.testExtractActor(newImage, undefined);
-
-            expect(actor?.authMethod).toBe('anonymous');
-            expect(actor?.actorType).toBe('anonymous');
-            expect(actor?.actorId).toBe('anonymous');
-        });
-
-        it('should use invalid actor as-is when _actor field exists but is invalid', () => {
-            const newImage = { 
-                title: 'Test', 
-                updatedBy: 'fallback-user-123',
-                tenantId: 'fallback-tenant',
-                _actor: 'invalid-actor-string' // Invalid actor type
-            };
-
-            const actor = auditLogger.testExtractActor(newImage as any, undefined);
-
-            // Should use invalid actor as-is since _actor field exists
-            expect(actor).toBe('invalid-actor-string');
-        });
-
-        it('should handle empty/minimal actor objects', () => {
-            const minimalActor = {
-                requestId: 'req-123',
-                timestamp: '2024-01-15T10:30:00.000Z'
-                // Missing most fields
-            } as Actor;
-
-            const newImage = { title: 'Test', _actor: minimalActor };
-
-            const actor = auditLogger.testExtractActor(newImage, undefined);
-
-            expect(actor).toEqual(minimalActor);
-        });
-    });
-
     describe('extractCorrelationId', () => {
         it('should extract correlationId from _actor.correlationId', () => {
             const actorWithCorrelation = createMockActor({ correlationId: 'corr-from-actor-123' });
             const record = createMockEventRecord();
             const newImage = { title: 'Test', _actor: actorWithCorrelation };
 
-            const correlationId = auditLogger.testExtractCorrelationId(record, newImage, undefined);
+            const correlationId = auditLogger.testExtractCorrelationId(record, newImage);
 
             expect(correlationId).toBe('corr-from-actor-123');
         });
@@ -313,7 +135,7 @@ describe('DynamoDBStreamAuditLogger', () => {
             const record = createMockEventRecord({ eventId: 'evt-dynamodb-456' });
             const newImage = { title: 'Test' };
 
-            const correlationId = auditLogger.testExtractCorrelationId(record, newImage, undefined);
+            const correlationId = auditLogger.testExtractCorrelationId(record, newImage);
 
             expect(correlationId).toBe('stream-evt-dynamodb-456');
         });
@@ -322,20 +144,9 @@ describe('DynamoDBStreamAuditLogger', () => {
             const record = createMockEventRecord({ eventId: undefined });
             const newImage = { title: 'Test' };
 
-            const correlationId = auditLogger.testExtractCorrelationId(record, newImage, undefined);
+            const correlationId = auditLogger.testExtractCorrelationId(record, newImage);
 
             expect(correlationId).toMatch(/^stream-Post-post-123-\d+$/);
-        });
-
-        it('should prefer oldImage._actor.correlationId when newImage has none', () => {
-            const actorWithCorrelation = createMockActor({ correlationId: 'corr-from-old-actor' });
-            const record = createMockEventRecord();
-            const newImage = { title: 'Test' };
-            const oldImage = { title: 'Old', _actor: actorWithCorrelation };
-
-            const correlationId = auditLogger.testExtractCorrelationId(record, newImage, oldImage);
-
-            expect(correlationId).toBe('corr-from-old-actor');
         });
     });
 

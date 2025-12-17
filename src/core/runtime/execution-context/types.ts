@@ -4,6 +4,7 @@
  * Core types for the framework's execution context system.
  */
 
+import type { ObservabilityEvent } from '../../../observability/types';
 import { Actor } from '../../types/execution-context';
 
 /**
@@ -43,7 +44,7 @@ export interface ExecutionContextData {
    * - If error occurred: all events are captured (buffer already flushed on error)
    * - If no error: sampling rules applied to buffer before capture
    */
-  observabilityBuffer?: any[]; // Will be ObservabilityEvent[] but can't import here
+  observabilityBuffer?: ObservabilityEvent[];
 
   /**
    * Flag indicating if an error (ERROR/CRITICAL) has occurred in this invocation.
@@ -83,8 +84,6 @@ export interface CreateExecutionContextOptions {
   attributes?: Record<string, unknown>;
   /** Source identifier */
   source?: string;
-  /** Module-level sampling override */
-  moduleSampling?: { rate?: number; smart?: boolean };
 }
 
 /**

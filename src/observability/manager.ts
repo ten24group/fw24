@@ -134,6 +134,8 @@ function buildEvent(input: CaptureInput, context: ReturnType<typeof getCurrentCo
     parentObservabilityLogId: input.parentObservabilityLogId === null
       ? undefined
       : (input.parentObservabilityLogId ?? ctx?.parentObservabilityLogId),
+    causedBy: input.causedBy,
+    relatedTraces: input.relatedTraces,
     actor: input.actor ?? ctx?.actor,
     source: input.source ?? ctx?.source ?? detectSource(),
     tags: mergeTags({ ...ctx?.tags, ...input.tags }, true),
@@ -150,13 +152,33 @@ function buildEvent(input: CaptureInput, context: ReturnType<typeof getCurrentCo
     metrics: input.metrics,
     context: eventContext,
     error,
+    critical: input.critical,
   };
 }
 
+/**
+ * Categorize event type for backend routing and sampling
+ * 
+ * Custom event types are supported! Use any naming convention:
+ * - 'business.order_placed' → categorized as 'log'
+ * - 'payment.transaction' → categorized as 'log'
+ * - 'notification.sent' → categorized as 'log'
+ * 
+ * To control backend routing for custom types, use type-specific config:
+ * ```
+ * observability: {
+ *   types: {
+ *     log: { backends: ['cloudwatch', 'dynamodb'] }
+ *   }
+ * }
+ * ```
+ */
 function getTypeCategory(type: string): 'span' | 'metric' | 'audit' | 'log' {
   if (type.startsWith('span.')) return 'span';
   if (type === 'metric') return 'metric';
   if (type.startsWith('audit')) return 'audit';
+  // All custom event types default to 'log' category
+  // This includes: 'business.*', 'payment.*', 'notification.*', etc.
   return 'log';
 }
 
@@ -387,6 +409,11 @@ function getOrCreateSamplingRegex(pattern: string): RegExp {
  * Higher priority = keep in buffer
  */
 function getEventPriority(event: ObservabilityEvent): number {
+  // CRITICAL events NEVER get evicted (max priority)
+  if (event.critical) {
+    return Infinity;
+  }
+
   let priority = 0;
 
   const level = stringToLevel(event.level);
@@ -414,9 +441,10 @@ function getEventPriority(event: ObservabilityEvent): number {
 
 /**
  * Evict lowest priority event from buffer
+ * Returns metadata about the evicted event for logging
  */
-function evictLowestPriority(buffer: ObservabilityEvent[]): void {
-  if (buffer.length === 0) return;
+function evictLowestPriority(buffer: ObservabilityEvent[]): { type: string; correlationId: string; operation?: string; level: string } | null {
+  if (buffer.length === 0) return null;
 
   // Find lowest priority event
   let lowestPriority = Infinity;
@@ -430,8 +458,14 @@ function evictLowestPriority(buffer: ObservabilityEvent[]): void {
     }
   }
 
-  // Remove lowest priority event
-  buffer.splice(lowestIndex, 1);
+  // Remove and return info about evicted event
+  const evicted = buffer.splice(lowestIndex, 1)[ 0 ];
+  return {
+    type: evicted.type,
+    correlationId: evicted.correlationId,
+    operation: evicted.operation,
+    level: evicted.level,
+  };
 }
 
 /**
@@ -452,11 +486,29 @@ function handleTailBasedSamplingSync(
   if (isError) {
     if (context.observabilityBuffer?.length) {
       const buffer = context.observabilityBuffer as ObservabilityEvent[];
+      context.observabilitySummary = context.observabilitySummary || { evicted: 0, buffered: 0, captured: 0 };
       context.observabilityBuffer = [];
 
+      // Apply level filtering to avoid overwhelming backends with thousands of debug/trace events
+      // On error, capture INFO+ events, drop TRACE/DEBUG to prevent cost spikes
+      const minLevelOnError = config.sampling?.minLevelOnError ?? ObservabilityLevel.INFO;
+      let dropped = 0;
+
       for (const bufferedEvent of buffer) {
-        const targets = getBackendsForType(bufferedEvent.type);
-        dispatchToBackends(bufferedEvent, targets);
+        const eventLevel = stringToLevel(bufferedEvent.level);
+        if (eventLevel >= minLevelOnError) {
+          const targets = getBackendsForType(bufferedEvent.type);
+          dispatchToBackends(bufferedEvent, targets);
+        } else {
+          dropped++;
+        }
+      }
+
+      if (dropped > 0) {
+        logger.debug(`Dropped ${dropped} low-level events from error buffer flush`, {
+          minLevel: levelToString(minLevelOnError),
+          correlationId: context.correlationId,
+        });
       }
     }
 
@@ -499,15 +551,22 @@ function handleTailBasedSamplingSync(
   // Buffer size management: evict lowest priority if full
   const maxSize = config.sampling.maxBufferSize ?? 1000;
   if (buffer.length >= maxSize) {
-    evictLowestPriority(buffer);
+    const evictedInfo = evictLowestPriority(buffer);
     context.observabilitySummary.evicted = (context.observabilitySummary.evicted || 0) + 1;
 
-    // Log warning if evicting a lot
+    // Log warning with evicted event details
     if (context.observabilitySummary.evicted === 1 || context.observabilitySummary.evicted % 100 === 0) {
       logger.warn('Observability buffer full, evicting lowest priority events', {
         evicted: context.observabilitySummary.evicted,
         bufferSize: buffer.length,
-        correlationId: context.correlationId
+        correlationId: context.correlationId,
+        evictedEvent: evictedInfo,
+      });
+    } else if (evictedInfo) {
+      // Log each eviction at debug level for troubleshooting
+      logger.debug('Evicted observability event from buffer', {
+        ...evictedInfo,
+        totalEvicted: context.observabilitySummary.evicted,
       });
     }
   }
@@ -534,12 +593,33 @@ async function handleTailBasedSamplingAsync(
   if (isError) {
     if (context.observabilityBuffer?.length) {
       const buffer = context.observabilityBuffer as ObservabilityEvent[];
+      context.observabilitySummary = context.observabilitySummary || { evicted: 0, buffered: 0, captured: 0 };
       context.observabilityBuffer = [];
 
-      await Promise.all(buffer.map(bufferedEvent => {
+      // Apply level filtering to avoid overwhelming backends
+      const minLevelOnError = config.sampling?.minLevelOnError ?? ObservabilityLevel.INFO;
+      let dropped = 0;
+
+      const filteredEvents = buffer.filter(bufferedEvent => {
+        const eventLevel = stringToLevel(bufferedEvent.level);
+        if (eventLevel >= minLevelOnError) {
+          return true;
+        }
+        dropped++;
+        return false;
+      });
+
+      await Promise.all(filteredEvents.map(bufferedEvent => {
         const targets = getBackendsForType(bufferedEvent.type);
         return dispatchToBackendsSync(bufferedEvent, targets);
       }));
+
+      if (dropped > 0) {
+        logger.debug(`Dropped ${dropped} low-level events from error buffer flush`, {
+          minLevel: levelToString(minLevelOnError),
+          correlationId: context.correlationId,
+        });
+      }
     }
 
     context.errorOccurred = true;
@@ -765,7 +845,9 @@ export class ObservabilityManager {
       }
 
       const context = getCurrentContext();
-      const event = buildEvent(input, context);
+      // Merge critical flag from options into input for event creation
+      const eventInput = options?.critical ? { ...input, critical: true } : input;
+      const event = buildEvent(eventInput, context);
 
       // Try tail-based sampling first
       const tailResult = handleTailBasedSamplingSync(event, context);
@@ -777,7 +859,7 @@ export class ObservabilityManager {
       }
 
       // HEAD-BASED SAMPLING (Standard)
-      const isSampled = options?.critical || shouldCapture(event, config);
+      const isSampled = event.critical || shouldCapture(event, config);
       if (!isSampled) {
         return undefined;
       }
@@ -810,7 +892,9 @@ export class ObservabilityManager {
       if (!config?.enabled) return undefined;
 
       const context = getCurrentContext();
-      const event = buildEvent(input, context);
+      // Merge critical flag from options into input for event creation
+      const eventInput = options?.critical ? { ...input, critical: true } : input;
+      const event = buildEvent(eventInput, context);
 
       // Try tail-based sampling first
       const tailResult = await handleTailBasedSamplingAsync(event, context);
@@ -822,7 +906,7 @@ export class ObservabilityManager {
       }
 
       // HEAD-BASED SAMPLING (Standard)
-      const isSampled = options?.critical || shouldCapture(event, config);
+      const isSampled = event.critical || shouldCapture(event, config);
       if (!isSampled) {
         return undefined;
       }

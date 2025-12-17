@@ -113,6 +113,10 @@ export function resetCapturer(): void {
 export interface BaseObserverOptions {
   /** Explicit correlation ID (defaults to context) */
   correlationId?: string;
+  /** Correlation ID that caused this event (cross-invocation tracing) */
+  causedBy?: string;
+  /** All related trace IDs (for complex workflows) */
+  relatedTraces?: string[];
   /** Actor performing the action */
   actor?: Actor;
   /** Source identifier */
@@ -128,6 +132,8 @@ export interface BaseObserverOptions {
  */
 export interface CommonFields {
   correlationId: string;
+  causedBy?: string;
+  relatedTraces?: string[];
   actor?: Actor;
   source?: string;
   tags?: Record<string, string>;
@@ -199,6 +205,8 @@ export function buildCommonFields(
 
   return {
     correlationId,
+    causedBy: options?.causedBy,
+    relatedTraces: options?.relatedTraces,
     actor: options?.actor ?? context?.actor,
     source: options?.source ?? context?.source,
     tags: mergeObserverTags(context?.tags, options?.tags),

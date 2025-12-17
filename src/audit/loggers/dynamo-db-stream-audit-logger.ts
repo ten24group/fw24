@@ -118,20 +118,32 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     }
 
     // Extract actor context
-    const actor = this.extractActor(newImage, oldImage);
+    const actor = this.extractActor(newImage);
 
     // Get correlationId from _actor if available, otherwise generate one
-    const correlationId = this.extractCorrelationId(record, newImage, oldImage);
+    const correlationId = this.extractCorrelationId(record, newImage);
 
     // entityName is guaranteed by preprocessRecord check
     const entity = entityName!;
     const id = String(entityId);
 
+    // Get original correlationId from _actor to link back to causing request
+    const originalCorrelationId = newImage?._actor?.correlationId;
+
     // Call appropriate AuditObserver method based on event type
+    // Pass BOTH current correlationId (stream processing) AND causedBy (original request)
     switch (eventType) {
       case 'create':
-        AuditObserver.entityCreate(entity, id, newImage, { actor, correlationId });
-        this.logger.debug('Captured create audit', { entityName: entity, entityId: id });
+        AuditObserver.entityCreate(entity, id, newImage, {
+          actor,
+          correlationId,  // Current stream processing trace
+          causedBy: originalCorrelationId,  // Original API request trace
+        });
+        this.logger.debug('Captured create audit', {
+          entityName: entity,
+          entityId: id,
+          causedBy: originalCorrelationId
+        });
         break;
 
       case 'update':
@@ -139,13 +151,30 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
           before: oldImage,
           after: newImage,
           diff: changes
-        }, { actor, correlationId });
-        this.logger.debug('Captured update audit', { entityName: entity, entityId: id, changedFields: Object.keys(changes) });
+        }, {
+          actor,
+          correlationId,  // Current stream processing trace
+          causedBy: originalCorrelationId,  // Original API request trace
+        });
+        this.logger.debug('Captured update audit', {
+          entityName: entity,
+          entityId: id,
+          changedFields: Object.keys(changes),
+          causedBy: originalCorrelationId
+        });
         break;
 
       case 'delete':
-        AuditObserver.entityDelete(entity, id, oldImage, { actor, correlationId });
-        this.logger.debug('Captured delete audit', { entityName: entity, entityId: id });
+        AuditObserver.entityDelete(entity, id, oldImage, {
+          actor,
+          correlationId,  // Current stream processing trace
+          causedBy: originalCorrelationId,  // Original API request trace
+        });
+        this.logger.debug('Captured delete audit', {
+          entityName: entity,
+          entityId: id,
+          causedBy: originalCorrelationId
+        });
         break;
     }
   }
@@ -154,9 +183,9 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
    * Extract actor context from entity images.
    * Tries _actor field first, then falls back to visible actor fields.
    */
-  protected extractActor(newImage: Record<string, any> | undefined, oldImage: Record<string, any> | undefined): Actor | undefined {
+  protected extractActor(newImage: Record<string, any> | undefined): Actor | undefined {
     // Try _actor field first (set by crud-service)
-    const actorContext = newImage?._actor || oldImage?._actor;
+    const actorContext = newImage?._actor;
     if (actorContext) {
       return actorContext as Actor;
     }
@@ -164,12 +193,12 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     // Fallback to visible actor fields (backward compatibility)
     const fallbackActor: Partial<Actor> = {};
 
-    const actorId = newImage?.updatedBy || newImage?.createdBy || oldImage?.updatedBy || oldImage?.createdBy;
+    const actorId = newImage?.updatedBy || newImage?.createdBy;
     if (actorId) {
       fallbackActor.actorId = actorId;
     }
 
-    const tenantId = newImage?.tenantId || oldImage?.tenantId;
+    const tenantId = newImage?.tenantId;
     if (tenantId) {
       fallbackActor.tenantId = tenantId;
     }
@@ -190,10 +219,9 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
   protected extractCorrelationId(
     record: BaseEventRecord<ChangeStreamPayload>,
     newImage: Record<string, any> | undefined,
-    oldImage: Record<string, any> | undefined
   ): string {
     // Try to get from _actor (preserves trace from originating request)
-    const actorCorrelationId = newImage?._actor?.correlationId || oldImage?._actor?.correlationId;
+    const actorCorrelationId = newImage?._actor?.correlationId;
     if (actorCorrelationId) {
       return actorCorrelationId;
     }

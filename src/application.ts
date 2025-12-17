@@ -332,6 +332,7 @@ export class Application {
                 { indexName: 'gsi5', partitionKey: { name: 'gsi5pk', type: AttributeType.STRING }, sortKey: { name: 'gsi5sk', type: AttributeType.STRING } },
                 { indexName: 'gsi6', partitionKey: { name: 'gsi6pk', type: AttributeType.STRING }, sortKey: { name: 'gsi6sk', type: AttributeType.STRING } },
                 { indexName: 'gsi7', partitionKey: { name: 'gsi7pk', type: AttributeType.STRING }, sortKey: { name: 'gsi7sk', type: AttributeType.STRING } },
+                { indexName: 'gsi8', partitionKey: { name: 'gsi8pk', type: AttributeType.STRING }, sortKey: { name: 'gsi8sk', type: AttributeType.STRING } },
             ],
             ...db.props,
         };

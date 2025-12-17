@@ -721,10 +721,16 @@ export interface BaseFieldMetadata {
   booleanLabels?: BooleanFieldLabels;
 
   // Link configuration for rendering field as internal link (non-relation fields)
+  /** @deprecated Optional - presence of linkConfig is sufficient to indicate a link */
   isLink?: boolean;
+  /**
+   * Link configuration for rendering field as internal link (non-relation fields)
+   * When isLink is true, the field will be rendered as a link using linkConfig
+   */
   linkConfig?: {
     routePattern: string;
-    displayText?: string;
+    /** Display text for the link - supports templates like "View {entityName}: {entityId}" */
+    displayText?: Template;
   };
 
   /**
