@@ -475,7 +475,8 @@ export class DynamoDBConstruct implements FW24Construct {
         new TopicConstruct(streamTopicConfig).construct();
 
         // Create Lambda to process stream and publish to SNS
-        const streamProcessor = new LambdaFunction(this.mainStack, `${this.fw24.appName}-stream-processor`, {
+        // Include table name to make construct name unique when multiple tables have streams
+        const streamProcessor = new LambdaFunction(this.mainStack, `${this.dynamoDBConfig.table.name}-stream-processor`, {
             entry: join(__dirname, '../core/runtime/dynamodb-stream-processor.js'),
             environmentVariables: {
                 TOPIC_NAME: topicName,
@@ -702,8 +703,10 @@ export class DynamoDBConstruct implements FW24Construct {
         const mergedFunctionProps = { ...queueConfig.functionProps, ...functionProps };
 
         // Create queue + lambda (same pattern as QueueConstruct, but with subscription to stream topic)
-        const queue = new QueueLambda(this.mainStack, `${queueName}-queue`, {
-            queueName: queueName,
+        // Include table name to make construct ID and actual queue name unique when multiple tables use same queue handler
+        const actualQueueName = `${this.dynamoDBConfig.table.name}-${queueName}`;
+        const queue = new QueueLambda(this.mainStack, `${actualQueueName}-queue`, {
+            queueName: actualQueueName,
             queueProps: queueConfig.queueProps,
             visibilityTimeoutSeconds: queueConfig.visibilityTimeoutSeconds,
             receiveMessageWaitTimeSeconds: queueConfig.receiveMessageWaitTimeSeconds,
@@ -729,9 +732,9 @@ export class DynamoDBConstruct implements FW24Construct {
         }) as Queue;
 
         // Register output (same as QueueConstruct does)
-        this.fw24.setConstructOutput(this, queueName, queue, OutputType.QUEUE, 'queueName');
+        this.fw24.setConstructOutput(this, actualQueueName, queue, OutputType.QUEUE, 'queueName');
 
-        this.logger.info(`${consumerName} queue created successfully: ${queueName}`);
+        this.logger.info(`${consumerName} queue created successfully: ${actualQueueName}`);
     }
 
     private setupWithNewQueue(
@@ -739,11 +742,14 @@ export class DynamoDBConstruct implements FW24Construct {
         consumerName: string,
         lambdaConfig: LambdaFunctionProps
     ): void {
-        const queueName = queueConfig.customQueueName || `${this.dynamoDBConfig.table.name}-${consumerName}`;
+        // Always prefix queue name with table name for uniqueness, even if custom name provided
+        const baseQueueName = queueConfig.customQueueName || consumerName;
+        const actualQueueName = `${this.dynamoDBConfig.table.name}-${baseQueueName}`;
         const eventSourceProps = this.buildSqsEventSourceProps(queueConfig.sqsEventSourceProps);
 
-        new QueueLambda(this.mainStack, `${this.fw24.appName}-${consumerName}-queue`, {
-            queueName: queueName,
+        // Include table name to make construct ID and actual queue name unique
+        new QueueLambda(this.mainStack, `${actualQueueName}-queue`, {
+            queueName: actualQueueName,
             lambdaFunctionProps: lambdaConfig,
             queueProps: queueConfig.queueProps || {},
             subscriptions: {
@@ -787,7 +793,7 @@ export class DynamoDBConstruct implements FW24Construct {
             {} // No additional resource access - observability handles it
         );
 
-        this.logger.info('Audit processing enabled (observability-backed)', {
+        this.logger.info('Audit processing enabled', {
             table: this.dynamoDBConfig.table.name,
             allowedEntities: config.allowedEntityNames,
             excludedEntities: config.excludedEntityNames
