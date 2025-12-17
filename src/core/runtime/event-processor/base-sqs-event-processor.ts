@@ -72,7 +72,7 @@ abstract class BaseSQSEventProcessor<
       processMode: this.processMode,
     });
 
-    this.initializeObservability();
+    this.initializeEntryPackagesAndObservability();
 
     const processorName = this.getProcessorName();
     const correlationId = this.extractCorrelationIdFromEvent(event, context);

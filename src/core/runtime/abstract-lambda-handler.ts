@@ -1,6 +1,7 @@
 import { createLogger } from "../../logging";
 import { DefaultValidator, IValidator } from "../../validation";
 import { ObservabilityManager } from "../../observability";
+import { tryImportingEntryPackagesFor } from "../../decorators/decorator-utils";
 
 export abstract class AbstractLambdaHandler {
   readonly logger = createLogger(this.constructor.name);
@@ -18,8 +19,16 @@ export abstract class AbstractLambdaHandler {
   /**
    * Initialize observability for this invocation.
    * Called at the start of each handler execution.
+   * 
+   * Ensure entry packages are loaded proeprly, before 
+   * before observability initialization attempts to resolve config.
    */
-  protected initializeObservability(): void {
+  protected initializeEntryPackagesAndObservability(): void {
+    // Load entry packages (idempotent - safe to call multiple times)
+    // This ensures DI config is available for bundled framework handlers
+    tryImportingEntryPackagesFor(this.constructor.name);
+
+    // Now initialize observability with proper DI config
     ObservabilityManager.initializeInvocation();
   }
 

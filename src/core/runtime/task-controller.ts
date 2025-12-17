@@ -59,8 +59,8 @@ abstract class TaskController extends AbstractLambdaHandler {
   }
 
   async LambdaHandler(_event?: ScheduledEvent, context?: Context): Promise<void> {
-    this.initializeObservability();
-    
+    this.initializeEntryPackagesAndObservability();
+
     const taskName = this.getTaskName() || this.constructor.name;
     const taskConfig = this.getTaskConfig();
     const obsConfig = taskConfig.observability || {};

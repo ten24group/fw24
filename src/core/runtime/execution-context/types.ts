@@ -36,6 +36,33 @@ export interface ExecutionContextData {
 
   /** Context creation timestamp */
   readonly startTime: number;
+
+  /** 
+   * Buffer for smart tail-based sampling.
+   * Stores all events during execution. On flush:
+   * - If error occurred: all events are captured (buffer already flushed on error)
+   * - If no error: sampling rules applied to buffer before capture
+   */
+  observabilityBuffer?: any[]; // Will be ObservabilityEvent[] but can't import here
+
+  /**
+   * Flag indicating if an error (ERROR/CRITICAL) has occurred in this invocation.
+   * Once set, all subsequent events bypass buffering and are captured immediately.
+   */
+  errorOccurred?: boolean;
+
+  /**
+   * Observability metrics for this invocation.
+   * Tracks buffer usage, dropped events, etc.
+   */
+  observabilitySummary?: {
+    /** Number of events evicted from buffer due to size limits */
+    evicted?: number;
+    /** Number of events buffered */
+    buffered?: number;
+    /** Number of events captured immediately */
+    captured?: number;
+  };
 }
 
 /**
@@ -56,6 +83,8 @@ export interface CreateExecutionContextOptions {
   attributes?: Record<string, unknown>;
   /** Source identifier */
   source?: string;
+  /** Module-level sampling override */
+  moduleSampling?: { rate?: number; smart?: boolean };
 }
 
 /**

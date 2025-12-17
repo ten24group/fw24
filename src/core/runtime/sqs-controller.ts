@@ -78,8 +78,8 @@ abstract class QueueController<TEvent extends SQSEvent = SQSEvent> extends Abstr
 
   async LambdaHandler(event: TEvent, context: Context): Promise<QueueProcessResult> {
     this.logger.debug("SQS-LambdaHandler received", { recordCount: event.Records?.length });
-    this.initializeObservability();
-    
+    this.initializeEntryPackagesAndObservability();
+
     const queueName = this.getQueueName() || this.constructor.name;
     const queueConfig = this.getQueueConfig();
     const obsConfig = queueConfig.observability || {};

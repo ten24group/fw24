@@ -206,7 +206,7 @@ export abstract class APIController extends AbstractLambdaHandler {
    * @returns The API Gateway response object.
    */
   async LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult> {
-    this.initializeObservability();
+    this.initializeEntryPackagesAndObservability();
 
     const request = await this.makeRequestContext(event, context);
     const response = await this.makeResponseContext(request);
