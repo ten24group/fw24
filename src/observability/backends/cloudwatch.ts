@@ -11,9 +11,9 @@
 import { Logger } from '@aws-lambda-powertools/logger';
 import { Metrics, MetricUnit } from '@aws-lambda-powertools/metrics';
 import { Injectable, InjectConfig } from '../../di';
+import { createLogger } from '../../logging';
 import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel, ObservabilityLevelString } from '../types';
 import { levelToPowertoolsLogLevel } from '../utils/level-utils';
-import { createLogger } from '../../logging';
 
 const internalLogger = createLogger('CloudWatchBackend');
 
@@ -140,26 +140,27 @@ export class CloudWatchBackend implements ObservabilityBackend {
   private handleMetric(event: ObservabilityEvent): void {
     if (!event.metrics || Object.keys(event.metrics).length === 0) return;
 
-    const dimensions: Array<{ name: string; value: string }> = [];
+    // Use a Map to deduplicate dimensions by name (first occurrence wins)
+    const dimensionMap = new Map<string, string>();
 
-    // Add common dimensions from tags (tenant, entity, operation, etc.)
+    // Priority 1: Add common dimensions from tags (tenant, entity, operation, etc.)
     if (event.tags) {
       for (const [ key, value ] of Object.entries(event.tags)) {
-        if (dimensions.length >= MAX_DIMENSIONS) break;
-        if (typeof value === 'string') {
-          dimensions.push({
-            name: key.slice(0, MAX_DIMENSION_NAME_LENGTH),
-            value: value.slice(0, MAX_DIMENSION_VALUE_LENGTH)
-          });
+        if (dimensionMap.size >= MAX_DIMENSIONS) break;
+        if (typeof value === 'string' && !dimensionMap.has(key)) {
+          dimensionMap.set(
+            key.slice(0, MAX_DIMENSION_NAME_LENGTH),
+            value.slice(0, MAX_DIMENSION_VALUE_LENGTH)
+          );
         }
       }
     }
 
-    // Add dimensions from attributes
+    // Priority 2: Add dimensions from attributes (only if not already present)
     if (event.attributes) {
       for (const [ key, value ] of Object.entries(event.attributes)) {
-        if (dimensions.length >= MAX_DIMENSIONS) {
-          internalLogger.warn(`Dimension limit reached (${MAX_DIMENSIONS}), skipping remaining`);
+        if (dimensionMap.size >= MAX_DIMENSIONS) {
+          internalLogger.warn(`Dimension limit reached (${MAX_DIMENSIONS}), skipping remaining attributes`);
           break;
         }
 
@@ -168,14 +169,20 @@ export class CloudWatchBackend implements ObservabilityBackend {
         const dimName = key.slice(0, MAX_DIMENSION_NAME_LENGTH);
         const dimValue = value.slice(0, MAX_DIMENSION_VALUE_LENGTH);
 
-        dimensions.push({ name: dimName, value: dimValue });
+        // Only add if not already present (deduplication)
+        if (!dimensionMap.has(dimName)) {
+          dimensionMap.set(dimName, dimValue);
+        }
       }
     }
 
-    // Add entity context as dimensions
-    if (event.entityName && dimensions.length < MAX_DIMENSIONS) {
-      dimensions.push({ name: 'entityName', value: event.entityName });
+    // Priority 3: Add entity context as dimension (only if not already present)
+    if (event.entityName && dimensionMap.size < MAX_DIMENSIONS && !dimensionMap.has('entityName')) {
+      dimensionMap.set('entityName', event.entityName);
     }
+
+    // Convert Map to array
+    const dimensions = Array.from(dimensionMap.entries()).map(([ name, value ]) => ({ name, value }));
 
     const unit = this.mapUnit(event.attributes?.unit as string | undefined);
 

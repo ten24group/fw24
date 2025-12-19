@@ -35,22 +35,14 @@ DIContainer.ROOT.registerConfigProvider({
 
 // === CORE TYPES ===
 export {
-  ObservabilityLevel,
-  ObservabilityLevelString,
-  ObservabilityEvent,
-  ObservabilityEventType,
-  BaseEventType,
-  ObservabilityError,
-  CaptureInput,
-  CaptureOptions,
-  IEventCapture,
+  BaseEventType, CaptureInput,
+  CaptureOptions, DefaultSamplingConfig, IEventCapture,
   ObservabilityBackend,
   ObservabilityBackendConfig,
-  ObservabilityConfig,
-  SamplingConfig,
-  TypeSpecificConfig,
-  DefaultSamplingConfig,
-  ObservabilityDataProtectionConfig,
+  ObservabilityConfig, ObservabilityDataProtectionConfig, ObservabilityError, ObservabilityEvent,
+  ObservabilityEventType, ObservabilityLevel,
+  ObservabilityLevelString, SamplingConfig,
+  TypeSpecificConfig
 } from './types';
 
 // === CORE MANAGER ===
@@ -58,77 +50,48 @@ export { ObservabilityManager, Observer, withObservability } from './manager';
 
 // === CONFIGURATION ===
 export {
-  createObservabilityConfig,
-  validateConfig,
-  CONFIG_DEFAULTS,
-  VALID_BACKENDS,
-  ValidBackend,
-  ObservabilityConfigInput,
+  CONFIG_DEFAULTS, createObservabilityConfig, ObservabilityConfigInput, VALID_BACKENDS, validateConfig, ValidBackend
 } from './config';
 
 // === PRESETS ===
 export {
-  type ObservabilityPreset,
-  createObservabilityConfig as createObservabilityConfigFromPreset,
-  getPreset,
-  productionPreset,
-  developmentPreset,
-  debugPreset,
-  minimalPreset,
+  createObservabilityConfig as createObservabilityConfigFromPreset, debugPreset, developmentPreset, getPreset, minimalPreset, productionPreset, type ObservabilityPreset
 } from './presets';
 
 // === CONTEXT ===
 export {
-  type ExecutionContextData,
-  type CreateExecutionContextOptions,
-  type ParsedTraceContext,
-  type Actor,
-  type ObservationContext,
-  createExecutionContext,
-  runWithExecutionContext,
-  runWithExecutionContextSync,
-  getCurrentExecutionContext,
-  setActor,
-  enrichActor,
-  addTags,
-  setAttribute,
-  setAttributes,
-  setSource,
-  setParentObservabilityLogId,
-  extractFromHeaders,
-  extractFromSqs,
-  extractFromSns,
-  extractFromEventBridge,
-  extractFromStepFunctions,
-  extractFromKinesis,
-  extractFromDynamoDBStream,
-  createHttpHeaders,
-  createSqsAttributes,
-  createSnsAttributes,
-  createEventBridgeContext,
-  createStepFunctionsContext,
-  toW3CTraceId,
-  toW3CParentId,
-  getCurrentContext,
-  getCorrelationIdIfExists,
-  createObservationContext,
-  runWithContext,
-  runWithContextSync,
+  addTags, createEventBridgeContext, createExecutionContext, createHttpHeaders, createObservationContext, createSnsAttributes, createSqsAttributes, createStepFunctionsContext, enrichActor, extractFromEventBridge, extractFromHeaders, extractFromKinesis, extractFromSns, extractFromSqs, extractFromStepFunctions, getCorrelationIdIfExists, getCurrentContext, getCurrentExecutionContext, runWithContext,
+  runWithContextSync, runWithExecutionContext,
+  runWithExecutionContextSync, setActor, setAttribute,
+  setAttributes, setParentObservabilityLogId, setSource, toW3CParentId, toW3CTraceId, type Actor, type CreateExecutionContextOptions, type ExecutionContextData, type ObservationContext, type ParsedTraceContext
 } from './context';
 
 // === CORE OBSERVERS ===
 export {
-  SpanObserver,
-  ISpanObserver,
-  withSpan,
-  SpanOptions,
+  // Base types
+  ObservabilityPayload,
+  BaseObserverOptions,
+  CommonFields,
+  // Audit
   AuditObserver,
   AuditObserverOptions,
-  MetricObserver,
-  MetricOptions,
+  AuditRecordOptions,
+  ComplianceAuditOptions,
+  AccessAuditOptions,
+  // Log
   LogObserver,
   LogOptions,
   ChildLogObserver,
+  // Metric
+  MetricObserver,
+  MetricOptions,
+  // Span
+  SpanObserver,
+  SpanOptions,
+  SpanEventOptions,
+  SpanEndOptions,
+  ISpanObserver,
+  withSpan
 } from './observers';
 
 // === BACKENDS (DI-managed, exported for type references) ===
@@ -137,31 +100,29 @@ export { DynamoDBObservabilityBackend } from './backends/dynamodb';
 export { OTELObservabilityBackend } from './backends/otel';
 
 // === UTILITIES ===
-export { stringToLevel, levelToString, levelToPowertoolsLogLevel } from './utils/level-utils';
-export { detectSource, createControllerSource, createServiceSource, createQueueSource, createTaskSource, getEnvironmentTags, mergeTags, clearEnvironmentTagsCache } from './utils/source-utils';
-export { truncatePayload, estimateItemSize, isPayloadWithinLimits, safeStringify } from './utils/payload';
-export { redactSensitiveData, shouldRedactKey, extendBlacklist, clearRedactorCache, DEFAULT_BLACKLISTED_KEYS, DEFAULT_PROTECTED_FIELDS, DataProtectionConfig } from './utils/data-protection';
+export { clearRedactorCache, DataProtectionConfig, DEFAULT_BLACKLISTED_KEYS, DEFAULT_PROTECTED_FIELDS, extendBlacklist, redactSensitiveData, shouldRedactKey } from './utils/data-protection';
+export { generateSpanId, generateTraceId } from './utils/id-generator';
+export { levelToPowertoolsLogLevel, levelToString, stringToLevel } from './utils/level-utils';
+export { estimateItemSize, isPayloadWithinLimits, safeStringify, truncatePayload } from './utils/payload';
+export { clearEnvironmentTagsCache, createControllerSource, createQueueSource, createServiceSource, createTaskSource, detectSource, getEnvironmentTags, mergeTags } from './utils/source-utils';
 
 // === DECORATORS ===
-export { Traced, TracedOptions, Audited, AuditedOptions, Observed, ObservedOptions, ObservedClass, ObservedClassOptions } from './decorators';
+export { Audited, AuditedOptions, Observed, ObservedOptions, Traced, TracedOptions } from './decorators';
 
 // === CRUD HOOKS ===
-export { CrudObservabilityHooks, CrudObservabilityContext } from './crud-hooks';
-
-// === APPLICATION HELPERS ===
-export { captureBusinessEvent, captureBusinessError, captureMetric, CaptureEventOptions } from './helpers/capture';
+export { CrudObservabilityContext, CrudObservabilityHooks } from './crud-hooks';
 
 // === CONTROLLER CONFIG ===
-export type { SpanMetadata, ControllerObservabilityConfig, ObservabilityIncludesConfig } from './controller-config';
 export { mergeObservabilityConfigs } from './controller-config';
+export type { ControllerObservabilityConfig, ObservabilityIncludesConfig, SpanMetadata } from './controller-config';
 
 // === STORAGE (Entity, Service) ===
 // For admin UIs, extend BaseEntityController<ObservabilityLogSchema> directly
 export {
   ObservabilityLogEntitySchema,
-  ObservabilityLogService,
+  ObservabilityLogService
 } from './storage';
-export type { ObservabilityLogSchema, ReconstructedSpan, LogRecord, ObservabilityLogCreateItem } from './storage';
+export type { LogRecord, ObservabilityLogCreateItem, ObservabilityLogSchema, ReconstructedSpan } from './storage';
 
 // === TESTING ===
-export { MockBackend, setupTestObservability, cleanupTestObservability, createTestContext, createTestContextSync, assertEventCaptured, assertNoEventCaptured, assertEventCount, createTestActor, createTestObservationContext } from './testing';
+export { assertEventCaptured, assertEventCount, assertNoEventCaptured, cleanupTestObservability, createTestActor, createTestContext, createTestContextSync, createTestObservationContext, MockBackend, setupTestObservability } from './testing';

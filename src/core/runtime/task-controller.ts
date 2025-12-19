@@ -1,11 +1,12 @@
 import { Context, ScheduledEvent } from "aws-lambda";
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { ITaskConfig } from '../../decorators/task';
-import { SpanObserver } from '../../observability';
+import { SpanObserver, generateTraceId } from '../../observability';
 import {
   ExecutionContextData,
   createExecutionContext,
   runWithExecutionContext,
+  setParentObservabilityLogId,
 } from './execution-context';
 
 /**
@@ -64,25 +65,38 @@ abstract class TaskController extends AbstractLambdaHandler {
     const taskName = this.getTaskName() || this.constructor.name;
     const taskConfig = this.getTaskConfig();
     const obsConfig = taskConfig.observability || {};
-    const correlationId = context?.awsRequestId || `task-${taskName}-${Date.now()}`;
+    // Use W3C Trace ID format for consistency with observability system
+    const correlationId = context?.awsRequestId || generateTraceId();
+
+    // Build automatic tags for consistent observability
+    const automaticTags: Record<string, string> = {
+      handler_type: 'task',
+      task_name: taskName,
+    };
+    if (taskConfig.schedule) {
+      automaticTags.schedule = taskConfig.schedule;
+    }
 
     // Create execution context with custom source and tags from decorator
     const execCtx = createExecutionContext({
       correlationId,
       source: obsConfig.source || `task:${taskName}`,
       tags: {
-        taskName,
-        ...obsConfig.tags,
+        ...automaticTags,
+        ...obsConfig.tags, // Decorator tags override automatic
       },
     });
 
     // Run handler within execution context
     return runWithExecutionContext(execCtx, async () => {
-      // Create span with custom attributes from decorator
+      // Create span with merged tags (consistent with API Gateway)
       const taskSpan = SpanObserver.start(`Task ${taskName}`, {
         correlationId,
         source: obsConfig.source || `task:${taskName}`,
-        tags: obsConfig.tags,
+        tags: {
+          ...automaticTags,
+          ...obsConfig.tags, // Decorator tags override automatic
+        },
         attributes: {
           'task.name': taskName,
           'task.schedule': taskConfig.schedule,
@@ -91,7 +105,7 @@ abstract class TaskController extends AbstractLambdaHandler {
       });
 
       // Store span ID in execution context for child spans
-      execCtx.parentObservabilityLogId = taskSpan.id;
+      setParentObservabilityLogId(taskSpan.id);
 
       // Build task execution context
       const ctx: TaskExecutionContext = {
@@ -101,20 +115,26 @@ abstract class TaskController extends AbstractLambdaHandler {
       };
 
       let spanEnded = false;
-      const endSpan = async (success: boolean, error?: Error): Promise<void> => {
+      const endSpan = async (success: boolean, error?: Error, metrics?: Record<string, number>): Promise<void> => {
         if (!spanEnded) {
-          taskSpan.end({ success, error });
+          taskSpan.end({ success, error, metrics });
           spanEnded = true;
         }
         await this.flushObservability();
       };
 
+      const startTime = Date.now();
       try {
         await this.initialize();
         await this.process(ctx);
-        await endSpan(true);
+        const duration = Date.now() - startTime;
+        await endSpan(true, undefined, { 'task.duration_ms': duration });
       } catch (error) {
-        await endSpan(false, error as Error);
+        const duration = Date.now() - startTime;
+        await endSpan(false, error as Error, {
+          'task.duration_ms': duration,
+          'task.errors': 1,
+        });
         throw error;
       }
     });

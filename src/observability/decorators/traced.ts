@@ -23,32 +23,12 @@
  * - Otherwise creates a NoOp span that doesn't record anything
  */
 
-import { SpanObserver, SpanOptions } from '../observers/span';
-import { createControllerSource, createServiceSource, createQueueSource, createTaskSource, detectSource } from '../utils/source-utils';
-import { safeSerialize } from '../utils/payload';
+import { setParentObservabilityLogId, getCurrentContext } from '../context';
 import { normalizeError } from '../observers/base';
+import { SpanObserver, SpanOptions } from '../observers/span';
+import { safeSerialize } from '../utils/payload';
+import { executeWithHandlers, SourceType, resolveSource } from './decorator-utils';
 
-/**
- * Auto-detect source type from class name
- */
-function autoDetectSourceType(className: string): 'controller' | 'service' | 'queue' | 'task' | 'handler' {
-  const lowerName = className.toLowerCase();
-
-  if (lowerName.includes('controller')) {
-    return 'controller';
-  }
-  if (lowerName.includes('service')) {
-    return 'service';
-  }
-  if (lowerName.includes('queue') || lowerName.includes('queuehandler')) {
-    return 'queue';
-  }
-  if (lowerName.includes('task') || lowerName.includes('taskhandler')) {
-    return 'task';
-  }
-
-  return 'handler';
-}
 
 export interface TracedOptions {
   /** Custom span name (defaults to ClassName.methodName) */
@@ -72,7 +52,7 @@ export interface TracedOptions {
    * - *Task, *TaskHandler → 'task'
    * - Default → 'handler'
    */
-  sourceType?: 'controller' | 'service' | 'handler' | 'queue' | 'task';
+  sourceType?: SourceType;
   /**
    * Conditionally enable/disable tracing.
    * - Static boolean: `enabled: false` to disable
@@ -104,27 +84,8 @@ export function Traced(options: TracedOptions = {}) {
     const methodName = String(propertyKey);
     const spanName = options.name ?? `${className}.${methodName}`;
 
-    // Auto-detect source type if not explicitly provided
-    const sourceType = options.sourceType ?? autoDetectSourceType(className);
-
-    // Determine source based on sourceType
-    let source: string;
-    switch (sourceType) {
-      case 'controller':
-        source = createControllerSource(className, methodName);
-        break;
-      case 'service':
-        source = createServiceSource(className, methodName);
-        break;
-      case 'queue':
-        source = createQueueSource(className, methodName);
-        break;
-      case 'task':
-        source = createTaskSource(className, methodName);
-        break;
-      default:
-        source = `${className}.${methodName}`;
-    }
+    // Resolve source using shared utility (auto-detects if sourceType not provided)
+    const source = resolveSource(options.sourceType, className, methodName);
 
     // Wrap method - handles both sync and async via result checking
     // This is more robust than checking constructor.name which can break with transpilation
@@ -153,38 +114,39 @@ export function Traced(options: TracedOptions = {}) {
         source,
       };
 
+      // CRITICAL FIX: Snapshot the current parent BEFORE starting the span
+      // This prevents sibling operations (e.g., multiple calls in a loop) from forming a chain
+      const ctx = getCurrentContext();
+      const previousParentId = ctx?.parentObservabilityLogId;
+
       const span = SpanObserver.start(spanName, spanOptions);
 
-      try {
-        const result = (originalMethod as (...a: unknown[]) => unknown).apply(this, args);
+      // Update context so child operations can link to this span
+      // This is critical for SpanObserver.addEventToCurrentSpan() and nested spans
+      setParentObservabilityLogId(span.id);
 
-        // Check if result is a Promise/thenable (works with any async method)
-        if (result && typeof (result as { then?: unknown }).then === 'function') {
-          // Handle async method
-          return (result as Promise<unknown>)
-            .then((value) => {
-              if (options.captureResult && value !== undefined) {
-                span.setAttribute('result', safeSerialize(value));
-              }
-              span.end({ success: true });
-              return value;
-            })
-            .catch((error) => {
-              span.end({ success: false, error: normalizeError(error) });
-              throw error;
-            });
+      // Execute method with automatic sync/async handling
+      return executeWithHandlers(
+        originalMethod as (...args: unknown[]) => unknown,
+        this,
+        args,
+        (success, result, error) => {
+          if (success) {
+            if (options.captureResult && result !== undefined) {
+              span.setAttribute('result', safeSerialize(result));
+            }
+            span.end({ success: true });
+          } else {
+            span.end({ success: false, error: normalizeError(error) });
+          }
+          
+          // CRITICAL FIX: Restore the previous parent ID after span ends
+          // This ensures sibling operations see the correct parent, not the just-completed span
+          if (previousParentId !== undefined) {
+            setParentObservabilityLogId(previousParentId);
+          }
         }
-
-        // Handle sync method
-        if (options.captureResult && result !== undefined) {
-          span.setAttribute('result', safeSerialize(result));
-        }
-        span.end({ success: true });
-        return result;
-      } catch (error) {
-        span.end({ success: false, error: normalizeError(error) });
-        throw error;
-      }
+      );
     };
     descriptor.value = wrappedMethod as T;
 

@@ -6,8 +6,14 @@
  */
 
 // Core Observer implementations
-export { SpanObserver, withSpan, SpanOptions, ISpanObserver } from './span';
-export { AuditObserver, AuditObserverOptions } from './audit';
+export { SpanObserver, withSpan, SpanOptions, SpanEventOptions, SpanEndOptions, ISpanObserver } from './span';
+export {
+  AuditObserver,
+  AuditObserverOptions,
+  AuditRecordOptions,
+  ComplianceAuditOptions,
+  AccessAuditOptions,
+} from './audit';
 export { MetricObserver, MetricOptions } from './metric';
 export { LogObserver, LogOptions, ChildLogObserver } from './log';
 
@@ -15,6 +21,7 @@ export { LogObserver, LogOptions, ChildLogObserver } from './log';
 export {
   BaseObserverOptions,
   CommonFields,
+  ObservabilityPayload,
   generateId,
   resolveCorrelationId,
   mergeObserverTags,

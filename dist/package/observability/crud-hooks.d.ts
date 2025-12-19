@@ -7,13 +7,12 @@
  * NOTE: Methods will auto-generate correlationId if not in context,
  * logging a warning to encourage proper context establishment.
  */
-import { Actor } from '../core/types/execution-context';
-import { ISpanObserver } from './observers/span';
-export interface CrudObservabilityContext {
-    correlationId?: string;
-    parentObservabilityLogId?: string;
-    actor?: Actor;
-}
+import { ISpanObserver, SpanOptions } from './observers/span';
+/**
+ * Context for CRUD operations - compatible with SpanOptions and BaseObserverOptions.
+ * Allows passing explicit trace context when not using AsyncLocalStorage context.
+ */
+export type CrudObservabilityContext = Pick<SpanOptions, 'correlationId' | 'parentObservabilityLogId' | 'causedBy' | 'actor'>;
 export declare class CrudObservabilityHooks {
     /**
      * Emit observability event for entity read operation

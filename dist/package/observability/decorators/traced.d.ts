@@ -23,6 +23,7 @@
  * - Otherwise creates a NoOp span that doesn't record anything
  */
 import { SpanOptions } from '../observers/span';
+import { SourceType } from './decorator-utils';
 export interface TracedOptions {
     /** Custom span name (defaults to ClassName.methodName) */
     name?: string;
@@ -45,7 +46,7 @@ export interface TracedOptions {
      * - *Task, *TaskHandler → 'task'
      * - Default → 'handler'
      */
-    sourceType?: 'controller' | 'service' | 'handler' | 'queue' | 'task';
+    sourceType?: SourceType;
     /**
      * Conditionally enable/disable tracing.
      * - Static boolean: `enabled: false` to disable

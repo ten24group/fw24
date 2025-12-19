@@ -40,6 +40,7 @@ export function createExecutionContext(
   return {
     correlationId,
     parentObservabilityLogId: options.parentObservabilityLogId?.trim(),
+    causedBy: options.causedBy?.trim(),
     sampled: options.sampled ?? true,
     actor: options.actor,
     tags,

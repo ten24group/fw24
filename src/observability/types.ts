@@ -436,6 +436,12 @@ export interface ObservabilityConfig {
 
   /** Data protection configuration */
   dataProtection: ObservabilityDataProtectionConfig;
+
+  /** Source map support for better error stack traces */
+  sourceMap: {
+    /** Enable source-map-support module (requires source-map-support package installed) */
+    enabled: boolean;
+  };
 }
 
 /**

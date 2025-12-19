@@ -37,9 +37,13 @@ declare abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEven
     protected getProcessorName(): string;
     LambdaHandler(event: TEvent, context: Context): Promise<void>;
     /**
-     * Extract correlation ID from event.
+     * Extract full trace context from event (correlationId, causedBy, parentObservabilityLogId).
      */
-    protected extractCorrelationIdFromEvent(event: TEvent, context: Context): string;
+    protected extractTraceContextFromEvent(event: TEvent, context: Context): {
+        correlationId: string;
+        causedBy?: string;
+        parentObservabilityLogId?: string;
+    };
     /**
      * Process the event. Can be overridden for custom processing.
      */

@@ -38,5 +38,5 @@
 export type { ExecutionContextData, CreateExecutionContextOptions, ParsedTraceContext, } from './types';
 export { createExecutionContext, runWithExecutionContext, runWithExecutionContextSync, getCurrentExecutionContext, } from './storage';
 export { setActor, enrichActor, addTags, setAttribute, setAttributes, setSource, setParentObservabilityLogId, } from './storage';
-export { extractFromHeaders, extractFromSqs, extractFromSns, extractFromEventBridge, extractFromStepFunctions, extractFromKinesis, extractFromDynamoDBStream, } from './propagation';
+export { extractFromHeaders, extractFromSqs, extractFromSns, extractFromEventBridge, extractFromStepFunctions, extractFromKinesis, } from './propagation';
 export { createHttpHeaders, createSqsAttributes, createSnsAttributes, createEventBridgeContext, createStepFunctionsContext, toW3CTraceId, toW3CParentId, } from './propagation';

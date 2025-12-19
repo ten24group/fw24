@@ -102,6 +102,10 @@ export const productionPreset: ObservabilityConfig = {
       /private/i,
     ],
   },
+
+  sourceMap: {
+    enabled: true, // Enable in production for better error debugging
+  },
 };
 
 /**
@@ -190,6 +194,10 @@ export const developmentPreset: ObservabilityConfig = {
       'ssn',
     ],
   },
+
+  sourceMap: {
+    enabled: true, // Enable for better error debugging
+  },
 };
 
 /**
@@ -259,6 +267,10 @@ export const debugPreset: ObservabilityConfig = {
   dataProtection: {
     enabled: false, // No redaction in debug mode
   },
+
+  sourceMap: {
+    enabled: true, // Enable for maximum debugging
+  },
 };
 
 /**
@@ -317,6 +329,10 @@ export const minimalPreset: ObservabilityConfig = {
   dataProtection: {
     enabled: true,
     blacklistedKeys: [ 'password', 'token', 'secret' ],
+  },
+
+  sourceMap: {
+    enabled: false, // Minimal preset disables optional features
   },
 };
 

@@ -28,5 +28,3 @@
 export { Traced, TracedOptions } from './traced';
 export { Audited, AuditedOptions } from './audited';
 export { Observed, ObservedOptions } from './observed';
-export { ObservedClass, ObservedClassOptions } from './observed-class';
-

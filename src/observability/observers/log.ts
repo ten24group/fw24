@@ -28,10 +28,10 @@
  * ```
  */
 
-import { Actor } from '../../core/types/execution-context';
 import { ObservabilityLevelString } from '../types';
 import {
   BaseObserverOptions,
+  ObservabilityPayload,
   buildCommonFields,
   captureEvent,
   mapError,
@@ -39,9 +39,7 @@ import {
 
 const OBSERVER_NAME = 'LogObserver';
 
-export interface LogOptions extends BaseObserverOptions {
-  /** Additional attributes */
-  attributes?: Record<string, unknown>;
+export interface LogOptions extends BaseObserverOptions, ObservabilityPayload {
   /** Entity name for context */
   entityName?: string;
   /** Entity ID for context */
@@ -72,7 +70,7 @@ export class LogObserver {
     const fields = buildCommonFields(OBSERVER_NAME, options);
 
     const isError = errorOrData instanceof Error;
-    const data = isError ? { errorMessage: errorOrData.message } : errorOrData;
+    const data = isError ? { errorMessage: errorOrData.message } : (options?.data || errorOrData);
     const error = isError ? mapError(errorOrData) : undefined;
 
     return captureEvent(fields, {
@@ -81,6 +79,7 @@ export class LogObserver {
       operation: message,
       data,
       attributes: options?.attributes,
+      metrics: options?.metrics,
       entityName: options?.entityName,
       entityId: options?.entityId,
       error,
@@ -108,14 +107,14 @@ export class LogObserver {
 
     // Parse args similar to console.log but extracting options if last arg
     if (args.length > 0) {
-      const lastArg = args[args.length - 1];
+      const lastArg = args[ args.length - 1 ];
       // Heuristic: if last arg has 'tags', 'source', or 'attributes', treat as options
       if (lastArg && typeof lastArg === 'object' && ('tags' in lastArg || 'attributes' in lastArg || 'source' in lastArg)) {
         options = args.pop() as LogOptions;
       }
-      
-      if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null) {
-        data = args[0] as Record<string, unknown>;
+
+      if (args.length === 1 && typeof args[ 0 ] === 'object' && args[ 0 ] !== null) {
+        data = args[ 0 ] as Record<string, unknown>;
       } else if (args.length > 0) {
         data = { args };
       }
@@ -135,7 +134,7 @@ export class LogObserver {
     const fields = buildCommonFields(OBSERVER_NAME, options);
 
     const isError = errorOrData instanceof Error;
-    const data = isError ? { errorMessage: errorOrData.message } : errorOrData;
+    const data = isError ? { errorMessage: errorOrData.message } : (options?.data || errorOrData);
     const error = isError ? mapError(errorOrData) : undefined;
 
     // Don't duplicate message - it's already in `operation`
@@ -145,6 +144,7 @@ export class LogObserver {
       operation: message,
       data,
       attributes: options?.attributes,
+      metrics: options?.metrics,
       entityName: options?.entityName,
       entityId: options?.entityId,
       error,
@@ -167,7 +167,8 @@ export class LogObserver {
       type: 'log',
       level,
       operation: message,
-      data,
+      data: options?.data || data,
+      metrics: options?.metrics,
       attributes: options?.attributes,
       entityName: options?.entityName,
       entityId: options?.entityId,

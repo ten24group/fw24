@@ -29,9 +29,40 @@
  * );
  * ```
  */
-import { Actor, ExecutionContext } from '../../core/types/execution-context';
-import { BaseObserverOptions } from './base';
+import { ExecutionContext } from '../../core/types/execution-context';
+import { ObservabilityLevelString } from '../types';
+import { BaseObserverOptions, ObservabilityPayload } from './base';
 export interface AuditObserverOptions extends BaseObserverOptions {
+}
+/**
+ * Options for custom audit records
+ */
+export interface AuditRecordOptions extends BaseObserverOptions, ObservabilityPayload {
+    operation: string;
+    entityName?: string;
+    entityId?: string;
+    subType?: string;
+    level?: ObservabilityLevelString;
+}
+/**
+ * Options for compliance audits
+ */
+export interface ComplianceAuditOptions extends BaseObserverOptions, ObservabilityPayload {
+    operation: string;
+    /** Compliance event type */
+    subType: 'pii_access' | 'data_export' | 'consent_change' | 'data_deletion' | string;
+    entityName?: string;
+    entityId?: string;
+}
+/**
+ * Options for access audits
+ */
+export interface AccessAuditOptions extends BaseObserverOptions, ObservabilityPayload {
+    operation: string;
+    resource: string;
+    resourceId?: string;
+    action: 'view' | 'download' | 'modify' | 'share' | string;
+    allowed: boolean;
 }
 export declare class AuditObserver {
     /**
@@ -69,36 +100,13 @@ export declare class AuditObserver {
     /**
      * Record custom audit event
      */
-    static record(options: {
-        operation: string;
-        entityName?: string;
-        entityId?: string;
-        subType?: string;
-        data?: Record<string, unknown>;
-        actor?: Actor;
-        source?: string;
-        tags?: Record<string, string>;
-        metadata?: Record<string, unknown>;
-        correlationId?: string;
-        level?: 'info' | 'warn' | 'error';
-    }): string | undefined;
+    static record(options: AuditRecordOptions): string | undefined;
     /**
      * Record compliance audit (PII access, data export, etc.)
      *
      * @param options.metadata - Flexible metadata for compliance info (reason, justification, etc.)
      */
-    static compliance(options: {
-        operation: string;
-        /** Compliance event type */
-        subType: 'pii_access' | 'data_export' | 'consent_change' | 'data_deletion';
-        entityName?: string;
-        entityId?: string;
-        data?: Record<string, unknown>;
-        actor?: Actor;
-        tags?: Record<string, string>;
-        /** Compliance metadata - flexible for app-specific requirements */
-        metadata?: Record<string, unknown>;
-    }): string | undefined;
+    static compliance(options: ComplianceAuditOptions): string | undefined;
     /**
      * Record compliance audit (async version - waits for backend completion)
      *
@@ -106,30 +114,9 @@ export declare class AuditObserver {
      *
      * @param options.metadata - Flexible metadata for compliance info (reason, justification, etc.)
      */
-    static complianceAsync(options: {
-        operation: string;
-        /** Compliance event type */
-        subType: 'pii_access' | 'data_export' | 'consent_change' | 'data_deletion';
-        entityName?: string;
-        entityId?: string;
-        data?: Record<string, unknown>;
-        actor?: Actor;
-        tags?: Record<string, string>;
-        /** Compliance metadata - flexible for app-specific requirements */
-        metadata?: Record<string, unknown>;
-    }): Promise<string | undefined>;
+    static complianceAsync(options: ComplianceAuditOptions): Promise<string | undefined>;
     /**
      * Record access audit (for sensitive resources)
      */
-    static access(options: {
-        operation: string;
-        resource: string;
-        resourceId?: string;
-        action: 'view' | 'download' | 'modify' | 'share' | string;
-        allowed: boolean;
-        actor?: Actor;
-        tags?: Record<string, string>;
-        metadata?: Record<string, unknown>;
-        data?: Record<string, unknown>;
-    }): string | undefined;
+    static access(options: AccessAuditOptions): string | undefined;
 }

@@ -5,7 +5,7 @@
  *
  * @module observability/context
  */
-export { type ExecutionContextData, type CreateExecutionContextOptions, type ParsedTraceContext, createExecutionContext, runWithExecutionContext, runWithExecutionContextSync, getCurrentExecutionContext, setActor, enrichActor, addTags, setAttribute, setAttributes, setSource, setParentObservabilityLogId, extractFromHeaders, extractFromSqs, extractFromSns, extractFromEventBridge, extractFromStepFunctions, extractFromKinesis, extractFromDynamoDBStream, createHttpHeaders, createSqsAttributes, createSnsAttributes, createEventBridgeContext, createStepFunctionsContext, toW3CTraceId, toW3CParentId, } from '../core/runtime/execution-context';
+export { type ExecutionContextData, type CreateExecutionContextOptions, type ParsedTraceContext, createExecutionContext, runWithExecutionContext, runWithExecutionContextSync, getCurrentExecutionContext, setActor, enrichActor, addTags, setAttribute, setAttributes, setSource, setParentObservabilityLogId, extractFromHeaders, extractFromSqs, extractFromSns, extractFromEventBridge, extractFromStepFunctions, extractFromKinesis, createHttpHeaders, createSqsAttributes, createSnsAttributes, createEventBridgeContext, createStepFunctionsContext, toW3CTraceId, toW3CParentId, } from '../core/runtime/execution-context';
 export type { Actor } from '../core/types/execution-context';
 import { type ExecutionContextData, type CreateExecutionContextOptions } from '../core/runtime/execution-context';
 /** Type alias for testing */

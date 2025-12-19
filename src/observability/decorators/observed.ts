@@ -1,58 +1,79 @@
 /**
  * @Observed Decorator - Unified observability decorator
  * 
- * Combines tracing, audit, and metric recording in a single decorator.
- * Use this for high-level methods that need comprehensive observability.
+ * Smart decorator that combines tracing, audit, and metrics without duplication.
+ * 
+ * DEFAULT: If no options specified, defaults to { trace: true }
+ * 
+ * DESIGN:
+ * - trace: Creates span with duration/success/error (for debugging/performance)
+ * - audit: Creates business/compliance log (only for entity operations)
+ * - metric: Creates aggregatable counters/gauges (NOT timing if trace enabled!)
  * 
  * Usage:
  * ```typescript
  * class OrderService {
+ *   // Default - trace only
+ *   @Observed()
+ *   async fetchOrders(): Promise<Order[]> { }
+ *   
+ *   // Explicit trace
+ *   @Observed({ trace: true })
+ *   async getOrder(id: string): Promise<Order> { }
+ *   
+ *   // Business operation - trace + audit
  *   @Observed({ 
  *     trace: true,
- *     audit: { action: 'order.create' },
- *     metric: { name: 'orders.created', type: 'counter' }
+ *     audit: { entityName: 'order' },
+ *     metric: { type: 'counter', name: 'orders.created' }
  *   })
- *   async createOrder(order: Order): Promise<Order> {
- *     // Method is traced, audited, and metered
- *   }
+ *   async createOrder(order: Order): Promise<Order> { }
  *   
+ *   // Counter only (no trace)
  *   @Observed({ 
- *     trace: { level: 'info' },
- *     audit: { action: 'payment.process', level: 'warn', captureArgs: true }
+ *     metric: { type: 'counter', name: 'cache.hit' }
  *   })
- *   async processPayment(orderId: string, amount: number): Promise<void> {
- *     // Comprehensive observability with custom config
- *   }
+ *   getCached(key: string): any { }
  * }
  * ```
  * 
- * REQUIREMENTS:
- * - Must be called within an observation context (runWithContext)
- * - Otherwise creates NoOp spans and skips audits/metrics
+ * ANTI-PATTERNS:
+ * ❌ DON'T: trace + timing metric (span already has duration!)
+ * ❌ DON'T: audit every method (only business events!)
+ * ✅ DO: trace for debugging, audit for compliance, counter for stats
  */
 
-import { SpanObserver, SpanOptions } from '../observers/span';
+import { setParentObservabilityLogId, getCurrentContext } from '../context';
 import { AuditObserver } from '../observers/audit';
-import { MetricObserver, MetricOptions } from '../observers/metric';
-import { createControllerSource, createServiceSource, createQueueSource, createTaskSource } from '../utils/source-utils';
-import { safeSerialize } from '../utils/payload';
 import { normalizeError } from '../observers/base';
-import { getCurrentContext, getCorrelationIdIfExists } from '../context';
-import { createLogger } from '../../logging';
-
-const logger = createLogger('ObservedDecorator');
+import { MetricObserver } from '../observers/metric';
+import { SpanObserver, SpanOptions, SpanEndOptions } from '../observers/span';
+import { safeSerialize } from '../utils/payload';
+import { executeWithHandlers, SourceType, resolveSource } from './decorator-utils';
 
 export interface ObservedOptions {
   /** Method name (defaults to ClassName.methodName) */
   name?: string;
 
-  /** Create span for tracing */
+  /**
+   * Create span for distributed tracing
+   * Spans capture duration, success, error automatically.
+   * Use for: debugging, performance analysis, distributed tracing
+   * 
+   * DEFAULT: true if no options are specified (trace, audit, metric all undefined)
+   */
   trace?: boolean | {
     level?: SpanOptions[ 'level' ];
     attributes?: Record<string, unknown>;
   };
 
-  /** Create audit record */
+  /**
+   * Create audit record for business/compliance tracking
+   * Use for: entity operations, security events, compliance requirements
+   * Note: Only use for actual business events, not every traced method
+   * 
+   * DEFAULT: false
+   */
   audit?: boolean | {
     action?: string;
     entityName?: string;
@@ -61,7 +82,14 @@ export interface ObservedOptions {
     captureResult?: boolean;
   };
 
-  /** Record metric */
+  /**
+   * Record metric for aggregation/dashboards
+   * - counter: Count method invocations (useful!)
+   * - gauge: Set a specific value (useful!)
+   * - timing: Duration in ms (DON'T USE if trace:true - span already captures duration!)
+   * 
+   * DEFAULT: undefined (no metrics)
+   */
   metric?: {
     name?: string;
     type?: 'counter' | 'gauge' | 'timing';
@@ -69,8 +97,16 @@ export interface ObservedOptions {
     tags?: Record<string, string>;
   };
 
-  /** Source type for the operation */
-  sourceType?: 'controller' | 'service' | 'handler' | 'queue' | 'task';
+  /** 
+   * Source type (auto-detected if not provided)
+   * Auto-detection rules:
+   * - *Controller → 'controller' → "api:ControllerName.method"
+   * - *Service → 'service' → "service:ServiceName.method"
+   * - *Queue, *QueueHandler → 'queue' → "queue:QueueName.method"
+   * - *Task, *TaskHandler → 'task' → "task:TaskName.method"
+   * - Default → 'handler' → "ClassName.method"
+   */
+  sourceType?: SourceType;
 
   /** Tags applied to all observability events */
   tags?: Record<string, string>;
@@ -89,6 +125,34 @@ export interface ObservedOptions {
    * Default: true (enabled)
    */
   enabled?: boolean | (() => boolean);
+
+  /**
+   * Callback to extract context-specific attributes at runtime.
+   * Called with the instance (`this`) and method arguments.
+   * Returns attributes to add to the span.
+   */
+  getAttributes?: (instance: any, args: any[]) => Record<string, unknown>;
+
+  /**
+   * Callback to extract attributes from the result after execution.
+   * Called with the method's return value.
+   * Returns attributes to add to the span before it ends.
+   */
+  getResultAttributes?: (result: any) => Record<string, unknown>;
+
+  /**
+   * Callback to extract metrics from the result after execution.
+   * Called with the method's return value.
+   * Returns metrics to embed in the span (published as CloudWatch EMF metrics).
+   */
+  getMetrics?: (result: any) => Record<string, number>;
+
+  /**
+   * Callback to extract data from the result after execution.
+   * Called with the method's return value.
+   * Returns data to embed in the span (for audit-like structured information).
+   */
+  getData?: (result: any) => Record<string, unknown>;
 }
 
 /**
@@ -97,7 +161,7 @@ export interface ObservedOptions {
  * @param options - Observability options
  */
 export function Observed(options: ObservedOptions = {}) {
-  return function <T extends (...args: unknown[]) => unknown>(
+  return function <T extends (...args: any[]) => any>(
     target: object,
     propertyKey: string | symbol,
     descriptor: TypedPropertyDescriptor<T>
@@ -112,24 +176,13 @@ export function Observed(options: ObservedOptions = {}) {
     const methodName = String(propertyKey);
     const operationName = options.name ?? `${className}.${methodName}`;
 
-    // Determine source
-    let source: string;
-    switch (options.sourceType) {
-      case 'controller':
-        source = createControllerSource(className, methodName);
-        break;
-      case 'service':
-        source = createServiceSource(className, methodName);
-        break;
-      case 'queue':
-        source = createQueueSource(className, methodName);
-        break;
-      case 'task':
-        source = createTaskSource(className, methodName);
-        break;
-      default:
-        source = `${className}.${methodName}`;
+    // Default to trace:true if nothing is specified
+    if (!options.trace && !options.audit && !options.metric) {
+      options.trace = true;
     }
+
+    // Resolve source using shared utility (auto-detects if sourceType not provided)
+    const source = resolveSource(options.sourceType, className, methodName);
 
     const wrappedMethod = function (this: unknown, ...args: unknown[]): unknown {
       // Check if observability is enabled (static or dynamic)
@@ -146,10 +199,13 @@ export function Observed(options: ObservedOptions = {}) {
 
       const startTime = Date.now();
       let span: ReturnType<typeof SpanObserver.start> | null = null;
+      let previousParentId: string | undefined = undefined;
 
       // Start span if tracing enabled
       if (options.trace) {
         const traceOptions = typeof options.trace === 'boolean' ? {} : options.trace;
+
+        const dynamicAttributes = options.getAttributes ? options.getAttributes(this, args) : {};
 
         const spanOptions: SpanOptions = {
           level: traceOptions.level,
@@ -157,13 +213,21 @@ export function Observed(options: ObservedOptions = {}) {
             'code.function': methodName,
             'code.namespace': className,
             ...traceOptions.attributes,
+            ...dynamicAttributes,
             ...(options.captureArgs && args.length > 0 && { args: safeSerialize(args) }),
           },
           tags: { ...options.tags, ...traceOptions.attributes?.tags as Record<string, string> | undefined },
           source,
         };
 
+        // CRITICAL FIX: Snapshot the current parent BEFORE starting the span
+        // This prevents sibling operations (e.g., multiple upserts in a loop) from forming a chain
+        const ctx = getCurrentContext();
+        previousParentId = ctx?.parentObservabilityLogId;
+
         span = SpanObserver.start(operationName, spanOptions);
+        // Update context so child operations can link to this span
+        setParentObservabilityLogId(span.id);
       }
 
       // Emit pre-execution metric (counter)
@@ -175,134 +239,26 @@ export function Observed(options: ObservedOptions = {}) {
         });
       }
 
-      try {
-        const result = (originalMethod as (...a: unknown[]) => unknown).apply(this, args);
-
-        // Check if result is a Promise/thenable
-        if (result && typeof (result as { then?: unknown }).then === 'function') {
-          // Handle async method
-          return (result as Promise<unknown>)
-            .then((value) => {
-              const durationMs = Date.now() - startTime;
-
-              // End span
-              if (span) {
-                if (options.captureResult && value !== undefined) {
-                  span.setAttribute('result', safeSerialize(value));
-                }
-                span.end({ success: true });
-              }
-
-              // Record audit
-              recordAudit({
-                options,
-                operationName,
-                args,
-                result: value,
-                success: true,
-                durationMs,
-                source,
-              });
-
-              // Record timing metric
-              recordTimingMetric({
-                options,
-                operationName,
-                durationMs,
-                success: true,
-                source,
-              });
-
-              return value;
-            })
-            .catch((error) => {
-              const durationMs = Date.now() - startTime;
-
-              // End span with error
-              if (span) {
-                span.end({ success: false, error: normalizeError(error) });
-              }
-
-              // Record audit with error
-              recordAudit({
-                options,
-                operationName,
-                args,
-                success: false,
-                error: normalizeError(error),
-                durationMs,
-                source,
-              });
-
-              // Record timing metric with error
-              recordTimingMetric({
-                options,
-                operationName,
-                durationMs,
-                success: false,
-                source,
-              });
-
-              throw error;
-            });
+      // Execute method with automatic sync/async handling
+      return executeWithHandlers(
+        originalMethod as (...args: unknown[]) => unknown,
+        this,
+        args,
+        (success, result, error) => {
+          finishObservability({
+            span,
+            options,
+            operationName,
+            args,
+            result,
+            success,
+            error: error ? normalizeError(error) : undefined,
+            durationMs: Date.now() - startTime,
+            source,
+            previousParentId,
+          });
         }
-
-        // Handle sync method
-        const durationMs = Date.now() - startTime;
-
-        if (span) {
-          if (options.captureResult && result !== undefined) {
-            span.setAttribute('result', safeSerialize(result));
-          }
-          span.end({ success: true });
-        }
-
-        recordAudit({
-          options,
-          operationName,
-          args,
-          result,
-          success: true,
-          durationMs,
-          source,
-        });
-
-        recordTimingMetric({
-          options,
-          operationName,
-          durationMs,
-          success: true,
-          source,
-        });
-
-        return result;
-      } catch (error) {
-        const durationMs = Date.now() - startTime;
-
-        if (span) {
-          span.end({ success: false, error: normalizeError(error) });
-        }
-
-        recordAudit({
-          options,
-          operationName,
-          args,
-          success: false,
-          error: normalizeError(error),
-          durationMs,
-          source,
-        });
-
-        recordTimingMetric({
-          options,
-          operationName,
-          durationMs,
-          success: false,
-          source,
-        });
-
-        throw error;
-      }
+      );
     };
     descriptor.value = wrappedMethod as T;
 
@@ -311,7 +267,94 @@ export function Observed(options: ObservedOptions = {}) {
 }
 
 /**
- * Record audit event if configured
+ * Finish all observability recording (span, audit, metrics)
+ * Unified handler for both sync and async, success and error paths
+ */
+function finishObservability(params: {
+  span: ReturnType<typeof SpanObserver.start> | null;
+  options: ObservedOptions;
+  operationName: string;
+  args: unknown[];
+  result?: unknown;
+  success: boolean;
+  error?: Error;
+  durationMs: number;
+  source: string;
+  previousParentId?: string;
+}): void {
+  const { span, options, operationName, args, result, success, error, durationMs, source, previousParentId } = params;
+
+  // End span (captures duration, success, error - no need for separate timing metric!)
+  if (span) {
+    if (success) {
+      if (options.captureResult && result !== undefined) {
+        span.setAttribute('result', safeSerialize(result));
+      }
+
+      // Build end options with all extractors
+      const endOptions: SpanEndOptions = { success: true };
+
+      // Extract attributes from result
+      if (options.getResultAttributes && result !== undefined) {
+        endOptions.attributes = options.getResultAttributes(result);
+      }
+
+      // Extract metrics from result (published as CloudWatch EMF metrics!)
+      if (options.getMetrics && result !== undefined) {
+        endOptions.metrics = options.getMetrics(result);
+      }
+
+      // Extract data from result (for audit-like structured info)
+      if (options.getData && result !== undefined) {
+        endOptions.data = options.getData(result);
+      }
+
+      span.end(endOptions);
+    } else {
+      // Error is already normalized in the callback
+      span.end({ success: false, error: error as Error });
+    }
+
+    // CRITICAL FIX: Restore the previous parent ID after span ends
+    // This ensures sibling operations see the correct parent, not the just-completed span
+    if (previousParentId !== undefined) {
+      setParentObservabilityLogId(previousParentId);
+    }
+  }
+
+  // Record audit ONLY if explicitly configured
+  // Audit is for business/compliance events, not every traced method
+  if (options.audit) {
+    recordAudit({
+      options,
+      operationName,
+      args,
+      result,
+      success,
+      error,
+      durationMs,
+      source,
+    });
+  }
+
+  // Record timing metric ONLY if:
+  // 1. Metric is configured as timing type
+  // 2. AND no span exists (span already captures duration)
+  // This prevents duplicate duration recording
+  if (options.metric?.type === 'timing' && !span) {
+    recordTimingMetric({
+      options,
+      operationName,
+      durationMs,
+      success,
+      source,
+    });
+  }
+}
+
+/**
+ * Record audit event
+ * NOTE: Caller must check if options.audit is enabled before calling this
  */
 function recordAudit(params: {
   options: ObservedOptions;
@@ -325,10 +368,8 @@ function recordAudit(params: {
 }): void {
   const { options, operationName, args, result, success, error, durationMs, source } = params;
 
-  if (!options.audit) return;
-
-  const auditOptions = typeof options.audit === 'boolean' ? {} : options.audit;
-  const context = getCurrentContext();
+  // options.audit is guaranteed to exist (caller checks), extract config
+  const auditOptions = typeof options.audit === 'boolean' ? {} : (options.audit ?? {});
 
   // Build audit data
   let data: Record<string, unknown> = {
@@ -337,13 +378,13 @@ function recordAudit(params: {
   };
 
   // Capture args if requested
-  const shouldCaptureArgs = auditOptions.captureArgs ?? options.captureArgs ?? false;
+  const shouldCaptureArgs = auditOptions?.captureArgs ?? options.captureArgs ?? false;
   if (shouldCaptureArgs && args.length > 0) {
     data.args = safeSerialize(args);
   }
 
   // Capture result if requested
-  const shouldCaptureResult = auditOptions.captureResult ?? options.captureResult ?? false;
+  const shouldCaptureResult = auditOptions?.captureResult ?? options.captureResult ?? false;
   if (shouldCaptureResult && result !== undefined) {
     data.result = safeSerialize(result);
   }
@@ -357,13 +398,12 @@ function recordAudit(params: {
   }
 
   AuditObserver.record({
-    operation: auditOptions.action ?? operationName,
-    entityName: auditOptions.entityName,
+    operation: auditOptions?.action ?? operationName,
+    entityName: auditOptions?.entityName,
     data,
-    level: error ? 'error' : (auditOptions.level ?? 'info'),
+    level: error ? 'error' : (auditOptions?.level ?? 'info'),
     source,
     tags: options.tags,
-    actor: context?.actor,
   });
 }
 

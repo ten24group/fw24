@@ -8,18 +8,14 @@
  * logging a warning to encourage proper context establishment.
  */
 
-import { Actor } from '../core/types/execution-context';
 import { AuditObserver } from './observers/audit';
-import { SpanObserver, ISpanObserver } from './observers/span';
-import { createLogger } from '../logging';
+import { SpanObserver, ISpanObserver, SpanOptions } from './observers/span';
 
-const logger = createLogger('CrudObservabilityHooks');
-
-export interface CrudObservabilityContext {
-  correlationId?: string;
-  parentObservabilityLogId?: string;
-  actor?: Actor;
-}
+/**
+ * Context for CRUD operations - compatible with SpanOptions and BaseObserverOptions.
+ * Allows passing explicit trace context when not using AsyncLocalStorage context.
+ */
+export type CrudObservabilityContext = Pick<SpanOptions, 'correlationId' | 'parentObservabilityLogId' | 'causedBy' | 'actor'>;
 
 export class CrudObservabilityHooks {
   /**
@@ -30,10 +26,7 @@ export class CrudObservabilityHooks {
     entityId: string,
     context?: CrudObservabilityContext,
   ): void {
-    AuditObserver.entityRead(entityName, entityId, {
-      correlationId: context?.correlationId,
-      actor: context?.actor,
-    });
+    AuditObserver.entityRead(entityName, entityId, context);
   }
 
   /**
@@ -45,10 +38,7 @@ export class CrudObservabilityHooks {
     data: unknown,
     context?: CrudObservabilityContext,
   ): void {
-    AuditObserver.entityCreate(entityName, entityId, data, {
-      correlationId: context?.correlationId,
-      actor: context?.actor,
-    });
+    AuditObserver.entityCreate(entityName, entityId, data, context);
   }
 
   /**
@@ -60,10 +50,7 @@ export class CrudObservabilityHooks {
     changes: { before?: unknown; after?: unknown; diff?: unknown },
     context?: CrudObservabilityContext,
   ): void {
-    AuditObserver.entityUpdate(entityName, entityId, changes, {
-      correlationId: context?.correlationId,
-      actor: context?.actor,
-    });
+    AuditObserver.entityUpdate(entityName, entityId, changes, context);
   }
 
   /**
@@ -75,10 +62,7 @@ export class CrudObservabilityHooks {
     deletedData?: unknown,
     context?: CrudObservabilityContext,
   ): void {
-    AuditObserver.entityDelete(entityName, entityId, deletedData, {
-      correlationId: context?.correlationId,
-      actor: context?.actor,
-    });
+    AuditObserver.entityDelete(entityName, entityId, deletedData, context);
   }
 
   /**
@@ -90,10 +74,7 @@ export class CrudObservabilityHooks {
     resultCount: number,
     context?: CrudObservabilityContext,
   ): void {
-    AuditObserver.entityList(entityName, filters, resultCount, {
-      correlationId: context?.correlationId,
-      actor: context?.actor,
-    });
+    AuditObserver.entityList(entityName, filters, resultCount, context);
   }
 
   /**
@@ -108,14 +89,12 @@ export class CrudObservabilityHooks {
     context?: CrudObservabilityContext,
   ): ISpanObserver {
     return SpanObserver.start(`${entityName}.${operation}`, {
-      correlationId: context?.correlationId,
-      parentObservabilityLogId: context?.parentObservabilityLogId,
+      ...context,
       level: 'debug',
       attributes: {
         'entity.name': entityName,
         'entity.operation': operation,
       },
-      actor: context?.actor,
     });
   }
 
@@ -133,6 +112,7 @@ export class CrudObservabilityHooks {
     context?: CrudObservabilityContext,
   ): void {
     AuditObserver.record({
+      ...context,
       operation: `${entityName}.bulkCreate`,
       entityName,
       data: {
@@ -140,8 +120,6 @@ export class CrudObservabilityHooks {
         count,
       },
       level: 'info',
-      correlationId: context?.correlationId,
-      actor: context?.actor,
     });
   }
 
@@ -155,6 +133,7 @@ export class CrudObservabilityHooks {
     context?: CrudObservabilityContext,
   ): void {
     AuditObserver.record({
+      ...context,
       operation: `${entityName}.bulkUpdate`,
       entityName,
       data: {
@@ -162,8 +141,6 @@ export class CrudObservabilityHooks {
         count,
       },
       level: 'info',
-      correlationId: context?.correlationId,
-      actor: context?.actor,
     });
   }
 
@@ -177,6 +154,7 @@ export class CrudObservabilityHooks {
     context?: CrudObservabilityContext,
   ): void {
     AuditObserver.record({
+      ...context,
       operation: `${entityName}.bulkDelete`,
       entityName,
       data: {
@@ -184,8 +162,6 @@ export class CrudObservabilityHooks {
         count,
       },
       level: 'warn', // Bulk deletes are more significant
-      correlationId: context?.correlationId,
-      actor: context?.actor,
     });
   }
 

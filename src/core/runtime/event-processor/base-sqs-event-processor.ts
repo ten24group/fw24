@@ -1,12 +1,13 @@
 import { SQSEvent, Context, DynamoDBStreamEvent } from "aws-lambda";
 import { AbstractLambdaHandler } from "../abstract-lambda-handler";
 import { BaseEventRecord, IEventDataExtractor } from "../../types/event-processor-types";
-import { SpanObserver } from '../../../observability';
+import { SpanObserver, generateTraceId } from '../../../observability';
 import {
   ExecutionContextData,
   createExecutionContext,
   runWithExecutionContext,
   extractFromSqs,
+  setParentObservabilityLogId,
 } from '../execution-context';
 
 /**
@@ -75,18 +76,28 @@ abstract class BaseSQSEventProcessor<
     this.initializeEntryPackagesAndObservability();
 
     const processorName = this.getProcessorName();
-    const correlationId = this.extractCorrelationIdFromEvent(event, context);
+    const traceContext = this.extractTraceContextFromEvent(event, context);
 
-    // Create execution context
+    // Create execution context with full trace context
     const execCtx = createExecutionContext({
-      correlationId,
+      correlationId: traceContext.correlationId,
+      parentObservabilityLogId: traceContext.parentObservabilityLogId,
+      causedBy: traceContext.causedBy,
       source: `${processorName}.process`,
     });
 
     // Run handler within execution context
     return runWithExecutionContext(execCtx, async () => {
       const span = SpanObserver.start(`${eventSource} ${processorName}`, {
-        correlationId,
+        correlationId: traceContext.correlationId,
+        parentObservabilityLogId: traceContext.parentObservabilityLogId,
+        causedBy: traceContext.causedBy,
+        tags: {
+          handler_type: 'event_processor',
+          processor_name: processorName,
+          event_source: eventSource,
+          operation_category: 'event_processing',
+        },
         attributes: {
           'event.source': eventSource,
           'event.recordCount': event.Records?.length ?? 0,
@@ -94,7 +105,7 @@ abstract class BaseSQSEventProcessor<
         },
       });
 
-      execCtx.parentObservabilityLogId = span.id;
+      setParentObservabilityLogId(span.id);
 
       const ctx: EventProcessorContext<TEvent> = {
         event,
@@ -123,19 +134,31 @@ abstract class BaseSQSEventProcessor<
   }
 
   /**
-   * Extract correlation ID from event.
+   * Extract full trace context from event (correlationId, causedBy, parentObservabilityLogId).
    */
-  protected extractCorrelationIdFromEvent(event: TEvent, context: Context): string {
+  protected extractTraceContextFromEvent(
+    event: TEvent,
+    context: Context
+  ): { correlationId: string; causedBy?: string; parentObservabilityLogId?: string } {
     // Try SQS message attributes
     if ('Records' in event && event.Records?.[ 0 ]) {
       const record = event.Records[ 0 ];
       if ('messageAttributes' in record) {
         const sqsRecord = record as SQSEvent[ 'Records' ][ 0 ];
         const traceCtx = extractFromSqs(sqsRecord.messageAttributes);
-        if (traceCtx?.correlationId) return traceCtx.correlationId;
+        if (traceCtx?.correlationId) {
+          return {
+            correlationId: traceCtx.correlationId,
+            causedBy: traceCtx.causedBy,
+            parentObservabilityLogId: traceCtx.parentObservabilityLogId,
+          };
+        }
       }
     }
-    return context.awsRequestId || crypto.randomUUID();
+    // Fallback to Lambda requestId, then W3C Trace ID for consistency
+    return {
+      correlationId: context.awsRequestId || generateTraceId(),
+    };
   }
 
   /**

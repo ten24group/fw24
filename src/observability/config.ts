@@ -31,6 +31,7 @@ export const CONFIG_DEFAULTS = {
   ttlDays: 90,
   minLevel: ObservabilityLevel.INFO,
   enabled: false,
+  sourceMapEnabled: false,
 } as const;
 
 /**
@@ -50,6 +51,10 @@ export interface ObservabilityConfigInput {
   };
   dataProtection?: Partial<ObservabilityDataProtectionConfig>;
   types?: ObservabilityConfig[ 'types' ];
+  sourceMap?: {
+    /** Enable source-map-support for better error stack traces (requires source-map-support package) */
+    enabled?: boolean;
+  };
 }
 
 /**
@@ -105,6 +110,9 @@ export function createObservabilityConfig(input: ObservabilityConfigInput = {}):
       caseSensitiveKeyMatch: input.dataProtection?.caseSensitiveKeyMatch ?? false,
       replacement: input.dataProtection?.replacement ?? '[REDACTED]',
       fields: input.dataProtection?.fields ?? [ 'data', 'attributes', 'metadata', 'context' ],
+    },
+    sourceMap: {
+      enabled: input.sourceMap?.enabled ?? CONFIG_DEFAULTS.sourceMapEnabled,
     },
     types: input.types,
   };

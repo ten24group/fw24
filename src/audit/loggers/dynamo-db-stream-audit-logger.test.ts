@@ -34,13 +34,6 @@ class TestableStreamAuditLogger extends DynamoDBStreamAuditLogger {
         return this.extractActor(newImage);
     }
 
-    public testExtractCorrelationId(
-        record: BaseEventRecord<ChangeStreamPayload>,
-        newImage: Record<string, unknown> | undefined,
-    ): string {
-        return this.extractCorrelationId(record, newImage);
-    }
-
     public testCaptureAuditEvent(record: BaseEventRecord<ChangeStreamPayload>): Promise<void> {
         return this.captureAuditEvent(record);
     }
@@ -119,36 +112,6 @@ describe('DynamoDBStreamAuditLogger', () => {
             ...overrides
         };
     }
-
-    describe('extractCorrelationId', () => {
-        it('should extract correlationId from _actor.correlationId', () => {
-            const actorWithCorrelation = createMockActor({ correlationId: 'corr-from-actor-123' });
-            const record = createMockEventRecord();
-            const newImage = { title: 'Test', _actor: actorWithCorrelation };
-
-            const correlationId = auditLogger.testExtractCorrelationId(record, newImage);
-
-            expect(correlationId).toBe('corr-from-actor-123');
-        });
-
-        it('should use DynamoDB eventId when no correlationId in actor', () => {
-            const record = createMockEventRecord({ eventId: 'evt-dynamodb-456' });
-            const newImage = { title: 'Test' };
-
-            const correlationId = auditLogger.testExtractCorrelationId(record, newImage);
-
-            expect(correlationId).toBe('stream-evt-dynamodb-456');
-        });
-
-        it('should generate fallback correlationId when no eventId', () => {
-            const record = createMockEventRecord({ eventId: undefined });
-            const newImage = { title: 'Test' };
-
-            const correlationId = auditLogger.testExtractCorrelationId(record, newImage);
-
-            expect(correlationId).toMatch(/^stream-Post-post-123-\d+$/);
-        });
-    });
 
     describe('captureAuditEvent', () => {
         it('should call AuditObserver.entityCreate for create events', async () => {
@@ -235,8 +198,8 @@ describe('DynamoDBStreamAuditLogger', () => {
             expect(mockEntityDelete).not.toHaveBeenCalled();
         });
 
-        it('should pass correlationId from actor context', async () => {
-            const actorWithCorrelation = createMockActor({ correlationId: 'trace-123' });
+        it('should pass causedBy from actor context to link to original request', async () => {
+            const actorWithCorrelation = createMockActor({ correlationId: 'original-api-request-123' });
             const record = createMockEventRecord({
                 eventType: 'create',
                 payload: {
@@ -247,11 +210,12 @@ describe('DynamoDBStreamAuditLogger', () => {
 
             await auditLogger.testCaptureAuditEvent(record);
 
+            // Verify causedBy is set to the original API request's correlationId
             expect(mockEntityCreate).toHaveBeenCalledWith(
                 expect.any(String),
                 expect.any(String),
                 expect.any(Object),
-                expect.objectContaining({ correlationId: 'trace-123' })
+                expect.objectContaining({ causedBy: 'original-api-request-123' })
             );
         });
     });

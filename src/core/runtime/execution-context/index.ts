@@ -70,7 +70,6 @@ export {
   extractFromEventBridge,
   extractFromStepFunctions,
   extractFromKinesis,
-  extractFromDynamoDBStream,
 } from './propagation';
 
 // Propagation - Creation

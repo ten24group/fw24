@@ -30,19 +30,54 @@
  * ```
  */
 
-import { Actor, ExecutionContext } from '../../core/types/execution-context';
+import { ExecutionContext } from '../../core/types/execution-context';
+import { ObservabilityLevelString } from '../types';
 import {
   buildCommonFields,
   captureEvent,
   captureEventAsync,
   extractObserverOptions,
   BaseObserverOptions,
+  ObservabilityPayload,
 } from './base';
 
 const OBSERVER_NAME = 'AuditObserver';
 
 export interface AuditObserverOptions extends BaseObserverOptions {
-  // Inherits: correlationId, actor, source, tags, metadata
+  // Inherits: correlationId, causedBy, relatedTraces, actor, source, tags, metadata
+}
+
+/**
+ * Options for custom audit records
+ */
+export interface AuditRecordOptions extends BaseObserverOptions, ObservabilityPayload {
+  operation: string;
+  entityName?: string;
+  entityId?: string;
+  subType?: string;
+  level?: ObservabilityLevelString;
+}
+
+/**
+ * Options for compliance audits
+ */
+export interface ComplianceAuditOptions extends BaseObserverOptions, ObservabilityPayload {
+  operation: string;
+  /** Compliance event type */
+  subType: 'pii_access' | 'data_export' | 'consent_change' | 'data_deletion' | string;
+  entityName?: string;
+  entityId?: string;
+}
+
+/**
+ * Options for access audits
+ */
+export interface AccessAuditOptions extends BaseObserverOptions, ObservabilityPayload {
+  operation: string;
+  resource: string;
+  resourceId?: string;
+  action: 'view' | 'download' | 'modify' | 'share' | string;
+  allowed: boolean;
 }
 
 export class AuditObserver {
@@ -197,26 +232,9 @@ export class AuditObserver {
   /**
    * Record custom audit event
    */
-  static record(options: {
-    operation: string;
-    entityName?: string;
-    entityId?: string;
-    subType?: string;
-    data?: Record<string, unknown>;
-    actor?: Actor;
-    source?: string;
-    tags?: Record<string, string>;
-    metadata?: Record<string, unknown>;
-    correlationId?: string;
-    level?: 'info' | 'warn' | 'error';
-  }): string | undefined {
-    const fields = buildCommonFields(OBSERVER_NAME, {
-      correlationId: options.correlationId,
-      actor: options.actor,
-      source: options.source,
-      tags: options.tags,
-      metadata: options.metadata,
-    });
+  static record(options: AuditRecordOptions): string | undefined {
+    // Pass entire options - buildCommonFields extracts only the fields it needs
+    const fields = buildCommonFields(OBSERVER_NAME, options);
 
     return captureEvent(fields, {
       type: 'audit',
@@ -226,6 +244,8 @@ export class AuditObserver {
       entityName: options.entityName,
       entityId: options.entityId,
       data: options.data,
+      metrics: options.metrics,
+      attributes: options.attributes,
       tags: { ...fields.tags, audit: 'true' },
     });
   }
@@ -235,23 +255,8 @@ export class AuditObserver {
    * 
    * @param options.metadata - Flexible metadata for compliance info (reason, justification, etc.)
    */
-  static compliance(options: {
-    operation: string;
-    /** Compliance event type */
-    subType: 'pii_access' | 'data_export' | 'consent_change' | 'data_deletion';
-    entityName?: string;
-    entityId?: string;
-    data?: Record<string, unknown>;
-    actor?: Actor;
-    tags?: Record<string, string>;
-    /** Compliance metadata - flexible for app-specific requirements */
-    metadata?: Record<string, unknown>;
-  }): string | undefined {
-    const fields = buildCommonFields(OBSERVER_NAME, {
-      actor: options.actor,
-      tags: options.tags,
-      metadata: options.metadata,
-    });
+  static compliance(options: ComplianceAuditOptions): string | undefined {
+    const fields = buildCommonFields(OBSERVER_NAME, options);
 
     // Compliance events are critical - must not be sampled out
     return captureEvent(fields, {
@@ -262,6 +267,8 @@ export class AuditObserver {
       entityName: options.entityName,
       entityId: options.entityId,
       data: options.data,
+      metrics: options.metrics,
+      attributes: options.attributes,
       tags: { ...fields.tags, audit: 'true', compliance: 'true' },
     }, { critical: true });
   }
@@ -273,23 +280,8 @@ export class AuditObserver {
    * 
    * @param options.metadata - Flexible metadata for compliance info (reason, justification, etc.)
    */
-  static async complianceAsync(options: {
-    operation: string;
-    /** Compliance event type */
-    subType: 'pii_access' | 'data_export' | 'consent_change' | 'data_deletion';
-    entityName?: string;
-    entityId?: string;
-    data?: Record<string, unknown>;
-    actor?: Actor;
-    tags?: Record<string, string>;
-    /** Compliance metadata - flexible for app-specific requirements */
-    metadata?: Record<string, unknown>;
-  }): Promise<string | undefined> {
-    const fields = buildCommonFields(OBSERVER_NAME, {
-      actor: options.actor,
-      tags: options.tags,
-      metadata: options.metadata,
-    });
+  static async complianceAsync(options: ComplianceAuditOptions): Promise<string | undefined> {
+    const fields = buildCommonFields(OBSERVER_NAME, options);
 
     return captureEventAsync(fields, {
       type: 'audit.compliance',
@@ -299,6 +291,8 @@ export class AuditObserver {
       entityName: options.entityName,
       entityId: options.entityId,
       data: options.data,
+      metrics: options.metrics,
+      attributes: options.attributes,
       tags: { ...fields.tags, audit: 'true', compliance: 'true' },
     }, { critical: true });
   }
@@ -306,22 +300,8 @@ export class AuditObserver {
   /**
    * Record access audit (for sensitive resources)
    */
-  static access(options: {
-    operation: string;
-    resource: string;
-    resourceId?: string;
-    action: 'view' | 'download' | 'modify' | 'share' | string;
-    allowed: boolean;
-    actor?: Actor;
-    tags?: Record<string, string>;
-    metadata?: Record<string, unknown>;
-    data?: Record<string, unknown>;
-  }): string | undefined {
-    const fields = buildCommonFields(OBSERVER_NAME, {
-      actor: options.actor,
-      tags: options.tags,
-      metadata: options.metadata,
-    });
+  static access(options: AccessAuditOptions): string | undefined {
+    const fields = buildCommonFields(OBSERVER_NAME, options);
 
     return captureEvent(fields, {
       type: 'audit.access',
@@ -332,6 +312,8 @@ export class AuditObserver {
       entityId: options.resourceId,
       success: options.allowed,
       data: options.data,
+      metrics: options.metrics,
+      attributes: options.attributes,
       tags: { ...fields.tags, audit: 'true', access: 'true' },
     });
   }

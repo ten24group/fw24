@@ -32,7 +32,7 @@
  */
 
 import { ObservabilityLevelString } from '../types';
-import { buildCommonFields, captureEvent, BaseObserverOptions } from './base';
+import { buildCommonFields, captureEvent, BaseObserverOptions, ObservabilityPayload } from './base';
 import { createLogger } from '../../logging';
 
 const OBSERVER_NAME = 'MetricObserver';
@@ -58,15 +58,13 @@ function isValidMetricValue(name: string, value: number): boolean {
   return true;
 }
 
-export interface MetricOptions extends BaseObserverOptions {
+export interface MetricOptions extends BaseObserverOptions, ObservabilityPayload {
   /** Metric type */
   type?: 'counter' | 'gauge' | 'timing' | 'histogram' | 'custom';
   /** Unit (e.g., 'milliseconds', 'bytes', 'count') */
   unit?: string;
   /** Severity level (metrics typically trace-info, rarely warn/error) */
   level?: ObservabilityLevelString;
-  /** Additional attributes */
-  attributes?: Record<string, unknown>;
   /** Entity name for context */
   entityName?: string;
   /** Entity ID for context */

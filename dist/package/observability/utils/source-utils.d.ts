@@ -35,6 +35,17 @@ export declare function createQueueSource(queueName: string, handlerName?: strin
  * Create a source identifier for a queue handler
  */
 export declare function createTaskSource(taskName: string, handlerName?: string): string;
+export type SourceType = 'controller' | 'service' | 'queue' | 'task' | 'handler';
+/**
+ * Auto-detect source type from class name.
+ * Used by decorators to infer the source type when not explicitly provided.
+ */
+export declare function autoDetectSourceType(className: string): SourceType;
+/**
+ * Map source type to actual source string.
+ * Centralizes the switch logic that was duplicated in @Observed and @Traced.
+ */
+export declare function resolveSource(sourceType: SourceType | undefined, className: string, methodName: string): string;
 /**
  * Extract common tags from environment
  *

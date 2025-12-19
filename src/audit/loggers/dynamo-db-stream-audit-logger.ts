@@ -120,9 +120,6 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     // Extract actor context
     const actor = this.extractActor(newImage);
 
-    // Get correlationId from _actor if available, otherwise generate one
-    const correlationId = this.extractCorrelationId(record, newImage);
-
     // entityName is guaranteed by preprocessRecord check
     const entity = entityName!;
     const id = String(entityId);
@@ -131,12 +128,12 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     const originalCorrelationId = newImage?._actor?.correlationId;
 
     // Call appropriate AuditObserver method based on event type
-    // Pass BOTH current correlationId (stream processing) AND causedBy (original request)
+    // Explicitly link the Audit Log to the original API Request that caused the change.
+    // This allows queries like "Show me all Audit Logs caused by Request X".
     switch (eventType) {
       case 'create':
         AuditObserver.entityCreate(entity, id, newImage, {
           actor,
-          correlationId,  // Current stream processing trace
           causedBy: originalCorrelationId,  // Original API request trace
         });
         this.logger.debug('Captured create audit', {
@@ -153,8 +150,7 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
           diff: changes
         }, {
           actor,
-          correlationId,  // Current stream processing trace
-          causedBy: originalCorrelationId,  // Original API request trace
+          causedBy: originalCorrelationId,
         });
         this.logger.debug('Captured update audit', {
           entityName: entity,
@@ -167,8 +163,7 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
       case 'delete':
         AuditObserver.entityDelete(entity, id, oldImage, {
           actor,
-          correlationId,  // Current stream processing trace
-          causedBy: originalCorrelationId,  // Original API request trace
+          causedBy: originalCorrelationId,
         });
         this.logger.debug('Captured delete audit', {
           entityName: entity,
@@ -209,31 +204,6 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
       : undefined;
   }
 
-  /**
-   * Extract or generate correlationId for the audit event.
-   * Priority:
-   * 1. From _actor.correlationId (set by originating request)
-   * 2. From DynamoDB eventID (unique per stream record)
-   * 3. Generated fallback
-   */
-  protected extractCorrelationId(
-    record: BaseEventRecord<ChangeStreamPayload>,
-    newImage: Record<string, any> | undefined,
-  ): string {
-    // Try to get from _actor (preserves trace from originating request)
-    const actorCorrelationId = newImage?._actor?.correlationId;
-    if (actorCorrelationId) {
-      return actorCorrelationId;
-    }
-
-    // Use DynamoDB eventId if available (unique per stream record)
-    if (record.eventId) {
-      return `stream-${record.eventId}`;
-    }
-
-    // Fallback: generate based on entity info
-    return `stream-${record.entityName}-${record.entityId}-${Date.now()}`;
-  }
 }
 
 export const logger = createLogger('DynamoDBStreamHandler');

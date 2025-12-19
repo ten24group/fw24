@@ -16,6 +16,12 @@ export interface ExecutionContextData {
     readonly correlationId: string;
     /** Parent observability log ID for trace hierarchy */
     parentObservabilityLogId?: string;
+    /**
+     * Correlation ID of the upstream request that caused this execution.
+     * Used to link downstream processing (e.g., DynamoDB stream, SQS processing)
+     * back to the original API request that triggered it.
+     */
+    causedBy?: string;
     /** Whether this trace is sampled */
     readonly sampled: boolean;
     /** Actor performing the operation */
@@ -61,6 +67,8 @@ export interface CreateExecutionContextOptions {
     correlationId: string;
     /** Parent observability log ID for trace hierarchy */
     parentObservabilityLogId?: string;
+    /** Upstream request correlation ID that caused this execution */
+    causedBy?: string;
     /** Whether trace is sampled (default: true) */
     sampled?: boolean;
     /** Actor performing the operation */
@@ -80,6 +88,8 @@ export interface ParsedTraceContext {
     correlationId: string;
     /** Parent observability log ID */
     parentObservabilityLogId?: string;
+    /** Upstream request correlation ID that caused this execution */
+    causedBy?: string;
     /** Whether trace is sampled */
     sampled?: boolean;
 }

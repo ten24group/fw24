@@ -18,6 +18,14 @@ export declare class ObservabilityManager {
     static registerBackend(backend: ObservabilityBackend): void;
     static unregisterBackend(name: string): void;
     /**
+     * Register a pre-initialization hook.
+     * Hooks run BEFORE backends are initialized, allowing schema/service registration
+     * needed by backends without circular dependencies.
+     *
+     * @param hook - Callback to execute during initialization
+     */
+    static registerPreInitHook(hook: () => void): void;
+    /**
      * Capture an observability event (fire-and-forget)
      */
     static capture(input: CaptureInput, options?: CaptureOptions): string | undefined;

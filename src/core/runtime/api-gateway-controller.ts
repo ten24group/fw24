@@ -1,16 +1,9 @@
 import type { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
-import type { Request, Response, Route } from "../../interfaces";
 import { Controller, IControllerConfig } from "../../decorators";
 import { Get, RouteMethods } from "../../decorators/method";
-import { HttpRequestValidations, InputValidationRule } from "../../validation";
-import { isHttpRequestValidationRule, isInputValidationRule } from "../../validation/utils";
-import { AbstractLambdaHandler } from "./abstract-lambda-handler";
-import { RequestContext } from "./request-context";
-import { ResponseContext } from "./response-context";
-import { ResponseConfig, mergeResponseConfig } from "./response-config";
-import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErrorHandler } from "../../errors/";
-import { ExecutionContext, Actor } from '../types/execution-context';
-import { SpanObserver, redactSensitiveData } from '../../observability';
+import { InvalidHttpRequestValidationRuleError, ValidationFailedError, createErrorHandler } from "../../errors/";
+import type { Request, Response, Route } from "../../interfaces";
+import { SpanObserver, generateTraceId, redactSensitiveData } from '../../observability';
 import {
   ControllerObservabilityConfig,
   mergeObservabilityConfigs,
@@ -18,12 +11,19 @@ import {
   selectFields,
   selectFieldsFromBody
 } from '../../observability/controller-config';
+import { HttpRequestValidations, InputValidationRule } from "../../validation";
+import { isHttpRequestValidationRule, isInputValidationRule } from "../../validation/utils";
+import { Actor, ExecutionContext } from '../types/execution-context';
+import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import {
   createExecutionContext,
-  runWithExecutionContext,
   extractFromHeaders,
-  ExecutionContextData,
+  runWithExecutionContext,
+  setParentObservabilityLogId
 } from './execution-context';
+import { RequestContext } from "./request-context";
+import { ResponseConfig, mergeResponseConfig } from "./response-config";
+import { ResponseContext } from "./response-context";
 
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 
@@ -223,12 +223,14 @@ export abstract class APIController extends AbstractLambdaHandler {
 
     // Extract trace context from incoming headers
     const traceContext = extractFromHeaders(request.headers || {});
-    const correlationId = traceContext?.correlationId || request.requestId || crypto.randomUUID();
+    // Use W3C Trace ID format for consistency with observability system
+    const correlationId = traceContext?.correlationId || request.requestId || generateTraceId();
 
     // Create execution context with custom source and tags from decorator
     const execCtx = createExecutionContext({
       correlationId,
       parentObservabilityLogId: traceContext?.parentObservabilityLogId,
+      causedBy: traceContext?.causedBy,
       actor: ctx.actor,
       sampled: traceContext?.sampled,
       source: observabilityConfig?.source || defaultSource,
@@ -240,21 +242,30 @@ export abstract class APIController extends AbstractLambdaHandler {
       // Build span attributes (includes request data capture)
       const spanAttributes = this.buildSpanAttributes(event, request, observabilityConfig);
 
+      // Build automatic tags for easy filtering
+      const automaticTags = this.buildAutomaticTags(request, ctx.actor, event);
+
       // Create root span with custom source, tags, and attributes from decorator
       const requestSpan = SpanObserver.start(`HTTP ${request.httpMethod} ${request.path}`, {
         correlationId,
         parentObservabilityLogId: traceContext?.parentObservabilityLogId,
+        causedBy: traceContext?.causedBy,
         actor: ctx.actor,
         source: observabilityConfig?.source || defaultSource,
-        tags: observabilityConfig?.tags,
+        tags: {
+          ...automaticTags,
+          ...observabilityConfig?.tags, // Decorator tags override automatic
+        },
         attributes: {
           ...spanAttributes,
+          'http.route': route?.functionName,
+          'http.controller': this.constructor.name,
           ...observabilityConfig?.attributes,
         },
       });
 
       // Store span ID in execution context for child spans
-      execCtx.parentObservabilityLogId = requestSpan.id;
+      setParentObservabilityLogId(requestSpan.id);
 
       // Set ctx.executionContext to point to the execution context
       ctx.executionContext = execCtx;
@@ -291,6 +302,21 @@ export abstract class APIController extends AbstractLambdaHandler {
         if (route?.validations) {
           const validationResult = await this.validate(request, route.validations);
           if (!validationResult.pass) {
+            // Add validation failure event to span for debugging
+            if (validationResult.errors && validationResult.errors.length > 0) {
+              requestSpan.addEvent('validation.failed', {
+                level: 'info',
+                metrics: {
+                  'validation.error_count': validationResult.errors.length,
+                },
+                attributes: {
+                  'validation.failed': true,
+                },
+                data: {
+                  errors: validationResult.errors,
+                },
+              });
+            }
             throw new ValidationFailedError(validationResult.errors);
           }
         }
@@ -334,6 +360,50 @@ export abstract class APIController extends AbstractLambdaHandler {
   protected getObservabilityConfig(route?: Route | null): ControllerObservabilityConfig | undefined {
     const controllerConfig = this.getControllerConfig();
     return mergeObservabilityConfigs(controllerConfig?.observability, route?.observability);
+  }
+
+  /**
+   * Build automatic tags for HTTP requests.
+   * These tags enable powerful filtering in observability UIs.
+   */
+  protected buildAutomaticTags(
+    request: Request,
+    actor: Actor | undefined,
+    event: APIGatewayEvent
+  ): Record<string, string> {
+    const tags: Record<string, string> = {};
+
+    // HTTP method category (similar to service operations)
+    const method = request.httpMethod.toUpperCase();
+    if (method === 'GET' || method === 'HEAD') {
+      tags.operation_category = 'read';
+    } else if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
+      tags.operation_category = 'write';
+    } else if (method === 'DELETE') {
+      tags.operation_category = 'delete';
+    }
+
+    // Auth method for easy filtering by authentication type
+    if (actor?.authMethod) {
+      tags.auth_method = actor.authMethod;
+    }
+
+    // Actor type (user vs service)
+    if (actor?.actorType) {
+      tags.actor_type = actor.actorType;
+    }
+
+    // API stage (dev, staging, prod)
+    if (event.requestContext?.stage) {
+      tags.stage = event.requestContext.stage;
+    }
+
+    // Tenant context (for multi-tenant filtering)
+    if (actor?.tenantId) {
+      tags.tenant_id = actor.tenantId;
+    }
+
+    return tags;
   }
 
   /**

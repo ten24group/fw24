@@ -130,6 +130,58 @@ export function createTaskSource(taskName: string, handlerName?: string): string
   return handlerName ? `task:${taskName}.${handlerName}` : `task:${taskName}`;
 }
 
+
+export type SourceType = 'controller' | 'service' | 'queue' | 'task' | 'handler';
+
+/**
+ * Auto-detect source type from class name.
+ * Used by decorators to infer the source type when not explicitly provided.
+ */
+export function autoDetectSourceType(className: string): SourceType {
+  const lowerName = className.toLowerCase();
+
+  if (lowerName.includes('controller')) {
+    return 'controller';
+  }
+  if (lowerName.includes('service')) {
+    return 'service';
+  }
+  if (lowerName.includes('queue') || lowerName.includes('queuehandler')) {
+    return 'queue';
+  }
+  if (lowerName.includes('task') || lowerName.includes('taskhandler')) {
+    return 'task';
+  }
+
+  return 'handler';
+}
+
+/**
+ * Map source type to actual source string.
+ * Centralizes the switch logic that was duplicated in @Observed and @Traced.
+ */
+export function resolveSource(
+  sourceType: SourceType | undefined,
+  className: string,
+  methodName: string
+): string {
+  // Auto-detect if not provided
+  const type = sourceType ?? autoDetectSourceType(className);
+
+  switch (type) {
+    case 'controller':
+      return createControllerSource(className, methodName);
+    case 'service':
+      return createServiceSource(className, methodName);
+    case 'queue':
+      return createQueueSource(className, methodName);
+    case 'task':
+      return createTaskSource(className, methodName);
+    default:
+      return `${className}.${methodName}`;
+  }
+}
+
 // Cached environment tags - computed once, reused for all events
 let _cachedEnvTags: Record<string, string> | null = null;
 

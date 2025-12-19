@@ -66,6 +66,7 @@ export function extractFromHeaders(
     return {
       correlationId: customId,
       parentObservabilityLogId: normalized[ 'x-parent-log-id' ]?.trim(),
+      causedBy: normalized[ 'x-caused-by' ]?.trim(),
     };
   }
 
@@ -128,9 +129,11 @@ export function extractFromSqs(
   if (correlationId) {
     const parentAttr = messageAttributes[ 'parentObservabilityLogId' ];
     const sampledAttr = messageAttributes[ 'sampled' ];
+    const causedByAttr = messageAttributes[ 'causedBy' ];
     return {
       correlationId,
       parentObservabilityLogId: (parentAttr?.stringValue || parentAttr?.StringValue)?.trim(),
+      causedBy: (causedByAttr?.stringValue || causedByAttr?.StringValue)?.trim(),
       sampled: (sampledAttr?.stringValue || sampledAttr?.StringValue) === 'true',
     };
   }
@@ -150,9 +153,11 @@ export function extractFromSns(
   if (correlationAttr?.Value?.trim()) {
     const parentAttr = messageAttributes[ 'parentObservabilityLogId' ];
     const sampledAttr = messageAttributes[ 'sampled' ];
+    const causedByAttr = messageAttributes[ 'causedBy' ];
     return {
       correlationId: correlationAttr.Value.trim(),
       parentObservabilityLogId: parentAttr?.Value?.trim(),
+      causedBy: causedByAttr?.Value?.trim(),
       sampled: sampledAttr?.Value === 'true',
     };
   }
@@ -173,10 +178,12 @@ export function extractFromEventBridge(
   const correlationId = detail[ 'correlationId' ] || detail[ 'traceId' ];
   if (typeof correlationId === 'string' && correlationId.trim()) {
     const parentObservabilityLogId = detail[ 'parentObservabilityLogId' ];
+    const causedBy = detail[ 'causedBy' ];
     const sampled = detail[ 'sampled' ];
     return {
       correlationId: correlationId.trim(),
       parentObservabilityLogId: typeof parentObservabilityLogId === 'string' ? parentObservabilityLogId.trim() : undefined,
+      causedBy: typeof causedBy === 'string' ? causedBy.trim() : undefined,
       sampled: typeof sampled === 'boolean' ? sampled : sampled === 'true',
     };
   }
@@ -186,6 +193,7 @@ export function extractFromEventBridge(
   if (traceContext && typeof traceContext.correlationId === 'string') {
     return {
       correlationId: (traceContext.correlationId as string).trim(),
+      causedBy: typeof traceContext.causedBy === 'string' ? (traceContext.causedBy as string).trim() : undefined,
       parentObservabilityLogId: typeof traceContext.parentObservabilityLogId === 'string'
         ? (traceContext.parentObservabilityLogId as string).trim()
         : undefined,
@@ -256,10 +264,12 @@ export function extractFromKinesis(
     const correlationId = data[ 'correlationId' ] || data[ 'traceId' ];
     if (typeof correlationId === 'string' && correlationId.trim()) {
       const parentObservabilityLogId = data[ 'parentObservabilityLogId' ];
+      const causedBy = data[ 'causedBy' ];
       const sampled = data[ 'sampled' ];
       return {
         correlationId: correlationId.trim(),
         parentObservabilityLogId: typeof parentObservabilityLogId === 'string' ? parentObservabilityLogId.trim() : undefined,
+        causedBy: typeof causedBy === 'string' ? causedBy.trim() : undefined,
         sampled: typeof sampled === 'boolean' ? sampled : sampled === 'true',
       };
     }
@@ -270,39 +280,6 @@ export function extractFromKinesis(
   // Fall back to partition key
   if (record.kinesis.partitionKey) {
     return { correlationId: record.kinesis.partitionKey };
-  }
-
-  return undefined;
-}
-
-/**
- * Extract trace context from DynamoDB Streams record.
- */
-export function extractFromDynamoDBStream(
-  record: {
-    dynamodb?: {
-      NewImage?: Record<string, { S?: string; BOOL?: boolean }>;
-    };
-    eventID?: string;
-  }
-): ParsedTraceContext | undefined {
-  const newImage = record?.dynamodb?.NewImage;
-  if (newImage) {
-    const correlationId = newImage[ 'correlationId' ]?.S || newImage[ 'traceId' ]?.S;
-    if (correlationId?.trim()) {
-      const parentObservabilityLogId = newImage[ 'parentObservabilityLogId' ]?.S;
-      const sampled = newImage[ 'sampled' ]?.BOOL ?? newImage[ 'sampled' ]?.S === 'true';
-      return {
-        correlationId: correlationId.trim(),
-        parentObservabilityLogId: parentObservabilityLogId?.trim(),
-        sampled: typeof sampled === 'boolean' ? sampled : undefined,
-      };
-    }
-  }
-
-  // Fall back to event ID
-  if (record?.eventID) {
-    return { correlationId: record.eventID };
   }
 
   return undefined;
@@ -377,6 +354,10 @@ export function createHttpHeaders(ctx: ExecutionContextData): Record<string, str
     headers[ 'x-parent-log-id' ] = ctx.parentObservabilityLogId;
   }
 
+  // Set causedBy to CURRENT correlationId for the next hop
+  // This ensures the chain is A -> B -> C, not Root -> A, Root -> B, Root -> C
+  headers[ 'x-caused-by' ] = ctx.correlationId;
+
   // W3C traceparent
   const sampledFlag = ctx.sampled ? '01' : '00';
   const traceId = toW3CTraceId(ctx.correlationId);
@@ -397,6 +378,8 @@ export function createSqsAttributes(
   const attrs: Record<string, { DataType: string; StringValue: string }> = {
     correlationId: { DataType: 'String', StringValue: ctx.correlationId },
     sampled: { DataType: 'String', StringValue: String(ctx.sampled) },
+    // Set causedBy to CURRENT correlationId for the next hop
+    causedBy: { DataType: 'String', StringValue: ctx.correlationId },
   };
   if (ctx.parentObservabilityLogId) {
     attrs[ 'parentObservabilityLogId' ] = { DataType: 'String', StringValue: ctx.parentObservabilityLogId };
@@ -422,6 +405,8 @@ export function createEventBridgeContext(
   const traceContext: Record<string, string | boolean> = {
     correlationId: ctx.correlationId,
     sampled: ctx.sampled,
+    // Set causedBy to CURRENT correlationId for the next hop
+    causedBy: ctx.correlationId,
   };
   if (ctx.parentObservabilityLogId) {
     traceContext[ 'parentObservabilityLogId' ] = ctx.parentObservabilityLogId;

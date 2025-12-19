@@ -27,10 +27,8 @@
  * );
  * ```
  */
-import { BaseObserverOptions } from './base';
-export interface LogOptions extends BaseObserverOptions {
-    /** Additional attributes */
-    attributes?: Record<string, unknown>;
+import { BaseObserverOptions, ObservabilityPayload } from './base';
+export interface LogOptions extends BaseObserverOptions, ObservabilityPayload {
     /** Entity name for context */
     entityName?: string;
     /** Entity ID for context */

@@ -9,6 +9,7 @@ import { EntityValidationError } from "./errors/validation-error";
 import { Actor } from "../core/types/execution-context";
 import { entityFilterCriteriaToExpression } from "./query";
 import type { EntityQuery } from "./query-types";
+import { MetricObserver, SpanObserver } from "../observability/observers";
 
 /**
  * 
@@ -515,17 +516,28 @@ export function findMatchingIndex(
         return { indexName: schemaIndexName, indexFilters };
     }
 
-    // If no index match found, check for template match
+    // If no index match found, check for template match or "all records" index
     const indexes = schema.indexes;
     for (const [ indexName, indexDef ] of Object.entries(indexes)) {
-        if (indexDef.pk.template &&
-            typeof indexDef.pk.template === 'string' &&
-            indexDef.pk.template.toLowerCase() === entityName.toLowerCase()) {
-            logger.debug(`Using template matching index: ${indexName} for entity: ${entityName}`);
-            return {
-                indexName,
-                indexFilters: {}
-            };
+        if (indexDef.pk.template && typeof indexDef.pk.template === 'string') {
+            // Entity-specific template match
+            if (indexDef.pk.template.toLowerCase() === entityName.toLowerCase()) {
+                logger.debug(`Using template matching index: ${indexName} for entity: ${entityName}`);
+                return {
+                    indexName,
+                    indexFilters: {}
+                };
+            }
+
+            // "All records" index pattern - constant PK with empty composite
+            // Useful for sorted listings without filters (e.g., ALL_EVENTS, ALL_LOGS)
+            if (indexDef.pk.composite && indexDef.pk.composite.length === 0) {
+                logger.debug(`Using "all records" index: ${indexName} with constant PK template: ${indexDef.pk.template}`);
+                return {
+                    indexName,
+                    indexFilters: {}
+                };
+            }
         }
     }
 
@@ -593,6 +605,29 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
     } else {
         // Use match for full scan
         logger.warn(`WARNING: No matching index found for entity: ${entityName}, using match for full scan`, filters);
+
+        // Track full scan - CRITICAL: expensive performance/cost issue
+        MetricObserver.increment(`entity.full_scan`, 1, {
+            tags: { entityName, operation: 'list' },
+            level: 'warn',
+        });
+
+        // Add span event for visibility
+        SpanObserver.addEventToCurrentSpan('database.full_scan', {
+            level: 'warn',
+            metrics: {
+                'db.full_scan': 1,
+            },
+            attributes: {
+                'db.entity_name': entityName,
+                'db.operation': 'list',
+                'db.warning': 'no_index_found',
+            },
+            data: {
+                filters: filters || {},
+            },
+        });
+
         const scanQuery = repository.scan;
         if (filters && !isEmptyObject(filters)) {
             scanQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
@@ -672,6 +707,29 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
     } else {
         // Use match for full scan
         logger.warn(`WARNING: No matching index found for entity: ${entityName}, using match for full scan`, filters);
+
+        // Track full scan - CRITICAL: expensive performance/cost issue
+        MetricObserver.increment(`entity.full_scan`, 1, {
+            tags: { entityName, operation: 'query' },
+            level: 'warn',
+        });
+
+        // Add span event for visibility
+        SpanObserver.addEventToCurrentSpan('database.full_scan', {
+            level: 'warn',
+            metrics: {
+                'db.full_scan': 1,
+            },
+            attributes: {
+                'db.entity_name': entityName,
+                'db.operation': 'query',
+                'db.warning': 'no_index_found',
+            },
+            data: {
+                filters: filters || {},
+            },
+        });
+
         const scanQuery = repository.scan;
         if (filters && !isEmptyObject(filters)) {
             scanQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
@@ -785,6 +843,13 @@ async function prepareCompositeAttributesForUpdate<S extends EntitySchema<any, a
             }
         } catch (error) {
             logger.error(`Error fetching attributes for composite keys (ID: ${JSON.stringify(identifiers)}):`, error);
+
+            // Track database error metric
+            MetricObserver.increment(`entity.composite_key.fetch_error`, 1, {
+                tags: { entityName: args.entityName },
+                level: 'error',
+            });
+
             throw error;
         }
     }

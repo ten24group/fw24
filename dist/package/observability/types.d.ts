@@ -389,6 +389,11 @@ export interface ObservabilityConfig {
     dynamodb: DynamoDBConfig;
     /** Data protection configuration */
     dataProtection: ObservabilityDataProtectionConfig;
+    /** Source map support for better error stack traces */
+    sourceMap: {
+        /** Enable source-map-support module (requires source-map-support package installed) */
+        enabled: boolean;
+    };
 }
 /**
  * Default sampling configuration - all levels at 100%

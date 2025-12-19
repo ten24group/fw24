@@ -80,8 +80,8 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
             tooltip: 'View child logs',
             openInModal: true,
             modalTitle: 'Child Logs',
-            // Only show for root logs (which have children)
-            visibility: { record: { isRoot: { eq: true } } },
+            // Show for logs that don't have a parent (root logs may have children)
+            visibility: { record: { parentObservabilityLogId: { exists: false } } },
             // Use modalConfigRef to hide hierarchy segments (conflicts with parent filter)
             modalConfigRef: {
               entityName: 'observabilityLog',
@@ -102,29 +102,30 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
           { field: 'operation' },
           { field: 'status' },
           { field: 'timestampMs' },
-          { field: 'durationMs', defaultVisible: false },
+          { field: 'durationMs' },
           { field: 'correlationId', defaultVisible: false },
         ],
         // === FILTER SEGMENTS: Quick access to common views ===
         segments: [
-          // === BY HIERARCHY (Default: Root spans only to reduce clutter) ===
+          // === BY HIERARCHY ===
           {
             id: 'hierarchy-group',
             label: 'View',
             segments: [
               {
-                id: 'root-only', label: 'Root Spans', icon: 'ApartmentOutlined',
-                // Use isRoot for efficient GSI query instead of notExists filter
-                filters: { isRoot: { eq: true } },
-              },
-              {
-                id: 'child-only', label: 'Child Spans', icon: 'BranchesOutlined',
-                filters: { isRoot: { eq: false } },
-              },
-              {
                 id: 'all-spans', label: 'All Events', icon: 'UnorderedListOutlined',
                 filters: {},
                 default: true
+              },
+              {
+                id: 'root-only', label: 'Root Spans', icon: 'ApartmentOutlined',
+                // Filter: no parent = root span
+                filters: { parentObservabilityLogId: { exists: false } },
+              },
+              {
+                id: 'child-only', label: 'Child Spans', icon: 'BranchesOutlined',
+                // Filter: has parent = child span
+                filters: { parentObservabilityLogId: { exists: true } },
               },
             ],
           },
@@ -161,7 +162,6 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
               'subType',
               'level',
               'correlationId',  // Has linkConfig - renders as link to trace view
-              'isRoot',
             ],
           },
           {
@@ -721,6 +721,14 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
     },
   },
   indexes: {
+    // === INDEX DESIGN NOTES ===
+    // 1. Primary index has no sort key - only for single-item lookups by ID
+    // 2. GSI7 (allRecords) provides sorted listing for unfiltered queries
+    //    - Uses constant PK template to group all records
+    //    - Sorted by timestampMs for efficient chronological listing
+    //    - Trade-off: Hot partition, but acceptable for observability logs with TTL
+    // 3. All other GSIs are for filtered queries (by trace, parent, type, level, etc.)
+
     // Primary - by observabilityLogId
     primary: {
       pk: { field: 'pk', composite: [ 'observabilityLogId' ] },
@@ -762,10 +770,11 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       pk: { field: 'gsi6pk', composite: [ 'entityName', 'entityId' ] },
       sk: { field: 'gsi6sk', composite: [ 'timestampMs' ] },
     },
-    // GSI7 - by isRoot - efficiently find root spans without full scan
-    byIsRoot: {
+    // GSI7 - all records by timestamp - for efficient sorted listing of all events
+    // Uses constant partition key to group all records together
+    allRecords: {
       index: 'gsi7',
-      pk: { field: 'gsi7pk', composite: [ 'isRoot' ] },
+      pk: { field: 'gsi7pk', composite: [], template: 'ALL_EVENTS' },
       sk: { field: 'gsi7sk', composite: [ 'timestampMs' ] },
     },
     // GSI8 - by causedBy - find all events caused by a specific request (cross-invocation tracing)

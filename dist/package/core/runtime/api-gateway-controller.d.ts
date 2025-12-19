@@ -1,13 +1,13 @@
 import type { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
-import type { Request, Response, Route } from "../../interfaces";
 import { IControllerConfig } from "../../decorators";
 import { RouteMethods } from "../../decorators/method";
+import { createErrorHandler } from "../../errors/";
+import type { Request, Response, Route } from "../../interfaces";
+import { ControllerObservabilityConfig } from '../../observability/controller-config';
 import { HttpRequestValidations, InputValidationRule } from "../../validation";
+import { Actor, ExecutionContext } from '../types/execution-context';
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { ResponseConfig } from "./response-config";
-import { createErrorHandler } from "../../errors/";
-import { ExecutionContext, Actor } from '../types/execution-context';
-import { ControllerObservabilityConfig } from '../../observability/controller-config';
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 export interface APIControllerMiddleware {
     before?: (request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
@@ -87,6 +87,11 @@ export declare abstract class APIController extends AbstractLambdaHandler {
      * Gets merged observability config from controller and method level
      */
     protected getObservabilityConfig(route?: Route | null): ControllerObservabilityConfig | undefined;
+    /**
+     * Build automatic tags for HTTP requests.
+     * These tags enable powerful filtering in observability UIs.
+     */
+    protected buildAutomaticTags(request: Request, actor: Actor | undefined, event: APIGatewayEvent): Record<string, string>;
     /**
      * Build span attributes based on observability config.
      * Always includes basic HTTP info. Request body/headers/query are only

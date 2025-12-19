@@ -35,7 +35,6 @@ export {
   extractFromEventBridge,
   extractFromStepFunctions,
   extractFromKinesis,
-  extractFromDynamoDBStream,
 
   // Propagation - Creation
   createHttpHeaders,

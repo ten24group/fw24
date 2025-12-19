@@ -19,6 +19,7 @@ export declare const CONFIG_DEFAULTS: {
     readonly ttlDays: 90;
     readonly minLevel: ObservabilityLevel.INFO;
     readonly enabled: false;
+    readonly sourceMapEnabled: false;
 };
 /**
  * Input type for createObservabilityConfig - all fields optional
@@ -43,6 +44,10 @@ export interface ObservabilityConfigInput {
     };
     dataProtection?: Partial<ObservabilityDataProtectionConfig>;
     types?: ObservabilityConfig['types'];
+    sourceMap?: {
+        /** Enable source-map-support for better error stack traces (requires source-map-support package) */
+        enabled?: boolean;
+    };
 }
 /**
  * Create a complete, validated ObservabilityConfig from partial input

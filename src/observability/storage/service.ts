@@ -7,7 +7,7 @@
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
-import { registerEntitySchema, Service } from '../../decorators';
+import { Service } from '../../decorators';
 import { DIContainer, InjectConfig, InjectContainer, InjectEntitySchema } from '../../di';
 import { BaseEntityService } from '../../entity/base-service';
 import { EntityQuery } from '../../entity/query-types';
@@ -38,12 +38,11 @@ export interface ReconstructedSpan {
   children: ReconstructedSpan[];
 }
 
-/** Register the observability log entity schema into the DI container; 
- * so the app have option to override things if needed 
- */
-registerEntitySchema({
+// manual registration of the schema to avoid circular dependency
+DIContainer.ROOT.register({
+  type: 'schema',
+  provide: 'observabilityLogSchema',
   forEntity: 'observabilityLog',
-  providedIn: DIContainer.ROOT,
   useValue: ObservabilityLogEntitySchema,
 });
 
@@ -52,6 +51,7 @@ registerEntitySchema({
  * 
  * DI-managed service for observability log storage.
  * tableName and ttlDays injected via @InjectConfig.
+ * 
  */
 @Service({ forEntity: 'observabilityLog' })
 export class ObservabilityLogService extends BaseEntityService<ObservabilityLogSchema> {
@@ -69,7 +69,6 @@ export class ObservabilityLogService extends BaseEntityService<ObservabilityLogS
     @InjectContainer()
     readonly container: IDIContainer
   ) {
-
     const client = new DynamoDBClient({});
     const docClient = DynamoDBDocumentClient.from(client, {
       marshallOptions: { removeUndefinedValues: true, convertEmptyValues: true },

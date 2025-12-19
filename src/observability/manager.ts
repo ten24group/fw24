@@ -43,6 +43,12 @@ let initialized = false;
 const samplingRegexCache = new Map<string, RegExp>();
 const pendingDispatches: Promise<void>[] = []; // Track fire-and-forget promises for flush()
 
+/**
+ * Pre-initialization hooks - callbacks that run before backends are initialized.
+ * Used to register schemas/services needed by backends without circular dependencies.
+ */
+const preInitHooks: Array<() => void> = [];
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PRIVATE HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -680,6 +686,33 @@ async function handleTailBasedSamplingAsync(
 }
 
 /**
+ * Initialize source-map-support if enabled in config
+ * Provides better stack traces for TypeScript/transpiled code in production
+ */
+function initializeSourceMapSupport(cfg: ObservabilityConfig): void {
+  if (!cfg.sourceMap?.enabled) {
+    logger.debug('Source map support disabled in config');
+    return;
+  }
+
+  try {
+    logger.debug('Attempting to load source-map-support...');
+    // Dynamic import to avoid bundling if not needed
+    require('source-map-support/register');
+    logger.info('Source map support enabled - stack traces will show original TypeScript lines');
+  } catch (error: any) {
+    // Not a critical error - observability still works without source maps
+    if (error.code === 'MODULE_NOT_FOUND') {
+      logger.warn(
+        'source-map-support package not found. Install it for better error stack traces: npm install source-map-support'
+      );
+    } else {
+      logger.warn('Failed to load source-map-support:', error.message);
+    }
+  }
+}
+
+/**
  * Initialize backends from DI based on config
  */
 function initializeBackendsFromConfig(cfg: ObservabilityConfig): void {
@@ -725,20 +758,37 @@ function initializeBackendsFromConfig(cfg: ObservabilityConfig): void {
 
 function doInitialize(): void {
   try {
-    logger.info('=== OBSERVABILITY INITIALIZATION START ===');
+    logger.debug('=== OBSERVABILITY INITIALIZATION START ===');
+
+    // Run pre-initialization hooks (e.g., schema registration)
+    if (preInitHooks.length > 0) {
+      logger.debug(`Running ${preInitHooks.length} pre-initialization hook(s)...`);
+      for (const hook of preInitHooks) {
+        try {
+          hook();
+        } catch (error) {
+          logger.error('Pre-initialization hook failed:', error);
+          throw error;
+        }
+      }
+      logger.debug('Pre-initialization hooks completed');
+    }
 
     // Resolve config from DI (defaults registered in index.ts guarantee all required fields)
     config = DIContainer.ROOT.resolveConfig<ObservabilityConfig>('observability') as ObservabilityConfig;
-    logger.info('Observability config loaded from DI', {
+    logger.debug('Observability config loaded from DI', {
       enabled: config.enabled,
       serviceName: config.serviceName,
       backends: config.backends?.map(b => b.type),
       sampling: { enabled: config.sampling?.enabled, smart: config.sampling?.smart },
+      sourceMap: config.sourceMap?.enabled,
     });
+
+    // Initialize source-map-support for better stack traces (if enabled)
+    initializeSourceMapSupport(config);
 
     // Initialize backends from DI
     initializeBackendsFromConfig(config!);
-    logger.info(`Initialized ${backends.length} backend(s):`, backends.map(b => b.name));
 
     // Register capturer for observers
     initializeCapturer({
@@ -821,6 +871,17 @@ export class ObservabilityManager {
 
   static unregisterBackend(name: string): void {
     backends = backends.filter((b) => b.name !== name);
+  }
+
+  /**
+   * Register a pre-initialization hook.
+   * Hooks run BEFORE backends are initialized, allowing schema/service registration
+   * needed by backends without circular dependencies.
+   * 
+   * @param hook - Callback to execute during initialization
+   */
+  static registerPreInitHook(hook: () => void): void {
+    preInitHooks.push(hook);
   }
 
   /**

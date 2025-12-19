@@ -44,27 +44,44 @@ import {
   normalizeError,
   mergeObserverTags,
   CommonFields,
+  BaseObserverOptions,
+  ObservabilityPayload,
 } from './base';
 import { createLogger } from '../../logging';
 
 const logger = createLogger('SpanObserver');
 const OBSERVER_NAME = 'SpanObserver';
 
-export interface SpanOptions {
-  /** Correlation ID - if not provided, must come from context */
-  correlationId?: string;
+export interface SpanOptions extends BaseObserverOptions {
+  // Inherits: correlationId, causedBy, relatedTraces, actor, source, tags, metadata
   /** Parent observability log ID for nested spans */
   parentObservabilityLogId?: string;
   /** Severity level for the span */
   level?: ObservabilityLevelString;
   /** Additional attributes */
   attributes?: Record<string, unknown>;
-  /** Source identifier */
-  source?: string;
-  /** Tags for filtering */
+}
+
+/**
+ * Options for adding events to a span
+ */
+export interface SpanEventOptions extends ObservabilityPayload {
+  /** Event severity level */
+  level?: ObservabilityLevelString;
+  /** Additional tags for this event */
   tags?: Record<string, string>;
-  /** Actor performing the operation */
-  actor?: Actor;
+}
+
+/**
+ * Options for ending a span
+ */
+export interface SpanEndOptions extends ObservabilityPayload {
+  /** Whether the operation succeeded */
+  success?: boolean;
+  /** Error if operation failed */
+  error?: Error;
+  /** Custom status string */
+  status?: string;
 }
 
 /**
@@ -86,8 +103,8 @@ export interface ISpanObserver {
    * Adds an exception event to the span
    */
   recordException(exception: Error | string): this;
-  addEvent(name: string, eventAttributes?: Record<string, unknown>): this;
-  end(options?: { success?: boolean; error?: Error; status?: string }): void;
+  addEvent(name: string, options?: SpanEventOptions): this;
+  end(options?: SpanEndOptions): void;
   withChild<T>(
     operation: string,
     fn: (span: ISpanObserver) => Promise<T>,
@@ -103,6 +120,8 @@ export class SpanObserver implements ISpanObserver {
   private readonly spanId: string;
   private readonly correlationId: string;
   private readonly parentObservabilityLogId: string | null;
+  private readonly causedBy?: string;
+  private readonly relatedTraces?: string[];
   private readonly level: ObservabilityLevelString;
   private readonly startTime: number;
   private readonly source?: string;
@@ -121,6 +140,8 @@ export class SpanObserver implements ISpanObserver {
     // Store parent at construction time - use null to mean "no parent" (not undefined)
     // This prevents buildEvent from falling back to mutated context
     this.parentObservabilityLogId = options.parentObservabilityLogId ?? context?.parentObservabilityLogId ?? null;
+    this.causedBy = fields.causedBy;
+    this.relatedTraces = fields.relatedTraces;
     this.level = options.level ?? 'info';
     this.attributes = options.attributes ?? {};
     this.source = options.source ?? fields.source;
@@ -157,13 +178,8 @@ export class SpanObserver implements ISpanObserver {
   static start(operation: string, options?: SpanOptions): ISpanObserver {
     // Build common fields using base utilities
     // Note: buildCommonFields now always returns fields (auto-generates correlationId if needed)
-    const fields = buildCommonFields(OBSERVER_NAME, {
-      // Use W3C Trace ID if no correlationId provided
-      correlationId: options?.correlationId ?? generateTraceId(),
-      actor: options?.actor,
-      source: options?.source,
-      tags: options?.tags,
-    });
+    // Pass entire options - buildCommonFields extracts only the fields it needs
+    const fields = buildCommonFields(OBSERVER_NAME, options);
 
     return new SpanObserver(operation, fields, options);
   }
@@ -184,6 +200,53 @@ export class SpanObserver implements ISpanObserver {
     } catch (error) {
       span.end({ success: false, error: normalizeError(error) });
       throw error;
+    }
+  }
+
+  /**
+   * Add an event to the current span context.
+   * This is a convenience method for adding events when you don't have direct access to the span object.
+   * The event will be linked to the current span via parentObservabilityLogId from context.
+   * 
+   * @param name - Event name
+   * @param options - Event options (attributes, metrics, data, level, tags)
+   * 
+   * @example
+   * ```typescript
+   * // From anywhere in the call stack within an observed context:
+   * SpanObserver.addEventToCurrentSpan('database.full_scan', {
+   *   attributes: { entityName: 'User', operation: 'query' },
+   *   metrics: { records_scanned: 1000 },
+   *   level: 'warn'
+   * });
+   * ```
+   */
+  static addEventToCurrentSpan(name: string, options?: SpanEventOptions): void {
+    try {
+      const context = getCurrentContext();
+      if (!context?.correlationId) {
+        logger.debug('No execution context found, skipping event');
+        return;
+      }
+
+      const fields = buildCommonFields(OBSERVER_NAME);
+
+      // Merge tags from options with context tags (options take precedence)
+      const mergedTags = { ...context.tags, ...(options?.tags || {}) };
+
+      captureEvent({ ...fields, tags: mergedTags }, {
+        type: 'span.event',
+        observabilityLogId: generateId(),
+        level: options?.level || 'info',
+        parentObservabilityLogId: context.parentObservabilityLogId || null,
+        timestampMs: Date.now(),
+        operation: name,
+        attributes: options?.attributes,
+        metrics: options?.metrics,
+        data: options?.data,
+      });
+    } catch (error) {
+      logger.warn('Failed to add event to current span', error);
     }
   }
 
@@ -221,9 +284,12 @@ export class SpanObserver implements ISpanObserver {
   recordException(exception: Error | string): this {
     const error = normalizeError(exception);
     this.addEvent('exception', {
-      'exception.type': error.name,
-      'exception.message': error.message,
-      'exception.stacktrace': error.stack,
+      level: 'error',
+      attributes: {
+        'exception.type': error.name,
+        'exception.message': error.message,
+        'exception.stacktrace': error.stack,
+      }
     });
     // Also track the last error on the span itself for easy access
     this.setAttribute('error', true);
@@ -231,30 +297,37 @@ export class SpanObserver implements ISpanObserver {
   }
 
   // === Events ===
-  addEvent(name: string, eventAttributes?: Record<string, unknown>): this {
+  addEvent(name: string, options?: SpanEventOptions): this {
+    // Merge tags from options with span tags (options take precedence)
+    const mergedTags = { ...this.tags, ...(options?.tags || {}) };
+
     captureEvent(
       {
-        actor: this.actor,
         correlationId: this.correlationId,
+        causedBy: this.causedBy,
+        relatedTraces: this.relatedTraces,
+        actor: this.actor,
         source: this.source,
-        tags: this.tags
+        tags: mergedTags
       },
       {
         type: 'span.event',
         observabilityLogId: generateId(),  // Events get their own unique ID
-        level: this.level,
+        level: options?.level || this.level,
         parentObservabilityLogId: this.spanId,  // Parent is this span
         // NOTE: entityName/entityId NOT set - span events are observability primitives
         timestampMs: Date.now(),
         operation: name,
-        attributes: eventAttributes,
+        attributes: options?.attributes,
+        metrics: options?.metrics,
+        data: options?.data,
       }
     );
     return this;
   }
 
   // === End span ===
-  end(options?: { success?: boolean; error?: Error; status?: string }): void {
+  end(options?: SpanEndOptions): void {
     if (this.ended) return;
     this.ended = true;
 
@@ -262,7 +335,14 @@ export class SpanObserver implements ISpanObserver {
     const duration = endTime - this.startTime;
 
     captureEvent(
-      { correlationId: this.correlationId, actor: this.actor, source: this.source, tags: this.tags },
+      {
+        correlationId: this.correlationId,
+        causedBy: this.causedBy,
+        relatedTraces: this.relatedTraces,
+        actor: this.actor,
+        source: this.source,
+        tags: this.tags
+      },
       {
         type: 'span.end',
         observabilityLogId: generateId(),  // span.end gets its own unique ID
@@ -274,9 +354,19 @@ export class SpanObserver implements ISpanObserver {
         operation: this.operation,
         success: options?.success ?? !options?.error,
         status: options?.status ?? (options?.error ? 'failed' : 'completed'),
-        attributes: this.attributes,
+        // Merge span attributes with end attributes
+        attributes: {
+          ...this.attributes,
+          ...(options?.attributes || {})
+        },
         error: options?.error ? mapError(options.error) : undefined,
-        metrics: { duration },
+        // Merge duration with custom metrics
+        metrics: {
+          duration,
+          ...(options?.metrics || {})
+        },
+        // Support data in span.end
+        data: options?.data,
       }
     );
   }

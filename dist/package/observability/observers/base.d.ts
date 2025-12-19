@@ -18,6 +18,42 @@ export declare function setCapturer(capturer: IEventCapture): void;
  */
 export declare function resetCapturer(): void;
 /**
+ * Standard payload fields for observability events
+ *
+ * STRICT SEMANTICS - WHAT GOES WHERE:
+ *
+ * - `metrics`: NUMERIC values for aggregation/dashboards (counts, durations, sizes)
+ *   Example: { 'api.duration': 1250, 'db.rows_processed': 500 }
+ *
+ * - `attributes`: SIMPLE, SEARCHABLE values for filtering/querying (IDs, names, statuses, flags)
+ *   Example: { 'user.id': 'user-123', 'http.method': 'POST', 'error.type': 'ValidationError' }
+ *
+ * - `data`: COMPLEX objects/arrays for detailed inspection (request bodies, error details, nested structures)
+ *   Example: { requestBody: {...}, errors: [...], config: {...} }
+ *
+ * See OBSERVABILITY_FIELD_SEMANTICS.md for complete rules and examples.
+ */
+export interface ObservabilityPayload {
+    /**
+     * Structured data for auditing/detailed inspection
+     * Use for: Request/response bodies, complex objects, arrays, nested structures
+     * DON'T use for: Simple values (use attributes), numeric metrics (use metrics)
+     */
+    data?: Record<string, unknown>;
+    /**
+     * Embedded metrics for CloudWatch EMF (NUMBERS ONLY)
+     * Use for: Counts, durations, sizes, rates, percentages
+     * DON'T use for: Strings, booleans, IDs (use attributes)
+     */
+    metrics?: Record<string, number>;
+    /**
+     * Span/trace attributes for filtering and searching
+     * Use for: IDs, names, statuses, flags, simple searchable values
+     * DON'T use for: Complex objects (use data), numeric metrics (use metrics)
+     */
+    attributes?: Record<string, unknown>;
+}
+/**
  * Standard options shared by all observers
  */
 export interface BaseObserverOptions {
@@ -31,7 +67,11 @@ export interface BaseObserverOptions {
     actor?: Actor;
     /** Source identifier */
     source?: string;
-    /** Tags for filtering */
+    /**
+     * Tags for high-level grouping and classification (STRINGS ONLY)
+     * Use for: Environment, service name, feature flags, team ownership
+     * DON'T use for: Request-specific data (use attributes), metrics, detailed values
+     */
     tags?: Record<string, string>;
     /** Additional metadata */
     metadata?: Record<string, unknown>;
@@ -73,8 +113,8 @@ export declare function buildCommonFields(observerName: string, options?: BaseOb
  * Extract BaseObserverOptions from ExecutionContext or pass through if already options.
  *
  * When an ExecutionContext (the handler context with event/request/response) is passed,
- * extracts correlationId from executionContext first (the AsyncLocalStorage context),
- * then falls back to actor.correlationId.
+ * extracts all observability fields from executionContext (the AsyncLocalStorage context),
+ * with fallbacks for backward compatibility.
  */
 export declare function extractObserverOptions(ctx?: ExecutionContext | BaseObserverOptions): BaseObserverOptions;
 /**

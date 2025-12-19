@@ -28,11 +28,11 @@
  * - Otherwise logs warning and doesn't record anything
  */
 
-import { AuditObserver } from '../observers/audit';
-import { getCurrentContext, getCorrelationIdIfExists } from '../context';
 import { createLogger } from '../../logging';
-import { safeSerialize } from '../utils/payload';
+import { AuditObserver } from '../observers/audit';
 import { normalizeError } from '../observers/base';
+import { safeSerialize } from '../utils/payload';
+import { executeWithHandlers } from './decorator-utils';
 
 const logger = createLogger('AuditedDecorator');
 
@@ -76,77 +76,35 @@ export function Audited(options: AuditedOptions = {}) {
     const methodName = String(propertyKey);
     const operation = options.operation ?? `${className}.${methodName}`;
 
-    // Wrap method - handles both sync and async via result checking
-    // This is more robust than checking constructor.name which can break with transpilation
+    // Wrap method - automatic sync/async handling
     const wrappedMethod = function (this: unknown, ...args: unknown[]): unknown {
       const startTime = Date.now();
 
-      try {
-        const result = (originalMethod as (...a: unknown[]) => unknown).apply(this, args);
-
-        // Check if result is a Promise/thenable (works with any async method)
-        if (result && typeof (result as { then?: unknown }).then === 'function') {
-          // Handle async method
-          return (result as Promise<unknown>)
-            .then((value) => {
-              recordAudit({
-                operation,
-                options,
-                args,
-                result: value,
-                success: true,
-                durationMs: Date.now() - startTime,
-                className,
-                methodName,
-              });
-              return value;
-            })
-            .catch((err) => {
-              recordAudit({
-                operation,
-                options,
-                args,
-                success: false,
-                error: normalizeError(err),
-                durationMs: Date.now() - startTime,
-                className,
-                methodName,
-              });
-              throw err;
-            });
+      return executeWithHandlers(
+        originalMethod as (...args: unknown[]) => unknown,
+        this,
+        args,
+        (success, result, error) => {
+          recordAudit({
+            operation,
+            options,
+            args,
+            result,
+            success,
+            error: error ? normalizeError(error) : undefined,
+            durationMs: Date.now() - startTime,
+            className,
+            methodName,
+          });
         }
-
-        // Handle sync method
-        recordAudit({
-          operation,
-          options,
-          args,
-          result,
-          success: true,
-          durationMs: Date.now() - startTime,
-          className,
-          methodName,
-        });
-        return result;
-      } catch (err) {
-        recordAudit({
-          operation,
-          options,
-          args,
-          success: false,
-          error: normalizeError(err),
-          durationMs: Date.now() - startTime,
-          className,
-          methodName,
-        });
-        throw err;
-      }
+      );
     };
     descriptor.value = wrappedMethod as T;
 
     return descriptor;
   };
 }
+
 
 /**
  * Record the audit event
@@ -163,7 +121,6 @@ function recordAudit(params: {
   methodName: string;
 }): void {
   const { operation, options, args, result, success, error, durationMs, className, methodName } = params;
-  const context = getCurrentContext();
 
   // Build audit data
   let data: Record<string, unknown> = {
@@ -212,6 +169,8 @@ function recordAudit(params: {
     };
   }
 
+  // AuditObserver.record will automatically pick up actor/correlationId/causedBy from context
+  // No need to pass them explicitly - let the lower level handle it!
   AuditObserver.record({
     operation,
     entityName: options.entityName,
@@ -219,7 +178,6 @@ function recordAudit(params: {
     level: error ? 'error' : (options.level ?? 'info'),
     source: `${className}.${methodName}`,
     tags: options.tags,
-    actor: context?.actor,
   });
 }
 

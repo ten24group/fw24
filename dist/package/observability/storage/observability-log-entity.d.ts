@@ -88,8 +88,8 @@ export declare const ObservabilityLogEntitySchema: {
                     readonly modalTitle: "Child Logs";
                     readonly visibility: {
                         readonly record: {
-                            readonly isRoot: {
-                                readonly eq: true;
+                            readonly parentObservabilityLogId: {
+                                readonly exists: false;
                             };
                         };
                     };
@@ -129,12 +129,18 @@ export declare const ObservabilityLogEntitySchema: {
                     readonly id: "hierarchy-group";
                     readonly label: "View";
                     readonly segments: [{
+                        readonly id: "all-spans";
+                        readonly label: "All Events";
+                        readonly icon: "UnorderedListOutlined";
+                        readonly filters: {};
+                        readonly default: true;
+                    }, {
                         readonly id: "root-only";
                         readonly label: "Root Spans";
                         readonly icon: "ApartmentOutlined";
                         readonly filters: {
-                            readonly isRoot: {
-                                readonly eq: true;
+                            readonly parentObservabilityLogId: {
+                                readonly exists: false;
                             };
                         };
                     }, {
@@ -142,16 +148,10 @@ export declare const ObservabilityLogEntitySchema: {
                         readonly label: "Child Spans";
                         readonly icon: "BranchesOutlined";
                         readonly filters: {
-                            readonly isRoot: {
-                                readonly eq: false;
+                            readonly parentObservabilityLogId: {
+                                readonly exists: true;
                             };
                         };
-                    }, {
-                        readonly id: "all-spans";
-                        readonly label: "All Events";
-                        readonly icon: "UnorderedListOutlined";
-                        readonly filters: {};
-                        readonly default: true;
                     }];
                 }, {
                     readonly id: "level-group";
@@ -220,7 +220,7 @@ export declare const ObservabilityLogEntitySchema: {
                 readonly columns: [{
                     readonly sortOrder: 1;
                     readonly label: "Identity & Classification";
-                    readonly fields: ["observabilityLogId", "type", "subType", "level", "correlationId", "isRoot"];
+                    readonly fields: ["observabilityLogId", "type", "subType", "level", "correlationId"];
                 }, {
                     readonly sortOrder: 2;
                     readonly label: "Operation & Timing";
@@ -903,11 +903,12 @@ export declare const ObservabilityLogEntitySchema: {
                 readonly composite: readonly ["timestampMs"];
             };
         };
-        readonly byIsRoot: {
+        readonly allRecords: {
             readonly index: "gsi7";
             readonly pk: {
                 readonly field: "gsi7pk";
-                readonly composite: readonly ["isRoot"];
+                readonly composite: readonly [];
+                readonly template: "ALL_EVENTS";
             };
             readonly sk: {
                 readonly field: "gsi7sk";

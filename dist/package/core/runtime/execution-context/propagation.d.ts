@@ -52,18 +52,6 @@ export declare function extractFromKinesis(record: {
     };
 }): ParsedTraceContext | undefined;
 /**
- * Extract trace context from DynamoDB Streams record.
- */
-export declare function extractFromDynamoDBStream(record: {
-    dynamodb?: {
-        NewImage?: Record<string, {
-            S?: string;
-            BOOL?: boolean;
-        }>;
-    };
-    eventID?: string;
-}): ParsedTraceContext | undefined;
-/**
  * Create HTTP headers for trace propagation in outgoing HTTP requests.
  *
  * Returns headers that include:

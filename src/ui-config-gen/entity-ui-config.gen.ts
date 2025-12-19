@@ -11,6 +11,7 @@ import MakeAuthConfig from './templates/auth';
 import MakeDashboardConfig from './templates/dashboard';
 
 import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { gzipSync, brotliCompressSync, constants } from "zlib";
 import {
     resolve as pathResolve,
     join as pathJoin
@@ -576,6 +577,49 @@ export class EntityUIConfigGen {
         return scannedServices;
     }
 
+    /**
+     * Write JSON config file and create compressed versions (gzip and brotli)
+     * for browser-compatible delivery
+     */
+    private writeConfigFile(filePath: string, data: any, configName: string) {
+        const jsonString = JSON.stringify(data, null, 2);
+        const jsonBuffer = Buffer.from(jsonString, 'utf-8');
+
+        // Write original JSON file
+        this.logger.debug(`writing ${configName} config.. into: ${filePath}`);
+        writeFileSync(filePath, jsonString);
+
+        // Write gzip compressed version
+        const gzipFilePath = `${filePath}.gz`;
+        const gzipCompressed = gzipSync(jsonBuffer, { level: constants.Z_BEST_COMPRESSION });
+        writeFileSync(gzipFilePath, gzipCompressed);
+        this.logger.debug(`writing ${configName} config (gzip).. into: ${gzipFilePath}`);
+
+        // Write brotli compressed version
+        const brotliFilePath = `${filePath}.br`;
+        const brotliCompressed = brotliCompressSync(jsonBuffer, {
+            params: {
+                [ constants.BROTLI_PARAM_QUALITY ]: constants.BROTLI_MAX_QUALITY  // Max quality (0-11)
+            }
+        });
+        writeFileSync(brotliFilePath, brotliCompressed);
+        this.logger.debug(`writing ${configName} config (brotli).. into: ${brotliFilePath}`);
+
+        // Log compression ratios
+        const originalSize = jsonBuffer.length;
+        const gzipSize = gzipCompressed.length;
+        const brotliSize = brotliCompressed.length;
+        const gzipRatio = ((1 - gzipSize / originalSize) * 100).toFixed(2);
+        const brotliRatio = ((1 - brotliSize / originalSize) * 100).toFixed(2);
+
+        this.logger.info(
+            `${configName} compression stats: ` +
+            `original: ${originalSize}b, ` +
+            `gzip: ${gzipSize}b (${gzipRatio}% smaller), ` +
+            `brotli: ${brotliSize}b (${brotliRatio}% smaller)`
+        );
+    }
+
     @LogDuration()
     async writeToFiles(menuConfig: any, entitiesConfig: any, authConfig: any, dashboardConfig: any) {
         this.logger.debug("Called writeToFiles:::::: ");
@@ -591,21 +635,21 @@ export class EntityUIConfigGen {
             mkdirSync(configDirectoryPath);
         }
 
+        // Write menu config with compressed versions
         const menuConfigFilePath = pathJoin(configDirectoryPath, 'menu.json');
-        this.logger.debug(`writing menu-config.. into: ${menuConfigFilePath}`);
-        writeFileSync(menuConfigFilePath, JSON.stringify(menuConfig, null, 2));
+        this.writeConfigFile(menuConfigFilePath, menuConfig, 'menu');
 
+        // Write entities config with compressed versions
         const entitiesConfigFilePath = pathJoin(configDirectoryPath, 'entities.json');
-        this.logger.debug(`writing entities-config.. into: ${entitiesConfigFilePath}`,);
-        writeFileSync(entitiesConfigFilePath, JSON.stringify(entitiesConfig, null, 2));
+        this.writeConfigFile(entitiesConfigFilePath, entitiesConfig, 'entities');
 
+        // Write auth config with compressed versions
         const authConfigFilePath = pathJoin(configDirectoryPath, 'auth.json');
-        this.logger.debug(`writing auth-config.. into: ${authConfigFilePath}`,);
-        writeFileSync(authConfigFilePath, JSON.stringify(authConfig, null, 2));
+        this.writeConfigFile(authConfigFilePath, authConfig, 'auth');
 
+        // Write dashboard config with compressed versions
         const dashboardConfigFilePath = pathJoin(configDirectoryPath, 'dashboard.json');
-        this.logger.debug(`writing dashboard-config.. into: ${dashboardConfigFilePath}`,);
-        writeFileSync(dashboardConfigFilePath, JSON.stringify(dashboardConfig, null, 2));
+        this.writeConfigFile(dashboardConfigFilePath, dashboardConfig, 'dashboard');
 
     }
 }

@@ -145,6 +145,8 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
       observabilityLogId: event.observabilityLogId,
       parentObservabilityLogId: event.parentObservabilityLogId,
       correlationId: event.correlationId,
+      causedBy: event.causedBy,
+      relatedTraces: event.relatedTraces,
       type: event.type,
       subType: event.subType,
       level: event.level,
