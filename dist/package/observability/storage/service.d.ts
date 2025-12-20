@@ -154,7 +154,6 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                             readonly field: "timestampMs";
                         }, {
                             readonly field: "durationMs";
-                            readonly defaultVisible: false;
                         }, {
                             readonly field: "correlationId";
                             readonly defaultVisible: false;
@@ -857,7 +856,8 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                     readonly default: () => number;
                     readonly label: "TTL";
                     readonly helpText: "Time-to-live for automatic cleanup (Unix timestamp)";
-                    readonly fieldType: "datetime";
+                    readonly fieldType: "duration";
+                    readonly durationUnit: "seconds";
                 };
             };
             readonly indexes: {

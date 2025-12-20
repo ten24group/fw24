@@ -717,7 +717,8 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       default: () => Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60), // 90 days
       label: 'TTL',
       helpText: 'Time-to-live for automatic cleanup (Unix timestamp)',
-      fieldType: 'datetime',
+      fieldType: 'duration',
+      durationUnit: 'seconds',
     },
   },
   indexes: {
