@@ -77,6 +77,7 @@ import { Injectable, InjectConfig } from '../../di';
 import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel, ObservabilityLevelString } from '../types';
 import { createLogger } from '../../logging';
 import { getSpanKind } from '../utils/span-utils';
+import { buildCausedByLinks } from './otel-links';
 
 // Import types from @opentelemetry/api
 import type { Tracer, Span, SpanStatusCode, TraceAPI, ContextAPI, Attributes } from '@opentelemetry/api';
@@ -249,7 +250,8 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
 
     const type = event.type;
 
-    if (type.startsWith('span.')) {
+    // FW24 span export: consolidated span records + OTEL-only span.start markers.
+    if (type === 'span' || type === 'span.start') {
       if (!this.isOTELAvailable) return;
       await this.handleSpanEvent(event);
       return;
@@ -271,23 +273,202 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
   // ==================== SPAN HANDLING ====================
 
   private async handleSpanEvent(event: ObservabilityEvent): Promise<void> {
-    if (event.entityName !== 'span') return;
-
     switch (event.type) {
+      case 'span':
+        // Consolidated span: single record containing start+events+end
+        this.handleConsolidatedSpan(event);
+        break;
       case 'span.start':
         this.handleSpanStart(event);
-        break;
-      case 'span.event':
-        this.handleSpanEventInternal(event);
-        break;
-      case 'span.end':
-        this.handleSpanEnd(event);
         break;
     }
   }
 
+  /**
+   * Handle consolidated span (single record with all span data).
+   * 
+   * In consolidated mode:
+   * 1. span.start was already sent (OTEL-only) to establish parent context
+   * 2. This 'span' event contains all data and signals completion
+   * 3. We find the existing OTEL span, update it, and end it
+   */
+  private handleConsolidatedSpan(event: ObservabilityEvent): void {
+    if (!event.observabilityLogId || !this.spanStatusCode) return;
+
+    const spanId = event.observabilityLogId;
+    // IMPORTANT: FW24 consolidated spans store timestampMs as the *start* time (for UI ordering).
+    // End time is derived from (start + durationMs).
+    const startTime = event.timestampMs ?? Date.now();
+    const durationMs = event.durationMs ?? 0;
+    const endTime = durationMs > 0 ? startTime + durationMs : Date.now();
+    const statusCode = this.spanStatusCode;
+
+    // Look for existing span (created by span.start in consolidated mode)
+    const existingSpan = this.activeSpans.get(spanId);
+
+    if (existingSpan) {
+      // Found existing span - update and end it
+      try {
+        // Add tags/attributes as OTEL span attributes.
+        if (event.tags) {
+          existingSpan.setAttributes(this.toOtelAttributes(event.tags));
+        }
+        if (event.attributes) {
+          existingSpan.setAttributes(this.toOtelAttributes(event.attributes));
+        }
+
+        // Add metrics as prefixed attributes
+        if (event.metrics) {
+          Object.entries(event.metrics).forEach(([ key, value ]) => {
+            existingSpan.setAttribute(`metric.${key}`, value);
+          });
+        }
+
+        if (event.durationMs) {
+          existingSpan.setAttribute('duration_ms', event.durationMs);
+        }
+
+        // Add checkpoints as OTEL events (from data.checkpoints).
+        const data = event.data as Record<string, unknown> | undefined;
+        if (data?.checkpoints && Array.isArray(data.checkpoints)) {
+          for (const cp of data.checkpoints) {
+            const checkpoint = cp as { name?: unknown; ts?: unknown; tags?: unknown; metrics?: unknown; data?: unknown; error?: unknown };
+            const name = typeof checkpoint.name === 'string' ? checkpoint.name : 'checkpoint';
+            const ts = typeof checkpoint.ts === 'number' ? checkpoint.ts : undefined;
+            // OTEL Attributes do not support nested objects; encode structured checkpoint details as JSON strings.
+            const attrs: Attributes = {};
+            if (checkpoint.tags && typeof checkpoint.tags === 'object') attrs[ 'fw24.checkpoint.tags' ] = JSON.stringify(checkpoint.tags);
+            if (checkpoint.metrics && typeof checkpoint.metrics === 'object') attrs[ 'fw24.checkpoint.metrics' ] = JSON.stringify(checkpoint.metrics);
+            if (checkpoint.data && typeof checkpoint.data === 'object') attrs[ 'fw24.checkpoint.data' ] = JSON.stringify(checkpoint.data);
+            if (checkpoint.error && typeof checkpoint.error === 'object') attrs[ 'fw24.checkpoint.error' ] = JSON.stringify(checkpoint.error);
+            existingSpan.addEvent(name, attrs, ts);
+          }
+        }
+
+        // Set status
+        if (event.error) {
+          existingSpan.setStatus({
+            code: statusCode.ERROR,
+            message: event.error.message ?? event.status ?? 'Error',
+          });
+          existingSpan.recordException({
+            name: event.error.type,
+            message: event.error.message,
+            stack: event.error.stack,
+          });
+        } else if (event.success === false) {
+          existingSpan.setStatus({
+            code: statusCode.ERROR,
+            message: event.status ?? 'Failed',
+          });
+        } else {
+          existingSpan.setStatus({ code: statusCode.OK });
+        }
+
+        existingSpan.end(endTime);
+        this.activeSpans.delete(spanId);
+
+        logger.debug(`Ended consolidated OTEL span: ${event.operation} (${spanId})`);
+      } catch (error) {
+        logger.warn('Failed to end consolidated span:', error);
+      }
+      return;
+    }
+
+    // Fallback: No existing span found (span.start might have been filtered)
+    // Create a new span with all data and end it immediately
+    if (!this.tracer || !this.trace || !this.contextApi) return;
+
+    try {
+      const isColdStart = this.invocationCount === 1;
+      // In fallback mode we still treat timestampMs as start time.
+      const duration = event.durationMs ?? 0;
+      const startTime = event.timestampMs ?? Date.now();
+      const endTime = duration > 0 ? startTime + duration : Date.now();
+
+      let context = this.contextApi.active();
+      if (event.parentObservabilityLogId) {
+        const parentSpan = this.activeSpans.get(event.parentObservabilityLogId);
+        if (parentSpan) {
+          context = this.trace.setSpan(context, parentSpan);
+        }
+      }
+
+      const spanAttributes: Attributes = {
+        'operation.name': event.operation ?? 'unknown',
+        'trace.id': event.correlationId,
+        'span.id': spanId,
+        ...(event.actor?.actorId && { 'user.id': event.actor.actorId }),
+        ...(event.actor?.tenantId && { 'tenant.id': event.actor.tenantId }),
+        ...(event.source && { 'code.function': event.source }),
+        ...(isColdStart && { 'faas.coldstart': true }),
+        ...this.toOtelAttributes(event.tags),        // Clean API
+        ...this.toOtelAttributes(event.attributes),  // Legacy
+      };
+
+      // Add metrics as prefixed attributes
+      if (event.metrics) {
+        Object.entries(event.metrics).forEach(([ key, value ]) => {
+          (spanAttributes as Record<string, unknown>)[ `metric.${key}` ] = value;
+        });
+      }
+
+      const span = this.tracer.startSpan(
+        event.operation ?? 'unknown',
+        {
+          kind: getSpanKind(event.subType),
+          startTime: startTime,
+          attributes: spanAttributes,
+          links: buildCausedByLinks(event),
+        },
+        context
+      );
+
+      // Add checkpoints from data (canonical).
+      const data = event.data as Record<string, unknown> | undefined;
+      if (data?.checkpoints && Array.isArray(data.checkpoints)) {
+        for (const cp of data.checkpoints) {
+          const checkpoint = cp as { name?: unknown; ts?: unknown; tags?: unknown; metrics?: unknown; data?: unknown; error?: unknown };
+          const name = typeof checkpoint.name === 'string' ? checkpoint.name : 'checkpoint';
+          const ts = typeof checkpoint.ts === 'number' ? checkpoint.ts : undefined;
+          // OTEL Attributes do not support nested objects; encode structured checkpoint details as JSON strings.
+          const attrs: Attributes = {};
+          if (checkpoint.tags && typeof checkpoint.tags === 'object') attrs[ 'fw24.checkpoint.tags' ] = JSON.stringify(checkpoint.tags);
+          if (checkpoint.metrics && typeof checkpoint.metrics === 'object') attrs[ 'fw24.checkpoint.metrics' ] = JSON.stringify(checkpoint.metrics);
+          if (checkpoint.data && typeof checkpoint.data === 'object') attrs[ 'fw24.checkpoint.data' ] = JSON.stringify(checkpoint.data);
+          if (checkpoint.error && typeof checkpoint.error === 'object') attrs[ 'fw24.checkpoint.error' ] = JSON.stringify(checkpoint.error);
+          span.addEvent(name, attrs, ts);
+        }
+      }
+
+      // Set status and end
+      if (event.success === false || event.error) {
+        span.setStatus({
+          code: statusCode.ERROR,
+          message: event.error?.message ?? event.status ?? 'Error',
+        });
+        if (event.error) {
+          span.recordException({
+            name: event.error.type,
+            message: event.error.message,
+            stack: event.error.stack,
+          });
+        }
+      } else {
+        span.setStatus({ code: statusCode.OK });
+      }
+
+      span.end(endTime);
+      logger.debug(`Created and ended consolidated OTEL span (fallback): ${event.operation} (${spanId})`);
+    } catch (error) {
+      logger.warn('Failed to handle consolidated span (fallback):', error);
+    }
+  }
+
   private handleSpanStart(event: ObservabilityEvent): void {
-    if (!event.entityId || !this.tracer || !this.trace || !this.contextApi) return;
+    // Use observabilityLogId as span ID (consistent with consolidated mode)
+    const spanId = event.observabilityLogId;
+    if (!spanId || !this.tracer || !this.trace || !this.contextApi) return;
 
     try {
       const isRootSpan = !event.parentObservabilityLogId;
@@ -305,6 +486,7 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
         'service.name': this.serviceName,
         'fw24.correlation_id': event.correlationId,
         'fw24.invocation': this.invocationCount,
+        'fw24.span_id': spanId,
       };
 
       if (isRootSpan) {
@@ -329,13 +511,14 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
           kind: getSpanKind(event.subType),
           attributes: spanAttributes,
           startTime: event.timestampMs,
+          links: buildCausedByLinks(event),
         },
         context,
       );
 
-      this.activeSpans.set(event.entityId, span);
+      this.activeSpans.set(spanId, span);
 
-      logger.debug(`Created OpenTelemetry span: ${event.operation} (${event.entityId})`, {
+      logger.debug(`Created OpenTelemetry span: ${event.operation} (${spanId})`, {
         coldStart: isRootSpan ? isColdStart : undefined,
         invocation: this.invocationCount,
       });
@@ -344,77 +527,7 @@ export class OTELObservabilityBackend implements ObservabilityBackend {
     }
   }
 
-  private handleSpanEventInternal(event: ObservabilityEvent): void {
-    if (!event.entityId) return;
-
-    const span = this.activeSpans.get(event.entityId);
-    if (!span) {
-      logger.warn(`No active span found for event: ${event.entityId}`);
-      return;
-    }
-
-    try {
-      const attrs = this.toOtelAttributes(event.attributes);
-      span.addEvent(event.operation || 'event', attrs, event.timestampMs);
-      logger.debug(`Added event to span ${event.entityId}: ${event.operation}`);
-    } catch (error) {
-      logger.error('Error adding event to OpenTelemetry span:', error);
-    }
-  }
-
-  private handleSpanEnd(event: ObservabilityEvent): void {
-    if (!event.entityId || !this.spanStatusCode) return;
-
-    const span = this.activeSpans.get(event.entityId);
-    if (!span) {
-      logger.warn(`No active span found for end event: ${event.entityId}`);
-      return;
-    }
-
-    try {
-      if (event.attributes) {
-        span.setAttributes(this.toOtelAttributes(event.attributes));
-      }
-
-      if (event.metrics) {
-        Object.entries(event.metrics).forEach(([ key, value ]) => {
-          span.setAttribute(`metric.${key}`, value);
-        });
-      }
-
-      if (event.durationMs) {
-        span.setAttribute('duration_ms', event.durationMs);
-      }
-
-      const statusCode = this.spanStatusCode;
-
-      if (event.error) {
-        span.setStatus({
-          code: statusCode.ERROR,
-          message: event.error.message,
-        });
-
-        span.recordException({
-          name: event.error.type,
-          message: event.error.message,
-          stack: event.error.stack,
-        });
-      } else if (event.success === false) {
-        span.setStatus({
-          code: statusCode.ERROR,
-          message: event.status || 'Operation failed',
-        });
-      } else {
-        span.setStatus({ code: statusCode.OK });
-      }
-
-      span.end(event.timestampMs);
-      this.activeSpans.delete(event.entityId);
-      logger.debug(`Ended OpenTelemetry span: ${event.entityId}`);
-    } catch (error) {
-      logger.error('Error ending OpenTelemetry span:', error);
-    }
-  }
+  // Legacy span.event/span.end are intentionally not supported.
 
   // ==================== METRIC HANDLING ====================
 

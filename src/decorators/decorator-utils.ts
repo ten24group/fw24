@@ -109,7 +109,7 @@ export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3
 
 	// Check if already loaded (global check across all instances)
 	if ((global as any)[ GLOBAL_LOADED_KEY ] || entryPackagesLoaded) {
-		DefaultLogger.info("Entry packages already loaded, skipping", { controllerName });
+		DefaultLogger.debug("Entry packages already loaded, skipping", { controllerName });
 		return;
 	}
 

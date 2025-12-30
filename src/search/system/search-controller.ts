@@ -10,6 +10,7 @@ import { type IDIContainer, type Request, type Response } from '../../interfaces
 import { deepCopy, resolveEnvValueFor } from '../../utils';
 import { parseSearchQuery } from "../search-utils";
 import { Environment } from "../../client";
+import { BatchProgress } from '../../observability/utils/batch-progress';
 
 export enum SEARCH_CONTROLLER_ENV_KEYS {
   MEILISEARCH_SYNC_QUEUE_NAME = 'MEILISEARCH_SYNC_QUEUE_NAME',
@@ -180,7 +181,7 @@ export class SearchSystemController extends APIController {
     const entityService = this.getEntityService(entityName);
     const searchService = this.getEntitySearchService(entityName);
     const primaryIdFieldName = entityService.getEntityPrimaryIdPropertyName();
-    
+
     const doc = await searchService.getDocument(documentId);
 
     doc[ 'id' ] = doc[ 'id' ] || doc[ primaryIdFieldName as string ];
@@ -211,23 +212,23 @@ export class SearchSystemController extends APIController {
     const results = await entityService.search(restQueryParams, ctx);
 
     const { hits, ...rest } = results;
-    
+
     // Get the entity's primary identifier field name
     const primaryIdFieldName = entityService.getEntityPrimaryIdPropertyName();
-    
+
     // Ensure all records have a consistent 'id' field for generic UI listing
     const normalizedHits = hits.map((hit: any) => {
       const normalizedHit = { ...hit };
 
       normalizedHit[ 'entityName' ] = entityName;
       normalizedHit[ 'fullRecord' ] = hit;
-      
+
       // If the record doesn't have an 'id' field but has the primary identifier field,
       // map it to 'id' for consistent generic listing
       if (!normalizedHit.id && primaryIdFieldName && normalizedHit[ primaryIdFieldName ]) {
         normalizedHit.id = normalizedHit[ primaryIdFieldName ];
       }
-      
+
       // If still no id field, try common identifier patterns
       if (!normalizedHit.id) {
         const idFields = [ `${entityName}Id`, `${entityName.toLowerCase()}Id` ];
@@ -238,7 +239,7 @@ export class SearchSystemController extends APIController {
           }
         }
       }
-      
+
       return normalizedHit;
     });
 
@@ -363,7 +364,7 @@ export class SearchSystemController extends APIController {
   ) {
     const { entityName } = req.pathParameters ?? {};
     const searchService = this.getEntitySearchService(entityName);
-    
+
     // Get current settings from the search engine
     const currentSettings = await searchService.getIndexSettings();
 
@@ -378,7 +379,7 @@ export class SearchSystemController extends APIController {
     let status = '✓ Index settings match entity schema';
     if (hasDifferences) {
       const summary: string[] = [];
-      for (const [field, fieldDiff] of Object.entries(diff)) {
+      for (const [ field, fieldDiff ] of Object.entries(diff)) {
         if (fieldDiff.status === 'different' && fieldDiff.type === 'array') {
           const added = (fieldDiff as any).added?.length || 0;
           const removed = (fieldDiff as any).removed?.length || 0;
@@ -386,12 +387,12 @@ export class SearchSystemController extends APIController {
           if (removed > 0) summary.push(`${removed} only in index (${field})`);
         }
       }
-      status = summary.length > 0 
+      status = summary.length > 0
         ? `ℹ️ Differences found: ${summary.join(', ')}`
         : 'ℹ️ Settings differ from schema';
     }
 
-    return res.json({ 
+    return res.json({
       settings: currentSettings,
       schemaSettings,
       diff,
@@ -420,13 +421,13 @@ export class SearchSystemController extends APIController {
     // Handle objects - sort keys and recursively normalize values
     const sortedKeys = Object.keys(value).sort();
     const normalizedObj: Record<string, any> = {};
-    
+
     for (const key of sortedKeys) {
       // Parse back the normalized string for nested structures
       try {
-        normalizedObj[key] = JSON.parse(this.deepNormalize(value[key]));
+        normalizedObj[ key ] = JSON.parse(this.deepNormalize(value[ key ]));
       } catch {
-        normalizedObj[key] = value[key];
+        normalizedObj[ key ] = value[ key ];
       }
     }
 
@@ -446,8 +447,8 @@ export class SearchSystemController extends APIController {
     const fieldsToCompare = Object.keys(schema || {});
 
     for (const field of fieldsToCompare) {
-      const currentValue = current[field];
-      const schemaValue = schema[field];
+      const currentValue = current[ field ];
+      const schemaValue = schema[ field ];
 
       // Array comparison (most common case for our managed fields)
       if (Array.isArray(schemaValue)) {
@@ -466,7 +467,7 @@ export class SearchSystemController extends APIController {
 
         // Only include detailed breakdown if there ARE differences
         if (isDifferent) {
-          diff[field] = {
+          diff[ field ] = {
             type: 'array',
             added,
             removed,
@@ -474,7 +475,7 @@ export class SearchSystemController extends APIController {
           };
         } else {
           // Concise for "same" status
-          diff[field] = {
+          diff[ field ] = {
             type: 'array',
             status: 'same'
           };
@@ -488,7 +489,7 @@ export class SearchSystemController extends APIController {
 
         if (isDifferent) hasDifferences = true;
 
-        diff[field] = {
+        diff[ field ] = {
           type: 'object',
           current: currentValue,
           schema: schemaValue,
@@ -498,10 +499,10 @@ export class SearchSystemController extends APIController {
       } else {
         // Scalar comparison (string, number, boolean, null, undefined)
         const isDifferent = currentValue !== schemaValue;
-        
+
         if (isDifferent) hasDifferences = true;
 
-        diff[field] = {
+        diff[ field ] = {
           type: 'scalar',
           current: currentValue,
           schema: schemaValue,
@@ -571,7 +572,7 @@ export class SearchSystemController extends APIController {
     const { entityName } = req.pathParameters ?? {};
 
     const searchService = this.getEntitySearchService(entityName);
-    
+
     // Get schema-derived settings
     const searchConfig = searchService.getSearchIndexConfig();
     const schemaSettings = searchConfig.settings || {};
@@ -632,11 +633,11 @@ export class SearchSystemController extends APIController {
     res: Response
   ) {
     const { entityName } = req.pathParameters ?? {};
-    const { 
-      resyncDocuments = false, 
+    const {
+      resyncDocuments = false,
       syncMethod = 'direct',
       batchSize = 50,
-      queueUrl 
+      queueUrl
     } = req.body || {};
 
     const searchService = this.getEntitySearchService(entityName);
@@ -751,16 +752,8 @@ export class SearchSystemController extends APIController {
    */
   private async queueDocumentsForResync(
     entityName: string,
-    options: {
-      batchSize?: number;
-      queueUrl?: string;
-      byBatch?: boolean;
-    }
-  ): Promise<{
-    processedCount: number;
-    failedCount: number;
-    totalIterations: number;
-  }> {
+    options: { batchSize?: number; queueUrl?: string; byBatch?: boolean }
+  ): Promise<{ processedCount: number; failedCount: number; totalIterations: number }> {
     const { batchSize = 50, queueUrl, byBatch = true } = options;
     const entityService = this.getEntityService(entityName);
 
@@ -790,59 +783,47 @@ export class SearchSystemController extends APIController {
         }
       });
 
-      if (!queryResult.data || queryResult.data.length === 0) {
-        break;
-      }
+      if (!queryResult.data?.length) break;
 
       if (byBatch) {
-        const data = await Promise.all(queryResult.data.map(async (rec) => {
-          return await entityService.transformDocumentForIndexing(rec);
-        }));
 
-        try {
-          await sendQueueMessage(resolvedQueueUrl, {
-            data,
-            eventName: "RESYNC",
-            entityName,
+        // Queue entire batch as one message
+        const { summary } = await BatchProgress.all(`Queue ${entityName}`, queryResult.data, async (records) => {
+
+          const data = await BatchProgress.map(`Transform ${entityName}`, records, async (rec) => {
+            return entityService.transformDocumentForIndexing(rec);
           });
-          processedCount += data.length;
-        } catch (error: any) {
-          this.logger.error(`Error queueing batch for sync: ${error.message}`, { entityName, batchSize, error });
-          failedCount += data.length;
-        }
+
+          await sendQueueMessage(resolvedQueueUrl, { data, eventName: 'RESYNC', entityName });
+
+          return data;
+
+        }, { observe: 'errors', tags: { entity: entityName } });
+
+        processedCount += summary.succeeded;
+        failedCount += summary.failed;
+
       } else {
-        await Promise.all(
-          queryResult.data.map(async (entityRecord) => {
-            try {
-              const transformed = await entityService.transformDocumentForIndexing(entityRecord);
-              await sendQueueMessage(resolvedQueueUrl, {
-              data: transformed,
-              eventName: "RESYNC",
-              entityName,
-              });
-            processedCount++;
-          } catch (error: any) {
-              this.logger.error(`Error queueing record for sync: ${error.message}`, { entityName, error });
-            failedCount++;
-          }
-          })
-        );
+        // Queue each record individually
+        const { summary } = await BatchProgress.process(`Queue ${entityName}`, queryResult.data, async (rec) => {
+
+          const transformed = await entityService.transformDocumentForIndexing(rec);
+
+          await sendQueueMessage(resolvedQueueUrl, { data: transformed, eventName: 'RESYNC', entityName });
+
+          return transformed;
+
+        }, { concurrency: 5, observe: 'errors', tags: { entity: entityName } });
+
+        processedCount += summary.succeeded;
+        failedCount += summary.failed;
       }
 
       cursor = queryResult.cursor ?? undefined;
     }
 
-    this.logger.info(`Queue sync completed for ${entityName}`, {
-      processedCount,
-      failedCount,
-      totalIterations: iterationCount
-    });
-
-    return {
-      processedCount,
-      failedCount,
-      totalIterations: iterationCount,
-    };
+    this.logger.info(`Queue sync completed for ${entityName}`, { processedCount, failedCount, iterations: iterationCount });
+    return { processedCount, failedCount, totalIterations: iterationCount };
   }
 
   @Get('/queue-info')
@@ -851,7 +832,7 @@ export class SearchSystemController extends APIController {
     res: Response
   ) {
 
-    const { queueUrl } = req.queryStringParameters;  
+    const { queueUrl } = req.queryStringParameters;
 
     // Use provided queueUrl or resolve from environment
     const queueName = resolveEnvValueFor({ key: SEARCH_CONTROLLER_ENV_KEYS.MEILISEARCH_SYNC_QUEUE_NAME });

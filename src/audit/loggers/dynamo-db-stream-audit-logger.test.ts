@@ -151,8 +151,6 @@ describe('DynamoDBStreamAuditLogger', () => {
                 'Post',
                 'post-123',
                 expect.objectContaining({
-                    before: expect.objectContaining({ title: 'Original' }),
-                    after: expect.objectContaining({ title: 'Updated' }),
                     diff: expect.objectContaining({
                         title: { old: 'Original', new: 'Updated' }
                     })
@@ -178,11 +176,13 @@ describe('DynamoDBStreamAuditLogger', () => {
                 'Post',
                 'post-123',
                 expect.objectContaining({ postId: 'post-123', title: 'Deleted Post' }),
-                expect.objectContaining({ actor: mockActor })
+                // Under the strict contract, actor is extracted only from the NEW image.
+                // For deletes (newImage is undefined), actor is unknown (we do NOT use oldImage._actor).
+                expect.objectContaining({ actor: undefined })
             );
         });
 
-        it('should skip update when no changes detected', async () => {
+        it('should capture update even when no changes detected (noopUpdate)', async () => {
             const record = createMockEventRecord({
                 eventType: 'update',
                 payload: {
@@ -193,12 +193,21 @@ describe('DynamoDBStreamAuditLogger', () => {
 
             await auditLogger.testCaptureAuditEvent(record);
 
-            expect(mockEntityUpdate).not.toHaveBeenCalled();
-            expect(mockEntityCreate).not.toHaveBeenCalled();
-            expect(mockEntityDelete).not.toHaveBeenCalled();
+            expect(mockEntityUpdate).toHaveBeenCalledTimes(1);
+            expect(mockEntityUpdate).toHaveBeenCalledWith(
+                'Post',
+                'post-123',
+                expect.objectContaining({
+                    diff: {},
+                }),
+                expect.objectContaining({
+                    actor: undefined,
+                    attributes: { noopUpdate: true },
+                })
+            );
         });
 
-        it('should pass causedBy from actor context to link to original request', async () => {
+        it('should NOT override causedBy from actor context (causedBy comes from execution context propagation)', async () => {
             const actorWithCorrelation = createMockActor({ correlationId: 'original-api-request-123' });
             const record = createMockEventRecord({
                 eventType: 'create',
@@ -210,13 +219,12 @@ describe('DynamoDBStreamAuditLogger', () => {
 
             await auditLogger.testCaptureAuditEvent(record);
 
-            // Verify causedBy is set to the original API request's correlationId
-            expect(mockEntityCreate).toHaveBeenCalledWith(
-                expect.any(String),
-                expect.any(String),
-                expect.any(Object),
-                expect.objectContaining({ causedBy: 'original-api-request-123' })
-            );
+            expect(mockEntityCreate).toHaveBeenCalledTimes(1);
+            const options = mockEntityCreate.mock.calls[ 0 ][ 3 ] as Record<string, unknown>;
+            // causedBy must point to the original API request from the actor context
+            expect(options.causedBy).toBe('original-api-request-123');
+            // actor should still be passed through from newImage._actor
+            expect(options.actor).toBeTruthy();
         });
     });
 

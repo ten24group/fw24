@@ -49,7 +49,7 @@ export function makeEntitySearchIndexName({
 
 
 export function parseSearchQuery<Sch extends EntitySchema<any, any, any> = EntitySchema<any, any, any>>(params: Record<string, any>): EntitySearchQuery<Sch> {
-  
+
   const { q, query, search, attributes: attributesParam, hitsPerPage, page, facets: facetsParam, sort: sortParam, limit: _legacyLimit, cursor: _legacyCursor, ...rest } = params;
 
 
@@ -102,7 +102,7 @@ export function parseSearchQuery<Sch extends EntitySchema<any, any, any> = Entit
     facets: (parsedFacets?.length ? parsedFacets : undefined) as EntitySearchQuery<Sch>[ 'facets' ],
     sort: parsedSort,
     pagination: {
-      limit: parseInt(hitsPerPage, 10) || 20,
+      limit: parseInt(hitsPerPage || _legacyLimit, 10) || 20,
       page: parseInt(page, 10) || 1,
       usePagination: true
     }

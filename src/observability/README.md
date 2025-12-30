@@ -4,6 +4,30 @@ Unified observability for distributed tracing, logging, metrics, and auditing in
 
 ---
 
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Architecture Overview](#architecture-overview)
+- [Core Concepts](#core-concepts)
+- [Observers](#observers)
+- [Building Specialized Observers](#building-specialized-observers)
+- [Decorators](#decorators)
+- [Configuration](#configuration)
+- [Advanced Features](#advanced-features)
+- [Backend Details](#backend-details)
+- [Data Protection](#data-protection)
+- [Best Practices](#best-practices)
+- [Testing](#testing)
+- [Production Checklist](#production-checklist)
+- [Performance & Cost Optimization](#performance--cost-optimization)
+- [Troubleshooting](#troubleshooting)
+- [API Reference](#api-reference)
+- [Examples](#examples)
+- [Performance](#performance)
+- [References](#references)
+
+---
+
 ## Quick Start
 
 ### 1. Setup (CDK)
@@ -42,19 +66,136 @@ DIContainer.ROOT.registerConfigProvider({
 ### 3. Use in Code
 
 ```typescript
-import { SpanObserver, AuditObserver, MetricObserver } from '@ten24group/fw24/observability';
+import { AuditObserver, MetricObserver, withSpan } from '@ten24group/fw24/observability';
 
 // Context is auto-established in controllers
-const span = SpanObserver.start('processOrder');
 try {
-  await processOrder(orderId);
-  AuditObserver.entityCreate('Order', orderId, data);
-  MetricObserver.increment('orders.created');
-  span.end({ success: true });
+  await withSpan('processOrder', async () => {
+    await processOrder(orderId);
+    AuditObserver.entityCreate('Order', orderId, data);
+    MetricObserver.increment('orders.created');
+  });
 } catch (error) {
-  span.end({ success: false, error });
   throw error;
 }
+```
+
+---
+
+## Architecture Overview
+
+### System Architecture
+
+```mermaid
+graph TB
+    subgraph "Application Layer"
+        A[Controllers/Services]
+        B[Observers API]
+    end
+    
+    subgraph "Observability Core"
+        C[ObservabilityManager]
+        D[Context Management]
+        E[Sampling Engine]
+        F[Noise Reduction]
+    end
+    
+    subgraph "Backends"
+        G[DynamoDB Backend]
+        H[CloudWatch Backend]
+        I[OTEL Backend]
+    end
+    
+    subgraph "Storage & Export"
+        J[(DynamoDB Table)]
+        K[CloudWatch Logs]
+        L[CloudWatch Metrics]
+        M[AWS X-Ray]
+    end
+    
+    A --> B
+    B --> C
+    C --> D
+    C --> E
+    C --> F
+    C --> G
+    C --> H
+    C --> I
+    G --> J
+    H --> K
+    H --> L
+    I --> M
+    
+    style C fill:#f9f,stroke:#333,stroke-width:4px
+    style E fill:#bbf,stroke:#333,stroke-width:2px
+    style F fill:#bbf,stroke:#333,stroke-width:2px
+```
+
+### Event Flow
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Obs as Observer API
+    participant Mgr as ObservabilityManager
+    participant Buf as Buffer
+    participant BE as Backends
+    
+    App->>Obs: SpanObserver.withSpan()
+    Obs->>Mgr: capture(event)
+    
+    alt Smart Sampling Enabled
+        Mgr->>Buf: Buffer event
+        Note over Buf: Tail-based sampling
+    else Head-based Sampling
+        Mgr->>Mgr: shouldCapture()
+        Mgr->>BE: dispatch(event)
+    end
+    
+    alt Error Occurs
+        Mgr->>Buf: Flush buffer
+        Mgr->>BE: dispatch(buffered + error)
+    end
+    
+    App->>Mgr: flush() (end of invocation)
+    Mgr->>Buf: Apply noise reduction
+    Mgr->>Mgr: Apply sampling rules
+    Mgr->>BE: dispatch(final events)
+    BE->>BE: Persist to storage
+```
+
+### Buffer Management
+
+```mermaid
+graph LR
+    subgraph "Buffer Lifecycle"
+        A[Capture Event] --> B{Smart Sampling?}
+        B -->|Yes| C[Add to Buffer]
+        B -->|No| D[Direct Dispatch]
+        
+        C --> E{Error Occurred?}
+        E -->|Yes| F[Flush Buffer]
+        E -->|No| G{Invocation End?}
+        
+        G -->|Yes| H[Apply Noise Reduction]
+        H --> I[Apply Sampling]
+        I --> J[Dispatch to Backends]
+        
+        F --> J
+        D --> J
+    end
+    
+    subgraph "Buffer Eviction"
+        K{Buffer Full?}
+        K -->|Yes| L[Calculate Priority]
+        L --> M[Evict Lowest Priority]
+        M --> N[Preserve Tree Integrity]
+    end
+    
+    C --> K
+    
+    style F fill:#f99,stroke:#333,stroke-width:2px
+    style H fill:#9f9,stroke:#333,stroke-width:2px
 ```
 
 ---
@@ -71,18 +212,36 @@ Observability requires a correlation ID for distributed tracing. Context is auto
 
 **Manual context:**
 ```typescript
-import { runWithContext, createObservationContext } from '@ten24group/fw24/observability';
+import { runWithExecutionContext, createExecutionContext } from '@ten24group/fw24/observability';
 
-await runWithContext(
-  createObservationContext(requestId, { actor }),
+await runWithExecutionContext(
+  createExecutionContext({ correlationId: requestId, actor }),
   async () => {
     // All observability calls here inherit context
-    SpanObserver.start('operation');
+    await withSpan('operation', async () => {
+      // ...
+    });
   }
 );
 ```
 
 ### Trace Propagation
+
+```mermaid
+graph LR
+    A[API Gateway] -->|W3C Headers| B[Lambda 1]
+    B -->|SQS Attributes| C[Lambda 2]
+    B -->|SNS Attributes| D[Lambda 3]
+    B -->|EventBridge| E[Lambda 4]
+    C -->|causedBy| F[DynamoDB Stream]
+    
+    style A fill:#9cf,stroke:#333,stroke-width:2px
+    style B fill:#fc9,stroke:#333,stroke-width:2px
+    style C fill:#fc9,stroke:#333,stroke-width:2px
+    style D fill:#fc9,stroke:#333,stroke-width:2px
+    style E fill:#fc9,stroke:#333,stroke-width:2px
+    style F fill:#9f9,stroke:#333,stroke-width:2px
+```
 
 Automatically propagates trace context across:
 - HTTP requests (W3C Trace Context)
@@ -94,12 +253,12 @@ Automatically propagates trace context across:
 
 **Outgoing HTTP:**
 ```typescript
-import { createPropagationHeaders, getCurrentContext } from '@ten24group/fw24/observability';
+import { createHttpHeaders, getCurrentExecutionContext } from '@ten24group/fw24/observability';
 
-const ctx = getCurrentContext();
+const ctx = getCurrentExecutionContext();
 const response = await fetch(url, {
   headers: {
-    ...createPropagationHeaders(ctx),
+    ...createHttpHeaders(ctx),
     'Content-Type': 'application/json',
   },
 });
@@ -111,25 +270,60 @@ const response = await fetch(url, {
 
 ### SpanObserver - Distributed Tracing
 
+**Clean API with Clear Data Separation:**
+- `tags` - string key-value pairs for filtering/indexing
+- `metrics` - numeric values for dashboards/aggregation
+- `data` - arbitrary debug payload (NOT indexed)
+- `checkpoints` - timeline markers
+
 ```typescript
-// Manual span
-const span = SpanObserver.start('processOrder', {
-  level: 'info',
-  attributes: { orderId: '123' },
-});
-span.setAttribute('status', 'validated');
-span.addEvent('payment_processed');
-span.end({ success: true });
-
-// Auto span
+// Recommended: withSpan for automatic span management
 await withSpan('processOrder', async (span) => {
-  span.setAttribute('orderId', '123');
-  // Auto-ends on success/error
+  // Tags - for filtering/searching (indexed)
+  span.tag('orderId', order.id);
+  span.tags({ region: 'us-east-1', tier: 'premium' });
+  
+  // Metrics - for dashboards/alerts (numeric)
+  span.metric('itemCount', items.length);
+  span.metrics({ retries: 0, cacheHits: 5 });
+  
+  // Data - debug payload (NOT indexed, for inspection only)
+  span.setData({ request: body, response: result });
+  
+  // Checkpoints - timeline markers (can include tags/metrics/data/error)
+  span.checkpoint('validation_complete');
+  span.checkpoint('payment_processed', {
+    tags: { paymentMethod: 'card' },
+    metrics: { amount: 149.99 },
+    data: { transactionId: 'txn-123' },
+  });
+  
+  // Checkpoint with error
+  span.checkpoint('external_call_failed', { error: new Error('API timeout') });
+  
+  // Errors
+  span.recordException(error);
 });
 
-// Nested spans
-await span.withChild('validateOrder', async (child) => {
-  // Automatically linked to parent
+// Concise checkpoint pattern (recommended for single-point logging)
+SpanObserver.getCurrentSpan()?.checkpoint?.('database.full_scan', {
+  tags: { 'db.operation': 'list', 'db.warning': 'no_index' },
+  metrics: { 'db.full_scan': 1 },
+  data: { filters: queryFilters },
+});
+
+// Nested spans - automatically linked to parent
+await withSpan('validateOrder', async (span) => {
+  span.checkpoint('items_checked', { metrics: { itemCount: 5 } });
+});
+
+// Initial values in span options
+await withSpan('processPayment', async (span) => {
+  span.checkpoint('payment_complete');
+}, {
+  tags: { paymentMethod: 'card' },
+  metrics: { amount: 99.99 },
+  data: { orderId: '123' },
 });
 ```
 
@@ -180,6 +374,20 @@ MetricObserver.record('payment.amount', 99.99, {
 });
 ```
 
+### LogObserver - Structured Logging
+
+```typescript
+// Standard levels
+LogObserver.info('Order processed', { orderId, amount });
+LogObserver.warn('Rate limit approaching', { current: 95, limit: 100 });
+LogObserver.error('Payment failed', { error, orderId });
+
+// All log levels
+LogObserver.trace('Detailed trace', { data });
+LogObserver.debug('Debug info', { state });
+LogObserver.critical('Critical failure', { error });
+```
+
 ---
 
 ## Building Specialized Observers
@@ -190,27 +398,20 @@ specialized observers on top of these primitives:
 ```typescript
 // Example: WorkflowObserver (application-specific)
 class WorkflowObserver {
-  static start(name: string, options: { entityName: string; entityId: string }) {
-    const span = SpanObserver.start(`workflow.${name}`, {
-      attributes: { 'workflow.name': name, ...options }
-    });
-    
-    return {
-      step: async (stepName: string, fn: () => Promise<any>) => {
-        const stepSpan = span.createChild(`step.${stepName}`);
-        try {
-          const result = await fn();
-          stepSpan.end({ success: true });
-          return result;
-        } catch (error) {
-          stepSpan.end({ success: false, error });
-          throw error;
+  static async execute(name: string, options: { entityName: string; entityId: string }, fn: (workflow: any) => Promise<any>) {
+    return await withSpan(`workflow.${name}`, async (span) => {
+      span.tags({ 'workflow.name': name, ...options });
+      
+      const workflow = {
+        step: async (stepName: string, stepFn: () => Promise<any>) => {
+          return await withSpan(`step.${stepName}`, async (stepSpan) => {
+            return await stepFn();
+          });
         }
-      },
-      complete: (result: any) => {
-        span.end({ success: true, attributes: { result } });
-      }
-    };
+      };
+      
+      return await fn(workflow);
+    });
   }
 }
 
@@ -224,20 +425,6 @@ class DecisionObserver {
     });
   }
 }
-```
-
-### LogObserver - Structured Logging
-
-```typescript
-// Standard levels
-LogObserver.info('Order processed', { orderId, amount });
-LogObserver.warn('Rate limit approaching', { current: 95, limit: 100 });
-LogObserver.error('Payment failed', { error, orderId });
-
-// With child logs
-const parent = LogObserver.info('Processing batch', { batchId });
-parent.child('Processing item 1', { itemId: '1' });
-parent.child('Processing item 2', { itemId: '2' });
 ```
 
 ---
@@ -320,38 +507,42 @@ class OrderService {
 
 ## Configuration
 
-### Application Config (CDK)
+### Presets
 
 ```typescript
-const app = new Application({
-  observability: {
-    enabled: true,
-    table: {
-      name: 'observability',
-      // Full DynamoDB config support
-      searchIndexing: [{
-        enabled: true,
-        engineConfig: { type: 'meili', host: '...', masterKey: '...' },
-      }],
-    },
-    ttlDays: 90,
-  },
+import { productionPreset, developmentPreset, debugPreset } from '@ten24group/fw24/observability';
+
+// Production: Minimal noise, cost-optimized
+DIContainer.ROOT.registerConfigProvider({
+  provide: 'observability',
+  useConfig: productionPreset,
+  priority: 10
+});
+
+// Development: Balanced visibility
+DIContainer.ROOT.registerConfigProvider({
+  provide: 'observability',
+  useConfig: developmentPreset,
+  priority: 10
+});
+
+// Debug: Maximum visibility
+DIContainer.ROOT.registerConfigProvider({
+  provide: 'observability',
+  useConfig: debugPreset,
+  priority: 10
 });
 ```
 
-### Runtime Config (DI)
+### Custom Configuration
 
 ```typescript
-import { DIContainer } from '@ten24group/fw24';
 import { createObservabilityConfig, ObservabilityLevel } from '@ten24group/fw24/observability';
 
 DIContainer.ROOT.registerConfigProvider({
   provide: 'observability',
   useConfig: createObservabilityConfig({
-    // Service name
     serviceName: 'my-service',
-    
-    // Minimum level
     minLevel: ObservabilityLevel.INFO,
     
     // Backends
@@ -364,6 +555,8 @@ DIContainer.ROOT.registerConfigProvider({
     // Sampling
     sampling: {
       enabled: true,
+      smart: true, // Tail-based sampling
+      maxBufferSize: 1000,
       rates: {
         trace: 0.01,
         debug: 0.1,
@@ -372,120 +565,269 @@ DIContainer.ROOT.registerConfigProvider({
         error: 1.0,
         critical: 1.0,
       },
-      operations: {
-        'payment.*': 1.0,      // Always capture
-        'healthCheck': 0.01,   // 1% sampling
+      // Rule-based sampling (highest priority)
+      rules: [
+        { target: 'tenant', pattern: 'premium-*', rate: 1.0 },
+        { target: 'route', pattern: '/api/checkout', rate: 1.0 },
+        { target: 'tag', pattern: 'priority:high', rate: 1.0 },
+      ],
+    },
+    
+    // Type-specific config
+    types: {
+      span: {
+        minLevel: ObservabilityLevel.INFO,
+        sampling: { enabled: true, rate: 0.1 },
       },
+      audit: {
+        minLevel: ObservabilityLevel.INFO,
+        sampling: { enabled: false, rate: 1.0 }, // Capture all audits
+      },
+    },
+    
+    // Span filtering
+    spans: {
+      minDurationMs: 100, // Skip fast spans
+      skipEmpty: true, // Skip spans with no events/errors
     },
     
     // Data protection
     dataProtection: {
       enabled: true,
-      blacklistedKeys: ['apiKey', 'secret', 'token'],
       fuzzyKeyMatch: true,
-      caseSensitiveKeyMatch: false,
+      blacklistedKeys: ['password', 'token', 'secret', 'apiKey'],
     },
     
-    // CloudWatch
-    cloudwatch: {
-      namespace: 'MyApp',
-    },
-    
-    // DynamoDB
+    // DynamoDB config
     dynamodb: {
-      ttlDays: 90,
+      ttlDays: 30,
+      compression: {
+        enabled: true,
+        threshold: 10 * 1024, // 10KB
+        fields: ['data', 'attributes', 'metadata', 'context'],
+      },
+    },
+    
+    // Noise reduction
+    noiseReduction: {
+      enabled: true,
+      presets: ['fw24.hotpaths', 'fw24.batch_processors'],
+      emitSummaries: true,
     },
   }),
-  priority: 10  // Override framework defaults
+  priority: 10
 });
 ```
 
-### Environment Variables
+---
 
-```bash
-# Table name (set automatically by Application)
-OBSERVABILITY_TABLE_NAME=myapp-observability
-OBSERVABILITY_TTL_DAYS=90
+## Advanced Features
 
-# Service name
-SERVICE_NAME=my-service
+### Smart Sampling (Tail-Based)
 
-# Backends (comma-separated)
-OBSERVABILITY_BACKENDS=cloudwatch,dynamodb,otel
-
-# Minimum level
-OBSERVABILITY_LEVEL=info
-
-# CloudWatch
-CLOUDWATCH_METRICS_NAMESPACE=MyApp
+```mermaid
+graph TD
+    A[Event Captured] --> B{Smart Sampling?}
+    B -->|Yes| C[Buffer Event]
+    B -->|No| D[Head-Based Sampling]
+    
+    C --> E{Error Occurred?}
+    E -->|Yes| F[Flush All Buffered]
+    E -->|No| G{Invocation End?}
+    
+    G -->|Yes| H[Apply Rules]
+    H --> I[Sample Based on Context]
+    
+    F --> J[Dispatch to Backends]
+    I --> J
+    D --> J
+    
+    style F fill:#f99,stroke:#333,stroke-width:2px
+    style I fill:#9f9,stroke:#333,stroke-width:2px
 ```
 
----
+**Benefits:**
+- Capture 100% of error traces
+- Sample successful traces based on rules
+- Reduce costs while maintaining visibility
 
-## Backends
-
-### CloudWatch
-- Structured logs → CloudWatch Logs
-- Metrics → CloudWatch Metrics (EMF format, FREE!)
-- Auto-injects Lambda context
-
-### DynamoDB
-- Universal storage for all events
-- 8 GSIs for querying (trace, parent, entity, type, source, tenant, actor, level)
-- TTL for automatic cleanup
-- Batch writes (25 items per batch)
-
-### OTEL/X-Ray
-- Spans → X-Ray traces
-- Proper parent-child relationships
-- Service maps and performance analysis
-- Requires AWS ADOT Lambda layer
-
----
-
-## Querying
-
+**Configuration:**
 ```typescript
-import { ObservabilityLogService } from '@ten24group/fw24/observability';
-
-const service = ObservabilityLogService.getInstance();
-
-// Get all logs in a trace
-const logs = await service.getByTrace(correlationId);
-
-// Get logs by entity
-const entityLogs = await service.getByEntity('User', userId);
-
-// Get logs by type
-const audits = await service.getByType('audit.entity');
-
-// Get child logs
-const children = await service.getChildren(parentObservabilityLogId);
-
-// Reconstruct span hierarchy
-const spans = await service.getTraceWithSpans(correlationId);
-```
-
----
-
-## DynamoDB Stream Auditing
-
-Automatically audit entity changes from DynamoDB streams:
-
-```typescript
-// In DynamoDB construct
-audit: {
+sampling: {
   enabled: true,
-  allowedEntityNames: ['user', 'order', 'payment'],
-  excludedEntityNames: ['auditLog', 'observabilityLog'],
+  smart: true,
+  maxBufferSize: 1000,
+  minLevelOnError: ObservabilityLevel.INFO, // On error, capture INFO+ events
 }
 ```
 
-**Environment variables:**
-```bash
-AUDIT_ALLOWED_ENTITY_NAMES=user,order,payment
-AUDIT_EXCLUDED_ENTITY_NAMES=auditLog,observabilityLog
+### Noise Reduction
+
+Automatically reduces noise from repetitive operations:
+
+```mermaid
+graph LR
+    A[1000 Events] --> B[Noise Reduction]
+    B --> C[Drop: 500]
+    B --> D[Fold: 200]
+    B --> E[Aggregate: 100]
+    B --> F[Keep: 200]
+    
+    C --> G[Final: 200 Events]
+    D --> G
+    E --> G
+    F --> G
+    
+    style A fill:#f99,stroke:#333,stroke-width:2px
+    style G fill:#9f9,stroke:#333,stroke-width:2px
 ```
+
+**Strategies:**
+- **Drop**: Remove low-value events (e.g., batch processor spans)
+- **Fold**: Merge identical events (e.g., repeated cache hits)
+- **Aggregate**: Summarize patterns (e.g., 100 items → summary checkpoint)
+
+**Built-in Presets:**
+- `fw24.hotpaths`: Reduce noise from hot code paths
+- `fw24.batch_processors`: Reduce noise from batch operations
+
+### Buffer Eviction Strategy
+
+```mermaid
+graph TD
+    A{Buffer Full?} -->|Yes| B[Calculate Priorities]
+    B --> C{Find Eviction Candidate}
+    
+    C --> D{Is Leaf Event?}
+    D -->|Yes| E[Evict Event]
+    D -->|No| F{Has Children?}
+    
+    F -->|Yes| G[Evict Subtree]
+    F -->|No| E
+    
+    E --> H[Update Summary]
+    G --> H
+    
+    style G fill:#f99,stroke:#333,stroke-width:2px
+    style H fill:#9f9,stroke:#333,stroke-width:2px
+```
+
+**Priority Calculation:**
+- `bypass` events: Infinity (never evicted)
+- Errors: +30
+- Audits: +50
+- Log level: +10 per level
+- Long duration (>1s): +20
+
+**Tree Integrity:**
+- Never evict parent while keeping children
+- Evict entire subtrees to prevent orphans
+- Prefer evicting non-span events first
+
+### Observability Summary
+
+Track buffer efficiency per invocation:
+
+```typescript
+import { ObservabilityManager } from '@ten24group/fw24/observability';
+
+// Get summary at any time
+const summary = ObservabilityManager.getSummary();
+console.log(summary);
+// {
+//   captured: 150,   // Events captured immediately
+//   buffered: 500,   // Events buffered for tail-based sampling
+//   evicted: 50,     // Events evicted due to buffer overflow
+//   sampledOut: 200  // Events filtered by sampling rules
+// }
+```
+
+Summary is automatically logged and emitted as CloudWatch metrics during flush.
+
+### Compression (DynamoDB)
+
+Automatically compress large payloads before storing in DynamoDB:
+
+```typescript
+dynamodb: {
+  compression: {
+    enabled: true,
+    threshold: 10 * 1024, // 10KB
+    fields: ['data', 'attributes', 'metadata', 'context'],
+  },
+}
+```
+
+**Benefits:**
+- Reduces DynamoDB storage costs
+- Reduces data transfer costs
+- Transparent decompression on read
+- Only compresses if it actually reduces size
+
+---
+
+## Backend Details
+
+### DynamoDB Backend
+
+**Purpose**: Long-term storage for all observability data
+
+**Features:**
+- Stores spans, logs, metrics, audits
+- TTL-based automatic cleanup
+- Optional compression for large payloads
+- Deduplication of duplicate events
+- Batch writes with retry logic
+
+**Index Design:**
+```mermaid
+graph TB
+    A[Primary: observabilityLogId] --> B[Single Item Lookup]
+    C[GSI1: correlationId] --> D[Get All Events in Trace]
+    E[GSI2: parentObservabilityLogId] --> F[Get Children / Reconstruct Hierarchy]
+    G[GSI3: type] --> H[Filter by Event Type]
+    I[GSI4: level] --> J[Find Errors/Warnings]
+    K[GSI5: entityName] --> L[All Events for Entity Type]
+    M[GSI6: entityName+entityId] --> N[All Events for Entity Instance]
+    O[GSI7: ALL_EVENTS] --> P[Sorted Listing of All Events]
+    
+    style O fill:#fc9,stroke:#333,stroke-width:2px
+    style P fill:#fc9,stroke:#333,stroke-width:2px
+```
+
+**GSI7 "Hot Partition" Design:**
+- **By Design**: Uses constant partition key (`ALL_EVENTS`) for unfiltered queries
+- **Purpose**: Prevents full table scans when listing all events
+- **Trade-off**: Hot partition, but acceptable for TTL'd observability data
+- **Alternative**: Without GSI7, queries would trigger expensive full scans
+
+### CloudWatch Backend
+
+**Purpose**: EMF metrics and structured logs
+
+**Features:**
+- EMF (Embedded Metric Format) for metrics
+- Structured JSON logs
+- Automatic dimension deduplication
+- Span duration metrics
+- Integration with CloudWatch Insights
+
+**Dimension Priority:**
+1. Tags (highest priority)
+2. Explicit dimensions (operation, source, success)
+3. Attributes (if string values)
+4. Entity context (entityName)
+
+### OTEL Backend
+
+**Purpose**: AWS X-Ray integration and OpenTelemetry export
+
+**Features:**
+- W3C Trace Context compliant
+- Span links for `causedBy` relationships
+- Checkpoint events as OTEL events
+- AWS X-Ray segment export
+- Supports custom OTEL exporters
 
 ---
 
@@ -514,12 +856,22 @@ dataProtection: {
 
 ### 1. Always Establish Context
 ```typescript
-// ✅ Good - context established
-await runWithContext(createObservationContext(requestId), async () => {
-  SpanObserver.start('operation');
+// ✅ Good - context established (auto in controllers/handlers)
+await withSpan('operation', async (span) => {
+  // Context is inherited
 });
 
-// ❌ Bad - no context, creates NoOp span
+// ✅ Manual context establishment
+await runWithExecutionContext(
+  createExecutionContext({ correlationId: 'req-123' }),
+  async () => {
+    await withSpan('operation', async (span) => {
+      // ...
+    });
+  }
+);
+
+// ❌ Bad - no context, span will be NoOp
 SpanObserver.start('operation');
 ```
 
@@ -545,12 +897,12 @@ sampling: {
 ### 4. Propagate Trace Context
 ```typescript
 // HTTP
-const headers = createPropagationHeaders(getCurrentContext());
+const ctx = getCurrentExecutionContext();
+const headers = createHttpHeaders(ctx);
 
 // SQS
-await sendQueueMessage(queueUrl, message, {
-  context: getCurrentContext(),
-});
+const ctx = getCurrentExecutionContext();
+const attributes = createSqsAttributes(ctx);
 ```
 
 ### 5. Use Decorators for Consistency
@@ -582,9 +934,12 @@ afterEach(() => {
 });
 
 test('captures audit event', async () => {
-  await runWithContext(createObservationContext('test-123'), async () => {
-    AuditObserver.entityCreate('User', 'user-1', { name: 'Test' });
-  });
+  await runWithExecutionContext(
+    createExecutionContext({ correlationId: 'test-123' }),
+    async () => {
+      AuditObserver.entityCreate('User', 'user-1', { name: 'Test' });
+    }
+  );
   
   assertEventCaptured(event => 
     event.type === 'audit.entity' && 
@@ -609,6 +964,150 @@ test('captures audit event', async () => {
 
 ---
 
+## Performance & Cost Optimization
+
+### Cost Optimization Strategies
+
+```mermaid
+graph TD
+    A[Observability Costs] --> B[DynamoDB]
+    A --> C[CloudWatch]
+    A --> D[X-Ray]
+    
+    B --> B1[Sampling: 90% reduction]
+    B --> B2[Compression: 50-70% reduction]
+    B --> B3[TTL: Automatic cleanup]
+    B --> B4[Noise Reduction: 50% reduction]
+    
+    C --> C1[EMF Metrics: Efficient]
+    C --> C2[Structured Logs: Queryable]
+    
+    D --> D1[Sampling: 10% of spans]
+    D --> D2[Smart Sampling: Error traces]
+    
+    style B1 fill:#9f9,stroke:#333,stroke-width:2px
+    style B2 fill:#9f9,stroke:#333,stroke-width:2px
+    style B4 fill:#9f9,stroke:#333,stroke-width:2px
+```
+
+### Performance Best Practices
+
+1. **Use Presets**: Start with `productionPreset` for cost-optimized defaults
+2. **Enable Smart Sampling**: Capture errors, sample successes
+3. **Enable Compression**: Reduce DynamoDB costs for large payloads
+4. **Set Appropriate TTL**: Balance retention vs. cost
+5. **Use Noise Reduction**: Reduce repetitive events
+6. **Skip Fast Spans**: Set `spans.minDurationMs` to skip trivial operations
+7. **Monitor Summary Stats**: Track eviction rates to tune buffer size
+
+### Monitoring Observability Health
+
+```typescript
+// Summary metrics automatically emitted to CloudWatch:
+// - observability.captured
+// - observability.buffered
+// - observability.evicted
+// - observability.sampledOut
+
+// Create CloudWatch alarms:
+// - High eviction rate → increase buffer size
+// - High sampled-out rate → review sampling rules
+// - Low capture rate → check if sampling is too aggressive
+```
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**Issue: Events not appearing in DynamoDB**
+- Check if sampling is filtering them out
+- Check `ObservabilityManager.getSummary()` to see eviction/sampling stats
+- Verify backend is enabled in config
+
+**Issue: High DynamoDB costs**
+- Enable compression for large payloads
+- Reduce TTL days
+- Increase sampling rates
+- Enable noise reduction
+
+**Issue: Missing parent spans in traces**
+- Check buffer eviction stats (high eviction = increase buffer size)
+- Verify spans are being ended properly
+- Check for circular parent references
+
+**Issue: Duplicate events**
+- Check for multiple `capture()` calls with same ID
+- Review custom observer implementations
+- Check DynamoDB backend deduplication logs
+
+---
+
+## API Reference
+
+### ObservabilityManager
+
+```typescript
+// Initialize for new invocation
+ObservabilityManager.initializeInvocation();
+
+// Capture event (fire-and-forget)
+const id = ObservabilityManager.capture(input);
+
+// Capture event (async, waits for backends)
+const id = await ObservabilityManager.captureAsync(input);
+
+// Get summary stats
+const summary = ObservabilityManager.getSummary();
+
+// Flush all backends (called at end of Lambda)
+await ObservabilityManager.flush();
+
+// Get config
+const config = ObservabilityManager.getConfig();
+
+// Check if initialized
+const initialized = ObservabilityManager.isInitialized();
+
+// Check if cold start
+const coldStart = ObservabilityManager.isColdStart();
+```
+
+### Context Management
+
+```typescript
+// Get current context
+const ctx = getCurrentExecutionContext();
+
+// Get observability state
+const state = getObservabilityState();
+
+// Get current span
+const span = getCurrentSpan();
+
+// Run with context
+await runWithExecutionContext(ctx, async () => {
+  // ...
+});
+
+// Override context
+await withContext({ tags: { env: 'prod' } }, async () => {
+  // ...
+});
+```
+
+---
+
+## Examples
+
+See the `test/` directory for comprehensive examples:
+- `observability-e2e.test.ts` - End-to-end scenarios
+- `noise-reduction.test.ts` - Noise reduction examples
+- `buffer-eviction-hierarchy.test.ts` - Buffer management examples
+
+---
+
 ## Performance
 
 - **Latency Impact**: ~0ms (fire-and-forget capture)
@@ -625,3 +1124,8 @@ test('captures audit event', async () => {
 - [W3C Trace Context](https://www.w3.org/TR/trace-context/)
 - [OpenTelemetry JavaScript](https://opentelemetry.io/docs/languages/js/)
 
+---
+
+## License
+
+MIT

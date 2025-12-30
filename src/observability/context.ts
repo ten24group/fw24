@@ -1,7 +1,7 @@
 /**
  * Observability Context
  * 
- * Direct re-exports from the core execution context module.
+ * Re-exports from the core execution context module for observability use.
  * 
  * @module observability/context
  */
@@ -12,12 +12,21 @@ export {
   type ExecutionContextData,
   type CreateExecutionContextOptions,
   type ParsedTraceContext,
+  type ObservabilityState,
+  type ObservabilitySummary,
+  type ISpanNode,
 
   // Storage & Lifecycle
   createExecutionContext,
   runWithExecutionContext,
   runWithExecutionContextSync,
   getCurrentExecutionContext,
+  getObservabilityState,
+  getCurrentSpan,
+
+  // Parent Resolution
+  getCapturedParentId,
+  getCurrentParentObservabilityLogId,
 
   // Enrichment
   setActor,
@@ -26,11 +35,11 @@ export {
   setAttribute,
   setAttributes,
   setSource,
-  setParentObservabilityLogId,
 
   // Propagation - Extraction
   extractFromHeaders,
   extractFromSqs,
+  extractFromSqsRecord,
   extractFromSns,
   extractFromEventBridge,
   extractFromStepFunctions,
@@ -50,55 +59,126 @@ export {
 export type { Actor } from '../core/types/execution-context';
 
 // ============================================================================
-// Internal convenience aliases (used by observability internals)
+// Internal Helper (used by observability internals only)
 // ============================================================================
 
-import {
-  getCurrentExecutionContext,
-  createExecutionContext,
-  runWithExecutionContext,
-  runWithExecutionContextSync,
-  type ExecutionContextData,
-  type CreateExecutionContextOptions,
-} from '../core/runtime/execution-context';
+import { getCurrentExecutionContext, type ExecutionContextData } from '../core/runtime/execution-context';
 
-/** @internal Alias for getCurrentExecutionContext */
-export function getCurrentContext(): ExecutionContextData | undefined {
-  return getCurrentExecutionContext();
-}
-
-/** @internal Get correlation ID if context exists */
+/** 
+ * Get correlation ID if context exists - for internal use by observers
+ * @internal
+ */
 export function getCorrelationIdIfExists(): string | undefined {
   return getCurrentExecutionContext()?.correlationId;
 }
 
-// ============================================================================
-// Testing utilities - types and functions for testing
-// ============================================================================
-
-/** Type alias for testing */
-export type ObservationContext = ExecutionContextData;
-
-/** Create observation context - alias for createExecutionContext */
-export function createObservationContext(
-  correlationId: string,
-  options?: Omit<CreateExecutionContextOptions, 'correlationId'>
-): ObservationContext {
-  return createExecutionContext({ correlationId, ...options });
+/**
+ * Get current context - simpler name for internal use
+ * @internal
+ */
+export function getCurrentContext(): ExecutionContextData | undefined {
+  return getCurrentExecutionContext();
 }
 
-/** Run with context - alias for runWithExecutionContext */
-export function runWithContext<T>(
-  context: ObservationContext,
-  fn: () => Promise<T>
-): Promise<T> {
-  return runWithExecutionContext(context, fn);
-}
+// ============================================================================
+// Context Override - Scoped context changes
+// ============================================================================
 
-/** Run with context sync - alias for runWithExecutionContextSync */
-export function runWithContextSync<T>(
-  context: ObservationContext,
+import { runWithExecutionContext, runWithExecutionContextSync, createExecutionContext } from '../core/runtime/execution-context';
+import type { ContextOverrides } from './types';
+import { merge } from '../utils/merge';
+
+/**
+ * Run function with context overrides.
+ * Supports both sync and async functions automatically.
+ * 
+ * All override fields are optional - only override what you need.
+ * Tags are merged with existing by default.
+ * 
+ * @example
+ * ```typescript
+ * // Override actor for system operations
+ * withContext({ actor: systemActor }, () => {
+ *   AuditObserver.entityDelete('User', userId, data);
+ * });
+ * 
+ * // Add batch tags
+ * await withContext({ tags: { batchId: 'batch-123' } }, async () => {
+ *   for (const item of items) {
+ *     await processItem(item);
+ *   }
+ * });
+ * 
+ * // Override source for a scope
+ * withContext({ source: 'WorkflowEngine' }, () => {
+ *   // All logs/spans in here will have source='WorkflowEngine'
+ * });
+ * ```
+ */
+export function withContext<T>(
+  overrides: ContextOverrides,
   fn: () => T
 ): T {
-  return runWithExecutionContextSync(context, fn);
+  const currentCtx = getCurrentExecutionContext();
+
+  if (!currentCtx) {
+    // No context exists - create one if correlationId is provided, otherwise just run
+    if (overrides.correlationId) {
+      const newCtx = createExecutionContext({
+        correlationId: overrides.correlationId,
+        causedBy: overrides.causedBy,
+        actor: overrides.actor,
+        source: overrides.source,
+        tags: overrides.tags ?? overrides.replaceTags,
+        metadata: overrides.metadata, // metadata goes to state.metadata
+      });
+      // IMPORTANT: run fn INSIDE the newly created execution context.
+      // Do NOT call fn() before runWithExecutionContext(), or spans/logs won't see the context.
+      const result = fn();
+      if (result instanceof Promise) {
+        return runWithExecutionContext(newCtx, () => result) as T;
+      }
+      return runWithExecutionContextSync(newCtx, () => result);
+    }
+    // No correlationId and no context - just run
+    return fn();
+  }
+
+  // Build overridden context
+  const newObservability = { ...currentCtx.observability };
+
+  if (overrides.source !== undefined) {
+    newObservability.source = overrides.source;
+  }
+
+  if (overrides.replaceTags !== undefined) {
+    // Replace tags entirely
+    newObservability.tags = { ...overrides.replaceTags };
+  } else if (overrides.tags !== undefined) {
+    // Merge tags (shallow is fine for flat key-value)
+    newObservability.tags = { ...currentCtx.observability.tags, ...overrides.tags };
+  }
+
+  // Deep merge metadata into context metadata (flows to event.metadata)
+  if (overrides.metadata !== undefined) {
+    newObservability.metadata = merge([
+      currentCtx.observability.metadata,
+      overrides.metadata
+    ]) ?? {};
+  }
+
+  const newCtx: ExecutionContextData = {
+    ...currentCtx,
+    correlationId: overrides.correlationId ?? currentCtx.correlationId,
+    causedBy: overrides.causedBy ?? currentCtx.causedBy,
+    actor: overrides.actor ?? currentCtx.actor,
+    observability: newObservability,
+  };
+
+  // IMPORTANT: run fn INSIDE the overridden execution context.
+  const result = fn();
+  if (result instanceof Promise) {
+    return runWithExecutionContext(newCtx, () => result) as T;
+  }
+  return runWithExecutionContextSync(newCtx, () => result);
 }

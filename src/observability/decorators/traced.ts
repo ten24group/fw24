@@ -2,6 +2,7 @@
  * @Traced Decorator - Automatic span tracing for methods
  * 
  * Wraps a method in a span, automatically recording duration and errors.
+ * Parent tracking is FULLY AUTOMATIC via span tree.
  * 
  * Usage:
  * ```typescript
@@ -11,146 +12,104 @@
  *     // Method body is automatically traced
  *   }
  *   
- *   @Traced({ name: 'custom-operation', level: 'debug' })
- *   async internalProcess(): Promise<void> {
- *     // Custom span name and level
- *   }
+ *   @Traced({ name: 'custom.operation', level: 'debug' })
+ *   async helperMethod(): Promise<void> { }
  * }
  * ```
- * 
- * REQUIREMENTS:
- * - Must be called within an observation context (runWithContext)
- * - Otherwise creates a NoOp span that doesn't record anything
  */
 
-import { setParentObservabilityLogId, getCurrentContext } from '../context';
-import { normalizeError } from '../observers/base';
+import { getCurrentExecutionContext } from '../../core/runtime/execution-context';
 import { SpanObserver, SpanOptions } from '../observers/span';
+import type { NoiseControl } from '../types';
 import { safeSerialize } from '../utils/payload';
-import { executeWithHandlers, SourceType, resolveSource } from './decorator-utils';
-
+import { SourceType, resolveSource } from './decorator-utils';
 
 export interface TracedOptions {
   /** Custom span name (defaults to ClassName.methodName) */
   name?: string;
   /** Span level */
   level?: SpanOptions[ 'level' ];
-  /** Additional attributes to add to span */
-  attributes?: Record<string, unknown>;
   /** Tags for filtering */
   tags?: Record<string, string>;
-  /** Whether to capture method arguments in span attributes */
+  /** Initial data payload */
+  data?: Record<string, unknown>;
+  /** Capture method arguments */
   captureArgs?: boolean;
-  /** Whether to capture return value in span attributes */
+  /** Capture return value */
   captureResult?: boolean;
-  /** 
-   * Source type for the span (auto-detected if not provided)
-   * Auto-detection rules:
-   * - *Controller → 'controller'
-   * - *Service → 'service'
-   * - *Queue, *QueueHandler → 'queue'
-   * - *Task, *TaskHandler → 'task'
-   * - Default → 'handler'
-   */
+  /** Source type (auto-detected if not provided) */
   sourceType?: SourceType;
-  /**
-   * Conditionally enable/disable tracing.
-   * - Static boolean: `enabled: false` to disable
-   * - Dynamic function: `enabled: () => someCondition()`
-   * Function receives no arguments but can access getCurrentContext() internally.
-   * Default: true (enabled)
-   */
+  /** Conditionally enable/disable */
   enabled?: boolean | (() => boolean);
+  /** Capture control options */
+  capture?: SpanOptions[ 'capture' ];
+
+  /**
+   * Noise reduction override for this traced span.
+   * Convenience for setting `capture.noise` without having to build CaptureControl manually.
+   */
+  noise?: NoiseControl;
 }
 
 /**
  * Method decorator that wraps a method in a trace span
- * 
- * @param options - Tracing options
  */
 export function Traced(options: TracedOptions = {}) {
-  return function <T extends (...args: unknown[]) => unknown>(
+  return function <T extends (...args: any[]) => any>(
     target: object,
     propertyKey: string | symbol,
     descriptor: TypedPropertyDescriptor<T>
   ): TypedPropertyDescriptor<T> {
     const originalMethod = descriptor.value;
-
     if (typeof originalMethod !== 'function') {
       return descriptor;
     }
 
+    // Pre-compute static values
     const className = target.constructor.name;
     const methodName = String(propertyKey);
     const spanName = options.name ?? `${className}.${methodName}`;
-
-    // Resolve source using shared utility (auto-detects if sourceType not provided)
     const source = resolveSource(options.sourceType, className, methodName);
 
-    // Wrap method - handles both sync and async via result checking
-    // This is more robust than checking constructor.name which can break with transpilation
-    const wrappedMethod = function (this: unknown, ...args: unknown[]): unknown {
-      // Check if tracing is enabled (static or dynamic)
-      if (options.enabled !== undefined) {
-        const isEnabled = typeof options.enabled === 'function'
-          ? options.enabled()
-          : options.enabled;
-
-        if (!isEnabled) {
-          // Tracing disabled - execute method without span
-          return (originalMethod as (...a: unknown[]) => unknown).apply(this, args);
-        }
+    descriptor.value = function (this: ThisParameterType<T>, ...args: Parameters<T>): ReturnType<T> {
+      // Early exits
+      if (!isEnabled(options) || !getCurrentExecutionContext()) {
+        return originalMethod.apply(this, args) as ReturnType<T>;
       }
 
-      const spanOptions: SpanOptions = {
-        level: options.level,
-        attributes: {
-          'code.function': methodName,
-          'code.namespace': className,
-          ...options.attributes,
-          ...(options.captureArgs && args.length > 0 && { args: safeSerialize(args) }),
+      return SpanObserver.wrap(
+        spanName,
+        () => {
+          return originalMethod.apply(this, args) as ReturnType<T>;
         },
-        tags: options.tags,
-        source,
-      };
-
-      // CRITICAL FIX: Snapshot the current parent BEFORE starting the span
-      // This prevents sibling operations (e.g., multiple calls in a loop) from forming a chain
-      const ctx = getCurrentContext();
-      const previousParentId = ctx?.parentObservabilityLogId;
-
-      const span = SpanObserver.start(spanName, spanOptions);
-
-      // Update context so child operations can link to this span
-      // This is critical for SpanObserver.addEventToCurrentSpan() and nested spans
-      setParentObservabilityLogId(span.id);
-
-      // Execute method with automatic sync/async handling
-      return executeWithHandlers(
-        originalMethod as (...args: unknown[]) => unknown,
-        this,
-        args,
-        (success, result, error) => {
-          if (success) {
-            if (options.captureResult && result !== undefined) {
-              span.setAttribute('result', safeSerialize(result));
-            }
-            span.end({ success: true });
-          } else {
-            span.end({ success: false, error: normalizeError(error) });
-          }
-          
-          // CRITICAL FIX: Restore the previous parent ID after span ends
-          // This ensures sibling operations see the correct parent, not the just-completed span
-          if (previousParentId !== undefined) {
-            setParentObservabilityLogId(previousParentId);
-          }
+        {
+          level: options.level,
+          capture: options.noise
+            ? { ...(options.capture ?? {}), noise: options.noise }
+            : options.capture,
+          source,
+          tags: {
+            ...options.tags,
+            'code.function': methodName,
+            'code.namespace': className,
+          },
+          data: {
+            ...options.data,
+            ...(options.captureArgs && args.length > 0 && { args: safeSerialize(args) }),
+          },
         }
-      );
-    };
-    descriptor.value = wrappedMethod as T;
+      ) as ReturnType<T>;
+    } as T;
 
     return descriptor;
   };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+function isEnabled(options: TracedOptions): boolean {
+  if (options.enabled === undefined) return true;
+  return typeof options.enabled === 'function' ? options.enabled() : options.enabled;
+}

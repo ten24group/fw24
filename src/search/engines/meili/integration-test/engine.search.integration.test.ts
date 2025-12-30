@@ -32,8 +32,6 @@ describe('MeiliSearchEngine Search Operations Integration Tests', () => {
   });
 
   it('should perform a search with filters', async () => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
     const result = await engine.search<any>({
       search: 'document',
       filters: { category: { eq: 'tutorial' } }
@@ -44,8 +42,6 @@ describe('MeiliSearchEngine Search Operations Integration Tests', () => {
   });
 
   it('should perform a search with complex filters', async () => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
     const result = await engine.search<any>({
       search: 'document',
       filters: {
@@ -61,8 +57,6 @@ describe('MeiliSearchEngine Search Operations Integration Tests', () => {
   });
 
   it('should search with OR filters', async () => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
     const result = await engine.search<any>({
       search: 'document',
       filters: {
@@ -78,8 +72,6 @@ describe('MeiliSearchEngine Search Operations Integration Tests', () => {
   });
 
   it('should search with NOT filters', async () => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
     const result = await engine.search<any>({
       search: 'document',
       filters: {

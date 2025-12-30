@@ -1,43 +1,71 @@
 /**
- * Base utilities for observers
+ * Base Observer Utilities
  * 
- * Provides shared functionality to reduce code duplication across observers.
- * All observers should use these utilities instead of duplicating logic.
+ * Provides shared functionality for all observers:
+ * - Event capture via IEventCapture interface
+ * - Context resolution utilities
+ * - Error normalization
+ * - ID generation
  * 
- * TESTABILITY: Uses IEventCapture interface with setCapturer() for dependency injection.
- * In tests, call setCapturer(mockCapturer) before running observer tests.
+ * DESIGN:
+ * - Observers use RecordOverrides from types.ts for options
+ * - No duplicate type definitions here
+ * - Simple capture function that takes CaptureInput
+ * - Context resolution handled by manager
  */
 
-import { randomUUID } from 'crypto';
-import { Actor, ExecutionContext } from '../../core/types/execution-context';
-import { getCurrentContext, getCorrelationIdIfExists } from '../context';
-import { CaptureInput, CaptureOptions, IEventCapture, ObservabilityError } from '../types';
+import type { Actor } from '../../core/types/execution-context';
+import {
+  getCurrentExecutionContext,
+  getObservabilityState,
+  getCurrentParentObservabilityLogId,
+} from '../../core/runtime/execution-context/storage';
+import type { CaptureInput, IEventCapture, ObservabilityError, RecordOverrides } from '../types';
 import { createLogger } from '../../logging';
-import { generateTraceId, generateSpanId } from '../utils/id-generator';
+import { generateTraceId, generateSpanId, generateObservabilityLogId } from '../utils/id-generator';
+import { merge } from '../../utils/merge';
 
 const baseLogger = createLogger('Observer');
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CAPTURER REGISTRY
+// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Event Capturer Registry
  * 
- * Simple registry - no lazy loading, no circular dependencies.
- * ObservabilityManager MUST call initialize() during its initialization.
+ * Simple registry for the event capturer (ObservabilityManager).
+ * Enables testability via dependency injection.
  */
 class CapturerRegistry {
   private capturer: IEventCapture | null = null;
+  private warnedNotInitialized = false;
 
-  /**
-     * Initialize the capturer (called by ObservabilityManager during initialization)
-   */
+  /** Initialize the capturer (called by ObservabilityManager during initialization) */
   initialize(capturer: IEventCapture): void {
     if (!this.capturer) {
       this.capturer = capturer;
+      this.warnedNotInitialized = false; // Reset warning flag on initialization
     }
   }
 
-  /**
-     * Get the event capturer. Throws if not initialized.
+  /** 
+   * Get the event capturer or null if not initialized.
+   * Use this for soft-fail capture (won't crash application code if observability isn't initialized yet).
    */
+  tryGet(): IEventCapture | null {
+    if (!this.capturer && !this.warnedNotInitialized) {
+      this.warnedNotInitialized = true;
+      baseLogger.warn(
+        'Observability not initialized. ObservabilityManager must initialize before observers can be used. ' +
+        'Observability events will be silently dropped until initialization. ' +
+        'This usually means observers are being used before the framework has initialized.'
+      );
+    }
+    return this.capturer;
+  }
+
+  /** Get the event capturer. Throws if not initialized. */
   get(): IEventCapture {
     if (!this.capturer) {
       throw new Error(
@@ -49,258 +77,97 @@ class CapturerRegistry {
     return this.capturer;
   }
 
-  /**
-     * Set a custom capturer (for testing)
-   * 
-   * @example
-   * ```typescript
-   * // In tests:
-   * const mockCapturer = {
-   *   capture: jest.fn().mockReturnValue('test-log-id'),
-   *   captureAsync: jest.fn().mockResolvedValue('test-log-id'),
-   * };
-   * setCapturer(mockCapturer);
-     * ```
-     */
+  /** Set a custom capturer (for testing) */
   set(capturer: IEventCapture): void {
     this.capturer = capturer;
   }
 
-  /**
-   * Reset to uninitialized state (for testing cleanup)
-   */
+  /** Reset to uninitialized state (for testing cleanup) */
   reset(): void {
     this.capturer = null;
+    this.warnedNotInitialized = false;
   }
 }
 
-// Singleton instance
 const capturerRegistry = new CapturerRegistry();
 
-/**
- * Initialize the capturer - called by ObservabilityManager
- * @internal
- */
+/** Initialize the capturer - called by ObservabilityManager @internal */
 export function initializeCapturer(capturer: IEventCapture): void {
   capturerRegistry.initialize(capturer);
 }
 
-/**
- * Get the event capturer (lazy-loads manager if needed)
- * @internal
- */
-function getCapturer(): IEventCapture {
-  return capturerRegistry.get();
-}
-
-/**
- * Set a custom event capturer (for testing)
- */
+/** Set a custom event capturer (for testing) */
 export function setCapturer(capturer: IEventCapture): void {
   capturerRegistry.set(capturer);
 }
 
-/**
- * Reset capturer to default (for testing cleanup)
- */
+/** Reset capturer to default (for testing cleanup) */
 export function resetCapturer(): void {
   capturerRegistry.reset();
 }
 
-/**
- * Standard payload fields for observability events
- * 
- * STRICT SEMANTICS - WHAT GOES WHERE:
- * 
- * - `metrics`: NUMERIC values for aggregation/dashboards (counts, durations, sizes)
- *   Example: { 'api.duration': 1250, 'db.rows_processed': 500 }
- * 
- * - `attributes`: SIMPLE, SEARCHABLE values for filtering/querying (IDs, names, statuses, flags)
- *   Example: { 'user.id': 'user-123', 'http.method': 'POST', 'error.type': 'ValidationError' }
- * 
- * - `data`: COMPLEX objects/arrays for detailed inspection (request bodies, error details, nested structures)
- *   Example: { requestBody: {...}, errors: [...], config: {...} }
- * 
- * See OBSERVABILITY_FIELD_SEMANTICS.md for complete rules and examples.
- */
-export interface ObservabilityPayload {
-  /** 
-   * Structured data for auditing/detailed inspection
-   * Use for: Request/response bodies, complex objects, arrays, nested structures
-   * DON'T use for: Simple values (use attributes), numeric metrics (use metrics)
-   */
-  data?: Record<string, unknown>;
+// ═══════════════════════════════════════════════════════════════════════════
+// ID GENERATION
+// ═══════════════════════════════════════════════════════════════════════════
 
-  /** 
-   * Embedded metrics for CloudWatch EMF (NUMBERS ONLY)
-   * Use for: Counts, durations, sizes, rates, percentages
-   * DON'T use for: Strings, booleans, IDs (use attributes)
-   */
-  metrics?: Record<string, number>;
-
-  /** 
-   * Span/trace attributes for filtering and searching
-   * Use for: IDs, names, statuses, flags, simple searchable values
-   * DON'T use for: Complex objects (use data), numeric metrics (use metrics)
-   */
-  attributes?: Record<string, unknown>;
-}
-
-/**
- * Standard options shared by all observers
- */
-export interface BaseObserverOptions {
-  /** Explicit correlation ID (defaults to context) */
-  correlationId?: string;
-  /** Correlation ID that caused this event (cross-invocation tracing) */
-  causedBy?: string;
-  /** All related trace IDs (for complex workflows) */
-  relatedTraces?: string[];
-  /** Actor performing the action */
-  actor?: Actor;
-  /** Source identifier */
-  source?: string;
-  /** 
-   * Tags for high-level grouping and classification (STRINGS ONLY)
-   * Use for: Environment, service name, feature flags, team ownership
-   * DON'T use for: Request-specific data (use attributes), metrics, detailed values
-   */
-  tags?: Record<string, string>;
-  /** Additional metadata */
-  metadata?: Record<string, unknown>;
-}
-
-/**
- * Common fields derived from context and options
- */
-export interface CommonFields {
-  correlationId: string;
-  causedBy?: string;
-  relatedTraces?: string[];
-  actor?: Actor;
-  source?: string;
-  tags?: Record<string, string>;
-  metadata?: Record<string, unknown>;
-}
-
-/**
- * Generate a unique ID
- */
+/** Generate a unique ID (W3C Span ID format - 16 hex chars) */
 export function generateId(): string {
-  // Use W3C Span ID format (16 hex chars) by default for compatibility
   return generateSpanId();
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTEXT RESOLUTION
+// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Resolve correlation ID from explicit value or context.
  * 
- * If no correlationId is available:
- * - In development (NODE_ENV !== 'production'): throws error for fast failure
- * - In production: auto-generates with warning for resilience
+ * Returns undefined if no correlationId is available - caller should NOT capture.
+ * NEVER auto-generates - that would break trace continuity and hide bugs.
  */
-export function resolveCorrelationId(
-  observerName: string,
-  explicitId?: string
-): string {
-  let correlationId = explicitId ?? getCorrelationIdIfExists();
+export function resolveCorrelationId(observerName: string, explicitId?: string): string | undefined {
+  const ctx = getCurrentExecutionContext();
+  const correlationId = explicitId ?? ctx?.correlationId;
 
   if (!correlationId) {
-    const message =
-      `${observerName}: No observability context established. ` +
-      'Establish context with runWithContext() before using observers. ';
-
-    // In development, fail fast to catch context issues early
-    if (process.env.NODE_ENV !== 'production') {
-      baseLogger.error(message + 'This will auto-generate in production but should be fixed.');
-      // Don't throw - just log error. Observability should never crash the app.
-    }
-
-    // Auto-generate correlationId to maintain observability
-    // Use W3C Trace ID format (32 hex chars)
-    correlationId = generateTraceId();
-    baseLogger.warn(message + `Auto-generated correlationId: ${correlationId}`);
+    baseLogger.warn(
+      `${observerName}: No execution context established. ` +
+      'Context is auto-established in controllers, or use runWithExecutionContext() before using observers. ' +
+      'Event will NOT be captured - fix the missing context.'
+    );
+    return undefined;
   }
 
   return correlationId;
 }
 
 /**
- * Merge tags from context and options
+ * Merge tags from multiple sources.
+ * Later sources override earlier ones.
  */
-export function mergeObserverTags(
-  contextTags?: Record<string, string>,
-  optionTags?: Record<string, string>
+export function mergeTags(
+  ...sources: Array<Record<string, string> | undefined>
 ): Record<string, string> | undefined {
-  if (!contextTags && !optionTags) return undefined;
-  return { ...contextTags, ...optionTags };
-}
+  const result: Record<string, string> = {};
+  let hasAny = false;
 
-/**
- * Build common fields from context and options.
- * Always returns fields - auto-generates correlationId if needed.
- */
-export function buildCommonFields(
-  observerName: string,
-  options?: BaseObserverOptions
-): CommonFields {
-  const context = getCurrentContext();
-  const correlationId = resolveCorrelationId(observerName, options?.correlationId);
-
-  return {
-    correlationId,
-    causedBy: options?.causedBy ?? context?.causedBy,
-    relatedTraces: options?.relatedTraces,
-    actor: options?.actor ?? context?.actor,
-    source: options?.source ?? context?.source,
-    tags: mergeObserverTags(context?.tags, options?.tags),
-    metadata: options?.metadata,
-  };
-}
-
-/**
- * Extract BaseObserverOptions from ExecutionContext or pass through if already options.
- * 
- * When an ExecutionContext (the handler context with event/request/response) is passed,
- * extracts all observability fields from executionContext (the AsyncLocalStorage context),
- * with fallbacks for backward compatibility.
- */
-export function extractObserverOptions(
-  ctx?: ExecutionContext | BaseObserverOptions
-): BaseObserverOptions {
-  if (!ctx) return {};
-
-  // Check if this is a handler ExecutionContext (has event and lambdaContext)
-  if ('event' in ctx && 'lambdaContext' in ctx) {
-    const handlerCtx = ctx as ExecutionContext;
-    return {
-      // Prefer executionContext fields (the real trace data from AsyncLocalStorage)
-      // Fall back to actor/lambdaContext for backward compatibility
-      correlationId: handlerCtx.executionContext?.correlationId
-        ?? handlerCtx.actor?.correlationId
-        ?? handlerCtx.lambdaContext?.awsRequestId,
-      causedBy: handlerCtx.executionContext?.causedBy,
-      actor: handlerCtx.actor,
-      source: handlerCtx.executionContext?.source,
-      tags: handlerCtx.executionContext?.tags,
-    };
+  for (const source of sources) {
+    if (source) {
+      Object.assign(result, source);
+      hasAny = true;
+    }
   }
 
-  return ctx as BaseObserverOptions;
+  return hasAny ? result : undefined;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ERROR HANDLING
+// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Normalize an unknown caught value to an Error.
- * In JavaScript, catch blocks can receive any value, not just Error objects.
- * 
- * @example
- * ```typescript
- * try {
- *   // ...
- * } catch (error) {
- *   const normalizedError = normalizeError(error);
- *   span.end({ success: false, error: normalizedError });
- * }
- * ```
+ * In JavaScript, catch blocks can receive any value.
  */
 export function normalizeError(error: unknown): Error {
   if (error instanceof Error) {
@@ -310,7 +177,6 @@ export function normalizeError(error: unknown): Error {
     return new Error(error);
   }
   if (error !== null && typeof error === 'object') {
-    // Handle error-like objects with message property
     const errorObj = error as Record<string, unknown>;
     if (typeof errorObj.message === 'string') {
       const err = new Error(errorObj.message);
@@ -323,7 +189,6 @@ export function normalizeError(error: unknown): Error {
       return err;
     }
   }
-  // Fallback: stringify whatever we got
   return new Error(String(error));
 }
 
@@ -331,7 +196,6 @@ export function normalizeError(error: unknown): Error {
  * Map Error to ObservabilityError format
  */
 export function mapError(error: Error): ObservabilityError {
-  // Check for code property (common in Node.js errors)
   const code = 'code' in error && typeof error.code === 'string' ? error.code : undefined;
   return {
     type: error.name,
@@ -341,74 +205,157 @@ export function mapError(error: Error): ObservabilityError {
   };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CAPTURE FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
 /**
- * Capture an event using common fields.
- * Handles all the boilerplate - observers should use this instead of calling capture directly.
+ * Build complete CaptureInput from partial input + context.
  * 
- * Uses getCapturer() for testability - in tests, call setCapturer(mockCapturer) first.
+ * This is the key function that resolves context and fills in defaults.
+ * Observers call this with their specific fields, context fills the rest.
+ * 
+ * Returns undefined if no correlationId can be resolved - event should NOT be captured.
  */
-export function captureEvent(
-  fields: CommonFields,
-  event: Omit<CaptureInput, 'correlationId' | 'observabilityLogId' | 'timestampMs'> & {
+export function buildCaptureInput(
+  observerName: string,
+  input: Omit<CaptureInput, 'correlationId' | 'observabilityLogId' | 'timestampMs'> & {
+    correlationId?: string;
     observabilityLogId?: string;
     timestampMs?: number;
-  },
-  options?: CaptureOptions
-): string | undefined {
-  const context = getCurrentContext();
-  return getCapturer().capture(
-    {
-      ...event,
-      correlationId: fields.correlationId,
-      observabilityLogId: event.observabilityLogId ?? generateId(),
-      timestampMs: event.timestampMs ?? Date.now(),
-      // Pass parentObservabilityLogId from event, or fall back to context
-      // null means "explicitly no parent" - don't override it
-      parentObservabilityLogId: event.parentObservabilityLogId !== undefined
-        ? event.parentObservabilityLogId
-        : context?.parentObservabilityLogId,
-      causedBy: event.causedBy ?? fields.causedBy,
-      relatedTraces: event.relatedTraces ?? fields.relatedTraces,
-      actor: event.actor ?? fields.actor,
-      source: event.source ?? fields.source,
-      tags: mergeObserverTags(fields.tags, event.tags),
-      metadata: event.metadata ?? fields.metadata,
-    },
-    options
-  );
+  }
+): CaptureInput | undefined {
+  const ctx = getCurrentExecutionContext();
+  const state = getObservabilityState();
+
+  // Resolve correlationId - if undefined, we can't capture
+  // Pass only explicit input.correlationId - resolveCorrelationId handles context fallback
+  const correlationId = resolveCorrelationId(observerName, input.correlationId);
+  if (!correlationId) {
+    return undefined;
+  }
+
+  // Resolve parent: explicit > context span tree > undefined
+  const parentLogId = input.parentObservabilityLogId !== undefined
+    ? input.parentObservabilityLogId
+    : getCurrentParentObservabilityLogId();
+
+  // NOTE:
+  // Parent/child integrity is enforced at flush-time by building a graph of buffered events.
+  // We intentionally do not do any manual "parent reference registration" here.
+
+  return {
+    // Identity
+    observabilityLogId: input.observabilityLogId ?? generateObservabilityLogId(correlationId),
+    timestampMs: input.timestampMs ?? Date.now(),
+
+    // Classification (required from input)
+    type: input.type,
+    level: input.level,
+
+    // Trace context
+    correlationId,
+    parentObservabilityLogId: parentLogId ?? undefined,
+    causedBy: input.causedBy ?? ctx?.causedBy,
+    relatedTraces: input.relatedTraces,
+
+    // Entity
+    entityName: input.entityName,
+    entityId: input.entityId,
+
+    // Operation
+    operation: input.operation,
+    subType: input.subType,
+    status: input.status,
+    success: input.success,
+    durationMs: input.durationMs,
+
+    // Actor & source (from input or context)
+    actor: input.actor ?? ctx?.actor,
+    source: input.source ?? state?.source,
+    tags: mergeTags(state?.tags, input.tags),
+
+    // Payloads
+    data: input.data,
+    attributes: input.attributes,
+    // Deep merge context-level metadata (from withContext) with event-level metadata
+    metadata: state?.metadata || input.metadata
+      ? (merge([ state?.metadata, input.metadata ]) ?? undefined)
+      : undefined,
+    metrics: input.metrics,
+    context: input.context,
+    error: input.error,
+
+    // Capture control (pass through as-is)
+    capture: input.capture,
+  };
 }
 
 /**
- * Capture an event asynchronously using common fields.
- * Use when you need to await backend completion (e.g., for critical audits).
+ * Capture an event.
+ * 
+ * This is the main function observers use. It:
+ * 1. Builds complete CaptureInput from partial input + context
+ * 2. Sends to capturer (ObservabilityManager)
+ * 
+ * Returns undefined if:
+ * - Observability not initialized
+ * - No execution context (no correlationId)
+ * - Filtered/sampled out
+ * 
+ * @param observerName - Name of the calling observer (for error messages)
+ * @param input - Partial input (required: type, level)
+ * @returns observabilityLogId if captured, undefined otherwise
  */
-export async function captureEventAsync(
-  fields: CommonFields,
-  event: Omit<CaptureInput, 'correlationId' | 'observabilityLogId' | 'timestampMs'> & {
+export function captureRecord(
+  observerName: string,
+  input: Omit<CaptureInput, 'correlationId' | 'observabilityLogId' | 'timestampMs'> & RecordOverrides & {
     observabilityLogId?: string;
     timestampMs?: number;
-  },
-  options?: Omit<CaptureOptions, 'sync'>
+  }
+): string | undefined {
+  // Defensive: don't crash user code if observability not initialized
+  const capturer = capturerRegistry.tryGet();
+  if (!capturer) {
+    return undefined;
+  }
+
+  // Build full input - returns undefined if no context (no correlationId)
+  const fullInput = buildCaptureInput(observerName, input);
+  if (!fullInput) {
+    return undefined;
+  }
+
+  return capturer.capture(fullInput);
+}
+
+/**
+ * Capture an event asynchronously.
+ * Use when you need to await backend completion.
+ * 
+ * Returns undefined if:
+ * - Observability not initialized
+ * - No execution context (no correlationId)
+ * - Filtered/sampled out
+ */
+export async function captureRecordAsync(
+  observerName: string,
+  input: Omit<CaptureInput, 'correlationId' | 'observabilityLogId' | 'timestampMs'> & RecordOverrides & {
+    observabilityLogId?: string;
+    timestampMs?: number;
+  }
 ): Promise<string | undefined> {
-  const context = getCurrentContext();
-  return getCapturer().captureAsync(
-    {
-      ...event,
-      correlationId: fields.correlationId,
-      observabilityLogId: event.observabilityLogId ?? generateId(),
-      timestampMs: event.timestampMs ?? Date.now(),
-      // Pass parentObservabilityLogId from event, or fall back to context
-      // null means "explicitly no parent" - don't override it
-      parentObservabilityLogId: event.parentObservabilityLogId !== undefined
-        ? event.parentObservabilityLogId
-        : context?.parentObservabilityLogId,
-      causedBy: event.causedBy ?? fields.causedBy,
-      relatedTraces: event.relatedTraces ?? fields.relatedTraces,
-      actor: event.actor ?? fields.actor,
-      source: event.source ?? fields.source,
-      tags: mergeObserverTags(fields.tags, event.tags),
-      metadata: event.metadata ?? fields.metadata,
-    },
-    options
-  );
+  // Defensive: don't crash user code if observability not initialized
+  const capturer = capturerRegistry.tryGet();
+  if (!capturer) {
+    return undefined;
+  }
+
+  // Build full input - returns undefined if no context (no correlationId)
+  const fullInput = buildCaptureInput(observerName, input);
+  if (!fullInput) {
+    return undefined;
+  }
+
+  return capturer.captureAsync(fullInput);
 }

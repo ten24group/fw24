@@ -10,6 +10,11 @@
 
 import { randomBytes } from 'crypto';
 
+function toHex32(id: string): string {
+  const hex = id.replace(/[^a-fA-F0-9]/g, '').toLowerCase();
+  return hex.length >= 32 ? hex.substring(0, 32) : hex.padEnd(32, '0');
+}
+
 /**
  * Generate a W3C-compliant Trace ID (16 bytes / 32 hex chars)
  */
@@ -26,8 +31,24 @@ export function generateSpanId(): string {
 }
 
 /**
- * Generate a generic unique ID (for backward compatibility or non-trace entities)
- * Uses Span ID format (16 hex chars) to maintain consistency
+ * Generate an observability log ID (DynamoDB PK).
+ *
+ * IMPORTANT:
+ * ObservabilityLog IDs must be globally unique across a high-volume, TTL'd table.
+ * A raw 8-byte span id has non-zero collision risk at scale (birthday bound).
+ *
+ * We namespace the random span id by the current slice correlationId to make collisions
+ * effectively impossible across invocations:
+ *
+ *   <32-hex correlationId> "-" <16-hex spanId>
+ */
+export function generateObservabilityLogId(correlationId: string): string {
+  return `${toHex32(correlationId)}-${generateSpanId()}`;
+}
+
+/**
+ * Generate a generic unique ID (legacy).
+ * Prefer generateObservabilityLogId() when correlationId is available.
  */
 export function generateId(): string {
   return generateSpanId();

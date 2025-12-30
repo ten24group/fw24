@@ -10,16 +10,34 @@ const MAX_PAYLOAD_BYTES = 350 * 1024; // 350KB (leaving room for other fields)
 /**
  * Safely stringify an object, handling circular references
  */
-export function safeStringify(value: unknown, visited = new WeakSet<object>()): unknown {
+export type SerializableValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | SerializableValue[]
+  | { [ key: string ]: SerializableValue };
+
+function isObject(value: unknown): value is object {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Safely convert an input into a JSON-serializable-ish shape, handling circular references.
+ *
+ * NOTE: This intentionally preserves `undefined` (JSON drops it in objects; arrays stringify it as null).
+ */
+export function safeStringify(value: unknown, visited = new WeakSet<object>()): SerializableValue {
   if (value === null || typeof value !== 'object') {
-    return value;
+    return value as SerializableValue;
   }
 
-  if (visited.has(value)) {
+  if (visited.has(value as object)) {
     return '[Circular]';
   }
 
-  visited.add(value);
+  visited.add(value as object);
 
   if (Array.isArray(value)) {
     return value.map((item) => safeStringify(item, visited));
@@ -30,8 +48,8 @@ export function safeStringify(value: unknown, visited = new WeakSet<object>()): 
     result[ key ] = safeStringify(val, visited);
   }
 
-  visited.delete(value);
-  return result;
+  visited.delete(value as object);
+  return result as SerializableValue;
 }
 
 /**
@@ -133,11 +151,15 @@ export function isPayloadWithinLimits(payload: unknown, maxBytes: number = MAX_P
  */
 export function safeSerialize(value: unknown, maxLength: number = 1000): unknown {
   try {
-    const str = JSON.stringify(value);
+    const sanitized = safeStringify(value);
+    const str = JSON.stringify(sanitized);
+    if (str === undefined) {
+      return '[unserializable]';
+    }
     if (str.length > maxLength) {
       return str.substring(0, maxLength) + '...[truncated]';
     }
-    return value;
+    return sanitized;
   } catch {
     return '[unserializable]';
   }

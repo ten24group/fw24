@@ -1,46 +1,73 @@
 /**
- * MetricObserver - For business and technical metrics
+ * MetricObserver - Business and technical metrics
  * 
- * DESIGN PRINCIPLES:
- * - Requires correlationId from context
- * - Supports counters, gauges, timings, histograms
- * - EMF-compatible for CloudWatch
+ * Supports counters, gauges, timings, histograms.
+ * EMF-compatible for CloudWatch.
+ * 
+ * CONSOLIDATION: When an active span exists, metrics are added to the span
+ * instead of creating separate records. This reduces DynamoDB entries while
+ * still publishing metrics to CloudWatch (which extracts from any event).
  * 
  * Usage:
  * ```typescript
- * // FIRST: Establish context
- * await runWithContext(
- *   createObservationContext(requestId),
- *   async () => {
- *     // Simple counter
- *     MetricObserver.increment('orders.created');
- *     
- *     // Gauge value
- *     MetricObserver.gauge('queue.depth', 42);
- *     
- *     // Timing
- *     MetricObserver.timing('api.latency', 145);
- *     
- *     // Custom with tags
- *     MetricObserver.record('payment.amount', 99.99, {
- *       tags: { currency: 'USD', method: 'card' },
- *       unit: 'dollars',
- *     });
- *   }
- * );
+ * // Context is auto-established in controllers
+ * 
+ * // Simple counter
+ * MetricObserver.increment('orders.created');
+ * 
+ * // Gauge value
+ * MetricObserver.gauge('queue.depth', 42);
+ * 
+ * // Timing
+ * MetricObserver.timing('api.latency', 145);
+ * 
+ * // Custom with tags
+ * MetricObserver.record('payment.amount', 99.99, {
+ *   tags: { currency: 'USD', method: 'card' },
+ *   unit: 'dollars',
+ * });
  * ```
  */
 
-import { ObservabilityLevelString } from '../types';
-import { buildCommonFields, captureEvent, BaseObserverOptions, ObservabilityPayload } from './base';
+import type { ObservabilityLevelString, RecordOverrides } from '../types';
+import { captureRecord } from './base';
 import { createLogger } from '../../logging';
+import { SpanObserver } from './span';
 
 const OBSERVER_NAME = 'MetricObserver';
 const logger = createLogger(OBSERVER_NAME);
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Types
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Options for metric operations.
+ * Extends RecordOverrides for all context override capabilities.
+ */
+export interface MetricOptions extends RecordOverrides {
+  /** Metric type */
+  type?: 'counter' | 'gauge' | 'timing' | 'histogram' | 'custom';
+  /** Unit (e.g., 'milliseconds', 'bytes', 'count') */
+  unit?: string;
+  /** Severity level (metrics typically trace-info, rarely warn/error) */
+  level?: ObservabilityLevelString;
+  /** Entity name for context */
+  entityName?: string;
+  /** Entity ID for context */
+  entityId?: string;
+  /** Additional attributes */
+  attributes?: Record<string, unknown>;
+  /** Force standalone record even when span is active */
+  standalone?: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Internal Helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
 /**
  * Validate a metric value
- * Returns true if valid, logs warning and returns false if invalid
  */
 function isValidMetricValue(name: string, value: number): boolean {
   if (typeof value !== 'number') {
@@ -58,18 +85,9 @@ function isValidMetricValue(name: string, value: number): boolean {
   return true;
 }
 
-export interface MetricOptions extends BaseObserverOptions, ObservabilityPayload {
-  /** Metric type */
-  type?: 'counter' | 'gauge' | 'timing' | 'histogram' | 'custom';
-  /** Unit (e.g., 'milliseconds', 'bytes', 'count') */
-  unit?: string;
-  /** Severity level (metrics typically trace-info, rarely warn/error) */
-  level?: ObservabilityLevelString;
-  /** Entity name for context */
-  entityName?: string;
-  /** Entity ID for context */
-  entityId?: string;
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// MetricObserver
+// ═══════════════════════════════════════════════════════════════════════════
 
 export class MetricObserver {
 
@@ -133,7 +151,11 @@ export class MetricObserver {
   }
 
   /**
-   * Record custom metric
+   * Record custom metric.
+   * 
+   * When an active span exists, the metric is consolidated into the span
+   * (added as a span event) instead of creating a separate record.
+   * Use `standalone: true` to force a separate record.
    */
   static record(
     name: string,
@@ -145,27 +167,56 @@ export class MetricObserver {
       return undefined;
     }
 
-    const fields = buildCommonFields(OBSERVER_NAME, options);
+    const {
+      type,
+      unit,
+      level,
+      entityName,
+      entityId,
+      attributes,
+      standalone,
+      tags,
+      ...overrides
+    } = options ?? {};
 
-    return captureEvent(fields, {
+    // Consolidate into current span if one exists (unless standalone is requested)
+    const currentSpan = standalone ? undefined : SpanObserver.getCurrentSpan();
+    if (currentSpan) {
+      // Use clean API - metric goes to metrics, context to tags
+      currentSpan.metric(name, value);
+      if (unit) currentSpan.tag(`${name}.unit`, unit);
+      if (type) currentSpan.tag(`${name}.type`, type);
+      if (entityName) currentSpan.tag('entityName', entityName);
+      if (entityId) currentSpan.tag('entityId', entityId);
+      currentSpan.checkpoint(`metric.${name}`);
+      return currentSpan.id;
+    }
+
+    // No active span - create standalone metric record
+    return captureRecord(OBSERVER_NAME, {
       type: 'metric',
-      subType: options?.type ?? 'custom',
-      level: options?.level ?? 'info',
+      subType: type ?? 'custom',
+      level: level ?? 'info',
       operation: name,
       metrics: { [ name ]: value },
       attributes: {
-        unit: options?.unit,
-        metricType: options?.type,
-        ...options?.attributes,
+        unit,
+        metricType: type,
+        ...attributes,
       },
-      entityName: options?.entityName,
-      entityId: options?.entityId,
+      entityName,
+      entityId,
+      tags,
+      ...overrides,
     });
   }
 
   /**
-   * Record multiple metrics at once
+   * Record multiple metrics at once.
    * Invalid values (NaN, Infinity) are filtered out with warnings.
+   * 
+   * When an active span exists, metrics are consolidated into the span.
+   * Use `standalone: true` to force a separate record.
    */
   static recordBatch(
     metrics: Record<string, number>,
@@ -185,59 +236,75 @@ export class MetricObserver {
       return undefined;
     }
 
-    const fields = buildCommonFields(OBSERVER_NAME, options);
+    const {
+      type,
+      unit,
+      level,
+      entityName,
+      entityId,
+      attributes,
+      standalone,
+      tags,
+      ...overrides
+    } = options ?? {};
 
-    return captureEvent(fields, {
+    // Consolidate into current span if one exists
+    const currentSpan = standalone ? undefined : SpanObserver.getCurrentSpan();
+    if (currentSpan) {
+      // Use clean API
+      currentSpan.metrics(validMetrics);
+      currentSpan.metric('metricCount', Object.keys(validMetrics).length);
+      if (entityName) currentSpan.tag('entityName', entityName);
+      if (entityId) currentSpan.tag('entityId', entityId);
+      currentSpan.checkpoint('metrics.batch');
+      return currentSpan.id;
+    }
+
+    // No active span - create standalone metric record
+    return captureRecord(OBSERVER_NAME, {
       type: 'metric',
       subType: 'batch',
-      level: options?.level ?? 'info',
+      level: level ?? 'info',
       operation: 'metrics.batch',
       metrics: validMetrics,
       attributes: {
-        ...options?.attributes,
+        ...attributes,
         metricCount: Object.keys(validMetrics).length,
       },
+      entityName,
+      entityId,
+      tags,
+      ...overrides,
     });
   }
 
   /**
-   * Time a function execution and record the duration
+   * Time a function execution and record the duration.
+   * Handles both sync and async functions automatically.
    */
-  static async time<T>(
-    name: string,
-    fn: () => Promise<T>,
-    options?: MetricOptions
-  ): Promise<T> {
+  static time<T>(name: string, fn: () => T, options?: MetricOptions): T {
     const start = Date.now();
-    try {
-      const result = await fn();
-      const duration = Date.now() - start;
-      this.timing(name, duration, { ...options, tags: { ...options?.tags, success: 'true' } });
-      return result;
-    } catch (error) {
-      const duration = Date.now() - start;
-      this.timing(name, duration, { ...options, level: 'warn', tags: { ...options?.tags, success: 'false' } });
-      throw error;
-    }
-  }
+    const recordTiming = (success: boolean) => {
+      this.timing(name, Date.now() - start, {
+        ...options,
+        level: success ? options?.level : 'warn',
+        tags: { ...options?.tags, success: String(success) },
+      });
+    };
 
-  /**
-   * Time a sync function execution and record the duration
-   */
-  static timeSync<T>(
-    name: string,
-    fn: () => T,
-    options?: MetricOptions
-  ): T {
-    const start = Date.now();
     try {
       const result = fn();
-      const duration = Date.now() - start;
-      this.timing(name, duration, { ...options, tags: { ...options?.tags, success: 'true' } });
+
+      if (result instanceof Promise) {
+        return result
+          .then((value) => { recordTiming(true); return value; })
+          .catch((error) => { recordTiming(false); throw error; }) as T;
+      }
+
+      recordTiming(true);
       return result;
     } catch (error) {
-      const duration = Date.now() - start;
-      this.timing(name, duration, { ...options, level: 'warn', tags: { ...options?.tags, success: 'false' } });
+      recordTiming(false);
       throw error;
     }
   }

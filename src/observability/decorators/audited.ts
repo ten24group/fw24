@@ -22,19 +22,13 @@
  *   }
  * }
  * ```
- * 
- * REQUIREMENTS:
- * - Must be called within an observation context (runWithContext)
- * - Otherwise logs warning and doesn't record anything
  */
 
-import { createLogger } from '../../logging';
+import { getCurrentExecutionContext } from '../../core/runtime/execution-context';
 import { AuditObserver } from '../observers/audit';
 import { normalizeError } from '../observers/base';
 import { safeSerialize } from '../utils/payload';
 import { executeWithHandlers } from './decorator-utils';
-
-const logger = createLogger('AuditedDecorator');
 
 export interface AuditedOptions {
   /** Audit operation name (defaults to ClassName.methodName) */
@@ -53,95 +47,91 @@ export interface AuditedOptions {
   dataExtractor?: (args: unknown[], result?: unknown) => Record<string, unknown>;
   /** Tags for filtering */
   tags?: Record<string, string>;
+  /** Conditionally enable/disable */
+  enabled?: boolean | (() => boolean);
 }
 
 /**
  * Method decorator that records an audit event for method calls
- * 
- * @param options - Audit options
  */
 export function Audited(options: AuditedOptions = {}) {
-  return function <T extends (...args: unknown[]) => unknown>(
+  return function <T extends (...args: any[]) => any>(
     target: object,
     propertyKey: string | symbol,
     descriptor: TypedPropertyDescriptor<T>
   ): TypedPropertyDescriptor<T> {
     const originalMethod = descriptor.value;
-
     if (typeof originalMethod !== 'function') {
       return descriptor;
     }
 
+    // Pre-compute static values
     const className = target.constructor.name;
     const methodName = String(propertyKey);
     const operation = options.operation ?? `${className}.${methodName}`;
+    const source = `${className}.${methodName}`;
 
-    // Wrap method - automatic sync/async handling
-    const wrappedMethod = function (this: unknown, ...args: unknown[]): unknown {
+    descriptor.value = function (this: ThisParameterType<T>, ...args: Parameters<T>): ReturnType<T> {
+      // Early exits
+      if (!isEnabled(options) || !getCurrentExecutionContext()) {
+        return originalMethod.apply(this, args) as ReturnType<T>;
+      }
+
       const startTime = Date.now();
 
       return executeWithHandlers(
-        originalMethod as (...args: unknown[]) => unknown,
+        originalMethod,
         this,
         args,
         (success, result, error) => {
-          recordAudit({
+          recordAudit(
             operation,
+            source,
             options,
             args,
             result,
             success,
-            error: error ? normalizeError(error) : undefined,
-            durationMs: Date.now() - startTime,
-            className,
-            methodName,
-          });
+            Date.now() - startTime,
+            error ? normalizeError(error) : undefined
+          );
         }
       );
-    };
-    descriptor.value = wrappedMethod as T;
+    } as T;
 
     return descriptor;
   };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Record the audit event
- */
-function recordAudit(params: {
-  operation: string;
-  options: AuditedOptions;
-  args: unknown[];
-  result?: unknown;
-  success: boolean;
-  error?: Error;
-  durationMs: number;
-  className: string;
-  methodName: string;
-}): void {
-  const { operation, options, args, result, success, error, durationMs, className, methodName } = params;
+function isEnabled(options: AuditedOptions): boolean {
+  if (options.enabled === undefined) return true;
+  return typeof options.enabled === 'function' ? options.enabled() : options.enabled;
+}
 
+function recordAudit(
+  operation: string,
+  source: string,
+  options: AuditedOptions,
+  args: unknown[],
+  result: unknown,
+  success: boolean,
+  durationMs: number,
+  error?: Error
+): void {
   // Build audit data
-  let data: Record<string, unknown> = {
-    success,
-    durationMs,
-  };
+  let data: Record<string, unknown> = { success, durationMs };
 
   // Use custom data extractor if provided
   if (options.dataExtractor) {
-    try {
-      data = {
-        ...data,
-        ...options.dataExtractor(args, result),
-      };
-    } catch {
-      // Ignore extractor errors
-    }
+    // No defensive fallbacks: extractor errors should surface (tests + caller visibility).
+    data = { ...data, ...options.dataExtractor(args, result) };
   } else {
     // Capture args if requested
     if (options.captureArgs && args.length > 0) {
-      if (options.argNames && options.argNames.length > 0) {
+      if (options.argNames?.length) {
         // Capture specific named arguments
         const namedArgs: Record<string, unknown> = {};
         options.argNames.forEach((name, index) => {
@@ -163,21 +153,16 @@ function recordAudit(params: {
 
   // Add error info if failed
   if (error) {
-    data.error = {
-      type: error.name,
-      message: error.message,
-    };
+    data.error = { type: error.name, message: error.message };
   }
 
-  // AuditObserver.record will automatically pick up actor/correlationId/causedBy from context
-  // No need to pass them explicitly - let the lower level handle it!
+  // AuditObserver.record picks up actor/correlationId/causedBy from context automatically
   AuditObserver.record({
     operation,
     entityName: options.entityName,
     data,
     level: error ? 'error' : (options.level ?? 'info'),
-    source: `${className}.${methodName}`,
+    source,
     tags: options.tags,
   });
 }
-

@@ -19,7 +19,6 @@ import {
   createExecutionContext,
   extractFromHeaders,
   runWithExecutionContext,
-  setParentObservabilityLogId
 } from './execution-context';
 import { RequestContext } from "./request-context";
 import { ResponseConfig, mergeResponseConfig } from "./response-config";
@@ -221,52 +220,32 @@ export abstract class APIController extends AbstractLambdaHandler {
     const observabilityConfig = this.getObservabilityConfig(route);
     const defaultSource = `${this.constructor.name}.${route?.functionName || 'handler'}`;
 
-    // Extract trace context from incoming headers
+    // Extract upstream trace context from incoming headers.
+    // IMPORTANT (framework contract):
+    // - correlationId is per-invocation (local slice)
+    // - causedBy links to upstream invocation/trace
     const traceContext = extractFromHeaders(request.headers || {});
-    // Use W3C Trace ID format for consistency with observability system
-    const correlationId = traceContext?.correlationId || request.requestId || generateTraceId();
+    const correlationId = request.requestId || generateTraceId();
+    const causedBy = traceContext?.causedBy ?? traceContext?.correlationId;
 
     // Create execution context with custom source and tags from decorator
     const execCtx = createExecutionContext({
       correlationId,
-      parentObservabilityLogId: traceContext?.parentObservabilityLogId,
-      causedBy: traceContext?.causedBy,
+      causedBy,
       actor: ctx.actor,
       sampled: traceContext?.sampled,
       source: observabilityConfig?.source || defaultSource,
       tags: observabilityConfig?.tags,
     });
 
+    // Build span attributes (includes request data capture)
+    const spanAttributes = this.buildSpanAttributes(event, request, observabilityConfig);
+
+    // Build automatic tags for easy filtering
+    const automaticTags = this.buildAutomaticTags(request, ctx.actor, event);
+
     // Run entire handler within execution context
     return runWithExecutionContext(execCtx, async () => {
-      // Build span attributes (includes request data capture)
-      const spanAttributes = this.buildSpanAttributes(event, request, observabilityConfig);
-
-      // Build automatic tags for easy filtering
-      const automaticTags = this.buildAutomaticTags(request, ctx.actor, event);
-
-      // Create root span with custom source, tags, and attributes from decorator
-      const requestSpan = SpanObserver.start(`HTTP ${request.httpMethod} ${request.path}`, {
-        correlationId,
-        parentObservabilityLogId: traceContext?.parentObservabilityLogId,
-        causedBy: traceContext?.causedBy,
-        actor: ctx.actor,
-        source: observabilityConfig?.source || defaultSource,
-        tags: {
-          ...automaticTags,
-          ...observabilityConfig?.tags, // Decorator tags override automatic
-        },
-        attributes: {
-          ...spanAttributes,
-          'http.route': route?.functionName,
-          'http.controller': this.constructor.name,
-          ...observabilityConfig?.attributes,
-        },
-      });
-
-      // Store span ID in execution context for child spans
-      setParentObservabilityLogId(requestSpan.id);
-
       // Set ctx.executionContext to point to the execution context
       ctx.executionContext = execCtx;
 
@@ -276,81 +255,108 @@ export abstract class APIController extends AbstractLambdaHandler {
         ctx.actor.correlationId = correlationId;
       }
 
-      let spanEnded = false;
-      const endSpan = async (success: boolean, error?: Error, finalResponse?: Response) => {
-        if (!spanEnded) {
-          if (finalResponse && observabilityConfig?.enabled !== false) {
-            const responseAttrs = this.buildResponseAttributes(finalResponse, observabilityConfig);
-            if (responseAttrs) {
-              requestSpan.setAttributes(responseAttrs);
+      // Use the base class helper for span + flush pattern
+      return this.executeWithSpanAndFlush(
+        `HTTP ${request.httpMethod} ${request.path}`,
+        async (requestSpan) => {
+          try {
+            // Legacy initialize method for backward compatibility
+            await this.initialize(event, context);
+
+            // Execute before middleware
+            await this.executeMiddlewarePipeline('before', request, response, ctx);
+
+            // Validate the request if validations are defined
+            if (route?.validations) {
+              const validationResult = await this.validate(request, route.validations);
+              if (!validationResult.pass) {
+                // Add validation failure to span for debugging
+                if (validationResult.errors && validationResult.errors.length > 0) {
+                  requestSpan.checkpoint('validation.failed', {
+                    tags: {
+                      'validation.failed': 'true',
+                    },
+                    metrics: {
+                      'validation.error_count': validationResult.errors.length,
+                    },
+                    data: {
+                      validationErrors: validationResult.errors,
+                    },
+                  });
+                }
+                throw new ValidationFailedError(validationResult.errors);
+              }
             }
-          }
-          requestSpan.end({ success, error });
-          spanEnded = true;
-        }
-        await this.flushObservability();
-      };
 
-      try {
-        // Legacy initialize method for backward compatibility
-        await this.initialize(event, context);
-
-        // Execute before middleware
-        await this.executeMiddlewarePipeline('before', request, response, ctx);
-
-        // Validate the request if validations are defined
-        if (route?.validations) {
-          const validationResult = await this.validate(request, route.validations);
-          if (!validationResult.pass) {
-            // Add validation failure event to span for debugging
-            if (validationResult.errors && validationResult.errors.length > 0) {
-              requestSpan.addEvent('validation.failed', {
-                level: 'info',
-                metrics: {
-                  'validation.error_count': validationResult.errors.length,
-                },
-                attributes: {
-                  'validation.failed': true,
-                },
-                data: {
-                  errors: validationResult.errors,
-                },
-              });
+            // Call the route function
+            const routeFunction = this.getRouteFunction(route);
+            let controllerResponse: any = routeFunction.call(this, request, response, ctx);
+            if (controllerResponse instanceof Promise) {
+              controllerResponse = await controllerResponse;
             }
-            throw new ValidationFailedError(validationResult.errors);
+
+            // Execute after middleware
+            await this.executeMiddlewarePipeline('after', request, response, ctx);
+
+            // If the controller returned anything, emit that
+            if (controllerResponse != null) {
+              if (observabilityConfig?.enabled !== false) {
+                const responseAttrs = this.buildResponseAttributes(response, observabilityConfig);
+                if (responseAttrs) {
+                  // Status code as metric, rest as data
+                  if (responseAttrs[ 'http.statusCode' ]) {
+                    requestSpan.metric('http.statusCode', responseAttrs[ 'http.statusCode' ] as number);
+                  }
+                  requestSpan.setData(responseAttrs);
+                }
+              }
+              // Flush happens automatically in executeWithSpanAndFlush's finally block
+              return this.handleResponse(controllerResponse);
+            }
+
+            // Fallback to the in-memory responseContext
+            if (observabilityConfig?.enabled !== false) {
+              const responseAttrs = this.buildResponseAttributes(response, observabilityConfig);
+              if (responseAttrs) {
+                if (responseAttrs[ 'http.statusCode' ]) {
+                  requestSpan.metric('http.statusCode', responseAttrs[ 'http.statusCode' ] as number);
+                }
+                requestSpan.setData(responseAttrs);
+              }
+            }
+            // Flush happens automatically in executeWithSpanAndFlush's finally block
+            return response.build();
+
+          } catch (err) {
+            const errorObj = err instanceof Error ? err : new Error(String(err));
+            this.logger.error('LambdaHandler error: ', errorObj);
+
+            // Execute error middleware
+            await this.executeMiddlewarePipeline('onError', request, response, ctx, errorObj);
+
+            // Flush happens automatically in executeWithSpanAndFlush's finally block
+            // Note: withSpan will call span.end({ success: false, error }) automatically
+            // We still need to return a response (error handler may have modified it)
+            throw errorObj;
           }
+        },
+        {
+          correlationId,
+          causedBy: traceContext?.causedBy,
+          actor: ctx.actor,
+          source: observabilityConfig?.source || defaultSource,
+          tags: {
+            ...automaticTags,
+            ...observabilityConfig?.tags,
+            ...spanAttributes,
+            'http.route': route?.functionName || '',
+            'http.controller': this.constructor.name,
+          },
         }
-
-        // Call the route function
-        const routeFunction = this.getRouteFunction(route);
-        let controllerResponse: any = routeFunction.call(this, request, response, ctx);
-        if (controllerResponse instanceof Promise) {
-          controllerResponse = await controllerResponse;
-        }
-
-        // Execute after middleware
-        await this.executeMiddlewarePipeline('after', request, response, ctx);
-
-        // If the controller returned anything, emit that
-        if (controllerResponse != null) {
-          await endSpan(true, undefined, response);
-          return this.handleResponse(controllerResponse);
-        }
-
-      } catch (err) {
-        const errorObj = err instanceof Error ? err : new Error(String(err));
-        this.logger.error('LambdaHandler error: ', errorObj);
-
-        // Execute error middleware
-        await this.executeMiddlewarePipeline('onError', request, response, ctx, errorObj);
-
-        await endSpan(false, errorObj, response);
-        return this.handleException(request, errorObj, response);
-      }
-
-      // Fallback to the in-memory responseContext
-      await endSpan(true, undefined, response);
-      return response.build();
+      ).catch((err) => {
+        // Handle error response after span ends
+        return this.handleException(request, err instanceof Error ? err : new Error(String(err)), response);
+      });
     });
   }
 
@@ -511,13 +517,15 @@ export abstract class APIController extends AbstractLambdaHandler {
     let controller: any = this;
 
     // Determine the controller base path by finding the longest common prefix that ends with the controller name
-    let controllerBasePath = `/${controller.controllerName}`;
+    const controllerName = typeof controller.controllerName === 'string' ? controller.controllerName : '';
+    let controllerBasePath = controllerName ? `/${controllerName}` : '';
     let resourceWithoutRoot = '/';
 
     // For controllers in subdirectories, we need to match the actual resource path
     // Check if resource contains the controller name as part of a longer path
-    const resourceParts = requestData.resource.split('/').filter(Boolean);
-    const controllerNameParts = controller.controllerName.split('/').filter(Boolean);
+    const requestResource = (requestData.resource || requestData.path || '/') as string;
+    const resourceParts = requestResource.split('/').filter(Boolean);
+    const controllerNameParts = controllerName.split('/').filter(Boolean);
 
     // Find if the controller name parts are present in the resource path
     let basePathEndIndex = -1;
@@ -546,8 +554,11 @@ export abstract class APIController extends AbstractLambdaHandler {
       resourceWithoutRoot = remainingParts.length > 0 ? '/' + remainingParts.join('/') : '/';
     } else {
       // Fallback to original logic for simple cases
-      if (requestData.resource.startsWith(controllerBasePath)) {
-        resourceWithoutRoot = requestData.resource.substring(controllerBasePath.length) || '/';
+      if (controllerBasePath && requestResource.startsWith(controllerBasePath)) {
+        resourceWithoutRoot = requestResource.substring(controllerBasePath.length) || '/';
+      } else if (!controllerBasePath) {
+        // No controllerName configured: treat the full resource as the route path.
+        resourceWithoutRoot = requestResource || '/';
       }
     }
 

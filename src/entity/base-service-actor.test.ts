@@ -4,6 +4,8 @@ import { ExecutionContext, Actor } from '../core/types/execution-context';
 import { DIContainer } from '../di';
 import { EntityConfiguration } from 'electrodb';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { SpanObserver } from '../observability/observers/span';
+import { cleanupTestObservability, createTestContext, setupTestObservability, type MockBackend } from '../observability/testing';
 
 // Test entity schema with actor fields
 const TestEntitySchema = createEntitySchema({
@@ -53,7 +55,7 @@ const TestEntitySchema = createEntitySchema({
     primary: {
       pk: {
         field: 'pk',
-        composite: ['testId']
+        composite: [ 'testId' ]
       },
       sk: {
         field: 'sk',
@@ -87,7 +89,7 @@ const MinimalEntitySchema = createEntitySchema({
     primary: {
       pk: {
         field: 'pk',
-        composite: ['minimalId']
+        composite: [ 'minimalId' ]
       },
       sk: {
         field: 'sk',
@@ -180,11 +182,18 @@ function createMockExecutionContext(actor?: Actor): ExecutionContext {
 describe('BaseEntityService Actor Context Injection', () => {
   let service: TestEntityService;
   let minimalService: MinimalEntityService;
+  let backend: MockBackend;
 
   beforeEach(() => {
+    // Enable aggressive span filtering to ensure "pinned parent" spans still survive.
+    backend = setupTestObservability({ enabled: true, skipEmptySpans: true, minSpanDurationMs: 999999 });
     service = new TestEntityService();
     minimalService = new MinimalEntityService();
     jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanupTestObservability();
   });
 
   describe('hasAttribute utility function', () => {
@@ -220,7 +229,7 @@ describe('BaseEntityService Actor Context Injection', () => {
     it('should inject all actor fields when schema has them and actor context exists', () => {
       const mockActor = createMinimalActor();
       const ctx = createMockExecutionContext(mockActor);
-      
+
       const inputData = {
         title: 'Test Title',
         content: 'Test Content'
@@ -235,7 +244,7 @@ describe('BaseEntityService Actor Context Injection', () => {
       expect((result as any).updatedBy).toBe('user-456');
       expect((result as any).tenantId).toBe('tenant-abc');
       expect((result as any)._actor).toEqual(mockActor);
-      
+
       // Timestamps should be system-generated (current time)
       expect((result as any).createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -246,7 +255,7 @@ describe('BaseEntityService Actor Context Injection', () => {
     it('should only inject fields that exist in schema', () => {
       const mockActor = createMinimalActor();
       const ctx = createMockExecutionContext(mockActor);
-      
+
       const inputData = {
         name: 'Test Name'
       };
@@ -266,7 +275,7 @@ describe('BaseEntityService Actor Context Injection', () => {
     it('should handle missing actorId gracefully', () => {
       const mockActor = createMinimalActor({ actorId: undefined });
       const ctx = createMockExecutionContext(mockActor);
-      
+
       const inputData = {
         title: 'Test Title'
       };
@@ -277,11 +286,11 @@ describe('BaseEntityService Actor Context Injection', () => {
       expect(result.title).toBe('Test Title');
       expect((result as any).tenantId).toBe('tenant-abc'); // tenantId is set even when actorId is undefined
       expect((result as any)._actor).toEqual(mockActor);
-      
+
       // createdBy and updatedBy should not be set when actorId is undefined
       expect(result).not.toHaveProperty('createdBy');
       expect(result).not.toHaveProperty('updatedBy');
-      
+
       // But timestamps should be system-generated
       expect((result as any).createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -292,7 +301,7 @@ describe('BaseEntityService Actor Context Injection', () => {
     it('should handle missing tenantId gracefully', () => {
       const mockActor = createMinimalActor({ tenantId: undefined });
       const ctx = createMockExecutionContext(mockActor);
-      
+
       const inputData = {
         title: 'Test Title'
       };
@@ -304,10 +313,10 @@ describe('BaseEntityService Actor Context Injection', () => {
       expect((result as any).createdBy).toBe('user-456');
       expect((result as any).updatedBy).toBe('user-456');
       expect((result as any)._actor).toEqual(mockActor);
-      
+
       // tenantId should not be set when undefined
       expect(result).not.toHaveProperty('tenantId');
-      
+
       // Timestamps should be system-generated
       expect((result as any).createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -316,11 +325,40 @@ describe('BaseEntityService Actor Context Injection', () => {
     });
   });
 
+  describe('Parent span linkage for audits (_actor.parentObservabilityLogId)', () => {
+    it('should NOT set _actor.parentObservabilityLogId (parent is strict in-slice only; cross-hop uses causedBy)', async () => {
+      const actor = createFullMockActor({
+        correlationId: 'corr-1',
+        // parentObservabilityLogId should never be inferred/persisted for cross-hop linkage.
+        parentObservabilityLogId: undefined,
+      });
+
+      let spanId: string | undefined;
+
+      await createTestContext(async () => {
+        await SpanObserver.withSpan('request', async (span) => {
+          spanId = span.id;
+
+          // Simulate an update payload and omit ctx so injectActorContext reads actor from ALS.
+          const payload = { testId: '1', title: 't' };
+          const enhanced = service.testInjectActorContext(payload, 'update');
+
+          expect((enhanced as any)._actor).toBeTruthy();
+          expect((enhanced as any)._actor.parentObservabilityLogId).toBeUndefined();
+        });
+      }, { actor });
+
+      // This test is about actor propagation rules, not span filtering behavior.
+      // Span capture depends on the current observability config (skipEmpty/minDuration/noise reduction).
+      expect(spanId).toBeTruthy();
+    });
+  });
+
   describe('Actor context injection for UPDATE operations', () => {
     it('should inject update fields but not create fields', () => {
       const mockActor = createMinimalActor();
       const ctx = createMockExecutionContext(mockActor);
-      
+
       const inputData = {
         title: 'Updated Title',
         content: 'Updated Content'
@@ -334,11 +372,11 @@ describe('BaseEntityService Actor Context Injection', () => {
       expect((result as any).updatedBy).toBe('user-456');
       expect((result as any).tenantId).toBe('tenant-abc');
       expect((result as any)._actor).toEqual(mockActor);
-      
+
       // Should not set create fields for update operation
       expect(result).not.toHaveProperty('createdBy');
       expect(result).not.toHaveProperty('createdAt');
-      
+
       // updatedAt should be system-generated
       expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       expect(new Date((result as any).updatedAt).getTime()).toBeGreaterThan(Date.now() - 5000);
@@ -347,7 +385,7 @@ describe('BaseEntityService Actor Context Injection', () => {
     it('should handle update operation with minimal schema', () => {
       const mockActor = createMinimalActor();
       const ctx = createMockExecutionContext(mockActor);
-      
+
       const inputData = {
         name: 'Updated Name'
       };
@@ -366,7 +404,7 @@ describe('BaseEntityService Actor Context Injection', () => {
     it('should preserve existing data and only add actor context', () => {
       const mockActor = createMinimalActor();
       const ctx = createMockExecutionContext(mockActor);
-      
+
       const inputData = {
         title: 'Updated Title',
         existingField: 'existing value',
@@ -382,7 +420,7 @@ describe('BaseEntityService Actor Context Injection', () => {
       expect((result as any).updatedBy).toBe('user-456');
       expect((result as any).tenantId).toBe('tenant-abc');
       expect((result as any)._actor).toEqual(mockActor);
-      
+
       // updatedAt should be system-generated
       expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       expect(new Date((result as any).updatedAt).getTime()).toBeGreaterThan(Date.now() - 5000);
@@ -406,7 +444,7 @@ describe('BaseEntityService Actor Context Injection', () => {
 
     it('should return original data when execution context has no actor', () => {
       const ctx = createMockExecutionContext(); // No actor provided
-      
+
       const inputData = {
         title: 'Test Title',
         content: 'Test Content'
@@ -423,7 +461,7 @@ describe('BaseEntityService Actor Context Injection', () => {
     it('should handle empty input data', () => {
       const mockActor = createMinimalActor();
       const ctx = createMockExecutionContext(mockActor);
-      
+
       const inputData = {};
 
       const result = service.testInjectActorContext(inputData, 'create', ctx);
@@ -433,7 +471,7 @@ describe('BaseEntityService Actor Context Injection', () => {
       expect((result as any).updatedBy).toBe('user-456');
       expect((result as any).tenantId).toBe('tenant-abc');
       expect((result as any)._actor).toEqual(mockActor);
-      
+
       // Timestamps should be system-generated
       expect((result as any).createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -444,7 +482,7 @@ describe('BaseEntityService Actor Context Injection', () => {
     it('should overwrite existing actor fields with current actor context', () => {
       const mockActor = createMinimalActor();
       const ctx = createMockExecutionContext(mockActor);
-      
+
       const inputData = {
         title: 'Test Title',
         createdBy: 'existing-creator',
@@ -462,7 +500,7 @@ describe('BaseEntityService Actor Context Injection', () => {
 
     it('should handle complex actor context', () => {
       const complexActor = createFullMockActor({
-        cognitoGroups: ['admin', 'user', 'manager'],
+        cognitoGroups: [ 'admin', 'user', 'manager' ],
         rawAuthContext: {
           sub: 'sub-789',
           'cognito:username': 'john.doe',
@@ -471,13 +509,13 @@ describe('BaseEntityService Actor Context Injection', () => {
         },
         customField: 'custom value',
         nestedData: {
-          permissions: ['read', 'write'],
+          permissions: [ 'read', 'write' ],
           metadata: { role: 'admin' }
         }
       });
-      
+
       const ctx = createMockExecutionContext(complexActor);
-      
+
       const inputData = {
         title: 'Test Title'
       };
@@ -485,7 +523,7 @@ describe('BaseEntityService Actor Context Injection', () => {
       const result = service.testInjectActorContext(inputData, 'create', ctx);
 
       expect((result as any)._actor).toEqual(complexActor);
-      expect((result as any)._actor.cognitoGroups).toEqual(['admin', 'user', 'manager']);
+      expect((result as any)._actor.cognitoGroups).toEqual([ 'admin', 'user', 'manager' ]);
       expect((result as any)._actor.rawAuthContext).toEqual({
         sub: 'sub-789',
         'cognito:username': 'john.doe',
@@ -499,12 +537,12 @@ describe('BaseEntityService Actor Context Injection', () => {
     it('should maintain data type integrity', () => {
       const mockActor = createMinimalActor();
       const ctx = createMockExecutionContext(mockActor);
-      
+
       const inputData = {
         title: 'Test Title',
         numberField: 42,
         booleanField: true,
-        arrayField: [1, 2, 3],
+        arrayField: [ 1, 2, 3 ],
         objectField: { nested: 'value' }
       };
 
@@ -517,13 +555,13 @@ describe('BaseEntityService Actor Context Injection', () => {
       expect(typeof result.objectField).toBe('object');
       expect(result.numberField).toBe(42);
       expect(result.booleanField).toBe(true);
-      expect(result.arrayField).toEqual([1, 2, 3]);
+      expect(result.arrayField).toEqual([ 1, 2, 3 ]);
     });
 
     it('should not mutate original input data', () => {
       const mockActor = createMinimalActor();
       const ctx = createMockExecutionContext(mockActor);
-      
+
       const originalData = {
         title: 'Test Title',
         content: 'Test Content'
@@ -537,7 +575,7 @@ describe('BaseEntityService Actor Context Injection', () => {
         title: 'Test Title',
         content: 'Test Content'
       });
-      
+
       // Result should have additional fields
       expect(result).toHaveProperty('createdBy');
       expect(result).toHaveProperty('_actor');
@@ -549,9 +587,9 @@ describe('BaseEntityService Actor Context Injection', () => {
     it('should handle actor with null timestamp', () => {
       const mockActor = createMinimalActor({ timestamp: null as any });
       const ctx = createMockExecutionContext(mockActor);
-      
+
       const result = service.testInjectActorContext({ title: 'Test' }, 'create', ctx);
-      
+
       // Even with null actor timestamp, database timestamps should use current system time
       expect((result as any).createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -560,14 +598,14 @@ describe('BaseEntityService Actor Context Injection', () => {
     });
 
     it('should handle extremely large actor context', () => {
-      const largeRawContext = Array.from({ length: 1000 }, (_, i) => [`key${i}`, `value${i}`])
-        .reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {});
-      
+      const largeRawContext = Array.from({ length: 1000 }, (_, i) => [ `key${i}`, `value${i}` ])
+        .reduce((acc, [ k, v ]) => ({ ...acc, [ k ]: v }), {});
+
       const mockActor = createFullMockActor({ rawAuthContext: largeRawContext });
       const ctx = createMockExecutionContext(mockActor);
-      
+
       const result = service.testInjectActorContext({ title: 'Test' }, 'create', ctx);
-      
+
       expect((result as any)._actor.rawAuthContext).toEqual(largeRawContext);
     });
 
@@ -576,9 +614,9 @@ describe('BaseEntityService Actor Context Injection', () => {
       const circularObj: any = { self: null };
       circularObj.self = circularObj;
       (mockActor as any).circular = circularObj;
-      
+
       const ctx = createMockExecutionContext(mockActor);
-      
+
       // Should not throw error
       expect(() => {
         service.testInjectActorContext({ title: 'Test' }, 'create', ctx);

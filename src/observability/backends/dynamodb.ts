@@ -10,6 +10,7 @@ import { createLogger } from '../../logging';
 import { ObservabilityLogCreateItem, ObservabilityLogService } from '../storage/service';
 import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel } from '../types';
 import { estimateItemSize, truncatePayload } from '../utils/payload';
+import { compressItem, type CompressionConfig } from '../utils/compression';
 
 const logger = createLogger('DynamoDBObservabilityBackend');
 
@@ -29,14 +30,17 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
 
   private buffer: ObservabilityEvent[] = [];
   private readonly ttlDays: number;
+  private readonly compressionConfig: CompressionConfig;
 
   constructor(
     @InjectConfig('observability.dynamodb.ttlDays') ttlDays: number,
     @InjectConfig('observability.minLevel') minLevel: ObservabilityLevel,
+    @InjectConfig('observability.dynamodb.compression') compression: CompressionConfig,
     @Inject(ObservabilityLogService) private readonly service: ObservabilityLogService
   ) {
     this.minLevel = minLevel;
     this.ttlDays = ttlDays;
+    this.compressionConfig = compression;
   }
 
   initializeInvocation(): void {
@@ -44,6 +48,17 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
   }
 
   async capture(event: ObservabilityEvent): Promise<void> {
+    // CRITICAL: span.start events should NEVER be stored in DynamoDB
+    // They are only for OTEL's span tracking. Skip them entirely.
+    if (event.type === 'span.start') {
+      // This shouldn't happen if filtering works, but guard against it
+      logger.debug('Skipping span.start event in DynamoDB backend', {
+        observabilityLogId: event.observabilityLogId,
+        operation: event.operation,
+      });
+      return; // Skip - do NOT buffer
+    }
+
     this.buffer.push(event);
 
     if (this.buffer.length >= DYNAMO_BATCH_SIZE) {
@@ -100,11 +115,23 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
     const MAX_RETRIES = 2;
 
     try {
-      const ttlSeconds = Math.floor(Date.now() / 1000) + this.ttlDays * 24 * 60 * 60;
+      const nowSeconds = Math.floor(Date.now() / 1000);
 
-      const items = events.map((event) => this.mapEventToItem(event, ttlSeconds));
+      const items = events.map((event) => {
+        // Use per-event TTL override if specified, otherwise use default
+        const ttlDays = event.capture?.ttlDays ?? this.ttlDays;
+        const ttlSeconds = nowSeconds + ttlDays * 24 * 60 * 60;
+        return this.mapEventToItem(event, ttlSeconds);
+      });
 
-      const validItems = items.filter((item) => {
+      // Filter out oversized items and items without observabilityLogId
+      const validItems = items.filter((item): item is ObservabilityLogCreateItem & { observabilityLogId: string } => {
+        // observabilityLogId is required for deduplication
+        if (!item.observabilityLogId) {
+          logger.warn('Item missing observabilityLogId, skipping');
+          return false;
+        }
+
         const size = estimateItemSize(item);
         if (size > DYNAMO_MAX_ITEM_SIZE) {
           logger.warn(`Item too large (${size} bytes), skipping:`, {
@@ -119,7 +146,83 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
 
       if (validItems.length === 0) return;
 
-      await this.service.batchCreate(validItems);
+      // BatchWriteItem fails when the same PK appears multiple times in a single batch.
+      // Under FW24, observabilityLogId MUST be globally unique per record.
+      // If duplicates happen, it is an invariant violation. We choose a deterministic winner and log loudly.
+      const levelRank = (level: unknown): number => {
+        switch (level) {
+          case 'critical': return 50;
+          case 'error': return 40;
+          case 'warn': return 30;
+          case 'info': return 20;
+          case 'debug': return 10;
+          case 'trace': return 0;
+          default: return -1;
+        }
+      };
+      const pickWinner = (a: ObservabilityLogCreateItem, b: ObservabilityLogCreateItem): ObservabilityLogCreateItem => {
+        const la = levelRank(a.level);
+        const lb = levelRank(b.level);
+        if (la !== lb) return la > lb ? a : b;
+
+        // Deterministic tie-breaker: keep earlier timestampMs.
+        // timestampMs is expected for persisted records; if it's missing, treat it as "latest" (keep the other).
+        const tsa = a.timestampMs;
+        const tsb = b.timestampMs;
+        if (typeof tsa === 'number' && typeof tsb === 'number') {
+          return tsa <= tsb ? a : b;
+        }
+        if (typeof tsa === 'number') return a;
+        if (typeof tsb === 'number') return b;
+        return a;
+      };
+
+      const chosenById = new Map<string, ObservabilityLogCreateItem>();
+      const dupInfo: Array<{ id: string; count: number; types: string[]; levels: string[] }> = [];
+      const grouped = new Map<string, ObservabilityLogCreateItem[]>();
+
+      for (const item of validItems) {
+        const list = grouped.get(item.observabilityLogId);
+        if (list) list.push(item);
+        else grouped.set(item.observabilityLogId, [ item ]);
+      }
+
+      for (const [ id, list ] of grouped) {
+        if (list.length === 1) {
+          chosenById.set(id, list[ 0 ]);
+          continue;
+        }
+        let winner = list[ 0 ];
+        for (let i = 1; i < list.length; i++) {
+          winner = pickWinner(winner, list[ i ]);
+        }
+        chosenById.set(id, winner);
+        dupInfo.push({
+          id,
+          count: list.length,
+          types: list.map((x) => String(x.type)),
+          levels: list.map((x) => String(x.level)),
+        });
+      }
+
+      if (dupInfo.length > 0) {
+        logger.error('Observability invariant violation: duplicate observabilityLogId(s) in a single DynamoDB batch.', {
+          duplicateIdCount: dupInfo.length,
+          duplicates: dupInfo.slice(0, 5),
+          totalItems: validItems.length,
+          deduplicatedCount: chosenById.size,
+        });
+      }
+
+      const deduplicatedItems = Array.from(chosenById.values());
+      if (deduplicatedItems.length === 0) return;
+
+      // Apply compression to items if enabled
+      const itemsToWrite = this.compressionConfig.enabled
+        ? deduplicatedItems.map(item => compressItem(item, this.compressionConfig))
+        : deduplicatedItems;
+
+      await this.service.batchCreate(itemsToWrite);
     } catch (error) {
       if (this.isRetryableError(error) && retryCount < MAX_RETRIES) {
         logger.warn(`DynamoDB transient error, retrying (${retryCount + 1}/${MAX_RETRIES}):`, {
@@ -141,9 +244,11 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
   }
 
   private mapEventToItem(event: ObservabilityEvent, ttlSeconds: number): ObservabilityLogCreateItem {
-    return {
+    const item: ObservabilityLogCreateItem = {
       observabilityLogId: event.observabilityLogId,
-      parentObservabilityLogId: event.parentObservabilityLogId,
+      parentObservabilityLogId: typeof event.parentObservabilityLogId === 'string'
+        ? event.parentObservabilityLogId
+        : undefined,
       correlationId: event.correlationId,
       causedBy: event.causedBy,
       relatedTraces: event.relatedTraces,
@@ -167,6 +272,7 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
       context: event.context ? truncatePayload(event.context) : undefined,
       error: event.error,
       ttl: ttlSeconds,
-    } as ObservabilityLogCreateItem;
+    };
+    return item;
   }
 }

@@ -120,14 +120,40 @@ function applyFilterOperation(qb: QueryBuilder<any>, field: string, op: string, 
     }
 
   } else if ([ 'exists', 'notExists', 'isNull', 'notNull', 'empty', 'notEmpty' ].includes(op)) {
-    // Primary: exists/notExists
-    // Aliases: isNull/empty → notExists, notNull/notEmpty → exists
-    const isExistsOp = [ 'exists', 'notNull', 'notEmpty' ].includes(op);
-    const wantExists = isExistsOp ? val : !val;
-    if (wantExists) {
-      qb.where(field).isNotNull();
-    } else {
-      qb.where(field).isNull();
+    // IMPORTANT: In MeiliSearch filter syntax:
+    // - `field EXISTS` checks presence (missing fields do NOT satisfy `field IS NULL`)
+    // - `field IS NULL` checks explicit null (not missing)
+    //
+    // So we must map existence checks to EXISTS/NOT EXISTS to match expected semantics.
+    if (op === 'exists') {
+      if (!!val) qb.where(field).exists();
+      else qb.where(field).notExists();
+      return;
+    }
+    if (op === 'notExists') {
+      if (!!val) qb.where(field).notExists();
+      else qb.where(field).exists();
+      return;
+    }
+    if (op === 'isNull') {
+      if (!!val) qb.where(field).isNull();
+      else qb.where(field).isNotNull();
+      return;
+    }
+    if (op === 'notNull') {
+      if (!!val) qb.where(field).isNotNull();
+      else qb.where(field).isNull();
+      return;
+    }
+    if (op === 'empty') {
+      if (!!val) qb.where(field).isEmpty();
+      else qb.where(field).isNotEmpty();
+      return;
+    }
+    if (op === 'notEmpty') {
+      if (!!val) qb.where(field).isNotEmpty();
+      else qb.where(field).isEmpty();
+      return;
     }
 
   } else if (isContainsOp(op)) {

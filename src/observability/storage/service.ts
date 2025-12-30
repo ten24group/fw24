@@ -116,42 +116,55 @@ export class ObservabilityLogService extends BaseEntityService<ObservabilityLogS
     return this.reconstructSpans((result.data ?? []) as LogRecord[]);
   }
 
-  /** Reconstruct span hierarchy from flat log records */
+  /** 
+   * Reconstruct span hierarchy from flat log records.
+   * FW24 supports consolidated span records only (type='span').
+   * No compatibility is provided for legacy span.* record formats.
+   */
   reconstructSpans(records: ReadonlyArray<LogRecord>): ReconstructedSpan[] {
     const spanMap = new Map<string, ReconstructedSpan>();
-    const grouped = new Map<string, LogRecord[]>();
 
     for (const record of records) {
-      // Filter by type (span.start, span.end, span.event) and group by entityId (spanId)
-      if (!record.type?.startsWith('span.')) continue;
-      const id = String(record.entityId);
-      (grouped.get(id) ?? grouped.set(id, []).get(id)!).push(record);
-    }
+      // Handle consolidated spans (type='span')
+      if (record.type === 'span') {
+        const spanId = String(record.observabilityLogId ?? record.entityId);
+        const data = toRecord(record.data);
+        const checkpointsRaw = data.checkpoints;
+        const checkpoints = Array.isArray(checkpointsRaw)
+          ? checkpointsRaw.filter((c): c is Record<string, unknown> => !!c && typeof c === 'object' && !Array.isArray(c))
+          : [];
 
-    for (const [ spanId, spanRecords ] of grouped) {
-      const start = spanRecords.find(r => r.type === 'span.start');
-      const end = spanRecords.find(r => r.type === 'span.end');
-      if (!start) continue;
-
-      spanMap.set(spanId, {
-        spanId,
-        traceId: String(start.correlationId ?? ''),
-        parentObservabilityLogId: start.parentObservabilityLogId ? String(start.parentObservabilityLogId) : undefined,
-        operation: String(start.operation ?? 'unknown'),
-        startTime: Number(start.timestampMs ?? 0),
-        endTime: end?.timestampMs ? Number(end.timestampMs) : undefined,
-        duration: end?.durationMs ? Number(end.durationMs) : undefined,
-        status: end?.status ? String(end.status) : undefined,
-        success: typeof end?.success === 'boolean' ? end.success : undefined,
-        attributes: { ...toRecord(start.data), ...toRecord(end?.data) },
-        events: spanRecords.filter(r => r.type === 'span.event').map(e => ({
-          name: String(e.operation ?? 'event'),
-          timestamp: Number(e.timestampMs ?? 0),
-          attributes: toRecord(e.data),
-        })),
-        metrics: toNumberRecord(end?.metrics),
-        children: [],
-      });
+        spanMap.set(spanId, {
+          spanId,
+          traceId: String(record.correlationId ?? ''),
+          parentObservabilityLogId: record.parentObservabilityLogId ? String(record.parentObservabilityLogId) : undefined,
+          operation: String(record.operation ?? 'unknown'),
+          // Consolidated spans store timestampMs as START time (for timeline ordering).
+          // Reconstruct endTime using durationMs when available.
+          startTime: Number(record.timestampMs ?? 0),
+          endTime: (record.durationMs && record.timestampMs)
+            ? Number(record.timestampMs) + Number(record.durationMs)
+            : Number(record.timestampMs ?? 0),
+          duration: record.durationMs ? Number(record.durationMs) : undefined,
+          status: record.status ? String(record.status) : undefined,
+          success: typeof record.success === 'boolean' ? record.success : undefined,
+          attributes: { ...toRecord(record.attributes), ...data },
+          // Derive timeline events from checkpoints (canonical format).
+          events: checkpoints.map((cp) => {
+            const name = typeof cp.name === 'string' ? cp.name : 'checkpoint';
+            const ts = typeof cp.ts === 'number' ? cp.ts : 0;
+            const attrs: Record<string, unknown> = {};
+            if (cp.tags && typeof cp.tags === 'object') attrs.tags = cp.tags;
+            if (cp.metrics && typeof cp.metrics === 'object') attrs.metrics = cp.metrics;
+            if (cp.data && typeof cp.data === 'object') attrs.data = cp.data;
+            if (cp.error && typeof cp.error === 'object') attrs.error = cp.error;
+            return { name, timestamp: ts, attributes: attrs };
+          }),
+          metrics: toNumberRecord(record.metrics),
+          children: [],
+        });
+        continue;
+      }
     }
 
     const roots: ReconstructedSpan[] = [];

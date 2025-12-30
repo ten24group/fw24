@@ -2,9 +2,15 @@ import { DynamoDBStreamEvent, SQSEvent, Context } from 'aws-lambda';
 import { createHash } from 'crypto';
 import { Environment } from '../../client';
 import { sendTopicMessage, sendTopicMessageBatch, BatchTopicMessage } from '../../client/sns';
-import { BaseSQSEventProcessor, EventProcessorContext } from './event-processor/base-sqs-event-processor';
+import { BaseSQSEventProcessor } from './event-processor/base-sqs-event-processor';
 import { DynamoDBEventDataExtractor } from './event-processor/dynamodb-event-data-extractor';
 import { BaseEventRecord, ChangeStreamPayload } from '../types/event-processor-types';
+import { QueueExecutionContext } from './sqs-controller';
+import { BatchProgress } from '../../observability';
+
+// NOTE: Trace propagation is handled by `sendTopicMessage` / `sendTopicMessageBatch`
+// via the centralized execution-context propagation helpers.
+// Do NOT embed trace context into the message body (it won't be extracted by consumers).
 
 /**
  * Generates a deterministic deduplication ID from the record.
@@ -82,7 +88,7 @@ export class DynamoDBStreamToSNSProcessor extends BaseSQSEventProcessor<DynamoDB
      * that downstream SNS consumers expect. The base class's eventDataExtractor would
      * unmarshall these into plain JavaScript objects, breaking compatibility.
      */
-    async process(event: DynamoDBStreamEvent | SQSEvent, _context: Context, _ctx: EventProcessorContext<DynamoDBStreamEvent | SQSEvent>): Promise<void> {
+    async process(event: DynamoDBStreamEvent | SQSEvent, _context: Context, _ctx?: QueueExecutionContext<DynamoDBStreamEvent | SQSEvent>): Promise<void> {
         const rawRecords = 'Records' in event ? event.Records : [];
         await this.processRawRecordsBatch(rawRecords);
     }
@@ -108,95 +114,30 @@ export class DynamoDBStreamToSNSProcessor extends BaseSQSEventProcessor<DynamoDB
     }
 
     /**
-     * Extract trace context from DynamoDB record's _actor field.
-     * The _actor field is automatically populated by the framework when records are created/updated.
-     * 
-     * Structure: { _actor: { M: { correlationId: { S: "..." }, parentObservabilityLogId: { S: "..." }, sampled: { BOOL: true } } } }
-     * 
-     * This enables distributed tracing by linking DynamoDB changes back to the originating request.
-     * 
-     * IMPORTANT: Sets causedBy = original correlationId to link the stream processing back to the API request that caused the DB change.
-     * 
-     * Note: messageAttributes are included in the SNS message BODY (not SNS message attributes)
-     * to preserve them when downstream consumers unmarshal the DynamoDB AttributeValue format.
-     */
-    private extractTraceContext(record: any): Record<string, any> {
-        const messageAttributes: Record<string, any> = {
-            eventType: record.eventName
-        };
-
-        // Try NewImage first (for INSERT/MODIFY), then OldImage (for REMOVE)
-        const image = record.dynamodb?.NewImage || record.dynamodb?.OldImage;
-        if (image) {
-            // Extract from _actor field (stored in DynamoDB AttributeValue format)
-            const actorMap = image._actor?.M;
-            const originalCorrelationId = actorMap?.correlationId?.S;
-
-            if (originalCorrelationId) {
-                // The current execution context has a NEW correlationId (the stream Lambda's requestId)
-                // Set causedBy to the ORIGINAL correlationId from the DB record to link back to the API request
-                messageAttributes.causedBy = originalCorrelationId;
-
-                // Also include the original correlationId for reference
-                messageAttributes.originalCorrelationId = originalCorrelationId;
-
-                // Optional trace fields from original request
-                if (actorMap.parentObservabilityLogId?.S) {
-                    messageAttributes.originalParentObservabilityLogId = actorMap.parentObservabilityLogId.S;
-                }
-                if (actorMap.sampled?.BOOL !== undefined) {
-                    messageAttributes.sampled = actorMap.sampled.BOOL;
-                }
-            }
-        }
-
-        return messageAttributes;
-    }
-
-    /**
      * Publish records to FIFO topic individually.
      * 
      * FIFO topics cannot be batched because each DynamoDB record has a different messageGroupId
      * (derived from the record's primary key). SNS batching requires all messages in a batch
      * to have the same messageGroupId.
      * 
-     * Publishes are done in parallel for better performance.
+     * Uses concurrent publishing (5 at a time) for better performance.
      */
     private async publishFifoRecords(records: any[]): Promise<void> {
-        const publishPromises = records.map(async (record) => {
-            const fifoProps = getFifoProperties(record);
-
-            try {
-                const messageAttributes = this.extractTraceContext(record);
-
-                // IMPORTANT: record.dynamodb is preserved in original AttributeValue format
-                // This ensures downstream consumers can properly unmarshal the data
-                const message = {
+        await BatchProgress.forEach(
+            'Publish FIFO',
+            records,
+            async (record) => {
+                const fifoProps = getFifoProperties(record);
+                await sendTopicMessage(this.topicArn, {
                     eventID: record.eventID,
                     eventName: record.eventName,
                     eventSource: record.eventSource,
-                    dynamodb: record.dynamodb,  // PRESERVED: Original AttributeValue format
-                    messageAttributes,          // Included in body for downstream access
+                    dynamodb: record.dynamodb,  // Preserved: Original AttributeValue format
                     ...fifoProps
-                };
-
-                await sendTopicMessage(this.topicArn, message);
-
-                this.logger.debug('Successfully published stream record to SNS', {
-                    eventID: record.eventID,
-                    eventName: record.eventName,
-                    fifoProps
                 });
-            } catch (error) {
-                this.logger.error('Failed to publish stream record to SNS', {
-                    eventID: record.eventID,
-                    error
-                });
-                throw error;
-            }
-        });
-
-        await Promise.all(publishPromises);
+            },
+            { concurrency: 5 }
+        );
     }
 
     /**
@@ -204,54 +145,38 @@ export class DynamoDBStreamToSNSProcessor extends BaseSQSEventProcessor<DynamoDB
      * 
      * Standard topics support batching up to 10 messages per API call,
      * providing ~10x performance improvement over individual publishes.
-     * 
-     * Benefits:
-     * - Reduced latency (fewer API calls)
-     * - Lower cost (fewer requests)
-     * - Better throughput
      */
     private async publishStandardBatch(records: any[]): Promise<void> {
-        // Process in batches of 10 (SNS PublishBatch limit)
-        for (let i = 0; i < records.length; i += 10) {
-            const batch = records.slice(i, i + 10);
-
-            const messages: BatchTopicMessage[] = batch.map((record, index) => {
-                const messageAttributes = this.extractTraceContext(record);
-
-                return {
-                    id: `${i + index}`,
+        await BatchProgress.chunk(
+            'Publish SNS',
+            records,
+            async (batch, ctx) => {
+                // Build batch messages for SNS PublishBatch API
+                const messages: BatchTopicMessage[] = batch.map((record, index) => ({
+                    id: `${ctx.itemIndex * 10 + index}`,
                     message: {
                         eventID: record.eventID,
                         eventName: record.eventName,
                         eventSource: record.eventSource,
-                        dynamodb: record.dynamodb,  // PRESERVED: Original AttributeValue format
-                        messageAttributes: messageAttributes  // Included in body for downstream access
-                    }
-                };
-            });
+                        dynamodb: record.dynamodb,  // Preserved: Original AttributeValue format
+                    },
+                }));
 
-            try {
                 const result = await sendTopicMessageBatch(this.topicArn, messages);
 
                 // Handle partial batch failures
-                if (result.Failed && result.Failed.length > 0) {
-                    const failedIds = result.Failed.map(f => f.Id).join(', ');
+                if (result.Failed?.length) {
                     this.logger.error('Some messages failed to publish', {
                         failedCount: result.Failed.length,
-                        failedIds
+                        failedIds: result.Failed.map(f => f.Id).join(', ')
                     });
                     throw new Error(`Failed to publish ${result.Failed.length} messages`);
                 }
 
-                this.logger.debug('Successfully published batch to SNS', {
-                    batchSize: batch.length,
-                    successCount: result.Successful?.length || 0
-                });
-            } catch (error) {
-                this.logger.error('Failed to publish batch to SNS', { error });
-                throw error;
-            }
-        }
+                return batch;
+            },
+            { size: 10 }  // SNS PublishBatch limit
+        );
     }
 }
 

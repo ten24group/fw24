@@ -578,11 +578,10 @@ describe('APIGatewayController Core Functionality', () => {
         actorId: 'john.doe',
         email: 'john@example.com',
         emailVerified: true,
-        correlationId: 'corr-xyz-789',
         cognito: {
           sub: 'user-123-456',
           username: 'john.doe',
-          groups: ['admin', 'user'],
+          groups: [ 'admin', 'user' ],
           customAttributes: {
             tenantId: 'tenant-789',
             role: 'manager'
@@ -618,8 +617,7 @@ describe('APIGatewayController Core Functionality', () => {
         apiKey: {
           id: 'key-id-456',
           source: 'request-context'
-        },
-        correlationId: 'req-def-456'
+        }
       });
     });
 
@@ -650,8 +648,7 @@ describe('APIGatewayController Core Functionality', () => {
         apiKey: {
           id: 'header-api-key-xyz789',
           source: 'header'
-        },
-        correlationId: 'req-header-api-key'
+        }
       });
     });
 
@@ -715,7 +712,6 @@ describe('APIGatewayController Core Functionality', () => {
           accountId: '123456789012',
           caller: 'caller-id'
         },
-        correlationId: 'req-ghi-789'
       });
     });
 
@@ -740,7 +736,6 @@ describe('APIGatewayController Core Functionality', () => {
         authMethod: 'anonymous',
         actorType: 'anonymous',
         actorId: 'anonymous',
-        correlationId: 'req-jkl-012'
       });
     });
 
@@ -803,7 +798,6 @@ describe('APIGatewayController Core Functionality', () => {
         authMethod: 'anonymous',
         actorType: 'anonymous',
         actorId: 'anonymous',
-        correlationId: 'req-pqr-678'
       });
     });
 
@@ -856,12 +850,12 @@ describe('APIGatewayController Core Functionality', () => {
         {
           name: 'single group',
           groups: 'admin',
-          expected: ['admin']
+          expected: [ 'admin' ]
         },
         {
           name: 'multiple groups with spaces',
           groups: ' admin , user , moderator ',
-          expected: ['admin', 'user', 'moderator']
+          expected: [ 'admin', 'user', 'moderator' ]
         },
         {
           name: 'empty group string',
@@ -871,7 +865,7 @@ describe('APIGatewayController Core Functionality', () => {
         {
           name: 'groups with extra commas',
           groups: 'admin,,user,',
-          expected: ['admin', 'user']
+          expected: [ 'admin', 'user' ]
         }
       ];
 

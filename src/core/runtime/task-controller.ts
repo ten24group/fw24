@@ -6,8 +6,8 @@ import {
   ExecutionContextData,
   createExecutionContext,
   runWithExecutionContext,
-  setParentObservabilityLogId,
 } from './execution-context';
+import { Actor } from '../types/execution-context';
 
 /**
  * Task execution context - contains task-specific data AND execution context.
@@ -77,9 +77,20 @@ abstract class TaskController extends AbstractLambdaHandler {
       automaticTags.schedule = taskConfig.schedule;
     }
 
+    // Create service actor for task - enables actor context injection in entity services
+    const taskActor: Actor = {
+      actorType: 'service',
+      authMethod: 'system',
+      actorId: `task:${taskName}`,
+      requestId: context?.awsRequestId || correlationId,
+      timestamp: new Date().toISOString(),
+      correlationId,  // Task is the root trigger, so use its own correlationId
+    };
+
     // Create execution context with custom source and tags from decorator
     const execCtx = createExecutionContext({
       correlationId,
+      actor: taskActor,
       source: obsConfig.source || `task:${taskName}`,
       tags: {
         ...automaticTags,
@@ -87,56 +98,50 @@ abstract class TaskController extends AbstractLambdaHandler {
       },
     });
 
+    // Build task execution context
+    const ctx: TaskExecutionContext = {
+      event: _event,
+      lambdaContext: context,
+      executionContext: execCtx,
+    };
+
     // Run handler within execution context
     return runWithExecutionContext(execCtx, async () => {
-      // Create span with merged tags (consistent with API Gateway)
-      const taskSpan = SpanObserver.start(`Task ${taskName}`, {
-        correlationId,
-        source: obsConfig.source || `task:${taskName}`,
-        tags: {
-          ...automaticTags,
-          ...obsConfig.tags, // Decorator tags override automatic
+      // Use the base class helper for span + flush pattern
+      return this.executeWithSpanAndFlush(
+        `Task ${taskName}`,
+        async (taskSpan) => {
+          const startTime = Date.now();
+          try {
+            await this.initialize();
+            await this.process(ctx);
+            const duration = Date.now() - startTime;
+            taskSpan.metrics({
+              'task.duration_ms': duration,
+            });
+            // Flush happens automatically in executeWithSpanAndFlush's finally block
+          } catch (error) {
+            const duration = Date.now() - startTime;
+            taskSpan.metrics({
+              'task.duration_ms': duration,
+              'task.errors': 1,
+            });
+            // Flush happens automatically in executeWithSpanAndFlush's finally block
+            throw error;
+          }
         },
-        attributes: {
-          'task.name': taskName,
-          'task.schedule': taskConfig.schedule,
-          ...obsConfig.attributes,
-        },
-      });
-
-      // Store span ID in execution context for child spans
-      setParentObservabilityLogId(taskSpan.id);
-
-      // Build task execution context
-      const ctx: TaskExecutionContext = {
-        event: _event,
-        lambdaContext: context,
-        executionContext: execCtx,
-      };
-
-      let spanEnded = false;
-      const endSpan = async (success: boolean, error?: Error, metrics?: Record<string, number>): Promise<void> => {
-        if (!spanEnded) {
-          taskSpan.end({ success, error, metrics });
-          spanEnded = true;
+        {
+          correlationId,
+          actor: taskActor,
+          source: obsConfig.source || `task:${taskName}`,
+          tags: {
+            ...automaticTags,
+            ...obsConfig.tags,
+            'task.name': taskName,
+            'task.schedule': taskConfig.schedule || '',
+          },
         }
-        await this.flushObservability();
-      };
-
-      const startTime = Date.now();
-      try {
-        await this.initialize();
-        await this.process(ctx);
-        const duration = Date.now() - startTime;
-        await endSpan(true, undefined, { 'task.duration_ms': duration });
-      } catch (error) {
-        const duration = Date.now() - startTime;
-        await endSpan(false, error as Error, {
-          'task.duration_ms': duration,
-          'task.errors': 1,
-        });
-        throw error;
-      }
+      );
     });
   }
 }

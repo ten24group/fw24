@@ -147,7 +147,6 @@ describe('MeiliSearchEngine Advanced Features Integration Tests', () => {
     };
     try {
       await engine.initIndex(settingsConfig, true);
-      await new Promise(resolve => setTimeout(resolve, 1000));
 
       await engine.updateSearchableAttributes(TEST_SETTINGS_INDEX, [ 'title', 'content', 'tags' ], true);
       await engine.updateFilterableAttributes(TEST_SETTINGS_INDEX, [ 'category', 'status' ], true);

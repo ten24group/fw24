@@ -16,8 +16,7 @@ export { AUDIT_ENV_KEYS } from './interfaces';
 
 export {
     DynamoDBStreamAuditLogger,
-    DynamoDBStreamAuditLogger as DefaultAuditHandler,
-} from './loggers';
+} from './loggers/dynamo-db-stream-audit-logger';
 
 // ============================================================================
 // CHANGE DETECTION UTILITIES

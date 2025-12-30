@@ -5,34 +5,46 @@
  * observers (WorkflowObserver, DecisionObserver, etc.) on top of these core primitives.
  */
 
-// Core Observer implementations
-export { SpanObserver, withSpan, SpanOptions, SpanEventOptions, SpanEndOptions, ISpanObserver } from './span';
+// Span Observer
+export {
+  SpanObserver,
+  withSpan,
+  withSpanSync,
+  wrapInSpan,
+  type SpanOptions,
+  type SpanEndOptions,
+  type ISpanObserver,
+} from './span';
+
+// Audit Observer
 export {
   AuditObserver,
-  AuditObserverOptions,
-  AuditRecordOptions,
-  ComplianceAuditOptions,
-  AccessAuditOptions,
+  type EntityAuditOptions,
+  type AuditRecordOptions,
+  type ComplianceAuditOptions,
+  type AccessAuditOptions,
 } from './audit';
-export { MetricObserver, MetricOptions } from './metric';
-export { LogObserver, LogOptions, ChildLogObserver } from './log';
+
+// Metric Observer
+export { MetricObserver, type MetricOptions } from './metric';
+
+// Log Observer
+export { LogObserver, type LogOptions } from './log';
 
 // Base utilities for building custom observers
 export {
-  BaseObserverOptions,
-  CommonFields,
-  ObservabilityPayload,
+  // Core functions
   generateId,
+  captureRecord,
+  captureRecordAsync,
+  buildCaptureInput,
   resolveCorrelationId,
-  mergeObserverTags,
-  buildCommonFields,
-  extractObserverOptions,
+  mergeTags,
   mapError,
   normalizeError,
-  captureEvent,
-  captureEventAsync,
+
   // Testing utilities
   setCapturer,
   resetCapturer,
+  initializeCapturer,
 } from './base';
-

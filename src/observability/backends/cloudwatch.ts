@@ -33,6 +33,7 @@ export class CloudWatchBackend implements ObservabilityBackend {
 
   private logger: Logger;
   private metrics: Metrics;
+  private hasAnyMetrics = false;
 
   constructor(
     @InjectConfig('observability.serviceName') serviceName: string,
@@ -44,6 +45,7 @@ export class CloudWatchBackend implements ObservabilityBackend {
     this.logger = new Logger({
       serviceName: serviceName,
       logLevel: levelToPowertoolsLogLevel(minLevel),
+
     });
 
     this.metrics = new Metrics({
@@ -57,12 +59,14 @@ export class CloudWatchBackend implements ObservabilityBackend {
       // ALWAYS extract and publish metrics via EMF if present, regardless of event type
       // This ensures metrics embedded in spans, audits, or logs are published as CloudWatch metrics
       if (event.metrics && Object.keys(event.metrics).length > 0) {
+        this.hasAnyMetrics = true;
         this.handleMetric(event);
       }
 
-      // For span events, publish durationMs as a separate metric ONLY if not already in metrics
-      // This avoids duplicate metric publishing (span.end includes { metrics: { duration } })
-      if (event.type.startsWith('span.') && event.durationMs !== undefined && !event.metrics?.duration) {
+      // For consolidated span records, publish durationMs as a separate metric ONLY if not already present.
+      // This avoids duplicate metric publishing when callers also include a duration metric explicitly.
+      if (event.type === 'span' && event.durationMs !== undefined && !event.metrics?.duration) {
+        this.hasAnyMetrics = true;
         this.publishSpanDurationMetric(event);
       }
 
@@ -137,10 +141,22 @@ export class CloudWatchBackend implements ObservabilityBackend {
     }
   }
 
-  private handleMetric(event: ObservabilityEvent): void {
-    if (!event.metrics || Object.keys(event.metrics).length === 0) return;
-
-    // Use a Map to deduplicate dimensions by name (first occurrence wins)
+  /**
+   * Build deduplicated dimensions from event data.
+   * Priority order (first occurrence wins):
+   * 1. Tags (highest priority - user-specified)
+   * 2. Explicit dimension overrides (passed as parameter)
+   * 3. Attributes (if string values)
+   * 4. Entity context (entityName)
+   * 
+   * @param event - Observability event
+   * @param explicitDimensions - Explicit dimensions to add (e.g., operation, source, success)
+   * @returns Deduplicated dimension map
+   */
+  private buildDimensions(
+    event: ObservabilityEvent,
+    explicitDimensions?: Record<string, string>
+  ): Map<string, string> {
     const dimensionMap = new Map<string, string>();
 
     // Priority 1: Add common dimensions from tags (tenant, entity, operation, etc.)
@@ -156,7 +172,20 @@ export class CloudWatchBackend implements ObservabilityBackend {
       }
     }
 
-    // Priority 2: Add dimensions from attributes (only if not already present)
+    // Priority 2: Add explicit dimensions (only if not already present)
+    if (explicitDimensions) {
+      for (const [ key, value ] of Object.entries(explicitDimensions)) {
+        if (dimensionMap.size >= MAX_DIMENSIONS) break;
+        if (!dimensionMap.has(key)) {
+          dimensionMap.set(
+            key.slice(0, MAX_DIMENSION_NAME_LENGTH),
+            value.slice(0, MAX_DIMENSION_VALUE_LENGTH)
+          );
+        }
+      }
+    }
+
+    // Priority 3: Add dimensions from attributes (only if not already present)
     if (event.attributes) {
       for (const [ key, value ] of Object.entries(event.attributes)) {
         if (dimensionMap.size >= MAX_DIMENSIONS) {
@@ -176,14 +205,19 @@ export class CloudWatchBackend implements ObservabilityBackend {
       }
     }
 
-    // Priority 3: Add entity context as dimension (only if not already present)
+    // Priority 4: Add entity context as dimension (only if not already present)
     if (event.entityName && dimensionMap.size < MAX_DIMENSIONS && !dimensionMap.has('entityName')) {
       dimensionMap.set('entityName', event.entityName);
     }
 
-    // Convert Map to array
-    const dimensions = Array.from(dimensionMap.entries()).map(([ name, value ]) => ({ name, value }));
+    return dimensionMap;
+  }
 
+  private handleMetric(event: ObservabilityEvent): void {
+    if (!event.metrics || Object.keys(event.metrics).length === 0) return;
+
+    const dimensionMap = this.buildDimensions(event);
+    const dimensions = Array.from(dimensionMap.entries()).map(([ name, value ]) => ({ name, value }));
     const unit = this.mapUnit(event.attributes?.unit as string | undefined);
 
     for (const [ name, value ] of Object.entries(event.metrics)) {
@@ -202,32 +236,39 @@ export class CloudWatchBackend implements ObservabilityBackend {
   }
 
   /**
-   * Publish span duration as a CloudWatch metric
-   * Allows creating dashboards/alarms on operation durations
+   * Publish span duration as a CloudWatch metric.
+   * Allows creating dashboards/alarms on operation durations.
+   * Uses buildDimensions() to ensure proper deduplication with event.tags.
    */
   private publishSpanDurationMetric(event: ObservabilityEvent): void {
     if (!event.durationMs || !event.operation) return;
 
     try {
-      const singleMetric = this.metrics.singleMetric();
+      // Build explicit dimensions for span metrics
+      const explicitDimensions: Record<string, string> = {};
 
-      // Add dimensions for filtering
       if (event.operation) {
-        singleMetric.addDimension('operation', event.operation.slice(0, MAX_DIMENSION_VALUE_LENGTH));
+        explicitDimensions.operation = event.operation;
       }
       if (event.source) {
-        singleMetric.addDimension('source', event.source.slice(0, MAX_DIMENSION_VALUE_LENGTH));
+        explicitDimensions.source = event.source;
       }
       if (event.success !== undefined) {
-        singleMetric.addDimension('success', String(event.success));
+        explicitDimensions.success = String(event.success);
       }
       if (event.entityName) {
-        singleMetric.addDimension('entityName', event.entityName);
+        explicitDimensions.entityName = event.entityName;
+      }
+      if (event.actor?.tenantId) {
+        explicitDimensions.tenantId = event.actor.tenantId;
       }
 
-      // Add tenant/actor dimensions if available
-      if (event.actor?.tenantId) {
-        singleMetric.addDimension('tenantId', event.actor.tenantId.slice(0, MAX_DIMENSION_VALUE_LENGTH));
+      // Use buildDimensions to properly deduplicate with tags
+      const dimensionMap = this.buildDimensions(event, explicitDimensions);
+      const singleMetric = this.metrics.singleMetric();
+
+      for (const [ name, value ] of dimensionMap.entries()) {
+        singleMetric.addDimension(name, value);
       }
 
       singleMetric.addMetric('span.duration', MetricUnit.Milliseconds, event.durationMs);
@@ -238,7 +279,12 @@ export class CloudWatchBackend implements ObservabilityBackend {
 
   async flush(): Promise<void> {
     try {
+      // Avoid noisy powertools warning when no metrics were recorded.
+      if (!this.hasAnyMetrics) {
+        return;
+      }
       this.metrics.publishStoredMetrics();
+      this.hasAnyMetrics = false;
     } catch (error) {
       internalLogger.error('Failed to publish metrics:', error);
     }
@@ -246,6 +292,7 @@ export class CloudWatchBackend implements ObservabilityBackend {
 
   initializeInvocation(): void {
     // Powertools handles per-invocation state automatically
+    this.hasAnyMetrics = false;
   }
 
   private mapUnit(unit?: string): (typeof MetricUnit)[ keyof typeof MetricUnit ] {

@@ -1,31 +1,30 @@
 import { GetQueueAttributesCommand, SQSClient, SendMessageCommand, SendMessageCommandInput, MessageAttributeValue, SendMessageBatchCommand, SendMessageBatchRequestEntry } from '@aws-sdk/client-sqs';
-import { getCurrentExecutionContext, createSqsAttributes, ExecutionContextData } from '../core/runtime/execution-context';
-
-const sqsClient = new SQSClient({});
+import { ExecutionContextData } from '../core/runtime/execution-context';
+import { getSqsTraceAttributes } from './util';
 
 /**
- * Get trace attributes from execution context
- * Automatically sets causedBy to current correlationId for cross-invocation tracing
+ * Lazily-created SQS client.
+ *
+ * We intentionally rely on the AWS SDK's native environment/config resolution:
+ * - AWS_PROFILE / shared credentials
+ * - AWS_REGION
+ * - AWS_ENDPOINT_URL_SQS (service-specific endpoint override; perfect for local-aws-sqs)
+ *
+ * This avoids FW24-specific endpoint/credential logic here and keeps behavior predictable.
  */
-const getTraceAttributes = (context?: ExecutionContextData | null): Record<string, MessageAttributeValue> => {
-    if (context === null) {
-        return {};
-    }
+let sqsClient: SQSClient | null = null;
+let sqsClientEndpoint: string | undefined = undefined;
 
-    const ctx = context ?? getCurrentExecutionContext();
-    if (!ctx) {
-        return {};
-    }
+function getSqsClient(): SQSClient {
+    // For local integration tests, explicitly wire the endpoint.
+    // Relying on implicit AWS SDK env resolution is not consistent across SDK versions.
+    const endpoint = process.env.AWS_ENDPOINT_URL_SQS?.trim() || undefined;
+    if (sqsClient && sqsClientEndpoint === endpoint) return sqsClient;
+    sqsClientEndpoint = endpoint;
+    sqsClient = endpoint ? new SQSClient({ endpoint }) : new SQSClient({});
 
-    // For cross-invocation tracing: Set causedBy to CURRENT correlationId
-    // This links the downstream processing back to THIS invocation (immediate parent)
-    // Creating a navigable chain: A→B→C, not all pointing to root A
-    const contextWithCausedBy = {
-        ...ctx,
-        causedBy: ctx.correlationId,
-    };
-    return createSqsAttributes(contextWithCausedBy);
-};
+    return sqsClient;
+}
 
 /**
  * Common message properties for FIFO queues and attributes
@@ -67,26 +66,6 @@ export interface SendQueueMessageOptions extends QueueMessageProperties {
 /**
  * Send message to SQS queue with automatic trace context propagation.
  * 
- * Trace context is automatically propagated to maintain distributed tracing:
- * - By default, uses the current execution context from AsyncLocalStorage
- * - Pass explicit `context` option to override
- * - Pass `context: null` to disable trace propagation
- * 
- * @example
- * ```typescript
- * // Automatic trace propagation (recommended)
- * await sendQueueMessage(queueUrl, { orderId: '123', action: 'process' });
- * 
- * // With explicit context
- * await sendQueueMessage(queueUrl, payload, { context: myContext });
- * 
- * // Disable trace propagation
- * await sendQueueMessage(queueUrl, payload, { context: null });
- * 
- * // FIFO queue with message group
- * await sendQueueMessage(queueUrl, payload, { messageGroupId: 'order-123' });
- * ```
- * 
  * @param queueUrl - The SQS queue URL
  * @param message - The message payload (will be JSON stringified)
  * @param options - Optional configuration including trace context
@@ -99,11 +78,10 @@ export const sendQueueMessage = async (
 ) => {
     // Merge trace context with message attributes
     const messageAttributes = {
-        ...getTraceAttributes(options?.context),
+        ...getSqsTraceAttributes(options?.context),
         ...options?.messageAttributes,
     };
 
-    // Handle legacy messageGroupID in message body (backward compatibility)
     const { messageGroupID, ...messageBody } = message;
     const effectiveGroupId = options?.messageGroupId || messageGroupID || '';
 
@@ -113,7 +91,6 @@ export const sendQueueMessage = async (
         MessageAttributes: Object.keys(messageAttributes).length > 0 ? messageAttributes : undefined,
     };
 
-    // FIFO queue options
     if (effectiveGroupId) {
         queuePayload.MessageGroupId = effectiveGroupId;
     }
@@ -127,7 +104,7 @@ export const sendQueueMessage = async (
     }
 
     const sqsCommand = new SendMessageCommand(queuePayload);
-    const result = await sqsClient.send(sqsCommand);
+    const result = await getSqsClient().send(sqsCommand);
     return result;
 };
 
@@ -147,41 +124,11 @@ export interface BatchQueueMessageEntry extends QueueMessageProperties {
 }
 
 /**
- * Send multiple messages to SQS queue in a single batch operation with automatic trace context propagation.
- * 
- * Trace context is automatically propagated to maintain distributed tracing:
- * - By default, uses the current execution context from AsyncLocalStorage
- * - Pass explicit `context` option to override
- * - Pass `context: null` to disable trace propagation
- * - The SAME trace context (with causedBy = current correlationId) is applied to ALL messages
- * 
- * @example
- * ```typescript
- * // Automatic trace propagation (recommended)
- * await sendQueueMessageBatch(queueUrl, [
- *   { id: '1', message: { orderId: '123', action: 'process' } },
- *   { id: '2', message: { orderId: '456', action: 'process' } },
- * ]);
- * 
- * // With additional message attributes per message
- * await sendQueueMessageBatch(queueUrl, [
- *   { 
- *     id: '1', 
- *     message: { orderId: '123' },
- *     messageAttributes: { priority: { DataType: 'String', StringValue: 'high' } }
- *   },
- * ]);
- * 
- * // FIFO queue with message groups
- * await sendQueueMessageBatch(queueUrl, [
- *   { id: '1', message: { orderId: '123' }, messageGroupId: 'order-123' },
- *   { id: '2', message: { orderId: '456' }, messageGroupId: 'order-456' },
- * ]);
- * ```
+ * Send multiple messages to SQS queue in a single batch operation.
  * 
  * @param queueUrl - The SQS queue URL
  * @param entries - Array of message entries (max 10 per SQS limitation)
- * @param options - Optional configuration (only context is used, other MessageProperties are per-message in entries)
+ * @param options - Optional configuration (only context is used)
  * @returns SQS SendMessageBatch response
  */
 export const sendQueueMessageBatch = async (
@@ -189,18 +136,14 @@ export const sendQueueMessageBatch = async (
     entries: BatchQueueMessageEntry[],
     options?: SendQueueMessageOptions
 ) => {
-    // Get trace context once for the entire batch
-    const traceAttributes = getTraceAttributes(options?.context);
+    const traceAttributes = getSqsTraceAttributes(options?.context);
 
-    // Build batch entries with trace context
     const batchEntries: SendMessageBatchRequestEntry[] = entries.map((entry) => {
-        // Merge trace attributes with per-message attributes
         const messageAttributes = {
             ...traceAttributes,
             ...entry.messageAttributes,
         };
 
-        // Handle legacy messageGroupID in message body (backward compatibility)
         const { messageGroupID, ...messageBody } = entry.message;
         const effectiveGroupId = entry.messageGroupId || messageGroupID || undefined;
 
@@ -210,7 +153,6 @@ export const sendQueueMessageBatch = async (
             MessageAttributes: Object.keys(messageAttributes).length > 0 ? messageAttributes : undefined,
         };
 
-        // FIFO queue options
         if (effectiveGroupId) {
             batchEntry.MessageGroupId = effectiveGroupId;
         }
@@ -231,15 +173,12 @@ export const sendQueueMessageBatch = async (
         Entries: batchEntries,
     });
 
-    const result = await sqsClient.send(command);
+    const result = await getSqsClient().send(command);
     return result;
 };
 
 /**
  * Get queue metadata/statistics
- * 
- * @param queueUrl - The SQS queue URL
- * @returns Queue metadata including message counts and delay settings
  */
 export const getQueueMessageMetadata = async (queueUrl: string) => {
     const command = new GetQueueAttributesCommand({
@@ -252,7 +191,7 @@ export const getQueueMessageMetadata = async (queueUrl: string) => {
         ],
     });
 
-    const response = await sqsClient.send(command);
+    const response = await getSqsClient().send(command);
 
     return {
         messageCount: response.Attributes?.ApproximateNumberOfMessages,

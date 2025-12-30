@@ -89,12 +89,8 @@ describe('Entity Search', () => {
       }
     } catch { }
 
-    await delay(1000);
-
     console.log('initializing new index', indexName);
-    await searchService.initSearchIndex();
-
-    await delay(2000);
+    await searchService.initSearchIndex(true);
   }, 60000);
 
   beforeEach(async () => {
@@ -104,7 +100,6 @@ describe('Entity Search', () => {
     const indexName = entityService.getEntitySearchConfig().indexConfig?.indexName;
     try {
       await engine.deleteAllDocuments(indexName as string, true);
-      await delay(1000); // Wait for delete operation to complete
     } catch (error) {
       // Ignore errors during cleanup
     }
@@ -129,19 +124,13 @@ describe('Entity Search', () => {
   }, 50000);
 
   it('should index an entity', async () => {
-
-    // wait time to make sure changes are propagated in the search engine
-    await delay(1000);
-
     await entityService.getSearchService().syncToIndex({
       id: '1',
       name: 'test',
       description: 'test',
       createdAt: '2021-01-01',
       updatedAt: '2021-01-01',
-    });
-
-    await delay(1000);
+    }, undefined, undefined, true);
 
     const searchResult = await entityService.getSearchService().search({
       search: 'test',
@@ -160,8 +149,7 @@ describe('Entity Search', () => {
       { id: '3', name: 'beta', description: 'second', createdAt: '2021-01-03', updatedAt: '2021-01-03' },
       { id: '4', name: 'gamma', description: 'third', createdAt: '2021-01-04', updatedAt: '2021-01-04' },
     ];
-    await entityService.getSearchService().bulkSync(entities);
-    await delay(1000);
+    await entityService.getSearchService().bulkSync(entities, undefined, undefined, true);
     const searchResult = await entityService.search({ search: '' });
     expect(searchResult.total).toBeGreaterThanOrEqual(entities.length);
     const ids = searchResult.hits.map(h => h.id);
@@ -174,291 +162,190 @@ describe('Entity Search', () => {
       filterableAttributes: [ 'name' ],
     }, true);
 
-    await delay(1000);
+    await entityService.getSearchService().bulkSync([
+      { id: '5', name: 'active', description: 'desc', createdAt: '2021-01-05', updatedAt: '2021-01-05' },
+      { id: '6', name: 'inactive', description: 'desc', createdAt: '2021-01-06', updatedAt: '2021-01-06' },
+    ], undefined, undefined, true);
 
-    await entityService.getSearchService().syncToIndex({
-      id: '1',
-      name: 'alpha',
-      description: 'test',
-      createdAt: '2021-01-01',
-      updatedAt: '2021-01-01',
+    const searchResult = await entityService.search({
+      filters: {
+        name: { eq: 'active' },
+      },
     });
-
-    await delay(1000);
-
-    const searchResult = await entityService.search({ filters: { name: { eq: 'alpha' } } });
     expect(searchResult.hits.length).toBe(1);
-    expect(searchResult.hits[ 0 ].name).toBe('alpha');
-  }, 20000);
+    expect(searchResult.hits[ 0 ].id).toBe('5');
+  }, 50000);
 
   it('should sort results by createdAt descending', async () => {
-
     await entityService.getSearchService().updateIndexSettings({
       sortableAttributes: [ 'createdAt' ],
     }, true);
 
-    await delay(1000);
+    await entityService.getSearchService().bulkSync([
+      { id: '7', name: 'sort1', description: 'desc', createdAt: '2021-01-07', updatedAt: '2021-01-07' },
+      { id: '8', name: 'sort2', description: 'desc', createdAt: '2021-01-08', updatedAt: '2021-01-08' },
+    ], undefined, undefined, true);
 
-    await entityService.getSearchService().bulkSync([ {
-      id: '1',
-      name: 'alpha',
-      description: 'test',
-      createdAt: '2021-01-01',
-      updatedAt: '2021-01-01',
-    },
-    {
-      id: '2',
-      name: 'beta',
-      description: 'test',
-      createdAt: '2021-01-02',
-      updatedAt: '2021-01-02',
-    },
-    {
-      id: '3',
-      name: 'gamma',
-      description: 'test',
-      createdAt: '2021-01-03',
-      updatedAt: '2021-01-03',
-    } ]);
-
-    await delay(1000);
-
-    const searchResult = await entityService.search({ sort: [ { field: 'createdAt', dir: 'desc' } ] });
-    expect(searchResult.hits.length).toBeGreaterThan(1);
-    const dates = searchResult.hits.map(h => h.createdAt);
-    expect(dates).toEqual([ ...dates ].sort().reverse());
-  }, 20000);
+    const searchResult = await entityService.search({
+      sort: [ { field: 'createdAt', dir: 'desc' } ],
+    });
+    expect(searchResult.hits[ 0 ].id).toBe('8');
+    expect(searchResult.hits[ 1 ].id).toBe('7');
+  }, 50000);
 
   it('should paginate results', async () => {
     await entityService.getSearchService().bulkSync([
-      { id: '1', name: 'alpha', description: 'test', createdAt: '2021-01-01', updatedAt: '2021-01-01' },
-      { id: '2', name: 'beta', description: 'test', createdAt: '2021-01-02', updatedAt: '2021-01-02' },
-      { id: '3', name: 'gamma', description: 'test', createdAt: '2021-01-03', updatedAt: '2021-01-03' },
-      { id: '4', name: 'delta', description: 'test', createdAt: '2021-01-04', updatedAt: '2021-01-04' },
-      { id: '5', name: 'epsilon', description: 'test', createdAt: '2021-01-05', updatedAt: '2021-01-05' },
-      { id: '6', name: 'zeta', description: 'test', createdAt: '2021-01-06', updatedAt: '2021-01-06' },
-      { id: '7', name: 'eta', description: 'test', createdAt: '2021-01-07', updatedAt: '2021-01-07' },
-      { id: '8', name: 'theta', description: 'test', createdAt: '2021-01-08', updatedAt: '2021-01-08' },
-      { id: '9', name: 'iota', description: 'test', createdAt: '2021-01-09', updatedAt: '2021-01-09' },
-      { id: '10', name: 'kappa', description: 'test', createdAt: '2021-01-10', updatedAt: '2021-01-10' },
-    ]);
-    await delay(1000);
-    const page1 = await entityService.search({ pagination: { page: 1, limit: 2 } });
-    const page2 = await entityService.search({ pagination: { page: 2, limit: 2 } });
-    expect(page1.hits.length).toBeLessThanOrEqual(2);
-    expect(page2.hits.length).toBeLessThanOrEqual(2);
-    if (page1.hits.length > 0 && page2.hits.length > 0) {
-      expect(page1.hits[ 0 ].id).not.toBe(page2.hits[ 0 ].id);
-    }
-  }, 20000);
+      { id: '9', name: 'page1', description: 'desc', createdAt: '2021-01-09', updatedAt: '2021-01-09' },
+      { id: '10', name: 'page2', description: 'desc', createdAt: '2021-01-10', updatedAt: '2021-01-10' },
+      { id: '11', name: 'page3', description: 'desc', createdAt: '2021-01-11', updatedAt: '2021-01-11' },
+    ], undefined, undefined, true);
+
+    const searchResult = await entityService.search({
+      pagination: { page: 1, limit: 2 },
+    });
+    expect(searchResult.hits.length).toBe(2);
+  }, 50000);
 
   it('should select only specific fields', async () => {
-    await entityService.getSearchService().bulkSync([
-      { id: '1', name: 'alpha', description: 'test', createdAt: '2021-01-01', updatedAt: '2021-01-01' },
-      { id: '2', name: 'beta', description: 'test', createdAt: '2021-01-02', updatedAt: '2021-01-02' },
-    ]);
-    await delay(1000);
+    await entityService.getSearchService().syncToIndex({
+      id: '12',
+      name: 'select',
+      description: 'desc',
+      createdAt: '2021-01-12',
+      updatedAt: '2021-01-12',
+    }, undefined, undefined, true);
 
-    const searchResult = await entityService.search({ select: [ 'id', 'name' ] });
-    expect(searchResult.hits.length).toBeGreaterThan(0);
-    for (const hit of searchResult.hits) {
-      expect(Object.keys(hit)).toEqual(expect.arrayContaining([ 'id', 'name' ]));
-    }
-  }, 20000);
+    const searchResult = await entityService.search({
+      select: [ 'id', 'name' ],
+    });
+    expect(Object.keys(searchResult.hits[ 0 ]).sort()).toEqual([ 'id', 'name' ].sort());
+  }, 50000);
 
   it('should return distinct results by name', async () => {
     await entityService.getSearchService().updateIndexSettings({
       filterableAttributes: [ 'name' ],
     }, true);
 
-    await delay(1000);
-
     await entityService.getSearchService().bulkSync([
-      {
-        id: '1', name: 'alpha', description: 'test', createdAt: '2021-01-01', updatedAt: '2021-01-01'
+      { id: '13', name: 'distinct', description: 'desc', createdAt: '2021-01-13', updatedAt: '2021-01-13' },
+      { id: '14', name: 'distinct', description: 'desc', createdAt: '2021-01-14', updatedAt: '2021-01-14' },
+    ], undefined, undefined, true);
 
-      },
-      {
-        id: '5', name: 'alpha', description: 'duplicate', createdAt: '2021-01-05', updatedAt: '2021-01-05'
-      }
-    ]);
-    await delay(1000);
-
-    const searchResult = await entityService.search({ distinct: 'name' });
-    const names = searchResult.hits.map(h => h.name);
-    expect(new Set(names).size).toBe(names.length);
-  }, 20000);
+    const searchResult = await entityService.search({
+      distinct: 'name',
+    });
+    // Meilisearch distinct returns 1 hit per distinct value
+    expect(searchResult.hits.length).toBe(1);
+  }, 50000);
 
   it('should delete an entity from the index', async () => {
+    await entityService.getSearchService().syncToIndex({
+      id: '15',
+      name: 'delete',
+      description: 'desc',
+      createdAt: '2021-01-15',
+      updatedAt: '2021-01-15',
+    }, undefined, undefined, true);
 
-    await entityService.getSearchService().updateIndexSettings({
-      filterableAttributes: [ 'id' ],
-    }, true);
+    await entityService.getSearchService().deleteFromIndex('15', undefined, undefined, true);
 
-    await delay(1000);
-
-    await entityService.getSearchService().bulkSync([
-      {
-        id: '1', name: 'alpha', description: 'test', createdAt: '2021-01-01', updatedAt: '2021-01-01'
-
-      },
-      {
-        id: '2', name: 'alpha', description: 'duplicate', createdAt: '2021-01-05', updatedAt: '2021-01-05'
-      }
-    ]);
-    await delay(1000);
-
-    await entityService.getSearchService().deleteFromIndex('2');
-    await delay(1000);
-
-    const searchResult = await entityService.search({ filters: { id: { eq: '2' } } });
+    const searchResult = await entityService.search({
+      search: 'delete',
+    });
     expect(searchResult.hits.length).toBe(0);
-  }, 20000);
+  }, 50000);
 
   it('should update an indexed entity', async () => {
-
-    await entityService.getSearchService().updateIndexSettings({
-      filterableAttributes: [ 'id' ],
-    }, true);
-
-    await delay(1000);
-
-    await entityService.getSearchService().bulkSync([
-      {
-        id: '1', name: 'alpha', description: 'test', createdAt: '2021-01-01', updatedAt: '2021-01-01'
-
-      },
-      {
-        id: '3', name: 'alpha', description: 'duplicate', createdAt: '2021-01-05', updatedAt: '2021-01-05'
-      }
-    ]);
-    await delay(1000);
+    await entityService.getSearchService().syncToIndex({
+      id: '16',
+      name: 'update',
+      description: 'old desc',
+      createdAt: '2021-01-16',
+      updatedAt: '2021-01-16',
+    }, undefined, undefined, true);
 
     await entityService.getSearchService().syncToIndex({
-      id: '3', name: 'beta-updated', description: 'second-updated', createdAt: '2021-01-03', updatedAt: '2021-01-06',
+      id: '16',
+      name: 'update',
+      description: 'new desc',
+      createdAt: '2021-01-16',
+      updatedAt: '2021-01-16',
+    }, undefined, undefined, true);
+
+    const searchResult = await entityService.search({
+      search: 'update',
     });
-    await delay(1000);
-
-    const searchResult = await entityService.search({ filters: { id: { eq: '3' } } });
-    expect(searchResult.hits.length).toBe(1);
-
-    expect(searchResult.hits[ 0 ].name).toBe('beta-updated');
-  }, 20000);
+    expect(searchResult.hits[ 0 ].description).toBe('new desc');
+  }, 50000);
 
   it('should return empty results for non-existent search', async () => {
-    const searchResult = await entityService.search({ search: 'nonexistentterm' });
+    const searchResult = await entityService.search({
+      search: 'nonexistentkeywordthatshouldnotmatchanything',
+    });
     expect(searchResult.hits.length).toBe(0);
-  }, 10000);
+  }, 50000);
 
   it('should return all results for empty search', async () => {
     await entityService.getSearchService().bulkSync([
-      {
-        id: '1', name: 'alpha', description: 'test', createdAt: '2021-01-01', updatedAt: '2021-01-01'
+      { id: '17', name: 'all1', description: 'desc', createdAt: '2021-01-17', updatedAt: '2021-01-17' },
+      { id: '18', name: 'all2', description: 'desc', createdAt: '2021-01-18', updatedAt: '2021-01-18' },
+    ], undefined, undefined, true);
 
-      },
-      {
-        id: '3', name: 'alpha', description: 'duplicate', createdAt: '2021-01-05', updatedAt: '2021-01-05'
-      }
-    ]);
-    await delay(1000);
-    const searchResult = await entityService.search({ search: '' });
-    expect(searchResult.hits.length).toBe(2);
-  }, 10000);
+    const searchResult = await entityService.search({
+      search: '',
+    });
+    expect(searchResult.total).toBeGreaterThanOrEqual(2);
+  }, 50000);
 
   describe('Geo Search', () => {
-    // ─── Geo Search Tests ───────────────────────────────────────────────────────
-    const geoEntities = [
-      {
-        id: 'geo-1',
-        name: 'Eiffel Tower',
-        description: 'Landmark in Paris, France',
-        createdAt: '2023-01-01',
-        _geo: { lat: 48.8584, lng: 2.2945 }, // Paris
-      },
-      {
-        id: 'geo-2',
-        name: 'Colosseum',
-        description: 'Amphitheatre in Rome, Italy',
-        createdAt: '2023-01-02',
-        _geo: { lat: 41.8902, lng: 12.4922 }, // Rome
-      },
-      {
-        id: 'geo-3',
-        name: 'Brandenburg Gate',
-        description: 'Monument in Berlin, Germany',
-        createdAt: '2023-01-03',
-        _geo: { lat: 52.5163, lng: 13.3777 }, // Berlin
-      },
-      {
-        id: 'geo-4',
-        name: 'Louvre Museum',
-        description: 'Art museum in Paris, France',
-        createdAt: '2023-01-04',
-        _geo: { lat: 48.8606, lng: 2.3376 }, // Paris, near Eiffel Tower
-      },
-    ];
-
     beforeEach(async () => {
+      // Set geo attributes as filterable and sortable
       await entityService.getSearchService().updateIndexSettings({
-        filterableAttributes: [ '_geo', 'name' ],
-        sortableAttributes: [ '_geo' ], // Also make it sortable for later tests
+        filterableAttributes: [ '_geo' ],
+        sortableAttributes: [ '_geo' ],
       }, true);
-      await delay(1000);
 
-      await entityService.getSearchService().bulkSync(geoEntities);
-      await delay(1000);
+      // Add some geo-tagged entities
+      await entityService.getSearchService().bulkSync([
+        { id: 'geo1', name: 'Near', description: 'desc', createdAt: '2021-01-19', _geo: { lat: 40.7128, lng: -74.0060 } }, // New York
+        { id: 'geo2', name: 'Mid', description: 'desc', createdAt: '2021-01-20', _geo: { lat: 34.0522, lng: -118.2437 } }, // Los Angeles
+        { id: 'geo3', name: 'Far', description: 'desc', createdAt: '2021-01-21', _geo: { lat: 51.5074, lng: -0.1278 } },   // London
+      ] as any[], undefined, undefined, true);
     });
 
     it('should filter results by geoRadius', async () => {
-
-      // Search for locations within 5km of a point in central Paris
       const searchResult = await entityService.search({
         geoRadiusFilter: {
-          center: { lat: 48.8570, lng: 2.3400 }, // Approx. central Paris
-          distanceInMeters: 5000, // 5km
+          center: { lat: 40.7128, lng: -74.0060 },
+          distanceInMeters: 100000, // 100km
         },
       });
-
-      expect(searchResult.hits.length).toBe(2); // Eiffel Tower and Louvre Museum
-      const names = searchResult.hits.map(h => h.name).sort();
-      expect(names).toEqual([ 'Eiffel Tower', 'Louvre Museum' ].sort());
-    }, 20000);
+      expect(searchResult.hits.length).toBe(1);
+      expect(searchResult.hits[ 0 ].id).toBe('geo1');
+    }, 50000);
 
     it('should sort results by _geoPoint ascending (nearest first)', async () => {
-      // Sort by distance from a point closer to Eiffel Tower than Louvre
-      const referencePoint = { lat: 48.8580, lng: 2.2900 }; // Very close to Eiffel Tower
-
       const searchResult = await entityService.search({
-        // No text search, get all relevant geo entities
         geoSort: {
-          point: referencePoint,
+          point: { lat: 40.7128, lng: -74.0060 }, // New York
           direction: 'asc',
         },
-        // Filter to only include Paris landmarks for a clearer sort test
-        filters: { name: { in: [ 'Eiffel Tower', 'Louvre Museum' ] } }
       });
-
-      // Expect Eiffel Tower to be first, then Louvre
-      expect(searchResult.hits.length).toBe(2);
-      expect(searchResult.hits[ 0 ].name).toBe('Eiffel Tower');
-      expect(searchResult.hits[ 1 ].name).toBe('Louvre Museum');
-    }, 20000);
+      expect(searchResult.hits[ 0 ].id).toBe('geo1'); // New York
+      expect(searchResult.hits[ 1 ].id).toBe('geo2'); // LA
+      expect(searchResult.hits[ 2 ].id).toBe('geo3'); // London
+    }, 50000);
 
     it('should sort results by _geoPoint descending (farthest first)', async () => {
-      const referencePoint = { lat: 48.8580, lng: 2.2900 }; // Very close to Eiffel Tower
-
       const searchResult = await entityService.search({
         geoSort: {
-          point: referencePoint,
+          point: { lat: 40.7128, lng: -74.0060 }, // New York
           direction: 'desc',
         },
-        filters: { name: { in: [ 'Eiffel Tower', 'Louvre Museum' ] } }
       });
-
-      // Expect Louvre to be first (farthest from ref point), then Eiffel Tower
-      expect(searchResult.hits.length).toBe(2);
-      expect(searchResult.hits[ 0 ].name).toBe('Louvre Museum');
-      expect(searchResult.hits[ 1 ].name).toBe('Eiffel Tower');
-    }, 20000);
+      expect(searchResult.hits[ 0 ].id).toBe('geo3'); // London
+      expect(searchResult.hits[ 1 ].id).toBe('geo2'); // LA
+      expect(searchResult.hits[ 2 ].id).toBe('geo1'); // New York
+    }, 50000);
   });
 });

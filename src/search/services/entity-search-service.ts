@@ -3,6 +3,7 @@ import type { BaseEntityService, EntityRecordTypeFromSchema, EntitySchema } from
 import type { BaseSearchEngine } from '../engines';
 import type { EntitySearchQuery, SearchResult } from '../types';
 import { BaseSearchService } from './base-search-service';
+import { BatchProgress } from '../../observability/utils/batch-progress';
 
 export class EntitySearchService<S extends EntitySchema<any, any, any>> extends BaseSearchService {
 
@@ -60,31 +61,38 @@ export class EntitySearchService<S extends EntitySchema<any, any, any>> extends 
   }
 
   /**
-   * Resync all entity documents from database to search index
-   * Uses cursor-based pagination to handle large datasets efficiently
+   * Resync all entity documents from database to search index.
+   * Uses cursor-based pagination to handle large datasets efficiently.
+   * 
+   * @param options.batchSize - Number of records to fetch per iteration (default: 50)
+   * @param options.ctx - Execution context for the operation
+   * @param options.maxIterations - Safety limit on number of iterations (default: 10000)
    */
   async resyncAllDocuments(options?: {
     batchSize?: number;
     ctx?: ExecutionContext;
+    maxIterations?: number;
   }): Promise<{
     processedCount: number;
     failedCount: number;
     totalIterations: number;
   }> {
-    const { batchSize = 50, ctx } = options || {};
+    const { batchSize = 50, ctx, maxIterations = 10000 } = options || {};
     const searchConfig = this.getSearchIndexConfig();
-    
+    const entityName = this.entityService.getEntityName();
+
+    let cursor: string | undefined = 'init';
+    let iterationCount = 0;
     let processedCount = 0;
     let failedCount = 0;
-    let cursor: string | undefined = 'init';
-    const maxIterations = 10000;
-    let iterationCount = 0;
 
-    this.logger.info(`Starting resync for ${this.entityService.getEntityName()}`);
+    this.logger.info(`Starting resync for ${entityName}`);
 
-    while (!!cursor && iterationCount < maxIterations) {
+    // Iterate through all records using cursor-based pagination
+    while (cursor && iterationCount < maxIterations) {
       iterationCount++;
 
+      // Fetch next batch
       const queryResult = await this.entityService.query({
         pagination: {
           limit: batchSize,
@@ -92,37 +100,36 @@ export class EntitySearchService<S extends EntitySchema<any, any, any>> extends 
         }
       }, ctx);
 
-      if (!queryResult.data || queryResult.data.length === 0) {
+      if (!queryResult.data?.length) {
         break;
       }
 
-      try {
-        await this.bulkSync(queryResult.data as EntityRecordTypeFromSchema<S>[], searchConfig, ctx, true);
-        processedCount += queryResult.data.length;
-        
-        this.logger.info(`Synced batch of ${queryResult.data.length} documents`, {
-          entityName: this.entityService.getEntityName(),
-          processedCount,
-          iteration: iterationCount
-        });
-      } catch (error: any) {
-        this.logger.error(`Error syncing batch: ${error.message}`, { error });
-        failedCount += queryResult.data.length;
-      }
+      // Sync batch to search index
+      const { summary } = await BatchProgress.all(
+        `Resync ${entityName}`,
+        queryResult.data,
+        async (docs) => {
+          await this.bulkSync(docs as EntityRecordTypeFromSchema<S>[], searchConfig, ctx, true);
+          return docs;
+        },
+        {
+          // Show progress on first iteration, then only errors
+          observe: iterationCount === 1 ? 'progress' : 'errors',
+          tags: { entity: entityName },
+        }
+      );
 
+      processedCount += summary.succeeded;
+      failedCount += summary.failed;
       cursor = queryResult.cursor ?? undefined;
     }
 
-    this.logger.info(`Resync completed for ${this.entityService.getEntityName()}`, {
+    this.logger.info(`Resync completed for ${entityName}`, {
       processedCount,
       failedCount,
-      totalIterations: iterationCount
+      iterations: iterationCount
     });
 
-    return {
-      processedCount,
-      failedCount,
-      totalIterations: iterationCount,
-    };
+    return { processedCount, failedCount, totalIterations: iterationCount };
   }
 } 

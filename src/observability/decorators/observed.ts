@@ -1,79 +1,101 @@
 /**
  * @Observed Decorator - Unified observability decorator
  * 
- * Smart decorator that combines tracing, audit, and metrics without duplication.
- * 
- * DEFAULT: If no options specified, defaults to { trace: true }
- * 
- * DESIGN:
- * - trace: Creates span with duration/success/error (for debugging/performance)
- * - audit: Creates business/compliance log (only for entity operations)
- * - metric: Creates aggregatable counters/gauges (NOT timing if trace enabled!)
+ * Combines tracing, audit, and metrics in one decorator.
+ * Parent tracking is FULLY AUTOMATIC via span tree.
  * 
  * Usage:
  * ```typescript
  * class OrderService {
- *   // Default - trace only
- *   @Observed()
+ *   @Observed()  // Default - trace only
  *   async fetchOrders(): Promise<Order[]> { }
  *   
- *   // Explicit trace
- *   @Observed({ trace: true })
- *   async getOrder(id: string): Promise<Order> { }
- *   
- *   // Business operation - trace + audit
- *   @Observed({ 
- *     trace: true,
- *     audit: { entityName: 'order' },
- *     metric: { type: 'counter', name: 'orders.created' }
- *   })
+ *   @Observed({ trace: true, audit: { entityName: 'order' } })
  *   async createOrder(order: Order): Promise<Order> { }
  *   
- *   // Counter only (no trace)
- *   @Observed({ 
- *     metric: { type: 'counter', name: 'cache.hit' }
- *   })
- *   getCached(key: string): any { }
+ *   @Observed({ trace: false, audit: true })  // Audit only, no span
+ *   async deleteOrder(id: string): Promise<void> { }
  * }
  * ```
- * 
- * ANTI-PATTERNS:
- * ❌ DON'T: trace + timing metric (span already has duration!)
- * ❌ DON'T: audit every method (only business events!)
- * ✅ DO: trace for debugging, audit for compliance, counter for stats
  */
 
-import { setParentObservabilityLogId, getCurrentContext } from '../context';
+import { getCurrentExecutionContext } from '../../core/runtime/execution-context';
 import { AuditObserver } from '../observers/audit';
-import { normalizeError } from '../observers/base';
 import { MetricObserver } from '../observers/metric';
-import { SpanObserver, SpanOptions, SpanEndOptions } from '../observers/span';
+import { SpanObserver, SpanOptions, ISpanObserver } from '../observers/span';
+import type { NoiseControl } from '../types';
 import { safeSerialize } from '../utils/payload';
-import { executeWithHandlers, SourceType, resolveSource } from './decorator-utils';
+import { SourceType, resolveSource } from './decorator-utils';
 
-export interface ObservedOptions {
-  /** Method name (defaults to ClassName.methodName) */
+// ═══════════════════════════════════════════════════════════════════════════
+// Types
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type ObservedTagValue = string | number | boolean;
+
+export type ObservedEnrichment = {
+  /** Span tags (stored as strings, indexed). */
+  tags?: Record<string, ObservedTagValue>;
+  /** Span metrics (numeric). */
+  metrics?: Record<string, number>;
+  /** Span debug data (not indexed). */
+  data?: Record<string, unknown>;
+  /** Convenience: add checkpoint(s) to the span timeline. */
+  checkpoints?: Array<{
+    name: string;
+    tags?: Record<string, string>;
+    metrics?: Record<string, number>;
+    data?: Record<string, unknown>;
+    error?: Error | string;
+  }>;
+};
+
+export type ObservedExtractContext<TInstance, TArgs extends unknown[], TResult> = {
+  instance: TInstance;
+  args: TArgs;
+  operationName: string;
+  source: string;
+  /** Only available in finish() */
+  result?: TResult;
+  /** Only available in finish() */
+  error?: Error;
+  /** Only available in finish() */
+  success?: boolean;
+  /** Only available in finish() */
+  durationMs?: number;
+  /** The current span (only present when tracing is enabled and capture is active). */
+  span?: ISpanObserver;
+};
+
+type BivariantFn<T extends (...args: any[]) => any> = {
+  bivarianceHack: T;
+}[ 'bivarianceHack' ];
+
+export interface ObservedExtractor<TInstance, TArgs extends unknown[], TResult> {
+  /**
+   * Run before the method is executed.
+   * Return any enrichment to apply to the span.
+   */
+  start?: BivariantFn<(ctx: ObservedExtractContext<TInstance, TArgs, TResult>) => ObservedEnrichment | void>;
+  /**
+   * Run after the method finishes (success or error).
+   * Return any enrichment to apply to the span.
+   */
+  finish?: BivariantFn<(ctx: ObservedExtractContext<TInstance, TArgs, TResult>) => ObservedEnrichment | void>;
+}
+
+export interface ObservedOptions<TInstance = unknown, TArgs extends unknown[] = unknown[], TResult = unknown> {
+  /** Operation name (defaults to ClassName.methodName) */
   name?: string;
 
-  /**
-   * Create span for distributed tracing
-   * Spans capture duration, success, error automatically.
-   * Use for: debugging, performance analysis, distributed tracing
-   * 
-   * DEFAULT: true if no options are specified (trace, audit, metric all undefined)
-   */
+  /** Create span for distributed tracing (default: true if nothing else specified) */
   trace?: boolean | {
     level?: SpanOptions[ 'level' ];
     attributes?: Record<string, unknown>;
+    capture?: SpanOptions[ 'capture' ];
   };
 
-  /**
-   * Create audit record for business/compliance tracking
-   * Use for: entity operations, security events, compliance requirements
-   * Note: Only use for actual business events, not every traced method
-   * 
-   * DEFAULT: false
-   */
+  /** Create audit record */
   audit?: boolean | {
     action?: string;
     entityName?: string;
@@ -82,84 +104,56 @@ export interface ObservedOptions {
     captureResult?: boolean;
   };
 
-  /**
-   * Record metric for aggregation/dashboards
-   * - counter: Count method invocations (useful!)
-   * - gauge: Set a specific value (useful!)
-   * - timing: Duration in ms (DON'T USE if trace:true - span already captures duration!)
-   * 
-   * DEFAULT: undefined (no metrics)
-   */
+  /** Record metric */
   metric?: {
     name?: string;
-    type?: 'counter' | 'gauge' | 'timing';
+    type?: 'counter' | 'timing';
     unit?: string;
     tags?: Record<string, string>;
   };
 
-  /** 
-   * Source type (auto-detected if not provided)
-   * Auto-detection rules:
-   * - *Controller → 'controller' → "api:ControllerName.method"
-   * - *Service → 'service' → "service:ServiceName.method"
-   * - *Queue, *QueueHandler → 'queue' → "queue:QueueName.method"
-   * - *Task, *TaskHandler → 'task' → "task:TaskName.method"
-   * - Default → 'handler' → "ClassName.method"
-   */
+  /** Source type (auto-detected if not provided) */
   sourceType?: SourceType;
-
-  /** Tags applied to all observability events */
+  /** Tags applied to all events */
   tags?: Record<string, string>;
-
   /** Capture method arguments */
   captureArgs?: boolean;
-
   /** Capture return value */
   captureResult?: boolean;
-
-  /**
-   * Conditionally enable/disable observability.
-   * - Static boolean: `enabled: false` to disable
-   * - Dynamic function: `enabled: () => someCondition()`
-   * Function receives no arguments but can access getCurrentContext() internally.
-   * Default: true (enabled)
-   */
+  /** Conditionally enable/disable */
   enabled?: boolean | (() => boolean);
 
   /**
-   * Callback to extract context-specific attributes at runtime.
-   * Called with the instance (`this`) and method arguments.
-   * Returns attributes to add to the span.
+   * Unified extraction API (recommended).
+   *
+   * Lets applications enrich span tags/metrics/data/checkpoints both at start and finish,
+   * without needing 3-4 separate callbacks.
    */
-  getAttributes?: (instance: any, args: any[]) => Record<string, unknown>;
+  extract?: ObservedExtractor<TInstance, TArgs, TResult>;
 
   /**
-   * Callback to extract attributes from the result after execution.
-   * Called with the method's return value.
-   * Returns attributes to add to the span before it ends.
+   * Noise reduction override for the trace span created by this decorator.
+   * Convenience for setting `trace.capture.noise`.
    */
-  getResultAttributes?: (result: any) => Record<string, unknown>;
-
-  /**
-   * Callback to extract metrics from the result after execution.
-   * Called with the method's return value.
-   * Returns metrics to embed in the span (published as CloudWatch EMF metrics).
-   */
-  getMetrics?: (result: any) => Record<string, number>;
-
-  /**
-   * Callback to extract data from the result after execution.
-   * Called with the method's return value.
-   * Returns data to embed in the span (for audit-like structured information).
-   */
-  getData?: (result: any) => Record<string, unknown>;
+  noise?: NoiseControl;
 }
 
-/**
- * Unified observability decorator that combines tracing, auditing, and metrics
- * 
- * @param options - Observability options
- */
+// ═══════════════════════════════════════════════════════════════════════════
+// Decorator
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function Observed(): <T extends (...args: any[]) => any>(
+  target: object,
+  propertyKey: string | symbol,
+  descriptor: TypedPropertyDescriptor<T>
+) => TypedPropertyDescriptor<T>;
+export function Observed<TInstance = unknown, TArgs extends unknown[] = unknown[], TResult = unknown>(
+  options: ObservedOptions<TInstance, TArgs, TResult>
+): <T extends (...args: any[]) => any>(
+  target: object,
+  propertyKey: string | symbol,
+  descriptor: TypedPropertyDescriptor<T>
+) => TypedPropertyDescriptor<T>;
 export function Observed(options: ObservedOptions = {}) {
   return function <T extends (...args: any[]) => any>(
     target: object,
@@ -167,270 +161,214 @@ export function Observed(options: ObservedOptions = {}) {
     descriptor: TypedPropertyDescriptor<T>
   ): TypedPropertyDescriptor<T> {
     const originalMethod = descriptor.value;
-
     if (typeof originalMethod !== 'function') {
       return descriptor;
     }
 
-    const className = target.constructor.name;
+    // Pre-compute static values
+    const className = ('name' in target ? target.name : target.constructor.name) as string;
     const methodName = String(propertyKey);
     const operationName = options.name ?? `${className}.${methodName}`;
-
-    // Default to trace:true if nothing is specified
-    if (!options.trace && !options.audit && !options.metric) {
-      options.trace = true;
-    }
-
-    // Resolve source using shared utility (auto-detects if sourceType not provided)
     const source = resolveSource(options.sourceType, className, methodName);
+    const shouldTrace = computeShouldTrace(options);
+    const traceOptions = typeof options.trace === 'object' ? options.trace : {};
 
-    const wrappedMethod = function (this: unknown, ...args: unknown[]): unknown {
-      // Check if observability is enabled (static or dynamic)
-      if (options.enabled !== undefined) {
-        const isEnabled = typeof options.enabled === 'function'
-          ? options.enabled()
-          : options.enabled;
-
-        if (!isEnabled) {
-          // Observability disabled - execute method without instrumentation
-          return (originalMethod as (...a: unknown[]) => unknown).apply(this, args);
-        }
+    descriptor.value = function (this: ThisParameterType<T>, ...args: Parameters<T>): ReturnType<T> {
+      // Early exits
+      if (!isEnabled(options) || !getCurrentExecutionContext()) {
+        return originalMethod.apply(this, args) as ReturnType<T>;
       }
 
-      const startTime = Date.now();
-      let span: ReturnType<typeof SpanObserver.start> | null = null;
-      let previousParentId: string | undefined = undefined;
-
-      // Start span if tracing enabled
-      if (options.trace) {
-        const traceOptions = typeof options.trace === 'boolean' ? {} : options.trace;
-
-        const dynamicAttributes = options.getAttributes ? options.getAttributes(this, args) : {};
-
-        const spanOptions: SpanOptions = {
-          level: traceOptions.level,
-          attributes: {
-            'code.function': methodName,
-            'code.namespace': className,
-            ...traceOptions.attributes,
-            ...dynamicAttributes,
-            ...(options.captureArgs && args.length > 0 && { args: safeSerialize(args) }),
-          },
-          tags: { ...options.tags, ...traceOptions.attributes?.tags as Record<string, string> | undefined },
-          source,
-        };
-
-        // CRITICAL FIX: Snapshot the current parent BEFORE starting the span
-        // This prevents sibling operations (e.g., multiple upserts in a loop) from forming a chain
-        const ctx = getCurrentContext();
-        previousParentId = ctx?.parentObservabilityLogId;
-
-        span = SpanObserver.start(operationName, spanOptions);
-        // Update context so child operations can link to this span
-        setParentObservabilityLogId(span.id);
-      }
-
-      // Emit pre-execution metric (counter)
-      if (options.metric && options.metric.type === 'counter') {
-        const metricName = options.metric.name ?? `${operationName}.count`;
-        MetricObserver.increment(metricName, 1, {
-          tags: { ...options.tags, ...options.metric.tags },
-          source,
-        });
-      }
-
-      // Execute method with automatic sync/async handling
-      return executeWithHandlers(
-        originalMethod as (...args: unknown[]) => unknown,
-        this,
-        args,
-        (success, result, error) => {
-          finishObservability({
+      // Build span options (only compute dynamic attrs if tracing)
+      const spanOptions: SpanOptions & {
+        onStart?: (span: ISpanObserver) => void;
+        onFinish?: (span: ISpanObserver, result: { value?: unknown; error?: Error; success: boolean; durationMs: number }) => void;
+      } = {
+        level: traceOptions.level,
+        capture: options.noise
+          ? { ...(traceOptions.capture ?? {}), noise: options.noise }
+          : traceOptions.capture,
+        source,
+        tags: shouldTrace ? {
+          ...options.tags,
+          'code.function': methodName,
+          'code.namespace': className,
+        } : options.tags,
+        data: shouldTrace ? {
+          ...(options.captureArgs && args.length > 0 && { args: safeSerialize(args) }),
+        } : undefined,
+        skipCapture: !shouldTrace,
+        onStart: (span: ISpanObserver) => {
+          applyObservedEnrichment(
             span,
-            options,
-            operationName,
-            args,
-            result,
-            success,
-            error: error ? normalizeError(error) : undefined,
-            durationMs: Date.now() - startTime,
-            source,
-            previousParentId,
-          });
-        }
-      );
-    };
-    descriptor.value = wrappedMethod as T;
+            options.extract?.start?.({
+              instance: this,
+              args,
+              operationName,
+              source,
+              span,
+            })
+          );
+        },
+        onFinish: (span: ISpanObserver, result: { value?: unknown; error?: Error; success: boolean; durationMs: number }) => {
+          // Unified extractor (finish hook)
+          applyObservedEnrichment(
+            span,
+            options.extract?.finish?.({
+              instance: this,
+              args,
+              operationName,
+              source,
+              result: result.value as unknown,
+              error: result.error,
+              success: result.success,
+              durationMs: result.durationMs,
+              span,
+            })
+          );
+
+          onMethodFinish(span, options, operationName, args, result, source);
+        },
+      };
+
+      // Single path for EVERYTHING - SpanObserver.wrap handles sync/async
+      return SpanObserver.wrap(operationName, () => originalMethod.apply(this, args) as ReturnType<T>, spanOptions) as ReturnType<T>;
+    } as T;
 
     return descriptor;
   };
 }
 
-/**
- * Finish all observability recording (span, audit, metrics)
- * Unified handler for both sync and async, success and error paths
- */
-function finishObservability(params: {
-  span: ReturnType<typeof SpanObserver.start> | null;
-  options: ObservedOptions;
-  operationName: string;
-  args: unknown[];
-  result?: unknown;
-  success: boolean;
-  error?: Error;
-  durationMs: number;
-  source: string;
-  previousParentId?: string;
-}): void {
-  const { span, options, operationName, args, result, success, error, durationMs, source, previousParentId } = params;
+// ═══════════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════════
 
-  // End span (captures duration, success, error - no need for separate timing metric!)
-  if (span) {
-    if (success) {
-      if (options.captureResult && result !== undefined) {
-        span.setAttribute('result', safeSerialize(result));
-      }
+function computeShouldTrace(options: ObservedOptions): boolean {
+  // If trace is explicitly set, use that
+  if (options.trace !== undefined) {
+    return options.trace !== false;
+  }
+  // If only audit/metric specified, don't trace
+  if (options.audit !== undefined || options.metric !== undefined) {
+    return false;
+  }
+  // Default: trace
+  return true;
+}
 
-      // Build end options with all extractors
-      const endOptions: SpanEndOptions = { success: true };
+function isEnabled(options: ObservedOptions): boolean {
+  if (options.enabled === undefined) return true;
+  return typeof options.enabled === 'function' ? options.enabled() : options.enabled;
+}
 
-      // Extract attributes from result
-      if (options.getResultAttributes && result !== undefined) {
-        endOptions.attributes = options.getResultAttributes(result);
-      }
+function onMethodFinish(
+  span: ISpanObserver,
+  options: ObservedOptions,
+  operationName: string,
+  args: unknown[],
+  result: { value?: unknown; error?: Error; success: boolean; durationMs: number },
+  source: string
+): void {
+  const { value, error, success, durationMs } = result;
 
-      // Extract metrics from result (published as CloudWatch EMF metrics!)
-      if (options.getMetrics && result !== undefined) {
-        endOptions.metrics = options.getMetrics(result);
-      }
-
-      // Extract data from result (for audit-like structured info)
-      if (options.getData && result !== undefined) {
-        endOptions.data = options.getData(result);
-      }
-
-      span.end(endOptions);
-    } else {
-      // Error is already normalized in the callback
-      span.end({ success: false, error: error as Error });
-    }
-
-    // CRITICAL FIX: Restore the previous parent ID after span ends
-    // This ensures sibling operations see the correct parent, not the just-completed span
-    if (previousParentId !== undefined) {
-      setParentObservabilityLogId(previousParentId);
+  // Add result data to span (only if span was captured)
+  if (span.captured && success) {
+    if (options.captureResult && value !== undefined) {
+      span.setData({ result: safeSerialize(value) });
     }
   }
 
-  // Record audit ONLY if explicitly configured
-  // Audit is for business/compliance events, not every traced method
+  // Audit (only if configured)
   if (options.audit) {
-    recordAudit({
-      options,
-      operationName,
-      args,
-      result,
-      success,
-      error,
-      durationMs,
-      source,
-    });
+    recordAudit(options, operationName, args, value, success, durationMs, source, error);
   }
 
-  // Record timing metric ONLY if:
-  // 1. Metric is configured as timing type
-  // 2. AND no span exists (span already captures duration)
-  // This prevents duplicate duration recording
-  if (options.metric?.type === 'timing' && !span) {
-    recordTimingMetric({
-      options,
-      operationName,
-      durationMs,
-      success,
-      source,
-    });
+  // Metrics (only if configured)
+  if (options.metric) {
+    recordMetric(options, operationName, success, durationMs, source);
   }
 }
 
-/**
- * Record audit event
- * NOTE: Caller must check if options.audit is enabled before calling this
- */
-function recordAudit(params: {
-  options: ObservedOptions;
-  operationName: string;
-  args: unknown[];
-  result?: unknown;
-  success: boolean;
-  error?: Error;
-  durationMs: number;
-  source: string;
-}): void {
-  const { options, operationName, args, result, success, error, durationMs, source } = params;
+function applyObservedEnrichment(span: ISpanObserver, enrichment: ObservedEnrichment | void): void {
+  if (!enrichment) return;
 
-  // options.audit is guaranteed to exist (caller checks), extract config
-  const auditOptions = typeof options.audit === 'boolean' ? {} : (options.audit ?? {});
+  if (enrichment.tags) {
+    for (const [ k, v ] of Object.entries(enrichment.tags)) {
+      span.tag(k, v);
+    }
+  }
+  if (enrichment.metrics) {
+    span.metrics(enrichment.metrics);
+  }
+  if (enrichment.data) {
+    span.setData(enrichment.data);
+  }
+  if (enrichment.checkpoints) {
+    for (const cp of enrichment.checkpoints) {
+      span.checkpoint(cp.name, {
+        tags: cp.tags,
+        metrics: cp.metrics,
+        data: cp.data,
+        error: cp.error,
+      });
+    }
+  }
+}
 
-  // Build audit data
-  let data: Record<string, unknown> = {
-    success,
-    durationMs,
-  };
+function recordAudit(
+  options: ObservedOptions,
+  operationName: string,
+  args: unknown[],
+  result: unknown,
+  success: boolean,
+  durationMs: number,
+  source: string,
+  error?: Error
+): void {
+  const auditOpts = typeof options.audit === 'object' ? options.audit : {};
+  const data: Record<string, unknown> = { success, durationMs };
 
-  // Capture args if requested
-  const shouldCaptureArgs = auditOptions?.captureArgs ?? options.captureArgs ?? false;
-  if (shouldCaptureArgs && args.length > 0) {
+  if ((auditOpts.captureArgs ?? options.captureArgs) && args.length > 0) {
     data.args = safeSerialize(args);
   }
-
-  // Capture result if requested
-  const shouldCaptureResult = auditOptions?.captureResult ?? options.captureResult ?? false;
-  if (shouldCaptureResult && result !== undefined) {
+  if ((auditOpts.captureResult ?? options.captureResult) && result !== undefined) {
     data.result = safeSerialize(result);
   }
-
-  // Add error info if failed
   if (error) {
-    data.error = {
-      type: error.name,
-      message: error.message,
-    };
+    data.error = { type: error.name, message: error.message };
   }
 
   AuditObserver.record({
-    operation: auditOptions?.action ?? operationName,
-    entityName: auditOptions?.entityName,
+    operation: auditOpts.action ?? operationName,
+    entityName: auditOpts.entityName,
     data,
-    level: error ? 'error' : (auditOptions?.level ?? 'info'),
+    level: error ? 'error' : (auditOpts.level ?? 'info'),
     source,
     tags: options.tags,
   });
 }
 
-/**
- * Record timing metric if configured
- */
-function recordTimingMetric(params: {
-  options: ObservedOptions;
-  operationName: string;
-  durationMs: number;
-  success: boolean;
-  source: string;
-}): void {
-  const { options, operationName, durationMs, success, source } = params;
+function recordMetric(
+  options: ObservedOptions,
+  operationName: string,
+  success: boolean,
+  durationMs: number,
+  source: string
+): void {
+  const metricOpts = options.metric;
+  if (!metricOpts) return;
+  const metricTags = { ...options.tags, ...metricOpts.tags, success: String(success) };
 
-  if (!options.metric || options.metric.type !== 'timing') return;
-
-  const metricName = options.metric.name ?? `${operationName}.duration`;
-
-  MetricObserver.timing(metricName, durationMs, {
-    tags: {
-      ...options.tags,
-      ...options.metric.tags,
-      success: String(success),
-    },
-    unit: options.metric.unit ?? 'milliseconds',
-    source,
-  });
+  if (metricOpts.type === 'counter') {
+    MetricObserver.increment(metricOpts.name ?? `${operationName}.count`, 1, {
+      tags: metricTags,
+      source,
+    });
+  } else if (metricOpts.type === 'timing') {
+    MetricObserver.timing(metricOpts.name ?? `${operationName}.duration`, durationMs, {
+      tags: metricTags,
+      unit: metricOpts.unit ?? 'milliseconds',
+      source,
+    });
+  }
 }
-

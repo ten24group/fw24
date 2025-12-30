@@ -17,6 +17,8 @@ describe('MeiliSearch API Keys Integration', () => {
     }));
 
     controller = new MeiliSearchSystemController(DIContainer.ROOT);
+    // Manually set controllerName since the decorator is commented out
+    Object.defineProperty(controller, 'controllerName', { value: 'system/search', writable: true });
     harness = new LambdaTestHarness(controller as any);
     engine = DIContainer.ROOT.resolveSearchEngine() as MeiliSearchEngine;
   }, 30000);
@@ -29,7 +31,7 @@ describe('MeiliSearch API Keys Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       // Verify response format matches entity controller pattern
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
@@ -45,7 +47,7 @@ describe('MeiliSearch API Keys Integration', () => {
       });
       expect(page1.statusCode).toBe(200);
       const body1 = JSON.parse(page1.body);
-      
+
       expect(body1.items.length).toBeLessThanOrEqual(2);
       // Cursor might be null if there are no more results
       if (body1.items.length === 2) {
@@ -58,19 +60,19 @@ describe('MeiliSearch API Keys Integration', () => {
       // Get second page using cursor (if cursor exists)
       if (body1.cursor) {
         const page2 = await harness.get('/api-keys', {
-          queryStringParameters: { 
+          queryStringParameters: {
             count: '2',
             cursor: body1.cursor
           }
         });
         expect(page2.statusCode).toBe(200);
         const body2 = JSON.parse(page2.body);
-        
+
         expect(body2.items.length).toBeLessThanOrEqual(2);
-        
+
         // Verify different keys (if any exist)
         if (body1.items.length > 0 && body2.items.length > 0) {
-          expect(body2.items[0].uid).not.toBe(body1.items[0].uid);
+          expect(body2.items[ 0 ].uid).not.toBe(body1.items[ 0 ].uid);
         }
       }
     }, 30000);
@@ -82,14 +84,14 @@ describe('MeiliSearch API Keys Integration', () => {
       });
       expect(firstResponse.statusCode).toBe(200);
       const firstBody = JSON.parse(firstResponse.body);
-      
+
       if (firstBody.items.length === 0) {
         console.log('No API keys available for UID filter test');
         return;
       }
-      
-      const keyUid = firstBody.items[0].uid;
-      
+
+      const keyUid = firstBody.items[ 0 ].uid;
+
       const response = await harness.get('/api-keys', {
         queryStringParameters: {
           'uid.eq': keyUid,
@@ -99,7 +101,7 @@ describe('MeiliSearch API Keys Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
       expect(body.items.length).toBeGreaterThan(0);
@@ -116,11 +118,11 @@ describe('MeiliSearch API Keys Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
       if (body.items.length > 0) {
-        expect(body.items.every((key: any) => 
+        expect(body.items.every((key: any) =>
           key.name && key.name.toLowerCase().includes('default')
         )).toBe(true);
       }
@@ -136,11 +138,11 @@ describe('MeiliSearch API Keys Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
       if (body.items.length > 0) {
-        expect(body.items.every((key: any) => 
+        expect(body.items.every((key: any) =>
           key.description && key.description.toLowerCase().includes('search')
         )).toBe(true);
       }
@@ -156,13 +158,13 @@ describe('MeiliSearch API Keys Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
       if (body.items.length > 0) {
-        expect(body.items.every((key: any) => 
-          key.actions && key.actions.some((action: string) => 
-            ['search', 'documents.get'].includes(action)
+        expect(body.items.every((key: any) =>
+          key.actions && key.actions.some((action: string) =>
+            [ 'search', 'documents.get' ].includes(action)
           )
         )).toBe(true);
       }
@@ -178,11 +180,11 @@ describe('MeiliSearch API Keys Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
       if (body.items.length > 0) {
-        expect(body.items.every((key: any) => 
+        expect(body.items.every((key: any) =>
           key.indexes && key.indexes.includes('*')
         )).toBe(true);
       }
@@ -195,15 +197,15 @@ describe('MeiliSearch API Keys Integration', () => {
       });
       expect(firstResponse.statusCode).toBe(200);
       const firstBody = JSON.parse(firstResponse.body);
-      
+
       if (firstBody.items.length === 0) {
         console.log('No API keys available for key filter test');
         return;
       }
-      
-      const keyValue = firstBody.items[0].key;
+
+      const keyValue = firstBody.items[ 0 ].key;
       const partialKey = keyValue.substring(0, 8); // Use first 8 characters
-      
+
       const response = await harness.get('/api-keys', {
         queryStringParameters: {
           'key.contains': partialKey,
@@ -213,7 +215,7 @@ describe('MeiliSearch API Keys Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
       expect(body.items.length).toBeGreaterThan(0);
@@ -230,11 +232,11 @@ describe('MeiliSearch API Keys Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
       if (body.items.length > 0) {
-        expect(body.items.every((key: any) => 
+        expect(body.items.every((key: any) =>
           key.expiresAt && new Date(key.expiresAt) > new Date('2024-01-01T00:00:00Z')
         )).toBe(true);
       }
@@ -250,11 +252,11 @@ describe('MeiliSearch API Keys Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
       if (body.items.length > 0) {
-        expect(body.items.every((key: any) => 
+        expect(body.items.every((key: any) =>
           key.createdAt && new Date(key.createdAt) > new Date('2024-01-01T00:00:00Z')
         )).toBe(true);
       }
@@ -271,12 +273,12 @@ describe('MeiliSearch API Keys Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
-      
+
       if (body.items.length > 0) {
-        expect(body.items.every((key: any) => 
+        expect(body.items.every((key: any) =>
           key.actions && key.actions.includes('search') &&
           key.indexes && key.indexes.includes('*')
         )).toBe(true);
@@ -292,14 +294,14 @@ describe('MeiliSearch API Keys Integration', () => {
       });
       expect(firstResponse.statusCode).toBe(200);
       const firstBody = JSON.parse(firstResponse.body);
-      
+
       if (firstBody.items.length === 0) {
         console.log('No API keys available for single key test');
         return;
       }
-      
-      const keyUid = firstBody.items[0].uid;
-      
+
+      const keyUid = firstBody.items[ 0 ].uid;
+
       const response = await harness.get(`/api-keys/${keyUid}`, {
         pathParameters: {
           keyOrUid: keyUid
@@ -307,7 +309,7 @@ describe('MeiliSearch API Keys Integration', () => {
       });
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('uid');
       expect(body).toHaveProperty('key');
       expect(body).toHaveProperty('actions');
@@ -322,14 +324,14 @@ describe('MeiliSearch API Keys Integration', () => {
       });
       expect(firstResponse.statusCode).toBe(200);
       const firstBody = JSON.parse(firstResponse.body);
-      
+
       if (firstBody.items.length === 0) {
         console.log('No API keys available for key value test');
         return;
       }
-      
-      const keyValue = firstBody.items[0].key;
-      
+
+      const keyValue = firstBody.items[ 0 ].key;
+
       const response = await harness.get(`/api-keys/${keyValue}`, {
         pathParameters: {
           keyOrUid: keyValue
@@ -337,7 +339,7 @@ describe('MeiliSearch API Keys Integration', () => {
       });
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('uid');
       expect(body).toHaveProperty('key');
       expect(body).toHaveProperty('actions');
@@ -351,8 +353,8 @@ describe('MeiliSearch API Keys Integration', () => {
       const newKeyData = {
         name: 'Test API Key',
         description: 'Test key for integration testing',
-        actions: ['search', 'documents.get'],
-        indexes: ['*'],
+        actions: [ 'search', 'documents.get' ],
+        indexes: [ '*' ],
         expiresAt: '2025-12-31T23:59:59Z'
       };
 
@@ -362,7 +364,7 @@ describe('MeiliSearch API Keys Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('uid');
       expect(body).toHaveProperty('key');
       expect(body).toHaveProperty('name');
@@ -372,19 +374,19 @@ describe('MeiliSearch API Keys Integration', () => {
       expect(body).toHaveProperty('expiresAt');
       expect(body).toHaveProperty('createdAt');
       expect(body).toHaveProperty('updatedAt');
-      
+
       expect(body.name).toBe(newKeyData.name);
       expect(body.description).toBe(newKeyData.description);
       expect(body.actions).toEqual(newKeyData.actions);
       expect(body.indexes).toEqual(newKeyData.indexes);
-      
+
       // Store the UID for cleanup
       testKeyUid = body.uid;
     }, 30000);
 
     it('should create a new API key without optional fields', async () => {
       const newKeyData = {
-        actions: ['search'],
+        actions: [ 'search' ],
         indexes: [ '*' ],
         name: "test no optional fields",
         expiresAt: '2025-12-31T23:59:59Z'
@@ -396,14 +398,14 @@ describe('MeiliSearch API Keys Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('uid');
       expect(body).toHaveProperty('key');
       expect(body).toHaveProperty('actions');
       expect(body).toHaveProperty('indexes');
       expect(body.actions).toEqual(newKeyData.actions);
       expect(body.indexes).toEqual(newKeyData.indexes);
-      
+
       // Store the UID for cleanup
       if (!testKeyUid) {
         testKeyUid = body.uid;
@@ -445,7 +447,7 @@ describe('MeiliSearch API Keys Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('uid');
       expect(body).toHaveProperty('name');
       expect(body).toHaveProperty('description');
@@ -472,7 +474,7 @@ describe('MeiliSearch API Keys Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('name');
       expect(body.name).toBe(updateData.name);
     }, 30000);

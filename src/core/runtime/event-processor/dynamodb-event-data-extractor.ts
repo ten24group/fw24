@@ -4,6 +4,7 @@ import { unmarshall } from '@aws-sdk/util-dynamodb';
 import { AttributeValue } from '@aws-sdk/client-dynamodb';
 import { BaseEventRecord, ChangeStreamPayload, IEventDataExtractor } from '../../types/event-processor-types';
 import { createLogger } from '../../../logging';
+import { parseSnsSqsEnvelope } from '../sns-sqs-envelope';
 
 const DYNAMODB_OPERATION_TO_EVENT_TYPE: Record<string, string> = {
   INSERT: 'create',
@@ -64,8 +65,8 @@ export class DynamoDBEventDataExtractor implements IEventDataExtractor<DynamoDBS
       // Example: ApproximateCreationDateTime = 1734567890 (seconds)
       //         Should become: 1734567890000 (milliseconds)
       //         Result: 2024-12-19T10:31:30.000Z
-      const timestampInMs = awsRecord.dynamodb.ApproximateCreationDateTime 
-        ? awsRecord.dynamodb.ApproximateCreationDateTime * 1000 
+      const timestampInMs = awsRecord.dynamodb.ApproximateCreationDateTime
+        ? awsRecord.dynamodb.ApproximateCreationDateTime * 1000
         : undefined;
 
       processedRecords.push({
@@ -114,18 +115,30 @@ export class DynamoDBEventDataExtractor implements IEventDataExtractor<DynamoDBS
 
   protected mapSQSRecordToDynamoDBRecord(record: SQSRecord): DynamoDBRecord {
     try {
-      const body = JSON.parse(record.body);
-
-
-      if (!body.Message) {
-        this.logger.error('SNS Message field missing from SQS body', { bodyKeys: Object.keys(body) });
+      const envelope = parseSnsSqsEnvelope(record.body);
+      if (!envelope) {
+        // Keep existing behavior: this path expects SNS->SQS delivery
+        let bodyKeys: string[] | undefined;
+        try {
+          const raw = JSON.parse(record.body);
+          bodyKeys = raw && typeof raw === 'object' ? Object.keys(raw) : undefined;
+        } catch {
+          bodyKeys = undefined;
+        }
+        this.logger.error('SNS envelope missing/invalid in SQS body', { bodyKeys });
         throw new Error('SNS Message field is missing from SQS body');
       }
 
-      const message = JSON.parse(body.Message);
+      // Defensive: TS narrowing + runtime safety (even though parseSnsSqsEnvelope validates Message)
+      if (!envelope.Message) {
+        this.logger.error('SNS envelope missing Message field', { envelopeKeys: Object.keys(envelope) });
+        throw new Error('SNS Message field is missing from SQS body');
+      }
+
+      const message = JSON.parse(envelope.Message);
       // The actual DynamoDB event might be nested in message.message (from DynamoDB stream processor)
       const actualEvent = message?.message ?? message;
-      
+
 
 
       if (!actualEvent || !actualEvent.eventID) {

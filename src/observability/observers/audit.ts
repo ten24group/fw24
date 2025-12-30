@@ -1,320 +1,392 @@
 /**
- * AuditObserver - For entity and action auditing
- * 
- * DESIGN PRINCIPLES:
- * - Requires correlationId from context or explicit option
- * - Integrates with existing FW24 Actor type
- * - Supports entity lifecycle audits and custom audits
- * - Replaces old audit system
+ * AuditObserver - Entity and action auditing
  * 
  * Usage:
  * ```typescript
- * // FIRST: Establish context
- * await runWithContext(
- *   createObservationContext(requestId, { actor }),
- *   async () => {
- *     // Entity operations
- *     AuditObserver.entityCreate('User', userId, userData);
- *     AuditObserver.entityUpdate('User', userId, { before, after });
- *     AuditObserver.entityDelete('User', userId);
- *     
- *     // Custom audits
- *     AuditObserver.record({
- *       operation: 'permission.granted',
- *       entityName: 'User',
- *       entityId: userId,
- *       data: { role: 'admin' },
- *     });
- *   }
- * );
+ * // Entity operations (context is auto-established in controllers)
+ * AuditObserver.entityCreate('User', userId, userData);
+ * AuditObserver.entityUpdate('User', userId, { before, after });
+ * AuditObserver.entityDelete('User', userId);
+ * 
+ * // Custom audits
+ * AuditObserver.record({
+ *   operation: 'permission.granted',
+ *   entityName: 'User',
+ *   entityId: userId,
+ *   data: { role: 'admin' },
+ * });
  * ```
  */
 
-import { ExecutionContext } from '../../core/types/execution-context';
-import { ObservabilityLevelString } from '../types';
-import {
-  buildCommonFields,
-  captureEvent,
-  captureEventAsync,
-  extractObserverOptions,
-  BaseObserverOptions,
-  ObservabilityPayload,
-} from './base';
+import type { ObservabilityLevelString, RecordOverrides } from '../types';
+import { captureRecord, captureRecordAsync } from './base';
 
 const OBSERVER_NAME = 'AuditObserver';
 
-export interface AuditObserverOptions extends BaseObserverOptions {
-  // Inherits: correlationId, causedBy, relatedTraces, actor, source, tags, metadata
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// Types
+// ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Options for custom audit records
+ * Options for entity audit operations.
+ * Extends RecordOverrides for all context override capabilities.
  */
-export interface AuditRecordOptions extends BaseObserverOptions, ObservabilityPayload {
-  operation: string;
-  entityName?: string;
-  entityId?: string;
-  subType?: string;
+export interface EntityAuditOptions extends RecordOverrides {
+  /** Override severity level. Default varies by operation. */
   level?: ObservabilityLevelString;
+  /** Additional attributes */
+  attributes?: Record<string, unknown>;
 }
 
 /**
- * Options for compliance audits
+ * Options for custom audit records.
  */
-export interface ComplianceAuditOptions extends BaseObserverOptions, ObservabilityPayload {
+export interface AuditRecordOptions extends RecordOverrides {
+  /** Operation name (required) */
   operation: string;
-  /** Compliance event type */
-  subType: 'pii_access' | 'data_export' | 'consent_change' | 'data_deletion' | string;
+  /** Entity name */
   entityName?: string;
+  /** Entity ID */
   entityId?: string;
+  /** Audit subtype for categorization */
+  subType?: string;
+  /** Severity level */
+  level?: ObservabilityLevelString;
+  /** Audit data */
+  data?: Record<string, unknown>;
+  /** Additional attributes */
+  attributes?: Record<string, unknown>;
+  /** Metrics */
+  metrics?: Record<string, number>;
 }
 
 /**
- * Options for access audits
+ * Options for compliance audits.
  */
-export interface AccessAuditOptions extends BaseObserverOptions, ObservabilityPayload {
+export interface ComplianceAuditOptions extends RecordOverrides {
+  /** Operation name (required) */
   operation: string;
-  resource: string;
-  resourceId?: string;
-  action: 'view' | 'download' | 'modify' | 'share' | string;
-  allowed: boolean;
+  /** Compliance subtype (required) */
+  subType: 'pii_access' | 'data_export' | 'consent_change' | 'data_deletion' | string;
+  /** Entity name */
+  entityName?: string;
+  /** Entity ID */
+  entityId?: string;
+  /** Audit data */
+  data?: Record<string, unknown>;
+  /** Additional attributes */
+  attributes?: Record<string, unknown>;
+  /** Metrics */
+  metrics?: Record<string, number>;
 }
+
+/**
+ * Options for access audits.
+ */
+export interface AccessAuditOptions extends RecordOverrides {
+  /** Operation name (required) */
+  operation: string;
+  /** Resource being accessed */
+  resource: string;
+  /** Resource ID */
+  resourceId?: string;
+  /** Access action */
+  action: 'view' | 'download' | 'modify' | 'share' | string;
+  /** Whether access was allowed */
+  allowed: boolean;
+  /** Audit data */
+  data?: Record<string, unknown>;
+  /** Additional attributes */
+  attributes?: Record<string, unknown>;
+  /** Metrics */
+  metrics?: Record<string, number>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AuditObserver
+// ═══════════════════════════════════════════════════════════════════════════
 
 export class AuditObserver {
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Entity Lifecycle Audits
+  // ─────────────────────────────────────────────────────────────────────────
+
   /**
-   * Record entity creation
+   * Audit entity creation
    */
   static entityCreate(
     entityName: string,
     entityId: string,
     data: unknown,
-    ctx?: ExecutionContext | AuditObserverOptions
+    options?: EntityAuditOptions
   ): string | undefined {
-    const options = extractObserverOptions(ctx);
-    const fields = buildCommonFields(OBSERVER_NAME, options);
+    const { level, attributes, ...overrides } = options ?? {};
 
-    return captureEvent(fields, {
+    return captureRecord(OBSERVER_NAME, {
       type: 'audit.entity',
       subType: 'create',
-      level: 'info',
+      level: level ?? 'info',
       operation: `${entityName}.create`,
       entityName,
       entityId,
-      data: { created: data },
-      tags: { ...fields.tags, audit: 'true', entityOperation: 'create' },
+      data: { created: data } as Record<string, unknown>,
+      attributes,
+      tags: { audit: 'true', entityOperation: 'create' },
+      ...overrides,
     });
   }
 
   /**
-   * Record entity update
+   * Audit entity update
    */
   static entityUpdate(
     entityName: string,
     entityId: string,
     changes: { before?: unknown; after?: unknown; diff?: unknown },
-    ctx?: ExecutionContext | AuditObserverOptions
+    options?: EntityAuditOptions
   ): string | undefined {
-    const options = extractObserverOptions(ctx);
-    const fields = buildCommonFields(OBSERVER_NAME, options);
+    const { level, attributes, ...overrides } = options ?? {};
 
-    return captureEvent(fields, {
+    return captureRecord(OBSERVER_NAME, {
       type: 'audit.entity',
       subType: 'update',
-      level: 'info',
+      level: level ?? 'info',
       operation: `${entityName}.update`,
       entityName,
       entityId,
-      data: changes,
-      tags: { ...fields.tags, audit: 'true', entityOperation: 'update' },
+      data: changes as Record<string, unknown>,
+      attributes,
+      tags: { audit: 'true', entityOperation: 'update' },
+      ...overrides,
     });
   }
 
   /**
-   * Record entity deletion
-   * 
-   * Note: deletedData comes before ctx for consistency with entityCreate/entityUpdate
+   * Audit entity deletion (sync)
    */
   static entityDelete(
     entityName: string,
     entityId: string,
     deletedData?: unknown,
-    ctx?: ExecutionContext | AuditObserverOptions
+    options?: EntityAuditOptions
   ): string | undefined {
-    const options = extractObserverOptions(ctx);
-    const fields = buildCommonFields(OBSERVER_NAME, options);
+    const { level, attributes, ...overrides } = options ?? {};
 
-    // Deletions are critical - must not be sampled out
-    return captureEvent(fields, {
+    return captureRecord(OBSERVER_NAME, {
       type: 'audit.entity',
       subType: 'delete',
-      level: 'warn', // Deletions are notable
+      level: level ?? 'warn',
       operation: `${entityName}.delete`,
       entityName,
       entityId,
-      data: deletedData ? { deleted: deletedData } : undefined,
-      tags: { ...fields.tags, audit: 'true', entityOperation: 'delete' },
-    }, { critical: true });
+      data: deletedData ? { deleted: deletedData } as Record<string, unknown> : undefined,
+      attributes,
+      tags: { audit: 'true', entityOperation: 'delete' },
+      ...overrides,
+    });
   }
 
   /**
-   * Record entity deletion (async version - waits for backend completion)
-   * 
-   * Use when you need to ensure the audit is persisted before continuing.
+   * Audit entity deletion (async - waits for backend)
    */
   static async entityDeleteAsync(
     entityName: string,
     entityId: string,
     deletedData?: unknown,
-    ctx?: ExecutionContext | AuditObserverOptions
+    options?: EntityAuditOptions
   ): Promise<string | undefined> {
-    const options = extractObserverOptions(ctx);
-    const fields = buildCommonFields(OBSERVER_NAME, options);
+    const { level, attributes, ...overrides } = options ?? {};
 
-    return captureEventAsync(fields, {
+    return captureRecordAsync(OBSERVER_NAME, {
       type: 'audit.entity',
       subType: 'delete',
-      level: 'warn',
+      level: level ?? 'warn',
       operation: `${entityName}.delete`,
       entityName,
       entityId,
-      data: deletedData ? { deleted: deletedData } : undefined,
-      tags: { ...fields.tags, audit: 'true', entityOperation: 'delete' },
-    }, { critical: true });
-  }
-
-  /**
-   * Record entity read (high volume - use sparingly)
-   */
-  static entityRead(
-    entityName: string,
-    entityId: string,
-    ctx?: ExecutionContext | AuditObserverOptions
-  ): string | undefined {
-    const options = extractObserverOptions(ctx);
-    const fields = buildCommonFields(OBSERVER_NAME, options);
-
-    return captureEvent(fields, {
-      type: 'audit.entity',
-      subType: 'read',
-      level: 'debug', // Lower level - high volume, can be sampled
-      operation: `${entityName}.read`,
-      entityName,
-      entityId,
-      tags: { ...fields.tags, audit: 'true', entityOperation: 'read' },
+      data: deletedData ? { deleted: deletedData } as Record<string, unknown> : undefined,
+      attributes,
+      tags: { audit: 'true', entityOperation: 'delete' },
+      ...overrides,
     });
   }
 
   /**
-   * Record entity list/query (high volume - use sparingly)
+   * Audit entity read
+   */
+  static entityRead(
+    entityName: string,
+    entityId: string,
+    options?: EntityAuditOptions
+  ): string | undefined {
+    const { level, attributes, ...overrides } = options ?? {};
+
+    return captureRecord(OBSERVER_NAME, {
+      type: 'audit.entity',
+      subType: 'read',
+      level: level ?? 'debug',
+      operation: `${entityName}.read`,
+      entityName,
+      entityId,
+      attributes,
+      tags: { audit: 'true', entityOperation: 'read' },
+      ...overrides,
+    });
+  }
+
+  /**
+   * Audit entity list operation
    */
   static entityList(
     entityName: string,
     query: Record<string, unknown>,
     resultCount: number,
-    ctx?: ExecutionContext | AuditObserverOptions
+    options?: EntityAuditOptions
   ): string | undefined {
-    const options = extractObserverOptions(ctx);
-    const fields = buildCommonFields(OBSERVER_NAME, options);
+    const { level, attributes, ...overrides } = options ?? {};
 
-    return captureEvent(fields, {
+    return captureRecord(OBSERVER_NAME, {
       type: 'audit.entity',
       subType: 'list',
-      level: 'debug',
+      level: level ?? 'debug',
       operation: `${entityName}.list`,
       entityName,
       data: { query, resultCount },
-      tags: { ...fields.tags, audit: 'true', entityOperation: 'list' },
-      metrics: { resultCount },
+      attributes,
+      tags: { audit: 'true', entityOperation: 'list' },
+      ...overrides,
     });
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Custom Audits
+  // ─────────────────────────────────────────────────────────────────────────
+
   /**
-   * Record custom audit event
+   * Record a custom audit event
    */
   static record(options: AuditRecordOptions): string | undefined {
-    // Pass entire options - buildCommonFields extracts only the fields it needs
-    const fields = buildCommonFields(OBSERVER_NAME, options);
+    const {
+      operation,
+      entityName,
+      entityId,
+      subType,
+      level,
+      data,
+      attributes,
+      metrics,
+      ...overrides
+    } = options;
 
-    return captureEvent(fields, {
+    return captureRecord(OBSERVER_NAME, {
       type: 'audit',
-      subType: options.subType,
-      level: options.level ?? 'info',
-      operation: options.operation,
-      entityName: options.entityName,
-      entityId: options.entityId,
-      data: options.data,
-      metrics: options.metrics,
-      attributes: options.attributes,
-      tags: { ...fields.tags, audit: 'true' },
+      subType,
+      level: level ?? 'info',
+      operation,
+      entityName,
+      entityId,
+      data,
+      attributes,
+      metrics,
+      tags: { audit: 'true' },
+      ...overrides,
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Specialized Audits
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Record a compliance audit (GDPR, HIPAA, etc.)
+   */
+  static compliance(options: ComplianceAuditOptions): string | undefined {
+    const {
+      operation,
+      subType,
+      entityName,
+      entityId,
+      data,
+      attributes,
+      metrics,
+      ...overrides
+    } = options;
+
+    return captureRecord(OBSERVER_NAME, {
+      type: 'audit.compliance',
+      subType,
+      level: 'info',
+      operation,
+      entityName,
+      entityId,
+      data,
+      attributes,
+      metrics,
+      tags: { audit: 'true', compliance: 'true' },
+      ...overrides,
     });
   }
 
   /**
-   * Record compliance audit (PII access, data export, etc.)
-   * 
-   * @param options.metadata - Flexible metadata for compliance info (reason, justification, etc.)
-   */
-  static compliance(options: ComplianceAuditOptions): string | undefined {
-    const fields = buildCommonFields(OBSERVER_NAME, options);
-
-    // Compliance events are critical - must not be sampled out
-    return captureEvent(fields, {
-      type: 'audit.compliance',
-      subType: options.subType,
-      level: 'info',
-      operation: options.operation,
-      entityName: options.entityName,
-      entityId: options.entityId,
-      data: options.data,
-      metrics: options.metrics,
-      attributes: options.attributes,
-      tags: { ...fields.tags, audit: 'true', compliance: 'true' },
-    }, { critical: true });
-  }
-
-  /**
-   * Record compliance audit (async version - waits for backend completion)
-   * 
-   * Use when you need to ensure the audit is persisted before continuing.
-   * 
-   * @param options.metadata - Flexible metadata for compliance info (reason, justification, etc.)
+   * Record a compliance audit (async - waits for backend)
    */
   static async complianceAsync(options: ComplianceAuditOptions): Promise<string | undefined> {
-    const fields = buildCommonFields(OBSERVER_NAME, options);
+    const {
+      operation,
+      subType,
+      entityName,
+      entityId,
+      data,
+      attributes,
+      metrics,
+      ...overrides
+    } = options;
 
-    return captureEventAsync(fields, {
+    return captureRecordAsync(OBSERVER_NAME, {
       type: 'audit.compliance',
-      subType: options.subType,
+      subType,
       level: 'info',
-      operation: options.operation,
-      entityName: options.entityName,
-      entityId: options.entityId,
-      data: options.data,
-      metrics: options.metrics,
-      attributes: options.attributes,
-      tags: { ...fields.tags, audit: 'true', compliance: 'true' },
-    }, { critical: true });
+      operation,
+      entityName,
+      entityId,
+      data,
+      attributes,
+      metrics,
+      tags: { audit: 'true', compliance: 'true' },
+      ...overrides,
+    });
   }
 
   /**
-   * Record access audit (for sensitive resources)
+   * Record an access audit
    */
   static access(options: AccessAuditOptions): string | undefined {
-    const fields = buildCommonFields(OBSERVER_NAME, options);
+    const {
+      operation,
+      resource,
+      resourceId,
+      action,
+      allowed,
+      data,
+      attributes,
+      metrics,
+      ...overrides
+    } = options;
 
-    return captureEvent(fields, {
+    return captureRecord(OBSERVER_NAME, {
       type: 'audit.access',
-      subType: options.action,
-      level: options.allowed ? 'info' : 'warn',
-      operation: options.operation,
-      entityName: options.resource,
-      entityId: options.resourceId,
-      success: options.allowed,
-      data: options.data,
-      metrics: options.metrics,
-      attributes: options.attributes,
-      tags: { ...fields.tags, audit: 'true', access: 'true' },
+      subType: action,
+      level: allowed ? 'info' : 'warn',
+      operation,
+      entityName: resource,
+      entityId: resourceId,
+      success: allowed,
+      data,
+      attributes,
+      metrics,
+      tags: { audit: 'true', access: 'true' },
+      ...overrides,
     });
   }
 }

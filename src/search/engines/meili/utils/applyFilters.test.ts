@@ -30,6 +30,8 @@ describe("MeiliSearch:applyFilters", () => {
       rangeTo: jest.fn().mockReturnThis(),
       isNull: jest.fn().mockReturnThis(),
       isNotNull: jest.fn().mockReturnThis(),
+      exists: jest.fn().mockReturnThis(),
+      notExists: jest.fn().mockReturnThis(),
       contains: jest.fn().mockReturnThis(),
       startsWith: jest.fn().mockReturnThis(),
     };
@@ -111,8 +113,8 @@ describe("MeiliSearch:applyFilters", () => {
 
       applyFilters(mockQueryBuilder, filters);
 
-      expect(mockWhereBuilder.isNotNull).toHaveBeenCalled();
-      expect(mockWhereBuilder.isNull).toHaveBeenCalled();
+      expect(mockWhereBuilder.exists).toHaveBeenCalled();
+      expect(mockWhereBuilder.notExists).toHaveBeenCalled();
     });
   });
 

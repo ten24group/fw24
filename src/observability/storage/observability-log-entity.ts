@@ -5,7 +5,7 @@
  * Used by ObservabilityLogService which is self-contained (no DI dependency).
  */
 
-import { randomUUID } from 'crypto';
+import { randomBytes } from 'crypto';
 // Import directly from base-entity to avoid circular dependency
 import { DefaultEntityOperations, createEntitySchema } from '../../entity/base-entity';
 
@@ -13,7 +13,7 @@ import { DefaultEntityOperations, createEntitySchema } from '../../entity/base-e
  * Observability Log Entity Schema
  * 
  * Universal schema for all observability event types:
- * - span.start, span.end, span.event (distributed tracing)
+ * - span / span.start (distributed tracing)
  * - audit.entity, audit.action, audit.compliance (auditing)
  * - metric (metrics/counters)
  * - workflow.* (workflow tracking)
@@ -215,7 +215,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                   entityName: 'observabilityLog',
                   pageType: 'list',
                   overrideConfig: {
-                    defaultFilters: { parentObservabilityLogId: ':observabilityLogId' },
+                    defaultFilters: { parentObservabilityLogId: { eq: ':observabilityLogId' } },
                     hideSegments: [ 'hierarchy-group' ],
                   },
                 },
@@ -229,7 +229,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                   entityName: 'observabilityLog',
                   pageType: 'list',
                   overrideConfig: {
-                    defaultFilters: { correlationId: ':correlationId' },
+                    defaultFilters: { correlationId: { eq: ':correlationId' } },
                     hideSegments: [ 'hierarchy-group' ],
                     description: 'All events in this Lambda invocation',
                   },
@@ -245,7 +245,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                   entityName: 'observabilityLog',
                   pageType: 'list',
                   overrideConfig: {
-                    defaultFilters: { correlationId: ':causedBy' },
+                    defaultFilters: { correlationId: { eq: ':causedBy' } },
                     hideSegments: [ 'hierarchy-group' ],
                     description: 'View the original request trace that caused this event',
                   },
@@ -260,7 +260,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                   entityName: 'observabilityLog',
                   pageType: 'list',
                   overrideConfig: {
-                    defaultFilters: { causedBy: ':correlationId' },
+                    defaultFilters: { causedBy: { eq: ':correlationId' } },
                     hideSegments: [ 'hierarchy-group' ],
                     description: 'Events in other invocations caused by this request',
                   },
@@ -290,10 +290,37 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                   propertiesConfig: [ 'entityName', 'entityId' ],
                 },
               },
-              data: {
-                label: 'Data',
-                icon: 'FileTextOutlined',
+              checkpoints: {
+                label: 'Checkpoints',
+                icon: 'NodeIndexOutlined',
                 sortOrder: 2,
+                pageType: 'details',
+                visibility: { record: { 'data.checkpoints': { exists: true } } },
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [
+                    {
+                      name: 'data.checkpoints',
+                      column: 'data.checkpoints',
+                      label: 'Checkpoints',
+                      fieldType: 'timeline',
+                      timelineConfig: {
+                        mode: 'left',
+                        showTimestamp: true,
+                        timestampFormat: 'h:mm:ss.SSS A',
+                        itemMapping: {
+                          labelField: 'name',
+                          timestampField: 'ts',
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+              data: {
+                label: 'Rest Data',
+                icon: 'FileTextOutlined',
+                sortOrder: 3,
                 pageType: 'details',
                 visibility: { record: { data: { exists: true } } },
                 detailsPageConfig: {
@@ -487,7 +514,8 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       type: 'string',
       required: true,
       isIdentifier: true,
-      default: () => randomUUID(),
+      // 128-bit fallback for manual/admin-created records (framework generally supplies observabilityLogId explicitly).
+      default: () => randomBytes(16).toString('hex'),
       label: 'Log ID',
       isFilterable: true,
     },
@@ -517,7 +545,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       default: () => true,  // Default to true if no parent specified
     },
     // NOTE: correlationId is REQUIRED and has NO default.
-    // If you're getting validation errors, establish context first with runWithContext().
+    // If you're getting validation errors, ensure context is established (auto in controllers).
     // Having a default here would hide bugs where context wasn't properly established.
     correlationId: {
       type: 'string',
@@ -562,7 +590,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       type: 'string',
       required: true,
       label: 'Type',
-      helpText: 'Event type (span.start, span.end, audit.entity, log, metric, etc.)',
+      helpText: 'Event type (span, audit.entity, log, metric, etc.)',
       isFilterable: true,
       isSortable: true,
     },
@@ -717,8 +745,12 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       default: () => Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60), // 90 days
       label: 'TTL',
       helpText: 'Time-to-live for automatic cleanup (Unix timestamp)',
-      fieldType: 'duration',
-      durationUnit: 'seconds',
+      fieldType: 'ttl',
+      ttlUnit: 'seconds',
+      ttlFormat: 'auto',
+      isVisible: true,
+      isEditable: false,
+      isListable: true,
     },
   },
   indexes: {

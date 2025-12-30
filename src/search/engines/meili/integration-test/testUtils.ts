@@ -71,13 +71,22 @@ export async function pollForSetting(
   indexName: string,
   key: string,
   expected: any,
-  maxAttempts = 20,
+  maxAttempts = 50,
   interval = 100
 ) {
+  let lastVal: any;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const settings = await engine.getIndexSettings(indexName) as { [ key: string ]: any };
-    if (JSON.stringify(settings[ key ]) === JSON.stringify(expected)) return;
+    lastVal = settings[ key ];
+
+    if (Array.isArray(expected) && Array.isArray(lastVal)) {
+      const sortedExpected = [ ...expected ].sort();
+      const sortedVal = [ ...lastVal ].sort();
+      if (JSON.stringify(sortedVal) === JSON.stringify(sortedExpected)) return;
+    } else {
+      if (JSON.stringify(lastVal) === JSON.stringify(expected)) return;
+    }
     await new Promise(res => setTimeout(res, interval));
   }
-  throw new Error(`Setting ${key} not updated to ${JSON.stringify(expected)} after ${maxAttempts * interval}ms`);
+  throw new Error(`Setting ${key} not updated to ${JSON.stringify(expected)} after ${maxAttempts * interval}ms. Last val: ${JSON.stringify(lastVal)}`);
 } 

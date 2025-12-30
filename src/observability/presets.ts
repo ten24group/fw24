@@ -6,6 +6,7 @@
  */
 
 import { ObservabilityConfig, ObservabilityLevel } from './types';
+import { createObservabilityConfig as createObservabilityConfigFromInput } from './config';
 
 /**
  * Preset names for common environments
@@ -18,11 +19,13 @@ export type ObservabilityPreset = 'production' | 'development' | 'debug' | 'mini
  * - 10% sampling for normal traffic
  * - DynamoDB only for WARN+ logs
  * - Critical events always captured
+ * - Spans < 100ms are skipped (unless they have errors)
  */
-export const productionPreset: ObservabilityConfig = {
+export const productionPreset: ObservabilityConfig = createObservabilityConfigFromInput({
   enabled: true,
   minLevel: ObservabilityLevel.INFO,
-  serviceName: '', // Must be provided by user
+  // NOTE: presets use framework defaults for serviceName / namespaces / tableKey.
+  // Apps can override serviceName via createObservabilityConfig({ serviceName: 'my-app', ... }).
 
   sampling: {
     enabled: true,
@@ -78,14 +81,7 @@ export const productionPreset: ObservabilityConfig = {
     },
   },
 
-  cloudwatch: {
-    namespace: 'Application',
-  },
-
-  dynamodb: {
-    tableKey: 'observability',
-    ttlDays: 30,
-  },
+  dynamodb: { ttlDays: 30 },
 
   dataProtection: {
     enabled: true,
@@ -106,19 +102,32 @@ export const productionPreset: ObservabilityConfig = {
   sourceMap: {
     enabled: true, // Enable in production for better error debugging
   },
-};
+
+  // Span-specific config for production
+  spans: {
+    minDurationMs: 100,   // Skip spans < 100ms (production: focus on slow ops)
+    skipEmpty: true,      // Skip spans with no events/errors
+  },
+
+  // Noise reduction defaults for FW24 hot paths
+  noiseReduction: {
+    enabled: true,
+    presets: [ 'fw24.hotpaths', 'fw24.batch_processors' ],
+    emitSummaries: true,
+  },
+});
 
 /**
  * Development preset: Balanced visibility and cost
  * - More verbose than production
  * - 50% sampling for most events
  * - All backends enabled
+ * - Spans < 50ms skipped (lower threshold than production)
  * - Good for staging environments
  */
-export const developmentPreset: ObservabilityConfig = {
+export const developmentPreset: ObservabilityConfig = createObservabilityConfigFromInput({
   enabled: true,
   minLevel: ObservabilityLevel.DEBUG,
-  serviceName: '', // Must be provided by user
 
   sampling: {
     enabled: true,
@@ -171,14 +180,7 @@ export const developmentPreset: ObservabilityConfig = {
     },
   },
 
-  cloudwatch: {
-    namespace: 'Application',
-  },
-
-  dynamodb: {
-    tableKey: 'observability',
-    ttlDays: 7,
-  },
+  dynamodb: { ttlDays: 7 },
 
   dataProtection: {
     enabled: true,
@@ -198,19 +200,32 @@ export const developmentPreset: ObservabilityConfig = {
   sourceMap: {
     enabled: true, // Enable for better error debugging
   },
-};
+
+  // Span-specific config for development
+  spans: {
+    minDurationMs: 50,    // Skip spans < 50ms (dev: more visibility)
+    skipEmpty: true,      // Still skip empty spans
+  },
+
+  // Noise reduction defaults (keep dev usable under hot paths)
+  noiseReduction: {
+    enabled: true,
+    presets: [ 'fw24.hotpaths', 'fw24.batch_processors' ],
+    emitSummaries: true,
+  },
+});
 
 /**
  * Debug preset: Maximum visibility, no sampling
  * - All events captured
  * - All log levels enabled
+ * - ALL spans captured regardless of duration
  * - Useful for troubleshooting
  * - ⚠️ WARNING: Very expensive, use only for debugging
  */
-export const debugPreset: ObservabilityConfig = {
+export const debugPreset: ObservabilityConfig = createObservabilityConfigFromInput({
   enabled: true,
   minLevel: ObservabilityLevel.TRACE,
-  serviceName: '', // Must be provided by user
 
   sampling: {
     enabled: false, // No sampling in debug mode
@@ -255,14 +270,7 @@ export const debugPreset: ObservabilityConfig = {
     },
   },
 
-  cloudwatch: {
-    namespace: 'Application',
-  },
-
-  dynamodb: {
-    tableKey: 'observability',
-    ttlDays: 1,
-  },
+  dynamodb: { ttlDays: 1 },
 
   dataProtection: {
     enabled: false, // No redaction in debug mode
@@ -271,19 +279,37 @@ export const debugPreset: ObservabilityConfig = {
   sourceMap: {
     enabled: true, // Enable for maximum debugging
   },
-};
+
+  // Span-specific config for debug - capture EVERYTHING
+  spans: {
+    minDurationMs: 0,     // Capture ALL spans regardless of duration
+    skipEmpty: false,     // Don't skip empty spans in debug
+  },
+
+  // Debug: do not reduce noise unless developer explicitly turns it on
+  noiseReduction: {
+    enabled: false,
+  },
+
+  // Debug: keep raw operation names for maximum fidelity unless developer opts-in.
+  operationNormalization: {
+    enabled: false,
+    rules: [],
+    storeOriginal: true,
+  },
+});
 
 /**
  * Minimal preset: Bare minimum observability
  * - Only errors and critical events
  * - No sampling needed (already filtered by level)
  * - CloudWatch only
+ * - Only capture failed/slow spans
  * - Lowest cost option
  */
-export const minimalPreset: ObservabilityConfig = {
+export const minimalPreset: ObservabilityConfig = createObservabilityConfigFromInput({
   enabled: true,
   minLevel: ObservabilityLevel.ERROR,
-  serviceName: '', // Must be provided by user
 
   sampling: {
     enabled: false,
@@ -317,24 +343,29 @@ export const minimalPreset: ObservabilityConfig = {
     },
   },
 
-  cloudwatch: {
-    namespace: 'Application',
-  },
-
-  dynamodb: {
-    tableKey: 'observability',
-    ttlDays: 7,
-  },
+  dynamodb: { ttlDays: 7 },
 
   dataProtection: {
     enabled: true,
     blacklistedKeys: [ 'password', 'token', 'secret' ],
   },
 
+  // Span-specific config for minimal - only capture slow/failed spans
+  spans: {
+    minDurationMs: 500,   // Only capture spans > 500ms (slow operations)
+    skipEmpty: true,      // Skip empty spans
+  },
+
+  noiseReduction: {
+    enabled: true,
+    presets: [ 'fw24.hotpaths', 'fw24.batch_processors' ],
+    emitSummaries: true,
+  },
+
   sourceMap: {
     enabled: false, // Minimal preset disables optional features
   },
-};
+});
 
 /**
  * Get preset configuration by name
@@ -353,87 +384,3 @@ export function getPreset(preset: ObservabilityPreset): ObservabilityConfig {
       throw new Error(`Unknown observability preset: ${preset}`);
   }
 }
-
-/**
- * Deep merge helper for nested objects
- */
-function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
-  const result = { ...target };
-
-  for (const key in source) {
-    const sourceValue = source[ key ];
-    const targetValue = result[ key ];
-
-    if (sourceValue === undefined) {
-      continue;
-    }
-
-    if (Array.isArray(sourceValue)) {
-      result[ key ] = sourceValue as any;
-    } else if (typeof sourceValue === 'object' && sourceValue !== null && !Array.isArray(sourceValue)) {
-      if (typeof targetValue === 'object' && targetValue !== null) {
-        result[ key ] = deepMerge(targetValue, sourceValue) as any;
-      } else {
-        result[ key ] = sourceValue as any;
-      }
-    } else {
-      result[ key ] = sourceValue as any;
-    }
-  }
-
-  return result;
-}
-
-/**
- * Create observability configuration with preset and overrides
- * 
- * @example
- * ```typescript
- * // Use production preset with custom service name
- * const config = createObservabilityConfig({
- *   preset: 'production',
- *   serviceName: 'my-api'
- * });
- * 
- * // Use development preset with custom sampling
- * const config = createObservabilityConfig({
- *   preset: 'development',
- *   serviceName: 'my-api',
- *   sampling: {
- *     smart: true,
- *     rates: { info: 0.8 }
- *   }
- * });
- * 
- * // Use debug preset temporarily
- * const config = createObservabilityConfig({
- *   preset: 'debug',
- *   serviceName: 'my-api'
- * });
- * ```
- */
-export function createObservabilityConfig(options: {
-  preset: ObservabilityPreset;
-  serviceName: string;
-  overrides?: Partial<ObservabilityConfig>;
-}): ObservabilityConfig {
-  const { preset, serviceName, overrides = {} } = options;
-
-  if (!serviceName) {
-    throw new Error('serviceName is required for observability configuration');
-  }
-
-  // Get base preset config
-  const baseConfig = getPreset(preset);
-
-  // Set service name
-  baseConfig.serviceName = serviceName;
-
-  // Apply overrides if provided
-  if (Object.keys(overrides).length > 0) {
-    return deepMerge(baseConfig, overrides);
-  }
-
-  return baseConfig;
-}
-

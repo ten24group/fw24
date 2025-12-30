@@ -612,20 +612,17 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
             level: 'warn',
         });
 
-        // Add span event for visibility
-        SpanObserver.addEventToCurrentSpan('database.full_scan', {
-            level: 'warn',
-            metrics: {
-                'db.full_scan': 1,
-            },
-            attributes: {
+        // Add checkpoint for visibility
+        SpanObserver.getCurrentSpan()?.checkpoint?.('database.full_scan', {
+            tags: {
                 'db.entity_name': entityName,
                 'db.operation': 'list',
                 'db.warning': 'no_index_found',
             },
-            data: {
-                filters: filters || {},
+            metrics: {
+                'db.full_scan': 1,
             },
+            data: { fullScanFilters: filters || {} },
         });
 
         const scanQuery = repository.scan;
@@ -714,20 +711,17 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
             level: 'warn',
         });
 
-        // Add span event for visibility
-        SpanObserver.addEventToCurrentSpan('database.full_scan', {
-            level: 'warn',
-            metrics: {
-                'db.full_scan': 1,
-            },
-            attributes: {
+        // Add checkpoint for visibility
+        SpanObserver.getCurrentSpan()?.checkpoint?.('database.full_scan', {
+            tags: {
                 'db.entity_name': entityName,
                 'db.operation': 'query',
                 'db.warning': 'no_index_found',
             },
-            data: {
-                filters: filters || {},
+            metrics: {
+                'db.full_scan': 1,
             },
+            data: { fullScanFilters: filters || {} },
         });
 
         const scanQuery = repository.scan;

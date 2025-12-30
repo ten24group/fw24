@@ -25,7 +25,6 @@ import { getChangedProperties } from '../helpers/change-detection';
  * Custom audit handlers can extend this to add custom processing while reusing framework utilities.
  */
 export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEventDataExtractor> {
-
   constructor() {
     super(new DynamoDBEventDataExtractor());
   }
@@ -111,64 +110,70 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     // Compute changes (diff between old and new)
     const changes = getChangedProperties(oldImage, newImage);
 
-    // For updates, skip if no actual changes detected
-    if (eventType === 'update' && Object.keys(changes).length === 0) {
-      this.logger.debug('No changes detected, skipping audit entry', { entityName, entityId });
-      return;
-    }
+    // Extract actor + trace context ONLY from newImage.
+    // oldImage contains STALE context (who created/last-updated the item), NOT who is performing the current op.
+    // For DELETEs (where newImage is null), we unfortunately cannot determine the actor/trace from the stream record alone.
+    // Better to have "unknown" actor than "incorrect" actor.
+    const traceImage = newImage;
 
     // Extract actor context
-    const actor = this.extractActor(newImage);
+    const actor = this.extractActor(traceImage);
+
+    // Extract causedBy from _actor.correlationId - this links the audit log back to the originating request
+    const causedBy = traceImage?._actor?.correlationId;
+
+    // Trace linkage:
+    // - parentObservabilityLogId is strict in-slice only (never propagated)
+    // - causedBy links audit logs back to the originating request that modified the entity
 
     // entityName is guaranteed by preprocessRecord check
     const entity = entityName!;
     const id = String(entityId);
 
-    // Get original correlationId from _actor to link back to causing request
-    const originalCorrelationId = newImage?._actor?.correlationId;
-
     // Call appropriate AuditObserver method based on event type
     // Explicitly link the Audit Log to the original API Request that caused the change.
-    // This allows queries like "Show me all Audit Logs caused by Request X".
     switch (eventType) {
       case 'create':
         AuditObserver.entityCreate(entity, id, newImage, {
           actor,
-          causedBy: originalCorrelationId,  // Original API request trace
+          causedBy,
         });
         this.logger.debug('Captured create audit', {
           entityName: entity,
           entityId: id,
-          causedBy: originalCorrelationId
         });
         break;
 
       case 'update':
+        // Do NOT skip if no changes detected - these are "touch" updates (e.g., updatedAt only)
+        // Mark them as no-op updates so they can be filtered if needed, but still captured.
+        const isNoopUpdate = Object.keys(changes).length === 0;
+
         AuditObserver.entityUpdate(entity, id, {
-          before: oldImage,
-          after: newImage,
+          // before: oldImage,
+          // after: newImage,
           diff: changes
         }, {
           actor,
-          causedBy: originalCorrelationId,
+          causedBy,
+          attributes: isNoopUpdate ? { noopUpdate: true } : undefined,
         });
         this.logger.debug('Captured update audit', {
           entityName: entity,
           entityId: id,
           changedFields: Object.keys(changes),
-          causedBy: originalCorrelationId
+          isNoopUpdate,
         });
         break;
 
       case 'delete':
         AuditObserver.entityDelete(entity, id, oldImage, {
           actor,
-          causedBy: originalCorrelationId,
+          causedBy,
         });
         this.logger.debug('Captured delete audit', {
           entityName: entity,
           entityId: id,
-          causedBy: originalCorrelationId
         });
         break;
     }
@@ -178,9 +183,9 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
    * Extract actor context from entity images.
    * Tries _actor field first, then falls back to visible actor fields.
    */
-  protected extractActor(newImage: Record<string, any> | undefined): Actor | undefined {
+  protected extractActor(traceImage: Record<string, any> | undefined): Actor | undefined {
     // Try _actor field first (set by crud-service)
-    const actorContext = newImage?._actor;
+    const actorContext = traceImage?._actor;
     if (actorContext) {
       return actorContext as Actor;
     }
@@ -188,12 +193,12 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     // Fallback to visible actor fields (backward compatibility)
     const fallbackActor: Partial<Actor> = {};
 
-    const actorId = newImage?.updatedBy || newImage?.createdBy;
+    const actorId = traceImage?.updatedBy || traceImage?.createdBy;
     if (actorId) {
       fallbackActor.actorId = actorId;
     }
 
-    const tenantId = newImage?.tenantId;
+    const tenantId = traceImage?.tenantId;
     if (tenantId) {
       fallbackActor.tenantId = tenantId;
     }

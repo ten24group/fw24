@@ -207,10 +207,10 @@ describe("MeiliSearchEngine", () => {
 
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchParams)
           .filter;
-        // exists: true uses NOT (f IS NULL) in MeiliSearch
-        expect(fstr).toContain("NOT (f IS NULL)");
-        expect(fstr).toContain("g IS NULL");
-        expect(fstr).toContain("h IS NULL");
+        // EXISTS semantics: use `field EXISTS` / `NOT (field EXISTS)` (not IS NULL).
+        expect(fstr).toContain("f EXISTS");
+        expect(fstr).toContain("NOT (g EXISTS)");
+        expect(fstr).toContain("NOT (h EXISTS)");
       });
 
       it("supports contains and startsWith", async () => {
@@ -386,7 +386,7 @@ describe("MeiliSearchEngine", () => {
           expect(fstr).toContain("stringField = 'text'");
           expect(fstr).toContain("numberField > 42");
           expect(fstr).toContain("booleanField = true");
-          expect(fstr).toContain("nullField IS NULL");
+          expect(fstr).toContain("NOT (nullField EXISTS)");
         });
 
         it("handles empty array values in IN operators", async () => {

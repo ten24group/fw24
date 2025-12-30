@@ -63,12 +63,14 @@ export class MailProcessor extends QueueController {
 
         for (const record of event.Records) {
             // Extract trace context from SQS message attributes for distributed tracing.
-            // This links the email processing back to the originating API request/task.
+            // This links the email processing back to the immediate upstream invocation via `causedBy`.
             const traceCtx = extractFromSqs(record.messageAttributes);
             const recordCtx = createExecutionContext({
-                correlationId: traceCtx?.correlationId || record.messageId,
-                parentObservabilityLogId: traceCtx?.parentObservabilityLogId,
-                causedBy: traceCtx?.causedBy,
+                // Strict contract:
+                // - correlationId is local to this record processing slice
+                // - causedBy links to the upstream sender's correlationId
+                correlationId: record.messageId,
+                causedBy: traceCtx?.causedBy ?? traceCtx?.correlationId,
                 sampled: traceCtx?.sampled,
             });
 
@@ -153,19 +155,18 @@ export class MailProcessor extends QueueController {
 
                     // Optional success tracking (opt-in via observability.trackSuccess config)
                     if (trackSuccess) {
-                        SpanObserver.addEventToCurrentSpan('email.sent', {
-                            level: 'info',
-                            metrics: {
-                                'email.sent': 1,
-                            },
-                            attributes: {
+                        SpanObserver.getCurrentSpan()?.checkpoint?.('email.sent', {
+                            tags: {
                                 'email.message_id': record.messageId,
                                 'email.recipient': emailMessage.ToEmailAddress,
                                 'email.type': emailMessage.TemplateName ? 'template' : 'simple',
-                                'email.template_name': emailMessage.TemplateName,
+                                'email.template_name': emailMessage.TemplateName || '',
+                            },
+                            metrics: {
+                                'email.sent': 1,
                             },
                             data: {
-                                subject: emailMessage.Subject,
+                                emailSubject: emailMessage.Subject,
                             },
                         });
                     }
@@ -177,24 +178,24 @@ export class MailProcessor extends QueueController {
                     // Track failure with detailed context.
                     // Safe even if JSON.parse failed (emailMessage will be undefined).
                     // This enables filtering/querying failed emails by recipient, template, etc.
-                    SpanObserver.addEventToCurrentSpan('email.send.failed', {
-                        level: 'error',
+                    SpanObserver.getCurrentSpan()?.checkpoint?.('email.send.failed', {
                         metrics: {
                             'email.failed': 1,
                         },
-                        attributes: {
+                        tags: {
                             'email.message_id': record.messageId,
                             'email.recipient': emailMessage?.ToEmailAddress || 'unknown',
                             'email.type': emailMessage?.TemplateName ? 'template' : 'simple',
-                            'email.template_name': emailMessage?.TemplateName,
+                            'email.template_name': emailMessage?.TemplateName || '',
                             'error.type': error instanceof Error ? error.constructor.name : typeof error,
                             'error.message': error instanceof Error ? error.message : String(error),
                         },
                         data: {
-                            subject: emailMessage?.Subject,
-                            error: error instanceof Error ? { message: error.message, stack: error.stack } : String(error),
+                            emailSubject: emailMessage?.Subject,
                         },
+                        error: error instanceof Error ? error : new Error(String(error)),
                     });
+
 
                     // Mark this message for retry by SQS
                     const batchItemFailure: SQSBatchItemFailure = {

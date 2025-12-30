@@ -44,10 +44,10 @@ import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel } from '..
 import { ObservabilityManager } from '../manager';
 import { createObservabilityConfig } from '../config';
 import {
-  ObservationContext,
-  createObservationContext,
-  runWithContext,
-  runWithContextSync,
+  ExecutionContextData,
+  createExecutionContext,
+  runWithExecutionContext,
+  runWithExecutionContextSync,
 } from '../context';
 import { clearEnvironmentTagsCache } from '../utils/source-utils';
 
@@ -168,6 +168,10 @@ export class MockBackend implements ObservabilityBackend {
 export function setupTestObservability(options?: {
   minLevel?: ObservabilityLevel;
   enabled?: boolean;
+  /** Skip empty spans (default: false for testing) */
+  skipEmptySpans?: boolean;
+  /** Minimum span duration to capture in ms (default: 0 for testing to capture all spans) */
+  minSpanDurationMs?: number;
 }): MockBackend {
   // Reset manager state
   ObservabilityManager.reset();
@@ -179,10 +183,15 @@ export function setupTestObservability(options?: {
   const mockBackend = new MockBackend({ minLevel: options?.minLevel });
 
   // Initialize for testing with mock backend
+  // By default, disable skipEmpty and minDurationMs for testing so all spans are captured
   ObservabilityManager.initializeForTesting(
     createObservabilityConfig({
       enabled: options?.enabled ?? true,
       minLevel: options?.minLevel ?? ObservabilityLevel.TRACE,
+      spans: {
+        skipEmpty: options?.skipEmptySpans ?? false,  // Default false for testing
+        minDurationMs: options?.minSpanDurationMs ?? 0,  // Default 0 for testing - capture all spans
+      },
     }),
     [ mockBackend ]
   );
@@ -199,45 +208,45 @@ export function cleanupTestObservability(): void {
 }
 
 /**
- * Create a test observation context and run a function within it
+ * Create a test execution context and run a function within it
  */
 export async function createTestContext<T>(
   fn: () => Promise<T>,
   options?: {
     correlationId?: string;
+    causedBy?: string;
     actor?: Actor;
     tags?: Record<string, string>;
   }
 ): Promise<T> {
-  const context = createObservationContext(
-    options?.correlationId ?? `test-${randomUUID()}`,
-    {
-      actor: options?.actor,
-      tags: options?.tags,
-    }
-  );
-  return runWithContext(context, fn);
+  const context = createExecutionContext({
+    correlationId: options?.correlationId ?? `test-${randomUUID()}`,
+    causedBy: options?.causedBy,
+    actor: options?.actor,
+    tags: options?.tags,
+  });
+  return runWithExecutionContext(context, fn);
 }
 
 /**
- * Create a test observation context and run a sync function within it
+ * Create a test execution context and run a sync function within it
  */
 export function createTestContextSync<T>(
   fn: () => T,
   options?: {
     correlationId?: string;
+    causedBy?: string;
     actor?: Actor;
     tags?: Record<string, string>;
   }
 ): T {
-  const context = createObservationContext(
-    options?.correlationId ?? `test-${randomUUID()}`,
-    {
-      actor: options?.actor,
-      tags: options?.tags,
-    }
-  );
-  return runWithContextSync(context, fn);
+  const context = createExecutionContext({
+    correlationId: options?.correlationId ?? `test-${randomUUID()}`,
+    causedBy: options?.causedBy,
+    actor: options?.actor,
+    tags: options?.tags,
+  });
+  return runWithExecutionContextSync(context, fn);
 }
 
 /**
@@ -315,18 +324,14 @@ export function createTestActor(overrides?: Partial<Actor>): Actor {
 }
 
 /**
- * Create a test observation context object
+ * Create a test execution context object
  */
-export function createTestObservationContext(overrides?: Partial<ObservationContext>): ObservationContext {
-  return createObservationContext(
-    overrides?.correlationId ?? `test-${randomUUID()}`,
-    {
-      source: overrides?.source ?? 'test',
-      actor: overrides?.actor,
-      tags: overrides?.tags,
-      sampled: overrides?.sampled,
-      parentObservabilityLogId: overrides?.parentObservabilityLogId,
-    }
-  );
+export function createTestExecutionContext(overrides?: Partial<ExecutionContextData>): ExecutionContextData {
+  return createExecutionContext({
+    correlationId: overrides?.correlationId ?? `test-${randomUUID()}`,
+    source: overrides?.observability?.source ?? 'test',
+    actor: overrides?.actor,
+    tags: overrides?.observability?.tags,
+    sampled: overrides?.observability?.sampled,
+  });
 }
-

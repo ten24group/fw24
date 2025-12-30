@@ -1,4 +1,9 @@
 /** @type {import('ts-jest').JestConfigWithTsJest} */
+
+const { env } = require('process');
+process.env.POWERTOOLS_DEV = 'true'; // for observability logs during testing
+
+
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',

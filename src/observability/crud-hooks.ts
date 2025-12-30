@@ -2,20 +2,17 @@
  * Observability hooks for entity CRUD operations
  * 
  * These can be called from crud-service.ts to emit observability events.
- * Uses AuditObserver for entity audits and SpanObserver for detailed tracing.
- * 
- * NOTE: Methods will auto-generate correlationId if not in context,
- * logging a warning to encourage proper context establishment.
+ * Uses AuditObserver for entity audits.
  */
 
 import { AuditObserver } from './observers/audit';
-import { SpanObserver, ISpanObserver, SpanOptions } from './observers/span';
+import { SpanObserver, SpanOptions } from './observers/span';
 
 /**
  * Context for CRUD operations - compatible with SpanOptions and BaseObserverOptions.
  * Allows passing explicit trace context when not using AsyncLocalStorage context.
  */
-export type CrudObservabilityContext = Pick<SpanOptions, 'correlationId' | 'parentObservabilityLogId' | 'causedBy' | 'actor'>;
+export type CrudObservabilityContext = Pick<SpanOptions, 'correlationId' | 'causedBy' | 'actor'>;
 
 export class CrudObservabilityHooks {
   /**
@@ -78,24 +75,36 @@ export class CrudObservabilityHooks {
   }
 
   /**
-   * Create a span for entity operation (for more detailed tracing)
+   * Wrap an entity operation in a span.
+   * Use for more detailed tracing of entity operations.
    * 
-   * @returns ISpanObserver instance for tracking the operation.
-   *          Auto-generates correlationId if not in context.
+   * @example
+   * ```typescript
+   * const result = await CrudObservabilityHooks.wrapEntityOperation(
+   *   'findById',
+   *   'Order',
+   *   async () => this.repository.findById(id)
+   * );
+   * ```
    */
-  static createEntitySpan(
+  static wrapEntityOperation<T>(
     operation: string,
     entityName: string,
+    fn: () => T,
     context?: CrudObservabilityContext,
-  ): ISpanObserver {
-    return SpanObserver.start(`${entityName}.${operation}`, {
-      ...context,
-      level: 'debug',
-      attributes: {
-        'entity.name': entityName,
-        'entity.operation': operation,
-      },
-    });
+  ): T {
+    return SpanObserver.wrap(
+      `${entityName}.${operation}`,
+      fn,
+      {
+        ...context,
+        level: 'debug',
+        tags: {
+          'entity.name': entityName,
+          'entity.operation': operation,
+        },
+      }
+    );
   }
 
   // ============================================================================
@@ -115,10 +124,7 @@ export class CrudObservabilityHooks {
       ...context,
       operation: `${entityName}.bulkCreate`,
       entityName,
-      data: {
-        entityIds,
-        count,
-      },
+      data: { entityIds, count },
       level: 'info',
     });
   }
@@ -136,10 +142,7 @@ export class CrudObservabilityHooks {
       ...context,
       operation: `${entityName}.bulkUpdate`,
       entityName,
-      data: {
-        entityIds,
-        count,
-      },
+      data: { entityIds, count },
       level: 'info',
     });
   }
@@ -157,12 +160,8 @@ export class CrudObservabilityHooks {
       ...context,
       operation: `${entityName}.bulkDelete`,
       entityName,
-      data: {
-        entityIds,
-        count,
-      },
-      level: 'warn', // Bulk deletes are more significant
+      data: { entityIds, count },
+      level: 'warn',
     });
   }
-
 }

@@ -4,11 +4,11 @@
  * All config and backends resolved from DI - no manual instantiation.
  */
 
-import { randomUUID } from 'crypto';
+import { generateSpanId, generateObservabilityLogId } from './utils/id-generator';
 import { createLogger } from '../logging';
 import {
+  CaptureControl,
   CaptureInput,
-  CaptureOptions,
   ObservabilityBackend,
   ObservabilityConfig,
   ObservabilityError,
@@ -16,6 +16,7 @@ import {
   ObservabilityLevel,
   SamplingRule,
 } from './types';
+import type { ObservabilitySummary } from '../core/runtime/execution-context/types';
 import { stringToLevel, levelToString } from './utils/level-utils';
 import { detectSource, mergeTags } from './utils/source-utils';
 import { redactSensitiveData } from './utils/data-protection';
@@ -23,6 +24,11 @@ import { getCurrentContext, getCorrelationIdIfExists } from './context';
 import { initializeCapturer, resetCapturer } from './observers/base';
 import { DIContainer } from '../di';
 import { NoProviderFoundError } from '../di/errors';
+import { applyNoiseReduction } from './noise-reduction';
+import { buildTraceGraph } from './trace-graph';
+import { createObservabilityConfig, type ObservabilityConfigInput } from './config';
+import { setCurrentObservabilityConfig, runSpanFinalizer } from './runtime-state';
+import { matchesPattern, replacePattern } from './utils/pattern-utils';
 
 const logger = createLogger('ObservabilityManager');
 
@@ -68,7 +74,7 @@ function validateInput(input: CaptureInput): ValidationError[] {
   if (!input.correlationId && !context?.correlationId) {
     errors.push({
       field: 'correlationId',
-      message: 'correlationId is required. Establish context with runWithContext() or provide explicitly.'
+      message: 'correlationId is required. Context is auto-established in controllers, or use runWithExecutionContext().'
     });
   }
 
@@ -130,35 +136,74 @@ function buildEvent(input: CaptureInput, context: ReturnType<typeof getCurrentCo
     config?.dataProtection
   );
 
+  // Operation normalization (reduce cardinality + improve cross-backend consistency)
+  const opNorm = config?.operationNormalization;
+  let operation = input.operation;
+  let operationNormalizationMeta: Record<string, unknown> | undefined;
+  if (opNorm?.enabled && operation) {
+    const originalOperation = operation;
+    const appliedRules: Array<{ id: string; from: string; to: string; reason?: string }> = [];
+    const typeMatch = (
+      ruleTypes: ObservabilityConfig[ 'operationNormalization' ][ 'rules' ][ number ][ 'types' ] | undefined,
+      eventType: string
+    ) => {
+      if (!ruleTypes) return true;
+      const arr = Array.isArray(ruleTypes) ? ruleTypes : [ ruleTypes ];
+      // Compare by string to avoid unsafe casting (ObservabilityEventType is string-based anyway).
+      return arr.map(String).includes(eventType);
+    };
+
+    for (const rule of opNorm.rules ?? []) {
+      if (!typeMatch(rule.types, input.type)) continue;
+      if (!matchesPattern(operation, rule.match)) continue;
+      const next = replacePattern(operation, rule.match, rule.replace);
+      if (next !== operation) {
+        appliedRules.push({ id: rule.id, from: operation, to: next, reason: rule.reason });
+        operation = next;
+      }
+    }
+
+    // Only attach meta if the operation actually changed
+    if (opNorm.storeOriginal !== false && operation !== originalOperation) {
+      operationNormalizationMeta = {
+        from: originalOperation,
+        to: operation,
+        ruleIds: appliedRules.map(r => r.id),
+        rules: appliedRules,
+      };
+    }
+  }
+
   return {
     type: input.type,
     level: input.level,
     correlationId,
     timestampMs: input.timestampMs ?? now,
-    observabilityLogId: input.observabilityLogId ?? randomUUID(),
-    // null = explicitly no parent (don't fall back), undefined = use context
-    parentObservabilityLogId: input.parentObservabilityLogId === null
-      ? undefined
-      : (input.parentObservabilityLogId ?? ctx?.parentObservabilityLogId),
+    observabilityLogId: input.observabilityLogId ?? generateObservabilityLogId(correlationId),
+    // null = explicitly no parent - parentObservabilityLogId should be resolved by caller (span tree)
+    // undefined = use what was provided
+    parentObservabilityLogId: input.parentObservabilityLogId === null ? undefined : input.parentObservabilityLogId,
     causedBy: input.causedBy,
     relatedTraces: input.relatedTraces,
     actor: input.actor ?? ctx?.actor,
-    source: input.source ?? ctx?.source ?? detectSource(),
-    tags: mergeTags({ ...ctx?.tags, ...input.tags }, true),
+    source: input.source ?? ctx?.observability?.source ?? detectSource(),
+    tags: mergeTags({ ...ctx?.observability?.tags, ...input.tags }, true),
     entityName: input.entityName,
     entityId: input.entityId,
-    operation: input.operation,
+    operation,
     subType: input.subType,
     status: input.status,
     success: input.success,
     durationMs: input.durationMs,
-    data,
+    data: operationNormalizationMeta
+      ? { ...(data ?? {}), operationNormalization: operationNormalizationMeta }
+      : data,
     attributes,
     metadata,
     metrics: input.metrics,
     context: eventContext,
     error,
-    critical: input.critical,
+    capture: input.capture,
   };
 }
 
@@ -180,7 +225,9 @@ function buildEvent(input: CaptureInput, context: ReturnType<typeof getCurrentCo
  * ```
  */
 function getTypeCategory(type: string): 'span' | 'metric' | 'audit' | 'log' {
-  if (type.startsWith('span.')) return 'span';
+  // 'span' = consolidated span record, 'span.start' = OTEL-only start marker.
+  // FW24 does NOT support legacy span.* record formats (no compatibility guarantees).
+  if (type === 'span' || type === 'span.start') return 'span';
   if (type === 'metric') return 'metric';
   if (type.startsWith('audit')) return 'audit';
   // All custom event types default to 'log' category
@@ -206,6 +253,13 @@ function shouldBackendCaptureType(
   backend: ObservabilityBackend,
   event: ObservabilityEvent
 ): boolean {
+  // Per-event backend filter (used for OTEL span tracking in consolidated mode)
+  if (event.capture?.backends && event.capture.backends.length > 0) {
+    if (!event.capture.backends.includes(backend.name as 'cloudwatch' | 'dynamodb' | 'otel')) {
+      return false;
+    }
+  }
+
   const backendCfg = backendConfigs.get(backend.name);
   if (!backendCfg) return true; // No config = allow all
 
@@ -272,6 +326,43 @@ async function dispatchToBackendsSync(event: ObservabilityEvent, targetBackends:
   );
 }
 
+function enforceHierarchyIntegrityOrDrop(
+  events: ObservabilityEvent[],
+  ctxCorrelationId: string,
+): ObservabilityEvent[] {
+  // Strict contract: parentObservabilityLogId must always refer to an existing span within this slice.
+  // If violated (likely due to manual injection), we drop offending events and emit a single error log.
+  const graph = buildTraceGraph(events, { strictParents: false });
+  if (graph.missingParentSpanIds.size === 0 && graph.crossSliceParentSpanIds.size === 0) return events;
+
+  const missing = graph.missingParentSpanIds;
+  const crossSlice = graph.crossSliceParentSpanIds;
+  const filtered = events.filter((e) => {
+    const pid = e.parentObservabilityLogId ?? undefined;
+    return !(pid && (missing.has(pid) || crossSlice.has(pid)));
+  });
+
+  const droppedCount = events.length - filtered.length;
+  filtered.push({
+    type: 'log',
+    level: 'error',
+    correlationId: ctxCorrelationId,
+    timestampMs: Date.now(),
+    observabilityLogId: generateObservabilityLogId(ctxCorrelationId),
+    operation: 'observability.invariant_violation.missing_parent_span',
+    success: false,
+    capture: { bypass: true },
+    data: {
+      droppedCount,
+      missingParentSpanIds: Array.from(missing).slice(0, 10),
+      crossSliceParentSpanIds: Array.from(crossSlice).slice(0, 10),
+    },
+    source: 'ObservabilityManager.flush',
+  });
+
+  return filtered;
+}
+
 function getEffectiveLevelForType(type: 'span' | 'metric' | 'audit' | 'log'): ObservabilityLevel {
   const typeConfig = config?.types?.[ type ];
   return typeConfig?.minLevel ?? config?.minLevel ?? ObservabilityLevel.INFO;
@@ -336,19 +427,93 @@ function matchesRule(event: ObservabilityEvent, rule: SamplingRule): boolean {
   return regex.test(valueToMatch);
 }
 
-function shouldCapture(event: ObservabilityEvent, cfg: ObservabilityConfig): boolean {
+function shouldCapture(
+  event: ObservabilityEvent,
+  cfg: ObservabilityConfig,
+  options?: {
+    /**
+     * When true, spans may be dropped based on cfg.spans.minDurationMs.
+     * When false, spans are always kept (needed when we cannot see the full parent/child graph).
+     */
+    allowSpanMinDurationDrop?: boolean;
+    /**
+     * Parent span IDs referenced by buffered events.
+     * If a span is referenced here, it must NEVER be dropped.
+     */
+    referencedParentSpanIds?: ReadonlySet<string>;
+  }
+): boolean {
   const levelValue = stringToLevel(event.level);
   const typeCategory = getTypeCategory(event.type);
   const effectiveLevel = getEffectiveLevelForType(typeCategory);
+  const capture = event.capture;
+  const isSpanRecord = event.type === 'span';
+  const allowSpanMinDurationDrop = options?.allowSpanMinDurationDrop === true;
+  const referencedParentSpanIds = options?.referencedParentSpanIds;
 
-  // Check minimum level first
-  if (levelValue < effectiveLevel) {
-    return false;
+  // === BYPASS SAMPLING (always capture) ===
+  // Priority order - if any of these match, capture immediately
+
+  // 1. Explicit bypass flag in CaptureControl
+  if (capture?.bypass) {
+    return true;
   }
 
-  // CRITICAL always captured
+  // 2. CRITICAL log level always captured
   if (levelValue === ObservabilityLevel.CRITICAL) {
     return true;
+  }
+
+  // 3. Errors always captured
+  if (event.error || event.success === false) {
+    return true;
+  }
+
+  // === SPAN-SPECIFIC FILTERING ===
+  if (isSpanRecord) {
+    const id = event.observabilityLogId;
+    if (id && referencedParentSpanIds?.has(id)) {
+      return true;
+    }
+
+    if (allowSpanMinDurationDrop && event.durationMs !== undefined) {
+      // Per-event minDurationMs overrides global config
+      // Set capture.minDurationMs = 0 to capture regardless of duration
+      const minDuration = capture?.minDurationMs ?? cfg.spans.minDurationMs;
+
+      if (minDuration > 0 && event.durationMs < minDuration) {
+        return false;
+      }
+    }
+  }
+
+  // === CAPTURE CONTROL FILTERING ===
+
+  // 4. Duration threshold for non-span events (e.g., slow queries)
+  if (!isSpanRecord && capture?.minDurationMs !== undefined && event.durationMs !== undefined) {
+    if (event.durationMs < capture.minDurationMs) {
+      return false;
+    }
+  }
+
+  // 5. Group-based sampling for batch scenarios
+  if (capture?.group) {
+    const { index, captureFirst = 3, sampleRate = 0.1 } = capture.group;
+
+    // Note: Errors already returned true above (line ~360)
+    // Capture first N items
+    if (index < captureFirst) {
+      return true;
+    }
+
+    // Sample the rest
+    return Math.random() < sampleRate;
+  }
+
+  // === STANDARD FILTERING (may reject) ===
+  // Check minimum level
+  if (levelValue < effectiveLevel) {
+    return false;
   }
 
   // If sampling disabled, capture everything
@@ -415,12 +580,13 @@ function getOrCreateSamplingRegex(pattern: string): RegExp {
  * Higher priority = keep in buffer
  */
 function getEventPriority(event: ObservabilityEvent): number {
-  // CRITICAL events NEVER get evicted (max priority)
-  if (event.critical) {
+  // Bypass events NEVER get evicted (max priority)
+  if (event.capture?.bypass) {
     return Infinity;
   }
 
-  let priority = 0;
+  // Use explicit priority if provided
+  let priority = event.capture?.priority ?? 0;
 
   const level = stringToLevel(event.level);
 
@@ -449,28 +615,123 @@ function getEventPriority(event: ObservabilityEvent): number {
  * Evict lowest priority event from buffer
  * Returns metadata about the evicted event for logging
  */
-function evictLowestPriority(buffer: ObservabilityEvent[]): { type: string; correlationId: string; operation?: string; level: string } | null {
+function evictLowestPriority(
+  buffer: ObservabilityEvent[],
+  options?: { allowEvictSpans?: boolean }
+): { type: string; correlationId: string; operation?: string; level: string; removedCount?: number } | null {
   if (buffer.length === 0) return null;
 
-  // Find lowest priority event
-  let lowestPriority = Infinity;
-  let lowestIndex = 0;
+  const allowEvictSpans = options?.allowEvictSpans === true;
 
-  for (let i = 0; i < buffer.length; i++) {
-    const priority = getEventPriority(buffer[ i ]);
-    if (priority < lowestPriority) {
-      lowestPriority = priority;
-      lowestIndex = i;
+  // STRICT TREE EVICTION:
+  // When the buffer is full, we MUST NOT evict a parent span while keeping its children,
+  // otherwise flush() will emit `observability.invariant_violation.missing_parent_span`.
+  //
+  // We solve this like a real tree problem:
+  // 1) Prefer evicting "leaf" events: events that are NOT referenced as a parentObservabilityLogId by any other buffered event.
+  // 2) Prefer evicting non-span leaves (logs/metrics) before spans.
+  // 3) If no leaves exist (rare), evict an event AND its whole descendant subtree so no orphans remain.
+
+  const referencedAsParent = new Set<string>();
+  const childrenByParent = new Map<string, ObservabilityEvent[]>();
+  for (const e of buffer) {
+    const pid = e.parentObservabilityLogId ?? undefined;
+    if (typeof pid === 'string' && pid.length > 0) {
+      referencedAsParent.add(pid);
+      const arr = childrenByParent.get(pid);
+      if (arr) arr.push(e);
+      else childrenByParent.set(pid, [ e ]);
     }
   }
 
-  // Remove and return info about evicted event
-  const evicted = buffer.splice(lowestIndex, 1)[ 0 ];
+  const isSpan = (e: ObservabilityEvent) => e.type === 'span' || e.type === 'span.start';
+  const getId = (e: ObservabilityEvent) => e.observabilityLogId;
+  const isLeaf = (e: ObservabilityEvent) => {
+    const id = getId(e);
+    if (!id) return true;
+    return !referencedAsParent.has(id);
+  };
+
+  const pickLowest = (candidates: ObservabilityEvent[]) => {
+    let idx = -1;
+    let lowest = Infinity;
+    for (let i = 0; i < candidates.length; i++) {
+      const p = getEventPriority(candidates[ i ]);
+      if (p < lowest) {
+        lowest = p;
+        idx = i;
+      }
+    }
+    return idx;
+  };
+
+  // If spans are not allowed to be evicted, constrain candidates to non-span events only.
+  const nonSpans = buffer.filter((e) => !isSpan(e));
+
+  // Pass 1: non-span leaves
+  const nonSpanLeaves = nonSpans.filter((e) => isLeaf(e));
+  let target: ObservabilityEvent | undefined;
+  if (nonSpanLeaves.length > 0) {
+    const idx = pickLowest(nonSpanLeaves);
+    target = nonSpanLeaves[ idx ];
+  } else {
+    if (!allowEvictSpans) {
+      // Pass 2 (non-span only): if we can't find a non-span leaf, evict the lowest-priority non-span.
+      // This preserves hierarchy because non-spans are not expected to be parents.
+      if (nonSpans.length > 0) {
+        const idx = pickLowest(nonSpans);
+        target = nonSpans[ idx ];
+      } else {
+        // Buffer contains only spans - caller must decide whether to allow span eviction or overflow.
+        return null;
+      }
+    } else {
+      // Pass 2: any leaves (including spans)
+      const anyLeaves = buffer.filter((e) => isLeaf(e));
+      if (anyLeaves.length > 0) {
+        const idx = pickLowest(anyLeaves);
+        target = anyLeaves[ idx ];
+      } else {
+        // Pass 3: no leaves exist (cycle/degenerate). Pick the overall lowest-priority event.
+        const idx = pickLowest(buffer);
+        target = buffer[ idx ];
+      }
+    }
+  }
+
+  if (!target) return null;
+
+  const targetId = getId(target);
+  let removedCount = 0;
+
+  // If target is referenced as a parent, remove its entire subtree (BFS).
+  const toRemove = new Set<ObservabilityEvent>();
+  const queue: ObservabilityEvent[] = [ target ];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    if (toRemove.has(cur)) continue;
+    toRemove.add(cur);
+    const curId = getId(cur);
+    if (curId) {
+      const kids = childrenByParent.get(curId);
+      if (kids) queue.push(...kids);
+    }
+  }
+
+  // Filter buffer in-place
+  for (let i = buffer.length - 1; i >= 0; i--) {
+    if (toRemove.has(buffer[ i ])) {
+      buffer.splice(i, 1);
+      removedCount++;
+    }
+  }
+
   return {
-    type: evicted.type,
-    correlationId: evicted.correlationId,
-    operation: evicted.operation,
-    level: evicted.level,
+    type: target.type,
+    correlationId: target.correlationId,
+    operation: target.operation,
+    level: target.level,
+    removedCount,
   };
 }
 
@@ -482,7 +743,11 @@ function handleTailBasedSamplingSync(
   event: ObservabilityEvent,
   context: ReturnType<typeof getCurrentContext>
 ): 'captured' | 'buffered' | 'skip' {
-  if (!config?.sampling?.smart || !context) {
+  const cfg = config;
+  if (!cfg) return 'skip';
+  const shouldBufferForPolicy = cfg.noiseReduction.enabled;
+  const shouldBufferForSampling = !!cfg.sampling?.smart;
+  if ((!shouldBufferForSampling && !shouldBufferForPolicy) || !context) {
     return 'skip';
   }
 
@@ -490,17 +755,20 @@ function handleTailBasedSamplingSync(
 
   // ERROR PATH: Flush buffer + capture error + set flag
   if (isError) {
-    if (context.observabilityBuffer?.length) {
-      const buffer = context.observabilityBuffer as ObservabilityEvent[];
-      context.observabilitySummary = context.observabilitySummary || { evicted: 0, buffered: 0, captured: 0 };
-      context.observabilityBuffer = [];
+    const obsState = context.observability;
+    if (obsState.buffer.length > 0) {
+      const buffer = obsState.buffer;
+      obsState.buffer = [];
+
+      const reduced = applyNoiseReduction(buffer, cfg.noiseReduction);
+      const reducedBuffer = enforceHierarchyIntegrityOrDrop(reduced.events, context.correlationId);
 
       // Apply level filtering to avoid overwhelming backends with thousands of debug/trace events
       // On error, capture INFO+ events, drop TRACE/DEBUG to prevent cost spikes
-      const minLevelOnError = config.sampling?.minLevelOnError ?? ObservabilityLevel.INFO;
+      const minLevelOnError = cfg.sampling?.minLevelOnError ?? ObservabilityLevel.INFO;
       let dropped = 0;
 
-      for (const bufferedEvent of buffer) {
+      for (const bufferedEvent of reducedBuffer) {
         const eventLevel = stringToLevel(bufferedEvent.level);
         if (eventLevel >= minLevelOnError) {
           const targets = getBackendsForType(bufferedEvent.type);
@@ -518,52 +786,52 @@ function handleTailBasedSamplingSync(
       }
     }
 
-    context.errorOccurred = true;
+    obsState.errorOccurred = true;
     const targetBackends = getBackendsForType(event.type);
     dispatchToBackends(event, targetBackends);
-
-    // Track captured count
-    if (!context.observabilitySummary) {
-      context.observabilitySummary = { evicted: 0, buffered: 0, captured: 0 };
-    }
-    context.observabilitySummary.captured = (context.observabilitySummary.captured || 0) + 1;
+    obsState.summary.captured++;
 
     return 'captured';
   }
 
   // POST-ERROR PATH: Capture immediately
-  if (context.errorOccurred) {
+  if (context.observability.errorOccurred) {
     const targetBackends = getBackendsForType(event.type);
     dispatchToBackends(event, targetBackends);
-
-    // Track captured count
-    if (!context.observabilitySummary) {
-      context.observabilitySummary = { evicted: 0, buffered: 0, captured: 0 };
-    }
-    context.observabilitySummary.captured = (context.observabilitySummary.captured || 0) + 1;
+    context.observability.summary.captured++;
 
     return 'captured';
   }
 
   // NORMAL PATH: Buffer everything
-  if (!context.observabilityBuffer) context.observabilityBuffer = [];
-  const buffer = context.observabilityBuffer as ObservabilityEvent[];
-
-  // Initialize summary if needed
-  if (!context.observabilitySummary) {
-    context.observabilitySummary = { evicted: 0, buffered: 0, captured: 0 };
-  }
+  const obsState = context.observability;
+  const buffer = obsState.buffer;
 
   // Buffer size management: evict lowest priority if full
-  const maxSize = config.sampling.maxBufferSize ?? 1000;
+  const maxSize = cfg.sampling?.maxBufferSize ?? 1000;
   if (buffer.length >= maxSize) {
-    const evictedInfo = evictLowestPriority(buffer);
-    context.observabilitySummary.evicted = (context.observabilitySummary.evicted || 0) + 1;
+    // IMPORTANT:
+    // During buffering (noise reduction / smart sampling), spans may be emitted AFTER their children.
+    // Evicting spans opportunistically can therefore create future orphan children (missing_parent_span).
+    // Prefer evicting non-span events only; if the buffer is spans-only, allow bounded overflow.
+    const evictedInfo = evictLowestPriority(buffer, { allowEvictSpans: false });
+    if (evictedInfo) {
+      obsState.summary.evicted++;
+    } else {
+      // Spans-only overflow: allow buffer growth up to 2x before evicting span subtrees.
+      const hardCap = maxSize * 2;
+      if (buffer.length >= hardCap) {
+        const evictedSpanInfo = evictLowestPriority(buffer, { allowEvictSpans: true });
+        if (evictedSpanInfo) {
+          obsState.summary.evicted++;
+        }
+      }
+    }
 
     // Log warning with evicted event details
-    if (context.observabilitySummary.evicted === 1 || context.observabilitySummary.evicted % 100 === 0) {
+    if (obsState.summary.evicted === 1 || obsState.summary.evicted % 100 === 0) {
       logger.warn('Observability buffer full, evicting lowest priority events', {
-        evicted: context.observabilitySummary.evicted,
+        evicted: obsState.summary.evicted,
         bufferSize: buffer.length,
         correlationId: context.correlationId,
         evictedEvent: evictedInfo,
@@ -572,13 +840,13 @@ function handleTailBasedSamplingSync(
       // Log each eviction at debug level for troubleshooting
       logger.debug('Evicted observability event from buffer', {
         ...evictedInfo,
-        totalEvicted: context.observabilitySummary.evicted,
+        totalEvicted: obsState.summary.evicted,
       });
     }
   }
 
   buffer.push(event);
-  context.observabilitySummary.buffered = (context.observabilitySummary.buffered || 0) + 1;
+  obsState.summary.buffered++;
   return 'buffered';
 }
 
@@ -589,7 +857,11 @@ async function handleTailBasedSamplingAsync(
   event: ObservabilityEvent,
   context: ReturnType<typeof getCurrentContext>
 ): Promise<'captured' | 'buffered' | 'skip'> {
-  if (!config?.sampling?.smart || !context) {
+  const cfg = config;
+  if (!cfg) return 'skip';
+  const shouldBufferForPolicy = cfg.noiseReduction.enabled;
+  const shouldBufferForSampling = !!cfg.sampling?.smart;
+  if ((!shouldBufferForSampling && !shouldBufferForPolicy) || !context) {
     return 'skip';
   }
 
@@ -597,16 +869,19 @@ async function handleTailBasedSamplingAsync(
 
   // ERROR PATH: Flush buffer + capture error + set flag
   if (isError) {
-    if (context.observabilityBuffer?.length) {
-      const buffer = context.observabilityBuffer as ObservabilityEvent[];
-      context.observabilitySummary = context.observabilitySummary || { evicted: 0, buffered: 0, captured: 0 };
-      context.observabilityBuffer = [];
+    const obsState = context.observability;
+    if (obsState.buffer.length > 0) {
+      const buffer = obsState.buffer;
+      obsState.buffer = [];
+
+      const reduced = applyNoiseReduction(buffer, cfg.noiseReduction);
+      const reducedBuffer = enforceHierarchyIntegrityOrDrop(reduced.events, context.correlationId);
 
       // Apply level filtering to avoid overwhelming backends
-      const minLevelOnError = config.sampling?.minLevelOnError ?? ObservabilityLevel.INFO;
+      const minLevelOnError = cfg.sampling?.minLevelOnError ?? ObservabilityLevel.INFO;
       let dropped = 0;
 
-      const filteredEvents = buffer.filter(bufferedEvent => {
+      const filteredEvents = reducedBuffer.filter(bufferedEvent => {
         const eventLevel = stringToLevel(bufferedEvent.level);
         if (eventLevel >= minLevelOnError) {
           return true;
@@ -628,52 +903,47 @@ async function handleTailBasedSamplingAsync(
       }
     }
 
-    context.errorOccurred = true;
+    obsState.errorOccurred = true;
     const targetBackends = getBackendsForType(event.type);
     await dispatchToBackendsSync(event, targetBackends);
-
-    // Track captured count
-    if (!context.observabilitySummary) {
-      context.observabilitySummary = { evicted: 0, buffered: 0, captured: 0 };
-    }
-    context.observabilitySummary.captured = (context.observabilitySummary.captured || 0) + 1;
+    obsState.summary.captured++;
 
     return 'captured';
   }
 
   // POST-ERROR PATH: Capture immediately
-  if (context.errorOccurred) {
+  if (context.observability.errorOccurred) {
     const targetBackends = getBackendsForType(event.type);
     await dispatchToBackendsSync(event, targetBackends);
-
-    // Track captured count
-    if (!context.observabilitySummary) {
-      context.observabilitySummary = { evicted: 0, buffered: 0, captured: 0 };
-    }
-    context.observabilitySummary.captured = (context.observabilitySummary.captured || 0) + 1;
+    context.observability.summary.captured++;
 
     return 'captured';
   }
 
   // NORMAL PATH: Buffer everything
-  if (!context.observabilityBuffer) context.observabilityBuffer = [];
-  const buffer = context.observabilityBuffer as ObservabilityEvent[];
-
-  // Initialize summary if needed
-  if (!context.observabilitySummary) {
-    context.observabilitySummary = { evicted: 0, buffered: 0, captured: 0 };
-  }
+  const obsState = context.observability;
+  const buffer = obsState.buffer;
 
   // Buffer size management: evict lowest priority if full
-  const maxSize = config.sampling.maxBufferSize ?? 1000;
+  const maxSize = cfg.sampling?.maxBufferSize ?? 1000;
   if (buffer.length >= maxSize) {
-    evictLowestPriority(buffer);
-    context.observabilitySummary.evicted = (context.observabilitySummary.evicted || 0) + 1;
+    const evictedInfo = evictLowestPriority(buffer, { allowEvictSpans: false });
+    if (evictedInfo) {
+      obsState.summary.evicted++;
+    } else {
+      const hardCap = maxSize * 2;
+      if (buffer.length >= hardCap) {
+        const evictedSpanInfo = evictLowestPriority(buffer, { allowEvictSpans: true });
+        if (evictedSpanInfo) {
+          obsState.summary.evicted++;
+        }
+      }
+    }
 
     // Log warning if evicting a lot
-    if (context.observabilitySummary.evicted === 1 || context.observabilitySummary.evicted % 100 === 0) {
+    if (obsState.summary.evicted === 1 || obsState.summary.evicted % 100 === 0) {
       logger.warn('Observability buffer full, evicting lowest priority events', {
-        evicted: context.observabilitySummary.evicted,
+        evicted: obsState.summary.evicted,
         bufferSize: buffer.length,
         correlationId: context.correlationId
       });
@@ -681,7 +951,7 @@ async function handleTailBasedSamplingAsync(
   }
 
   buffer.push(event);
-  context.observabilitySummary.buffered = (context.observabilitySummary.buffered || 0) + 1;
+  obsState.summary.buffered++;
   return 'buffered';
 }
 
@@ -690,7 +960,7 @@ async function handleTailBasedSamplingAsync(
  * Provides better stack traces for TypeScript/transpiled code in production
  */
 function initializeSourceMapSupport(cfg: ObservabilityConfig): void {
-  if (!cfg.sourceMap?.enabled) {
+  if (!cfg.sourceMap.enabled) {
     logger.debug('Source map support disabled in config');
     return;
   }
@@ -700,14 +970,15 @@ function initializeSourceMapSupport(cfg: ObservabilityConfig): void {
     // Dynamic import to avoid bundling if not needed
     require('source-map-support/register');
     logger.info('Source map support enabled - stack traces will show original TypeScript lines');
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Not a critical error - observability still works without source maps
-    if (error.code === 'MODULE_NOT_FOUND') {
+    if (error && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code === 'MODULE_NOT_FOUND') {
       logger.warn(
         'source-map-support package not found. Install it for better error stack traces: npm install source-map-support'
       );
     } else {
-      logger.warn('Failed to load source-map-support:', error.message);
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.warn('Failed to load source-map-support:', msg);
     }
   }
 }
@@ -718,8 +989,7 @@ function initializeSourceMapSupport(cfg: ObservabilityConfig): void {
 function initializeBackendsFromConfig(cfg: ObservabilityConfig): void {
   backends = [];
   backendConfigs.clear();
-  const enabledBackends = cfg.backends?.filter(b => b.enabled !== false) ?? [];
-  const enabledTypes = enabledBackends.map(b => b.type);
+  const enabledBackends = cfg.backends.filter(b => b.enabled !== false);
 
   for (const backendCfg of enabledBackends) {
     try {
@@ -739,20 +1009,12 @@ function initializeBackendsFromConfig(cfg: ObservabilityConfig): void {
     }
   }
 
-  // Fallback to CloudWatch if no backends enabled
   if (backends.length === 0) {
-    logger.warn('No backends enabled, attempting CloudWatch fallback');
-    try {
-      const backend = DIContainer.ROOT.resolve<ObservabilityBackend>(
-        'ObservabilityBackend',
-        { tags: [ 'observability', 'backend', 'cloudwatch' ] }
-      );
-      backends.push(backend);
-      // Create default config for fallback
-      backendConfigs.set(backend.name, { type: 'cloudwatch', enabled: true });
-    } catch (error) {
-      logger.error('Failed to resolve fallback CloudWatch backend:', error);
-    }
+    // Soft-fail: do NOT throw and break application flow.
+    // Without backends, capture becomes a no-op for this invocation (events are dropped).
+    logger.error('Observability misconfigured: no enabled/available backends were resolved from DI. Observability will be disabled for this invocation.', {
+      enabledBackendTypes: enabledBackends.map(b => b.type),
+    });
   }
 }
 
@@ -774,8 +1036,11 @@ function doInitialize(): void {
       logger.debug('Pre-initialization hooks completed');
     }
 
-    // Resolve config from DI (defaults registered in index.ts guarantee all required fields)
-    config = DIContainer.ROOT.resolveConfig<ObservabilityConfig>('observability') as ObservabilityConfig;
+    // Resolve config input from DI, then normalize into a fully-defined ObservabilityConfig.
+    // This avoids unsafe casts and ensures the shape is consistent even when apps override partially.
+    const input = DIContainer.ROOT.resolveConfig<ObservabilityConfigInput>('observability');
+    config = createObservabilityConfig(input);
+    setCurrentObservabilityConfig(config);
     logger.debug('Observability config loaded from DI', {
       enabled: config.enabled,
       serviceName: config.serviceName,
@@ -792,18 +1057,21 @@ function doInitialize(): void {
 
     // Register capturer for observers
     initializeCapturer({
-      capture: (input, options) => ObservabilityManager.capture(input, options),
-      captureAsync: (input, options) => ObservabilityManager.captureAsync(input, options),
+      capture: (input) => ObservabilityManager.capture(input),
+      captureAsync: (input) => ObservabilityManager.captureAsync(input),
     });
 
     initialized = true;
     logger.info('=== OBSERVABILITY INITIALIZATION COMPLETE ===');
   } catch (error) {
     logger.error('!!! OBSERVABILITY INITIALIZATION FAILED !!!', error);
-    // Set initialized = true anyway to prevent repeated init attempts
+    // Soft-fail: do NOT throw into application flow.
+    // Mark initialized to prevent repeated init attempts; leave capturer uninitialized so observers drop events.
     initialized = true;
-    // Re-throw so we know something is broken
-    throw error;
+    config = null;
+    setCurrentObservabilityConfig(null);
+    backends = [];
+    backendConfigs.clear();
   }
 }
 
@@ -854,6 +1122,16 @@ export class ObservabilityManager {
     return config;
   }
 
+  /**
+   * Get observability summary for the current invocation.
+   * Returns buffer stats: evicted, buffered, captured, sampledOut counts.
+   * Returns undefined if no execution context exists.
+   */
+  static getSummary(): ObservabilitySummary | undefined {
+    const context = getCurrentContext();
+    return context?.observability.summary;
+  }
+
   static configure(updates: Partial<ObservabilityConfig>): void {
     if (!config) {
       throw new Error('ObservabilityManager not initialized');
@@ -886,14 +1164,32 @@ export class ObservabilityManager {
 
   /**
    * Capture an observability event (fire-and-forget)
+   * 
+   * Capture control is embedded in input.capture - no separate options param.
+   * 
+   * @param input - Event input with capture control in input.capture
+   * @returns observabilityLogId if captured, undefined if filtered/sampled out
    */
-  static capture(input: CaptureInput, options?: CaptureOptions): string | undefined {
+  static capture(input: CaptureInput): string | undefined {
     if (!initialized) {
       logger.warn('❌ Observability not initialized, skipping capture', { type: input.type, level: input.level });
       return undefined;
     }
 
     try {
+      // Hard deprecation: FW24 does not support legacy span.* record formats.
+      // If anything emits these, it's a bug. Log loudly and drop.
+      if (input.type === 'span.end' || input.type === 'span.event') {
+        logger.error('Observability invariant violation: legacy span.* event type was emitted (unsupported). Dropping event.', {
+          type: input.type,
+          operation: input.operation,
+          correlationId: input.correlationId,
+          parentObservabilityLogId: input.parentObservabilityLogId,
+          source: input.source,
+        });
+        return undefined;
+      }
+
       const errors = validateInput(input);
       if (errors.length > 0) {
         logger.warn('Invalid capture input:', { errors, type: input.type });
@@ -906,9 +1202,7 @@ export class ObservabilityManager {
       }
 
       const context = getCurrentContext();
-      // Merge critical flag from options into input for event creation
-      const eventInput = options?.critical ? { ...input, critical: true } : input;
-      const event = buildEvent(eventInput, context);
+      const event = buildEvent(input, context);
 
       // Try tail-based sampling first
       const tailResult = handleTailBasedSamplingSync(event, context);
@@ -919,9 +1213,12 @@ export class ObservabilityManager {
         return undefined;
       }
 
-      // HEAD-BASED SAMPLING (Standard)
-      const isSampled = event.critical || shouldCapture(event, config);
-      if (!isSampled) {
+      // HEAD-BASED SAMPLING (all bypass/level/sampling logic in shouldCapture)
+      if (!shouldCapture(event, config, {
+        // No buffered graph here; never drop spans by minDuration in head-based mode
+        // because we can't prove they aren't parents of already-emitted child events.
+        allowSpanMinDurationDrop: false,
+      })) {
         return undefined;
       }
 
@@ -936,14 +1233,30 @@ export class ObservabilityManager {
 
   /**
    * Capture an observability event asynchronously (waits for backend capture)
+   * 
+   * @param input - Event input with capture control in input.capture
+   * @returns Promise<observabilityLogId> if captured, undefined if filtered/sampled out
    */
-  static async captureAsync(input: CaptureInput, options?: Omit<CaptureOptions, 'sync'>): Promise<string | undefined> {
+  static async captureAsync(input: CaptureInput): Promise<string | undefined> {
     if (!initialized) {
       logger.debug('Observability not initialized, skipping capture');
       return undefined;
     }
 
     try {
+      // Hard deprecation: FW24 does not support legacy span.* record formats.
+      // If anything emits these, it's a bug. Log loudly and drop.
+      if (input.type === 'span.end' || input.type === 'span.event') {
+        logger.error('Observability invariant violation: legacy span.* event type was emitted (unsupported). Dropping event.', {
+          type: input.type,
+          operation: input.operation,
+          correlationId: input.correlationId,
+          parentObservabilityLogId: input.parentObservabilityLogId,
+          source: input.source,
+        });
+        return undefined;
+      }
+
       const errors = validateInput(input);
       if (errors.length > 0) {
         logger.warn('Invalid capture input:', { errors, type: input.type });
@@ -953,9 +1266,7 @@ export class ObservabilityManager {
       if (!config?.enabled) return undefined;
 
       const context = getCurrentContext();
-      // Merge critical flag from options into input for event creation
-      const eventInput = options?.critical ? { ...input, critical: true } : input;
-      const event = buildEvent(eventInput, context);
+      const event = buildEvent(input, context);
 
       // Try tail-based sampling first
       const tailResult = await handleTailBasedSamplingAsync(event, context);
@@ -966,9 +1277,10 @@ export class ObservabilityManager {
         return undefined;
       }
 
-      // HEAD-BASED SAMPLING (Standard)
-      const isSampled = event.critical || shouldCapture(event, config);
-      if (!isSampled) {
+      // HEAD-BASED SAMPLING (all bypass/level/sampling logic in shouldCapture)
+      if (!shouldCapture(event, config, {
+        allowSpanMinDurationDrop: false,
+      })) {
         return undefined;
       }
 
@@ -982,11 +1294,13 @@ export class ObservabilityManager {
   }
 
   /**
-   * Observe an event
+   * Observe an event (convenience method)
+   * 
+   * @param event - Partial event with required type and level
+   * @returns observabilityLogId if captured, undefined if filtered/sampled out
    */
   static observe(
-    event: Partial<ObservabilityEvent> & { type: string; level: string; correlationId?: string },
-    options?: CaptureOptions
+    event: Partial<ObservabilityEvent> & { type: string; level: string; correlationId?: string }
   ): string | undefined {
     const correlationId = event.correlationId ?? getCorrelationIdIfExists();
 
@@ -1000,7 +1314,7 @@ export class ObservabilityManager {
       correlationId,
       type: event.type as CaptureInput[ 'type' ],
       level: event.level as CaptureInput[ 'level' ],
-    }, options);
+    });
   }
 
   /**
@@ -1021,53 +1335,116 @@ export class ObservabilityManager {
       logger.debug('Pending dispatches completed');
     }
 
-    // If smart sampling is enabled, flush buffered events with sampling applied
-    if (config?.sampling?.smart) {
+    // Force-end any spans left open in this invocation before flushing buffered events.
+    // This guarantees the hierarchy has all parents, even if user/framework code forgot to end a span.
+    runSpanFinalizer();
+
+    // Attach observability summary to current span (if any) before flushing
+    const summary = ObservabilityManager.getSummary();
+    const context = getCurrentContext();
+    const currentSpan = context?.observability.currentSpan;
+    if (summary && currentSpan && (summary.captured > 0 || summary.buffered > 0 || summary.evicted > 0 || summary.sampledOut > 0)) {
+      currentSpan?.metrics?.({
+        '_fw24.obs.captured': summary.captured,
+        '_fw24.obs.buffered': summary.buffered,
+        '_fw24.obs.evicted': summary.evicted,
+        '_fw24.obs.sampledOut': summary.sampledOut,
+      });
+    }
+
+    // If buffering is enabled (smart sampling OR noise reduction), flush buffered events.
+    if (config?.sampling?.smart || config?.noiseReduction?.enabled) {
       const context = getCurrentContext();
 
-      if (context?.observabilityBuffer?.length && !context.errorOccurred) {
-        // No error occurred: apply sampling to buffer before flushing
-        const buffer = context.observabilityBuffer as ObservabilityEvent[];
-        context.observabilityBuffer = []; // Clear buffer
+      if (context && context.observability.buffer.length > 0 && !context.observability.errorOccurred) {
+        // No error occurred: apply noise reduction + optional sampling to buffer before flushing
+        const obsState = context.observability;
+        const buffer = obsState.buffer;
+        obsState.buffer = []; // Clear buffer
 
-        for (const event of buffer) {
-          // Apply sampling rules to buffered event
-          const isSampled = shouldCapture(event, config);
+        const reduced = applyNoiseReduction(buffer, config.noiseReduction);
+        const reducedEvents = reduced.events;
+
+        // Compute referenced parent IDs from the buffered set (graph-based, no manual tracking).
+        const referencedParentSpanIds = new Set<string>();
+        for (const e of reducedEvents) {
+          const pid = e.parentObservabilityLogId ?? undefined;
+          if (pid) referencedParentSpanIds.add(pid);
+        }
+
+        // Drop empty *leaf* spans if configured.
+        // A span is a leaf iff nobody references it as parentObservabilityLogId in this buffered set.
+        const maybeDropEmptyLeafSpans = config.spans.skipEmpty
+          ? reducedEvents.filter((e) => {
+            if (e.type !== 'span') return true;
+            const id = e.observabilityLogId;
+            if (!id) return true;
+            if (referencedParentSpanIds.has(id)) return true; // parent => keep
+            const d = e.data as Record<string, unknown> | undefined;
+            const fw = d?._fw24 as Record<string, unknown> | undefined;
+            return fw?.spanEmpty !== true;
+          })
+          : reducedEvents;
+
+        const finalEvents = enforceHierarchyIntegrityOrDrop(maybeDropEmptyLeafSpans, context.correlationId);
+
+        for (const event of finalEvents) {
+          // Bypass events skip sampling (e.g., audit events marked as critical)
+          const shouldBypass = event.capture?.bypass === true;
+
+          // Apply sampling rules to buffered event (unless bypass is set)
+          const isSampled = shouldBypass
+            || !config?.sampling?.enabled
+            || shouldCapture(event, config, {
+              allowSpanMinDurationDrop: true,
+              referencedParentSpanIds,
+            });
           if (isSampled) {
             const targets = getBackendsForType(event.type);
             await dispatchToBackendsSync(event, targets);
+          } else {
+            obsState.summary.sampledOut++;
           }
-          // else: dropped by sampling
         }
       }
       // If errorOccurred=true, buffer was already flushed during capture
     }
 
     // Flush all backends with retry logic
+    // Wrap each backend flush in try-catch to ensure all backends attempt to flush
+    // even if one fails catastrophically
     const MAX_FLUSH_RETRIES = 2;
     const flushPromises = backends.map(async (backend) => {
-      if (!backend.flush) {
-        return;
-      }
+      try {
+        if (!backend.flush) {
+          return;
+        }
 
-      for (let attempt = 1; attempt <= MAX_FLUSH_RETRIES; attempt++) {
-        try {
-          await backend.flush();
-          break; // Success
-        } catch (error) {
-          if (attempt === MAX_FLUSH_RETRIES) {
-            logger.error(`Backend ${backend.name} flush failed after ${attempt} attempts:`, error);
-            // Events may be lost, but we've done our best
-          } else {
-            logger.warn(`Backend ${backend.name} flush failed (attempt ${attempt}/${MAX_FLUSH_RETRIES}), retrying...`, error);
-            // Simple exponential backoff
-            await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+        for (let attempt = 1; attempt <= MAX_FLUSH_RETRIES; attempt++) {
+          try {
+            await backend.flush();
+            break; // Success
+          } catch (error) {
+            if (attempt === MAX_FLUSH_RETRIES) {
+              logger.error(`Backend ${backend.name} flush failed after ${attempt} attempts:`, error);
+              // Events may be lost, but we've done our best
+              // Don't throw - allow other backends to flush
+            } else {
+              logger.warn(`Backend ${backend.name} flush failed (attempt ${attempt}/${MAX_FLUSH_RETRIES}), retrying...`, error);
+              // Simple exponential backoff
+              await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+            }
           }
         }
+      } catch (error) {
+        // Catch any unexpected errors outside the retry loop
+        logger.error(`Backend ${backend.name} flush completely failed:`, error);
+        // Don't throw - allow other backends to flush
       }
     });
 
     await Promise.all(flushPromises);
+
     logger.debug('=== FLUSH COMPLETE ===');
   }
 
@@ -1076,6 +1453,7 @@ export class ObservabilityManager {
    */
   static reset(): void {
     config = null;
+    setCurrentObservabilityConfig(null);
     backends = [];
     backendConfigs.clear();
     invocationCount = 0;
@@ -1094,12 +1472,13 @@ export class ObservabilityManager {
   ): void {
     ObservabilityManager.reset();
     config = testConfig;
+    setCurrentObservabilityConfig(testConfig);
     backends = testBackends;
     initialized = true;
 
     initializeCapturer({
-      capture: (input, options) => ObservabilityManager.capture(input, options),
-      captureAsync: (input, options) => ObservabilityManager.captureAsync(input, options),
+      capture: (input) => ObservabilityManager.capture(input),
+      captureAsync: (input) => ObservabilityManager.captureAsync(input),
     });
   }
 }

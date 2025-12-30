@@ -41,6 +41,9 @@ export type {
   ExecutionContextData,
   CreateExecutionContextOptions,
   ParsedTraceContext,
+  ObservabilityState,
+  ObservabilitySummary,
+  ISpanNode,
 } from './types';
 
 // Storage & Lifecycle
@@ -49,6 +52,14 @@ export {
   runWithExecutionContext,
   runWithExecutionContextSync,
   getCurrentExecutionContext,
+  getObservabilityState,
+  getCurrentSpan,
+} from './storage';
+
+// Parent Resolution (for propagation utilities)
+export {
+  getCapturedParentId,
+  getCurrentParentObservabilityLogId,
 } from './storage';
 
 // Enrichment
@@ -59,13 +70,13 @@ export {
   setAttribute,
   setAttributes,
   setSource,
-  setParentObservabilityLogId,
 } from './storage';
 
 // Propagation - Extraction
 export {
   extractFromHeaders,
   extractFromSqs,
+  extractFromSqsRecord,
   extractFromSns,
   extractFromEventBridge,
   extractFromStepFunctions,
@@ -82,4 +93,3 @@ export {
   toW3CTraceId,
   toW3CParentId,
 } from './propagation';
-

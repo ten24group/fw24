@@ -65,7 +65,7 @@ export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "a
  * - number, currency, percentage, range, slider, rating
  * 
  * **Date & Time:**
- * - date, time, datetime, duration
+ * - date, time, datetime, duration, ttl
  * 
  * **Boolean & Toggle:**
  * - boolean, switch, toggle, checkbox
@@ -113,6 +113,7 @@ export type ConfigFieldType =
     | "time"
     | "datetime"
     | "duration"
+    | "ttl"
 
     // Boolean & toggle
     | "boolean"
@@ -151,6 +152,9 @@ export type ConfigFieldType =
     | "video"
     | "audio"
     | "qrcode"
+
+    // Timeline & events
+    | "timeline"
 
     // Special
     | "custom";
@@ -281,6 +285,94 @@ export interface PropertyConfig {
         properties?: Array<PropertyConfig>;
     };
     properties?: Array<PropertyConfig>;
+
+    // === Duration field configuration ===
+    /**
+     * Input unit of the stored duration value. Renderer converts to human-readable. Default: 'seconds'
+     * @see DurationFieldMetadata in base-entity.ts
+     */
+    durationUnit?: 'ms' | 'seconds' | 'minutes' | 'hours' | 'days';
+    /**
+     * Display format for duration. Default: 'auto' (shows largest relevant units)
+     * - 'auto': Automatically shows days/hours/minutes/seconds as needed
+     * - 'long': Shows all units (e.g., "2d 3h 15m 30s")
+     * - 'short': Shows only 2 most significant units (e.g., "2d 3h")
+     * - 'compact': Shows single most significant unit (e.g., "2d")
+     * @see DurationFieldMetadata in base-entity.ts
+     */
+    durationFormat?: 'auto' | 'long' | 'short' | 'compact';
+
+    // === TTL field configuration ===
+    /**
+     * Input unit of the stored TTL value (Unix timestamp). Renderer shows remaining time. Default: 'seconds'
+     * @see TTLFieldMetadata in base-entity.ts
+     */
+    ttlUnit?: 'ms' | 'seconds' | 'minutes' | 'hours';
+    /**
+     * Display format for TTL. Default: 'auto'
+     * - 'auto': Automatically shows appropriate units based on remaining time
+     * - 'long': Shows all units (e.g., "2d 3h 15m 30s remaining")
+     * - 'short': Shows only 2 most significant units
+     * - 'compact': Shows single most significant unit with suffix
+     * @see TTLFieldMetadata in base-entity.ts
+     */
+    ttlFormat?: 'auto' | 'long' | 'short' | 'compact';
+    /**
+     * Auto-refresh TTL display every N seconds. Default: 0 (disabled)
+     * Useful for countdown timers. Recommended: 1-60 seconds
+     * @see TTLFieldMetadata in base-entity.ts
+     */
+    ttlAutoRefresh?: number;
+
+    // === Timeline field configuration ===
+    /**
+     * Configuration for timeline field type.
+     * Renders array data as a vertical timeline.
+     * 
+     * @example
+     * ```ts
+     * {
+     *   name: 'checkpoints',
+     *   label: 'Checkpoints',
+     *   fieldType: 'timeline',
+     *   timelineConfig: {
+     *     mode: 'left',
+     *     itemMapping: {
+     *       labelField: 'name',
+     *       timestampField: 'ts',
+     *     }
+     *   }
+     * }
+     * ```
+     */
+    timelineConfig?: {
+        /** Layout mode: 'left' (default), 'right', or 'alternate' */
+        mode?: 'left' | 'right' | 'alternate';
+        /** Reverse the order of items */
+        reverse?: boolean;
+        /** Maximum number of items to show (default: all) */
+        maxItems?: number;
+        /**
+         * Field mapping for extracting timeline item data from array elements.
+         * If data is an array of objects, specify which fields to use.
+         */
+        itemMapping?: {
+            /** Field for item label/title (default: 'name') */
+            labelField?: string;
+            /** Field for timestamp (default: 'ts' or 'timestamp') */
+            timestampField?: string;
+            /** Field for description (optional) */
+            descriptionField?: string;
+            /** Field for color/type (optional) - values: 'success', 'error', 'warning', 'info' */
+            typeField?: string;
+            /** Field for custom icon (optional) */
+            iconField?: string;
+        };
+        /** Show timestamps (default: true) */
+        showTimestamp?: boolean;
+        /** Timestamp format (default: 'MMM D, h:mm:ss A') */
+        timestampFormat?: string;
+    };
 }
 
 /**

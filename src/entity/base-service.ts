@@ -5,6 +5,9 @@ import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiers
 import type { EntityFilterCriteria, EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 
 import { ExecutionContext, Actor } from "../core/types/execution-context";
+import {
+    getCurrentExecutionContext,
+} from "../core/runtime/execution-context";
 import { DepIdentifier, IDIContainer } from "../interfaces";
 import { createLogger } from "../logging";
 import { BaseSearchService, EntitySearchService } from '../search/services';
@@ -730,11 +733,23 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         trace: { level: 'debug' },
         sourceType: 'service',
         tags: { operation_category: 'read', hydration: 'true' },
-        getAttributes: (instance: any, args: any[]) => ({
-            entityName: instance.getEntityName(),
-            relationCount: args[ 0 ]?.length || 0,
-            recordCount: args[ 1 ]?.length || 0,
-        })
+        extract: {
+            start: ({ instance, args }) => {
+                const [ relations, rootRecords ] = args as [ unknown[] | undefined, unknown[] | undefined ];
+                const relationCount = Array.isArray(relations) ? relations.length : 0;
+                const recordCount = Array.isArray(rootRecords) ? rootRecords.length : 0;
+
+                return {
+                    tags: {
+                        entityName: (instance as { getEntityName(): string }).getEntityName(),
+                    },
+                    metrics: {
+                        relationCount,
+                        recordCount,
+                    }
+                };
+            }
+        }
     })
     async hydrateRecords(
         relations: Array<[ relatedAttributeName: string, options: HydrateOptionForRelation<any> ]>,
@@ -1003,12 +1018,14 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         trace: { level: 'debug' },
         sourceType: 'service',
         tags: { operation_category: 'read' },
-        getAttributes: (instance: any) => ({
-            entityName: instance.getEntityName(),
-        }),
-        getResultAttributes: (result: any) => ({
-            found: !!result,
-        })
+        extract: {
+            start: ({ instance }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() }
+            }),
+            finish: ({ result }) => ({
+                tags: { found: !!result }
+            })
+        }
     })
     public async get(options: GetOptions<S>, _ctx?: ExecutionContext) {
         const { identifiers, attributes } = options;
@@ -1072,15 +1089,24 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         trace: { level: 'debug' },
         sourceType: 'service',
         tags: { operation_category: 'read', batch: 'true' },
-        getAttributes: (instance: any, args: any[]) => ({
-            entityName: instance.getEntityName(),
-            batchSize: args[ 0 ]?.identifiers?.length || 0,
-            concurrent: args[ 0 ]?.concurrent || 1,
-        }),
-        getResultAttributes: (result: any) => ({
-            retrievedCount: result?.data?.length || 0,
-            unprocessedCount: result?.unprocessed?.length || 0,
-        })
+        extract: {
+            start: ({ instance, args }) => {
+                const [ options ] = args as [ { identifiers?: unknown[]; concurrent?: number } ];
+                const batchSize = Array.isArray(options?.identifiers) ? options.identifiers.length : 0;
+                const concurrent = typeof options?.concurrent === 'number' ? options.concurrent : 1;
+
+                return {
+                    tags: { entityName: (instance as { getEntityName(): string }).getEntityName() },
+                    metrics: { batchSize, concurrent }
+                };
+            },
+            finish: ({ result }) => {
+                const r = result as { data?: unknown[]; unprocessed?: unknown[] } | undefined;
+                const retrievedCount = Array.isArray(r?.data) ? r!.data.length : 0;
+                const unprocessedCount = Array.isArray(r?.unprocessed) ? r!.unprocessed.length : 0;
+                return { metrics: { retrievedCount, unprocessedCount } };
+            }
+        }
     })
     public async batchGet<S extends EntitySchema<any, any, any>>(options: {
         identifiers: Array<EntityIdentifiersTypeFromSchema<S>>,
@@ -1253,18 +1279,24 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      */
     protected injectActorContext<T extends Record<string, any>>(
         data: T,
-        operation: 'create' | 'update' | 'delete',
+        operation: 'create' | 'update' | 'upsert' | 'delete',
         ctx?: ExecutionContext
     ): T {
 
-        if (!ctx?.actor) {
+        // Prefer explicit ctx.actor, otherwise fall back to framework execution-context (AsyncLocalStorage).
+        // This is important for background handlers (queues/tasks) where ctx may not be threaded through.
+        const effectiveActor = ctx?.actor ?? getCurrentExecutionContext()?.actor;
+        if (!effectiveActor) {
             this.logger.debug('BaseEntityService: No actor context found, skipping injection');
             return data;
         }
 
         const schema = this.getEntitySchema();
         const enhancedData = { ...data };
-        const { actor } = ctx;
+        const actor = effectiveActor;
+
+        // IMPORTANT: We do NOT persist/propagate parentObservabilityLogId across hops.
+        // parentObservabilityLogId is strict hierarchy within a single invocation's persisted slice.
 
         // Get current timestamp for database operation
         const currentTimestamp = new Date().toISOString();
@@ -1304,7 +1336,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         // This field is hidden from API responses by default
         // Clean actor object by removing undefined values (DynamoDB doesn't allow them)
         const cleanActor = Object.fromEntries(
-            Object.entries(actor).filter(([ _, value ]) => value !== undefined)
+            Object.entries({
+                ...actor,
+            }).filter(([ _, value ]) => value !== undefined)
         );
 
         (enhancedData as any)._actor = cleanActor;
@@ -1322,9 +1356,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         trace: { level: 'info' },
         sourceType: 'service',
         tags: { operation_category: 'write' },
-        getAttributes: (instance: any) => ({
-            entityName: instance.getEntityName(),
-        })
+        extract: {
+            start: ({ instance }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() }
+            })
+        }
     })
     public async create(payload: CreateEntityItemTypeFromSchema<S>, ctx?: ExecutionContext) {
 
@@ -1400,18 +1436,24 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         trace: { level: 'info' },
         sourceType: 'service',
         tags: { operation_category: 'write' },
-        getAttributes: (instance: any) => ({
-            entityName: instance.getEntityName(),
-        }),
-        getResultAttributes: (result: any) => ({
-            wasCreated: !!result?.wasCreated,
-        })
+        extract: {
+            start: ({ instance }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() }
+            }),
+            finish: ({ result }) => ({
+                tags: { wasCreated: !!(result as { wasCreated?: boolean } | undefined)?.wasCreated }
+            })
+        }
     })
     public async upsert(payload: UpsertEntityItemTypeFromSchema<S>) {
         this.logger.debug(`Called ~ upsert ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
 
+        // Inject actor context so DynamoDB images always have _actor for auditing/causedBy
+        // Treat upsert as an update for actor-field purposes (we always want _actor and updatedBy/updatedAt).
+        const payloadCopy = this.injectActorContext({ ...payload }, 'upsert');
+
         const result = await upsertEntity<S>({
-            data: payload,
+            data: payloadCopy,
             entityName: this.getEntityName(),
             entityService: this,
         });
@@ -1477,9 +1519,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         trace: { level: 'info' },
         sourceType: 'service',
         tags: { operation_category: 'write' },
-        getAttributes: (instance: any) => ({
-            entityName: instance.getEntityName(),
-        })
+        extract: {
+            start: ({ instance }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() }
+            })
+        }
     })
     public async duplicate(id: EntityIdentifiersTypeFromSchema<S>, ctx?: ExecutionContext) {
         const duplicateEventData = await this.makeDuplicateEntityData(id);
@@ -1502,14 +1546,26 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         trace: { level: 'debug' },
         sourceType: 'service',
         tags: { operation_category: 'read' },
-        getAttributes: (instance: any, args: any[]) => ({
-            entityName: instance.getEntityName(),
-            hasFilters: !!args[ 0 ]?.filters && Object.keys(args[ 0 ].filters).length > 0,
-        }),
-        getResultAttributes: (result: any) => ({
-            resultCount: result?.data?.length || 0,
-            hasCursor: !!result?.cursor,
-        })
+        extract: {
+            start: ({ instance, args }) => {
+                const [ query ] = args as [ { filters?: Record<string, unknown> } | undefined ];
+                const hasFilters = !!query?.filters && Object.keys(query.filters).length > 0;
+                return {
+                    tags: {
+                        entityName: (instance as { getEntityName(): string }).getEntityName(),
+                        hasFilters,
+                    }
+                };
+            },
+            finish: ({ result }) => {
+                const r = result as { data?: unknown[]; cursor?: unknown } | undefined;
+                const resultCount = Array.isArray(r?.data) ? r!.data.length : 0;
+                return {
+                    tags: { hasCursor: !!r?.cursor },
+                    metrics: { resultCount }
+                };
+            }
+        }
     })
     public async list(query: EntityQuery<S> = {}, _ctx?: ExecutionContext) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
@@ -1581,13 +1637,23 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         trace: { level: 'debug' },
         sourceType: 'service',
         tags: { operation_category: 'read' },
-        getAttributes: (instance: any, args: any[]) => ({
-            entityName: instance.getEntityName(),
-            hasFilters: !!args[ 0 ]?.filters && Object.keys(args[ 0 ].filters).length > 0,
-        }),
-        getResultAttributes: (result: any) => ({
-            resultCount: result?.data?.length || 0,
-        })
+        extract: {
+            start: ({ instance, args }) => {
+                const [ query ] = args as [ { filters?: Record<string, unknown> } | undefined ];
+                const hasFilters = !!query?.filters && Object.keys(query.filters).length > 0;
+                return {
+                    tags: {
+                        entityName: (instance as { getEntityName(): string }).getEntityName(),
+                        hasFilters,
+                    }
+                };
+            },
+            finish: ({ result }) => {
+                const r = result as { data?: unknown[] } | undefined;
+                const resultCount = Array.isArray(r?.data) ? r!.data.length : 0;
+                return { metrics: { resultCount } };
+            }
+        }
     })
     public async query(query: EntityQuery<S>, _ctx?: ExecutionContext) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
@@ -1655,9 +1721,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         trace: { level: 'info' },
         sourceType: 'service',
         tags: { operation_category: 'write' },
-        getAttributes: (instance: any) => ({
-            entityName: instance.getEntityName(),
-        })
+        extract: {
+            start: ({ instance }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() }
+            })
+        }
     })
     public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, ctx?: ExecutionContext) {
 
@@ -1723,9 +1791,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         trace: { level: 'warn' },
         sourceType: 'service',
         tags: { operation_category: 'delete' },
-        getAttributes: (instance: any) => ({
-            entityName: instance.getEntityName(),
-        })
+        extract: {
+            start: ({ instance }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() }
+            })
+        }
     })
     public async delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, ctx?: ExecutionContext) {
         try {
@@ -1775,15 +1845,23 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         trace: { level: 'warn' }, // Batch deletes are critical
         sourceType: 'service',
         tags: { operation_category: 'delete', batch: 'true' },
-        getAttributes: (instance: any, args: any[]) => ({
-            entityName: instance.getEntityName(),
-            batchSize: args[ 0 ]?.identifiers?.length || 0,
-            concurrent: args[ 0 ]?.concurrent || 1,
-        }),
-        getResultAttributes: (result: any) => ({
-            deletedCount: (result?.data?.length || 0),
-            unprocessedCount: (result?.unprocessed?.length || 0),
-        })
+        extract: {
+            start: ({ instance, args }) => {
+                const [ options ] = args as [ { identifiers?: unknown[]; concurrent?: number } ];
+                const batchSize = Array.isArray(options?.identifiers) ? options.identifiers.length : 0;
+                const concurrent = typeof options?.concurrent === 'number' ? options.concurrent : 1;
+                return {
+                    tags: { entityName: (instance as { getEntityName(): string }).getEntityName() },
+                    metrics: { batchSize, concurrent }
+                };
+            },
+            finish: ({ result }) => {
+                const r = result as { data?: unknown[]; unprocessed?: unknown[] } | undefined;
+                const deletedCount = Array.isArray(r?.data) ? r!.data.length : 0;
+                const unprocessedCount = Array.isArray(r?.unprocessed) ? r!.unprocessed.length : 0;
+                return { metrics: { deletedCount, unprocessedCount } };
+            }
+        }
     })
     public async batchDelete(options: {
         identifiers: Array<EntityIdentifiersTypeFromSchema<S>>,
@@ -1847,17 +1925,32 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         trace: { level: 'warn' }, // Bulk deletes are dangerous
         sourceType: 'service',
         tags: { operation_category: 'delete', batch: 'true', bulk: 'true' },
-        getAttributes: (instance: any, args: any[]) => ({
-            entityName: instance.getEntityName(),
-            batchSize: args[ 0 ]?.batchSize || 25,
-            maxItems: args[ 0 ]?.maxItems,
-            hasFilters: !!(args[ 0 ]?.filters && Object.keys(args[ 0 ].filters).length > 0),
-        }),
-        getResultAttributes: (result: any) => ({
-            deletedCount: result?.deletedCount || 0,
-            failedCount: result?.failedCount || 0,
-            totalProcessed: result?.totalProcessed || 0,
-        })
+        extract: {
+            start: ({ instance, args }) => {
+                const [ options ] = args as [ { filters?: Record<string, unknown>; batchSize?: number; maxItems?: number } | undefined ];
+                const maxItems = options?.maxItems;
+                const batchSize = typeof options?.batchSize === 'number' ? options.batchSize : 25;
+                return ({
+                    tags: {
+                        entityName: (instance as { getEntityName(): string }).getEntityName(),
+                        hasFilters: (() => {
+                            return !!options?.filters && Object.keys(options.filters).length > 0;
+                        })(),
+                    },
+                    metrics: {
+                        batchSize,
+                        ...(typeof maxItems === 'number' ? { maxItems } : {}),
+                    }
+                });
+            },
+            finish: ({ result }) => ({
+                metrics: {
+                    deletedCount: (result as { deletedCount?: number } | undefined)?.deletedCount || 0,
+                    failedCount: (result as { failedCount?: number } | undefined)?.failedCount || 0,
+                    totalProcessed: (result as { totalProcessed?: number } | undefined)?.totalProcessed || 0,
+                }
+            })
+        }
     })
     public async deleteByQuery(options: {
         filters: EntityFilterCriteria<S>,
@@ -1962,13 +2055,20 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         trace: { level: 'warn' }, // Index rebuilds are critical operations
         sourceType: 'service',
         tags: { operation_category: 'maintenance', batch: 'true' },
-        getAttributes: (instance: any, args: any[]) => ({
-            entityName: instance.getEntityName(),
-            batchSize: args[ 0 ]?.batchSize || 100,
-        }),
-        getResultAttributes: () => ({
-            completed: true,
-        })
+        extract: {
+            start: ({ instance, args }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() },
+                metrics: {
+                    batchSize: (() => {
+                        const [ options ] = args as [ { batchSize?: number } | undefined ];
+                        return typeof options?.batchSize === 'number' ? options.batchSize : 100;
+                    })()
+                }
+            }),
+            finish: () => ({
+                tags: { completed: true }
+            })
+        }
     })
     public async rebuildIndex(options: { batchSize?: number } = {}): Promise<void> {
         try {
@@ -2118,15 +2218,26 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         trace: { level: 'debug' },
         sourceType: 'service',
         tags: { operation_category: 'read', search: 'true' },
-        getAttributes: (instance: any, args: any[]) => ({
-            entityName: instance.getEntityName(),
-            hasQuery: !!args[ 0 ]?.q,
-            hasFilters: !!(args[ 0 ]?.filter && Object.keys(args[ 0 ].filter).length > 0),
-        }),
-        getResultAttributes: (result: any) => ({
-            hitCount: result?.hits?.length || 0,
-            totalHits: result?.estimatedTotalHits || 0,
-        })
+        extract: {
+            start: ({ instance, args }) => {
+                const [ query ] = args as [ { q?: unknown; filter?: Record<string, unknown> } | undefined ];
+                const hasQuery = !!query?.q;
+                const hasFilters = !!query?.filter && Object.keys(query.filter).length > 0;
+                return {
+                    tags: {
+                        entityName: (instance as { getEntityName(): string }).getEntityName(),
+                        hasQuery,
+                        hasFilters,
+                    }
+                };
+            },
+            finish: ({ result }) => {
+                const r = result as { hits?: unknown[]; estimatedTotalHits?: number } | undefined;
+                const hitCount = Array.isArray(r?.hits) ? r!.hits.length : 0;
+                const totalHits = typeof r?.estimatedTotalHits === 'number' ? r.estimatedTotalHits : 0;
+                return { metrics: { hitCount, totalHits } };
+            }
+        }
     })
     public async search(query: EntitySearchQuery<S>, ctx?: ExecutionContext) {
         const searchService = this.getSearchService();

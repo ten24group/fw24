@@ -1,14 +1,20 @@
-import { SQSEvent, SQSBatchResponse, Context } from "aws-lambda";
+import { SQSEvent, SQSBatchResponse, Context, DynamoDBStreamEvent } from "aws-lambda";
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { IQueueConfig } from '../../decorators/queue';
 import { SpanObserver, generateTraceId } from '../../observability';
 import {
   ExecutionContextData,
+  ParsedTraceContext,
   createExecutionContext,
   runWithExecutionContext,
-  extractFromSqs,
-  setParentObservabilityLogId,
+  extractFromSqsRecord,
 } from './execution-context';
+import { Actor } from '../types/execution-context';
+
+/**
+ * Supported event types for queue/stream processing.
+ */
+export type QueueStreamEvent = SQSEvent | DynamoDBStreamEvent;
 
 /**
  * Result type for queue processing.
@@ -20,9 +26,9 @@ export type QueueProcessResult = void | SQSBatchResponse;
 /**
  * Queue execution context - contains queue-specific data AND execution context.
  */
-export interface QueueExecutionContext {
-  /** The SQS event */
-  readonly event: SQSEvent;
+export interface QueueExecutionContext<TEvent extends QueueStreamEvent = SQSEvent> {
+  /** The event */
+  readonly event: TEvent;
   /** Lambda context */
   readonly lambdaContext: Context;
   /** Execution context (also available via getCurrentExecutionContext()) */
@@ -30,7 +36,7 @@ export interface QueueExecutionContext {
 }
 
 /**
- * Base class for handling SQS events.
+ * Base class for handling SQS events (and optionally DynamoDB Stream events).
  * 
  * Generic TEvent allows subclasses to specify more specific event types
  * while maintaining type safety.
@@ -49,7 +55,7 @@ export interface QueueExecutionContext {
  * export class MyQueue extends QueueController { }
  * ```
  */
-abstract class QueueController<TEvent extends SQSEvent = SQSEvent> extends AbstractLambdaHandler {
+abstract class QueueController<TEvent extends QueueStreamEvent = SQSEvent> extends AbstractLambdaHandler {
 
   protected initialize(_event: TEvent, _context: Context): Promise<void> {
     return Promise.resolve();
@@ -67,7 +73,7 @@ abstract class QueueController<TEvent extends SQSEvent = SQSEvent> extends Abstr
    * @param ctx - Queue execution context
    * @returns void or SQSBatchResponse for partial batch failures
    */
-  abstract process(event: TEvent, context: Context, ctx?: QueueExecutionContext): Promise<QueueProcessResult>;
+  abstract process(event: TEvent, context: Context, ctx?: QueueExecutionContext<TEvent>): Promise<QueueProcessResult>;
 
   protected getQueueConfig(): IQueueConfig {
     return Reflect.get(this, 'queueConfig') || {};
@@ -75,6 +81,66 @@ abstract class QueueController<TEvent extends SQSEvent = SQSEvent> extends Abstr
 
   protected getQueueName(): string | undefined {
     return Reflect.get(this, 'queueName') as string | undefined;
+  }
+
+  /**
+   * Extract per-record trace contexts from the event.
+   * Override in subclasses for different event types (e.g., DynamoDB streams).
+   * 
+   * @param event - The incoming event
+   * @returns Array of trace contexts (one per record, may contain undefined entries)
+   */
+  protected extractPerRecordTraceContexts(event: TEvent): (ParsedTraceContext | undefined)[] {
+    if (!('Records' in event) || !event.Records) return [];
+    return event.Records.map((r: any) => {
+      // 1. SQS records: extract from messageAttributes or SNS envelope in body
+      if (r.messageAttributes !== undefined || r.body !== undefined) {
+        const fromSqs = extractFromSqsRecord({ messageAttributes: r.messageAttributes, body: r.body });
+        if (fromSqs?.correlationId) return fromSqs;
+      }
+
+      // 2. DynamoDB stream records: extract from _actor field in the record
+      if (r.dynamodb) {
+        // Strict contract:
+        // - Only trust NEW image for current operation trace context.
+        // - OldImage contains stale context (who last wrote), not who performed the current op.
+        // - For deletes (no NewImage), we cannot reliably determine the upstream cause from the stream record alone.
+        const image = r.dynamodb.NewImage;
+        if (image?._actor) {
+          // Handle both marshalled (DynamoDB format) and unmarshalled formats
+          const actor = image._actor.M || image._actor;
+          const correlationId = actor?.correlationId?.S || actor?.correlationId;
+          if (correlationId) {
+            return {
+              correlationId,
+            };
+          }
+        }
+      }
+
+      return undefined;
+    });
+  }
+
+  /**
+   * Aggregate per-record trace contexts into batch-level trace info.
+   */
+  protected aggregateBatchTraceContext(
+    recordTraceContexts: (ParsedTraceContext | undefined)[]
+  ): { batchCausedBy?: string; batchUpstreamCorrelationId?: string; isMixedBatch: boolean } {
+    const upstreamCorrelationCandidates = recordTraceContexts
+      .map((t) => t?.correlationId)
+      .filter((v): v is string => !!v);
+    const batchUpstreamCorrelationId =
+      upstreamCorrelationCandidates.length > 0 && upstreamCorrelationCandidates.every((v) => v === upstreamCorrelationCandidates[ 0 ])
+        ? upstreamCorrelationCandidates[ 0 ]
+        : undefined;
+
+    // In strict-hierarchy mode, correlationId is per-invocation. Upstream correlationId becomes causedBy.
+    const batchCausedBy = batchUpstreamCorrelationId;
+    const isMixedBatch = upstreamCorrelationCandidates.length > 1 && batchUpstreamCorrelationId === undefined;
+
+    return { batchCausedBy, batchUpstreamCorrelationId, isMixedBatch };
   }
 
   async LambdaHandler(event: TEvent, context: Context): Promise<QueueProcessResult> {
@@ -85,12 +151,22 @@ abstract class QueueController<TEvent extends SQSEvent = SQSEvent> extends Abstr
     const queueConfig = this.getQueueConfig();
     const obsConfig = queueConfig.observability || {};
 
-    // CRITICAL FIX: Do not use Records[0] for context.
-    // Each record has its own trace. The Lambda invocation itself represents a "Batch"
-    // and should have its own unique correlation ID (Lambda Request ID).
-    // Individual record processing should extract context per record.
-    // Use W3C Trace ID format for consistency with observability system
-    const correlationId = context.awsRequestId || generateTraceId();
+    // Extract and aggregate trace contexts
+    const recordTraceContexts = this.extractPerRecordTraceContexts(event);
+    const { batchCausedBy, batchUpstreamCorrelationId, isMixedBatch } = this.aggregateBatchTraceContext(recordTraceContexts);
+
+    const invocationId = context.awsRequestId || generateTraceId();
+    // Strict hierarchy guarantee: correlationId is per-invocation (local slice).
+    const correlationId = invocationId;
+
+    const batchActor: Actor = {
+      actorType: 'service',
+      authMethod: 'system',
+      actorId: `queue:${queueName}`,
+      requestId: invocationId,
+      timestamp: new Date().toISOString(),
+      correlationId,
+    };
 
     // Build automatic tags for consistent observability
     const automaticTags: Record<string, string> = {
@@ -102,96 +178,88 @@ abstract class QueueController<TEvent extends SQSEvent = SQSEvent> extends Abstr
     // Create execution context with custom source and tags from decorator
     const execCtx = createExecutionContext({
       correlationId,
+      causedBy: batchCausedBy,
+      actor: batchActor,
       // Batch doesn't have a parent log ID from SQS (records do)
       source: obsConfig.source || `queue:${queueName}`,
       tags: {
         ...automaticTags,
         ...obsConfig.tags, // Decorator tags override automatic
+        invocationId,
       },
     });
 
+    // Build queue execution context
+    const ctx: QueueExecutionContext<TEvent> = {
+      event,
+      lambdaContext: context,
+      executionContext: execCtx,
+    };
+
     // Run handler within execution context
     return runWithExecutionContext(execCtx, async () => {
-      // Create span with merged tags (consistent with API Gateway and Task)
-      const queueSpan = SpanObserver.start(`SQS Batch ${queueName}`, {
-        correlationId,
-        source: obsConfig.source || `queue:${queueName}`,
-        tags: {
-          ...automaticTags,
-          ...obsConfig.tags, // Decorator tags override automatic
+      // Use the base class helper for span + flush pattern
+      return this.executeWithSpanAndFlush(
+        `SQS Batch ${queueName}`,
+        async (queueSpan) => {
+          const startTime = Date.now();
+          try {
+            await this.initialize(event, context);
+            const result = await this.process(event, context, ctx);
+            const duration = Date.now() - startTime;
+
+            // Determine success based on result
+            const hasFailures = result && 'batchItemFailures' in result && result.batchItemFailures.length > 0;
+            const failureCount = hasFailures ? result.batchItemFailures.length : 0;
+            const totalCount = event.Records.length;
+            const successCount = totalCount - failureCount;
+
+            if (hasFailures) {
+              SpanObserver.getCurrentSpan()?.checkpoint?.('sqs.batch.partial_failure', {
+                tags: {
+                  'sqs.has_failures': 'true',
+                },
+                metrics: {
+                  'sqs.batch.failure_count': failureCount,
+                },
+              });
+            }
+
+            // Set final metrics on span
+            queueSpan.metrics({
+              'sqs.batch.duration_ms': duration,
+              'sqs.batch.total_count': totalCount,
+              'sqs.batch.success_count': successCount,
+              'sqs.batch.failure_count': failureCount,
+            });
+
+            return result;
+          } catch (error) {
+            const duration = Date.now() - startTime;
+            queueSpan.metrics({
+              'sqs.batch.duration_ms': duration,
+              'sqs.batch.total_count': event.Records.length,
+              'sqs.batch.errors': 1,
+            });
+            throw error;
+          }
         },
-        attributes: {
-          'sqs.queueName': queueName,
-          'sqs.batchSize': event.Records.length,
-          'faas.execution': context.awsRequestId,
-          ...obsConfig.attributes,
-        },
-      });
-
-      // Store span ID in execution context for child spans
-      setParentObservabilityLogId(queueSpan.id);
-
-      // Build queue execution context
-      const ctx: QueueExecutionContext = {
-        event: event as SQSEvent,
-        lambdaContext: context,
-        executionContext: execCtx,
-      };
-
-      let spanEnded = false;
-      const endSpan = async (success: boolean, error?: Error, metrics?: Record<string, number>): Promise<void> => {
-        if (!spanEnded) {
-          queueSpan.end({ success, error, metrics });
-          spanEnded = true;
+        {
+          correlationId,
+          causedBy: batchCausedBy,
+          source: obsConfig.source || `queue:${queueName}`,
+          tags: {
+            ...automaticTags,
+            ...obsConfig.tags,
+            'sqs.queueName': queueName,
+            'faas.execution': context.awsRequestId,
+            ...(isMixedBatch ? { 'trace.mixed': 'true' } : {}),
+          },
+          metrics: {
+            'sqs.batchSize': event.Records.length,
+          },
         }
-        await this.flushObservability();
-      };
-
-      const startTime = Date.now();
-      try {
-        await this.initialize(event, context);
-        const result = await this.process(event, context, ctx);
-        const duration = Date.now() - startTime;
-
-        // Determine success based on result
-        const hasFailures = result && 'batchItemFailures' in result && result.batchItemFailures.length > 0;
-        const failureCount = hasFailures ? result.batchItemFailures.length : 0;
-        const totalCount = event.Records.length;
-        const successCount = totalCount - failureCount;
-
-        if (hasFailures) {
-          queueSpan.setAttribute('sqs.failure_count', failureCount);
-          queueSpan.setAttribute('sqs.success_count', successCount);
-          queueSpan.addEvent('sqs.batch.partial_failure', {
-            level: 'warn',
-            metrics: {
-              'sqs.failure_count': failureCount,
-              'sqs.success_count': successCount,
-              'sqs.total_count': totalCount,
-            },
-            attributes: {
-              'sqs.has_failures': true,
-            },
-          });
-        }
-
-        await endSpan(!hasFailures, undefined, {
-          'sqs.batch.duration_ms': duration,
-          'sqs.batch.total_count': totalCount,
-          'sqs.batch.success_count': successCount,
-          'sqs.batch.failure_count': failureCount,
-        });
-
-        return result;
-      } catch (error) {
-        const duration = Date.now() - startTime;
-        await endSpan(false, error as Error, {
-          'sqs.batch.duration_ms': duration,
-          'sqs.batch.total_count': event.Records.length,
-          'sqs.batch.errors': 1,
-        });
-        throw error;
-      }
+      );
     });
   }
 }

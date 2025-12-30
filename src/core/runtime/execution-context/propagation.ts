@@ -6,6 +6,7 @@
  */
 
 import { ExecutionContextData, ParsedTraceContext } from './types';
+import { parseSnsSqsEnvelope } from '../sns-sqs-envelope';
 
 // ============================================================================
 // Constants
@@ -65,7 +66,6 @@ export function extractFromHeaders(
   if (customId) {
     return {
       correlationId: customId,
-      parentObservabilityLogId: normalized[ 'x-parent-log-id' ]?.trim(),
       causedBy: normalized[ 'x-caused-by' ]?.trim(),
     };
   }
@@ -76,7 +76,6 @@ export function extractFromHeaders(
     const parts = traceparent.split('-');
     return {
       correlationId: parts[ 1 ],
-      parentObservabilityLogId: parts[ 2 ],
       sampled: parts[ 3 ] === '01',
     };
   }
@@ -90,7 +89,6 @@ export function extractFromHeaders(
     if (rootMatch) {
       return {
         correlationId: rootMatch[ 1 ].replace(/^1-/, '').replace(/-/g, ''),
-        parentObservabilityLogId: parentMatch?.[ 1 ],
         sampled: sampledMatch?.[ 1 ] === '1',
       };
     }
@@ -117,7 +115,6 @@ export function extractFromSqs(
     if (rootMatch) {
       return {
         correlationId: rootMatch[ 1 ].replace(/^1-/, '').replace(/-/g, ''),
-        parentObservabilityLogId: parentMatch?.[ 1 ],
         sampled: sampledMatch?.[ 1 ] === '1',
       };
     }
@@ -127,12 +124,10 @@ export function extractFromSqs(
   const correlationAttr = messageAttributes[ 'correlationId' ];
   const correlationId = (correlationAttr?.stringValue || correlationAttr?.StringValue)?.trim();
   if (correlationId) {
-    const parentAttr = messageAttributes[ 'parentObservabilityLogId' ];
     const sampledAttr = messageAttributes[ 'sampled' ];
     const causedByAttr = messageAttributes[ 'causedBy' ];
     return {
       correlationId,
-      parentObservabilityLogId: (parentAttr?.stringValue || parentAttr?.StringValue)?.trim(),
       causedBy: (causedByAttr?.stringValue || causedByAttr?.StringValue)?.trim(),
       sampled: (sampledAttr?.stringValue || sampledAttr?.StringValue) === 'true',
     };
@@ -151,18 +146,38 @@ export function extractFromSns(
 
   const correlationAttr = messageAttributes[ 'correlationId' ];
   if (correlationAttr?.Value?.trim()) {
-    const parentAttr = messageAttributes[ 'parentObservabilityLogId' ];
     const sampledAttr = messageAttributes[ 'sampled' ];
     const causedByAttr = messageAttributes[ 'causedBy' ];
     return {
       correlationId: correlationAttr.Value.trim(),
-      parentObservabilityLogId: parentAttr?.Value?.trim(),
       causedBy: causedByAttr?.Value?.trim(),
       sampled: sampledAttr?.Value === 'true',
     };
   }
 
   return undefined;
+}
+
+/**
+ * Extract trace context from an SQS record.
+ *
+ * Supports both:
+ * - Direct SQS sendMessage() with MessageAttributes (record.messageAttributes)
+ * - SNS -> SQS subscription envelope where SNS MessageAttributes are present in record.body.MessageAttributes
+ */
+export function extractFromSqsRecord(record: {
+  messageAttributes?: Record<string, { stringValue?: string; StringValue?: string }>;
+  body?: string;
+}): ParsedTraceContext | undefined {
+  // 1) Direct SQS messageAttributes
+  const fromSqs = extractFromSqs(record?.messageAttributes);
+  if (fromSqs?.correlationId) return fromSqs;
+
+  // 2) SNS -> SQS envelope
+  if (typeof record?.body !== 'string' || !record.body) return undefined;
+  const envelope = parseSnsSqsEnvelope(record.body);
+  if (!envelope) return undefined;
+  return extractFromSns(envelope.MessageAttributes);
 }
 
 /**
@@ -177,12 +192,10 @@ export function extractFromEventBridge(
   // Direct fields
   const correlationId = detail[ 'correlationId' ] || detail[ 'traceId' ];
   if (typeof correlationId === 'string' && correlationId.trim()) {
-    const parentObservabilityLogId = detail[ 'parentObservabilityLogId' ];
     const causedBy = detail[ 'causedBy' ];
     const sampled = detail[ 'sampled' ];
     return {
       correlationId: correlationId.trim(),
-      parentObservabilityLogId: typeof parentObservabilityLogId === 'string' ? parentObservabilityLogId.trim() : undefined,
       causedBy: typeof causedBy === 'string' ? causedBy.trim() : undefined,
       sampled: typeof sampled === 'boolean' ? sampled : sampled === 'true',
     };
@@ -194,9 +207,6 @@ export function extractFromEventBridge(
     return {
       correlationId: (traceContext.correlationId as string).trim(),
       causedBy: typeof traceContext.causedBy === 'string' ? (traceContext.causedBy as string).trim() : undefined,
-      parentObservabilityLogId: typeof traceContext.parentObservabilityLogId === 'string'
-        ? (traceContext.parentObservabilityLogId as string).trim()
-        : undefined,
       sampled: typeof traceContext.sampled === 'boolean'
         ? traceContext.sampled
         : traceContext.sampled === 'true',
@@ -217,11 +227,9 @@ export function extractFromStepFunctions(
   // Direct fields
   const correlationId = input[ 'correlationId' ] || input[ 'traceId' ];
   if (typeof correlationId === 'string' && correlationId.trim()) {
-    const parentObservabilityLogId = input[ 'parentObservabilityLogId' ];
     const sampled = input[ 'sampled' ];
     return {
       correlationId: correlationId.trim(),
-      parentObservabilityLogId: typeof parentObservabilityLogId === 'string' ? parentObservabilityLogId.trim() : undefined,
       sampled: typeof sampled === 'boolean' ? sampled : sampled === 'true',
     };
   }
@@ -231,9 +239,6 @@ export function extractFromStepFunctions(
   if (traceContext && typeof traceContext.correlationId === 'string') {
     return {
       correlationId: (traceContext.correlationId as string).trim(),
-      parentObservabilityLogId: typeof traceContext.parentObservabilityLogId === 'string'
-        ? (traceContext.parentObservabilityLogId as string).trim()
-        : undefined,
       sampled: typeof traceContext.sampled === 'boolean'
         ? traceContext.sampled
         : traceContext.sampled === 'true',
@@ -263,12 +268,10 @@ export function extractFromKinesis(
     const data = JSON.parse(decoded) as Record<string, unknown>;
     const correlationId = data[ 'correlationId' ] || data[ 'traceId' ];
     if (typeof correlationId === 'string' && correlationId.trim()) {
-      const parentObservabilityLogId = data[ 'parentObservabilityLogId' ];
       const causedBy = data[ 'causedBy' ];
       const sampled = data[ 'sampled' ];
       return {
         correlationId: correlationId.trim(),
-        parentObservabilityLogId: typeof parentObservabilityLogId === 'string' ? parentObservabilityLogId.trim() : undefined,
         causedBy: typeof causedBy === 'string' ? causedBy.trim() : undefined,
         sampled: typeof sampled === 'boolean' ? sampled : sampled === 'true',
       };
@@ -294,7 +297,6 @@ export function extractFromKinesis(
  * 
  * Returns headers that include:
  * - `x-correlation-id`: Custom correlation ID for application-level tracing
- * - `x-parent-log-id`: Parent span/log ID for hierarchy tracking
  * - `traceparent`: W3C Trace Context standard header (00-{trace-id}-{parent-id}-{flags})
  * 
  * ## Usage with fetch/axios
@@ -350,20 +352,19 @@ export function createHttpHeaders(ctx: ExecutionContextData): Record<string, str
     'x-correlation-id': ctx.correlationId,
   };
 
-  if (ctx.parentObservabilityLogId) {
-    headers[ 'x-parent-log-id' ] = ctx.parentObservabilityLogId;
-  }
+  // IMPORTANT: We do NOT propagate parentObservabilityLogId across hops.
+  // parentObservabilityLogId is STRICT hierarchy within a single persisted slice.
 
   // Set causedBy to CURRENT correlationId for the next hop
   // This ensures the chain is A -> B -> C, not Root -> A, Root -> B, Root -> C
   headers[ 'x-caused-by' ] = ctx.correlationId;
 
   // W3C traceparent
-  const sampledFlag = ctx.sampled ? '01' : '00';
+  const sampledFlag = ctx.observability.sampled ? '01' : '00';
   const traceId = toW3CTraceId(ctx.correlationId);
-  const parentId = ctx.parentObservabilityLogId
-    ? toW3CParentId(ctx.parentObservabilityLogId)
-    : toW3CParentId(ctx.correlationId);
+  // We cannot safely derive a remote OTEL parent span-id from FW24 parentObservabilityLogId.
+  // Use a stable fallback parent-id derived from correlationId.
+  const parentId = toW3CParentId(ctx.correlationId);
   headers[ 'traceparent' ] = `00-${traceId}-${parentId}-${sampledFlag}`;
 
   return headers;
@@ -375,15 +376,15 @@ export function createHttpHeaders(ctx: ExecutionContextData): Record<string, str
 export function createSqsAttributes(
   ctx: ExecutionContextData
 ): Record<string, { DataType: string; StringValue: string }> {
+  // ALWAYS use current correlationId as causedBy for the next hop.
+  // This creates a proper chain: A → B → C (each hop knows its immediate cause)
+  const causedBy = ctx.correlationId;
+
   const attrs: Record<string, { DataType: string; StringValue: string }> = {
     correlationId: { DataType: 'String', StringValue: ctx.correlationId },
-    sampled: { DataType: 'String', StringValue: String(ctx.sampled) },
-    // Set causedBy to CURRENT correlationId for the next hop
-    causedBy: { DataType: 'String', StringValue: ctx.correlationId },
+    sampled: { DataType: 'String', StringValue: String(ctx.observability.sampled) },
+    causedBy: { DataType: 'String', StringValue: causedBy },
   };
-  if (ctx.parentObservabilityLogId) {
-    attrs[ 'parentObservabilityLogId' ] = { DataType: 'String', StringValue: ctx.parentObservabilityLogId };
-  }
   return attrs;
 }
 
@@ -402,15 +403,14 @@ export function createSnsAttributes(
 export function createEventBridgeContext(
   ctx: ExecutionContextData
 ): Record<string, string | boolean> {
+  // ALWAYS use current correlationId as causedBy for the next hop.
+  // This creates a proper chain: A → B → C (each hop knows its immediate cause)
+
   const traceContext: Record<string, string | boolean> = {
     correlationId: ctx.correlationId,
-    sampled: ctx.sampled,
-    // Set causedBy to CURRENT correlationId for the next hop
-    causedBy: ctx.correlationId,
+    sampled: ctx.observability.sampled,
+    causedBy: ctx.correlationId,  // Sender's correlationId = receiver's causedBy
   };
-  if (ctx.parentObservabilityLogId) {
-    traceContext[ 'parentObservabilityLogId' ] = ctx.parentObservabilityLogId;
-  }
   return traceContext;
 }
 

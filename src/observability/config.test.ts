@@ -14,6 +14,10 @@ describe('Observability Config', () => {
             expect(config.cloudwatch.namespace).toBe(CONFIG_DEFAULTS.cloudwatchNamespace);
             expect(config.dynamodb.tableKey).toBe(CONFIG_DEFAULTS.tableKey);
             expect(config.dynamodb.ttlDays).toBe(CONFIG_DEFAULTS.ttlDays);
+            // Operation normalization defaults
+            expect(config.operationNormalization?.enabled).toBe(true);
+            expect(Array.isArray(config.operationNormalization?.rules)).toBe(true);
+            expect((config.operationNormalization?.rules?.length ?? 0)).toBeGreaterThan(0);
         });
 
         it('should create config with default backends as array', () => {
@@ -21,7 +25,7 @@ describe('Observability Config', () => {
 
             expect(Array.isArray(config.backends)).toBe(true);
             expect(config.backends.length).toBeGreaterThan(0);
-            expect(config.backends[0].type).toBe('cloudwatch');
+            expect(config.backends[ 0 ].type).toBe('cloudwatch');
         });
 
         it('should preserve custom backends array', () => {
@@ -35,14 +39,14 @@ describe('Observability Config', () => {
 
             expect(Array.isArray(config.backends)).toBe(true);
             expect(config.backends).toHaveLength(3);
-            expect(config.backends[0].type).toBe('cloudwatch');
-            expect(config.backends[1].type).toBe('dynamodb');
-            expect(config.backends[2].type).toBe('otel');
-            expect(config.backends[2].enabled).toBe(false);
+            expect(config.backends[ 0 ].type).toBe('cloudwatch');
+            expect(config.backends[ 1 ].type).toBe('dynamodb');
+            expect(config.backends[ 2 ].type).toBe('otel');
+            expect(config.backends[ 2 ].enabled).toBe(false);
         });
 
         it('should preserve dataProtection.blacklistedKeys as array', () => {
-            const customKeys = ['apiKey', 'secretToken', 'privateKey'];
+            const customKeys = [ 'apiKey', 'secretToken', 'privateKey' ];
             const config = createObservabilityConfig({
                 dataProtection: {
                     blacklistedKeys: customKeys
@@ -54,7 +58,7 @@ describe('Observability Config', () => {
         });
 
         it('should preserve dataProtection.fields as array', () => {
-            const customFields = ['data', 'attributes'];
+            const customFields = [ 'data', 'attributes' ];
             const config = createObservabilityConfig({
                 dataProtection: {
                     fields: customFields as any
@@ -81,16 +85,16 @@ describe('Observability Config', () => {
         it('should support all valid backend types', () => {
             for (const backendType of VALID_BACKENDS) {
                 const config = createObservabilityConfig({
-                    backends: [{ type: backendType, enabled: true }]
+                    backends: [ { type: backendType, enabled: true } ]
                 });
 
-                expect(config.backends[0].type).toBe(backendType);
+                expect(config.backends[ 0 ].type).toBe(backendType);
             }
         });
 
         it('should throw for invalid backend type', () => {
             expect(() => createObservabilityConfig({
-                backends: [{ type: 'invalid' as any, enabled: true }]
+                backends: [ { type: 'invalid' as any, enabled: true } ]
             })).toThrow();
         });
 
@@ -120,7 +124,7 @@ describe('Observability Config', () => {
             // Should default to cloudwatch when empty
             expect(Array.isArray(config.backends)).toBe(true);
             expect(config.backends).toHaveLength(1);
-            expect(config.backends[0].type).toBe('cloudwatch');
+            expect(config.backends[ 0 ].type).toBe('cloudwatch');
         });
     });
 
@@ -130,7 +134,7 @@ describe('Observability Config', () => {
             const config = createObservabilityConfig({
                 enabled: true,
                 serviceName: 'test-service',
-                backends: [{ type: 'cloudwatch', enabled: true }]
+                backends: [ { type: 'cloudwatch', enabled: true } ]
             });
 
             const errors = validateConfig(config);
@@ -147,7 +151,7 @@ describe('Observability Config', () => {
 
         it('should validate backend types', () => {
             const config = createObservabilityConfig();
-            (config.backends as any) = [{ type: 'invalid', enabled: true }];
+            (config.backends as any) = [ { type: 'invalid', enabled: true } ];
 
             const errors = validateConfig(config);
             expect(errors.some(e => e.includes('backend type'))).toBe(true);
@@ -163,7 +167,7 @@ describe('Observability Config', () => {
                     }
                 }
             });
-            
+
             // Mutate to invalid value
             config.sampling.rates!.trace = 1.5;
 
@@ -204,7 +208,7 @@ describe('Observability Config', () => {
             });
 
             const types = config.backends.map(b => b.type);
-            expect(types).toEqual(['cloudwatch', 'dynamodb']);
+            expect(types).toEqual([ 'cloudwatch', 'dynamodb' ]);
         });
 
         it('backends array should support forEach()', () => {
@@ -217,13 +221,13 @@ describe('Observability Config', () => {
 
             const types: string[] = [];
             config.backends.forEach(b => types.push(b.type));
-            expect(types).toEqual(['cloudwatch', 'dynamodb']);
+            expect(types).toEqual([ 'cloudwatch', 'dynamodb' ]);
         });
 
         it('blacklistedKeys array should support includes()', () => {
             const config = createObservabilityConfig({
                 dataProtection: {
-                    blacklistedKeys: ['password', 'secret', 'apiKey']
+                    blacklistedKeys: [ 'password', 'secret', 'apiKey' ]
                 }
             });
 
@@ -234,7 +238,7 @@ describe('Observability Config', () => {
         it('fields array should support includes()', () => {
             const config = createObservabilityConfig({
                 dataProtection: {
-                    fields: ['data', 'attributes', 'metadata']
+                    fields: [ 'data', 'attributes', 'metadata' ]
                 }
             });
 
