@@ -164,3 +164,23 @@ export function safeSerialize(value: unknown, maxLength: number = 1000): unknown
     return '[unserializable]';
   }
 }
+
+/**
+ * Truncate specific fields in an item.
+ * Used as alternative to compression when guaranteed size limits are required.
+ */
+export function truncateItem<T extends Record<string, unknown>>(
+  item: T,
+  fields: ReadonlyArray<string>,
+  maxBytes: number
+): T {
+  const result = { ...item } as Record<string, unknown>;
+
+  for (const field of fields) {
+    if (field in result && result[ field ] !== undefined) {
+      result[ field ] = truncatePayload(result[ field ], maxBytes);
+    }
+  }
+
+  return result as T;
+}

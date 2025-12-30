@@ -6,18 +6,7 @@
 
 import { DeepRedact } from '@hackylabs/deep-redact';
 import { deepCopy } from '../../utils/serialize';
-
-/**
- * Data protection configuration
- */
-export interface DataProtectionConfig {
-  enabled?: boolean;
-  blacklistedKeys?: (string | RegExp)[];
-  caseSensitiveKeyMatch?: boolean;
-  replacement?: string;
-  fuzzyKeyMatch?: boolean;
-  fields?: string[];
-}
+import type { DataProtectionConfig } from '../types';
 
 /**
  * Default blacklisted keys for sensitive data
@@ -39,7 +28,7 @@ export const DEFAULT_BLACKLISTED_KEYS: (string | RegExp)[] = [
   'jwt',
   'sessionToken',
   'authToken',
-  
+
   // Payment & Financial
   'creditCard',
   'cardNumber',
@@ -51,7 +40,7 @@ export const DEFAULT_BLACKLISTED_KEYS: (string | RegExp)[] = [
   'routingNumber',
   'accountNumber',
   'pin',
-  
+
   // Personal Identifiable Information (PII)
   'email',
   'phone',
@@ -62,7 +51,7 @@ export const DEFAULT_BLACKLISTED_KEYS: (string | RegExp)[] = [
   'streetAddress',
   'postalCode',
   'zipCode',
-  
+
   // Headers & Cookies
   'cookie',
   'set-cookie',
@@ -92,7 +81,7 @@ const redactorCache = new Map<string, DeepRedact>();
  */
 function getRedactor(config: Partial<DataProtectionConfig>): DeepRedact {
   const blacklistedKeys = config.blacklistedKeys ?? DEFAULT_BLACKLISTED_KEYS;
-  
+
   // Create a cache key from config
   const cacheKey = JSON.stringify({
     blacklistedKeys: blacklistedKeys.map(k => k.toString()),
@@ -143,7 +132,7 @@ export function redactSensitiveData<T>(
   }
 
   const redactor = getRedactor(config ?? {});
-  
+
   // Create deep copy before redacting (redactor mutates in place)
   const copy = deepCopy(data);
   return redactor.redact(copy) as T;
@@ -188,7 +177,7 @@ export function shouldRedactKey(
 export function extendBlacklist(
   additionalKeys: (string | RegExp)[]
 ): (string | RegExp)[] {
-  return [...DEFAULT_BLACKLISTED_KEYS, ...additionalKeys];
+  return [ ...DEFAULT_BLACKLISTED_KEYS, ...additionalKeys ];
 }
 
 /**

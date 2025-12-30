@@ -712,11 +712,13 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       type: 'any',
       label: 'Data',
       helpText: 'Event-specific data payload',
+      compressed: { threshold: 50 * 1024 }, // Framework auto-compresses if > 50KB
     },
     metadata: {
       type: 'any',
       label: 'Metadata',
       helpText: 'Additional metadata about the event',
+      compressed: true, // Framework auto-compresses if > 10KB
     },
     error: {
       type: 'any',

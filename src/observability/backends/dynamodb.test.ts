@@ -58,13 +58,19 @@ describe('DynamoDBObservabilityBackend', () => {
 
     // Create backend with mocked service using constructor directly
     // Cast to any to bypass DI decorator requirements
-    backend = Object.create(DynamoDBObservabilityBackend.prototype);
+    backend = Object.create(DynamoDBObservabilityBackend.prototype) as DynamoDBObservabilityBackend;
     (backend as any).service = mockService;
-    (backend as any).ttlDays = 7;
-    (backend as any).minLevel = ObservabilityLevel.INFO;
     (backend as any).name = 'dynamodb';
     (backend as any).buffer = [];
-    (backend as any).compressionConfig = { enabled: false };
+
+    (backend as any).config = {
+      ttlDays: 7,
+      minLevel: ObservabilityLevel.INFO,
+      maxBatchSize: 25,
+      maxBufferSize: 1000,
+      maxItemSize: 400 * 1024,
+    };
+
 
     backend.initializeInvocation();
   });

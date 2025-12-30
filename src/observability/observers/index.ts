@@ -31,6 +31,9 @@ export { MetricObserver, type MetricOptions } from './metric';
 // Log Observer
 export { LogObserver, type LogOptions } from './log';
 
+// Query Observer (Database performance tracking)
+export { QueryObserver, type QueryContext } from './query';
+
 // Base utilities for building custom observers
 export {
   // Core functions

@@ -10,10 +10,9 @@ import {
 } from '../types';
 import { createLogger } from '../../logging';
 import { matchesPattern } from '../utils/pattern-utils';
+import { evaluateNoiseRules } from './priority';
 
 const logger = createLogger('NoiseReduction');
-
-type RuleDecision = NoiseDecision;
 
 type NoiseStats = {
   dropped: number;
@@ -180,21 +179,81 @@ function getBuiltinRules(presets: string[]): NoiseRule[] {
   rules = [];
 
   if (presets.includes('fw24.hotpaths')) {
-    // API read operations: drop successful, fast GET/list requests
-    // These are low-value noise - we only care when they fail or are slow
-    rules.push(
-      {
-        id: 'fw24.hotpaths.api.drop_fast_successful_reads',
-        match: {
-          type: 'span',
-          operation: '/^GET |\\.(list|get|read|fetch|find)/',
-          success: true,
-          maxDurationMs: 500
-        },
-        decision: 'drop',
-        reason: 'Drop successful, fast read operations (under 500ms) - low value noise',
+    // =========================================================================
+    // DATABASE QUERY NOISE REDUCTION (evaluation order matters!)
+    // =========================================================================
+    // Rules are evaluated in order - first match wins
+    // Priority: errors > scans > slow queries > fast queries
+
+    // 1. HIGHEST PRIORITY: Keep query errors (must be first!)
+    rules.push({
+      id: 'fw24.hotpaths.queries.keep_errors',
+      match: {
+        type: 'database.query',
+        success: false
       },
-    );
+      decision: 'keep',
+      reason: 'Keep query errors as standalone logs for debugging - HIGHEST PRIORITY',
+    });
+
+    // 2. Keep table scans (always warnings, even if fast)
+    rules.push({
+      id: 'fw24.hotpaths.queries.keep_scans',
+      match: {
+        type: 'database.query',
+        tags: { scan: 'true' }
+      },
+      decision: 'keep',
+      reason: 'Keep table scan operations as standalone warnings - always need visibility',
+    });
+
+    // 3. Keep slow queries as standalone logs for investigation
+    rules.push({
+      id: 'fw24.hotpaths.queries.keep_slow',
+      match: {
+        type: 'database.query',
+        minDurationMs: 100
+      },
+      decision: 'keep',
+      reason: 'Keep slow queries (>=100ms) as standalone logs for performance investigation',
+    });
+
+    // 4. LOWEST PRIORITY: Fold fast successful queries into parent span
+    // This only matches if none of the above matched (not error, not scan, not slow)
+    rules.push({
+      id: 'fw24.hotpaths.queries.fold_fast_success',
+      match: {
+        type: 'database.query',
+        maxDurationMs: 100,
+        success: true
+      },
+      decision: 'fold',
+      reason: 'Fold fast successful queries (<100ms) into parent span as timeline checkpoints',
+    });
+
+    // API read operations: drop successful, fast GET/list requests
+    // Low priority (10) - easily overridden by custom rules
+    // Exceptions ensure errors and critical events are never dropped
+    rules.push({
+      id: 'fw24.hotpaths.api.drop_fast_successful_reads',
+      priority: 10,  // Low priority - easy to override
+      match: {
+        type: 'span',
+        // Matches:
+        // - Controller operations: "HTTP GET /path", "HTTP HEAD /path", "HTTP OPTIONS /path"
+        // - Service/utility methods: ".list", ".get", ".read", ".fetch", ".find"
+        // - URL patterns: "/list", "/get", "/read", "/fetch", "/find"
+        // - Also supports non-HTTP format for tests: "GET /path", "HEAD /path"
+        operation: '/^(HTTP )?(GET|HEAD|OPTIONS)\\s|\\.(list|get|read|fetch|find)(?:[(/]|$)|\\/(list|get|read|fetch|find)(?:[/?]|$)/',
+        maxDurationMs: 500
+      },
+      except: [
+        { success: false },                    // Never drop failures
+        { level: [ 'error', 'critical' ] },      // Never drop errors
+      ],
+      decision: 'drop',
+      reason: 'Drop fast successful read operations (<500ms)',
+    });
 
     // Stream processors: fold chatty "done" logs into their parent span.
     rules.push(
@@ -224,14 +283,76 @@ function getBuiltinRules(presets: string[]): NoiseRule[] {
       },
       {
         id: 'fw24.hotpaths.entity.aggregate_upsert_spans',
-        match: { type: 'span', operation: '/BaseEntityService\\.(upsert|update)/', source: '/^service:BaseEntityService\\./' },
+        priority: 50,  // Default aggregate priority
+        match: {
+          type: 'span',
+          operation: '/BaseEntityService\\.(upsert|update)/',
+          source: '/^service:BaseEntityService\\./'
+        },
+        except: [
+          { success: false },                // Keep failed writes
+          { level: [ 'error', 'critical' ] },  // Keep error writes
+        ],
         decision: 'aggregate',
-        reason: 'Aggregate extremely chatty entity write spans into parent workflow/batch span',
+        reason: 'Aggregate successful entity write spans into parent',
       },
     );
   }
 
   if (presets.includes('fw24.batch_processors')) {
+    // =========================================================================
+    // DATABASE QUERY NOISE REDUCTION FOR BATCH PROCESSING
+    // =========================================================================
+    // In batch processing, queries accumulate quickly (1000 records = 1000+ queries)
+    // Rules are evaluated in order - first match wins
+    // Priority: errors > scans > slow queries > fast queries
+
+    // 1. HIGHEST PRIORITY: Keep query errors (must be first!)
+    rules.push({
+      id: 'fw24.batch.queries.keep_errors',
+      match: {
+        type: 'database.query',
+        success: false
+      },
+      decision: 'keep',
+      reason: 'Keep query errors in batch as standalone logs - HIGHEST PRIORITY',
+    });
+
+    // 2. Keep table scans (always warnings, even if fast)
+    rules.push({
+      id: 'fw24.batch.queries.keep_scans',
+      match: {
+        type: 'database.query',
+        tags: { scan: 'true' }
+      },
+      decision: 'keep',
+      reason: 'Keep table scans in batch - always need visibility for performance issues',
+    });
+
+    // 3. Keep slow queries (performance issues in batch processing)
+    rules.push({
+      id: 'fw24.batch.queries.keep_slow',
+      match: {
+        type: 'database.query',
+        minDurationMs: 500
+      },
+      decision: 'keep',
+      reason: 'Keep slow queries (>=500ms) in batch as standalone logs - performance issues',
+    });
+
+    // 4. LOWEST PRIORITY: Aggregate fast queries to prevent checkpoint spam
+    // This only matches if none of the above matched (not error, not scan, not slow)
+    rules.push({
+      id: 'fw24.batch.queries.aggregate_fast',
+      match: {
+        type: 'database.query',
+        maxDurationMs: 500,
+        success: true
+      },
+      decision: 'aggregate',
+      reason: 'Aggregate fast queries (<500ms) in batch to prevent checkpoint spam',
+    });
+
     // Default: aggregate per-record spans in batch processors (summarize on parent batch span).
     // Match any span ending with " record" - flexible for all batch processor implementations.
     rules.push({
@@ -246,28 +367,23 @@ function getBuiltinRules(presets: string[]): NoiseRule[] {
   return rules;
 }
 
-function pickNoiseDecision(event: ObservabilityEvent, cfg: NoiseReductionConfig): { decision: RuleDecision; reason?: string; ruleId?: string } {
-  const override = event.capture?.noise;
-  if (override) return { decision: override.decision, reason: override.reason, ruleId: 'override' };
-
-  if (!cfg.enabled) return { decision: 'keep' };
-
-  // 1. Check custom rules first
-  for (const rule of cfg.rules ?? []) {
-    if (matchesRule(event, rule.match)) {
-      return { decision: rule.decision, reason: rule.reason, ruleId: rule.id };
-    }
+function pickNoiseDecision(event: ObservabilityEvent, cfg: NoiseReductionConfig): { decision: NoiseDecision; reason: string; ruleId: string; priority: number; matchedRulesCount: number } {
+  if (!cfg.enabled) {
+    return {
+      decision: 'keep',
+      reason: 'Noise reduction disabled',
+      ruleId: 'disabled',
+      priority: 0,
+      matchedRulesCount: 0
+    };
   }
 
-  // 2. Check built-in rules from presets
+  // Combine custom + builtin rules
   const builtinRules = getBuiltinRules(cfg.presets);
-  for (const rule of builtinRules) {
-    if (matchesRule(event, rule.match)) {
-      return { decision: rule.decision, reason: rule.reason, ruleId: rule.id };
-    }
-  }
+  const allRules = [ ...cfg.rules, ...builtinRules ];
 
-  return { decision: 'keep' };
+  // Use priority-based evaluation
+  return evaluateNoiseRules(event, allRules, matchesRule);
 }
 
 function ensureSpanData(span: ObservabilityEvent): Record<string, unknown> {
@@ -471,7 +587,7 @@ export function applyNoiseReduction(
 
   // If we decide to DROP a consolidated span record, we must also DROP its OTEL-only span.start,
   // otherwise OTEL backend will create the span and later "orphan-end" it in flush(), which is pure noise.
-  const spanDecisionById = new Map<string, RuleDecision>();
+  const spanDecisionById = new Map<string, NoiseDecision>();
   for (const e of inputEvents) {
     if (e.type !== 'span') continue;
     const picked = pickNoiseDecision(e, cfg);
@@ -479,7 +595,7 @@ export function applyNoiseReduction(
       || e.level === 'critical'
       || e.success === false
       || !!e.error;
-    const finalDecision: RuleDecision = (isHardSignal && !e.capture?.noise) ? 'keep' : picked.decision;
+    const finalDecision: NoiseDecision = (isHardSignal && !e.capture?.noise) ? 'keep' : picked.decision;
     spanDecisionById.set(e.observabilityLogId, finalDecision);
   }
 

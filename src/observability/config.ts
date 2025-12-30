@@ -10,12 +10,18 @@ import {
   ObservabilityBackendConfig,
   SamplingConfig,
   SamplingRule,
-  ObservabilityDataProtectionConfig,
+  DataProtectionConfig,
+  TruncationConfig,
+  DynamoDBConfig,
   NoiseReductionConfig,
   TypeSpecificConfig,
+  QueryPerformanceConfig,
+  OperationTimingConfig,
+  EntityQueryTimingOverride,
 } from './types';
 import { DEFAULT_BLACKLISTED_KEYS } from './utils/data-protection';
 import type { DeepPartial } from '../utils/types';
+import { merge } from '../utils/merge';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -44,6 +50,27 @@ export const CONFIG_DEFAULTS = {
     minDurationMs: 50,
     skipEmpty: true,
   },
+  queryPerformance: {
+    enabled: true,
+    slowThreshold: 1000, // 1 second
+    fastQuerySampleRate: 0.01, // 1% of fast queries
+    slowQuerySampleRate: 1.0, // 100% of slow queries
+    captureSlowQueryDetails: true,
+    trackCapacity: false,
+    // Sensible operation-specific thresholds
+    operationThresholds: [
+      { operation: 'get', slowThreshold: 500 },       // Single item - should be fast
+      { operation: 'batchGet', slowThreshold: 1000 }, // Batch - bit slower OK
+      { operation: 'list', slowThreshold: 1000 },     // List with index - 1s OK
+      { operation: 'query', slowThreshold: 1000 },    // Query with index - 1s OK
+      { operation: 'scan', slowThreshold: 3000 },     // Full scan - naturally slow
+      { operation: 'create', slowThreshold: 500 },    // Write - should be fast
+      { operation: 'update', slowThreshold: 500 },    // Write - should be fast
+      { operation: 'upsert', slowThreshold: 500 },    // Write - should be fast
+      { operation: 'delete', slowThreshold: 500 },    // Write - should be fast
+      { operation: 'batchDelete', slowThreshold: 1000 }, // Batch write
+    ],
+  },
   operationNormalization: {
     enabled: true,
     storeOriginal: true,
@@ -63,12 +90,17 @@ export const CONFIG_DEFAULTS = {
     includeDebugMetadata: false,
     includeExamples: false,
   } satisfies NoiseReductionConfig,
-  // DynamoDB compression defaults
-  compression: {
-    enabled: false,
-    threshold: 50 * 1024, // 50KB - only compress large payloads
-    fields: [ 'data', 'attributes', 'metadata', 'context' ] as const,
-  },
+  // DynamoDB size management defaults
+  truncation: {
+    enabled: false,             // ❌ OFF by default - lossy, only as alternative
+    maxBytes: 350 * 1024,       // 350KB if enabled
+    fields: [ 'actor', 'data', 'attributes', 'metadata', 'context' ],
+  } satisfies TruncationConfig,
+
+  // DynamoDB operational limits
+  dynamoMaxItemSize: 400 * 1024,    // 400KB - DynamoDB hard limit
+  dynamoMaxBatchSize: 25,           // 25 - DynamoDB BatchWriteItem limit
+  dynamoMaxBufferSize: 1000,        // 1000 - force flush safety
 } as const;
 
 export const DEFAULT_OPERATION_NORMALIZATION_RULES: NonNullable<ObservabilityConfig[ 'operationNormalization' ]>[ 'rules' ] = [
@@ -112,14 +144,16 @@ export interface ObservabilityConfigInput {
     /** Logical table key - resolved to actual table name via env var {tableKey}_table */
     tableKey?: string;
     ttlDays?: number;
-    /** Compression configuration for large payloads */
-    compression?: {
-      enabled?: boolean;
-      threshold?: number;
-      fields?: Array<'data' | 'attributes' | 'metadata' | 'context'>;
-    };
+    /** Truncation configuration (optional - lossy fallback) */
+    truncation?: Partial<TruncationConfig>;
+    /** Maximum item size in bytes (default: 400KB - DynamoDB limit) */
+    maxItemSize?: number;
+    /** Batch write size (default: 25 - DynamoDB BatchWriteItem limit) */
+    maxBatchSize?: number;
+    /** Maximum buffer size before forcing flush (default: 1000) */
+    maxBufferSize?: number;
   };
-  dataProtection?: Partial<ObservabilityDataProtectionConfig>;
+  dataProtection?: Partial<DataProtectionConfig>;
   types?: ObservabilityConfig[ 'types' ];
   sourceMap?: {
     /** Enable source-map-support for better error stack traces (requires source-map-support package) */
@@ -134,6 +168,11 @@ export interface ObservabilityConfigInput {
     /** Skip spans with no events/errors. Default: true */
     skipEmpty?: boolean;
   };
+
+  /**
+   * Query performance tracking configuration
+   */
+  queryPerformance?: Partial<QueryPerformanceConfig>;
 
   /**
    * Noise reduction configuration (merge/drop/aggregate).
@@ -152,6 +191,41 @@ type WithOptionalEnabled<T> =
   : T;
 
 export type ObservabilityBackendConfigInput = WithOptionalEnabled<ObservabilityBackendConfig>;
+
+/**
+ * Extend a preset with targeted overrides.
+ * 
+ * Uses framework's deep merge utility for clean config composition.
+ * 
+ * @param preset - Base preset configuration
+ * @param overrides - Targeted overrides to apply
+ * @returns Complete merged configuration
+ * 
+ * @example
+ * ```typescript
+ * import { extendPreset, productionPreset } from '@ten24group/fw24';
+ * 
+ * DIContainer.ROOT.registerConfigProvider({
+ *   provide: 'observability',
+ *   useConfig: extendPreset(productionPreset, {
+ *     serviceName: 'my-app',
+ *     cloudwatch: { namespace: 'MyApp' },
+ *     dataProtection: {
+ *       blacklistedKeys: ['apiKey'] // Merged with preset
+ *     },
+ *     sampling: { maxBufferSize: 5000 } // Merged with preset
+ *   }),
+ *   priority: 10
+ * });
+ * ```
+ */
+export function extendPreset(
+  preset: ObservabilityConfig,
+  overrides: DeepPartial<ObservabilityConfigInput>
+): ObservabilityConfig {
+  const merged = merge([ preset, overrides ])!;
+  return createObservabilityConfig(merged);
+}
 
 /**
  * Create a complete, validated ObservabilityConfig from partial input
@@ -192,6 +266,7 @@ export function createObservabilityConfig(input: DeepPartial<ObservabilityConfig
     sourceMap: { enabled: input.sourceMap?.enabled ?? CONFIG_DEFAULTS.sourceMapEnabled },
     types: normalizeTypes(input.types),
     spans: normalizeSpanConfig(input.spans),
+    queryPerformance: normalizeQueryPerformanceConfig(input.queryPerformance),
     // Centralized defaults: noiseReduction is always present (enabled can be toggled per preset/app).
     noiseReduction: normalizeNoiseReduction(input.noiseReduction),
     operationNormalization: normalizeOperationNormalization(input.operationNormalization),
@@ -300,29 +375,24 @@ function normalizeCloudWatch(input?: { namespace?: string }): ObservabilityConfi
   return { namespace: input?.namespace ?? CONFIG_DEFAULTS.cloudwatchNamespace };
 }
 
-function normalizeDynamoDb(input?: {
-  tableKey?: string;
-  ttlDays?: number;
-  compression?: {
-    enabled?: boolean;
-    threshold?: number;
-    fields?: Array<'data' | 'attributes' | 'metadata' | 'context'>;
-  };
-}): ObservabilityConfig[ 'dynamodb' ] {
+function normalizeDynamoDb(input?: ObservabilityConfigInput[ 'dynamodb' ]): DynamoDBConfig {
   return {
     tableKey: input?.tableKey ?? CONFIG_DEFAULTS.tableKey,
     ttlDays: input?.ttlDays ?? CONFIG_DEFAULTS.ttlDays,
-    compression: {
-      enabled: input?.compression?.enabled ?? CONFIG_DEFAULTS.compression.enabled,
-      threshold: input?.compression?.threshold ?? CONFIG_DEFAULTS.compression.threshold,
-      fields: input?.compression?.fields ?? [ ...CONFIG_DEFAULTS.compression.fields ],
+    truncation: {
+      enabled: input?.truncation?.enabled ?? CONFIG_DEFAULTS.truncation.enabled,
+      maxBytes: input?.truncation?.maxBytes ?? CONFIG_DEFAULTS.truncation.maxBytes,
+      fields: input?.truncation?.fields ?? [ ...CONFIG_DEFAULTS.truncation.fields ],
     },
+    maxItemSize: input?.maxItemSize ?? CONFIG_DEFAULTS.dynamoMaxItemSize,
+    maxBatchSize: input?.maxBatchSize ?? CONFIG_DEFAULTS.dynamoMaxBatchSize,
+    maxBufferSize: input?.maxBufferSize ?? CONFIG_DEFAULTS.dynamoMaxBufferSize,
   };
 }
 
-function normalizeDataProtection(input?: DeepPartial<ObservabilityDataProtectionConfig>): ObservabilityDataProtectionConfig {
+function normalizeDataProtection(input?: DeepPartial<DataProtectionConfig>): DataProtectionConfig {
   const blacklistedKeys = Array.isArray(input?.blacklistedKeys)
-    ? input.blacklistedKeys.filter((k): k is string | RegExp => k !== undefined && k !== null)
+    ? input.blacklistedKeys.filter((k: unknown): k is string | RegExp => k !== undefined && k !== null)
     : DEFAULT_BLACKLISTED_KEYS;
   return {
     enabled: input?.enabled ?? true,
@@ -386,6 +456,31 @@ function normalizeOperationNormalization(
     enabled: input?.enabled ?? CONFIG_DEFAULTS.operationNormalization.enabled,
     rules,
     storeOriginal: input?.storeOriginal ?? CONFIG_DEFAULTS.operationNormalization.storeOriginal,
+  };
+}
+
+/**
+ * Normalize query performance configuration
+ */
+function normalizeQueryPerformanceConfig(input?: DeepPartial<QueryPerformanceConfig>): QueryPerformanceConfig {
+  const d = CONFIG_DEFAULTS.queryPerformance;
+
+  // Cast readonly default to mutable or use input
+  const operationThresholds = (input?.operationThresholds
+    ? input.operationThresholds.filter((t): t is OperationTimingConfig => !!t && !!t.operation && typeof t.slowThreshold === 'number')
+    : d.operationThresholds) as OperationTimingConfig[];
+
+  return {
+    enabled: input?.enabled ?? d.enabled,
+    slowThreshold: input?.slowThreshold ?? d.slowThreshold,
+    fastQuerySampleRate: input?.fastQuerySampleRate ?? d.fastQuerySampleRate,
+    slowQuerySampleRate: input?.slowQuerySampleRate ?? d.slowQuerySampleRate,
+    operationThresholds,
+    entityOverrides: input?.entityOverrides as EntityQueryTimingOverride[] | undefined,
+    excludeEntities: input?.excludeEntities as string[] | undefined,
+    alwaysTrackEntities: input?.alwaysTrackEntities as string[] | undefined,
+    captureSlowQueryDetails: input?.captureSlowQueryDetails ?? d.captureSlowQueryDetails,
+    trackCapacity: input?.trackCapacity ?? d.trackCapacity,
   };
 }
 

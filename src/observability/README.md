@@ -601,11 +601,8 @@ DIContainer.ROOT.registerConfigProvider({
     // DynamoDB config
     dynamodb: {
       ttlDays: 30,
-      compression: {
-        enabled: true,
-        threshold: 10 * 1024, // 10KB
-        fields: ['data', 'attributes', 'metadata', 'context'],
-      },
+      // Note: Compression is handled automatically by entity schema
+      // See observability-log-entity.ts for compressed fields
     },
     
     // Noise reduction
@@ -661,7 +658,87 @@ sampling: {
 }
 ```
 
-### Noise Reduction
+### Noise Reduction (Priority-Based)
+
+**Priority-based rule evaluation** ensures predictable behavior when multiple rules match:
+
+```typescript
+import { DECISION_BASE_PRIORITY } from '@ten24group/fw24/observability';
+
+// Decision base priorities (higher = harder to override):
+// - keep: 100 (always keep, hard to override)
+// - aggregate: 50 (summarize into parent)
+// - fold: 40 (collapse into parent checkpoint)
+// - downgrade: 30 (strip heavy fields)
+// - drop: 10 (remove entirely, easy to override)
+
+noiseReduction: {
+  enabled: true,
+  presets: ['fw24.hotpaths'],
+  rules: [
+    // HIGH PRIORITY: Always keep admin operations (overrides builtin drop rules)
+    {
+      id: 'myapp.keep_admin_reads',
+      priority: 200,  // Higher than any builtin rule
+      match: {
+        type: 'span',
+        operation: '/^HTTP GET.*\\/admin\\b/'
+      },
+      decision: 'keep',
+      reason: 'Always keep admin operations for audit compliance'
+    },
+    
+    // MEDIUM PRIORITY: Drop internal health checks
+    {
+      id: 'myapp.drop_health_checks',
+      priority: 50,
+      match: {
+        type: 'span',
+        operation: '/healthcheck|ping|ready/'
+      },
+      except: [
+        { success: false }  // Keep failed health checks
+      ],
+      decision: 'drop',
+      reason: 'Drop successful health checks'
+    },
+    
+    // LOW PRIORITY: Aggregate batch operations (easily overridden)
+    {
+      id: 'myapp.aggregate_batch_items',
+      priority: 10,
+      match: {
+        type: 'span',
+        operation: '/process.*item$/i'
+      },
+      decision: 'aggregate',
+      reason: 'Aggregate per-item spans in batch operations'
+    }
+  ]
+}
+```
+
+**Rule Evaluation Algorithm:**
+1. Per-event override (`event.capture?.noise`) - absolute priority
+2. Hard signals (errors/failures) - always kept (priority: 1000)
+3. Collect ALL matching rules (custom + builtin)
+4. Filter out rules with matching exceptions
+5. Sort by effective priority (explicit priority OR decision base priority)
+6. Winner = highest priority rule
+
+**Exception Patterns:**
+```typescript
+{
+  id: 'drop_reads',
+  match: { operation: '/GET/' },
+  except: [
+    { success: false },              // Don't drop errors
+    { level: ['error', 'critical'] },// Don't drop critical
+    { minDurationMs: 1000 }          // Don't drop slow (>1s)
+  ],
+  decision: 'drop'
+}
+```
 
 Automatically reduces noise from repetitive operations:
 
@@ -744,24 +821,27 @@ console.log(summary);
 
 Summary is automatically logged and emitted as CloudWatch metrics during flush.
 
-### Compression (DynamoDB)
+### Compression (Automatic via Entity Schema)
 
-Automatically compress large payloads before storing in DynamoDB:
+Compression is handled automatically by the entity framework:
 
 ```typescript
-dynamodb: {
-  compression: {
-    enabled: true,
-    threshold: 10 * 1024, // 10KB
-    fields: ['data', 'attributes', 'metadata', 'context'],
-  },
+// In observability-log-entity.ts
+data: {
+  type: 'any',
+  compressed: { threshold: 50 * 1024 }, // Auto-compress if > 50KB
+},
+metadata: {
+  type: 'any',
+  compressed: true, // Auto-compress if > 10KB
 }
 ```
 
 **Benefits:**
-- Reduces DynamoDB storage costs
-- Reduces data transfer costs
+- Framework-wide compression system (not observability-specific)
+- Reduces DynamoDB storage costs by 50-70%
 - Transparent decompression on read
+- UI24 recognizes and decompresses automatically
 - Only compresses if it actually reduces size
 
 ---
@@ -775,7 +855,7 @@ dynamodb: {
 **Features:**
 - Stores spans, logs, metrics, audits
 - TTL-based automatic cleanup
-- Optional compression for large payloads
+- Automatic compression via entity schema (data, metadata fields)
 - Deduplication of duplicate events
 - Batch writes with retry logic
 
@@ -975,7 +1055,7 @@ graph TD
     A --> D[X-Ray]
     
     B --> B1[Sampling: 90% reduction]
-    B --> B2[Compression: 50-70% reduction]
+    B --> B2[Entity Compression: 50-70% reduction]
     B --> B3[TTL: Automatic cleanup]
     B --> B4[Noise Reduction: 50% reduction]
     
@@ -994,7 +1074,7 @@ graph TD
 
 1. **Use Presets**: Start with `productionPreset` for cost-optimized defaults
 2. **Enable Smart Sampling**: Capture errors, sample successes
-3. **Enable Compression**: Reduce DynamoDB costs for large payloads
+3. **Compression is Automatic**: Entity schema handles compression (data, metadata fields)
 4. **Set Appropriate TTL**: Balance retention vs. cost
 5. **Use Noise Reduction**: Reduce repetitive events
 6. **Skip Fast Spans**: Set `spans.minDurationMs` to skip trivial operations
@@ -1027,9 +1107,9 @@ graph TD
 - Verify backend is enabled in config
 
 **Issue: High DynamoDB costs**
-- Enable compression for large payloads
-- Reduce TTL days
-- Increase sampling rates
+- Compression is automatic (already enabled for data, metadata fields)
+- Reduce TTL days (default: 90 days)
+- Increase sampling rates (reduce captured events)
 - Enable noise reduction
 
 **Issue: Missing parent spans in traces**

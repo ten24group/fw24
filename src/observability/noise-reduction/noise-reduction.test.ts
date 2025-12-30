@@ -428,6 +428,7 @@ describe('noise reduction', () => {
         rules: [
           {
             id: 'test.drop_sns_publish',
+            priority: 100, // Higher than builtin fold rule (40)
             match: {
               type: 'log',
               source: '/^DynamoDBStream.*Processor\\.process$/',

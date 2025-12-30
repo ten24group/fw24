@@ -130,8 +130,9 @@ export function createTaskSource(taskName: string, handlerName?: string): string
   return handlerName ? `task:${taskName}.${handlerName}` : `task:${taskName}`;
 }
 
-
-export type SourceType = 'controller' | 'service' | 'queue' | 'task' | 'handler';
+// Re-export SourceType from types.ts to maintain backward compatibility
+export type { SourceType } from '../types';
+import type { SourceType } from '../types';
 
 /**
  * Auto-detect source type from class name.

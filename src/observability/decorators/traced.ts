@@ -20,35 +20,17 @@
 
 import { getCurrentExecutionContext } from '../../core/runtime/execution-context';
 import { SpanObserver, SpanOptions } from '../observers/span';
-import type { NoiseControl } from '../types';
+import type { DecoratorBaseOptions } from '../types';
 import { safeSerialize } from '../utils/payload';
-import { SourceType, resolveSource } from './decorator-utils';
+import { resolveSource } from './decorator-utils';
 
-export interface TracedOptions {
+export interface TracedOptions extends DecoratorBaseOptions {
   /** Custom span name (defaults to ClassName.methodName) */
   name?: string;
   /** Span level */
   level?: SpanOptions[ 'level' ];
-  /** Tags for filtering */
-  tags?: Record<string, string>;
   /** Initial data payload */
   data?: Record<string, unknown>;
-  /** Capture method arguments */
-  captureArgs?: boolean;
-  /** Capture return value */
-  captureResult?: boolean;
-  /** Source type (auto-detected if not provided) */
-  sourceType?: SourceType;
-  /** Conditionally enable/disable */
-  enabled?: boolean | (() => boolean);
-  /** Capture control options */
-  capture?: SpanOptions[ 'capture' ];
-
-  /**
-   * Noise reduction override for this traced span.
-   * Convenience for setting `capture.noise` without having to build CaptureControl manually.
-   */
-  noise?: NoiseControl;
 }
 
 /**
@@ -69,7 +51,6 @@ export function Traced(options: TracedOptions = {}) {
     const className = target.constructor.name;
     const methodName = String(propertyKey);
     const spanName = options.name ?? `${className}.${methodName}`;
-    const source = resolveSource(options.sourceType, className, methodName);
 
     descriptor.value = function (this: ThisParameterType<T>, ...args: Parameters<T>): ReturnType<T> {
       // Early exits
@@ -77,25 +58,39 @@ export function Traced(options: TracedOptions = {}) {
         return originalMethod.apply(this, args) as ReturnType<T>;
       }
 
+      // Extract RecordOverrides from options
+      const {
+        name,
+        level,
+        data,
+        captureArgs,
+        captureResult,
+        enabled,
+        sourceType,
+        ...recordOverrides
+      } = options;
+
+      // Compute source (use explicit source override if provided, otherwise auto-detect)
+      const computedSource = resolveSource(sourceType, className, methodName);
+      const finalSource = recordOverrides.source ?? computedSource;
+
       return SpanObserver.wrap(
         spanName,
         () => {
           return originalMethod.apply(this, args) as ReturnType<T>;
         },
         {
-          level: options.level,
-          capture: options.noise
-            ? { ...(options.capture ?? {}), noise: options.noise }
-            : options.capture,
-          source,
+          ...recordOverrides,
+          level,
+          source: finalSource,
           tags: {
-            ...options.tags,
+            ...recordOverrides.tags,
             'code.function': methodName,
             'code.namespace': className,
           },
           data: {
-            ...options.data,
-            ...(options.captureArgs && args.length > 0 && { args: safeSerialize(args) }),
+            ...data,
+            ...(captureArgs && args.length > 0 && { args: safeSerialize(args) }),
           },
         }
       ) as ReturnType<T>;

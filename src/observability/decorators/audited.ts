@@ -27,28 +27,21 @@
 import { getCurrentExecutionContext } from '../../core/runtime/execution-context';
 import { AuditObserver } from '../observers/audit';
 import { normalizeError } from '../observers/base';
+import type { DecoratorBaseOptions } from '../types';
 import { safeSerialize } from '../utils/payload';
-import { executeWithHandlers } from './decorator-utils';
+import { executeWithHandlers, resolveSource } from './decorator-utils';
 
-export interface AuditedOptions {
+export interface AuditedOptions extends DecoratorBaseOptions {
   /** Audit operation name (defaults to ClassName.methodName) */
   operation?: string;
   /** Entity name being audited (optional) */
   entityName?: string;
   /** Audit level */
   level?: 'info' | 'warn' | 'error';
-  /** Whether to capture method arguments in audit data */
-  captureArgs?: boolean;
-  /** Whether to capture return value in audit data */
-  captureResult?: boolean;
   /** Specific argument names to capture (if captureArgs is false) */
   argNames?: string[];
   /** Custom data extractor function */
   dataExtractor?: (args: unknown[], result?: unknown) => Record<string, unknown>;
-  /** Tags for filtering */
-  tags?: Record<string, string>;
-  /** Conditionally enable/disable */
-  enabled?: boolean | (() => boolean);
 }
 
 /**
@@ -69,13 +62,30 @@ export function Audited(options: AuditedOptions = {}) {
     const className = target.constructor.name;
     const methodName = String(propertyKey);
     const operation = options.operation ?? `${className}.${methodName}`;
-    const source = `${className}.${methodName}`;
 
     descriptor.value = function (this: ThisParameterType<T>, ...args: Parameters<T>): ReturnType<T> {
       // Early exits
       if (!isEnabled(options) || !getCurrentExecutionContext()) {
         return originalMethod.apply(this, args) as ReturnType<T>;
       }
+
+      // Extract RecordOverrides from options
+      const {
+        operation: opName,
+        entityName,
+        level,
+        argNames,
+        dataExtractor,
+        captureArgs,
+        captureResult,
+        enabled,
+        sourceType,
+        ...recordOverrides
+      } = options;
+
+      // Compute source (use explicit source override if provided, otherwise auto-detect)
+      const computedSource = resolveSource(sourceType, className, methodName);
+      const finalSource = recordOverrides.source ?? computedSource;
 
       const startTime = Date.now();
 
@@ -86,13 +96,14 @@ export function Audited(options: AuditedOptions = {}) {
         (success, result, error) => {
           recordAudit(
             operation,
-            source,
+            finalSource,
             options,
             args,
             result,
             success,
             Date.now() - startTime,
-            error ? normalizeError(error) : undefined
+            error ? normalizeError(error) : undefined,
+            recordOverrides
           );
         }
       );
@@ -119,7 +130,8 @@ function recordAudit(
   result: unknown,
   success: boolean,
   durationMs: number,
-  error?: Error
+  error: Error | undefined,
+  recordOverrides: Partial<DecoratorBaseOptions>
 ): void {
   // Build audit data
   let data: Record<string, unknown> = { success, durationMs };
@@ -156,13 +168,13 @@ function recordAudit(
     data.error = { type: error.name, message: error.message };
   }
 
-  // AuditObserver.record picks up actor/correlationId/causedBy from context automatically
+  // Pass through all RecordOverrides fields
   AuditObserver.record({
     operation,
     entityName: options.entityName,
     data,
     level: error ? 'error' : (options.level ?? 'info'),
     source,
-    tags: options.tags,
+    ...recordOverrides,
   });
 }

@@ -248,6 +248,12 @@ export type NoiseReductionPreset =
  * This layer is orthogonal to sampling:
  * - sampling decides *whether* to store based on cost
  * - noise reduction decides *how* to represent data (standalone vs merged vs dropped)
+ * 
+ * Rule evaluation:
+ * - All matching rules are collected (custom + builtin)
+ * - Exceptions are evaluated
+ * - Rule with highest effective priority wins
+ * - Hard signals (errors/failures) are always kept unless explicitly overridden
  */
 export interface NoiseReductionConfig {
   enabled: boolean;
@@ -255,7 +261,10 @@ export interface NoiseReductionConfig {
   /** Built-in preset(s) with sane defaults for hot paths */
   presets: NoiseReductionPreset[];
 
-  /** Custom rules evaluated in-order (first match wins) */
+  /** 
+   * Custom rules with priority-based evaluation.
+   * When multiple rules match, highest priority wins.
+   */
   rules: NoiseRule[];
 
   /** Emit a summary marker when events are dropped/folded (default: true) */
@@ -316,14 +325,14 @@ export interface NoiseRuleMatch {
   tags?: Record<string, string>;
   /** 
    * Match minimum durationMs threshold (matches events where durationMs >= this value).
-   * Example: durationMs: 100 matches spans with 100ms or longer duration.
+   * Example: minDurationMs: 100 matches spans with 100ms or longer duration.
    * Events without durationMs field will NOT match.
    */
   minDurationMs?: number;
   /**
    * Match maximum durationMs threshold (matches events where durationMs < this value).
    * Example: maxDurationMs: 50 matches spans under 50ms.
-   * Combine with durationMs for range matching: { durationMs: 10, maxDurationMs: 100 } matches 10ms-99ms.
+   * Combine with minDurationMs for range matching: { minDurationMs: 10, maxDurationMs: 100 } matches 10ms-99ms.
    * Events without durationMs field will NOT match.
    */
   maxDurationMs?: number;
@@ -335,10 +344,44 @@ export interface NoiseRuleMatch {
   success?: boolean;
 }
 
+/**
+ * Noise reduction rule with priority-based evaluation.
+ * 
+ * When multiple rules match an event, the rule with the highest effective priority wins.
+ * Effective priority = explicit priority OR decision's base priority.
+ * 
+ * Decision base priorities (from highest to lowest):
+ * - keep: 100 (always keep, hard to override)
+ * - aggregate: 50 (summarize into parent)
+ * - fold: 40 (collapse into parent checkpoint)
+ * - downgrade: 30 (strip heavy fields)
+ * - drop: 10 (remove entirely, easy to override)
+ */
 export interface NoiseRule {
+  /** Unique identifier for this rule */
   id: string;
+
+  /** Conditions that must match for this rule to apply */
   match: NoiseRuleMatch;
+
+  /** The noise reduction action to take when this rule matches */
   decision: NoiseDecision;
+
+  /** 
+   * Explicit priority for this rule (overrides decision's base priority).
+   * Higher priority wins when multiple rules match.
+   * Range: 1-1000 (recommended: use multiples of 10)
+   */
+  priority?: number;
+
+  /**
+   * Exception conditions - rule does NOT apply if any exception matches.
+   * Evaluated AFTER the main match succeeds.
+   * Use for "drop X except when Y" patterns.
+   */
+  except?: NoiseRuleMatch[];
+
+  /** Human-readable reason for this rule (for debugging) */
   reason?: string;
 }
 
@@ -604,30 +647,66 @@ export interface CloudWatchConfig {
 }
 
 /**
- * DynamoDB configuration
+ * Truncation configuration for observability payloads.
+ * 
+ * **Use when:** Emergency lossy fallback if entity compression isn't sufficient.
+ * **Trade-off:** Loses data permanently (not recoverable).
+ * 
+ * Creates format: `{ _truncated: true, _preview: string, _originalSize: number }`
+ * 
+ * **Note:** Entity schema handles compression automatically via `compressed: true`.
+ * Truncation is ONLY for rare cases where compressed data still exceeds limits.
+ */
+export interface TruncationConfig {
+  /** Enable truncation (default: false) */
+  enabled: boolean;
+  /** Maximum bytes per field (default: 350KB) */
+  maxBytes: number;
+  /** Fields to truncate */
+  fields: ReadonlyArray<'actor' | 'data' | 'attributes' | 'metadata' | 'context'>;
+}
+
+/**
+ * DynamoDB backend configuration.
+ * 
+ * **Data Flow:**
+ * 1. Events buffered in memory during invocation
+ * 2. On flush: deduplication, optional truncation
+ * 3. Entity service auto-compresses fields marked `compressed: true` in schema
+ * 4. Batch write to DynamoDB with TTL
+ * 5. UI queries & auto-decompresses
+ * 
+ * **Size Management:**
+ * - **Primary:** Entity schema compression (automatic, lossless, UI-decompressible)
+ * - **Fallback:** Optional truncation (lossy, rarely needed)
  */
 export interface DynamoDBConfig {
   /** Logical table key - resolved to actual table name via env var {tableKey}_table */
   tableKey: string;
   ttlDays: number;
-  /** Compression configuration for large payloads */
-  compression?: {
-    /** Enable compression (default: false) */
-    enabled: boolean;
-    /** Minimum size in bytes before compression is applied (default: 10KB) */
-    threshold: number;
-    /** Fields to compress if they exceed threshold (default: all) */
-    fields: Array<'data' | 'attributes' | 'metadata' | 'context'>;
-  };
+
+  /** Truncation (optional - emergency lossy fallback, rarely needed) */
+  truncation?: TruncationConfig;
+
+  /** Maximum item size in bytes (default: 400KB - DynamoDB limit) */
+  maxItemSize?: number;
+
+  /** Batch write size (default: 25 - DynamoDB BatchWriteItem limit) */
+  maxBatchSize?: number;
+
+  /** Maximum buffer size before forcing flush (default: 1000) */
+  maxBufferSize?: number;
 }
 
 /**
- * Data protection configuration for observability events
- * Reuses @hackylabs/deep-redact library for redaction
+ * Data protection configuration for observability events.
+ * 
+ * Uses @hackylabs/deep-redact library for redaction.
+ * Redacts sensitive data (passwords, tokens, PII) from observability payloads.
  */
-export interface ObservabilityDataProtectionConfig {
+export interface DataProtectionConfig {
   /** Enable/disable data protection (default: true) */
-  enabled: boolean;
+  enabled?: boolean;
   /** Keys to redact (strings or regex patterns) */
   blacklistedKeys?: (string | RegExp)[];
   /** 
@@ -646,7 +725,6 @@ export interface ObservabilityDataProtectionConfig {
    */
   fields?: ('data' | 'attributes' | 'metadata' | 'context' | 'error')[];
 }
-
 
 /**
  * Span-specific configuration defaults.
@@ -668,6 +746,142 @@ export interface SpanConfig {
    */
   skipEmpty: boolean;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ENTITY QUERY PERFORMANCE TRACKING CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Query operation types for CRUD operations.
+ * Maps to ElectroDB operations.
+ */
+export type QueryOperation = 'get' | 'batchGet' | 'list' | 'query' | 'create' | 'update' | 'upsert' | 'delete' | 'batchDelete' | 'scan';
+
+/**
+ * Per-entity query timing configuration override.
+ * Allows customizing thresholds and sampling for specific entities.
+ */
+export interface EntityQueryTimingOverride {
+  /** Entity name to override */
+  entityName: string;
+  /** Override slow threshold for this entity (ms). Falls back to default if not set. */
+  slowThreshold?: number;
+  /** Override sampling rate for this entity (0-1). Falls back to default if not set. */
+  sampleRate?: number;
+}
+
+/**
+ * Per-operation timing configuration.
+ * Different operations have different expected latencies.
+ */
+export interface OperationTimingConfig {
+  /** Operation type */
+  operation: QueryOperation;
+  /** Slow threshold for this operation (ms) */
+  slowThreshold: number;
+}
+
+/**
+ * Database query performance tracking configuration.
+ * Tracks query timing, detects slow queries, and captures context.
+ * 
+ * Features:
+ * - Configurable slow query thresholds (global, per-operation, per-entity)
+ * - Smart sampling (fast vs slow queries)
+ * - Automatic checkpoint to spans
+ * - Conditional logging (slow queries, scans, errors)
+ * - Entity inclusion/exclusion lists
+ * - Query detail capture (filters, pagination) for debugging
+ * 
+ * @example
+ * ```typescript
+ * queryPerformance: {
+ *   enabled: true,
+ *   slowThreshold: 1000, // 1 second
+ *   fastQuerySampleRate: 0.01, // 1% of fast queries
+ *   slowQuerySampleRate: 1.0, // 100% of slow queries
+ *   excludeEntities: ['AnalyticsEvent', 'AuditLog'], // High volume
+ *   alwaysTrackEntities: ['Order', 'Payment'], // Critical
+ *   operationThresholds: [
+ *     { operation: 'get', slowThreshold: 500 }, // Single item should be fast
+ *     { operation: 'scan', slowThreshold: 3000 }, // Full scan naturally slower
+ *   ]
+ * }
+ * ```
+ */
+export interface QueryPerformanceConfig {
+  /** Enable query performance tracking. Default: true */
+  enabled: boolean;
+
+  /**
+   * Default slow query threshold (ms).
+   * Queries slower than this are logged at WARN level.
+   * Default: 1000ms
+   */
+  slowThreshold: number;
+
+  /**
+   * Sample rate for fast queries (0-1).
+   * 0 = never log fast queries, 1 = always log.
+   * Used to gather baseline metrics without flooding logs.
+   * Default: 0.01 (1%)
+   */
+  fastQuerySampleRate: number;
+
+  /**
+   * Sample rate for slow queries (0-1).
+   * Even slow queries can be sampled to reduce log volume.
+   * Default: 1.0 (100% - always log slow queries)
+   */
+  slowQuerySampleRate: number;
+
+  /**
+   * Per-operation thresholds.
+   * Overrides default slowThreshold for specific operations.
+   * 
+   * Example: Scans are naturally slower, set higher threshold.
+   * Default: Operation-specific thresholds (get:500ms, scan:3000ms, etc.)
+   */
+  operationThresholds?: OperationTimingConfig[];
+
+  /**
+   * Per-entity overrides.
+   * Customize threshold and sampling for specific entities.
+   * 
+   * Example: Analytics entities have high volume, reduce sampling.
+   */
+  entityOverrides?: EntityQueryTimingOverride[];
+
+  /**
+   * Entities to exclude from tracking entirely.
+   * Use for extremely high-volume entities.
+   */
+  excludeEntities?: string[];
+
+  /**
+   * Always track these entities regardless of sampling.
+   * Use for critical entities (Order, Payment, etc.)
+   */
+  alwaysTrackEntities?: string[];
+
+  /**
+   * Capture query details (filters, pagination) for slow queries.
+   * Disable in production if PII concerns exist.
+   * Default: true
+   */
+  captureSlowQueryDetails: boolean;
+
+  /**
+   * Track capacity consumption (RCU/WCU) if available.
+   * Requires enhanced ElectroDB response parsing.
+   * Default: false (not yet implemented)
+   */
+  trackCapacity: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// END QUERY PERFORMANCE TRACKING CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Main observability configuration
@@ -711,7 +925,7 @@ export interface ObservabilityConfig {
   dynamodb: DynamoDBConfig;
 
   /** Data protection configuration */
-  dataProtection: ObservabilityDataProtectionConfig;
+  dataProtection: DataProtectionConfig;
 
   /** Source map support for better error stack traces */
   sourceMap: {
@@ -724,6 +938,12 @@ export interface ObservabilityConfig {
    * Control which spans are captured and how.
    */
   spans: SpanConfig;
+
+  /**
+   * Database query performance tracking configuration.
+   * Tracks query timing, detects slow queries, and captures context.
+   */
+  queryPerformance: QueryPerformanceConfig;
 
   /**
    * Noise reduction configuration (merge/drop/aggregate).
@@ -840,6 +1060,45 @@ export interface ContextOverrides {
   replaceTags?: Record<string, string>;
   /** Add metadata to all events in this scope */
   metadata?: Record<string, unknown>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DECORATOR OPTIONS BASE - Shared fields for all decorators
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Source type for auto-detection.
+ * Used by decorators to infer the source prefix when not explicitly provided.
+ */
+export type SourceType = 'controller' | 'service' | 'queue' | 'task' | 'handler';
+
+/**
+ * Base options shared across all observability decorators (@Observed, @Traced, @Audited).
+ * 
+ * Extends RecordOverrides to provide full context override capabilities.
+ * All decorator option interfaces should extend this instead of duplicating fields.
+ * 
+ * @example
+ * ```typescript
+ * // All decorators support these options
+ * @Traced({
+ *   enabled: () => isDevelopment(),
+ *   actor: { type: 'system', id: 'cron-scheduler' },
+ *   tags: { component: 'scheduler' },
+ *   capture: { bypass: true },
+ * })
+ * async scheduledTask() { }
+ * ```
+ */
+export interface DecoratorBaseOptions extends RecordOverrides {
+  /** Conditionally enable/disable decorator (evaluated at runtime) */
+  enabled?: boolean | (() => boolean);
+  /** Capture method arguments in observability data */
+  captureArgs?: boolean;
+  /** Capture method return value in observability data */
+  captureResult?: boolean;
+  /** Source type for auto-detection (controller, service, queue, task, handler) */
+  sourceType?: SourceType;
 }
 
 /**

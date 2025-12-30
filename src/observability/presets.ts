@@ -50,7 +50,7 @@ export const productionPreset: ObservabilityConfig = createObservabilityConfigFr
     {
       type: 'dynamodb',
       enabled: true,
-      minLevel: ObservabilityLevel.WARN, // Only WARN+ to DynamoDB
+      minLevel: ObservabilityLevel.INFO, // Only WARN+ to DynamoDB
       types: {
         metric: { enabled: false }, // No metrics to DynamoDB
       },
@@ -230,7 +230,7 @@ export const debugPreset: ObservabilityConfig = createObservabilityConfigFromInp
   sampling: {
     enabled: false, // No sampling in debug mode
     smart: false,
-    maxBufferSize: 2000,
+    maxBufferSize: 5000,
   },
 
   backends: [

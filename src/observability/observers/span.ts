@@ -121,8 +121,6 @@ const OBSERVER_NAME = 'SpanObserver';
 export interface SpanOptions extends RecordOverrides {
   /** Severity level for the span */
   level?: ObservabilityLevelString;
-  /** Initial tags (string→string for indexing) */
-  tags?: Record<string, string>;
   /** Initial metrics (string→number for aggregation) */
   metrics?: Record<string, number>;
   /** Initial data (debug payload) */
@@ -541,7 +539,7 @@ export class SpanObserver implements ISpanObserver {
       ? derivedParentLogId
       : (explicitParent === null ? undefined : explicitParent);
 
-    const { level, tags, metrics, data, skipCapture, ...overrides } = options;
+    const { level, metrics, data, skipCapture, tags, ...overrides } = options;
 
     // Emit span.start to OTEL only
     // Use null if no parent to prevent fallback to getCurrentParentObservabilityLogId()
@@ -600,7 +598,7 @@ export class SpanObserver implements ISpanObserver {
     // Whether a span can be dropped depends on whether it has any children (graph property),
     // which can only be known reliably at flush-time once all events are buffered.
 
-    const { level, skipCapture, tags, metrics, data, ...overrides } = this.options;
+    const { level, skipCapture, metrics, data, tags, ...overrides } = this.options;
 
     // Build error info
     let errorInfo: ObservabilityError | undefined;

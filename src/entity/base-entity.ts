@@ -627,6 +627,40 @@ export interface FW24AttributeExtensions {
    * Supports both readonly and mutable arrays for compatibility with 'as const' entity schemas.
    */
   readonly validations?: ReadonlyArray<any> | Array<any>;
+
+  /**
+   * Enable compression for this attribute.
+   * 
+   * **Usage:**
+   * - `compressed: true` - Use default threshold (10KB)
+   * - `compressed: { threshold: 50 * 1024 }` - Custom threshold (50KB)
+   * 
+   * **Behavior:**
+   * - Write: Automatically compresses if size exceeds threshold
+   * - Read: Automatically decompresses when loading from DB
+   * - Storage: Creates `{ _compressed: true, _algorithm: 'gzip', _data: base64, ... }`
+   * - UI: UI24 recognizes `_compressed` marker and auto-decompresses for display
+   * 
+   * **Recommended for:**
+   * - Large JSON payloads (e.g., `metadata`, `data`, `context`)
+   * - API responses stored in DB
+   * - Nested objects with deep structures
+   * 
+   * @example
+   * ```ts
+   * attributes: {
+   *   apiResponse: {
+   *     type: 'any',
+   *     compressed: true  // Auto-compress if > 10KB
+   *   },
+   *   largeMetadata: {
+   *     type: 'map',
+   *     compressed: { threshold: 50 * 1024 }  // Compress if > 50KB
+   *   }
+   * }
+   * ```
+   */
+  readonly compressed?: boolean | { threshold: number };
 }
 
 /**

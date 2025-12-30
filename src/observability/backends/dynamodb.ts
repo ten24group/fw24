@@ -2,22 +2,20 @@
  * DynamoDB Backend for Observability
  * 
  * Stores all observability events in DynamoDB.
- * All config injected via DI - no fallbacks.
+ * 
+ * **Size Management:**
+ * - Entity schema auto-compresses fields (data, metadata) via `compressed: true`
+ * - Optional truncation applied here (if enabled in config)
+ * - All config injected via DI
  */
 
 import { Inject, Injectable, InjectConfig } from '../../di';
 import { createLogger } from '../../logging';
 import { ObservabilityLogCreateItem, ObservabilityLogService } from '../storage/service';
-import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel } from '../types';
-import { estimateItemSize, truncatePayload } from '../utils/payload';
-import { compressItem, type CompressionConfig } from '../utils/compression';
+import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel, DynamoDBConfig } from '../types';
+import { truncateItem } from '../utils/payload';
 
 const logger = createLogger('DynamoDBObservabilityBackend');
-
-// DynamoDB limits
-const DYNAMO_BATCH_SIZE = 25;
-const DYNAMO_MAX_ITEM_SIZE = 400 * 1024; // 400KB per item
-const MAX_BUFFER_SIZE = 1000;
 
 @Injectable({
   provide: 'ObservabilityBackend',
@@ -27,20 +25,23 @@ const MAX_BUFFER_SIZE = 1000;
 export class DynamoDBObservabilityBackend implements ObservabilityBackend {
   public readonly name = 'dynamodb';
   public readonly minLevel?: ObservabilityLevel;
-
   private buffer: ObservabilityEvent[] = [];
-  private readonly ttlDays: number;
-  private readonly compressionConfig: CompressionConfig;
+  private readonly config: DynamoDBConfig;
 
   constructor(
-    @InjectConfig('observability.dynamodb.ttlDays') ttlDays: number,
     @InjectConfig('observability.minLevel') minLevel: ObservabilityLevel,
-    @InjectConfig('observability.dynamodb.compression') compression: CompressionConfig,
+    @InjectConfig('observability.dynamodb') config: DynamoDBConfig,
     @Inject(ObservabilityLogService) private readonly service: ObservabilityLogService
   ) {
     this.minLevel = minLevel;
-    this.ttlDays = ttlDays;
-    this.compressionConfig = compression;
+    this.config = config;
+
+    if (config.truncation?.enabled) {
+      logger.info('Truncation enabled for observability logs', {
+        fields: config.truncation.fields,
+        maxBytes: config.truncation.maxBytes
+      });
+    }
   }
 
   initializeInvocation(): void {
@@ -61,11 +62,11 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
 
     this.buffer.push(event);
 
-    if (this.buffer.length >= DYNAMO_BATCH_SIZE) {
+    if (this.buffer.length >= (this.config.maxBatchSize ?? 25)) {
       await this.flush();
     }
 
-    if (this.buffer.length >= MAX_BUFFER_SIZE) {
+    if (this.buffer.length >= (this.config.maxBufferSize ?? 1000)) {
       logger.warn(`Buffer overflow (${this.buffer.length} events), force flushing`);
       await this.flush();
     }
@@ -75,9 +76,10 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
     if (this.buffer.length === 0) return;
 
     const events = this.buffer.splice(0, this.buffer.length);
+    const batchSize = this.config.maxBatchSize ?? 25;
 
-    for (let i = 0; i < events.length; i += DYNAMO_BATCH_SIZE) {
-      const batch = events.slice(i, i + DYNAMO_BATCH_SIZE);
+    for (let i = 0; i < events.length; i += batchSize) {
+      const batch = events.slice(i, i + batchSize);
       await this.writeBatch(batch);
     }
   }
@@ -118,27 +120,14 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
       const nowSeconds = Math.floor(Date.now() / 1000);
 
       const items = events.map((event) => {
-        // Use per-event TTL override if specified, otherwise use default
-        const ttlDays = event.capture?.ttlDays ?? this.ttlDays;
+        const ttlDays = event.capture?.ttlDays ?? this.config.ttlDays;
         const ttlSeconds = nowSeconds + ttlDays * 24 * 60 * 60;
         return this.mapEventToItem(event, ttlSeconds);
       });
 
-      // Filter out oversized items and items without observabilityLogId
       const validItems = items.filter((item): item is ObservabilityLogCreateItem & { observabilityLogId: string } => {
-        // observabilityLogId is required for deduplication
         if (!item.observabilityLogId) {
           logger.warn('Item missing observabilityLogId, skipping');
-          return false;
-        }
-
-        const size = estimateItemSize(item);
-        if (size > DYNAMO_MAX_ITEM_SIZE) {
-          logger.warn(`Item too large (${size} bytes), skipping:`, {
-            observabilityLogId: item.observabilityLogId,
-            type: item.type,
-            size,
-          });
           return false;
         }
         return true;
@@ -217,11 +206,12 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
       const deduplicatedItems = Array.from(chosenById.values());
       if (deduplicatedItems.length === 0) return;
 
-      // Apply compression to items if enabled
-      const itemsToWrite = this.compressionConfig.enabled
-        ? deduplicatedItems.map(item => compressItem(item, this.compressionConfig))
+      // Apply optional truncation (entity schema handles compression automatically)
+      const itemsToWrite = this.config.truncation?.enabled
+        ? deduplicatedItems.map(item => truncateItem(item, this.config.truncation!.fields, this.config.truncation!.maxBytes))
         : deduplicatedItems;
 
+      // Service auto-compresses via entity schema (data, metadata fields)
       await this.service.batchCreate(itemsToWrite);
     } catch (error) {
       if (this.isRetryableError(error) && retryCount < MAX_RETRIES) {
@@ -244,7 +234,7 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
   }
 
   private mapEventToItem(event: ObservabilityEvent, ttlSeconds: number): ObservabilityLogCreateItem {
-    const item: ObservabilityLogCreateItem = {
+    return {
       observabilityLogId: event.observabilityLogId,
       parentObservabilityLogId: typeof event.parentObservabilityLogId === 'string'
         ? event.parentObservabilityLogId
@@ -264,15 +254,14 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
       durationMs: event.durationMs,
       source: event.source,
       tags: event.tags,
-      actor: event.actor ? truncatePayload(event.actor) : undefined,
-      data: event.data ? truncatePayload(event.data) : undefined,
-      attributes: event.attributes ? truncatePayload(event.attributes) : undefined,
-      metadata: event.metadata ? truncatePayload(event.metadata) : undefined,
+      actor: event.actor,
+      data: event.data,
+      attributes: event.attributes,
+      metadata: event.metadata,
       metrics: event.metrics,
-      context: event.context ? truncatePayload(event.context) : undefined,
+      context: event.context,
       error: event.error,
       ttl: ttlSeconds,
     };
-    return item;
   }
 }

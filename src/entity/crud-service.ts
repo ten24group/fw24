@@ -9,7 +9,7 @@ import { EntityValidationError } from "./errors/validation-error";
 import { Actor } from "../core/types/execution-context";
 import { entityFilterCriteriaToExpression } from "./query";
 import type { EntityQuery } from "./query-types";
-import { MetricObserver, SpanObserver } from "../observability/observers";
+import { MetricObserver, SpanObserver, QueryObserver } from "../observability/observers";
 
 /**
  * 
@@ -118,7 +118,9 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
         throw new EntityValidationError(validation.errors);
     }
 
-    const entity = await entityService.getRepository().get(identifiers).go({ attributes });
+    const entity = await QueryObserver.track(entityName, 'get', () =>
+        entityService.getRepository().get(identifiers).go({ attributes })
+    );
 
     // await eventDispatcher.dispatch({event: 'afterGet', context: arguments});
 
@@ -205,10 +207,13 @@ export async function getBatchEntity<S extends EntitySchema<any, any, any>>(opti
     }
 
     // Perform batch get operation with concurrency control
-    const result = await entityService.getRepository().get(identifiersBatch).go({
-        attributes,
-        concurrent
-    });
+    const result = await QueryObserver.track(entityName, 'batchGet', () =>
+        entityService.getRepository().get(identifiersBatch).go({
+            attributes,
+            concurrent
+        }),
+        { itemCount: identifiersBatch.length }
+    );
 
     logger.debug(`Completed EntityCrud ~ getBatchEntity ~ entityName: ${entityName} ~ ids:`, ids);
 
@@ -290,7 +295,9 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     //     throw new Error("Authorization failed for create: " + { cause: authorization });
     // }
 
-    const entity = await entityService.getRepository().create(data).go();
+    const entity = await QueryObserver.track(entityName, 'create', () =>
+        entityService.getRepository().create(data).go()
+    );
 
     // post events
     // await eventDispatcher?.dispatch({ event: 'afterCreate', context: {...arguments, entity} });
@@ -378,7 +385,9 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
 
     // Use "all_old" to get the previous item state - allows us to detect create vs update
     // If oldData is empty/null, it was a CREATE. If it has data, it was an UPDATE.
-    const entity = await entityService.getRepository().upsert(data as any).go({ response: "all_old" });
+    const entity = await QueryObserver.track(entityName, 'upsert', () =>
+        entityService.getRepository().upsert(data as any).go({ response: "all_old" })
+    );
 
     const wasCreated = !entity.data || Object.keys(entity.data).length === 0;
     const oldData = wasCreated ? undefined : entity.data;
@@ -601,7 +610,10 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
         if (filters && !isEmptyObject(filters)) {
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
-        entities = await indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination) });
+        entities = await QueryObserver.track(entityName, 'list', () =>
+            indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination) }),
+            { filters, indexName: matchResult.indexName, pagination }
+        );
     } else {
         // Use match for full scan
         logger.warn(`WARNING: No matching index found for entity: ${entityName}, using match for full scan`, filters);
@@ -630,7 +642,10 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
             scanQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
         // TODO: add attributes to scan query
-        entities = await scanQuery.go(removeEmpty(pagination));
+        entities = await QueryObserver.track(entityName, 'scan', () =>
+            scanQuery.go(removeEmpty(pagination)),
+            { filters, pagination }
+        );
     }
 
     // await eventDispatcher.dispatch({ event: 'afterList', context: arguments });
@@ -700,7 +715,10 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
         if (filters && !isEmptyObject(filters)) {
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
-        entities = await indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination) });
+        entities = await QueryObserver.track(entityName, 'query', () =>
+            indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination) }),
+            { filters, indexName: matchResult.indexName, pagination }
+        );
     } else {
         // Use match for full scan
         logger.warn(`WARNING: No matching index found for entity: ${entityName}, using match for full scan`, filters);
@@ -729,7 +747,10 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
             scanQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
         // TODO: add attributes to scan query
-        entities = await scanQuery.go(removeEmpty(pagination));
+        entities = await QueryObserver.track(entityName, 'scan', () =>
+            scanQuery.go(removeEmpty(pagination)),
+            { filters, pagination }
+        );
     }
 
     // await eventDispatcher.dispatch({ event: 'afterQuery', context: arguments });
@@ -985,9 +1006,9 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         query.remove(operators.remove as any);
     }
 
-    const entity = await query.go();
-
-
+    const entity = await QueryObserver.track(entityName, 'update', () =>
+        query.go()
+    );
 
     // // post events
     // await eventDispatcher?.dispatch({ event: 'afterUpdate', context: {...arguments, entity} });
@@ -1062,7 +1083,9 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
         throw new EntityValidationError(validation.errors);
     }
 
-    const entity = await entityService.getRepository().delete(identifiers).go();
+    const entity = await QueryObserver.track(entityName, 'delete', () =>
+        entityService.getRepository().delete(identifiers).go()
+    );
 
     // await eventDispatcher.dispatch({event: 'afterDelete', context: arguments});
 
@@ -1150,7 +1173,10 @@ export async function deleteBatchEntity<S extends EntitySchema<any, any, any>>(o
         concurrency: concurrent
     };
 
-    const electroResult = await entityService.getRepository().delete(identifiersBatch).go(bulkOptions);
+    const electroResult = await QueryObserver.track(entityName, 'batchDelete', () =>
+        entityService.getRepository().delete(identifiersBatch).go(bulkOptions),
+        { itemCount: identifiersBatch.length }
+    );
 
     logger.debug(`Completed EntityCrud ~ deleteBatchEntity ~ entityName: ${entityName} ~ ids:`, ids);
 

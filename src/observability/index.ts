@@ -52,16 +52,28 @@ export {
   type RecordOverrides,
   type ContextOverrides,
 
+  // Decorator types
+  type DecoratorBaseOptions,
+  type SourceType,
+
   // Config types
   type ObservabilityConfig,
   type ObservabilityBackend,
   type ObservabilityBackendConfig,
-  type ObservabilityDataProtectionConfig,
+  type DataProtectionConfig,
+  type TruncationConfig,
+  type DynamoDBConfig,
   type SamplingConfig,
   type TypeSpecificConfig,
   type IEventCapture,
   DefaultSamplingConfig,
+
+  // Deprecated aliases
 } from './types';
+
+// === NOISE REDUCTION PRIORITY SYSTEM ===
+export { DECISION_BASE_PRIORITY, evaluateNoiseRules, getEffectivePriority } from './noise-reduction/priority';
+export type { NoiseEvaluationResult } from './noise-reduction/priority';
 
 // === CORE MANAGER ===
 export {
@@ -74,6 +86,7 @@ export {
 export {
   CONFIG_DEFAULTS,
   createObservabilityConfig,
+  extendPreset,
   ObservabilityConfigInput,
   VALID_BACKENDS,
   validateConfig,
@@ -191,10 +204,10 @@ export { DynamoDBObservabilityBackend } from './backends/dynamodb';
 export { OTELObservabilityBackend } from './backends/otel';
 
 // === UTILITIES ===
-export { clearRedactorCache, DataProtectionConfig, DEFAULT_BLACKLISTED_KEYS, DEFAULT_PROTECTED_FIELDS, extendBlacklist, redactSensitiveData, shouldRedactKey } from './utils/data-protection';
+export { clearRedactorCache, DEFAULT_BLACKLISTED_KEYS, DEFAULT_PROTECTED_FIELDS, extendBlacklist, redactSensitiveData, shouldRedactKey } from './utils/data-protection';
 export { generateSpanId, generateTraceId } from './utils/id-generator';
 export { levelToPowertoolsLogLevel, levelToString, stringToLevel } from './utils/level-utils';
-export { estimateItemSize, isPayloadWithinLimits, safeStringify, truncatePayload } from './utils/payload';
+export { estimateItemSize, isPayloadWithinLimits, safeStringify, truncatePayload, truncateItem, type TruncationMetadata } from './utils/payload';
 export { clearEnvironmentTagsCache, createControllerSource, createQueueSource, createServiceSource, createTaskSource, detectSource, getEnvironmentTags, mergeTags as mergeSourceTags } from './utils/source-utils';
 
 // === TRACE GRAPH (explicit parent/causedBy graph) ===

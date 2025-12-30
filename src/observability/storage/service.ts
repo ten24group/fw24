@@ -84,10 +84,14 @@ export class ObservabilityLogService extends BaseEntityService<ObservabilityLogS
     }, container);
   }
 
-  /** Batch create - used by DynamoDB backend */
+  /** 
+   * Batch create - used by DynamoDB backend
+   * Auto-compresses fields marked with `compressed: true` in entity schema
+   */
   async batchCreate(items: ObservabilityLogCreateItem[]): Promise<void> {
+    const compressedItems = items.map(item => this.compressFields(item));
     const repo = this.getRepository();
-    await repo.put(items).go();
+    await repo.put(compressedItems).go();
   }
 
   /** Override list to default to desc order (latest first) */

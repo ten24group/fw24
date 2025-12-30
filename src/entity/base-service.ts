@@ -14,7 +14,7 @@ import { BaseSearchService, EntitySearchService } from '../search/services';
 import { EntitySearchQuery } from '../search/types';
 import { Observed } from "../observability/decorators/observed";
 import { makeEntitySearchIndexName } from '../search/search-utils';
-import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
+import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug, compressIfNeeded, decompressItem, isCompressed } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
 import { UpdateEntityOperators, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
 import { EntitySchemaValidator } from "./entity-schema-validator";
@@ -1064,12 +1064,17 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         this.logger.debug(`Retrieved entity: ${this.getEntityName()}`, JsonSerializer.stringify(entity));
 
-        if (!!formattedAttributes && entity?.data) {
-            const relationalAttributes = Object.entries(formattedAttributes)?.map(([ attributeName, options ]) => [ attributeName, options ])
-                .filter(([ , options ]) => isObject(options));
+        if (entity?.data) {
+            // Decompress fields after reading from DB
+            entity.data = this.decompressFields(entity.data);
 
-            if (relationalAttributes.length) {
-                await this.hydrateRecords(relationalAttributes as any, [ entity.data ]);
+            if (!!formattedAttributes) {
+                const relationalAttributes = Object.entries(formattedAttributes)?.map(([ attributeName, options ]) => [ attributeName, options ])
+                    .filter(([ , options ]) => isObject(options));
+
+                if (relationalAttributes.length) {
+                    await this.hydrateRecords(relationalAttributes as any, [ entity.data ]);
+                }
             }
         }
 
@@ -1149,12 +1154,17 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         this.logger.debug(`Retrieved batch entities: ${this.getEntityName()}`, JsonSerializer.stringify(entity));
 
-        if (!!formattedAttributes && entity?.data) {
-            const relationalAttributes = Object.entries(formattedAttributes)?.map(([ attributeName, options ]) => [ attributeName, options ])
-                .filter(([ , options ]) => isObject(options));
+        if (entity?.data) {
+            // Decompress all records
+            entity.data = entity.data.map(record => this.decompressFields(record));
 
-            if (relationalAttributes.length) {
-                await this.hydrateRecords(relationalAttributes as any, entity.data);
+            if (!!formattedAttributes) {
+                const relationalAttributes = Object.entries(formattedAttributes)?.map(([ attributeName, options ]) => [ attributeName, options ])
+                    .filter(([ , options ]) => isObject(options));
+
+                if (relationalAttributes.length) {
+                    await this.hydrateRecords(relationalAttributes as any, entity.data);
+                }
             }
         }
 
@@ -1411,13 +1421,17 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             }
         }
 
+        // Compress fields before writing
+        payloadCopy = this.compressFields(payloadCopy);
+
         const entity = await createEntity<S>({
             data: payloadCopy,
             entityName: this.getEntityName(),
             entityService: this,
         });
 
-        return entity;
+        // Decompress fields after reading
+        return this.decompressFields(entity);
     }
 
     /**
@@ -1450,7 +1464,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         // Inject actor context so DynamoDB images always have _actor for auditing/causedBy
         // Treat upsert as an update for actor-field purposes (we always want _actor and updatedBy/updatedAt).
-        const payloadCopy = this.injectActorContext({ ...payload }, 'upsert');
+        let payloadCopy = this.injectActorContext({ ...payload }, 'upsert');
+
+        // Compress fields before writing
+        payloadCopy = this.compressFields(payloadCopy);
 
         const result = await upsertEntity<S>({
             data: payloadCopy,
@@ -1458,7 +1475,12 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             entityService: this,
         });
 
-        return result;
+        // Decompress result fields
+        return {
+            ...result,
+            data: result.data ? this.decompressFields(result.data) : result.data,
+            oldData: result.oldData ? this.decompressFields(result.oldData) : undefined
+        };
     }
 
     /**
@@ -1606,6 +1628,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             entityService: this,
         });
 
+        // Decompress all records
+        entities.data = entities.data.map(record => this.decompressFields(record));
+
         entities.data = this.serializeRecords(entities.data, query.attributes);
 
         if (query.attributes && entities.data) {
@@ -1692,6 +1717,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             entityService: this,
         });
 
+        // Decompress all records
+        entities.data = entities.data.map(record => this.decompressFields(record));
+
         entities.data = this.serializeRecords(entities.data, selectAttributes);
 
         if (selectAttributes && entities.data) {
@@ -1770,6 +1798,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             }
         }
 
+        // Compress fields before writing
+        enhancedData = this.compressFields(enhancedData);
+
         const updatedEntity = await updateEntity<S>({
             id: identifiers,
             data: enhancedData,
@@ -1778,7 +1809,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             entityService: this,
         });
 
-        return updatedEntity;
+        // Decompress fields after reading
+        return this.decompressFields(updatedEntity);
     }
 
     /**
@@ -2245,7 +2277,43 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             // * Note: we expect an array of attribute names
             query.select = this.getListingAttributeNames() as any;
         }
-        return searchService.search(query, undefined, ctx);
+        const result = await searchService.search(query, undefined, ctx);
+
+        // Decompress hits if present
+        if (result?.hits && Array.isArray(result.hits)) {
+            result.hits = result.hits.map(hit => this.decompressFields(hit));
+        }
+
+        return result;
+    }
+
+    /**
+     * Compress fields marked with `compressed: true` in schema.
+     * Called automatically before writing to DB.
+     */
+    protected compressFields<T extends Record<string, any>>(data: T): T {
+        const attributes = this.getEntitySchema().attributes;
+        const result = { ...data } as Record<string, any>;
+
+        for (const [ fieldName, attribute ] of Object.entries(attributes)) {
+            if (!attribute.compressed || !(fieldName in result)) continue;
+
+            const threshold = typeof attribute.compressed === 'object'
+                ? attribute.compressed.threshold
+                : 10 * 1024; // Default 10KB
+
+            result[ fieldName ] = compressIfNeeded(result[ fieldName ], threshold);
+        }
+
+        return result as T;
+    }
+
+    /**
+     * Decompress fields that have compressed data.
+     * Called automatically after reading from DB.
+     */
+    protected decompressFields<T extends Record<string, any>>(data: T): T {
+        return decompressItem(data);
     }
 }
 

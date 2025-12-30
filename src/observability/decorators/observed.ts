@@ -23,9 +23,9 @@ import { getCurrentExecutionContext } from '../../core/runtime/execution-context
 import { AuditObserver } from '../observers/audit';
 import { MetricObserver } from '../observers/metric';
 import { SpanObserver, SpanOptions, ISpanObserver } from '../observers/span';
-import type { NoiseControl } from '../types';
+import type { DecoratorBaseOptions } from '../types';
 import { safeSerialize } from '../utils/payload';
-import { SourceType, resolveSource } from './decorator-utils';
+import { resolveSource } from './decorator-utils';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -84,16 +84,16 @@ export interface ObservedExtractor<TInstance, TArgs extends unknown[], TResult> 
   finish?: BivariantFn<(ctx: ObservedExtractContext<TInstance, TArgs, TResult>) => ObservedEnrichment | void>;
 }
 
-export interface ObservedOptions<TInstance = unknown, TArgs extends unknown[] = unknown[], TResult = unknown> {
+export interface ObservedOptions<TInstance = unknown, TArgs extends unknown[] = unknown[], TResult = unknown> extends DecoratorBaseOptions {
   /** Operation name (defaults to ClassName.methodName) */
   name?: string;
 
-  /** Create span for distributed tracing (default: true if nothing else specified) */
-  trace?: boolean | {
-    level?: SpanOptions[ 'level' ];
-    attributes?: Record<string, unknown>;
-    capture?: SpanOptions[ 'capture' ];
-  };
+  /** 
+   * Create span for distributed tracing (default: true if nothing else specified).
+   * Can be boolean or partial SpanOptions to configure the span.
+   * Use capture.noise for noise reduction control.
+   */
+  trace?: boolean | Partial<SpanOptions>;
 
   /** Create audit record */
   audit?: boolean | {
@@ -112,17 +112,6 @@ export interface ObservedOptions<TInstance = unknown, TArgs extends unknown[] = 
     tags?: Record<string, string>;
   };
 
-  /** Source type (auto-detected if not provided) */
-  sourceType?: SourceType;
-  /** Tags applied to all events */
-  tags?: Record<string, string>;
-  /** Capture method arguments */
-  captureArgs?: boolean;
-  /** Capture return value */
-  captureResult?: boolean;
-  /** Conditionally enable/disable */
-  enabled?: boolean | (() => boolean);
-
   /**
    * Unified extraction API (recommended).
    *
@@ -130,12 +119,6 @@ export interface ObservedOptions<TInstance = unknown, TArgs extends unknown[] = 
    * without needing 3-4 separate callbacks.
    */
   extract?: ObservedExtractor<TInstance, TArgs, TResult>;
-
-  /**
-   * Noise reduction override for the trace span created by this decorator.
-   * Convenience for setting `trace.capture.noise`.
-   */
-  noise?: NoiseControl;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -169,7 +152,6 @@ export function Observed(options: ObservedOptions = {}) {
     const className = ('name' in target ? target.name : target.constructor.name) as string;
     const methodName = String(propertyKey);
     const operationName = options.name ?? `${className}.${methodName}`;
-    const source = resolveSource(options.sourceType, className, methodName);
     const shouldTrace = computeShouldTrace(options);
     const traceOptions = typeof options.trace === 'object' ? options.trace : {};
 
@@ -179,33 +161,50 @@ export function Observed(options: ObservedOptions = {}) {
         return originalMethod.apply(this, args) as ReturnType<T>;
       }
 
+      // Extract RecordOverrides from options (these get passed through to SpanObserver)
+      const {
+        captureArgs,
+        captureResult,
+        enabled,
+        sourceType,
+        name,
+        trace,
+        audit,
+        metric,
+        extract,
+        ...recordOverrides
+      } = options;
+
+      // Compute source (use explicit source override if provided, otherwise auto-detect)
+      const computedSource = resolveSource(sourceType, className, methodName);
+      const finalSource = recordOverrides.source ?? computedSource;
+
       // Build span options (only compute dynamic attrs if tracing)
       const spanOptions: SpanOptions & {
         onStart?: (span: ISpanObserver) => void;
         onFinish?: (span: ISpanObserver, result: { value?: unknown; error?: Error; success: boolean; durationMs: number }) => void;
       } = {
-        level: traceOptions.level,
-        capture: options.noise
-          ? { ...(traceOptions.capture ?? {}), noise: options.noise }
-          : traceOptions.capture,
-        source,
+        ...traceOptions,
+        ...recordOverrides,
+        source: finalSource,
         tags: shouldTrace ? {
-          ...options.tags,
+          ...recordOverrides.tags,
           'code.function': methodName,
           'code.namespace': className,
-        } : options.tags,
+        } : recordOverrides.tags,
         data: shouldTrace ? {
-          ...(options.captureArgs && args.length > 0 && { args: safeSerialize(args) }),
-        } : undefined,
+          ...traceOptions.data,
+          ...(captureArgs && args.length > 0 && { args: safeSerialize(args) }),
+        } : traceOptions.data,
         skipCapture: !shouldTrace,
         onStart: (span: ISpanObserver) => {
           applyObservedEnrichment(
             span,
-            options.extract?.start?.({
+            extract?.start?.({
               instance: this,
               args,
               operationName,
-              source,
+              source: finalSource,
               span,
             })
           );
@@ -214,11 +213,11 @@ export function Observed(options: ObservedOptions = {}) {
           // Unified extractor (finish hook)
           applyObservedEnrichment(
             span,
-            options.extract?.finish?.({
+            extract?.finish?.({
               instance: this,
               args,
               operationName,
-              source,
+              source: finalSource,
               result: result.value as unknown,
               error: result.error,
               success: result.success,
@@ -227,7 +226,7 @@ export function Observed(options: ObservedOptions = {}) {
             })
           );
 
-          onMethodFinish(span, options, operationName, args, result, source);
+          onMethodFinish(span, options, operationName, args, result, finalSource, recordOverrides);
         },
       };
 
@@ -267,7 +266,8 @@ function onMethodFinish(
   operationName: string,
   args: unknown[],
   result: { value?: unknown; error?: Error; success: boolean; durationMs: number },
-  source: string
+  source: string,
+  recordOverrides: Partial<DecoratorBaseOptions>
 ): void {
   const { value, error, success, durationMs } = result;
 
@@ -280,12 +280,12 @@ function onMethodFinish(
 
   // Audit (only if configured)
   if (options.audit) {
-    recordAudit(options, operationName, args, value, success, durationMs, source, error);
+    recordAudit(options, operationName, args, value, success, durationMs, source, error, recordOverrides);
   }
 
   // Metrics (only if configured)
   if (options.metric) {
-    recordMetric(options, operationName, success, durationMs, source);
+    recordMetric(options, operationName, success, durationMs, source, recordOverrides);
   }
 }
 
@@ -323,7 +323,8 @@ function recordAudit(
   success: boolean,
   durationMs: number,
   source: string,
-  error?: Error
+  error: Error | undefined,
+  recordOverrides: Partial<DecoratorBaseOptions>
 ): void {
   const auditOpts = typeof options.audit === 'object' ? options.audit : {};
   const data: Record<string, unknown> = { success, durationMs };
@@ -344,7 +345,7 @@ function recordAudit(
     data,
     level: error ? 'error' : (auditOpts.level ?? 'info'),
     source,
-    tags: options.tags,
+    ...recordOverrides,
   });
 }
 
@@ -353,19 +354,22 @@ function recordMetric(
   operationName: string,
   success: boolean,
   durationMs: number,
-  source: string
+  source: string,
+  recordOverrides: Partial<DecoratorBaseOptions>
 ): void {
   const metricOpts = options.metric;
   if (!metricOpts) return;
-  const metricTags = { ...options.tags, ...metricOpts.tags, success: String(success) };
+  const metricTags = { ...recordOverrides.tags, ...metricOpts.tags, success: String(success) };
 
   if (metricOpts.type === 'counter') {
     MetricObserver.increment(metricOpts.name ?? `${operationName}.count`, 1, {
+      ...recordOverrides,
       tags: metricTags,
       source,
     });
   } else if (metricOpts.type === 'timing') {
     MetricObserver.timing(metricOpts.name ?? `${operationName}.duration`, durationMs, {
+      ...recordOverrides,
       tags: metricTags,
       unit: metricOpts.unit ?? 'milliseconds',
       source,

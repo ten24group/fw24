@@ -6,29 +6,39 @@
  */
 
 import { gzipSync, gunzipSync } from 'zlib';
-import { createLogger } from '../../logging';
+import { createLogger } from '../logging';
 
-const logger = createLogger('observability:compression');
+const logger = createLogger('compression');
 
+/**
+ * Compression configuration interface.
+ * Can be used by ANY entity/service in fw24.
+ */
 export interface CompressionConfig {
-  /** Enable compression */
   enabled: boolean;
-  /** Minimum size in bytes before compression is applied */
   threshold: number;
-  /** Fields to compress if they exceed threshold */
-  fields: ReadonlyArray<'data' | 'attributes' | 'metadata' | 'context'>;
+  fields: ReadonlyArray<string>;
 }
 
-interface CompressedPayload {
-  /** Marker to indicate this is compressed data */
+/**
+ * Standard compressed payload format.
+ * 
+ * **Contract:**
+ * - `_compressed: true` - Always true, marker for detection
+ * - `_algorithm: 'gzip'` - Currently only gzip supported
+ * - `_data: string` - Base64-encoded gzip data
+ * - `_originalSize: number` - Original size in bytes (for UI display)
+ * - `_compressedSize: number` - Compressed size in bytes (for metrics)
+ * 
+ * **Frontend Detection:**
+ * UI24 checks for `_compressed === true` and `_algorithm === 'gzip'`
+ * then decompresses `_data` (base64 → binary → gunzip → JSON.parse)
+ */
+export interface CompressedPayload {
   _compressed: true;
-  /** Compression algorithm used */
   _algorithm: 'gzip';
-  /** Base64-encoded compressed data */
   _data: string;
-  /** Original size in bytes (for metrics) */
   _originalSize: number;
-  /** Compressed size in bytes (for metrics) */
   _compressedSize: number;
 }
 
@@ -47,16 +57,17 @@ export function isCompressed(value: unknown): value is CompressedPayload {
 }
 
 /**
- * Compress a value if it exceeds the threshold
+ * Compress a value if it exceeds the threshold.
+ * Returns CompressedPayload in standard format.
  * 
  * @param value - Value to compress
  * @param threshold - Minimum size in bytes before compression
- * @returns Compressed payload or original value if below threshold
+ * @returns CompressedPayload if compressed, original value if below threshold
  */
 export function compressIfNeeded(
   value: unknown,
   threshold: number
-): unknown {
+): unknown | CompressedPayload {
   if (value === null || value === undefined) {
     return value;
   }

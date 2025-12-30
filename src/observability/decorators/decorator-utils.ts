@@ -4,7 +4,9 @@
  * Eliminates duplication across @Observed, @Traced, @Audited
  */
 
-export { SourceType, resolveSource } from '../utils/source-utils';
+// Re-export from types for type consistency
+export type { SourceType } from '../types';
+export { resolveSource } from '../utils/source-utils';
 
 /**
  * Execute a method with callbacks for success/error handling.
