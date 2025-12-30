@@ -914,11 +914,95 @@ export function applyNoiseReduction(
     if (e.type === 'span') outputSpanIds.add(e.observabilityLogId);
   }
 
+  // === REPARENT ORPHANED CHILDREN ===
+  // If a child's parent was dropped/aggregated, reparent it to the nearest kept ancestor.
+  // This prevents "parent not found" errors in the UI.
+  // Track bypassed parents so hierarchy integrity doesn't force-keep them.
+  const bypassedParents = new Set<string>(); // Parents that were bypassed during reparenting
+
+  const findKeptAncestor = (parentId: string | undefined | null, visited: Set<string> = new Set()): string | undefined => {
+    if (!parentId) return undefined;
+
+    // If parent is in output, use it
+    if (outputSpanIds.has(parentId)) return parentId;
+
+    // Prevent infinite loops
+    if (visited.has(parentId)) return undefined;
+    visited.add(parentId);
+
+    // Parent was dropped - recursively find its kept ancestor
+    const parentSpan = spanById.get(parentId);
+    if (!parentSpan) return undefined; // Parent not in this batch, no reparenting possible
+
+    // Mark this parent as bypassed
+    bypassedParents.add(parentId);
+
+    return findKeptAncestor(parentSpan.parentObservabilityLogId ?? undefined, visited);
+  };
+
+  for (const e of output) {
+    const originalParentId = e.parentObservabilityLogId ?? undefined;
+    if (!originalParentId) continue; // Root event, no parent
+
+    // If parent exists in output, no reparenting needed
+    if (outputSpanIds.has(originalParentId)) continue;
+
+    // Parent was dropped - find nearest kept ancestor
+    const keptAncestorId = findKeptAncestor(originalParentId);
+
+    if (keptAncestorId && keptAncestorId !== originalParentId) {
+      // Reparent to kept ancestor
+      e.parentObservabilityLogId = keptAncestorId;
+
+      // Add debug checkpoint if enabled
+      if (getBounds(cfg).includeDebugMetadata) {
+        const data = (e.data || {}) as Record<string, unknown>;
+        if (!data.checkpoints) {
+          data.checkpoints = [];
+        }
+        const checkpoints = data.checkpoints as Array<Record<string, unknown>>;
+        checkpoints.push({
+          name: 'noiseReduction.reparented',
+          ts: Date.now(),
+          data: {
+            originalParent: originalParentId,
+            newParent: keptAncestorId,
+            reason: 'Original parent was dropped by noise reduction'
+          }
+        });
+        e.data = data;
+      }
+    } else if (!keptAncestorId) {
+      // No kept ancestor found - this is now a root event
+      e.parentObservabilityLogId = undefined;
+
+      if (getBounds(cfg).includeDebugMetadata) {
+        const data = (e.data || {}) as Record<string, unknown>;
+        if (!data.checkpoints) {
+          data.checkpoints = [];
+        }
+        const checkpoints = data.checkpoints as Array<Record<string, unknown>>;
+        checkpoints.push({
+          name: 'noiseReduction.orphaned',
+          ts: Date.now(),
+          data: {
+            originalParent: originalParentId,
+            reason: 'Original parent and all ancestors were dropped by noise reduction'
+          }
+        });
+        e.data = data;
+      }
+    }
+  }
+
   const requiredParents = new Set<string>();
-  // Parents referenced by emitted events
+  // Parents referenced by emitted events (after reparenting)
+  // Exclude bypassed parents (they were intentionally skipped during reparenting)
   for (const e of output) {
     const pid = e.parentObservabilityLogId ?? undefined;
-    if (pid) requiredParents.add(pid);
+    if (pid && !bypassedParents.has(pid)) {
+      requiredParents.add(pid);
+    }
   }
   // Parents that had suppression under them (need to exist so summaries/checkpoints are visible)
   // BUT: only if the parent span itself wasn't dropped by a noise reduction rule.
@@ -972,6 +1056,22 @@ export function applyNoiseReduction(
       if (!parentSpan) continue;
 
       if (!outputSpanIds.has(pid)) {
+        // Check if this span was supposed to be suppressed (aggregated/folded/dropped).
+        // If so, only force-keep it if it has KEPT children in the output.
+        // Don't force-keep it just because it has its own suppressed children.
+        const spanDecision = spanDecisionById.get(pid);
+        if (spanDecision === 'aggregate' || spanDecision === 'fold' || spanDecision === 'drop') {
+          // This span was suppressed. Check if it has any KEPT children.
+          const hasKeptChildren = output.some(e => e.parentObservabilityLogId === pid);
+          if (!hasKeptChildren) {
+            // No kept children - this span should stay suppressed
+            // Remove from requiredParents so transitive closure doesn't propagate it
+            requiredParents.delete(pid);
+            continue;
+          }
+          // Has kept children - must force-keep for hierarchy integrity
+        }
+
         // Force keep parent span for integrity.
         const d = ensureSpanData(parentSpan);
         const nrRaw = d.noiseReduction;

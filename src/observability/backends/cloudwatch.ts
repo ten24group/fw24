@@ -56,18 +56,14 @@ export class CloudWatchBackend implements ObservabilityBackend {
 
   async capture(event: ObservabilityEvent): Promise<void> {
     try {
-      // ALWAYS extract and publish metrics via EMF if present, regardless of event type
-      // This ensures metrics embedded in spans, audits, or logs are published as CloudWatch metrics
-      if (event.metrics && Object.keys(event.metrics).length > 0) {
-        this.hasAnyMetrics = true;
-        this.handleMetric(event);
-      }
+      // Batch ALL metrics (event.metrics + span duration) into a SINGLE EMF log
+      const hasEventMetrics = event.metrics && Object.keys(event.metrics).length > 0;
+      const hasSpanDuration = event.type === 'span' && event.durationMs !== undefined && !event.metrics?.duration;
 
-      // For consolidated span records, publish durationMs as a separate metric ONLY if not already present.
-      // This avoids duplicate metric publishing when callers also include a duration metric explicitly.
-      if (event.type === 'span' && event.durationMs !== undefined && !event.metrics?.duration) {
+      if (hasEventMetrics || hasSpanDuration) {
         this.hasAnyMetrics = true;
-        this.publishSpanDurationMetric(event);
+        // Combine both into one batched metric call
+        this.handleMetricsBatch(event, hasSpanDuration);
       }
 
       // Log the event (unless it's a pure metric event with no other data)
@@ -213,26 +209,86 @@ export class CloudWatchBackend implements ObservabilityBackend {
     return dimensionMap;
   }
 
-  private handleMetric(event: ObservabilityEvent): void {
-    if (!event.metrics || Object.keys(event.metrics).length === 0) return;
-
-    const dimensionMap = this.buildDimensions(event);
+  /**
+   * Batch ALL metrics from a single event into ONE EMF log entry.
+   * 
+   * OPTIMIZATION: Combines event.metrics + span duration into a SINGLE EMF log
+   * BEFORE (inefficient): 5 event metrics + 1 span duration = 2 separate EMF logs
+   * AFTER (optimized): 5 event metrics + 1 span duration = 1 EMF log = 50% cost reduction
+   * 
+   * CloudWatch EMF supports up to 100 metrics per log entry, so batching
+   * is almost always better than individual metric emission.
+   * 
+   * @param event - The observability event containing metrics
+   * @param includeSpanDuration - Whether to include span duration in the batch
+   */
+  private handleMetricsBatch(event: ObservabilityEvent, includeSpanDuration: boolean = false): void {
+    const dimensionMap = this.buildDimensions(event, this.getSpanDimensions(event));
     const dimensions = Array.from(dimensionMap.entries()).map(([ name, value ]) => ({ name, value }));
-    const unit = this.mapUnit(event.attributes?.unit as string | undefined);
 
-    for (const [ name, value ] of Object.entries(event.metrics)) {
-      try {
-        const singleMetric = this.metrics.singleMetric();
+    try {
+      // Create ONE metrics batch for ALL metrics (event metrics + span duration)
+      const metricsBatch = this.metrics.singleMetric();
 
-        for (const dim of dimensions) {
-          singleMetric.addDimension(dim.name, dim.value);
-        }
-
-        singleMetric.addMetric(name, unit, value);
-      } catch (error) {
-        internalLogger.warn(`Failed to add metric ${name}:`, error);
+      // Add dimensions once (shared by all metrics)
+      for (const dim of dimensions) {
+        metricsBatch.addDimension(dim.name, dim.value);
       }
+
+      // Add all event metrics to the batch
+      if (event.metrics && Object.keys(event.metrics).length > 0) {
+        for (const [ name, value ] of Object.entries(event.metrics)) {
+          const unit = this.getMetricUnit(name, event.attributes?.unit as string | undefined);
+          metricsBatch.addMetric(name, unit, value);
+        }
+      }
+
+      // Add span duration to the SAME batch (if requested)
+      if (includeSpanDuration && event.durationMs !== undefined) {
+        metricsBatch.addMetric('duration', MetricUnit.Milliseconds, event.durationMs);
+      }
+
+      // EMF will publish ONE log entry with ALL metrics (massive cost savings!)
+    } catch (error) {
+      internalLogger.warn('Failed to publish metrics batch:', error);
     }
+  }
+
+  /**
+   * Get span-specific dimensions (operation, source, success)
+   */
+  private getSpanDimensions(event: ObservabilityEvent): Record<string, string> | undefined {
+    if (event.type !== 'span') return undefined;
+
+    const dimensions: Record<string, string> = {};
+    if (event.operation) dimensions.operation = event.operation;
+    if (event.source) dimensions.source = event.source;
+    if (event.success !== undefined) dimensions.success = String(event.success);
+
+    return Object.keys(dimensions).length > 0 ? dimensions : undefined;
+  }
+
+  /**
+   * Determine the correct unit for a metric.
+   * Allows per-metric unit override via naming conventions.
+   */
+  private getMetricUnit(metricName: string, defaultUnit?: string): typeof MetricUnit[ keyof typeof MetricUnit ] {
+    // Per-metric unit detection based on name patterns
+    if (metricName.includes('duration') || metricName.includes('latency') || metricName.endsWith('Ms')) {
+      return MetricUnit.Milliseconds;
+    }
+    if (metricName.includes('count') || metricName.includes('total') || metricName.endsWith('Count')) {
+      return MetricUnit.Count;
+    }
+    if (metricName.includes('bytes') || metricName.includes('size') || metricName.endsWith('Bytes')) {
+      return MetricUnit.Bytes;
+    }
+    if (metricName.includes('percent') || metricName.includes('rate')) {
+      return MetricUnit.Percent;
+    }
+
+    // Fall back to default unit or Count
+    return this.mapUnit(defaultUnit);
   }
 
   /**

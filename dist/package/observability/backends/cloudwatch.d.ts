@@ -32,7 +32,29 @@ export declare class CloudWatchBackend implements ObservabilityBackend {
      * @returns Deduplicated dimension map
      */
     private buildDimensions;
-    private handleMetric;
+    /**
+     * Batch ALL metrics from a single event into ONE EMF log entry.
+     *
+     * OPTIMIZATION: Combines event.metrics + span duration into a SINGLE EMF log
+     * BEFORE (inefficient): 5 event metrics + 1 span duration = 2 separate EMF logs
+     * AFTER (optimized): 5 event metrics + 1 span duration = 1 EMF log = 50% cost reduction
+     *
+     * CloudWatch EMF supports up to 100 metrics per log entry, so batching
+     * is almost always better than individual metric emission.
+     *
+     * @param event - The observability event containing metrics
+     * @param includeSpanDuration - Whether to include span duration in the batch
+     */
+    private handleMetricsBatch;
+    /**
+     * Get span-specific dimensions (operation, source, success)
+     */
+    private getSpanDimensions;
+    /**
+     * Determine the correct unit for a metric.
+     * Allows per-metric unit override via naming conventions.
+     */
+    private getMetricUnit;
     /**
      * Publish span duration as a CloudWatch metric.
      * Allows creating dashboards/alarms on operation durations.

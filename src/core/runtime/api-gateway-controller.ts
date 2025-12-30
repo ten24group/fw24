@@ -303,10 +303,7 @@ export abstract class APIController extends AbstractLambdaHandler {
               if (observabilityConfig?.enabled !== false) {
                 const responseAttrs = this.buildResponseAttributes(response, observabilityConfig);
                 if (responseAttrs) {
-                  // Status code as metric, rest as data
-                  if (responseAttrs[ 'http.statusCode' ]) {
-                    requestSpan.metric('http.statusCode', responseAttrs[ 'http.statusCode' ] as number);
-                  }
+                  // Status code as attribute (not metric - it's categorical data)
                   requestSpan.setData(responseAttrs);
                 }
               }
@@ -318,9 +315,7 @@ export abstract class APIController extends AbstractLambdaHandler {
             if (observabilityConfig?.enabled !== false) {
               const responseAttrs = this.buildResponseAttributes(response, observabilityConfig);
               if (responseAttrs) {
-                if (responseAttrs[ 'http.statusCode' ]) {
-                  requestSpan.metric('http.statusCode', responseAttrs[ 'http.statusCode' ] as number);
-                }
+                // Status code as attribute (not metric - it's categorical data)
                 requestSpan.setData(responseAttrs);
               }
             }
