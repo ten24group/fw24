@@ -940,10 +940,23 @@ export function applyNoiseReduction(
     // Check if the parent span would be suppressed by noise reduction rules.
     // Use the pre-calculated decision from spanDecisionById.
     const parentDecision = spanDecisionById.get(pid);
+
     if (parentDecision === 'drop' || parentDecision === 'fold' || parentDecision === 'aggregate') {
       // Parent span was supposed to be suppressed (dropped/folded/aggregated into ITS parent).
-      // Don't force-keep it just because children were folded into it.
-      // The nested fold/aggregate data is lost, but that's acceptable since the parent is noise.
+      // Check if parent was added to requiredParents because of KEPT children (not just summaries).
+      // If parent has kept children in output, we MUST keep the parent for hierarchy integrity.
+      // If parent only has suppressed children (dropped/folded/aggregated), we can drop the parent too.
+      const hasKeptChildren = requiredParents.has(pid); // Was it added earlier (kept child references)?
+
+      if (hasKeptChildren) {
+        // Parent has kept children in output - MUST keep parent for hierarchy
+        // Keep in requiredParents (don't delete)
+        requiredParents.add(pid);
+      } else {
+        // Parent has NO kept children - only has suppressed children with summaries
+        // Drop the parent as intended by the rule
+        // Not in requiredParents, so no need to delete
+      }
       continue;
     }
 
