@@ -6,6 +6,8 @@
  * - Optional fields are intentionally optional for logged data flexibility
  * - Reuse existing FW24 types (Actor) - no redundancy
  * - Strict typing - callers must provide proper values
+ * - CaptureControl is the SINGLE source for all capture behavior
+ * - RecordOverrides defines what can be overridden when calling observers
  */
 import { Actor } from '../core/types/execution-context';
 /**
@@ -27,7 +29,7 @@ export type ObservabilityLevelString = 'trace' | 'debug' | 'info' | 'warn' | 'er
 /**
  * Base event types supported by the framework
  */
-export type BaseEventType = 'span.start' | 'span.event' | 'span.end' | 'log' | 'metric' | 'audit' | 'audit.entity' | 'audit.access' | 'audit.compliance' | 'workflow.start' | 'workflow.step' | 'workflow.end' | 'decision' | 'decision.rule' | 'decision.algorithm' | 'decision.feature_flag' | 'decision.ab_test' | 'access.request' | 'access.response';
+export type BaseEventType = 'span.start' | 'span' | 'log' | 'metric' | 'audit' | 'audit.entity' | 'audit.access' | 'audit.compliance' | 'workflow.start' | 'workflow.step' | 'workflow.end' | 'decision' | 'decision.rule' | 'decision.algorithm' | 'decision.feature_flag' | 'decision.ab_test' | 'access.request' | 'access.response';
 /**
  * All supported event types (base + custom)
  *
@@ -63,7 +65,7 @@ export type BaseEventType = 'span.start' | 'span.event' | 'span.end' | 'log' | '
  * ```
  *
  * Type categorization (for backend routing and sampling):
- * - Starts with 'span.': categorized as 'span'
+ * - Equals 'span' or 'span.start': categorized as 'span'
  * - Equals 'metric': categorized as 'metric'
  * - Starts with 'audit': categorized as 'audit'
  * - Everything else: categorized as 'log'
@@ -77,6 +79,234 @@ export interface ObservabilityError {
     message: string;
     stack?: string;
     code?: string;
+}
+/**
+ * Group-based sampling configuration for batch scenarios.
+ *
+ * Use this when processing batches of items and you want to:
+ * - Capture first N items in detail
+ * - Sample remaining items
+ * - Always capture failures
+ *
+ * The manager handles sampling decisions based on this config.
+ */
+export interface GroupSamplingConfig {
+    /** Unique group identifier (e.g., 'queue-batch-123') */
+    key: string;
+    /** Current item index in group (0-based). Caller must track this. */
+    index: number;
+    /** Total items in group (optional, for better logging) */
+    total?: number;
+    /** Capture first N items in full. Default: 3 */
+    captureFirst?: number;
+    /** Sample rate for remaining items (0-1). Default: 0.1 */
+    sampleRate?: number;
+}
+/**
+ * Capture control - per-event overrides for capture behavior.
+ *
+ * Use this to OVERRIDE global config for specific events.
+ * Most code should NOT need this - global config handles defaults.
+ *
+ * @example
+ * ```typescript
+ * // Override: Always capture this specific log (bypass sampling)
+ * LogObserver.info('Payment completed', data, {
+ *   capture: { bypass: true }
+ * });
+ *
+ * // Override: Capture this span even if it's fast
+ * SpanObserver.wrap('criticalButFast', fn, {
+ *   capture: { minDurationMs: 0 }
+ * });
+ *
+ * // Override: Don't skip this span even if empty
+ * SpanObserver.wrap('importantSpan', fn, {
+ *   capture: { skipEmpty: false }
+ * });
+ *
+ * // Batch processing with group sampling
+ * for (let i = 0; i < items.length; i++) {
+ *   LogObserver.info('Processing', { item: items[i] }, {
+ *     capture: { group: { key: 'batch-123', index: i, total: items.length } }
+ *   });
+ * }
+ * ```
+ */
+export interface CaptureControl {
+    /** Bypass sampling - always capture this record */
+    bypass?: boolean;
+    /** Priority for buffer eviction (higher = keep longer). Default: 0 */
+    priority?: number;
+    /**
+     * Override minDurationMs threshold for this span.
+     * Set to 0 to capture regardless of duration.
+     * Only applies to consolidated span records (type='span').
+     */
+    minDurationMs?: number;
+    /**
+     * Override skipEmpty for this span.
+     * Set to false to capture even if span has no events/errors.
+     * Only applies to consolidated span records (type='span').
+     */
+    skipEmpty?: boolean;
+    /**
+     * Optional per-event override for the noise-reduction pipeline.
+     *
+     * This gives developers *local control* (per decorator or per log entry) to override
+     * standard presets/rules when needed.
+     */
+    noise?: NoiseControl;
+    /** Override TTL for this record (in days). Default: from config */
+    ttlDays?: number;
+    /** Group-based sampling for batch scenarios */
+    group?: GroupSamplingConfig;
+}
+/**
+ * Noise reduction decision.
+ * - keep: persist as a standalone record (subject to normal sampling/backends)
+ * - drop: do not persist as a standalone record (may still be accounted for in summaries)
+ * - fold: merge into parent span as a checkpoint/event (best for noisy inner-loop logs)
+ * - aggregate: count occurrences and keep statistics/examples on parent span
+ * - downgrade: reduce level (e.g., error -> warn) if it's a known non-critical noise
+ */
+export type NoiseDecision = 'keep' | 'drop' | 'fold' | 'aggregate' | 'downgrade';
+/**
+ * Per-event noise control override.
+ */
+export interface NoiseControl {
+    /** Override decision for this event */
+    decision: NoiseDecision;
+    /** Optional reason for audits/debugging (included in noise summaries) */
+    reason?: string;
+}
+export type NoiseReductionPreset = 'fw24.hotpaths' | 'fw24.batch_processors';
+/**
+ * Noise reduction configuration.
+ *
+ * This layer is orthogonal to sampling:
+ * - sampling decides *whether* to store based on cost
+ * - noise reduction decides *how* to represent data (standalone vs merged vs dropped)
+ *
+ * Rule evaluation:
+ * - All matching rules are collected (custom + builtin)
+ * - Exceptions are evaluated
+ * - Rule with highest effective priority wins
+ * - Hard signals (errors/failures) are always kept unless explicitly overridden
+ */
+export interface NoiseReductionConfig {
+    enabled: boolean;
+    /** Built-in preset(s) with sane defaults for hot paths */
+    presets: NoiseReductionPreset[];
+    /**
+     * Custom rules with priority-based evaluation.
+     * When multiple rules match, highest priority wins.
+     */
+    rules: NoiseRule[];
+    /** Emit a summary marker when events are dropped/folded (default: true) */
+    emitSummaries: boolean;
+    /**
+     * Bounds for how much folded/aggregated detail can be attached to a single span.
+     * This prevents giant DynamoDB items and UI overload.
+     */
+    maxCheckpointsPerSpan: number;
+    maxAggregateKeysPerSpan: number;
+    /** How many example events to keep per aggregate key (default: 5) */
+    maxAggregateExamplesPerKey: number;
+    /** How many error examples to keep per aggregate key (default: 3) */
+    maxAggregateErrorExamplesPerKey: number;
+    /**
+     * Include debug metadata in checkpoints and summaries (default: false).
+     * When enabled, includes ruleId, reason, approxBytesSaved, byRuleId breakdowns, etc.
+     * Checkpoints are ALWAYS created (they're core to the timeline), but their data payload
+     * is minimal in production mode.
+     */
+    includeDebugMetadata: boolean;
+    /** Include examples in aggregates (default: false) */
+    includeExamples: boolean;
+}
+/**
+ * Span checkpoint entry stored on consolidated span records at `data.checkpoints`.
+ *
+ * FW24 contract:
+ * - Checkpoints are the ONLY supported nested timeline mechanism.
+ * - No compatibility is provided for legacy `data.events`.
+ */
+export interface SpanCheckpoint {
+    name: string;
+    ts: number;
+    tags?: Record<string, string>;
+    metrics?: Record<string, number>;
+    data?: Record<string, unknown>;
+    error?: ObservabilityError;
+}
+export interface NoiseRuleMatch {
+    /** Match event type(s) */
+    type?: ObservabilityEventType | ObservabilityEventType[];
+    /** Match level(s) */
+    level?: ObservabilityLevelString | ObservabilityLevelString[];
+    /** Match operation/message (exact string or regex-string like `/Publish\\s+SNS\\b/i`) */
+    operation?: string;
+    /** Match source (exact or regex string) */
+    source?: string;
+    /** Match entityName */
+    entityName?: string;
+    /** Match tag equality (all specified tags must match exactly) */
+    tags?: Record<string, string>;
+    /**
+     * Match minimum durationMs threshold (matches events where durationMs >= this value).
+     * Example: minDurationMs: 100 matches spans with 100ms or longer duration.
+     * Events without durationMs field will NOT match.
+     */
+    minDurationMs?: number;
+    /**
+     * Match maximum durationMs threshold (matches events where durationMs < this value).
+     * Example: maxDurationMs: 50 matches spans under 50ms.
+     * Combine with minDurationMs for range matching: { minDurationMs: 10, maxDurationMs: 100 } matches 10ms-99ms.
+     * Events without durationMs field will NOT match.
+     */
+    maxDurationMs?: number;
+    /**
+     * Match success status (true = successful operations, false = failed operations).
+     * Example: success: true matches all successful spans/operations.
+     * Events without success field will NOT match.
+     */
+    success?: boolean;
+}
+/**
+ * Noise reduction rule with priority-based evaluation.
+ *
+ * When multiple rules match an event, the rule with the highest effective priority wins.
+ * Effective priority = explicit priority OR decision's base priority.
+ *
+ * Decision base priorities (from highest to lowest):
+ * - keep: 100 (always keep, hard to override)
+ * - aggregate: 50 (summarize into parent)
+ * - fold: 40 (collapse into parent checkpoint)
+ * - downgrade: 30 (strip heavy fields)
+ * - drop: 10 (remove entirely, easy to override)
+ */
+export interface NoiseRule {
+    /** Unique identifier for this rule */
+    id: string;
+    /** Conditions that must match for this rule to apply */
+    match: NoiseRuleMatch;
+    /** The noise reduction action to take when this rule matches */
+    decision: NoiseDecision;
+    /**
+     * Explicit priority for this rule (overrides decision's base priority).
+     * Higher priority wins when multiple rules match.
+     * Range: 1-1000 (recommended: use multiples of 10)
+     */
+    priority?: number;
+    /**
+     * Exception conditions - rule does NOT apply if any exception matches.
+     * Evaluated AFTER the main match succeeds.
+     * Use for "drop X except when Y" patterns.
+     */
+    except?: NoiseRuleMatch[];
+    /** Human-readable reason for this rule (for debugging) */
+    reason?: string;
 }
 /**
  * Universal observation event
@@ -142,13 +372,17 @@ export interface ObservabilityEvent {
     /** Error details if applicable */
     error?: ObservabilityError;
     /**
-     * Mark as critical - bypasses sampling and prevents buffer eviction
-     * Use for: payment processing, security audits, critical business flows
+     * Capture control options. All capture behavior in one place.
+     *
+     * @see CaptureControl for available options
      */
-    critical?: boolean;
+    capture?: CaptureControl;
 }
 /**
- * Input for capturing events - allows some fields to be auto-generated
+ * Input for capturing events - allows some fields to be auto-generated.
+ *
+ * This is the internal type used by ObservabilityCore.record().
+ * Observers build this from their specific options.
  */
 export interface CaptureInput {
     type: ObservabilityEventType;
@@ -175,7 +409,8 @@ export interface CaptureInput {
     metrics?: Record<string, number>;
     context?: Record<string, unknown>;
     error?: ObservabilityError;
-    critical?: boolean;
+    /** Capture control - all capture behavior in one place */
+    capture?: CaptureControl;
 }
 /**
  * Backend interface - what backends must implement
@@ -327,20 +562,60 @@ export interface CloudWatchConfig {
     namespace: string;
 }
 /**
- * DynamoDB configuration
+ * Truncation configuration for observability payloads.
+ *
+ * **Use when:** Emergency lossy fallback if entity compression isn't sufficient.
+ * **Trade-off:** Loses data permanently (not recoverable).
+ *
+ * Creates format: `{ _truncated: true, _preview: string, _originalSize: number }`
+ *
+ * **Note:** Entity schema handles compression automatically via `compressed: true`.
+ * Truncation is ONLY for rare cases where compressed data still exceeds limits.
+ */
+export interface TruncationConfig {
+    /** Enable truncation (default: false) */
+    enabled: boolean;
+    /** Maximum bytes per field (default: 350KB) */
+    maxBytes: number;
+    /** Fields to truncate */
+    fields: ReadonlyArray<'actor' | 'data' | 'attributes' | 'metadata' | 'context'>;
+}
+/**
+ * DynamoDB backend configuration.
+ *
+ * **Data Flow:**
+ * 1. Events buffered in memory during invocation
+ * 2. On flush: deduplication, optional truncation
+ * 3. Entity service auto-compresses fields marked `compressed: true` in schema
+ * 4. Batch write to DynamoDB with TTL
+ * 5. UI queries & auto-decompresses
+ *
+ * **Size Management:**
+ * - **Primary:** Entity schema compression (automatic, lossless, UI-decompressible)
+ * - **Fallback:** Optional truncation (lossy, rarely needed)
  */
 export interface DynamoDBConfig {
     /** Logical table key - resolved to actual table name via env var {tableKey}_table */
     tableKey: string;
     ttlDays: number;
+    /** Truncation (optional - emergency lossy fallback, rarely needed) */
+    truncation?: TruncationConfig;
+    /** Maximum item size in bytes (default: 400KB - DynamoDB limit) */
+    maxItemSize?: number;
+    /** Batch write size (default: 25 - DynamoDB BatchWriteItem limit) */
+    maxBatchSize?: number;
+    /** Maximum buffer size before forcing flush (default: 1000) */
+    maxBufferSize?: number;
 }
 /**
- * Data protection configuration for observability events
- * Reuses @hackylabs/deep-redact library for redaction
+ * Data protection configuration for observability events.
+ *
+ * Uses @hackylabs/deep-redact library for redaction.
+ * Redacts sensitive data (passwords, tokens, PII) from observability payloads.
  */
-export interface ObservabilityDataProtectionConfig {
+export interface DataProtectionConfig {
     /** Enable/disable data protection (default: true) */
-    enabled: boolean;
+    enabled?: boolean;
     /** Keys to redact (strings or regex patterns) */
     blacklistedKeys?: (string | RegExp)[];
     /**
@@ -358,6 +633,140 @@ export interface ObservabilityDataProtectionConfig {
      * Default: ['data', 'attributes', 'metadata', 'context']
      */
     fields?: ('data' | 'attributes' | 'metadata' | 'context' | 'error')[];
+}
+/**
+ * Span-specific configuration defaults.
+ * These apply to ALL spans unless overridden via CaptureControl.
+ */
+export interface SpanConfig {
+    /**
+     * Minimum duration (ms) to capture a span.
+     * Spans faster than this are skipped UNLESS they have errors.
+     * Set to 0 to capture all spans regardless of duration.
+     * Default: 50
+     */
+    minDurationMs: number;
+    /**
+     * Skip spans that have no events and no errors.
+     * "Empty" spans add noise without value.
+     * Default: true
+     */
+    skipEmpty: boolean;
+}
+/**
+ * Query operation types for CRUD operations.
+ * Maps to ElectroDB operations.
+ */
+export type QueryOperation = 'get' | 'batchGet' | 'list' | 'query' | 'create' | 'update' | 'upsert' | 'delete' | 'batchDelete' | 'scan';
+/**
+ * Per-entity query timing configuration override.
+ * Allows customizing thresholds and sampling for specific entities.
+ */
+export interface EntityQueryTimingOverride {
+    /** Entity name to override */
+    entityName: string;
+    /** Override slow threshold for this entity (ms). Falls back to default if not set. */
+    slowThreshold?: number;
+    /** Override sampling rate for this entity (0-1). Falls back to default if not set. */
+    sampleRate?: number;
+}
+/**
+ * Per-operation timing configuration.
+ * Different operations have different expected latencies.
+ */
+export interface OperationTimingConfig {
+    /** Operation type */
+    operation: QueryOperation;
+    /** Slow threshold for this operation (ms) */
+    slowThreshold: number;
+}
+/**
+ * Database query performance tracking configuration.
+ * Tracks query timing, detects slow queries, and captures context.
+ *
+ * Features:
+ * - Configurable slow query thresholds (global, per-operation, per-entity)
+ * - Smart sampling (fast vs slow queries)
+ * - Automatic checkpoint to spans
+ * - Conditional logging (slow queries, scans, errors)
+ * - Entity inclusion/exclusion lists
+ * - Query detail capture (filters, pagination) for debugging
+ *
+ * @example
+ * ```typescript
+ * queryPerformance: {
+ *   enabled: true,
+ *   slowThreshold: 1000, // 1 second
+ *   fastQuerySampleRate: 0.01, // 1% of fast queries
+ *   slowQuerySampleRate: 1.0, // 100% of slow queries
+ *   excludeEntities: ['AnalyticsEvent', 'AuditLog'], // High volume
+ *   alwaysTrackEntities: ['Order', 'Payment'], // Critical
+ *   operationThresholds: [
+ *     { operation: 'get', slowThreshold: 500 }, // Single item should be fast
+ *     { operation: 'scan', slowThreshold: 3000 }, // Full scan naturally slower
+ *   ]
+ * }
+ * ```
+ */
+export interface QueryPerformanceConfig {
+    /** Enable query performance tracking. Default: true */
+    enabled: boolean;
+    /**
+     * Default slow query threshold (ms).
+     * Queries slower than this are logged at WARN level.
+     * Default: 1000ms
+     */
+    slowThreshold: number;
+    /**
+     * Sample rate for fast queries (0-1).
+     * 0 = never log fast queries, 1 = always log.
+     * Used to gather baseline metrics without flooding logs.
+     * Default: 0.01 (1%)
+     */
+    fastQuerySampleRate: number;
+    /**
+     * Sample rate for slow queries (0-1).
+     * Even slow queries can be sampled to reduce log volume.
+     * Default: 1.0 (100% - always log slow queries)
+     */
+    slowQuerySampleRate: number;
+    /**
+     * Per-operation thresholds.
+     * Overrides default slowThreshold for specific operations.
+     *
+     * Example: Scans are naturally slower, set higher threshold.
+     * Default: Operation-specific thresholds (get:500ms, scan:3000ms, etc.)
+     */
+    operationThresholds?: OperationTimingConfig[];
+    /**
+     * Per-entity overrides.
+     * Customize threshold and sampling for specific entities.
+     *
+     * Example: Analytics entities have high volume, reduce sampling.
+     */
+    entityOverrides?: EntityQueryTimingOverride[];
+    /**
+     * Entities to exclude from tracking entirely.
+     * Use for extremely high-volume entities.
+     */
+    excludeEntities?: string[];
+    /**
+     * Always track these entities regardless of sampling.
+     * Use for critical entities (Order, Payment, etc.)
+     */
+    alwaysTrackEntities?: string[];
+    /**
+     * Capture query details (filters, pagination) for slow queries.
+     * Disable in production if PII concerns exist.
+     * Default: true
+     */
+    captureSlowQueryDetails: boolean;
+    /**
+     * Track capacity consumption (RCU/WCU) if available.
+     * Requires enhanced ElectroDB response parsing.
+     * Default: false (not yet implemented)
+     */
+    trackCapacity: boolean;
 }
 /**
  * Main observability configuration
@@ -383,16 +792,58 @@ export interface ObservabilityConfig {
     };
     /** Service name (used by CloudWatch, OTEL) */
     serviceName: string;
+    /**
+     * Optional capture timeout in milliseconds.
+     * If set, capture operations exceeding this timeout will be logged as warnings.
+     * Default: undefined (no timeout - suitable for Lambda's fast execution)
+     *
+     * Only set this if you need extra safety for long-running operations.
+     */
+    captureTimeout?: number;
     /** CloudWatch configuration */
     cloudwatch: CloudWatchConfig;
     /** DynamoDB configuration */
     dynamodb: DynamoDBConfig;
     /** Data protection configuration */
-    dataProtection: ObservabilityDataProtectionConfig;
+    dataProtection: DataProtectionConfig;
     /** Source map support for better error stack traces */
     sourceMap: {
         /** Enable source-map-support module (requires source-map-support package installed) */
         enabled: boolean;
+    };
+    /**
+     * Span-specific defaults.
+     * Control which spans are captured and how.
+     */
+    spans: SpanConfig;
+    /**
+     * Database query performance tracking configuration.
+     * Tracks query timing, detects slow queries, and captures context.
+     */
+    queryPerformance: QueryPerformanceConfig;
+    /**
+     * Noise reduction configuration (merge/drop/aggregate).
+     */
+    noiseReduction: NoiseReductionConfig;
+    /**
+     * Operation normalization / renaming.
+     * Purpose: reduce cardinality and make traces consistent across backends.
+     *
+     * Applied to `event.operation` before export (and for OTEL span names).
+     */
+    operationNormalization: {
+        enabled: boolean;
+        /** Rules evaluated in-order (first match wins). match supports regex-string like `/^SQS Batch .+/` */
+        rules: Array<{
+            id: string;
+            match: string;
+            replace: string;
+            reason?: string;
+            /** Limit to specific event types (optional) */
+            types?: ObservabilityEventType[] | ObservabilityEventType;
+        }>;
+        /** When true, store original operation + applied rules in event.data.operationNormalization (default: true) */
+        storeOriginal?: boolean;
     };
 }
 /**
@@ -400,28 +851,117 @@ export interface ObservabilityConfig {
  */
 export declare const DefaultSamplingConfig: SamplingConfig;
 /**
- * Capture options for observe/capture methods
+ * Fields that can be overridden when calling observers.
+ *
+ * All fields are optional - observers use context values by default.
+ * Only specify fields you want to override.
+ *
+ * Pattern: Observer-specific options + RecordOverrides = full options
+ *
+ * @example
+ * ```typescript
+ * interface SpanOptions extends RecordOverrides {
+ *   level?: ObservabilityLevelString;
+ *   attributes?: Record<string, unknown>;
+ * }
+ * ```
  */
-export interface CaptureOptions {
-    /** Bypass sampling - always capture this event */
-    critical?: boolean;
+export type RecordOverrides = Partial<Pick<CaptureInput, 'capture' | 'correlationId' | 'causedBy' | 'relatedTraces' | 'actor' | 'source' | 'tags' | 'metadata' | 'parentObservabilityLogId'>>;
+/**
+ * Context overrides for withContext().
+ *
+ * All fields optional - only override what you need.
+ * Tags are merged with existing by default.
+ *
+ * @example
+ * ```typescript
+ * // Override actor for system operations
+ * withContext({ actor: systemActor }, () => {
+ *   AuditObserver.entityDelete('User', userId, data);
+ * });
+ *
+ * // Add batch tags
+ * await withContext({ tags: { batchId: 'batch-123' } }, async () => {
+ *   for (const item of items) {
+ *     await processItem(item);
+ *   }
+ * });
+ *
+ * // Override source for a scope
+ * withContext({ source: 'WorkflowEngine' }, () => {
+ *   // All logs/spans in here will have source='WorkflowEngine'
+ * });
+ * ```
+ */
+export interface ContextOverrides {
+    /** Override correlation ID */
+    correlationId?: string;
+    /** Override causation chain */
+    causedBy?: string;
+    /** Override actor */
+    actor?: Actor;
+    /** Override source */
+    source?: string;
+    /** Merge additional tags (adds to existing, doesn't replace) */
+    tags?: Record<string, string>;
+    /** Replace tags entirely instead of merging */
+    replaceTags?: Record<string, string>;
+    /** Add metadata to all events in this scope */
+    metadata?: Record<string, unknown>;
+}
+/**
+ * Source type for auto-detection.
+ * Used by decorators to infer the source prefix when not explicitly provided.
+ */
+export type SourceType = 'controller' | 'service' | 'queue' | 'task' | 'handler';
+/**
+ * Base options shared across all observability decorators (@Observed, @Traced, @Audited).
+ *
+ * Extends RecordOverrides to provide full context override capabilities.
+ * All decorator option interfaces should extend this instead of duplicating fields.
+ *
+ * @example
+ * ```typescript
+ * // All decorators support these options
+ * @Traced({
+ *   enabled: () => isDevelopment(),
+ *   actor: { type: 'system', id: 'cron-scheduler' },
+ *   tags: { component: 'scheduler' },
+ *   capture: { bypass: true },
+ * })
+ * async scheduledTask() { }
+ * ```
+ */
+export interface DecoratorBaseOptions extends RecordOverrides {
+    /** Conditionally enable/disable decorator (evaluated at runtime) */
+    enabled?: boolean | (() => boolean);
+    /** Capture method arguments in observability data */
+    captureArgs?: boolean;
+    /** Capture method return value in observability data */
+    captureResult?: boolean;
+    /** Source type for auto-detection (controller, service, queue, task, handler) */
+    sourceType?: SourceType;
 }
 /**
  * Interface for event capture - enables testability via dependency injection
  *
  * Observers use this interface instead of importing ObservabilityManager directly,
  * allowing easy mocking in tests.
+ *
+ * Note: CaptureControl is embedded in CaptureInput.capture - no separate options param.
  */
 export interface IEventCapture {
     /**
      * Capture an observability event (fire-and-forget)
+     * @param input - Event input with capture control embedded in input.capture
      * @returns observabilityLogId if captured, undefined if filtered/sampled out
      */
-    capture(input: CaptureInput, options?: CaptureOptions): string | undefined;
+    capture(input: CaptureInput): string | undefined;
     /**
      * Capture an observability event asynchronously
      * Use when you need to await backend completion
+     * @param input - Event input with capture control embedded in input.capture
      * @returns Promise<observabilityLogId> if captured, undefined if filtered/sampled out
      */
-    captureAsync(input: CaptureInput, options?: Omit<CaptureOptions, 'sync'>): Promise<string | undefined>;
+    captureAsync(input: CaptureInput): Promise<string | undefined>;
 }

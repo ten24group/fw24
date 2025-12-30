@@ -22,32 +22,21 @@
  *   }
  * }
  * ```
- *
- * REQUIREMENTS:
- * - Must be called within an observation context (runWithContext)
- * - Otherwise logs warning and doesn't record anything
  */
-export interface AuditedOptions {
+import type { DecoratorBaseOptions } from '../types';
+export interface AuditedOptions extends DecoratorBaseOptions {
     /** Audit operation name (defaults to ClassName.methodName) */
     operation?: string;
     /** Entity name being audited (optional) */
     entityName?: string;
     /** Audit level */
     level?: 'info' | 'warn' | 'error';
-    /** Whether to capture method arguments in audit data */
-    captureArgs?: boolean;
-    /** Whether to capture return value in audit data */
-    captureResult?: boolean;
     /** Specific argument names to capture (if captureArgs is false) */
     argNames?: string[];
     /** Custom data extractor function */
     dataExtractor?: (args: unknown[], result?: unknown) => Record<string, unknown>;
-    /** Tags for filtering */
-    tags?: Record<string, string>;
 }
 /**
  * Method decorator that records an audit event for method calls
- *
- * @param options - Audit options
  */
-export declare function Audited(options?: AuditedOptions): <T extends (...args: unknown[]) => unknown>(target: object, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<T>) => TypedPropertyDescriptor<T>;
+export declare function Audited(options?: AuditedOptions): <T extends (...args: any[]) => any>(target: object, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<T>) => TypedPropertyDescriptor<T>;

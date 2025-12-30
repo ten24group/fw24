@@ -6,30 +6,38 @@
  * observers (WorkflowObserver, DecisionObserver, etc.) on top of these core primitives.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetCapturer = exports.setCapturer = exports.captureEventAsync = exports.captureEvent = exports.normalizeError = exports.mapError = exports.extractObserverOptions = exports.buildCommonFields = exports.mergeObserverTags = exports.resolveCorrelationId = exports.generateId = exports.ChildLogObserver = exports.LogObserver = exports.MetricObserver = exports.AuditObserver = exports.withSpan = exports.SpanObserver = void 0;
-// Core Observer implementations
+exports.initializeCapturer = exports.resetCapturer = exports.setCapturer = exports.normalizeError = exports.mapError = exports.mergeTags = exports.resolveCorrelationId = exports.buildCaptureInput = exports.captureRecordAsync = exports.captureRecord = exports.generateId = exports.QueryObserver = exports.LogObserver = exports.MetricObserver = exports.AuditObserver = exports.wrapInSpan = exports.withSpanSync = exports.withSpan = exports.SpanObserver = void 0;
+// Span Observer
 var span_1 = require("./span");
 Object.defineProperty(exports, "SpanObserver", { enumerable: true, get: function () { return span_1.SpanObserver; } });
 Object.defineProperty(exports, "withSpan", { enumerable: true, get: function () { return span_1.withSpan; } });
+Object.defineProperty(exports, "withSpanSync", { enumerable: true, get: function () { return span_1.withSpanSync; } });
+Object.defineProperty(exports, "wrapInSpan", { enumerable: true, get: function () { return span_1.wrapInSpan; } });
+// Audit Observer
 var audit_1 = require("./audit");
 Object.defineProperty(exports, "AuditObserver", { enumerable: true, get: function () { return audit_1.AuditObserver; } });
+// Metric Observer
 var metric_1 = require("./metric");
 Object.defineProperty(exports, "MetricObserver", { enumerable: true, get: function () { return metric_1.MetricObserver; } });
+// Log Observer
 var log_1 = require("./log");
 Object.defineProperty(exports, "LogObserver", { enumerable: true, get: function () { return log_1.LogObserver; } });
-Object.defineProperty(exports, "ChildLogObserver", { enumerable: true, get: function () { return log_1.ChildLogObserver; } });
+// Query Observer (Database performance tracking)
+var query_1 = require("./query");
+Object.defineProperty(exports, "QueryObserver", { enumerable: true, get: function () { return query_1.QueryObserver; } });
 // Base utilities for building custom observers
 var base_1 = require("./base");
+// Core functions
 Object.defineProperty(exports, "generateId", { enumerable: true, get: function () { return base_1.generateId; } });
+Object.defineProperty(exports, "captureRecord", { enumerable: true, get: function () { return base_1.captureRecord; } });
+Object.defineProperty(exports, "captureRecordAsync", { enumerable: true, get: function () { return base_1.captureRecordAsync; } });
+Object.defineProperty(exports, "buildCaptureInput", { enumerable: true, get: function () { return base_1.buildCaptureInput; } });
 Object.defineProperty(exports, "resolveCorrelationId", { enumerable: true, get: function () { return base_1.resolveCorrelationId; } });
-Object.defineProperty(exports, "mergeObserverTags", { enumerable: true, get: function () { return base_1.mergeObserverTags; } });
-Object.defineProperty(exports, "buildCommonFields", { enumerable: true, get: function () { return base_1.buildCommonFields; } });
-Object.defineProperty(exports, "extractObserverOptions", { enumerable: true, get: function () { return base_1.extractObserverOptions; } });
+Object.defineProperty(exports, "mergeTags", { enumerable: true, get: function () { return base_1.mergeTags; } });
 Object.defineProperty(exports, "mapError", { enumerable: true, get: function () { return base_1.mapError; } });
 Object.defineProperty(exports, "normalizeError", { enumerable: true, get: function () { return base_1.normalizeError; } });
-Object.defineProperty(exports, "captureEvent", { enumerable: true, get: function () { return base_1.captureEvent; } });
-Object.defineProperty(exports, "captureEventAsync", { enumerable: true, get: function () { return base_1.captureEventAsync; } });
 // Testing utilities
 Object.defineProperty(exports, "setCapturer", { enumerable: true, get: function () { return base_1.setCapturer; } });
 Object.defineProperty(exports, "resetCapturer", { enumerable: true, get: function () { return base_1.resetCapturer; } });
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiaW5kZXguanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyIuLi8uLi8uLi8uLi9zcmMvb2JzZXJ2YWJpbGl0eS9vYnNlcnZlcnMvaW5kZXgudHMiXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6IjtBQUFBOzs7OztHQUtHOzs7QUFFSCxnQ0FBZ0M7QUFDaEMsK0JBQThHO0FBQXJHLG9HQUFBLFlBQVksT0FBQTtBQUFFLGdHQUFBLFFBQVEsT0FBQTtBQUMvQixpQ0FNaUI7QUFMZixzR0FBQSxhQUFhLE9BQUE7QUFNZixtQ0FBeUQ7QUFBaEQsd0dBQUEsY0FBYyxPQUFBO0FBQ3ZCLDZCQUFrRTtBQUF6RCxrR0FBQSxXQUFXLE9BQUE7QUFBYyx1R0FBQSxnQkFBZ0IsT0FBQTtBQUVsRCwrQ0FBK0M7QUFDL0MsK0JBZ0JnQjtBQVpkLGtHQUFBLFVBQVUsT0FBQTtBQUNWLDRHQUFBLG9CQUFvQixPQUFBO0FBQ3BCLHlHQUFBLGlCQUFpQixPQUFBO0FBQ2pCLHlHQUFBLGlCQUFpQixPQUFBO0FBQ2pCLDhHQUFBLHNCQUFzQixPQUFBO0FBQ3RCLGdHQUFBLFFBQVEsT0FBQTtBQUNSLHNHQUFBLGNBQWMsT0FBQTtBQUNkLG9HQUFBLFlBQVksT0FBQTtBQUNaLHlHQUFBLGlCQUFpQixPQUFBO0FBQ2pCLG9CQUFvQjtBQUNwQixtR0FBQSxXQUFXLE9BQUE7QUFDWCxxR0FBQSxhQUFhLE9BQUEiLCJzb3VyY2VzQ29udGVudCI6WyIvKipcbiAqIENvcmUgT2JzZXJ2ZXJzXG4gKiBcbiAqIEVzc2VudGlhbCBvYnNlcnZhYmlsaXR5IHByaW1pdGl2ZXMuIEFwcGxpY2F0aW9ucyBjYW4gYnVpbGQgc3BlY2lhbGl6ZWRcbiAqIG9ic2VydmVycyAoV29ya2Zsb3dPYnNlcnZlciwgRGVjaXNpb25PYnNlcnZlciwgZXRjLikgb24gdG9wIG9mIHRoZXNlIGNvcmUgcHJpbWl0aXZlcy5cbiAqL1xuXG4vLyBDb3JlIE9ic2VydmVyIGltcGxlbWVudGF0aW9uc1xuZXhwb3J0IHsgU3Bhbk9ic2VydmVyLCB3aXRoU3BhbiwgU3Bhbk9wdGlvbnMsIFNwYW5FdmVudE9wdGlvbnMsIFNwYW5FbmRPcHRpb25zLCBJU3Bhbk9ic2VydmVyIH0gZnJvbSAnLi9zcGFuJztcbmV4cG9ydCB7XG4gIEF1ZGl0T2JzZXJ2ZXIsXG4gIEF1ZGl0T2JzZXJ2ZXJPcHRpb25zLFxuICBBdWRpdFJlY29yZE9wdGlvbnMsXG4gIENvbXBsaWFuY2VBdWRpdE9wdGlvbnMsXG4gIEFjY2Vzc0F1ZGl0T3B0aW9ucyxcbn0gZnJvbSAnLi9hdWRpdCc7XG5leHBvcnQgeyBNZXRyaWNPYnNlcnZlciwgTWV0cmljT3B0aW9ucyB9IGZyb20gJy4vbWV0cmljJztcbmV4cG9ydCB7IExvZ09ic2VydmVyLCBMb2dPcHRpb25zLCBDaGlsZExvZ09ic2VydmVyIH0gZnJvbSAnLi9sb2cnO1xuXG4vLyBCYXNlIHV0aWxpdGllcyBmb3IgYnVpbGRpbmcgY3VzdG9tIG9ic2VydmVyc1xuZXhwb3J0IHtcbiAgQmFzZU9ic2VydmVyT3B0aW9ucyxcbiAgQ29tbW9uRmllbGRzLFxuICBPYnNlcnZhYmlsaXR5UGF5bG9hZCxcbiAgZ2VuZXJhdGVJZCxcbiAgcmVzb2x2ZUNvcnJlbGF0aW9uSWQsXG4gIG1lcmdlT2JzZXJ2ZXJUYWdzLFxuICBidWlsZENvbW1vbkZpZWxkcyxcbiAgZXh0cmFjdE9ic2VydmVyT3B0aW9ucyxcbiAgbWFwRXJyb3IsXG4gIG5vcm1hbGl6ZUVycm9yLFxuICBjYXB0dXJlRXZlbnQsXG4gIGNhcHR1cmVFdmVudEFzeW5jLFxuICAvLyBUZXN0aW5nIHV0aWxpdGllc1xuICBzZXRDYXB0dXJlcixcbiAgcmVzZXRDYXB0dXJlcixcbn0gZnJvbSAnLi9iYXNlJztcblxuIl19
+Object.defineProperty(exports, "initializeCapturer", { enumerable: true, get: function () { return base_1.initializeCapturer; } });
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiaW5kZXguanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyIuLi8uLi8uLi8uLi9zcmMvb2JzZXJ2YWJpbGl0eS9vYnNlcnZlcnMvaW5kZXgudHMiXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6IjtBQUFBOzs7OztHQUtHOzs7QUFFSCxnQkFBZ0I7QUFDaEIsK0JBUWdCO0FBUGQsb0dBQUEsWUFBWSxPQUFBO0FBQ1osZ0dBQUEsUUFBUSxPQUFBO0FBQ1Isb0dBQUEsWUFBWSxPQUFBO0FBQ1osa0dBQUEsVUFBVSxPQUFBO0FBTVosaUJBQWlCO0FBQ2pCLGlDQU1pQjtBQUxmLHNHQUFBLGFBQWEsT0FBQTtBQU9mLGtCQUFrQjtBQUNsQixtQ0FBOEQ7QUFBckQsd0dBQUEsY0FBYyxPQUFBO0FBRXZCLGVBQWU7QUFDZiw2QkFBcUQ7QUFBNUMsa0dBQUEsV0FBVyxPQUFBO0FBRXBCLGlEQUFpRDtBQUNqRCxpQ0FBMkQ7QUFBbEQsc0dBQUEsYUFBYSxPQUFBO0FBRXRCLCtDQUErQztBQUMvQywrQkFlZ0I7QUFkZCxpQkFBaUI7QUFDakIsa0dBQUEsVUFBVSxPQUFBO0FBQ1YscUdBQUEsYUFBYSxPQUFBO0FBQ2IsMEdBQUEsa0JBQWtCLE9BQUE7QUFDbEIseUdBQUEsaUJBQWlCLE9BQUE7QUFDakIsNEdBQUEsb0JBQW9CLE9BQUE7QUFDcEIsaUdBQUEsU0FBUyxPQUFBO0FBQ1QsZ0dBQUEsUUFBUSxPQUFBO0FBQ1Isc0dBQUEsY0FBYyxPQUFBO0FBRWQsb0JBQW9CO0FBQ3BCLG1HQUFBLFdBQVcsT0FBQTtBQUNYLHFHQUFBLGFBQWEsT0FBQTtBQUNiLDBHQUFBLGtCQUFrQixPQUFBIiwic291cmNlc0NvbnRlbnQiOlsiLyoqXG4gKiBDb3JlIE9ic2VydmVyc1xuICogXG4gKiBFc3NlbnRpYWwgb2JzZXJ2YWJpbGl0eSBwcmltaXRpdmVzLiBBcHBsaWNhdGlvbnMgY2FuIGJ1aWxkIHNwZWNpYWxpemVkXG4gKiBvYnNlcnZlcnMgKFdvcmtmbG93T2JzZXJ2ZXIsIERlY2lzaW9uT2JzZXJ2ZXIsIGV0Yy4pIG9uIHRvcCBvZiB0aGVzZSBjb3JlIHByaW1pdGl2ZXMuXG4gKi9cblxuLy8gU3BhbiBPYnNlcnZlclxuZXhwb3J0IHtcbiAgU3Bhbk9ic2VydmVyLFxuICB3aXRoU3BhbixcbiAgd2l0aFNwYW5TeW5jLFxuICB3cmFwSW5TcGFuLFxuICB0eXBlIFNwYW5PcHRpb25zLFxuICB0eXBlIFNwYW5FbmRPcHRpb25zLFxuICB0eXBlIElTcGFuT2JzZXJ2ZXIsXG59IGZyb20gJy4vc3Bhbic7XG5cbi8vIEF1ZGl0IE9ic2VydmVyXG5leHBvcnQge1xuICBBdWRpdE9ic2VydmVyLFxuICB0eXBlIEVudGl0eUF1ZGl0T3B0aW9ucyxcbiAgdHlwZSBBdWRpdFJlY29yZE9wdGlvbnMsXG4gIHR5cGUgQ29tcGxpYW5jZUF1ZGl0T3B0aW9ucyxcbiAgdHlwZSBBY2Nlc3NBdWRpdE9wdGlvbnMsXG59IGZyb20gJy4vYXVkaXQnO1xuXG4vLyBNZXRyaWMgT2JzZXJ2ZXJcbmV4cG9ydCB7IE1ldHJpY09ic2VydmVyLCB0eXBlIE1ldHJpY09wdGlvbnMgfSBmcm9tICcuL21ldHJpYyc7XG5cbi8vIExvZyBPYnNlcnZlclxuZXhwb3J0IHsgTG9nT2JzZXJ2ZXIsIHR5cGUgTG9nT3B0aW9ucyB9IGZyb20gJy4vbG9nJztcblxuLy8gUXVlcnkgT2JzZXJ2ZXIgKERhdGFiYXNlIHBlcmZvcm1hbmNlIHRyYWNraW5nKVxuZXhwb3J0IHsgUXVlcnlPYnNlcnZlciwgdHlwZSBRdWVyeUNvbnRleHQgfSBmcm9tICcuL3F1ZXJ5JztcblxuLy8gQmFzZSB1dGlsaXRpZXMgZm9yIGJ1aWxkaW5nIGN1c3RvbSBvYnNlcnZlcnNcbmV4cG9ydCB7XG4gIC8vIENvcmUgZnVuY3Rpb25zXG4gIGdlbmVyYXRlSWQsXG4gIGNhcHR1cmVSZWNvcmQsXG4gIGNhcHR1cmVSZWNvcmRBc3luYyxcbiAgYnVpbGRDYXB0dXJlSW5wdXQsXG4gIHJlc29sdmVDb3JyZWxhdGlvbklkLFxuICBtZXJnZVRhZ3MsXG4gIG1hcEVycm9yLFxuICBub3JtYWxpemVFcnJvcixcblxuICAvLyBUZXN0aW5nIHV0aWxpdGllc1xuICBzZXRDYXB0dXJlcixcbiAgcmVzZXRDYXB0dXJlcixcbiAgaW5pdGlhbGl6ZUNhcHR1cmVyLFxufSBmcm9tICcuL2Jhc2UnO1xuIl19

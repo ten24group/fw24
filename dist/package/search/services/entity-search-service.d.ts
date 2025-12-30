@@ -29,12 +29,17 @@ export declare class EntitySearchService<S extends EntitySchema<any, any, any>> 
     bulkSync(entities: EntityRecordTypeFromSchema<S>[], searchIndexConfig?: import("../types").SearchIndexConfig, ctx?: ExecutionContext, synchronous?: boolean): Promise<void>;
     transformDocumentForIndexing(entity: EntityRecordTypeFromSchema<S>): Promise<Record<string, any>>;
     /**
-     * Resync all entity documents from database to search index
-     * Uses cursor-based pagination to handle large datasets efficiently
+     * Resync all entity documents from database to search index.
+     * Uses cursor-based pagination to handle large datasets efficiently.
+     *
+     * @param options.batchSize - Number of records to fetch per iteration (default: 50)
+     * @param options.ctx - Execution context for the operation
+     * @param options.maxIterations - Safety limit on number of iterations (default: 10000)
      */
     resyncAllDocuments(options?: {
         batchSize?: number;
         ctx?: ExecutionContext;
+        maxIterations?: number;
     }): Promise<{
         processedCount: number;
         failedCount: number;

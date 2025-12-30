@@ -6,7 +6,15 @@
 /**
  * Safely stringify an object, handling circular references
  */
-export declare function safeStringify(value: unknown, visited?: WeakSet<object>): unknown;
+export type SerializableValue = string | number | boolean | null | undefined | SerializableValue[] | {
+    [key: string]: SerializableValue;
+};
+/**
+ * Safely convert an input into a JSON-serializable-ish shape, handling circular references.
+ *
+ * NOTE: This intentionally preserves `undefined` (JSON drops it in objects; arrays stringify it as null).
+ */
+export declare function safeStringify(value: unknown, visited?: WeakSet<object>): SerializableValue;
 /**
  * Truncation metadata - replaces payload when it exceeds size limits
  */
@@ -54,3 +62,8 @@ export declare function isPayloadWithinLimits(payload: unknown, maxBytes?: numbe
  * @returns Serializable value or '[unserializable]' if fails
  */
 export declare function safeSerialize(value: unknown, maxLength?: number): unknown;
+/**
+ * Truncate specific fields in an item.
+ * Used as alternative to compression when guaranteed size limits are required.
+ */
+export declare function truncateItem<T extends Record<string, unknown>>(item: T, fields: ReadonlyArray<string>, maxBytes: number): T;

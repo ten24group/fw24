@@ -2,17 +2,14 @@
  * Observability hooks for entity CRUD operations
  *
  * These can be called from crud-service.ts to emit observability events.
- * Uses AuditObserver for entity audits and SpanObserver for detailed tracing.
- *
- * NOTE: Methods will auto-generate correlationId if not in context,
- * logging a warning to encourage proper context establishment.
+ * Uses AuditObserver for entity audits.
  */
-import { ISpanObserver, SpanOptions } from './observers/span';
+import { SpanOptions } from './observers/span';
 /**
  * Context for CRUD operations - compatible with SpanOptions and BaseObserverOptions.
  * Allows passing explicit trace context when not using AsyncLocalStorage context.
  */
-export type CrudObservabilityContext = Pick<SpanOptions, 'correlationId' | 'parentObservabilityLogId' | 'causedBy' | 'actor'>;
+export type CrudObservabilityContext = Pick<SpanOptions, 'correlationId' | 'causedBy' | 'actor'>;
 export declare class CrudObservabilityHooks {
     /**
      * Emit observability event for entity read operation
@@ -39,12 +36,19 @@ export declare class CrudObservabilityHooks {
      */
     static captureEntityQuery(entityName: string, filters: Record<string, unknown>, resultCount: number, context?: CrudObservabilityContext): void;
     /**
-     * Create a span for entity operation (for more detailed tracing)
+     * Wrap an entity operation in a span.
+     * Use for more detailed tracing of entity operations.
      *
-     * @returns ISpanObserver instance for tracking the operation.
-     *          Auto-generates correlationId if not in context.
+     * @example
+     * ```typescript
+     * const result = await CrudObservabilityHooks.wrapEntityOperation(
+     *   'findById',
+     *   'Order',
+     *   async () => this.repository.findById(id)
+     * );
+     * ```
      */
-    static createEntitySpan(operation: string, entityName: string, context?: CrudObservabilityContext): ISpanObserver;
+    static wrapEntityOperation<T>(operation: string, entityName: string, fn: () => T, context?: CrudObservabilityContext): T;
     /**
      * Emit observability event for bulk entity create operation
      */

@@ -39,7 +39,7 @@
  */
 import { Actor } from '../../core/types/execution-context';
 import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel } from '../types';
-import { ObservationContext } from '../context';
+import { ExecutionContextData } from '../context';
 /**
  * Mock backend that captures all events for testing
  */
@@ -104,24 +104,30 @@ export declare class MockBackend implements ObservabilityBackend {
 export declare function setupTestObservability(options?: {
     minLevel?: ObservabilityLevel;
     enabled?: boolean;
+    /** Skip empty spans (default: false for testing) */
+    skipEmptySpans?: boolean;
+    /** Minimum span duration to capture in ms (default: 0 for testing to capture all spans) */
+    minSpanDurationMs?: number;
 }): MockBackend;
 /**
  * Clean up test observability (call in afterEach)
  */
 export declare function cleanupTestObservability(): void;
 /**
- * Create a test observation context and run a function within it
+ * Create a test execution context and run a function within it
  */
 export declare function createTestContext<T>(fn: () => Promise<T>, options?: {
     correlationId?: string;
+    causedBy?: string;
     actor?: Actor;
     tags?: Record<string, string>;
 }): Promise<T>;
 /**
- * Create a test observation context and run a sync function within it
+ * Create a test execution context and run a sync function within it
  */
 export declare function createTestContextSync<T>(fn: () => T, options?: {
     correlationId?: string;
+    causedBy?: string;
     actor?: Actor;
     tags?: Record<string, string>;
 }): T;
@@ -145,6 +151,6 @@ export declare function assertEventCount(backend: MockBackend, count: number, fi
  */
 export declare function createTestActor(overrides?: Partial<Actor>): Actor;
 /**
- * Create a test observation context object
+ * Create a test execution context object
  */
-export declare function createTestObservationContext(overrides?: Partial<ObservationContext>): ObservationContext;
+export declare function createTestExecutionContext(overrides?: Partial<ExecutionContextData>): ExecutionContextData;

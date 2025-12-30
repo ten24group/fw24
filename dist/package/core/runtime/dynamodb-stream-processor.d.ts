@@ -1,7 +1,8 @@
 import { DynamoDBStreamEvent, SQSEvent, Context } from 'aws-lambda';
-import { BaseSQSEventProcessor, EventProcessorContext } from './event-processor/base-sqs-event-processor';
+import { BaseSQSEventProcessor } from './event-processor/base-sqs-event-processor';
 import { DynamoDBEventDataExtractor } from './event-processor/dynamodb-event-data-extractor';
 import { BaseEventRecord, ChangeStreamPayload } from '../types/event-processor-types';
+import { QueueExecutionContext } from './sqs-controller';
 /**
  * Processor that forwards DynamoDB Stream events to SNS.
  *
@@ -23,22 +24,8 @@ export declare class DynamoDBStreamToSNSProcessor extends BaseSQSEventProcessor<
      * that downstream SNS consumers expect. The base class's eventDataExtractor would
      * unmarshall these into plain JavaScript objects, breaking compatibility.
      */
-    process(event: DynamoDBStreamEvent | SQSEvent, _context: Context, _ctx: EventProcessorContext<DynamoDBStreamEvent | SQSEvent>): Promise<void>;
+    process(event: DynamoDBStreamEvent | SQSEvent, _context: Context, _ctx?: QueueExecutionContext<DynamoDBStreamEvent | SQSEvent>): Promise<void>;
     private processRawRecordsBatch;
-    /**
-     * Extract trace context from DynamoDB record's _actor field.
-     * The _actor field is automatically populated by the framework when records are created/updated.
-     *
-     * Structure: { _actor: { M: { correlationId: { S: "..." }, parentObservabilityLogId: { S: "..." }, sampled: { BOOL: true } } } }
-     *
-     * This enables distributed tracing by linking DynamoDB changes back to the originating request.
-     *
-     * IMPORTANT: Sets causedBy = original correlationId to link the stream processing back to the API request that caused the DB change.
-     *
-     * Note: messageAttributes are included in the SNS message BODY (not SNS message attributes)
-     * to preserve them when downstream consumers unmarshal the DynamoDB AttributeValue format.
-     */
-    private extractTraceContext;
     /**
      * Publish records to FIFO topic individually.
      *
@@ -46,7 +33,7 @@ export declare class DynamoDBStreamToSNSProcessor extends BaseSQSEventProcessor<
      * (derived from the record's primary key). SNS batching requires all messages in a batch
      * to have the same messageGroupId.
      *
-     * Publishes are done in parallel for better performance.
+     * Uses concurrent publishing (5 at a time) for better performance.
      */
     private publishFifoRecords;
     /**
@@ -54,11 +41,6 @@ export declare class DynamoDBStreamToSNSProcessor extends BaseSQSEventProcessor<
      *
      * Standard topics support batching up to 10 messages per API call,
      * providing ~10x performance improvement over individual publishes.
-     *
-     * Benefits:
-     * - Reduced latency (fewer API calls)
-     * - Lower cost (fewer requests)
-     * - Better throughput
      */
     private publishStandardBatch;
 }

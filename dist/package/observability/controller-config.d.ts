@@ -3,7 +3,7 @@
  *
  * Shared types for configuring observability across controllers, tasks, and queues.
  */
-import { DataProtectionConfig } from './utils/data-protection';
+import type { DataProtectionConfig } from './types';
 /**
  * Base span metadata configuration.
  * Used by @Task, @Queue, and @Controller decorators for custom span context.

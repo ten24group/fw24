@@ -95,9 +95,16 @@ export declare class OTELObservabilityBackend implements ObservabilityBackend {
     initializeInvocation(): void;
     capture(event: ObservabilityEvent): Promise<void>;
     private handleSpanEvent;
+    /**
+     * Handle consolidated span (single record with all span data).
+     *
+     * In consolidated mode:
+     * 1. span.start was already sent (OTEL-only) to establish parent context
+     * 2. This 'span' event contains all data and signals completion
+     * 3. We find the existing OTEL span, update it, and end it
+     */
+    private handleConsolidatedSpan;
     private handleSpanStart;
-    private handleSpanEventInternal;
-    private handleSpanEnd;
     private handleMetricEvent;
     private handleLogEvent;
     private extractLogMessage;

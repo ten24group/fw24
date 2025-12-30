@@ -43,6 +43,6 @@ export declare class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<Dyn
      * Extract actor context from entity images.
      * Tries _actor field first, then falls back to visible actor fields.
      */
-    protected extractActor(newImage: Record<string, any> | undefined): Actor | undefined;
+    protected extractActor(traceImage: Record<string, any> | undefined): Actor | undefined;
 }
 export declare const logger: import("tslog").Logger<import("tslog").ILogObj>;

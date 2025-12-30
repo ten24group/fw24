@@ -33,6 +33,20 @@ export declare function extractFromSns(messageAttributes?: Record<string, {
     Value?: string;
 }>): ParsedTraceContext | undefined;
 /**
+ * Extract trace context from an SQS record.
+ *
+ * Supports both:
+ * - Direct SQS sendMessage() with MessageAttributes (record.messageAttributes)
+ * - SNS -> SQS subscription envelope where SNS MessageAttributes are present in record.body.MessageAttributes
+ */
+export declare function extractFromSqsRecord(record: {
+    messageAttributes?: Record<string, {
+        stringValue?: string;
+        StringValue?: string;
+    }>;
+    body?: string;
+}): ParsedTraceContext | undefined;
+/**
  * Extract trace context from EventBridge event.
  */
 export declare function extractFromEventBridge(event: {
@@ -56,7 +70,6 @@ export declare function extractFromKinesis(record: {
  *
  * Returns headers that include:
  * - `x-correlation-id`: Custom correlation ID for application-level tracing
- * - `x-parent-log-id`: Parent span/log ID for hierarchy tracking
  * - `traceparent`: W3C Trace Context standard header (00-{trace-id}-{parent-id}-{flags})
  *
  * ## Usage with fetch/axios

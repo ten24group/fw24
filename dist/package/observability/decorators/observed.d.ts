@@ -1,70 +1,83 @@
 /**
  * @Observed Decorator - Unified observability decorator
  *
- * Smart decorator that combines tracing, audit, and metrics without duplication.
- *
- * DEFAULT: If no options specified, defaults to { trace: true }
- *
- * DESIGN:
- * - trace: Creates span with duration/success/error (for debugging/performance)
- * - audit: Creates business/compliance log (only for entity operations)
- * - metric: Creates aggregatable counters/gauges (NOT timing if trace enabled!)
+ * Combines tracing, audit, and metrics in one decorator.
+ * Parent tracking is FULLY AUTOMATIC via span tree.
  *
  * Usage:
  * ```typescript
  * class OrderService {
- *   // Default - trace only
- *   @Observed()
+ *   @Observed()  // Default - trace only
  *   async fetchOrders(): Promise<Order[]> { }
  *
- *   // Explicit trace
- *   @Observed({ trace: true })
- *   async getOrder(id: string): Promise<Order> { }
- *
- *   // Business operation - trace + audit
- *   @Observed({
- *     trace: true,
- *     audit: { entityName: 'order' },
- *     metric: { type: 'counter', name: 'orders.created' }
- *   })
+ *   @Observed({ trace: true, audit: { entityName: 'order' } })
  *   async createOrder(order: Order): Promise<Order> { }
  *
- *   // Counter only (no trace)
- *   @Observed({
- *     metric: { type: 'counter', name: 'cache.hit' }
- *   })
- *   getCached(key: string): any { }
+ *   @Observed({ trace: false, audit: true })  // Audit only, no span
+ *   async deleteOrder(id: string): Promise<void> { }
  * }
  * ```
- *
- * ANTI-PATTERNS:
- * ❌ DON'T: trace + timing metric (span already has duration!)
- * ❌ DON'T: audit every method (only business events!)
- * ✅ DO: trace for debugging, audit for compliance, counter for stats
  */
-import { SpanOptions } from '../observers/span';
-import { SourceType } from './decorator-utils';
-export interface ObservedOptions {
-    /** Method name (defaults to ClassName.methodName) */
+import { SpanOptions, ISpanObserver } from '../observers/span';
+import type { DecoratorBaseOptions } from '../types';
+export type ObservedTagValue = string | number | boolean;
+export type ObservedEnrichment = {
+    /** Span tags (stored as strings, indexed). */
+    tags?: Record<string, ObservedTagValue>;
+    /** Span metrics (numeric). */
+    metrics?: Record<string, number>;
+    /** Span debug data (not indexed). */
+    data?: Record<string, unknown>;
+    /** Convenience: add checkpoint(s) to the span timeline. */
+    checkpoints?: Array<{
+        name: string;
+        tags?: Record<string, string>;
+        metrics?: Record<string, number>;
+        data?: Record<string, unknown>;
+        error?: Error | string;
+    }>;
+};
+export type ObservedExtractContext<TInstance, TArgs extends unknown[], TResult> = {
+    instance: TInstance;
+    args: TArgs;
+    operationName: string;
+    source: string;
+    /** Only available in finish() */
+    result?: TResult;
+    /** Only available in finish() */
+    error?: Error;
+    /** Only available in finish() */
+    success?: boolean;
+    /** Only available in finish() */
+    durationMs?: number;
+    /** The current span (only present when tracing is enabled and capture is active). */
+    span?: ISpanObserver;
+};
+type BivariantFn<T extends (...args: any[]) => any> = {
+    bivarianceHack: T;
+}['bivarianceHack'];
+export interface ObservedExtractor<TInstance, TArgs extends unknown[], TResult> {
+    /**
+     * Run before the method is executed.
+     * Return any enrichment to apply to the span.
+     */
+    start?: BivariantFn<(ctx: ObservedExtractContext<TInstance, TArgs, TResult>) => ObservedEnrichment | void>;
+    /**
+     * Run after the method finishes (success or error).
+     * Return any enrichment to apply to the span.
+     */
+    finish?: BivariantFn<(ctx: ObservedExtractContext<TInstance, TArgs, TResult>) => ObservedEnrichment | void>;
+}
+export interface ObservedOptions<TInstance = unknown, TArgs extends unknown[] = unknown[], TResult = unknown> extends DecoratorBaseOptions {
+    /** Operation name (defaults to ClassName.methodName) */
     name?: string;
     /**
-     * Create span for distributed tracing
-     * Spans capture duration, success, error automatically.
-     * Use for: debugging, performance analysis, distributed tracing
-     *
-     * DEFAULT: true if no options are specified (trace, audit, metric all undefined)
+     * Create span for distributed tracing (default: true if nothing else specified).
+     * Can be boolean or partial SpanOptions to configure the span.
+     * Use capture.noise for noise reduction control.
      */
-    trace?: boolean | {
-        level?: SpanOptions['level'];
-        attributes?: Record<string, unknown>;
-    };
-    /**
-     * Create audit record for business/compliance tracking
-     * Use for: entity operations, security events, compliance requirements
-     * Note: Only use for actual business events, not every traced method
-     *
-     * DEFAULT: false
-     */
+    trace?: boolean | Partial<SpanOptions>;
+    /** Create audit record */
     audit?: boolean | {
         action?: string;
         entityName?: string;
@@ -72,72 +85,21 @@ export interface ObservedOptions {
         captureArgs?: boolean;
         captureResult?: boolean;
     };
-    /**
-     * Record metric for aggregation/dashboards
-     * - counter: Count method invocations (useful!)
-     * - gauge: Set a specific value (useful!)
-     * - timing: Duration in ms (DON'T USE if trace:true - span already captures duration!)
-     *
-     * DEFAULT: undefined (no metrics)
-     */
+    /** Record metric */
     metric?: {
         name?: string;
-        type?: 'counter' | 'gauge' | 'timing';
+        type?: 'counter' | 'timing';
         unit?: string;
         tags?: Record<string, string>;
     };
     /**
-     * Source type (auto-detected if not provided)
-     * Auto-detection rules:
-     * - *Controller → 'controller' → "api:ControllerName.method"
-     * - *Service → 'service' → "service:ServiceName.method"
-     * - *Queue, *QueueHandler → 'queue' → "queue:QueueName.method"
-     * - *Task, *TaskHandler → 'task' → "task:TaskName.method"
-     * - Default → 'handler' → "ClassName.method"
+     * Unified extraction API (recommended).
+     *
+     * Lets applications enrich span tags/metrics/data/checkpoints both at start and finish,
+     * without needing 3-4 separate callbacks.
      */
-    sourceType?: SourceType;
-    /** Tags applied to all observability events */
-    tags?: Record<string, string>;
-    /** Capture method arguments */
-    captureArgs?: boolean;
-    /** Capture return value */
-    captureResult?: boolean;
-    /**
-     * Conditionally enable/disable observability.
-     * - Static boolean: `enabled: false` to disable
-     * - Dynamic function: `enabled: () => someCondition()`
-     * Function receives no arguments but can access getCurrentContext() internally.
-     * Default: true (enabled)
-     */
-    enabled?: boolean | (() => boolean);
-    /**
-     * Callback to extract context-specific attributes at runtime.
-     * Called with the instance (`this`) and method arguments.
-     * Returns attributes to add to the span.
-     */
-    getAttributes?: (instance: any, args: any[]) => Record<string, unknown>;
-    /**
-     * Callback to extract attributes from the result after execution.
-     * Called with the method's return value.
-     * Returns attributes to add to the span before it ends.
-     */
-    getResultAttributes?: (result: any) => Record<string, unknown>;
-    /**
-     * Callback to extract metrics from the result after execution.
-     * Called with the method's return value.
-     * Returns metrics to embed in the span (published as CloudWatch EMF metrics).
-     */
-    getMetrics?: (result: any) => Record<string, number>;
-    /**
-     * Callback to extract data from the result after execution.
-     * Called with the method's return value.
-     * Returns data to embed in the span (for audit-like structured information).
-     */
-    getData?: (result: any) => Record<string, unknown>;
+    extract?: ObservedExtractor<TInstance, TArgs, TResult>;
 }
-/**
- * Unified observability decorator that combines tracing, auditing, and metrics
- *
- * @param options - Observability options
- */
-export declare function Observed(options?: ObservedOptions): <T extends (...args: any[]) => any>(target: object, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<T>) => TypedPropertyDescriptor<T>;
+export declare function Observed(): <T extends (...args: any[]) => any>(target: object, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<T>) => TypedPropertyDescriptor<T>;
+export declare function Observed<TInstance = unknown, TArgs extends unknown[] = unknown[], TResult = unknown>(options: ObservedOptions<TInstance, TArgs, TResult>): <T extends (...args: any[]) => any>(target: object, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<T>) => TypedPropertyDescriptor<T>;
+export {};

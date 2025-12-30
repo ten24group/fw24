@@ -1,122 +1,137 @@
 /**
- * AuditObserver - For entity and action auditing
- *
- * DESIGN PRINCIPLES:
- * - Requires correlationId from context or explicit option
- * - Integrates with existing FW24 Actor type
- * - Supports entity lifecycle audits and custom audits
- * - Replaces old audit system
+ * AuditObserver - Entity and action auditing
  *
  * Usage:
  * ```typescript
- * // FIRST: Establish context
- * await runWithContext(
- *   createObservationContext(requestId, { actor }),
- *   async () => {
- *     // Entity operations
- *     AuditObserver.entityCreate('User', userId, userData);
- *     AuditObserver.entityUpdate('User', userId, { before, after });
- *     AuditObserver.entityDelete('User', userId);
+ * // Entity operations (context is auto-established in controllers)
+ * AuditObserver.entityCreate('User', userId, userData);
+ * AuditObserver.entityUpdate('User', userId, { before, after });
+ * AuditObserver.entityDelete('User', userId);
  *
- *     // Custom audits
- *     AuditObserver.record({
- *       operation: 'permission.granted',
- *       entityName: 'User',
- *       entityId: userId,
- *       data: { role: 'admin' },
- *     });
- *   }
- * );
+ * // Custom audits
+ * AuditObserver.record({
+ *   operation: 'permission.granted',
+ *   entityName: 'User',
+ *   entityId: userId,
+ *   data: { role: 'admin' },
+ * });
  * ```
  */
-import { ExecutionContext } from '../../core/types/execution-context';
-import { ObservabilityLevelString } from '../types';
-import { BaseObserverOptions, ObservabilityPayload } from './base';
-export interface AuditObserverOptions extends BaseObserverOptions {
-}
+import type { ObservabilityLevelString, RecordOverrides } from '../types';
 /**
- * Options for custom audit records
+ * Options for entity audit operations.
+ * Extends RecordOverrides for all context override capabilities.
  */
-export interface AuditRecordOptions extends BaseObserverOptions, ObservabilityPayload {
-    operation: string;
-    entityName?: string;
-    entityId?: string;
-    subType?: string;
+export interface EntityAuditOptions extends RecordOverrides {
+    /** Override severity level. Default varies by operation. */
     level?: ObservabilityLevelString;
+    /** Additional attributes */
+    attributes?: Record<string, unknown>;
 }
 /**
- * Options for compliance audits
+ * Options for custom audit records.
  */
-export interface ComplianceAuditOptions extends BaseObserverOptions, ObservabilityPayload {
+export interface AuditRecordOptions extends RecordOverrides {
+    /** Operation name (required) */
     operation: string;
-    /** Compliance event type */
-    subType: 'pii_access' | 'data_export' | 'consent_change' | 'data_deletion' | string;
+    /** Entity name */
     entityName?: string;
+    /** Entity ID */
     entityId?: string;
+    /** Audit subtype for categorization */
+    subType?: string;
+    /** Severity level */
+    level?: ObservabilityLevelString;
+    /** Audit data */
+    data?: Record<string, unknown>;
+    /** Additional attributes */
+    attributes?: Record<string, unknown>;
+    /** Metrics */
+    metrics?: Record<string, number>;
 }
 /**
- * Options for access audits
+ * Options for compliance audits.
  */
-export interface AccessAuditOptions extends BaseObserverOptions, ObservabilityPayload {
+export interface ComplianceAuditOptions extends RecordOverrides {
+    /** Operation name (required) */
     operation: string;
+    /** Compliance subtype (required) */
+    subType: 'pii_access' | 'data_export' | 'consent_change' | 'data_deletion' | string;
+    /** Entity name */
+    entityName?: string;
+    /** Entity ID */
+    entityId?: string;
+    /** Audit data */
+    data?: Record<string, unknown>;
+    /** Additional attributes */
+    attributes?: Record<string, unknown>;
+    /** Metrics */
+    metrics?: Record<string, number>;
+}
+/**
+ * Options for access audits.
+ */
+export interface AccessAuditOptions extends RecordOverrides {
+    /** Operation name (required) */
+    operation: string;
+    /** Resource being accessed */
     resource: string;
+    /** Resource ID */
     resourceId?: string;
+    /** Access action */
     action: 'view' | 'download' | 'modify' | 'share' | string;
+    /** Whether access was allowed */
     allowed: boolean;
+    /** Audit data */
+    data?: Record<string, unknown>;
+    /** Additional attributes */
+    attributes?: Record<string, unknown>;
+    /** Metrics */
+    metrics?: Record<string, number>;
 }
 export declare class AuditObserver {
     /**
-     * Record entity creation
+     * Audit entity creation
      */
-    static entityCreate(entityName: string, entityId: string, data: unknown, ctx?: ExecutionContext | AuditObserverOptions): string | undefined;
+    static entityCreate(entityName: string, entityId: string, data: unknown, options?: EntityAuditOptions): string | undefined;
     /**
-     * Record entity update
+     * Audit entity update
      */
     static entityUpdate(entityName: string, entityId: string, changes: {
         before?: unknown;
         after?: unknown;
         diff?: unknown;
-    }, ctx?: ExecutionContext | AuditObserverOptions): string | undefined;
+    }, options?: EntityAuditOptions): string | undefined;
     /**
-     * Record entity deletion
-     *
-     * Note: deletedData comes before ctx for consistency with entityCreate/entityUpdate
+     * Audit entity deletion (sync)
      */
-    static entityDelete(entityName: string, entityId: string, deletedData?: unknown, ctx?: ExecutionContext | AuditObserverOptions): string | undefined;
+    static entityDelete(entityName: string, entityId: string, deletedData?: unknown, options?: EntityAuditOptions): string | undefined;
     /**
-     * Record entity deletion (async version - waits for backend completion)
-     *
-     * Use when you need to ensure the audit is persisted before continuing.
+     * Audit entity deletion (async - waits for backend)
      */
-    static entityDeleteAsync(entityName: string, entityId: string, deletedData?: unknown, ctx?: ExecutionContext | AuditObserverOptions): Promise<string | undefined>;
+    static entityDeleteAsync(entityName: string, entityId: string, deletedData?: unknown, options?: EntityAuditOptions): Promise<string | undefined>;
     /**
-     * Record entity read (high volume - use sparingly)
+     * Audit entity read
      */
-    static entityRead(entityName: string, entityId: string, ctx?: ExecutionContext | AuditObserverOptions): string | undefined;
+    static entityRead(entityName: string, entityId: string, options?: EntityAuditOptions): string | undefined;
     /**
-     * Record entity list/query (high volume - use sparingly)
+     * Audit entity list operation
      */
-    static entityList(entityName: string, query: Record<string, unknown>, resultCount: number, ctx?: ExecutionContext | AuditObserverOptions): string | undefined;
+    static entityList(entityName: string, query: Record<string, unknown>, resultCount: number, options?: EntityAuditOptions): string | undefined;
     /**
-     * Record custom audit event
+     * Record a custom audit event
      */
     static record(options: AuditRecordOptions): string | undefined;
     /**
-     * Record compliance audit (PII access, data export, etc.)
-     *
-     * @param options.metadata - Flexible metadata for compliance info (reason, justification, etc.)
+     * Record a compliance audit (GDPR, HIPAA, etc.)
      */
     static compliance(options: ComplianceAuditOptions): string | undefined;
     /**
-     * Record compliance audit (async version - waits for backend completion)
-     *
-     * Use when you need to ensure the audit is persisted before continuing.
-     *
-     * @param options.metadata - Flexible metadata for compliance info (reason, justification, etc.)
+     * Record a compliance audit (async - waits for backend)
      */
     static complianceAsync(options: ComplianceAuditOptions): Promise<string | undefined>;
     /**
-     * Record access audit (for sensitive resources)
+     * Record an access audit
      */
     static access(options: AccessAuditOptions): string | undefined;
 }

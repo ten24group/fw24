@@ -2,6 +2,7 @@
  * @Traced Decorator - Automatic span tracing for methods
  *
  * Wraps a method in a span, automatically recording duration and errors.
+ * Parent tracking is FULLY AUTOMATIC via span tree.
  *
  * Usage:
  * ```typescript
@@ -11,54 +12,22 @@
  *     // Method body is automatically traced
  *   }
  *
- *   @Traced({ name: 'custom-operation', level: 'debug' })
- *   async internalProcess(): Promise<void> {
- *     // Custom span name and level
- *   }
+ *   @Traced({ name: 'custom.operation', level: 'debug' })
+ *   async helperMethod(): Promise<void> { }
  * }
  * ```
- *
- * REQUIREMENTS:
- * - Must be called within an observation context (runWithContext)
- * - Otherwise creates a NoOp span that doesn't record anything
  */
 import { SpanOptions } from '../observers/span';
-import { SourceType } from './decorator-utils';
-export interface TracedOptions {
+import type { DecoratorBaseOptions } from '../types';
+export interface TracedOptions extends DecoratorBaseOptions {
     /** Custom span name (defaults to ClassName.methodName) */
     name?: string;
     /** Span level */
     level?: SpanOptions['level'];
-    /** Additional attributes to add to span */
-    attributes?: Record<string, unknown>;
-    /** Tags for filtering */
-    tags?: Record<string, string>;
-    /** Whether to capture method arguments in span attributes */
-    captureArgs?: boolean;
-    /** Whether to capture return value in span attributes */
-    captureResult?: boolean;
-    /**
-     * Source type for the span (auto-detected if not provided)
-     * Auto-detection rules:
-     * - *Controller → 'controller'
-     * - *Service → 'service'
-     * - *Queue, *QueueHandler → 'queue'
-     * - *Task, *TaskHandler → 'task'
-     * - Default → 'handler'
-     */
-    sourceType?: SourceType;
-    /**
-     * Conditionally enable/disable tracing.
-     * - Static boolean: `enabled: false` to disable
-     * - Dynamic function: `enabled: () => someCondition()`
-     * Function receives no arguments but can access getCurrentContext() internally.
-     * Default: true (enabled)
-     */
-    enabled?: boolean | (() => boolean);
+    /** Initial data payload */
+    data?: Record<string, unknown>;
 }
 /**
  * Method decorator that wraps a method in a trace span
- *
- * @param options - Tracing options
  */
-export declare function Traced(options?: TracedOptions): <T extends (...args: unknown[]) => unknown>(target: object, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<T>) => TypedPropertyDescriptor<T>;
+export declare function Traced(options?: TracedOptions): <T extends (...args: any[]) => any>(target: object, propertyKey: string | symbol, descriptor: TypedPropertyDescriptor<T>) => TypedPropertyDescriptor<T>;

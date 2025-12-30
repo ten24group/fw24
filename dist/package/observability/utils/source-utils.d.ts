@@ -35,7 +35,8 @@ export declare function createQueueSource(queueName: string, handlerName?: strin
  * Create a source identifier for a queue handler
  */
 export declare function createTaskSource(taskName: string, handlerName?: string): string;
-export type SourceType = 'controller' | 'service' | 'queue' | 'task' | 'handler';
+export type { SourceType } from '../types';
+import type { SourceType } from '../types';
 /**
  * Auto-detect source type from class name.
  * Used by decorators to infer the source type when not explicitly provided.

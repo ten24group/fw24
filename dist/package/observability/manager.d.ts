@@ -3,7 +3,8 @@
  *
  * All config and backends resolved from DI - no manual instantiation.
  */
-import { CaptureInput, CaptureOptions, ObservabilityBackend, ObservabilityConfig, ObservabilityEvent } from './types';
+import { CaptureInput, ObservabilityBackend, ObservabilityConfig, ObservabilityEvent } from './types';
+import type { ObservabilitySummary } from '../core/runtime/execution-context/types';
 export declare class ObservabilityManager {
     private constructor();
     /**
@@ -14,6 +15,12 @@ export declare class ObservabilityManager {
     static isColdStart(): boolean;
     static getInvocationCount(): number;
     static getConfig(): ObservabilityConfig | null;
+    /**
+     * Get observability summary for the current invocation.
+     * Returns buffer stats: evicted, buffered, captured, sampledOut counts.
+     * Returns undefined if no execution context exists.
+     */
+    static getSummary(): ObservabilitySummary | undefined;
     static configure(updates: Partial<ObservabilityConfig>): void;
     static registerBackend(backend: ObservabilityBackend): void;
     static unregisterBackend(name: string): void;
@@ -27,20 +34,31 @@ export declare class ObservabilityManager {
     static registerPreInitHook(hook: () => void): void;
     /**
      * Capture an observability event (fire-and-forget)
+     *
+     * Capture control is embedded in input.capture - no separate options param.
+     *
+     * @param input - Event input with capture control in input.capture
+     * @returns observabilityLogId if captured, undefined if filtered/sampled out
      */
-    static capture(input: CaptureInput, options?: CaptureOptions): string | undefined;
+    static capture(input: CaptureInput): string | undefined;
     /**
      * Capture an observability event asynchronously (waits for backend capture)
+     *
+     * @param input - Event input with capture control in input.capture
+     * @returns Promise<observabilityLogId> if captured, undefined if filtered/sampled out
      */
-    static captureAsync(input: CaptureInput, options?: Omit<CaptureOptions, 'sync'>): Promise<string | undefined>;
+    static captureAsync(input: CaptureInput): Promise<string | undefined>;
     /**
-     * Observe an event
+     * Observe an event (convenience method)
+     *
+     * @param event - Partial event with required type and level
+     * @returns observabilityLogId if captured, undefined if filtered/sampled out
      */
     static observe(event: Partial<ObservabilityEvent> & {
         type: string;
         level: string;
         correlationId?: string;
-    }, options?: CaptureOptions): string | undefined;
+    }): string | undefined;
     /**
      * Flush all backends and buffered events (called at end of Lambda invocation)
      */

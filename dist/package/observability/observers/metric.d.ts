@@ -1,38 +1,39 @@
 /**
- * MetricObserver - For business and technical metrics
+ * MetricObserver - Business and technical metrics
  *
- * DESIGN PRINCIPLES:
- * - Requires correlationId from context
- * - Supports counters, gauges, timings, histograms
- * - EMF-compatible for CloudWatch
+ * Supports counters, gauges, timings, histograms.
+ * EMF-compatible for CloudWatch.
+ *
+ * CONSOLIDATION: When an active span exists, metrics are added to the span
+ * instead of creating separate records. This reduces DynamoDB entries while
+ * still publishing metrics to CloudWatch (which extracts from any event).
  *
  * Usage:
  * ```typescript
- * // FIRST: Establish context
- * await runWithContext(
- *   createObservationContext(requestId),
- *   async () => {
- *     // Simple counter
- *     MetricObserver.increment('orders.created');
+ * // Context is auto-established in controllers
  *
- *     // Gauge value
- *     MetricObserver.gauge('queue.depth', 42);
+ * // Simple counter
+ * MetricObserver.increment('orders.created');
  *
- *     // Timing
- *     MetricObserver.timing('api.latency', 145);
+ * // Gauge value
+ * MetricObserver.gauge('queue.depth', 42);
  *
- *     // Custom with tags
- *     MetricObserver.record('payment.amount', 99.99, {
- *       tags: { currency: 'USD', method: 'card' },
- *       unit: 'dollars',
- *     });
- *   }
- * );
+ * // Timing
+ * MetricObserver.timing('api.latency', 145);
+ *
+ * // Custom with tags
+ * MetricObserver.record('payment.amount', 99.99, {
+ *   tags: { currency: 'USD', method: 'card' },
+ *   unit: 'dollars',
+ * });
  * ```
  */
-import { ObservabilityLevelString } from '../types';
-import { BaseObserverOptions, ObservabilityPayload } from './base';
-export interface MetricOptions extends BaseObserverOptions, ObservabilityPayload {
+import type { ObservabilityLevelString, RecordOverrides } from '../types';
+/**
+ * Options for metric operations.
+ * Extends RecordOverrides for all context override capabilities.
+ */
+export interface MetricOptions extends RecordOverrides {
     /** Metric type */
     type?: 'counter' | 'gauge' | 'timing' | 'histogram' | 'custom';
     /** Unit (e.g., 'milliseconds', 'bytes', 'count') */
@@ -43,6 +44,10 @@ export interface MetricOptions extends BaseObserverOptions, ObservabilityPayload
     entityName?: string;
     /** Entity ID for context */
     entityId?: string;
+    /** Additional attributes */
+    attributes?: Record<string, unknown>;
+    /** Force standalone record even when span is active */
+    standalone?: boolean;
 }
 export declare class MetricObserver {
     /**
@@ -66,20 +71,24 @@ export declare class MetricObserver {
      */
     static histogram(name: string, value: number, options?: MetricOptions): string | undefined;
     /**
-     * Record custom metric
+     * Record custom metric.
+     *
+     * When an active span exists, the metric is consolidated into the span
+     * (added as a span event) instead of creating a separate record.
+     * Use `standalone: true` to force a separate record.
      */
     static record(name: string, value: number, options?: MetricOptions): string | undefined;
     /**
-     * Record multiple metrics at once
+     * Record multiple metrics at once.
      * Invalid values (NaN, Infinity) are filtered out with warnings.
+     *
+     * When an active span exists, metrics are consolidated into the span.
+     * Use `standalone: true` to force a separate record.
      */
     static recordBatch(metrics: Record<string, number>, options?: MetricOptions): string | undefined;
     /**
-     * Time a function execution and record the duration
+     * Time a function execution and record the duration.
+     * Handles both sync and async functions automatically.
      */
-    static time<T>(name: string, fn: () => Promise<T>, options?: MetricOptions): Promise<T>;
-    /**
-     * Time a sync function execution and record the duration
-     */
-    static timeSync<T>(name: string, fn: () => T, options?: MetricOptions): T;
+    static time<T>(name: string, fn: () => T, options?: MetricOptions): T;
 }

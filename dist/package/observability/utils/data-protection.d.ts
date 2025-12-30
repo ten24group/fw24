@@ -3,17 +3,7 @@
  *
  * Sensitive data redaction using @hackylabs/deep-redact.
  */
-/**
- * Data protection configuration
- */
-export interface DataProtectionConfig {
-    enabled?: boolean;
-    blacklistedKeys?: (string | RegExp)[];
-    caseSensitiveKeyMatch?: boolean;
-    replacement?: string;
-    fuzzyKeyMatch?: boolean;
-    fields?: string[];
-}
+import type { DataProtectionConfig } from '../types';
 /**
  * Default blacklisted keys for sensitive data
  * Covers common authentication, financial, and PII fields

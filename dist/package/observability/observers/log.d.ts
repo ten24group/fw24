@@ -1,8 +1,7 @@
 /**
- * LogObserver - For simple structured logging
+ * LogObserver - Structured logging
  *
- * Provides a simple API for structured logging that integrates with
- * the observability system. Unlike raw console.log, these logs:
+ * Unlike raw console.log, these logs:
  * - Include correlationId for distributed tracing
  * - Have proper severity levels
  * - Go through configured backends (CloudWatch, DynamoDB, etc.)
@@ -10,77 +9,65 @@
  *
  * Usage:
  * ```typescript
- * // FIRST: Establish context (usually done by middleware)
- * await runWithContext(
- *   createObservationContext(requestId),
- *   async () => {
- *     // Simple logging
- *     LogObserver.info('User logged in', { userId });
- *     LogObserver.warn('Rate limit approaching', { current: 90, limit: 100 });
- *     LogObserver.error('Payment failed', { orderId, error: err.message });
+ * // Context is auto-established in controllers
+ * LogObserver.info('User logged in', { userId });
+ * LogObserver.warn('Rate limit approaching', { current: 90, limit: 100 });
+ * LogObserver.error('Payment failed', new Error('Timeout'));
  *
- *     // With additional options
- *     LogObserver.debug('Cache lookup', { key, hit: true }, {
- *       tags: { component: 'cache' }
- *     });
- *   }
- * );
+ * // With additional options
+ * LogObserver.debug('Cache lookup', { key, hit: true }, {
+ *   tags: { component: 'cache' }
+ * });
  * ```
  */
-import { BaseObserverOptions, ObservabilityPayload } from './base';
-export interface LogOptions extends BaseObserverOptions, ObservabilityPayload {
+import type { RecordOverrides } from '../types';
+/**
+ * Options for log operations.
+ * Extends RecordOverrides for all context override capabilities.
+ */
+export interface LogOptions extends RecordOverrides {
     /** Entity name for context */
     entityName?: string;
     /** Entity ID for context */
     entityId?: string;
+    /** Additional attributes */
+    attributes?: Record<string, unknown>;
+    /** Duration of the operation in milliseconds */
+    durationMs?: number;
+    /** Whether the operation succeeded */
+    success?: boolean;
+    /** Status of the operation */
+    status?: string;
+    /** Metrics to attach to the log */
+    metrics?: Record<string, number>;
 }
 export declare class LogObserver {
     /**
-     * Log at INFO level
+     * Log at TRACE level (most verbose)
      */
-    static info(message: string, ...args: unknown[]): string | undefined;
-    /**
-     * Log at WARN level
-     */
-    static warn(message: string, ...args: unknown[]): string | undefined;
-    /**
-     * Log at ERROR level
-     */
-    static error(message: string, errorOrData?: Error | Record<string, unknown>, options?: LogOptions): string | undefined;
+    static trace(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined;
     /**
      * Log at DEBUG level
      */
-    static debug(message: string, ...args: unknown[]): string | undefined;
+    static debug(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined;
     /**
-     * Log at TRACE level
+     * Log at INFO level
      */
-    static trace(message: string, ...args: unknown[]): string | undefined;
-    private static logWithArgs;
+    static info(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined;
     /**
-     * Log at CRITICAL level (most severe, bypasses sampling)
+     * Log at WARN level
+     */
+    static warn(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined;
+    /**
+     * Log at ERROR level
+     * @param message - Log message
+     * @param errorOrData - Error object OR data object
+     * @param options - Additional options
+     */
+    static error(message: string, errorOrData?: Error | Record<string, unknown>, options?: LogOptions): string | undefined;
+    /**
+     * Log at CRITICAL level (most severe)
+     * Note: CRITICAL level bypasses sampling automatically
      */
     static critical(message: string, errorOrData?: Error | Record<string, unknown>, options?: LogOptions): string | undefined;
-    /**
-     * Core log method
-     */
-    private static log;
-    /**
-     * Create a child logger with preset tags/options
-     * Useful for component-specific logging
-     */
-    static createChild(defaultOptions: LogOptions): ChildLogObserver;
-}
-/**
- * Child logger with preset options
- */
-export declare class ChildLogObserver {
-    private readonly defaults;
-    constructor(defaults: LogOptions);
-    trace(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined;
-    debug(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined;
-    info(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined;
-    warn(message: string, data?: Record<string, unknown>, options?: LogOptions): string | undefined;
-    error(message: string, errorOrData?: Error | Record<string, unknown>, options?: LogOptions): string | undefined;
-    critical(message: string, errorOrData?: Error | Record<string, unknown>, options?: LogOptions): string | undefined;
-    private mergeOptions;
 }

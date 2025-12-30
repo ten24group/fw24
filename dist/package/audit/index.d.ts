@@ -4,5 +4,5 @@
  * For request/event/metrics logging, use the observability module directly.
  */
 export { AUDIT_ENV_KEYS } from './interfaces';
-export { DynamoDBStreamAuditLogger, DynamoDBStreamAuditLogger as DefaultAuditHandler, } from './loggers';
+export { DynamoDBStreamAuditLogger, } from './loggers/dynamo-db-stream-audit-logger';
 export { getChangedProperties, DEFAULT_IGNORED_FIELDS, } from './helpers/change-detection';

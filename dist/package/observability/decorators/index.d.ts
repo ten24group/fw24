@@ -20,9 +20,8 @@
  * }
  * ```
  *
- * IMPORTANT: Decorators require an observation context to be established.
- * Use runWithContext() or Observer.withContext() before calling
- * decorated methods.
+ * IMPORTANT: Decorators require an execution context to be established.
+ * Context is auto-established in controllers, or use runWithExecutionContext().
  */
 export { Traced, TracedOptions } from './traced';
 export { Audited, AuditedOptions } from './audited';

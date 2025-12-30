@@ -46,7 +46,10 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
     readonly schema: ObservabilityLogSchema;
     readonly container: IDIContainer;
     constructor(tableKey: string, ttlDays: number, schema: ObservabilityLogSchema, container: IDIContainer);
-    /** Batch create - used by DynamoDB backend */
+    /**
+     * Batch create - used by DynamoDB backend
+     * Auto-compresses fields marked with `compressed: true` in entity schema
+     */
     batchCreate(items: ObservabilityLogCreateItem[]): Promise<void>;
     /** Override list to default to desc order (latest first) */
     list(query?: EntityQuery<ObservabilityLogSchema>, ctx?: ExecutionContext): Promise<{
@@ -304,7 +307,9 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                         readonly pageType: "list";
                                         readonly overrideConfig: {
                                             readonly defaultFilters: {
-                                                readonly parentObservabilityLogId: ":observabilityLogId";
+                                                readonly parentObservabilityLogId: {
+                                                    readonly eq: ":observabilityLogId";
+                                                };
                                             };
                                             readonly hideSegments: ["hierarchy-group"];
                                         };
@@ -320,7 +325,9 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                         readonly pageType: "list";
                                         readonly overrideConfig: {
                                             readonly defaultFilters: {
-                                                readonly correlationId: ":correlationId";
+                                                readonly correlationId: {
+                                                    readonly eq: ":correlationId";
+                                                };
                                             };
                                             readonly hideSegments: ["hierarchy-group"];
                                             readonly description: "All events in this Lambda invocation";
@@ -344,7 +351,9 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                         readonly pageType: "list";
                                         readonly overrideConfig: {
                                             readonly defaultFilters: {
-                                                readonly correlationId: ":causedBy";
+                                                readonly correlationId: {
+                                                    readonly eq: ":causedBy";
+                                                };
                                             };
                                             readonly hideSegments: ["hierarchy-group"];
                                             readonly description: "View the original request trace that caused this event";
@@ -361,7 +370,9 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                         readonly pageType: "list";
                                         readonly overrideConfig: {
                                             readonly defaultFilters: {
-                                                readonly causedBy: ":correlationId";
+                                                readonly causedBy: {
+                                                    readonly eq: ":correlationId";
+                                                };
                                             };
                                             readonly hideSegments: ["hierarchy-group"];
                                             readonly description: "Events in other invocations caused by this request";
@@ -396,10 +407,41 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                         readonly propertiesConfig: ["entityName", "entityId"];
                                     };
                                 };
-                                readonly data: {
-                                    readonly label: "Data";
-                                    readonly icon: "FileTextOutlined";
+                                readonly checkpoints: {
+                                    readonly label: "Checkpoints";
+                                    readonly icon: "NodeIndexOutlined";
                                     readonly sortOrder: 2;
+                                    readonly pageType: "details";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly 'data.checkpoints': {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: [{
+                                            readonly name: "data.checkpoints";
+                                            readonly column: "data.checkpoints";
+                                            readonly label: "Checkpoints";
+                                            readonly fieldType: "timeline";
+                                            readonly timelineConfig: {
+                                                readonly mode: "left";
+                                                readonly showTimestamp: true;
+                                                readonly timestampFormat: "h:mm:ss.SSS A";
+                                                readonly itemMapping: {
+                                                    readonly labelField: "name";
+                                                    readonly timestampField: "ts";
+                                                };
+                                            };
+                                        }];
+                                    };
+                                };
+                                readonly data: {
+                                    readonly label: "Rest Data";
+                                    readonly icon: "FileTextOutlined";
+                                    readonly sortOrder: 3;
                                     readonly pageType: "details";
                                     readonly visibility: {
                                         readonly record: {
@@ -655,7 +697,7 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                     readonly type: "string";
                     readonly required: true;
                     readonly isIdentifier: true;
-                    readonly default: () => `${string}-${string}-${string}-${string}-${string}`;
+                    readonly default: () => string;
                     readonly label: "Log ID";
                     readonly isFilterable: true;
                 };
@@ -722,7 +764,7 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                     readonly type: "string";
                     readonly required: true;
                     readonly label: "Type";
-                    readonly helpText: "Event type (span.start, span.end, audit.entity, log, metric, etc.)";
+                    readonly helpText: "Event type (span, audit.entity, log, metric, etc.)";
                     readonly isFilterable: true;
                     readonly isSortable: true;
                 };
@@ -830,11 +872,15 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                     readonly type: "any";
                     readonly label: "Data";
                     readonly helpText: "Event-specific data payload";
+                    readonly compressed: {
+                        readonly threshold: number;
+                    };
                 };
                 readonly metadata: {
                     readonly type: "any";
                     readonly label: "Metadata";
                     readonly helpText: "Additional metadata about the event";
+                    readonly compressed: true;
                 };
                 readonly error: {
                     readonly type: "any";
@@ -856,8 +902,12 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                     readonly default: () => number;
                     readonly label: "TTL";
                     readonly helpText: "Time-to-live for automatic cleanup (Unix timestamp)";
-                    readonly fieldType: "duration";
-                    readonly durationUnit: "seconds";
+                    readonly fieldType: "ttl";
+                    readonly ttlUnit: "seconds";
+                    readonly ttlFormat: "auto";
+                    readonly isVisible: true;
+                    readonly isEditable: false;
+                    readonly isListable: true;
                 };
             };
             readonly indexes: {
@@ -971,6 +1021,10 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
     search(query: EntitySearchQuery<ObservabilityLogSchema>, ctx?: ExecutionContext): Promise<import("../../search/types").SearchResult<any>>;
     /** Get trace with reconstructed span tree */
     getTraceWithSpans(correlationId: string, ctx?: ExecutionContext): Promise<ReconstructedSpan[]>;
-    /** Reconstruct span hierarchy from flat log records */
+    /**
+     * Reconstruct span hierarchy from flat log records.
+     * FW24 supports consolidated span records only (type='span').
+     * No compatibility is provided for legacy span.* record formats.
+     */
     reconstructSpans(records: ReadonlyArray<LogRecord>): ReconstructedSpan[];
 }

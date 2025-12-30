@@ -1,150 +1,196 @@
 /**
- * SpanObserver - For distributed tracing
+ * SpanObserver - Distributed Tracing with Clean Data Separation
  *
  * DESIGN PRINCIPLES:
- * - Requires correlationId from context or explicit option
- * - No auto-generation of correlationId (must be propagated)
- * - Hierarchical spans via parentObservabilityLogId
- * - Fire-and-forget capture via capturer pattern (testable)
+ * - Clear separation: tags (indexable), metrics (numeric), data (debug payload), checkpoints (timeline)
+ * - SpanObserver instances form a linked tree via `parent` references
+ * - `withSpan()` / `wrap()` are the PRIMARY APIs - automatic scope management
+ * - Consolidation: By default, span.start + content + end are merged into ONE record
+ *
+ * DATA CONCEPTS:
+ * - Tags: string→string pairs for filtering/indexing (orderId, userId, status)
+ * - Metrics: string→number pairs for dashboards/alerts (duration, count, size)
+ * - Data: arbitrary payload for debugging (request, response, context)
+ * - Checkpoints: simple timeline of what happened (validation_start, db_complete)
  *
  * Usage:
  * ```typescript
- * // FIRST: Establish context with correlationId
- * await runWithContext(
- *   createObservationContext(requestId),
- *   async () => {
- *     // Then create spans
- *     const span = SpanObserver.start('processOrder');
- *     try {
- *       // ... work
- *       span.end({ success: true });
- *     } catch (error) {
- *       span.end({ success: false, error });
- *     }
- *   }
- * );
+ * await withSpan('processOrder', async (span) => {
+ *   // Tags - for filtering/searching
+ *   span.tag('orderId', order.id);
+ *   span.tag('status', 'processing');
  *
- * // Or use withSpan helper
- * await SpanObserver.withSpan('processOrder', async (span) => {
- *   span.addEvent('validation_complete');
+ *   // Metrics - for dashboards
+ *   span.metric('itemCount', items.length);
+ *
+ *   // Checkpoints - timeline
+ *   span.checkpoint('validation_complete');
+ *   span.checkpoint('payment_processed');
+ *
+ *   // Data - debug payload
+ *   span.setData({ request: body, response: result });
  * });
  * ```
  */
-import { ObservabilityLevelString } from '../types';
-import { BaseObserverOptions, ObservabilityPayload } from './base';
-export interface SpanOptions extends BaseObserverOptions {
-    /** Parent observability log ID for nested spans */
-    parentObservabilityLogId?: string;
+import type { ISpanNode } from '../../core/runtime/execution-context/types';
+import type { ObservabilityLevelString, RecordOverrides } from '../types';
+/**
+ * Options for starting a span.
+ * Extends RecordOverrides for all context override capabilities.
+ */
+export interface SpanOptions extends RecordOverrides {
     /** Severity level for the span */
     level?: ObservabilityLevelString;
-    /** Additional attributes */
-    attributes?: Record<string, unknown>;
-}
-/**
- * Options for adding events to a span
- */
-export interface SpanEventOptions extends ObservabilityPayload {
-    /** Event severity level */
-    level?: ObservabilityLevelString;
-    /** Additional tags for this event */
-    tags?: Record<string, string>;
+    /** Initial metrics (string→number for aggregation) */
+    metrics?: Record<string, number>;
+    /** Initial data (debug payload) */
+    data?: Record<string, unknown>;
+    /** Skip capturing entirely (for audit-only or metric-only scenarios) */
+    skipCapture?: boolean;
 }
 /**
  * Options for ending a span
  */
-export interface SpanEndOptions extends ObservabilityPayload {
+export interface SpanEndOptions {
     /** Whether the operation succeeded */
     success?: boolean;
     /** Error if operation failed */
     error?: Error;
     /** Custom status string */
     status?: string;
+    /** Additional data to merge */
+    data?: Record<string, unknown>;
+    /** Additional metrics to merge */
+    metrics?: Record<string, number>;
 }
 /**
- * Interface for span operations (allows NoOp implementation)
+ * Interface for span operations
  */
-export interface ISpanObserver {
+export interface ISpanObserver extends ISpanNode {
     readonly id: string;
+    readonly operation: string;
+    readonly captured: boolean;
     readonly traceId: string;
-    setAttribute(key: string, value: unknown): this;
-    setAttributes(attrs: Record<string, unknown>): this;
-    /**
-     * Set span status (OTEL compliant)
-     * @param code - Status code ('OK' | 'ERROR' | 'UNSET')
-     * @param message - Optional description
-     */
-    setStatus(code: 'OK' | 'ERROR' | 'UNSET', message?: string): this;
-    /**
-     * Record an exception (OTEL compliant)
-     * Adds an exception event to the span
-     */
-    recordException(exception: Error | string): this;
-    addEvent(name: string, options?: SpanEventOptions): this;
+    readonly parentLogId: string | undefined;
+    tag(key: string, value: string | number | boolean): this;
+    tags(tags: Record<string, string | number | boolean>): this;
+    metric(key: string, value: number): this;
+    metrics(metrics: Record<string, number>): this;
+    setData(data: Record<string, unknown>): this;
+    checkpoint(name: string, options?: {
+        metrics?: Record<string, number>;
+        data?: Record<string, unknown>;
+        tags?: Record<string, string>;
+        error?: Error | string;
+    }): this;
     end(options?: SpanEndOptions): void;
-    withChild<T>(operation: string, fn: (span: ISpanObserver) => Promise<T>, options?: Omit<SpanOptions, 'correlationId' | 'parentObservabilityLogId'>): Promise<T>;
-    createChild(operation: string, options?: Omit<SpanOptions, 'correlationId' | 'parentObservabilityLogId'>): ISpanObserver;
+    recordException(exception: Error | string): this;
 }
 export declare class SpanObserver implements ISpanObserver {
-    private readonly spanId;
+    readonly id: string;
+    readonly operation: string;
+    readonly parent?: ISpanNode;
+    readonly captured: boolean;
+    readonly parentLogId: string | undefined;
     private readonly correlationId;
-    private readonly parentObservabilityLogId;
-    private readonly causedBy?;
-    private readonly relatedTraces?;
+    private readonly options;
     private readonly level;
     private readonly startTime;
-    private readonly source?;
-    private readonly tags?;
-    private readonly actor?;
-    private attributes;
-    private readonly operation;
-    private ended;
+    private _tags;
+    private _metrics;
+    private _data;
+    private _checkpoints;
+    private _hasError;
+    ended: boolean;
     private constructor();
-    /**
-     * Start a new span
-     *
-     * @param operation - Name of the operation being traced
-     * @param options - Span options (correlationId auto-generated if no context)
-     * @returns SpanObserver instance (always succeeds)
-     */
-    static start(operation: string, options?: SpanOptions): ISpanObserver;
-    /**
-     * Execute function within a span
-     */
-    static withSpan<T>(operation: string, fn: (span: ISpanObserver) => Promise<T>, options?: SpanOptions): Promise<T>;
-    /**
-     * Add an event to the current span context.
-     * This is a convenience method for adding events when you don't have direct access to the span object.
-     * The event will be linked to the current span via parentObservabilityLogId from context.
-     *
-     * @param name - Event name
-     * @param options - Event options (attributes, metrics, data, level, tags)
-     *
-     * @example
-     * ```typescript
-     * // From anywhere in the call stack within an observed context:
-     * SpanObserver.addEventToCurrentSpan('database.full_scan', {
-     *   attributes: { entityName: 'User', operation: 'query' },
-     *   metrics: { records_scanned: 1000 },
-     *   level: 'warn'
-     * });
-     * ```
-     */
-    static addEventToCurrentSpan(name: string, options?: SpanEventOptions): void;
-    get id(): string;
     get traceId(): string;
-    setAttribute(key: string, value: unknown): this;
-    setAttributes(attrs: Record<string, unknown>): this;
-    setStatus(code: 'OK' | 'ERROR' | 'UNSET', message?: string): this;
+    /** Check if span has any content worth capturing */
+    get hasContent(): boolean;
+    /**
+     * Set a tag for indexing/filtering.
+     * Tags are string key-value pairs that can be searched.
+     */
+    tag(key: string, value: string | number | boolean): this;
+    /**
+     * Set multiple tags at once.
+     */
+    tags(tags: Record<string, string | number | boolean>): this;
+    /**
+     * Record a numeric metric for dashboards/aggregation.
+     */
+    metric(key: string, value: number): this;
+    /**
+     * Record multiple metrics at once.
+     */
+    metrics(metrics: Record<string, number>): this;
+    /**
+     * Set debug data payload.
+     * Data is NOT indexed - use for debugging inspection only.
+     */
+    setData(data: Record<string, unknown>): this;
+    /**
+     * Add a checkpoint to the timeline.
+     * Checkpoints are simple markers of what happened when.
+     */
+    checkpoint(name: string, options?: {
+        metrics?: Record<string, number>;
+        data?: Record<string, unknown>;
+        tags?: Record<string, string>;
+        error?: Error | string;
+    }): this;
+    /**
+     * Record an exception on this span.
+     * Marks the span as having an error and captures exception details.
+     */
     recordException(exception: Error | string): this;
-    addEvent(name: string, options?: SpanEventOptions): this;
+    /**
+     * Wrap a function in a span - handles both sync and async automatically.
+     * This is the PREFERRED API for decorators and unknown sync/async situations.
+     */
+    static wrap<R>(operation: string, fn: () => Promise<R>, options?: SpanOptions & {
+        /** Called immediately after span is created and made current (before invoking fn). */
+        onStart?: (span: SpanObserver) => void;
+        /** Called before span.end() with result/error. */
+        onFinish?: (span: SpanObserver, result: {
+            value?: unknown;
+            error?: Error;
+            success: boolean;
+            durationMs: number;
+        }) => void;
+    }): Promise<R>;
+    static wrap<R>(operation: string, fn: () => R, options?: SpanOptions & {
+        /** Called immediately after span is created and made current (before invoking fn). */
+        onStart?: (span: SpanObserver) => void;
+        /** Called before span.end() with result/error. */
+        onFinish?: (span: SpanObserver, result: {
+            value?: unknown;
+            error?: Error;
+            success: boolean;
+            durationMs: number;
+        }) => void;
+    }): R;
+    /**
+     * Execute async function within a span scope.
+     * Use when you need access to the span instance.
+     */
+    static withSpan<T>(operation: string, fn: (span: SpanObserver) => Promise<T>, options?: SpanOptions): Promise<T>;
+    /**
+     * Execute sync function within a span scope.
+     */
+    static withSpanSync<T>(operation: string, fn: (span: SpanObserver) => T, options?: SpanOptions): T;
+    /**
+     * Start a span without automatic scope management.
+     * WARNING: This does NOT set the span as current in context.
+     * Prefer wrap() or withSpan() for proper parent tracking.
+     */
+    static start(operation: string, options?: SpanOptions): SpanObserver;
+    private static createSpan;
+    /**
+     * Get the currently active span from context.
+     */
+    static getCurrentSpan(): SpanObserver | undefined;
     end(options?: SpanEndOptions): void;
-    /**
-     * Execute function within a child span
-     */
-    withChild<T>(operation: string, fn: (span: ISpanObserver) => Promise<T>, options?: Omit<SpanOptions, 'correlationId' | 'parentObservabilityLogId'>): Promise<T>;
-    /**
-     * Create a child span
-     */
-    createChild(operation: string, options?: Omit<SpanOptions, 'correlationId' | 'parentObservabilityLogId'>): ISpanObserver;
 }
 export declare const withSpan: typeof SpanObserver.withSpan;
+export declare const withSpanSync: typeof SpanObserver.withSpanSync;
+export declare const wrapInSpan: typeof SpanObserver.wrap;

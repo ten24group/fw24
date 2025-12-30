@@ -17,7 +17,20 @@ export declare function generateTraceId(): string;
  */
 export declare function generateSpanId(): string;
 /**
- * Generate a generic unique ID (for backward compatibility or non-trace entities)
- * Uses Span ID format (16 hex chars) to maintain consistency
+ * Generate an observability log ID (DynamoDB PK).
+ *
+ * IMPORTANT:
+ * ObservabilityLog IDs must be globally unique across a high-volume, TTL'd table.
+ * A raw 8-byte span id has non-zero collision risk at scale (birthday bound).
+ *
+ * We namespace the random span id by the current slice correlationId to make collisions
+ * effectively impossible across invocations:
+ *
+ *   <32-hex correlationId> "-" <16-hex spanId>
+ */
+export declare function generateObservabilityLogId(correlationId: string): string;
+/**
+ * Generate a generic unique ID (legacy).
+ * Prefer generateObservabilityLogId() when correlationId is available.
  */
 export declare function generateId(): string;
