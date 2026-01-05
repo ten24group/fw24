@@ -77,13 +77,14 @@ export interface ObservedOptions<TInstance = unknown, TArgs extends unknown[] = 
      * Use capture.noise for noise reduction control.
      */
     trace?: boolean | Partial<SpanOptions>;
-    /** Create audit record */
+    /**
+     * Create audit record.
+     * Note: Args/result capture is controlled via capture.args/capture.result at the top level.
+     */
     audit?: boolean | {
         action?: string;
         entityName?: string;
         level?: 'info' | 'warn' | 'error';
-        captureArgs?: boolean;
-        captureResult?: boolean;
     };
     /** Record metric */
     metric?: {

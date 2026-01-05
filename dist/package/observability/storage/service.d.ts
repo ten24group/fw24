@@ -265,135 +265,29 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                     };
                     readonly sectionsConfig: {
                         readonly sectionGroups: [{
-                            readonly id: "hierarchy-relations";
-                            readonly label: "Hierarchy & Trace";
-                            readonly icon: "ApartmentOutlined";
-                            readonly sortOrder: 2;
+                            readonly id: "operation-timing";
+                            readonly label: "Operation & Timing";
+                            readonly icon: "ThunderboltOutlined";
+                            readonly sortOrder: 1;
                             readonly renderMode: "tabs";
                             readonly defaultCollapsed: true;
-                            readonly lazyLoad: true;
-                            readonly keepMounted: false;
-                            readonly sections: {
-                                readonly parentSpan: {
-                                    readonly label: "Parent Span";
-                                    readonly icon: "NodeIndexOutlined";
-                                    readonly sortOrder: 1;
-                                    readonly pageType: "details";
-                                    readonly visibility: {
-                                        readonly record: {
-                                            readonly parentObservabilityLogId: {
-                                                readonly exists: true;
-                                            };
-                                        };
-                                    };
-                                    readonly entityConfigRef: {
-                                        readonly entityName: "observabilityLog";
-                                        readonly pageType: "view";
-                                        readonly overrideConfig: {
-                                            readonly identifierMapping: {
-                                                readonly source: "parentObservabilityLogId";
-                                                readonly target: "id";
-                                            };
-                                        };
-                                    };
-                                };
-                                readonly childSpans: {
-                                    readonly label: "Child Spans";
-                                    readonly icon: "BranchesOutlined";
-                                    readonly sortOrder: 2;
-                                    readonly pageType: "list";
-                                    readonly entityConfigRef: {
-                                        readonly entityName: "observabilityLog";
-                                        readonly pageType: "list";
-                                        readonly overrideConfig: {
-                                            readonly defaultFilters: {
-                                                readonly parentObservabilityLogId: {
-                                                    readonly eq: ":observabilityLogId";
-                                                };
-                                            };
-                                            readonly hideSegments: ["hierarchy-group"];
-                                        };
-                                    };
-                                };
-                                readonly traceLogs: {
-                                    readonly label: "This Trace";
-                                    readonly icon: "ShareAltOutlined";
-                                    readonly sortOrder: 3;
-                                    readonly pageType: "list";
-                                    readonly entityConfigRef: {
-                                        readonly entityName: "observabilityLog";
-                                        readonly pageType: "list";
-                                        readonly overrideConfig: {
-                                            readonly defaultFilters: {
-                                                readonly correlationId: {
-                                                    readonly eq: ":correlationId";
-                                                };
-                                            };
-                                            readonly hideSegments: ["hierarchy-group"];
-                                            readonly description: "All events in this Lambda invocation";
-                                        };
-                                    };
-                                };
-                                readonly causedByTrace: {
-                                    readonly label: "Causing Request Trace";
-                                    readonly icon: "LinkOutlined";
-                                    readonly sortOrder: 4;
-                                    readonly pageType: "list";
-                                    readonly visibility: {
-                                        readonly record: {
-                                            readonly causedBy: {
-                                                readonly exists: true;
-                                            };
-                                        };
-                                    };
-                                    readonly entityConfigRef: {
-                                        readonly entityName: "observabilityLog";
-                                        readonly pageType: "list";
-                                        readonly overrideConfig: {
-                                            readonly defaultFilters: {
-                                                readonly correlationId: {
-                                                    readonly eq: ":causedBy";
-                                                };
-                                            };
-                                            readonly hideSegments: ["hierarchy-group"];
-                                            readonly description: "View the original request trace that caused this event";
-                                        };
-                                    };
-                                };
-                                readonly causedEvents: {
-                                    readonly label: "Events Caused By This";
-                                    readonly icon: "ApiOutlined";
-                                    readonly sortOrder: 5;
-                                    readonly pageType: "list";
-                                    readonly entityConfigRef: {
-                                        readonly entityName: "observabilityLog";
-                                        readonly pageType: "list";
-                                        readonly overrideConfig: {
-                                            readonly defaultFilters: {
-                                                readonly causedBy: {
-                                                    readonly eq: ":correlationId";
-                                                };
-                                            };
-                                            readonly hideSegments: ["hierarchy-group"];
-                                            readonly description: "Events in other invocations caused by this request";
-                                        };
-                                    };
-                                };
-                            };
-                        }, {
-                            readonly id: "event-data";
-                            readonly label: "Event Data";
-                            readonly icon: "FileTextOutlined";
-                            readonly sortOrder: 3;
-                            readonly renderMode: "tabs";
-                            readonly defaultCollapsed: false;
                             readonly lazyLoad: false;
                             readonly keepMounted: true;
                             readonly sections: {
+                                readonly operationDetails: {
+                                    readonly label: "Operation";
+                                    readonly icon: "PlayCircleOutlined";
+                                    readonly sortOrder: 1;
+                                    readonly pageType: "details";
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: ["operation", "status", "success", "type", "subType"];
+                                    };
+                                };
                                 readonly entityInfo: {
                                     readonly label: "Entity Information";
                                     readonly icon: "InfoCircleOutlined";
-                                    readonly sortOrder: 1;
+                                    readonly sortOrder: 2;
                                     readonly pageType: "details";
                                     readonly visibility: {
                                         readonly record: {
@@ -407,6 +301,96 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                         readonly propertiesConfig: ["entityName", "entityId"];
                                     };
                                 };
+                                readonly timingDetails: {
+                                    readonly label: "Timing";
+                                    readonly icon: "ClockCircleOutlined";
+                                    readonly sortOrder: 3;
+                                    readonly pageType: "details";
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: ["timestampMs", "durationMs"];
+                                    };
+                                };
+                                readonly sourceDetails: {
+                                    readonly label: "Source";
+                                    readonly icon: "CodeOutlined";
+                                    readonly sortOrder: 4;
+                                    readonly pageType: "details";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly source: {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: ["source", "level"];
+                                    };
+                                };
+                                readonly attributes: {
+                                    readonly label: "Attributes";
+                                    readonly icon: "TagsOutlined";
+                                    readonly sortOrder: 4;
+                                    readonly pageType: "details";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly attributes: {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: ["attributes"];
+                                    };
+                                };
+                            };
+                        }, {
+                            readonly id: "error";
+                            readonly label: "Error";
+                            readonly icon: "ExclamationCircleOutlined";
+                            readonly sortOrder: 2;
+                            readonly renderMode: "tabs";
+                            readonly defaultCollapsed: false;
+                            readonly lazyLoad: false;
+                            readonly keepMounted: true;
+                            readonly visibility: {
+                                readonly record: {
+                                    readonly error: {
+                                        readonly exists: true;
+                                    };
+                                };
+                            };
+                            readonly sections: {
+                                readonly error: {
+                                    readonly label: "Error";
+                                    readonly icon: "ExclamationCircleOutlined";
+                                    readonly sortOrder: 5;
+                                    readonly pageType: "details";
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: ["error"];
+                                    };
+                                };
+                            };
+                        }, {
+                            readonly id: "event-data";
+                            readonly label: "Event Data";
+                            readonly icon: "FileTextOutlined";
+                            readonly sortOrder: 3;
+                            readonly renderMode: "tabs";
+                            readonly defaultCollapsed: false;
+                            readonly lazyLoad: false;
+                            readonly keepMounted: true;
+                            readonly visibility: {
+                                readonly record: {
+                                    readonly data: {
+                                        readonly exists: true;
+                                    };
+                                };
+                            };
+                            readonly sections: {
                                 readonly checkpoints: {
                                     readonly label: "Checkpoints";
                                     readonly icon: "NodeIndexOutlined";
@@ -439,7 +423,7 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                     };
                                 };
                                 readonly data: {
-                                    readonly label: "Rest Data";
+                                    readonly label: "Event Payload";
                                     readonly icon: "FileTextOutlined";
                                     readonly sortOrder: 3;
                                     readonly pageType: "details";
@@ -455,117 +439,212 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                         readonly propertiesConfig: ["data"];
                                     };
                                 };
-                                readonly attributes: {
-                                    readonly label: "Attributes";
-                                    readonly icon: "TagsOutlined";
-                                    readonly sortOrder: 3;
-                                    readonly pageType: "details";
-                                    readonly visibility: {
-                                        readonly record: {
-                                            readonly attributes: {
-                                                readonly exists: true;
-                                            };
-                                        };
-                                    };
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["attributes"];
-                                    };
-                                };
-                                readonly error: {
-                                    readonly label: "Error";
-                                    readonly icon: "ExclamationCircleOutlined";
-                                    readonly sortOrder: 4;
-                                    readonly pageType: "details";
-                                    readonly visibility: {
-                                        readonly record: {
-                                            readonly error: {
-                                                readonly exists: true;
-                                            };
-                                        };
-                                    };
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["error"];
-                                    };
-                                };
                             };
                         }, {
-                            readonly id: "additional-data";
-                            readonly label: "Additional Data";
-                            readonly icon: "FolderOpenOutlined";
-                            readonly sortOrder: 5;
+                            readonly id: "hierarchy-relations";
+                            readonly label: "Hierarchy & Trace";
+                            readonly icon: "ApartmentOutlined";
+                            readonly sortOrder: 4;
                             readonly renderMode: "tabs";
                             readonly defaultCollapsed: true;
-                            readonly lazyLoad: false;
-                            readonly keepMounted: true;
+                            readonly lazyLoad: true;
+                            readonly keepMounted: false;
                             readonly sections: {
-                                readonly metrics: {
-                                    readonly label: "Metrics";
-                                    readonly icon: "DashboardOutlined";
+                                readonly hierarchyInfo: {
+                                    readonly label: "Hierarchy Info";
+                                    readonly icon: "NodeIndexOutlined";
+                                    readonly sortOrder: 0;
+                                    readonly pageType: "details";
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: ["isRoot", "parentObservabilityLogId", "correlationId", "causedBy"];
+                                    };
+                                };
+                                readonly parentSpan: {
+                                    readonly label: "Parent Span";
+                                    readonly icon: "ArrowUpOutlined";
                                     readonly sortOrder: 1;
                                     readonly pageType: "details";
                                     readonly visibility: {
                                         readonly record: {
-                                            readonly metrics: {
+                                            readonly parentObservabilityLogId: {
                                                 readonly exists: true;
                                             };
                                         };
                                     };
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["metrics"];
+                                    readonly entityConfigRef: {
+                                        readonly entityName: "observabilityLog";
+                                        readonly pageType: "view";
+                                        readonly overrideConfig: {
+                                            readonly identifierMapping: {
+                                                readonly source: "parentObservabilityLogId";
+                                                readonly target: "id";
+                                            };
+                                        };
                                     };
                                 };
-                                readonly tags: {
-                                    readonly label: "Tags";
-                                    readonly icon: "TagOutlined";
+                                readonly siblingSpans: {
+                                    readonly label: "Sibling Spans";
+                                    readonly icon: "BlockOutlined";
                                     readonly sortOrder: 2;
-                                    readonly pageType: "details";
+                                    readonly pageType: "list";
                                     readonly visibility: {
                                         readonly record: {
-                                            readonly tags: {
+                                            readonly parentObservabilityLogId: {
                                                 readonly exists: true;
                                             };
                                         };
                                     };
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["tags"];
+                                    readonly entityConfigRef: {
+                                        readonly entityName: "observabilityLog";
+                                        readonly pageType: "list";
+                                        readonly overrideConfig: {
+                                            readonly defaultFilters: {
+                                                readonly parentObservabilityLogId: {
+                                                    readonly eq: ":parentObservabilityLogId";
+                                                };
+                                                readonly observabilityLogId: {
+                                                    readonly ne: ":observabilityLogId";
+                                                };
+                                            };
+                                            readonly hideSegments: ["hierarchy-group"];
+                                            readonly description: "Other spans at the same hierarchy level (same parent)";
+                                        };
                                     };
                                 };
-                                readonly metadata: {
-                                    readonly label: "Metadata";
-                                    readonly icon: "InfoCircleOutlined";
+                                readonly childSpans: {
+                                    readonly label: "Child Spans";
+                                    readonly icon: "BranchesOutlined";
                                     readonly sortOrder: 3;
-                                    readonly pageType: "details";
-                                    readonly visibility: {
-                                        readonly record: {
-                                            readonly metadata: {
-                                                readonly exists: true;
+                                    readonly pageType: "list";
+                                    readonly entityConfigRef: {
+                                        readonly entityName: "observabilityLog";
+                                        readonly pageType: "list";
+                                        readonly overrideConfig: {
+                                            readonly defaultFilters: {
+                                                readonly parentObservabilityLogId: {
+                                                    readonly eq: ":observabilityLogId";
+                                                };
                                             };
+                                            readonly hideSegments: ["hierarchy-group"];
                                         };
-                                    };
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["metadata"];
                                     };
                                 };
-                                readonly context: {
-                                    readonly label: "Context";
-                                    readonly icon: "EnvironmentOutlined";
+                                readonly rootSpan: {
+                                    readonly label: "Root of Hierarchy";
+                                    readonly icon: "GatewayOutlined";
                                     readonly sortOrder: 4;
+                                    readonly pageType: "list";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly isRoot: {
+                                                readonly eq: false;
+                                            };
+                                        };
+                                    };
+                                    readonly entityConfigRef: {
+                                        readonly entityName: "observabilityLog";
+                                        readonly pageType: "list";
+                                        readonly overrideConfig: {
+                                            readonly defaultFilters: {
+                                                readonly correlationId: {
+                                                    readonly eq: ":correlationId";
+                                                };
+                                                readonly isRoot: {
+                                                    readonly eq: true;
+                                                };
+                                            };
+                                            readonly hideSegments: ["hierarchy-group"];
+                                            readonly description: "The root span that started this trace hierarchy";
+                                        };
+                                    };
+                                };
+                                readonly traceLogs: {
+                                    readonly label: "All in This Trace";
+                                    readonly icon: "ShareAltOutlined";
+                                    readonly sortOrder: 5;
+                                    readonly pageType: "list";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly correlationId: {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly entityConfigRef: {
+                                        readonly entityName: "observabilityLog";
+                                        readonly pageType: "list";
+                                        readonly overrideConfig: {
+                                            readonly defaultFilters: {
+                                                readonly correlationId: {
+                                                    readonly eq: ":correlationId";
+                                                };
+                                            };
+                                            readonly hideSegments: ["hierarchy-group"];
+                                            readonly description: "All events in this Lambda invocation";
+                                        };
+                                    };
+                                };
+                                readonly causedByTrace: {
+                                    readonly label: "Causing Request Trace";
+                                    readonly icon: "LinkOutlined";
+                                    readonly sortOrder: 8;
+                                    readonly pageType: "list";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly causedBy: {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly entityConfigRef: {
+                                        readonly entityName: "observabilityLog";
+                                        readonly pageType: "list";
+                                        readonly overrideConfig: {
+                                            readonly defaultFilters: {
+                                                readonly correlationId: {
+                                                    readonly eq: ":causedBy";
+                                                };
+                                            };
+                                            readonly hideSegments: ["hierarchy-group"];
+                                            readonly description: "View the original request trace that caused this event";
+                                        };
+                                    };
+                                };
+                                readonly causedEvents: {
+                                    readonly label: "Events Caused By This";
+                                    readonly icon: "ApiOutlined";
+                                    readonly sortOrder: 9;
+                                    readonly pageType: "list";
+                                    readonly entityConfigRef: {
+                                        readonly entityName: "observabilityLog";
+                                        readonly pageType: "list";
+                                        readonly overrideConfig: {
+                                            readonly defaultFilters: {
+                                                readonly causedBy: {
+                                                    readonly eq: ":correlationId";
+                                                };
+                                            };
+                                            readonly hideSegments: ["hierarchy-group"];
+                                            readonly description: "Events in other invocations caused by this request";
+                                        };
+                                    };
+                                };
+                                readonly relatedTraces: {
+                                    readonly label: "Related Traces";
+                                    readonly icon: "ClusterOutlined";
+                                    readonly sortOrder: 10;
                                     readonly pageType: "details";
                                     readonly visibility: {
                                         readonly record: {
-                                            readonly context: {
+                                            readonly relatedTraces: {
                                                 readonly exists: true;
                                             };
                                         };
                                     };
                                     readonly detailsPageConfig: {
                                         readonly useParentData: true;
-                                        readonly propertiesConfig: ["context"];
+                                        readonly propertiesConfig: ["relatedTraces"];
                                     };
                                 };
                             };
@@ -573,7 +652,7 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                             readonly id: "related-analytics";
                             readonly label: "Related Logs";
                             readonly icon: "FundOutlined";
-                            readonly sortOrder: 6;
+                            readonly sortOrder: 5;
                             readonly renderMode: "tabs";
                             readonly defaultCollapsed: true;
                             readonly lazyLoad: false;
@@ -647,6 +726,85 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                             };
                                             readonly hideSegments: ["hierarchy-group"];
                                         };
+                                    };
+                                };
+                            };
+                        }, {
+                            readonly id: "additional-data";
+                            readonly label: "Additional Data";
+                            readonly icon: "FolderOpenOutlined";
+                            readonly sortOrder: 6;
+                            readonly renderMode: "tabs";
+                            readonly defaultCollapsed: true;
+                            readonly lazyLoad: false;
+                            readonly keepMounted: true;
+                            readonly sections: {
+                                readonly metrics: {
+                                    readonly label: "Metrics";
+                                    readonly icon: "DashboardOutlined";
+                                    readonly sortOrder: 1;
+                                    readonly pageType: "details";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly metrics: {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: ["metrics"];
+                                    };
+                                };
+                                readonly tags: {
+                                    readonly label: "Tags";
+                                    readonly icon: "TagOutlined";
+                                    readonly sortOrder: 2;
+                                    readonly pageType: "details";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly tags: {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: ["tags"];
+                                    };
+                                };
+                                readonly metadata: {
+                                    readonly label: "Metadata";
+                                    readonly icon: "InfoCircleOutlined";
+                                    readonly sortOrder: 3;
+                                    readonly pageType: "details";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly metadata: {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: ["metadata"];
+                                    };
+                                };
+                                readonly context: {
+                                    readonly label: "Context";
+                                    readonly icon: "EnvironmentOutlined";
+                                    readonly sortOrder: 4;
+                                    readonly pageType: "details";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly context: {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: ["context"];
                                     };
                                 };
                             };

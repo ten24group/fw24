@@ -16,6 +16,13 @@ import type { NoiseDecision, NoiseRule, ObservabilityEvent } from '../types';
  */
 export declare const DECISION_BASE_PRIORITY: Readonly<Record<NoiseDecision, number>>;
 /**
+ * Priority for hard signal protection (errors, failures, critical events).
+ * Rules with priority > HARD_SIGNAL_PRIORITY can override hard signal protection.
+ *
+ * Example: To aggregate error events, use priority: 2000
+ */
+export declare const HARD_SIGNAL_PRIORITY = 1000;
+/**
  * Result of noise reduction evaluation with full context.
  */
 export interface NoiseEvaluationResult {

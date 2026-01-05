@@ -112,6 +112,15 @@ export interface ObservabilityState {
      * Tracks buffer usage, dropped events, etc.
      */
     summary: ObservabilitySummary;
+    /**
+     * Detailed breakdown of captured events by type, operation, and level.
+     * Used to generate detailed observability summary checkpoints.
+     */
+    capturedBreakdown?: {
+        byType: Record<string, number>;
+        byOperation: Record<string, number>;
+        byLevel: Record<string, number>;
+    };
 }
 /**
  * Observability metrics for an invocation.

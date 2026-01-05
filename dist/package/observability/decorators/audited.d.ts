@@ -15,7 +15,7 @@
  *   @Audited({
  *     operation: 'sensitive.access',
  *     level: 'warn',
- *     captureArgs: true
+ *     capture: { args: true }
  *   })
  *   async accessSensitiveData(userId: string): Promise<SensitiveData> {
  *     // Audit with arguments captured
@@ -31,7 +31,7 @@ export interface AuditedOptions extends DecoratorBaseOptions {
     entityName?: string;
     /** Audit level */
     level?: 'info' | 'warn' | 'error';
-    /** Specific argument names to capture (if captureArgs is false) */
+    /** Specific argument names to capture (requires capture.args to be enabled) */
     argNames?: string[];
     /** Custom data extractor function */
     dataExtractor?: (args: unknown[], result?: unknown) => Record<string, unknown>;

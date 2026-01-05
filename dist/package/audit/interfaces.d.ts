@@ -11,4 +11,6 @@ export declare const AUDIT_ENV_KEYS: {
     readonly ALLOWED_ENTITY_NAMES: "AUDIT_ALLOWED_ENTITY_NAMES";
     /** Entity names to exclude from audit (comma-separated) */
     readonly EXCLUDED_ENTITY_NAMES: "AUDIT_EXCLUDED_ENTITY_NAMES";
+    /** Actor staleness threshold in milliseconds (default: 5000ms) */
+    readonly ACTOR_STALENESS_THRESHOLD_MS: "AUDIT_ACTOR_STALENESS_THRESHOLD_MS";
 };

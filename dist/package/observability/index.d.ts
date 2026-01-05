@@ -15,7 +15,7 @@
  * });
  * ```
  */
-export { type BaseEventType, type ObservabilityEventType, type ObservabilityLevelString, ObservabilityLevel, type CaptureInput, type ObservabilityEvent, type ObservabilityError, type CaptureControl, type GroupSamplingConfig, type RecordOverrides, type ContextOverrides, type DecoratorBaseOptions, type SourceType, type ObservabilityConfig, type ObservabilityBackend, type ObservabilityBackendConfig, type DataProtectionConfig, type TruncationConfig, type DynamoDBConfig, type SamplingConfig, type TypeSpecificConfig, type IEventCapture, DefaultSamplingConfig, } from './types';
+export { type BaseEventType, type ObservabilityEventType, type ObservabilityLevelString, ObservabilityLevel, type CaptureInput, type ObservabilityEvent, type ObservabilityError, type CaptureControl, type GroupSamplingConfig, type RecordOverrides, type ContextOverrides, type DecoratorBaseOptions, type DecoratorCaptureControl, type CaptureSerializeOptions, type SourceType, type ObservabilityConfig, type ObservabilityBackend, type ObservabilityBackendConfig, type DataProtectionConfig, type TruncationConfig, type DynamoDBConfig, type SamplingConfig, type TypeSpecificConfig, type IEventCapture, DefaultSamplingConfig, } from './types';
 export { DECISION_BASE_PRIORITY, evaluateNoiseRules, getEffectivePriority } from './noise-reduction/priority';
 export type { NoiseEvaluationResult } from './noise-reduction/priority';
 export { Observer, ObservabilityManager, withObservability, } from './manager';
@@ -29,7 +29,7 @@ export { OTELObservabilityBackend } from './backends/otel';
 export { clearRedactorCache, DEFAULT_BLACKLISTED_KEYS, DEFAULT_PROTECTED_FIELDS, extendBlacklist, redactSensitiveData, shouldRedactKey } from './utils/data-protection';
 export { generateSpanId, generateTraceId } from './utils/id-generator';
 export { levelToPowertoolsLogLevel, levelToString, stringToLevel } from './utils/level-utils';
-export { estimateItemSize, isPayloadWithinLimits, safeStringify, truncatePayload, truncateItem, type TruncationMetadata } from './utils/payload';
+export { estimateItemSize, isPayloadWithinLimits, safeStringify, safeSerialize, truncatePayload, truncateItem, type TruncationMetadata, type SerializeOptions } from './utils/payload';
 export { clearEnvironmentTagsCache, createControllerSource, createQueueSource, createServiceSource, createTaskSource, detectSource, getEnvironmentTags, mergeTags as mergeSourceTags } from './utils/source-utils';
 export { buildTraceGraph, type TraceGraph, type TraceNode, type TraceEdge } from './trace-graph';
 export { BatchProgress, type BatchResult, type BatchSummary, type ProcessOptions, type ChunkOptions, type ProcessContext, type FailedItem, type MetricStats, type ObserveMode, } from './utils/batch-progress';

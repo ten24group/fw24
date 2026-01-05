@@ -40,9 +40,34 @@ export declare class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<Dyn
      */
     protected captureAuditEvent(record: BaseEventRecord<ChangeStreamPayload>): Promise<void>;
     /**
+     * Extract actor context from entity images with staleness detection.
+     *
+     * Actor data is considered "fresh" if:
+     * 1. It has an actorTimestamp field, AND
+     * 2. The timestamp is within the acceptable staleness threshold (default: 5 seconds)
+     *
+     * If actor data is stale, we should NOT use it for correlation as it represents
+     * a previous operation, not the current one.
+     *
+     * @param traceImage - Entity image to extract actor from
+     * @param eventTimestamp - Timestamp of the current event
+     * @returns Object containing actor, freshness status, and staleness metrics
+     */
+    protected extractActorWithStalenessCheck(traceImage: Record<string, any> | undefined, eventTimestamp: number): {
+        actor: Actor | undefined;
+        isFresh: boolean;
+        actorTimestamp?: number;
+        stalenessMs?: number;
+    };
+    /**
      * Extract actor context from entity images.
      * Tries _actor field first, then falls back to visible actor fields.
      */
     protected extractActor(traceImage: Record<string, any> | undefined): Actor | undefined;
+    /**
+     * Get actor staleness threshold from environment.
+     * Default: 5000ms (5 seconds)
+     */
+    protected getActorStalenessThreshold(): number;
 }
 export declare const logger: import("tslog").Logger<import("tslog").ILogObj>;

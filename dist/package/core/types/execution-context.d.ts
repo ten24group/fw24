@@ -37,6 +37,12 @@ export interface Actor {
     sourceIp?: string;
     userAgent?: string;
     correlationId?: string;
+    /**
+     * Timestamp (milliseconds since epoch) when this actor was set on the entity.
+     * Used to detect stale actor data in audit logs.
+     * Set automatically by the framework during entity operations.
+     */
+    actorTimestamp?: number;
     email?: string;
     emailVerified?: boolean;
     phoneNumber?: string;

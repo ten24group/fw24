@@ -3,7 +3,7 @@
  *
  * Factory function for creating typed, validated observability config.
  */
-import { ObservabilityConfig, ObservabilityLevel, ObservabilityBackendConfig, SamplingConfig, DataProtectionConfig, TruncationConfig, NoiseReductionConfig, QueryPerformanceConfig } from './types';
+import { ObservabilityConfig, ObservabilityLevel, ObservabilityBackendConfig, SamplingConfig, DataProtectionConfig, TruncationConfig, NoiseReductionConfig, QueryPerformanceConfig, CloudWatchConfig, TagFilteringConfig } from './types';
 import type { DeepPartial } from '../utils/types';
 /**
  * Valid backend types
@@ -27,41 +27,41 @@ export declare const CONFIG_DEFAULTS: {
     };
     readonly queryPerformance: {
         readonly enabled: true;
-        readonly slowThreshold: 1000;
+        readonly slowThreshold: number;
         readonly fastQuerySampleRate: 0.01;
         readonly slowQuerySampleRate: 1;
         readonly captureSlowQueryDetails: true;
         readonly trackCapacity: false;
         readonly operationThresholds: readonly [{
             readonly operation: "get";
-            readonly slowThreshold: 500;
+            readonly slowThreshold: number;
         }, {
             readonly operation: "batchGet";
-            readonly slowThreshold: 1000;
+            readonly slowThreshold: number;
         }, {
             readonly operation: "list";
-            readonly slowThreshold: 1000;
+            readonly slowThreshold: number;
         }, {
             readonly operation: "query";
-            readonly slowThreshold: 1000;
+            readonly slowThreshold: number;
         }, {
             readonly operation: "scan";
-            readonly slowThreshold: 3000;
+            readonly slowThreshold: number;
         }, {
             readonly operation: "create";
-            readonly slowThreshold: 500;
+            readonly slowThreshold: number;
         }, {
             readonly operation: "update";
-            readonly slowThreshold: 500;
+            readonly slowThreshold: number;
         }, {
             readonly operation: "upsert";
-            readonly slowThreshold: 500;
+            readonly slowThreshold: number;
         }, {
             readonly operation: "delete";
-            readonly slowThreshold: 500;
+            readonly slowThreshold: number;
         }, {
             readonly operation: "batchDelete";
-            readonly slowThreshold: 1000;
+            readonly slowThreshold: number;
         }];
     };
     readonly operationNormalization: {
@@ -70,9 +70,19 @@ export declare const CONFIG_DEFAULTS: {
     };
     readonly noiseReduction: {
         enabled: false;
+        hardSignals: {
+            levels: ("error" | "critical")[];
+            includeWarn: false;
+            slowThresholdMs: number;
+            slowThresholds: {
+                'database.query': number;
+                'external.api': number;
+                'batch.process': number;
+            };
+        };
         presets: ("fw24.hotpaths" | "fw24.batch_processors")[];
         rules: never[];
-        emitSummaries: true;
+        emitSummaries: false;
         maxCheckpointsPerSpan: number;
         maxAggregateKeysPerSpan: number;
         maxAggregateExamplesPerKey: number;
@@ -88,6 +98,23 @@ export declare const CONFIG_DEFAULTS: {
     readonly dynamoMaxItemSize: number;
     readonly dynamoMaxBatchSize: 25;
     readonly dynamoMaxBufferSize: 1000;
+    readonly tagFiltering: {
+        readonly include: string[];
+        readonly maxTags: 10;
+    };
+    readonly metricFiltering: {
+        readonly enabled: false;
+        readonly mode: "whitelist";
+    };
+    readonly metricSampling: {
+        readonly enabled: false;
+        readonly rate: 0.1;
+        readonly alwaysPublishOn: "both";
+        readonly thresholds: {
+            readonly slowDurationMs: 1000;
+        };
+    };
+    readonly cloudwatchNamespaceStrategy: "single";
 };
 export declare const DEFAULT_OPERATION_NORMALIZATION_RULES: NonNullable<ObservabilityConfig['operationNormalization']>['rules'];
 /**
@@ -105,9 +132,8 @@ export interface ObservabilityConfigInput {
      */
     backends?: ObservabilityBackendConfigInput[];
     sampling?: Partial<SamplingConfig>;
-    cloudwatch?: {
-        namespace?: string;
-    };
+    cloudwatch?: Partial<CloudWatchConfig>;
+    tagFiltering?: Partial<TagFilteringConfig>;
     dynamodb?: {
         /** Logical table key - resolved to actual table name via env var {tableKey}_table */
         tableKey?: string;

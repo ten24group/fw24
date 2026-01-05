@@ -182,6 +182,20 @@ export interface NoiseControl {
 }
 export type NoiseReductionPreset = 'fw24.hotpaths' | 'fw24.batch_processors';
 /**
+ * Hard signal detection configuration.
+ * Hard signals are events that must always be preserved and trigger context preservation.
+ */
+export interface HardSignalConfig {
+    /** Which log levels are considered hard signals. Default: ['error', 'critical'] */
+    levels?: ObservabilityLevelString[];
+    /** Treat WARN level as hard signal (opt-in). Default: false */
+    includeWarn?: boolean;
+    /** Global slow operation threshold (ms). Default: 5000 */
+    slowThresholdMs?: number;
+    /** Per-type slow thresholds (overrides global). Key = event type, value = threshold in ms */
+    slowThresholds?: Record<string, number>;
+}
+/**
  * Noise reduction configuration.
  *
  * This layer is orthogonal to sampling:
@@ -196,6 +210,10 @@ export type NoiseReductionPreset = 'fw24.hotpaths' | 'fw24.batch_processors';
  */
 export interface NoiseReductionConfig {
     enabled: boolean;
+    /** Minimum level for context preservation around hard signals (default: INFO) */
+    minLevel?: ObservabilityLevel;
+    /** Hard signal detection configuration */
+    hardSignals?: HardSignalConfig;
     /** Built-in preset(s) with sane defaults for hot paths */
     presets: NoiseReductionPreset[];
     /**
@@ -558,8 +576,357 @@ export interface SamplingRule {
 /**
  * CloudWatch configuration
  */
+/**
+ * Tag filtering configuration (framework-level).
+ *
+ * Controls which tags are included on ObservabilityEvents before they reach backends.
+ * This affects ALL backends (CloudWatch, DynamoDB, Console, etc.).
+ *
+ * Why filter tags?
+ * - CloudWatch: Each unique tag combination creates a metric stream = cost
+ * - DynamoDB: Reduces storage size
+ * - All backends: Cleaner, more focused telemetry
+ *
+ * If omitted, defaults to: stage, tenantId, operationCategory (balanced)
+ */
+export interface TagFilteringConfig {
+    /**
+     * Framework tags to include on events.
+     * Tags not in this list are excluded (except custom tags).
+     *
+     * Available framework tags:
+     * - stage: Environment (dev/staging/prod)
+     * - tenantId: Multi-tenant ID
+     * - operationCategory: read/write/delete
+     * - authMethod: cognito/apikey/iam
+     * - actorType: user/service
+     * - handlerType: controller/queue/task
+     * - entityName: HIGH CARDINALITY
+     * - operation: VERY HIGH CARDINALITY
+     *
+     * @example
+     * ```typescript
+     * // Minimal
+     * include: ['stage', 'tenantId']
+     *
+     * // Balanced (default)
+     * include: ['stage', 'tenantId', 'operationCategory']
+     *
+     * // Comprehensive
+     * include: ['stage', 'tenantId', 'operationCategory', 'authMethod', 'actorType', 'handlerType']
+     * ```
+     */
+    include?: string[];
+    /**
+     * Custom tags to always add (e.g., from env vars).
+     * These are added AFTER framework tag filtering.
+     *
+     * @example
+     * ```typescript
+     * custom: {
+     *   region: () => process.env.AWS_REGION!,
+     *   version: () => process.env.APP_VERSION || 'unknown',
+     * }
+     * ```
+     */
+    custom?: Record<string, (event: ObservabilityEvent) => string>;
+    /**
+     * Maximum total tags per event.
+     * Default: 10
+     */
+    maxTags?: number;
+}
+/**
+ * Operation-specific metric filtering rule.
+ * Allows different metric rules per operation (e.g., payments vs health checks).
+ */
+export interface OperationMetricRule {
+    /**
+     * Operation pattern to match.
+     * Supports exact match, wildcards (*), and regex.
+     *
+     * @example
+     * ```typescript
+     * operation: '/api/payment/*'        // All payment endpoints
+     * operation: '/api/health'           // Exact match
+     * operation: '/^HTTP (GET|HEAD)/'    // Regex
+     * ```
+     */
+    operation: string | RegExp;
+    /**
+     * Whitelist: ONLY these metrics are published for matching operations.
+     * Supports exact names and glob patterns.
+     *
+     * @example
+     * ```typescript
+     * whitelist: ['duration', 'error_count', 'payment.amount']
+     * whitelist: []  // No metrics (e.g., for health checks)
+     * ```
+     */
+    whitelist?: string[];
+    /**
+     * Blacklist: All metrics EXCEPT these are published for matching operations.
+     * Supports exact names and glob patterns.
+     */
+    blacklist?: string[];
+    /**
+     * Pattern matching for this operation.
+     * More flexible than whitelist/blacklist.
+     */
+    patterns?: {
+        /** Patterns to include (OR logic) */
+        include?: RegExp[];
+        /** Patterns to exclude (AND NOT logic) */
+        exclude?: RegExp[];
+    };
+}
+/**
+ * Metric filtering configuration.
+ *
+ * Control which metrics are published to CloudWatch.
+ * Use this to reduce costs by only publishing important metrics.
+ *
+ * Supports both global rules and operation-specific rules.
+ */
+export interface MetricFilteringConfig {
+    /** Enable metric filtering (default: false = publish all) */
+    enabled?: boolean;
+    /** Filtering mode */
+    mode?: 'whitelist' | 'blacklist';
+    /**
+     * Whitelist mode: ONLY these metrics are published.
+     * Supports exact names and glob patterns.
+     *
+     * Used as fallback when no operation-specific rule matches.
+     *
+     * @example
+     * ```typescript
+     * whitelist: [
+     *   'duration',           // Exact match
+     *   'error_count',        // Exact match
+     *   'db.*',              // All db metrics
+     *   'cache.hit_rate',    // Exact match
+     *   '*.duration',        // All duration metrics
+     * ]
+     * ```
+     */
+    whitelist?: string[];
+    /**
+     * Blacklist mode: All metrics EXCEPT these are published.
+     * Supports exact names and glob patterns.
+     *
+     * Used as fallback when no operation-specific rule matches.
+     *
+     * @example
+     * ```typescript
+     * blacklist: [
+     *   'temp.*',            // No temp metrics
+     *   'debug.*',           // No debug metrics
+     *   'resultCount',       // No result count
+     * ]
+     * ```
+     */
+    blacklist?: string[];
+    /**
+     * Pattern matching for advanced filtering.
+     * More flexible than whitelist/blacklist.
+     *
+     * Used as fallback when no operation-specific rule matches.
+     */
+    patterns?: {
+        /** Patterns to include (OR logic) */
+        include?: RegExp[];
+        /** Patterns to exclude (AND NOT logic) */
+        exclude?: RegExp[];
+    };
+    /**
+     * Operation-specific metric rules.
+     *
+     * Rules are evaluated in order. First match wins.
+     * If no rule matches, falls back to global whitelist/blacklist/patterns.
+     *
+     * **Use Cases:**
+     * - Health checks: Publish no metrics (reduce noise)
+     * - Payment endpoints: Publish only critical metrics
+     * - Admin endpoints: Publish all metrics (high visibility)
+     *
+     * @example
+     * ```typescript
+     * operationRules: [
+     *   {
+     *     operation: '/api/health',
+     *     whitelist: [],  // No metrics for health checks
+     *   },
+     *   {
+     *     operation: '/api/payment/*',
+     *     whitelist: ['duration', 'error_count', 'payment.amount', 'payment.status'],
+     *   },
+     *   {
+     *     operation: '/api/admin/*',
+     *     blacklist: [],  // All metrics for admin (high visibility)
+     *   },
+     * ],
+     * // Fallback for all other operations:
+     * whitelist: ['duration', 'error_count', 'request_count'],
+     * ```
+     */
+    operationRules?: OperationMetricRule[];
+}
+/**
+ * Metric sampling configuration.
+ *
+ * Sample routine operations to reduce CloudWatch costs while preserving
+ * visibility into errors and performance issues.
+ *
+ * **Strategy:**
+ * - Always publish: errors, slow operations (critical signals)
+ * - Sample: fast, successful operations (routine traffic)
+ * - Aggregate: batch operations (queue processing)
+ */
+export interface MetricSamplingConfig {
+    /** Enable metric sampling (default: false) */
+    enabled?: boolean;
+    /**
+     * Base sample rate for routine operations (0-1).
+     * Default: 0.1 (10% of routine requests)
+     *
+     * @example
+     * - 0.1 = 10% (90% cost reduction on routine traffic)
+     * - 0.01 = 1% (99% cost reduction on routine traffic)
+     * - 1.0 = 100% (no sampling)
+     */
+    rate?: number;
+    /**
+     * Always publish metrics when these conditions are met (bypass sampling).
+     * - 'error': Always publish on errors
+     * - 'slow': Always publish on slow operations
+     * - 'both': Always publish on errors OR slow operations
+     * Default: 'both'
+     */
+    alwaysPublishOn?: 'error' | 'slow' | 'both';
+    /**
+     * Thresholds for "always publish" conditions.
+     */
+    thresholds?: {
+        /**
+         * Minimum duration (ms) to always publish.
+         * Operations faster than this are subject to sampling.
+         * Default: 1000 (1 second)
+         */
+        slowDurationMs?: number;
+    };
+    /**
+     * Operations to never sample (always publish).
+     * Supports glob patterns.
+     *
+     * @example
+     * ```typescript
+     * neverSample: [
+     *   'payment.*',         // All payment operations
+     *   'order.create',      // Specific operation
+     *   '*.checkout',        // All checkout operations
+     * ]
+     * ```
+     */
+    neverSample?: string[];
+    /**
+     * Operations to always sample (never publish unless error/slow).
+     * Useful for very high-volume, low-value operations.
+     *
+     * @example
+     * ```typescript
+     * alwaysSample: [
+     *   'healthcheck',       // Health checks
+     *   'metrics.export',    // Metrics exports
+     *   'heartbeat',         // Heartbeats
+     * ]
+     * ```
+     */
+    alwaysSample?: string[];
+}
+/**
+ * CloudWatch namespace strategy.
+ * Controls how metric namespaces are determined for each event.
+ *
+ * **Why separate namespaces?**
+ * - Organize metrics by source (API, Queue, Task, Service)
+ * - Easier CloudWatch dashboard filtering
+ * - Separate alarms per source type
+ * - Better cost allocation per workload
+ *
+ * @example
+ * ```typescript
+ * // Single namespace (default):
+ * namespaceStrategy: 'single'
+ * // Result: All metrics in 'FW24'
+ *
+ * // Per-handler type:
+ * namespaceStrategy: 'per-type'
+ * // Result: 'FW24/API', 'FW24/Queue', 'FW24/Task'
+ *
+ * // Per-source:
+ * namespaceStrategy: 'per-source'
+ * // Result: 'FW24/UserController', 'FW24/OrderService', etc.
+ *
+ * // Custom function:
+ * namespaceStrategy: (event) => {
+ *   if (event.operation?.includes('payment')) return 'FW24/Payment';
+ *   if (event.tags?.critical) return 'FW24/Critical';
+ *   return 'FW24';
+ * }
+ * ```
+ */
+export type NamespaceStrategy = 'single' | 'per-type' | 'per-source' | ((event: ObservabilityEvent) => string);
 export interface CloudWatchConfig {
+    /**
+     * Base namespace for CloudWatch metrics.
+     * Default: 'FW24'
+     *
+     * This is used as:
+     * - The full namespace if `namespaceStrategy: 'single'`
+     * - The prefix if `namespaceStrategy: 'per-type'` or `'per-source'`
+     * - Fallback for custom functions
+     */
     namespace: string;
+    /**
+     * Namespace strategy - controls how namespaces are determined.
+     *
+     * Default: 'single' (all metrics in base namespace)
+     *
+     * **Options:**
+     * - `'single'`: All metrics in base namespace (e.g., 'FW24')
+     * - `'per-type'`: Namespace per handler type (e.g., 'FW24/API', 'FW24/Queue', 'FW24/Task')
+     * - `'per-source'`: Namespace per source (e.g., 'FW24/UserController', 'FW24/OrderService')
+     * - Custom function: `(event) => string` for full control
+     *
+     * @example
+     * ```typescript
+     * // Single namespace (default, simplest)
+     * namespaceStrategy: 'single'
+     *
+     * // Per-handler type (good for multi-workload apps)
+     * namespaceStrategy: 'per-type'
+     *
+     * // Custom (advanced use cases)
+     * namespaceStrategy: (event) => {
+     *   if (event.tags?.tenantId) return `FW24/Tenant/${event.tags.tenantId}`;
+     *   return 'FW24';
+     * }
+     * ```
+     */
+    namespaceStrategy?: NamespaceStrategy;
+    /**
+     * Metric filtering configuration (Phase 2 optimization).
+     * Controls which metrics are published to CloudWatch.
+     * Default: disabled (publish all)
+     */
+    metricFiltering?: MetricFilteringConfig;
+    /**
+     * Metric sampling configuration (Phase 2 optimization).
+     * Sample routine operations while always capturing errors/slow requests.
+     * Default: disabled (no sampling)
+     */
+    metricSampling?: MetricSamplingConfig;
 }
 /**
  * Truncation configuration for observability payloads.
@@ -826,6 +1193,13 @@ export interface ObservabilityConfig {
      */
     noiseReduction: NoiseReductionConfig;
     /**
+     * Tag filtering configuration (Phase 2 optimization).
+     * Controls which tags are included on events before reaching backends.
+     * Affects ALL backends (CloudWatch, DynamoDB, Console, etc.).
+     * Default: ['stage', 'tenantId', 'operationCategory']
+     */
+    tagFiltering?: TagFilteringConfig;
+    /**
      * Operation normalization / renaming.
      * Purpose: reduce cardinality and make traces consistent across backends.
      *
@@ -915,30 +1289,106 @@ export interface ContextOverrides {
  */
 export type SourceType = 'controller' | 'service' | 'queue' | 'task' | 'handler';
 /**
+ * Serialization options for captured data (args/result).
+ * Allows fine-grained control over how data is serialized and truncated.
+ */
+export interface CaptureSerializeOptions {
+    /**
+     * Maximum string length for serialized output.
+     * Default: 10000 (10KB)
+     * Set to Infinity to disable length-based truncation.
+     */
+    maxLength?: number;
+    /**
+     * Maximum depth to traverse in nested objects/arrays.
+     * Default: 10
+     * Beyond this depth, objects/arrays are replaced with markers.
+     */
+    maxDepth?: number;
+    /**
+     * Prevent ALL truncation - always serialize full data.
+     * Use sparingly for critical data that must be captured in full.
+     * Overrides maxLength and maxDepth.
+     * Default: false
+     */
+    preventTruncation?: boolean;
+}
+/**
+ * Enhanced capture control for decorators.
+ * Extends base CaptureControl with decorator-specific options (args/result capture).
+ */
+export interface DecoratorCaptureControl extends CaptureControl {
+    /**
+     * Capture method arguments.
+     * - boolean: Enable/disable with defaults (maxLength: 10000, maxDepth: 10)
+     * - CaptureSerializeOptions: Fine-grained control over serialization
+     *
+     * When enabled, arguments are serialized with depth-aware truncation.
+     */
+    args?: boolean | CaptureSerializeOptions;
+    /**
+     * Capture method return value.
+     * - boolean: Enable/disable with defaults (maxLength: 10000, maxDepth: 10)
+     * - CaptureSerializeOptions: Fine-grained control over serialization
+     *
+     * When enabled, result is serialized with depth-aware truncation.
+     */
+    result?: boolean | CaptureSerializeOptions;
+}
+/**
  * Base options shared across all observability decorators (@Observed, @Traced, @Audited).
  *
- * Extends RecordOverrides to provide full context override capabilities.
+ * Extends RecordOverrides and enhances `capture` with decorator-specific options (args/result).
  * All decorator option interfaces should extend this instead of duplicating fields.
+ *
+ * All capture control is unified under the `capture` namespace.
  *
  * @example
  * ```typescript
- * // All decorators support these options
+ * // Basic usage - capture args and result
+ * @Traced({ capture: { args: true, result: true } })
+ * async fetchData() { }
+ *
+ * // Separate control for args vs result
  * @Traced({
- *   enabled: () => isDevelopment(),
- *   actor: { type: 'system', id: 'cron-scheduler' },
- *   tags: { component: 'scheduler' },
- *   capture: { bypass: true },
+ *   capture: {
+ *     args: { maxLength: 1000, maxDepth: 5 },  // Limit args
+ *     result: { preventTruncation: true }      // Full result
+ *   }
  * })
- * async scheduledTask() { }
+ * async processOrder(order: Order): Promise<Receipt> { }
+ *
+ * // Advanced - combine sampling, noise reduction, and capture
+ * @Observed({
+ *   capture: {
+ *     bypass: true,  // Always capture (skip sampling)
+ *     args: true,
+ *     result: { maxLength: 50000, maxDepth: 15 },
+ *     noise: { decision: 'keep', reason: 'critical-path' }
+ *   },
+ *   tags: { critical: 'true' }
+ * })
+ * async criticalOperation() { }
+ *
+ * // Group-based sampling with capture
+ * @Traced({
+ *   capture: {
+ *     group: { key: 'batch-123', index: i, total: 100 },
+ *     args: { maxLength: 2000 },
+ *     result: false
+ *   }
+ * })
+ * async processBatchItem() { }
  * ```
  */
-export interface DecoratorBaseOptions extends RecordOverrides {
+export interface DecoratorBaseOptions extends Omit<RecordOverrides, 'capture'> {
     /** Conditionally enable/disable decorator (evaluated at runtime) */
     enabled?: boolean | (() => boolean);
-    /** Capture method arguments in observability data */
-    captureArgs?: boolean;
-    /** Capture method return value in observability data */
-    captureResult?: boolean;
+    /**
+     * Enhanced capture control with decorator-specific options.
+     * Extends base CaptureControl with args/result capture capabilities.
+     */
+    capture?: DecoratorCaptureControl;
     /** Source type for auto-detection (controller, service, queue, task, handler) */
     sourceType?: SourceType;
 }
