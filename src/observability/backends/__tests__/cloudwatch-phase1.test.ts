@@ -7,7 +7,7 @@
  */
 
 import { CloudWatchBackend } from '../cloudwatch';
-import { ObservabilityEvent, ObservabilityLevel } from '../../types';
+import { ObservabilityEvent, ObservabilityLevel, CloudWatchConfig } from '../../types';
 
 // Mock AWS Powertools
 const mockAddMetric = jest.fn();
@@ -46,7 +46,24 @@ describe('CloudWatch Backend - Phase 1 Optimizations', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    backend = new CloudWatchBackend('test-service', 'TestNamespace', ObservabilityLevel.INFO);
+
+    const cloudwatchConfig: CloudWatchConfig = {
+      namespace: 'TestNamespace',
+      metricFiltering: {
+        enabled: false,
+        mode: 'whitelist',
+      },
+      metricSampling: {
+        enabled: false,
+        rate: 0.1,
+        alwaysPublishOn: 'both',
+        thresholds: {
+          slowDurationMs: 1000,
+        },
+      },
+    };
+
+    backend = new CloudWatchBackend('test-service', ObservabilityLevel.INFO, cloudwatchConfig);
   });
 
   describe('✅ Optimization 1: HTTP Status Code as Attribute (not metric)', () => {

@@ -157,58 +157,8 @@ describe('Priority-based Noise Reduction', () => {
       });
     });
 
-    describe('Hard signals (second highest priority)', () => {
-      it('keeps error level events', () => {
-        const event = createTestEvent({ level: 'error' });
-
-        const rules: NoiseRule[] = [
-          {
-            id: 'drop-all',
-            priority: 500,
-            match: { type: 'span' },
-            decision: 'drop',
-          },
-        ];
-
-        const result = evaluateNoiseRules(event, rules, testMatchFn);
-
-        expect(result.decision).toBe('keep');
-        expect(result.ruleId).toBe('builtin.hard_signal');
-        expect(result.priority).toBe(1000);
-      });
-
-      it('keeps critical level events', () => {
-        const event = createTestEvent({ level: 'critical' });
-
-        const result = evaluateNoiseRules(event, [], testMatchFn);
-
-        expect(result.decision).toBe('keep');
-        expect(result.ruleId).toBe('builtin.hard_signal');
-      });
-
-      it('keeps failed operations (success: false)', () => {
-        const event = createTestEvent({ success: false });
-
-        const result = evaluateNoiseRules(event, [], testMatchFn);
-
-        expect(result.decision).toBe('keep');
-        expect(result.ruleId).toBe('builtin.hard_signal');
-      });
-
-      it('keeps events with errors', () => {
-        const event = createTestEvent({
-          error: {
-            type: 'Error',
-            message: 'Something broke',
-          },
-        });
-
-        const result = evaluateNoiseRules(event, [], testMatchFn);
-
-        expect(result.decision).toBe('keep');
-        expect(result.ruleId).toBe('builtin.hard_signal');
-      });
-    });
+    // NOTE: Hard signal protection moved to evaluator.ts
+    // evaluateNoiseRules now just returns matched rules
 
     describe('Priority resolution', () => {
       it('selects highest priority rule when multiple match', () => {
@@ -567,7 +517,7 @@ describe('Priority-based Noise Reduction', () => {
         expect(result.reason).toBe('Admin operations always kept for audit');
       });
 
-      it('Failed health checks kept despite drop rule', () => {
+      it('Failed health checks skip rule due to exception', () => {
         const failedHealthCheck = createTestEvent({
           operation: 'HTTP GET /healthcheck',
           success: false,
@@ -589,9 +539,9 @@ describe('Priority-based Noise Reduction', () => {
 
         const result = evaluateNoiseRules(failedHealthCheck, rules, testMatchFn);
 
-        // Hard signal should take precedence
+        // Rule has exception for success:false, so no rules match
         expect(result.decision).toBe('keep');
-        expect(result.ruleId).toBe('builtin.hard_signal');
+        expect(result.ruleId).toBe('default');
       });
 
       it('Slow operations kept despite aggregate rule', () => {

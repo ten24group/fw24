@@ -144,6 +144,7 @@ interface CapturedEvent {
   source?: string;
   success?: boolean;
   level?: string;
+  durationMs?: number;
   data?: any;
 }
 
@@ -158,6 +159,7 @@ class MockObservabilityBackend {
       source: event.source,
       success: event.success,
       level: event.level,
+      durationMs: event.durationMs, // Include duration for rule matching
       data: event.data,
     });
   }
@@ -169,6 +171,7 @@ class MockObservabilityBackend {
       source: e.source,
       success: e.success,
       level: e.level,
+      durationMs: e.durationMs, // Include duration for rule matching
       data: e.data,
     })));
   }
@@ -269,50 +272,24 @@ describe('Noise Reduction E2E Integration (Real FW24 Components)', () => {
       const allEvents = backend.getEvents();
       const spans = backend.getEventsMatching({ type: 'span' });
 
-      console.log('Failed GET test - Total events:', allEvents.length);
-      console.log('Failed GET test - All spans:', spans.map(s => ({
-        operation: s.operation,
-        source: s.source,
-        success: s.success,
-        level: s.level
-      })));
+      // VERIFY: Failed operations are NEVER dropped (hard signal protection)
+      // Expected: Controller span + Service span (both failed)
+      expect(spans.length).toBe(2);
 
-      // CRITICAL ASSERTION: Framework MUST have captured observability events
-      // If this fails, the framework's observability is broken
-      expect(allEvents.length).toBeGreaterThan(0);
+      // VERIFY: Controller span
+      const controllerSpan = spans.find(s => s.source?.includes('Controller'));
+      expect(controllerSpan).toBeDefined();
+      expect(controllerSpan?.operation).toContain('GET');
+      expect(controllerSpan?.operation).toContain('testitem');
+      expect(controllerSpan?.success).toBe(false);
+      expect(controllerSpan?.level).toBe('error');
 
-      // CRITICAL ASSERTION: Failed operations are NEVER dropped (hard signal)
-      // Even if they match drop rules, errors/failures ALWAYS override and keep the span
-      const failedSpans = spans.filter((s) => s.success === false);
-
-      console.log('Failed spans:', failedSpans);
-
-      // VERIFY: At least 1 failed span is present (hard signal protection worked)
-      // This MUST be true - if it's not, hard signal protection is BROKEN
-      if (failedSpans.length === 0) {
-        console.error('CRITICAL FAILURE: No failed spans captured!');
-        console.error('Response status was:', response.statusCode);
-        console.error('All events:', allEvents);
-        console.error('All spans:', spans);
-        throw new Error('HARD SIGNAL PROTECTION BROKEN: Failed operation was not captured or was incorrectly dropped by noise reduction');
-      }
-
-      expect(failedSpans.length).toBeGreaterThan(0);
-
-      // VERIFY: The failed span is from our operation
-      const hasGetOperation = failedSpans.some(s =>
-        s.operation?.toLowerCase().includes('get') ||
-        s.source?.includes('service') ||
-        s.source?.includes('Controller')
-      );
-
-      if (!hasGetOperation) {
-        console.error('CRITICAL: Failed spans exist but not from our GET operation!');
-        console.error('Failed spans:', failedSpans);
-        throw new Error('Failed span does not match expected GET operation');
-      }
-
-      expect(hasGetOperation).toBe(true);
+      // VERIFY: Service span
+      const serviceSpan = spans.find(s => s.source?.includes('service'));
+      expect(serviceSpan).toBeDefined();
+      expect(serviceSpan?.operation).toContain('get');
+      expect(serviceSpan?.success).toBe(false);
+      expect(serviceSpan?.level).toBe('error');
     });
 
     it('drops fast successful GET /testitem (list) operations', async () => {
@@ -331,28 +308,13 @@ describe('Noise Reduction E2E Integration (Real FW24 Components)', () => {
       const allEvents = backend.getEvents();
       const spans = backend.getEventsMatching({ type: 'span' });
 
-      console.log('GET list test - Total events:', allEvents.length);
-      console.log('GET list test - Total spans:', spans.length);
-      console.log('GET list test - Spans:', spans.map(s => ({
-        operation: s.operation,
-        source: s.source,
-        duration: (s.data as any)?.durationMs
-      })));
-
-      // CRITICAL ASSERTION: Fast successful reads should be DROPPED
+      // VERIFY: Fast successful reads should be DROPPED
       // Rule: fw24.hotpaths.api.drop_fast_successful_reads
       // Pattern: HTTP GET/HEAD/OPTIONS or .list/.get/.read methods that are fast (<500ms) and successful
 
-      // Find service list operation
-      const serviceListSpans = spans.filter(s =>
-        s.operation?.includes('list') && s.source?.includes('service')
-      );
-
-      // VERIFY: Service list span should be DROPPED (not present)
-      expect(serviceListSpans.length).toBe(0);
-
-      // Root controller span might still be present (depends on config)
-      // But service spans should definitely be dropped
+      // VERIFY: No events persisted (entire tree pruned - no hard signals, just noise)
+      expect(spans.length).toBe(0);
+      expect(allEvents.length).toBe(0);
     });
   });
 
@@ -403,35 +365,36 @@ describe('Noise Reduction E2E Integration (Real FW24 Components)', () => {
 
       console.log('Individual upsert spans:', upsertSpans.length);
 
-      // Find parent span with aggregates
-      const spanWithAggregates = spans.find(s =>
-        (s.data as any)?.noiseReduction?.aggregates
-      );
+      // VERIFY: Aggregation should happen per fw24.hotpaths.entity.aggregate_upsert_spans rule
+      // Rule matches: operation='/BaseEntityService\\.(upsert|update)/', source='/^service:BaseEntityService\\./', success=true
 
-      if (spanWithAggregates) {
-        console.log('Found span with aggregates:', {
-          operation: spanWithAggregates.operation,
-          aggregates: (spanWithAggregates.data as any)?.noiseReduction?.aggregates
-        });
-      }
+      // Individual upsert spans should NOT be in output (aggregated into parent)
+      expect(upsertSpans.length).toBe(0);
 
-      // VERIFY: Either upserts are aggregated (0 individual spans) OR they're all present (rule didn't match)
-      // If aggregation worked: individual upsert spans should be 0, parent should have aggregates
-      // If aggregation didn't work: we should see the individual spans
+      // Parent span should exist and have aggregates
+      // VERIFY: Only parent span in output (upserts aggregated)
+      expect(spans.length).toBe(1);
 
-      if (spanWithAggregates) {
-        // Aggregation worked!
-        expect(upsertSpans.length).toBe(0);
-        console.log('✅ AGGREGATION WORKED - Upserts folded into parent');
-      } else {
-        // Aggregation didn't apply (maybe rule pattern didn't match)
-        // At minimum, verify the framework captured SOMETHING
-        console.log('⚠️ Aggregation did not apply - verifying basic observability works');
-        if (allEvents.length === 0) {
-          console.log('ERROR: NO EVENTS CAPTURED! This is a framework bug.');
-        }
-        expect(allEvents.length).toBeGreaterThanOrEqual(0); // Relax for now
-      }
+      // VERIFY: Parent span properties
+      const parentSpan = spans[ 0 ];
+      expect(parentSpan.operation).toBe('HTTP POST //testitem/batch-upsert');
+      expect(parentSpan.source).toContain('Controller');
+      expect(parentSpan.success).toBe(true);
+
+      // VERIFY: Aggregates structure and values
+      const aggregates = (parentSpan.data as any)?.noiseReduction?.aggregates;
+      expect(aggregates).toBeDefined();
+
+      const upsertAggregate = aggregates[ 'span:BaseEntityService.upsert' ];
+      expect(upsertAggregate).toEqual({
+        count: 5,
+        errorCount: 0,
+        durationSumMs: expect.any(Number),
+        durationMaxMs: expect.any(Number),
+        examples: [],
+        errorExamples: [],
+        rules: { 'fw24.hotpaths.entity.aggregate_upsert_spans': 5 }
+      });
     });
   });
 });

@@ -15,7 +15,7 @@
  *   @Audited({ 
  *     operation: 'sensitive.access', 
  *     level: 'warn',
- *     captureArgs: true 
+ *     capture: { args: true }
  *   })
  *   async accessSensitiveData(userId: string): Promise<SensitiveData> {
  *     // Audit with arguments captured
@@ -27,9 +27,9 @@
 import { getCurrentExecutionContext } from '../../core/runtime/execution-context';
 import { AuditObserver } from '../observers/audit';
 import { normalizeError } from '../observers/base';
-import type { DecoratorBaseOptions } from '../types';
-import { safeSerialize } from '../utils/payload';
+import type { DecoratorBaseOptions, CaptureSerializeOptions } from '../types';
 import { executeWithHandlers, resolveSource } from './decorator-utils';
+import { safeSerialize, type SerializeOptions } from '../utils/payload';
 
 export interface AuditedOptions extends DecoratorBaseOptions {
   /** Audit operation name (defaults to ClassName.methodName) */
@@ -38,7 +38,7 @@ export interface AuditedOptions extends DecoratorBaseOptions {
   entityName?: string;
   /** Audit level */
   level?: 'info' | 'warn' | 'error';
-  /** Specific argument names to capture (if captureArgs is false) */
+  /** Specific argument names to capture (requires capture.args to be enabled) */
   argNames?: string[];
   /** Custom data extractor function */
   dataExtractor?: (args: unknown[], result?: unknown) => Record<string, unknown>;
@@ -76,8 +76,6 @@ export function Audited(options: AuditedOptions = {}) {
         level,
         argNames,
         dataExtractor,
-        captureArgs,
-        captureResult,
         enabled,
         sourceType,
         ...recordOverrides
@@ -103,7 +101,9 @@ export function Audited(options: AuditedOptions = {}) {
             success,
             Date.now() - startTime,
             error ? normalizeError(error) : undefined,
-            recordOverrides
+            recordOverrides,
+            toSerializeOptions(recordOverrides.capture?.args),
+            toSerializeOptions(recordOverrides.capture?.result)
           );
         }
       );
@@ -122,6 +122,15 @@ function isEnabled(options: AuditedOptions): boolean {
   return typeof options.enabled === 'function' ? options.enabled() : options.enabled;
 }
 
+/**
+ * Convert decorator capture options to SerializeOptions
+ */
+function toSerializeOptions(option: boolean | CaptureSerializeOptions | undefined): SerializeOptions | undefined {
+  if (option === undefined || option === false) return undefined;
+  if (option === true) return {}; // Use defaults
+  return option; // Already SerializeOptions
+}
+
 function recordAudit(
   operation: string,
   source: string,
@@ -131,7 +140,9 @@ function recordAudit(
   success: boolean,
   durationMs: number,
   error: Error | undefined,
-  recordOverrides: Partial<DecoratorBaseOptions>
+  recordOverrides: Partial<DecoratorBaseOptions>,
+  argsSerializeOpts: SerializeOptions | undefined,
+  resultSerializeOpts: SerializeOptions | undefined
 ): void {
   // Build audit data
   let data: Record<string, unknown> = { success, durationMs };
@@ -142,24 +153,24 @@ function recordAudit(
     data = { ...data, ...options.dataExtractor(args, result) };
   } else {
     // Capture args if requested
-    if (options.captureArgs && args.length > 0) {
+    if (argsSerializeOpts && args.length > 0) {
       if (options.argNames?.length) {
         // Capture specific named arguments
         const namedArgs: Record<string, unknown> = {};
         options.argNames.forEach((name, index) => {
           if (index < args.length) {
-            namedArgs[ name ] = safeSerialize(args[ index ]);
+            namedArgs[ name ] = safeSerialize(args[ index ], argsSerializeOpts);
           }
         });
         data.args = namedArgs;
       } else {
-        data.args = safeSerialize(args);
+        data.args = safeSerialize(args, argsSerializeOpts);
       }
     }
 
     // Capture result if requested
-    if (options.captureResult && result !== undefined) {
-      data.result = safeSerialize(result);
+    if (resultSerializeOpts && result !== undefined) {
+      data.result = safeSerialize(result, resultSerializeOpts);
     }
   }
 

@@ -1344,11 +1344,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         // Always inject complete actor context for audit trail
         // This field is hidden from API responses by default
+        // Inject actorTimestamp for staleness detection in audit logs
+        const actorWithTimestamp = {
+            ...actor,
+            actorTimestamp: Date.now(), // Milliseconds since epoch for easy comparison
+        };
+
         // Clean actor object by removing undefined values (DynamoDB doesn't allow them)
         const cleanActor = Object.fromEntries(
-            Object.entries({
-                ...actor,
-            }).filter(([ _, value ]) => value !== undefined)
+            Object.entries(actorWithTimestamp).filter(([ _, value ]) => value !== undefined)
         );
 
         (enhancedData as any)._actor = cleanActor;

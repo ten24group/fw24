@@ -181,89 +181,104 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       // Sections organized by logical grouping with proper tabs/accordions
       sectionsConfig: {
         sectionGroups: [
-          // === 2. HIERARCHY & TRACE RELATIONS ===
+          // === 1. OPERATION & TIMING (PRIMARY INFO) ===
           {
-            id: 'hierarchy-relations',
-            label: 'Hierarchy & Trace',
-            icon: 'ApartmentOutlined',
-            sortOrder: 2,
+            id: 'operation-timing',
+            label: 'Operation & Timing',
+            icon: 'ThunderboltOutlined',
+            sortOrder: 1,
             renderMode: 'tabs',
             defaultCollapsed: true,
-            lazyLoad: true,
-            keepMounted: false,
+            lazyLoad: false,
+            keepMounted: true,
             sections: {
-              parentSpan: {
-                label: 'Parent Span',
-                icon: 'NodeIndexOutlined',
+              operationDetails: {
+                label: 'Operation',
+                icon: 'PlayCircleOutlined',
                 sortOrder: 1,
                 pageType: 'details',
-                visibility: { record: { parentObservabilityLogId: { exists: true } } },
-                entityConfigRef: {
-                  entityName: 'observabilityLog',
-                  pageType: 'view',
-                  overrideConfig: {
-                    identifierMapping: { source: 'parentObservabilityLogId', target: 'id' },
-                  },
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [
+                    'operation',
+                    'status',
+                    'success',
+                    'type',
+                    'subType',
+                  ],
                 },
               },
-              childSpans: {
-                label: 'Child Spans',
-                icon: 'BranchesOutlined',
+              entityInfo: {
+                label: 'Entity Information',
+                icon: 'InfoCircleOutlined',
                 sortOrder: 2,
-                pageType: 'list',
-                entityConfigRef: {
-                  entityName: 'observabilityLog',
-                  pageType: 'list',
-                  overrideConfig: {
-                    defaultFilters: { parentObservabilityLogId: { eq: ':observabilityLogId' } },
-                    hideSegments: [ 'hierarchy-group' ],
-                  },
+                pageType: 'details',
+                visibility: { record: { entityName: { exists: true } } },
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [ 'entityName', 'entityId' ],
                 },
               },
-              traceLogs: {
-                label: 'This Trace',
-                icon: 'ShareAltOutlined',
+              timingDetails: {
+                label: 'Timing',
+                icon: 'ClockCircleOutlined',
                 sortOrder: 3,
-                pageType: 'list',
-                entityConfigRef: {
-                  entityName: 'observabilityLog',
-                  pageType: 'list',
-                  overrideConfig: {
-                    defaultFilters: { correlationId: { eq: ':correlationId' } },
-                    hideSegments: [ 'hierarchy-group' ],
-                    description: 'All events in this Lambda invocation',
-                  },
+                pageType: 'details',
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [
+                    'timestampMs',
+                    'durationMs',
+                  ],
                 },
               },
-              causedByTrace: {
-                label: 'Causing Request Trace',
-                icon: 'LinkOutlined',
+              sourceDetails: {
+                label: 'Source',
+                icon: 'CodeOutlined',
                 sortOrder: 4,
-                pageType: 'list',
-                visibility: { record: { causedBy: { exists: true } } },
-                entityConfigRef: {
-                  entityName: 'observabilityLog',
-                  pageType: 'list',
-                  overrideConfig: {
-                    defaultFilters: { correlationId: { eq: ':causedBy' } },
-                    hideSegments: [ 'hierarchy-group' ],
-                    description: 'View the original request trace that caused this event',
-                  },
+                pageType: 'details',
+                visibility: { record: { source: { exists: true } } },
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [
+                    'source',
+                    'level',
+                  ],
                 },
               },
-              causedEvents: {
-                label: 'Events Caused By This',
-                icon: 'ApiOutlined',
+              attributes: {
+                label: 'Attributes',
+                icon: 'TagsOutlined',
+                sortOrder: 4,
+                pageType: 'details',
+                visibility: { record: { attributes: { exists: true } } },
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [ 'attributes' ],
+                },
+              },
+            },
+          },
+          // === 2. ERROR (Error details) ===
+          {
+            id: 'error',
+            label: 'Error',
+            icon: 'ExclamationCircleOutlined',
+            sortOrder: 2,
+            renderMode: 'tabs',
+            defaultCollapsed: false,
+            lazyLoad: false,
+            keepMounted: true,
+            visibility: { record: { error: { exists: true } } },
+            sections: {
+              error: {
+                label: 'Error',
+                icon: 'ExclamationCircleOutlined',
                 sortOrder: 5,
-                pageType: 'list',
-                entityConfigRef: {
-                  entityName: 'observabilityLog',
-                  pageType: 'list',
-                  overrideConfig: {
-                    defaultFilters: { causedBy: { eq: ':correlationId' } },
-                    hideSegments: [ 'hierarchy-group' ],
-                    description: 'Events in other invocations caused by this request',
-                  },
+                pageType: 'details',
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [ 'error' ],
                 },
               },
             },
@@ -278,18 +293,8 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
             defaultCollapsed: false,
             lazyLoad: false,
             keepMounted: true,
+            visibility: { record: { data: { exists: true } } },
             sections: {
-              entityInfo: {
-                label: 'Entity Information',
-                icon: 'InfoCircleOutlined',
-                sortOrder: 1,
-                pageType: 'details',
-                visibility: { record: { entityName: { exists: true } } },
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [ 'entityName', 'entityId' ],
-                },
-              },
               checkpoints: {
                 label: 'Checkpoints',
                 icon: 'NodeIndexOutlined',
@@ -318,7 +323,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                 },
               },
               data: {
-                label: 'Rest Data',
+                label: 'Event Payload',
                 icon: 'FileTextOutlined',
                 sortOrder: 3,
                 pageType: 'details',
@@ -328,93 +333,166 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                   propertiesConfig: [ 'data' ],
                 },
               },
-              attributes: {
-                label: 'Attributes',
-                icon: 'TagsOutlined',
-                sortOrder: 3,
-                pageType: 'details',
-                visibility: { record: { attributes: { exists: true } } },
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [ 'attributes' ],
-                },
-              },
-              error: {
-                label: 'Error',
-                icon: 'ExclamationCircleOutlined',
-                sortOrder: 4,
-                pageType: 'details',
-                visibility: { record: { error: { exists: true } } },
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [ 'error' ],
-                },
-              },
             },
           },
-          // === 5. ADDITIONAL DATA (Tags, Metadata, Context) ===
+          // === 4. HIERARCHY & TRACE RELATIONS ===
           {
-            id: 'additional-data',
-            label: 'Additional Data',
-            icon: 'FolderOpenOutlined',
-            sortOrder: 5,
+            id: 'hierarchy-relations',
+            label: 'Hierarchy & Trace',
+            icon: 'ApartmentOutlined',
+            sortOrder: 4,
             renderMode: 'tabs',
             defaultCollapsed: true,
-            lazyLoad: false,
-            keepMounted: true,
+            lazyLoad: true,
+            keepMounted: false,
             sections: {
-              metrics: {
-                label: 'Metrics',
-                icon: 'DashboardOutlined',
+              hierarchyInfo: {
+                label: 'Hierarchy Info',
+                icon: 'NodeIndexOutlined',
+                sortOrder: 0,
+                pageType: 'details',
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [
+                    'isRoot',
+                    'parentObservabilityLogId',
+                    'correlationId',
+                    'causedBy',
+                  ],
+                },
+              },
+              parentSpan: {
+                label: 'Parent Span',
+                icon: 'ArrowUpOutlined',
                 sortOrder: 1,
                 pageType: 'details',
-                visibility: { record: { metrics: { exists: true } } },
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [ 'metrics' ],
+                visibility: { record: { parentObservabilityLogId: { exists: true } } },
+                entityConfigRef: {
+                  entityName: 'observabilityLog',
+                  pageType: 'view',
+                  overrideConfig: {
+                    identifierMapping: { source: 'parentObservabilityLogId', target: 'id' },
+                  },
                 },
               },
-              tags: {
-                label: 'Tags',
-                icon: 'TagOutlined',
+              siblingSpans: {
+                label: 'Sibling Spans',
+                icon: 'BlockOutlined',
                 sortOrder: 2,
-                pageType: 'details',
-                visibility: { record: { tags: { exists: true } } },
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [ 'tags' ],
+                pageType: 'list',
+                visibility: { record: { parentObservabilityLogId: { exists: true } } },
+                entityConfigRef: {
+                  entityName: 'observabilityLog',
+                  pageType: 'list',
+                  overrideConfig: {
+                    defaultFilters: {
+                      parentObservabilityLogId: { eq: ':parentObservabilityLogId' },
+                      observabilityLogId: { ne: ':observabilityLogId' },
+                    },
+                    hideSegments: [ 'hierarchy-group' ],
+                    description: 'Other spans at the same hierarchy level (same parent)',
+                  },
                 },
               },
-              metadata: {
-                label: 'Metadata',
-                icon: 'InfoCircleOutlined',
+              childSpans: {
+                label: 'Child Spans',
+                icon: 'BranchesOutlined',
                 sortOrder: 3,
-                pageType: 'details',
-                visibility: { record: { metadata: { exists: true } } },
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [ 'metadata' ],
+                pageType: 'list',
+                entityConfigRef: {
+                  entityName: 'observabilityLog',
+                  pageType: 'list',
+                  overrideConfig: {
+                    defaultFilters: { parentObservabilityLogId: { eq: ':observabilityLogId' } },
+                    hideSegments: [ 'hierarchy-group' ],
+                  },
                 },
               },
-              context: {
-                label: 'Context',
-                icon: 'EnvironmentOutlined',
+              rootSpan: {
+                label: 'Root of Hierarchy',
+                icon: 'GatewayOutlined',
                 sortOrder: 4,
+                pageType: 'list',
+                visibility: { record: { isRoot: { eq: false } } },
+                entityConfigRef: {
+                  entityName: 'observabilityLog',
+                  pageType: 'list',
+                  overrideConfig: {
+                    defaultFilters: {
+                      correlationId: { eq: ':correlationId' },
+                      isRoot: { eq: true },
+                    },
+                    hideSegments: [ 'hierarchy-group' ],
+                    description: 'The root span that started this trace hierarchy',
+                  },
+                },
+              },
+              traceLogs: {
+                label: 'All in This Trace',
+                icon: 'ShareAltOutlined',
+                sortOrder: 5,
+                pageType: 'list',
+                visibility: { record: { correlationId: { exists: true } } },
+                entityConfigRef: {
+                  entityName: 'observabilityLog',
+                  pageType: 'list',
+                  overrideConfig: {
+                    defaultFilters: { correlationId: { eq: ':correlationId' } },
+                    hideSegments: [ 'hierarchy-group' ],
+                    description: 'All events in this Lambda invocation',
+                  },
+                },
+              },
+              causedByTrace: {
+                label: 'Causing Request Trace',
+                icon: 'LinkOutlined',
+                sortOrder: 8,
+                pageType: 'list',
+                visibility: { record: { causedBy: { exists: true } } },
+                entityConfigRef: {
+                  entityName: 'observabilityLog',
+                  pageType: 'list',
+                  overrideConfig: {
+                    defaultFilters: { correlationId: { eq: ':causedBy' } },
+                    hideSegments: [ 'hierarchy-group' ],
+                    description: 'View the original request trace that caused this event',
+                  },
+                },
+              },
+              causedEvents: {
+                label: 'Events Caused By This',
+                icon: 'ApiOutlined',
+                sortOrder: 9,
+                pageType: 'list',
+                entityConfigRef: {
+                  entityName: 'observabilityLog',
+                  pageType: 'list',
+                  overrideConfig: {
+                    defaultFilters: { causedBy: { eq: ':correlationId' } },
+                    hideSegments: [ 'hierarchy-group' ],
+                    description: 'Events in other invocations caused by this request',
+                  },
+                },
+              },
+              relatedTraces: {
+                label: 'Related Traces',
+                icon: 'ClusterOutlined',
+                sortOrder: 10,
                 pageType: 'details',
-                visibility: { record: { context: { exists: true } } },
+                visibility: { record: { relatedTraces: { exists: true } } },
                 detailsPageConfig: {
                   useParentData: true,
-                  propertiesConfig: [ 'context' ],
+                  propertiesConfig: [ 'relatedTraces' ],
                 },
               },
             },
           },
-          // === 6. RELATED LOGS (Entity & Source Analytics) ===
+          // === 5. RELATED LOGS (Entity & Source Analytics) ===
           {
             id: 'related-analytics',
             label: 'Related Logs',
             icon: 'FundOutlined',
-            sortOrder: 6,
+            sortOrder: 5,
             renderMode: 'tabs',
             defaultCollapsed: true,
             lazyLoad: false,
@@ -466,6 +544,63 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                     defaultFilters: { source: ':source' },
                     hideSegments: [ 'hierarchy-group' ],
                   },
+                },
+              },
+            },
+          },
+          // === 6. ADDITIONAL DATA (Tags, Metadata, Context) ===
+          {
+            id: 'additional-data',
+            label: 'Additional Data',
+            icon: 'FolderOpenOutlined',
+            sortOrder: 6,
+            renderMode: 'tabs',
+            defaultCollapsed: true,
+            lazyLoad: false,
+            keepMounted: true,
+            sections: {
+              metrics: {
+                label: 'Metrics',
+                icon: 'DashboardOutlined',
+                sortOrder: 1,
+                pageType: 'details',
+                visibility: { record: { metrics: { exists: true } } },
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [ 'metrics' ],
+                },
+              },
+              tags: {
+                label: 'Tags',
+                icon: 'TagOutlined',
+                sortOrder: 2,
+                pageType: 'details',
+                visibility: { record: { tags: { exists: true } } },
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [ 'tags' ],
+                },
+              },
+              metadata: {
+                label: 'Metadata',
+                icon: 'InfoCircleOutlined',
+                sortOrder: 3,
+                pageType: 'details',
+                visibility: { record: { metadata: { exists: true } } },
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [ 'metadata' ],
+                },
+              },
+              context: {
+                label: 'Context',
+                icon: 'EnvironmentOutlined',
+                sortOrder: 4,
+                pageType: 'details',
+                visibility: { record: { context: { exists: true } } },
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [ 'context' ],
                 },
               },
             },

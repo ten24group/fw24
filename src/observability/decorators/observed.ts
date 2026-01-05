@@ -23,9 +23,9 @@ import { getCurrentExecutionContext } from '../../core/runtime/execution-context
 import { AuditObserver } from '../observers/audit';
 import { MetricObserver } from '../observers/metric';
 import { SpanObserver, SpanOptions, ISpanObserver } from '../observers/span';
-import type { DecoratorBaseOptions } from '../types';
-import { safeSerialize } from '../utils/payload';
+import type { DecoratorBaseOptions, CaptureSerializeOptions } from '../types';
 import { resolveSource } from './decorator-utils';
+import { safeSerialize, type SerializeOptions } from '../utils/payload';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -95,13 +95,14 @@ export interface ObservedOptions<TInstance = unknown, TArgs extends unknown[] = 
    */
   trace?: boolean | Partial<SpanOptions>;
 
-  /** Create audit record */
+  /** 
+   * Create audit record.
+   * Note: Args/result capture is controlled via capture.args/capture.result at the top level.
+   */
   audit?: boolean | {
     action?: string;
     entityName?: string;
     level?: 'info' | 'warn' | 'error';
-    captureArgs?: boolean;
-    captureResult?: boolean;
   };
 
   /** Record metric */
@@ -163,8 +164,6 @@ export function Observed(options: ObservedOptions = {}) {
 
       // Extract RecordOverrides from options (these get passed through to SpanObserver)
       const {
-        captureArgs,
-        captureResult,
         enabled,
         sourceType,
         name,
@@ -178,6 +177,10 @@ export function Observed(options: ObservedOptions = {}) {
       // Compute source (use explicit source override if provided, otherwise auto-detect)
       const computedSource = resolveSource(sourceType, className, methodName);
       const finalSource = recordOverrides.source ?? computedSource;
+
+      // Extract capture options from capture namespace
+      const argsSerializeOpts = toSerializeOptions(recordOverrides.capture?.args);
+      const resultSerializeOpts = toSerializeOptions(recordOverrides.capture?.result);
 
       // Build span options (only compute dynamic attrs if tracing)
       const spanOptions: SpanOptions & {
@@ -194,7 +197,7 @@ export function Observed(options: ObservedOptions = {}) {
         } : recordOverrides.tags,
         data: shouldTrace ? {
           ...traceOptions.data,
-          ...(captureArgs && args.length > 0 && { args: safeSerialize(args) }),
+          ...(argsSerializeOpts && args.length > 0 && { args: safeSerialize(args, argsSerializeOpts) }),
         } : traceOptions.data,
         skipCapture: !shouldTrace,
         onStart: (span: ISpanObserver) => {
@@ -226,7 +229,7 @@ export function Observed(options: ObservedOptions = {}) {
             })
           );
 
-          onMethodFinish(span, options, operationName, args, result, finalSource, recordOverrides);
+          onMethodFinish(span, options, operationName, args, result, finalSource, recordOverrides, resultSerializeOpts, argsSerializeOpts);
         },
       };
 
@@ -260,6 +263,15 @@ function isEnabled(options: ObservedOptions): boolean {
   return typeof options.enabled === 'function' ? options.enabled() : options.enabled;
 }
 
+/**
+ * Convert decorator capture options to SerializeOptions
+ */
+function toSerializeOptions(option: boolean | CaptureSerializeOptions | undefined): SerializeOptions | undefined {
+  if (option === undefined || option === false) return undefined;
+  if (option === true) return {}; // Use defaults
+  return option; // Already SerializeOptions
+}
+
 function onMethodFinish(
   span: ISpanObserver,
   options: ObservedOptions,
@@ -267,20 +279,22 @@ function onMethodFinish(
   args: unknown[],
   result: { value?: unknown; error?: Error; success: boolean; durationMs: number },
   source: string,
-  recordOverrides: Partial<DecoratorBaseOptions>
+  recordOverrides: Partial<DecoratorBaseOptions>,
+  resultSerializeOpts: SerializeOptions | undefined,
+  argsSerializeOpts: SerializeOptions | undefined
 ): void {
   const { value, error, success, durationMs } = result;
 
   // Add result data to span (only if span was captured)
   if (span.captured && success) {
-    if (options.captureResult && value !== undefined) {
-      span.setData({ result: safeSerialize(value) });
+    if (resultSerializeOpts && value !== undefined) {
+      span.setData({ result: safeSerialize(value, resultSerializeOpts) });
     }
   }
 
   // Audit (only if configured)
   if (options.audit) {
-    recordAudit(options, operationName, args, value, success, durationMs, source, error, recordOverrides);
+    recordAudit(options, operationName, args, value, success, durationMs, source, error, recordOverrides, argsSerializeOpts, resultSerializeOpts);
   }
 
   // Metrics (only if configured)
@@ -324,16 +338,19 @@ function recordAudit(
   durationMs: number,
   source: string,
   error: Error | undefined,
-  recordOverrides: Partial<DecoratorBaseOptions>
+  recordOverrides: Partial<DecoratorBaseOptions>,
+  argsSerializeOpts: SerializeOptions | undefined,
+  resultSerializeOpts: SerializeOptions | undefined
 ): void {
   const auditOpts = typeof options.audit === 'object' ? options.audit : {};
   const data: Record<string, unknown> = { success, durationMs };
 
-  if ((auditOpts.captureArgs ?? options.captureArgs) && args.length > 0) {
-    data.args = safeSerialize(args);
+  // Use top-level capture options (not audit sub-options)
+  if (argsSerializeOpts && args.length > 0) {
+    data.args = safeSerialize(args, argsSerializeOpts);
   }
-  if ((auditOpts.captureResult ?? options.captureResult) && result !== undefined) {
-    data.result = safeSerialize(result);
+  if (resultSerializeOpts && result !== undefined) {
+    data.result = safeSerialize(result, resultSerializeOpts);
   }
   if (error) {
     data.error = { type: error.name, message: error.message };

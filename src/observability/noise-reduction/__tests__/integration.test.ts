@@ -37,7 +37,7 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
           enabled: true,
           presets: [ 'fw24.hotpaths' ],
           rules: [],
-          emitSummaries: false,
+          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -75,7 +75,7 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
           enabled: true,
           presets: [ 'fw24.hotpaths' ],
           rules: [],
-          emitSummaries: false,
+          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -98,10 +98,13 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
         await ObservabilityManager.flush();
       });
 
-      // Failed GET should be kept
+      // VERIFY: Failed GET should be kept (hard signal protection)
       const spans = backend.getEventsMatching({ type: 'span' });
       expect(spans.length).toBe(1);
+      expect(spans[ 0 ].operation).toBe('HTTP GET /users/123');
+      expect(spans[ 0 ].source).toBe('UserController.get');
       expect(spans[ 0 ].success).toBe(false);
+      expect(spans[ 0 ].level).toBe('error');
     });
 
     it('keeps slow GET requests (>=500ms)', async () => {
@@ -110,7 +113,7 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
           enabled: true,
           presets: [ 'fw24.hotpaths' ],
           rules: [],
-          emitSummaries: false,
+          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -153,7 +156,7 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
               reason: 'Admin operations always kept for audit',
             },
           ],
-          emitSummaries: false,
+          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -185,7 +188,7 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
           enabled: true,
           presets: [ 'fw24.hotpaths' ],
           rules: [],
-          emitSummaries: false,
+          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -204,7 +207,7 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
             await withSpan('BaseEntityService.upsert', async (span) => {
               span.tag('entityName', 'User');
               await new Promise(resolve => setTimeout(resolve, 10));
-            }, { source: 'service:BaseEntityService' });
+            }, { source: 'service:BaseEntityService.upsert' }); // Must include method for rule to match
           }
         }, { source: 'UserController.batchCreate' });
 
@@ -216,22 +219,28 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
       // VERIFY BEHAVIOR: Test that framework generates proper spans
       // Rule pattern: operation: '/BaseEntityService\\.(upsert|update)/' AND source: '/^service:BaseEntityService\\./'
 
-      const parent = spans.find(s => s.operation === 'HTTP POST /users/batch');
-      expect(parent).toBeDefined();
+      // VERIFY: Only parent span in output (5 upserts aggregated)
+      expect(spans.length).toBe(1);
 
-      const upsertSpans = spans.filter(s => s.operation === 'BaseEntityService.upsert');
+      const parent = spans[ 0 ];
+      expect(parent.operation).toBe('HTTP POST /users/batch');
+      expect(parent.source).toBe('UserController.batchCreate');
+      expect(parent.success).toBe(true);
 
-      // DEBUG: Check if aggregation happened
-      const hasAggregates = (parent?.data as any)?.noiseReduction?.aggregates;
+      // VERIFY: Aggregates structure and values
+      const aggregates = (parent.data as any)?.noiseReduction?.aggregates;
+      expect(aggregates).toBeDefined();
 
-      // VERIFY: If aggregation rule matched, upserts should be aggregated (0 standalone spans + aggregates present)
-      // If rule didn't match, upserts are standalone (5 spans, no aggregates)
-      if (hasAggregates) {
-        expect(upsertSpans.length).toBe(0);
-      } else {
-        // Rule didn't match - verify spans were at least captured
-        expect(upsertSpans.length).toBe(5);
-      }
+      const upsertAggregate = aggregates[ 'span:BaseEntityService.upsert' ];
+      expect(upsertAggregate).toEqual({
+        count: 5,
+        errorCount: 0,
+        durationSumMs: expect.any(Number),
+        durationMaxMs: expect.any(Number),
+        examples: [],
+        errorExamples: [],
+        rules: { 'fw24.hotpaths.entity.aggregate_upsert_spans': 5 }
+      });
     });
 
     it('keeps failed upsert operations as standalone spans', async () => {
@@ -240,7 +249,7 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
           enabled: true,
           presets: [ 'fw24.hotpaths' ],
           rules: [],
-          emitSummaries: false,
+          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -255,18 +264,18 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
           // Successful upsert
           await withSpan('BaseEntityService.upsert', async (span) => {
             span.tag('entityName', 'User');
-          }, { source: 'service:BaseEntityService' });
+          }, { source: 'service:BaseEntityService.upsert' }); // Must match rule pattern
 
           // Failed upsert
           try {
             await withSpan('BaseEntityService.upsert', async (span) => {
               span.tag('entityName', 'User');
               throw new Error('Validation failed');
-            }, { source: 'service:BaseEntityService' });
+            }, { source: 'service:BaseEntityService.upsert' }); // Must match rule pattern
           } catch (e) {
             // Expected
           }
-        });
+        }, { source: 'UserController.batchCreate' });
 
         await ObservabilityManager.flush();
       });
@@ -274,17 +283,31 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
       const spans = backend.getEventsMatching({ type: 'span' });
 
       // VERIFY BEHAVIOR: Failed operations are NEVER aggregated (hard signal protection)
+      // Expected: parent + failed upsert (successful upsert should be aggregated)
 
+      // VERIFY: Parent span
       const parent = spans.find(s => s.operation === 'HTTP POST /users/batch');
       expect(parent).toBeDefined();
+      expect(parent?.source).toBe('UserController.batchCreate');
 
-      // CRITICAL: Failed upsert must be standalone (hard signal)
+      // VERIFY: Failed upsert is standalone (hard signal protection)
       const failedUpsert = spans.find(s => s.operation === 'BaseEntityService.upsert' && s.success === false);
       expect(failedUpsert).toBeDefined();
+      expect(failedUpsert?.level).toBe('error');
+      expect(failedUpsert?.source).toBe('service:BaseEntityService.upsert');
 
-      // CRITICAL: Successful upsert should be aggregated or kept (depends on rules)
-      // The important thing is failed is ALWAYS kept
+      // VERIFY: Parent + failed upsert in output
+      // With hard signal protection working correctly:
+      // - Parent span (kept)
+      // - Successful upsert (aggregated, not in output as standalone)
+      // - Failed upsert (kept, hard signal protection)
+      // Note: span.start events may add to count
       expect(spans.length).toBeGreaterThanOrEqual(2); // At least parent + failed
+      expect(spans.length).toBeLessThanOrEqual(4); // At most parent + failed + successful + span.start
+
+      // CRITICAL: Failed upsert MUST be present (never aggregated - hard signal)
+      const failedUpserts = spans.filter(s => s.operation === 'BaseEntityService.upsert' && s.success === false);
+      expect(failedUpserts.length).toBe(1);
     });
   });
 
@@ -295,7 +318,7 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
           enabled: true,
           presets: [ 'fw24.hotpaths' ],
           rules: [],
-          emitSummaries: false,
+          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -332,7 +355,7 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
           enabled: true,
           presets: [ 'fw24.hotpaths' ],
           rules: [],
-          emitSummaries: false,
+          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -367,7 +390,7 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
           enabled: true,
           presets: [ 'fw24.hotpaths' ],
           rules: [],
-          emitSummaries: false,
+          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -412,7 +435,17 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
       // Only parent should remain with folded queries as checkpoints
       const spans = backend.getEventsMatching({ type: 'span' });
       expect(spans.length).toBe(1);
-      expect((spans[ 0 ].data as any)?.checkpoints?.length).toBeGreaterThan(0);
+
+      // VERIFY: Parent has fold checkpoints from children
+      const checkpoints = (spans[ 0 ].data as any)?.checkpoints;
+      expect(Array.isArray(checkpoints)).toBe(true);
+      expect(checkpoints.length).toBeGreaterThan(0); // At least 1 checkpoint from folded logs
+
+      // VERIFY: Contains fold checkpoint
+      const hasFoldCheckpoint = checkpoints.some((cp: any) =>
+        cp.name?.includes('fold') || cp.name?.includes('metrics.folded')
+      );
+      expect(hasFoldCheckpoint).toBe(true);
     });
   });
 
@@ -436,7 +469,7 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
               decision: 'keep',
             },
           ],
-          emitSummaries: false,
+          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -474,7 +507,7 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
               decision: 'drop',
             },
           ],
-          emitSummaries: false,
+          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -507,7 +540,7 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
           enabled: true,
           presets: [ 'fw24.hotpaths', 'fw24.batch_processors' ],
           rules: [],
-          emitSummaries: false,
+          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -538,11 +571,14 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
       // VERIFY BEHAVIOR: Batch processing with noise reduction presets
       // Original: 1 parent + 50 record spans + 50 upsert spans = 101 spans
 
+      // VERIFY: Parent span properties
       const parent = spans.find(s => s.operation === 'BatchProcessor.processBatch');
       expect(parent).toBeDefined();
+      expect(parent?.source).toContain('Processor');
+      expect(parent?.success).toBe(true);
 
-      // VERIFY: Noise reduction presets are configured (they may or may not match these specific patterns)
-      // The key is that the system works - actual reduction depends on rule matching
+      // VERIFY: System captured spans (noise reduction may or may not apply based on patterns)
+      // This test verifies framework generates spans correctly, not specific noise reduction
       expect(spans.length).toBeGreaterThan(0);
 
       // DEBUG INFO: Log what we got to understand the behavior

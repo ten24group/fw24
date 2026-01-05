@@ -4,7 +4,9 @@
  * Sensitive data redaction using @hackylabs/deep-redact.
  */
 
-import { DeepRedact } from '@hackylabs/deep-redact';
+import { type DeepRedact as DeepRedactType } from '@hackylabs/deep-redact';
+const DeepRedactModule = require('@hackylabs/deep-redact/index.ts');
+const DeepRedact = DeepRedactModule.DeepRedact || DeepRedactModule.default?.DeepRedact || DeepRedactModule;
 import { deepCopy } from '../../utils/serialize';
 import type { DataProtectionConfig } from '../types';
 
@@ -74,12 +76,12 @@ export const DEFAULT_PROTECTED_FIELDS: ('data' | 'attributes' | 'metadata' | 'co
 // ============================================================================
 
 // Cached redactor instances for performance
-const redactorCache = new Map<string, DeepRedact>();
+const redactorCache = new Map<string, DeepRedactType>();
 
 /**
  * Get or create a cached redactor instance
  */
-function getRedactor(config: Partial<DataProtectionConfig>): DeepRedact {
+function getRedactor(config: Partial<DataProtectionConfig>): DeepRedactType {
   const blacklistedKeys = config.blacklistedKeys ?? DEFAULT_BLACKLISTED_KEYS;
 
   // Create a cache key from config
@@ -102,9 +104,9 @@ function getRedactor(config: Partial<DataProtectionConfig>): DeepRedact {
       // when a parent key fuzzy-matches a blacklisted key (e.g., 'credentials' matches 'credential')
       retainStructure: true,
     });
-    redactorCache.set(cacheKey, redactor);
+    redactorCache.set(cacheKey, redactor as DeepRedactType);
   }
-  return redactor;
+  return redactor as DeepRedactType;
 }
 
 // ============================================================================

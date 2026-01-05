@@ -47,6 +47,13 @@ export interface Actor {
   userAgent?: string;
   correlationId?: string;
 
+  /**
+   * Timestamp (milliseconds since epoch) when this actor was set on the entity.
+   * Used to detect stale actor data in audit logs.
+   * Set automatically by the framework during entity operations.
+   */
+  actorTimestamp?: number;
+
   // Generic user fields (commonly available)
   email?: string;
   emailVerified?: boolean;

@@ -1,55 +1,173 @@
 /**
  * Payload utilities for observability
  * 
- * Handles payload truncation and size estimation for DynamoDB storage
+ * Handles payload serialization with depth control and truncation for storage optimization
  */
+
+import { isObject, isArray, isDate, isError, isMap, isSet, isRegExp } from '../../utils/datatypes';
+import { getCircularReplacer, jsonStringifyReplacer } from '../../utils/serialize';
 
 // Maximum payload size to prevent DynamoDB item size limits
 const MAX_PAYLOAD_BYTES = 350 * 1024; // 350KB (leaving room for other fields)
 
 /**
- * Safely stringify an object, handling circular references
+ * Serialization options for depth-aware truncation
  */
-export type SerializableValue =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | SerializableValue[]
-  | { [ key: string ]: SerializableValue };
+export interface SerializeOptions {
+  /**
+   * Maximum string length for the entire serialized output.
+   * Default: 10000 (10KB of text)
+   * Set to Infinity to disable truncation entirely.
+   */
+  maxLength?: number;
 
-function isObject(value: unknown): value is object {
-  return typeof value === 'object' && value !== null;
+  /**
+   * Maximum depth to traverse in nested objects.
+   * Default: 10
+   * Beyond this depth, objects are replaced with '[Object...]', arrays with '[Array...]'
+   */
+  maxDepth?: number;
+
+  /**
+   * Prevent truncation entirely - always serialize full data.
+   * Use sparingly for critical data that must be captured in full.
+   * Default: false
+   */
+  preventTruncation?: boolean;
 }
 
 /**
- * Safely convert an input into a JSON-serializable-ish shape, handling circular references.
- *
- * NOTE: This intentionally preserves `undefined` (JSON drops it in objects; arrays stringify it as null).
+ * Safely stringify an object with depth control and circular reference handling.
+ * Uses framework's existing serialization utilities.
+ * 
+ * @param value - Value to serialize
+ * @param options - Serialization options
+ * @param currentDepth - Internal: current traversal depth
+ * @returns Serialized value or truncation marker
  */
-export function safeStringify(value: unknown, visited = new WeakSet<object>()): SerializableValue {
-  if (value === null || typeof value !== 'object') {
-    return value as SerializableValue;
+export function safeStringify(
+  value: unknown,
+  options: SerializeOptions = {},
+  currentDepth = 0
+): unknown {
+  // When preventTruncation is true, disable depth limit too
+  const maxDepth = options.preventTruncation ? Infinity : (options.maxDepth ?? 10);
+
+  // Check depth limit
+  if (currentDepth >= maxDepth) {
+    if (isObject(value)) return '[Object:max-depth]';
+    if (isArray(value)) return '[Array:max-depth]';
+    return value;
   }
 
-  if (visited.has(value as object)) {
-    return '[Circular]';
+  // Primitives pass through
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
   }
 
-  visited.add(value as object);
+  // Special types
+  if (isDate(value)) return value.toISOString();
+  if (isError(value)) return { type: value.name, message: value.message, stack: value.stack };
+  if (isRegExp(value)) return value.toString();
+  if (isMap(value)) return Array.from(value.entries());
+  if (isSet(value)) return Array.from(value.values());
 
-  if (Array.isArray(value)) {
-    return value.map((item) => safeStringify(item, visited));
+  // Arrays
+  if (isArray(value)) {
+    return value.map((item) => safeStringify(item, options, currentDepth + 1));
   }
 
-  const result: Record<string, unknown> = {};
-  for (const [ key, val ] of Object.entries(value)) {
-    result[ key ] = safeStringify(val, visited);
+  // Objects
+  if (isObject(value)) {
+    const result: Record<string, unknown> = {};
+    for (const [ key, val ] of Object.entries(value)) {
+      result[ key ] = safeStringify(val, options, currentDepth + 1);
+    }
+    return result;
   }
 
-  visited.delete(value as object);
-  return result as SerializableValue;
+  return value;
+}
+
+/**
+ * Safely serialize a value for logging/audit with configurable truncation.
+ * Use this for capturing method arguments, return values, etc.
+ * 
+ * Features:
+ * - Handles circular references using framework utilities
+ * - Depth-aware traversal (configurable max depth)
+ * - Optional length-based truncation
+ * - Special handling for Date, Error, Map, Set, RegExp
+ * 
+ * @param value - Value to serialize
+ * @param options - Serialization options (or number for backward compat maxLength)
+ * @returns Serialized value, truncation marker, or '[unserializable]'
+ * 
+ * @example
+ * ```typescript
+ * // Default: max 10KB, depth 10
+ * safeSerialize(data)
+ * 
+ * // No truncation at all
+ * safeSerialize(data, { preventTruncation: true })
+ * 
+ * // Custom limits
+ * safeSerialize(data, { maxLength: 5000, maxDepth: 5 })
+ * 
+ * // Backward compat: pass number as maxLength
+ * safeSerialize(data, 1000)
+ * ```
+ */
+export function safeSerialize(
+  value: unknown,
+  options: SerializeOptions | number = {}
+): unknown {
+  // Backward compat: if number passed, treat as maxLength
+  const opts: SerializeOptions = typeof options === 'number'
+    ? { maxLength: options }
+    : options;
+
+  // Apply defaults
+  const maxLength = opts.preventTruncation ? Infinity : (opts.maxLength ?? 10000);
+  const maxDepth = opts.maxDepth ?? 10;
+
+  try {
+    // First pass: depth-aware serialization
+    const sanitized = safeStringify(value, { maxDepth });
+
+    // Second pass: convert to JSON with circular handling
+    const circularReplacer = getCircularReplacer();
+    const str = JSON.stringify(sanitized, (key, val) => {
+      // Apply circular check first
+      const circularSafe = circularReplacer(key, val);
+      if (circularSafe === undefined && isObject(val)) return '[Circular]';
+      // Then apply framework's type replacer for any special types we might have missed
+      return jsonStringifyReplacer(key, circularSafe ?? val);
+    });
+
+    if (str === undefined) {
+      return '[unserializable]';
+    }
+
+    // Length-based truncation (if not disabled)
+    if (maxLength !== Infinity && str.length > maxLength) {
+      // Parse back to preserve top-level structure visibility
+      try {
+        const parsed = JSON.parse(str);
+        const preview = JSON.stringify(parsed, null, 0).substring(0, maxLength);
+        return preview + '...[truncated]';
+      } catch {
+        // Fallback: just truncate the string
+        return str.substring(0, maxLength) + '...[truncated]';
+      }
+    }
+
+    // Return parsed object (not stringified) - cleaner for storage
+    return JSON.parse(str);
+  } catch (err) {
+    return '[unserializable]';
+  }
 }
 
 /**
@@ -139,30 +257,6 @@ export function estimateItemSize(item: unknown): number {
  */
 export function isPayloadWithinLimits(payload: unknown, maxBytes: number = MAX_PAYLOAD_BYTES): boolean {
   return estimateItemSize(payload) <= maxBytes;
-}
-
-/**
- * Safely serialize a value for logging/audit (truncate if needed)
- * Use this for capturing method arguments, return values, etc.
- * 
- * @param value - Value to serialize
- * @param maxLength - Max string length (default 1000)
- * @returns Serializable value or '[unserializable]' if fails
- */
-export function safeSerialize(value: unknown, maxLength: number = 1000): unknown {
-  try {
-    const sanitized = safeStringify(value);
-    const str = JSON.stringify(sanitized);
-    if (str === undefined) {
-      return '[unserializable]';
-    }
-    if (str.length > maxLength) {
-      return str.substring(0, maxLength) + '...[truncated]';
-    }
-    return sanitized;
-  } catch {
-    return '[unserializable]';
-  }
 }
 
 /**

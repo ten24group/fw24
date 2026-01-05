@@ -23,7 +23,8 @@ describe('noise reduction', () => {
       timestampMs: 2,
       observabilityLogId: 'child',
       parentObservabilityLogId: 'parent',
-      operation: 'processor record',
+      operation: 'processRecord',
+      source: 'BatchProcessor.processRecord',
       capture: { backends: [ 'otel' ] },
       durationMs: undefined,
     };
@@ -35,7 +36,8 @@ describe('noise reduction', () => {
       timestampMs: 2,
       observabilityLogId: 'child',
       parentObservabilityLogId: 'parent',
-      operation: 'processor record',
+      operation: 'processRecord',
+      source: 'BatchProcessor.processRecord',
       durationMs: 1,
     };
 
@@ -123,7 +125,8 @@ describe('noise reduction', () => {
       timestampMs: 2,
       observabilityLogId: 'child',
       parentObservabilityLogId: 'parent',
-      operation: 'processor record',
+      operation: 'processRecord',
+      source: 'BatchProcessor.processRecord',
       capture: { backends: [ 'otel' ] },
     };
 
@@ -134,7 +137,8 @@ describe('noise reduction', () => {
       timestampMs: 2,
       observabilityLogId: 'child',
       parentObservabilityLogId: 'parent',
-      operation: 'processor record',
+      operation: 'processRecord',
+      source: 'BatchProcessor.processRecord',
       durationMs: 3,
     };
 
@@ -272,7 +276,6 @@ describe('noise reduction', () => {
       timestampMs: 2,
       observabilityLogId: 'child-log',
       parentObservabilityLogId: 'parent',
-      operation: 'processing item',
       source: 'TestService.process',
     };
 
@@ -299,7 +302,7 @@ describe('noise reduction', () => {
     const parent = events.find((e) => e.observabilityLogId === 'parent')!;
     const data = parent.data as any;
     expect(Array.isArray(data?.checkpoints)).toBe(true);
-    expect(data.checkpoints.some((cp: any) => cp.name?.includes('fold:log'))).toBe(true);
+    expect(data.checkpoints.some((cp: any) => cp.name?.startsWith('metrics.folded:'))).toBe(true);
 
     expect(stats.folded).toBe(1);
     expect(stats.kept).toBe(1);
@@ -583,7 +586,7 @@ describe('noise reduction', () => {
     expect(stats.dropped).toBe(1);
   });
 
-  test('drops parent span even when children are folded into it (DynamoDBStreamToSNSProcessor case)', () => {
+  test('drops parent span when children are folded into it but no hard signals (aggressive noise reduction)', () => {
     const parentSpan: ObservabilityEvent = {
       observabilityLogId: 'sns-parent',
       type: 'span',
@@ -612,17 +615,23 @@ describe('noise reduction', () => {
         ...baseNoise,
         enabled: true,
         presets: [ 'fw24.hotpaths' ],
-        rules: []
+        rules: [],
       }
     );
 
-    // Parent span should be dropped even though child was folded into it
-    expect(events.find(e => e.observabilityLogId === 'sns-parent')).toBeUndefined();
-    // Child log should be folded (and thus not in output as standalone)
+    // CORRECT BEHAVIOR: Parent span is DROPPED because absorbed data is only NOISE
+    // Rationale: Child was folded (just noise), no hard signals → entire tree can be dropped
+    // This maximizes noise reduction while preserving hard signal data
+    const keptParent = events.find(e => e.observabilityLogId === 'sns-parent');
+    expect(keptParent).toBeUndefined();
+
+    // Child log should also be dropped (folded then parent dropped)
     expect(events.find(e => e.observabilityLogId === 'child-log')).toBeUndefined();
-    // Both should be counted as processed
-    expect(stats.dropped).toBe(1); // parent span
-    expect(stats.folded).toBe(1); // child log
+
+    // Entire tree pruned - no hard signals
+    expect(events.length).toBe(0);
+    expect(stats.folded).toBe(1); // Child was folded
+    expect(stats.dropped).toBe(1); // Parent was dropped
   });
 
   test('does not force-keep parent with aggregate decision even when children are folded into it', () => {
@@ -677,14 +686,22 @@ describe('noise reduction', () => {
       }
     );
 
-    // Parent span should be aggregated (not kept) even though child was processed
+    // VERIFY: Parent span should be aggregated (not kept)
     expect(events.find(e => e.observabilityLogId === 'parent')).toBeUndefined();
-    // Grandparent should be kept and have aggregation summary
+
+    // VERIFY: Grandparent is kept with aggregation summary
     const grandparent = events.find(e => e.observabilityLogId === 'grandparent');
     expect(grandparent).toBeDefined();
-    expect(grandparent?.data).toHaveProperty('noiseReduction');
-    // Stats should show aggregation
-    expect(stats.aggregated).toBeGreaterThan(0);
+    expect(grandparent?.operation).toBe('workflow.batch');
+    expect(grandparent?.source).toBe('WorkflowController.process');
+
+    const noiseReduction = (grandparent?.data as any)?.noiseReduction;
+    expect(noiseReduction).toBeDefined();
+    expect(noiseReduction.aggregates).toBeDefined();
+
+    // VERIFY: Exact stats
+    expect(stats.aggregated).toBe(1); // 1 parent span aggregated
+    expect(stats.folded).toBe(1); // 1 child log folded
   });
 
   test('does not force-keep parent with fold decision even when children are folded into it', () => {
@@ -959,9 +976,14 @@ describe('noise reduction', () => {
     // Slow successful GET should be downgraded (kept but stripped)
     const slowGet = events.find(e => e.observabilityLogId === 'slow-get-1');
     expect(slowGet).toBeDefined();
-    // Failed GET should be kept (hard signal protection)
-    expect(events.find(e => e.observabilityLogId === 'fast-get-fail')).toBeDefined();
-    expect(stats.dropped).toBeGreaterThanOrEqual(1);
+    // VERIFY: Failed GET is kept (hard signal protection)
+    const failedGet = events.find(e => e.observabilityLogId === 'fast-get-fail');
+    expect(failedGet).toBeDefined();
+    expect(failedGet?.success).toBe(false);
+    expect(failedGet?.level).toBe('error');
+
+    // VERIFY: Exact stats
+    expect(stats.dropped).toBe(1); // 1 fast successful GET dropped
   });
 
   test('force-keeps parent with keep/downgrade decision when children are folded', () => {
@@ -1011,9 +1033,18 @@ describe('noise reduction', () => {
     // Child should be folded into parent
     expect(events.find(e => e.observabilityLogId === 'child-log')).toBeUndefined();
     expect(stats.folded).toBe(1);
-    // Parent should have fold checkpoint from child
-    expect((parent?.data as any)?.checkpoints).toBeDefined();
-    expect((parent?.data as any)?.checkpoints.length).toBeGreaterThan(0);
+
+    // VERIFY: Parent has fold checkpoint from child
+    const checkpoints = (parent?.data as any)?.checkpoints;
+    expect(checkpoints).toBeDefined();
+    expect(Array.isArray(checkpoints)).toBe(true);
+    expect(checkpoints.length).toBeGreaterThanOrEqual(1); // At least 1 fold checkpoint
+
+    // VERIFY: Contains fold checkpoint with correct structure
+    const foldCheckpoint = checkpoints.find((cp: any) => cp.name?.includes('folded') || cp.name?.includes('fold'));
+    expect(foldCheckpoint).toBeDefined();
+    expect(foldCheckpoint.ts).toBeDefined();
+    expect(typeof foldCheckpoint.ts).toBe('number');
   });
 });
 

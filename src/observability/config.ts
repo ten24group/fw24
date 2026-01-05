@@ -8,16 +8,22 @@ import {
   ObservabilityConfig,
   ObservabilityLevel,
   ObservabilityBackendConfig,
+  ObservabilityEvent,
   SamplingConfig,
   SamplingRule,
   DataProtectionConfig,
   TruncationConfig,
   DynamoDBConfig,
   NoiseReductionConfig,
+  HardSignalConfig,
   TypeSpecificConfig,
   QueryPerformanceConfig,
   OperationTimingConfig,
   EntityQueryTimingOverride,
+  CloudWatchConfig,
+  TagFilteringConfig,
+  NamespaceStrategy,
+  OperationMetricRule,
 } from './types';
 import { DEFAULT_BLACKLISTED_KEYS } from './utils/data-protection';
 import type { DeepPartial } from '../utils/types';
@@ -52,23 +58,23 @@ export const CONFIG_DEFAULTS = {
   },
   queryPerformance: {
     enabled: true,
-    slowThreshold: 1000, // 1 second
+    slowThreshold: 30 * 1000, // 30 second
     fastQuerySampleRate: 0.01, // 1% of fast queries
     slowQuerySampleRate: 1.0, // 100% of slow queries
     captureSlowQueryDetails: true,
     trackCapacity: false,
     // Sensible operation-specific thresholds
     operationThresholds: [
-      { operation: 'get', slowThreshold: 500 },       // Single item - should be fast
-      { operation: 'batchGet', slowThreshold: 1000 }, // Batch - bit slower OK
-      { operation: 'list', slowThreshold: 1000 },     // List with index - 1s OK
-      { operation: 'query', slowThreshold: 1000 },    // Query with index - 1s OK
-      { operation: 'scan', slowThreshold: 3000 },     // Full scan - naturally slow
-      { operation: 'create', slowThreshold: 500 },    // Write - should be fast
-      { operation: 'update', slowThreshold: 500 },    // Write - should be fast
-      { operation: 'upsert', slowThreshold: 500 },    // Write - should be fast
-      { operation: 'delete', slowThreshold: 500 },    // Write - should be fast
-      { operation: 'batchDelete', slowThreshold: 1000 }, // Batch write
+      { operation: 'get', slowThreshold: 15 * 1000 },       // Single item - should be fast
+      { operation: 'batchGet', slowThreshold: 30 * 1000 }, // Batch - bit slower OK
+      { operation: 'list', slowThreshold: 20 * 1000 },     // List with index - 1s OK
+      { operation: 'query', slowThreshold: 30 * 1000 },    // Query with index - 1s OK
+      { operation: 'scan', slowThreshold: 60 * 1000 },     // Full scan - naturally slow
+      { operation: 'create', slowThreshold: 15 * 1000 },    // Write - should be fast
+      { operation: 'update', slowThreshold: 15 * 1000 },    // Write - should be fast
+      { operation: 'upsert', slowThreshold: 15 * 1000 },    // Write - should be fast
+      { operation: 'delete', slowThreshold: 15 * 1000 },    // Write - should be fast
+      { operation: 'batchDelete', slowThreshold: 30 * 1000 }, // Batch write
     ],
   },
   operationNormalization: {
@@ -78,9 +84,19 @@ export const CONFIG_DEFAULTS = {
   // Noise reduction defaults: enabled in framework configs (can be disabled per preset/app).
   noiseReduction: {
     enabled: false,
+    hardSignals: {
+      levels: [ 'error', 'critical' ],
+      includeWarn: false,
+      slowThresholdMs: 5000,
+      slowThresholds: {
+        'database.query': 100,
+        'external.api': 10000,
+        'batch.process': 30000,
+      },
+    },
     presets: [ 'fw24.hotpaths', 'fw24.batch_processors' ],
     rules: [],
-    emitSummaries: true,
+    emitSummaries: false,
     // Bounds (match the policy engine defaults)
     maxCheckpointsPerSpan: 500,
     maxAggregateKeysPerSpan: 200,
@@ -101,6 +117,26 @@ export const CONFIG_DEFAULTS = {
   dynamoMaxItemSize: 400 * 1024,    // 400KB - DynamoDB hard limit
   dynamoMaxBatchSize: 25,           // 25 - DynamoDB BatchWriteItem limit
   dynamoMaxBufferSize: 1000,        // 1000 - force flush safety
+
+  // Phase 2: Tag filtering defaults (framework-level)
+  tagFiltering: {
+    include: [ 'stage', 'tenantId', 'operationCategory' ] as string[],  // Balanced
+    maxTags: 10,
+  },
+  metricFiltering: {
+    enabled: false,                  // Disabled by default (publish all)
+    mode: 'whitelist' as const,
+  },
+  metricSampling: {
+    enabled: false,                  // Disabled by default (no sampling)
+    rate: 0.1,                       // 10% sample rate when enabled
+    alwaysPublishOn: 'both' as const, // Always publish errors and slow requests
+    thresholds: {
+      slowDurationMs: 1000,          // > 1 second = slow
+    },
+  },
+  // Phase 3: CloudWatch namespace defaults
+  cloudwatchNamespaceStrategy: 'single' as const,
 } as const;
 
 export const DEFAULT_OPERATION_NORMALIZATION_RULES: NonNullable<ObservabilityConfig[ 'operationNormalization' ]>[ 'rules' ] = [
@@ -139,7 +175,8 @@ export interface ObservabilityConfigInput {
    */
   backends?: ObservabilityBackendConfigInput[];
   sampling?: Partial<SamplingConfig>;
-  cloudwatch?: { namespace?: string };
+  cloudwatch?: Partial<CloudWatchConfig>;
+  tagFiltering?: Partial<TagFilteringConfig>;
   dynamodb?: {
     /** Logical table key - resolved to actual table name via env var {tableKey}_table */
     tableKey?: string;
@@ -253,10 +290,11 @@ export function extendPreset(
  */
 export function createObservabilityConfig(input: DeepPartial<ObservabilityConfigInput> = {}): ObservabilityConfig {
   const serviceName = input.serviceName ?? CONFIG_DEFAULTS.serviceName;
+  const minLevel = input.minLevel ?? CONFIG_DEFAULTS.minLevel;
 
   const config: ObservabilityConfig = {
     enabled: input.enabled ?? CONFIG_DEFAULTS.enabled,
-    minLevel: input.minLevel ?? CONFIG_DEFAULTS.minLevel,
+    minLevel,
     serviceName,
     backends: normalizeBackends(input.backends),
     sampling: normalizeSampling(input.sampling),
@@ -266,9 +304,10 @@ export function createObservabilityConfig(input: DeepPartial<ObservabilityConfig
     sourceMap: { enabled: input.sourceMap?.enabled ?? CONFIG_DEFAULTS.sourceMapEnabled },
     types: normalizeTypes(input.types),
     spans: normalizeSpanConfig(input.spans),
+    tagFiltering: normalizeTagFiltering(input.tagFiltering),
     queryPerformance: normalizeQueryPerformanceConfig(input.queryPerformance),
     // Centralized defaults: noiseReduction is always present (enabled can be toggled per preset/app).
-    noiseReduction: normalizeNoiseReduction(input.noiseReduction),
+    noiseReduction: normalizeNoiseReduction(input.noiseReduction, minLevel),
     operationNormalization: normalizeOperationNormalization(input.operationNormalization),
   };
 
@@ -371,9 +410,44 @@ function normalizeTypes(input?: DeepPartial<ObservabilityConfig[ 'types' ]>): Ob
   return { span, metric, audit, log };
 }
 
-function normalizeCloudWatch(input?: { namespace?: string }): ObservabilityConfig[ 'cloudwatch' ] {
-  return { namespace: input?.namespace ?? CONFIG_DEFAULTS.cloudwatchNamespace };
+function normalizeCloudWatch(input?: DeepPartial<ObservabilityConfigInput>[ 'cloudwatch' ]): ObservabilityConfig[ 'cloudwatch' ] {
+  const namespaceStrategy = input?.namespaceStrategy as NamespaceStrategy | undefined;
+  const operationRules = input?.metricFiltering?.operationRules as OperationMetricRule[] | undefined;
+
+  return {
+    namespace: input?.namespace ?? CONFIG_DEFAULTS.cloudwatchNamespace,
+    namespaceStrategy: namespaceStrategy ?? CONFIG_DEFAULTS.cloudwatchNamespaceStrategy,
+    metricFiltering: {
+      enabled: input?.metricFiltering?.enabled ?? CONFIG_DEFAULTS.metricFiltering.enabled,
+      mode: input?.metricFiltering?.mode ?? CONFIG_DEFAULTS.metricFiltering.mode,
+      whitelist: input?.metricFiltering?.whitelist,
+      blacklist: input?.metricFiltering?.blacklist,
+      patterns: input?.metricFiltering?.patterns,
+      operationRules,
+    },
+    metricSampling: {
+      enabled: input?.metricSampling?.enabled ?? CONFIG_DEFAULTS.metricSampling.enabled,
+      rate: input?.metricSampling?.rate ?? CONFIG_DEFAULTS.metricSampling.rate,
+      alwaysPublishOn: input?.metricSampling?.alwaysPublishOn ?? CONFIG_DEFAULTS.metricSampling.alwaysPublishOn,
+      thresholds: {
+        slowDurationMs: input?.metricSampling?.thresholds?.slowDurationMs ?? CONFIG_DEFAULTS.metricSampling.thresholds.slowDurationMs,
+      },
+      neverSample: input?.metricSampling?.neverSample,
+      alwaysSample: input?.metricSampling?.alwaysSample,
+    },
+  };
 }
+
+function normalizeTagFiltering(input?: DeepPartial<ObservabilityConfigInput>[ 'tagFiltering' ]): TagFilteringConfig {
+  const customTags = input?.custom as Record<string, (event: ObservabilityEvent) => string> | undefined;
+
+  return {
+    include: input?.include ?? CONFIG_DEFAULTS.tagFiltering.include,
+    custom: customTags,
+    maxTags: input?.maxTags ?? CONFIG_DEFAULTS.tagFiltering.maxTags,
+  };
+}
+
 
 function normalizeDynamoDb(input?: ObservabilityConfigInput[ 'dynamodb' ]): DynamoDBConfig {
   return {
@@ -411,7 +485,10 @@ function normalizeSpanConfig(input?: { minDurationMs?: number; skipEmpty?: boole
   };
 }
 
-function normalizeNoiseReduction(input?: DeepPartial<NoiseReductionConfig>): NoiseReductionConfig {
+function normalizeNoiseReduction(
+  input?: DeepPartial<NoiseReductionConfig>,
+  globalMinLevel?: ObservabilityLevel
+): NoiseReductionConfig {
   const d = CONFIG_DEFAULTS.noiseReduction;
   const presets = Array.isArray(input?.presets)
     ? input.presets.filter((p): p is NoiseReductionConfig[ 'presets' ][ number ] => typeof p === 'string')
@@ -426,8 +503,22 @@ function normalizeNoiseReduction(input?: DeepPartial<NoiseReductionConfig>): Noi
     })
     : d.rules;
 
+  // Normalize hardSignals to ensure slowThresholds has no undefined values
+  const hardSignals: HardSignalConfig | undefined = input?.hardSignals ? {
+    levels: input.hardSignals.levels,
+    includeWarn: input.hardSignals.includeWarn,
+    slowThresholdMs: input.hardSignals.slowThresholdMs,
+    slowThresholds: input.hardSignals.slowThresholds
+      ? Object.fromEntries(
+        Object.entries(input.hardSignals.slowThresholds).filter(([ _, v ]) => v !== undefined)
+      ) as Record<string, number>
+      : undefined,
+  } : d.hardSignals;
+
   return {
     enabled: input?.enabled ?? d.enabled,
+    minLevel: input?.minLevel ?? globalMinLevel,
+    hardSignals,
     presets,
     rules,
     emitSummaries: input?.emitSummaries ?? d.emitSummaries,

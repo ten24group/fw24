@@ -133,12 +133,9 @@ export function withContext<T>(
         metadata: overrides.metadata, // metadata goes to state.metadata
       });
       // IMPORTANT: run fn INSIDE the newly created execution context.
-      // Do NOT call fn() before runWithExecutionContext(), or spans/logs won't see the context.
-      const result = fn();
-      if (result instanceof Promise) {
-        return runWithExecutionContext(newCtx, () => result) as T;
-      }
-      return runWithExecutionContextSync(newCtx, () => result);
+      // runWithExecutionContextSync works for both sync and async functions
+      // (it calls fn synchronously, but fn can return a Promise)
+      return runWithExecutionContextSync(newCtx, fn);
     }
     // No correlationId and no context - just run
     return fn();
@@ -176,9 +173,6 @@ export function withContext<T>(
   };
 
   // IMPORTANT: run fn INSIDE the overridden execution context.
-  const result = fn();
-  if (result instanceof Promise) {
-    return runWithExecutionContext(newCtx, () => result) as T;
-  }
-  return runWithExecutionContextSync(newCtx, () => result);
+  // runWithExecutionContextSync works for both sync and async functions
+  return runWithExecutionContextSync(newCtx, fn);
 }

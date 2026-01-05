@@ -293,14 +293,80 @@ function shouldBackendCaptureType(
   return true; // Passed all filters
 }
 
+/**
+ * Apply tag filtering to event before sending to backends.
+ * Filters framework tags based on config, adds custom tags, enforces maxTags limit.
+ */
+function applyTagFiltering(event: ObservabilityEvent): ObservabilityEvent {
+  if (!config?.tagFiltering) return event;
+
+  const tagConfig = config.tagFiltering;
+  const include = tagConfig.include;
+  const maxTags = tagConfig.maxTags ?? 10;
+
+  // Known framework tags
+  const frameworkTags = new Set([
+    'stage', 'tenantId', 'operationCategory', 'authMethod',
+    'actorType', 'handlerType', 'entityName', 'operation'
+  ]);
+
+  const filteredTags: Record<string, string> = {};
+  let tagCount = 0;
+
+  // Filter existing tags
+  if (event.tags) {
+    for (const [ key, value ] of Object.entries(event.tags)) {
+      if (tagCount >= maxTags) break;
+
+      // Framework tags: must be in include array
+      if (frameworkTags.has(key)) {
+        if (include && !include.includes(key)) {
+          continue; // Excluded
+        }
+      }
+      // Unknown tags (custom): always include
+
+      // Convert to string
+      filteredTags[ key ] = typeof value === 'string' ? value : String(value);
+      tagCount++;
+    }
+  }
+
+  // Add custom tags from config
+  if (tagConfig.custom && tagCount < maxTags) {
+    for (const [ key, valueFn ] of Object.entries(tagConfig.custom)) {
+      if (tagCount >= maxTags) break;
+      if (filteredTags[ key ] !== undefined) continue; // Already exists
+
+      try {
+        const value = valueFn(event);
+        if (value) {
+          filteredTags[ key ] = value;
+          tagCount++;
+        }
+      } catch (error) {
+        logger.warn(`Failed to evaluate custom tag ${key}:`, error);
+      }
+    }
+  }
+
+  return {
+    ...event,
+    tags: filteredTags,
+  };
+}
+
 function dispatchToBackends(event: ObservabilityEvent, targetBackends: ObservabilityBackend[]): void {
+  // Apply tag filtering before sending to backends
+  const filteredEvent = applyTagFiltering(event);
+
   const promise = Promise.all(
     targetBackends.map(async (backend) => {
       try {
-        if (!shouldBackendCaptureType(backend, event)) {
+        if (!shouldBackendCaptureType(backend, filteredEvent)) {
           return;
         }
-        await backend.capture(event);
+        await backend.capture(filteredEvent);
       } catch (error) {
         logger.error(`Failed to capture in backend ${backend.name}:`, error);
       }
@@ -312,13 +378,16 @@ function dispatchToBackends(event: ObservabilityEvent, targetBackends: Observabi
 }
 
 async function dispatchToBackendsSync(event: ObservabilityEvent, targetBackends: ObservabilityBackend[]): Promise<void> {
+  // Apply tag filtering before sending to backends
+  const filteredEvent = applyTagFiltering(event);
+
   await Promise.all(
     targetBackends.map(async (backend) => {
       try {
-        if (!shouldBackendCaptureType(backend, event)) {
+        if (!shouldBackendCaptureType(backend, filteredEvent)) {
           return;
         }
-        await backend.capture(event);
+        await backend.capture(filteredEvent);
       } catch (error) {
         logger.error(`Failed to capture in backend ${backend.name}:`, error);
       }
@@ -330,35 +399,49 @@ function enforceHierarchyIntegrityOrDrop(
   events: ObservabilityEvent[],
   ctxCorrelationId: string,
 ): ObservabilityEvent[] {
-  // Strict contract: parentObservabilityLogId must always refer to an existing span within this slice.
-  // If violated (likely due to manual injection), we drop offending events and emit a single error log.
+  // CONTRACT: parentObservabilityLogId should ONLY reference spans in THIS slice (same correlationId).
+  // Cross-invocation linkage should use causedBy, not parentObservabilityLogId.
+  //
+  // However, for backward compatibility and graceful degradation:
+  // - If a parent is referenced but NOT in this batch (cross-slice reference), we KEEP the event
+  //   but the parent link will be stale/unresolvable in the UI. This is suboptimal but not fatal.
+  // - If a parent is referenced and should be in this batch but is missing (noise reduction bug),
+  //   we DROP the event and emit an error.
+  //
+  // Only drop case #2 (truly missing), tolerate case #1 (cross-slice).
   const graph = buildTraceGraph(events, { strictParents: false });
-  if (graph.missingParentSpanIds.size === 0 && graph.crossSliceParentSpanIds.size === 0) return events;
+  if (graph.missingParentSpanIds.size === 0) return events;
 
   const missing = graph.missingParentSpanIds;
   const crossSlice = graph.crossSliceParentSpanIds;
   const filtered = events.filter((e) => {
     const pid = e.parentObservabilityLogId ?? undefined;
-    return !(pid && (missing.has(pid) || crossSlice.has(pid)));
+    // ONLY drop if parent is truly missing (not just in a different slice)
+    return !(pid && missing.has(pid));
   });
 
   const droppedCount = events.length - filtered.length;
-  filtered.push({
-    type: 'log',
-    level: 'error',
-    correlationId: ctxCorrelationId,
-    timestampMs: Date.now(),
-    observabilityLogId: generateObservabilityLogId(ctxCorrelationId),
-    operation: 'observability.invariant_violation.missing_parent_span',
-    success: false,
-    capture: { bypass: true },
-    data: {
-      droppedCount,
-      missingParentSpanIds: Array.from(missing).slice(0, 10),
-      crossSliceParentSpanIds: Array.from(crossSlice).slice(0, 10),
-    },
-    source: 'ObservabilityManager.flush',
-  });
+
+  if (droppedCount > 0) {
+    // Only emit error if we actually dropped events
+    filtered.push({
+      type: 'log',
+      level: 'error',
+      correlationId: ctxCorrelationId,
+      timestampMs: Date.now(),
+      observabilityLogId: generateObservabilityLogId(ctxCorrelationId),
+      operation: 'observability.invariant_violation.missing_parent_span',
+      success: false,
+      capture: { bypass: true },
+      data: {
+        droppedCount,
+        missingParentSpanIds: Array.from(missing).slice(0, 10),
+        // Include cross-slice info for debugging (these are valid, not errors)
+        crossSliceParentCount: crossSlice.size,
+      },
+      source: 'ObservabilityManager.flush',
+    });
+  }
 
   return filtered;
 }
@@ -427,7 +510,12 @@ function matchesRule(event: ObservabilityEvent, rule: SamplingRule): boolean {
   return regex.test(valueToMatch);
 }
 
-function shouldCapture(
+/**
+ * Content-based filtering - ALWAYS runs regardless of sampling.enabled
+ * Returns true if event passes filtering rules (bypass, level, duration, etc.)
+ * Returns false if event should be filtered out.
+ */
+function shouldFilter(
   event: ObservabilityEvent,
   cfg: ObservabilityConfig,
   options?: {
@@ -451,79 +539,82 @@ function shouldCapture(
   const allowSpanMinDurationDrop = options?.allowSpanMinDurationDrop === true;
   const referencedParentSpanIds = options?.referencedParentSpanIds;
 
-  // === BYPASS SAMPLING (always capture) ===
-  // Priority order - if any of these match, capture immediately
+  // === BYPASS FILTERS (always pass) ===
 
-  // 1. Explicit bypass flag in CaptureControl
+  // 1. Explicit bypass flag
   if (capture?.bypass) {
     return true;
   }
 
-  // 2. CRITICAL log level always captured
+  // 2. CRITICAL log level always passes
   if (levelValue === ObservabilityLevel.CRITICAL) {
     return true;
   }
 
-  // 3. Errors always captured
+  // 3. Errors always pass
   if (event.error || event.success === false) {
     return true;
   }
 
   // === SPAN-SPECIFIC FILTERING ===
   if (isSpanRecord) {
+    // Referenced parents must be kept for hierarchy integrity
     const id = event.observabilityLogId;
     if (id && referencedParentSpanIds?.has(id)) {
       return true;
     }
 
+    // Filter out fast spans if configured
     if (allowSpanMinDurationDrop && event.durationMs !== undefined) {
-      // Per-event minDurationMs overrides global config
-      // Set capture.minDurationMs = 0 to capture regardless of duration
       const minDuration = capture?.minDurationMs ?? cfg.spans.minDurationMs;
-
       if (minDuration > 0 && event.durationMs < minDuration) {
-        return false;
+        return false; // Too fast, filter out
       }
     }
   }
 
-  // === CAPTURE CONTROL FILTERING ===
-
-  // 4. Duration threshold for non-span events (e.g., slow queries)
+  // === NON-SPAN DURATION FILTERING ===
   if (!isSpanRecord && capture?.minDurationMs !== undefined && event.durationMs !== undefined) {
     if (event.durationMs < capture.minDurationMs) {
-      return false;
+      return false; // Below threshold, filter out
     }
   }
 
-  // 5. Group-based sampling for batch scenarios
+  // === LEVEL FILTERING ===
+  // REMOVED: Manager no longer filters by minLevel
+  // All level-based filtering happens in noise reduction for context-aware decisions
+
+  // Passed all filters
+  return true;
+}
+
+/**
+ * Probabilistic sampling - ONLY runs when sampling.enabled=true
+ * Returns true if event should be sampled (kept), false if sampled out (dropped)
+ */
+function shouldSample(
+  event: ObservabilityEvent,
+  cfg: ObservabilityConfig
+): boolean {
+  const levelValue = stringToLevel(event.level);
+  const typeCategory = getTypeCategory(event.type);
+  const capture = event.capture;
+
+  // === GROUP-BASED SAMPLING (batch scenarios) ===
   if (capture?.group) {
     const { index, captureFirst = 3, sampleRate = 0.1 } = capture.group;
 
-    // Note: Errors already returned true above (line ~360)
     // Capture first N items
     if (index < captureFirst) {
       return true;
     }
 
-    // Sample the rest
+    // Sample the rest probabilistically
     return Math.random() < sampleRate;
   }
 
-  // === STANDARD FILTERING (may reject) ===
-  // Check minimum level
-  if (levelValue < effectiveLevel) {
-    return false;
-  }
-
-  // If sampling disabled, capture everything
-  if (!cfg.sampling?.enabled) {
-    return true;
-  }
-
   // === RULE-BASED SAMPLING (Highest Priority) ===
-  // Rules are evaluated in order. First match wins.
-  if (cfg.sampling.rules && cfg.sampling.rules.length > 0) {
+  if (cfg.sampling?.rules && cfg.sampling.rules.length > 0) {
     for (const rule of cfg.sampling.rules) {
       if (matchesRule(event, rule)) {
         return Math.random() < rule.rate;
@@ -538,7 +629,7 @@ function shouldCapture(
   }
 
   // === OPERATION-BASED SAMPLING ===
-  if (event.operation && cfg.sampling.operations) {
+  if (event.operation && cfg.sampling?.operations) {
     for (const [ pattern, rate ] of Object.entries(cfg.sampling.operations)) {
       const regex = getOrCreateSamplingRegex(pattern);
       if (regex.test(event.operation)) {
@@ -549,7 +640,7 @@ function shouldCapture(
 
   // === LEVEL-BASED SAMPLING (Fallback) ===
   const levelName = levelToString(levelValue);
-  const rate = cfg.sampling.rates?.[ levelName ];
+  const rate = cfg.sampling?.rates?.[ levelName ];
   if (rate === undefined || rate >= 1) return true;
   if (rate <= 0) return false;
 
@@ -676,11 +767,27 @@ function evictLowestPriority(
     target = nonSpanLeaves[ idx ];
   } else {
     if (!allowEvictSpans) {
-      // Pass 2 (non-span only): if we can't find a non-span leaf, evict the lowest-priority non-span.
-      // This preserves hierarchy because non-spans are not expected to be parents.
+      // Pass 2 (non-span only): evict lowest-priority non-span that doesn't have span children.
+      // We must check for span children because subtree removal would evict those spans,
+      // violating the allowEvictSpans=false contract.
       if (nonSpans.length > 0) {
-        const idx = pickLowest(nonSpans);
-        target = nonSpans[ idx ];
+        // Filter to only non-spans that are safe to evict (no span children)
+        const safeNonSpans = nonSpans.filter(e => {
+          const id = getId(e);
+          if (!id) return true; // No ID = no children
+          const kids = childrenByParent.get(id);
+          if (!kids) return true; // No children = safe
+          // Reject if any child is a span
+          return !kids.some(child => isSpan(child));
+        });
+
+        if (safeNonSpans.length > 0) {
+          const idx = pickLowest(safeNonSpans);
+          target = safeNonSpans[ idx ];
+        } else {
+          // All non-spans have span children - cannot evict without violating allowEvictSpans
+          return null;
+        }
       } else {
         // Buffer contains only spans - caller must decide whether to allow span eviction or overflow.
         return null;
@@ -763,26 +870,10 @@ function handleTailBasedSamplingSync(
       const reduced = applyNoiseReduction(buffer, cfg.noiseReduction);
       const reducedBuffer = enforceHierarchyIntegrityOrDrop(reduced.events, context.correlationId);
 
-      // Apply level filtering to avoid overwhelming backends with thousands of debug/trace events
-      // On error, capture INFO+ events, drop TRACE/DEBUG to prevent cost spikes
-      const minLevelOnError = cfg.sampling?.minLevelOnError ?? ObservabilityLevel.INFO;
-      let dropped = 0;
-
+      // Dispatch all events - noise reduction already filtered by minLevel
       for (const bufferedEvent of reducedBuffer) {
-        const eventLevel = stringToLevel(bufferedEvent.level);
-        if (eventLevel >= minLevelOnError) {
-          const targets = getBackendsForType(bufferedEvent.type);
-          dispatchToBackends(bufferedEvent, targets);
-        } else {
-          dropped++;
-        }
-      }
-
-      if (dropped > 0) {
-        logger.debug(`Dropped ${dropped} low-level events from error buffer flush`, {
-          minLevel: levelToString(minLevelOnError),
-          correlationId: context.correlationId,
-        });
+        const targets = getBackendsForType(bufferedEvent.type);
+        dispatchToBackends(bufferedEvent, targets);
       }
     }
 
@@ -803,7 +894,7 @@ function handleTailBasedSamplingSync(
     return 'captured';
   }
 
-  // NORMAL PATH: Buffer everything
+  // NORMAL PATH: Buffer everything (filtering happens AFTER noise reduction)
   const obsState = context.observability;
   const buffer = obsState.buffer;
 
@@ -877,30 +968,11 @@ async function handleTailBasedSamplingAsync(
       const reduced = applyNoiseReduction(buffer, cfg.noiseReduction);
       const reducedBuffer = enforceHierarchyIntegrityOrDrop(reduced.events, context.correlationId);
 
-      // Apply level filtering to avoid overwhelming backends
-      const minLevelOnError = cfg.sampling?.minLevelOnError ?? ObservabilityLevel.INFO;
-      let dropped = 0;
-
-      const filteredEvents = reducedBuffer.filter(bufferedEvent => {
-        const eventLevel = stringToLevel(bufferedEvent.level);
-        if (eventLevel >= minLevelOnError) {
-          return true;
-        }
-        dropped++;
-        return false;
-      });
-
-      await Promise.all(filteredEvents.map(bufferedEvent => {
+      // Dispatch all events - noise reduction already filtered by minLevel
+      await Promise.all(reducedBuffer.map(bufferedEvent => {
         const targets = getBackendsForType(bufferedEvent.type);
         return dispatchToBackendsSync(bufferedEvent, targets);
       }));
-
-      if (dropped > 0) {
-        logger.debug(`Dropped ${dropped} low-level events from error buffer flush`, {
-          minLevel: levelToString(minLevelOnError),
-          correlationId: context.correlationId,
-        });
-      }
     }
 
     obsState.errorOccurred = true;
@@ -1213,13 +1285,19 @@ export class ObservabilityManager {
         return undefined;
       }
 
-      // HEAD-BASED SAMPLING (all bypass/level/sampling logic in shouldCapture)
-      if (!shouldCapture(event, config, {
+      // HEAD-BASED FILTERING + SAMPLING
+      // Apply filtering first (always runs)
+      if (!shouldFilter(event, config, {
         // No buffered graph here; never drop spans by minDuration in head-based mode
         // because we can't prove they aren't parents of already-emitted child events.
         allowSpanMinDurationDrop: false,
       })) {
-        return undefined;
+        return undefined; // Filtered out
+      }
+
+      // Apply sampling if enabled (probabilistic)
+      if (config.sampling?.enabled && !shouldSample(event, config)) {
+        return undefined; // Sampled out
       }
 
       const targetBackends = getBackendsForType(event.type);
@@ -1277,11 +1355,15 @@ export class ObservabilityManager {
         return undefined;
       }
 
-      // HEAD-BASED SAMPLING (all bypass/level/sampling logic in shouldCapture)
-      if (!shouldCapture(event, config, {
+      // HEAD-BASED FILTERING + SAMPLING
+      if (!shouldFilter(event, config, {
         allowSpanMinDurationDrop: false,
       })) {
-        return undefined;
+        return undefined; // Filtered out
+      }
+
+      if (config.sampling?.enabled && !shouldSample(event, config)) {
+        return undefined; // Sampled out
       }
 
       const targetBackends = getBackendsForType(event.type);
@@ -1344,12 +1426,59 @@ export class ObservabilityManager {
     const context = getCurrentContext();
     const currentSpan = context?.observability.currentSpan;
     if (summary && currentSpan && (summary.captured > 0 || summary.buffered > 0 || summary.evicted > 0 || summary.sampledOut > 0)) {
+      // Add basic count metrics
       currentSpan?.metrics?.({
         '_fw24.obs.captured': summary.captured,
         '_fw24.obs.buffered': summary.buffered,
         '_fw24.obs.evicted': summary.evicted,
         '_fw24.obs.sampledOut': summary.sampledOut,
       });
+
+      // Add detailed breakdown checkpoint
+      const detailedStats: Record<string, unknown> = {
+        totals: {
+          captured: summary.captured,
+          buffered: summary.buffered,
+          evicted: summary.evicted,
+          sampledOut: summary.sampledOut,
+        },
+      };
+
+      // Add captured events breakdown (what was actually emitted)
+      const obsState = context?.observability;
+      if (obsState?.capturedBreakdown) {
+        detailedStats.capturedBreakdown = {
+          byType: obsState.capturedBreakdown.byType,
+          byOperation: Object.keys(obsState.capturedBreakdown.byOperation || {}).length > 0
+            ? obsState.capturedBreakdown.byOperation
+            : undefined,
+          byLevel: obsState.capturedBreakdown.byLevel,
+        };
+      }
+
+      // Compute breakdown by type and operation from buffer (what's still buffered)
+      if (context && context.observability.buffer.length > 0) {
+        const byType: Record<string, number> = {};
+        const byOperation: Record<string, number> = {};
+        const byLevel: Record<string, number> = {};
+
+        for (const event of context.observability.buffer) {
+          byType[ event.type ] = (byType[ event.type ] || 0) + 1;
+          if (event.operation) {
+            byOperation[ event.operation ] = (byOperation[ event.operation ] || 0) + 1;
+          }
+          byLevel[ event.level ] = (byLevel[ event.level ] || 0) + 1;
+        }
+
+        detailedStats.bufferedBreakdown = {
+          byType,
+          byOperation: Object.keys(byOperation).length > 0 ? byOperation : undefined,
+          byLevel,
+        };
+      }
+
+      // Add checkpoint with detailed stats
+      currentSpan?.checkpoint?.('observability.summary.detailed', { data: detailedStats });
     }
 
     // If buffering is enabled (smart sampling OR noise reduction), flush buffered events.
@@ -1362,15 +1491,16 @@ export class ObservabilityManager {
         const buffer = obsState.buffer;
         obsState.buffer = []; // Clear buffer
 
-        const reduced = applyNoiseReduction(buffer, config.noiseReduction);
-        const reducedEvents = reduced.events;
-
-        // Compute referenced parent IDs from the buffered set (graph-based, no manual tracking).
+        // CRITICAL: Compute referenced parent IDs from ORIGINAL buffer BEFORE noise reduction
+        // Noise reduction may aggregate/remove events, but their parent spans must still be kept
         const referencedParentSpanIds = new Set<string>();
-        for (const e of reducedEvents) {
+        for (const e of buffer) {
           const pid = e.parentObservabilityLogId ?? undefined;
           if (pid) referencedParentSpanIds.add(pid);
         }
+
+        const reduced = applyNoiseReduction(buffer, config.noiseReduction);
+        const reducedEvents = reduced.events;
 
         // Drop empty *leaf* spans if configured.
         // A span is a leaf iff nobody references it as parentObservabilityLogId in this buffered set.
@@ -1388,23 +1518,55 @@ export class ObservabilityManager {
 
         const finalEvents = enforceHierarchyIntegrityOrDrop(maybeDropEmptyLeafSpans, context.correlationId);
 
-        for (const event of finalEvents) {
-          // Bypass events skip sampling (e.g., audit events marked as critical)
-          const shouldBypass = event.capture?.bypass === true;
+        // Track captured events for detailed summary
+        const capturedByType: Record<string, number> = {};
+        const capturedByOperation: Record<string, number> = {};
+        const capturedByLevel: Record<string, number> = {};
 
-          // Apply sampling rules to buffered event (unless bypass is set)
-          const isSampled = shouldBypass
-            || !config?.sampling?.enabled
-            || shouldCapture(event, config, {
-              allowSpanMinDurationDrop: true,
-              referencedParentSpanIds,
-            });
-          if (isSampled) {
-            const targets = getBackendsForType(event.type);
-            await dispatchToBackendsSync(event, targets);
-          } else {
-            obsState.summary.sampledOut++;
+        for (const event of finalEvents) {
+          // TAIL-BASED FILTERING + SAMPLING (after noise reduction)
+
+          // Apply filtering first (always runs - content-based)
+          const passedFilter = shouldFilter(event, config, {
+            allowSpanMinDurationDrop: true,
+            referencedParentSpanIds,
+          });
+          if (!passedFilter) {
+            // Filtered out - don't count as sampled out
+            continue;
           }
+
+          // Apply sampling if enabled (probabilistic)
+          if (config.sampling?.enabled && !shouldSample(event, config)) {
+            obsState.summary.sampledOut++;
+            continue;
+          }
+
+          // Track captured event breakdowns
+          capturedByType[ event.type ] = (capturedByType[ event.type ] || 0) + 1;
+          if (event.operation) {
+            capturedByOperation[ event.operation ] = (capturedByOperation[ event.operation ] || 0) + 1;
+          }
+          capturedByLevel[ event.level ] = (capturedByLevel[ event.level ] || 0) + 1;
+          obsState.summary.captured++;
+
+          // Passed both filtering and sampling - emit
+          const targets = getBackendsForType(event.type);
+          await dispatchToBackendsSync(event, targets);
+        }
+
+        // Store captured breakdowns in context for summary checkpoint
+        if (!obsState.capturedBreakdown) {
+          obsState.capturedBreakdown = { byType: {}, byOperation: {}, byLevel: {} };
+        }
+        for (const [ type, count ] of Object.entries(capturedByType)) {
+          obsState.capturedBreakdown.byType[ type ] = (obsState.capturedBreakdown.byType[ type ] || 0) + count;
+        }
+        for (const [ op, count ] of Object.entries(capturedByOperation)) {
+          obsState.capturedBreakdown.byOperation[ op ] = (obsState.capturedBreakdown.byOperation[ op ] || 0) + count;
+        }
+        for (const [ level, count ] of Object.entries(capturedByLevel)) {
+          obsState.capturedBreakdown.byLevel[ level ] = (obsState.capturedBreakdown.byLevel[ level ] || 0) + count;
         }
       }
       // If errorOccurred=true, buffer was already flushed during capture
@@ -1498,3 +1660,20 @@ export const withObservability = <T extends (...args: unknown[]) => Promise<unkn
 };
 
 export const Observer = ObservabilityManager;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TEST EXPORTS - Only for testing internal functions
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Export private functions for testing.
+ * These should ONLY be used in test files.
+ * @internal
+ */
+export const __test__ = {
+  evictLowestPriority,
+  shouldFilter,
+  shouldSample,
+  getEventPriority,
+  buildEvent,
+};

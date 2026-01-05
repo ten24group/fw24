@@ -26,7 +26,9 @@ import { getChangedProperties } from '../helpers/change-detection';
  */
 export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEventDataExtractor> {
   constructor() {
-    super(new DynamoDBEventDataExtractor());
+    // Use 'batch' mode to avoid creating per-record wrapper spans
+    // Audit logs are the primary signal - we don't need intermediate spans for each record
+    super(new DynamoDBEventDataExtractor(), { processMode: 'batch' });
   }
 
   async initialize(_event: DynamoDBStreamEvent | SQSEvent): Promise<void> {
@@ -110,21 +112,45 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     // Compute changes (diff between old and new)
     const changes = getChangedProperties(oldImage, newImage);
 
+    // Skip no-op updates entirely (no changes detected)
+    if (eventType === 'update' && Object.keys(changes).length === 0) {
+      this.logger.debug('Skipping no-op update (no changes detected)', {
+        entityName,
+        entityId,
+      });
+      return;
+    }
+
     // Extract actor + trace context ONLY from newImage.
     // oldImage contains STALE context (who created/last-updated the item), NOT who is performing the current op.
     // For DELETEs (where newImage is null), we unfortunately cannot determine the actor/trace from the stream record alone.
     // Better to have "unknown" actor than "incorrect" actor.
     const traceImage = newImage;
 
-    // Extract actor context
-    const actor = this.extractActor(traceImage);
+    // Extract actor context with staleness detection
+    // Use current time if event timestamp is not available
+    const eventTimestamp = timestamp ?? Date.now();
+    const actorData = this.extractActorWithStalenessCheck(traceImage, eventTimestamp);
 
-    // Extract causedBy from _actor.correlationId - this links the audit log back to the originating request
-    const causedBy = traceImage?._actor?.correlationId;
+    // Only use actor and correlation if data is fresh
+    const actor = actorData.isFresh ? actorData.actor : undefined;
+    const causedBy = actorData.isFresh ? traceImage?._actor?.correlationId : undefined;
+
+    if (!actorData.isFresh && actorData.actor) {
+      this.logger.debug('Actor data is stale, skipping correlation', {
+        entityName,
+        entityId,
+        eventType,
+        actorTimestamp: actorData.actorTimestamp,
+        eventTimestamp: timestamp,
+        staleness: actorData.stalenessMs,
+      });
+    }
 
     // Trace linkage:
     // - parentObservabilityLogId is strict in-slice only (never propagated)
     // - causedBy links audit logs back to the originating request that modified the entity
+    // - Both are only used if actor data is fresh (not stale)
 
     // entityName is guaranteed by preprocessRecord check
     const entity = entityName!;
@@ -141,14 +167,11 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
         this.logger.debug('Captured create audit', {
           entityName: entity,
           entityId: id,
+          hasActor: !!actor,
         });
         break;
 
       case 'update':
-        // Do NOT skip if no changes detected - these are "touch" updates (e.g., updatedAt only)
-        // Mark them as no-op updates so they can be filtered if needed, but still captured.
-        const isNoopUpdate = Object.keys(changes).length === 0;
-
         AuditObserver.entityUpdate(entity, id, {
           // before: oldImage,
           // after: newImage,
@@ -156,13 +179,12 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
         }, {
           actor,
           causedBy,
-          attributes: isNoopUpdate ? { noopUpdate: true } : undefined,
         });
         this.logger.debug('Captured update audit', {
           entityName: entity,
           entityId: id,
           changedFields: Object.keys(changes),
-          isNoopUpdate,
+          hasActor: !!actor,
         });
         break;
 
@@ -174,9 +196,72 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
         this.logger.debug('Captured delete audit', {
           entityName: entity,
           entityId: id,
+          hasActor: !!actor,
         });
         break;
     }
+  }
+
+  /**
+   * Extract actor context from entity images with staleness detection.
+   * 
+   * Actor data is considered "fresh" if:
+   * 1. It has an actorTimestamp field, AND
+   * 2. The timestamp is within the acceptable staleness threshold (default: 5 seconds)
+   * 
+   * If actor data is stale, we should NOT use it for correlation as it represents
+   * a previous operation, not the current one.
+   * 
+   * @param traceImage - Entity image to extract actor from
+   * @param eventTimestamp - Timestamp of the current event
+   * @returns Object containing actor, freshness status, and staleness metrics
+   */
+  protected extractActorWithStalenessCheck(
+    traceImage: Record<string, any> | undefined,
+    eventTimestamp: number
+  ): {
+    actor: Actor | undefined;
+    isFresh: boolean;
+    actorTimestamp?: number;
+    stalenessMs?: number;
+  } {
+    const actor = this.extractActor(traceImage);
+
+    if (!actor) {
+      return { actor: undefined, isFresh: false };
+    }
+
+    // Check for actorTimestamp in _actor field
+    const actorTimestamp = traceImage?._actor?.actorTimestamp;
+
+    if (!actorTimestamp) {
+      // No timestamp means we can't verify freshness
+      // Log warning but still use the actor (backward compatibility)
+      this.logger.debug('Actor data has no timestamp, cannot verify freshness', {
+        actorId: actor.actorId,
+      });
+      return {
+        actor,
+        isFresh: true, // Assume fresh for backward compatibility
+      };
+    }
+
+    // Calculate staleness (difference between event time and actor timestamp)
+    const stalenessMs = eventTimestamp - actorTimestamp;
+
+    // Get staleness threshold from env (default: 5000ms = 5 seconds)
+    const thresholdMs = this.getActorStalenessThreshold();
+
+    // Actor is fresh if staleness is within threshold
+    // Also check for negative staleness (clock skew) and allow small negative values
+    const isFresh = stalenessMs >= -1000 && stalenessMs <= thresholdMs;
+
+    return {
+      actor,
+      isFresh,
+      actorTimestamp,
+      stalenessMs,
+    };
   }
 
   /**
@@ -207,6 +292,15 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     return Object.keys(fallbackActor).length > 0
       ? { ...fallbackActor, actorType: 'user' } as Actor
       : undefined;
+  }
+
+  /**
+   * Get actor staleness threshold from environment.
+   * Default: 5000ms (5 seconds)
+   */
+  protected getActorStalenessThreshold(): number {
+    const threshold = resolveEnvValueFor({ key: AUDIT_ENV_KEYS.ACTOR_STALENESS_THRESHOLD_MS });
+    return threshold ? parseInt(threshold, 10) : 5000;
   }
 
 }

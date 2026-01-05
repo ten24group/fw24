@@ -54,6 +54,8 @@ export {
 
   // Decorator types
   type DecoratorBaseOptions,
+  type DecoratorCaptureControl,
+  type CaptureSerializeOptions,
   type SourceType,
 
   // Config types
@@ -207,7 +209,7 @@ export { OTELObservabilityBackend } from './backends/otel';
 export { clearRedactorCache, DEFAULT_BLACKLISTED_KEYS, DEFAULT_PROTECTED_FIELDS, extendBlacklist, redactSensitiveData, shouldRedactKey } from './utils/data-protection';
 export { generateSpanId, generateTraceId } from './utils/id-generator';
 export { levelToPowertoolsLogLevel, levelToString, stringToLevel } from './utils/level-utils';
-export { estimateItemSize, isPayloadWithinLimits, safeStringify, truncatePayload, truncateItem, type TruncationMetadata } from './utils/payload';
+export { estimateItemSize, isPayloadWithinLimits, safeStringify, safeSerialize, truncatePayload, truncateItem, type TruncationMetadata, type SerializeOptions } from './utils/payload';
 export { clearEnvironmentTagsCache, createControllerSource, createQueueSource, createServiceSource, createTaskSource, detectSource, getEnvironmentTags, mergeTags as mergeSourceTags } from './utils/source-utils';
 
 // === TRACE GRAPH (explicit parent/causedBy graph) ===

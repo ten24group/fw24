@@ -443,8 +443,10 @@ class OrderService {
   @Traced({ 
     name: 'custom-operation',
     level: 'debug',
-    captureArgs: true,
-    captureResult: true 
+    capture: {
+      args: true,
+      result: true
+    }
   })
   async internalProcess(): Promise<void> {
     // Custom span configuration
@@ -464,7 +466,9 @@ class UserService {
   @Audited({ 
     operation: 'sensitive.access',
     level: 'warn',
-    captureArgs: true 
+    capture: {
+      args: true
+    }
   })
   async accessSensitiveData(userId: string): Promise<Data> {
     // Audit with arguments captured

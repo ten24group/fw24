@@ -59,7 +59,7 @@
         "@aws-sdk/client-sns": "^3.830.0",
         "@aws-sdk/client-sqs": "^3.831.0",
         "@aws-sdk/s3-request-presigner": "^3.832.0",
-        "@hackylabs/deep-redact": "^3.0.3",
+        "@hackylabs/deep-redact": "^3.0.4",
         "@types/cookie": "^0.6.0",
         "constructs": "^10.4.2",
         "cookie": "^1.0.2",
@@ -68,7 +68,8 @@
         "path-to-regexp": "^8.2.0",
         "qs": "^6.14.0",
         "source-map-support": "^0.5.21",
-        "tslog": "^4.9.3"
+        "tslog": "^4.9.3",
+        "uuid": "^13.0.0"
     },
     "peerDependencies": {
         "aws-cdk-lib": "^2.202.0",

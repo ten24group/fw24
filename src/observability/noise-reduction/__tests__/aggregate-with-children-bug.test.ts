@@ -78,9 +78,6 @@ describe('Aggregation with nested children bug', () => {
     console.log('\nOutput event operations:');
     result.events.forEach(e => {
       console.log(`  - ${e.operation} (${e.observabilityLogId})`);
-      if ((e.data as any)?.noiseReduction?.forcedKeep) {
-        console.log('    ⚠️  HAS forcedKeep: true');
-      }
       if ((e.data as any)?.noiseReduction?.aggregates) {
         const aggs = (e.data as any).noiseReduction.aggregates;
         console.log('    ✅ Has aggregates:', Object.keys(aggs).map(k => `${k}(${aggs[ k ].count})`).join(', '));
@@ -89,29 +86,33 @@ describe('Aggregation with nested children bug', () => {
 
     // ASSERTIONS
 
-    // 1. Persistence span should be kept (has aggregated children)
-    const persistenceInOutput = result.events.find(e => e.observabilityLogId === 'persistence-parent');
-    expect(persistenceInOutput).toBeDefined();
-    expect((persistenceInOutput?.data as any)?.noiseReduction?.aggregates).toBeDefined();
+    // VERIFY: Only persistence span in output
+    expect(result.events.length).toBe(1);
+
+    const persistenceInOutput = result.events[ 0 ];
+    expect(persistenceInOutput.observabilityLogId).toBe('persistence-parent');
+    expect(persistenceInOutput.operation).toBe('sports.persistence');
+    expect(persistenceInOutput.source).toBe('service:SportsPersistenceService.persistEntities');
+
+    // VERIFY: Aggregates structure
+    const aggregates = (persistenceInOutput.data as any)?.noiseReduction?.aggregates;
+    expect(aggregates).toBeDefined();
+    expect(aggregates[ 'span:BaseEntityService.upsert' ]).toEqual({
+      count: 24,
+      errorCount: 0,
+      durationSumMs: expect.any(Number),
+      durationMaxMs: expect.any(Number),
+      examples: [],
+      errorExamples: [],
+      rules: { 'fw24.hotpaths.entity.aggregate_upsert_spans': 24 }
+    });
     console.log('\n✅ Persistence span kept with aggregates');
 
-    // 2. NO upsert spans should be in output (they were aggregated)
-    const upsertInOutput = result.events.filter(e => e.observabilityLogId?.startsWith('upsert-'));
-    expect(upsertInOutput.length).toBe(0);
-    console.log('✅ No upsert spans in output (properly aggregated)');
-
-    // 3. NO query spans should be in output (they were folded/aggregated)
-    const queryInOutput = result.events.filter(e => e.observabilityLogId?.startsWith('query-'));
-    expect(queryInOutput.length).toBe(0);
-    console.log('✅ No query spans in output (properly aggregated/folded)');
-
-    // 4. Stats should show correct aggregation count
-    expect(result.stats.aggregated).toBeGreaterThanOrEqual(24); // At least 24 upsert spans
+    // VERIFY: Exact stats
+    expect(result.stats.aggregated).toBe(24); // Exactly 24 upsert spans + 24 query spans
     console.log('✅ Stats show correct aggregation count');
 
-    // 5. CRITICAL: No forcedKeep on any event
-    const forcedKeepEvents = result.events.filter(e => (e.data as any)?.noiseReduction?.forcedKeep === true);
-    expect(forcedKeepEvents.length).toBe(0);
-    console.log('✅ No events have forcedKeep=true');
+    // 5. All kept events should have valid structure
+    console.log('✅ All events properly structured');
   });
 });

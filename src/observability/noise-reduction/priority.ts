@@ -25,6 +25,14 @@ export const DECISION_BASE_PRIORITY: Readonly<Record<NoiseDecision, number>> = {
 } as const;
 
 /**
+ * Priority for hard signal protection (errors, failures, critical events).
+ * Rules with priority > HARD_SIGNAL_PRIORITY can override hard signal protection.
+ * 
+ * Example: To aggregate error events, use priority: 2000
+ */
+export const HARD_SIGNAL_PRIORITY = 1000;
+
+/**
  * Result of noise reduction evaluation with full context.
  */
 export interface NoiseEvaluationResult {
@@ -100,23 +108,7 @@ export function evaluateNoiseRules(
     };
   }
 
-  // 2. Hard signals always kept (unless explicitly overridden)
-  const isHardSignal = event.level === 'error'
-    || event.level === 'critical'
-    || event.success === false
-    || Boolean(event.error);
-
-  if (isHardSignal) {
-    return {
-      decision: 'keep',
-      ruleId: 'builtin.hard_signal',
-      reason: 'Hard signal (error/critical/failure) always kept',
-      priority: 1000,
-      matchedRulesCount: 0,
-    };
-  }
-
-  // 3. Collect all matching rules
+  // 2. Collect all matching rules
   const matchedRules: MatchedRule[] = [];
 
   for (const rule of allRules) {
@@ -140,7 +132,8 @@ export function evaluateNoiseRules(
     });
   }
 
-  // 4. No matching rules = keep by default
+  // 3. No matching rules = keep by default
+  // NOTE: Hard signal protection is handled in evaluator.ts, not here
   if (matchedRules.length === 0) {
     return {
       decision: 'keep',
@@ -151,7 +144,7 @@ export function evaluateNoiseRules(
     };
   }
 
-  // 5. Sort by priority (highest first) and select winner
+  // 4. Sort by priority (highest first) and select winner
   matchedRules.sort((a, b) => b.effectivePriority - a.effectivePriority);
   const winner = matchedRules[ 0 ];
 
