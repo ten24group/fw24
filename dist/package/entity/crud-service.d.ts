@@ -1,9 +1,9 @@
 import { Authorizer } from "../authorize";
+import { Actor } from "../core/types/actor";
 import { EventDispatcher } from "../event";
 import { ILogger } from "../logging";
 import { type IValidator } from "../validation";
 import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
-import { Actor } from "../core/types/execution-context";
 import type { EntityQuery } from "./query-types";
 /**
  *

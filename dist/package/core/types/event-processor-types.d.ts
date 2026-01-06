@@ -11,11 +11,6 @@ export interface BaseEventRecord<P extends Record<string, any> = Record<string, 
         rawSourceEventName?: string;
         [key: string]: any;
     };
-    /** Upstream trace context for per-record causedBy linkage (set by framework) */
-    traceContext?: {
-        correlationId?: string;
-        causedBy?: string;
-    };
 }
 export interface ChangeStreamPayload {
     oldImage?: Record<string, any>;

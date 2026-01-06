@@ -53,10 +53,6 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
      * Global UI config options (NEW: for passing global duplicatedFieldDetection config)
      */
     globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
-    /** Whether observability is enabled (passed from UI config gen) */
-    hasObservability?: boolean;
-    /** Exclude audit actions for this entity */
-    excludeAuditActions?: boolean;
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     readonly pageTitle: Template;
@@ -79,7 +75,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
         bulkActions?: readonly IEntityPageAction[] | IEntityPageAction[] | undefined;
         apiConfig: {
             search: {
-                defaultSort?: FieldSortConfig | readonly FieldSortConfig[] | "asc" | "desc" | undefined;
+                defaultSort?: "desc" | "asc" | FieldSortConfig | readonly FieldSortConfig[] | undefined;
                 apiMethod: "GET";
                 responseKey: string;
                 apiUrl: string;
@@ -116,7 +112,7 @@ export declare function makeViewEntityListConfig<S extends EntitySchema<string, 
     bulkActions?: readonly IEntityPageAction[] | IEntityPageAction[] | undefined;
     apiConfig: {
         search: {
-            defaultSort?: FieldSortConfig | readonly FieldSortConfig[] | "asc" | "desc" | undefined;
+            defaultSort?: "desc" | "asc" | FieldSortConfig | readonly FieldSortConfig[] | undefined;
             apiMethod: "GET";
             responseKey: string;
             apiUrl: string;

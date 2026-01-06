@@ -62,7 +62,7 @@ export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "a
  * - number, currency, percentage, range, slider, rating
  *
  * **Date & Time:**
- * - date, time, datetime, duration, ttl
+ * - date, time, datetime, duration
  *
  * **Boolean & Toggle:**
  * - boolean, switch, toggle, checkbox
@@ -87,7 +87,7 @@ export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "a
  *
  * @see {@link ConfigPropertyType} for structural types
  */
-export type ConfigFieldType = "text" | "textarea" | "password" | "email" | "url" | "phone" | "hidden" | "number" | "currency" | "percentage" | "range" | "slider" | "rating" | "date" | "time" | "datetime" | "duration" | "ttl" | "boolean" | "switch" | "toggle" | "checkbox" | "select" | "multi-select" | "autocomplete" | "radio" | "badge" | "tag" | "tags" | "progress" | "avatar" | "color" | "icon" | "json" | "code" | "markdown" | "rich-text" | "wysiwyg" | "link" | "file" | "image" | "video" | "audio" | "qrcode" | "timeline" | "custom";
+export type ConfigFieldType = "text" | "textarea" | "password" | "email" | "url" | "phone" | "hidden" | "number" | "currency" | "percentage" | "range" | "slider" | "rating" | "date" | "time" | "datetime" | "duration" | "boolean" | "switch" | "toggle" | "checkbox" | "select" | "multi-select" | "autocomplete" | "radio" | "badge" | "tag" | "tags" | "progress" | "avatar" | "color" | "icon" | "json" | "code" | "markdown" | "rich-text" | "wysiwyg" | "link" | "file" | "image" | "video" | "audio" | "qrcode" | "custom";
 /**
  * Data structure types for nested/complex properties.
  * These types represent the shape of data, not how it's rendered.
@@ -189,14 +189,12 @@ export interface PropertyConfig {
     visibility?: VisibilityConfig;
     /**
      * Link configuration for navigable fields (e.g., clickable IDs)
-     * Note: presence of linkConfig is sufficient - isLink is optional/deprecated
+     * When isLink is true, the field will be rendered as a link using linkConfig
      */
-    /** @deprecated Optional - presence of linkConfig is sufficient to indicate a link */
     isLink?: boolean;
     linkConfig?: {
         routePattern: string;
-        /** Display text for the link - supports templates like "View {entityName}: {entityId}" */
-        displayText?: Template;
+        displayText?: string;
     };
     /**
      * Relation field configuration for rendering related entities.
@@ -212,88 +210,6 @@ export interface PropertyConfig {
         properties?: Array<PropertyConfig>;
     };
     properties?: Array<PropertyConfig>;
-    /**
-     * Input unit of the stored duration value. Renderer converts to human-readable. Default: 'seconds'
-     * @see DurationFieldMetadata in base-entity.ts
-     */
-    durationUnit?: 'ms' | 'seconds' | 'minutes' | 'hours' | 'days';
-    /**
-     * Display format for duration. Default: 'auto' (shows largest relevant units)
-     * - 'auto': Automatically shows days/hours/minutes/seconds as needed
-     * - 'long': Shows all units (e.g., "2d 3h 15m 30s")
-     * - 'short': Shows only 2 most significant units (e.g., "2d 3h")
-     * - 'compact': Shows single most significant unit (e.g., "2d")
-     * @see DurationFieldMetadata in base-entity.ts
-     */
-    durationFormat?: 'auto' | 'long' | 'short' | 'compact';
-    /**
-     * Input unit of the stored TTL value (Unix timestamp). Renderer shows remaining time. Default: 'seconds'
-     * @see TTLFieldMetadata in base-entity.ts
-     */
-    ttlUnit?: 'ms' | 'seconds' | 'minutes' | 'hours';
-    /**
-     * Display format for TTL. Default: 'auto'
-     * - 'auto': Automatically shows appropriate units based on remaining time
-     * - 'long': Shows all units (e.g., "2d 3h 15m 30s remaining")
-     * - 'short': Shows only 2 most significant units
-     * - 'compact': Shows single most significant unit with suffix
-     * @see TTLFieldMetadata in base-entity.ts
-     */
-    ttlFormat?: 'auto' | 'long' | 'short' | 'compact';
-    /**
-     * Auto-refresh TTL display every N seconds. Default: 0 (disabled)
-     * Useful for countdown timers. Recommended: 1-60 seconds
-     * @see TTLFieldMetadata in base-entity.ts
-     */
-    ttlAutoRefresh?: number;
-    /**
-     * Configuration for timeline field type.
-     * Renders array data as a vertical timeline.
-     *
-     * @example
-     * ```ts
-     * {
-     *   name: 'checkpoints',
-     *   label: 'Checkpoints',
-     *   fieldType: 'timeline',
-     *   timelineConfig: {
-     *     mode: 'left',
-     *     itemMapping: {
-     *       labelField: 'name',
-     *       timestampField: 'ts',
-     *     }
-     *   }
-     * }
-     * ```
-     */
-    timelineConfig?: {
-        /** Layout mode: 'left' (default), 'right', or 'alternate' */
-        mode?: 'left' | 'right' | 'alternate';
-        /** Reverse the order of items */
-        reverse?: boolean;
-        /** Maximum number of items to show (default: all) */
-        maxItems?: number;
-        /**
-         * Field mapping for extracting timeline item data from array elements.
-         * If data is an array of objects, specify which fields to use.
-         */
-        itemMapping?: {
-            /** Field for item label/title (default: 'name') */
-            labelField?: string;
-            /** Field for timestamp (default: 'ts' or 'timestamp') */
-            timestampField?: string;
-            /** Field for description (optional) */
-            descriptionField?: string;
-            /** Field for color/type (optional) - values: 'success', 'error', 'warning', 'info' */
-            typeField?: string;
-            /** Field for custom icon (optional) */
-            iconField?: string;
-        };
-        /** Show timestamps (default: true) */
-        showTimestamp?: boolean;
-        /** Timestamp format (default: 'MMM D, h:mm:ss A') */
-        timestampFormat?: string;
-    };
 }
 /**
  * Property reference (short syntax or full config).
@@ -541,12 +457,10 @@ export interface ListPageConfigStructure {
                 errorMessage?: Template;
             };
         }>;
-        /** @deprecated Optional - presence of linkConfig is sufficient to indicate a link */
         isLink?: boolean;
         linkConfig?: {
             routePattern: string;
-            /** Display text for the link - supports templates like "View {entityName}: {entityId}" */
-            displayText?: Template;
+            displayText?: string;
         };
     }>;
     /**
@@ -1046,7 +960,7 @@ export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageCon
 export declare function makeCustomPageConfig(options: CustomPageOptions): {
     pageName: string | undefined;
     pageTitle: Template;
-    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
+    pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1057,7 +971,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     listPageConfig: ListPageConfigStructure;
     pageName: string | undefined;
     pageTitle: Template;
-    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
+    pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1071,7 +985,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     formPageConfig: FormPageConfigStructure;
     pageName: string | undefined;
     pageTitle: Template;
-    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
+    pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1082,7 +996,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     detailsPageConfig: DetailsPageConfigStructure;
     pageName: string | undefined;
     pageTitle: Template;
-    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
+    pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1101,7 +1015,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     };
     pageName: string | undefined;
     pageTitle: Template;
-    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
+    pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1124,7 +1038,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     }>;
     pageName: string | undefined;
     pageTitle: Template;
-    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
+    pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1150,7 +1064,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     };
     pageName: string | undefined;
     pageTitle: Template;
-    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
+    pageType: "details" | "form" | "menu" | "list" | "dashboard" | "accordion";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;

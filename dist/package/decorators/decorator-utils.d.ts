@@ -67,9 +67,6 @@ export type CommonLambdaHandlerOptions = {
  * Loads entry packages specified in ENTRY_PACKAGES environment variable.
  * Called automatically by fw24 layer on import, and by decorators for backward compatibility.
  * Safe to call multiple times - only loads once.
- *
- * Uses global locking to prevent race conditions when multiple fw24 instances
- * (bundled in Lambda + layer) try to load entry packages simultaneously.
  */
 export declare function tryImportingEntryPackagesFor(controllerName?: string | undefined): void;
 /**

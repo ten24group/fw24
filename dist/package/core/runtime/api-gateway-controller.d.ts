@@ -1,13 +1,12 @@
 import type { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
+import type { Request, Response } from "../../interfaces";
 import { IControllerConfig } from "../../decorators";
 import { RouteMethods } from "../../decorators/method";
-import { createErrorHandler } from "../../errors/";
-import type { Request, Response, Route } from "../../interfaces";
-import { ControllerObservabilityConfig } from '../../observability/controller-config';
 import { HttpRequestValidations, InputValidationRule } from "../../validation";
-import { Actor, ExecutionContext } from '../types/execution-context';
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
 import { ResponseConfig } from "./response-config";
+import { createErrorHandler } from "../../errors/";
+import { ExecutionContext, Actor } from '../types/execution-context';
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 export interface APIControllerMiddleware {
     before?: (request: Request, response: Response, ctx?: ExecutionContext) => Promise<void>;
@@ -74,35 +73,11 @@ export declare abstract class APIController extends AbstractLambdaHandler {
     /**
      * Lambda handler for the controller.
      * Handles incoming API Gateway events.
-     *
-     * All handler execution is wrapped in execution context, making
-     * getCurrentExecutionContext() available throughout the request lifecycle.
-     *
      * @param event - The event object from the API Gateway.
      * @param context - The context object from the API Gateway.
      * @returns The API Gateway response object.
      */
     LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult>;
-    /**
-     * Gets merged observability config from controller and method level
-     */
-    protected getObservabilityConfig(route?: Route | null): ControllerObservabilityConfig | undefined;
-    /**
-     * Build automatic tags for HTTP requests.
-     * These tags enable powerful filtering in observability UIs.
-     */
-    protected buildAutomaticTags(request: Request, actor: Actor | undefined, event: APIGatewayEvent): Record<string, string>;
-    /**
-     * Build span attributes based on observability config.
-     * Always includes basic HTTP info. Request body/headers/query are only
-     * included if explicitly configured via `includes`.
-     */
-    protected buildSpanAttributes(event: APIGatewayEvent, request: Request, config?: ControllerObservabilityConfig): Record<string, unknown>;
-    /**
-     * Build response attributes based on observability config.
-     * Only captures response body/headers if explicitly configured via `includes`.
-     */
-    protected buildResponseAttributes(response: Response, config?: ControllerObservabilityConfig): Record<string, unknown> | undefined;
     /**
      * Finds the route that matches the HTTP method and resource.
      * @param requestData - The request data object.
@@ -171,20 +146,13 @@ export declare abstract class APIController extends AbstractLambdaHandler {
      */
     protected buildCtx(event: APIGatewayEvent, context: Context, request: Request, response: Response): ExecutionContext;
     /**
-     * Gets the controller configuration
-     */
-    protected getControllerConfig(): IControllerConfig;
-    /**
-     * Extracts actor context from the request.
-     * Override this method for custom actor extraction logic.
-     *
-     * Note: correlationId is NOT set here - it's determined from trace context
-     * extraction and set on the ExecutionContext. The actor.correlationId is
-     * synced later in LambdaHandler after trace context is resolved.
+     * Extracts actor context from the request
+     * Override this method for custom actor extraction logic
      *
      * @param event - The event object from the API Gateway.
      * @param request - The request object from the API Gateway.
      * @returns The actor context.
+     * ```
      */
     protected extractActorContext(event: APIGatewayEvent, request: Request): Actor;
     /**
@@ -194,25 +162,25 @@ export declare abstract class APIController extends AbstractLambdaHandler {
      * @param claims - Cognito JWT claims from the authorizer
      * @param actor - Actor object to populate
      */
-    protected extractCognitoContext(claims: any, actor: Actor): void;
+    private extractCognitoContext;
     /**
      * Parse Cognito groups from comma-separated string (documented Cognito format)
      */
-    protected parseGroups(groups: any): string[];
+    private parseGroups;
     /**
      * Extract custom attributes using documented Cognito pattern (custom:*)
      */
-    protected extractCustomAttributes(claims: any): Record<string, any>;
+    private extractCustomAttributes;
     /**
    * Extract session and tenant context - focused approach
    */
-    protected extractSessionAndTenantContext(event: APIGatewayEvent, request: Request, actor: Actor): void;
+    private extractSessionAndTenantContext;
     /**
      * Extract API Key context
      */
-    protected extractApiKeyContext(event: APIGatewayEvent, request: Request, actor: Actor): void;
+    private extractApiKeyContext;
     /**
      * Extract IAM context
      */
-    protected extractIamContext(event: APIGatewayEvent, actor: Actor): void;
+    private extractIamContext;
 }

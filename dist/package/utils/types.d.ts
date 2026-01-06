@@ -29,16 +29,9 @@ export type DeepReadonlyMap<K, V> = ReadonlyMap<DeepReadonly<K>, DeepReadonly<V>
 export type DeepReadonlyObject<T> = {
     readonly [P in keyof T]: DeepReadonly<T[P]>;
 };
-/**
- * DeepPartial that preserves primitives/functions and handles arrays properly.
- *
- * NOTE: The original implementation treated primitives as objects, which caused
- * invalid types (e.g. DeepPartial<number> becoming an object type). This version
- * keeps primitives intact and only recurses into arrays/objects.
- */
-export type DeepPartial<T> = T extends Primitives & FunctionOrDateOrRegex ? T : T extends Primitives ? T : T extends FunctionOrDateOrRegex ? T : T extends ReadonlyArray<infer ITEMS> ? Array<DeepPartial<ITEMS>> : T extends object ? {
+export type DeepPartial<T> = {
     [P in keyof T]?: DeepPartial<T[P]>;
-} : T;
+};
 /**
  * Return `THEN` if `CONDITION` extends `true`, `ELSE` otherwise
  * @param CONDITION Boolean

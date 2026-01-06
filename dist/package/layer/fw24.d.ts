@@ -8,7 +8,6 @@
 export * from "./../interfaces";
 export * from "./../decorators";
 export * from "./../core/runtime";
-export * from './../core/types';
 export * from './../entity';
 export * from './../logging';
 export * from './../client';
@@ -19,4 +18,3 @@ export * from '../const/';
 export * from '../errors';
 export * from '../search';
 export * from '../audit';
-export * from '../observability';

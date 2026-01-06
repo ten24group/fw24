@@ -15,7 +15,6 @@ export declare class Application {
     private readonly processedConstructs;
     private readonly resourceConstructMaxConcurrency;
     private resourceConstructCurrentConcurrency;
-    private readonly observabilityConfig?;
     constructor(config?: IApplicationConfig);
     use(construct: FW24Construct): this;
     useModule(module: IFw24Module): this;
@@ -30,20 +29,4 @@ export declare class Application {
     private constructAllResources;
     constructResources(constructName: string): Promise<void>;
     private waitForDependencies;
-    /**
-     * Setup observability infrastructure.
-     * - `true` = DynamoDB with defaults
-     * - `{ dynamodb: {...} }` = DynamoDB table
-     * - `{ cloudwatch: {...} }` = Custom CloudWatch log group (no DynamoDB)
-     * - `{ dynamodb: {...}, cloudwatch: {...} }` = Both
-     */
-    private setupObservability;
-    /**
-     * Setup DynamoDB infrastructure for observability.
-     */
-    private setupObservabilityDynamoDB;
-    /**
-     * Setup CloudWatch infrastructure for observability.
-     */
-    private setupObservabilityCloudWatch;
 }

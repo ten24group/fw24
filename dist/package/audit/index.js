@@ -1,25 +1,24 @@
 "use strict";
-/**
- * Audit Module - DynamoDB Stream Entity Auditing ONLY
- *
- * For request/event/metrics logging, use the observability module directly.
- */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEFAULT_IGNORED_FIELDS = exports.getChangedProperties = exports.DynamoDBStreamAuditLogger = exports.AUDIT_ENV_KEYS = void 0;
-// ============================================================================
-// ENTITY FILTERING CONFIG
-// ============================================================================
+exports.DynamoDBAuditSystemController = exports.AuditCustomPageConfigs = exports.captureAuditLog = exports.DynamoDBAuditEntityService = exports.AUDIT_ENV_KEYS = exports.getChangedProperties = exports.DynamoDBAuditEntitySchema = exports.DefaultAuditHandler = exports.DummyAuditLogger = exports.ConsoleAuditLogger = exports.AuditLoggerFactory = exports.CloudWatchAuditLogger = exports.DynamoDbAuditLogger = exports.AuditLoggerType = void 0;
 var interfaces_1 = require("./interfaces");
-Object.defineProperty(exports, "AUDIT_ENV_KEYS", { enumerable: true, get: function () { return interfaces_1.AUDIT_ENV_KEYS; } });
-// ============================================================================
-// STREAM HANDLER
-// ============================================================================
-var dynamo_db_stream_audit_logger_1 = require("./loggers/dynamo-db-stream-audit-logger");
-Object.defineProperty(exports, "DynamoDBStreamAuditLogger", { enumerable: true, get: function () { return dynamo_db_stream_audit_logger_1.DynamoDBStreamAuditLogger; } });
-// ============================================================================
-// CHANGE DETECTION UTILITIES
-// ============================================================================
-var change_detection_1 = require("./helpers/change-detection");
-Object.defineProperty(exports, "getChangedProperties", { enumerable: true, get: function () { return change_detection_1.getChangedProperties; } });
-Object.defineProperty(exports, "DEFAULT_IGNORED_FIELDS", { enumerable: true, get: function () { return change_detection_1.DEFAULT_IGNORED_FIELDS; } });
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiaW5kZXguanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyIuLi8uLi8uLi9zcmMvYXVkaXQvaW5kZXgudHMiXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6IjtBQUFBOzs7O0dBSUc7OztBQUVILCtFQUErRTtBQUMvRSwwQkFBMEI7QUFDMUIsK0VBQStFO0FBRS9FLDJDQUE4QztBQUFyQyw0R0FBQSxjQUFjLE9BQUE7QUFFdkIsK0VBQStFO0FBQy9FLGlCQUFpQjtBQUNqQiwrRUFBK0U7QUFFL0UseUZBRWlEO0FBRDdDLDBJQUFBLHlCQUF5QixPQUFBO0FBRzdCLCtFQUErRTtBQUMvRSw2QkFBNkI7QUFDN0IsK0VBQStFO0FBRS9FLCtEQUdvQztBQUZoQyx3SEFBQSxvQkFBb0IsT0FBQTtBQUNwQiwwSEFBQSxzQkFBc0IsT0FBQSIsInNvdXJjZXNDb250ZW50IjpbIi8qKlxuICogQXVkaXQgTW9kdWxlIC0gRHluYW1vREIgU3RyZWFtIEVudGl0eSBBdWRpdGluZyBPTkxZXG4gKiBcbiAqIEZvciByZXF1ZXN0L2V2ZW50L21ldHJpY3MgbG9nZ2luZywgdXNlIHRoZSBvYnNlcnZhYmlsaXR5IG1vZHVsZSBkaXJlY3RseS5cbiAqL1xuXG4vLyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09XG4vLyBFTlRJVFkgRklMVEVSSU5HIENPTkZJR1xuLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PVxuXG5leHBvcnQgeyBBVURJVF9FTlZfS0VZUyB9IGZyb20gJy4vaW50ZXJmYWNlcyc7XG5cbi8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cbi8vIFNUUkVBTSBIQU5ETEVSXG4vLyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09XG5cbmV4cG9ydCB7XG4gICAgRHluYW1vREJTdHJlYW1BdWRpdExvZ2dlcixcbn0gZnJvbSAnLi9sb2dnZXJzL2R5bmFtby1kYi1zdHJlYW0tYXVkaXQtbG9nZ2VyJztcblxuLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PVxuLy8gQ0hBTkdFIERFVEVDVElPTiBVVElMSVRJRVNcbi8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cblxuZXhwb3J0IHtcbiAgICBnZXRDaGFuZ2VkUHJvcGVydGllcyxcbiAgICBERUZBVUxUX0lHTk9SRURfRklFTERTLFxufSBmcm9tICcuL2hlbHBlcnMvY2hhbmdlLWRldGVjdGlvbic7XG4iXX0=
+Object.defineProperty(exports, "AuditLoggerType", { enumerable: true, get: function () { return interfaces_1.AuditLoggerType; } });
+var loggers_1 = require("./loggers");
+Object.defineProperty(exports, "DynamoDbAuditLogger", { enumerable: true, get: function () { return loggers_1.DynamoDbAuditLogger; } });
+Object.defineProperty(exports, "CloudWatchAuditLogger", { enumerable: true, get: function () { return loggers_1.CloudWatchAuditLogger; } });
+Object.defineProperty(exports, "AuditLoggerFactory", { enumerable: true, get: function () { return loggers_1.AuditLoggerFactory; } });
+Object.defineProperty(exports, "ConsoleAuditLogger", { enumerable: true, get: function () { return loggers_1.ConsoleAuditLogger; } });
+Object.defineProperty(exports, "DummyAuditLogger", { enumerable: true, get: function () { return loggers_1.DummyAuditLogger; } });
+Object.defineProperty(exports, "DefaultAuditHandler", { enumerable: true, get: function () { return loggers_1.DefaultAuditHandler; } });
+Object.defineProperty(exports, "DynamoDBAuditEntitySchema", { enumerable: true, get: function () { return loggers_1.DynamoDBAuditEntitySchema; } });
+Object.defineProperty(exports, "getChangedProperties", { enumerable: true, get: function () { return loggers_1.getChangedProperties; } });
+Object.defineProperty(exports, "AUDIT_ENV_KEYS", { enumerable: true, get: function () { return loggers_1.AUDIT_ENV_KEYS; } });
+var audit_entity_service_1 = require("./system/audit-entity-service");
+Object.defineProperty(exports, "DynamoDBAuditEntityService", { enumerable: true, get: function () { return audit_entity_service_1.DynamoDBAuditEntityService; } });
+var audit_helpers_1 = require("./audit-helpers");
+Object.defineProperty(exports, "captureAuditLog", { enumerable: true, get: function () { return audit_helpers_1.captureAuditLog; } });
+var ui_config_1 = require("./system/ui-config");
+Object.defineProperty(exports, "AuditCustomPageConfigs", { enumerable: true, get: function () { return ui_config_1.AuditCustomPageConfigs; } });
+var audit_controller_1 = require("./system/audit-controller");
+Object.defineProperty(exports, "DynamoDBAuditSystemController", { enumerable: true, get: function () { return audit_controller_1.DynamoDBAuditSystemController; } });
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiaW5kZXguanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyIuLi8uLi8uLi9zcmMvYXVkaXQvaW5kZXgudHMiXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6Ijs7O0FBQUEsMkNBTXNCO0FBTHBCLDZHQUFBLGVBQWUsT0FBQTtBQU9qQixxQ0FVbUI7QUFUakIsOEdBQUEsbUJBQW1CLE9BQUE7QUFDbkIsZ0hBQUEscUJBQXFCLE9BQUE7QUFDckIsNkdBQUEsa0JBQWtCLE9BQUE7QUFDbEIsNkdBQUEsa0JBQWtCLE9BQUE7QUFDbEIsMkdBQUEsZ0JBQWdCLE9BQUE7QUFDaEIsOEdBQUEsbUJBQW1CLE9BQUE7QUFDbkIsb0hBQUEseUJBQXlCLE9BQUE7QUFDekIsK0dBQUEsb0JBQW9CLE9BQUE7QUFDcEIseUdBQUEsY0FBYyxPQUFBO0FBR2hCLHNFQUV1QztBQURyQyxrSUFBQSwwQkFBMEIsT0FBQTtBQUc1QixpREFFeUI7QUFEdkIsZ0hBQUEsZUFBZSxPQUFBO0FBR2pCLGdEQUU0QjtBQUQxQixtSEFBQSxzQkFBc0IsT0FBQTtBQUd4Qiw4REFFbUM7QUFEakMsaUlBQUEsNkJBQTZCLE9BQUEiLCJzb3VyY2VzQ29udGVudCI6WyJleHBvcnQge1xuICBBdWRpdExvZ2dlclR5cGUsXG4gIEF1ZGl0TG9nZ2VyQ29uZmlnLFxuICBBdWRpdE9wdGlvbnMsXG4gIEF1ZGl0RW50cnksXG4gIElBdWRpdExvZ2dlcixcbn0gZnJvbSAnLi9pbnRlcmZhY2VzJztcblxuZXhwb3J0IHtcbiAgRHluYW1vRGJBdWRpdExvZ2dlcixcbiAgQ2xvdWRXYXRjaEF1ZGl0TG9nZ2VyLFxuICBBdWRpdExvZ2dlckZhY3RvcnksXG4gIENvbnNvbGVBdWRpdExvZ2dlcixcbiAgRHVtbXlBdWRpdExvZ2dlcixcbiAgRGVmYXVsdEF1ZGl0SGFuZGxlcixcbiAgRHluYW1vREJBdWRpdEVudGl0eVNjaGVtYSxcbiAgZ2V0Q2hhbmdlZFByb3BlcnRpZXMsXG4gIEFVRElUX0VOVl9LRVlTLFxufSBmcm9tICcuL2xvZ2dlcnMnO1xuXG5leHBvcnQge1xuICBEeW5hbW9EQkF1ZGl0RW50aXR5U2VydmljZSxcbn0gZnJvbSAnLi9zeXN0ZW0vYXVkaXQtZW50aXR5LXNlcnZpY2UnO1xuXG5leHBvcnQge1xuICBjYXB0dXJlQXVkaXRMb2csXG59IGZyb20gJy4vYXVkaXQtaGVscGVycyc7XG5cbmV4cG9ydCB7XG4gIEF1ZGl0Q3VzdG9tUGFnZUNvbmZpZ3Ncbn0gZnJvbSAnLi9zeXN0ZW0vdWktY29uZmlnJztcblxuZXhwb3J0IHtcbiAgRHluYW1vREJBdWRpdFN5c3RlbUNvbnRyb2xsZXIsXG59IGZyb20gJy4vc3lzdGVtL2F1ZGl0LWNvbnRyb2xsZXInOyJdfQ==

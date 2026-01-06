@@ -2,7 +2,9 @@ import type { QueueProps } from "aws-cdk-lib/aws-sqs";
 import type { IQueueSubscriptions } from "../constructs/queue-lambda";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
 import type { ILambdaEnvConfig } from "../interfaces";
-import type { SpanMetadata } from "../observability/controller-config";
+/**
+ * Configuration options for the queue.
+ */
 /**
  * Represents the configuration options for a queue.
  */
@@ -60,22 +62,6 @@ export type IQueueConfig = CommonLambdaHandlerOptions & {
      * @default false
      */
     manualRegistration?: boolean;
-    /**
-     * Observability configuration for the queue handler.
-     * Allows specifying custom tags, source, and attributes for spans.
-     *
-     * @example
-     * ```typescript
-     * @Queue('my-queue', {
-     *   observability: {
-     *     source: 'domain:queue:priority',
-     *     tags: { domain: 'sports', priority: 'high' },
-     *     attributes: { 'queue.category': 'data-sync' }
-     *   }
-     * })
-     * ```
-     */
-    observability?: SpanMetadata;
 };
 /**
  * Decorator function defining a queue.

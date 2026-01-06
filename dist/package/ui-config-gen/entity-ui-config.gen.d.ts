@@ -25,10 +25,5 @@ export declare class EntityUIConfigGen {
     prepareServicesDirectories(): string[];
     scanAndLoadServices(serviceDirectories: Array<string>): Promise<Map<string, BaseEntityService<any>>>;
     scanServicesFromDirectory(servicesDir: string): Promise<Set<Function>>;
-    /**
-     * Write JSON config file and create compressed versions (gzip and brotli)
-     * for browser-compatible delivery
-     */
-    private writeConfigFile;
     writeToFiles(menuConfig: any, entitiesConfig: any, authConfig: any, dashboardConfig: any): Promise<void>;
 }

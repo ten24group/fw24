@@ -1,46 +1,19 @@
-import { Context } from "aws-lambda";
+import { SQSEvent, Context, DynamoDBStreamEvent } from "aws-lambda";
+import { QueueController } from "../sqs-controller";
 import { BaseEventRecord, IEventDataExtractor } from "../../types/event-processor-types";
-import { type BatchSummary } from '../../../observability';
-import { QueueController, QueueStreamEvent, QueueExecutionContext, QueueProcessResult } from '../sqs-controller';
 /**
- * Base class for handling stream events (SQS or DynamoDB Streams) with data extraction.
- *
- * Extends QueueController to reuse trace extraction logic.
- * Adds the data extractor pattern for transforming raw events into BaseEventRecord.
- *
- * Key difference from QueueController: uses eventId-based matching to attach trace
- * contexts to extracted records, avoiding index misalignment when records fail to parse.
+ * Base class for handling SQS events.
  */
-declare abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayload>, TEvent extends QueueStreamEvent = QueueStreamEvent, TPayload extends Record<string, any> = Record<string, any>> extends QueueController<TEvent> {
+declare abstract class BaseSQSEventProcessor<T extends IEventDataExtractor<TEvent, TPayload>, TEvent extends DynamoDBStreamEvent | SQSEvent = any, TPayload extends Record<string, any> = Record<string, any>> extends QueueController {
     protected eventDataExtractor: T;
     protected processMode: 'record' | 'batch';
     constructor(extractor: T, options?: {
         processMode?: 'record' | 'batch';
     });
-    protected getProcessorName(): string;
-    /**
-     * Index pre-extracted traces by eventId for O(1) lookup.
-     */
-    private indexTracesByEventId;
-    LambdaHandler(event: TEvent, context: Context): Promise<void>;
-    /**
-     * Process event with pre-built trace map.
-     */
-    private processWithTraceMap;
-    /**
-     * Implement QueueController's abstract process method.
-     * Called when used directly (not through LambdaHandler).
-     */
-    process(event: TEvent, _context: Context, _ctx?: QueueExecutionContext<TEvent>): Promise<QueueProcessResult>;
-    /**
-     * Process records using BatchProgress for automatic tracking and observability.
-     * Handles both batch and individual record processing modes.
-     */
+    abstract initialize(event: TEvent | SQSEvent, context: Context): Promise<any>;
+    LambdaHandler(event: TEvent | SQSEvent, context: Context): Promise<void>;
+    process(event: TEvent, _context: Context): Promise<void>;
     protected processRecords(records: BaseEventRecord<TPayload>[]): Promise<void>;
-    /**
-     * Called when batch processing completes. Override to add custom behavior.
-     */
-    protected onBatchComplete(_summary: BatchSummary): void;
     protected abstract processRecord(record: BaseEventRecord<TPayload>): Promise<void>;
     protected abstract processRecordsBatch(records: BaseEventRecord<TPayload>[]): Promise<void>;
     protected preprocessRecord(record: BaseEventRecord<TPayload>): Promise<BaseEventRecord<TPayload> | null>;
