@@ -26,3 +26,6 @@
 export { Traced, TracedOptions } from './traced';
 export { Audited, AuditedOptions } from './audited';
 export { Observed, ObservedOptions } from './observed';
+export { Checkpoint, CheckpointOptions } from './checkpoint';
+export { Log, LogOptions } from './log';
+export { Metric, MetricOptions } from './metric';

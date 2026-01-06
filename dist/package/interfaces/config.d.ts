@@ -266,6 +266,12 @@ export interface IApplicationConfig {
         };
         /** Table UI auto-generation configuration */
         tableUI?: ITableUIAutoGenerationConfig;
+        /**
+         * Auto-generate audit log actions on entity detail pages.
+         * Only works if observability is enabled.
+         * @default true
+         */
+        autoGenerateAuditActions?: boolean;
     };
     defaultAuthorizationType?: any;
     defaultAdminGroups?: string[];
