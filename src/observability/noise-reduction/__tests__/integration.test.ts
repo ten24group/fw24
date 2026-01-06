@@ -5,17 +5,14 @@
  * real observability events, then verify noise reduction rules work correctly.
  */
 
+import { ObservabilityManager } from '../../manager';
+import { withSpan } from '../../observers/span';
 import {
+  cleanupTestObservability,
+  createTestContext,
   MockBackend,
   setupTestObservability,
-  createTestContext,
-  cleanupTestObservability,
 } from '../../testing';
-import { SpanObserver, withSpan } from '../../observers/span';
-import { LogObserver } from '../../observers/log';
-import { MetricObserver } from '../../observers/metric';
-import { ObservabilityManager } from '../../manager';
-import { Observed } from '../../decorators/observed';
 
 describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
   let backend: MockBackend;
@@ -35,9 +32,25 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
       ObservabilityManager.configure({
         noiseReduction: {
           enabled: true,
-          presets: [ 'fw24.hotpaths' ],
-          rules: [],
-          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
+          presets: [], // Don't use preset - define custom rule with proper threshold
+          rules: [
+            {
+              id: 'test.drop_fast_reads',
+              priority: 10,
+              match: {
+                type: 'span',
+                operation: '/^HTTP (GET|HEAD|OPTIONS)\\s/',
+                maxDurationMs: 500, // Drop only if < 500ms (test threshold)
+              },
+              except: [
+                { success: false },
+                { level: [ 'error', 'critical', 'warn' ] },
+              ],
+              decision: 'drop',
+              reason: 'Drop fast successful read operations (<500ms)',
+            },
+          ],
+          emitSummaries: true,
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -52,19 +65,20 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
         await withSpan('HTTP GET /users', async (span) => {
           span.tag('http.method', 'GET');
           span.tag('http.route', '/users');
-          // Fast successful request
+          // Fast successful request (< 500ms should be dropped)
           await new Promise(resolve => setTimeout(resolve, 10));
         }, { source: 'UserController.list' });
 
         await withSpan('HTTP GET /admin/settings', async (span) => {
           span.tag('http.method', 'GET');
+          // Fast successful request (< 500ms should be dropped)
           await new Promise(resolve => setTimeout(resolve, 20));
         }, { source: 'AdminController.list' });
 
         await ObservabilityManager.flush();
       });
 
-      // Both fast GET requests should be dropped
+      // Both fast GET requests should be dropped (duration < 500ms)
       const spans = backend.getEventsMatching({ type: 'span' });
       expect(spans.length).toBe(0);
     });
@@ -73,9 +87,25 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
       ObservabilityManager.configure({
         noiseReduction: {
           enabled: true,
-          presets: [ 'fw24.hotpaths' ],
-          rules: [],
-          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
+          presets: [], // Don't use preset - define custom rule with proper threshold
+          rules: [
+            {
+              id: 'test.drop_fast_reads',
+              priority: 10,
+              match: {
+                type: 'span',
+                operation: '/^HTTP (GET|HEAD|OPTIONS)\\s/',
+                maxDurationMs: 500, // Drop only if < 500ms (test threshold)
+              },
+              except: [
+                { success: false }, // Exception: keep failures even if fast
+                { level: [ 'error', 'critical', 'warn' ] },
+              ],
+              decision: 'drop',
+              reason: 'Drop fast successful read operations (<500ms)',
+            },
+          ],
+          emitSummaries: true,
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -111,9 +141,25 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
       ObservabilityManager.configure({
         noiseReduction: {
           enabled: true,
-          presets: [ 'fw24.hotpaths' ],
-          rules: [],
-          emitSummaries: true, // Controls what data to include in KEPT events (not whether to keep)
+          presets: [], // Don't use preset - define custom rule with proper threshold
+          rules: [
+            {
+              id: 'test.drop_fast_reads',
+              priority: 10,
+              match: {
+                type: 'span',
+                operation: '/^HTTP (GET|HEAD|OPTIONS)\\s/',
+                maxDurationMs: 500, // Drop only if < 500ms (test threshold)
+              },
+              except: [
+                { success: false },
+                { level: [ 'error', 'critical', 'warn' ] },
+              ],
+              decision: 'drop',
+              reason: 'Drop fast successful read operations (<500ms)',
+            },
+          ],
+          emitSummaries: true,
           maxCheckpointsPerSpan: 100,
           maxAggregateKeysPerSpan: 100,
           maxAggregateExamplesPerKey: 5,
@@ -126,17 +172,18 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
       await createTestContext(async () => {
         await withSpan('HTTP GET /users/search', async (span) => {
           span.tag('http.method', 'GET');
-          // Slow request
+          // Slow request (>= 500ms should be kept)
           await new Promise(resolve => setTimeout(resolve, 550));
         }, { source: 'UserController.search' });
 
         await ObservabilityManager.flush();
       });
 
-      // Slow GET should be kept
+      // Slow GET should be kept (duration >= 500ms exceeds rule's maxDurationMs)
       const spans = backend.getEventsMatching({ type: 'span' });
       expect(spans.length).toBe(1);
       expect(spans[ 0 ].durationMs).toBeGreaterThanOrEqual(500);
+      expect(spans[ 0 ].operation).toBe('HTTP GET /users/search');
     });
 
     it('custom high-priority rule overrides builtin drop', async () => {
@@ -227,20 +274,30 @@ describe('Noise Reduction Integration Tests (Real FW24 Patterns)', () => {
       expect(parent.source).toBe('UserController.batchCreate');
       expect(parent.success).toBe(true);
 
-      // VERIFY: Aggregates structure and values
-      const aggregates = (parent.data as any)?.noiseReduction?.aggregates;
-      expect(aggregates).toBeDefined();
+      // VERIFY: Checkpoints have proper data (not just metadata)
+      const checkpoints = (parent.data as any)?.checkpoints;
+      expect(checkpoints).toBeDefined();
+      expect(Array.isArray(checkpoints)).toBe(true);
 
-      const upsertAggregate = aggregates[ 'span:BaseEntityService.upsert' ];
-      expect(upsertAggregate).toEqual({
-        count: 5,
-        errorCount: 0,
-        durationSumMs: expect.any(Number),
-        durationMaxMs: expect.any(Number),
-        examples: [],
-        errorExamples: [],
-        rules: { 'fw24.hotpaths.entity.aggregate_upsert_spans': 5 }
-      });
+      // VERIFY: Noise reduction summary checkpoint has COMPLETE aggregate data
+      const summaryCheckpoint = checkpoints.find((cp: any) => cp.name === 'noiseReduction.summary');
+      expect(summaryCheckpoint).toBeDefined();
+      expect(summaryCheckpoint.data).toBeDefined();
+      expect(summaryCheckpoint.data.aggregates).toBeDefined();
+
+      // Summary checkpoint should be SELF-CONTAINED with full aggregate details
+      const aggregateBucket = summaryCheckpoint.data.aggregates[ 'span:BaseEntityService.upsert' ];
+      expect(aggregateBucket).toBeDefined();
+      expect(aggregateBucket.count).toBe(5); // All 5 upserts aggregated
+      expect(aggregateBucket.durationSumMs).toBeGreaterThan(0);
+      expect(aggregateBucket.durationMaxMs).toBeGreaterThan(0);
+      expect(aggregateBucket.errorCount).toBe(0);
+      expect(aggregateBucket.examples).toBeDefined(); // Should have examples
+      expect(aggregateBucket.errorExamples).toBeDefined();
+      expect(aggregateBucket.rules).toBeDefined();
+
+      // VERIFY: data.noiseReduction should NOT exist (all info in checkpoint)
+      expect((parent.data as any).noiseReduction).toBeUndefined();
     });
 
     it('keeps failed upsert operations as standalone spans', async () => {

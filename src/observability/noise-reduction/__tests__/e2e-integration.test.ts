@@ -381,11 +381,17 @@ describe('Noise Reduction E2E Integration (Real FW24 Components)', () => {
       expect(parentSpan.source).toContain('Controller');
       expect(parentSpan.success).toBe(true);
 
-      // VERIFY: Aggregates structure and values
-      const aggregates = (parentSpan.data as any)?.noiseReduction?.aggregates;
-      expect(aggregates).toBeDefined();
+      // VERIFY: Aggregates are in the noiseReduction.summary checkpoint (self-contained)
+      const checkpoints = (parentSpan.data as any)?.checkpoints;
+      expect(checkpoints).toBeDefined();
+      expect(Array.isArray(checkpoints)).toBe(true);
 
-      const upsertAggregate = aggregates[ 'span:BaseEntityService.upsert' ];
+      const summaryCheckpoint = checkpoints.find((cp: any) => cp.name === 'noiseReduction.summary');
+      expect(summaryCheckpoint).toBeDefined();
+      expect(summaryCheckpoint.data).toBeDefined();
+      expect(summaryCheckpoint.data.aggregates).toBeDefined();
+
+      const upsertAggregate = summaryCheckpoint.data.aggregates[ 'span:BaseEntityService.upsert' ];
       expect(upsertAggregate).toEqual({
         count: 5,
         errorCount: 0,
@@ -395,6 +401,9 @@ describe('Noise Reduction E2E Integration (Real FW24 Components)', () => {
         errorExamples: [],
         rules: { 'fw24.hotpaths.entity.aggregate_upsert_spans': 5 }
       });
+
+      // VERIFY: data.noiseReduction should NOT exist (all info in checkpoint)
+      expect((parentSpan.data as any).noiseReduction).toBeUndefined();
     });
   });
 });

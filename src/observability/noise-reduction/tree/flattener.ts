@@ -82,20 +82,19 @@ export function flattenTree(
           summaryData.byType = nrData.byType;
         }
 
-        // Include aggregates summary (not full details, just keys and counts)
+        // Include FULL aggregates data (with examples, errors, rules)
+        // Checkpoint should be self-contained with all aggregate details
         if (nrData.aggregates) {
-          summaryData.aggregates = {};
-          for (const [ key, bucket ] of Object.entries(nrData.aggregates)) {
-            summaryData.aggregates[ key ] = {
-              count: bucket.count,
-              errorCount: bucket.errorCount || 0,
-              durationSumMs: bucket.durationSumMs,
-              durationMaxMs: bucket.durationMaxMs,
-            };
-          }
+          summaryData.aggregates = nrData.aggregates;
         }
 
-        // Add summary checkpoint with actual data
+        // Include truncation metadata if present
+        if (nrData.checkpointsTruncated) summaryData.checkpointsTruncated = nrData.checkpointsTruncated;
+        if (nrData.checkpointsTruncatedCount) summaryData.checkpointsTruncatedCount = nrData.checkpointsTruncatedCount;
+        if (nrData.aggregateKeysTruncated) summaryData.aggregateKeysTruncated = nrData.aggregateKeysTruncated;
+        if (nrData.aggregateExamplesTruncated) summaryData.aggregateExamplesTruncated = nrData.aggregateExamplesTruncated;
+
+        // Add summary checkpoint with ALL data (checkpoint is self-contained)
         appendCheckpointBounded(node.event, config, {
           name: 'noiseReduction.summary',
           ts: Date.now(),
@@ -113,42 +112,14 @@ export function flattenTree(
             dropped: nrData.dropped,
             folded: nrData.folded,
             aggregated: nrData.aggregated,
+            byType: nrData.byType,
+            aggregates: nrData.aggregates,
           },
         });
       }
 
-      // Keep data.noiseReduction for programmatic access
-      // Checkpoint has human-readable summary, noiseReduction has full details
-      const compactNR: any = {};
-
-      // Keep count fields (cheap, useful for filtering/queries)
-      if (nrData.dropped) compactNR.dropped = nrData.dropped;
-      if (nrData.folded) compactNR.folded = nrData.folded;
-      if (nrData.aggregated) compactNR.aggregated = nrData.aggregated;
-
-      // Keep aggregates (full structure for programmatic access)
-      if (nrData.aggregates) {
-        compactNR.aggregates = nrData.aggregates;
-      }
-
-      // Keep metadata fields (byType, byRuleId, etc. - small, useful)
-      if (nrData.byType) compactNR.byType = nrData.byType;
-      if (nrData.byRuleId) compactNR.byRuleId = nrData.byRuleId;
-      if (nrData.byOperation) compactNR.byOperation = nrData.byOperation;
-      if (nrData._bucketCount) compactNR._bucketCount = nrData._bucketCount;
-
-      // Keep truncation metadata (important for debugging)
-      if (nrData.checkpointsTruncated) compactNR.checkpointsTruncated = nrData.checkpointsTruncated;
-      if (nrData.checkpointsTruncatedCount) compactNR.checkpointsTruncatedCount = nrData.checkpointsTruncatedCount;
-      if (nrData.aggregateKeysTruncated) compactNR.aggregateKeysTruncated = nrData.aggregateKeysTruncated;
-      if (nrData.aggregateExamplesTruncated) compactNR.aggregateExamplesTruncated = nrData.aggregateExamplesTruncated;
-
-      if (Object.keys(compactNR).length > 0) {
-        data.noiseReduction = compactNR;
-      } else {
-        // No aggregates, remove noiseReduction entirely
-        delete data.noiseReduction;
-      }
+      // Delete data.noiseReduction entirely - all info is in the checkpoint now
+      delete data.noiseReduction;
     }
   }
 

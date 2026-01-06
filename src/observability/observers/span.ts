@@ -40,12 +40,13 @@ import {
   withCurrentSpan,
   getCapturedParentId,
 } from '../../core/runtime/execution-context/storage';
-import type { ObservabilityLevelString, RecordOverrides, ObservabilityError, SpanConfig } from '../types';
+import type { ObservabilityLevelString, RecordOverrides, ObservabilityError, SpanConfig, SpanCheckpoint } from '../types';
 import {
   generateId,
   captureRecord,
   normalizeError,
   mergeTags,
+  mapError,
 } from './base';
 import { createLogger } from '../../logging';
 import { CONFIG_DEFAULTS } from '../config';
@@ -309,20 +310,31 @@ export class SpanObserver implements ISpanObserver {
     error?: Error | string;
   }): this {
     if (!this.captured) return this;
-    this._checkpoints.push({ name, ts: Date.now() });
 
-    if (options?.tags) {
-      this.tags(options.tags);
-    }
+    // Build checkpoint with all fields included in the checkpoint object itself
+    const checkpoint: SpanCheckpoint = {
+      name,
+      ts: Date.now()
+    };
+
+    // Add checkpoint-specific data/tags/metrics/error to the checkpoint object
     if (options?.data) {
-      this.setData(options.data);
+      checkpoint.data = options.data;
+    }
+    if (options?.tags) {
+      checkpoint.tags = options.tags;
     }
     if (options?.metrics) {
-      this.metrics(options.metrics);
+      checkpoint.metrics = options.metrics;
     }
     if (options?.error) {
-      this.recordException(options.error);
+      const err = typeof options.error === 'string'
+        ? new Error(options.error)
+        : options.error;
+      checkpoint.error = mapError(err);
     }
+
+    this._checkpoints.push(checkpoint);
     return this;
   }
 

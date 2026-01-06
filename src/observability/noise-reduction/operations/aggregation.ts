@@ -2,7 +2,7 @@
  * Aggregation operations - summarizing multiple events into buckets.
  */
 
-import type { NoiseReductionConfig } from '../../types';
+import type { NoiseReductionConfig, SpanCheckpoint } from '../../types';
 import type { TreeNode, AggregateBucket, NoiseReductionData, AggregateExample, AggregateErrorExample } from '../types';
 import { appendCheckpointBounded, ensureSpanData, getBounds } from '../utils';
 
@@ -150,15 +150,55 @@ export function aggregateIntoParent(node: TreeNode, config: NoiseReductionConfig
   // Save updated noise reduction data
   data.noiseReduction = nrData;
 
-  // Add checkpoint to parent timeline ONLY for new buckets (not every event)
-  // This prevents thousands of duplicate checkpoints
-  if (isNewBucket) {
-    appendCheckpointBounded(parent.event, config, {
-      name: `aggregate:${key}`,
-      ts: event.timestampMs,
-      data: bounds.includeDebugMetadata
-        ? { ruleId: node.ruleId, reason: node.reason }
+  // ─────────────────────────────────────────────────────────────────────────
+  // CREATE/UPDATE AGGREGATE CHECKPOINT
+  // ─────────────────────────────────────────────────────────────────────────
+  // Each aggregate bucket gets its own checkpoint showing what was aggregated,
+  // timing, counts, and error stats. This provides a proper timeline view.
+
+  const checkpointName = `aggregate:${key}`;
+
+  // Build checkpoint with complete aggregate stats
+  const aggregateCheckpoint: any = {
+    name: checkpointName,
+    ts: Date.now(),
+    metrics: {
+      'aggregate.count': bucket.count,
+      'aggregate.error_count': bucket.errorCount,
+      'aggregate.duration_sum_ms': bucket.durationSumMs,
+      'aggregate.duration_max_ms': bucket.durationMaxMs,
+      'aggregate.duration_avg_ms': bucket.count > 0 ? Math.round(bucket.durationSumMs / bucket.count) : 0,
+    },
+    data: {
+      aggregateKey: key,
+      eventType: event.type,
+      operation: event.operation ?? event.source ?? event.type,
+      // Include rule breakdown
+      rules: Object.keys(bucket.rules).length > 0 ? bucket.rules : undefined,
+      // Include sample IDs for traceability (from examples)
+      sampleIds: bounds.includeExamples && bucket.examples.length > 0
+        ? bucket.examples.slice(0, 3).map(ex => ex.observabilityLogId)
         : undefined,
-    });
+    },
+  };
+
+  // Add tags if first event had relevant tags
+  if (event.entityName) {
+    if (!aggregateCheckpoint.tags) aggregateCheckpoint.tags = {};
+    aggregateCheckpoint.tags[ 'aggregate.entity_name' ] = event.entityName;
+  }
+
+  // Find and update existing checkpoint, or add new one
+  if (!data.checkpoints) data.checkpoints = [];
+  const existingCheckpointIndex = (data.checkpoints as any[]).findIndex(
+    (cp: any) => cp.name === checkpointName
+  );
+
+  if (existingCheckpointIndex >= 0) {
+    // Update existing checkpoint with latest stats
+    (data.checkpoints as any[])[ existingCheckpointIndex ] = aggregateCheckpoint;
+  } else {
+    // Add new checkpoint (respecting bounds)
+    appendCheckpointBounded(parent.event, config, aggregateCheckpoint);
   }
 }
