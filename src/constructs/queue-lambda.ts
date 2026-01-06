@@ -239,11 +239,17 @@ export class QueueLambda extends Construct {
 
       if (!defaultDLQ) {
         const dlqName: string = isFifoQueue ? 'default-dlq-fifo' : 'default-dlq';
-        // Create default DLQ
+        const envKey: string = isFifoQueue ? 'dlq_default_fifo' : 'dlq_default';
+
+        // Create ONE shared default DLQ (original intent from commit aef55ce)
+        // Use the QueueLambda instance (scope) as parent so each QueueLambda has its DLQ as child
+        // This prevents collisions while still allowing reuse within the same QueueLambda instance
         defaultDLQ = new Queue(scope, dlqName, {
           fifo: isFifoQueue
         });
-        fw24.setEnvironmentVariable(dlqName.replace('default-', '_'), defaultDLQ);
+
+        // Store for reuse by other queues created in the same construct/scope
+        fw24.setEnvironmentVariable(envKey, defaultDLQ);
       }
 
       // Assign default DLQ
