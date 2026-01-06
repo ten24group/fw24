@@ -162,7 +162,9 @@ export class EntityUIConfigGen {
         this.logger.debug(`Ui-config-gen::: Process::: all-services: `, Array.from(services.keys()));
 
         // Get global UI config options (including duplicatedFieldDetection)
-        const globalUIConfigOptions = Fw24.getInstance().getConfig().uiConfigGenOptions;
+        const fw24Config = Fw24.getInstance().getConfig();
+        const globalUIConfigOptions = fw24Config.uiConfigGenOptions;
+        const hasObservability = !!fw24Config.observability;
 
         let menuIndex = 1;
         // generate UI configs
@@ -223,7 +225,8 @@ export class EntityUIConfigGen {
                     // Legacy sort fallback (tableConfig.defaultSort is handled directly in list-entity.ts)
                     defaultSort: entitySchema.model.listPageConfig?.defaultSort ?? entitySchema.model.listPageDefaultSort,
                     tableConfig: entitySchema.model.listPageConfig?.tableConfig,
-                    globalUIConfigOptions,  // NEW: Pass global config
+                    globalUIConfigOptions,
+                    hasObservability,
                 }, service);
                 entityConfigs[ `list-${entityName.toLowerCase()}` ] = listConfig;
             }
@@ -240,7 +243,8 @@ export class EntityUIConfigGen {
                     columnsConfig: entitySchema.model.viewPageConfig?.columnsConfig || entitySchema.model.viewPageColumnsConfig,
                     fields: entitySchema.model.viewPageConfig?.fields,
                     sectionsConfig: entitySchema.model.viewPageConfig?.sectionsConfig,
-                    globalUIConfigOptions,  // NEW: Pass global config
+                    globalUIConfigOptions,
+                    hasObservability,
                 }, service);
                 entityConfigs[ `view-${entityName.toLowerCase()}` ] = viewConfig;
             }

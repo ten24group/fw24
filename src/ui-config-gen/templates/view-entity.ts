@@ -1,4 +1,4 @@
-import {  Schema } from "electrodb";
+import { Schema } from "electrodb";
 import { BaseEntityService, EntitySchema, TIOSchemaAttribute, TIOSchemaAttributesMap, EntityViewPageConfig, ISectionsConfig, ISectionConfig, IEntityConfigReference } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
 import { formatEntityAttributesForDetail, mergeFieldVisibility, processSectionsConfig } from "./util";
@@ -36,23 +36,66 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
     /**
      * Field-level visibility overrides
      */
-    fields?: EntityViewPageConfig['fields'];
+    fields?: EntityViewPageConfig[ 'fields' ];
     /**
      * Sections configuration for multi-section detail pages
      */
     sectionsConfig?: ISectionsConfig;
-
-    /**
-     * Global UI config options (NEW: for passing global duplicatedFieldDetection config)
-    */
-    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
+    /** Global UI config options */
+    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ];
+    /** Whether observability is enabled (passed from UI config gen) */
+    hasObservability?: boolean;
 }
 
-export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
+/**
+ * Automatically generate audit log actions if observability is enabled.
+ * ZERO configuration needed - works for ALL entities automatically.
+ */
+function generateAuditLogActions(
+    entityName: string,
+    entityNamePascalCase: string,
+    hasObservability: boolean,
+    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]
+): IEntityPageAction[] {
+    const auditActions: IEntityPageAction[] = [];
+
+    // Check if auto-generation is enabled and observability is available
+    const autoGenerate = globalUIConfigOptions?.autoGenerateAuditActions ?? true;
+
+    if (!hasObservability || !autoGenerate) {
+        return auditActions;
+    }
+
+    // Automatically add both actions
+    auditActions.push({
+        id: 'view-record-audit-logs',
+        label: 'Audit Logs',
+        icon: 'HistoryOutlined',
+        tooltip: `View audit logs for this ${entityNamePascalCase}`,
+        openInModal: true,
+        modalTitle: `Audit Logs`,
+        modalConfigRef: {
+            entityName: 'observabilityLog',
+            pageType: 'list',
+            overrideConfig: {
+                defaultFilters: {
+                    entityName: entityName,
+                    entityId: ':id',
+                    type: { eq: 'audit.entity' }
+                },
+                hideSegments: [ 'hierarchy-group' ],
+            }
+        }
+    });
+
+    return auditActions;
+}
+
+export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
     options: ViewEntityPageOptions<S>,
     entityService: BaseEntityService<S>
 ) => {
-    const { entityName, CRUDApiPath, actions, breadcrumbs, pageTitle } = options;
+    const { entityName, CRUDApiPath, actions, breadcrumbs, pageTitle, hasObservability, globalUIConfigOptions } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
     const entityNamePascalCase = pascalCase(entityName);
@@ -75,8 +118,11 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         }
     ];
 
-    // Combine default actions with custom actions
-    const pageHeaderActions = [...defaultActions, ...(actions || [])];
+    // Automatically generate audit log actions if observability is enabled
+    const auditActions = generateAuditLogActions(entityName, entityNamePascalCase, hasObservability || false, globalUIConfigOptions);
+
+    // Combine all actions
+    const pageHeaderActions = [ ...defaultActions, ...(actions || []), ...auditActions ];
 
     return {
         // Use custom pageTitle if provided, otherwise default
@@ -89,11 +135,11 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     } as const;
 };
 
-export function makeViewEntityDetailConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> (
+export function makeViewEntityDetailConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
     options: ViewEntityPageOptions<S>,
     entityService: BaseEntityService<S>
-){
-    const{ entityName, properties, CRUDApiPath, fields, globalUIConfigOptions } = options;
+) {
+    const { entityName, properties, CRUDApiPath, fields, globalUIConfigOptions } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
 

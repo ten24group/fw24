@@ -50,6 +50,8 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
      * Global UI config options (NEW: for passing global duplicatedFieldDetection config)
      */
     globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ];
+    /** Whether observability is enabled (passed from UI config gen) */
+    hasObservability?: boolean;
 }
 
 /**
@@ -78,6 +80,49 @@ function getDatabaseSort(sort: TableSortConfig): DatabaseSortConfig {
 }
 
 /**
+ * Automatically generate audit log action for list pages.
+ * Shows all audit logs for this entity type.
+ */
+function generateListAuditActions(
+    entityName: string,
+    entityNamePlural: string,
+    hasObservability: boolean,
+    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]
+): IEntityPageAction[] {
+    const auditActions: IEntityPageAction[] = [];
+
+    // Check if auto-generation is enabled and observability is available
+    const autoGenerate = globalUIConfigOptions?.autoGenerateAuditActions ?? true;
+
+    if (!hasObservability || !autoGenerate) {
+        return auditActions;
+    }
+
+    // Add entity type audit logs action
+    auditActions.push({
+        id: 'view-entity-audit-logs',
+        label: 'Audit Logs',
+        icon: 'HistoryOutlined',
+        tooltip: `View all audit logs for ${entityNamePlural}`,
+        openInModal: true,
+        modalTitle: `${entityName} Audit Logs`,
+        modalConfigRef: {
+            entityName: 'observabilityLog',
+            pageType: 'list',
+            overrideConfig: {
+                defaultFilters: {
+                    entityName: entityName,
+                    type: { eq: 'audit.entity' }
+                },
+                hideSegments: [ 'hierarchy-group' ],
+            }
+        }
+    });
+
+    return auditActions;
+}
+
+/**
  * @deprecated Extract just the order direction from legacy SortConfig
  */
 function extractSortOrder(sort: SortConfig): SortOrder {
@@ -91,7 +136,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     entityService: BaseEntityService<S>
 ) => {
 
-    const { entityName, entityNamePlural, properties, breadcrumbs, pageTitle } = options;
+    const { entityName, entityNamePlural, properties, breadcrumbs, pageTitle, hasObservability, globalUIConfigOptions } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
 
@@ -107,10 +152,15 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         });
     }
 
-    // Combine default actions with custom actions (custom actions take precedence)
-    const pageHeaderActions = options.pageHeaderActions
-        ? [ ...defaultPageHeaderActions, ...options.pageHeaderActions ]
-        : defaultPageHeaderActions;
+    // Automatically generate audit log actions if observability is enabled
+    const auditActions = generateListAuditActions(entityName, entityNamePlural, hasObservability || false, globalUIConfigOptions);
+
+    // Combine: default + custom + audit
+    const pageHeaderActions = [
+        ...defaultPageHeaderActions,
+        ...(options.pageHeaderActions || []),
+        ...auditActions
+    ];
 
     return {
         // Use custom pageTitle if provided, otherwise default
