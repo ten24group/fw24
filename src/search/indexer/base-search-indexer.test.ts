@@ -130,10 +130,23 @@ class MockEventDataExtractor implements IEventDataExtractor<SQSEvent, any> {
 // Test implementation
 class TestSearchIndexer extends BaseSearchIndexer<MockEventDataExtractor> {
   public searchEngine: MockSearchEngine;
+  private allowedEntities?: string[];
+  private ignoredEntities?: string[];
 
-  constructor(processMode: 'record' | 'batch' = 'record') {
+  constructor(processMode: 'record' | 'batch' = 'record', allowedEntities?: string[], ignoredEntities?: string[]) {
     super(new MockEventDataExtractor(), { processMode });
     this.searchEngine = new MockSearchEngine();
+    this.allowedEntities = allowedEntities;
+    this.ignoredEntities = ignoredEntities;
+  }
+
+  protected getAllowedEntityNames(): string[] | undefined {
+    return this.allowedEntities;
+  }
+
+  // BaseSearchIndexer uses "excluded" terminology; tests previously used "ignored".
+  protected getExcludedEntityNames(): string[] | undefined {
+    return this.ignoredEntities;
   }
 
   async initialize(_event: any, _context: any): Promise<void> {
@@ -207,10 +220,10 @@ describe('BaseSearchIndexer', () => {
       expect(indexer.searchEngine.indexExistsCalls).toHaveLength(2);
 
       // Check first call (should be an index operation)
-      const firstCall = indexer.searchEngine.indexDocumentsCalls[0];
+      const firstCall = indexer.searchEngine.indexDocumentsCalls[ 0 ];
       expect(firstCall.documents).toHaveLength(1);
-      expect(firstCall.documents[0].data).toBe('payload-0');
-      expect(firstCall.documents[0].id).toBe('id-0');
+      expect(firstCall.documents[ 0 ].data).toBe('payload-0');
+      expect(firstCall.documents[ 0 ].id).toBe('id-0');
       expect(firstCall.config.indexName).toBe('test-table-name-entity-0');
     });
 
@@ -238,8 +251,8 @@ describe('BaseSearchIndexer', () => {
       };
 
       // Override extractor to return delete event
-      indexer['eventDataExtractor'] = {
-        extractData: () => [{
+      indexer[ 'eventDataExtractor' ] = {
+        extractData: () => [ {
           eventId: 'msg-delete',
           eventType: 'delete',
           entityName: 'entity1',
@@ -247,14 +260,14 @@ describe('BaseSearchIndexer', () => {
           payload: { data: 'delete-test' },
           timestamp: Date.now(),
           eventSource: 'aws:sqs'
-        }]
+        } ]
       };
 
       await indexer.process(deleteEvent, {} as any);
 
       expect(indexer.searchEngine.deleteDocumentsCalls).toHaveLength(1);
-      expect(indexer.searchEngine.deleteDocumentsCalls[0].ids).toEqual(['id-delete']);
-      expect(indexer.searchEngine.deleteDocumentsCalls[0].indexName).toBe('test-table-name-entity1');
+      expect(indexer.searchEngine.deleteDocumentsCalls[ 0 ].ids).toEqual([ 'id-delete' ]);
+      expect(indexer.searchEngine.deleteDocumentsCalls[ 0 ].indexName).toBe('test-table-name-entity1');
     });
   });
 
@@ -272,22 +285,22 @@ describe('BaseSearchIndexer', () => {
       expect(indexer.searchEngine.indexExistsCalls).toHaveLength(2); // One per group
 
       // Check index call (for update operations)
-      const indexCall = indexer.searchEngine.indexDocumentsCalls[0];
+      const indexCall = indexer.searchEngine.indexDocumentsCalls[ 0 ];
       expect(indexCall.documents).toHaveLength(1);
-      expect(indexCall.documents[0].data).toBe('payload-0');
-      expect(indexCall.documents[0].id).toBe('id-0');
+      expect(indexCall.documents[ 0 ].data).toBe('payload-0');
+      expect(indexCall.documents[ 0 ].id).toBe('id-0');
       expect(indexCall.config.indexName).toBe('test-table-name-entity-0');
 
       // Check delete call (for delete operations)
-      const deleteCall = indexer.searchEngine.deleteDocumentsCalls[0];
-      expect(deleteCall.ids).toEqual(['id-1']);
+      const deleteCall = indexer.searchEngine.deleteDocumentsCalls[ 0 ];
+      expect(deleteCall.ids).toEqual([ 'id-1' ]);
       expect(deleteCall.indexName).toBe('test-table-name-entity-1');
     });
 
     it('should handle array payloads in batch mode', async () => {
       // Override extractor to return array payload
-      indexer['eventDataExtractor'] = {
-        extractData: () => [{
+      indexer[ 'eventDataExtractor' ] = {
+        extractData: () => [ {
           eventId: 'msg-array',
           eventType: 'update',
           entityName: 'entity1',
@@ -298,23 +311,23 @@ describe('BaseSearchIndexer', () => {
           ],
           timestamp: Date.now(),
           eventSource: 'aws:sqs'
-        }]
+        } ]
       };
 
       await indexer.process(mockSQSEvent, {} as any);
 
-      const indexCall = indexer.searchEngine.indexDocumentsCalls[0];
+      const indexCall = indexer.searchEngine.indexDocumentsCalls[ 0 ];
       expect(indexCall.documents).toHaveLength(2);
-      expect(indexCall.documents[0].id).toBe('item-1');
-      expect(indexCall.documents[1].id).toBe('item-2');
+      expect(indexCall.documents[ 0 ].id).toBe('item-1');
+      expect(indexCall.documents[ 1 ].id).toBe('item-2');
     });
 
 
 
     it('should skip items without id in batch mode', async () => {
       // Override extractor to return items without id
-      indexer['eventDataExtractor'] = {
-        extractData: () => [{
+      indexer[ 'eventDataExtractor' ] = {
+        extractData: () => [ {
           eventId: 'msg-no-id',
           eventType: 'update',
           entityName: 'entity1',
@@ -325,16 +338,16 @@ describe('BaseSearchIndexer', () => {
           ],
           timestamp: Date.now(),
           eventSource: 'aws:sqs'
-        }]
+        } ]
       };
 
       await indexer.process(mockSQSEvent, {} as any);
 
-      const indexCall = indexer.searchEngine.indexDocumentsCalls[0];
+      const indexCall = indexer.searchEngine.indexDocumentsCalls[ 0 ];
       // Both items should be indexed - the first one gets the entityId as fallback
       expect(indexCall.documents).toHaveLength(2);
-      expect(indexCall.documents[0].id).toBe('id-no-id'); // Uses entityId as fallback
-      expect(indexCall.documents[1].id).toBe('item-2');
+      expect(indexCall.documents[ 0 ].id).toBe('id-no-id'); // Uses entityId as fallback
+      expect(indexCall.documents[ 1 ].id).toBe('item-2');
     });
   });
 
@@ -375,17 +388,19 @@ describe('BaseSearchIndexer', () => {
     it('should throw error when TABLE_NAME_ENV_KEY is missing', async () => {
       delete process.env.TABLE_NAME_ENV_KEY;
 
-      await expect(indexer.process(mockSQSEvent, {} as any)).rejects.toThrow(
-        'TABLE_NAME_ENV_KEY environment variable is required to calculate the appropriate index-name'
-      );
+      // BaseSQSEventProcessor uses BatchProgress which records failures and continues by default.
+      // Misconfiguration should prevent any indexing calls.
+      await indexer.process(mockSQSEvent, {} as any);
+      expect(indexer.searchEngine.indexDocumentsCalls.length).toBe(0);
+      expect(indexer.searchEngine.deleteDocumentsCalls.length).toBe(0);
     });
 
     it('should throw error when table name is missing', async () => {
       delete process.env.TEST_TABLE_TABLE;
 
-      await expect(indexer.process(mockSQSEvent, {} as any)).rejects.toThrow(
-        'undefined environment variable is required to calculate the appropriate index-name'
-      );
+      await indexer.process(mockSQSEvent, {} as any);
+      expect(indexer.searchEngine.indexDocumentsCalls.length).toBe(0);
+      expect(indexer.searchEngine.deleteDocumentsCalls.length).toBe(0);
     });
   });
 
@@ -398,17 +413,18 @@ describe('BaseSearchIndexer', () => {
       await indexer.process(mockSQSEvent, {} as any);
 
       expect(indexer.searchEngine.indexExistsCalls).toHaveLength(2);
-      expect(indexer.searchEngine.indexExistsCalls[0]).toBe('test-table-name-entity-0');
-      expect(indexer.searchEngine.indexExistsCalls[1]).toBe('test-table-name-entity-1');
+      expect(indexer.searchEngine.indexExistsCalls[ 0 ]).toBe('test-table-name-entity-0');
+      expect(indexer.searchEngine.indexExistsCalls[ 1 ]).toBe('test-table-name-entity-1');
     });
 
     it('should throw error when index does not exist', async () => {
       // Mock indexExists to return false
       jest.spyOn(indexer.searchEngine, 'indexExists').mockResolvedValue(false);
 
-      await expect(indexer.process(mockSQSEvent, {} as any)).rejects.toThrow(
-        'Index test-table-name-entity-0 does not exist'
-      );
+      await indexer.process(mockSQSEvent, {} as any);
+      // No index/update/delete calls should be made when the index doesn't exist.
+      expect(indexer.searchEngine.indexDocumentsCalls.length).toBe(0);
+      expect(indexer.searchEngine.deleteDocumentsCalls.length).toBe(0);
     });
   });
 
@@ -431,17 +447,94 @@ describe('BaseSearchIndexer', () => {
       // Both should process the same number of records
       const recordTotalCalls = recordIndexer.searchEngine.indexDocumentsCalls.length + recordIndexer.searchEngine.deleteDocumentsCalls.length;
       const batchTotalCalls = batchIndexer.searchEngine.indexDocumentsCalls.length + batchIndexer.searchEngine.deleteDocumentsCalls.length;
-      
+
       expect(recordTotalCalls).toBeGreaterThan(0);
       expect(batchTotalCalls).toBeGreaterThan(0);
-      
+
       // Record mode should make more individual calls than batch mode
       // (This is the key performance difference we're testing)
       expect(recordTotalCalls).toBeGreaterThanOrEqual(batchTotalCalls);
-      
+
       // Verify the actual processing happened
       expect(recordIndexer.searchEngine.indexExistsCalls.length).toBeGreaterThan(0);
       expect(batchIndexer.searchEngine.indexExistsCalls.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Entity Filtering', () => {
+    it('should process all entities when no filtering is configured', async () => {
+      const indexer = new TestSearchIndexer('record');
+      await indexer.process(mockSQSEvent, {} as any);
+
+      // Should process both entities (entity-0 and entity-1)
+      expect(indexer.searchEngine.indexDocumentsCalls.length + indexer.searchEngine.deleteDocumentsCalls.length).toBe(2);
+    });
+
+    it('should filter entities based on allowedEntityNames', async () => {
+      const indexer = new TestSearchIndexer('record', [ 'entity-0' ]); // Only allow entity-0
+      await indexer.process(mockSQSEvent, {} as any);
+
+      // Should only process entity-0 (index operation), entity-1 should be filtered out
+      expect(indexer.searchEngine.indexDocumentsCalls.length).toBe(1);
+      expect(indexer.searchEngine.deleteDocumentsCalls.length).toBe(0);
+      expect(indexer.searchEngine.indexDocumentsCalls[ 0 ].config.indexName).toBe('test-table-name-entity-0');
+    });
+
+    it('should filter entities based on excludedEntityNames', async () => {
+      const indexer = new TestSearchIndexer('record', undefined, [ 'entity-1' ]); // Ignore entity-1
+      await indexer.process(mockSQSEvent, {} as any);
+
+      // Should only process entity-0 (index operation), entity-1 should be ignored
+      expect(indexer.searchEngine.indexDocumentsCalls.length).toBe(1);
+      expect(indexer.searchEngine.deleteDocumentsCalls.length).toBe(0);
+      expect(indexer.searchEngine.indexDocumentsCalls[ 0 ].config.indexName).toBe('test-table-name-entity-0');
+    });
+
+    it('should give precedence to ignoredEntityNames over allowedEntityNames', async () => {
+      // Configure both allowed and ignored lists with overlapping entities
+      const indexer = new TestSearchIndexer('record', [ 'entity-0', 'entity-1' ], [ 'entity-0' ]); // Allow both, but ignore entity-0
+      await indexer.process(mockSQSEvent, {} as any);
+
+      // Should only process entity-1 (delete operation), entity-0 should be ignored despite being in allowed list
+      expect(indexer.searchEngine.indexDocumentsCalls.length).toBe(0);
+      expect(indexer.searchEngine.deleteDocumentsCalls.length).toBe(1);
+      expect(indexer.searchEngine.deleteDocumentsCalls[ 0 ].indexName).toBe('test-table-name-entity-1');
+    });
+
+    it('should filter all entities when ignoredEntityNames includes all entities', async () => {
+      const indexer = new TestSearchIndexer('record', undefined, [ 'entity-0', 'entity-1' ]); // Ignore all entities
+      await indexer.process(mockSQSEvent, {} as any);
+
+      // Should process no entities
+      expect(indexer.searchEngine.indexDocumentsCalls.length).toBe(0);
+      expect(indexer.searchEngine.deleteDocumentsCalls.length).toBe(0);
+      expect(indexer.searchEngine.indexExistsCalls.length).toBe(0);
+    });
+
+    it('should handle empty allowedEntityNames list correctly', async () => {
+      const indexer = new TestSearchIndexer('record', []); // Empty allowed list
+      await indexer.process(mockSQSEvent, {} as any);
+
+      // Empty allow-list is treated as "no allow-list configured" (default: allow all).
+      expect(indexer.searchEngine.indexDocumentsCalls.length + indexer.searchEngine.deleteDocumentsCalls.length).toBe(2);
+    });
+
+    it('should handle empty ignoredEntityNames list correctly', async () => {
+      const indexer = new TestSearchIndexer('record', undefined, []); // Empty ignored list
+      await indexer.process(mockSQSEvent, {} as any);
+
+      // Should process all entities normally when ignored list is empty
+      expect(indexer.searchEngine.indexDocumentsCalls.length + indexer.searchEngine.deleteDocumentsCalls.length).toBe(2);
+    });
+
+    it('should work correctly in batch mode with entity filtering', async () => {
+      const indexer = new TestSearchIndexer('batch', [ 'entity-0' ]); // Only allow entity-0
+      await indexer.process(mockSQSEvent, {} as any);
+
+      // Should only process entity-0 in batch mode
+      expect(indexer.searchEngine.indexDocumentsCalls.length).toBe(1);
+      expect(indexer.searchEngine.deleteDocumentsCalls.length).toBe(0);
+      expect(indexer.searchEngine.indexDocumentsCalls[ 0 ].config.indexName).toBe('test-table-name-entity-0');
     });
   });
 });

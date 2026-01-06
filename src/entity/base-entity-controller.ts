@@ -1,4 +1,4 @@
-import type { Request, Response } from '../interfaces';
+import type { Request, Response, Route } from '../interfaces';
 import type { EntitySchema, EntityIdentifiersTypeFromSchema } from './base-entity';
 import type { BaseEntityService } from './base-service';
 import type { EntityFilterCriteria, EntityQuery, GenericFilterCriteria, TypedFilterCriteria } from './query-types';
@@ -308,7 +308,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	@Patch('/{id}')
 	async update(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
-		
+
 		const entity = await this.getEntityService().get({ identifiers }, ctx);
 
 		if (!entity) {
@@ -403,33 +403,33 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	//  @Post('/batch-delete')
 	async batchDelete(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const { ids = [], concurrent = 1 } = req.body || {};
-	
+
 		const identifiers = ids.map((id: any) => this.getEntityService()?.extractEntityIdentifiers(id));
-	
+
 		const result = await this.getEntityService().batchDelete({
 			identifiers,
 			concurrent
 		}, ctx);
 
 		const unprocessedCount = (result as any)?.unprocessed?.length || 0;
-	
+
 		const deletedCount = identifiers.length - unprocessedCount;
-	
+
 		const response: any = {
 			deletedCount,
 			unprocessedCount: unprocessedCount,
 			message: `Successfully deleted ${deletedCount} ${this.getEntityName()} record(s)`
 		};
-	
+
 		if (unprocessedCount > 0) {
 			response.unprocessed = (result as any)?.unprocessed || [];
 			response.message += `, ${unprocessedCount} failed`;
 		}
-	
+
 		if (req.debugMode) {
 			response.req = req;
 		}
-	
+
 		return res.json(response);
 	}
 
@@ -461,45 +461,45 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	// @Post('/delete-by-query')
 	async deleteByQuery(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const { filters, batchSize = 25, concurrent = 1, maxItems } = req.body || {};
-	
+
 		const { dryRun = false } = req.queryStringParameters || {};
 
 		if (dryRun) {
-		    const previewResult = await this.getEntityService().query({ 
-					filters, 
-					pagination: { count: 1000, limit: 1000, pages: 'all' } 
-				}, 
+			const previewResult = await this.getEntityService().query({
+				filters,
+				pagination: { count: 1000, limit: 1000, pages: 'all' }
+			},
 				ctx
 			);
 
 			return res.json({
-					message: 'Dry run mode - preview results [up to 1000 items]',
-					previewCount: previewResult.data.length,
-					preview: previewResult.data
+				message: 'Dry run mode - preview results [up to 1000 items]',
+				previewCount: previewResult.data.length,
+				preview: previewResult.data
 			});
 		}
-	
+
 		const result = await this.getEntityService().deleteByQuery({
 			filters,
 			batchSize,
 			concurrent,
 			maxItems
 		}, ctx);
-	
+
 		const response: any = {
 			...result,
 			message: `Successfully deleted ${result.deletedCount} ${this.getEntityName()} record(s)`
 		};
-	
+
 		if (result.failedCount > 0) {
 			response.message += `, ${result.failedCount} failed`;
 		}
-	
+
 		if (req.debugMode) {
 			response.req = req;
 			response.filters = filters;
 		}
-	
+
 		return res.json(response);
 	}
 

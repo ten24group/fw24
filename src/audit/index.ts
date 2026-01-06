@@ -1,35 +1,28 @@
-export {
-  AuditLoggerType,
-  AuditLoggerConfig,
-  AuditOptions,
-  AuditEntry,
-  IAuditLogger,
-} from './interfaces';
+/**
+ * Audit Module - DynamoDB Stream Entity Auditing ONLY
+ * 
+ * For request/event/metrics logging, use the observability module directly.
+ */
+
+// ============================================================================
+// ENTITY FILTERING CONFIG
+// ============================================================================
+
+export { AUDIT_ENV_KEYS } from './interfaces';
+
+// ============================================================================
+// STREAM HANDLER
+// ============================================================================
 
 export {
-  DynamoDbAuditLogger,
-  CloudWatchAuditLogger,
-  AuditLoggerFactory,
-  ConsoleAuditLogger,
-  DummyAuditLogger,
-  DefaultAuditHandler,
-  DynamoDBAuditEntitySchema,
-  getChangedProperties,
-  AUDIT_ENV_KEYS,
-} from './loggers';
+    DynamoDBStreamAuditLogger,
+} from './loggers/dynamo-db-stream-audit-logger';
+
+// ============================================================================
+// CHANGE DETECTION UTILITIES
+// ============================================================================
 
 export {
-  DynamoDBAuditEntityService,
-} from './system/audit-entity-service';
-
-export {
-  captureAuditLog,
-} from './audit-helpers';
-
-export {
-  AuditCustomPageConfigs
-} from './system/ui-config';
-
-export {
-  DynamoDBAuditSystemController,
-} from './system/audit-controller';
+    getChangedProperties,
+    DEFAULT_IGNORED_FIELDS,
+} from './helpers/change-detection';

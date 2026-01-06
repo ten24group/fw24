@@ -44,6 +44,21 @@ export interface IMailerConstructConfig extends IConstructConfig {
      * The properties for the queue.
      */
     queueProps?: QueueProps;
+
+    /**
+     * Track successful email sends (in addition to failures).
+     * Enable for compliance, audit trails, or debugging.
+     * 
+     * @default false
+     * @example
+     * ```ts
+     * const mailerConfig: IMailerConstructConfig = {
+     *   domain: 'example.com',
+     *   trackEmailSuccess: true  // Enable for compliance/audit
+     * };
+     * ```
+     */
+    trackEmailSuccess?: boolean;
 }
 
 /**
@@ -122,6 +137,10 @@ export class MailerConstruct implements FW24Construct {
                         effect: Effect.ALLOW,
                     },
                 ],
+                environmentVariables: {
+                    // Pass observability config as environment variable
+                    TRACK_EMAIL_SUCCESS: this.mailerConstructConfig.trackEmailSuccess ? 'true' : 'false',
+                },
             },
             sqsEventSourceProps: {
                 batchSize: 5,

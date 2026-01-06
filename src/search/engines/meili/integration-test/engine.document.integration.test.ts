@@ -42,8 +42,6 @@ describe('MeiliSearchEngine Document Operations Integration Tests', () => {
     await engine.updateDocuments([ updatedDoc ], { ...indexConfig, indexName: TEST_INDEX as string }, true);
 
     // Wait for the updated document to be available
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
     const doc = await engine.getDocument('1', TEST_INDEX as string);
     expect(doc.title).toBe('Updated first document');
     expect(doc.content).toBe('This is the first test document');
@@ -97,8 +95,6 @@ describe('MeiliSearchEngine Document Operations Integration Tests', () => {
         { id: '2', title: 'Updated 2' },
         { id: '3', title: 'Updated 3' }
       ], tempConfig, 2, true);
-
-      await new Promise(resolve => setTimeout(resolve, 1000));
 
       const doc1 = await engine.getDocument('1', tempIndex);
       expect(doc1.title).toBe('Updated 1');

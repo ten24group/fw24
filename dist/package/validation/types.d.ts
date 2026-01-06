@@ -1,6 +1,6 @@
 import { EntityRecordTypeFromSchema, EntitySchema, TEntityOpsInputSchemas as EntityOperationsInputSchemas } from "../entity";
 import { Narrow, OmitNever, ValueOf } from '../utils/types';
-import { Actor } from '../core/types/actor';
+import { Actor } from "../core/types/execution-context";
 import { Request } from '../interfaces/request';
 export type CustomMessageOrMessageId = {
     customMessage?: string;

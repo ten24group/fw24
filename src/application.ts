@@ -1,11 +1,12 @@
 import { App, Stack } from "aws-cdk-lib";
+import { AttributeType, StreamViewType } from "aws-cdk-lib/aws-dynamodb";
 import { Fw24 } from "./core/fw24";
-import { IApplicationConfig } from "./interfaces/config";
+import { IApplicationConfig, IObservabilityConfig, IObservabilityInfraConfig } from "./interfaces/config";
 import { FW24Construct } from "./interfaces/construct";
 import { IFw24Module } from "./core/runtime/module";
 import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
 import { ILogger, LogDuration, createLogger } from "./logging";
-import { LayerConstruct } from "./constructs";
+import { DynamoDBConstruct, LayerConstruct } from "./constructs";
 import { Timer } from "./utils";
 import { randomUUID } from 'node:crypto';
 import { join as pathJoin } from 'node:path';
@@ -21,6 +22,7 @@ export class Application {
     private readonly processedConstructs: Map<string, Promise<void>> = new Map();
     private readonly resourceConstructMaxConcurrency: number = 10;
     private resourceConstructCurrentConcurrency = 0;
+    private readonly observabilityConfig?: IObservabilityConfig;
 
     constructor(config: IApplicationConfig = {}) {
         this.logger = createLogger([ Application.name, config.name, config.environment ].join('-'));
@@ -61,6 +63,11 @@ export class Application {
             this.fw24.setEnvironmentVariable('LOG_LEVEL', process.env.LOG_LEVEL || 'INFO');
         }
 
+        // Store observability config for processing in run()
+        if (config.observability) {
+            this.observabilityConfig = config.observability;
+        }
+
         this.constructs = new Map();
         this.modules = new Map();
 
@@ -97,6 +104,23 @@ export class Application {
     public async run() {
         this.logger.info("Running fw24 infrastructure...");
 
+        // *** order is important here, modules need to be processed first, before constructs ***
+        this.processModules();
+
+        const disableUIConfigGen = Fw24.getInstance().getConfig().disableUIConfigGen;
+
+        if (!disableUIConfigGen) {
+            await this.uiConfigGen.run();
+        }
+
+        // configure a build command like in package.json to only generate the ui config
+        // "ui:gen": "UI_GEN_ONLY=true env-cmd -f .env.local ts-node src/index.ts"
+        // this is useful for generating the ui config during development
+        if (process.env.UI_GEN_ONLY === 'true') {
+            this.logger.info('UI config generation complete. Exiting.');
+            return;
+        }
+
         // Create default fw24 runtime layer (ONLY runtime code, not infrastructure)
         // This layer is automatically attached to all Lambda functions
         // It's NOT an entry package - it's just available for imports
@@ -117,27 +141,15 @@ export class Application {
         } ]);
         await fw24Layer.construct();
 
-        // *** order is important here, modules need to be processed first, before constructs ***
-        this.processModules();
-
-        const disableUIConfigGen = Fw24.getInstance().getConfig().disableUIConfigGen;
-
-        if (!disableUIConfigGen) {
-            await this.uiConfigGen.run();
-        }
-
-        // configure a build command like in package.json to only generate the ui config
-        // "ui:gen": "UI_GEN_ONLY=true env-cmd -f .env.local ts-node src/index.ts"
-        // this is useful for generating the ui config during development
-        if (process.env.UI_GEN_ONLY === 'true') {
-            this.logger.info('UI config generation complete. Exiting.');
-            return;
-        }
-
-
-        // Build user-defined layers BEFORE any other constructs
-        // This ensures layers and entry packages are available for any lambdas created by any construct
+        // Build user-defined layers BEFORE observability setup
+        // This ensures entry packages are registered for any lambdas created by observability DynamoDB
         await this.buildUserLayers();
+
+        // Setup observability infrastructure AFTER user layers are built
+        // This ensures any lambdas created by observability have access to entry packages
+        if (this.observabilityConfig) {
+            await this.setupObservability(this.observabilityConfig);
+        }
 
         const totalConstructs = this.constructs.size;
         this.logger.info(`${'='.repeat(60)}`);
@@ -263,6 +275,111 @@ export class Application {
             return this.processedConstructs.get(dependency)!;
         });
         await Promise.all(promises);
+    }
+
+    /**
+     * Setup observability infrastructure.
+     * - `true` = DynamoDB with defaults
+     * - `{ dynamodb: {...} }` = DynamoDB table
+     * - `{ cloudwatch: {...} }` = Custom CloudWatch log group (no DynamoDB)
+     * - `{ dynamodb: {...}, cloudwatch: {...} }` = Both
+     */
+    private async setupObservability(config: true | IObservabilityInfraConfig): Promise<void> {
+        // true = shorthand for { dynamodb: {} }
+        const cfg: IObservabilityInfraConfig = config === true ? { dynamodb: {} } : config;
+
+        // Setup CloudWatch if configured
+        if (cfg.cloudwatch?.enabled !== false && cfg.cloudwatch) {
+            await this.setupObservabilityCloudWatch(cfg);
+        }
+
+        // Setup DynamoDB if configured
+        if (cfg.dynamodb?.enabled !== false && cfg.dynamodb) {
+            await this.setupObservabilityDynamoDB(cfg);
+        }
+
+        // Log if neither backend is configured
+        if (!cfg.dynamodb && !cfg.cloudwatch) {
+            this.logger.info('⚠️ Observability enabled but no backends configured');
+        }
+    }
+
+    /**
+     * Setup DynamoDB infrastructure for observability.
+     */
+    private async setupObservabilityDynamoDB(cfg: IObservabilityInfraConfig): Promise<void> {
+        const db = cfg.dynamodb!;
+        // Table name: use db.name if provided, otherwise 'observabilitylogs'
+        // No appName prefix - keeps tableKey simple and convention-based
+        const tableName = db.name ?? 'observabilitylogs';
+
+        // Check if stream needed
+        const hasSearchIndexing = db.searchIndexing?.some((s: { enabled?: boolean }) => s.enabled);
+        const hasStreamConfig = db.stream?.enabled;
+        const needsStream = hasSearchIndexing || hasStreamConfig;
+
+        // Default table props (6 GSIs)
+        const defaultProps = {
+            partitionKey: { name: 'pk', type: AttributeType.STRING },
+            sortKey: { name: 'sk', type: AttributeType.STRING },
+            timeToLiveAttribute: 'ttl',
+            dynamoStream: needsStream ? StreamViewType.NEW_AND_OLD_IMAGES : undefined,
+            globalSecondaryIndexes: [
+                { indexName: 'gsi1', partitionKey: { name: 'gsi1pk', type: AttributeType.STRING }, sortKey: { name: 'gsi1sk', type: AttributeType.STRING } },
+                { indexName: 'gsi2', partitionKey: { name: 'gsi2pk', type: AttributeType.STRING }, sortKey: { name: 'gsi2sk', type: AttributeType.STRING } },
+                { indexName: 'gsi3', partitionKey: { name: 'gsi3pk', type: AttributeType.STRING }, sortKey: { name: 'gsi3sk', type: AttributeType.STRING } },
+                { indexName: 'gsi4', partitionKey: { name: 'gsi4pk', type: AttributeType.STRING }, sortKey: { name: 'gsi4sk', type: AttributeType.STRING } },
+                { indexName: 'gsi5', partitionKey: { name: 'gsi5pk', type: AttributeType.STRING }, sortKey: { name: 'gsi5sk', type: AttributeType.STRING } },
+                { indexName: 'gsi6', partitionKey: { name: 'gsi6pk', type: AttributeType.STRING }, sortKey: { name: 'gsi6sk', type: AttributeType.STRING } },
+                { indexName: 'gsi7', partitionKey: { name: 'gsi7pk', type: AttributeType.STRING }, sortKey: { name: 'gsi7sk', type: AttributeType.STRING } },
+                { indexName: 'gsi8', partitionKey: { name: 'gsi8pk', type: AttributeType.STRING }, sortKey: { name: 'gsi8sk', type: AttributeType.STRING } },
+            ],
+            ...db.props,
+        };
+
+        const dynamoConstruct = new DynamoDBConstruct({
+            stackName: cfg.stackName ?? 'persistent',
+            parentStackName: cfg.parentStackName,
+            table: {
+                name: tableName,
+                props: defaultProps,
+                stream: db.stream,
+                searchIndexing: db.searchIndexing,
+            },
+        });
+
+        dynamoConstruct.name = 'observability-dynamodb';
+        await dynamoConstruct.construct();
+
+        // Add global resource access - LambdaFunction sets env var automatically
+        this.fw24.addGlobalResourceAccess({
+            tables: [ { name: tableName, access: [ 'readwrite' ] } ],
+        });
+
+        const features = [];
+        if (hasSearchIndexing) features.push('search');
+        if (hasStreamConfig) features.push('stream');
+
+        this.logger.info(`✅ Observability: ${tableName}${features.length ? ' (' + features.join(', ') + ')' : ''}`);
+    }
+
+    /**
+     * Setup CloudWatch infrastructure for observability.
+     */
+    private async setupObservabilityCloudWatch(cfg: IObservabilityInfraConfig): Promise<void> {
+        const cw = cfg.cloudwatch!;
+        const appName = this.fw24.getConfig().name || 'app';
+        const logGroupName = cw.logGroupName ?? `/observability/${appName}`;
+
+        // TODO: Create custom log group when needed
+        // For now, just set env var so runtime can use it
+        this.fw24.setGlobalEnvironmentVariable('OBSERVABILITY_LOG_GROUP', logGroupName);
+
+        if (cw.retentionDays) {
+            this.fw24.setGlobalEnvironmentVariable('OBSERVABILITY_LOG_RETENTION_DAYS', String(cw.retentionDays));
+        }
+
+        this.logger.info(`✅ Observability CloudWatch: ${logGroupName}`);
     }
 
 }

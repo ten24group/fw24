@@ -36,6 +36,9 @@ export function registerEntitySchema<T extends EntitySchema<any, any, any>>(opti
         container = DIContainer.ROOT;
     } else if (options.providedIn instanceof DIContainer) {
         container = options.providedIn!;
+    } else if (typeof options.providedIn === 'object' && options.providedIn !== null && 'containerId' in options.providedIn && 'register' in options.providedIn) {
+        // Duck-type check for DIContainer from different module graph (bundled vs layer)
+        container = options.providedIn as IDIContainer;
     } else if (typeof options.providedIn === 'function') {
 
         // Check if the providedIn is a class constructor

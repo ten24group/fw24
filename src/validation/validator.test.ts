@@ -4,7 +4,7 @@ import { ComplexValidationRule, EntityValidations, HttpRequestValidations, Condi
 import { describe, expect, it } from '@jest/globals';
 import { TDefaultEntityOperations } from "../entity";
 import { Validator} from "./validator";
-import { Actor } from '../core/types/actor';
+import { Actor } from "../core/types/execution-context";
 
 describe('Validator', () => {
 

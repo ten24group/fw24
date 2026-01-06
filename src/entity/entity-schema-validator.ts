@@ -171,7 +171,7 @@ export class EntitySchemaValidator {
             // Number fields
             'number',
             // Date/Time fields
-            'date', 'time', 'datetime',
+            'date', 'time', 'datetime', 'duration', 'ttl',
             // Boolean fields
             'boolean', 'switch', 'toggle',
             // Selection fields

@@ -4,7 +4,6 @@ import { AttributeType, Billing, Capacity, StreamViewType, TableEncryptionV2 } f
 import { StartingPosition } from 'aws-cdk-lib/aws-lambda';
 import { RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { DynamoDBConstruct, IDynamoDBConfig } from './dynamodb';
-import { AuditLoggerType } from '../audit/interfaces';
 import { Fw24 } from '../core/fw24';
 
 /**
@@ -292,7 +291,7 @@ describe('DynamoDBConstruct', () => {
   });
 
   describe('Audit Configuration', () => {
-    it('should validate audit with CloudWatch logger', () => {
+    it('should validate basic audit configuration', () => {
       const config: IDynamoDBConfig = {
         table: {
           name: 'audit-table',
@@ -302,23 +301,15 @@ describe('DynamoDBConstruct', () => {
             dynamoStream: StreamViewType.NEW_AND_OLD_IMAGES
           },
           audit: {
-            enabled: true,
-            type: AuditLoggerType.CLOUDWATCH,
-            cloudwatchOptions: {
-              logGroupName: '/aws/audit/test',
-              region: 'us-west-2'
-            }
+            enabled: true
           }
         }
       };
 
       const dynamoDBConstruct = new DynamoDBConstruct(config);
 
-      // Verify audit configuration is stored correctly
+      // Verify audit configuration is stored correctly (observability system handles routing)
       expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.enabled).toBe(true);
-      expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.type).toBe(AuditLoggerType.CLOUDWATCH);
-      expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.cloudwatchOptions.logGroupName).toBe('/aws/audit/test');
-      expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.cloudwatchOptions.region).toBe('us-west-2');
     });
 
     it('should validate audit with allowed entity names', () => {
@@ -332,7 +323,6 @@ describe('DynamoDBConstruct', () => {
           },
           audit: {
             enabled: true,
-            type: AuditLoggerType.CLOUDWATCH,
             allowedEntityNames: [ 'User', 'Order' ]
           }
         }
@@ -354,7 +344,6 @@ describe('DynamoDBConstruct', () => {
           },
           audit: {
             enabled: true,
-            type: AuditLoggerType.CLOUDWATCH,
             excludedEntityNames: [ 'TempData', 'Cache' ]
           }
         }
@@ -382,83 +371,6 @@ describe('DynamoDBConstruct', () => {
       expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit).toBeUndefined();
     });
 
-    it('should validate audit with CloudWatch logGroupOptions', () => {
-      const config: IDynamoDBConfig = {
-        table: {
-          name: 'audit-log-options-table',
-          props: {
-            partitionKey: { name: 'id', type: AttributeType.STRING },
-            billing: Billing.onDemand(),
-            dynamoStream: StreamViewType.NEW_AND_OLD_IMAGES
-          },
-          audit: {
-            enabled: true,
-            type: AuditLoggerType.CLOUDWATCH,
-            cloudwatchOptions: {
-              logGroupName: '/aws/audit/test',
-              logGroupOptions: {
-                retention: RetentionDays.ONE_WEEK,
-                removalPolicy: RemovalPolicy.DESTROY
-              }
-            }
-          }
-        }
-      };
-
-      const dynamoDBConstruct = new DynamoDBConstruct(config);
-
-      expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.cloudwatchOptions.logGroupOptions.retention).toBe(RetentionDays.ONE_WEEK);
-      expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.cloudwatchOptions.logGroupOptions.removalPolicy).toBe(RemovalPolicy.DESTROY);
-    });
-
-    it('should validate audit with custom queue name', () => {
-      const config: IDynamoDBConfig = {
-        table: {
-          name: 'audit-custom-queue-table',
-          props: {
-            partitionKey: { name: 'id', type: AttributeType.STRING },
-            billing: Billing.onDemand(),
-            dynamoStream: StreamViewType.NEW_AND_OLD_IMAGES
-          },
-          audit: {
-            enabled: true,
-            type: AuditLoggerType.CLOUDWATCH,
-            dynamodbstreamOptions: {
-              queueName: 'custom-audit-queue'
-            }
-          }
-        }
-      };
-
-      const dynamoDBConstruct = new DynamoDBConstruct(config);
-
-      expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.dynamodbstreamOptions.queueName).toBe('custom-audit-queue');
-    });
-
-    it('should validate audit with existing queue reference', () => {
-      const config: IDynamoDBConfig = {
-        table: {
-          name: 'audit-existing-queue-table',
-          props: {
-            partitionKey: { name: 'id', type: AttributeType.STRING },
-            billing: Billing.onDemand(),
-            dynamoStream: StreamViewType.NEW_AND_OLD_IMAGES
-          },
-          audit: {
-            enabled: true,
-            type: AuditLoggerType.CLOUDWATCH,
-            dynamodbstreamOptions: {
-              existingQueueName: 'AuditProcessor'
-            }
-          }
-        }
-      };
-
-      const dynamoDBConstruct = new DynamoDBConstruct(config);
-
-      expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.dynamodbstreamOptions.existingQueueName).toBe('AuditProcessor');
-    });
-
     it('should validate audit with custom functionProps', () => {
       const config: IDynamoDBConfig = {
         table: {
@@ -470,7 +382,6 @@ describe('DynamoDBConstruct', () => {
           },
           audit: {
             enabled: true,
-            type: AuditLoggerType.CLOUDWATCH,
             functionProps: {
               timeout: Duration.seconds(60),
               memorySize: 1024
@@ -485,6 +396,49 @@ describe('DynamoDBConstruct', () => {
       expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.functionProps.memorySize).toBe(1024);
     });
 
+    it('should validate audit with custom queue name', () => {
+      const config: IDynamoDBConfig = {
+        table: {
+          name: 'audit-custom-queue-table',
+          props: {
+            partitionKey: { name: 'id', type: AttributeType.STRING },
+            billing: Billing.onDemand(),
+            dynamoStream: StreamViewType.NEW_AND_OLD_IMAGES
+          },
+          audit: {
+            enabled: true,
+            queueName: 'custom-audit-queue'
+          }
+        }
+      };
+
+      const dynamoDBConstruct = new DynamoDBConstruct(config);
+
+      expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.queueName).toBe('custom-audit-queue');
+    });
+
+    it('should validate audit with existing queue reference', () => {
+      const config: IDynamoDBConfig = {
+        table: {
+          name: 'audit-existing-queue-table',
+          props: {
+            partitionKey: { name: 'id', type: AttributeType.STRING },
+            billing: Billing.onDemand(),
+            dynamoStream: StreamViewType.NEW_AND_OLD_IMAGES
+          },
+          audit: {
+            enabled: true,
+            existingQueueName: 'AuditProcessor'
+          }
+        }
+      };
+
+      const dynamoDBConstruct = new DynamoDBConstruct(config);
+
+      expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.existingQueueName).toBe('AuditProcessor');
+    });
+
+
     it('should validate audit with sqsEventSourceProps', () => {
       const config: IDynamoDBConfig = {
         table: {
@@ -496,12 +450,9 @@ describe('DynamoDBConstruct', () => {
           },
           audit: {
             enabled: true,
-            type: AuditLoggerType.CLOUDWATCH,
-            dynamodbstreamOptions: {
-              sqsEventSourceProps: {
-                batchSize: 20,
-                maxBatchingWindow: Duration.seconds(10)
-              }
+            sqsEventSourceProps: {
+              batchSize: 20,
+              maxBatchingWindow: Duration.seconds(10)
             }
           }
         }
@@ -509,8 +460,8 @@ describe('DynamoDBConstruct', () => {
 
       const dynamoDBConstruct = new DynamoDBConstruct(config);
 
-      expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.dynamodbstreamOptions.sqsEventSourceProps.batchSize).toBe(20);
-      expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.dynamodbstreamOptions.sqsEventSourceProps.maxBatchingWindow).toBeDefined();
+      expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.sqsEventSourceProps.batchSize).toBe(20);
+      expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.sqsEventSourceProps.maxBatchingWindow).toBeDefined();
     });
   });
 
@@ -817,7 +768,6 @@ describe('DynamoDBConstruct', () => {
           },
           audit: {
             enabled: true,
-            type: AuditLoggerType.CLOUDWATCH,
             functionProps: {
               timeout: Duration.seconds(30),
               memorySize: 512
@@ -1140,8 +1090,7 @@ describe('DynamoDBConstruct', () => {
             // No dynamoStream - no stream ARN
           },
           audit: {
-            enabled: true,
-            type: AuditLoggerType.CLOUDWATCH
+            enabled: true
           }
         }
       };
@@ -1149,7 +1098,7 @@ describe('DynamoDBConstruct', () => {
       const dynamoDBConstruct = new DynamoDBConstruct(config);
 
       // Verify configuration is stored even without stream ARN
-      // The construct will log a warning during construct() but config is valid (dynamodb.ts:493, 576)
+      // The construct will log a warning during construct() but config is valid
       expect((dynamoDBConstruct as any).dynamoDBConfig.table.audit.enabled).toBe(true);
       expect((dynamoDBConstruct as any).dynamoDBConfig.table.props.dynamoStream).toBeUndefined();
     });
@@ -1308,7 +1257,6 @@ describe('DynamoDBConstruct', () => {
           },
           audit: {
             enabled: true,
-            type: AuditLoggerType.CLOUDWATCH,
             allowedEntityNames: [ 'User' ],
             excludedEntityNames: [ 'User' ] // Conflict!
           }

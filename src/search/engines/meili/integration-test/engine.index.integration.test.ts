@@ -8,7 +8,7 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
 
   beforeAll(async () => {
     engine = new MeiliSearchEngine(config);
-    
+
     // Clean up and create index
     try {
       const exists = await engine.indexExists(TEST_INDEX as string);
@@ -23,13 +23,10 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
     try {
       console.log(`Creating test index: ${TEST_INDEX}`);
       await engine.initIndex({ ...indexConfig, indexName: TEST_INDEX as string }, true);
-      
-      // Wait for index to be fully created and configured
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+
       // Verify index was created and is configured properly
-      await pollForSetting(engine, TEST_INDEX as string, 'searchableAttributes', ['title', 'content', 'tags']);
-      
+      await pollForSetting(engine, TEST_INDEX as string, 'searchableAttributes', [ 'title', 'content', 'tags' ]);
+
       console.log(`Test index ${TEST_INDEX} successfully created and configured`);
     } catch (error) {
       console.error(`Failed to create test index ${TEST_INDEX}:`, error);
@@ -69,19 +66,19 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
     const indices = await engine.listIndices();
     expect(indices).toBeDefined();
     expect(indices.results).toBeDefined();
-    
+
     // Debug information for failing test
     const indexNames = indices.results.map(index => index.uid);
     const foundTestIndex = indices.results.some(index => index.uid === TEST_INDEX);
-    
+
     if (!foundTestIndex) {
       console.error(`Expected index "${TEST_INDEX}" not found in indices:`, indexNames);
-      
+
       // Double-check that the index actually exists
       const indexExists = await engine.indexExists(TEST_INDEX as string);
       console.error(`Index existence check: ${indexExists}`);
     }
-    
+
     expect(foundTestIndex).toBe(true);
   }, 60000);
 
@@ -108,7 +105,6 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
     };
     try {
       const index = await engine.initIndex(settingsIndexConfig, true);
-      await new Promise(resolve => setTimeout(resolve, 1000));
 
       await pollForSetting(engine, tempIndex, 'searchableAttributes', [ 'title' ]);
 
@@ -130,7 +126,6 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
     const tempConfig = { ...indexConfig, indexName: tempIndex };
     try {
       await engine.initIndex(tempConfig, true);
-      await new Promise(resolve => setTimeout(resolve, 1000));
 
       await engine.updateSearchableAttributes(tempIndex, [ 'title' ], true);
       await pollForSetting(engine, tempIndex, 'searchableAttributes', [ 'title' ]);
@@ -151,7 +146,6 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
     const tempConfig = { ...indexConfig, indexName: tempIndex };
     try {
       await engine.initIndex(tempConfig, true);
-      await new Promise(resolve => setTimeout(resolve, 1000));
       await engine.updateDisplayedAttributes(tempIndex, [ 'id', 'title' ], true);
       await pollForSetting(engine, tempIndex, 'displayedAttributes', [ 'id', 'title' ]);
 
@@ -170,7 +164,8 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
 
       await engine.updateStopWords(tempIndex, [ 'the', 'a' ], true);
 
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Verify setting
+      await pollForSetting(engine, tempIndex, 'stopWords', [ 'the', 'a' ]);
 
       const settings = await engine.getIndexSettings(tempIndex);
 
@@ -208,8 +203,6 @@ describe('MeiliSearchEngine Index Management Integration Tests', () => {
       await engine.initIndex(configB, true);
 
       await engine.swapIndexes([ { indexes: [ indexA, indexB ] } ], true);
-
-      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // After swap, both indexes should still exist
       const existsA = await engine.indexExists(indexA);

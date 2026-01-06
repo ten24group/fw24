@@ -12,6 +12,11 @@ export interface BaseEventRecord<P extends Record<string, any> = Record<string, 
     rawSourceEventName?: string; // e.g., "INSERT", "MODIFY" from DynamoDB
     [ key: string ]: any; // For other source-specific metadata
   };
+  /** Upstream trace context for per-record causedBy linkage (set by framework) */
+  traceContext?: {
+    correlationId?: string;
+    causedBy?: string;
+  };
 }
 
 export interface ChangeStreamPayload {

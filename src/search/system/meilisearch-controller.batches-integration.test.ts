@@ -16,6 +16,8 @@ describe('MeiliSearch Batches Integration', () => {
     }));
 
     controller = new MeiliSearchSystemController(DIContainer.ROOT);
+    // Manually set controllerName since the decorator is commented out
+    Object.defineProperty(controller, 'controllerName', { value: 'system/search', writable: true });
     harness = new LambdaTestHarness(controller as any);
     engine = DIContainer.ROOT.resolveSearchEngine() as MeiliSearchEngine;
   }, 30000);
@@ -28,7 +30,7 @@ describe('MeiliSearch Batches Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       // Verify response format matches entity controller pattern
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
@@ -44,7 +46,7 @@ describe('MeiliSearch Batches Integration', () => {
       });
       expect(page1.statusCode).toBe(200);
       const body1 = JSON.parse(page1.body);
-      
+
       expect(body1.items.length).toBeLessThanOrEqual(2);
       // Cursor might be null if there are no more results
       if (body1.items.length === 2) {
@@ -57,19 +59,19 @@ describe('MeiliSearch Batches Integration', () => {
       // Get second page using cursor (if cursor exists)
       if (body1.cursor) {
         const page2 = await harness.get('/batches', {
-          queryStringParameters: { 
+          queryStringParameters: {
             count: '2',
             cursor: body1.cursor
           }
         });
         expect(page2.statusCode).toBe(200);
         const body2 = JSON.parse(page2.body);
-        
+
         expect(body2.items.length).toBeLessThanOrEqual(2);
-        
+
         // Verify different batches (if any exist)
         if (body1.items.length > 0 && body2.items.length > 0) {
-          expect(body2.items[0].uid).not.toBe(body1.items[0].uid);
+          expect(body2.items[ 0 ].uid).not.toBe(body1.items[ 0 ].uid);
         }
       }
     }, 30000);
@@ -84,11 +86,11 @@ describe('MeiliSearch Batches Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
       if (body.items.length > 0) {
-        expect(body.items.every((batch: any) => 
+        expect(body.items.every((batch: any) =>
           batch.stats && batch.stats.status && batch.stats.status.succeeded > 0
         )).toBe(true);
       }
@@ -101,14 +103,14 @@ describe('MeiliSearch Batches Integration', () => {
       });
       expect(firstResponse.statusCode).toBe(200);
       const firstBody = JSON.parse(firstResponse.body);
-      
+
       if (firstBody.items.length === 0) {
         console.log('No batches available for UID filter test');
         return;
       }
-      
-      const batchUid = firstBody.items[0].uid;
-      
+
+      const batchUid = firstBody.items[ 0 ].uid;
+
       const response = await harness.get('/batches', {
         queryStringParameters: {
           'uid.eq': batchUid,
@@ -118,16 +120,16 @@ describe('MeiliSearch Batches Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
-      
+
       // The UID filter should return a subset of results, but the specific batch might not be included
       // if the MeiliSearch API doesn't support UID filtering for batches in the same way as tasks
       if (body.items.length > 0) {
         // At least verify that the response structure is correct
-        expect(body.items[0]).toHaveProperty('uid');
-        expect(body.items[0]).toHaveProperty('stats');
+        expect(body.items[ 0 ]).toHaveProperty('uid');
+        expect(body.items[ 0 ]).toHaveProperty('stats');
       }
     }, 30000);
 
@@ -141,11 +143,11 @@ describe('MeiliSearch Batches Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
       if (body.items.length > 0) {
-        expect(body.items.every((batch: any) => 
+        expect(body.items.every((batch: any) =>
           batch.stats && batch.stats.types && batch.stats.types.documentAdditionOrUpdate > 0
         )).toBe(true);
       }
@@ -158,20 +160,20 @@ describe('MeiliSearch Batches Integration', () => {
       });
       expect(firstResponse.statusCode).toBe(200);
       const firstBody = JSON.parse(firstResponse.body);
-      
+
       if (firstBody.items.length === 0) {
         console.log('No batches available for indexUid filter test');
         return;
       }
-      
-      const indexUids = firstBody.items[0].stats?.indexUids;
+
+      const indexUids = firstBody.items[ 0 ].stats?.indexUids;
       if (!indexUids || Object.keys(indexUids).length === 0) {
         console.log('No indexUids available for filter test');
         return;
       }
-      
-      const indexUid = Object.keys(indexUids)[0];
-      
+
+      const indexUid = Object.keys(indexUids)[ 0 ];
+
       const response = await harness.get('/batches', {
         queryStringParameters: {
           'indexUid.eq': indexUid,
@@ -181,12 +183,12 @@ describe('MeiliSearch Batches Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
       expect(body.items.length).toBeGreaterThan(0);
-      expect(body.items.some((batch: any) => 
-        batch.stats && batch.stats.indexUids && batch.stats.indexUids[indexUid] > 0
+      expect(body.items.some((batch: any) =>
+        batch.stats && batch.stats.indexUids && batch.stats.indexUids[ indexUid ] > 0
       )).toBe(true);
     }, 30000);
 
@@ -200,11 +202,11 @@ describe('MeiliSearch Batches Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
       if (body.items.length > 0) {
-        expect(body.items.every((batch: any) => 
+        expect(body.items.every((batch: any) =>
           batch.startedAt && new Date(batch.startedAt) > new Date('2024-01-01T00:00:00Z')
         )).toBe(true);
       }
@@ -220,11 +222,11 @@ describe('MeiliSearch Batches Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
       if (body.items.length > 0) {
-        expect(body.items.every((batch: any) => 
+        expect(body.items.every((batch: any) =>
           batch.finishedAt && new Date(batch.finishedAt) > new Date('2024-01-01T00:00:00Z')
         )).toBe(true);
       }
@@ -241,16 +243,16 @@ describe('MeiliSearch Batches Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
-      
+
       if (body.items.length > 0) {
-        expect(body.items.every((batch: any) => 
-          batch.stats && 
-          batch.stats.status && 
+        expect(body.items.every((batch: any) =>
+          batch.stats &&
+          batch.stats.status &&
           batch.stats.status.succeeded > 0 &&
-          batch.stats.types && 
+          batch.stats.types &&
           batch.stats.types.documentAdditionOrUpdate > 0
         )).toBe(true);
       }
@@ -265,14 +267,14 @@ describe('MeiliSearch Batches Integration', () => {
       });
       expect(firstResponse.statusCode).toBe(200);
       const firstBody = JSON.parse(firstResponse.body);
-      
+
       if (firstBody.items.length === 0) {
         console.log('No batches available for single batch test');
         return;
       }
-      
-      const batchUid = firstBody.items[0].uid;
-      
+
+      const batchUid = firstBody.items[ 0 ].uid;
+
       const response = await harness.get(`/batches/${batchUid}`, {
         pathParameters: {
           uid: batchUid
@@ -280,7 +282,7 @@ describe('MeiliSearch Batches Integration', () => {
       });
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('uid');
       expect(body).toHaveProperty('stats');
       expect(body).toHaveProperty('startedAt');

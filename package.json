@@ -34,6 +34,7 @@
     "devDependencies": {
         "@aws-cdk/aws-cognito-identitypool-alpha": "^2.132.0-alpha.0",
         "@types/aws-lambda": "^8.10.150",
+        "@types/fast-redact": "^3.0.4",
         "@types/jest": "^30.0.0",
         "@types/node": "^24.0.3",
         "@types/qs": "^6.14.0",
@@ -48,6 +49,8 @@
     },
     "dependencies": {
         "@aws-cdk/aws-amplify-alpha": "^2.202.0-alpha.0",
+        "@aws-lambda-powertools/logger": "^2.29.0",
+        "@aws-lambda-powertools/metrics": "^2.29.0",
         "@aws-sdk/client-cloudwatch-logs": "^3.832.0",
         "@aws-sdk/client-cognito-identity": "^3.830.0",
         "@aws-sdk/client-cognito-identity-provider": "^3.830.0",
@@ -56,6 +59,7 @@
         "@aws-sdk/client-sns": "^3.830.0",
         "@aws-sdk/client-sqs": "^3.831.0",
         "@aws-sdk/s3-request-presigner": "^3.832.0",
+        "@hackylabs/deep-redact": "^3.0.4",
         "@types/cookie": "^0.6.0",
         "constructs": "^10.4.2",
         "cookie": "^1.0.2",
@@ -64,10 +68,15 @@
         "path-to-regexp": "^8.2.0",
         "qs": "^6.14.0",
         "source-map-support": "^0.5.21",
-        "tslog": "^4.9.3"
+        "tslog": "^4.9.3",
+        "uuid": "^13.0.0"
     },
     "peerDependencies": {
         "aws-cdk-lib": "^2.202.0",
         "electrodb": "^3.4.3"
+    },
+    "optionalDependencies": {
+        "@opentelemetry/api": "^1.9.0",
+        "@opentelemetry/api-logs": "^0.208.0"
     }
 }

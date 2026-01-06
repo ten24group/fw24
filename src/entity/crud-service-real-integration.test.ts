@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, jest } from '@jest/globals';
 import { BaseEntityService } from './base-service';
-import { Actor } from '../core/types/actor';
+import { Actor } from "../core/types/execution-context";
 import { ExecutionContext } from '../core/types/execution-context';
 import { EntitySchema } from './base-entity';
 import { createLogger } from '../logging';

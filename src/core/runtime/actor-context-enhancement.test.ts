@@ -1,6 +1,6 @@
 import { APIGatewayEvent, Context, Context as LambdaContext } from 'aws-lambda';
 import { APIController, APIControllerMiddleware } from './api-gateway-controller';
-import { Actor } from '../types/actor';
+import { Actor } from "../types/execution-context";
 import { ExecutionContext } from '../types/execution-context';
 import { Request, Response } from '../../interfaces';
 

@@ -7,6 +7,7 @@ import { BaseSearchEngine } from '../engines/base';
 import { SearchEngineError, SearchValidationError } from '../errors';
 import { makeEntitySearchIndexName } from '../search-utils';
 import { SEARCH_INDEXER_ENV_KEYS, SearchIndexEntry } from './interfaces';
+import { BatchProgress } from '../../observability/utils/batch-progress';
 
 export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TPayload>, TEvent extends DynamoDBStreamEvent | SQSEvent = any, TPayload extends Record<string, any> = Record<string, any>> extends BaseSQSEventProcessor<T> {
 
@@ -32,14 +33,19 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
     const allowedEntityNames = this.getAllowedEntityNames();
     const excludedEntityNames = this.getExcludedEntityNames();
 
-    // If allowedEntityNames is provided, use it exclusively
+    // Excluded list ALWAYS wins (safer default).
+    if (excludedEntityNames && excludedEntityNames.length > 0 && excludedEntityNames.includes(entityName)) {
+      return false;
+    }
+
+    // If allowedEntityNames is provided, restrict indexing to that list.
     if (allowedEntityNames && allowedEntityNames.length > 0) {
       return allowedEntityNames.includes(entityName);
     }
 
-    // If excludedEntityNames is provided, index all except excluded
+    // Otherwise, if excludedEntityNames is provided, index all except excluded (already handled above).
     if (excludedEntityNames && excludedEntityNames.length > 0) {
-      return !excludedEntityNames.includes(entityName);
+      return true;
     }
 
     // Default behavior: index all entities
@@ -63,10 +69,10 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
     if (!this.shouldIndexEntity(entityName)) {
       const allowedEntityNames = this.getAllowedEntityNames();
       const excludedEntityNames = this.getExcludedEntityNames();
-      this.logger.warn('Skipping search indexing for entity based on filtering rules', { 
-        entityName, 
-        allowedEntityNames, 
-        excludedEntityNames 
+      this.logger.warn('Skipping search indexing for entity based on filtering rules', {
+        entityName,
+        allowedEntityNames,
+        excludedEntityNames
       });
       return null;
     }
@@ -78,21 +84,18 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
   protected override async processRecord(record: BaseEventRecord<TPayload>): Promise<void> {
     const startTime = Date.now();
     const { entityName, eventType, entityId } = record;
-    
+
     this.logger.info('Processing single record for search indexing', { entityName, eventType, entityId });
-    
+
     const searchIndexEntry = this.createSearchIndexEntry(record);
     await this.indexOrDeleteDocument(searchIndexEntry);
-    
+
     const duration = Date.now() - startTime;
     this.logger.info('Single record processing completed', { entityName, eventType, entityId, durationMs: duration });
   }
 
   // Implementation for batch processing
   protected override async processRecordsBatch(records: BaseEventRecord<TPayload>[]): Promise<void> {
-    const startTime = Date.now();
-    this.logger.info('Starting batch search indexing', { recordCount: records.length });
-    
     // Group by entityName and eventType to minimize engine calls
     const groups = new Map<string, BaseEventRecord<TPayload>[]>();
 
@@ -103,119 +106,131 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
       groups.set(key, arr);
     }
 
-    this.logger.info('Records grouped for batch processing', { 
-      totalGroups: groups.size, 
-      groupDetails: Array.from(groups.entries()).map(([key, records]) => ({
+    this.logger.info('Records grouped for batch processing', {
+      totalGroups: groups.size,
+      groupDetails: Array.from(groups.entries()).map(([ key, groupRecords ]) => ({
         group: key,
-        recordCount: records.length
+        recordCount: groupRecords.length
       }))
     });
 
-    let totalIndexed = 0;
-    let totalDeleted = 0;
-    let totalSkipped = 0;
-
+    // Process each group using BatchProgress
     for (const [ key, groupRecords ] of groups.entries()) {
-      const groupStartTime = Date.now();
       const [ entityName, eventType ] = key.split('|');
 
-      this.logger.info('Processing batch group', { group: key, recordCount: groupRecords.length, entityName, eventType });
+      if (![ 'create', 'update', 'delete' ].includes(eventType)) {
+        this.logger.warn('Skipping unknown event type', { eventType, count: groupRecords.length });
+        continue;
+      }
 
       const indexName = this.getIndexName(entityName);
 
-      await this.ensureIndexExists(indexName);
+      try {
+        await this.ensureIndexExists(indexName);
+      } catch (error) {
+        this.logger.error('Index does not exist, skipping group', { indexName, entityName, error });
+        continue;
+      }
 
-      switch (eventType) {
-        case 'create':
-        case 'update': {
-          // Build documents from each record's payload (supports object, array, or payload.items)
-          const documents: any[] = [];
-          const nowIso = new Date().toISOString();
+      if (eventType === 'delete') {
+        await this.processBatchDelete(groupRecords, indexName, entityName);
+      } else {
+        await this.processBatchIndex(groupRecords, indexName, entityName);
+      }
+    }
+  }
 
-          for (const gr of groupRecords) {
-            // Use the same transformation logic as individual record processing
-            const searchIndexEntry = this.createSearchIndexEntry(gr);
-            const transformedData = searchIndexEntry.data;
-            
-            // Handle both array and single item payloads after transformation
-            const items: any[] = Array.isArray(transformedData)
-              ? transformedData
-              : (Array.isArray(transformedData?.items) ? transformedData.items : [ transformedData ]);
+  /**
+   * Process batch index using BatchProgress.chunk
+   */
+  private async processBatchIndex(
+    records: BaseEventRecord<TPayload>[],
+    indexName: string,
+    entityName: string
+  ): Promise<void> {
+    // Transform records to documents
+    interface DocWithId { doc: any; id: string }
+    const docs: DocWithId[] = [];
+    const nowIso = new Date().toISOString();
 
-            for (const item of items) {
-              const id = item?.id || item?.[ `${entityName}Id` ] || (gr.entityId as string | undefined);
-              if (!id) {
-                this.logger.warn('Skipping item without id during batch index', { entityName, itemKeys: Object.keys(item || {}) });
-                totalSkipped++;
-                continue;
-              }
+    for (const record of records) {
+      const searchIndexEntry = this.createSearchIndexEntry(record);
+      const transformedData = searchIndexEntry.data;
 
-              const doc = item?.id ? { ...item } : { ...item, id };
-              if (!doc._indexedAt) {
-                doc._indexedAt = nowIso;
-              }
-              documents.push(doc);
-            }
-          }
-          
-          if (documents.length === 0) {
-            this.logger.info('No documents to index after payload normalization', { group: key });
-            break;
-          }
-          
-          this.logger.info('Executing batch index operation', { group: key, documentCount: documents.length, indexName });
-          await this.searchEngine.indexDocuments(documents, { indexName }, false);
-          totalIndexed += documents.length;
-          
-          const groupDuration = Date.now() - groupStartTime;
-          this.logger.info('Batch index operation completed', { 
-            group: key, 
-            indexedCount: documents.length, 
-            durationMs: groupDuration,
-            avgTimePerDocument: groupDuration / documents.length 
-          });
-          break;
+      const items: any[] = Array.isArray(transformedData)
+        ? transformedData
+        : (Array.isArray(transformedData?.items) ? transformedData.items : [ transformedData ]);
+
+      for (const item of items) {
+        const id = item?.id || item?.[ `${entityName}Id` ] || (record.entityId as string | undefined);
+        if (!id) {
+          this.logger.warn('Skipping item without id', { entityName });
+          continue;
         }
-        case 'delete': {
-          const ids = groupRecords.map(gr => gr.entityId as string);
-          
-          this.logger.info('Executing batch delete operation', { group: key, idCount: ids.length, indexName });
-          await this.searchEngine.deleteDocuments(ids, indexName, false);
-          totalDeleted += ids.length;
-          
-          const groupDuration = Date.now() - groupStartTime;
-          this.logger.info('Batch delete operation completed', { 
-            group: key, 
-            deletedCount: ids.length, 
-            durationMs: groupDuration 
-          });
-          break;
+
+        const doc = item?.id ? { ...item } : { ...item, id };
+        if (!doc._indexedAt) {
+          doc._indexedAt = nowIso;
         }
-        default:
-          this.logger.warn('Unknown event type in batch', { eventType, groupSize: groupRecords.length });
+        docs.push({ doc, id });
       }
     }
 
-    const totalDuration = Date.now() - startTime;
-    this.logger.info('Batch search indexing completed', { 
-      totalRecords: records.length,
-      totalGroups: groups.size,
-      totalIndexed,
-      totalDeleted,
-      totalSkipped,
-      durationMs: totalDuration,
-      avgTimePerRecord: totalDuration / records.length,
-      avgTimePerGroup: totalDuration / groups.size
-    });
+    if (docs.length === 0) {
+      this.logger.info('No documents to index', { entityName, indexName });
+      return;
+    }
+
+    // Index in chunks (default 25 docs per batch)
+    await BatchProgress.chunk(
+      `Index ${entityName}`,
+      docs,
+      async (chunk) => {
+        const docsToIndex = chunk.map(c => c.doc);
+        await this.searchEngine.indexDocuments(docsToIndex, { indexName }, false);
+        return chunk.map(c => c.id);
+      },
+      { tags: { entity: entityName } }
+    );
+  }
+
+  /**
+   * Process batch delete using chunked deletion.
+   */
+  private async processBatchDelete(
+    records: BaseEventRecord<TPayload>[],
+    indexName: string,
+    entityName: string
+  ): Promise<void> {
+    // Extract IDs from records that have entityId
+    const ids = records
+      .filter(r => r.entityId)
+      .map(r => r.entityId as string);
+
+    if (ids.length === 0) {
+      this.logger.info('No records with entityId to delete', { entityName });
+      return;
+    }
+
+    // Delete in chunks (default 25 IDs per batch)
+    await BatchProgress.chunk(
+      `Delete ${entityName}`,
+      ids,
+      async (chunk) => {
+        await this.searchEngine.deleteDocuments(chunk, indexName, false);
+        return chunk;
+      },
+      { tags: { entity: entityName } }
+    );
   }
 
   // Helper method to create SearchIndexEntry from a record
   protected createSearchIndexEntry(record: BaseEventRecord<TPayload>): SearchIndexEntry {
     const { entityName, eventType, entityId, timestamp, payload: payloadData, metadata } = record;
-    
+
     // Extract searchable data based on the source type
     const searchableData = this.transformPayloadForIndexing(payloadData, eventType, metadata?.source);
-    
+
     // Note: timestamp is already in milliseconds (converted from DynamoDB seconds in the data extractor)
     // Example: timestamp = 1734567890000 (milliseconds) -> "2024-12-19T10:31:30.000Z"
     return {
@@ -233,12 +248,12 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
    */
   protected transformPayloadForIndexing(payloadData: any, eventType: string, source?: string): any {
     // For stream sources, payload is ChangeStreamPayload format
-    if (source === 'stream' && payloadData && typeof payloadData === 'object' && 
-        ('oldImage' in payloadData || 'newImage' in payloadData || 'keys' in payloadData)) {
+    if (source === 'stream' && payloadData && typeof payloadData === 'object' &&
+      ('oldImage' in payloadData || 'newImage' in payloadData || 'keys' in payloadData)) {
       const { oldImage, newImage } = payloadData;
       return this.extractSearchableDataFromChangeStream(oldImage, newImage, eventType);
     }
-    
+
     // Handle array payloads - add _indexedAt to each item
     if (Array.isArray(payloadData)) {
       return payloadData.map(item => ({
@@ -246,7 +261,7 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
         _indexedAt: new Date().toISOString()
       }));
     }
-    
+
     // For single object payloads, use payload directly
     return {
       ...payloadData,
@@ -276,7 +291,7 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
 
     // Remove DynamoDB internal fields and prepare for search indexing
     const ignoredKeys = [
-      '__EDB_E__', '__EDB_V__', 'PK', 'SK', 
+      '__EDB_E__', '__EDB_V__', 'PK', 'SK',
       'GSI1PK', 'GSI1SK', 'GSI2PK', 'GSI2SK', 'GSI3PK', 'GSI3SK', 'GSI4PK', 'GSI4SK',
       'PASSWORD'
     ];
@@ -284,10 +299,10 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
     const searchableData: Record<string, any> = { ...sourceData };
 
     Object.keys(sourceData).forEach(key => {
-      if (ignoredKeys.includes(key.toUpperCase()) || 
-          key.startsWith('__') || 
-          (key.length > 3 && ['GSI', 'LSI'].includes(key.substring(0, 3).toUpperCase()))) {
-        delete searchableData[key];
+      if (ignoredKeys.includes(key.toUpperCase()) ||
+        key.startsWith('__') ||
+        (key.length > 3 && [ 'GSI', 'LSI' ].includes(key.substring(0, 3).toUpperCase()))) {
+        delete searchableData[ key ];
       }
     });
 

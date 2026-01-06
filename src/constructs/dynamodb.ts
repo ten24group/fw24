@@ -8,7 +8,7 @@ import { TopicProps } from "aws-cdk-lib/aws-sns";
 import { Queue, QueueProps } from "aws-cdk-lib/aws-sqs";
 import { join, resolve } from "node:path";
 
-import { AUDIT_ENV_KEYS, AuditLoggerType } from "../audit/interfaces";
+import { AUDIT_ENV_KEYS } from "../audit/interfaces";
 import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { IConstructConfig } from "../interfaces/construct-config";
@@ -247,29 +247,21 @@ export interface IDynamoDBConfig extends IConstructConfig {
  * 
  * ```
  * 
- * Custom audit queue name:
+ * Audit logging (via observability system):
  * ```ts
  * audit: {
  *   enabled: true,
- *   type: AuditLoggerType.CLOUDWATCH,
- *   dynamodbstreamOptions: {
- *     queueName: 'my-custom-audit-queue'
- *   }
+ *   allowedEntityNames: ['user', 'order', 'payment'],
+ *   // Backend routing configured via observability DI layer
  * }
  * ```
  * 
- * Existing framework-managed audit queue:
+ * Custom audit queue:
  * ```ts
- * // First define the queue handler:
- * // @Queue('AuditProcessor', { subscriptions: { topics: [{ name: 'myTable-stream' }] } })
- * // export class AuditProcessor extends BaseAuditLogger { ... }
- * 
  * audit: {
  *   enabled: true,
- *   type: AuditLoggerType.CLOUDWATCH, 
- *   dynamodbstreamOptions: {
- *     existingQueueName: 'AuditProcessor'  // References the @Queue('AuditProcessor')
- *   }
+ *   allowedEntityNames: ['user', 'order'],
+ *   queueName: 'my-custom-audit-queue'
  * }
  * ```
  * 
@@ -306,134 +298,84 @@ export interface IDynamoDBConfig extends IConstructConfig {
 
 
 /**
- * Configuration for audit logging.
+ * Configuration for audit logging via DynamoDB streams.
+ * 
+ * Audit events are captured by the observability system - this config only controls:
+ * - Which entities to audit (entity filtering)
+ * - Stream processing queue configuration
+ * 
+ * Backend routing (DynamoDB, CloudWatch, OTEL) is configured via observability:
+ * ```typescript
+ * // In your DI layer:
+ * import { createObservabilityConfig } from '@ten24group/fw24/observability';
+ * 
+ * DIContainer.ROOT.registerConfigProvider({
+ *   provide: 'observability',
+ *   useConfig: createObservabilityConfig({
+ *     backends: [
+ *       { type: 'dynamodb'},
+ *       { type: 'cloudwatch'}
+ *     ]
+ *   }),
+ *   priority: 10
+ * });
+ * ```
  */
-export interface AuditConfig extends IConstructConfig {
+interface AuditConfig extends IConstructConfig {
     /**
-     * Whether to enable audit logging.
+     * Whether to enable audit logging for DynamoDB streams.
      * @default false
      */
     enabled?: boolean;
+
     /**
      * List of allowed entity names to be audited.
      * If not provided, all entities will be audited except those in excludedEntityNames or system entities.
      * Takes precedence over excludedEntityNames if both are provided.
      */
     allowedEntityNames?: string[];
+
     /**
      * List of entity names to exclude from auditing.
      * If allowedEntityNames is provided, this field is ignored.
-     * If neither allowedEntityNames nor excludedEntityNames is provided, defaults to excluding system entities like 'auditLog'.
+     * If neither allowedEntityNames nor excludedEntityNames is provided, 
+     * defaults to excluding system entities like 'auditLog' and 'observabilityLog'.
      */
     excludedEntityNames?: string[];
-    /**
-     * The type of audit logger to use.
-     * @default 'console'
-     */
-    type?: AuditLoggerType;
+
     /**
      * Custom function properties for the audit Lambda.
      * Allows overriding function configuration like VPC, memory, timeout, etc.
-     * 
-     * **Note:** 
-     * - Properties specified here will override the queue's @Queue decorator functionProps
-     * - Ignored when `existingQueueName` is provided (existing queues have their own handlers)
      */
     functionProps?: NodejsFunctionProps;
+
     /**
-     * Options for the audit logger.
+     * Custom queue name for creating a new audit queue.
+     * If not provided, defaults to `${tableName}-entity-audit`
      */
-    cloudwatchOptions?: {
-        /**
-         * CloudWatch specific options
-         */
-        logGroupName?: string;
-        /**
-         * AWS region for the service (CloudWatch or DynamoDB)
-         */
-        region?: string;
-        /**
-         * Log Group Options
-         */
-        logGroupOptions?: LogGroupProps;
-    };
-    dynamodbstreamOptions?: {
-        /**
-         * Table to use for audit logs, defaults to the same table as the one being audited
-         */
-        auditTableName?: string;
-        /**
-         * TTL in seconds for DynamoDB records
-         */
-        ttl?: number;
-        /**
-         * Custom queue name for creating a new audit queue.
-         * If not provided, defaults to `${tableName}-entity-audit`
-         * 
-         * **Note:** Cannot be used with `existingQueueName`
-         */
-        queueName?: string;
-        /**
-         * Name of an existing framework-managed queue to use for audit processing.
-         * 
-         * **Important:** The existing queue must:
-         * - Be defined with @Queue('QueueName') decorator in your src/queues directory
-         * - Already be registered by the framework's QueueConstruct
-         * - Be configured to subscribe to the stream topic in its @Queue subscriptions
-         * 
-         * **Example:** 
-         * ```typescript
-         * @Queue('AuditProcessor', {
-         *   subscriptions: {
-         *     topics: [{ name: 'myTable-stream' }]
-         *   }
-         * })
-         * export class AuditProcessor extends BaseAuditLogger { ... }
-         * ```
-         * Then use: `existingQueueName: 'AuditProcessor'`
-         * 
-         * **Note:** Cannot be used with `queueName` or `queueProps`
-         */
-        existingQueueName?: string;
-        /**
-         * Path to queue handler file for manual registration.
-         * The queue handler must have `manualRegistration: true` in its @Queue config.
-         * DynamoDB construct will create the queue and automatically subscribe it to the stream topic.
-         * 
-         * **Example:**
-         * ```typescript
-         * // In src/queues/custom-audit.ts:
-         * @Queue('CustomAudit', {
-         *   manualRegistration: true,
-         *   resourceAccess: { tables: ['plusfan'] },
-         *   // ... other queue config
-         * })
-         * export class CustomAudit extends BaseAuditLogger { ... }
-         * 
-         * // In index.ts:
-         * audit: {
-         *   enabled: true,
-         *   type: AuditLoggerType.DYNAMODB,
-         *   dynamodbstreamOptions: {
-         *     queueHandlerPath: './src/queues/custom-audit.ts'
-         *   }
-         * }
-         * ```
-         * 
-         * **Note:** Cannot be used with `queueName`, `existingQueueName`, or custom `lambdaFunctionProps`
-         */
-        queueHandlerPath?: string;
-        /**
-         * Audit queue properties (only used when creating a new queue)
-         * 
-         * **Note:** Ignored when `existingQueueName` or `queueHandlerPath` is provided
-         */
-        queueProps?: QueueProps;
-        /**
-         * SQS event source properties
-         */
-        sqsEventSourceProps?: SqsEventSourceProps;
-    };
+    queueName?: string;
+
+    /**
+     * Name of an existing framework-managed queue to use for audit processing.
+     * The existing queue must be defined with @Queue decorator and subscribe to the stream topic.
+     */
+    existingQueueName?: string;
+
+    /**
+     * Path to queue handler file for manual registration.
+     * The queue handler must have `manualRegistration: true` in its @Queue config.
+     */
+    queueHandlerPath?: string;
+
+    /**
+     * Audit queue properties (only used when creating a new queue)
+     */
+    queueProps?: QueueProps;
+
+    /**
+     * SQS event source properties
+     */
+    sqsEventSourceProps?: SqsEventSourceProps;
 }
 
 export class DynamoDBConstruct implements FW24Construct {
@@ -537,7 +479,8 @@ export class DynamoDBConstruct implements FW24Construct {
         new TopicConstruct(streamTopicConfig).construct();
 
         // Create Lambda to process stream and publish to SNS
-        const streamProcessor = new LambdaFunction(this.mainStack, `${this.fw24.appName}-stream-processor`, {
+        // Include table name to make construct name unique when multiple tables have streams
+        const streamProcessor = new LambdaFunction(this.mainStack, `${this.dynamoDBConfig.table.name}-stream-processor`, {
             entry: join(__dirname, '../core/runtime/dynamodb-stream-processor.js'),
             environmentVariables: {
                 TOPIC_NAME: topicName,
@@ -612,12 +555,11 @@ export class DynamoDBConstruct implements FW24Construct {
             }
         } else {
             const auditConfig = config;
-            const options = auditConfig.dynamodbstreamOptions;
-            if (options?.existingQueueName) {
-                if (options?.queueName) {
-                    this.logger.warn(`${consumerName}: Both 'existingQueueName' and 'queueName' provided. Using existing queue '${options.existingQueueName}', ignoring queueName.`);
+            if (auditConfig.existingQueueName) {
+                if (auditConfig.queueName) {
+                    this.logger.warn(`${consumerName}: Both 'existingQueueName' and 'queueName' provided. Using existing queue '${auditConfig.existingQueueName}', ignoring queueName.`);
                 }
-                if (options?.queueProps) {
+                if (auditConfig.queueProps) {
                     this.logger.warn(`${consumerName}: 'queueProps' provided with 'existingQueueName'. Queue properties are ignored when using existing queues.`);
                 }
                 if (auditConfig.functionProps) {
@@ -658,27 +600,26 @@ export class DynamoDBConstruct implements FW24Construct {
         } else {
             // AuditConfig
             const auditConfig = config;
-            const options = auditConfig.dynamodbstreamOptions;
 
-            if (options && 'queueHandlerPath' in options && options.queueHandlerPath) {
+            if (auditConfig.queueHandlerPath) {
                 return {
                     type: 'handler',
-                    queueHandlerPath: options.queueHandlerPath,
+                    queueHandlerPath: auditConfig.queueHandlerPath,
                     functionProps: auditConfig.functionProps,
-                    sqsEventSourceProps: options.sqsEventSourceProps,
+                    sqsEventSourceProps: auditConfig.sqsEventSourceProps,
                 };
-            } else if (options && 'existingQueueName' in options && options.existingQueueName) {
+            } else if (auditConfig.existingQueueName) {
                 return {
                     type: 'existing',
-                    existingQueueName: options.existingQueueName,
+                    existingQueueName: auditConfig.existingQueueName,
                 };
             } else {
                 return {
                     type: 'new',
                     functionProps: auditConfig.functionProps,
-                    queueProps: options?.queueProps,
-                    sqsEventSourceProps: options?.sqsEventSourceProps,
-                    customQueueName: options?.queueName,
+                    queueProps: auditConfig.queueProps,
+                    sqsEventSourceProps: auditConfig.sqsEventSourceProps,
+                    customQueueName: auditConfig.queueName,
                 };
             }
         }
@@ -775,8 +716,10 @@ export class DynamoDBConstruct implements FW24Construct {
         const mergedSqsEventSourceProps = { ...queueConfig.sqsEventSourceProps, ...sqsEventSourceProps };
 
         // Create queue + lambda (same pattern as QueueConstruct, but with subscription to stream topic)
-        const queue = new QueueLambda(this.mainStack, `${queueName}-queue`, {
-            queueName: queueName,
+        // Include table name to make construct ID and actual queue name unique when multiple tables use same queue handler
+        const actualQueueName = `${this.dynamoDBConfig.table.name}-${queueName}`;
+        const queue = new QueueLambda(this.mainStack, `${actualQueueName}-queue`, {
+            queueName: actualQueueName,
             queueProps: queueConfig.queueProps,
             visibilityTimeoutSeconds: queueConfig.visibilityTimeoutSeconds,
             receiveMessageWaitTimeSeconds: queueConfig.receiveMessageWaitTimeSeconds,
@@ -802,9 +745,9 @@ export class DynamoDBConstruct implements FW24Construct {
         }) as Queue;
 
         // Register output (same as QueueConstruct does)
-        this.fw24.setConstructOutput(this, queueName, queue, OutputType.QUEUE, 'queueName');
+        this.fw24.setConstructOutput(this, actualQueueName, queue, OutputType.QUEUE, 'queueName');
 
-        this.logger.info(`${consumerName} queue created successfully: ${queueName}`);
+        this.logger.info(`${consumerName} queue created successfully: ${actualQueueName}`);
     }
 
     private setupWithNewQueue(
@@ -812,11 +755,14 @@ export class DynamoDBConstruct implements FW24Construct {
         consumerName: string,
         lambdaConfig: LambdaFunctionProps
     ): void {
-        const queueName = queueConfig.customQueueName || `${this.dynamoDBConfig.table.name}-${consumerName}`;
+        // Always prefix queue name with table name for uniqueness, even if custom name provided
+        const baseQueueName = queueConfig.customQueueName || consumerName;
+        const actualQueueName = `${this.dynamoDBConfig.table.name}-${baseQueueName}`;
 
+        // Include table name to make construct ID and actual queue name unique
         // QueueLambda will normalize sqsEventSourceProps with proper defaults
-        new QueueLambda(this.mainStack, `${this.fw24.appName}-${consumerName}-queue`, {
-            queueName: queueName,
+        new QueueLambda(this.mainStack, `${actualQueueName}-queue`, {
+            queueName: actualQueueName,
             lambdaFunctionProps: lambdaConfig,
             queueProps: queueConfig.queueProps || {},
             subscriptions: {
@@ -830,11 +776,8 @@ export class DynamoDBConstruct implements FW24Construct {
     }
 
     private async setupAuditProcessing(config: AuditConfig, tableInstance: TableV2): Promise<void> {
-        // Set audit configuration in environment variables for lambda functions
-        const envVars: Record<string, string> = {
-            [ AUDIT_ENV_KEYS.TYPE ]: config.type || AuditLoggerType.CLOUDWATCH,
-            [ AUDIT_ENV_KEYS.ENABLED ]: config.enabled?.toString() || 'false',
-        };
+        // Only entity filtering env vars - observability handles backend routing
+        const envVars: Record<string, string> = {};
 
         if (config.allowedEntityNames && config.allowedEntityNames.length > 0) {
             envVars[ AUDIT_ENV_KEYS.ALLOWED_ENTITY_NAMES ] = config.allowedEntityNames.join(',');
@@ -844,55 +787,21 @@ export class DynamoDBConstruct implements FW24Construct {
             envVars[ AUDIT_ENV_KEYS.EXCLUDED_ENTITY_NAMES ] = config.excludedEntityNames.join(',');
         }
 
-        if (config.type === AuditLoggerType.DYNAMODB) {
-            envVars[ AUDIT_ENV_KEYS.AUDIT_TABLE_NAME ] = config.dynamodbstreamOptions?.auditTableName || this.dynamoDBConfig.table.name;
-        } else {
-            envVars[ AUDIT_ENV_KEYS.REGION ] = config.cloudwatchOptions?.region || this.fw24.getConfig().region as string;
-            envVars[ AUDIT_ENV_KEYS.LOG_GROUP_NAME ] = config.cloudwatchOptions?.logGroupName || `/audit/logs/${this.fw24.getConfig().name}`;
-        }
-
-        let auditResourceAccess: IFunctionResourceAccess = {};
-
-        if (config.type === AuditLoggerType.DYNAMODB) {
-
-            const tableName = envVars[ AUDIT_ENV_KEYS.AUDIT_TABLE_NAME ];
-
-            auditResourceAccess = {
-                tables: [ {
-                    name: tableName,
-                    access: [ 'readwrite' ],
-                } ],
-            };
-
-            envVars[ AUDIT_ENV_KEYS.AUDIT_TABLE_NAME ] = tableName;
-        }
-
-        removeEmpty(envVars);
-
+        // No resource access needed - observability system handles its own table access via global resource access
         await this.setupStreamEventConsumers(
             tableInstance,
             'entity-audit',
             config,
             join(__dirname, '../audit/function/dynamodb-stream-handler.js'),
             envVars,
-            auditResourceAccess
+            {} // No additional resource access - observability handles it
         );
 
-        this.logger.debug('Setting up audit processing for table:', this.dynamoDBConfig.table.name);
-
-        if (!config.type || config.type === AuditLoggerType.CLOUDWATCH) {
-
-            const logGroupName = envVars[ AUDIT_ENV_KEYS.LOG_GROUP_NAME ];
-
-            this.logger.info(`Setting up CloudWatch audit log group with name ${logGroupName}`);
-
-            new LogGroup(this.mainStack, this.fw24.appName + '-audit-log-group', {
-                logGroupName: logGroupName,
-                retention: RetentionDays.ONE_YEAR,
-                removalPolicy: RemovalPolicy.DESTROY,
-                ...config.cloudwatchOptions?.logGroupOptions
-            });
-        }
+        this.logger.info('Audit processing enabled', {
+            table: this.dynamoDBConfig.table.name,
+            allowedEntities: config.allowedEntityNames,
+            excludedEntities: config.excludedEntityNames
+        });
     }
 
     private async setupSearchIndexingProcessing(config: SearchIndexingConfig, tableInstance: TableV2): Promise<void> {

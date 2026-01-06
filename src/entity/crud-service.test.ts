@@ -878,7 +878,7 @@ describe('findMatchingIndex', () => {
                 ],
                 or: [
                     { attribute: 'type', eq: 'span.start' },
-                    { attribute: 'type', eq: 'span.end' }
+                    { attribute: 'type', eq: 'span' }
                 ],
                 not: [
                     { attribute: 'name', eq: 'internal' }

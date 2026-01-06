@@ -16,6 +16,8 @@ describe('MeiliSearch Tasks API Integration', () => {
     }));
 
     controller = new MeiliSearchSystemController(DIContainer.ROOT);
+    // Manually set controllerName since the decorator is commented out
+    Object.defineProperty(controller, 'controllerName', { value: 'system/search', writable: true });
     harness = new LambdaTestHarness(controller as any);
     engine = DIContainer.ROOT.resolveSearchEngine() as MeiliSearchEngine;
   }, 30000);
@@ -28,7 +30,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       // Verify response format matches entity controller pattern
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
@@ -44,7 +46,7 @@ describe('MeiliSearch Tasks API Integration', () => {
       });
       expect(page1.statusCode).toBe(200);
       const body1 = JSON.parse(page1.body);
-      
+
       expect(body1.items.length).toBeLessThanOrEqual(2);
       // Cursor might be null if there are no more results
       if (body1.items.length === 2) {
@@ -54,19 +56,19 @@ describe('MeiliSearch Tasks API Integration', () => {
       // Get second page using cursor (if cursor exists)
       if (body1.cursor) {
         const page2 = await harness.get('/tasks', {
-          queryStringParameters: { 
+          queryStringParameters: {
             count: '2',
             cursor: body1.cursor
           }
         });
         expect(page2.statusCode).toBe(200);
         const body2 = JSON.parse(page2.body);
-        
+
         expect(body2.items.length).toBeLessThanOrEqual(2);
-        
+
         // Verify different tasks (if any exist)
         if (body1.items.length > 0 && body2.items.length > 0) {
-          expect(body2.items[0].uid).not.toBe(body1.items[0].uid);
+          expect(body2.items[ 0 ].uid).not.toBe(body1.items[ 0 ].uid);
         }
       }
     }, 30000);
@@ -75,7 +77,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should handle invalid cursor gracefully', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           cursor: 'invalid-cursor'
         }
@@ -83,7 +85,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
       // Invalid cursor should start from beginning, cursor can be string or null
@@ -98,11 +100,11 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('items');
       expect(body).toHaveProperty('cursor');
       expect(Array.isArray(body.items)).toBe(true);
-      
+
       // Cursor logic: if we got exactly the count number of items, there might be more
       // If we got fewer items than the count, cursor should be null
       if (body.items.length < 1) {
@@ -122,7 +124,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
@@ -130,14 +132,14 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should handle large count values', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '1000'
         }
       });
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
@@ -145,14 +147,14 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should handle count parameter (same as entity controller)', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10'
         }
       });
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
@@ -161,7 +163,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should prioritize count over limit parameter', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '5',
           limit: '20'
         }
@@ -169,7 +171,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
@@ -181,7 +183,7 @@ describe('MeiliSearch Tasks API Integration', () => {
     // New filter tests for entity-style query parameters
     it('should filter tasks by type using entity-style query', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'type.eq': 'documentAdditionOrUpdate'
         }
@@ -189,7 +191,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       if (body.items.length > 0) {
         expect(body.items.every((task: any) => task.type === 'documentAdditionOrUpdate')).toBe(true);
       }
@@ -197,7 +199,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should filter tasks by type using IN operator', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'type.in': 'documentAdditionOrUpdate,settingsUpdate'
         }
@@ -205,17 +207,17 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       if (body.items.length > 0) {
-        expect(body.items.every((task: any) => 
-          ['documentAdditionOrUpdate', 'settingsUpdate'].includes(task.type)
+        expect(body.items.every((task: any) =>
+          [ 'documentAdditionOrUpdate', 'settingsUpdate' ].includes(task.type)
         )).toBe(true);
       }
     }, 30000);
 
     it('should filter tasks by status using entity-style query', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'status.eq': 'succeeded'
         }
@@ -223,7 +225,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       if (body.items.length > 0) {
         expect(body.items.every((task: any) => task.status === 'succeeded')).toBe(true);
       }
@@ -231,7 +233,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should filter tasks by status using IN operator', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'status.in': 'succeeded,failed'
         }
@@ -239,10 +241,10 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       if (body.items.length > 0) {
-        expect(body.items.every((task: any) => 
-          ['succeeded', 'failed'].includes(task.status)
+        expect(body.items.every((task: any) =>
+          [ 'succeeded', 'failed' ].includes(task.status)
         )).toBe(true);
       }
     }, 30000);
@@ -254,12 +256,12 @@ describe('MeiliSearch Tasks API Integration', () => {
       });
       expect(allTasks.statusCode).toBe(200);
       const allTasksBody = JSON.parse(allTasks.body);
-      
+
       if (allTasksBody.items.length > 0) {
-        const taskUid = allTasksBody.items[0].uid;
-        
+        const taskUid = allTasksBody.items[ 0 ].uid;
+
         const response = await harness.get('/tasks', {
-          queryStringParameters: { 
+          queryStringParameters: {
             count: '10',
             'uid.eq': taskUid.toString()
           }
@@ -267,9 +269,9 @@ describe('MeiliSearch Tasks API Integration', () => {
 
         expect(response.statusCode).toBe(200);
         const body = JSON.parse(response.body);
-        
+
         expect(body.items.length).toBe(1);
-        expect(body.items[0].uid).toBe(taskUid);
+        expect(body.items[ 0 ].uid).toBe(taskUid);
       }
     }, 30000);
 
@@ -280,12 +282,12 @@ describe('MeiliSearch Tasks API Integration', () => {
       });
       expect(allTasks.statusCode).toBe(200);
       const allTasksBody = JSON.parse(allTasks.body);
-      
+
       if (allTasksBody.items.length > 0) {
         const taskUids = allTasksBody.items.map((task: any) => task.uid).slice(0, 2);
-        
+
         const response = await harness.get('/tasks', {
-          queryStringParameters: { 
+          queryStringParameters: {
             count: '10',
             'uid.in': taskUids.join(',')
           }
@@ -293,7 +295,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
         expect(response.statusCode).toBe(200);
         const body = JSON.parse(response.body);
-        
+
         if (body.items.length > 0) {
           expect(body.items.every((task: any) => taskUids.includes(task.uid))).toBe(true);
         }
@@ -302,7 +304,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should filter tasks by indexUid using entity-style query', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'indexUid.eq': 'test-index'
         }
@@ -310,7 +312,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       if (body.items.length > 0) {
         expect(body.items.every((task: any) => task.indexUid === 'test-index')).toBe(true);
       }
@@ -318,7 +320,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should filter tasks by indexUid using IN operator', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'indexUid.in': 'test-index,other-index'
         }
@@ -326,19 +328,19 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       if (body.items.length > 0) {
-        expect(body.items.every((task: any) => 
-          ['test-index', 'other-index'].includes(task.indexUid)
+        expect(body.items.every((task: any) =>
+          [ 'test-index', 'other-index' ].includes(task.indexUid)
         )).toBe(true);
       }
     }, 30000);
 
     it('should filter tasks by enqueuedAt using LT operator', async () => {
       const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000); // Tomorrow
-      
+
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'enqueuedAt.lt': futureDate.toISOString()
         }
@@ -346,7 +348,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       if (body.items.length > 0) {
         expect(body.items.every((task: any) => {
           const enqueuedAt = new Date(task.enqueuedAt);
@@ -357,9 +359,9 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should filter tasks by enqueuedAt using GT operator', async () => {
       const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000); // Yesterday
-      
+
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'enqueuedAt.gt': pastDate.toISOString()
         }
@@ -367,7 +369,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       if (body.items.length > 0) {
         expect(body.items.every((task: any) => {
           const enqueuedAt = new Date(task.enqueuedAt);
@@ -378,9 +380,9 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should filter tasks by startedAt using LT operator', async () => {
       const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000); // Tomorrow
-      
+
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'startedAt.lt': futureDate.toISOString()
         }
@@ -388,7 +390,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       if (body.items.length > 0) {
         expect(body.items.every((task: any) => {
           if (!task.startedAt) return true; // Skip tasks without startedAt
@@ -400,9 +402,9 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should filter tasks by startedAt using GT operator', async () => {
       const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000); // Yesterday
-      
+
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'startedAt.gt': pastDate.toISOString()
         }
@@ -410,7 +412,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       if (body.items.length > 0) {
         expect(body.items.every((task: any) => {
           if (!task.startedAt) return false; // Only include tasks with startedAt
@@ -422,9 +424,9 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should filter tasks by finishedAt using LT operator', async () => {
       const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000); // Tomorrow
-      
+
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'finishedAt.lt': futureDate.toISOString()
         }
@@ -432,7 +434,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       if (body.items.length > 0) {
         expect(body.items.every((task: any) => {
           if (!task.finishedAt) return true; // Skip tasks without finishedAt
@@ -444,9 +446,9 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should filter tasks by finishedAt using GT operator', async () => {
       const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000); // Yesterday
-      
+
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'finishedAt.gt': pastDate.toISOString()
         }
@@ -454,7 +456,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       if (body.items.length > 0) {
         expect(body.items.every((task: any) => {
           if (!task.finishedAt) return false; // Only include tasks with finishedAt
@@ -466,7 +468,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should filter tasks by canceledBy using entity-style query', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'canceledBy.eq': '123'
         }
@@ -474,7 +476,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
@@ -482,7 +484,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should filter tasks by batchUid using entity-style query', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'batchUid.eq': '456'
         }
@@ -490,7 +492,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
@@ -498,7 +500,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should filter tasks by batchUid using IN operator', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'batchUid.in': '456,789'
         }
@@ -506,7 +508,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
@@ -514,7 +516,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should handle complex entity-style filter combinations', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'type.eq': 'documentAdditionOrUpdate',
           'status.eq': 'succeeded',
@@ -525,25 +527,25 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
-      
+
       if (body.items.length > 0) {
         const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         expect(body.items.every((task: any) => {
           const enqueuedAt = new Date(task.enqueuedAt);
-          return task.type === 'documentAdditionOrUpdate' && 
-                 task.status === 'succeeded' && 
-                 enqueuedAt > weekAgo;
+          return task.type === 'documentAdditionOrUpdate' &&
+            task.status === 'succeeded' &&
+            enqueuedAt > weekAgo;
         })).toBe(true);
       }
     }, 30000);
 
     it('should handle attributes parameter', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '5',
           attributes: 'uid,indexUid,status,type,enqueuedAt,startedAt,finishedAt'
         }
@@ -551,13 +553,13 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
-      
+
       if (body.items.length > 0) {
-        const task = body.items[0];
+        const task = body.items[ 0 ];
         expect(task).toHaveProperty('uid');
         expect(task).toHaveProperty('indexUid');
         expect(task).toHaveProperty('status');
@@ -570,24 +572,24 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should return tasks in descending order (newest first)', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10'
         }
       });
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
-      
+
       // Verify tasks are in descending order (newest first)
       if (body.items.length > 1) {
         for (let i = 0; i < body.items.length - 1; i++) {
-          const currentTask = body.items[i];
-          const nextTask = body.items[i + 1];
-          
+          const currentTask = body.items[ i ];
+          const nextTask = body.items[ i + 1 ];
+
           // Compare enqueuedAt timestamps - newer tasks should come first
           const currentTime = new Date(currentTask.enqueuedAt).getTime();
           const nextTime = new Date(nextTask.enqueuedAt).getTime();
@@ -599,7 +601,7 @@ describe('MeiliSearch Tasks API Integration', () => {
     it('should handle all valid task types', async () => {
       const validTypes = [
         'documentAdditionOrUpdate',
-        'documentEdition', 
+        'documentEdition',
         'documentDeletion',
         'settingsUpdate',
         'indexCreation',
@@ -615,7 +617,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       for (const taskType of validTypes) {
         const response = await harness.get('/tasks', {
-          queryStringParameters: { 
+          queryStringParameters: {
             count: '5',
             'type.eq': taskType
           }
@@ -623,11 +625,11 @@ describe('MeiliSearch Tasks API Integration', () => {
 
         expect(response.statusCode).toBe(200);
         const body = JSON.parse(response.body);
-        
+
         expect(body).toHaveProperty('cursor');
         expect(body).toHaveProperty('items');
         expect(Array.isArray(body.items)).toBe(true);
-        
+
         // If there are tasks of this type, verify they match
         if (body.items.length > 0) {
           expect(body.items.every((task: any) => task.type === taskType)).toBe(true);
@@ -646,7 +648,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       for (const status of validStatuses) {
         const response = await harness.get('/tasks', {
-          queryStringParameters: { 
+          queryStringParameters: {
             count: '5',
             'status.eq': status
           }
@@ -654,11 +656,11 @@ describe('MeiliSearch Tasks API Integration', () => {
 
         expect(response.statusCode).toBe(200);
         const body = JSON.parse(response.body);
-        
+
         expect(body).toHaveProperty('cursor');
         expect(body).toHaveProperty('items');
         expect(Array.isArray(body.items)).toBe(true);
-        
+
         // If there are tasks with this status, verify they match
         if (body.items.length > 0) {
           expect(body.items.every((task: any) => task.status === status)).toBe(true);
@@ -668,7 +670,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should handle multiple filter combinations with different operators', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'type.in': 'documentAdditionOrUpdate,settingsUpdate',
           'status.in': 'succeeded,failed',
@@ -680,30 +682,30 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
-      
+
       if (body.items.length > 0) {
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
         const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-        
+
         expect(body.items.every((task: any) => {
           const enqueuedAt = new Date(task.enqueuedAt);
           const startedAt = task.startedAt ? new Date(task.startedAt) : null;
-          
-          return ['documentAdditionOrUpdate', 'settingsUpdate'].includes(task.type) &&
-                 ['succeeded', 'failed'].includes(task.status) &&
-                 enqueuedAt > thirtyDaysAgo &&
-                 (!startedAt || startedAt < tomorrow);
+
+          return [ 'documentAdditionOrUpdate', 'settingsUpdate' ].includes(task.type) &&
+            [ 'succeeded', 'failed' ].includes(task.status) &&
+            enqueuedAt > thirtyDaysAgo &&
+            (!startedAt || startedAt < tomorrow);
         })).toBe(true);
       }
     }, 30000);
 
     it('should handle empty result sets gracefully', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'uid.eq': '999999999' // Non-existent UID
         }
@@ -711,7 +713,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      
+
       expect(body).toHaveProperty('cursor');
       expect(body).toHaveProperty('items');
       expect(Array.isArray(body.items)).toBe(true);
@@ -721,7 +723,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
     it('should handle invalid filter values gracefully', async () => {
       const response = await harness.get('/tasks', {
-        queryStringParameters: { 
+        queryStringParameters: {
           count: '10',
           'type.eq': 'invalidType',
           'status.eq': 'invalidStatus'
@@ -730,7 +732,7 @@ describe('MeiliSearch Tasks API Integration', () => {
 
       expect(response.statusCode).toBe(500);
       const body = JSON.parse(response.body);
-      
+
       // Framework error response structure
       expect(body).toHaveProperty('message');
       expect(body).toHaveProperty('status');

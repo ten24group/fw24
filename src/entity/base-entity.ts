@@ -627,6 +627,40 @@ export interface FW24AttributeExtensions {
    * Supports both readonly and mutable arrays for compatibility with 'as const' entity schemas.
    */
   readonly validations?: ReadonlyArray<any> | Array<any>;
+
+  /**
+   * Enable compression for this attribute.
+   * 
+   * **Usage:**
+   * - `compressed: true` - Use default threshold (10KB)
+   * - `compressed: { threshold: 50 * 1024 }` - Custom threshold (50KB)
+   * 
+   * **Behavior:**
+   * - Write: Automatically compresses if size exceeds threshold
+   * - Read: Automatically decompresses when loading from DB
+   * - Storage: Creates `{ _compressed: true, _algorithm: 'gzip', _data: base64, ... }`
+   * - UI: UI24 recognizes `_compressed` marker and auto-decompresses for display
+   * 
+   * **Recommended for:**
+   * - Large JSON payloads (e.g., `metadata`, `data`, `context`)
+   * - API responses stored in DB
+   * - Nested objects with deep structures
+   * 
+   * @example
+   * ```ts
+   * attributes: {
+   *   apiResponse: {
+   *     type: 'any',
+   *     compressed: true  // Auto-compress if > 10KB
+   *   },
+   *   largeMetadata: {
+   *     type: 'map',
+   *     compressed: { threshold: 50 * 1024 }  // Compress if > 50KB
+   *   }
+   * }
+   * ```
+   */
+  readonly compressed?: boolean | { threshold: number };
 }
 
 /**
@@ -669,7 +703,7 @@ export type EntityAttribute = Attribute & FW24AttributeExtensions & FieldMetadat
  * The appropriate metadata type is determined by the `fieldType` property.
  */
 export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldMetadata
-  | TimeFieldMetadata | DateTimeFieldMetadata | DurationFieldMetadata | BooleanFieldMetadata
+  | TimeFieldMetadata | DateTimeFieldMetadata | DurationFieldMetadata | TTLFieldMetadata | BooleanFieldMetadata
   | SelectFieldMetadata | RadioFieldMetadata | CheckboxFieldMetadata
   | FileFieldMetadata | RangeFieldMetadata | SliderFieldMetadata | ColorFieldMetadata
   | ImageFieldMetadata | VideoFieldMetadata | AudioFieldMetadata
@@ -721,10 +755,16 @@ export interface BaseFieldMetadata {
   booleanLabels?: BooleanFieldLabels;
 
   // Link configuration for rendering field as internal link (non-relation fields)
+  /** @deprecated Optional - presence of linkConfig is sufficient to indicate a link */
   isLink?: boolean;
+  /**
+   * Link configuration for rendering field as internal link (non-relation fields)
+   * When isLink is true, the field will be rendered as a link using linkConfig
+   */
   linkConfig?: {
     routePattern: string;
-    displayText?: string;
+    /** Display text for the link - supports templates like "View {entityName}: {entityId}" */
+    displayText?: Template;
   };
 
   /**
@@ -1815,13 +1855,20 @@ interface DurationFieldMetadata extends BaseFieldMetadata {
    * @example
    * // For a field storing seconds (e.g., duration: 90)
    * durationUnit: 'seconds'  // Displays as "1m 30s"
+   * 
+   * @example
+   * // For a field storing days (e.g., retentionDays: 30)
+   * durationUnit: 'days'  // Displays as "30d" or "1mo"
    */
-  durationUnit?: 'ms' | 'seconds' | 'minutes' | 'hours';
+  durationUnit?: 'ms' | 'seconds' | 'minutes' | 'hours' | 'days';
   /**
-   * Duration format: 'seconds', 'minutes', 'hours', 'days', 'human' (e.g., '2h 30m')
-   * Default: 'human'
+   * Display format for duration. Default: 'auto' (shows largest relevant units)
+   * - 'auto': Automatically shows days/hours/minutes/seconds as needed
+   * - 'long': Shows all units (e.g., "2d 3h 15m 30s")
+   * - 'short': Shows only 2 most significant units (e.g., "2d 3h")
+   * - 'compact': Shows single most significant unit (e.g., "2d")
    */
-  format?: 'seconds' | 'minutes' | 'hours' | 'days' | 'human';
+  durationFormat?: 'auto' | 'long' | 'short' | 'compact';
   /**
    * Minimum duration value (in the specified unit)
    */
@@ -1830,6 +1877,45 @@ interface DurationFieldMetadata extends BaseFieldMetadata {
    * Maximum duration value (in the specified unit)
    */
   maxDuration?: number;
+}
+
+interface TTLFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'ttl';
+  /**
+   * Input unit of the TTL value stored in the database.
+   * The renderer will convert from this unit to human-readable format.
+   * Default: 'seconds' (Unix timestamp)
+   * 
+   * TTL (Time To Live) is typically stored as a Unix timestamp representing
+   * when the item expires. The UI calculates and displays the remaining time
+   * until expiration.
+   * 
+   * @example
+   * // For a field storing Unix timestamp in seconds (DynamoDB TTL format)
+   * ttlUnit: 'seconds'  // Displays as "5d 3h 15m 22s" (time until expiration)
+   * 
+   * @example
+   * // For a field storing Unix timestamp in milliseconds
+   * ttlUnit: 'ms'  // Displays calculated remaining time
+   */
+  ttlUnit?: 'ms' | 'seconds' | 'minutes' | 'hours';
+  /**
+   * Display format for TTL. Default: 'auto'
+   * - 'auto': Automatically shows appropriate units based on remaining time
+   * - 'long': Shows all units (e.g., "2d 3h 15m 30s remaining")
+   * - 'short': Shows only 2 most significant units
+   * - 'compact': Shows single most significant unit with suffix
+   */
+  ttlFormat?: 'auto' | 'long' | 'short' | 'compact';
+  /**
+   * Auto-refresh TTL display every N seconds. Default: 0 (disabled)
+   * Useful for countdown timers. Recommended: 1-60 seconds
+   * 
+   * @example
+   * ttlAutoRefresh: 1   // Refresh every second (live countdown)
+   * ttlAutoRefresh: 30  // Refresh every 30 seconds (less aggressive)
+   */
+  ttlAutoRefresh?: number;
 }
 
 interface ColorFieldMetadata extends BaseFieldMetadata {
@@ -3525,6 +3611,7 @@ export interface EntitySchema<
     readonly excludeFromAdminUpdate?: boolean, // default is false
     readonly excludeFromAdminDelete?: boolean, // default is false
     readonly excludeFromAdminDuplicate?: boolean, // default is false
+    readonly excludeAuditActions?: boolean, // default is false - disable automatic audit log actions for this entity
 
     readonly CRUDApiPath?: string, // default is ''
 

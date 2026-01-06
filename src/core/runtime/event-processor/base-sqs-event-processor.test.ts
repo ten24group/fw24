@@ -2,6 +2,7 @@ import { BaseSQSEventProcessor } from './base-sqs-event-processor';
 import { BaseEventRecord, IEventDataExtractor } from '../../types/event-processor-types';
 import { SQSEvent } from 'aws-lambda';
 import { describe, expect, it, jest, beforeEach } from '@jest/globals';
+import { SpanObserver } from '../../../observability';
 
 // Mock implementation for testing
 class MockEventDataExtractor implements IEventDataExtractor<SQSEvent, any> {
@@ -104,20 +105,20 @@ describe('BaseSQSEventProcessor', () => {
   describe('Constructor', () => {
     it('should initialize with default record mode', () => {
       processor = new TestSQSEventProcessor();
-      expect(processor['processMode']).toBe('record');
+      expect(processor[ 'processMode' ]).toBe('record');
     });
 
     it('should initialize with batch mode when specified', () => {
       processor = new TestSQSEventProcessor('batch');
-      expect(processor['processMode']).toBe('batch');
+      expect(processor[ 'processMode' ]).toBe('batch');
     });
 
     it('should throw error when extractor is not provided', () => {
       expect(() => {
         new (class extends BaseSQSEventProcessor<any> {
-          async initialize(): Promise<void> {}
-          protected async processRecord(): Promise<void> {}
-          protected async processRecordsBatch(): Promise<void> {}
+          async initialize(): Promise<void> { }
+          protected async processRecord(): Promise<void> { }
+          protected async processRecordsBatch(): Promise<void> { }
         })(null as any);
       }).toThrow('IEventDataExtractor is required for BaseSQSEventProcessor');
     });
@@ -136,8 +137,8 @@ describe('BaseSQSEventProcessor', () => {
       expect(processor.preprocessCalls).toHaveLength(2);
       expect(processor.postprocessCalls).toHaveLength(2);
 
-      expect(processor.processRecordCalls[0].entityName).toBe('entity-0');
-      expect(processor.processRecordCalls[1].entityName).toBe('entity-1');
+      expect(processor.processRecordCalls[ 0 ].entityName).toBe('entity-0');
+      expect(processor.processRecordCalls[ 1 ].entityName).toBe('entity-1');
     });
 
     it('should handle empty records array', async () => {
@@ -155,7 +156,50 @@ describe('BaseSQSEventProcessor', () => {
       await processor.process(mockSQSEvent, {} as any);
 
       expect(processor.processRecordCalls).toHaveLength(1);
-      expect(processor.processRecordCalls[0].entityName).toBe('entity-0');
+      expect(processor.processRecordCalls[ 0 ].entityName).toBe('entity-0');
+    });
+
+    it('should honor per-record trace context (mixed batch) by setting causedBy per record (no remote parent)', async () => {
+      // Arrange mixed upstream trace info via message attributes
+      mockSQSEvent.Records[ 0 ].messageAttributes = {
+        correlationId: { stringValue: 'c1', dataType: 'String' },
+        causedBy: { stringValue: 'root', dataType: 'String' },
+        // parentObservabilityLogId is not propagated across hops under the strict contract
+      };
+      mockSQSEvent.Records[ 1 ].messageAttributes = {
+        correlationId: { stringValue: 'c2', dataType: 'String' },
+        causedBy: { stringValue: 'root', dataType: 'String' },
+        // parentObservabilityLogId is not propagated across hops under the strict contract
+      };
+
+      const spy = jest.spyOn(SpanObserver, 'withSpan');
+
+      const mockContext = {
+        callbackWaitsForEmptyEventLoop: true,
+        functionName: 'test-function',
+        functionVersion: '1',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-function',
+        memoryLimitInMB: '128',
+        awsRequestId: 'invocation-1',
+        logGroupName: 'test-log-group',
+        logStreamName: 'test-log-stream',
+        getRemainingTimeInMillis: () => 30000,
+        done: () => { },
+        fail: () => { },
+        succeed: () => { }
+      };
+
+      await processor.LambdaHandler(mockSQSEvent, mockContext as any);
+
+      const recordCalls = spy.mock.calls.filter((c) => String(c[ 0 ]).includes('record'));
+      expect(recordCalls.length).toBeGreaterThanOrEqual(2);
+
+      const opts0 = recordCalls[ 0 ][ 2 ] as any;
+      const opts1 = recordCalls[ 1 ][ 2 ] as any;
+      // In strict-hierarchy mode, correlationId is per-invocation; upstream correlationId becomes causedBy.
+      expect([ opts0.causedBy, opts1.causedBy ].sort()).toEqual([ 'c1', 'c2' ].sort());
+      expect(opts0.parentObservabilityLogId).toBeUndefined();
+      expect(opts1.parentObservabilityLogId).toBeUndefined();
     });
   });
 
@@ -172,10 +216,10 @@ describe('BaseSQSEventProcessor', () => {
       expect(processor.preprocessCalls).toHaveLength(2);
       expect(processor.postprocessCalls).toHaveLength(2);
 
-      const batchCall = processor.processRecordsBatchCalls[0];
+      const batchCall = processor.processRecordsBatchCalls[ 0 ];
       expect(batchCall).toHaveLength(2);
-      expect(batchCall[0].entityName).toBe('entity-0');
-      expect(batchCall[1].entityName).toBe('entity-1');
+      expect(batchCall[ 0 ].entityName).toBe('entity-0');
+      expect(batchCall[ 1 ].entityName).toBe('entity-1');
     });
 
     it('should handle empty records array in batch mode', async () => {
@@ -194,8 +238,8 @@ describe('BaseSQSEventProcessor', () => {
 
       expect(processor.processRecordCalls).toHaveLength(0);
       expect(processor.processRecordsBatchCalls).toHaveLength(1);
-      expect(processor.processRecordsBatchCalls[0]).toHaveLength(1);
-      expect(processor.processRecordsBatchCalls[0][0].entityName).toBe('entity-0');
+      expect(processor.processRecordsBatchCalls[ 0 ]).toHaveLength(1);
+      expect(processor.processRecordsBatchCalls[ 0 ][ 0 ].entityName).toBe('entity-0');
     });
   });
 
@@ -218,14 +262,15 @@ describe('BaseSQSEventProcessor', () => {
         logGroupName: 'test-log-group',
         logStreamName: 'test-log-stream',
         getRemainingTimeInMillis: () => 30000,
-        done: () => {},
-        fail: () => {},
-        succeed: () => {}
+        done: () => { },
+        fail: () => { },
+        succeed: () => { }
       };
 
       await processor.LambdaHandler(mockSQSEvent, mockContext);
 
       expect(initializeSpy).toHaveBeenCalledWith(mockSQSEvent, mockContext);
+      // BaseSQSEventProcessor calls process(event, context) (no third arg)
       expect(processSpy).toHaveBeenCalledWith(mockSQSEvent, mockContext);
     });
   });
@@ -234,16 +279,16 @@ describe('BaseSQSEventProcessor', () => {
     it('should track processing time in record mode', async () => {
       processor = new TestSQSEventProcessor('record');
       const startTime = Date.now();
-      
+
       await processor.process(mockSQSEvent, {} as any);
-      
+
       const endTime = Date.now();
       const duration = endTime - startTime;
-      
+
       // Should complete within reasonable time (less than 1 second)
       expect(duration).toBeGreaterThanOrEqual(0);
       expect(duration).toBeLessThan(1000);
-      
+
       // Should have processed the expected number of records
       expect(processor.processRecordCalls).toHaveLength(2);
     });
@@ -251,19 +296,19 @@ describe('BaseSQSEventProcessor', () => {
     it('should track processing time in batch mode', async () => {
       processor = new TestSQSEventProcessor('batch');
       const startTime = Date.now();
-      
+
       await processor.process(mockSQSEvent, {} as any);
-      
+
       const endTime = Date.now();
       const duration = endTime - startTime;
-      
+
       // Should complete within reasonable time (less than 1 second)
       expect(duration).toBeGreaterThanOrEqual(0);
       expect(duration).toBeLessThan(1000);
-      
+
       // Should have processed records in batch mode
       expect(processor.processRecordsBatchCalls).toHaveLength(1);
-      expect(processor.processRecordsBatchCalls[0]).toHaveLength(2);
+      expect(processor.processRecordsBatchCalls[ 0 ]).toHaveLength(2);
     });
   });
 });

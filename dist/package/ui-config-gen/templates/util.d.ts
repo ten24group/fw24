@@ -272,10 +272,11 @@ export type ListingPropConfig = Pick<FieldMetadata, 'fieldType' | 'placeholder' 
     relationConfig?: IRelationFieldConfig;
     template?: Template;
     isIdentifier?: boolean;
+    /** @deprecated Optional - presence of linkConfig is sufficient */
     isLink?: boolean;
     linkConfig?: {
         routePattern: string;
-        displayText?: string;
+        displayText?: Template;
     };
 };
 /**

@@ -15,21 +15,32 @@ describe("MeiliSearchEngine", () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
+    // Helper function to create mock EnqueuedTaskPromise
+    const createMockEnqueuedTaskPromise = (taskUid: number) => {
+      const mockPromise = Promise.resolve({ taskUid }) as any;
+      mockPromise.waitTask = jest.fn().mockResolvedValue({ taskUid });
+      return mockPromise;
+    };
+
     mockIndex = {
-      addDocuments: jest.fn().mockResolvedValue({ taskUid: 1 }),
+      addDocuments: jest.fn().mockReturnValue(createMockEnqueuedTaskPromise(1)),
       search: jest.fn(),
-      deleteDocuments: jest.fn().mockResolvedValue({ taskUid: 1 }),
-      updateSettings: jest.fn().mockResolvedValue({ taskUid: 1 }),
-      updateDocuments: jest.fn().mockResolvedValue({ taskUid: 2 }),
+      deleteDocuments: jest.fn().mockReturnValue(createMockEnqueuedTaskPromise(1)),
+      updateSettings: jest.fn().mockReturnValue(createMockEnqueuedTaskPromise(1)),
+      updateDocuments: jest.fn().mockReturnValue(createMockEnqueuedTaskPromise(2)),
       getDocument: jest.fn(),
       getDocuments: jest.fn(),
-      deleteAllDocuments: jest.fn().mockResolvedValue({ taskUid: 3 }),
+      deleteAllDocuments: jest.fn().mockReturnValue(createMockEnqueuedTaskPromise(3)),
       getStats: jest.fn(),
     } as Partial<Index> as jest.Mocked<Index>;
 
+    // Default mock for createIndex - returns a promise with waitTask method
+    const defaultMockPromise = Promise.resolve(undefined) as any;
+    defaultMockPromise.waitTask = jest.fn().mockResolvedValue(undefined);
+
     mockClient = {
       index: jest.fn().mockReturnValue(mockIndex),
-      createIndex: jest.fn().mockResolvedValue(mockIndex),
+      createIndex: jest.fn().mockReturnValue(defaultMockPromise),
       multiSearch: jest.fn(),
       getTask: jest.fn(),
     } as Partial<MeiliSearch> as jest.Mocked<MeiliSearch>;
@@ -196,10 +207,10 @@ describe("MeiliSearchEngine", () => {
 
         const fstr = (mockIndex.search.mock.calls[ 0 ][ 1 ] as SearchParams)
           .filter;
-        // exists: true uses NOT (f IS NULL) in MeiliSearch
-        expect(fstr).toContain("NOT (f IS NULL)");
-        expect(fstr).toContain("g IS NULL");
-        expect(fstr).toContain("h IS NULL");
+        // EXISTS semantics: use `field EXISTS` / `NOT (field EXISTS)` (not IS NULL).
+        expect(fstr).toContain("f EXISTS");
+        expect(fstr).toContain("NOT (g EXISTS)");
+        expect(fstr).toContain("NOT (h EXISTS)");
       });
 
       it("supports contains and startsWith", async () => {
@@ -375,7 +386,7 @@ describe("MeiliSearchEngine", () => {
           expect(fstr).toContain("stringField = 'text'");
           expect(fstr).toContain("numberField > 42");
           expect(fstr).toContain("booleanField = true");
-          expect(fstr).toContain("nullField IS NULL");
+          expect(fstr).toContain("NOT (nullField EXISTS)");
         });
 
         it("handles empty array values in IN operators", async () => {
@@ -866,7 +877,10 @@ describe("MeiliSearchEngine", () => {
 
   describe("error handling", () => {
     it("should handle index creation failures", async () => {
-      mockClient.createIndex.mockRejectedValue(new Error("Creation failed"));
+      // Mock createIndex to return a promise with waitTask that rejects
+      const mockPromise = Promise.resolve(undefined) as any;
+      mockPromise.waitTask = jest.fn().mockRejectedValue(new Error("Creation failed"));
+      mockClient.createIndex.mockReturnValue(mockPromise);
 
       await expect(
         engine.indexDocuments([ { id: "1" } ], searchConfig)
@@ -874,7 +888,10 @@ describe("MeiliSearchEngine", () => {
     });
 
     it("should handle connection errors in search", async () => {
-      mockIndex.search.mockRejectedValue(new Error("Connection timeout"));
+      // Mock search to throw an error when called
+      mockIndex.search.mockImplementation(() => {
+        throw new Error("Connection timeout");
+      });
 
       await expect(
         engine.search({ search: "test" }, searchConfig)

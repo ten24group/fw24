@@ -16,6 +16,14 @@ export declare abstract class BaseSearchIndexer<T extends IEventDataExtractor<TE
     protected preprocessRecord(record: BaseEventRecord<any>): Promise<BaseEventRecord<any> | null>;
     protected processRecord(record: BaseEventRecord<TPayload>): Promise<void>;
     protected processRecordsBatch(records: BaseEventRecord<TPayload>[]): Promise<void>;
+    /**
+     * Process batch index using BatchProgress.chunk
+     */
+    private processBatchIndex;
+    /**
+     * Process batch delete using chunked deletion.
+     */
+    private processBatchDelete;
     protected createSearchIndexEntry(record: BaseEventRecord<TPayload>): SearchIndexEntry;
     /**
      * Transform payload data for search indexing based on source type

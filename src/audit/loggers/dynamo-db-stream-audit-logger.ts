@@ -5,47 +5,34 @@ import { DynamoDBEventDataExtractor } from '../../core/runtime/event-processor/d
 import { BaseEventRecord, ChangeStreamPayload } from '../../core/types/event-processor-types';
 import { createLogger } from '../../logging';
 import { resolveEnvValueFor } from '../../utils';
-import { AUDIT_ENV_KEYS, AuditEntry, AuditLoggerType, IAuditLogger } from '../interfaces';
-import { AuditLoggerFactory } from './factory';
+import { AUDIT_ENV_KEYS } from '../interfaces';
+import { AuditObserver } from '../../observability';
+import { Actor } from '../../core/types/execution-context';
+import { getChangedProperties } from '../helpers/change-detection';
 
 /**
- * Default audit handler that extends BaseSQSEventProcessor
- * Custom audit handlers can extend this to add custom processing while reusing framework utilities
+ * DynamoDB Stream Audit Logger
+ * 
+ * Processes DynamoDB stream events and captures audit events via the observability system.
+ * 
+ * Responsibilities:
+ * - Listen to DynamoDB stream events (via SQS)
+ * - Filter by entity names (allowedEntityNames/excludedEntityNames)
+ * - Detect changes between old and new images
+ * - Extract actor context
+ * - Call AuditObserver to capture events (fire-and-forget, auto-flushed)
+ * 
+ * Custom audit handlers can extend this to add custom processing while reusing framework utilities.
  */
 export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEventDataExtractor> {
-
-  private auditLogger?: IAuditLogger;
-
   constructor() {
-    super(new DynamoDBEventDataExtractor());
+    // Use 'batch' mode to avoid creating per-record wrapper spans
+    // Audit logs are the primary signal - we don't need intermediate spans for each record
+    super(new DynamoDBEventDataExtractor(), { processMode: 'batch' });
   }
 
   async initialize(_event: DynamoDBStreamEvent | SQSEvent): Promise<void> {
-  }
-
-  // override this method to initialize custom audit-logger
-  protected initializeAuditLogger() {
-
-    const auditLoggerType = resolveEnvValueFor({ key: AUDIT_ENV_KEYS.TYPE }) || AuditLoggerType.CLOUDWATCH;
-
-    this.auditLogger = AuditLoggerFactory.getInstance().create({
-      type: auditLoggerType as AuditLoggerType,
-      enabled: true
-    });
-
-    if (!this.auditLogger) {
-      throw new Error(`Audit logger not initialized for type ${auditLoggerType}`);
-    }
-
-    this.logger.debug('Audit logger initialized', { auditLoggerType });
-  }
-
-  protected getAuditLogger(): IAuditLogger {
-    if (!this.auditLogger) {
-      this.initializeAuditLogger();
-    }
-
-    return this.auditLogger!;
+    // No initialization needed - AuditObserver is ready to use
   }
 
   protected getAllowedEntityNames(): string[] | undefined {
@@ -63,7 +50,7 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
    * Logic:
    * - If allowedEntityNames is provided, only audit entities in that list
    * - If excludedEntityNames is provided (and no allowedEntityNames), audit all except excluded
-   * - If neither is provided, audit all except 'auditLog' (default behavior)
+   * - If neither is provided, audit all except 'auditLog' and 'observabilityLog' (default behavior)
    * - allowedEntityNames takes precedence over excludedEntityNames
    */
   protected shouldAuditEntity(entityName: string): boolean {
@@ -81,15 +68,14 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     }
 
     // Default behavior: audit all except system entities
-    return entityName !== 'auditLog';
+    return entityName !== 'auditLog' && entityName !== 'observabilityLog';
   }
 
   protected async preprocessRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<BaseEventRecord<ChangeStreamPayload> | null> {
-
     const { entityName, eventType } = record;
 
     if (![ 'create', 'update', 'delete' ].includes(eventType)) {
-      this.logger.warn('Skipping record with event type', { eventType });
+      this.logger.debug('Skipping record with unsupported event type', { eventType });
       return null;
     }
 
@@ -99,13 +85,7 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
     }
 
     if (!this.shouldAuditEntity(entityName)) {
-      const allowedEntityNames = this.getAllowedEntityNames();
-      const excludedEntityNames = this.getExcludedEntityNames();
-      // this.logger.warn('Skipping audit log for entity based on filtering rules', { 
-      //   entityName, 
-      //   allowedEntityNames, 
-      //   excludedEntityNames 
-      // });
+      this.logger.debug('Skipping audit for filtered entity', { entityName });
       return null;
     }
 
@@ -113,294 +93,216 @@ export class DynamoDBStreamAuditLogger extends BaseSQSEventProcessor<DynamoDBEve
   }
 
   protected async processRecord(record: BaseEventRecord<ChangeStreamPayload>): Promise<void> {
-
-    const auditEntry = this.makeAuditEntry(record);
-
-    if (!auditEntry) {
-      this.logger.info('No audit entry created, skipping', { record });
-      return;
-    }
-
-    await this.writeAuditEntry(auditEntry);
-
-    this.logger.debug('Successfully wrote audit entry', { auditEntry });
+    await this.captureAuditEvent(record);
   }
 
   protected async processRecordsBatch(records: BaseEventRecord<ChangeStreamPayload>[]): Promise<void> {
-    // For audit logging, process each record individually to maintain detailed audit trail
-    const auditLogger = this.getAuditLogger();
-
     for (const record of records) {
-      const auditEntry = this.makeAuditEntry(record);
-      if (auditEntry) {
-        await auditLogger.audit({ auditEntry });
-        this.logger.debug('Successfully wrote audit entry in batch', { auditEntry });
-      }
+      await this.captureAuditEvent(record);
     }
   }
 
-  protected makeAuditEntry(record: BaseEventRecord<ChangeStreamPayload>): AuditEntry | undefined {
+  /**
+   * Capture audit event using the observability system.
+   * Passes maximum data: before image, after image, and computed diff.
+   */
+  protected async captureAuditEvent(record: BaseEventRecord<ChangeStreamPayload>): Promise<void> {
     const { entityName, eventType, timestamp, entityId, payload: { newImage, oldImage } } = record;
-    // Get only the changed properties
+
+    // Compute changes (diff between old and new)
     const changes = getChangedProperties(oldImage, newImage);
 
-    // Skip if no changes were detected
-    if (Object.keys(changes).length === 0) {
-      this.logger.debug('No changes detected, skipping audit entry');
+    // Skip no-op updates entirely (no changes detected)
+    if (eventType === 'update' && Object.keys(changes).length === 0) {
+      this.logger.debug('Skipping no-op update (no changes detected)', {
+        entityName,
+        entityId,
+      });
       return;
     }
 
-    // Extract actor context from the _actor field
-    const rawActorContext = newImage?._actor || oldImage?._actor;
+    // Extract actor + trace context ONLY from newImage.
+    // oldImage contains STALE context (who created/last-updated the item), NOT who is performing the current op.
+    // For DELETEs (where newImage is null), we unfortunately cannot determine the actor/trace from the stream record alone.
+    // Better to have "unknown" actor than "incorrect" actor.
+    const traceImage = newImage;
 
-    const actorContext = rawActorContext;
+    // Extract actor context with staleness detection
+    // Use current time if event timestamp is not available
+    const eventTimestamp = timestamp ?? Date.now();
+    const actorData = this.extractActorWithStalenessCheck(traceImage, eventTimestamp);
 
-    // Fallback to visible actor fields if _actor not available (backward compatibility)
-    const fallbackActor: any = {};
-    if (newImage?.updatedBy || newImage?.createdBy || oldImage?.updatedBy || oldImage?.createdBy) {
-      fallbackActor.actorId = newImage?.updatedBy || newImage?.createdBy || oldImage?.updatedBy || oldImage?.createdBy;
+    // Only use actor and correlation if data is fresh
+    const actor = actorData.isFresh ? actorData.actor : undefined;
+    const causedBy = actorData.isFresh ? traceImage?._actor?.correlationId : undefined;
+
+    if (!actorData.isFresh && actorData.actor) {
+      this.logger.debug('Actor data is stale, skipping correlation', {
+        entityName,
+        entityId,
+        eventType,
+        actorTimestamp: actorData.actorTimestamp,
+        eventTimestamp: timestamp,
+        staleness: actorData.stalenessMs,
+      });
     }
-    if (newImage?.tenantId || oldImage?.tenantId) {
-      fallbackActor.tenantId = newImage?.tenantId || oldImage?.tenantId;
+
+    // Trace linkage:
+    // - parentObservabilityLogId is strict in-slice only (never propagated)
+    // - causedBy links audit logs back to the originating request that modified the entity
+    // - Both are only used if actor data is fresh (not stale)
+
+    // entityName is guaranteed by preprocessRecord check
+    const entity = entityName!;
+    const id = String(entityId);
+
+    // Call appropriate AuditObserver method based on event type
+    // Explicitly link the Audit Log to the original API Request that caused the change.
+    switch (eventType) {
+      case 'create':
+        AuditObserver.entityCreate(entity, id, newImage, {
+          actor,
+          causedBy,
+        });
+        this.logger.debug('Captured create audit', {
+          entityName: entity,
+          entityId: id,
+          hasActor: !!actor,
+        });
+        break;
+
+      case 'update':
+        AuditObserver.entityUpdate(entity, id, {
+          // before: oldImage,
+          // after: newImage,
+          diff: changes
+        }, {
+          actor,
+          causedBy,
+        });
+        this.logger.debug('Captured update audit', {
+          entityName: entity,
+          entityId: id,
+          changedFields: Object.keys(changes),
+          hasActor: !!actor,
+        });
+        break;
+
+      case 'delete':
+        AuditObserver.entityDelete(entity, id, oldImage, {
+          actor,
+          causedBy,
+        });
+        this.logger.debug('Captured delete audit', {
+          entityName: entity,
+          entityId: id,
+          hasActor: !!actor,
+        });
+        break;
+    }
+  }
+
+  /**
+   * Extract actor context from entity images with staleness detection.
+   * 
+   * Actor data is considered "fresh" if:
+   * 1. It has an actorTimestamp field, AND
+   * 2. The timestamp is within the acceptable staleness threshold (default: 5 seconds)
+   * 
+   * If actor data is stale, we should NOT use it for correlation as it represents
+   * a previous operation, not the current one.
+   * 
+   * @param traceImage - Entity image to extract actor from
+   * @param eventTimestamp - Timestamp of the current event
+   * @returns Object containing actor, freshness status, and staleness metrics
+   */
+  protected extractActorWithStalenessCheck(
+    traceImage: Record<string, any> | undefined,
+    eventTimestamp: number
+  ): {
+    actor: Actor | undefined;
+    isFresh: boolean;
+    actorTimestamp?: number;
+    stalenessMs?: number;
+  } {
+    const actor = this.extractActor(traceImage);
+
+    if (!actor) {
+      return { actor: undefined, isFresh: false };
     }
 
-    // Create audit entry
-    // Note: timestamp is already in milliseconds (converted from DynamoDB seconds in the data extractor)
-    // Example: timestamp = 1734567890000 (milliseconds) -> "2024-12-19T10:31:30.000Z"
-    const timestampDate = timestamp ? new Date(timestamp) : new Date();
-    const timestampIso = timestampDate.toISOString();
-    const timestampMs = timestampDate.getTime();
+    // Check for actorTimestamp in _actor field
+    const actorTimestamp = traceImage?._actor?.actorTimestamp;
 
-    // Determine success and severity based on event type
-    // Database change events are typically successful operations
-    const success = true; // Stream events represent completed database operations
-    const severity = eventType === 'delete' ? 'warn' : 'info'; // Deletions might be more significant
+    if (!actorTimestamp) {
+      // No timestamp means we can't verify freshness
+      // Log warning but still use the actor (backward compatibility)
+      this.logger.debug('Actor data has no timestamp, cannot verify freshness', {
+        actorId: actor.actorId,
+      });
+      return {
+        actor,
+        isFresh: true, // Assume fresh for backward compatibility
+      };
+    }
 
-    const auditEntry: AuditEntry = {
-      auditType: 'audit',
-      timestamp: timestampIso,
-      timestampMs,
-      entityName,
-      eventType,
-      severity,
-      success,
-      data: changes,
-      identifiers: {
-        id: entityId as string
-      },
-      actor: actorContext || (Object.keys(fallbackActor).length > 0 ? fallbackActor : { actorType: 'unknown' })
+    // Calculate staleness (difference between event time and actor timestamp)
+    const stalenessMs = eventTimestamp - actorTimestamp;
+
+    // Get staleness threshold from env (default: 5000ms = 5 seconds)
+    const thresholdMs = this.getActorStalenessThreshold();
+
+    // Actor is fresh if staleness is within threshold
+    // Also check for negative staleness (clock skew) and allow small negative values
+    const isFresh = stalenessMs >= -1000 && stalenessMs <= thresholdMs;
+
+    return {
+      actor,
+      isFresh,
+      actorTimestamp,
+      stalenessMs,
     };
-
-    return auditEntry;
   }
 
-  protected async writeAuditEntry(auditEntry: AuditEntry): Promise<void> {
-
-    const auditLogger = this.getAuditLogger();
-
-    try {
-
-      this.logger.debug(`Writing audit entry using logger ${auditLogger.constructor.name}`);
-      await auditLogger.audit({ auditEntry });
-
-      this.logger.debug('Successfully wrote audit entry', { auditEntry });
-
-    } catch (error) {
-      this.logger.error('Error writing audit entry', { error, auditEntry });
-      throw error;
+  /**
+   * Extract actor context from entity images.
+   * Tries _actor field first, then falls back to visible actor fields.
+   */
+  protected extractActor(traceImage: Record<string, any> | undefined): Actor | undefined {
+    // Try _actor field first (set by crud-service)
+    const actorContext = traceImage?._actor;
+    if (actorContext) {
+      return actorContext as Actor;
     }
+
+    // Fallback to visible actor fields (backward compatibility)
+    const fallbackActor: Partial<Actor> = {};
+
+    const actorId = traceImage?.updatedBy || traceImage?.createdBy;
+    if (actorId) {
+      fallbackActor.actorId = actorId;
+    }
+
+    const tenantId = traceImage?.tenantId;
+    if (tenantId) {
+      fallbackActor.tenantId = tenantId;
+    }
+
+    // Return fallback if we have any info, otherwise undefined (let observability use context)
+    return Object.keys(fallbackActor).length > 0
+      ? { ...fallbackActor, actorType: 'user' } as Actor
+      : undefined;
   }
+
+  /**
+   * Get actor staleness threshold from environment.
+   * Default: 5000ms (5 seconds)
+   */
+  protected getActorStalenessThreshold(): number {
+    const threshold = resolveEnvValueFor({ key: AUDIT_ENV_KEYS.ACTOR_STALENESS_THRESHOLD_MS });
+    return threshold ? parseInt(threshold, 10) : 5000;
+  }
+
 }
 
 export const logger = createLogger('DynamoDBStreamHandler');
-
-/**
- * Main entry point for change detection
- */
-export function getChangedProperties(
-  oldImage: Record<string, any> | undefined,
-  newImage: Record<string, any> | undefined,
-  // TODO: more fields like GSI1PK, GSI1SK, etc.
-  ignoredFields: string[] = [ 'updatedAt', '__edb_e__', '__edb_v__', 'pk', 'sk', '_actor' ]
-): Record<string, { old?: any, new?: any }> {
-  return getChangedPropertiesRecursive(oldImage, newImage, ignoredFields);
-}
-
-/**
- * Simple value comparison helper
- * Returns true if values are different, false if they are the same
- */
-function isDifferent(oldValue: any, newValue: any): boolean {
-  if (oldValue === newValue) return false;
-  if (typeof oldValue !== typeof newValue) return true;
-  if (oldValue === null || newValue === null) return true;
-  if (typeof oldValue !== 'object') return oldValue !== newValue;
-  if (Array.isArray(oldValue) !== Array.isArray(newValue)) return true;
-
-  // If both are arrays, compare them as arrays
-  if (Array.isArray(oldValue) && Array.isArray(newValue)) {
-    if (oldValue.length !== newValue.length) return true;
-    return oldValue.some((val, index) => isDifferent(val, newValue[ index ]));
-  }
-
-  return JSON.stringify(oldValue) !== JSON.stringify(newValue);
-}
-
-
-/**
- * Processes a single key-value pair and determines if it should be included in changes
- */
-function processKeyValuePair(
-  key: string,
-  oldValue: any,
-  newValue: any,
-  ignoredFields: string[]
-): Record<string, { old?: any, new?: any }> {
-  // Skip ignored fields
-  if (ignoredFields.includes(key)) {
-    return {};
-  }
-
-  const changes: Record<string, { old?: any, new?: any }> = {};
-
-  // Handle property addition
-  if (oldValue === undefined) {
-    changes[ key ] = { new: newValue };
-    return changes;
-  }
-
-  // Handle property deletion
-  if (newValue === undefined) {
-    changes[ key ] = { old: oldValue };
-    return changes;
-  }
-
-  // Handle arrays by comparing them element by element
-  if (Array.isArray(oldValue) && Array.isArray(newValue)) {
-    const arrayChanges = compareArrays(oldValue, newValue, ignoredFields);
-    if (Object.keys(arrayChanges).length > 0) {
-      changes[ key ] = arrayChanges;
-    }
-  }
-  // Handle nested objects
-  else if (typeof oldValue === 'object' && typeof newValue === 'object' &&
-    oldValue !== null && newValue !== null) {
-    const nestedChanges = getChangedPropertiesRecursive(oldValue, newValue, []);
-    if (Object.keys(nestedChanges).length > 0) {
-      changes[ key ] = {
-        old: {},
-        new: {}
-      };
-      // Copy only changed properties
-      Object.keys(nestedChanges).forEach(nestedKey => {
-        const change = nestedChanges[ nestedKey ];
-        if (change.old !== undefined) {
-          changes[ key ].old[ nestedKey ] = change.old;
-        }
-        if (change.new !== undefined) {
-          changes[ key ].new[ nestedKey ] = change.new;
-        }
-      });
-    }
-  }
-  // Handle primitive values
-  else if (isDifferent(oldValue, newValue)) {
-    changes[ key ] = {
-      old: oldValue,
-      new: newValue
-    };
-  }
-
-  return changes;
-}
-
-/**
- * Compares two arrays and returns the changes
- */
-function compareArrays(
-  oldArray: any[],
-  newArray: any[],
-  ignoredFields: string[]
-): { old: any[], new: any[] } | Record<string, never> {
-  const changes: { old: any[], new: any[] } = {
-    old: [],
-    new: []
-  };
-
-  let hasChanges = false;
-
-  // Compare elements that exist in both arrays
-  const minLength = Math.min(oldArray.length, newArray.length);
-  for (let i = 0; i < minLength; i++) {
-    const oldItem = oldArray[ i ];
-    const newItem = newArray[ i ];
-
-    if (typeof oldItem === 'object' && typeof newItem === 'object') {
-      const itemChanges = getChangedPropertiesRecursive(oldItem, newItem, ignoredFields);
-      if (Object.keys(itemChanges).length > 0) {
-        changes.old.push(oldItem);
-        changes.new.push(newItem);
-        hasChanges = true;
-      }
-    } else if (isDifferent(oldItem, newItem)) {
-      changes.old.push(oldItem);
-      changes.new.push(newItem);
-      hasChanges = true;
-    }
-  }
-
-  // Handle added elements
-  if (newArray.length > oldArray.length) {
-    changes.new.push(...newArray.slice(oldArray.length));
-    hasChanges = true;
-  }
-
-  // Handle removed elements
-  if (oldArray.length > newArray.length) {
-    changes.old.push(...oldArray.slice(newArray.length));
-    hasChanges = true;
-  }
-
-  return hasChanges ? changes : {};
-}
-
-/**
- * Recursively compares two objects and extracts changed properties
- */
-function getChangedPropertiesRecursive(
-  oldObj: Record<string, any> | undefined,
-  newObj: Record<string, any> | undefined,
-  ignoredFields: string[]
-): Record<string, { old?: any, new?: any }> {
-  const changes: Record<string, { old?: any, new?: any }> = {};
-
-  // Handle base cases
-  if (!oldObj && !newObj) return changes;
-
-  // Handle creation case (no old object)
-  if (!oldObj) {
-    return Object.fromEntries(
-      Object.entries(newObj!)
-        .filter(([ key ]) => !ignoredFields.includes(key))
-        .map(([ key, value ]) => [ key, { new: value } ])
-    );
-  }
-
-  // Handle deletion case (no new object)
-  if (!newObj) {
-    return Object.fromEntries(
-      Object.entries(oldObj)
-        .filter(([ key ]) => !ignoredFields.includes(key))
-        .map(([ key, value ]) => [ key, { old: value } ])
-    );
-  }
-
-  // Process all keys from both objects
-  const allKeys = new Set([ ...Object.keys(oldObj), ...Object.keys(newObj) ]);
-  for (const key of allKeys) {
-    const keyChanges = processKeyValuePair(key, oldObj[ key ], newObj[ key ], ignoredFields);
-    Object.assign(changes, keyChanges);
-  }
-
-  return changes;
-}

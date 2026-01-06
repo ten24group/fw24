@@ -1,15 +1,28 @@
 import type { APIGatewayEvent, APIGatewayProxyResult, Context } from "aws-lambda";
-import type { Request, Response, Route } from "../../interfaces";
 import { Controller, IControllerConfig } from "../../decorators";
 import { Get, RouteMethods } from "../../decorators/method";
-import { DefaultValidator, HttpRequestValidations, IValidator, InputValidationRule } from "../../validation";
+import { InvalidHttpRequestValidationRuleError, ValidationFailedError, createErrorHandler } from "../../errors/";
+import type { Request, Response, Route } from "../../interfaces";
+import { SpanObserver, generateTraceId, redactSensitiveData } from '../../observability';
+import {
+  ControllerObservabilityConfig,
+  mergeObservabilityConfigs,
+  normalizeIncludes,
+  selectFields,
+  selectFieldsFromBody
+} from '../../observability/controller-config';
+import { HttpRequestValidations, InputValidationRule } from "../../validation";
 import { isHttpRequestValidationRule, isInputValidationRule } from "../../validation/utils";
+import { Actor, ExecutionContext } from '../types/execution-context';
 import { AbstractLambdaHandler } from "./abstract-lambda-handler";
+import {
+  createExecutionContext,
+  extractFromHeaders,
+  runWithExecutionContext,
+} from './execution-context';
 import { RequestContext } from "./request-context";
-import { ResponseContext } from "./response-context";
 import { ResponseConfig, mergeResponseConfig } from "./response-config";
-import { ValidationFailedError, InvalidHttpRequestValidationRuleError, createErrorHandler } from "../../errors/";
-import { ExecutionContext, Actor } from '../types/execution-context';
+import { ResponseContext } from "./response-context";
 
 export type ControllerErrorHandler = ReturnType<typeof createErrorHandler>;
 
@@ -183,12 +196,16 @@ export abstract class APIController extends AbstractLambdaHandler {
   /**
    * Lambda handler for the controller.
    * Handles incoming API Gateway events.
+   * 
+   * All handler execution is wrapped in execution context, making
+   * getCurrentExecutionContext() available throughout the request lifecycle.
+   * 
    * @param event - The event object from the API Gateway.
    * @param context - The context object from the API Gateway.
    * @returns The API Gateway response object.
    */
   async LambdaHandler(event: APIGatewayEvent, context: Context): Promise<APIGatewayProxyResult> {
-    // this.logger.info("LambdaHandler Received event:", JSON.stringify(event, null, 2));
+    this.initializeEntryPackagesAndObservability();
 
     const request = await this.makeRequestContext(event, context);
     const response = await this.makeResponseContext(request);
@@ -196,52 +213,294 @@ export abstract class APIController extends AbstractLambdaHandler {
     // Build the execution context
     const ctx = this.buildCtx(event, context, request, response);
 
-    try {
+    // Find the matching route (needed for observability config)
+    const route = this.findMatchingRoute(request);
 
-      // Legacy initialize method for backward compatibility
-      await this.initialize(event, context);
+    // Get merged observability config
+    const observabilityConfig = this.getObservabilityConfig(route);
+    const defaultSource = `${this.constructor.name}.${route?.functionName || 'handler'}`;
 
-      // Execute before middleware
-      await this.executeMiddlewarePipeline('before', request, response, ctx);
+    // Extract upstream trace context from incoming headers.
+    // IMPORTANT (framework contract):
+    // - correlationId is per-invocation (local slice)
+    // - causedBy links to upstream invocation/trace
+    const traceContext = extractFromHeaders(request.headers || {});
+    const correlationId = request.requestId || generateTraceId();
+    const causedBy = traceContext?.causedBy ?? traceContext?.correlationId;
 
-      const route = this.findMatchingRoute(request);
+    // Create execution context with custom source and tags from decorator
+    const execCtx = createExecutionContext({
+      correlationId,
+      causedBy,
+      actor: ctx.actor,
+      sampled: traceContext?.sampled,
+      source: observabilityConfig?.source || defaultSource,
+      tags: observabilityConfig?.tags,
+    });
 
-      // Validate the request if validations are defined
-      if (route?.validations) {
-        const validationResult = await this.validate(request, route.validations);
-        if (!validationResult.pass) {
-          throw new ValidationFailedError(validationResult.errors);
+    // Build span attributes (includes request data capture)
+    const spanAttributes = this.buildSpanAttributes(event, request, observabilityConfig);
+
+    // Build automatic tags for easy filtering
+    const automaticTags = this.buildAutomaticTags(request, ctx.actor, event);
+
+    // Run entire handler within execution context
+    return runWithExecutionContext(execCtx, async () => {
+      // Set ctx.executionContext to point to the execution context
+      ctx.executionContext = execCtx;
+
+      // Sync actor.correlationId with the resolved correlationId
+      // This ensures actor stored in _actor field has the correct trace ID
+      if (ctx.actor) {
+        ctx.actor.correlationId = correlationId;
+      }
+
+      // Use the base class helper for span + flush pattern
+      return this.executeWithSpanAndFlush(
+        `HTTP ${request.httpMethod} ${request.path}`,
+        async (requestSpan) => {
+          try {
+            // Legacy initialize method for backward compatibility
+            await this.initialize(event, context);
+
+            // Execute before middleware
+            await this.executeMiddlewarePipeline('before', request, response, ctx);
+
+            // Validate the request if validations are defined
+            if (route?.validations) {
+              const validationResult = await this.validate(request, route.validations);
+              if (!validationResult.pass) {
+                // Add validation failure to span for debugging
+                if (validationResult.errors && validationResult.errors.length > 0) {
+                  requestSpan.checkpoint('validation.failed', {
+                    tags: {
+                      'validation.failed': 'true',
+                    },
+                    metrics: {
+                      'validation.error_count': validationResult.errors.length,
+                    },
+                    data: {
+                      validationErrors: validationResult.errors,
+                    },
+                  });
+                }
+                throw new ValidationFailedError(validationResult.errors);
+              }
+            }
+
+            // Call the route function
+            const routeFunction = this.getRouteFunction(route);
+            let controllerResponse: any = routeFunction.call(this, request, response, ctx);
+            if (controllerResponse instanceof Promise) {
+              controllerResponse = await controllerResponse;
+            }
+
+            // Execute after middleware
+            await this.executeMiddlewarePipeline('after', request, response, ctx);
+
+            // If the controller returned anything, emit that
+            if (controllerResponse != null) {
+              if (observabilityConfig?.enabled !== false) {
+                const responseAttrs = this.buildResponseAttributes(response, observabilityConfig);
+                if (responseAttrs) {
+                  // Status code as attribute (not metric - it's categorical data)
+                  requestSpan.setData(responseAttrs);
+                }
+              }
+              // Flush happens automatically in executeWithSpanAndFlush's finally block
+              return this.handleResponse(controllerResponse);
+            }
+
+            // Fallback to the in-memory responseContext
+            if (observabilityConfig?.enabled !== false) {
+              const responseAttrs = this.buildResponseAttributes(response, observabilityConfig);
+              if (responseAttrs) {
+                // Status code as attribute (not metric - it's categorical data)
+                requestSpan.setData(responseAttrs);
+              }
+            }
+            // Flush happens automatically in executeWithSpanAndFlush's finally block
+            return response.build();
+
+          } catch (err) {
+            const errorObj = err instanceof Error ? err : new Error(String(err));
+            this.logger.error('LambdaHandler error: ', errorObj);
+
+            // Execute error middleware
+            await this.executeMiddlewarePipeline('onError', request, response, ctx, errorObj);
+
+            // Flush happens automatically in executeWithSpanAndFlush's finally block
+            // Note: withSpan will call span.end({ success: false, error }) automatically
+            // We still need to return a response (error handler may have modified it)
+            throw errorObj;
+          }
+        },
+        {
+          correlationId,
+          causedBy: traceContext?.causedBy,
+          actor: ctx.actor,
+          source: observabilityConfig?.source || defaultSource,
+          tags: {
+            ...automaticTags,
+            ...observabilityConfig?.tags,
+            ...spanAttributes,
+            'http.route': route?.functionName || '',
+            'http.controller': this.constructor.name,
+          },
         }
-      }
+      ).catch((err) => {
+        // Handle error response after span ends
+        return this.handleException(request, err instanceof Error ? err : new Error(String(err)), response);
+      });
+    });
+  }
 
-      // call the route function
-      const routeFunction = this.getRouteFunction(route);
-      let controllerResponse: any = routeFunction.call(this, request, response, ctx);
-      if (controllerResponse instanceof Promise) {
-        controllerResponse = await controllerResponse;
-      }
+  /**
+   * Gets merged observability config from controller and method level
+   */
+  protected getObservabilityConfig(route?: Route | null): ControllerObservabilityConfig | undefined {
+    const controllerConfig = this.getControllerConfig();
+    return mergeObservabilityConfigs(controllerConfig?.observability, route?.observability);
+  }
 
-      // Execute after middleware
-      await this.executeMiddlewarePipeline('after', request, response, ctx);
+  /**
+   * Build automatic tags for HTTP requests.
+   * These tags enable powerful filtering in observability UIs.
+   */
+  protected buildAutomaticTags(
+    request: Request,
+    actor: Actor | undefined,
+    event: APIGatewayEvent
+  ): Record<string, string> {
+    const tags: Record<string, string> = {};
 
-      // If the controller returned anything (ResponseContext or raw API result), emit that
-      if (controllerResponse != null) {
-        return this.handleResponse(controllerResponse);
-      }
-
-    } catch (err) {
-
-      const errorObj = err instanceof Error ? err : new Error(String(err));
-      this.logger.error('LambdaHandler error: ', errorObj);
-
-      // Execute error middleware
-      await this.executeMiddlewarePipeline('onError', request, response, ctx, errorObj);
-
-      return this.handleException(request, errorObj, response);
+    // HTTP method category (similar to service operations)
+    const method = request.httpMethod.toUpperCase();
+    if (method === 'GET' || method === 'HEAD') {
+      tags.operation_category = 'read';
+    } else if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
+      tags.operation_category = 'write';
+    } else if (method === 'DELETE') {
+      tags.operation_category = 'delete';
     }
 
-    // Fallback to the in-memory responseContext
-    return response.build();
+    // Auth method for easy filtering by authentication type
+    if (actor?.authMethod) {
+      tags.auth_method = actor.authMethod;
+    }
+
+    // Actor type (user vs service)
+    if (actor?.actorType) {
+      tags.actor_type = actor.actorType;
+    }
+
+    // API stage (dev, staging, prod)
+    if (event.requestContext?.stage) {
+      tags.stage = event.requestContext.stage;
+    }
+
+    // Tenant context (for multi-tenant filtering)
+    if (actor?.tenantId) {
+      tags.tenant_id = actor.tenantId;
+    }
+
+    return tags;
+  }
+
+  /**
+   * Build span attributes based on observability config.
+   * Always includes basic HTTP info. Request body/headers/query are only
+   * included if explicitly configured via `includes`.
+   */
+  protected buildSpanAttributes(
+    event: APIGatewayEvent,
+    request: Request,
+    config?: ControllerObservabilityConfig
+  ): Record<string, unknown> {
+    // Always include basic HTTP attributes
+    const attrs: Record<string, unknown> = {
+      'http.method': request.httpMethod,
+      'http.path': request.path,
+      'http.requestId': request.requestId,
+      'http.userAgent': event.headers?.[ 'user-agent' ] || event.headers?.[ 'User-Agent' ],
+      'http.sourceIp': event.requestContext?.identity?.sourceIp,
+    };
+
+    // If disabled or no includes config, return basic attrs only
+    if (config?.enabled === false || !config?.includes) {
+      return attrs;
+    }
+
+    // Build request data based on includes config
+    const includes = normalizeIncludes(config.includes);
+    const requestData: Record<string, unknown> = {};
+
+    if (includes.request.headers) {
+      const headerData = selectFields(request.headers as Record<string, unknown>, includes.request.headers);
+      if (headerData) requestData.headers = headerData;
+    }
+
+    if (includes.request.body && request.body) {
+      const bodyData = typeof request.body === 'string'
+        ? selectFieldsFromBody(request.body, includes.request.body)
+        : selectFields(request.body as Record<string, unknown>, includes.request.body);
+      if (bodyData) requestData.body = bodyData;
+    }
+
+    if (includes.request.query && request.queryStringParameters) {
+      const queryData = selectFields(request.queryStringParameters as Record<string, unknown>, includes.request.query);
+      if (queryData) requestData.query = queryData;
+    }
+
+    // Apply data protection and add to attributes
+    if (Object.keys(requestData).length > 0) {
+      attrs[ 'request' ] = config.dataProtection?.enabled !== false
+        ? redactSensitiveData(requestData, config.dataProtection)
+        : requestData;
+    }
+
+    return attrs;
+  }
+
+  /**
+   * Build response attributes based on observability config.
+   * Only captures response body/headers if explicitly configured via `includes`.
+   */
+  protected buildResponseAttributes(
+    response: Response,
+    config?: ControllerObservabilityConfig
+  ): Record<string, unknown> | undefined {
+    // Always include status code
+    const attrs: Record<string, unknown> = {
+      'http.statusCode': response.statusCode,
+    };
+
+    // If disabled or no includes config, return just status code
+    if (config?.enabled === false || !config?.includes) {
+      return attrs;
+    }
+
+    const includes = normalizeIncludes(config.includes);
+    const responseData: Record<string, unknown> = {};
+
+    if (includes.response.headers && response.headers) {
+      const headerData = selectFields(response.headers as Record<string, unknown>, includes.response.headers);
+      if (headerData) responseData.headers = headerData;
+    }
+
+    if (includes.response.body && response.body) {
+      const bodyData = selectFieldsFromBody(response.body, includes.response.body);
+      if (bodyData) responseData.body = bodyData;
+    }
+
+    // Apply data protection and add to attributes
+    if (Object.keys(responseData).length > 0) {
+      attrs[ 'response' ] = config.dataProtection?.enabled !== false
+        ? redactSensitiveData(responseData, config.dataProtection)
+        : responseData;
+    }
+
+    return attrs;
   }
 
   /**
@@ -251,16 +510,17 @@ export abstract class APIController extends AbstractLambdaHandler {
    */
   private findMatchingRoute(requestData: Request): Route | null {
     let controller: any = this;
-    // this.logger.info("Called findMatchingRoute with requestData: ", { requestData, routes: controller.routes });
 
     // Determine the controller base path by finding the longest common prefix that ends with the controller name
-    let controllerBasePath = `/${controller.controllerName}`;
+    const controllerName = typeof controller.controllerName === 'string' ? controller.controllerName : '';
+    let controllerBasePath = controllerName ? `/${controllerName}` : '';
     let resourceWithoutRoot = '/';
 
     // For controllers in subdirectories, we need to match the actual resource path
     // Check if resource contains the controller name as part of a longer path
-    const resourceParts = requestData.resource.split('/').filter(Boolean);
-    const controllerNameParts = controller.controllerName.split('/').filter(Boolean);
+    const requestResource = (requestData.resource || requestData.path || '/') as string;
+    const resourceParts = requestResource.split('/').filter(Boolean);
+    const controllerNameParts = controllerName.split('/').filter(Boolean);
 
     // Find if the controller name parts are present in the resource path
     let basePathEndIndex = -1;
@@ -289,13 +549,13 @@ export abstract class APIController extends AbstractLambdaHandler {
       resourceWithoutRoot = remainingParts.length > 0 ? '/' + remainingParts.join('/') : '/';
     } else {
       // Fallback to original logic for simple cases
-      if (requestData.resource.startsWith(controllerBasePath)) {
-        resourceWithoutRoot = requestData.resource.substring(controllerBasePath.length) || '/';
+      if (controllerBasePath && requestResource.startsWith(controllerBasePath)) {
+        resourceWithoutRoot = requestResource.substring(controllerBasePath.length) || '/';
+      } else if (!controllerBasePath) {
+        // No controllerName configured: treat the full resource as the route path.
+        resourceWithoutRoot = requestResource || '/';
       }
     }
-
-    // this.logger.info('controllerBasePath: ', controllerBasePath);
-    // this.logger.info('resourceWithoutRoot: ', resourceWithoutRoot);
 
     // Separate routes into exact and parameterized for proper prioritization
     const exactMatches: Array<{ routeKey: string, route: Route }> = [];
@@ -323,7 +583,7 @@ export abstract class APIController extends AbstractLambdaHandler {
       const [ , routePath ] = routeKey.split('|');
 
       if (routePath === resourceWithoutRoot) {
-        this.logger.info(`Found exact match for route: ${routeKey}`);
+        this.logger.debug(`Found exact match for route: ${routeKey}`);
         return route;
       }
     }
@@ -355,7 +615,7 @@ export abstract class APIController extends AbstractLambdaHandler {
         const matchResult = matcher(resourceWithoutRoot);
 
         if (matchResult) {
-          this.logger.info(`Found parameterized match for route: ${routeKey}`, {
+          this.logger.debug(`Found parameterized match for route: ${routeKey}`, {
             pattern: pathToRegexpPattern,
             params: matchResult.params,
             specificityScore: sortedParameterizedMatches.find(m => m.routeKey === routeKey)?.specificityScore
@@ -469,7 +729,7 @@ export abstract class APIController extends AbstractLambdaHandler {
    */
   protected buildCtx(event: APIGatewayEvent, context: Context, request: Request, response: Response): ExecutionContext {
     const actor = this.extractActorContext(event, request);
-    
+
     const ctx: ExecutionContext = {
       event,
       lambdaContext: context,
@@ -477,7 +737,7 @@ export abstract class APIController extends AbstractLambdaHandler {
       response,
       actor,
       debugInfo: {},
-      
+
       // Simple actor enhancement method
       enhanceActor: (enhancement: Partial<Actor>) => {
         if (ctx.actor) {
@@ -490,24 +750,34 @@ export abstract class APIController extends AbstractLambdaHandler {
   }
 
   /**
-   * Extracts actor context from the request
-   * Override this method for custom actor extraction logic
+   * Gets the controller configuration
+   */
+  protected getControllerConfig(): IControllerConfig {
+    return Reflect.get(this, 'controllerConfig') || {};
+  }
+
+  /**
+   * Extracts actor context from the request.
+   * Override this method for custom actor extraction logic.
+   * 
+   * Note: correlationId is NOT set here - it's determined from trace context
+   * extraction and set on the ExecutionContext. The actor.correlationId is
+   * synced later in LambdaHandler after trace context is resolved.
    *
    * @param event - The event object from the API Gateway.
    * @param request - The request object from the API Gateway.
    * @returns The actor context.
-   * ```
    */
   protected extractActorContext(event: APIGatewayEvent, request: Request): Actor {
     const timestamp = new Date().toISOString();
     const requestId = request.requestId;
-    
+
     const actor: Actor = {
       requestId,
       timestamp,
       sourceIp: event.requestContext?.identity?.sourceIp,
-      userAgent: event.headers?.['user-agent'] || event.headers?.['User-Agent'],
-      correlationId: request.headers?.['x-correlation-id'] || requestId,
+      userAgent: event.headers?.[ 'user-agent' ] || event.headers?.[ 'User-Agent' ],
+      // Note: correlationId is set later after trace context extraction
     };
 
     // Cognito authentication with focused enhancements
@@ -515,7 +785,7 @@ export abstract class APIController extends AbstractLambdaHandler {
       this.extractCognitoContext(event.requestContext.authorizer.claims, actor);
     }
     // API Key authentication
-    else if (event.requestContext?.identity?.apiKey || request.headers?.['x-api-key']) {
+    else if (event.requestContext?.identity?.apiKey || request.headers?.[ 'x-api-key' ]) {
       this.extractApiKeyContext(event, request, actor);
     }
     // IAM authentication 
@@ -531,11 +801,11 @@ export abstract class APIController extends AbstractLambdaHandler {
 
     // Session and tenant context
     this.extractSessionAndTenantContext(event, request, actor);
-    
+
     // API Gateway context
     actor.apiStage = event.requestContext?.stage;
     actor.apiId = event.requestContext?.apiId;
-    
+
     return actor;
   }
 
@@ -546,14 +816,14 @@ export abstract class APIController extends AbstractLambdaHandler {
    * @param claims - Cognito JWT claims from the authorizer
    * @param actor - Actor object to populate
    */
-  private extractCognitoContext(claims: any, actor: Actor): void {
+  protected extractCognitoContext(claims: any, actor: Actor): void {
     try {
       actor.authMethod = 'cognito';
       actor.actorType = 'user';
-      
+
       // Actor ID with documented fallback strategy: cognito:username -> email -> sub
-      actor.actorId = claims['cognito:username'] || claims.email || claims.sub;
-      
+      actor.actorId = claims[ 'cognito:username' ] || claims.email || claims.sub;
+
       // Standard user attributes (documented Cognito user attributes)
       actor.email = claims.email;
       actor.emailVerified = claims.email_verified === 'true';
@@ -561,29 +831,29 @@ export abstract class APIController extends AbstractLambdaHandler {
       actor.phoneVerified = claims.phone_number_verified === 'true';
       actor.name = claims.name;
       actor.locale = claims.locale;
-      
+
       // Parse Cognito groups (documented as comma-separated string)
-      const groups = this.parseGroups(claims['cognito:groups']);
-      
+      const groups = this.parseGroups(claims[ 'cognito:groups' ]);
+
       // Extract custom attributes (documented pattern: custom:*)
       const customAttributes = this.extractCustomAttributes(claims);
-      
+
       // Build Cognito context with only documented fields
       actor.cognito = {
         sub: claims.sub,
-        username: claims['cognito:username'],
+        username: claims[ 'cognito:username' ],
         groups: groups, // Always include groups array (empty or populated)
         customAttributes: Object.keys(customAttributes).length > 0 ? customAttributes : undefined
       };
-      
+
       // Extract tenant ID from custom attributes (common multi-tenant pattern)
       actor.tenantId = customAttributes.tenantId;
-      
+
       actor.rawAuthContext = claims;
-      
+
     } catch (error) {
       this.logger.warn('Error extracting Cognito actor context', { error, claims });
-      
+
       // Minimal fallback extraction
       actor.authMethod = 'cognito';
       actor.actorType = 'user';
@@ -595,7 +865,7 @@ export abstract class APIController extends AbstractLambdaHandler {
   /**
    * Parse Cognito groups from comma-separated string (documented Cognito format)
    */
-  private parseGroups(groups: any): string[] {
+  protected parseGroups(groups: any): string[] {
     if (typeof groups === 'string' && groups.length > 0) {
       return groups.split(',').map(g => g.trim()).filter(g => g.length > 0);
     }
@@ -605,49 +875,49 @@ export abstract class APIController extends AbstractLambdaHandler {
   /**
    * Extract custom attributes using documented Cognito pattern (custom:*)
    */
-  private extractCustomAttributes(claims: any): Record<string, any> {
+  protected extractCustomAttributes(claims: any): Record<string, any> {
     const customAttributes: Record<string, any> = {};
-    
+
     Object.keys(claims).forEach(key => {
       if (key.startsWith('custom:')) {
         const attributeName = key.replace('custom:', '');
-        customAttributes[attributeName] = claims[key];
+        customAttributes[ attributeName ] = claims[ key ];
       }
     });
-    
+
     return customAttributes;
   }
 
-    /**
-   * Extract session and tenant context - focused approach
-   */
-  private extractSessionAndTenantContext(event: APIGatewayEvent, request: Request, actor: Actor): void {
+  /**
+ * Extract session and tenant context - focused approach
+ */
+  protected extractSessionAndTenantContext(event: APIGatewayEvent, request: Request, actor: Actor): void {
     // Session context
-    actor.sessionId = request.headers?.['x-session-id'];
-    
+    actor.sessionId = request.headers?.[ 'x-session-id' ];
+
     // Tenant context - check custom attributes first, then headers
-    actor.tenantId = request.headers?.['x-tenant-id'] || 
-                    event.requestContext?.authorizer?.claims?.['custom:tenantId'];
+    actor.tenantId = request.headers?.[ 'x-tenant-id' ] ||
+      event.requestContext?.authorizer?.claims?.[ 'custom:tenantId' ];
   }
 
   /**
    * Extract API Key context
    */
-  private extractApiKeyContext(event: APIGatewayEvent, request: Request, actor: Actor): void {
+  protected extractApiKeyContext(event: APIGatewayEvent, request: Request, actor: Actor): void {
     actor.authMethod = 'api-key';
     actor.actorType = 'service';
-    
+
     let apiKeyId: string;
     let source: 'request-context' | 'header';
-    
+
     if (event.requestContext?.identity?.apiKey) {
       apiKeyId = event.requestContext.identity.apiKeyId || event.requestContext.identity.apiKey;
       source = 'request-context';
     } else {
-      apiKeyId = request.headers['x-api-key']!;
+      apiKeyId = request.headers[ 'x-api-key' ]!;
       source = 'header';
     }
-    
+
     actor.actorId = `api-key:${apiKeyId}`;
     actor.apiKey = {
       id: apiKeyId,
@@ -658,13 +928,13 @@ export abstract class APIController extends AbstractLambdaHandler {
   /**
    * Extract IAM context
    */
-  private extractIamContext(event: APIGatewayEvent, actor: Actor): void {
+  protected extractIamContext(event: APIGatewayEvent, actor: Actor): void {
     actor.authMethod = 'iam';
     actor.actorType = 'service';
-    actor.actorId = event.requestContext?.identity?.user || 
-                   event.requestContext?.identity?.userArn || 
-                   'unknown-iam-user';
-    
+    actor.actorId = event.requestContext?.identity?.user ||
+      event.requestContext?.identity?.userArn ||
+      'unknown-iam-user';
+
     actor.iam = {
       userArn: event.requestContext?.identity?.userArn || undefined,
       userId: event.requestContext?.identity?.user || undefined,

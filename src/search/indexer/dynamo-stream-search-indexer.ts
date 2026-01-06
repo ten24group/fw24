@@ -6,7 +6,6 @@ import { MeiliSearchEngine } from '../engines/meili/engine';
 import { SearchValidationError } from '../errors';
 import { BaseSearchIndexer } from './base-search-indexer';
 import { SEARCH_INDEXER_ENV_KEYS, SearchIndexEntry } from './interfaces';
-import { RateLimitedApiKey } from 'aws-cdk-lib/aws-apigateway';
 
 /**
  * Search indexer handler [for MeiliSearch]
