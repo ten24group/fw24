@@ -45,6 +45,8 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
     globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ];
     /** Whether observability is enabled (passed from UI config gen) */
     hasObservability?: boolean;
+    /** Exclude audit actions for this entity */
+    excludeAuditActions?: boolean;
 }
 
 /**
@@ -55,6 +57,7 @@ function generateAuditLogActions(
     entityName: string,
     entityNamePascalCase: string,
     hasObservability: boolean,
+    excludeAuditActions: boolean,
     globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]
 ): IEntityPageAction[] {
     const auditActions: IEntityPageAction[] = [];
@@ -62,7 +65,7 @@ function generateAuditLogActions(
     // Check if auto-generation is enabled and observability is available
     const autoGenerate = globalUIConfigOptions?.autoGenerateAuditActions ?? true;
 
-    if (!hasObservability || !autoGenerate) {
+    if (!hasObservability || !autoGenerate || excludeAuditActions) {
         return auditActions;
     }
 
@@ -95,7 +98,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     options: ViewEntityPageOptions<S>,
     entityService: BaseEntityService<S>
 ) => {
-    const { entityName, CRUDApiPath, actions, breadcrumbs, pageTitle, hasObservability, globalUIConfigOptions } = options;
+    const { entityName, CRUDApiPath, actions, breadcrumbs, pageTitle, hasObservability, excludeAuditActions, globalUIConfigOptions } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
     const entityNamePascalCase = pascalCase(entityName);
@@ -119,7 +122,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     ];
 
     // Automatically generate audit log actions if observability is enabled
-    const auditActions = generateAuditLogActions(entityName, entityNamePascalCase, hasObservability || false, globalUIConfigOptions);
+    const auditActions = generateAuditLogActions(entityName, entityNamePascalCase, hasObservability || false, excludeAuditActions || false, globalUIConfigOptions);
 
     // Combine all actions
     const pageHeaderActions = [ ...defaultActions, ...(actions || []), ...auditActions ];

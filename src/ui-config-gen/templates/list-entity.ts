@@ -52,6 +52,8 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
     globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ];
     /** Whether observability is enabled (passed from UI config gen) */
     hasObservability?: boolean;
+    /** Exclude audit actions for this entity */
+    excludeAuditActions?: boolean;
 }
 
 /**
@@ -87,6 +89,7 @@ function generateListAuditActions(
     entityName: string,
     entityNamePlural: string,
     hasObservability: boolean,
+    excludeAuditActions: boolean,
     globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]
 ): IEntityPageAction[] {
     const auditActions: IEntityPageAction[] = [];
@@ -94,7 +97,7 @@ function generateListAuditActions(
     // Check if auto-generation is enabled and observability is available
     const autoGenerate = globalUIConfigOptions?.autoGenerateAuditActions ?? true;
 
-    if (!hasObservability || !autoGenerate) {
+    if (!hasObservability || !autoGenerate || excludeAuditActions) {
         return auditActions;
     }
 
@@ -136,7 +139,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     entityService: BaseEntityService<S>
 ) => {
 
-    const { entityName, entityNamePlural, properties, breadcrumbs, pageTitle, hasObservability, globalUIConfigOptions } = options;
+    const { entityName, entityNamePlural, properties, breadcrumbs, pageTitle, hasObservability, excludeAuditActions, globalUIConfigOptions } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
 
@@ -153,7 +156,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     }
 
     // Automatically generate audit log actions if observability is enabled
-    const auditActions = generateListAuditActions(entityName, entityNamePlural, hasObservability || false, globalUIConfigOptions);
+    const auditActions = generateListAuditActions(entityName, entityNamePlural, hasObservability || false, excludeAuditActions || false, globalUIConfigOptions);
 
     // Combine: default + custom + audit
     const pageHeaderActions = [

@@ -29,6 +29,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
     service: 'observability',
     entityOperations: DefaultEntityOperations,
     // System entity - read-only in admin UI
+    excludeAuditActions: true,
     excludeFromAdminMenu: true,
     excludeFromAdminCreate: true,
     excludeFromAdminUpdate: true,

@@ -227,6 +227,7 @@ export class EntityUIConfigGen {
                     tableConfig: entitySchema.model.listPageConfig?.tableConfig,
                     globalUIConfigOptions,
                     hasObservability,
+                    excludeAuditActions: entitySchema.model.excludeAuditActions,
                 }, service);
                 entityConfigs[ `list-${entityName.toLowerCase()}` ] = listConfig;
             }
@@ -245,6 +246,7 @@ export class EntityUIConfigGen {
                     sectionsConfig: entitySchema.model.viewPageConfig?.sectionsConfig,
                     globalUIConfigOptions,
                     hasObservability,
+                    excludeAuditActions: entitySchema.model.excludeAuditActions,
                 }, service);
                 entityConfigs[ `view-${entityName.toLowerCase()}` ] = viewConfig;
             }

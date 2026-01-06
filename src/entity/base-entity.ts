@@ -3611,6 +3611,7 @@ export interface EntitySchema<
     readonly excludeFromAdminUpdate?: boolean, // default is false
     readonly excludeFromAdminDelete?: boolean, // default is false
     readonly excludeFromAdminDuplicate?: boolean, // default is false
+    readonly excludeAuditActions?: boolean, // default is false - disable automatic audit log actions for this entity
 
     readonly CRUDApiPath?: string, // default is ''
 
