@@ -1,50 +1,16 @@
-import { Actor } from '../core/types/actor';
-export declare enum AuditLoggerType {
-    CONSOLE = "console",
-    CLOUDWATCH = "cloudwatch",
-    DYNAMODB = "dynamodb",
-    CUSTOM = "custom",
-    DUMMY = "dummy"
-}
 /**
- * Constant containing the actual environment variable keys
+ * Audit interfaces - ONLY for DynamoDB stream entity auditing.
+ *
+ * Controllers and other components should use the observability system directly.
+ */
+/**
+ * Environment variable keys for entity audit filtering.
  */
 export declare const AUDIT_ENV_KEYS: {
-    readonly ENABLED: "AUDIT_ENABLED";
-    readonly TYPE: "AUDIT_TYPE";
-    readonly LOG_GROUP_NAME: "AUDIT_LOG_GROUP_NAME";
-    readonly REGION: "AUDIT_REGION";
-    readonly AUDIT_TABLE_NAME: "AUDIT_TABLE_NAME";
+    /** Entity names to audit (comma-separated) */
     readonly ALLOWED_ENTITY_NAMES: "AUDIT_ALLOWED_ENTITY_NAMES";
+    /** Entity names to exclude from audit (comma-separated) */
     readonly EXCLUDED_ENTITY_NAMES: "AUDIT_EXCLUDED_ENTITY_NAMES";
+    /** Actor staleness threshold in milliseconds (default: 5000ms) */
+    readonly ACTOR_STALENESS_THRESHOLD_MS: "AUDIT_ACTOR_STALENESS_THRESHOLD_MS";
 };
-export interface AuditLoggerConfig {
-    type: AuditLoggerType;
-    enabled?: boolean;
-    logGroupName?: string;
-    region?: string;
-}
-export interface AuditOptions {
-    /**
-     * Whether audit logging is enabled for this specific operation.
-     * If not provided, the auditor's configuration will be used.
-     */
-    enabled?: boolean;
-    auditEntry?: AuditEntry;
-}
-export interface AuditEntry {
-    auditId?: string;
-    auditType?: string;
-    timestamp?: string;
-    timestampMs?: number;
-    entityName?: string;
-    eventType?: string;
-    severity?: 'info' | 'warn' | 'error' | 'critical';
-    success?: boolean;
-    data?: any;
-    actor?: Actor;
-    identifiers?: any;
-}
-export interface IAuditLogger {
-    audit(options: AuditOptions): Promise<void>;
-}

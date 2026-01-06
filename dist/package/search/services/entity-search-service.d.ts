@@ -1,16 +1,15 @@
+import type { ExecutionContext } from '../../core/types/execution-context';
+import type { BaseEntityService, EntityRecordTypeFromSchema, EntitySchema } from '../../entity';
+import type { BaseSearchEngine } from '../engines';
+import type { EntitySearchQuery, SearchResult } from '../types';
 import { BaseSearchService } from './base-search-service';
-import { EntitySchema, EntityRecordTypeFromSchema, BaseEntityService } from '../../entity';
-import { SearchResult, EntitySearchQuery } from '../types';
-import { SearchIndexConfig } from '../types';
-import { ExecutionContext } from '../../core/types/execution-context';
-import { BaseSearchEngine } from '../engines';
 export declare class EntitySearchService<S extends EntitySchema<any, any, any>> extends BaseSearchService {
     protected readonly entityService: BaseEntityService<S>;
     protected readonly searchEngine: BaseSearchEngine;
     constructor(entityService: BaseEntityService<S>, searchEngine: BaseSearchEngine);
     protected getEntitySearchConfig(): {
         enabled: boolean;
-        indexConfig?: SearchIndexConfig;
+        indexConfig?: import("../types").SearchIndexConfig;
         serviceClass?: import("../../interfaces").DepIdentifier<EntitySearchService<any>> | typeof EntitySearchService | EntitySearchService<any>;
         documentTransformer?: ((entity: import("electrodb").ResponseItem<any, any, any, EntitySchema<any, any, any, {
             readonly get: "get";
@@ -23,19 +22,24 @@ export declare class EntitySearchService<S extends EntitySchema<any, any, any>> 
             readonly duplicate: "duplicate";
         }>>) => Promise<Record<string, any>>) | undefined;
     };
-    getSearchIndexConfig(): SearchIndexConfig;
-    search(query: EntitySearchQuery<S>, searchIndexConfig?: SearchIndexConfig, ctx?: ExecutionContext): Promise<SearchResult<any>>;
-    syncToIndex(entity: EntityRecordTypeFromSchema<S>, searchIndexConfig?: SearchIndexConfig, ctx?: ExecutionContext, synchronous?: boolean): Promise<void>;
-    deleteFromIndex(entityId: string, searchIndexConfig?: SearchIndexConfig, ctx?: ExecutionContext, synchronous?: boolean): Promise<void>;
-    bulkSync(entities: EntityRecordTypeFromSchema<S>[], searchIndexConfig?: SearchIndexConfig, ctx?: ExecutionContext, synchronous?: boolean): Promise<void>;
+    getSearchIndexConfig(): import("../types").SearchIndexConfig;
+    search(query: EntitySearchQuery<S>, searchIndexConfig?: import("../types").SearchIndexConfig, ctx?: ExecutionContext): Promise<SearchResult<any>>;
+    syncToIndex(entity: EntityRecordTypeFromSchema<S>, searchIndexConfig?: import("../types").SearchIndexConfig, ctx?: ExecutionContext, synchronous?: boolean): Promise<void>;
+    deleteFromIndex(entityId: string, searchIndexConfig?: import("../types").SearchIndexConfig, ctx?: ExecutionContext, synchronous?: boolean): Promise<void>;
+    bulkSync(entities: EntityRecordTypeFromSchema<S>[], searchIndexConfig?: import("../types").SearchIndexConfig, ctx?: ExecutionContext, synchronous?: boolean): Promise<void>;
     transformDocumentForIndexing(entity: EntityRecordTypeFromSchema<S>): Promise<Record<string, any>>;
     /**
-     * Resync all entity documents from database to search index
-     * Uses cursor-based pagination to handle large datasets efficiently
+     * Resync all entity documents from database to search index.
+     * Uses cursor-based pagination to handle large datasets efficiently.
+     *
+     * @param options.batchSize - Number of records to fetch per iteration (default: 50)
+     * @param options.ctx - Execution context for the operation
+     * @param options.maxIterations - Safety limit on number of iterations (default: 10000)
      */
     resyncAllDocuments(options?: {
         batchSize?: number;
         ctx?: ExecutionContext;
+        maxIterations?: number;
     }): Promise<{
         processedCount: number;
         failedCount: number;

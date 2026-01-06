@@ -1,6 +1,7 @@
 import type { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import type { AuthorizerTypeMetadata } from "./authorizer";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
+import type { ControllerObservabilityConfig } from "../observability/controller-config";
 /**
  * Represents the configuration options for a controller.
  */
@@ -41,6 +42,25 @@ export type IControllerConfig = CommonLambdaHandlerOptions & {
      * @default false
      */
     requireApiKey?: boolean;
+    /**
+     * Observability configuration for request/response data capture.
+     * By default, only basic HTTP info is captured. Use `includes` to capture
+     * request body/headers/query and response body/headers.
+     *
+     * @example
+     * ```typescript
+     * @Controller('payments', {
+     *   observability: {
+     *     includes: {
+     *       request: { body: true },
+     *       response: { body: ['id', 'status'] }
+     *     },
+     *     dataProtection: { enabled: true }
+     *   }
+     * })
+     * ```
+     */
+    observability?: ControllerObservabilityConfig;
 };
 /**
  * Decorator function for defining a controller.

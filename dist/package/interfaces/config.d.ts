@@ -3,7 +3,8 @@ import type { NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import type { ILayerVersion } from "aws-cdk-lib/aws-lambda";
 import { IDIContainer } from "./di";
 import { IControllerConfig } from '../decorators';
-import { IFunctionResourceAccess, TImportedPolicy, TPolicyStatementOrProps } from '../constructs/lambda-function';
+import type { IFunctionResourceAccess, TPolicyStatementOrProps, TImportedPolicy } from '../constructs/lambda-function';
+import type { IDynamoDBConfig } from '../constructs/dynamodb';
 /**
  * Configuration for smart duplicated field detection.
  * Automatically detects fields like 'teamName' for 'teamId' relations.
@@ -184,6 +185,59 @@ export interface ITableUIAutoGenerationConfig {
     /** Segment auto-generation configuration */
     segmentAutoGeneration?: ISegmentAutoGenerationConfig;
 }
+/**
+ * Observability infrastructure configuration (CDK/Application level).
+ *
+ * @example Simple - defaults
+ * ```typescript
+ * observability: true  // Creates 'observabilitylogs' table
+ * ```
+ *
+ * @example Custom table name
+ * ```typescript
+ * observability: { dynamodb: { name: 'my-app-logs' } }  // Creates 'my-app-logs' table
+ * ```
+ *
+ * @example With search indexing (same structure as IDynamoDBConfig['table'])
+ * ```typescript
+ * observability: {
+ *   dynamodb: {
+ *     searchIndexing: [{ enabled: true, engineConfig: { type: 'meili', ... } }]
+ *   }
+ * }
+ * ```
+ */
+export interface IObservabilityInfraConfig {
+    /** Stack name (default: 'persistent') */
+    stackName?: string;
+    /** Parent stack name */
+    parentStackName?: string;
+    /**
+     * DynamoDB table config - same as IDynamoDBConfig['table'] but:
+     * - `name` optional (default: 'observabilitylogs')
+     * - `props` optional (framework provides pk/sk, 6 GSIs)
+     * - `audit` excluded (would be recursive)
+     */
+    dynamodb?: Omit<IDynamoDBConfig['table'], 'audit' | 'name' | 'props'> & {
+        /** Enable/disable DynamoDB table (default: true) */
+        enabled?: boolean;
+        /** Table name suffix (default: 'observability') */
+        name?: string;
+        /** Override default table props */
+        props?: Partial<IDynamoDBConfig['table']['props']>;
+    };
+    /** CloudWatch infrastructure (future) */
+    cloudwatch?: {
+        enabled?: boolean;
+        logGroupName?: string;
+        retentionDays?: number;
+    };
+}
+/**
+ * - `true`: Create DynamoDB table with defaults
+ * - `IObservabilityInfraConfig`: Customize
+ */
+export type IObservabilityConfig = boolean | IObservabilityInfraConfig;
 export interface IApplicationConfig {
     name?: string;
     region?: string;
@@ -212,6 +266,12 @@ export interface IApplicationConfig {
         };
         /** Table UI auto-generation configuration */
         tableUI?: ITableUIAutoGenerationConfig;
+        /**
+         * Auto-generate audit log actions on entity detail pages.
+         * Only works if observability is enabled.
+         * @default true
+         */
+        autoGenerateAuditActions?: boolean;
     };
     defaultAuthorizationType?: any;
     defaultAdminGroups?: string[];
@@ -252,6 +312,11 @@ export interface IApplicationConfig {
     functionProps?: Omit<NodejsFunctionProps, 'layers'> & {
         readonly layers?: Array<ILayerVersion | string>;
     };
+    /**
+     * Observability infrastructure configuration.
+     * Creates DynamoDB table and grants access to all Lambdas.
+     */
+    observability?: IObservabilityConfig;
     /**
      * The timeout duration for the Lambda function in seconds.
      * Use this timeout to avoid importing the duration class from aws-cdk-lib.

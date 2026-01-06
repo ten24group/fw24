@@ -23,6 +23,11 @@ export declare class DIContainer implements IDIContainer {
     get childContainers(): Set<DIContainer>;
     private _proxies;
     get proxies(): Set<DIContainer>;
+    /**
+     * Global ROOT container shared across ALL fw24 instances (bundled + layer).
+     * Stored in global object to ensure singleton behavior even when multiple
+     * fw24 module graphs exist (e.g., bundled in Lambda + layer).
+     */
     private static _rootInstance;
     static get ROOT(): IDIContainer;
     private searchEngine?;
