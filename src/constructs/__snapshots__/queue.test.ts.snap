@@ -1,0 +1,569 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`QueueLambda Static Methods Snapshot Tests - CloudFormation Consistency should generate consistent CloudFormation for FIFO queue setup 1`] = `
+{
+  "Parameters": {
+    "BootstrapVersion": {
+      "Default": "/cdk-bootstrap/hnb659fds/version",
+      "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+  },
+  "Resources": {
+    "SnapshotFifoQueue5F0B08F6": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "FifoQueue": true,
+        "RedrivePolicy": {
+          "deadLetterTargetArn": {
+            "Fn::GetAtt": [
+              "SnapshotFifoQueuedefaultdlqfifo79428724",
+              "Arn",
+            ],
+          },
+          "maxReceiveCount": 3,
+        },
+      },
+      "Type": "AWS::SQS::Queue",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "SnapshotFifoQueuedefaultdlqfifo79428724": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "FifoQueue": true,
+      },
+      "Type": "AWS::SQS::Queue",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "SnapshotFifoQueuelambda39621332": {
+      "DependsOn": [
+        "SnapshotFifoQueuelambdaServiceRoleDefaultPolicy1A39E16F",
+        "SnapshotFifoQueuelambdaServiceRole5196915B",
+      ],
+      "Properties": {
+        "Architectures": [
+          "arm64",
+        ],
+        "Code": {
+          "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
+          "S3Key": "10eb9d09fdc04a561df6e9b42d36ddf50934fae3b100a5d56ac2849b22d2706d.zip",
+        },
+        "Environment": {
+          "Variables": {},
+        },
+        "Handler": "index.handler",
+        "Layers": [],
+        "LoggingConfig": {
+          "LogFormat": "Text",
+          "LogGroup": {
+            "Ref": "SnapshotFifoQueuelambdaSnapshotFifoQueuelambdaLogGroupDE084789",
+          },
+        },
+        "MemorySize": 128,
+        "Role": {
+          "Fn::GetAtt": [
+            "SnapshotFifoQueuelambdaServiceRole5196915B",
+            "Arn",
+          ],
+        },
+        "Runtime": "nodejs22.x",
+        "Timeout": 5,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "SnapshotFifoQueuelambdaServiceRole5196915B": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "SnapshotFifoQueuelambdaServiceRoleDefaultPolicy1A39E16F": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "sqs:ReceiveMessage",
+                "sqs:ChangeMessageVisibility",
+                "sqs:GetQueueUrl",
+                "sqs:DeleteMessage",
+                "sqs:GetQueueAttributes",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "SnapshotFifoQueue5F0B08F6",
+                  "Arn",
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "SnapshotFifoQueuelambdaServiceRoleDefaultPolicy1A39E16F",
+        "Roles": [
+          {
+            "Ref": "SnapshotFifoQueuelambdaServiceRole5196915B",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "SnapshotFifoQueuelambdaSnapshotFifoQueuelambdaLogGroupDE084789": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 30,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "SnapshotFifoQueuelambdaSqsEventSourceTestStackSnapshotFifoQueue14BDA364A32A5DA4": {
+      "Properties": {
+        "EventSourceArn": {
+          "Fn::GetAtt": [
+            "SnapshotFifoQueue5F0B08F6",
+            "Arn",
+          ],
+        },
+        "FunctionName": {
+          "Ref": "SnapshotFifoQueuelambda39621332",
+        },
+      },
+      "Type": "AWS::Lambda::EventSourceMapping",
+    },
+  },
+  "Rules": {
+    "CheckBootstrapVersion": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Contains": [
+                  [
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                  ],
+                  {
+                    "Ref": "BootstrapVersion",
+                  },
+                ],
+              },
+            ],
+          },
+          "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI.",
+        },
+      ],
+    },
+  },
+}
+`;
+
+exports[`QueueLambda Static Methods Snapshot Tests - CloudFormation Consistency should generate consistent CloudFormation for complete setup 1`] = `
+{
+  "Parameters": {
+    "BootstrapVersion": {
+      "Default": "/cdk-bootstrap/hnb659fds/version",
+      "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+  },
+  "Resources": {
+    "SnapshotCompleteQueue6AA70090": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "MessageRetentionPeriod": 604800,
+        "ReceiveMessageWaitTimeSeconds": 20,
+        "RedrivePolicy": {
+          "deadLetterTargetArn": {
+            "Fn::GetAtt": [
+              "SnapshotCompleteQueuedefaultdlqE75627CF",
+              "Arn",
+            ],
+          },
+          "maxReceiveCount": 5,
+        },
+        "VisibilityTimeout": 60,
+      },
+      "Type": "AWS::SQS::Queue",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "SnapshotCompleteQueuedefaultdlqE75627CF": {
+      "DeletionPolicy": "Delete",
+      "Type": "AWS::SQS::Queue",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "SnapshotCompleteQueuelambdaC69C63F5": {
+      "DependsOn": [
+        "SnapshotCompleteQueuelambdaServiceRoleDefaultPolicy80984CE8",
+        "SnapshotCompleteQueuelambdaServiceRole7E31BDBA",
+      ],
+      "Properties": {
+        "Architectures": [
+          "arm64",
+        ],
+        "Code": {
+          "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
+          "S3Key": "10eb9d09fdc04a561df6e9b42d36ddf50934fae3b100a5d56ac2849b22d2706d.zip",
+        },
+        "Environment": {
+          "Variables": {},
+        },
+        "Handler": "index.handler",
+        "Layers": [],
+        "LoggingConfig": {
+          "LogFormat": "Text",
+          "LogGroup": {
+            "Ref": "SnapshotCompleteQueuelambdaSnapshotCompleteQueuelambdaLogGroup4D6F0156",
+          },
+        },
+        "MemorySize": 128,
+        "Role": {
+          "Fn::GetAtt": [
+            "SnapshotCompleteQueuelambdaServiceRole7E31BDBA",
+            "Arn",
+          ],
+        },
+        "Runtime": "nodejs22.x",
+        "Timeout": 90,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "SnapshotCompleteQueuelambdaServiceRole7E31BDBA": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "SnapshotCompleteQueuelambdaServiceRoleDefaultPolicy80984CE8": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "sqs:ReceiveMessage",
+                "sqs:ChangeMessageVisibility",
+                "sqs:GetQueueUrl",
+                "sqs:DeleteMessage",
+                "sqs:GetQueueAttributes",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "SnapshotCompleteQueue6AA70090",
+                  "Arn",
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "SnapshotCompleteQueuelambdaServiceRoleDefaultPolicy80984CE8",
+        "Roles": [
+          {
+            "Ref": "SnapshotCompleteQueuelambdaServiceRole7E31BDBA",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "SnapshotCompleteQueuelambdaSnapshotCompleteQueuelambdaLogGroup4D6F0156": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 30,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "SnapshotCompleteQueuelambdaSqsEventSourceTestStackSnapshotCompleteQueue34C64AB7844AB17C": {
+      "Properties": {
+        "BatchSize": 25,
+        "EventSourceArn": {
+          "Fn::GetAtt": [
+            "SnapshotCompleteQueue6AA70090",
+            "Arn",
+          ],
+        },
+        "FunctionName": {
+          "Ref": "SnapshotCompleteQueuelambdaC69C63F5",
+        },
+        "FunctionResponseTypes": [
+          "ReportBatchItemFailures",
+        ],
+        "MaximumBatchingWindowInSeconds": 10,
+      },
+      "Type": "AWS::Lambda::EventSourceMapping",
+    },
+  },
+  "Rules": {
+    "CheckBootstrapVersion": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Contains": [
+                  [
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                  ],
+                  {
+                    "Ref": "BootstrapVersion",
+                  },
+                ],
+              },
+            ],
+          },
+          "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI.",
+        },
+      ],
+    },
+  },
+}
+`;
+
+exports[`QueueLambda Static Methods Snapshot Tests - CloudFormation Consistency should generate consistent CloudFormation for standard queue setup 1`] = `
+{
+  "Parameters": {
+    "BootstrapVersion": {
+      "Default": "/cdk-bootstrap/hnb659fds/version",
+      "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+  },
+  "Resources": {
+    "SnapshotQueue8487F590": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "ReceiveMessageWaitTimeSeconds": 20,
+        "RedrivePolicy": {
+          "deadLetterTargetArn": {
+            "Fn::GetAtt": [
+              "SnapshotQueuedefaultdlqF5CBD104",
+              "Arn",
+            ],
+          },
+          "maxReceiveCount": 3,
+        },
+        "VisibilityTimeout": 60,
+      },
+      "Type": "AWS::SQS::Queue",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "SnapshotQueuedefaultdlqF5CBD104": {
+      "DeletionPolicy": "Delete",
+      "Type": "AWS::SQS::Queue",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "SnapshotQueuelambda0A23FA1C": {
+      "DependsOn": [
+        "SnapshotQueuelambdaServiceRoleDefaultPolicy80584699",
+        "SnapshotQueuelambdaServiceRoleE5AED45E",
+      ],
+      "Properties": {
+        "Architectures": [
+          "arm64",
+        ],
+        "Code": {
+          "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
+          "S3Key": "10eb9d09fdc04a561df6e9b42d36ddf50934fae3b100a5d56ac2849b22d2706d.zip",
+        },
+        "Environment": {
+          "Variables": {},
+        },
+        "Handler": "index.handler",
+        "Layers": [],
+        "LoggingConfig": {
+          "LogFormat": "Text",
+          "LogGroup": {
+            "Ref": "SnapshotQueuelambdaSnapshotQueuelambdaLogGroup90F4B147",
+          },
+        },
+        "MemorySize": 128,
+        "Role": {
+          "Fn::GetAtt": [
+            "SnapshotQueuelambdaServiceRoleE5AED45E",
+            "Arn",
+          ],
+        },
+        "Runtime": "nodejs22.x",
+        "Timeout": 5,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "SnapshotQueuelambdaServiceRoleDefaultPolicy80584699": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "sqs:ReceiveMessage",
+                "sqs:ChangeMessageVisibility",
+                "sqs:GetQueueUrl",
+                "sqs:DeleteMessage",
+                "sqs:GetQueueAttributes",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "SnapshotQueue8487F590",
+                  "Arn",
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "SnapshotQueuelambdaServiceRoleDefaultPolicy80584699",
+        "Roles": [
+          {
+            "Ref": "SnapshotQueuelambdaServiceRoleE5AED45E",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "SnapshotQueuelambdaServiceRoleE5AED45E": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "SnapshotQueuelambdaSnapshotQueuelambdaLogGroup90F4B147": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 30,
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "SnapshotQueuelambdaSqsEventSourceTestStackSnapshotQueueA0315A4F63938249": {
+      "Properties": {
+        "BatchSize": 10,
+        "EventSourceArn": {
+          "Fn::GetAtt": [
+            "SnapshotQueue8487F590",
+            "Arn",
+          ],
+        },
+        "FunctionName": {
+          "Ref": "SnapshotQueuelambda0A23FA1C",
+        },
+        "FunctionResponseTypes": [
+          "ReportBatchItemFailures",
+        ],
+        "MaximumBatchingWindowInSeconds": 5,
+      },
+      "Type": "AWS::Lambda::EventSourceMapping",
+    },
+  },
+  "Rules": {
+    "CheckBootstrapVersion": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Contains": [
+                  [
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                  ],
+                  {
+                    "Ref": "BootstrapVersion",
+                  },
+                ],
+              },
+            ],
+          },
+          "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI.",
+        },
+      ],
+    },
+  },
+}
+`;

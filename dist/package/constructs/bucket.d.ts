@@ -1,4 +1,5 @@
 import { Stack } from "aws-cdk-lib";
+import { RemovalPolicy } from 'aws-cdk-lib';
 import { EventType, BucketProps } from 'aws-cdk-lib/aws-s3';
 import { LambdaFunctionProps } from "./lambda-function";
 import { IApplicationConfig } from "../interfaces/config";
@@ -16,7 +17,7 @@ export interface IBucketConstructConfig extends IConstructConfig {
     /**
      * The removal policy for the bucket.
      */
-    removalPolicy?: any;
+    removalPolicy?: RemovalPolicy;
     /**
      * Specifies whether to automatically delete objects in the bucket when the bucket is deleted.
      */
