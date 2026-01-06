@@ -32,6 +32,7 @@ export declare const ObservabilityLogEntitySchema: {
             readonly delete: "delete";
             readonly duplicate: "duplicate";
         };
+        readonly excludeAuditActions: true;
         readonly excludeFromAdminMenu: true;
         readonly excludeFromAdminCreate: true;
         readonly excludeFromAdminUpdate: true;

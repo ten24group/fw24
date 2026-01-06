@@ -3272,6 +3272,7 @@ export interface EntitySchema<A extends string, F extends string, C extends stri
         readonly excludeFromAdminUpdate?: boolean;
         readonly excludeFromAdminDelete?: boolean;
         readonly excludeFromAdminDuplicate?: boolean;
+        readonly excludeAuditActions?: boolean;
         readonly CRUDApiPath?: string;
         /**
          * Entity metadata for UI rendering.

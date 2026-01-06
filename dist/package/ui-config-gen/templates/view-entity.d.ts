@@ -45,6 +45,8 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
     globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
     /** Whether observability is enabled (passed from UI config gen) */
     hasObservability?: boolean;
+    /** Exclude audit actions for this entity */
+    excludeAuditActions?: boolean;
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ViewEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     readonly pageTitle: Template;
