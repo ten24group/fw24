@@ -1,10 +1,17 @@
 import { Construct } from "constructs";
-import { PolicyStatement, Role, FederatedPrincipal } from "aws-cdk-lib/aws-iam";
+import { PolicyStatement, PolicyStatementProps, Role, FederatedPrincipal } from "aws-cdk-lib/aws-iam";
 import { readFileSync } from "fs";
+import type { CfnIdentityPool } from "aws-cdk-lib/aws-cognito";
+
+export interface ICognitoAuthRoleProps {
+    identityPool: CfnIdentityPool;
+    policyFilePaths?: string[];
+    policies?: Array<PolicyStatementProps | PolicyStatement>;
+}
 
 export class CognitoAuthRole extends Construct {
 
-    constructor(scope: Construct, id: string, props: any) {
+    constructor(scope: Construct, id: string, props: ICognitoAuthRoleProps) {
         super(scope, id);
         const { identityPool, policyFilePaths, policies } = props;
 
@@ -19,7 +26,7 @@ export class CognitoAuthRole extends Construct {
             }, "sts:AssumeRoleWithWebIdentity"),
         });
 
-        if(policyFilePaths !== undefined) {
+        if (policyFilePaths !== undefined) {
             // apply the policy to the role
             for (const policyFilePath of policyFilePaths) {
                 // read file from policyFilePath
@@ -33,7 +40,7 @@ export class CognitoAuthRole extends Construct {
                 );
             }
         }
-        if(policies !== undefined) {
+        if (policies !== undefined) {
             for (const policy of policies) {
                 role.addToPolicy(new PolicyStatement(policy));
             }

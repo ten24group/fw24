@@ -14,7 +14,10 @@ import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/co
 import { IConstructConfig } from "../interfaces/construct-config";
 import { createLogger, LogDuration } from "../logging";
 import { SEARCH_INDEXER_ENV_KEYS } from "../search/indexer/interfaces";
-import { removeEmpty } from "../utils";
+import { merge, removeEmpty } from "../utils";
+import type { IFunctionResourceAccess } from "./lambda-function";
+
+type QueueConstructor = new (...args: unknown[]) => { queueName: string; queueConfig: Record<string, any> };
 import { ensureNoSpecialChars, ensureSuffix } from "../utils/keys";
 import { LambdaFunction, LambdaFunctionProps } from "./lambda-function";
 import { QueueLambda } from "./queue-lambda";
@@ -38,6 +41,7 @@ interface HandlerQueueConfig {
     type: 'handler';
     queueHandlerPath: string;
     functionProps?: NodejsFunctionProps;
+    sqsEventSourceProps?: SqsEventSourceProps;
 }
 
 type QueueConfig = NewQueueConfig | ExistingQueueConfig | HandlerQueueConfig;
@@ -566,7 +570,7 @@ export class DynamoDBConstruct implements FW24Construct {
         config: AuditConfig | SearchIndexingConfig,
         defaultHandlerEntry: string,
         environmentVariables: Record<string, string>,
-        resourceAccess?: any,
+        resourceAccess?: IFunctionResourceAccess,
     ): Promise<void> {
         if (!tableInstance.tableStreamArn) {
             this.logger.warn(`Stream ARN not found for table ${this.dynamoDBConfig.table.name}, cannot set up ${consumerName}`);
@@ -579,11 +583,11 @@ export class DynamoDBConstruct implements FW24Construct {
         this.validateQueueConfig(config, consumerName);
 
         if (queueConfig.type === 'handler') {
-            await this.setupWithQueueHandler(queueConfig.queueHandlerPath, consumerName, environmentVariables, queueConfig.functionProps);
+            await this.setupWithQueueHandler(queueConfig.queueHandlerPath, consumerName, environmentVariables, queueConfig.functionProps, queueConfig.sqsEventSourceProps);
         } else if (queueConfig.type === 'existing') {
             this.setupWithExistingQueue(queueConfig.existingQueueName, consumerName);
         } else {
-            const commonConfig = this.buildCommonLambdaConfig(defaultHandlerEntry, environmentVariables, resourceAccess, queueConfig.functionProps);
+            const commonConfig = this.buildCommonLambdaConfig(defaultHandlerEntry, environmentVariables, resourceAccess ?? {}, queueConfig.functionProps);
             this.setupWithNewQueue(queueConfig, consumerName, commonConfig);
         }
 
@@ -635,6 +639,7 @@ export class DynamoDBConstruct implements FW24Construct {
                     type: 'handler',
                     queueHandlerPath: searchConfig.queueHandlerPath,
                     functionProps: searchConfig.functionProps,
+                    sqsEventSourceProps: searchConfig.sqsEventSourceProps,
                 };
             } else if ('existingQueueName' in searchConfig && searchConfig.existingQueueName) {
                 return {
@@ -660,6 +665,7 @@ export class DynamoDBConstruct implements FW24Construct {
                     type: 'handler',
                     queueHandlerPath: options.queueHandlerPath,
                     functionProps: auditConfig.functionProps,
+                    sqsEventSourceProps: options.sqsEventSourceProps,
                 };
             } else if (options && 'existingQueueName' in options && options.existingQueueName) {
                 return {
@@ -681,13 +687,13 @@ export class DynamoDBConstruct implements FW24Construct {
     private buildCommonLambdaConfig(
         defaultHandlerEntry: string,
         environmentVariables: Record<string, string>,
-        resourceAccess: any,
+        resourceAccess: IFunctionResourceAccess,
         functionProps?: NodejsFunctionProps
     ): LambdaFunctionProps {
         return {
             entry: defaultHandlerEntry,
             environmentVariables,
-            resourceAccess,
+            resourceAccess: resourceAccess ?? {},
             functionProps,
         };
     }
@@ -716,7 +722,8 @@ export class DynamoDBConstruct implements FW24Construct {
         queueHandlerPath: string,
         consumerName: string,
         environmentVariables: Record<string, string>,
-        functionProps?: NodejsFunctionProps
+        functionProps?: NodejsFunctionProps,
+        sqsEventSourceProps?: SqsEventSourceProps
     ): Promise<void> {
         this.logger.info(`Loading queue handler from: ${queueHandlerPath}`);
 
@@ -725,10 +732,10 @@ export class DynamoDBConstruct implements FW24Construct {
         const queueModule = await import(absolutePath);
 
         // Find queue class (same logic as Helper.registerHandlers)
-        let QueueClass: (new (...args: any[]) => any) | undefined;
+        let QueueClass: QueueConstructor | undefined;
         for (const exportedItem of Object.values(queueModule)) {
             if (typeof exportedItem === "function" && exportedItem.name !== "handler") {
-                QueueClass = exportedItem as new (...args: any[]) => any;
+                QueueClass = exportedItem as QueueConstructor;
                 break;
             }
         }
@@ -757,9 +764,15 @@ export class DynamoDBConstruct implements FW24Construct {
             ...this.fw24.resolveEnvVariables(queueConfig.env)
         };
 
-        // Merge function props (same pattern as QueueConstruct)
+        // Merge function props using proper merge utility (same pattern as QueueConstruct)
         // functionProps from searchIndexing/audit config take precedence
-        const mergedFunctionProps = { ...queueConfig.functionProps, ...functionProps };
+        const mergedFunctionProps = merge([
+            queueConfig.functionProps ?? {},
+            functionProps ?? {}
+        ])!;
+
+        // Merge sqsEventSourceProps: decorator config as base, searchIndexing/audit config takes precedence
+        const mergedSqsEventSourceProps = { ...queueConfig.sqsEventSourceProps, ...sqsEventSourceProps };
 
         // Create queue + lambda (same pattern as QueueConstruct, but with subscription to stream topic)
         const queue = new QueueLambda(this.mainStack, `${queueName}-queue`, {
@@ -769,7 +782,7 @@ export class DynamoDBConstruct implements FW24Construct {
             receiveMessageWaitTimeSeconds: queueConfig.receiveMessageWaitTimeSeconds,
             retentionPeriodDays: queueConfig.retentionPeriodDays,
             maxReceiveCount: queueConfig.maxReceiveCount,
-            sqsEventSourceProps: queueConfig.sqsEventSourceProps,
+            sqsEventSourceProps: mergedSqsEventSourceProps,
             subscriptions: {
                 topics: [ {
                     name: this.getStreamTopicName(),
@@ -800,8 +813,8 @@ export class DynamoDBConstruct implements FW24Construct {
         lambdaConfig: LambdaFunctionProps
     ): void {
         const queueName = queueConfig.customQueueName || `${this.dynamoDBConfig.table.name}-${consumerName}`;
-        const eventSourceProps = this.buildSqsEventSourceProps(queueConfig.sqsEventSourceProps);
 
+        // QueueLambda will normalize sqsEventSourceProps with proper defaults
         new QueueLambda(this.mainStack, `${this.fw24.appName}-${consumerName}-queue`, {
             queueName: queueName,
             lambdaFunctionProps: lambdaConfig,
@@ -812,17 +825,8 @@ export class DynamoDBConstruct implements FW24Construct {
                     filters: [],
                 } ],
             },
-            sqsEventSourceProps: eventSourceProps,
+            sqsEventSourceProps: queueConfig.sqsEventSourceProps,
         });
-    }
-
-    private buildSqsEventSourceProps(customProps?: SqsEventSourceProps): SqsEventSourceProps {
-        return {
-            batchSize: customProps?.batchSize || 5,
-            maxBatchingWindow: customProps?.maxBatchingWindow || Duration.seconds(5),
-            reportBatchItemFailures: customProps?.reportBatchItemFailures || true,
-            ...customProps,
-        };
     }
 
     private async setupAuditProcessing(config: AuditConfig, tableInstance: TableV2): Promise<void> {
@@ -847,7 +851,7 @@ export class DynamoDBConstruct implements FW24Construct {
             envVars[ AUDIT_ENV_KEYS.LOG_GROUP_NAME ] = config.cloudwatchOptions?.logGroupName || `/audit/logs/${this.fw24.getConfig().name}`;
         }
 
-        let auditResourceAccess: any = {};
+        let auditResourceAccess: IFunctionResourceAccess = {};
 
         if (config.type === AuditLoggerType.DYNAMODB) {
 

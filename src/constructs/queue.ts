@@ -15,7 +15,7 @@ import { IConstructConfig } from "../interfaces/construct-config";
 import { LayerConstruct } from "./layer";
 import { VpcConstruct } from "./vpc";
 import { LambdaFunction } from "./lambda-function";
-import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
+import { merge } from "../utils";
 
 /**
  * Represents the configuration for a queue construct.
@@ -71,9 +71,9 @@ export interface IQueueConstructConfig extends IConstructConfig {
 export class QueueConstruct implements FW24Construct {
     readonly logger = createLogger(QueueConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
-    
+
     name: string = QueueConstruct.name;
-    dependencies: string[] = [DynamoDBConstruct.name, VpcConstruct.name, LayerConstruct.name];
+    dependencies: string[] = [ DynamoDBConstruct.name, VpcConstruct.name, LayerConstruct.name ];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;
@@ -85,7 +85,7 @@ export class QueueConstruct implements FW24Construct {
      */
     constructor(private readonly queueConstructConfig: IQueueConstructConfig) {
         this.logger.debug("constructor", queueConstructConfig);
-        Helper.hydrateConfig(queueConstructConfig,'SQS');
+        Helper.hydrateConfig(queueConstructConfig, 'SQS');
     }
 
     /**
@@ -97,7 +97,7 @@ export class QueueConstruct implements FW24Construct {
         this.mainStack = this.fw24.getStack(this.queueConstructConfig.stackName, this.queueConstructConfig.parentStackName);
         // make the fw24 instance available to the class
         // sets the default queues directory if not defined
-        if(this.queueConstructConfig.queuesDirectory === undefined || this.queueConstructConfig.queuesDirectory === ""){
+        if (this.queueConstructConfig.queuesDirectory === undefined || this.queueConstructConfig.queuesDirectory === "") {
             this.queueConstructConfig.queuesDirectory = "./src/queues";
         }
 
@@ -113,10 +113,10 @@ export class QueueConstruct implements FW24Construct {
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
             this.logger.debug("SQS stack: construct: app has modules ", Array.from(modules.keys()));
-            for (const [, module] of modules) {
+            for (const [ , module ] of modules) {
                 const basePath = module.getBasePath();
                 const queuesDirectory = module.getQueuesDirectory();
-                if(queuesDirectory != ''){
+                if (queuesDirectory != '') {
                     this.logger.debug("Load queues from module base-path: ", basePath);
                     await Helper.registerQueuesFromModule(module, collectQueue);
                 }
@@ -139,9 +139,9 @@ export class QueueConstruct implements FW24Construct {
         for (const queueInfo of queueDescriptors) {
             const queueName = queueInfo.handlerInstance.queueConfig?.queueName || queueInfo.handlerClass.name;
             const isManual = queueInfo.handlerInstance.queueConfig?.manualRegistration;
-            
+
             this.createQueueLambda(queueInfo);
-            
+
             if (isManual) {
                 skippedCount++;
             } else {
@@ -159,39 +159,34 @@ export class QueueConstruct implements FW24Construct {
     private readonly createAndRegisterQueue = (queueInfo: HandlerDescriptor) => {
         queueInfo.handlerInstance = new queueInfo.handlerClass();
         this.logger.debug(":::Queue instance: ", queueInfo.fileName, queueInfo.filePath);
-        
+
         const queueName = queueInfo.handlerInstance.queueName;
         const queueConfig = queueInfo.handlerInstance.queueConfig || {};
-        
+
         // Skip queues marked for manual registration
         if (queueConfig.manualRegistration) {
             this.logger.debug(`Skipping manual registration queue ${queueName}`);
             return;
         }
-        
-        const queueProps = {...this.queueConstructConfig.queueProps, ...queueConfig.queueProps};
+
+        const queueProps = { ...this.queueConstructConfig.queueProps, ...queueConfig.queueProps };
 
         this.logger.debug(`Creating queue ${queueName}`);
 
-        // Create queue without lambda (lambdaFunctionProps: undefined)
-        const queue = new QueueLambda(this.mainStack, queueName + "-queue", {
+        // Create queue with subscriptions using static helper
+        // This ensures consistent DLQ setup, timeout configuration, and topic subscriptions
+        const queue = QueueLambda.createQueue(this.mainStack, queueName + "-queue", {
             queueName: queueName,
             queueProps: queueProps,
             visibilityTimeoutSeconds: queueConfig?.visibilityTimeoutSeconds,
             receiveMessageWaitTimeSeconds: queueConfig?.receiveMessageWaitTimeSeconds,
             retentionPeriodDays: queueConfig?.retentionPeriodDays,
             maxReceiveCount: queueConfig?.maxReceiveCount,
-            sqsEventSourceProps: {
-                maxBatchingWindow: Duration.seconds(queueConfig?.maxBatchingWindowSeconds ?? 5),
-                ...queueConfig?.sqsEventSourceProps,
-            },
-            subscriptions: queueConfig?.subscriptions,
-            lambdaFunctionProps: undefined  // Don't create lambda yet
-        }) as Queue;
-        
+        }, queueConfig?.subscriptions);
+
         // Register queue URL immediately so other lambdas can reference it
         this.fw24.setConstructOutput(this, queueName, queue, OutputType.QUEUE, 'queueName');
-        
+
         // Store queue for phase 3
         this.queueMap.set(queueName, queue);
     }
@@ -226,23 +221,15 @@ export class QueueConstruct implements FW24Construct {
             resourceAccess: queueConfig?.resourceAccess,
             functionTimeout: queueConfig?.functionTimeout || this.fw24.getConfig().functionTimeout,
             policies: queueConfig?.policies,
-            functionProps: {...this.queueConstructConfig.functionProps, ...queueConfig?.functionProps},
+            functionProps: merge([
+                this.queueConstructConfig.functionProps ?? {},
+                queueConfig?.functionProps ?? {}
+            ])!,
             logRemovalPolicy: queueConfig?.logRemovalPolicy,
             logRetentionDays: queueConfig?.logRetentionDays,
         }) as NodejsFunction;
 
-        // Attach queue as event source
-        const isFifoQueue = Helper.isFifoQueueProps({ 
-            ...(queueConfig.queueProps || {}), 
-            queueName: queueName 
-        });
-        
-        const eventSourceProps = isFifoQueue ? {} : {
-            batchSize: queueConfig.sqsEventSourceProps?.batchSize ?? 1,
-            maxBatchingWindow: queueConfig.sqsEventSourceProps?.maxBatchingWindow ?? Duration.seconds(5),
-            reportBatchItemFailures: queueConfig.sqsEventSourceProps?.reportBatchItemFailures ?? true,
-        };
-        
-        queueFunction.addEventSource(new SqsEventSource(queue, eventSourceProps));
+        // Attach queue as event source using static helper (ensures consistent event source configuration)
+        QueueLambda.attachQueueToLambda(queueFunction, queue, queueConfig.queueProps, queueName, queueConfig.sqsEventSourceProps);
     }
 }

@@ -41,7 +41,7 @@ export interface ISiteConstructConfig extends IConstructConfig {
     /**
      * The build specification for the site.
      */
-    buildSpec: any; // BuildSpec.fromObject
+    buildSpec: BuildSpec;
 
     /**
      * The domain for the site.

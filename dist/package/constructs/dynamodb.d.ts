@@ -412,7 +412,6 @@ export declare class DynamoDBConstruct implements FW24Construct {
     private setupWithExistingQueue;
     private setupWithQueueHandler;
     private setupWithNewQueue;
-    private buildSqsEventSourceProps;
     private setupAuditProcessing;
     private setupSearchIndexingProcessing;
 }

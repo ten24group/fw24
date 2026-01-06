@@ -14,8 +14,8 @@ import {
     Resource,
     ResponseType,
     RestApi,
-    ApiKey, 
-    Period, 
+    ApiKey,
+    Period,
     UsagePlan
 } from "aws-cdk-lib/aws-apigateway";
 
@@ -35,8 +35,35 @@ import { Helper } from "../core/helper";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { createLogger } from "../logging";
 import Mutable from "../types/mutable";
+import { merge } from "../utils";
 import { LambdaFunction } from "./lambda-function";
 import { LambdaIntegration } from "./lambda-integration";
+
+interface IAPIReference {
+    api: RestApi;
+    isImported: boolean;
+}
+
+interface IAuthorizerConfig {
+    name?: string;
+    type?: string;
+    groups?: string | string[];
+    requireRouteInGroupConfig?: boolean;
+    default?: boolean;
+}
+
+interface IControllerConfigWithAuthorizer extends IControllerConfig {
+    requireRouteInGroupConfig?: boolean;
+    authorizer?: string | IAuthorizerConfig | IAuthorizerConfig[];
+}
+
+interface IRouteWithAuthorizer {
+    httpMethod: string;
+    path: string;
+    target?: string;
+    parameters?: string[] | String[];
+    authorizer?: string | IAuthorizerConfig;
+}
 
 import { createHash, randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
@@ -289,22 +316,26 @@ export class APIConstruct implements FW24Construct {
         }
     }
 
-    private readonly getAPI = (stackName: string): any => {
-        let currentAPI: any = this.fw24.getAPI(this.name, 'root');
+    private readonly getAPI = (stackName: string): IAPIReference => {
+        let currentAPI = this.fw24.getAPI(this.name, 'root') as IAPIReference | undefined;
 
         // if the stack is not the main stack and its a multi-stack application or a nested stack, then import the API
         const currentStack = this.fw24.getStack(stackName);
         this.logger.debug(`Current Stack: ${currentStack.stackName} is nested stack: ${currentStack instanceof NestedStack}`);
         if (this.fw24.useMultiStackSetup(stackName, this.mainStack) || currentStack instanceof NestedStack) {
-            currentAPI = this.fw24.getAPI(this.name, stackName);
+            currentAPI = this.fw24.getAPI(this.name, stackName) as IAPIReference | undefined;
             if (!currentAPI) {
                 const importedAPI = RestApi.fromRestApiAttributes(currentStack, `${this.fw24.appName}-${stackName}-api`, {
                     restApiId: this.fw24.getEnvironmentVariable('restAPI_restApiId', 'api', currentStack),
                     rootResourceId: this.fw24.getEnvironmentVariable('restAPI_restApiRootResourceId', 'api', currentStack),
                 });
                 this.fw24.addAPI(this.name, stackName, importedAPI, true);
-                currentAPI = this.fw24.getAPI(this.name, stackName);
+                currentAPI = this.fw24.getAPI(this.name, stackName) as IAPIReference;
             }
+        }
+
+        if (!currentAPI) {
+            throw new Error(`API not found for stack: ${stackName}`);
         }
 
         return currentAPI;
@@ -452,7 +483,7 @@ export class APIConstruct implements FW24Construct {
         const controllerResource = this.getOrCreateControllerResource(controllerName, controllerStackName);
 
         let controllerTarget = controllerConfig.target;
-        let controllerIntegration: any;
+        let controllerIntegration: LambdaIntegration | AwsIntegration | undefined;
         // create lambda function for the controller
         if (controllerTarget === 'function' || controllerTarget === undefined) {
             controllerConfig.logRetentionDays = controllerConfig.logRetentionDays || this.apiConstructConfig.logRetentionDays;
@@ -684,7 +715,10 @@ export class APIConstruct implements FW24Construct {
     }
 
     private readonly createLambdaFunction = (controllerName: string, filePath: string, fileName: string, controllerConfig: IControllerConfig, controllerStackName: string): NodejsFunction => {
-        const functionProps = { ...this.apiConstructConfig.functionProps, ...controllerConfig?.functionProps };
+        const functionProps = merge([
+            this.apiConstructConfig.functionProps ?? {},
+            controllerConfig?.functionProps ?? {}
+        ])!;
 
         const envVariables = this.fw24.resolveEnvVariables(controllerConfig.env, this.fw24.getStack(controllerStackName));
 
@@ -707,14 +741,14 @@ export class APIConstruct implements FW24Construct {
         }) as NodejsFunction;
     }
 
-    private readonly extractDefaultAuthorizer = (controllerConfig: any): { defaultAuthorizerName: string, defaultAuthorizerType: string, defaultAuthorizerGroups: string[], defaultRequireRouteInGroupConfig: boolean } => {
+    private readonly extractDefaultAuthorizer = (controllerConfig: IControllerConfigWithAuthorizer): { defaultAuthorizerName: string, defaultAuthorizerType: string, defaultAuthorizerGroups: string[], defaultRequireRouteInGroupConfig: boolean } => {
         let defaultAuthorizerName = this.fw24.getDefaultCognitoAuthorizerName();
         let defaultAuthorizerType;
         let defaultAuthorizerGroups;
         let defaultRequireRouteInGroupConfig = false;
 
         if (Array.isArray(controllerConfig?.authorizer)) {
-            const defaultAuthorizer = controllerConfig.authorizer.find((auth: any) => auth.default) || controllerConfig.authorizer[ 0 ];
+            const defaultAuthorizer = (controllerConfig.authorizer as IAuthorizerConfig[]).find((auth) => auth.default) || controllerConfig.authorizer[ 0 ];
             defaultAuthorizerName = defaultAuthorizer.name || defaultAuthorizerName;
             defaultAuthorizerType = defaultAuthorizer.type;
             defaultAuthorizerGroups = defaultAuthorizer.groups || [];
@@ -759,7 +793,19 @@ export class APIConstruct implements FW24Construct {
             defaultAuthorizerGroups = defaultAuthorizerGroups.flatMap(group => group.split(','));
         }
 
-        return { defaultAuthorizerName, defaultAuthorizerType, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig };
+        // Ensure defaultAuthorizerGroups is always an array
+        const normalizedGroups: string[] = !defaultAuthorizerGroups 
+            ? [] 
+            : Array.isArray(defaultAuthorizerGroups) 
+                ? defaultAuthorizerGroups 
+                : [defaultAuthorizerGroups];
+
+        return { 
+            defaultAuthorizerName, 
+            defaultAuthorizerType, 
+            defaultAuthorizerGroups: normalizedGroups, 
+            defaultRequireRouteInGroupConfig 
+        };
     }
 
     private readonly getOrCreateRouteResource = (parentResource: IResource, path: string, controllerStackName: string): IResource => {
@@ -786,7 +832,7 @@ export class APIConstruct implements FW24Construct {
         return currentResource;
     }
 
-    private readonly extractRouteAuthorizer = (route: any, defaultAuthorizerType: string, defaultAuthorizerName: string, defaultAuthorizerGroups: string[], defaultRequireRouteInGroupConfig: boolean): { routeAuthorizerName: string, routeAuthorizerType: string, routeAuthorizerGroups: string[], routeRequireRouteInGroupConfig: boolean } => {
+    private readonly extractRouteAuthorizer = (route: IRouteWithAuthorizer, defaultAuthorizerType: string, defaultAuthorizerName: string, defaultAuthorizerGroups: string[], defaultRequireRouteInGroupConfig: boolean): { routeAuthorizerName: string, routeAuthorizerType: string, routeAuthorizerGroups: string[], routeRequireRouteInGroupConfig: boolean } => {
         let routeAuthorizerName = defaultAuthorizerName;
         let routeAuthorizerType = defaultAuthorizerType;
         let routeAuthorizerGroups = defaultAuthorizerGroups;
@@ -795,7 +841,12 @@ export class APIConstruct implements FW24Construct {
         if (route.authorizer && typeof route.authorizer === 'object') {
             routeAuthorizerType = route.authorizer.type || defaultAuthorizerType;
             routeAuthorizerName = route.authorizer.name || defaultAuthorizerName;
-            routeAuthorizerGroups = route.authorizer.groups || defaultAuthorizerGroups;
+            const routeGroups = route.authorizer.groups || defaultAuthorizerGroups;
+            routeAuthorizerGroups = !routeGroups 
+                ? [] 
+                : Array.isArray(routeGroups) 
+                    ? routeGroups 
+                    : [routeGroups];
             routeRequireRouteInGroupConfig = route.authorizer.requireRouteInGroupConfig || defaultRequireRouteInGroupConfig;
         } else if (typeof route.authorizer === 'string') {
             routeAuthorizerType = route.authorizer;
@@ -804,7 +855,7 @@ export class APIConstruct implements FW24Construct {
         return { routeAuthorizerName, routeAuthorizerType, routeAuthorizerGroups, routeRequireRouteInGroupConfig };
     }
 
-    private readonly createMethodOptions = (route: any, routeAuthorizerType: string, routeAuthorizerName: string | undefined, controllerConfig: IControllerConfig): MethodOptions => {
+    private readonly createMethodOptions = (route: IRouteWithAuthorizer, routeAuthorizerType: string, routeAuthorizerName: string | undefined, controllerConfig: IControllerConfig): MethodOptions => {
         const requestParameters: { [ key: string ]: boolean } = {};
 
         // Add path parameters
@@ -986,12 +1037,19 @@ export class APIConstruct implements FW24Construct {
                     }
 
                     usagePlan.addApiKey(existingKey);
-                    this.apiKeys.get(planName)!.push(existingKey);
+                    const apiKeysList = this.apiKeys.get(planName);
+                    if (apiKeysList) {
+                        apiKeysList.push(existingKey);
+                    }
                 });
             }
         }
 
-        return this.usagePlans.get(planName)!;
+        const usagePlan = this.usagePlans.get(planName);
+        if (!usagePlan) {
+            throw new Error(`Usage plan ${planName} not found`);
+        }
+        return usagePlan;
     }
 
 }
