@@ -57,6 +57,27 @@ export interface IAPIConstructConfig extends IConstructConfig {
      */
     skipControllers?: boolean;
     /**
+     * Enable automatic resource migration for nested controller root resources.
+     *
+     * When enabled, a migration resolver runs during deployment to:
+     * 1. Query AWS to detect if root resources are in the wrong stack
+     * 2. Delete conflicting resources (if any)
+     * 3. Allow CloudFormation to recreate them in the correct location
+     *
+     * The resolver is idempotent - if resources are already correct, it does nothing.
+     *
+     * When disabled (default), CloudFormation will fail with "resource already exists"
+     * if there's a conflict, allowing manual intervention.
+     *
+     * Enable this if you're adding new controllers to existing nested paths and
+     * encounter resource conflict errors during deployment.
+     *
+     * ⚠️  First-time migration may cause brief API downtime (~30-60s).
+     *
+     * @default false
+     */
+    enableAutoResourceMigration?: boolean;
+    /**
      * Force a deployment of the API when using imported APIs
      */
     forceDeployment?: boolean;
@@ -146,6 +167,34 @@ export declare class APIConstruct implements FW24Construct {
     construct(): Promise<void>;
     private readonly getAPI;
     private registerControllers;
+    /**
+     * Sets up root path resources in the main stack for nested controllers.
+     * If enableAutoResourceMigration is true, creates a migration resolver to handle any conflicts.
+     */
+    private setupRootPathResources;
+    /**
+     * Creates a resource migration resolver that handles migration of API Gateway resources
+     * from nested stacks to the main stack.
+     *
+     * This resolver:
+     * 1. Queries actual AWS state (API Gateway + CloudFormation)
+     * 2. Detects which resources are in the wrong stack (nested vs main)
+     * 3. Selectively deletes only conflicting resources from AWS
+     * 4. Allows CloudFormation to create them in the correct stack
+     * 5. Is idempotent - safe to run on every deployment
+     *
+     * @param rootPaths - All root paths to check and potentially migrate
+     */
+    private createResourceMigrationResolver;
+    /**
+     * Creates a Lambda function that handles resource migration.
+     * This Lambda:
+     * - Verifies actual resource locations in AWS
+     * - Detects conflicts and migration needs
+     * - Selectively deletes only problematic resources
+     * - Returns detailed resolution report
+     */
+    private createMigrationHandlerLambda;
     private copyAndRegisterSystemControllers;
     private prepareEntryPackages;
     private readonly registerController;

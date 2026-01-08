@@ -9,6 +9,7 @@ import type {
 
 import {
     AwsIntegration,
+    CfnResource,
     Cors,
     Deployment,
     Resource,
@@ -20,8 +21,9 @@ import {
 } from "aws-cdk-lib/aws-apigateway";
 
 import { CfnOutput, Duration, NestedStack, RemovalPolicy, Stack } from "aws-cdk-lib";
+import { AwsCustomResource, AwsCustomResourcePolicy, PhysicalResourceId } from "aws-cdk-lib/custom-resources";
 
-import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import { Role, ServicePrincipal, PolicyStatement } from "aws-cdk-lib/aws-iam";
 import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import { Topic } from "aws-cdk-lib/aws-sns";
 import { Queue } from "aws-cdk-lib/aws-sqs";
@@ -67,7 +69,7 @@ interface IRouteWithAuthorizer {
 
 import { createHash, randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
-import path from 'node:path';
+import path, { join } from 'node:path';
 import { IControllerConfig } from "../decorators/controller";
 import { ENV_KEYS } from "../fw24";
 import { IConstructConfig } from "../interfaces/construct-config";
@@ -141,6 +143,28 @@ export interface IAPIConstructConfig extends IConstructConfig {
      * This will delete all the controllers resources and methods from the API
      */
     skipControllers?: boolean;
+
+    /**
+     * Enable automatic resource migration for nested controller root resources.
+     * 
+     * When enabled, a migration resolver runs during deployment to:
+     * 1. Query AWS to detect if root resources are in the wrong stack
+     * 2. Delete conflicting resources (if any)
+     * 3. Allow CloudFormation to recreate them in the correct location
+     * 
+     * The resolver is idempotent - if resources are already correct, it does nothing.
+     * 
+     * When disabled (default), CloudFormation will fail with "resource already exists" 
+     * if there's a conflict, allowing manual intervention.
+     * 
+     * Enable this if you're adding new controllers to existing nested paths and 
+     * encounter resource conflict errors during deployment.
+     * 
+     * ⚠️  First-time migration may cause brief API downtime (~30-60s).
+     * 
+     * @default false
+     */
+    enableAutoResourceMigration?: boolean;
 
     /**
      * Force a deployment of the API when using imported APIs
@@ -345,35 +369,235 @@ export class APIConstruct implements FW24Construct {
         // sets the default controllers directory if not defined
         const controllersDirectory = this.apiConstructConfig.controllersDirectory || "./src/controllers";
 
-        // register the controllers
-        await Helper.registerHandlers(controllersDirectory, this.registerController);
+        // Phase 1: Collect all controller descriptors
+        const controllerDescriptors: HandlerDescriptor[] = [];
+        const collectController = (desc: HandlerDescriptor) => {
+            controllerDescriptors.push(desc);
+        };
+
+        await Helper.registerHandlers(controllersDirectory, collectController);
 
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
             this.logger.debug("API-gateway stack: construct: app has modules ", Array.from(modules.keys()));
             for (const [ , module ] of modules) {
                 const basePath = module.getBasePath();
-
                 this.logger.debug("Load controllers from module base-path: ", basePath);
-
-                Helper.registerControllersFromModule(
-                    module,
-                    (desc: HandlerDescriptor) => this.registerController(desc, module)
-                );
+                Helper.registerControllersFromModule(module, collectController);
             }
         } else {
             this.logger.debug("API-gateway stack: construct: app has NO modules ");
         }
 
+        // Phase 2: Handle root resource migration for nested controllers
+        this.setupRootPathResources(controllerDescriptors);
+
+        // Phase 3: Register all controllers
+        for (const desc of controllerDescriptors) {
+            await this.registerController(desc);
+        }
+
         // Register system controllers from fw24 singleton
         if (this.fw24.hasSystemControllers()) {
             this.logger.debug("API-gateway stack: construct: registering system controllers");
-
-            // Copy system controllers to app dist and register from there
             await this.copyAndRegisterSystemControllers();
         } else {
             this.logger.debug("API-gateway stack: construct: app has NO system controllers");
         }
+    }
+
+    /**
+     * Sets up root path resources in the main stack for nested controllers.
+     * If enableAutoResourceMigration is true, creates a migration resolver to handle any conflicts.
+     */
+    private setupRootPathResources(descriptors: HandlerDescriptor[]): void {
+        if (!this.apiConstructConfig.controllerParentStackName) {
+            return; // No nested stacks, nothing to do
+        }
+
+        // Identify all unique root paths from nested controllers
+        const rootPaths = new Set<string>();
+        for (const desc of descriptors) {
+            const { handlerClass, fileName } = desc;
+            const folderPath = fileName.split('/').slice(0, -1).join('/');
+            const handlerInstance = new handlerClass();
+            const controllerName = fileName.includes('/') ? folderPath + '/' + handlerInstance.controllerName : handlerInstance.controllerName;
+            const pathParts = controllerName.split('/');
+            if (pathParts.length > 1) {
+                rootPaths.add(pathParts[ 0 ]);
+            }
+        }
+
+        if (rootPaths.size === 0) {
+            return;
+        }
+
+        this.logger.info(`🏗️  Managing ${rootPaths.size} root resource(s) for nested controllers: ${Array.from(rootPaths).join(', ')}`);
+
+        // Check if automatic resource migration is enabled
+        const autoMigrationEnabled = this.apiConstructConfig?.enableAutoResourceMigration === true;
+
+        let migrationResolver: AwsCustomResource | undefined;
+        if (autoMigrationEnabled) {
+            // Create resource migration resolver to handle any conflicts
+            // The resolver queries AWS state and only deletes resources if they're in the wrong stack
+            // It's idempotent and safe to run on every deployment
+            this.logger.info(`🔄 Resource migration enabled - will handle conflicts automatically`);
+            migrationResolver = this.createResourceMigrationResolver(Array.from(rootPaths));
+        }
+        // Create root resources in main stack
+        for (const rootPath of rootPaths) {
+            this.logger.info(`🆕 Creating /${rootPath} in main stack as CloudFormation resource...`);
+
+            // Create the resource as an explicit CloudFormation resource
+            // This is necessary because this.api is imported, so addResource() doesn't create CFN resources
+            const cfnResource = new CfnResource(this.mainStack, `RootResource-${rootPath}`, {
+                parentId: this.api.root.resourceId,
+                pathPart: rootPath,
+                restApiId: this.api.restApiId,
+            });
+
+            // If migration resolver was created, make this resource depend on it
+            // This ensures any conflicting resources are deleted before we try to create new ones
+            if (migrationResolver) {
+                cfnResource.node.addDependency(migrationResolver);
+                this.logger.info(`   🔗 Added dependency on migration resolver`);
+            }
+
+            // Wrap the CfnResource in an IResource for compatibility
+            const rootResource = Resource.fromResourceAttributes(this.mainStack, `RootResourceWrapper-${rootPath}`, {
+                resourceId: cfnResource.ref,
+                restApi: this.api,
+                path: `/${rootPath}`
+            });
+
+            // Don't add CORS preflight here - nested stacks will handle it
+            this.logger.info(`   ℹ️  Nested stacks will add CORS preflight methods`);
+
+            // Store resource ID - fw24 will pass this to nested stacks as parameters
+            this.fw24.setConstructOutput(this, `restAPI_controller_${rootPath}`, rootResource, OutputType.RESOURCE, 'resourceId');
+            this.logger.info(`💾 Stored /${rootPath} resourceId for nested stack parameters`);
+        }
+    }
+
+    /**
+     * Creates a resource migration resolver that handles migration of API Gateway resources
+     * from nested stacks to the main stack.
+     * 
+     * This resolver:
+     * 1. Queries actual AWS state (API Gateway + CloudFormation)
+     * 2. Detects which resources are in the wrong stack (nested vs main)
+     * 3. Selectively deletes only conflicting resources from AWS
+     * 4. Allows CloudFormation to create them in the correct stack
+     * 5. Is idempotent - safe to run on every deployment
+     * 
+     * @param rootPaths - All root paths to check and potentially migrate
+     */
+    private createResourceMigrationResolver(rootPaths: string[]): AwsCustomResource {
+        this.logger.info(`🧹 Creating resource migration resolver for ${rootPaths.length} path(s)...`);
+
+        const migrationHandler = this.createMigrationHandlerLambda();
+
+        // The custom resource calls the Lambda which will:
+        // 1. Query AWS API Gateway to get actual resource locations
+        // 2. Query CloudFormation to determine which stack owns each resource
+        // 3. Identify conflicts (resource in nested stack but needed in main)
+        // 4. Delete ONLY those resources that are actually conflicting
+        // 5. Return detailed information about what was done
+        // 
+        // This is IDEMPOTENT - if resources are already in the right place, it does nothing.
+        // This runs BEFORE CloudFormation creates the new resources in the main stack.
+
+        const payload = {
+            restApiId: this.api.restApiId,
+            rootPaths: rootPaths,
+            mainStackName: Stack.of(this.mainStack).stackName,
+            mode: 'migrate'
+        };
+
+        const resolverResource = new AwsCustomResource(this.mainStack, 'ResourceMigrationResolver', {
+            onCreate: {
+                service: 'Lambda',
+                action: 'invoke',
+                parameters: {
+                    FunctionName: migrationHandler.functionName,
+                    InvocationType: 'RequestResponse',
+                    Payload: JSON.stringify(payload)
+                },
+                physicalResourceId: PhysicalResourceId.of(`resource-migration-resolver-${Date.now()}`)
+            },
+            onUpdate: {
+                service: 'Lambda',
+                action: 'invoke',
+                parameters: {
+                    FunctionName: migrationHandler.functionName,
+                    InvocationType: 'RequestResponse',
+                    Payload: JSON.stringify(payload)
+                },
+                physicalResourceId: PhysicalResourceId.of(`resource-migration-resolver-${Date.now()}`)
+            },
+            policy: AwsCustomResourcePolicy.fromStatements([
+                new PolicyStatement({
+                    actions: [ 'lambda:InvokeFunction' ],
+                    resources: [ migrationHandler.functionArn ]
+                })
+            ]),
+            installLatestAwsSdk: false
+        });
+
+        this.logger.info(`✅ Resource migration resolver created - will run before resource creation`);
+        return resolverResource;
+    }
+
+    /**
+     * Creates a Lambda function that handles resource migration.
+     * This Lambda:
+     * - Verifies actual resource locations in AWS
+     * - Detects conflicts and migration needs
+     * - Selectively deletes only problematic resources
+     * - Returns detailed resolution report
+     */
+    private createMigrationHandlerLambda(): NodejsFunction {
+        const migrationHandler = new NodejsFunction(this.mainStack, 'ApiGatewayResourceMigrationHandler', {
+            entry: join(__dirname, 'api-gateway-resource-migration-handler.js'),
+            handler: 'handler',
+            timeout: Duration.minutes(5),
+            bundling: {
+                externalModules: [
+                    '@aws-sdk/client-api-gateway',
+                    '@aws-sdk/client-cloudformation'
+                ]
+            },
+            initialPolicy: [
+                new PolicyStatement({
+                    actions: [
+                        'apigateway:GET',
+                        'apigateway:DELETE'
+                    ],
+                    resources: [
+                        `arn:aws:apigateway:${Stack.of(this.mainStack).region}::/restapis/${this.api.restApiId}`,
+                        `arn:aws:apigateway:${Stack.of(this.mainStack).region}::/restapis/${this.api.restApiId}/*`
+                    ]
+                }),
+                new PolicyStatement({
+                    actions: [
+                        'cloudformation:DescribeStacks',
+                        'cloudformation:DescribeStackResources',
+                        'cloudformation:ListStackResources'
+                    ],
+                    resources: [
+                        `arn:aws:cloudformation:${Stack.of(this.mainStack).region}:${Stack.of(this.mainStack).account}:stack/${Stack.of(this.mainStack).stackName}`,
+                        `arn:aws:cloudformation:${Stack.of(this.mainStack).region}:${Stack.of(this.mainStack).account}:stack/${Stack.of(this.mainStack).stackName}-*/*`
+                    ]
+                }),
+                new PolicyStatement({
+                    actions: [ 'logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents' ],
+                    resources: [ '*' ]
+                })
+            ]
+        });
+
+        return migrationHandler;
     }
 
     private async copyAndRegisterSystemControllers() {
@@ -678,36 +902,43 @@ export class APIConstruct implements FW24Construct {
         let controllerResource: IResource = restAPI.api.root;
         const currentStack = this.fw24.getStack(controllerStackName);
         const pathParts = controllerName.split('/');
+        const isNestedController = pathParts.length > 1;
+
         for (const pathPart of pathParts) {
             let childResource = controllerResource.getResource(pathPart) as IResource;
-            // if it's a nested controller, the root resource may not be created in another stack
-            const isNestedController = pathParts.length > 1;
-            if (!childResource && isNestedController && pathPart === pathParts[ 0 ]) {
-                // try to get the root resource from the fw24 output
-                this.logger.debug(`Getting controller resource for ${pathPart} from fw24 output`);
+            const isRootPath = pathPart === pathParts[ 0 ];
+
+            // For nested controllers, root resources should always be imported from main stack
+            if (!childResource && isNestedController && isRootPath) {
+                // Import the root resource from main stack (passed as parameter to nested stack)
+                this.logger.debug(`Importing root resource /${pathPart} from main stack for controller ${controllerName}`);
                 const controllerResourceId = this.fw24.getEnvironmentVariable(`restAPI_controller_${pathPart}_resourceId`, 'resource', currentStack);
+
                 if (controllerResourceId) {
-                    this.logger.debug(`Controller resource for ${pathPart} found in fw24 output: ${controllerResourceId}`);
+                    this.logger.debug(`Found resource ID from main stack parameter: ${controllerResourceId}`);
                     childResource = Resource.fromResourceAttributes(currentStack, `${this.fw24.appName}-${controllerStackName}-${pathPart}`, {
                         resourceId: controllerResourceId,
                         restApi: restAPI.api,
                         path: '/' + pathPart
                     });
+                } else {
+                    // This should not happen if setupRootPathResources ran correctly
+                    this.logger.error(`CRITICAL: Root resource /${pathPart} not found in parameters for nested controller ${controllerName}`);
+                    throw new Error(`Root resource /${pathPart} not available for import. This indicates a framework bug.`);
                 }
-            }
-            if (!childResource) {
-                // for nested resources add / to the path
-                this.logger.debug(`Creating controller resource for path ${pathPart} under ${controllerResource.path}`);
+            } else if (!childResource) {
+                // Create non-root resources normally
+                this.logger.debug(`Creating resource ${pathPart} under ${controllerResource.path}`);
                 childResource = controllerResource.addResource(pathPart) as IResource;
+
                 if (restAPI.isImported) {
                     const corsPreflightMethod = childResource.addCorsPreflight(this.getCorsPreflightOptions());
                     this.methods.push(corsPreflightMethod);
                 }
-                if (isNestedController && pathPart === pathParts[ 0 ]) {
-                    this.logger.debug(`Setting output for contorller resource ${controllerStackName} path ${pathPart}`);
-                    this.fw24.setConstructOutput(this, `restAPI_controller_${pathPart}`, childResource, OutputType.RESOURCE, 'resourceId');
-                }
+
+                // NOTE: We don't set output for root paths here anymore - that's done in setupRootPathResources
             }
+
             controllerResource = childResource;
         }
 
@@ -794,17 +1025,17 @@ export class APIConstruct implements FW24Construct {
         }
 
         // Ensure defaultAuthorizerGroups is always an array
-        const normalizedGroups: string[] = !defaultAuthorizerGroups 
-            ? [] 
-            : Array.isArray(defaultAuthorizerGroups) 
-                ? defaultAuthorizerGroups 
-                : [defaultAuthorizerGroups];
+        const normalizedGroups: string[] = !defaultAuthorizerGroups
+            ? []
+            : Array.isArray(defaultAuthorizerGroups)
+                ? defaultAuthorizerGroups
+                : [ defaultAuthorizerGroups ];
 
-        return { 
-            defaultAuthorizerName, 
-            defaultAuthorizerType, 
-            defaultAuthorizerGroups: normalizedGroups, 
-            defaultRequireRouteInGroupConfig 
+        return {
+            defaultAuthorizerName,
+            defaultAuthorizerType,
+            defaultAuthorizerGroups: normalizedGroups,
+            defaultRequireRouteInGroupConfig
         };
     }
 
@@ -842,11 +1073,11 @@ export class APIConstruct implements FW24Construct {
             routeAuthorizerType = route.authorizer.type || defaultAuthorizerType;
             routeAuthorizerName = route.authorizer.name || defaultAuthorizerName;
             const routeGroups = route.authorizer.groups || defaultAuthorizerGroups;
-            routeAuthorizerGroups = !routeGroups 
-                ? [] 
-                : Array.isArray(routeGroups) 
-                    ? routeGroups 
-                    : [routeGroups];
+            routeAuthorizerGroups = !routeGroups
+                ? []
+                : Array.isArray(routeGroups)
+                    ? routeGroups
+                    : [ routeGroups ];
             routeRequireRouteInGroupConfig = route.authorizer.requireRouteInGroupConfig || defaultRequireRouteInGroupConfig;
         } else if (typeof route.authorizer === 'string') {
             routeAuthorizerType = route.authorizer;
