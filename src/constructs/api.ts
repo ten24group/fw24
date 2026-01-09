@@ -415,8 +415,10 @@ export class APIConstruct implements FW24Construct {
             return; // No nested stacks, nothing to do
         }
 
-        // Identify all unique root paths from nested controllers
-        const rootPaths = new Set<string>();
+        // Identify root paths that have MULTIPLE nested controllers
+        // Only these need to be in main stack (shared resource)
+        // Single-controller paths stay in their nested stack
+        const rootPathCounts = new Map<string, number>();
         for (const desc of descriptors) {
             const { handlerClass, fileName } = desc;
             const folderPath = fileName.split('/').slice(0, -1).join('/');
@@ -424,15 +426,21 @@ export class APIConstruct implements FW24Construct {
             const controllerName = fileName.includes('/') ? folderPath + '/' + handlerInstance.controllerName : handlerInstance.controllerName;
             const pathParts = controllerName.split('/');
             if (pathParts.length > 1) {
-                rootPaths.add(pathParts[ 0 ]);
+                const rootPath = pathParts[ 0 ];
+                rootPathCounts.set(rootPath, (rootPathCounts.get(rootPath) || 0) + 1);
             }
         }
 
-        if (rootPaths.size === 0) {
+        // Filter: only root paths with 2+ controllers need to be in main stack
+        const rootPaths = Array.from(rootPathCounts.entries())
+            .filter(([ _, count ]) => count > 1)
+            .map(([ rootPath, _ ]) => rootPath);
+
+        if (rootPaths.length === 0) {
             return;
         }
 
-        this.logger.info(`🏗️  Managing ${rootPaths.size} root resource(s) for nested controllers: ${Array.from(rootPaths).join(', ')}`);
+        this.logger.info(`🏗️  Managing ${rootPaths.length} root resource(s) with multiple nested controllers: ${rootPaths.join(', ')}`);
 
         // Check if automatic resource migration is enabled
         const autoMigrationEnabled = this.apiConstructConfig?.enableAutoResourceMigration === true;
@@ -443,7 +451,7 @@ export class APIConstruct implements FW24Construct {
             // The resolver queries AWS state and only deletes resources if they're in the wrong stack
             // It's idempotent and safe to run on every deployment
             this.logger.info(`🔄 Resource migration enabled - will handle conflicts automatically`);
-            migrationResolver = this.createResourceMigrationResolver(Array.from(rootPaths));
+            migrationResolver = this.createResourceMigrationResolver(rootPaths);
         }
         // Create root resources in main stack
         for (const rootPath of rootPaths) {
@@ -581,14 +589,12 @@ export class APIConstruct implements FW24Construct {
                 }),
                 new PolicyStatement({
                     actions: [
+                        'cloudformation:ListStacks',
                         'cloudformation:DescribeStacks',
                         'cloudformation:DescribeStackResources',
                         'cloudformation:ListStackResources'
                     ],
-                    resources: [
-                        `arn:aws:cloudformation:${Stack.of(this.mainStack).region}:${Stack.of(this.mainStack).account}:stack/${Stack.of(this.mainStack).stackName}`,
-                        `arn:aws:cloudformation:${Stack.of(this.mainStack).region}:${Stack.of(this.mainStack).account}:stack/${Stack.of(this.mainStack).stackName}-*/*`
-                    ]
+                    resources: [ '*' ]  // ListStacks requires wildcard resource
                 }),
                 new PolicyStatement({
                     actions: [ 'logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents' ],

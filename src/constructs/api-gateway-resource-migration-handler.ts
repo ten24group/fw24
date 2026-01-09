@@ -114,28 +114,27 @@ export const handler = async (event: ResourceMigrationEvent): Promise<ResourceMi
         mainStackName
       );
 
-      if (!ownerStack) {
-        console.log(`✓ ${targetPath} - not managed by CloudFormation (will reuse)`);
-        continue;
-      }
-
-      // Step 4: Check if resource is in the correct stack
+      // Step 4: Check if resource is managed by the correct stack
       if (ownerStack === mainStackName) {
         // Resource is in main stack (correct location)
         console.log(`✓ ${targetPath} - already in main stack (reusing)`);
         continue;
       }
 
-      // Step 5: Conflict detected - resource is in a nested stack
-      console.log(`⚠️  CONFLICT DETECTED: ${targetPath} owned by ${ownerStack} (needs to be in ${mainStackName})`);
+      // Step 5: Conflict detected - resource is either orphaned or in wrong stack
+      if (!ownerStack) {
+        console.log(`⚠️  CONFLICT DETECTED: ${targetPath} exists but not managed by CloudFormation (orphaned resource)`);
+      } else {
+        console.log(`⚠️  CONFLICT DETECTED: ${targetPath} owned by ${ownerStack} (needs to be in ${mainStackName})`);
+      }
 
-      // Find ALL child resources under this path
-      const childResources = resources.filter(r => {
-        return r.path === targetPath || r.path?.startsWith(`${targetPath}/`);
-      });
+      // Add ONLY the parent resource for deletion
+      // API Gateway will automatically cascade-delete all child resources
+      conflictingResources.push(existingResource);
 
-      conflictingResources.push(...childResources);
-      console.log(`   Will delete ${childResources.length} resources: ${childResources.map(r => r.path).join(', ')}`);
+      // Log how many children will be cascade-deleted
+      const childCount = resources.filter(r => r.path?.startsWith(`${targetPath}/`)).length;
+      console.log(`   Will delete ${targetPath} (${childCount} children will be cascade-deleted automatically)`);
     }
 
     // Step 6: Delete conflicting resources
@@ -151,36 +150,90 @@ export const handler = async (event: ResourceMigrationEvent): Promise<ResourceMi
       };
     }
 
-    console.log(`Deleting ${conflictingResources.length} conflicting resources...`);
-
-    // Sort by path depth (deepest first) to avoid parent-child deletion issues
-    conflictingResources.sort((a, b) => {
-      const depthA = (a.path?.match(/\//g) || []).length;
-      const depthB = (b.path?.match(/\//g) || []).length;
-      return depthB - depthA;
-    });
+    console.log(`Deleting ${conflictingResources.length} parent resource(s) (children will cascade-delete automatically)...`);
 
     let deletedCount = 0;
+    const DELAY_BETWEEN_DELETES = 500; // 500ms between deletions for safety (only deleting 2-3 resources typically)
+    const MAX_RETRIES = 5;
+
     for (const resource of conflictingResources) {
       console.log(`Deleting conflicting resource: ${resource.path} (id: ${resource.id})`);
-      try {
-        await apiGatewayClient.send(new DeleteResourceCommand({
-          restApiId: restApiId,
-          resourceId: resource.id!
-        }));
-        console.log(`✅ Successfully deleted: ${resource.path}`);
-        deletedCount++;
-      } catch (error) {
-        if ((error as Error).name === 'NotFoundException') {
-          console.log(`⚠️  Resource ${resource.path} not found (may be already deleted)`);
-        } else {
-          console.error(`❌ Failed to delete ${resource.path}:`, error);
-          throw error;
+
+      let retries = 0;
+      let deleted = false;
+
+      while (!deleted && retries <= MAX_RETRIES) {
+        try {
+          await apiGatewayClient.send(new DeleteResourceCommand({
+            restApiId: restApiId,
+            resourceId: resource.id!
+          }));
+          console.log(`✅ Successfully deleted: ${resource.path}`);
+          deletedCount++;
+          deleted = true;
+
+          // Rate limiting: wait before next deletion
+          if (conflictingResources.indexOf(resource) < conflictingResources.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_DELETES));
+          }
+        } catch (error) {
+          const errorName = (error as Error).name;
+
+          if (errorName === 'NotFoundException') {
+            console.log(`⚠️  Resource ${resource.path} not found (may be already deleted)`);
+            deleted = true; // Consider it deleted
+          } else if (errorName === 'TooManyRequestsException') {
+            retries++;
+            const waitTime = Math.min(1000 * Math.pow(2, retries), 10000); // Exponential backoff, max 10s
+            console.warn(`⚠️  Rate limit hit for ${resource.path}. Retry ${retries}/${MAX_RETRIES} after ${waitTime}ms...`);
+
+            if (retries <= MAX_RETRIES) {
+              await new Promise(resolve => setTimeout(resolve, waitTime));
+            } else {
+              console.error(`❌ Failed to delete ${resource.path} after ${MAX_RETRIES} retries:`, error);
+              throw error;
+            }
+          } else {
+            console.error(`❌ Failed to delete ${resource.path}:`, error);
+            throw error;
+          }
         }
       }
     }
 
-    console.log(`Migration complete: deleted ${deletedCount}/${conflictingResources.length} resources`);
+    console.log(`Migration complete: deleted ${deletedCount}/${conflictingResources.length} parent resource(s)`);
+
+    // Step 7: Verify deletions propagated (wait up to 30 seconds)
+    // We only need to verify parent resources are gone (children cascade-delete automatically)
+    console.log('Waiting for deletions to propagate in API Gateway...');
+    const maxWaitTime = 30000; // 30 seconds
+    const startTime = Date.now();
+    let allDeleted = false;
+
+    while (!allDeleted && (Date.now() - startTime < maxWaitTime)) {
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+
+      const checkResponse = await apiGatewayClient.send(new GetResourcesCommand({
+        restApiId: restApiId,
+        limit: 500
+      }));
+
+      const remainingResources = checkResponse.items || [];
+      const deletedResourceIds = conflictingResources.map(r => r.id);
+      const stillExist = remainingResources.filter(r => deletedResourceIds.includes(r.id));
+
+      if (stillExist.length === 0) {
+        allDeleted = true;
+        console.log('✅ All deleted resources confirmed gone from API Gateway');
+      } else {
+        console.log(`⏳ Still waiting for ${stillExist.length} resource(s) to be deleted...`);
+      }
+    }
+
+    if (!allDeleted) {
+      console.warn('⚠️  Deletion verification timeout - proceeding anyway');
+    }
+
     console.log('CloudFormation will now create these resources in the main stack');
 
     return {
