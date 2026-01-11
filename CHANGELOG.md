@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.0](https://github.com/ten24group/fw24/compare/v1.0.4-beta.21...v1.1.0-beta.0) (2026-01-11)
+
+
+### Features
+
+* **audit:** add auto-generation of audit log actions for entity listing and detail pages ([78c240c](https://github.com/ten24group/fw24/commit/78c240c2051105ff23fdc5ec2c5feee409eb07fa))
+* **audit:** add excludeAuditActions option to entity schemas and UI configurations ([c4d8eae](https://github.com/ten24group/fw24/commit/c4d8eaefc1f09af49b1703834f64b44a8dc813c7))
+* **observability:** add QueryObserver and priority-based noise reduction ([ef8e737](https://github.com/ten24group/fw24/commit/ef8e7373f6b0372ce3ad51b5330eb1d9116cca9b))
+* **observability:** comprehensive observability system overhaul with cross-invocation tracing ([51e85a6](https://github.com/ten24group/fw24/commit/51e85a627acaf55745de9fec74c26ceb6b3a520f))
+* **observability:** enhance metrics publishing and tracing capabilities ([7fc6608](https://github.com/ten24group/fw24/commit/7fc6608bb98b8c9b87e043253c698929a68dfab1))
+* **observability:** introduce Checkpoint, Log, and Metric decorators for enhanced observability ([641f33f](https://github.com/ten24group/fw24/commit/641f33f1d868366aec5dd82248c33e4a711c9b0f))
+* **observability:** major observability system overhaul with automatic parent tracking and noise reduction ([c96c903](https://github.com/ten24group/fw24/commit/c96c903220b0bc0dfea58afd05da4332f37ef47f))
+
+
+### Bug Fixes
+
+* audit entity's ui config and enabled search for audit entity ([0056626](https://github.com/ten24group/fw24/commit/00566268a3b2a845362f03242e64a19760577582))
+* audit listing fields ([1078b58](https://github.com/ten24group/fw24/commit/1078b582248d23c9b23f20e0953a3e0cc42e7756))
+* audit-detail kays ([5838a0d](https://github.com/ten24group/fw24/commit/5838a0d708b75f02d9d7ca8123209f68bd955212))
+* build issues with deep redact ([94b85fc](https://github.com/ten24group/fw24/commit/94b85fc7d95609c6820c36548888be92c99eb7ad))
+* DI container for  array configuration handling ([01dfe57](https://github.com/ten24group/fw24/commit/01dfe57ad8528f4255bf653b2fe641b822fed5f9))
+* DynamoDBConstruct to ensure unique naming of streams and queues ([772478a](https://github.com/ten24group/fw24/commit/772478a2adba1806a2195d7a8feaa633a92b86e2))
+* empty/non-empty filters, default sorting ([6f14b4f](https://github.com/ten24group/fw24/commit/6f14b4f9808a3a7b4ab42128d9aec7b81341e43c))
+* entity schema validation test ([c090c35](https://github.com/ten24group/fw24/commit/c090c35cdfeb015cd3afd13df08db5f0978a3879))
+* entity-id missing in the entity-controller audits ([1dbdc1d](https://github.com/ten24group/fw24/commit/1dbdc1d44fdd29b399982bee0ed9e8595659a9d5))
+* entry file import for scheduler and queue controllers ([917ef85](https://github.com/ten24group/fw24/commit/917ef853104bd218ce6ab1bf404987cbec6389c1))
+* failing tests ([fd538cc](https://github.com/ten24group/fw24/commit/fd538ccebbf0262f60de8d1f6ecd2ed6f5a09053))
+* mulitple root di container in runtime due to layers and direct imports (in lambda provided by the framework), ([21281ca](https://github.com/ten24group/fw24/commit/21281cace624a0fe4fdfc6a38cea0bddf3a9ba59))
+* **observability:** enhance noise reduction logic to maintain parent spans with kept children ([26080cb](https://github.com/ten24group/fw24/commit/26080cbca4879eca4dc33093d3344fddcecda534))
+* **queue-lambda:**  default DLQ handling ([1437719](https://github.com/ten24group/fw24/commit/1437719719781ced5d5f93f1c1497c054cd8789c))
+* some lambdas missing the entry layers due to race conditions. ([0ea0248](https://github.com/ten24group/fw24/commit/0ea02486e9155d5380d4e327257e3ee064c531f9))
+* types and export ([f376a1f](https://github.com/ten24group/fw24/commit/f376a1f989ea13b4426130c650f9bb63b974bb1a))
+
 ### [1.0.4-beta.21](https://github.com/ten24group/fw24/compare/v1.0.4-beta.20...v1.0.4-beta.21) (2025-12-15)
 
 
