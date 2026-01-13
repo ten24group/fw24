@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.1](https://github.com/ten24group/fw24/compare/v1.1.0-beta.0...v1.1.0-beta.1) (2026-01-13)
+
+
+### Features
+
+* **crud-service:** add extractIndexFilterValues function and InvalidIndexFilterError class ([9c9e1ba](https://github.com/ten24group/fw24/commit/9c9e1baa3a326c64877bddf427c696dad3b40646))
+* **entity:** enhance CRUD service response types and add type safety ([c85f6ec](https://github.com/ten24group/fw24/commit/c85f6ec7283d92e15097e7c420d88b7cce2f446e))
+* **workflow:** add GitHub Actions workflow for develop branch release ([6c5afec](https://github.com/ten24group/fw24/commit/6c5afec6cd00e53de6a7ffdb486b676797a22757))
+
 ## [1.1.0-beta.0](https://github.com/ten24group/fw24/compare/v1.0.4-beta.21...v1.1.0-beta.0) (2026-01-11)
 
 
