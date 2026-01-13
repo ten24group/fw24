@@ -68,11 +68,20 @@ export interface GetEntityArgs<
 }
 
 /**
+ * Response type for get entity operation.
+ * Provides a typed wrapper for the electrodb get response.
+ * @template Sch - The entity schema type.
+ */
+export type GetEntityResponse<Sch extends EntitySchema<any, any, any>> = {
+    data?: EntityResponseItemTypeFromSchema<Sch>
+}
+
+/**
  * Retrieves an entity based on the provided options.
  * @param options - The options for retrieving the entity.
  * @returns The retrieved entity.
  */
-export async function getEntity<S extends EntitySchema<any, any, any>>(options: GetEntityArgs<S>) {
+export async function getEntity<S extends EntitySchema<any, any, any>>(options: GetEntityArgs<S>): Promise<GetEntityResponse<S>> {
 
     const {
         id,
@@ -126,7 +135,7 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
 
     logger.debug(`Completed EntityCrud ~ getEntity ~ entityName: ${entityName} ~ id:`, id);
 
-    return entity;
+    return entity as GetEntityResponse<S>;
 }
 
 /**
@@ -884,6 +893,15 @@ export interface UpdateEntityOperators {
     remove?: string[];
 }
 
+/**
+ * Response type for update entity operation.
+ * Provides a typed wrapper for the electrodb update response.
+ * @template Sch - The entity schema type.
+ */
+export type UpdateEntityResponse<Sch extends EntitySchema<any, any, any>> = {
+    data?: EntityResponseItemTypeFromSchema<Sch>
+}
+
 interface PrepareCompositeAttributesArgs<S extends EntitySchema<any, any, any>> {
     entityName: string;
     entityService: EntityServiceTypeFromSchema<S>;
@@ -966,10 +984,10 @@ async function prepareCompositeAttributesForUpdate<S extends EntitySchema<any, a
  * 
  * @template S - The entity schema type.
  * @param {UpdateEntityArgs<S>} options - The options for updating the entity.
- * @returns {Promise<Entity>} - A promise that resolves to the updated entity.
+ * @returns {Promise<UpdateEntityResponse<S>>} - A promise that resolves to the updated entity.
  * @throws {Error} - If no data is provided for the update operation, or if validation or authorization fails.
  */
-export async function updateEntity<S extends EntitySchema<any, any, any>>(options: UpdateEntityArgs<S>) {
+export async function updateEntity<S extends EntitySchema<any, any, any>>(options: UpdateEntityArgs<S>): Promise<UpdateEntityResponse<S>> {
     const {
         id,
         data,
@@ -1104,7 +1122,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, data, entity.data);
 
-    return entity;
+    return entity as UpdateEntityResponse<S>;
 }
 
 /**
@@ -1123,11 +1141,20 @@ export interface DeleteEntityArgs<
 }
 
 /**
+ * Response type for delete entity operation.
+ * Provides a typed wrapper for the electrodb delete response.
+ * @template Sch - The entity schema type.
+ */
+export type DeleteEntityResponse<Sch extends EntitySchema<any, any, any>> = {
+    data?: EntityResponseItemTypeFromSchema<Sch>
+}
+
+/**
  * Deletes an entity based on the provided options.
  * @param options - The options for deleting the entity.
  * @returns The deleted entity.
  */
-export async function deleteEntity<S extends EntitySchema<any, any, any>>(options: DeleteEntityArgs<S>) {
+export async function deleteEntity<S extends EntitySchema<any, any, any>>(options: DeleteEntityArgs<S>): Promise<DeleteEntityResponse<S>> {
 
     const {
         id,
@@ -1179,7 +1206,7 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
 
     logger.debug(`Completed EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
 
-    return entity;
+    return entity as DeleteEntityResponse<S>;
 }
 
 /**

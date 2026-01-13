@@ -16,7 +16,7 @@ import { Observed } from "../observability/decorators/observed";
 import { makeEntitySearchIndexName } from '../search/search-utils';
 import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug, compressIfNeeded, decompressItem, isCompressed } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
-import { UpdateEntityOperators, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
+import { UpdateEntityOperators, UpdateEntityResponse, CreateEntityResponse, GetEntityResponse, DeleteEntityResponse, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
 import { EntitySchemaValidator } from "./entity-schema-validator";
 import { DatabaseError, EntityValidationError } from './errors';
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
@@ -1027,7 +1027,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             })
         }
     })
-    public async get(options: GetOptions<S>, _ctx?: ExecutionContext) {
+    public async get(options: GetOptions<S>, _ctx?: ExecutionContext): Promise<EntityRecordTypeFromSchema<S> | undefined> {
         const { identifiers, attributes } = options;
 
 
@@ -1078,7 +1078,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             }
         }
 
-        return entity?.data;
+        return entity?.data as EntityRecordTypeFromSchema<S> | undefined;
     }
 
     /**
@@ -1376,7 +1376,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             })
         }
     })
-    public async create(payload: CreateEntityItemTypeFromSchema<S>, ctx?: ExecutionContext) {
+    public async create(payload: CreateEntityItemTypeFromSchema<S>, ctx?: ExecutionContext): Promise<CreateEntityResponse<S>> {
 
         let payloadCopy = { ...payload };
 
@@ -1435,7 +1435,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         });
 
         // Decompress fields after reading
-        return this.decompressFields(entity);
+        return {
+            ...entity,
+            data: entity.data ? this.decompressFields(entity.data) : entity.data
+        };
     }
 
     /**
@@ -1759,7 +1762,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             })
         }
     })
-    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, ctx?: ExecutionContext) {
+    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, ctx?: ExecutionContext): Promise<UpdateEntityResponse<S>> {
 
         // Inject actor context
         let enhancedData = this.injectActorContext(data as any, 'update', ctx);
@@ -1814,7 +1817,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         });
 
         // Decompress fields after reading
-        return this.decompressFields(updatedEntity);
+        return {
+            ...updatedEntity,
+            data: updatedEntity.data ? this.decompressFields(updatedEntity.data) : updatedEntity.data
+        };
     }
 
     /**
@@ -1833,7 +1839,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             })
         }
     })
-    public async delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, ctx?: ExecutionContext) {
+    public async delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, ctx?: ExecutionContext): Promise<DeleteEntityResponse<S>> {
         try {
             this.logger.debug(`Called ~ delete ~ entityName: ${this.getEntityName()} ~ identifiers:`, identifiers);
 
