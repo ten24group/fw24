@@ -6,7 +6,7 @@ import { ExecutionContext } from "../core/types/execution-context";
 import { DepIdentifier, IDIContainer } from "../interfaces";
 import { EntitySearchService } from '../search/services';
 import { EntitySearchQuery } from '../search/types';
-import { UpdateEntityOperators } from "./crud-service";
+import { UpdateEntityOperators, UpdateEntityResponse, CreateEntityResponse, DeleteEntityResponse } from "./crud-service";
 export type ExtractEntityIdentifiersContext = {
     forAccessPattern?: string;
 };
@@ -223,9 +223,7 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      * @param selections - Optional array of attribute names to include in the response.
      * @returns A promise that resolves to the retrieved entity data.
      */
-    get(options: GetOptions<S>, _ctx?: ExecutionContext): Promise<{
-        readonly [x: string]: any;
-    } | null>;
+    get(options: GetOptions<S>, _ctx?: ExecutionContext): Promise<EntityRecordTypeFromSchema<S> | undefined>;
     /**
      * Retrieves multiple entities by their identifiers in a batch operation.
      *
@@ -291,7 +289,7 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      * @param payload - The payload for creating the entity.
      * @returns The created entity.
      */
-    create(payload: CreateEntityItemTypeFromSchema<S>, ctx?: ExecutionContext): Promise<import("./crud-service").CreateEntityResponse<S>>;
+    create(payload: CreateEntityItemTypeFromSchema<S>, ctx?: ExecutionContext): Promise<CreateEntityResponse<S>>;
     /**
      * Creates-OR-Updates an entity.
      * NOTE:
@@ -332,7 +330,7 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      * const entityId = { id: 123, name: 'example' };
      * const duplicatedEntity = await duplicate(entityId);
      */
-    duplicate(id: EntityIdentifiersTypeFromSchema<S>, ctx?: ExecutionContext): Promise<import("./crud-service").CreateEntityResponse<S>>;
+    duplicate(id: EntityIdentifiersTypeFromSchema<S>, ctx?: ExecutionContext): Promise<CreateEntityResponse<S>>;
     protected delimitersRegex: RegExp;
     /**
      * Retrieves a list of entities based on the provided query.
@@ -374,36 +372,14 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      * @param remove - Optional array of attributes to remove from the entity.
      * @returns The updated entity.
      */
-    update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, ctx?: ExecutionContext): Promise<{
-        data: Partial<import("electrodb").ResponseItem<any, any, any, EntitySchema<any, any, any, {
-            readonly get: "get";
-            readonly list: "list";
-            readonly query: "query";
-            readonly create: "create";
-            readonly upsert: "upsert";
-            readonly update: "update";
-            readonly delete: "delete";
-            readonly duplicate: "duplicate";
-        }>>>;
-    }>;
+    update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, ctx?: ExecutionContext): Promise<UpdateEntityResponse<S>>;
     /**
      * Deletes an entity based on the provided identifiers.
      *
      * @param identifiers - The identifiers of the entity to be deleted.
      * @returns A promise that resolves to the deleted entity.
      */
-    delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, ctx?: ExecutionContext): Promise<{
-        data: import("electrodb").AllTableIndexCompositeAttributes<any, any, any, EntitySchema<any, any, any, {
-            readonly get: "get";
-            readonly list: "list";
-            readonly query: "query";
-            readonly create: "create";
-            readonly upsert: "upsert";
-            readonly update: "update";
-            readonly delete: "delete";
-            readonly duplicate: "duplicate";
-        }>> | null;
-    }>;
+    delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, ctx?: ExecutionContext): Promise<DeleteEntityResponse<S>>;
     /**
      * Deletes multiple entities in a batch operation.
      *

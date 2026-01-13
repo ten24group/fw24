@@ -52,15 +52,19 @@ export interface GetEntityArgs<Sch extends EntitySchema<any, any, any>, OpsSchem
     attributes?: Array<string>;
 }
 /**
+ * Response type for get entity operation.
+ * Provides a typed wrapper for the electrodb get response.
+ * @template Sch - The entity schema type.
+ */
+export type GetEntityResponse<Sch extends EntitySchema<any, any, any>> = {
+    data?: EntityResponseItemTypeFromSchema<Sch>;
+};
+/**
  * Retrieves an entity based on the provided options.
  * @param options - The options for retrieving the entity.
  * @returns The retrieved entity.
  */
-export declare function getEntity<S extends EntitySchema<any, any, any>>(options: GetEntityArgs<S>): Promise<{
-    data: {
-        readonly [x: string]: any;
-    } | null;
-}>;
+export declare function getEntity<S extends EntitySchema<any, any, any>>(options: GetEntityArgs<S>): Promise<GetEntityResponse<S>>;
 /**
  * Represents the arguments for retrieving multiple entities in a batch.
  * @template Sch - The entity schema type.
@@ -262,25 +266,22 @@ export interface UpdateEntityOperators {
     remove?: string[];
 }
 /**
+ * Response type for update entity operation.
+ * Provides a typed wrapper for the electrodb update response.
+ * @template Sch - The entity schema type.
+ */
+export type UpdateEntityResponse<Sch extends EntitySchema<any, any, any>> = {
+    data?: EntityResponseItemTypeFromSchema<Sch>;
+};
+/**
  * Updates an entity in the database.
  *
  * @template S - The entity schema type.
  * @param {UpdateEntityArgs<S>} options - The options for updating the entity.
- * @returns {Promise<Entity>} - A promise that resolves to the updated entity.
+ * @returns {Promise<UpdateEntityResponse<S>>} - A promise that resolves to the updated entity.
  * @throws {Error} - If no data is provided for the update operation, or if validation or authorization fails.
  */
-export declare function updateEntity<S extends EntitySchema<any, any, any>>(options: UpdateEntityArgs<S>): Promise<{
-    data: Partial<import("electrodb").ResponseItem<any, any, any, EntitySchema<any, any, any, {
-        readonly get: "get";
-        readonly list: "list";
-        readonly query: "query";
-        readonly create: "create";
-        readonly upsert: "upsert";
-        readonly update: "update";
-        readonly delete: "delete";
-        readonly duplicate: "duplicate";
-    }>>>;
-}>;
+export declare function updateEntity<S extends EntitySchema<any, any, any>>(options: UpdateEntityArgs<S>): Promise<UpdateEntityResponse<S>>;
 /**
  * the arguments for deleting an entity.
  * @template Sch - The entity schema type.
@@ -293,22 +294,19 @@ export interface DeleteEntityArgs<Sch extends EntitySchema<any, any, any>, OpsSc
     id: OpsSchema['delete'];
 }
 /**
+ * Response type for delete entity operation.
+ * Provides a typed wrapper for the electrodb delete response.
+ * @template Sch - The entity schema type.
+ */
+export type DeleteEntityResponse<Sch extends EntitySchema<any, any, any>> = {
+    data?: EntityResponseItemTypeFromSchema<Sch>;
+};
+/**
  * Deletes an entity based on the provided options.
  * @param options - The options for deleting the entity.
  * @returns The deleted entity.
  */
-export declare function deleteEntity<S extends EntitySchema<any, any, any>>(options: DeleteEntityArgs<S>): Promise<{
-    data: import("electrodb").AllTableIndexCompositeAttributes<any, any, any, EntitySchema<any, any, any, {
-        readonly get: "get";
-        readonly list: "list";
-        readonly query: "query";
-        readonly create: "create";
-        readonly upsert: "upsert";
-        readonly update: "update";
-        readonly delete: "delete";
-        readonly duplicate: "duplicate";
-    }>> | null;
-}>;
+export declare function deleteEntity<S extends EntitySchema<any, any, any>>(options: DeleteEntityArgs<S>): Promise<DeleteEntityResponse<S>>;
 /**
  * Represents the arguments for batch deleting entities.
  * @template Sch - The entity schema type.
