@@ -158,6 +158,41 @@ export interface ListEntityArgs<Sch extends EntitySchema<any, any, any>> extends
  */
 export declare function filterGroupToSimpleFormat(filters: Record<string, any>): Record<string, any>;
 /**
+ * Error thrown when invalid filter operators are used in index.filters.
+ */
+export declare class InvalidIndexFilterError extends Error {
+    readonly attributeName: string;
+    readonly invalidOperators: string[];
+    readonly indexName?: string | undefined;
+    constructor(attributeName: string, invalidOperators: string[], indexName?: string | undefined);
+}
+/**
+ * Extracts and validates composite key values from index.filters for ElectroDB access pattern queries.
+ *
+ * DynamoDB GSI composite keys have specific constraints:
+ * - Partition Key (PK): MUST be an equality match
+ * - Sort Key (SK): Can use range operators, but those go in top-level `filters`
+ *
+ * This function:
+ * 1. Validates that only equality operators are used
+ * 2. Converts FW24 filter syntax to ElectroDB format
+ * 3. THROWS if invalid operators are detected (fail fast, not silently)
+ *
+ * @param filters - Filters from index.filters (only equality allowed)
+ * @param indexName - Name of the index (for error messages)
+ * @returns Composite key values in ElectroDB format
+ * @throws InvalidIndexFilterError if non-equality operators are used
+ *
+ * @example
+ * // Valid inputs
+ * { teamId: { eq: 'team-123' } }  →  { teamId: 'team-123' }
+ * { teamId: 'team-123' }         →  { teamId: 'team-123' }
+ *
+ * // Invalid - will THROW
+ * { createdAt: { gt: '2024-01-01' } }  // InvalidIndexFilterError
+ */
+export declare function extractIndexFilterValues(filters: Record<string, any> | undefined, indexName?: string): Record<string, any>;
+/**
  * Finds a matching index based on the provided filters and schema.
  * @param schema - The entity schema
  * @param filters - The filters to match against

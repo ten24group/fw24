@@ -447,18 +447,77 @@ export type EntityQuery<E extends EntitySchema<any, any, any>> = {
      * Specifies the index to use for the query.
      * If not provided, the system will automatically find a matching index based on the filters.
      */
-    index?: {
-        /**
-         * The name of the index to use.
-         */
-        name: string;
-        /**
-         * The filters to use with the index.
-         * These filters should match the key attributes of the index.
-         */
-        filters?: Record<string, any>;
-    };
+    index?: IndexSpecification;
 };
+/**
+ * Equality filter for GSI composite key attributes.
+ *
+ * DynamoDB GSI partition keys can ONLY be matched with equality.
+ * Sort keys support range operators, but those should be in top-level `filters`.
+ *
+ * @example
+ * // Valid: equality match
+ * { teamId: { eq: 'team-123' } }
+ * { teamId: 'team-123' }  // shorthand
+ *
+ * // Invalid for index.filters (use top-level filters instead):
+ * { createdAt: { gt: '2024-01-01' } }  // ❌ Range operators not allowed
+ */
+export type IndexEqualityFilter = {
+    eq: string | number | boolean | string[] | number[];
+} | string | number | boolean;
+/**
+ * Composite key filters for GSI access pattern queries.
+ * Only equality matches are valid for composite key attributes.
+ */
+export type IndexCompositeKeyFilters = Record<string, IndexEqualityFilter>;
+/**
+ * Specifies which index to use and the composite key values for the query.
+ *
+ * @example
+ * ```typescript
+ * // Query using a specific GSI
+ * await service.query({
+ *   index: {
+ *     name: 'byTeam',
+ *     filters: {
+ *       teamId: { eq: 'team-123' }
+ *     }
+ *   },
+ *   // Additional filters applied via .where() expressions
+ *   filters: {
+ *     createdAt: { gte: '2024-01-01' }
+ *   }
+ * });
+ * ```
+ */
+export interface IndexSpecification {
+    /**
+     * The name of the index (access pattern) to use.
+     * Must match an index name defined in the entity schema.
+     */
+    name: string;
+    /**
+     * Composite key values for the index query.
+     *
+     * These values are passed directly to the ElectroDB access pattern:
+     *   repository.query[indexName](filters).go()
+     *
+     * IMPORTANT: Only equality filters are valid here because:
+     * - DynamoDB partition keys MUST be equality matches
+     * - Sort key range conditions should be in top-level `filters`
+     *
+     * @example
+     * // Valid
+     * { teamId: { eq: 'team-123' } }
+     * { teamId: 'team-123' }  // shorthand
+     * { teamId: { eq: 'team-123' }, status: { eq: 'active' } }
+     *
+     * // Invalid - will throw error
+     * { createdAt: { gt: '2024-01-01' } }  // Use top-level filters instead
+     */
+    filters?: IndexCompositeKeyFilters;
+}
 export type ObjectOfStringKeysAndBooleanValues = {
     [k: string]: boolean;
 };

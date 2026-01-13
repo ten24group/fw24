@@ -1,6 +1,171 @@
 import { EntitySchema } from './base-entity';
-import { findMatchingIndex, filterGroupToSimpleFormat } from './crud-service';
+import { findMatchingIndex, filterGroupToSimpleFormat, extractIndexFilterValues, InvalidIndexFilterError } from './crud-service';
 import { Entity } from 'electrodb';
+
+describe('extractIndexFilterValues', () => {
+    describe('valid inputs', () => {
+        it('should return empty object for null/undefined', () => {
+            expect(extractIndexFilterValues(null as any)).toEqual({});
+            expect(extractIndexFilterValues(undefined)).toEqual({});
+        });
+
+        it('should pass through direct values unchanged', () => {
+            expect(extractIndexFilterValues({ teamId: 'team-123' })).toEqual({ teamId: 'team-123' });
+            expect(extractIndexFilterValues({ count: 42 })).toEqual({ count: 42 });
+            expect(extractIndexFilterValues({ active: true })).toEqual({ active: true });
+        });
+
+        it('should extract eq values from filter syntax', () => {
+            expect(extractIndexFilterValues({
+                teamId: { eq: 'team-123' },
+                status: { eq: 'active' }
+            })).toEqual({
+                teamId: 'team-123',
+                status: 'active'
+            });
+        });
+
+        it('should handle mixed direct values and filter syntax', () => {
+            expect(extractIndexFilterValues({
+                teamId: 'team-123',
+                status: { eq: 'active' },
+                platform: 'twitter'
+            })).toEqual({
+                teamId: 'team-123',
+                status: 'active',
+                platform: 'twitter'
+            });
+        });
+
+        it('should skip null and undefined values', () => {
+            expect(extractIndexFilterValues({
+                teamId: 'team-123',
+                status: null,
+                platform: undefined
+            })).toEqual({
+                teamId: 'team-123'
+            });
+        });
+
+        it('should skip empty objects', () => {
+            expect(extractIndexFilterValues({
+                teamId: 'team-123',
+                empty: {}
+            })).toEqual({
+                teamId: 'team-123'
+            });
+        });
+
+        it('should handle boolean and numeric eq values', () => {
+            expect(extractIndexFilterValues({
+                isActive: { eq: true },
+                count: { eq: 42 },
+                ratio: { eq: 0.5 }
+            })).toEqual({
+                isActive: true,
+                count: 42,
+                ratio: 0.5
+            });
+        });
+
+        it('should handle array eq values', () => {
+            expect(extractIndexFilterValues({
+                tags: { eq: [ 'a', 'b', 'c' ] }
+            })).toEqual({
+                tags: [ 'a', 'b', 'c' ]
+            });
+        });
+    });
+
+    describe('invalid inputs - should throw InvalidIndexFilterError', () => {
+        it('should throw for gt operator', () => {
+            expect(() => extractIndexFilterValues({
+                createdAt: { gt: '2024-01-01' }
+            })).toThrow(InvalidIndexFilterError);
+
+            expect(() => extractIndexFilterValues({
+                createdAt: { gt: '2024-01-01' }
+            })).toThrow(/Invalid filter operator.*gt.*createdAt/);
+        });
+
+        it('should throw for gte operator', () => {
+            expect(() => extractIndexFilterValues({
+                count: { gte: 10 }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should throw for lt operator', () => {
+            expect(() => extractIndexFilterValues({
+                date: { lt: '2024-12-31' }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should throw for lte operator', () => {
+            expect(() => extractIndexFilterValues({
+                score: { lte: 100 }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should throw for between operator', () => {
+            expect(() => extractIndexFilterValues({
+                range: { between: [ 'a', 'z' ] }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should throw for begins operator', () => {
+            expect(() => extractIndexFilterValues({
+                code: { begins: 'PREFIX' }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should throw for contains operator', () => {
+            expect(() => extractIndexFilterValues({
+                name: { contains: 'test' }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should throw for multiple range operators', () => {
+            expect(() => extractIndexFilterValues({
+                count: { gte: 10, lte: 100 }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should throw for mixed eq and other operators', () => {
+            expect(() => extractIndexFilterValues({
+                value: { eq: 'test', gt: 'a' }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should include index name in error message when provided', () => {
+            expect(() => extractIndexFilterValues({
+                createdAt: { gt: '2024-01-01' }
+            }, 'byTeam')).toThrow(/for index "byTeam"/);
+        });
+
+        it('should provide helpful error message with details', () => {
+            try {
+                extractIndexFilterValues({ score: { gte: 10 } }, 'byScore');
+                fail('Should have thrown');
+            } catch (e) {
+                expect(e).toBeInstanceOf(InvalidIndexFilterError);
+                const error = e as InvalidIndexFilterError;
+                expect(error.attributeName).toBe('score');
+                expect(error.invalidOperators).toEqual([ 'gte' ]);
+                expect(error.indexName).toBe('byScore');
+                expect(error.message).toContain('top-level');
+                expect(error.message).toContain('filters');
+            }
+        });
+
+        it('should throw even if some fields are valid eq', () => {
+            // The function should throw when it encounters an invalid operator
+            expect(() => extractIndexFilterValues({
+                teamId: { eq: 'team-123' },
+                createdAt: { gt: '2024-01-01' }
+            })).toThrow(InvalidIndexFilterError);
+        });
+    });
+});
 
 describe('filterGroupToSimpleFormat', () => {
     describe('passthrough for non-FilterGroup formats', () => {

@@ -467,6 +467,94 @@ export function filterGroupToSimpleFormat(filters: Record<string, any>): Record<
 }
 
 /**
+ * Error thrown when invalid filter operators are used in index.filters.
+ */
+export class InvalidIndexFilterError extends Error {
+    constructor(
+        public readonly attributeName: string,
+        public readonly invalidOperators: string[],
+        public readonly indexName?: string
+    ) {
+        const indexContext = indexName ? ` for index "${indexName}"` : '';
+        super(
+            `Invalid filter operator(s) [${invalidOperators.join(', ')}] for attribute "${attributeName}"${indexContext}. ` +
+            `GSI composite key attributes only support equality matches. ` +
+            `Use { ${attributeName}: { eq: value } } or { ${attributeName}: value } for composite keys. ` +
+            `For range/other conditions, use top-level 'filters' instead of 'index.filters'.`
+        );
+        this.name = 'InvalidIndexFilterError';
+    }
+}
+
+/**
+ * Extracts and validates composite key values from index.filters for ElectroDB access pattern queries.
+ * 
+ * DynamoDB GSI composite keys have specific constraints:
+ * - Partition Key (PK): MUST be an equality match
+ * - Sort Key (SK): Can use range operators, but those go in top-level `filters`
+ * 
+ * This function:
+ * 1. Validates that only equality operators are used
+ * 2. Converts FW24 filter syntax to ElectroDB format
+ * 3. THROWS if invalid operators are detected (fail fast, not silently)
+ * 
+ * @param filters - Filters from index.filters (only equality allowed)
+ * @param indexName - Name of the index (for error messages)
+ * @returns Composite key values in ElectroDB format
+ * @throws InvalidIndexFilterError if non-equality operators are used
+ * 
+ * @example
+ * // Valid inputs
+ * { teamId: { eq: 'team-123' } }  →  { teamId: 'team-123' }
+ * { teamId: 'team-123' }         →  { teamId: 'team-123' }
+ * 
+ * // Invalid - will THROW
+ * { createdAt: { gt: '2024-01-01' } }  // InvalidIndexFilterError
+ */
+export function extractIndexFilterValues(
+    filters: Record<string, any> | undefined,
+    indexName?: string
+): Record<string, any> {
+    if (!filters) return {};
+
+    const result: Record<string, any> = {};
+
+    for (const [ key, value ] of Object.entries(filters)) {
+        if (value === null || value === undefined) {
+            continue;
+        }
+
+        // Direct value (shorthand for equality)
+        if (typeof value !== 'object') {
+            result[ key ] = value;
+            continue;
+        }
+
+        // Handle filter operator objects
+        const operators = Object.keys(value);
+
+        if (operators.length === 0) {
+            continue;
+        }
+
+        // Only 'eq' is valid for composite key attributes
+        if (value.eq !== undefined) {
+            // Check for mixed operators (eq + others) - that's a mistake
+            const otherOps = operators.filter(op => op !== 'eq');
+            if (otherOps.length > 0) {
+                throw new InvalidIndexFilterError(key, otherOps, indexName);
+            }
+            result[ key ] = value.eq;
+        } else {
+            // Non-equality operators - throw immediately
+            throw new InvalidIndexFilterError(key, operators, indexName);
+        }
+    }
+
+    return result;
+}
+
+/**
  * Finds a matching index based on the provided filters and schema.
  * @param schema - The entity schema
  * @param filters - The filters to match against
@@ -596,7 +684,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
     // Check if we have a filter that matches an index
     const schema = entityService.getEntitySchema();
     const matchResult = specifiedIndex
-        ? { indexName: specifiedIndex.name, indexFilters: specifiedIndex.filters || {} }
+        ? { indexName: specifiedIndex.name, indexFilters: extractIndexFilterValues(specifiedIndex.filters, specifiedIndex.name) }
         : findMatchingIndex(schema, filters, entityName, entityService);
 
     logger.debug(`Match result:`, matchResult);
@@ -702,7 +790,7 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
     // Check if we have a filter that matches an index
     const schema = entityService.getEntitySchema();
     const matchResult = specifiedIndex
-        ? { indexName: specifiedIndex.name, indexFilters: specifiedIndex.filters || {} }
+        ? { indexName: specifiedIndex.name, indexFilters: extractIndexFilterValues(specifiedIndex.filters, specifiedIndex.name) }
         : findMatchingIndex(schema, filters, entityName, entityService);
 
     // Use the appropriate index if available
