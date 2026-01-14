@@ -33,7 +33,7 @@
  * @see {@link fw24/src/entity/base-entity.ts} for entity schema definitions
  * @see {@link ui24/src/pages/PostAuth/PostAuthPage.tsx} for page rendering
  */
-import type { FieldOptions, IConfirmModal, IFilterSegment, IModalApiConfig, IRelationFieldConfig, ISectionsConfig, ITableExpandableConfig, ModalType, Template, VisibilityConfig } from "../../entity";
+import type { FieldOptions, IConfirmModal, IEntityConfigReference, IFilterSegment, IModalApiConfig, IRelationFieldConfig, ISectionsConfig, ITableExpandableConfig, ModalType, Template, VisibilityConfig } from "../../entity";
 import { IEntityPageColumnConfig } from "../../entity/base-entity";
 /**
  * Supported page types for dynamic page rendering.
@@ -164,6 +164,16 @@ export interface PropertyConfig {
     readOnly?: boolean;
     defaultValue?: any;
     options?: FieldOptions<any>;
+    /**
+     * Explicit renderer key (frontend ExtensionRegistry resolver key).
+     * When present, UI uses this renderer before fieldType defaults.
+     */
+    renderer?: string;
+    /**
+     * Renderer-specific configuration blob.
+     * Passed as-is to the renderer component.
+     */
+    rendererConfig?: Record<string, unknown>;
     /**
      * Runtime visibility configuration for role-based/conditional display.
      * Same as ITableColumnConfig.visibility for consistency.
@@ -731,6 +741,72 @@ export interface IPageAction {
     hideInModal?: boolean;
     /** Only open in modal on specified screen size. Default: always */
     openInModalCondition?: 'sm' | 'md' | 'lg' | 'xl';
+    /** Open action in drawer (slide-out panel) instead of navigating */
+    openInDrawer?: boolean;
+    /**
+     * Drawer configuration (when openInDrawer is true).
+     * Supports two patterns:
+     * 1. Route resolution: Use with url or drawerConfigRef
+     * 2. Inline config: Use drawerType + drawerPageConfig for inline forms/details
+     */
+    drawerConfig?: {
+        title?: Template;
+        placement?: 'left' | 'right' | 'top' | 'bottom';
+        width?: number | string;
+        height?: number | string;
+        closable?: boolean;
+        mask?: boolean;
+        maskClosable?: boolean;
+        destroyOnClose?: boolean;
+        /** Page type to render in drawer: 'form', 'details', 'list' */
+        drawerType?: 'form' | 'details' | 'list';
+        /**
+         * Page configuration for inline drawer content.
+         * Structure depends on drawerType.
+         */
+        drawerPageConfig?: {
+            title?: string;
+            helpText?: string;
+            propertiesConfig?: Array<{
+                name: string;
+                label: string;
+                column?: string;
+                fieldType: string;
+                required?: boolean;
+                placeholder?: string;
+                helpText?: string;
+                defaultValue?: unknown;
+                options?: {
+                    apiMethod?: string;
+                    apiUrl?: string;
+                    responseKey?: string;
+                    optionMapping?: {
+                        label: string;
+                        value: string;
+                    };
+                    disableSearch?: boolean;
+                    disableLoadMore?: boolean;
+                } | Array<{
+                    label: string;
+                    value: string | number;
+                }>;
+                [key: string]: unknown;
+            }>;
+            apiConfig?: {
+                apiMethod?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+                apiUrl?: string;
+                responseKey?: string;
+            };
+            formButtons?: Array<'submit' | 'reset' | 'cancel'>;
+            responseConfig?: {
+                showModal?: boolean;
+                modalTitle?: string;
+            };
+            [key: string]: unknown;
+        };
+    };
+    /** Entity config reference for drawer route resolution */
+    drawerConfigRef?: IEntityConfigReference;
     /**
      * Visibility configuration for this action.
      * Controls visibility and enablement based on actor roles, record state, context, and custom logic.

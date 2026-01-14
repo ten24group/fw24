@@ -710,6 +710,39 @@ export interface BaseFieldMetadata {
      */
     template?: Template;
     /**
+     * Custom renderer key for this field.
+     * When specified, the frontend uses this key to look up a registered custom renderer
+     * via ExtensionRegistry.getFieldRenderer().
+     *
+     * This enables custom field rendering in forms, details pages, and table columns.
+     * The renderer must be registered in the frontend before use.
+     *
+     * @example
+     * // Backend entity schema
+     * address: {
+     *   type: 'map',
+     *   fieldType: 'json',       // Built-in fallback
+     *   renderer: 'address-picker',  // Custom renderer
+     *   rendererConfig: {
+     *     country: 'US'
+     *   }
+     * }
+     *
+     * // Frontend registration
+     * ExtensionRegistry.registerFieldRenderer({
+     *   key: 'address-picker',
+     *   contexts: ['form', 'detail'],
+     *   component: GoogleAddressPicker
+     * });
+     */
+    renderer?: string;
+    /**
+     * Configuration passed to the custom renderer.
+     * Only used when `renderer` is specified.
+     * The config is passed as-is to the custom renderer component.
+     */
+    rendererConfig?: Record<string, unknown>;
+    /**
      * UI Configuration for relation fields (UI LAYER ONLY).
      *
      * ⚠️ IMPORTANT: This is separate from `relation` (which is data layer).
@@ -1581,6 +1614,128 @@ export interface IEntityPageAction {
     hideInModal?: boolean;
     /** Only open in modal on specified screen size. Default: always */
     openInModalCondition?: 'sm' | 'md' | 'lg' | 'xl';
+    /**
+     * Open action in drawer (slide-out panel) instead of navigating.
+     * Similar to openInModal but renders in a side drawer.
+     *
+     * Use drawers for:
+     * - Quick preview of entity details
+     * - Side-by-side editing while viewing list
+     * - Forms that don't require full page context
+     * - Secondary content that shouldn't interrupt main flow
+     *
+     * @example
+     * {
+     *   label: 'Quick View',
+     *   url: '/view-order/:orderId',
+     *   openInDrawer: true,
+     *   drawerConfig: {
+     *     placement: 'right',
+     *     width: 500,
+     *     title: 'Order Details'
+     *   }
+     * }
+     */
+    openInDrawer?: boolean;
+    /**
+     * Drawer configuration.
+     * Only used when openInDrawer is true.
+     *
+     * Supports two patterns:
+     * 1. Route resolution: Use with url or drawerConfigRef
+     * 2. Inline config: Use drawerType + drawerPageConfig for inline forms/details
+     */
+    drawerConfig?: {
+        /** Drawer title (supports templates like 'Edit {teamName}') */
+        title?: Template;
+        /** Drawer placement */
+        placement?: 'left' | 'right' | 'top' | 'bottom';
+        /** Drawer width (for left/right placement) */
+        width?: number | string;
+        /** Drawer height (for top/bottom placement) */
+        height?: number | string;
+        /** Show close button */
+        closable?: boolean;
+        /** Show mask overlay */
+        mask?: boolean;
+        /** Close on mask click */
+        maskClosable?: boolean;
+        /** Destroy content on close */
+        destroyOnClose?: boolean;
+        /** Page type to render in drawer: 'form', 'details', 'list' */
+        drawerType?: 'form' | 'details' | 'list';
+        /**
+         * Page configuration for inline drawer content.
+         * Structure depends on drawerType:
+         * - 'form': Form configuration with propertiesConfig, apiConfig, etc.
+         * - 'details': Details configuration with propertiesConfig
+         * - 'list': Table configuration
+         */
+        drawerPageConfig?: {
+            /** Form/details title */
+            title?: string;
+            /** Help text shown below title */
+            helpText?: string;
+            /** Properties/fields to render */
+            propertiesConfig?: Array<{
+                name: string;
+                label: string;
+                column?: string;
+                fieldType: string;
+                required?: boolean;
+                placeholder?: string;
+                helpText?: string;
+                defaultValue?: unknown;
+                options?: {
+                    apiMethod?: string;
+                    apiUrl?: string;
+                    responseKey?: string;
+                    optionMapping?: {
+                        label: string;
+                        value: string;
+                    };
+                    disableSearch?: boolean;
+                    disableLoadMore?: boolean;
+                } | Array<{
+                    label: string;
+                    value: string | number;
+                }>;
+                [key: string]: unknown;
+            }>;
+            /** API configuration for form submission */
+            apiConfig?: {
+                apiMethod?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+                apiUrl?: string;
+                responseKey?: string;
+            };
+            /** Form buttons to show */
+            formButtons?: Array<'submit' | 'reset' | 'cancel'>;
+            /** Response display config after form submission */
+            responseConfig?: {
+                showModal?: boolean;
+                modalTitle?: string;
+            };
+            [key: string]: unknown;
+        };
+    };
+    /**
+     * Entity config reference for drawer route resolution (when using url + openInDrawer).
+     * Similar to modalConfigRef but for drawers.
+     *
+     * @example
+     * {
+     *   url: '/view-order/:orderId',
+     *   openInDrawer: true,
+     *   drawerConfigRef: {
+     *     entityName: 'order',
+     *     pageType: 'view',
+     *     overrideConfig: {
+     *       hideFields: ['createdAt', 'updatedAt']
+     *     }
+     *   }
+     * }
+     */
+    drawerConfigRef?: IEntityConfigReference;
     /**
      * Visibility configuration for this action.
      * Controls visibility and enablement based on actor roles, record state, context, and custom logic.
