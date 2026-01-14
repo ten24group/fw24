@@ -195,9 +195,20 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
       }
 
       if (dupInfo.length > 0) {
+        // Serialize duplicate info with operations for debugging
+        const duplicatesForLog = dupInfo.slice(0, 5).map(d => {
+          const items = grouped.get(d.id) ?? [];
+          return {
+            id: d.id,
+            count: d.count,
+            types: d.types.join(', '),
+            levels: d.levels.join(', '),
+            operations: items.map(i => i.operation).join(', '),
+          };
+        });
         logger.error('Observability invariant violation: duplicate observabilityLogId(s) in a single DynamoDB batch.', {
           duplicateIdCount: dupInfo.length,
-          duplicates: dupInfo.slice(0, 5),
+          duplicates: duplicatesForLog,
           totalItems: validItems.length,
           deduplicatedCount: chosenById.size,
         });
