@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.2](https://github.com/ten24group/fw24/compare/v1.1.0-beta.1...v1.1.0-beta.2) (2026-01-14)
+
+
+### Features
+
+* **entity:** add custom renderer and drawer support to entity configuration ([84d8404](https://github.com/ten24group/fw24/commit/84d8404b9635cf826d9e9c902df7b0237b9e65e8))
+
 ## [1.1.0-beta.1](https://github.com/ten24group/fw24/compare/v1.1.0-beta.0...v1.1.0-beta.1) (2026-01-13)
 
 
