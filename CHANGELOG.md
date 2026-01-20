@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.3](https://github.com/ten24group/fw24/compare/v1.1.0-beta.2...v1.1.0-beta.3) (2026-01-20)
+
+
+### Features
+
+* **entity:** enhance entity configuration with drawer and wizard support ([6abeddd](https://github.com/ten24group/fw24/commit/6abedddb198bab8940ae404efd8213285d830473))
+
 ## [1.1.0-beta.2](https://github.com/ten24group/fw24/compare/v1.1.0-beta.1...v1.1.0-beta.2) (2026-01-14)
 
 
