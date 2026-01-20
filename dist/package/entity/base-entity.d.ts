@@ -6,7 +6,7 @@ import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
 import { EntitySearchService } from '../search/services';
 import { DepIdentifier, IFilterAutoGenerationConfig, ISegmentAutoGenerationConfig } from "../interfaces";
-import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig } from '../ui-config-gen/templates/custom-page';
+import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig, AccordionPageConfig, WizardPageConfigStructure } from '../ui-config-gen/templates/custom-page';
 /**
  * @fileoverview Entity Schema and Type-Safe Helper Functions
  *
@@ -786,7 +786,7 @@ export interface BaseFieldMetadata {
 /**
  * Modal type for actions
  */
-export type ModalType = "confirm" | "list" | "form" | "accordion" | "custom" | "details" | "dashboard";
+export type ModalType = "confirm" | "list" | "form" | "accordion" | "custom" | "details" | "dashboard" | "wizard";
 /**
  * API method type - must match frontend IApiConfig
  */
@@ -853,6 +853,73 @@ export interface INavigateToConfig {
     inverseMapping?: boolean;
 }
 /**
+ * Drawer configuration for page actions.
+ *
+ * Similar to IEntityPageActionModalConfig but with drawer-specific presentation properties.
+ * Both drawer and modal share the same page config types (form, list, details, confirm).
+ *
+ * Supports two patterns:
+ * 1. **Route resolution**: Use with url or drawerConfigRef
+ * 2. **Inline config**: Use drawerType + drawerPageConfig (same as modalType + modalPageConfig)
+ *
+ * @see {@link IEntityPageActionModalConfig} for the modal equivalent
+ */
+export interface IEntityPageActionDrawerConfig {
+    /** Drawer title (supports templates like 'Edit {teamName}') */
+    title?: Template;
+    /** Drawer placement (drawer-specific, modals don't have this) */
+    placement?: 'left' | 'right' | 'top' | 'bottom';
+    /** Drawer width (for left/right placement) */
+    width?: number | string;
+    /** Drawer height (for top/bottom placement, drawer-specific) */
+    height?: number | string;
+    /** Show close button */
+    closable?: boolean;
+    /** Show mask overlay */
+    mask?: boolean;
+    /** Close on mask click */
+    maskClosable?: boolean;
+    /** Destroy content on close */
+    destroyOnClose?: boolean;
+    /** Page type to render (same as modalType) */
+    drawerType?: Omit<ModalType, 'confirm'>;
+    /** Page configuration (same as modalPageConfig) */
+    drawerPageConfig?: FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | DashboardPageConfig | AccordionPageConfig | WizardPageConfigStructure;
+    /** EITHER: Make API call */
+    apiConfig?: IModalApiConfig;
+    submitSuccessRedirect?: string;
+    submitSuccessRedirectOptions?: {
+        replace?: boolean;
+        state?: unknown;
+    };
+    /** OR: Navigate without API call */
+    navigateTo?: INavigateToConfig | string;
+    /** Display API response in a modal */
+    responseConfig?: IResponseDisplayConfig;
+    /** Dynamic config key for chaining operations */
+    dynamicConfigKey?: string;
+    /**
+     * Control drawer closing behavior on error
+     * - true: Close drawer immediately on error
+     * - false (default): Keep drawer open so user can fix and retry
+     */
+    closeDrawerOnError?: boolean;
+    /** Skip toast notifications */
+    skipSuccessToast?: boolean;
+    skipErrorToast?: boolean;
+    /**
+     * Pre-populate form fields from context (route params + record data).
+     * Same as modalConfig.initialValues - see IEntityPageActionModalConfig for full documentation.
+     */
+    initialValues?: Record<string, any>;
+    /** Refresh parent component after success */
+    refreshParentOnSuccess?: boolean;
+    /** Custom success message template */
+    successMessage?: Template;
+    /** Custom error message template */
+    errorMessage?: Template;
+}
+/**
  * Configuration for displaying API response in a modal
  * Reuses the existing page rendering system (details, list, dashboard, etc.)
  *
@@ -866,11 +933,11 @@ export interface IResponseDisplayConfig {
     showModal?: boolean;
     /** Title for response modal. If not provided, appends " - Results" to action modal title */
     modalTitle?: string;
-    /** Width of response modal in pixels. Default: 800 */
+    /** Width of response modal in pixels. Default: 707 */
     modalWidth?: number;
     /** OPTION 1: Render response using existing page type system (recommended) */
-    pageType?: 'details' | 'list' | 'dashboard' | 'accordion';
-    pageConfig?: DetailsPageConfigStructure | ListPageConfigStructure | Record<string, any>;
+    pageType?: 'form' | 'details' | 'list' | 'dashboard' | 'accordion';
+    pageConfig?: FormPageConfigStructure | DetailsPageConfigStructure | ListPageConfigStructure | DashboardPageConfig | AccordionPageConfig;
     /** OPTION 2: Show raw JSON response (useful for debugging/testing) */
     showRawJson?: boolean;
     /** Path to extract data from response. Default: uses response root
@@ -1286,16 +1353,66 @@ export interface IRelationFieldConfig {
 }
 export interface IEntityPageActionModalConfig {
     modalType: ModalType;
-    modalPageConfig?: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure;
+    modalPageConfig?: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | DashboardPageConfig | AccordionPageConfig | WizardPageConfigStructure;
     /** EITHER: Make API call (existing pattern) */
     apiConfig?: IModalApiConfig;
     submitSuccessRedirect?: string;
+    /**
+     * Navigation options for submitSuccessRedirect (replace history, pass state, etc.)
+     * Uses react-router-dom's NavigateOptions: { replace?: boolean; state?: unknown; }
+     */
+    submitSuccessRedirectOptions?: {
+        replace?: boolean;
+        state?: unknown;
+    };
     /** OR: Navigate without API call (new pattern) */
     navigateTo?: INavigateToConfig | string;
     /** OPTIONAL: Display API response in a modal (instead of just toast notification)
      * Note: Only applies when apiConfig is present. Ignored for navigateTo.
      */
     responseConfig?: IResponseDisplayConfig;
+    /**
+     * Dynamic Configuration Extraction for Chaining/Wizard Flows
+     * If provided, OperationExecutor looks for next-step config in the API response.
+     * Useful for backend-driven wizards where each step is determined by the previous response.
+     *
+     * @example
+     * // Backend entity action config
+     * dynamicConfigKey: 'nextStep'
+     *
+     * // Backend API returns:
+     * {
+     *   success: true,
+     *   data: { userId: '123', email: 'user@example.com' },
+     *   nextStep: {
+     *     modalType: 'form',
+     *     modalPageConfig: {
+     *       title: 'Verify Email',
+     *       propertiesConfig: [...],
+     *       apiConfig: { apiUrl: '/verify-email', apiMethod: 'POST' }
+     *     }
+     *   }
+     * }
+     *
+     * // Result: Response modal opens with form, pre-filled with user data
+     */
+    dynamicConfigKey?: string;
+    /**
+     * Control modal closing behavior on error
+     * - true: Close modal immediately on error
+     * - false (default): Keep modal open so user can fix and retry
+     */
+    closeModalOnError?: boolean;
+    /**
+     * Skip showing success toast notification
+     * Useful when responseConfig.showModal is true (avoid duplicate notifications)
+     */
+    skipSuccessToast?: boolean;
+    /**
+     * Skip showing error toast notification
+     * Useful when you want custom error handling via callbacks
+     */
+    skipErrorToast?: boolean;
     /**
      * Pre-populate form fields from context (route params + record data).
      *
@@ -1641,83 +1758,9 @@ export interface IEntityPageAction {
      * Drawer configuration.
      * Only used when openInDrawer is true.
      *
-     * Supports two patterns:
-     * 1. Route resolution: Use with url or drawerConfigRef
-     * 2. Inline config: Use drawerType + drawerPageConfig for inline forms/details
+     * @see {@link IEntityPageActionDrawerConfig} for full documentation
      */
-    drawerConfig?: {
-        /** Drawer title (supports templates like 'Edit {teamName}') */
-        title?: Template;
-        /** Drawer placement */
-        placement?: 'left' | 'right' | 'top' | 'bottom';
-        /** Drawer width (for left/right placement) */
-        width?: number | string;
-        /** Drawer height (for top/bottom placement) */
-        height?: number | string;
-        /** Show close button */
-        closable?: boolean;
-        /** Show mask overlay */
-        mask?: boolean;
-        /** Close on mask click */
-        maskClosable?: boolean;
-        /** Destroy content on close */
-        destroyOnClose?: boolean;
-        /** Page type to render in drawer: 'form', 'details', 'list' */
-        drawerType?: 'form' | 'details' | 'list';
-        /**
-         * Page configuration for inline drawer content.
-         * Structure depends on drawerType:
-         * - 'form': Form configuration with propertiesConfig, apiConfig, etc.
-         * - 'details': Details configuration with propertiesConfig
-         * - 'list': Table configuration
-         */
-        drawerPageConfig?: {
-            /** Form/details title */
-            title?: string;
-            /** Help text shown below title */
-            helpText?: string;
-            /** Properties/fields to render */
-            propertiesConfig?: Array<{
-                name: string;
-                label: string;
-                column?: string;
-                fieldType: string;
-                required?: boolean;
-                placeholder?: string;
-                helpText?: string;
-                defaultValue?: unknown;
-                options?: {
-                    apiMethod?: string;
-                    apiUrl?: string;
-                    responseKey?: string;
-                    optionMapping?: {
-                        label: string;
-                        value: string;
-                    };
-                    disableSearch?: boolean;
-                    disableLoadMore?: boolean;
-                } | Array<{
-                    label: string;
-                    value: string | number;
-                }>;
-                [key: string]: unknown;
-            }>;
-            /** API configuration for form submission */
-            apiConfig?: {
-                apiMethod?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-                apiUrl?: string;
-                responseKey?: string;
-            };
-            /** Form buttons to show */
-            formButtons?: Array<'submit' | 'reset' | 'cancel'>;
-            /** Response display config after form submission */
-            responseConfig?: {
-                showModal?: boolean;
-                modalTitle?: string;
-            };
-            [key: string]: unknown;
-        };
-    };
+    drawerConfig?: IEntityPageActionDrawerConfig;
     /**
      * Entity config reference for drawer route resolution (when using url + openInDrawer).
      * Similar to modalConfigRef but for drawers.
@@ -2170,6 +2213,21 @@ interface EditorFieldMetadata extends BaseFieldMetadata, CommonFileFieldMetadata
 }
 interface CodeEditorFieldMetadata extends BaseFieldMetadata {
     fieldType?: 'code' | 'markdown' | 'json';
+    /**
+     * Code language for syntax highlighting (used when fieldType is 'code')
+     * Supported: 'json', 'html', 'javascript', 'handlebars', 'text'
+     */
+    codeLanguage?: 'json' | 'html' | 'javascript' | 'handlebars' | 'text';
+    /** Editor height in pixels (default: 300) */
+    height?: number;
+    /** Read-only mode */
+    readOnly?: boolean;
+    /** Dark theme */
+    darkTheme?: boolean;
+    /** Show line numbers (default: true) */
+    lineNumbers?: boolean;
+    /** Enable JSON validation for json language (default: true) */
+    validateJson?: boolean;
 }
 export type FieldOptions<E extends EntitySchema<any, any, any> = any> = ReadonlyArray<FieldOption> | Array<FieldOption> | FieldOptionsAPIConfig<E> | RelationEntityOptionConfig<E>;
 export type FieldOption = {
