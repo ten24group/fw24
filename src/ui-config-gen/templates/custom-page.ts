@@ -34,7 +34,7 @@
  * @see {@link ui24/src/pages/PostAuth/PostAuthPage.tsx} for page rendering
  */
 
-import type { FieldOptions, IConfirmModal, IEntityConfigReference, IFilterSegment, IModalApiConfig, IRelationFieldConfig, ISectionsConfig, ITableExpandableConfig, ModalType, Template, VisibilityConfig } from "../../entity";
+import type { FieldOptions, IConfirmModal, IEntityConfigReference, IEntityPageActionDrawerConfig, IFilterSegment, IModalApiConfig, INavigateToConfig, IRelationFieldConfig, IResponseDisplayConfig, ISectionsConfig, ITableExpandableConfig, ModalType, Template, VisibilityConfig } from "../../entity";
 import { IEntityPageColumnConfig } from "../../entity/base-entity";
 
 /**
@@ -275,6 +275,23 @@ export interface PropertyConfig {
      */
     /** @deprecated Optional - presence of linkConfig is sufficient to indicate a link */
     isLink?: boolean;
+
+    // =========================================================================
+    // CODE EDITOR FIELD PROPERTIES (for fieldType: 'code', 'json', 'markdown')
+    // =========================================================================
+    /**
+     * Code language for syntax highlighting (used when fieldType is 'code')
+     * Supported: 'json', 'html', 'javascript', 'handlebars', 'text'
+     */
+    codeLanguage?: 'json' | 'html' | 'javascript' | 'handlebars' | 'text';
+    /** Editor height in pixels (default: 300) */
+    height?: number;
+    /** Dark theme for code editor (default: false) */
+    darkTheme?: boolean;
+    /** Show line numbers in code editor (default: true) */
+    lineNumbers?: boolean;
+    /** Enable JSON validation for json language (default: true) */
+    validateJson?: boolean;
     linkConfig?: {
         routePattern: string;
         /** Display text for the link - supports templates like "View {entityName}: {entityId}" */
@@ -441,8 +458,10 @@ export type PropertiesConfig = ReadonlyArray<PropertyReference> | Array<Property
  * ```
  */
 export interface DashboardWidgetConfig {
-    type: 'stat' | 'chart' | 'list' | 'actions' | 'description';
+    type: 'stat' | 'chart' | 'list' | 'actions' | 'description' | 'markdown';
     title?: string;
+    /** Optional description text for the widget (shown below title) */
+    description?: string;
     colSpan?: number;
     maxWidth?: number | string;
     width?: number | string;
@@ -705,12 +724,96 @@ export interface DetailsPageConfigStructure {
 }
 
 /**
+ * Wizard step configuration for multi-step forms.
+ * Each step can have its own form fields and validation.
+ * 
+ * @example
+ * ```ts
+ * const step: WizardStepConfig = {
+ *   title: 'Select Template',
+ *   description: 'Choose a template to start with',
+ *   fields: [
+ *     { name: 'templateId', label: 'Template', fieldType: 'select', ... }
+ *   ]
+ * }
+ * ```
+ */
+export interface WizardStepConfig {
+    /** Step title */
+    title: string;
+    /** Step description (optional) */
+    description?: string;
+    /** Step icon (optional) */
+    icon?: string;
+    /** Form fields for this step */
+    fields?: PropertiesConfig;
+    /** API to call to get dynamic fields for this step */
+    apiConfig?: {
+        apiUrl: string;
+        apiMethod: 'GET' | 'POST';
+        body?: Record<string, unknown>;
+        responseKey?: string;
+    };
+}
+
+/**
+ * Wizard page configuration for multi-step forms.
+ * Provides a stepped form interface using Ant Design's Steps component.
+ * Each step can have its own form fields and validation.
+ * 
+ * @example
+ * ```ts
+ * const wizardConfig: WizardPageConfigStructure = {
+ *   title: 'Create from Template',
+ *   steps: [
+ *     { title: 'Select Template', fields: [...] },
+ *     { title: 'Fill Variables', fields: [...] },
+ *     { title: 'Preview', fields: [...] }
+ *   ],
+ *   apiConfig: {
+ *     apiMethod: 'POST',
+ *     apiUrl: '/api/create-from-template',
+ *     responseKey: ''
+ *   },
+ *   showStepNumbers: true,
+ *   allowStepClick: false
+ * }
+ * ```
+ */
+export interface WizardPageConfigStructure {
+    /** Wizard title */
+    title?: string;
+    /** Help text shown at the top */
+    helpText?: string;
+    /** Wizard steps */
+    steps: WizardStepConfig[];
+    /** API configuration for final submission */
+    apiConfig: IModalApiConfig;
+    /** Initial form values */
+    initialValues?: Record<string, unknown>;
+    /** Show step numbers (default: true) */
+    showStepNumbers?: boolean;
+    /** Allow navigation by clicking steps (default: false) */
+    allowStepClick?: boolean;
+    /** Custom submit button text (default: 'Complete') */
+    submitText?: string;
+    /** Custom cancel button text (default: 'Cancel') */
+    cancelText?: string;
+    /** Show cancel button (default: true) */
+    showCancel?: boolean;
+    /** Success message after completion */
+    successMessage?: string;
+    /** Show success result after completion (default: false) */
+    showSuccessResult?: boolean;
+}
+
+/**
  * Union type for modal page configurations.
  * Represents all possible page types that can be displayed in a modal.
  * 
  * Used when opening pages in modals (e.g., create form in modal, detail view in modal).
  */
-export type ModalPageConfig = IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure;
+export type ModalPageConfig = IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | WizardPageConfigStructure;
 
 /**
  * Page action configuration for buttons and dropdowns in page headers.
@@ -787,18 +890,52 @@ export interface IPageAction {
     modalConfig?: {
         modalType: ModalType;
         modalPageConfig?: ModalPageConfig;
+
+        /** EITHER: Make API call (existing pattern) */
         apiConfig?: IModalApiConfig;
         submitSuccessRedirect?: string;
-
-        /** OPTIONAL: Display API response in modal (instead of just toast) */
-        responseConfig?: {
-            /** If true, show response in modal instead of just toast */
-            showModal?: boolean;
-            /** Custom title for response modal */
-            modalTitle?: string;
-            /** Custom modal width for response display */
-            modalWidth?: number | string;
+        /**
+         * Navigation options for submitSuccessRedirect (replace history, pass state, etc.)
+         * Uses react-router-dom's NavigateOptions: { replace?: boolean; state?: unknown; }
+         */
+        submitSuccessRedirectOptions?: {
+            replace?: boolean;
+            state?: unknown;
         };
+
+        /** OR: Navigate without API call (new pattern) */
+        navigateTo?: INavigateToConfig | string;
+
+        /** OPTIONAL: Display API response in modal (instead of just toast notification) */
+        responseConfig?: IResponseDisplayConfig;
+
+        /**
+         * Dynamic Configuration Extraction for Chaining/Wizard Flows
+         * If provided, OperationExecutor looks for next-step config in the API response.
+         * Useful for backend-driven wizards where each step is determined by the previous response.
+         * @example dynamicConfigKey: 'nextStep'
+         * Backend returns: { success: true, data: {...}, nextStep: { modalType: 'form', ... } }
+         */
+        dynamicConfigKey?: string;
+
+        /**
+         * Control modal closing behavior on error
+         * - true: Close modal immediately on error
+         * - false (default): Keep modal open so user can fix and retry
+         */
+        closeModalOnError?: boolean;
+
+        /**
+         * Skip showing success toast notification
+         * Useful when responseConfig.showModal is true (avoid duplicate notifications)
+         */
+        skipSuccessToast?: boolean;
+
+        /**
+         * Skip showing error toast notification
+         * Useful when you want custom error handling via callbacks
+         */
+        skipErrorToast?: boolean;
 
         /**
          * Pre-populate form fields from context (route params + record data).
@@ -850,63 +987,11 @@ export interface IPageAction {
 
     /**
      * Drawer configuration (when openInDrawer is true).
-     * Supports two patterns:
-     * 1. Route resolution: Use with url or drawerConfigRef
-     * 2. Inline config: Use drawerType + drawerPageConfig for inline forms/details
+     * Uses shared drawer config type from base-entity.
+     * 
+     * @see {@link IEntityPageActionDrawerConfig} for full type definition
      */
-    drawerConfig?: {
-        title?: Template;
-        placement?: 'left' | 'right' | 'top' | 'bottom';
-        width?: number | string;
-        height?: number | string;
-        closable?: boolean;
-        mask?: boolean;
-        maskClosable?: boolean;
-        destroyOnClose?: boolean;
-
-        // Inline page config for drawers
-        /** Page type to render in drawer: 'form', 'details', 'list' */
-        drawerType?: 'form' | 'details' | 'list';
-
-        /** 
-         * Page configuration for inline drawer content.
-         * Structure depends on drawerType.
-         */
-        drawerPageConfig?: {
-            title?: string;
-            helpText?: string;
-            propertiesConfig?: Array<{
-                name: string;
-                label: string;
-                column?: string;
-                fieldType: string;
-                required?: boolean;
-                placeholder?: string;
-                helpText?: string;
-                defaultValue?: unknown;
-                options?: {
-                    apiMethod?: string;
-                    apiUrl?: string;
-                    responseKey?: string;
-                    optionMapping?: { label: string; value: string };
-                    disableSearch?: boolean;
-                    disableLoadMore?: boolean;
-                } | Array<{ label: string; value: string | number }>;
-                [ key: string ]: unknown;
-            }>;
-            apiConfig?: {
-                apiMethod?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-                apiUrl?: string;
-                responseKey?: string;
-            };
-            formButtons?: Array<'submit' | 'reset' | 'cancel'>;
-            responseConfig?: {
-                showModal?: boolean;
-                modalTitle?: string;
-            };
-            [ key: string ]: unknown;
-        };
-    };
+    drawerConfig?: IEntityPageActionDrawerConfig;
 
     /** Entity config reference for drawer route resolution */
     drawerConfigRef?: IEntityConfigReference;
