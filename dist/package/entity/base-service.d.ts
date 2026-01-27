@@ -5,8 +5,8 @@ import type { EntityFilterCriteria, EntityQuery, EntitySelections, ParsedEntityA
 import { ExecutionContext } from "../core/types/execution-context";
 import { DepIdentifier, IDIContainer } from "../interfaces";
 import { EntitySearchService } from '../search/services';
-import { EntitySearchQuery } from '../search/types';
-import { UpdateEntityOperators, UpdateEntityResponse, CreateEntityResponse, DeleteEntityResponse } from "./crud-service";
+import { EntitySearchQuery, SearchResult } from '../search/types';
+import { UpdateEntityOperators, UpdateEntityResponse, CreateEntityResponse, DeleteEntityResponse, UpsertEntityResponse } from "./crud-service";
 export type ExtractEntityIdentifiersContext = {
     forAccessPattern?: string;
 };
@@ -302,11 +302,7 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      *   - wasCreated: true if record was created, false if updated
      *   - oldData: previous data if it was an update (undefined for creates)
      */
-    upsert(payload: UpsertEntityItemTypeFromSchema<S>): Promise<{
-        data: import("./base-entity").EntityResponseItemTypeFromSchema<S> | undefined;
-        oldData: import("./base-entity").EntityResponseItemTypeFromSchema<S> | undefined;
-        wasCreated?: boolean;
-    }>;
+    upsert(payload: UpsertEntityItemTypeFromSchema<S>): Promise<UpsertEntityResponse<S>>;
     /**
      * Creates a duplicate entity data based on the given identifiers.
      *
@@ -319,7 +315,7 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      * const duplicateData = await makeDuplicateEntityDataByIdentifiers(identifiers);
      * console.log(duplicateData); // { name: 'John Doe', age: 30, ... }
      */
-    protected makeDuplicateEntityData(identifiers: EntityIdentifiersTypeFromSchema<S>): Promise<import("../utils").Writable<import("electrodb").CreateEntityItem<EntityRepositoryTypeFromSchema<S>>>>;
+    protected makeDuplicateEntityData(identifiers: EntityIdentifiersTypeFromSchema<S>): Promise<CreateEntityItemTypeFromSchema<S>>;
     /**
      * Creates a duplicate entity based on the provided identifiers.
      *
@@ -478,7 +474,7 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      * @param maxDepth Maximum recursion depth (optional).
      */
     inferRelationshipsForEntitySelections<E extends EntitySchema<any, any, any>>(schema: E, paths: ParsedEntityAttributePaths, pathKey?: string, visitedPaths?: Set<string>, maxDepth?: number): HydrateOptionsMapForEntity<E>;
-    search(query: EntitySearchQuery<S>, ctx?: ExecutionContext): Promise<import("../search/types").SearchResult<any>>;
+    search(query: EntitySearchQuery<S>, ctx?: ExecutionContext): Promise<SearchResult<any>>;
     /**
      * Compress fields marked with `compressed: true` in schema.
      * Called automatically before writing to DB.

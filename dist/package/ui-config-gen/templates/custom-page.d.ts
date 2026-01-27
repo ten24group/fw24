@@ -718,12 +718,40 @@ export interface WizardPageConfigStructure {
     showSuccessResult?: boolean;
 }
 /**
+ * Custom page configuration for ExtensionRegistry-registered components.
+ * Used with modalType: 'custom' to render registered custom components in modals.
+ *
+ * The componentKey references a component registered via:
+ * ExtensionRegistry.register({ key: 'MyComponent', component: MyComponent, category: 'page' })
+ *
+ * @example
+ * ```ts
+ * const customModalConfig: CustomPageConfigStructure = {
+ *   componentKey: 'PostDistributionModal',
+ *   componentProps: {
+ *     previewUrl: '/api/preview',
+ *     submitUrl: '/api/submit'
+ *   }
+ * }
+ * ```
+ */
+export interface CustomPageConfigStructure {
+    /** Component key registered in ExtensionRegistry */
+    componentKey: string;
+    /** Props to pass to the custom component */
+    componentProps?: Record<string, unknown>;
+    /** Optional title for the modal/page */
+    title?: string;
+    /** Optional help text */
+    helpText?: string;
+}
+/**
  * Union type for modal page configurations.
  * Represents all possible page types that can be displayed in a modal.
  *
  * Used when opening pages in modals (e.g., create form in modal, detail view in modal).
  */
-export type ModalPageConfig = IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | WizardPageConfigStructure;
+export type ModalPageConfig = IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | WizardPageConfigStructure | CustomPageConfigStructure;
 /**
  * Page action configuration for buttons and dropdowns in page headers.
  * Supports both navigation actions and modal-based actions with visibility conditions.
