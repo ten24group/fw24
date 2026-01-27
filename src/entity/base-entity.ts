@@ -7,7 +7,7 @@ import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
 import { EntitySearchService } from '../search/services';
 import { DepIdentifier, IFilterAutoGenerationConfig, ISegmentAutoGenerationConfig } from "../interfaces";
-import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig, AccordionPageConfig, WizardPageConfigStructure } from '../ui-config-gen/templates/custom-page';
+import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig, AccordionPageConfig, WizardPageConfigStructure, CustomPageConfigStructure } from '../ui-config-gen/templates/custom-page';
 
 /**
  * @fileoverview Entity Schema and Type-Safe Helper Functions
@@ -987,7 +987,7 @@ export interface IEntityPageActionDrawerConfig {
   drawerType?: Omit<ModalType, 'confirm'>;
 
   /** Page configuration (same as modalPageConfig) */
-  drawerPageConfig?: FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | DashboardPageConfig | AccordionPageConfig | WizardPageConfigStructure;
+  drawerPageConfig?: FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | DashboardPageConfig | AccordionPageConfig | WizardPageConfigStructure | CustomPageConfigStructure;
 
   // =========================================================================
   // SHARED API/NAVIGATION CONFIG (SAME AS MODAL)
@@ -1502,7 +1502,7 @@ export interface IRelationFieldConfig {
 
 export interface IEntityPageActionModalConfig {
   modalType: ModalType;
-  modalPageConfig?: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | DashboardPageConfig | AccordionPageConfig | WizardPageConfigStructure;
+  modalPageConfig?: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | DashboardPageConfig | AccordionPageConfig | WizardPageConfigStructure | CustomPageConfigStructure;
 
   /** EITHER: Make API call (existing pattern) */
   apiConfig?: IModalApiConfig;
@@ -2012,6 +2012,20 @@ export interface IEntityPageAction {
    * }
    */
   visibility?: VisibilityConfig;
+
+  /**
+   * Link target attribute for external URLs.
+   * Only applicable when url is set and action navigates to an external link.
+   * 
+   * @example
+   * // Open external link in new tab
+   * {
+   *   label: 'View on Platform',
+   *   url: '{platformPostUrl}',
+   *   target: '_blank'
+   * }
+   */
+  target?: '_blank' | '_self' | '_parent' | '_top';
 }
 
 export interface IEntityPageColumn {

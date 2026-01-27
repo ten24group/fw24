@@ -11,12 +11,12 @@ import {
 import { DepIdentifier, IDIContainer } from "../interfaces";
 import { createLogger } from "../logging";
 import { BaseSearchService, EntitySearchService } from '../search/services';
-import { EntitySearchQuery } from '../search/types';
+import { EntitySearchQuery, SearchResult } from '../search/types';
 import { Observed } from "../observability/decorators/observed";
 import { makeEntitySearchIndexName } from '../search/search-utils';
 import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug, compressIfNeeded, decompressItem, isCompressed } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
-import { UpdateEntityOperators, UpdateEntityResponse, CreateEntityResponse, GetEntityResponse, DeleteEntityResponse, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
+import { UpdateEntityOperators, UpdateEntityResponse, CreateEntityResponse, GetEntityResponse, DeleteEntityResponse, UpsertEntityResponse, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
 import { EntitySchemaValidator } from "./entity-schema-validator";
 import { DatabaseError, EntityValidationError } from './errors';
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
@@ -1466,7 +1466,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             })
         }
     })
-    public async upsert(payload: UpsertEntityItemTypeFromSchema<S>) {
+    public async upsert(payload: UpsertEntityItemTypeFromSchema<S>): Promise<UpsertEntityResponse<S>> {
         this.logger.debug(`Called ~ upsert ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
 
         // Inject actor context so DynamoDB images always have _actor for auditing/causedBy
@@ -1502,7 +1502,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * const duplicateData = await makeDuplicateEntityDataByIdentifiers(identifiers);
      * console.log(duplicateData); // { name: 'John Doe', age: 30, ... }
      */
-    protected async makeDuplicateEntityData(identifiers: EntityIdentifiersTypeFromSchema<S>) {
+    protected async makeDuplicateEntityData(identifiers: EntityIdentifiersTypeFromSchema<S>): Promise<CreateEntityItemTypeFromSchema<S>> {
         const entity = await this.get({ identifiers }) as EntityRecordTypeFromSchema<S>;
 
         if (!entity) {
@@ -1554,7 +1554,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             })
         }
     })
-    public async duplicate(id: EntityIdentifiersTypeFromSchema<S>, ctx?: ExecutionContext) {
+    public async duplicate(id: EntityIdentifiersTypeFromSchema<S>, ctx?: ExecutionContext): Promise<CreateEntityResponse<S>> {
         const duplicateEventData = await this.makeDuplicateEntityData(id);
         return await this.create(duplicateEventData, ctx);
     }
