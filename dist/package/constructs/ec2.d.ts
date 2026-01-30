@@ -26,12 +26,14 @@ import { IConstructConfig } from "../interfaces/construct-config";
  *     instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.MEDIUM),
  *   },
  *   volumes: [{
- *     sizeGiB: 20  // Simplified: auto-generates device name and defaults to GP3 with encryption
+ *     sizeGiB: 20,
+ *     mountPoint: '/data' // Simplified: auto-generates device name and mounts before container starts
  *   }]
  *   // Or specify device name explicitly:
  *   // volumes: [{
  *   //   deviceName: '/dev/sdf',
- *   //   sizeGiB: 20
+ *   //   sizeGiB: 20,
+ *   //   mountPoint: '/data'
  *   // }]
  *   // Or use full configuration:
  *   // volumes: [{
@@ -39,7 +41,8 @@ import { IConstructConfig } from "../interfaces/construct-config";
  *   //   volume: BlockDeviceVolume.ebs(20, {
  *   //     volumeType: EbsDeviceVolumeType.GP3,
  *   //     encrypted: true
- *   //   })
+ *   //   }),
+ *   //   mountPoint: '/data'
  *   // }]
  * });
  *
@@ -71,7 +74,8 @@ import { IConstructConfig } from "../interfaces/construct-config";
  *       volumeType: EbsDeviceVolumeType.IO1,
  *       iops: 3000,
  *       encrypted: true
- *     })
+ *     }),
+ *     mountPoint: '/data'
  *   }]
  * });
  *
@@ -156,10 +160,29 @@ export interface IEc2VolumeConfig {
      */
     volume?: BlockDeviceVolume;
     /**
+     * Existing EBS volume ID to attach (optional)
+     * If provided, the volume will be attached and not created by the instance.
+     */
+    volumeId?: string;
+    /**
      * Volume size in GiB (optional if volume is specified)
      * If only size is specified, defaults to GP3 volume type with standard settings
      */
     sizeGiB?: number;
+    /**
+     * Mount point for the volume (optional). When provided, the construct will
+     * format (if needed) and mount before the container starts.
+     */
+    mountPoint?: string;
+    /**
+     * Filesystem type to use when formatting (defaults to 'ext4')
+     */
+    fileSystem?: string;
+    /**
+     * Whether to delete the volume on instance termination (only applies to created volumes)
+     * Defaults to false.
+     */
+    deleteOnTermination?: boolean;
 }
 export interface IEc2ServiceDiscoveryConfig {
     /**
@@ -280,6 +303,7 @@ export declare class Ec2Construct implements FW24Construct {
      * @private
      */
     private createInstanceRole;
+    private getDefaultDeviceName;
     /**
      * Builds Docker user data script to install Docker and run the container
      *
@@ -288,6 +312,7 @@ export declare class Ec2Construct implements FW24Construct {
      * @private
      */
     private buildDockerUserData;
+    private buildVolumeUserData;
     /**
      * Constructs all necessary AWS resources for the EC2 instance.
      * This includes VPC, security groups, instance configuration, Docker setup, and volumes.
