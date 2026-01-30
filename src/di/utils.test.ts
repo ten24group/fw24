@@ -1,4 +1,4 @@
-import { Middleware, MiddlewareAsync, ProviderOptions } from "../interfaces/di";
+import { DIMiddleware, DIMiddlewareAsync, ProviderOptions } from "../interfaces/di";
 import {
     applyMiddlewares,
     applyMiddlewaresAsync,
@@ -12,7 +12,7 @@ describe('Utility Functions - Complex Scenarios', () => {
     describe('makeDIToken', () => {
         it('should handle nested function names correctly', () => {
             function OuterFunction() {
-                function InnerFunction() {}
+                function InnerFunction() { }
                 return InnerFunction;
             }
 
@@ -29,7 +29,7 @@ describe('Utility Functions - Complex Scenarios', () => {
     describe('applyMiddlewares', () => {
         it('should handle nested middleware calls', () => {
             const log: string[] = [];
-            const middleware1: Middleware<any> = {
+            const middleware1: DIMiddleware<any> = {
                 middleware: (next) => {
                     log.push('middleware1 start');
                     const result = next();
@@ -37,7 +37,7 @@ describe('Utility Functions - Complex Scenarios', () => {
                     return result;
                 }
             };
-            const middleware2: Middleware<any> = {
+            const middleware2: DIMiddleware<any> = {
                 middleware: (next) => {
                     log.push('middleware2 start');
                     const result = next();
@@ -46,7 +46,7 @@ describe('Utility Functions - Complex Scenarios', () => {
                 }
             };
 
-            applyMiddlewares([middleware1, middleware2], () => {
+            applyMiddlewares([ middleware1, middleware2 ], () => {
                 log.push('next');
             });
 
@@ -63,7 +63,7 @@ describe('Utility Functions - Complex Scenarios', () => {
     describe('applyMiddlewaresAsync', () => {
         it('should handle async middleware with delays', async () => {
             const log: string[] = [];
-            const middleware1: MiddlewareAsync<any> = {
+            const middleware1: DIMiddlewareAsync<any> = {
                 middleware: async (next) => {
                     log.push('middleware1 start');
                     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -72,7 +72,7 @@ describe('Utility Functions - Complex Scenarios', () => {
                     return result;
                 }
             };
-            const middleware2: MiddlewareAsync<any> = {
+            const middleware2: DIMiddlewareAsync<any> = {
                 middleware: async (next) => {
                     log.push('middleware2 start');
                     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -82,7 +82,7 @@ describe('Utility Functions - Complex Scenarios', () => {
                 }
             };
 
-            await applyMiddlewaresAsync([middleware1, middleware2], async () => {
+            await applyMiddlewaresAsync([ middleware1, middleware2 ], async () => {
                 log.push('next');
             });
 
@@ -108,7 +108,7 @@ describe('Utility Functions - Complex Scenarios', () => {
         it('should handle a combination of valid and invalid provider configurations', () => {
             const token = makeDIToken('Test');
 
-            const validOptions: ProviderOptions<any> = { useClass: class Test {}, provide: token };
+            const validOptions: ProviderOptions<any> = { useClass: class Test { }, provide: token };
             expect(() => validateProviderOptions(validOptions, token)).not.toThrow();
 
             const invalidOptions: ProviderOptions<any> = { useFactory: undefined as any, provide: token };

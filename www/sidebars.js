@@ -12,7 +12,7 @@
  module.exports = {
   // By default, Docusaurus generates a sidebar from the docs folder structure
   docsSidebar: [
-    'Intro',
+    'intro',
     'application',
     'cli',
     {

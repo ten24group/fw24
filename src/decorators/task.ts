@@ -1,6 +1,7 @@
 import type { ILambdaEnvConfig } from "../interfaces";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
-import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor } from "./decorator-utils";
+import type { SpanMetadata } from "../observability/controller-config";
+import { resolveAndExportHandler, setupDIModuleForController } from "./decorator-utils";
 
 /**
  * Represents the configuration for a task.
@@ -15,6 +16,24 @@ export type ITaskConfig = CommonLambdaHandlerOptions & {
 	 * The environment configuration for the task.
 	 */
 	env?: Array<ILambdaEnvConfig>;
+
+	/**
+	 * Observability configuration for the task.
+	 * Allows specifying custom tags, source, and attributes for spans.
+	 * 
+	 * @example
+	 * ```typescript
+	 * @Task('sports-poll', {
+	 *   schedule: 'rate(1 minute)',
+	 *   observability: {
+	 *     source: 'sports:scheduler:frequent',
+	 *     tags: { domain: 'sports', frequency: 'frequent' },
+	 *     attributes: { 'task.category': 'data-sync' }
+	 *   }
+	 * })
+	 * ```
+	 */
+	observability?: SpanMetadata;
 }
 
 /**
@@ -25,11 +44,8 @@ export type ITaskConfig = CommonLambdaHandlerOptions & {
  */
 export function Task(taskName: string, taskConfig: ITaskConfig) {
 	return function <T extends { new(...args: any[]): {} }>(target: T) {
-		tryImportingEntryPackagesFor(taskName);
-
 		// Default autoExportLambdaHandler to true if undefined
 		taskConfig.autoExportLambdaHandler = taskConfig.autoExportLambdaHandler ?? true;
-
 
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {

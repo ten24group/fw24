@@ -8,6 +8,8 @@ export default(
         icon?: string,
         excludeFromAdminList?: boolean,
         excludeFromAdminCreate?: boolean,
+        menuGroup?: string;
+        menuOrder?: number;
     }
 ) => {
 
@@ -16,7 +18,7 @@ export default(
     if(!options.excludeFromAdminList){
         children.push({
             label: `${toHumanReadableName(options.entityName)} List`,
-            key: (options.menuIndex || 1) * 10 + 1,
+            key: `${options.menuIndex || 1}-list`,
             url: `/list-${options.entityName.toLowerCase()}`
         });
     }
@@ -24,7 +26,7 @@ export default(
     if(!options.excludeFromAdminCreate){
         children.push({
             label: `Add New ${toHumanReadableName(options.entityName)}`,
-            key: (options.menuIndex || 1) * 10 + 2,
+            key: `${options.menuIndex || 1}-create`,
             url: `/create-${options.entityName.toLowerCase()}`
         }); 
     }
@@ -33,7 +35,9 @@ export default(
         label: `${toHumanReadableName(options.entityNamePlural)}`,
         icon: `${ options.icon || 'appStore' }`,
         key: options.menuIndex,
-        children
+        children,
+        group: options.menuGroup,
+        order: options.menuOrder || 0
     };
     return config;
 };

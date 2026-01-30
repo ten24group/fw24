@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.CircularDependencyError = void 0;
+const errors_1 = require("../../errors");
+class CircularDependencyError extends errors_1.FrameworkError {
+    constructor(path, containerId) {
+        super(`Circular dependency detected: ${path.join(' -> ')}. DIContainer[${containerId}]`);
+    }
+}
+exports.CircularDependencyError = CircularDependencyError;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiQ2lyY3VsYXJEZXBlbmRlbmN5RXJyb3IuanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyIuLi8uLi8uLi8uLi9zcmMvZGkvZXJyb3JzL0NpcmN1bGFyRGVwZW5kZW5jeUVycm9yLnRzIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiI7OztBQUFBLHlDQUE4QztBQUU5QyxNQUFhLHVCQUF3QixTQUFRLHVCQUFjO0lBQ3ZELFlBQVksSUFBYyxFQUFFLFdBQW1CO1FBQzNDLEtBQUssQ0FBQyxpQ0FBaUMsSUFBSSxDQUFDLElBQUksQ0FBQyxNQUFNLENBQUMsaUJBQWlCLFdBQVcsR0FBRyxDQUFDLENBQUM7SUFDN0YsQ0FBQztDQUNKO0FBSkQsMERBSUMiLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBGcmFtZXdvcmtFcnJvciB9IGZyb20gJy4uLy4uL2Vycm9ycyc7XG5cbmV4cG9ydCBjbGFzcyBDaXJjdWxhckRlcGVuZGVuY3lFcnJvciBleHRlbmRzIEZyYW1ld29ya0Vycm9yIHtcbiAgICBjb25zdHJ1Y3RvcihwYXRoOiBzdHJpbmdbXSwgY29udGFpbmVySWQ6IHN0cmluZykge1xuICAgICAgICBzdXBlcihgQ2lyY3VsYXIgZGVwZW5kZW5jeSBkZXRlY3RlZDogJHtwYXRoLmpvaW4oJyAtPiAnKX0uIERJQ29udGFpbmVyWyR7Y29udGFpbmVySWR9XWApO1xuICAgIH1cbn1cbiJdfQ==

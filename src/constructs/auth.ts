@@ -1,10 +1,10 @@
-import { 
-    CfnIdentityPool, 
+import {
+    CfnIdentityPool,
     CfnIdentityPoolRoleAttachment,
     CfnUserPoolGroup,
-    UserPool, 
-    UserPoolClient, 
-    UserPoolProps, 
+    UserPool,
+    UserPoolClient,
+    UserPoolProps,
     UserPoolOperation,
     VerificationEmailStyle,
     UserPoolClientProps,
@@ -25,11 +25,28 @@ import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/co
 import { createLogger, LogDuration } from "../logging";
 import { Helper } from "../core";
 import { IConstructConfig } from "../interfaces/construct-config";
+import { merge } from "../utils";
 import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
 import { VpcConstruct } from "./vpc";
 import { MailerConstruct } from "./mailer";
+import { LayerConstruct } from "./layer";
 
-export type TriggerType = 
+interface IRoleAttachmentConfig {
+    identityPoolId: string;
+    roles?: {
+        authenticated?: string;
+        unauthenticated?: string;
+    };
+    roleMappings?: {
+        [ key: string ]: {
+            type: string;
+            ambiguousRoleResolution: string;
+            identityProvider: string;
+        };
+    };
+}
+
+export type TriggerType =
     | 'CUSTOM_MESSAGE'
     | 'PRE_SIGN_UP'
     | 'POST_CONFIRMATION'
@@ -64,7 +81,7 @@ export interface ISocialProviderConfig {
      * Optional attribute mapping from provider to Cognito
      */
     attributeMapping?: {
-        [key: string]: string;
+        [ key: string ]: string;
     };
 }
 
@@ -240,11 +257,11 @@ export class AuthConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = AuthConstruct.name;
-    dependencies: string[] = [VpcConstruct.name, MailerConstruct.name];
+    dependencies: string[] = [ VpcConstruct.name, MailerConstruct.name, LayerConstruct.name ];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;
-    
+
     /**
      * Create a new AuthConstruct.
      * @param authConstructConfig - The configuration object for the Auth construct.
@@ -257,7 +274,7 @@ export class AuthConstruct implements FW24Construct {
      * const auth = new Auth(authConfig);
      */
     constructor(private authConstructConfig: IAuthConstructConfig) {
-        Helper.hydrateConfig(authConstructConfig,'COGNITO');
+        Helper.hydrateConfig(authConstructConfig, 'COGNITO');
     }
 
     // construct method to create the stack
@@ -271,31 +288,34 @@ export class AuthConstruct implements FW24Construct {
             return;
         }
 
-        const userPoolConfig = {...AuthConstructConfigDefaults.userPool?.props, ...this.authConstructConfig.userPool?.props};
+        const userPoolConfig = merge([
+            AuthConstructConfigDefaults.userPool?.props ?? {},
+            this.authConstructConfig.userPool?.props ?? {}
+        ])!;
         const userPoolName = this.authConstructConfig.userPool?.props?.userPoolName || 'default';
         this.logger.info("Creating user pool: ", userPoolName);
         this.logger.debug("user pool config: ", userPoolName, userPoolConfig);
 
-        if(this.authConstructConfig.useAsDefaultAuthorizer === undefined){
+        if (this.authConstructConfig.useAsDefaultAuthorizer === undefined) {
             this.authConstructConfig.useAsDefaultAuthorizer = true;
         }
 
         // TODO: Add ability to create multi-tenant user pools
         const userPool: UserPool = new UserPool(this.mainStack, `${userPoolName}-userPool`, {
-            ...userPoolConfig,
+            ...(userPoolConfig as UserPoolProps),
             userPoolName: this.createUniqueUserPoolName(userPoolName),
         });
 
         // Configure domain if specified or if social providers are enabled
         this.configureDomain(userPool, userPoolName);
-        
+
         this.fw24.setConstructOutput(this, userPoolName, userPool, OutputType.USERPOOL, 'userPoolId');
 
-        const userPoolClientConfig: UserPoolClientProps = {
-            userPool: userPool,
-            ...AuthConstructConfigDefaults.userPoolClient?.props, 
-            ...this.authConstructConfig.userPoolClient?.props,
-        };
+        const userPoolClientConfig: UserPoolClientProps = merge([
+            { userPool: userPool },
+            AuthConstructConfigDefaults.userPoolClient?.props ?? {},
+            this.authConstructConfig.userPoolClient?.props ?? {}
+        ])!;
 
         const userPoolClient = new UserPoolClient(this.mainStack, `${userPoolName}-userPoolclient`, userPoolClientConfig);
 
@@ -305,7 +325,7 @@ export class AuthConstruct implements FW24Construct {
         this.fw24.setConstructOutput(this, userPoolName, userPoolClient, OutputType.USERPOOLCLIENT, 'userPoolClientId');
 
         // Identity pool based authentication
-        if(this.authConstructConfig.groups || this.authConstructConfig.policyFilePaths || this.fw24.getConfig().defaultAuthorizationType == 'AWS_IAM') {
+        if (this.authConstructConfig.groups || this.authConstructConfig.policyFilePaths || this.fw24.getConfig().defaultAuthorizationType == 'AWS_IAM') {
             this.createIdentityPoolAuthorizer(userPool, userPoolClient, userPoolName, this.authConstructConfig.useAsDefaultAuthorizer);
         } else {
             // user pool base authentication
@@ -317,18 +337,18 @@ export class AuthConstruct implements FW24Construct {
     private createUserPoolAuthorizer(userPool: UserPool, userPoolName: string, useAsDefaultAuthorizer: boolean) {
         // cognito authorizer 
         const userPoolAuthorizer = new CognitoUserPoolsAuthorizer(this.mainStack, `${userPoolName}-Authorizer`, {
-            cognitoUserPools: [userPool],
+            cognitoUserPools: [ userPool ],
             identitySource: 'method.request.header.Authorization',
         });
 
         this.fw24.setCognitoAuthorizer(
-            userPoolName, 
+            userPoolName,
             userPoolAuthorizer,
             // TODO: better logic to control the default authorizer
             useAsDefaultAuthorizer
         );
 
-        if(useAsDefaultAuthorizer !== false){
+        if (useAsDefaultAuthorizer !== false) {
             this.fw24.getConfig().defaultAuthorizationType = 'COGNITO_USER_POOLS';
             this.fw24.setDefaultCognitoAuthorizerName(userPoolName);
             this.logger.info("Default Authorizer set to COGNITO_USER_POOLS");
@@ -339,16 +359,16 @@ export class AuthConstruct implements FW24Construct {
 
         const identityPool = new CfnIdentityPool(this.mainStack, `${userPoolName}-identityPool`, {
             allowUnauthenticatedIdentities: true,
-            cognitoIdentityProviders: [{
+            cognitoIdentityProviders: [ {
                 clientId: userPoolClient.userPoolClientId,
                 providerName: userPool.userPoolProviderName,
-            }],
+            } ],
         });
         this.fw24.setConstructOutput(this, userPoolName, identityPool, OutputType.IDENTITYPOOL, 'ref', 'identityPoolId');
 
         // configure identity pool role attachment
         const identityProvider = userPool.userPoolProviderName + ':' + userPoolClient.userPoolClientId;
-        const roleAttachment: any = {
+        const roleAttachment: IRoleAttachmentConfig = {
             identityPoolId: identityPool.ref,
         }
 
@@ -379,11 +399,11 @@ export class AuthConstruct implements FW24Construct {
             }
             const autoUserSignupGroups = this.authConstructConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString();
             const autoUserSignupGroupsHandler = this.authConstructConfig.groups.filter(group => group.autoUserSignup).map(group => group.autoUserSignupHandler);
-            
+
             // Note: only one auto signup handler is supported, pick the first one
-            const autoGroupsAddHandler = autoUserSignupGroupsHandler[0] || '';
-            
-            if(autoUserSignupGroups && autoGroupsAddHandler){
+            const autoGroupsAddHandler = autoUserSignupGroupsHandler[ 0 ] || '';
+
+            if (autoUserSignupGroups && autoGroupsAddHandler) {
                 // create a post confirmation trigger to add users to auto signup groups
                 const props = {
                     environmentVariables: {
@@ -391,18 +411,18 @@ export class AuthConstruct implements FW24Construct {
                     },
                     policies: [
                         {
-                            actions: ['cognito-idp:AdminAddUserToGroup'],
-                            resources: ['*'],
+                            actions: [ 'cognito-idp:AdminAddUserToGroup' ],
+                            resources: [ '*' ],
                         }
                     ]
                 }
-                const lambdaFunctionProps = {
-                    ...autoGroupsAddHandler,
-                    ...props
-                }
+                const lambdaFunctionProps = merge([
+                    autoGroupsAddHandler,
+                    props
+                ])!;
                 this.logger.debug("autoUserSignupGroupsHandler: ", lambdaFunctionProps);
                 const lambdaTrigger = new LambdaFunction(this.mainStack, `${userPoolName}-auto-post-confirmation-lambdaFunction`, {
-                    ...lambdaFunctionProps,
+                    ...(lambdaFunctionProps as LambdaFunctionProps),
                 }) as NodejsFunction;
                 userPool.addTrigger(UserPoolOperation.POST_CONFIRMATION, lambdaTrigger);
             }
@@ -439,23 +459,23 @@ export class AuthConstruct implements FW24Construct {
                 const lambdaTrigger = new LambdaFunction(this.mainStack, `${userPoolName}-${trigger.trigger}-lambdaFunction`, {
                     ...trigger.functionProps,
                 }) as NodejsFunction;
-                userPool.addTrigger( this.mapTriggerType(trigger.trigger), lambdaTrigger);
+                userPool.addTrigger(this.mapTriggerType(trigger.trigger), lambdaTrigger);
             }
         }
 
-        if(useAsDefaultAuthorizer !== false){
+        if (useAsDefaultAuthorizer !== false) {
             this.fw24.getConfig().defaultAuthorizationType = 'AWS_IAM';
             this.logger.info("Default Authorizer set to AWS_IAM");
         }
     }
 
     private mapTriggerType(triggerType: TriggerType | UserPoolOperation): UserPoolOperation {
-        
-        if( triggerType instanceof UserPoolOperation){
+
+        if (triggerType instanceof UserPoolOperation) {
             return triggerType;
         }
-        
-        const triggerMapping: { [key in TriggerType]: UserPoolOperation } = {
+
+        const triggerMapping: { [ key in TriggerType ]: UserPoolOperation } = {
             CUSTOM_MESSAGE: UserPoolOperation.CUSTOM_MESSAGE,
             PRE_SIGN_UP: UserPoolOperation.PRE_SIGN_UP,
             POST_CONFIRMATION: UserPoolOperation.POST_CONFIRMATION,
@@ -471,7 +491,7 @@ export class AuthConstruct implements FW24Construct {
             CUSTOM_SMS_SENDER: UserPoolOperation.CUSTOM_SMS_SENDER,
         };
 
-        return triggerMapping[triggerType];
+        return triggerMapping[ triggerType ];
     }
 
     private createUniqueUserPoolName(userPoolName: string) {
@@ -492,9 +512,10 @@ export class AuthConstruct implements FW24Construct {
                 userPool: userPool,
                 clientId: clientId,
                 clientSecret: clientSecret,
-                scopes: scopes || ['email', 'profile', 'openid'],
+                scopes: scopes || [ 'email', 'profile', 'openid' ],
                 attributeMapping: attributeMapping || {
                     email: ProviderAttribute.GOOGLE_EMAIL,
+                    emailVerified: ProviderAttribute.GOOGLE_EMAIL_VERIFIED,
                 }
             });
 
@@ -505,12 +526,12 @@ export class AuthConstruct implements FW24Construct {
         // Configure Facebook provider if specified
         if (this.authConstructConfig.userPool?.socialProviders?.facebook) {
             const { clientId, clientSecret, scopes, attributeMapping } = this.authConstructConfig.userPool.socialProviders.facebook;
-            
+
             const facebookProvider = new UserPoolIdentityProviderFacebook(this.mainStack, 'FacebookProvider', {
                 userPool,
                 clientId,
                 clientSecret,
-                scopes: scopes || ['email', 'public_profile'],
+                scopes: scopes || [ 'email', 'public_profile' ],
                 attributeMapping: attributeMapping || {
                     email: ProviderAttribute.FACEBOOK_EMAIL,
                 }
@@ -533,7 +554,7 @@ export class AuthConstruct implements FW24Construct {
         let domain: UserPoolDomain;
         let domainUrl: string;
 
-        if (domainConfig?.customDomain) {
+        if (domainConfig?.customDomain && domainConfig.customDomain.domainName.length > 0) {
             // Configure custom domain
             const { domainName, certificateArn } = domainConfig.customDomain;
             domain = new UserPoolDomain(this.mainStack, `${userPoolName}-domain`, {
@@ -547,9 +568,9 @@ export class AuthConstruct implements FW24Construct {
             domainUrl = domainName;
         } else {
             // Use Cognito domain
-            const domainPrefix = domainConfig?.cognitoDomainPrefix || 
-                               `${this.fw24.appName}-${userPoolName}-${this.fw24.getConfig().account}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-            
+            const domainPrefix = domainConfig?.cognitoDomainPrefix ||
+                `${this.fw24.appName}-${userPoolName}-${this.fw24.getConfig().account}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+
             domain = new UserPoolDomain(this.mainStack, `${userPoolName}-domain`, {
                 userPool,
                 cognitoDomain: {
@@ -580,6 +601,6 @@ export class AuthConstruct implements FW24Construct {
         this.fw24.setJwtAuthorizer(authorizer, useAsDefaultAuthorizer);
 
         this.fw24.setConstructOutput(this, this.authConstructConfig.customAuthorizer.type, authorizer, OutputType.AUTHORIZER);
-        
+
     }
 }

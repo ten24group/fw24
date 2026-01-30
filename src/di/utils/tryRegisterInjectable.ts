@@ -9,8 +9,8 @@ export type InjectableOptions = PartialBy<BaseProviderOptions, 'provide'> & {
     providedIn?: 'ROOT' | IDIContainer | ClassConstructor;
 };
 
-export function tryRegisterInjectable(target: ClassConstructor, options: InjectableOptions){
-        
+export function tryRegisterInjectable(target: ClassConstructor, options: InjectableOptions) {
+
     const optionsCopy: ProviderOptions<any> = {
         ...options,
         useClass: target,
@@ -20,19 +20,24 @@ export function tryRegisterInjectable(target: ClassConstructor, options: Injecta
     let container: IDIContainer | undefined;
     let diContainerHasBeenInitialized = true;
 
-    if(!options.providedIn || options.providedIn === 'ROOT'){
+    if (!options.providedIn || options.providedIn === 'ROOT') {
 
         container = DIContainer.ROOT;
-    } 
-    else if(options.providedIn instanceof DIContainer){
+    }
+    else if (options.providedIn instanceof DIContainer) {
 
         container = options.providedIn!;
     }
-    else if(typeof options.providedIn === 'function') {
+    else if (typeof options.providedIn === 'object' && options.providedIn !== null && 'containerId' in options.providedIn && 'register' in options.providedIn) {
+
+        // Duck-type check for DIContainer from different module graph (bundled vs layer)
+        container = options.providedIn as IDIContainer;
+    }
+    else if (typeof options.providedIn === 'function') {
 
         // Check if the providedIn is a class constructor
         const moduleMetadata = getModuleMetadata(options.providedIn);
-        
+
         if (!moduleMetadata) {
             throw new Error(
                 `Invalid providedIn option for ${target.name}. No module metadata found for ${options.providedIn.name}; ensure the class is decorated with @DIModule({...}).`
@@ -40,14 +45,14 @@ export function tryRegisterInjectable(target: ClassConstructor, options: Injecta
         }
 
         moduleMetadata.addProvider(optionsCopy);
-        
+
         diContainerHasBeenInitialized = !!moduleMetadata.container;
 
         container = moduleMetadata.container;
     }
 
-    if(container){
-        
+    if (container) {
+
         try {
             container.register(optionsCopy);
         } catch (error) {
@@ -55,7 +60,7 @@ export function tryRegisterInjectable(target: ClassConstructor, options: Injecta
             throw error;
         }
 
-    } else if(diContainerHasBeenInitialized) {
+    } else if (diContainerHasBeenInitialized) {
 
         throw new Error(
             `Invalid providedIn option for ${target.name}, no container could be resolved. Ensure it is either 'ROOT' or an instance of DI-container or a class decorated with @DIModule({...}).`

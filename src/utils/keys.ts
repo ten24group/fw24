@@ -1,9 +1,9 @@
 export function ensurePrefix(key: string, prefix: string = '') {
-    if(prefix.length > 0) {
+    if (prefix.length > 0) {
         prefix = prefix.endsWith('_') ? prefix : `${prefix}_`;
     }
 
-    if(!key.startsWith(prefix)) {
+    if (!key.startsWith(prefix)) {
         key = `${prefix}${key}`;
     }
 
@@ -11,11 +11,11 @@ export function ensurePrefix(key: string, prefix: string = '') {
 }
 
 export function ensureSuffix(key: string, suffix: string = '') {
-    if(suffix.length > 0) {
+    if (suffix.length > 0) {
         suffix = suffix.startsWith('_') ? suffix : `_${suffix}`;
     }
 
-    if(!key.startsWith(suffix)) {
+    if (!key.endsWith(suffix)) {
         key = `${key}${suffix}`;
     }
 
@@ -25,12 +25,12 @@ export function ensureSuffix(key: string, suffix: string = '') {
 export function ensureValidEnvKey(key: string, prefix = '', suffix = '', forExport = false) {
     key = ensurePrefix(key, prefix);
     key = ensureSuffix(key, suffix);
-    
+
     // For CloudFormation exports, convert underscores to hyphens
     if (forExport) {
         return ensureNoSpecialChars(key, true).toUpperCase();
     }
-    
+
     // For Lambda env vars, keep underscores (default behavior)
     return ensureNoSpecialChars(key).toUpperCase();
 }

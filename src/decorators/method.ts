@@ -1,23 +1,7 @@
 import type { Route } from "../interfaces/route";
 import type { HttpRequestValidations, InputValidationRule } from "../validation";
+import type { ControllerObservabilityConfig } from "../observability/controller-config";
 import { findConstructor, getRoutesKey } from "./decorator-utils";
-
-// function InjectParams(
-//   target: any,
-//   methodName: string,
-//   descriptor: PropertyDescriptor
-// ) {
-//   const originalMethod = target[methodName];
-//   descriptor.value = function (...args: any[]) {
-//     const paramValues = new Array(originalMethod.length)
-//       .fill(undefined)
-//       .map(
-//         (_, i) => Reflect.get(target, `param_${methodName}_${i}`) || args[i]
-//       );
-
-//     return originalMethod.apply(this, paramValues);
-//   };
-// }
 
 /**
  * Creates a route decorator for HTTP methods.
@@ -36,6 +20,11 @@ function createRouteDecorator(method: string) {
        * @default ""
        */
       target?: string;
+      /**
+       * Observability config override for this method.
+       * Takes precedence over controller-level config.
+       */
+      observability?: ControllerObservabilityConfig;
     }
   ) =>
     (target: any, methodToDecorate: any) => {
@@ -94,7 +83,8 @@ function createRouteDecorator(method: string) {
         functionName: methodToDecorate.name || methodToDecorate,
         parameters: parameters,
         validations: options?.validations,
-        target: options?.target
+        target: options?.target,
+        observability: options?.observability
       };
 
       // Store routes on the constructor using the unique symbol
@@ -102,7 +92,6 @@ function createRouteDecorator(method: string) {
       
       // Also store a reference to the routes on the prototype for backward compatibility
       Reflect.set(target, "routes", routes);
-      //InjectParams(target, methodToDecorate, descriptor);
     };
 }
 

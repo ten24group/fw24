@@ -13,8 +13,13 @@ export * from './validation';
 export * from './utils';
 export * from './di';
 export * from './const';
-export * from './audit/index';
+export * from './audit';
+export * from './search';
 export * from './ui-config-gen';
+export * from './observability';
 
 // Errors
 export * from './errors';
+
+// Testing
+export * from './testing';

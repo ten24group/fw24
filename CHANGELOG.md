@@ -2,6 +2,196 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.4](https://github.com/ten24group/fw24/compare/v1.1.0-beta.3...v1.1.0-beta.4) (2026-01-27)
+
+
+### Features
+
+* **entity:** enhance entity configuration with custom page support ([5901629](https://github.com/ten24group/fw24/commit/5901629d9d088350f76504723653c7094f9f324d))
+
+## [1.1.0-beta.3](https://github.com/ten24group/fw24/compare/v1.1.0-beta.2...v1.1.0-beta.3) (2026-01-20)
+
+
+### Features
+
+* **entity:** enhance entity configuration with drawer and wizard support ([6abeddd](https://github.com/ten24group/fw24/commit/6abedddb198bab8940ae404efd8213285d830473))
+
+## [1.1.0-beta.2](https://github.com/ten24group/fw24/compare/v1.1.0-beta.1...v1.1.0-beta.2) (2026-01-14)
+
+
+### Features
+
+* **entity:** add custom renderer and drawer support to entity configuration ([84d8404](https://github.com/ten24group/fw24/commit/84d8404b9635cf826d9e9c902df7b0237b9e65e8))
+
+## [1.1.0-beta.1](https://github.com/ten24group/fw24/compare/v1.1.0-beta.0...v1.1.0-beta.1) (2026-01-13)
+
+
+### Features
+
+* **crud-service:** add extractIndexFilterValues function and InvalidIndexFilterError class ([9c9e1ba](https://github.com/ten24group/fw24/commit/9c9e1baa3a326c64877bddf427c696dad3b40646))
+* **entity:** enhance CRUD service response types and add type safety ([c85f6ec](https://github.com/ten24group/fw24/commit/c85f6ec7283d92e15097e7c420d88b7cce2f446e))
+* **workflow:** add GitHub Actions workflow for develop branch release ([6c5afec](https://github.com/ten24group/fw24/commit/6c5afec6cd00e53de6a7ffdb486b676797a22757))
+
+## [1.1.0-beta.0](https://github.com/ten24group/fw24/compare/v1.0.4-beta.21...v1.1.0-beta.0) (2026-01-11)
+
+
+### Features
+
+* **audit:** add auto-generation of audit log actions for entity listing and detail pages ([78c240c](https://github.com/ten24group/fw24/commit/78c240c2051105ff23fdc5ec2c5feee409eb07fa))
+* **audit:** add excludeAuditActions option to entity schemas and UI configurations ([c4d8eae](https://github.com/ten24group/fw24/commit/c4d8eaefc1f09af49b1703834f64b44a8dc813c7))
+* **observability:** add QueryObserver and priority-based noise reduction ([ef8e737](https://github.com/ten24group/fw24/commit/ef8e7373f6b0372ce3ad51b5330eb1d9116cca9b))
+* **observability:** comprehensive observability system overhaul with cross-invocation tracing ([51e85a6](https://github.com/ten24group/fw24/commit/51e85a627acaf55745de9fec74c26ceb6b3a520f))
+* **observability:** enhance metrics publishing and tracing capabilities ([7fc6608](https://github.com/ten24group/fw24/commit/7fc6608bb98b8c9b87e043253c698929a68dfab1))
+* **observability:** introduce Checkpoint, Log, and Metric decorators for enhanced observability ([641f33f](https://github.com/ten24group/fw24/commit/641f33f1d868366aec5dd82248c33e4a711c9b0f))
+* **observability:** major observability system overhaul with automatic parent tracking and noise reduction ([c96c903](https://github.com/ten24group/fw24/commit/c96c903220b0bc0dfea58afd05da4332f37ef47f))
+
+
+### Bug Fixes
+
+* audit entity's ui config and enabled search for audit entity ([0056626](https://github.com/ten24group/fw24/commit/00566268a3b2a845362f03242e64a19760577582))
+* audit listing fields ([1078b58](https://github.com/ten24group/fw24/commit/1078b582248d23c9b23f20e0953a3e0cc42e7756))
+* audit-detail kays ([5838a0d](https://github.com/ten24group/fw24/commit/5838a0d708b75f02d9d7ca8123209f68bd955212))
+* build issues with deep redact ([94b85fc](https://github.com/ten24group/fw24/commit/94b85fc7d95609c6820c36548888be92c99eb7ad))
+* DI container for  array configuration handling ([01dfe57](https://github.com/ten24group/fw24/commit/01dfe57ad8528f4255bf653b2fe641b822fed5f9))
+* DynamoDBConstruct to ensure unique naming of streams and queues ([772478a](https://github.com/ten24group/fw24/commit/772478a2adba1806a2195d7a8feaa633a92b86e2))
+* empty/non-empty filters, default sorting ([6f14b4f](https://github.com/ten24group/fw24/commit/6f14b4f9808a3a7b4ab42128d9aec7b81341e43c))
+* entity schema validation test ([c090c35](https://github.com/ten24group/fw24/commit/c090c35cdfeb015cd3afd13df08db5f0978a3879))
+* entity-id missing in the entity-controller audits ([1dbdc1d](https://github.com/ten24group/fw24/commit/1dbdc1d44fdd29b399982bee0ed9e8595659a9d5))
+* entry file import for scheduler and queue controllers ([917ef85](https://github.com/ten24group/fw24/commit/917ef853104bd218ce6ab1bf404987cbec6389c1))
+* failing tests ([fd538cc](https://github.com/ten24group/fw24/commit/fd538ccebbf0262f60de8d1f6ecd2ed6f5a09053))
+* mulitple root di container in runtime due to layers and direct imports (in lambda provided by the framework), ([21281ca](https://github.com/ten24group/fw24/commit/21281cace624a0fe4fdfc6a38cea0bddf3a9ba59))
+* **observability:** enhance noise reduction logic to maintain parent spans with kept children ([26080cb](https://github.com/ten24group/fw24/commit/26080cbca4879eca4dc33093d3344fddcecda534))
+* **queue-lambda:**  default DLQ handling ([1437719](https://github.com/ten24group/fw24/commit/1437719719781ced5d5f93f1c1497c054cd8789c))
+* some lambdas missing the entry layers due to race conditions. ([0ea0248](https://github.com/ten24group/fw24/commit/0ea02486e9155d5380d4e327257e3ee064c531f9))
+* types and export ([f376a1f](https://github.com/ten24group/fw24/commit/f376a1f989ea13b4426130c650f9bb63b974bb1a))
+
+### [1.0.4-beta.21](https://github.com/ten24group/fw24/compare/v1.0.4-beta.20...v1.0.4-beta.21) (2025-12-15)
+
+
+### Bug Fixes
+
+* some lambdas missing the entry layers due to race conditions. ([9a27bfd](https://github.com/ten24group/fw24/commit/9a27bfd96adfe3ca2b9548810721138fb6ea0230))
+
+### [1.0.4-beta.20](https://github.com/ten24group/fw24/compare/v1.0.4-beta.19...v1.0.4-beta.20) (2025-12-12)
+
+
+### Bug Fixes
+
+* DI container for  array configuration handling ([cfa9dcd](https://github.com/ten24group/fw24/commit/cfa9dcde7db80a9f20e0eb53ed33ff2da4d36139))
+* empty/non-empty filters, default sorting ([a18c873](https://github.com/ten24group/fw24/commit/a18c873da5d35fe762fa227c2e8e01b5eb79ee89))
+* entry file import for scheduler and queue controllers ([2e883bb](https://github.com/ten24group/fw24/commit/2e883bb8ada9ffce1a602e68c9287dbdc8be3bab))
+* type errors after cherry picking stuff ([05830d0](https://github.com/ten24group/fw24/commit/05830d04998e9a1bd7a6df9483318b2436849f3c))
+
+### [1.0.4-beta.19](https://github.com/ten24group/fw24/compare/v1.0.4-beta.18...v1.0.4-beta.19) (2025-12-02)
+
+### [1.0.4-beta.18](https://github.com/ten24group/fw24/compare/v1.0.4-beta.17...v1.0.4-beta.18) (2025-11-20)
+
+### [1.0.4-beta.17](https://github.com/ten24group/fw24/compare/v1.0.4-beta.16...v1.0.4-beta.17) (2025-11-20)
+
+
+### Features
+
+* search index-setting drift and apply-default-settings ([7bca2d6](https://github.com/ten24group/fw24/commit/7bca2d61b55f2ad8489a8f302570421aa6b4b5f2))
+
+### [1.0.4-beta.16](https://github.com/ten24group/fw24/compare/v1.0.4-beta.15...v1.0.4-beta.16) (2025-11-20)
+
+### [1.0.4-beta.15](https://github.com/ten24group/fw24/compare/v1.0.4-beta.14...v1.0.4-beta.15) (2025-11-11)
+
+### [1.0.4-beta.14](https://github.com/ten24group/fw24/compare/v1.0.4-beta.13...v1.0.4-beta.14) (2025-11-11)
+
+### [1.0.4-beta.13](https://github.com/ten24group/fw24/compare/v1.0.4-beta.12...v1.0.4-beta.13) (2025-11-07)
+
+### [1.0.4-beta.12](https://github.com/ten24group/fw24/compare/v1.0.4-beta.11...v1.0.4-beta.12) (2025-11-06)
+
+### [1.0.4-beta.11](https://github.com/ten24group/fw24/compare/v1.0.4-beta.10...v1.0.4-beta.11) (2025-11-05)
+
+### [1.0.4-beta.10](https://github.com/ten24group/fw24/compare/v1.0.4-beta.9...v1.0.4-beta.10) (2025-11-05)
+
+### [1.0.4-beta.9](https://github.com/ten24group/fw24/compare/v1.0.4-beta.8...v1.0.4-beta.9) (2025-11-05)
+
+### [1.0.4-beta.8](https://github.com/ten24group/fw24/compare/v1.0.4-beta.7...v1.0.4-beta.8) (2025-11-04)
+
+### [1.0.4-beta.7](https://github.com/ten24group/fw24/compare/v1.0.4-beta.6...v1.0.4-beta.7) (2025-11-04)
+
+### [1.0.4-beta.6](https://github.com/ten24group/fw24/compare/v1.0.4-beta.5...v1.0.4-beta.6) (2025-11-04)
+
+
+### Bug Fixes
+
+* bugs in ui-config ([e168dc3](https://github.com/ten24group/fw24/commit/e168dc39e3ad41d1d29cf6ecaa4889e394f85aac))
+* default sort and types ([593a618](https://github.com/ten24group/fw24/commit/593a6183682b9541ff9d1307116f582331363efe))
+* read-only vs mutable Array types for entity-schema ([350652b](https://github.com/ten24group/fw24/commit/350652b5ab12df82d803fea13570a65c874eee31))
+
+### [1.0.4-beta.5](https://github.com/ten24group/fw24/compare/v1.0.4-beta.4...v1.0.4-beta.5) (2025-10-27)
+
+### [1.0.4-beta.4](https://github.com/ten24group/fw24/compare/v1.0.4-beta.3...v1.0.4-beta.4) (2025-10-27)
+
+
+### Bug Fixes
+
+* audit-log detail not working and updated custom pages slug generation ([4ee8d1a](https://github.com/ten24group/fw24/commit/4ee8d1a12ccae3bf2116c88ccaa80d4b4db22e93))
+* duplicate warning for menu key generation ([1eb80fb](https://github.com/ten24group/fw24/commit/1eb80fb81049c29718f428b993a2a8a02d59c762))
+* failing tests and cleaned up the actor context ([65102ba](https://github.com/ten24group/fw24/commit/65102ba198496ac21638d1e4b194cbd802eaff6b))
+* layer import order ([173a507](https://github.com/ten24group/fw24/commit/173a507cf887e0901262271e649037191976d6b7))
+* list API not returning some keys, and hard error; cleanup logging ([c81c353](https://github.com/ten24group/fw24/commit/c81c353cbcdb841a16b82cf7f686949d6392224f))
+* modal default width ([b4426a0](https://github.com/ten24group/fw24/commit/b4426a0413df61dff41e08cf0b5fd7d4bd24a952))
+
+### [1.0.4-beta.3](https://github.com/ten24group/fw24/compare/v1.0.4-beta.2...v1.0.4-beta.3) (2025-08-25)
+
+
+### Features
+
+* actor cracking and audits for entity Create and update ([7136786](https://github.com/ten24group/fw24/commit/713678639239ae980f1a74394edeae86091a56ff))
+* introduce audit logging helper and enhance DynamoDB audit entity service. Add captureAuditLog function for streamlined logging, update interfaces for audit entries, and refactor DynamoDBAuditEntityService to improve audit record handling. Update tests for actor tracking integration. ([408c99f](https://github.com/ten24group/fw24/commit/408c99ff32bd5e94656c642f581b0b56f2680691))
+
+
+### Bug Fixes
+
+* import issues in test ([d888b45](https://github.com/ten24group/fw24/commit/d888b45f0ca36873659ac09a5a26ced01f9cdb79))
+* numeric values crashing the search ([33c8613](https://github.com/ten24group/fw24/commit/33c861331c266de41ea04551ed489e9bfcaf64db))
+* type ([b4cab37](https://github.com/ten24group/fw24/commit/b4cab37e8e2b16de4585b8037e4860efbd734584))
+
+### [1.0.4-beta.2](https://github.com/ten24group/fw24/compare/v1.0.4-beta.1...v1.0.4-beta.2) (2025-08-15)
+
+### [1.0.4-beta.1](https://github.com/ten24group/fw24/compare/v1.0.4-beta.0...v1.0.4-beta.1) (2025-08-15)
+
+
+### Bug Fixes
+
+* audit to have proper timestamps, and show latest audits first ([f908e36](https://github.com/ten24group/fw24/commit/f908e367839e4892bf70321490913ac8dfd87ea0))
+* breadcrumbs for system pages ([7b00a14](https://github.com/ten24group/fw24/commit/7b00a14b371c4a10d8b8c87f7295e94b490f46df))
+* entity-form's card styles ([f2cdf25](https://github.com/ten24group/fw24/commit/f2cdf25e0a65c6e1364526db3567c1338170c658))
+* experimental features ([7a0b9a0](https://github.com/ten24group/fw24/commit/7a0b9a039a505b8b28a4cb619174aaf32e72aa08))
+* filter key ([f02a5a0](https://github.com/ten24group/fw24/commit/f02a5a0d97862c2646018c4f0761fa134cce5b54))
+* issue with OnInit hook ([84941cc](https://github.com/ten24group/fw24/commit/84941cca0b932727b20e2805ad2c7ffe9480123b))
+* LambdaTestHarness and add tests for base-entity-controller ([1ae6a73](https://github.com/ten24group/fw24/commit/1ae6a733e278407e6bd9766d2136134f05f72b9c))
+* listing delete action not utilizing the CRUDApiPath ([0155602](https://github.com/ten24group/fw24/commit/015560229a45118ef43c29801241aa7b4183a371))
+* logs in registerEntitySchema to not log full objects ([ae05e61](https://github.com/ten24group/fw24/commit/ae05e61f2a3cf80a6af0c9c4452125694a183447))
+* type errors ([762f352](https://github.com/ten24group/fw24/commit/762f352f2fd0324f487d3b05d6da488d0f7a0ba0))
+* ui-configs for index's batches and tasks, and search-records, removed index-swap option as it's not needed at this point ([a04e46a](https://github.com/ten24group/fw24/commit/a04e46a5788388e0b939237be909f1f23cd28d26))
+* wrong timestamp in audits ([0646b8b](https://github.com/ten24group/fw24/commit/0646b8b675963f07399e85cf397900c0a9e63963))
+
+### [1.0.4-beta.0](https://github.com/ten24group/fw24/compare/v1.0.3...v1.0.4-beta.0) (2025-06-12)
+
+
+### Features
+
+* support for auto figure-out required composite key attributes during updates the composite keys ([90cb136](https://github.com/ten24group/fw24/commit/90cb136d3ff99bb85c1d6962aeffb7c1f36fee24))
+
+### [1.0.3](https://github.com/ten24group/fw24/compare/v1.0.0...v1.0.3) (2025-05-19)
+
+### [1.0.2](https://github.com/ten24group/fw24/compare/v1.0.0...v1.0.2) (2025-05-19)
+
+### [1.0.1](https://github.com/ten24group/fw24/compare/v1.0.0...v1.0.1) (2025-05-19)
+
+## [1.0.0](https://github.com/ten24group/fw24/compare/v0.1.1-beta.25...v1.0.0) (2025-05-12)
+
+### [0.1.1-beta.25](https://github.com/ten24group/fw24/compare/v0.1.1-beta.24...v0.1.1-beta.25) (2025-05-09)
+
+### [0.1.1-beta.24](https://github.com/ten24group/fw24/compare/v0.1.1-beta.23...v0.1.1-beta.24) (2025-05-01)
+
+### [0.1.1-beta.23](https://github.com/ten24group/fw24/compare/v0.1.1-beta.22...v0.1.1-beta.23) (2025-04-30)
+
 ### [0.1.1-beta.22](https://github.com/ten24group/fw24/compare/v0.1.1-beta.21...v0.1.1-beta.22) (2025-04-29)
 
 ### [0.1.1-beta.21](https://github.com/ten24group/fw24/compare/v0.1.1-beta.20...v0.1.1-beta.21) (2025-04-28)

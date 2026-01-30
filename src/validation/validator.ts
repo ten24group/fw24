@@ -2,10 +2,11 @@
  * Defines validation rules and criteria that can be used to validate input, record, and actor data.
  * Provides a Validator class that validates data against defined validation rules and criteria.
  */
+import { Actor } from "../core/types";
 import { EntitySchema, TEntityOpsInputSchemas } from "../entity";
 import { createLogger } from "../logging";
 import { isDateString, isEmail, isHttpUrlString, isIP, isIPv4, isIPv6, isJsonString, isNumericString, isUUID, isUnique } from "../utils";
-import { Actor, ComplexValidationRule, ConditionalValidationRule, EntityValidationCondition, ValidatorResult, IValidator, InputType, InputValidationResult, InputValidationRule, MapOfValidationCondition, OpValidatorOptions, RecordType, TComplexValidationValue, TValidationValue, TestComplexValidationResult, TestComplexValidationRuleResult, TestValidationResult, TestValidationRuleResult, ValidateHttpRequestOptions, ValidationError, ValidationRule, Validations } from "./types";
+import { ComplexValidationRule, ConditionalValidationRule, EntityValidationCondition, ValidatorResult, IValidator, InputType, InputValidationResult, InputValidationRule, MapOfValidationCondition, OpValidatorOptions, RecordType, TComplexValidationValue, TValidationValue, TestComplexValidationResult, TestComplexValidationRuleResult, TestValidationResult, TestValidationRuleResult, ValidateHttpRequestOptions, ValidationError, ValidationRule, Validations } from "./types";
 import { extractOpValidationFromEntityValidations, isComplexValidationValue, isComplexValidationValueWithMessage, isComplexValidationValueWithValidator, isConditionsAndScopeTuple, isTestComplexValidationResult, makeEntityValidationMessageIds, makeHttpValidationMessageIds, makeValidationErrorMessage, makeValidationErrorMessageIds } from "./utils";
 
 /**

@@ -4,6 +4,7 @@ import { ComplexValidationRule, EntityValidations, HttpRequestValidations, Condi
 import { describe, expect, it } from '@jest/globals';
 import { TDefaultEntityOperations } from "../entity";
 import { Validator} from "./validator";
+import { Actor } from "../core/types/execution-context";
 
 describe('Validator', () => {
 
@@ -22,8 +23,10 @@ describe('Validator', () => {
 
     it('should validate actor rules', async () => {
       const actor = {
-        role: 'admin'  
-      };
+        role: 'admin',
+        requestId: 'req-123',
+        timestamp: '2024-01-15T10:30:00.000Z'
+      } as Actor;
       const result = await validator.validateEntity({
         operationName: 'create',
         entityName: 'test',
@@ -41,8 +44,11 @@ describe('Validator', () => {
 
     it('should return actor rule errors', async () => {
       const actor = {
-        role: 'user'
-      };
+        role: 'user',
+        requestId: 'req-123',
+        timestamp: '2024-01-15T10:30:00.000Z'
+      } as Actor;
+
       const result = await validator.validateEntity({
         operationName: 'create',
         entityName: 'test',
@@ -367,7 +373,9 @@ describe('Validator', () => {
       };
 
       const actor = {
-        actorId: '123'
+        actorId: '123',
+        requestId: 'req-123',
+        timestamp: '2024-01-15T10:30:00.000Z'
       };
 
       const result = await validator.validateConditionalRule({
@@ -394,7 +402,9 @@ describe('Validator', () => {
       };
 
       const actor = {
-        actorId: '456'
+        actorId: '456',
+        requestId: 'req-123',
+        timestamp: '2024-01-15T10:30:00.000Z'
       };
 
       const result = await validator.validateConditionalRule({

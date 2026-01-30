@@ -1,15 +1,17 @@
-import { CfnOutput, Stack, aws_events_targets } from "aws-cdk-lib";
+import { Stack, aws_events_targets } from "aws-cdk-lib";
+import { Fw24 } from "../core/fw24";
 import { Helper } from "../core/helper";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
-import { Fw24 } from "../core/fw24";
 import HandlerDescriptor from "../interfaces/handler-descriptor";
 
+import { Rule, Schedule } from "aws-cdk-lib/aws-events";
+import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import { IConstructConfig } from "../interfaces/construct-config";
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { LogDuration, createLogger } from "../logging";
-import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
+import { merge } from "../utils";
 import { LambdaFunction } from "./lambda-function";
-import { Rule, Schedule } from "aws-cdk-lib/aws-events";
-import { IConstructConfig } from "../interfaces/construct-config";
+import { LayerConstruct } from "./layer";
 import { VpcConstruct } from "./vpc";
 
 /**
@@ -46,16 +48,16 @@ export interface ISchedulerConstructConfig extends IConstructConfig {
 export class SchedulerConstruct implements FW24Construct {
     readonly logger = createLogger(SchedulerConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
-    
+
     name: string = SchedulerConstruct.name;
-    dependencies: string[] = [VpcConstruct.name];
+    dependencies: string[] = [ VpcConstruct.name, LayerConstruct.name ];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;
 
     // default constructor to initialize the stack configuration
-    constructor(private schedulerConstructConfig: ISchedulerConstructConfig) {
-        Helper.hydrateConfig(schedulerConstructConfig,'SCHEDULER');
+    constructor(private readonly schedulerConstructConfig: ISchedulerConstructConfig) {
+        Helper.hydrateConfig(schedulerConstructConfig, 'SCHEDULER');
     }
 
     // construct method to create the stack
@@ -64,7 +66,7 @@ export class SchedulerConstruct implements FW24Construct {
         // make the main stack available to the class
         this.mainStack = this.fw24.getStack(this.schedulerConstructConfig.stackName, this.schedulerConstructConfig.parentStackName);
         // sets the default tasks directory if not defined
-        if(this.schedulerConstructConfig.tasksDirectory === undefined || this.schedulerConstructConfig.tasksDirectory === ""){
+        if (this.schedulerConstructConfig.tasksDirectory === undefined || this.schedulerConstructConfig.tasksDirectory === "") {
             this.schedulerConstructConfig.tasksDirectory = "./src/tasks";
         }
 
@@ -73,10 +75,10 @@ export class SchedulerConstruct implements FW24Construct {
 
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
-            for (const [, module] of modules) {
+            for (const [ , module ] of modules) {
                 const basePath = module.getBasePath();
                 const tasksDirectory = module.getTasksDirectory();
-                if(tasksDirectory != ''){
+                if (tasksDirectory != '') {
                     this.logger.info("Load tasks from module base-path: ", basePath);
                     await Helper.registerTasksFromModule(module, this.registerTask);
                 }
@@ -85,25 +87,26 @@ export class SchedulerConstruct implements FW24Construct {
 
     }
 
-    private registerTask= (taskInfo: HandlerDescriptor) => {
+    private readonly registerTask = (taskInfo: HandlerDescriptor) => {
         taskInfo.handlerInstance = new taskInfo.handlerClass();
         this.logger.debug("Task instance: ", taskInfo.handlerInstance);
-        
+
         const taskName = taskInfo.handlerInstance.taskName;
         const taskConfig = taskInfo.handlerInstance.taskConfig || {};
-        const taskProps = {...this.schedulerConstructConfig.functionProps, ...taskConfig.functionProps};
-        const taskConfigEnv = [...(this.schedulerConstructConfig.env ?? []),...taskConfig.env ?? []];
+        const taskProps = merge([
+            this.schedulerConstructConfig.functionProps ?? {},
+            taskConfig.functionProps ?? {}
+        ])!;
+        const taskConfigEnv = [ ...(this.schedulerConstructConfig.env ?? []), ...taskConfig.env ?? [] ];
 
-        this.logger.info(`Registering task ${taskName} from ${taskInfo.filePath}/${taskInfo.fileName}`);
+        this.logger.debug(`Registering task ${taskName}`);
 
         const task = new LambdaFunction(this.mainStack, taskName + "-task", {
             entry: taskInfo.filePath + "/" + taskInfo.fileName,
             environmentVariables: this.fw24.resolveEnvVariables(taskConfigEnv),
             allowSendEmail: true,
             functionTimeout: taskConfig.functionTimeout || this.fw24.getConfig().functionTimeout,
-            functionProps: {
-                ...taskProps,
-            },
+            functionProps: taskProps,
             resourceAccess: taskConfig.resourceAccess,
             logRetentionDays: taskConfig.logRetentionDays,
             logRemovalPolicy: taskConfig.logRemovalPolicy,

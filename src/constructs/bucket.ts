@@ -11,6 +11,7 @@ import { Fw24 } from "../core/fw24";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { LogDuration, createLogger } from "../logging";
+import { merge } from "../utils";
 import { QueueConstruct } from "./queue";
 import { Certificate, CertificateValidation } from "aws-cdk-lib/aws-certificatemanager";
 import { CloudFrontWebDistribution, ViewerCertificate, SecurityPolicyProtocol, SSLMethod } from "aws-cdk-lib/aws-cloudfront";
@@ -18,6 +19,7 @@ import { CertificateConstruct } from "./certificate";
 import { IConstructConfig } from "../interfaces/construct-config";
 import { VpcConstruct } from "./vpc";
 import { MailerConstruct } from "./mailer";
+import { LayerConstruct } from "./layer";
 
 /**
  * Represents the configuration for a bucket construct.
@@ -31,7 +33,7 @@ export interface IBucketConstructConfig extends IConstructConfig {
     /**
      * The removal policy for the bucket.
      */
-    removalPolicy?: any;
+    removalPolicy?: RemovalPolicy;
 
     /**
      * Specifies whether to automatically delete objects in the bucket when the bucket is deleted.
@@ -122,7 +124,7 @@ export interface IS3TriggerConfig {
  *         destination: 'lambda',
  *         events: [BucketEvent.OBJECT_CREATED],
  *         functionProps: {
- *           runtime: Runtime.NODEJS_12_X,
+ *           runtime: Runtime.NODEJS_22_X,
  *           entry: '/path/to/lambda_function',
  *         },
  *       },
@@ -140,7 +142,7 @@ export class BucketConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = BucketConstruct.name;
-    dependencies: string[] = [VpcConstruct.name, MailerConstruct.name, QueueConstruct.name];
+    dependencies: string[] = [ VpcConstruct.name, MailerConstruct.name, QueueConstruct.name, LayerConstruct.name ];
     output!: FW24ConstructOutput;
 
     appConfig: IApplicationConfig | undefined;
@@ -148,7 +150,7 @@ export class BucketConstruct implements FW24Construct {
 
     // default constructor to initialize the stack configuration
     constructor(private bucketConstructConfig: IBucketConstructConfig[], private stackName?: string, private parentStackName?: string) {
-        Helper.hydrateConfig(bucketConstructConfig,'S3');
+        Helper.hydrateConfig(bucketConstructConfig, 'S3');
     }
 
     // construct method to create the stack
@@ -156,7 +158,7 @@ export class BucketConstruct implements FW24Construct {
         // make the main stack available to the class
         this.appConfig = this.fw24.getConfig();
         // create the buckets
-        this.bucketConstructConfig.forEach( ( bucketConfig: IBucketConstructConfig ) => {
+        this.bucketConstructConfig.forEach((bucketConfig: IBucketConstructConfig) => {
             this.mainStack = this.fw24.getStack(bucketConfig.stackName || this.stackName, bucketConfig.parentStackName || this.parentStackName);
             this.createBucket(bucketConfig);
         });
@@ -167,33 +169,36 @@ export class BucketConstruct implements FW24Construct {
         this.logger.debug("Creating bucket: ", bucketConfig.bucketName);
         const bucketName = this.fw24.getUniqueName(bucketConfig.bucketName);
         this.logger.info("Creating bucket name: ", bucketName);
-        var bucketParams: any = {
+
+        const baseParams: Record<string, any> = {
             bucketName: bucketName,
             removalPolicy: bucketConfig.removalPolicy || RemovalPolicy.DESTROY,
             autoDeleteObjects: bucketConfig.autoDeleteObjects || true,
         };
-        if(bucketConfig.publicReadAccess === true){
-            bucketParams.blockPublicAccess = new BlockPublicAccess({
+
+        if (bucketConfig.publicReadAccess === true) {
+            baseParams.blockPublicAccess = new BlockPublicAccess({
                 blockPublicAcls: false,
                 blockPublicPolicy: false,
                 ignorePublicAcls: false,
                 restrictPublicBuckets: false,
             });
         }
-        if(bucketConfig.bucketProps){
-            bucketParams = {...bucketParams, ...bucketConfig.bucketProps};
-        }
+
+        const bucketParams: BucketProps = bucketConfig.bucketProps
+            ? merge([ baseParams, bucketConfig.bucketProps ])!
+            : baseParams;
 
         const bucket = new Bucket(this.mainStack, bucketConfig.bucketName + '-bucket', bucketParams);
         this.fw24.setConstructOutput(this, bucketConfig.bucketName, bucket, OutputType.BUCKET);
 
-        if(bucketConfig.publicReadAccess === true){
+        if (bucketConfig.publicReadAccess === true) {
             bucket.grantPublicAccess();
         }
 
         if (bucketConfig.source && bucketConfig.source.length > 0) {
             new BucketDeployment(this.mainStack, bucketConfig.bucketName + '-deployment', {
-                sources: [Source.asset(bucketConfig.source)],
+                sources: [ Source.asset(bucketConfig.source) ],
                 destinationBucket: bucket,
             });
         }
@@ -201,7 +206,7 @@ export class BucketConstruct implements FW24Construct {
         if (bucketConfig.triggers && bucketConfig.triggers.length > 0) {
             bucketConfig.triggers.forEach(trigger => {
 
-                if(trigger.destination === 'lambda' && trigger.functionProps) {
+                if (trigger.destination === 'lambda' && trigger.functionProps) {
 
                     // create lambda function for the trigger event
                     // const functionPath = resolve(trigger.handler);
@@ -221,22 +226,22 @@ export class BucketConstruct implements FW24Construct {
                     });
                 }
 
-                if(trigger.destination === 'queue' && trigger.queueName) {
+                if (trigger.destination === 'queue' && trigger.queueName) {
                     // add event notification to the bucket for each event
                     const queueInstance = this.fw24.getEnvironmentVariable(trigger.queueName, 'queue');
-                    if(queueInstance && queueInstance !== null){
+                    if (queueInstance && queueInstance !== null) {
                         this.logger.debug(":::Creating queue for the trigger event: ", trigger.events.toString());
                         trigger.events.forEach(bucketEvent => {
-                            this.logger.debug(SqsDestination,bucketEvent);
+                            this.logger.debug(SqsDestination, bucketEvent);
                             bucket.addEventNotification(bucketEvent, new SqsDestination(queueInstance));
                         });
                     }
                 }
             });
         }
-        
+
         const cfnDistributionConfig = bucketConfig.cfnDistributionConfig;
-        if(cfnDistributionConfig && cfnDistributionConfig.domainName && cfnDistributionConfig.domainName.length > 0){
+        if (cfnDistributionConfig && cfnDistributionConfig.domainName && cfnDistributionConfig.domainName.length > 0) {
 
             this.logger.debug("Creating bucket domain: ", cfnDistributionConfig.domainName);
 
@@ -246,8 +251,8 @@ export class BucketConstruct implements FW24Construct {
             });
 
             certificateConstruct.construct();
-            
-            const certificate = certificateConstruct.output[OutputType.CERTIFICATE][cfnDistributionConfig.domainName];
+
+            const certificate = certificateConstruct.output[ OutputType.CERTIFICATE ][ cfnDistributionConfig.domainName ];
 
             // create a cloudfront distribution for the bucket
             const cfnDistribution = new CloudFrontWebDistribution(this.mainStack, bucketConfig.bucketName + '-distribution', {
@@ -256,11 +261,11 @@ export class BucketConstruct implements FW24Construct {
                         s3OriginSource: {
                             s3BucketSource: bucket,
                         },
-                        behaviors: [{ isDefaultBehavior: true }],
+                        behaviors: [ { isDefaultBehavior: true } ],
                     },
                 ],
                 viewerCertificate: ViewerCertificate.fromAcmCertificate(certificate, {
-                    aliases: [cfnDistributionConfig.domainName],
+                    aliases: [ cfnDistributionConfig.domainName ],
                     securityPolicy: SecurityPolicyProtocol.TLS_V1_2_2021,
                     sslMethod: SSLMethod.SNI,
                 }),
@@ -271,7 +276,7 @@ export class BucketConstruct implements FW24Construct {
             new CfnOutput(this.mainStack, bucketConfig.bucketName + 'cfnOutput', {
                 value: cfnDistribution.distributionDomainName,
             });
-            
+
         }
 
         new CfnOutput(this.mainStack, bucketConfig.bucketName + 'Output', {

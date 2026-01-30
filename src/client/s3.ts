@@ -80,8 +80,6 @@ export const getSignedUrlForFileUpload = async ({ bucketName, fileName, contentT
 
     const signedUrl = await getSignedUrlForCommand(command, { expiresIn });
 
-    console.info("getSignedUrlForFileUpload:", { signedUrl, customDomain });
-
     if (!customDomain) {
         return signedUrl;
     }
