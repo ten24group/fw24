@@ -1,12 +1,11 @@
-import { SecretValue, CfnOutput, Stack } from "aws-cdk-lib";
-import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
 import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha';
-
+import { CfnOutput, SecretValue, Stack } from "aws-cdk-lib";
+import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
 import { Fw24 } from "../core/fw24";
-import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { Helper } from "../core/helper";
-import { createLogger } from "../logging";
+import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { IConstructConfig } from "../interfaces/construct-config";
+import { createLogger } from "../logging";
 import { VpcConstruct } from "./vpc";
 
 /**
@@ -41,7 +40,7 @@ export interface ISiteConstructConfig extends IConstructConfig {
     /**
      * The build specification for the site.
      */
-    buildSpec: BuildSpec;
+    buildSpec: BuildSpec | Record<string, any>;
 
     /**
      * The domain for the site.
@@ -89,7 +88,7 @@ export class SiteConstruct implements FW24Construct {
         // create the amplify app
         const amplifyApp = new App(this.mainStack, `${stackPrefix}-amplify`, {
             appName: `${this.siteConstructConfig.appName}`,
-            buildSpec: BuildSpec.fromObject(this.siteConstructConfig.buildSpec),
+            buildSpec: this.siteConstructConfig.buildSpec instanceof BuildSpec ? this.siteConstructConfig.buildSpec : BuildSpec.fromObject(this.siteConstructConfig.buildSpec),
             sourceCodeProvider: new GitHubSourceCodeProvider({
                 owner: this.siteConstructConfig.githubOwner,
                 repository: this.siteConstructConfig.githubRepo,
