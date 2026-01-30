@@ -1,22 +1,21 @@
-import type { Request, Response, Route } from '../interfaces';
-import type { EntitySchema, EntityIdentifiersTypeFromSchema } from './base-entity';
+import type { Request, Response } from '../interfaces';
+import type { EntityIdentifiersTypeFromSchema, EntitySchema } from './base-entity';
 import type { BaseEntityService } from './base-service';
-import type { EntityFilterCriteria, EntityQuery, GenericFilterCriteria, TypedFilterCriteria } from './query-types';
+import type { EntityFilterCriteria } from './query-types';
 
-import { APIController } from '../core/runtime/api-gateway-controller';
-import { Delete, Get, Patch, Post } from '../decorators/method';
-import { safeParseInt } from '../utils/parse';
-import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, isString, merge, resolveEnvValueFor, toSlug } from '../utils';
-import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
 import { randomUUID } from 'crypto';
 import { getSignedUrlForFileUpload } from '../client/s3';
+import { Environment } from '../client/util';
 import { ENV_KEYS } from '../const';
-import { NotFoundError } from '../errors';
-import { EntityValidationError } from './errors';
-import { createErrorHandler } from '../errors/handlers';
+import { APIController } from '../core/runtime/api-gateway-controller';
 import { ExecutionContext } from '../core/types/execution-context';
-import { EntitySearchQuery, parseSearchQuery, SearchResult } from '../search';
-import { EntityRecordTypeFromSchema } from './base-entity';
+import { Delete, Get, Patch, Post } from '../decorators/method';
+import { NotFoundError } from '../errors';
+import { createErrorHandler } from '../errors/handlers';
+import { EntitySearchQuery, parseSearchQuery } from '../search';
+import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, isString, merge, resolveEnvValueFor, toSlug } from '../utils';
+import { safeParseInt } from '../utils/parse';
+import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
 
 type seconds = number;
 
@@ -123,6 +122,10 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		let { bucketName, fileName, expiresIn = 15 * 60, fileNamePrefix = "", contentType = "*/*", metadata } = req.queryStringParameters as GetSignedUrlForFileUploadSchema ?? {};
 
+		// try resolving actual bucket name from simple name like "files-bucket" to "files-bucket-123"	
+		// if not found, use the provided bucket name directly
+		const resolvedBucketName = Environment.bucketName(bucketName);
+
 		const nameParts = fileName.split('.');
 		const fileExtension = nameParts.pop();
 
@@ -137,7 +140,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			fileName,
 			metadata: metadata as Record<string, string>,
 			expiresIn,
-			bucketName,
+			bucketName: resolvedBucketName,
 			contentType,
 			customDomain: resolveEnvValueFor({ key: ENV_KEYS.FILES_BUCKET_CUSTOM_DOMAIN_ENV_KEY, defaultValue: '' })
 		};
@@ -154,7 +157,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		};
 
 		if (req.debugMode) {
-			response[ 'bucketName' ] = bucketName;
+			response[ 'bucketName' ] = resolvedBucketName;
 		}
 
 		return res.json(response);

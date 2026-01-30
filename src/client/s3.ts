@@ -4,7 +4,10 @@ import { Command } from "@smithy/smithy-client";
 import { MetadataBearer, RequestPresigningArguments } from "@smithy/types";
 
 
-export const defaultS3Client = new S3Client();
+export const defaultS3Client = new S3Client({
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED"
+});
 
 export const uploadFile = async (fileName: string, contents: any, bucketName: string) => {
 
@@ -76,9 +79,14 @@ export const getSignedUrlForFileUpload = async ({ bucketName, fileName, contentT
         Key: fileName,
         ContentType: contentType,
         Metadata: metadata,
+        ChecksumAlgorithm: undefined, // Explicitly disable to prevent SDK from adding checksum headers
     });
 
-    const signedUrl = await getSignedUrlForCommand(command, { expiresIn });
+    // Sign the Content-Type header so client can send it
+    const signedUrl = await getSignedUrlForCommand(command, { 
+        expiresIn,
+        signableHeaders: new Set(['content-type'])
+    });
 
     if (!customDomain) {
         return signedUrl;
