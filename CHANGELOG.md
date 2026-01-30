@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.8](https://github.com/ten24group/fw24/compare/v1.1.0-beta.7...v1.1.0-beta.8) (2026-01-30)
+
+
+### Bug Fixes
+
+* **site:** correct import path for BuildSpec in site.ts ([27f5a58](https://github.com/ten24group/fw24/commit/27f5a5881768abdbfed3b7145429606e0cde0751))
+* **site:** update buildSpec type and improve handling in SiteConstruct ([2b21a50](https://github.com/ten24group/fw24/commit/2b21a50a00fea1c6b1428c01b52f620b20d79895))
+
 ## [1.1.0-beta.7](https://github.com/ten24group/fw24/compare/v1.1.0-beta.6...v1.1.0-beta.7) (2026-01-30)
 
 ## [1.1.0-beta.6](https://github.com/ten24group/fw24/compare/v1.1.0-beta.5...v1.1.0-beta.6) (2026-01-30)
