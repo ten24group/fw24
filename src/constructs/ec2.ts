@@ -18,6 +18,7 @@ import {
     UserData,
     Volume,
     BlockDeviceVolume,
+    CfnVolumeAttachment,
     EbsDeviceVolumeType,
     IVolume,
     AmazonLinuxCpuType,
@@ -59,12 +60,14 @@ import { VpcConstruct } from "./vpc";
  *     instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.MEDIUM),
  *   },
  *   volumes: [{
- *     sizeGiB: 20  // Simplified: auto-generates device name and defaults to GP3 with encryption
+ *     sizeGiB: 20,
+ *     mountPoint: '/data' // Simplified: auto-generates device name and mounts before container starts
  *   }]
  *   // Or specify device name explicitly:
  *   // volumes: [{
  *   //   deviceName: '/dev/sdf',
- *   //   sizeGiB: 20
+ *   //   sizeGiB: 20,
+ *   //   mountPoint: '/data'
  *   // }]
  *   // Or use full configuration:
  *   // volumes: [{
@@ -72,7 +75,8 @@ import { VpcConstruct } from "./vpc";
  *   //   volume: BlockDeviceVolume.ebs(20, {
  *   //     volumeType: EbsDeviceVolumeType.GP3,
  *   //     encrypted: true
- *   //   })
+ *   //   }),
+ *   //   mountPoint: '/data'
  *   // }]
  * });
  * 
@@ -104,7 +108,8 @@ import { VpcConstruct } from "./vpc";
  *       volumeType: EbsDeviceVolumeType.IO1,
  *       iops: 3000,
  *       encrypted: true
- *     })
+ *     }),
+ *     mountPoint: '/data'
  *   }]
  * });
  * 
@@ -193,10 +198,29 @@ export interface IEc2VolumeConfig {
      */
     volume?: BlockDeviceVolume;
     /**
+     * Existing EBS volume ID to attach (optional)
+     * If provided, the volume will be attached and not created by the instance.
+     */
+    volumeId?: string;
+    /**
      * Volume size in GiB (optional if volume is specified)
      * If only size is specified, defaults to GP3 volume type with standard settings
      */
     sizeGiB?: number;
+    /**
+     * Mount point for the volume (optional). When provided, the construct will
+     * format (if needed) and mount before the container starts.
+     */
+    mountPoint?: string;
+    /**
+     * Filesystem type to use when formatting (defaults to 'ext4')
+     */
+    fileSystem?: string;
+    /**
+     * Whether to delete the volume on instance termination (only applies to created volumes)
+     * Defaults to false.
+     */
+    deleteOnTermination?: boolean;
 }
 
 export interface IEc2ServiceDiscoveryConfig {
@@ -426,6 +450,12 @@ export class Ec2Construct implements FW24Construct {
         return role;
     }
 
+    private getDefaultDeviceName(index: number): string {
+        const deviceSuffixes = ['f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p'];
+        const suffix = deviceSuffixes[index] || String.fromCharCode(102 + index); // 102 is 'f' in ASCII
+        return `/dev/sd${suffix}`;
+    }
+
     /**
      * Builds Docker user data script to install Docker and run the container
      * 
@@ -466,6 +496,8 @@ export class Ec2Construct implements FW24Construct {
         const serviceIdLine = this.cloudMapService
             ? `SERVICE_ID="${this.cloudMapService.serviceId}"`
             : `SERVICE_ID=""`;
+
+        const volumeSetup = this.buildVolumeUserData();
 
         return `#!/bin/bash
 set -euo pipefail
@@ -508,9 +540,96 @@ if [ -n "\${SERVICE_ID:-}" ]; then
     >/tmp/sd.out 2>/tmp/sd.err || true
 fi
 
+${volumeSetup}
+
 # -------- Run container (logs go to CloudWatch via awslogs driver) --------
 docker rm -f ${containerName} >/dev/null 2>&1 || true
 ${dockerRunCmd}
+`;
+    }
+
+    private buildVolumeUserData(): string {
+        const volumeConfigs = this.ec2Config.volumes || [];
+        const setupCalls = volumeConfigs
+            .map((volumeConfig, index) => {
+                if (!volumeConfig.mountPoint) return '';
+                const deviceName = volumeConfig.deviceName || this.getDefaultDeviceName(index);
+                const fileSystem = volumeConfig.fileSystem || 'ext4';
+                const volumeId = volumeConfig.volumeId || '';
+                return `setup_volume "${deviceName}" "${volumeConfig.mountPoint}" "${fileSystem}" "${volumeId}"`;
+            })
+            .filter(line => line)
+            .join('\n');
+
+        if (!setupCalls) return '';
+
+        return `# -------- EBS volume setup --------
+setup_volume() {
+  local device="$1"
+  local mount_point="$2"
+  local fs_type="$3"
+  local volume_id="$4"
+
+  for i in $(seq 1 30); do
+    if [ -n "$volume_id" ]; then
+      volume_id_clean="\${volume_id//-/}"
+      if [ -e "/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_\${volume_id_clean}" ]; then
+        device="/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_\${volume_id_clean}"
+        break
+      fi
+    fi
+
+    if [ -e "$device" ]; then
+      break
+    fi
+
+    if [ -e /dev/nvme1n1 ] && [ "$device" != "/dev/nvme1n1" ]; then
+      device="/dev/nvme1n1"
+      break
+    fi
+
+    alt=$(lsblk -dpno NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v /dev/nvme0n1 | head -n 1 || true)
+    if [ -n "$alt" ]; then
+      device="$alt"
+      break
+    fi
+
+    echo "Waiting for volume $device to be attached... ($i/30)"
+    sleep 2
+  done
+
+  if [ ! -e "$device" ]; then
+    echo "ERROR: Volume device not found for $mount_point"
+    exit 1
+  fi
+
+  if ! blkid "$device" > /dev/null 2>&1; then
+    echo "Formatting volume $device as $fs_type..."
+    mkfs -t "$fs_type" -F "$device"
+  else
+    echo "Volume $device is already formatted"
+  fi
+
+  mkdir -p "$mount_point"
+  echo "Mounting $device to $mount_point..."
+  mount "$device" "$mount_point"
+
+  chown -R ec2-user:ec2-user "$mount_point"
+  chmod -R 755 "$mount_point"
+
+  if ! grep -q "$mount_point" /etc/fstab; then
+    UUID=$(blkid -s UUID -o value "$device" || true)
+    if [ -n "$UUID" ]; then
+      echo "UUID=$UUID $mount_point $fs_type defaults,nofail 0 2" >> /etc/fstab
+    else
+      echo "$device $mount_point $fs_type defaults,nofail 0 2" >> /etc/fstab
+    fi
+  fi
+
+  echo "Volume mounted successfully at $mount_point"
+}
+
+${setupCalls}
 `;
     }
 
@@ -567,41 +686,43 @@ ${dockerRunCmd}
 
         // Prepare block devices for volumes
         const blockDevices: Array<{ deviceName: string; volume: BlockDeviceVolume }> = [];
+        const volumeAttachments: Array<{ deviceName: string; volumeId: string }> = [];
         if (this.ec2Config.volumes) {
-            // Device names for EBS volumes typically start from /dev/sdf
-            // Standard EBS device names: sdf, sdg, sdh, sdi, sdj, sdk, sdl, sdm, sdn, sdo, sdp
-            const getDefaultDeviceName = (index: number): string => {
-                const deviceSuffixes = ['f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p'];
-                const suffix = deviceSuffixes[index] || String.fromCharCode(102 + index); // 102 is 'f' in ASCII
-                return `/dev/sd${suffix}`;
-            };
-            
             this.ec2Config.volumes.forEach((volumeConfig, index) => {
+                // Generate device name if not provided
+                const deviceName = volumeConfig.deviceName || this.getDefaultDeviceName(index);
+
+                // Attach existing volume by ID (do not create a new one)
+                if (volumeConfig.volumeId) {
+                    volumeAttachments.push({
+                        deviceName,
+                        volumeId: volumeConfig.volumeId
+                    });
+                    return;
+                }
+
                 let volume: BlockDeviceVolume;
-                
+
                 // If volume is explicitly provided, use it
                 if (volumeConfig.volume) {
                     volume = volumeConfig.volume;
-                } 
+                }
                 // If only size is provided, create GP3 volume with defaults
                 else if (volumeConfig.sizeGiB) {
                     volume = BlockDeviceVolume.ebs(volumeConfig.sizeGiB, {
                         volumeType: EbsDeviceVolumeType.GP3,
                         encrypted: true,
+                        deleteOnTermination: volumeConfig.deleteOnTermination ?? false,
                     });
-                } 
+                }
                 // Error if neither is provided
                 else {
-                    const deviceNameStr = volumeConfig.deviceName || getDefaultDeviceName(index);
-                    throw new Error(`Volume configuration for device ${deviceNameStr} must specify either 'volume' or 'sizeGiB'`);
+                    throw new Error(`Volume configuration for device ${deviceName} must specify either 'volumeId', 'volume', or 'sizeGiB'`);
                 }
-                
-                // Generate device name if not provided
-                const deviceName = volumeConfig.deviceName || getDefaultDeviceName(index);
-                
+
                 blockDevices.push({
-                    deviceName: deviceName,
-                    volume: volume
+                    deviceName,
+                    volume
                 });
             });
         }
@@ -620,6 +741,17 @@ ${dockerRunCmd}
             blockDevices: blockDevices.length > 0 ? blockDevices : undefined,
             ...restInstanceProps,
         });
+
+        // Attach existing EBS volumes (must be in the same AZ as the instance)
+        if (volumeAttachments.length > 0) {
+            volumeAttachments.forEach((attachment, index) => {
+                new CfnVolumeAttachment(this.mainStack, `${this.ec2Config.instanceName}-volume-attachment-${index}`, {
+                    instanceId: this.instance.instanceId,
+                    volumeId: attachment.volumeId,
+                    device: attachment.deviceName
+                });
+            });
+        }
 
         // Set outputs
         this.fw24.setConstructOutput(this, this.ec2Config.instanceName, this.instance, OutputType.INSTANCE);

@@ -30,7 +30,7 @@ export interface ISiteConstructConfig extends IConstructConfig {
     /**
      * The build specification for the site.
      */
-    buildSpec: BuildSpec;
+    buildSpec: BuildSpec | Record<string, any>;
     /**
      * The domain for the site.
      */
