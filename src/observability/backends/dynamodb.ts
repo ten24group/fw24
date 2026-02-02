@@ -195,23 +195,37 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
       }
 
       if (dupInfo.length > 0) {
-        // Serialize duplicate info with operations for debugging
-        const duplicatesForLog = dupInfo.slice(0, 5).map(d => {
+        // Filter out expected duplicates (span.start + span pairs)
+        const unexpectedDuplicates = dupInfo.filter(d => {
           const items = grouped.get(d.id) ?? [];
-          return {
-            id: d.id,
-            count: d.count,
-            types: d.types.join(', '),
-            levels: d.levels.join(', '),
-            operations: items.map(i => i.operation).join(', '),
-          };
+          const types = new Set(items.map(i => i.type));
+          // Expected: span.start + span for same operation (lifecycle)
+          // Unexpected: Multiple 'span' or multiple 'span.start' with same ID
+          const hasSpanStart = types.has('span.start');
+          const hasSpan = types.has('span');
+          const isExpectedPair = hasSpanStart && hasSpan && types.size === 2;
+          return !isExpectedPair;
         });
-        logger.error('Observability invariant violation: duplicate observabilityLogId(s) in a single DynamoDB batch.', {
-          duplicateIdCount: dupInfo.length,
-          duplicates: duplicatesForLog,
-          totalItems: validItems.length,
-          deduplicatedCount: chosenById.size,
-        });
+
+        if (unexpectedDuplicates.length > 0) {
+          // Serialize unexpected duplicate info for debugging
+          const duplicatesForLog = unexpectedDuplicates.slice(0, 5).map(d => {
+            const items = grouped.get(d.id) ?? [];
+            return {
+              id: d.id,
+              count: d.count,
+              types: d.types.join(', '),
+              levels: d.levels.join(', '),
+              operations: items.map(i => i.operation).join(', '),
+            };
+          });
+          logger.error('Observability invariant violation: duplicate observabilityLogId(s) in a single DynamoDB batch.', {
+            duplicateIdCount: unexpectedDuplicates.length,
+            duplicates: duplicatesForLog,
+            totalItems: validItems.length,
+            deduplicatedCount: chosenById.size,
+          });
+        }
       }
 
       const deduplicatedItems = Array.from(chosenById.values());
