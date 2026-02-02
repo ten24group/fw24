@@ -2366,7 +2366,11 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         // For date fields, check attribute name as hint
         else if (type === 'string') {
             const lowerAttId = attId.toLowerCase();
-            if (lowerAttId.includes('date') || lowerAttId === 'createdat' || lowerAttId === 'updatedat' || lowerAttId === 'deletedat') {
+            // Only infer datetime for fields that are ACTUALLY dates, not just contain "date" in the name
+            // Exclude: calendarDate (YYYY-MM-DD format), updatedBy/createdBy (user IDs), etc.
+            if ((lowerAttId.endsWith('at') && (lowerAttId.includes('date') || lowerAttId.includes('time'))) ||
+                lowerAttId === 'createdat' || lowerAttId === 'updatedat' || lowerAttId === 'deletedat' ||
+                lowerAttId === 'scheduledat' || lowerAttId === 'publishedat' || lowerAttId === 'expiresat') {
                 inferredFieldType = 'datetime';
             }
         }

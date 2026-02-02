@@ -7,7 +7,12 @@ export const Environment = {
     emailQueueUrl: resolveEnvValueFor({ key: 'EMAIL_QUEUE_URL' }) || '',
     queueUrl: (queueName: string) => resolveEnvValueFor({ key: queueName, suffix: 'queueUrl' }) || '',
     topicArn: (topicName: string) => resolveEnvValueFor({ key: topicName, suffix: 'topicArn' }) || '',
-    bucketName: (bucketName: string) => resolveEnvValueFor({ key: bucketName, prefix: 'bucket' }) || ''
+    bucketName: (bucketName: string) => {
+        // Try to resolve from env first (e.g., 'FILES_BUCKET_NAME' -> env value)
+        const resolved = resolveEnvValueFor({ key: bucketName, prefix: 'bucket' });
+        // If env resolution fails, assume it's an actual bucket name and return as-is
+        return resolved || bucketName;
+    }
 };
 
 /**

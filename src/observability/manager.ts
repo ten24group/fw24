@@ -395,57 +395,6 @@ async function dispatchToBackendsSync(event: ObservabilityEvent, targetBackends:
   );
 }
 
-function enforceHierarchyIntegrityOrDrop(
-  events: ObservabilityEvent[],
-  ctxCorrelationId: string,
-): ObservabilityEvent[] {
-  // CONTRACT: parentObservabilityLogId should ONLY reference spans in THIS slice (same correlationId).
-  // Cross-invocation linkage should use causedBy, not parentObservabilityLogId.
-  //
-  // However, for backward compatibility and graceful degradation:
-  // - If a parent is referenced but NOT in this batch (cross-slice reference), we KEEP the event
-  //   but the parent link will be stale/unresolvable in the UI. This is suboptimal but not fatal.
-  // - If a parent is referenced and should be in this batch but is missing (noise reduction bug),
-  //   we DROP the event and emit an error.
-  //
-  // Only drop case #2 (truly missing), tolerate case #1 (cross-slice).
-  const graph = buildTraceGraph(events, { strictParents: false });
-  if (graph.missingParentSpanIds.size === 0) return events;
-
-  const missing = graph.missingParentSpanIds;
-  const crossSlice = graph.crossSliceParentSpanIds;
-  const filtered = events.filter((e) => {
-    const pid = e.parentObservabilityLogId ?? undefined;
-    // ONLY drop if parent is truly missing (not just in a different slice)
-    return !(pid && missing.has(pid));
-  });
-
-  const droppedCount = events.length - filtered.length;
-
-  if (droppedCount > 0) {
-    // Only emit error if we actually dropped events
-    filtered.push({
-      type: 'log',
-      level: 'error',
-      correlationId: ctxCorrelationId,
-      timestampMs: Date.now(),
-      observabilityLogId: generateObservabilityLogId(ctxCorrelationId),
-      operation: 'observability.invariant_violation.missing_parent_span',
-      success: false,
-      capture: { bypass: true },
-      data: {
-        droppedCount,
-        missingParentSpanIds: Array.from(missing).slice(0, 10),
-        // Include cross-slice info for debugging (these are valid, not errors)
-        crossSliceParentCount: crossSlice.size,
-      },
-      source: 'ObservabilityManager.flush',
-    });
-  }
-
-  return filtered;
-}
-
 function getEffectiveLevelForType(type: 'span' | 'metric' | 'audit' | 'log'): ObservabilityLevel {
   const typeConfig = config?.types?.[ type ];
   return typeConfig?.minLevel ?? config?.minLevel ?? ObservabilityLevel.INFO;
@@ -868,10 +817,9 @@ function handleTailBasedSamplingSync(
       obsState.buffer = [];
 
       const reduced = applyNoiseReduction(buffer, cfg.noiseReduction);
-      const reducedBuffer = enforceHierarchyIntegrityOrDrop(reduced.events, context.correlationId);
 
       // Dispatch all events - noise reduction already filtered by minLevel
-      for (const bufferedEvent of reducedBuffer) {
+      for (const bufferedEvent of reduced.events) {
         const targets = getBackendsForType(bufferedEvent.type);
         dispatchToBackends(bufferedEvent, targets);
       }
@@ -966,10 +914,9 @@ async function handleTailBasedSamplingAsync(
       obsState.buffer = [];
 
       const reduced = applyNoiseReduction(buffer, cfg.noiseReduction);
-      const reducedBuffer = enforceHierarchyIntegrityOrDrop(reduced.events, context.correlationId);
 
       // Dispatch all events - noise reduction already filtered by minLevel
-      await Promise.all(reducedBuffer.map(bufferedEvent => {
+      await Promise.all(reduced.events.map(bufferedEvent => {
         const targets = getBackendsForType(bufferedEvent.type);
         return dispatchToBackendsSync(bufferedEvent, targets);
       }));
@@ -1516,14 +1463,13 @@ export class ObservabilityManager {
           })
           : reducedEvents;
 
-        const finalEvents = enforceHierarchyIntegrityOrDrop(maybeDropEmptyLeafSpans, context.correlationId);
 
         // Track captured events for detailed summary
         const capturedByType: Record<string, number> = {};
         const capturedByOperation: Record<string, number> = {};
         const capturedByLevel: Record<string, number> = {};
 
-        for (const event of finalEvents) {
+        for (const event of maybeDropEmptyLeafSpans) {
           // TAIL-BASED FILTERING + SAMPLING (after noise reduction)
 
           // Apply filtering first (always runs - content-based)

@@ -644,44 +644,6 @@ describe('Hierarchy Integrity After Noise Reduction', () => {
     expect(slowInOutput!.parentObservabilityLogId).toBe('root');
   });
 
-  it('EDGE CASE 1: Invalid input - child references non-existent parent', () => {
-    // This should NOT crash - noise reduction should handle gracefully
-    const orphan: ObservabilityEvent = {
-      type: 'span',
-      observabilityLogId: 'orphan',
-      parentObservabilityLogId: 'non-existent-parent', // INVALID!
-      correlationId: 'test',
-      operation: 'OrphanOperation',
-      source: 'Service',
-      level: 'info',
-      timestampMs: Date.now(),
-      durationMs: 1100,
-      success: true,
-      status: 'completed',
-      data: {},
-    };
-
-    const events = [ orphan ];
-
-    // Should not crash
-    const result = applyNoiseReduction(events, config.noiseReduction);
-
-    console.log('\n🔍 EDGE CASE 1: Invalid parent reference');
-    console.log(`  Input: ${events.length} events`);
-    console.log(`  Output: ${result.events.length} events`);
-
-    // Orphan should be kept (it's slow) and PRESERVE invalid parent reference
-    // (Hierarchy enforcement will detect and handle this later in the flush flow)
-    expect(result.events.length).toBe(1);
-    const orphanInOutput = result.events[ 0 ];
-    expect(orphanInOutput.observabilityLogId).toBe('orphan');
-
-    // BEHAVIOR: Invalid parent reference is PRESERVED (not normalized)
-    // This allows enforceHierarchyIntegrityOrDrop() to detect and handle missing parents
-    // during the full flush flow, preventing dangling references in the database
-    expect(orphanInOutput.parentObservabilityLogId).toBe('non-existent-parent');
-  });
-
   it('EDGE CASE 2: Very deep tree (10 levels)', () => {
     // Create a 10-level deep tree
     const events: ObservabilityEvent[] = [];

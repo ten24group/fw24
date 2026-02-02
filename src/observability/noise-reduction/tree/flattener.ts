@@ -49,9 +49,12 @@ export function flattenTree(
   } else if (node.wasReparented) {
     // Node was reparented (parent was dropped) - clear parent reference
     node.event.parentObservabilityLogId = undefined;
+  } else if (node.event.parentObservabilityLogId) {
+    // No parent in tree and not reparented: parent was never in this batch
+    // Clear per contract: parentObservabilityLogId should only reference same slice
+    // Cross-invocation links should use causedBy instead
+    node.event.parentObservabilityLogId = undefined;
   }
-  // else: No parent in tree and not reparented - preserve original parentObservabilityLogId
-  // (This handles invalid parent references that should be caught downstream)
 
   // Add this node to output
   output.push(node.event);
