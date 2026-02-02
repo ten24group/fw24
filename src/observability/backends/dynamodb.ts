@@ -219,7 +219,9 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
               operations: items.map(i => i.operation).join(', '),
             };
           });
-          logger.error('Observability invariant violation: duplicate observabilityLogId(s) in a single DynamoDB batch.', {
+          // NOTE: These are often legitimate repeated operations (e.g., downloading 2 images, updating 3 records)
+          // The deduplication picks a winner correctly, so this is DEBUG, not an ERROR
+          logger.debug('Deduplicating observability events with same ID in batch (repeated operations).', {
             duplicateIdCount: unexpectedDuplicates.length,
             duplicates: duplicatesForLog,
             totalItems: validItems.length,
