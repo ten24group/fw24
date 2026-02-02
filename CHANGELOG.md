@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.9](https://github.com/ten24group/fw24/compare/v1.1.0-beta.8...v1.1.0-beta.9) (2026-02-02)
+
+
+### Features
+
+* **s3:** enhance S3 client configuration and bucket name resolution ([27e87d4](https://github.com/ten24group/fw24/commit/27e87d40f1d770447788a770407f1cbba35d2690))
+
+
+### Bug Fixes
+
+* **entity:** refine datetime inference logic in entityAttributeToIOSchemaAttribute ([7d3e52d](https://github.com/ten24group/fw24/commit/7d3e52dc94e5bcbdfadd0b31ff5c64071a05c7e8))
+
 ## [1.1.0-beta.8](https://github.com/ten24group/fw24/compare/v1.1.0-beta.7...v1.1.0-beta.8) (2026-01-30)
 
 
