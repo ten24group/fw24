@@ -957,7 +957,8 @@ async function prepareCompositeAttributesForUpdate<S extends EntitySchema<any, a
                     if (existingRecordData.hasOwnProperty(attr)) {
                         compositeKeyValues[ attr ] = existingRecordData[ attr ];
                     } else {
-                        logger.warn(`Composite key attribute "${attr}" (ID: ${JSON.stringify(identifiers)}) was not found in payload, identifiers, or existing record.`);
+                        // Attribute not found - just log debug, don't warn (could be optional sparse index attribute)
+                        logger.debug(`Composite key attribute "${attr}" (ID: ${JSON.stringify(identifiers)}) not found in existing record (may be optional).`);
                     }
                 });
 
