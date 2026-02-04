@@ -214,7 +214,7 @@ export class DIContainer implements IDIContainer {
         // make sure to remove old proxy from the importing module if exists
         if (parentContainer.hasChildContainerById(proxyContainerId)) {
 
-            this.logger.warn(`Found old proxy container: [${proxyContainerId}] in parent: [${parentContainer.containerId}]; replacing it`);
+            this.logger.debug(`Found old proxy container: [${proxyContainerId}] in parent: [${parentContainer.containerId}]; replacing it`);
 
             const oldProxyContainer = parentContainer.getChildContainerById(proxyContainerId);
 
