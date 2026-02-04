@@ -988,7 +988,7 @@ function initializeSourceMapSupport(cfg: ObservabilityConfig): void {
     logger.debug('Attempting to load source-map-support...');
     // Dynamic import to avoid bundling if not needed
     require('source-map-support/register');
-    logger.info('Source map support enabled - stack traces will show original TypeScript lines');
+    logger.debug('Source map support enabled - stack traces will show original TypeScript lines');
   } catch (error: unknown) {
     // Not a critical error - observability still works without source maps
     if (error && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code === 'MODULE_NOT_FOUND') {
@@ -1081,7 +1081,7 @@ function doInitialize(): void {
     });
 
     initialized = true;
-    logger.info('=== OBSERVABILITY INITIALIZATION COMPLETE ===');
+    logger.debug('=== OBSERVABILITY INITIALIZATION COMPLETE ===');
   } catch (error) {
     logger.error('!!! OBSERVABILITY INITIALIZATION FAILED !!!', error);
     // Soft-fail: do NOT throw into application flow.
