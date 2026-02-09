@@ -8,6 +8,8 @@
 export { 
   ObservabilityLogEntitySchema, 
   ObservabilityLogSchema,
+  ObservabilityLogEntityType,
+  ObservabilityLogRecordType,
 } from './observability-log-entity';
 
 export { 

@@ -89,7 +89,7 @@ export type BaseEventType =
  * });
  * 
  * // Or use existing observers if the type matches:
- * SpanObserver.start('operation');  // Creates 'span.start'
+ * SpanObserver.start('operation');  // Creates span (lifecycle hooks notify OTEL directly)
  * LogObserver.info('message');      // Creates 'log'
  * AuditObserver.entityCreate(...);  // Creates 'audit.entity'
  * ```
@@ -198,7 +198,7 @@ export interface CaptureControl {
   /**
    * Optional per-event override for the noise-reduction pipeline.
    *
-   * This gives developers *local control* (per decorator or per log entry) to override
+   * This gives developers *local control* (per @Observed decorator or per log entry) to override
    * standard presets/rules when needed.
    */
   noise?: NoiseControl;
@@ -219,22 +219,30 @@ export interface CaptureControl {
 }
 
 /**
- * Noise reduction decision.
- * - keep: persist as a standalone record (subject to normal sampling/backends)
- * - drop: do not persist as a standalone record (may still be accounted for in summaries)
- * - fold: merge into parent span as a checkpoint/event (best for noisy inner-loop logs)
- * - aggregate: count occurrences and keep statistics/examples on parent span
- * - downgrade: reduce level (e.g., error -> warn) if it's a known non-critical noise
+ * Noise reduction decision (v2: three-decision model).
+ * 
+ * - emit:   Persist as a standalone DynamoDB record (full event preserved)
+ * - absorb: Do not persist as standalone; merge structured data into nearest emitted ancestor
+ * - silent: Do not persist; only increment a counter on nearest emitted ancestor
+ * 
+ * This replaces the previous 5-decision model (keep/drop/fold/aggregate/downgrade).
+ * The three decisions map cleanly to what happens with data:
+ * - emit   = full record in DynamoDB (was: keep)
+ * - absorb = structured info on parent's _absorbed field (was: fold + aggregate)
+ * - silent = counter only (was: drop)
  */
-export type NoiseDecision = 'keep' | 'drop' | 'fold' | 'aggregate' | 'downgrade';
+export type NoiseDecision = 'emit' | 'absorb' | 'silent';
 
 /**
  * Per-event noise control override.
+ * 
+ * Allows code to explicitly control how an event is handled by noise reduction,
+ * bypassing all rules and hard signal logic.
  */
 export interface NoiseControl {
-  /** Override decision for this event */
+  /** Override decision for this event (emit/absorb/silent) */
   decision: NoiseDecision;
-  /** Optional reason for audits/debugging (included in noise summaries) */
+  /** Optional reason for audits/debugging */
   reason?: string;
 }
 
@@ -261,23 +269,27 @@ export interface HardSignalConfig {
 }
 
 /**
- * Noise reduction configuration.
+ * Noise reduction configuration (v2: three-decision model).
  *
  * This layer is orthogonal to sampling:
- * - sampling decides *whether* to store based on cost
- * - noise reduction decides *how* to represent data (standalone vs merged vs dropped)
+ * - Sampling decides *whether* to store based on cost
+ * - Noise reduction decides *how* to represent data (emit vs absorb vs silent)
  * 
  * Rule evaluation:
- * - All matching rules are collected (custom + builtin)
- * - Exceptions are evaluated
- * - Rule with highest effective priority wins
- * - Hard signals (errors/failures) are always kept unless explicitly overridden
+ * 1. Per-event override (CaptureControl.noise) takes absolute precedence
+ * 2. Hard signals (errors/failures/slow) default to emit unless explicitly overridden
+ * 3. All matching rules are collected (custom + builtin), exceptions evaluated
+ * 4. Rule with highest effective priority wins
+ * 5. No matching rule → emit (safe default)
  */
 export interface NoiseReductionConfig {
   enabled: boolean;
 
-  /** Minimum level for context preservation around hard signals (default: INFO) */
-  minLevel?: ObservabilityLevel;
+  /** 
+   * When true, attach noise reduction decision metadata (ruleId, reason, decision) 
+   * to emitted events as data._noiseDebug. Useful for understanding why events were kept/dropped.
+   */
+  debug?: boolean;
 
   /** Hard signal detection configuration */
   hardSignals?: HardSignalConfig;
@@ -291,31 +303,21 @@ export interface NoiseReductionConfig {
    */
   rules: NoiseRule[];
 
-  /** Emit a summary marker when events are dropped/folded (default: true) */
-  emitSummaries: boolean;
+  // ─────────────────────────────────────────────────────────────────────────
+  // Absorption bounds (prevent unbounded growth of _absorbed data on parents)
+  // ─────────────────────────────────────────────────────────────────────────
 
-  /**
-   * Bounds for how much folded/aggregated detail can be attached to a single span.
-   * This prevents giant DynamoDB items and UI overload.
-   */
-  maxCheckpointsPerSpan: number;
-  maxAggregateKeysPerSpan: number;
+  /** Maximum error entries in _absorbed.errors per emitted event (default: 20) */
+  maxAbsorbedErrorsPerSpan: number;
 
-  /** How many example events to keep per aggregate key (default: 5) */
-  maxAggregateExamplesPerKey: number;
-  /** How many error examples to keep per aggregate key (default: 3) */
-  maxAggregateErrorExamplesPerKey: number;
+  /** Maximum causedBy links in _absorbed.causedByLinks per emitted event (default: 50) */
+  maxAbsorbedCausedByLinksPerSpan: number;
 
-  /** 
-   * Include debug metadata in checkpoints and summaries (default: false).
-   * When enabled, includes ruleId, reason, approxBytesSaved, byRuleId breakdowns, etc.
-   * Checkpoints are ALWAYS created (they're core to the timeline), but their data payload
-   * is minimal in production mode.
-   */
-  includeDebugMetadata: boolean;
+  /** Maximum entity IDs in _absorbed.entityIds per emitted event (default: 100) */
+  maxAbsorbedEntityIdsPerSpan: number;
 
-  /** Include examples in aggregates (default: false) */
-  includeExamples: boolean;
+  /** Maximum distinct operation keys in _absorbed.byOperation per emitted event (default: 50) */
+  maxAbsorbedOperationKeysPerSpan: number;
 }
 
 /**
@@ -375,38 +377,36 @@ export interface NoiseRuleMatch {
  * Effective priority = explicit priority OR decision's base priority.
  * 
  * Decision base priorities (from highest to lowest):
- * - keep: 100 (always keep, hard to override)
- * - aggregate: 50 (summarize into parent)
- * - fold: 40 (collapse into parent checkpoint)
- * - downgrade: 30 (strip heavy fields)
- * - drop: 10 (remove entirely, easy to override)
+ * - emit:   100 (always emit, hard to override)
+ * - absorb:  50 (merge into parent)
+ * - silent:  10 (drop entirely, easy to override)
  */
 export interface NoiseRule {
   /** Unique identifier for this rule */
-  id: string;
+  readonly id: string;
 
   /** Conditions that must match for this rule to apply */
-  match: NoiseRuleMatch;
+  readonly match: NoiseRuleMatch;
 
-  /** The noise reduction action to take when this rule matches */
-  decision: NoiseDecision;
+  /** The noise reduction action: emit, absorb, or silent */
+  readonly decision: NoiseDecision;
 
   /** 
    * Explicit priority for this rule (overrides decision's base priority).
    * Higher priority wins when multiple rules match.
    * Range: 1-1000 (recommended: use multiples of 10)
    */
-  priority?: number;
+  readonly priority?: number;
 
   /**
    * Exception conditions - rule does NOT apply if any exception matches.
    * Evaluated AFTER the main match succeeds.
-   * Use for "drop X except when Y" patterns.
+   * Use for "silent X except when Y" patterns.
    */
-  except?: NoiseRuleMatch[];
+  readonly except?: readonly NoiseRuleMatch[];
 
   /** Human-readable reason for this rule (for debugging) */
-  reason?: string;
+  readonly reason?: string;
 }
 
 /**
@@ -490,6 +490,26 @@ export interface ObservabilityEvent {
   /** Error details if applicable */
   error?: ObservabilityError;
 
+  /** 
+   * Deterministic error fingerprint for grouping same errors across invocations.
+   * 
+   * Auto-computed from error.type + normalized message + stack when an error is present.
+   * Uses SHA-256 (first 16 hex chars) with UUIDs, timestamps, and numeric IDs normalized out.
+   */
+  fingerprint?: string;
+
+  // === NOISE REDUCTION (set by noise reduction algorithm, not by callers) ===
+  /** 
+   * Structured data about events absorbed into this record by noise reduction.
+   * 
+   * This field is set by the noise reduction algorithm during flush().
+   * Application code should NEVER set this directly.
+   * 
+   * Present only on emitted events that had children absorbed or silenced into them.
+   * @see AbsorbedData for the structure definition
+   */
+  _absorbed?: import('./noise-reduction/types').AbsorbedData;
+
   // === CAPTURE CONTROL (optional) ===
   /** 
    * Capture control options. All capture behavior in one place.
@@ -555,6 +575,87 @@ export interface ObservabilityBackend {
   flush?(): Promise<void>;
   /** Initialize for new invocation (called on each Lambda invocation) */
   initializeInvocation?(): void;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SPAN LIFECYCLE HOOKS (for OTEL and other real-time span backends)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Information provided when a span starts.
+ * This is a minimal snapshot - full event data is only available at span end.
+ */
+export interface SpanStartInfo {
+  /** Unique observability log ID for this span */
+  readonly id: string;
+  /** Operation name (e.g., 'HTTP GET /api/users', 'OrderService.create') */
+  readonly operation: string;
+  /** Parent span's observability log ID (undefined for root spans) */
+  readonly parentId: string | undefined;
+  /** Correlation ID for distributed tracing */
+  readonly correlationId: string;
+  /** Cross-hop causedBy link (upstream correlation ID) */
+  readonly causedBy: string | undefined;
+  /** Source identifier (e.g., 'controller:OrderController.create') */
+  readonly source: string | undefined;
+  /** Sub-type hint for span kind (e.g., 'http', 'db', 'queue') */
+  readonly subType: string | undefined;
+  /** Tags at span start (may be enriched by the time span ends) */
+  readonly tags: Readonly<Record<string, string>> | undefined;
+  /** Start timestamp in epoch milliseconds */
+  readonly startTimeMs: number;
+}
+
+/**
+ * Information provided when a span ends.
+ * Contains the full context accumulated during the span's lifetime.
+ */
+export interface SpanEndInfo {
+  /** Unique observability log ID for this span */
+  readonly id: string;
+  /** Operation name */
+  readonly operation: string;
+  /** Whether the span completed successfully */
+  readonly success: boolean;
+  /** Duration in milliseconds */
+  readonly durationMs: number;
+  /** Start timestamp in epoch milliseconds */
+  readonly startTimeMs: number;
+  /** Parent span's observability log ID (undefined for root spans) */
+  readonly parentId: string | undefined;
+  /** Correlation ID for distributed tracing */
+  readonly correlationId: string;
+  /** Cross-hop causedBy link (upstream correlation ID) */
+  readonly causedBy: string | undefined;
+  /** Source identifier (e.g., 'controller:OrderController.create') */
+  readonly source: string | undefined;
+  /** Sub-type hint for span kind (e.g., 'http', 'db', 'queue') */
+  readonly subType: string | undefined;
+  /** Error details if the span failed */
+  readonly error: ObservabilityError | undefined;
+  /** Tags accumulated during span lifetime */
+  readonly tags: Readonly<Record<string, string>> | undefined;
+  /** Metrics accumulated during span lifetime */
+  readonly metrics: Readonly<Record<string, number>> | undefined;
+  /** Data payload accumulated during span lifetime */
+  readonly data: Readonly<Record<string, unknown>> | undefined;
+}
+
+/**
+ * Lifecycle hook for backends that need real-time span start/end notifications.
+ * 
+ * This interface decouples backends (like OTEL) from the buffered capture pipeline.
+ * Instead of receiving span.start events through capture(), backends implementing
+ * this interface receive direct, typed notifications from SpanObserver.
+ * 
+ * Implementations MUST be fast and non-blocking - these are called synchronously
+ * from the application's hot path.
+ */
+export interface SpanLifecycleHook {
+  /** Called synchronously when a span starts */
+  onSpanStart(info: SpanStartInfo): void;
+  /** Called synchronously when a span ends (success or failure) */
+  onSpanEnd(info: SpanEndInfo): void;
 }
 
 /**
@@ -1346,7 +1447,7 @@ export interface ObservabilityConfig {
   queryPerformance: QueryPerformanceConfig;
 
   /**
-   * Noise reduction configuration (merge/drop/aggregate).
+   * Noise reduction configuration (emit/absorb/silent).
    */
   noiseReduction: NoiseReductionConfig;
 
@@ -1533,21 +1634,21 @@ export interface DecoratorCaptureControl extends CaptureControl {
 }
 
 /**
- * Base options shared across all observability decorators (@Observed, @Traced, @Audited).
+ * Base options shared by the @Observed decorator.
  * 
  * Extends RecordOverrides and enhances `capture` with decorator-specific options (args/result).
- * All decorator option interfaces should extend this instead of duplicating fields.
  * 
  * All capture control is unified under the `capture` namespace.
  * 
  * @example
  * ```typescript
  * // Basic usage - capture args and result
- * @Traced({ capture: { args: true, result: true } })
+ * @Observed({ trace: true, capture: { args: true, result: true } })
  * async fetchData() { }
  * 
  * // Separate control for args vs result
- * @Traced({
+ * @Observed({
+ *   trace: true,
  *   capture: {
  *     args: { maxLength: 1000, maxDepth: 5 },  // Limit args
  *     result: { preventTruncation: true }      // Full result
@@ -1561,14 +1662,15 @@ export interface DecoratorCaptureControl extends CaptureControl {
  *     bypass: true,  // Always capture (skip sampling)
  *     args: true,
  *     result: { maxLength: 50000, maxDepth: 15 },
- *     noise: { decision: 'keep', reason: 'critical-path' }
+ *     noise: { decision: 'emit', reason: 'critical-path' }
  *   },
  *   tags: { critical: 'true' }
  * })
  * async criticalOperation() { }
  * 
  * // Group-based sampling with capture
- * @Traced({
+ * @Observed({
+ *   trace: true,
  *   capture: {
  *     group: { key: 'batch-123', index: i, total: 100 },
  *     args: { maxLength: 2000 },

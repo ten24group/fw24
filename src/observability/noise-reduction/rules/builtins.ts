@@ -1,8 +1,15 @@
 /**
- * Built-in noise reduction rules.
+ * Built-in noise reduction rules (v2: three-decision model).
  * 
  * These rules provide sensible defaults for common framework hot paths.
  * Applications can override or extend these rules via configuration.
+ * 
+ * Decision mapping from v1:
+ * - keep      → emit
+ * - fold      → absorb (structured info on parent)
+ * - aggregate → absorb (structured info on parent)
+ * - drop      → silent (counter only)
+ * - downgrade → removed (use absorb or silent instead)
  */
 
 import type { NoiseRule } from '../../types';
@@ -10,17 +17,16 @@ import type { NoiseRule } from '../../types';
 /**
  * Cache for builtin rules by preset combination.
  */
-const builtinRulesCache = new Map<string, ReadonlyArray<NoiseRule>>();
+const builtinRulesCache = new Map<string, readonly NoiseRule[]>();
 
 /**
  * Get builtin rules for specified presets.
  * Results are cached for performance.
  * 
  * @param presets - Array of preset names to activate
- * @returns Array of builtin rules
+ * @returns Readonly array of builtin rules
  */
-export function getBuiltinRules(presets: readonly string[]): ReadonlyArray<NoiseRule> {
-  // Create cache key from sorted presets (order-independent)
+export function getBuiltinRules(presets: readonly string[]): readonly NoiseRule[] {
   const cacheKey = [ ...presets ].sort().join(',');
 
   const cached = builtinRulesCache.get(cacheKey);
@@ -35,52 +41,83 @@ export function getBuiltinRules(presets: readonly string[]): ReadonlyArray<Noise
 
   if (presets.includes('fw24.hotpaths')) {
     // ─────────────────────────────────────────────────────────────────────
+    // Infrastructure Noise (health checks, warmups)
+    // ─────────────────────────────────────────────────────────────────────
+
+    rules.push(
+      {
+        id: 'fw24.hotpaths.infra.silent_healthcheck',
+        priority: 90,
+        match: {
+          type: 'span',
+          operation: '/^(HTTP )?(GET|HEAD)\\s+\\/health/',
+        },
+        decision: 'silent',
+        reason: 'Health check endpoints are infrastructure noise',
+      },
+      {
+        id: 'fw24.hotpaths.infra.silent_warmup',
+        priority: 90,
+        match: {
+          type: 'span',
+          tags: { source: 'warmup' },
+        },
+        decision: 'silent',
+        reason: 'Lambda warmup invocations are infrastructure noise',
+      },
+    );
+
+    // ─────────────────────────────────────────────────────────────────────
     // Database Query Noise Reduction
     // ─────────────────────────────────────────────────────────────────────
 
-    // HIGHEST PRIORITY: Keep query errors
+    // HIGHEST PRIORITY: Emit query errors as standalone records
     rules.push({
-      id: 'fw24.hotpaths.queries.keep_errors',
+      id: 'fw24.hotpaths.queries.emit_errors',
       match: {
         type: 'database.query',
         success: false,
       },
-      decision: 'keep',
-      reason: 'Keep query errors as standalone logs for debugging',
+      decision: 'emit',
+      reason: 'Emit query errors as standalone records for debugging',
     });
 
-    // Keep table scans (always warnings, even if fast)
+    // Emit table scans (always worth investigating)
     rules.push({
-      id: 'fw24.hotpaths.queries.keep_scans',
+      id: 'fw24.hotpaths.queries.emit_scans',
       match: {
         type: 'database.query',
         tags: { scan: 'true' },
       },
-      decision: 'keep',
-      reason: 'Keep table scan operations as standalone warnings',
+      decision: 'emit',
+      reason: 'Emit table scan operations as standalone warnings',
     });
 
-    // Keep slow queries for investigation
+    // Emit slow queries for investigation
     rules.push({
-      id: 'fw24.hotpaths.queries.keep_slow',
+      id: 'fw24.hotpaths.queries.emit_slow',
       match: {
         type: 'database.query',
         minDurationMs: 1000,
       },
-      decision: 'keep',
-      reason: 'Keep slow queries (>=1000ms) as standalone logs',
+      decision: 'emit',
+      reason: 'Emit slow queries (>=1000ms) as standalone records',
     });
 
-    // LOWEST PRIORITY: Fold fast successful queries
+    // Absorb successful READ queries into parent span.
+    // Write queries (create, upsert, update, delete) are kept as timeline
+    // entries because they represent actual data mutations worth tracking.
+    // Errors, scans, and slow queries (>=1s) are already handled above with
+    // higher-priority emit rules.
     rules.push({
-      id: 'fw24.hotpaths.queries.fold_fast_success',
+      id: 'fw24.hotpaths.queries.absorb_read_queries',
       match: {
         type: 'database.query',
-        maxDurationMs: 100,
+        operation: '/\\.(get|batchGet|list|query|scan|find|fetch|read)(?:\\(|$)/',
         success: true,
       },
-      decision: 'fold',
-      reason: 'Fold fast successful queries (<100ms) into parent span',
+      decision: 'absorb',
+      reason: 'Absorb successful read queries into parent span (write queries preserved for timeline)',
     });
 
     // ─────────────────────────────────────────────────────────────────────
@@ -88,20 +125,19 @@ export function getBuiltinRules(presets: readonly string[]): ReadonlyArray<Noise
     // ─────────────────────────────────────────────────────────────────────
 
     rules.push({
-      id: 'fw24.hotpaths.api.drop_fast_successful_reads',
+      id: 'fw24.hotpaths.api.silent_fast_successful_reads',
       priority: 10, // Low priority - easy to override
       match: {
         type: 'span',
-        // Matches controller operations (HTTP GET/HEAD/OPTIONS) and read methods
         operation: '/^(HTTP )?(GET|HEAD|OPTIONS)\\s|\\.(list|get|read|fetch|find)(?:[(/]|$)|\\/(list|get|read|fetch|find)(?:[/?]|$)/',
         maxDurationMs: 5000,
       },
       except: [
-        { success: false },                         // Never drop failures
-        { level: [ 'error', 'critical', 'warn' ] }, // Never drop warnings/errors
+        { success: false },
+        { level: [ 'error', 'critical', 'warn' ] },
       ],
-      decision: 'drop',
-      reason: 'Drop fast successful read operations (<5 S)',
+      decision: 'silent',
+      reason: 'Silence fast successful read operations (<5s)',
     });
 
     // ─────────────────────────────────────────────────────────────────────
@@ -109,21 +145,60 @@ export function getBuiltinRules(presets: readonly string[]): ReadonlyArray<Noise
     // ─────────────────────────────────────────────────────────────────────
 
     rules.push({
-      id: 'fw24.hotpaths.auth.drop_routine_auth',
-      priority: 10, // Low priority - easy to override
+      id: 'fw24.hotpaths.auth.silent_routine_auth',
+      priority: 10,
       match: {
         type: 'span',
-        // Matches auth controller operations and auth-related endpoints
         operation: '/^(HTTP )?(POST|GET)\\s.*\\/(auth|mauth|oauth|token|login|logout|refresh|credentials|session)\\/?|^Auth[A-Za-z0-9]*\\.(get|refresh|validate|verify|check|login|logout)/',
         maxDurationMs: 5000,
       },
       except: [
-        { success: false },                         // Never drop auth failures
-        { level: [ 'error', 'critical', 'warn' ] }, // Never drop auth warnings/errors
+        { success: false },
+        { level: [ 'error', 'critical', 'warn' ] },
       ],
-      decision: 'drop',
-      reason: 'Drop routine auth operations (<5 S) - errors/failures/slow/warnings are kept',
+      decision: 'silent',
+      reason: 'Silence routine auth operations (<5s) - errors/failures/slow/warnings are emitted',
     });
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Routine Task & Event Processor Invocations
+    // ─────────────────────────────────────────────────────────────────────
+    // Successful, error-free root spans for scheduled tasks and stream
+    // processors are infrastructure noise. Combined with root suppression
+    // in the algorithm, entire noise-only invocations are dropped.
+
+    rules.push(
+      {
+        id: 'fw24.hotpaths.task.silent_routine_success',
+        priority: 5, // Very low: any user rule can easily override
+        match: {
+          type: 'span',
+          tags: { handler_type: 'task' },
+          success: true,
+        },
+        except: [
+          { success: false },
+          { level: [ 'error', 'critical', 'warn' ] },
+        ],
+        decision: 'silent',
+        reason: 'Silence successful task invocations (routine infrastructure noise)',
+      },
+      {
+        id: 'fw24.hotpaths.event_processor.silent_routine_success',
+        priority: 5, // Very low: any user rule can easily override
+        match: {
+          type: 'span',
+          tags: { handler_type: 'event_processor' },
+          success: true,
+        },
+        except: [
+          { success: false },
+          { level: [ 'error', 'critical', 'warn' ] },
+        ],
+        decision: 'silent',
+        reason: 'Silence successful event processor invocations (routine infrastructure noise)',
+      },
+    );
 
     // ─────────────────────────────────────────────────────────────────────
     // Stream Processors
@@ -131,47 +206,47 @@ export function getBuiltinRules(presets: readonly string[]): ReadonlyArray<Noise
 
     rules.push(
       {
-        id: 'fw24.hotpaths.stream.fold_publish_done',
+        id: 'fw24.hotpaths.stream.absorb_publish_done',
         match: {
           type: 'log',
           source: '/^DynamoDBStreamToSNSProcessor\\./',
           level: [ 'info', 'debug', 'trace' ],
           operation: '/Publish (SNS|FIFO) done/',
         },
-        decision: 'fold',
-        reason: 'Fold noisy stream publish completion logs',
+        decision: 'absorb',
+        reason: 'Absorb stream publish completion logs into parent span',
       },
       {
-        id: 'fw24.hotpaths.stream.fold_audit_done',
+        id: 'fw24.hotpaths.stream.absorb_audit_done',
         match: {
           type: 'log',
           source: '/^DynamoDBStreamAuditLogger\\./',
           level: [ 'info', 'debug', 'trace' ],
           operation: '/done|Captured (create|update|delete) audit/',
         },
-        decision: 'fold',
-        reason: 'Fold noisy stream audit logger logs',
+        decision: 'absorb',
+        reason: 'Absorb stream audit logger completion logs into parent span',
       },
       {
-        id: 'fw24.hotpaths.stream.drop_info_noise',
+        id: 'fw24.hotpaths.stream.silent_low_level_noise',
         match: {
           type: 'log',
           source: '/^DynamoDBStream(ToSNSProcessor|AuditLogger)\\./',
           level: [ 'trace', 'debug' ],
         },
-        decision: 'drop',
-        reason: 'Drop low-level stream noise',
+        decision: 'silent',
+        reason: 'Silence low-level stream noise',
       },
       {
-        id: 'fw24.hotpaths.stream.drop_batch_spans',
+        id: 'fw24.hotpaths.stream.silent_batch_spans',
         match: {
           type: 'span',
           source: '/^DynamoDBStream(ToSNSProcessor|AuditLogger)\\.process$/',
           operation: '/^aws:(sqs|dynamodb) DynamoDBStream/',
         },
-        decision: 'drop',
-        reason: 'Drop stream processor batch spans',
-      }
+        decision: 'silent',
+        reason: 'Silence stream processor batch spans',
+      },
     );
 
     // ─────────────────────────────────────────────────────────────────────
@@ -179,19 +254,19 @@ export function getBuiltinRules(presets: readonly string[]): ReadonlyArray<Noise
     // ─────────────────────────────────────────────────────────────────────
 
     rules.push({
-      id: 'fw24.hotpaths.entity.aggregate_upsert_spans',
-      priority: 50, // Default aggregate priority
+      id: 'fw24.hotpaths.entity.absorb_write_spans',
+      priority: 50,
       match: {
         type: 'span',
-        operation: '/BaseEntityService\\.(upsert|update)/',
+        operation: '/BaseEntityService\\.(create|upsert|update)/',
         source: '/^service:BaseEntityService\\./',
       },
       except: [
-        { success: false },                // Keep failed writes
-        { level: [ 'error', 'critical' ] },  // Keep error writes
+        { success: false },
+        { level: [ 'error', 'critical' ] },
       ],
-      decision: 'aggregate',
-      reason: 'Aggregate successful entity write spans into parent',
+      decision: 'absorb',
+      reason: 'Absorb successful entity write spans into parent',
     });
   }
 
@@ -203,31 +278,30 @@ export function getBuiltinRules(presets: readonly string[]): ReadonlyArray<Noise
   if (presets.includes('fw24.batch_processors')) {
     rules.push(
       {
-        id: 'fw24.batch.aggregate_item_processing',
+        id: 'fw24.batch.absorb_item_processing',
         match: {
           type: 'span',
           operation: '/process(Item|Record|Message|Event)/',
           source: '/Processor\\./',
         },
         except: [ { success: false } ],
-        decision: 'aggregate',
-        reason: 'Aggregate successful item processing spans',
+        decision: 'absorb',
+        reason: 'Absorb successful item processing spans into parent',
       },
       {
-        id: 'fw24.batch.fold_item_logs',
+        id: 'fw24.batch.absorb_item_logs',
         match: {
           type: 'log',
           level: [ 'info', 'debug' ],
           operation: '/processed|completed|done/',
         },
-        decision: 'fold',
-        reason: 'Fold batch item completion logs',
-      }
+        decision: 'absorb',
+        reason: 'Absorb batch item completion logs into parent span',
+      },
     );
   }
 
-  // Cache the result
-  const frozenRules = Object.freeze(rules) as ReadonlyArray<NoiseRule>;
+  const frozenRules: readonly NoiseRule[] = Object.freeze(rules);
   builtinRulesCache.set(cacheKey, frozenRules);
 
   return frozenRules;

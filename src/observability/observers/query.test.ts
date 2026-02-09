@@ -246,8 +246,7 @@ describe('QueryObserver', () => {
         entityName: 'User',
         success: true
       });
-      // Noise reduction will decide whether to fold this into a checkpoint,
-      // aggregate it, or keep it as a standalone log
+      // Noise reduction will decide whether to emit, absorb into parent, or silence this event
     });
   });
 });

@@ -50,6 +50,7 @@ import {
   runWithExecutionContextSync,
 } from '../context';
 import { clearEnvironmentTagsCache } from '../utils/source-utils';
+import type { AbsorbedData } from '../noise-reduction/types';
 
 /**
  * Mock backend that captures all events for testing
@@ -157,6 +158,57 @@ export class MockBackend implements ObservabilityBackend {
    */
   get eventCount(): number {
     return this.events.length;
+  }
+
+  // === Absorbed Data Helpers ===
+
+  /**
+   * Get events that have absorbed data attached (i.e., events that absorbed children)
+   */
+  getEventsWithAbsorbed(): ObservabilityEvent[] {
+    return this.events.filter(e => e._absorbed != null);
+  }
+
+  /**
+   * Get the absorbed data for a specific event (by operation or filter)
+   * Returns undefined if the event has no absorbed data.
+   */
+  getAbsorbedData(filter: Partial<ObservabilityEvent>): AbsorbedData | undefined {
+    const matching = this.getEventsMatching(filter);
+    if (matching.length === 0) return undefined;
+    return matching[0]._absorbed as AbsorbedData | undefined;
+  }
+
+  /**
+   * Assert that a captured event has absorbed children.
+   * @throws Error if no matching event or the event has no absorbed data.
+   */
+  assertHasAbsorbed(filter: Partial<ObservabilityEvent>, message?: string): AbsorbedData {
+    const matching = this.getEventsMatching(filter);
+    if (matching.length === 0) {
+      throw new Error(
+        message ?? `Expected event matching ${JSON.stringify(filter)} but found none.`
+      );
+    }
+    const absorbed = matching[0]._absorbed as AbsorbedData | undefined;
+    if (!absorbed) {
+      throw new Error(
+        message ?? `Expected event matching ${JSON.stringify(filter)} to have absorbed data, but _absorbed is ${absorbed}.`
+      );
+    }
+    return absorbed;
+  }
+
+  /**
+   * Assert that absorbed data contains a specific number of absorbed children.
+   */
+  assertAbsorbedCount(filter: Partial<ObservabilityEvent>, expectedCount: number, message?: string): void {
+    const absorbed = this.assertHasAbsorbed(filter, message);
+    if (absorbed.count !== expectedCount) {
+      throw new Error(
+        message ?? `Expected absorbed count ${expectedCount} but got ${absorbed.count} for event matching ${JSON.stringify(filter)}.`
+      );
+    }
   }
 }
 

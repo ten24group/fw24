@@ -7,7 +7,7 @@
 
 import { randomBytes } from 'crypto';
 // Import directly from base-entity to avoid circular dependency
-import { DefaultEntityOperations, createEntitySchema } from '../../entity/base-entity';
+import { DefaultEntityOperations, createEntitySchema, EntityTypeFromSchema, EntityRecordTypeFromSchema } from '../../entity/base-entity';
 
 /**
  * Observability Log Entity Schema
@@ -332,6 +332,30 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                 detailsPageConfig: {
                   useParentData: true,
                   propertiesConfig: [ 'data' ],
+                },
+              },
+            },
+          },
+          // === 3b. ABSORBED DATA (Noise Reduction) ===
+          {
+            id: 'absorbed-data',
+            label: 'Absorbed Children',
+            icon: 'CompressOutlined',
+            sortOrder: 3.5,
+            renderMode: 'tabs',
+            defaultCollapsed: true,
+            lazyLoad: true,
+            keepMounted: false,
+            visibility: { record: { absorbed: { exists: true } } },
+            sections: {
+              absorbedSummary: {
+                label: 'Summary',
+                icon: 'BarChartOutlined',
+                sortOrder: 1,
+                pageType: 'details',
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [ 'absorbed' ],
                 },
               },
             },
@@ -862,11 +886,24 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       helpText: 'Error details if the operation failed',
       // Structure: { type: string, message: string, stack?: string, code?: string }
     },
+    fingerprint: {
+      type: 'string',
+      label: 'Error Fingerprint',
+      helpText: 'Deterministic hash for grouping same errors across invocations (16 hex chars from SHA-256)',
+    },
     // === ACTOR (stored as-is from existing Actor type) ===
     actor: {
       type: 'any',
       label: 'Actor',
       helpText: 'Information about who triggered this event',
+    },
+
+    // === NOISE REDUCTION: ABSORBED DATA ===
+    absorbed: {
+      type: 'any',
+      label: 'Absorbed',
+      helpText: 'Structured data from child events absorbed by noise reduction (count, errors, per-operation stats)',
+      compressed: true, // Framework auto-compresses if > 10KB
     },
 
     // === CONTEXT ===
@@ -954,8 +991,16 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       pk: { field: 'gsi8pk', composite: [ 'causedBy' ] },
       sk: { field: 'gsi8sk', composite: [ 'timestampMs' ] },
     },
+    // GSI9 - by fingerprint - group same errors across invocations
+    byFingerprint: {
+      index: 'gsi9',
+      pk: { field: 'gsi9pk', composite: [ 'fingerprint' ] },
+      sk: { field: 'gsi9sk', composite: [ 'timestampMs' ] },
+    },
     // For source/actor/tenant queries - use search engine sync
   },
 } as const);
 
 export type ObservabilityLogSchema = typeof ObservabilityLogEntitySchema;
+export type ObservabilityLogEntityType = EntityTypeFromSchema<ObservabilityLogSchema>;
+export type ObservabilityLogRecordType = EntityRecordTypeFromSchema<ObservabilityLogSchema>;

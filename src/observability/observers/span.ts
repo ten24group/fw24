@@ -40,7 +40,7 @@ import {
   withCurrentSpan,
   getCapturedParentId,
 } from '../../core/runtime/execution-context/storage';
-import type { ObservabilityLevelString, RecordOverrides, ObservabilityError, SpanConfig, SpanCheckpoint } from '../types';
+import type { ObservabilityLevelString, RecordOverrides, ObservabilityError, SpanConfig, SpanCheckpoint, SpanStartInfo, SpanEndInfo } from '../types';
 import {
   generateId,
   captureRecord,
@@ -51,7 +51,7 @@ import {
 import { createLogger } from '../../logging';
 import { CONFIG_DEFAULTS } from '../config';
 import { generateObservabilityLogId } from '../utils/id-generator';
-import { getCurrentObservabilityConfig, setSpanFinalizer } from '../runtime-state';
+import { getCurrentObservabilityConfig, setSpanFinalizer, getSpanLifecycleHooks } from '../runtime-state';
 
 /** Checkpoint entry - simple timeline marker */
 interface Checkpoint {
@@ -551,22 +551,31 @@ export class SpanObserver implements ISpanObserver {
       ? derivedParentLogId
       : (explicitParent === null ? undefined : explicitParent);
 
-    const { level, metrics, data, skipCapture, tags, ...overrides } = options;
+    const startTimeMs = Date.now();
 
-    // Emit span.start to OTEL only
-    // Use null if no parent to prevent fallback to getCurrentParentObservabilityLogId()
-    captureRecord(OBSERVER_NAME, {
-      type: 'span.start',
-      correlationId,
-      observabilityLogId: id,
-      parentObservabilityLogId: explicitParent === undefined ? (parentLogId ?? null) : explicitParent,
-      level: level ?? 'info',
-      timestampMs: Date.now(),
-      operation,
-      tags: mergeTags(state?.tags, tags),
-      capture: { backends: [ 'otel' ] },
-      ...overrides,
-    });
+    // Notify lifecycle hooks (OTEL and other real-time backends) synchronously.
+    // This replaces the old approach of emitting span.start events through the capture pipeline.
+    const hooks = getSpanLifecycleHooks();
+    if (hooks.length > 0) {
+      const startInfo: SpanStartInfo = {
+        id,
+        operation,
+        parentId: parentLogId,
+        correlationId: correlationId ?? '',
+        causedBy: options.causedBy,
+        source: options.source ?? state?.source,
+        subType: undefined, // span-level subType not typically set at start
+        tags: mergeTags(state?.tags, options.tags),
+        startTimeMs,
+      };
+      for (const hook of hooks) {
+        try {
+          hook.onSpanStart(startInfo);
+        } catch (error) {
+          logger.warn('SpanLifecycleHook.onSpanStart failed:', error);
+        }
+      }
+    }
 
     const span = new SpanObserver(id, operation, parent, true, options, correlationId, parentLogId);
     registerSpan(span);
@@ -654,10 +663,41 @@ export class SpanObserver implements ISpanObserver {
       finalData.checkpoints = this._checkpoints;
     }
 
-    // Emit consolidated span record
+    const finalDataOrUndefined = Object.keys(finalData).length > 0 ? finalData : undefined;
+    const success = options?.success ?? !options?.error;
+
+    // Notify lifecycle hooks (OTEL and other real-time backends) synchronously.
+    const hooks = getSpanLifecycleHooks();
+    if (hooks.length > 0) {
+      const endInfo: SpanEndInfo = {
+        id: this.id,
+        operation: this.operation,
+        success,
+        durationMs: duration,
+        startTimeMs: this.startTime,
+        parentId: this.parentLogId,
+        correlationId: this.correlationId ?? '',
+        causedBy: this.options.causedBy,
+        source: this.options.source ?? getObservabilityState()?.source,
+        subType: undefined, // subType is determined by the capture pipeline, not at span level
+        error: errorInfo,
+        tags: Object.keys(this._tags).length > 0 ? this._tags : undefined,
+        metrics: Object.keys(finalMetrics).length > 0 ? finalMetrics : undefined,
+        data: finalDataOrUndefined,
+      };
+      for (const hook of hooks) {
+        try {
+          hook.onSpanEnd(endInfo);
+        } catch (error) {
+          logger.warn('SpanLifecycleHook.onSpanEnd failed:', error);
+        }
+      }
+    }
+
+    // Emit consolidated span record to the buffered capture pipeline (for DynamoDB/CloudWatch).
     // CRITICAL: Pass null explicitly if no parent to prevent fallback to getCurrentParentObservabilityLogId()
     // which would return THIS span's ID (causing self-reference bug)
-    const capturedId = captureRecord(OBSERVER_NAME, {
+    captureRecord(OBSERVER_NAME, {
       type: 'span',
       // IMPORTANT:
       // Span end can occur after the async execution context has unwound (ALS boundary),
@@ -674,11 +714,11 @@ export class SpanObserver implements ISpanObserver {
       timestampMs: this.startTime,
       durationMs: duration,
       operation: this.operation,
-      success: options?.success ?? !options?.error,
+      success,
       status: options?.status ?? (options?.error ? 'failed' : 'completed'),
       tags: this._tags,
       metrics: finalMetrics,
-      data: Object.keys(finalData).length > 0 ? finalData : undefined,
+      data: finalDataOrUndefined,
       error: errorInfo,
       capture: {
         ...this.options.capture,

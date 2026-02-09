@@ -73,9 +73,11 @@ export {
   // Deprecated aliases
 } from './types';
 
-// === NOISE REDUCTION PRIORITY SYSTEM ===
+// === NOISE REDUCTION ===
 export { DECISION_BASE_PRIORITY, evaluateNoiseRules, getEffectivePriority } from './noise-reduction/priority';
 export type { NoiseEvaluationResult } from './noise-reduction/priority';
+export { applyNoiseReduction, pickNoiseDecision, buildAndEvaluate } from './noise-reduction';
+export type { AbsorbedData, EmittedEvent, NoiseReductionResult, NoiseReductionStats, AbsorptionBounds } from './noise-reduction/types';
 
 // === CORE MANAGER ===
 export {
@@ -184,6 +186,10 @@ export {
   MetricObserver,
   type MetricOptions,
 
+  // Query (Database performance tracking)
+  QueryObserver,
+  type QueryContext,
+
   // Base utilities
   generateId,
   captureRecord,
@@ -207,8 +213,10 @@ export { OTELObservabilityBackend } from './backends/otel';
 
 // === UTILITIES ===
 export { clearRedactorCache, DEFAULT_BLACKLISTED_KEYS, DEFAULT_PROTECTED_FIELDS, extendBlacklist, redactSensitiveData, shouldRedactKey } from './utils/data-protection';
+export { computeErrorFingerprint, normalizeErrorMessage, normalizeStackTrace } from './utils/error-fingerprint';
 export { generateSpanId, generateTraceId } from './utils/id-generator';
 export { levelToPowertoolsLogLevel, levelToString, stringToLevel } from './utils/level-utils';
+export { observedCall, observedCallSync, type ObservedCallOptions } from './utils/observed-call';
 export { estimateItemSize, isPayloadWithinLimits, safeStringify, safeSerialize, truncatePayload, truncateItem, type TruncationMetadata, type SerializeOptions } from './utils/payload';
 export { clearEnvironmentTagsCache, createControllerSource, createQueueSource, createServiceSource, createTaskSource, detectSource, getEnvironmentTags, mergeTags as mergeSourceTags } from './utils/source-utils';
 
@@ -229,7 +237,7 @@ export {
 } from './utils/batch-progress';
 
 // === DECORATORS ===
-export { Audited, AuditedOptions, Observed, ObservedOptions, Traced, TracedOptions } from './decorators';
+export { Observed, ObservedOptions } from './decorators';
 
 // === CRUD HOOKS ===
 export { CrudObservabilityContext, CrudObservabilityHooks } from './crud-hooks';
@@ -244,7 +252,7 @@ export {
   ObservabilityLogEntitySchema,
   ObservabilityLogService
 } from './storage';
-export type { LogRecord, ObservabilityLogCreateItem, ObservabilityLogSchema, ReconstructedSpan } from './storage';
+export type { LogRecord, ObservabilityLogCreateItem, ObservabilityLogSchema, ObservabilityLogEntityType, ObservabilityLogRecordType, ReconstructedSpan } from './storage';
 
 // === TESTING ===
 export { assertEventCaptured, assertEventCount, assertNoEventCaptured, cleanupTestObservability, createTestActor, createTestContext, createTestContextSync, createTestExecutionContext, MockBackend, setupTestObservability } from './testing';

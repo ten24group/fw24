@@ -49,14 +49,11 @@ describe('Observability buffer eviction (bounded memory, no orphan parents)', ()
       noiseReduction: {
         enabled: true,
         presets: [],
-        emitSummaries: false,
         rules: [],
-        maxCheckpointsPerSpan: 50,
-        maxAggregateKeysPerSpan: 50,
-        maxAggregateExamplesPerKey: 20,
-        maxAggregateErrorExamplesPerKey: 10,
-        includeDebugMetadata: false,
-        includeExamples: false,
+        maxAbsorbedErrorsPerSpan: 20,
+        maxAbsorbedCausedByLinksPerSpan: 50,
+        maxAbsorbedEntityIdsPerSpan: 100,
+        maxAbsorbedOperationKeysPerSpan: 50,
       },
     });
   });

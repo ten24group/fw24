@@ -15,6 +15,7 @@ import {
   TruncationConfig,
   DynamoDBConfig,
   NoiseReductionConfig,
+  NoiseRule,
   HardSignalConfig,
   TypeSpecificConfig,
   QueryPerformanceConfig,
@@ -81,7 +82,7 @@ export const CONFIG_DEFAULTS = {
     enabled: true,
     storeOriginal: true,
   },
-  // Noise reduction defaults: enabled in framework configs (can be disabled per preset/app).
+  // Noise reduction defaults (v2: three-decision model).
   noiseReduction: {
     enabled: false,
     hardSignals: {
@@ -96,15 +97,11 @@ export const CONFIG_DEFAULTS = {
     },
     presets: [ 'fw24.hotpaths', 'fw24.batch_processors' ],
     rules: [],
-    emitSummaries: false,
-    // Bounds (match the policy engine defaults)
-    maxCheckpointsPerSpan: 500,
-    maxAggregateKeysPerSpan: 200,
-    maxAggregateExamplesPerKey: 5,
-    maxAggregateErrorExamplesPerKey: 3,
-    // Production defaults: checkpoints yes, debug metadata no
-    includeDebugMetadata: false,
-    includeExamples: false,
+    // Absorption bounds (prevent unbounded growth of _absorbed data)
+    maxAbsorbedErrorsPerSpan: 20,
+    maxAbsorbedCausedByLinksPerSpan: 50,
+    maxAbsorbedEntityIdsPerSpan: 100,
+    maxAbsorbedOperationKeysPerSpan: 50,
   } satisfies NoiseReductionConfig,
   // DynamoDB size management defaults
   truncation: {
@@ -212,7 +209,7 @@ export interface ObservabilityConfigInput {
   queryPerformance?: Partial<QueryPerformanceConfig>;
 
   /**
-   * Noise reduction configuration (merge/drop/aggregate).
+   * Noise reduction configuration (emit/absorb/silent).
    */
   noiseReduction?: Partial<NoiseReductionConfig>;
 
@@ -487,21 +484,21 @@ function normalizeSpanConfig(input?: { minDurationMs?: number; skipEmpty?: boole
 
 function normalizeNoiseReduction(
   input?: DeepPartial<NoiseReductionConfig>,
-  globalMinLevel?: ObservabilityLevel
+  _globalMinLevel?: ObservabilityLevel,
 ): NoiseReductionConfig {
   const d = CONFIG_DEFAULTS.noiseReduction;
   const presets = Array.isArray(input?.presets)
-    ? input.presets.filter((p): p is NoiseReductionConfig[ 'presets' ][ number ] => typeof p === 'string')
+    ? input.presets.filter((p): p is NoiseReductionConfig['presets'][number] => typeof p === 'string')
     : d.presets;
 
-  const rules = Array.isArray(input?.rules)
-    ? input.rules.filter((r): r is NoiseReductionConfig[ 'rules' ][ number ] => {
+  const rules: NoiseRule[] = Array.isArray(input?.rules)
+    ? (input.rules.filter(r => {
       return isRecord(r)
         && typeof r.id === 'string'
         && typeof r.decision === 'string'
         && isRecord(r.match);
-    })
-    : d.rules;
+    }) as NoiseRule[])
+    : [...d.rules];
 
   // Normalize hardSignals to ensure slowThresholds has no undefined values
   const hardSignals: HardSignalConfig | undefined = input?.hardSignals ? {
@@ -510,24 +507,20 @@ function normalizeNoiseReduction(
     slowThresholdMs: input.hardSignals.slowThresholdMs,
     slowThresholds: input.hardSignals.slowThresholds
       ? Object.fromEntries(
-        Object.entries(input.hardSignals.slowThresholds).filter(([ _, v ]) => v !== undefined)
+        Object.entries(input.hardSignals.slowThresholds).filter(([_, v]) => v !== undefined),
       ) as Record<string, number>
       : undefined,
   } : d.hardSignals;
 
   return {
     enabled: input?.enabled ?? d.enabled,
-    minLevel: input?.minLevel ?? globalMinLevel,
     hardSignals,
     presets,
     rules,
-    emitSummaries: input?.emitSummaries ?? d.emitSummaries,
-    maxCheckpointsPerSpan: input?.maxCheckpointsPerSpan ?? d.maxCheckpointsPerSpan,
-    maxAggregateKeysPerSpan: input?.maxAggregateKeysPerSpan ?? d.maxAggregateKeysPerSpan,
-    maxAggregateExamplesPerKey: input?.maxAggregateExamplesPerKey ?? d.maxAggregateExamplesPerKey,
-    maxAggregateErrorExamplesPerKey: input?.maxAggregateErrorExamplesPerKey ?? d.maxAggregateErrorExamplesPerKey,
-    includeDebugMetadata: input?.includeDebugMetadata ?? d.includeDebugMetadata,
-    includeExamples: input?.includeExamples ?? d.includeExamples,
+    maxAbsorbedErrorsPerSpan: input?.maxAbsorbedErrorsPerSpan ?? d.maxAbsorbedErrorsPerSpan,
+    maxAbsorbedCausedByLinksPerSpan: input?.maxAbsorbedCausedByLinksPerSpan ?? d.maxAbsorbedCausedByLinksPerSpan,
+    maxAbsorbedEntityIdsPerSpan: input?.maxAbsorbedEntityIdsPerSpan ?? d.maxAbsorbedEntityIdsPerSpan,
+    maxAbsorbedOperationKeysPerSpan: input?.maxAbsorbedOperationKeysPerSpan ?? d.maxAbsorbedOperationKeysPerSpan,
   };
 }
 

@@ -195,17 +195,8 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
       }
 
       if (dupInfo.length > 0) {
-        // Filter out expected duplicates (span.start + span pairs)
-        const unexpectedDuplicates = dupInfo.filter(d => {
-          const items = grouped.get(d.id) ?? [];
-          const types = new Set(items.map(i => i.type));
-          // Expected: span.start + span for same operation (lifecycle)
-          // Unexpected: Multiple 'span' or multiple 'span.start' with same ID
-          const hasSpanStart = types.has('span.start');
-          const hasSpan = types.has('span');
-          const isExpectedPair = hasSpanStart && hasSpan && types.size === 2;
-          return !isExpectedPair;
-        });
+        // All duplicates reaching DynamoDB are unexpected (span.start is filtered out in capture())
+        const unexpectedDuplicates = dupInfo;
 
         if (unexpectedDuplicates.length > 0) {
           // Serialize unexpected duplicate info for debugging
@@ -288,6 +279,8 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
       metrics: event.metrics,
       context: event.context,
       error: event.error,
+      fingerprint: event.fingerprint,
+      absorbed: event._absorbed,
       ttl: ttlSeconds,
     };
   }

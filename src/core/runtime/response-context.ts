@@ -200,6 +200,8 @@ export class ResponseContext implements Response {
             this.headers[ 'Access-Control-Allow-Headers' ] =
                 (headers || this.config.corsHeaders || []).join(', ');
         }
+        // Expose X-Trace-Id so browser consumers can read the trace header
+        this.headers[ 'Access-Control-Expose-Headers' ] = 'X-Trace-Id';
         return this;
     }
 
@@ -285,6 +287,11 @@ export class ResponseContext implements Response {
 
     // Build Final Response
     build(): APIGatewayProxyResult {
+        // Add trace ID header for distributed tracing visibility
+        if (this.responseMetadata.traceId) {
+            this.header('X-Trace-Id', this.responseMetadata.traceId);
+        }
+
         // Add cookies to headers
         if (this.cookies.size > 0) {
             const cookieHeader = Array.from(this.cookies.values()).join('; ');

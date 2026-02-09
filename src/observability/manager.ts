@@ -16,18 +16,20 @@ import {
   ObservabilityLevel,
   SamplingRule,
 } from './types';
+import type { SpanLifecycleHook } from './types';
 import type { ObservabilitySummary } from '../core/runtime/execution-context/types';
 import { stringToLevel, levelToString } from './utils/level-utils';
 import { detectSource, mergeTags } from './utils/source-utils';
 import { redactSensitiveData } from './utils/data-protection';
+import { computeErrorFingerprint } from './utils/error-fingerprint';
 import { getCurrentContext, getCorrelationIdIfExists } from './context';
 import { initializeCapturer, resetCapturer } from './observers/base';
 import { DIContainer } from '../di';
 import { NoProviderFoundError } from '../di/errors';
-import { applyNoiseReduction } from './noise-reduction';
+import { applyNoiseReduction, type EmittedEvent } from './noise-reduction';
 import { buildTraceGraph } from './trace-graph';
 import { createObservabilityConfig, type ObservabilityConfigInput } from './config';
-import { setCurrentObservabilityConfig, runSpanFinalizer } from './runtime-state';
+import { setCurrentObservabilityConfig, runSpanFinalizer, setSpanLifecycleHooks } from './runtime-state';
 import { matchesPattern, replacePattern } from './utils/pattern-utils';
 
 const logger = createLogger('ObservabilityManager');
@@ -54,6 +56,59 @@ const pendingDispatches: Promise<void>[] = []; // Track fire-and-forget promises
  * Used to register schemas/services needed by backends without circular dependencies.
  */
 const preInitHooks: Array<() => void> = [];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NOISE REDUCTION INTEGRATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Unpack EmittedEvent[] from noise reduction into ObservabilityEvent[].
+ * 
+ * For each emitted event:
+ * - Sets `_absorbed` if there is absorbed data
+ * - Resolves `parentObservabilityLogId` to the nearest emitted ancestor
+ */
+function unpackEmittedEvents(emittedEvents: readonly EmittedEvent[]): ObservabilityEvent[] {
+  const result: ObservabilityEvent[] = [];
+
+  for (const emitted of emittedEvents) {
+    // Create a shallow copy to avoid mutating the original event
+    const event: ObservabilityEvent = { ...emitted.event };
+
+    // Set absorbed data if present
+    if (emitted.absorbed) {
+      event._absorbed = emitted.absorbed;
+    }
+
+    // Attach noise reduction debug info if present
+    if (emitted.debugInfo) {
+      event.data = {
+        ...(event.data ?? {}),
+        _noiseDebug: emitted.debugInfo,
+      };
+    }
+
+    // Resolve parent ID to nearest emitted ancestor.
+    // The algorithm's resolvedParentId is authoritative when present.
+    if (emitted.resolvedParentId !== undefined) {
+      // Algorithm resolved a specific emitted ancestor
+      event.parentObservabilityLogId = emitted.resolvedParentId;
+    } else if (event.parentObservabilityLogId) {
+      // resolvedParentId is undefined — check if the original parent is outside this batch
+      const parentInBatch = emittedEvents.some(e => e.event.observabilityLogId === event.parentObservabilityLogId);
+      if (!parentInBatch) {
+        // Parent is outside this batch (cross-batch) — keep original for linking
+      } else {
+        // Parent was in batch but absorbed/silenced — clear stale reference
+        event.parentObservabilityLogId = undefined;
+      }
+    }
+
+    result.push(event);
+  }
+
+  return result;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PRIVATE HELPER FUNCTIONS
@@ -203,6 +258,7 @@ function buildEvent(input: CaptureInput, context: ReturnType<typeof getCurrentCo
     metrics: input.metrics,
     context: eventContext,
     error,
+    fingerprint: error ? computeErrorFingerprint(error) : undefined,
     capture: input.capture,
   };
 }
@@ -395,11 +451,6 @@ async function dispatchToBackendsSync(event: ObservabilityEvent, targetBackends:
   );
 }
 
-function getEffectiveLevelForType(type: 'span' | 'metric' | 'audit' | 'log'): ObservabilityLevel {
-  const typeConfig = config?.types?.[ type ];
-  return typeConfig?.minLevel ?? config?.minLevel ?? ObservabilityLevel.INFO;
-}
-
 /**
  * Check if an event matches a sampling rule
  */
@@ -481,8 +532,6 @@ function shouldFilter(
   }
 ): boolean {
   const levelValue = stringToLevel(event.level);
-  const typeCategory = getTypeCategory(event.type);
-  const effectiveLevel = getEffectiveLevelForType(typeCategory);
   const capture = event.capture;
   const isSpanRecord = event.type === 'span';
   const allowSpanMinDurationDrop = options?.allowSpanMinDurationDrop === true;
@@ -817,9 +866,10 @@ function handleTailBasedSamplingSync(
       obsState.buffer = [];
 
       const reduced = applyNoiseReduction(buffer, cfg.noiseReduction);
+      const unpackedEvents = unpackEmittedEvents(reduced.events);
 
       // Dispatch all events - noise reduction already filtered by minLevel
-      for (const bufferedEvent of reduced.events) {
+      for (const bufferedEvent of unpackedEvents) {
         const targets = getBackendsForType(bufferedEvent.type);
         dispatchToBackends(bufferedEvent, targets);
       }
@@ -914,9 +964,10 @@ async function handleTailBasedSamplingAsync(
       obsState.buffer = [];
 
       const reduced = applyNoiseReduction(buffer, cfg.noiseReduction);
+      const unpackedEvents = unpackEmittedEvents(reduced.events);
 
       // Dispatch all events - noise reduction already filtered by minLevel
-      await Promise.all(reduced.events.map(bufferedEvent => {
+      await Promise.all(unpackedEvents.map(bufferedEvent => {
         const targets = getBackendsForType(bufferedEvent.type);
         return dispatchToBackendsSync(bufferedEvent, targets);
       }));
@@ -1035,6 +1086,27 @@ function initializeBackendsFromConfig(cfg: ObservabilityConfig): void {
       enabledBackendTypes: enabledBackends.map(b => b.type),
     });
   }
+
+  // Register span lifecycle hooks for backends that implement SpanLifecycleHook.
+  // This allows SpanObserver to call OTEL (and other real-time backends) directly
+  // instead of routing span.start events through the buffered capture pipeline.
+  const hooks: SpanLifecycleHook[] = [];
+  for (const backend of backends) {
+    if (isSpanLifecycleHook(backend)) {
+      hooks.push(backend);
+    }
+  }
+  setSpanLifecycleHooks(hooks);
+  if (hooks.length > 0) {
+    logger.debug(`Registered ${hooks.length} span lifecycle hook(s)`);
+  }
+}
+
+/** Type guard: check if a backend also implements SpanLifecycleHook. */
+function isSpanLifecycleHook(backend: ObservabilityBackend): backend is ObservabilityBackend & SpanLifecycleHook {
+  const candidate = backend as unknown as Record<string, unknown>;
+  return typeof candidate.onSpanStart === 'function'
+    && typeof candidate.onSpanEnd === 'function';
 }
 
 function doInitialize(): void {
@@ -1196,15 +1268,14 @@ export class ObservabilityManager {
     }
 
     try {
-      // Hard deprecation: FW24 does not support legacy span.* record formats.
-      // If anything emits these, it's a bug. Log loudly and drop.
-      if (input.type === 'span.end' || input.type === 'span.event') {
-        logger.error('Observability invariant violation: legacy span.* event type was emitted (unsupported). Dropping event.', {
+      // Block unsupported event types from the capture pipeline.
+      // span.start uses SpanLifecycleHook (OTEL), NOT capture pipeline.
+      // span.end and span.event are legacy formats.
+      if (input.type === 'span.start' || input.type === 'span.end' || input.type === 'span.event') {
+        logger.error('Observability: unsupported event type in capture pipeline, dropping.', {
           type: input.type,
           operation: input.operation,
-          correlationId: input.correlationId,
-          parentObservabilityLogId: input.parentObservabilityLogId,
-          source: input.source,
+          hint: input.type === 'span.start' ? 'span.start uses SpanLifecycleHook' : 'legacy format not supported',
         });
         return undefined;
       }
@@ -1269,15 +1340,14 @@ export class ObservabilityManager {
     }
 
     try {
-      // Hard deprecation: FW24 does not support legacy span.* record formats.
-      // If anything emits these, it's a bug. Log loudly and drop.
-      if (input.type === 'span.end' || input.type === 'span.event') {
-        logger.error('Observability invariant violation: legacy span.* event type was emitted (unsupported). Dropping event.', {
+      // Block unsupported event types from the capture pipeline.
+      // span.start uses SpanLifecycleHook (OTEL), NOT capture pipeline.
+      // span.end and span.event are legacy formats.
+      if (input.type === 'span.start' || input.type === 'span.end' || input.type === 'span.event') {
+        logger.error('Observability: unsupported event type in capture pipeline, dropping.', {
           type: input.type,
           operation: input.operation,
-          correlationId: input.correlationId,
-          parentObservabilityLogId: input.parentObservabilityLogId,
-          source: input.source,
+          hint: input.type === 'span.start' ? 'span.start uses SpanLifecycleHook' : 'legacy format not supported',
         });
         return undefined;
       }
@@ -1439,7 +1509,7 @@ export class ObservabilityManager {
         obsState.buffer = []; // Clear buffer
 
         // CRITICAL: Compute referenced parent IDs from ORIGINAL buffer BEFORE noise reduction
-        // Noise reduction may aggregate/remove events, but their parent spans must still be kept
+        // Noise reduction may absorb/silence events, but their parent spans must still be kept
         const referencedParentSpanIds = new Set<string>();
         for (const e of buffer) {
           const pid = e.parentObservabilityLogId ?? undefined;
@@ -1447,7 +1517,7 @@ export class ObservabilityManager {
         }
 
         const reduced = applyNoiseReduction(buffer, config.noiseReduction);
-        const reducedEvents = reduced.events;
+        const reducedEvents = unpackEmittedEvents(reduced.events);
 
         // Drop empty *leaf* spans if configured.
         // A span is a leaf iff nobody references it as parentObservabilityLogId in this buffered set.
@@ -1463,6 +1533,31 @@ export class ObservabilityManager {
           })
           : reducedEvents;
 
+        // Enrich root span with invocation summary (compact overview of what happened)
+        const rootSpan = maybeDropEmptyLeafSpans.find(
+          e => e.type === 'span' && !e.parentObservabilityLogId
+        );
+        if (rootSpan) {
+          const summaryByType: Record<string, number> = {};
+          const summaryByLevel: Record<string, number> = {};
+          let errorCount = 0;
+          for (const e of maybeDropEmptyLeafSpans) {
+            summaryByType[e.type] = (summaryByType[e.type] || 0) + 1;
+            summaryByLevel[e.level] = (summaryByLevel[e.level] || 0) + 1;
+            if (e.level === 'error' || e.level === 'critical') errorCount++;
+          }
+          rootSpan.data = {
+            ...(rootSpan.data ?? {}),
+            _invocationSummary: {
+              totalEvents: maybeDropEmptyLeafSpans.length,
+              byType: summaryByType,
+              byLevel: summaryByLevel,
+              hasErrors: errorCount > 0,
+              errorCount,
+              noiseReduction: reduced.stats,
+            },
+          };
+        }
 
         // Track captured events for detailed summary
         const capturedByType: Record<string, number> = {};
@@ -1489,11 +1584,11 @@ export class ObservabilityManager {
           }
 
           // Track captured event breakdowns
-          capturedByType[ event.type ] = (capturedByType[ event.type ] || 0) + 1;
+          capturedByType[event.type] = (capturedByType[event.type] || 0) + 1;
           if (event.operation) {
-            capturedByOperation[ event.operation ] = (capturedByOperation[ event.operation ] || 0) + 1;
+            capturedByOperation[event.operation] = (capturedByOperation[event.operation] || 0) + 1;
           }
-          capturedByLevel[ event.level ] = (capturedByLevel[ event.level ] || 0) + 1;
+          capturedByLevel[event.level] = (capturedByLevel[event.level] || 0) + 1;
           obsState.summary.captured++;
 
           // Passed both filtering and sampling - emit

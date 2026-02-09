@@ -113,7 +113,6 @@ export const productionPreset: ObservabilityConfig = createObservabilityConfigFr
   noiseReduction: {
     enabled: true,
     presets: [ 'fw24.hotpaths', 'fw24.batch_processors' ],
-    emitSummaries: true,
   },
 });
 
@@ -211,7 +210,6 @@ export const developmentPreset: ObservabilityConfig = createObservabilityConfigF
   noiseReduction: {
     enabled: true,
     presets: [ 'fw24.hotpaths', 'fw24.batch_processors' ],
-    emitSummaries: true,
   },
 });
 
@@ -359,7 +357,6 @@ export const minimalPreset: ObservabilityConfig = createObservabilityConfigFromI
   noiseReduction: {
     enabled: true,
     presets: [ 'fw24.hotpaths', 'fw24.batch_processors' ],
-    emitSummaries: true,
   },
 
   sourceMap: {

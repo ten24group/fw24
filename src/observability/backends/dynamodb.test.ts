@@ -111,19 +111,19 @@ describe('DynamoDBObservabilityBackend', () => {
       expect(ids).toContain('same-id');
       expect(ids).toContain('different-id');
 
-      // Should have logged error about invariant violation (duplicates)
-      const duplicateError = loggerCalls.error.find(
-        call => call[ 0 ] === 'Observability invariant violation: duplicate observabilityLogId(s) in a single DynamoDB batch.'
+      // Should have logged debug about deduplication
+      const deduplicateLog = loggerCalls.debug.find(
+        call => call[ 0 ] === 'Deduplicating observability events with same ID in batch (repeated operations).'
       );
-      expect(duplicateError).toBeDefined();
-      expect(duplicateError[ 1 ]).toMatchObject({
+      expect(deduplicateLog).toBeDefined();
+      expect(deduplicateLog[ 1 ]).toMatchObject({
         duplicateIdCount: 1,
         totalItems: 3,
         deduplicatedCount: 2,
       });
     });
 
-    it('should not log warning when no duplicates exist', async () => {
+    it('should not log when no duplicates exist', async () => {
       const event1 = createTestEvent({ observabilityLogId: 'id-1', type: 'span' });
       const event2 = createTestEvent({ observabilityLogId: 'id-2', type: 'log' });
       const event3 = createTestEvent({ observabilityLogId: 'id-3', type: 'audit' });
@@ -137,11 +137,11 @@ describe('DynamoDBObservabilityBackend', () => {
       const createdItems = mockBatchCreate.mock.calls[ 0 ][ 0 ];
       expect(createdItems).toHaveLength(3);
 
-      // Should NOT log duplicate error
-      const duplicateError = loggerCalls.error.find(
-        call => call[ 0 ] === 'Observability invariant violation: duplicate observabilityLogId(s) in a single DynamoDB batch.'
+      // Should NOT log deduplication message
+      const deduplicateLog = loggerCalls.debug.find(
+        call => call[ 0 ] === 'Deduplicating observability events with same ID in batch (repeated operations).'
       );
-      expect(duplicateError).toBeUndefined();
+      expect(deduplicateLog).toBeUndefined();
     });
 
     it('should handle multiple duplicates correctly', async () => {
@@ -158,12 +158,12 @@ describe('DynamoDBObservabilityBackend', () => {
       const createdItems = mockBatchCreate.mock.calls[ 0 ][ 0 ];
       expect(createdItems).toHaveLength(3); // 1 from dup-id + 2 unique
 
-      // Verify error includes correct counts (unique duplicate ids, not total extra occurrences)
-      const duplicateError = loggerCalls.error.find(
-        call => call[ 0 ] === 'Observability invariant violation: duplicate observabilityLogId(s) in a single DynamoDB batch.'
+      // Verify debug log includes correct counts
+      const deduplicateLog = loggerCalls.debug.find(
+        call => call[ 0 ] === 'Deduplicating observability events with same ID in batch (repeated operations).'
       );
-      expect(duplicateError).toBeDefined();
-      expect(duplicateError[ 1 ]).toMatchObject({
+      expect(deduplicateLog).toBeDefined();
+      expect(deduplicateLog[ 1 ]).toMatchObject({
         duplicateIdCount: 1,
         totalItems: 5,
         deduplicatedCount: 3,

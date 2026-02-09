@@ -1,21 +1,16 @@
 /**
  * Observability Decorators
  * 
- * Method decorators for automatic tracing and auditing.
+ * Method decorators for automatic observability instrumentation.
  * 
  * Usage:
  * ```typescript
- * import { Traced, Audited } from '@ten24group/fw24/observability';
+ * import { Observed } from '@ten24group/fw24/observability';
  * 
  * class UserService {
- *   @Traced()
+ *   @Observed({ operation: 'user.create', type: 'span' })
  *   async createUser(data: CreateUserInput): Promise<User> {
- *     // Automatically traced
- *   }
- *   
- *   @Audited({ operation: 'permission.change' })
- *   async updatePermissions(userId: string): Promise<void> {
- *     // Automatically audited
+ *     // Automatically observed with span, audit, logging
  *   }
  * }
  * ```
@@ -24,9 +19,4 @@
  * Context is auto-established in controllers, or use runWithExecutionContext().
  */
 
-export { Traced, TracedOptions } from './traced';
-export { Audited, AuditedOptions } from './audited';
 export { Observed, ObservedOptions } from './observed';
-export { Checkpoint, CheckpointOptions } from './checkpoint';
-export { Log, LogOptions } from './log';
-export { Metric, MetricOptions } from './metric';

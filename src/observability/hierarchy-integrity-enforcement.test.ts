@@ -20,14 +20,11 @@ describe('Hierarchy integrity enforcement', () => {
       noiseReduction: {
         enabled: true,
         presets: [],
-        emitSummaries: false,
         rules: [],
-        maxCheckpointsPerSpan: 10,
-        maxAggregateKeysPerSpan: 10,
-        maxAggregateExamplesPerKey: 10,
-        maxAggregateErrorExamplesPerKey: 10,
-        includeDebugMetadata: false,
-        includeExamples: false,
+        maxAbsorbedErrorsPerSpan: 20,
+        maxAbsorbedCausedByLinksPerSpan: 50,
+        maxAbsorbedEntityIdsPerSpan: 100,
+        maxAbsorbedOperationKeysPerSpan: 50,
       },
     });
   });
@@ -36,9 +33,11 @@ describe('Hierarchy integrity enforcement', () => {
     cleanupTestObservability();
   });
 
-  it('drops events that reference missing parentObservabilityLogId and emits a single invariant violation log', async () => {
+  it('preserves events referencing missing parent (cross-batch linking)', async () => {
+    // v2 design: events referencing parents not in the current batch are preserved
+    // with their original parentObservabilityLogId intact (for cross-batch/cross-invocation linking).
+    // The noise reduction algorithm treats these as root nodes in the batch.
     await createTestContext(async () => {
-      // Buffer an event that references a missing parent span id.
       ObservabilityManager.capture({
         type: 'log',
         level: 'info',
@@ -50,14 +49,12 @@ describe('Hierarchy integrity enforcement', () => {
       await ObservabilityManager.flush();
     });
 
+    // Child event should be emitted (parent may be from another invocation)
     const keptChild = backend.getEventsMatching({ type: 'log', operation: 'child' });
-    expect(keptChild.length).toBe(0);
+    expect(keptChild.length).toBe(1);
 
-    const violation = backend.getEventsMatching({
-      type: 'log',
-      operation: 'observability.invariant_violation.missing_parent_span',
-    });
-    expect(violation.length).toBe(1);
+    // parentObservabilityLogId should be preserved for cross-batch linking
+    expect(keptChild[0].parentObservabilityLogId).toBe('missing-parent');
   });
 });
 

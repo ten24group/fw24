@@ -236,12 +236,13 @@ export function buildCaptureInput(
   }
 
   // Resolve parent: explicit > context span tree > undefined
-  // CRITICAL: If causedBy is explicitly provided, DO NOT auto-populate parent.
-  // causedBy indicates cross-invocation linkage (e.g., stream processing → original request).
-  // In this case, the event is a ROOT in the current invocation, not a child.
+  // causedBy and parentObservabilityLogId are orthogonal:
+  //   - causedBy: cross-invocation link (e.g., audit event → original API request)
+  //   - parentObservabilityLogId: in-invocation hierarchy (e.g., audit event → processor root span)
+  // Both can and should coexist. Always resolve parent from context when not explicitly set.
   const parentLogId = input.parentObservabilityLogId !== undefined
     ? input.parentObservabilityLogId
-    : (input.causedBy === undefined ? getCurrentParentObservabilityLogId() : undefined);
+    : getCurrentParentObservabilityLogId();
 
   // NOTE:
   // Parent/child integrity is enforced at flush-time by building a graph of buffered events.

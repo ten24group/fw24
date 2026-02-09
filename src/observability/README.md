@@ -431,52 +431,10 @@ class DecisionObserver {
 
 ## Decorators
 
-### @Traced - Automatic Span Tracing
+### @Observed - Unified Observability (the only decorator)
 
-```typescript
-class OrderService {
-  @Traced()
-  async processOrder(orderId: string): Promise<Order> {
-    // Method automatically traced
-  }
-  
-  @Traced({ 
-    name: 'custom-operation',
-    level: 'debug',
-    capture: {
-      args: true,
-      result: true
-    }
-  })
-  async internalProcess(): Promise<void> {
-    // Custom span configuration
-  }
-}
-```
-
-### @Audited - Automatic Audit Logging
-
-```typescript
-class UserService {
-  @Audited({ operation: 'permission.change' })
-  async updatePermissions(userId: string, permissions: string[]): Promise<void> {
-    // Method automatically audited
-  }
-  
-  @Audited({ 
-    operation: 'sensitive.access',
-    level: 'warn',
-    capture: {
-      args: true
-    }
-  })
-  async accessSensitiveData(userId: string): Promise<Data> {
-    // Audit with arguments captured
-  }
-}
-```
-
-### @Observed - Unified Observability
+> **Note:** The old `@Traced`, `@Audited`, `@Checkpoint`, `@Log`, and `@Metric` decorators 
+> have been removed. Use `@Observed` for all observability needs.
 
 ```typescript
 class OrderService {
@@ -609,11 +567,10 @@ DIContainer.ROOT.registerConfigProvider({
       // See observability-log-entity.ts for compressed fields
     },
     
-    // Noise reduction
+    // Noise reduction (v2: emit/absorb/silent)
     noiseReduction: {
       enabled: true,
       presets: ['fw24.hotpaths', 'fw24.batch_processors'],
-      emitSummaries: true,
     },
   }),
   priority: 10
@@ -670,31 +627,29 @@ sampling: {
 import { DECISION_BASE_PRIORITY } from '@ten24group/fw24/observability';
 
 // Decision base priorities (higher = harder to override):
-// - keep: 100 (always keep, hard to override)
-// - aggregate: 50 (summarize into parent)
-// - fold: 40 (collapse into parent checkpoint)
-// - downgrade: 30 (strip heavy fields)
-// - drop: 10 (remove entirely, easy to override)
+// - emit:   100 (persist as standalone record, hard to override)
+// - absorb:  50 (merge structured data into parent span)
+// - silent:  10 (increment counter on parent only, easy to override)
 
 noiseReduction: {
   enabled: true,
   presets: ['fw24.hotpaths'],
   rules: [
-    // HIGH PRIORITY: Always keep admin operations (overrides builtin drop rules)
+    // HIGH PRIORITY: Always emit admin operations (overrides builtin silent/absorb rules)
     {
-      id: 'myapp.keep_admin_reads',
+      id: 'myapp.emit_admin_reads',
       priority: 200,  // Higher than any builtin rule
       match: {
         type: 'span',
         operation: '/^HTTP GET.*\\/admin\\b/'
       },
-      decision: 'keep',
-      reason: 'Always keep admin operations for audit compliance'
+      decision: 'emit',
+      reason: 'Always emit admin operations for audit compliance'
     },
     
-    // MEDIUM PRIORITY: Drop internal health checks
+    // MEDIUM PRIORITY: Silence internal health checks
     {
-      id: 'myapp.drop_health_checks',
+      id: 'myapp.silent_health_checks',
       priority: 50,
       match: {
         type: 'span',
@@ -703,20 +658,20 @@ noiseReduction: {
       except: [
         { success: false }  // Keep failed health checks
       ],
-      decision: 'drop',
-      reason: 'Drop successful health checks'
+      decision: 'silent',
+      reason: 'Silence successful health checks'
     },
     
-    // LOW PRIORITY: Aggregate batch operations (easily overridden)
+    // LOW PRIORITY: Absorb batch item operations into parent (preserves stats)
     {
-      id: 'myapp.aggregate_batch_items',
+      id: 'myapp.absorb_batch_items',
       priority: 10,
       match: {
         type: 'span',
         operation: '/process.*item$/i'
       },
-      decision: 'aggregate',
-      reason: 'Aggregate per-item spans in batch operations'
+      decision: 'absorb',
+      reason: 'Absorb per-item spans into parent batch span'
     }
   ]
 }
@@ -724,7 +679,7 @@ noiseReduction: {
 
 **Rule Evaluation Algorithm:**
 1. Per-event override (`event.capture?.noise`) - absolute priority
-2. Hard signals (errors/failures) - always kept (priority: 1000)
+2. Hard signals (errors/failures) - always emitted (priority: 1000)
 3. Collect ALL matching rules (custom + builtin)
 4. Filter out rules with matching exceptions
 5. Sort by effective priority (explicit priority OR decision base priority)
@@ -733,14 +688,14 @@ noiseReduction: {
 **Exception Patterns:**
 ```typescript
 {
-  id: 'drop_reads',
+  id: 'silent_reads',
   match: { operation: '/GET/' },
   except: [
-    { success: false },              // Don't drop errors
-    { level: ['error', 'critical'] },// Don't drop critical
-    { minDurationMs: 1000 }          // Don't drop slow (>1s)
+    { success: false },              // Don't silence errors
+    { level: ['error', 'critical'] },// Don't silence critical
+    { minDurationMs: 1000 }          // Don't silence slow (>1s)
   ],
-  decision: 'drop'
+  decision: 'silent'
 }
 ```
 
@@ -749,24 +704,22 @@ Automatically reduces noise from repetitive operations:
 ```mermaid
 graph LR
     A[1000 Events] --> B[Noise Reduction]
-    B --> C[Drop: 500]
-    B --> D[Fold: 200]
-    B --> E[Aggregate: 100]
-    B --> F[Keep: 200]
+    B --> C[Silent: 500]
+    B --> D[Absorb: 300]
+    B --> E[Emit: 200]
     
-    C --> G[Final: 200 Events]
-    D --> G
-    E --> G
-    F --> G
+    C --> F[Final: 200 DynamoDB Records]
+    D --> F
+    E --> F
     
     style A fill:#f99,stroke:#333,stroke-width:2px
-    style G fill:#9f9,stroke:#333,stroke-width:2px
+    style F fill:#9f9,stroke:#333,stroke-width:2px
 ```
 
-**Strategies:**
-- **Drop**: Remove low-value events (e.g., batch processor spans)
-- **Fold**: Merge identical events (e.g., repeated cache hits)
-- **Aggregate**: Summarize patterns (e.g., 100 items → summary checkpoint)
+**Three-Decision Model (v2):**
+- **Emit**: Persist as a standalone DynamoDB record (full event preserved)
+- **Absorb**: Merge structured data (count, errors, per-operation stats) into nearest emitted ancestor
+- **Silent**: Increment counter on nearest emitted ancestor only (minimal overhead)
 
 **Built-in Presets:**
 - `fw24.hotpaths`: Reduce noise from hot code paths
@@ -786,7 +739,7 @@ graph TD
     F -->|Yes| G[Evict Subtree]
     F -->|No| E
     
-    E --> H[Update Summary]
+    E --> H[Track Eviction]
     G --> H
     
     style G fill:#f99,stroke:#333,stroke-width:2px
@@ -1185,9 +1138,9 @@ await withContext({ tags: { env: 'prod' } }, async () => {
 
 ## Examples
 
-See the `test/` directory for comprehensive examples:
+See the test files for comprehensive examples:
 - `observability-e2e.test.ts` - End-to-end scenarios
-- `noise-reduction.test.ts` - Noise reduction examples
+- `noise-reduction/__tests__/v2-algorithm.test.ts` - Noise reduction algorithm tests
 - `buffer-eviction-hierarchy.test.ts` - Buffer management examples
 
 ---

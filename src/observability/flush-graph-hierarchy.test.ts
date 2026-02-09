@@ -18,7 +18,7 @@ describe('flush-time graph hierarchy (no missing parents)', () => {
     const cfg = ObservabilityManager.getConfig();
     if (!cfg) throw new Error('test config not initialized');
     ObservabilityManager.configure({
-      noiseReduction: { ...cfg.noiseReduction, enabled: true, emitSummaries: false },
+      noiseReduction: { ...cfg.noiseReduction, enabled: true },
       sampling: {
         ...(cfg.sampling ?? {
           enabled: false,
