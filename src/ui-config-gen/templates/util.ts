@@ -2013,7 +2013,7 @@ export function formatEntityAttributesForFormOrDetail(
  * 3. **JSON path (nested data):** `{ name: 'userEmail', column: 'user.email', label: 'Email', fieldType: 'text' }`
  * 4. **Multiple renderings:** `{ name: 'statusBadge', column: 'status', fieldType: 'badge' }` + `{ name: 'statusText', column: 'status', fieldType: 'text' }`
  * 5. **Custom/computed fields:** `{ name: 'confirmPassword', label: 'Confirm', column: 'confirmPassword', fieldType: 'password' }`
- * 6. **Visibility control:** All configs support `visibility: VisibilityConfig` for role-based/conditional display
+ * 6. **Visibility control:** All configs support `visibility: Condition` for role-based/conditional display
  * 
  * **Key Concepts:**
  * - `name`: Unique UI identifier (must be unique within a single propertiesConfig)
@@ -2078,7 +2078,7 @@ export function formatEntityAttributesForFormOrDetail(
  *     label: 'Admin Notes',
  *     column: 'adminNotes',
  *     fieldType: 'textarea',
- *     visibility: { requiredRoles: ['admin'] }
+ *     visibility: { actor: { groups: { inList: ['admin'] } } }
  *   }
  * ]
  */

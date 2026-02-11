@@ -1705,13 +1705,13 @@ describe('UI Config Generation Utilities', () => {
             column: 'adminNotes',
             label: 'Admin Notes', 
             fieldType: 'textarea',
-            visibility: { requiredRoles: ['admin'] }
+            visibility: { actor: { groups: { inList: ['admin'] } } }
           }
         ];
         const result = expandPropertyReferences(fieldReferences, mockProperties, 'detail', mockEntityService);
 
         expect(result).toHaveLength(1);
-        expect(result[0].visibility).toEqual({ requiredRoles: ['admin'] });
+        expect(result[0].visibility).toEqual({ actor: { groups: { inList: ['admin'] } } });
       });
     });
 
