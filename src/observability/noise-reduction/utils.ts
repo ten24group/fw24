@@ -90,5 +90,6 @@ export function getAbsorptionBounds(cfg: NoiseReductionConfig): AbsorptionBounds
     maxCausedByLinksPerSpan: cfg.maxAbsorbedCausedByLinksPerSpan,
     maxEntityIdsPerSpan: cfg.maxAbsorbedEntityIdsPerSpan,
     maxOperationKeysPerSpan: cfg.maxAbsorbedOperationKeysPerSpan,
+    maxCheckpointsPerSpan: cfg.maxAbsorbedCheckpointsPerSpan,
   };
 }

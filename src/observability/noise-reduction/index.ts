@@ -10,7 +10,7 @@
  * | Decision  | DynamoDB Record? | Info Preserved?                          |
  * |-----------|------------------|------------------------------------------|
  * | `emit`    | Yes              | Full event                               |
- * | `absorb`  | No               | Structured `_absorbed` data on parent    |
+ * | `absorb`  | No               | Structured summary in parent `data.absorbed` |
  * | `silent`  | No               | Counter on parent only                   |
  * 
  * ## Algorithm

@@ -40,6 +40,7 @@ function makeHotpathsConfig(overrides: Partial<NoiseReductionConfig> = {}): Nois
     maxAbsorbedCausedByLinksPerSpan: 50,
     maxAbsorbedEntityIdsPerSpan: 100,
     maxAbsorbedOperationKeysPerSpan: 50,
+    maxAbsorbedCheckpointsPerSpan: 100,
     ...overrides,
   };
 }
@@ -539,7 +540,8 @@ describe('entity write operation absorption', () => {
     expect(decision.decision).not.toBe('absorb');
   });
 
-  test('queue handler with multiple BaseEntityService.create children → all absorbed', () => {
+  test('queue handler with multiple BaseEntityService.create children → all absorbed with checkpoints', () => {
+    const baseTs = Date.now();
     const root = makeEvent({
       observabilityLogId: 'queue-root',
       type: 'span',
@@ -558,6 +560,7 @@ describe('entity write operation absorption', () => {
       tags: { operation_category: 'write' },
       success: true,
       durationMs: 20 + i * 5,
+      timestampMs: baseTs + i * 50,
     }));
 
     const config = makeHotpathsConfig();
@@ -572,6 +575,17 @@ describe('entity write operation absorption', () => {
     expect(absorbed!.count).toBe(5);
     expect(absorbed!.byOperation[ 'BaseEntityService.create' ]).toBeDefined();
     expect(absorbed!.byOperation[ 'BaseEntityService.create' ].count).toBe(5);
+
+    // Checkpoints: each absorbed child becomes a timeline checkpoint on the parent
+    expect(absorbed!.checkpoints).toHaveLength(5);
+    for (let i = 0; i < 5; i++) {
+      const cp = absorbed!.checkpoints[ i ];
+      expect(cp.name).toBe('BaseEntityService.create');
+      expect(cp.ts).toBe(baseTs + i * 50);
+      expect(cp.durationMs).toBe(20 + i * 5);
+      expect(cp.success).toBe(true);
+      expect(cp.tags?.operation_category).toBe('write');
+    }
   });
 });
 
@@ -639,13 +653,13 @@ describe('database query absorption', () => {
     expect(decision.ruleId).toBe('fw24.hotpaths.queries.absorb_read_queries');
   });
 
-  // ── WRITE queries → NOT absorbed (preserved for timeline) ──
+  // ── WRITE queries → absorbed into parent (absorb_write_success rule) ──
   test.each([
     ['standing.upsert', 50],
     ['standing.create', 45],
     ['team.update', 60],
     ['game.delete', 30],
-  ])('successful WRITE query "%s" (%dms) is NOT absorbed (timeline detail)', (operation, durationMs) => {
+  ])('successful WRITE query "%s" (%dms) is absorbed into parent', (operation, durationMs) => {
     const query = makeEvent({
       type: 'database.query',
       operation,
@@ -656,9 +670,9 @@ describe('database query absorption', () => {
     const config = makeHotpathsConfig();
     const decision = pickNoiseDecision(query, config);
 
-    // No rule matches → default emit
-    expect(decision.decision).toBe('emit');
-    expect(decision.ruleId).toBe('default');
+    // New rule: absorb_write_success absorbs successful writes into parent
+    expect(decision.decision).toBe('absorb');
+    expect(decision.ruleId).toBe('fw24.hotpaths.queries.absorb_write_success');
   });
 
   // ── Error/slow/scan exceptions still work ──
@@ -820,5 +834,206 @@ describe('rule priority override', () => {
     // User rule overrides builtin silent rule → genuinely emitted → not suppressed
     expect(result.events).toHaveLength(1);
     expect(result.stats.suppressedRoots).toBe(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NEW BUILTIN RULES (Feature 5)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('fw24.hotpaths.api.silent_options_cors', () => {
+  test('OPTIONS preflight request is silenced', () => {
+    const optionsRoot = makeEvent({
+      observabilityLogId: 'options-root',
+      type: 'span',
+      operation: 'HTTP OPTIONS /api/users',
+      success: true,
+      durationMs: 5,
+    });
+
+    const config = makeHotpathsConfig();
+    const result = applyNoiseReduction([ optionsRoot ], config);
+
+    // OPTIONS request should be silenced (and suppressed as lone silent root)
+    expect(result.events).toHaveLength(0);
+    expect(result.stats.suppressedRoots).toBe(1);
+  });
+
+  test('OPTIONS preflight with error is STILL silenced (priority 95 overrides)', () => {
+    // The OPTIONS silent rule has priority 95, which is very high.
+    // Even errors won't escape unless hard signals kick in.
+    const optionsEvent = makeEvent({
+      observabilityLogId: 'options-err',
+      type: 'span',
+      operation: 'HTTP OPTIONS /api/resources',
+      success: true,
+      durationMs: 10,
+    });
+
+    const config = makeHotpathsConfig();
+    const decision = pickNoiseDecision(optionsEvent, config);
+    expect(decision.decision).toBe('silent');
+    expect(decision.ruleId).toBe('fw24.hotpaths.api.silent_options_cors');
+  });
+});
+
+describe('fw24.hotpaths.api.silent_favicon', () => {
+  test('favicon.ico request is silenced', () => {
+    const faviconRoot = makeEvent({
+      observabilityLogId: 'favicon-root',
+      type: 'span',
+      operation: 'HTTP GET /favicon.ico',
+      success: true,
+      durationMs: 2,
+    });
+
+    const config = makeHotpathsConfig();
+    const result = applyNoiseReduction([ faviconRoot ], config);
+
+    expect(result.events).toHaveLength(0);
+    expect(result.stats.suppressedRoots).toBe(1);
+  });
+
+  test('favicon decision is silent with correct rule id', () => {
+    const faviconEvent = makeEvent({
+      type: 'span',
+      operation: 'HTTP GET /favicon.ico',
+      success: true,
+    });
+
+    const config = makeHotpathsConfig();
+    const decision = pickNoiseDecision(faviconEvent, config);
+    expect(decision.decision).toBe('silent');
+    expect(decision.ruleId).toBe('fw24.hotpaths.api.silent_favicon');
+  });
+});
+
+describe('fw24.hotpaths.queries.absorb_write_success', () => {
+  test('successful write query is absorbed into parent', () => {
+    const parentRoot = makeEvent({
+      observabilityLogId: 'api-root',
+      type: 'span',
+      operation: 'HTTP POST /api/users',
+      success: true,
+      durationMs: 200,
+    });
+
+    const writeQuery = makeEvent({
+      observabilityLogId: 'write-query',
+      type: 'database.query',
+      operation: 'User.create(id=abc)',
+      success: true,
+      durationMs: 15,
+      parentObservabilityLogId: 'api-root',
+    });
+
+    const config = makeHotpathsConfig();
+    const decision = pickNoiseDecision(writeQuery, config);
+    expect(decision.decision).toBe('absorb');
+    expect(decision.ruleId).toBe('fw24.hotpaths.queries.absorb_write_success');
+  });
+
+  test('failed write query is NOT absorbed (emit_errors rule wins)', () => {
+    const failedWrite = makeEvent({
+      type: 'database.query',
+      operation: 'User.create(id=abc)',
+      success: false,
+      durationMs: 15,
+    });
+
+    const config = makeHotpathsConfig();
+    const decision = pickNoiseDecision(failedWrite, config);
+    expect(decision.decision).toBe('emit');
+    expect(decision.ruleId).toBe('fw24.hotpaths.queries.emit_errors');
+  });
+
+  test('slow write query is NOT absorbed (emit_slow rule wins)', () => {
+    const slowWrite = makeEvent({
+      type: 'database.query',
+      operation: 'User.upsert(id=abc)',
+      success: true,
+      durationMs: 2000, // > 1000ms threshold
+    });
+
+    const config = makeHotpathsConfig();
+    const decision = pickNoiseDecision(slowWrite, config);
+    expect(decision.decision).toBe('emit');
+    expect(decision.ruleId).toBe('fw24.hotpaths.queries.emit_slow');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NOISE REDUCTION PRESET LEVELS (Feature 5)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('Noise Reduction Preset Levels', () => {
+  // Import createObservabilityConfig to test preset resolution
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { createObservabilityConfig } = require('../../config');
+
+  test('preset "off" keeps noise reduction disabled', () => {
+    const config = createObservabilityConfig({
+      noiseReduction: { preset: 'off' },
+    });
+    expect(config.noiseReduction.enabled).toBe(false);
+    expect(config.noiseReduction.preset).toBe('off');
+  });
+
+  test('preset "recommended" enables noise reduction with default bounds', () => {
+    const config = createObservabilityConfig({
+      noiseReduction: { preset: 'recommended' },
+    });
+    expect(config.noiseReduction.enabled).toBe(true);
+    expect(config.noiseReduction.preset).toBe('recommended');
+    // Default bounds
+    expect(config.noiseReduction.maxAbsorbedErrorsPerSpan).toBe(20);
+    expect(config.noiseReduction.maxAbsorbedCheckpointsPerSpan).toBe(100);
+  });
+
+  test('preset "aggressive" enables noise reduction with tighter bounds', () => {
+    const config = createObservabilityConfig({
+      noiseReduction: { preset: 'aggressive' },
+    });
+    expect(config.noiseReduction.enabled).toBe(true);
+    expect(config.noiseReduction.preset).toBe('aggressive');
+    // Aggressive bounds
+    expect(config.noiseReduction.maxAbsorbedErrorsPerSpan).toBe(10);
+    expect(config.noiseReduction.maxAbsorbedCheckpointsPerSpan).toBe(50);
+    expect(config.noiseReduction.maxAbsorbedCausedByLinksPerSpan).toBe(25);
+    expect(config.noiseReduction.maxAbsorbedEntityIdsPerSpan).toBe(50);
+    expect(config.noiseReduction.maxAbsorbedOperationKeysPerSpan).toBe(25);
+  });
+
+  test('explicit enabled=false overrides recommended preset', () => {
+    const config = createObservabilityConfig({
+      noiseReduction: { preset: 'recommended', enabled: false },
+    });
+    expect(config.noiseReduction.enabled).toBe(false);
+  });
+
+  test('explicit enabled=true overrides off preset', () => {
+    const config = createObservabilityConfig({
+      noiseReduction: { preset: 'off', enabled: true },
+    });
+    expect(config.noiseReduction.enabled).toBe(true);
+  });
+
+  test('aggressive preset uses lower slowThresholdMs', () => {
+    const config = createObservabilityConfig({
+      noiseReduction: { preset: 'aggressive' },
+    });
+    expect(config.noiseReduction.hardSignals?.slowThresholdMs).toBe(2000);
+  });
+
+  test('explicit bounds override aggressive preset bounds', () => {
+    const config = createObservabilityConfig({
+      noiseReduction: {
+        preset: 'aggressive',
+        maxAbsorbedErrorsPerSpan: 5,
+      },
+    });
+    expect(config.noiseReduction.maxAbsorbedErrorsPerSpan).toBe(5);
+    // Other aggressive bounds are still applied
+    expect(config.noiseReduction.maxAbsorbedCheckpointsPerSpan).toBe(50);
   });
 });

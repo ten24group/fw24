@@ -9,7 +9,7 @@
  */
 
 import type { ObservabilityEvent, ObservabilityError } from '../types';
-import type { AbsorbedData, AbsorbedError, AbsorptionBounds, DurationStats, OperationStats } from './types';
+import type { AbsorbedData, AbsorbedCheckpoint, AbsorbedError, AbsorptionBounds, DurationStats, OperationStats } from './types';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MUTABLE BUILDER (internal, frozen before returning to caller)
@@ -26,6 +26,7 @@ export interface MutableAbsorbedData {
   errors: AbsorbedError[];
   causedByLinks: string[];
   entityIds: string[];
+  checkpoints: AbsorbedCheckpoint[];
 }
 
 interface MutableOperationStats {
@@ -52,6 +53,7 @@ export function createMutableAbsorbed(): MutableAbsorbedData {
     errors: [],
     causedByLinks: [],
     entityIds: [],
+    checkpoints: [],
   };
 }
 
@@ -81,6 +83,7 @@ export function freezeAbsorbed(mutable: MutableAbsorbedData): AbsorbedData | und
     errors: [...mutable.errors],
     causedByLinks: [...mutable.causedByLinks],
     entityIds: [...mutable.entityIds],
+    checkpoints: [...mutable.checkpoints],
   };
 }
 
@@ -146,6 +149,40 @@ export function absorbEvent(
       target.entityIds.push(event.entityId);
     }
   }
+
+  // Create a timeline checkpoint from the absorbed event (capped).
+  // Per-item varying fields go here; shared context (tags, source, etc.) is
+  // extracted into the group header at persistence time (manager.ts).
+  if (target.checkpoints.length < bounds.maxCheckpointsPerSpan) {
+    const checkpoint: AbsorbedCheckpoint = {
+      // Grouping key
+      name: event.operation ?? event.type,
+      // Per-item fields (vary across absorbed events)
+      ts: event.timestampMs,
+      durationMs: event.durationMs,
+      success: event.success,
+      observabilityLogId: event.observabilityLogId,
+      entityId: event.entityId,
+      status: event.status,
+      causedBy: event.causedBy,
+      metrics: event.metrics ? { ...event.metrics } : undefined,
+      // Error details (only for failures) — preserve original message, fall back to type, then operation-qualified default
+      error: (event.success === false || event.error != null)
+        ? {
+            type: event.error?.type ?? 'unknown',
+            message: event.error?.message || event.error?.type || `${event.operation ?? event.type} failed`,
+          }
+        : undefined,
+      // Shared context (stored here during collection, factored out to group at persistence)
+      tags: event.tags ? { ...event.tags } : undefined,
+      type: event.type,
+      subType: event.subType,
+      level: event.level,
+      entityName: event.entityName,
+      source: event.source,
+    };
+    target.checkpoints.push(checkpoint);
+  }
 }
 
 /**
@@ -193,14 +230,20 @@ function updateDuration(stats: MutableOperationStats, durationMs: number): void 
 }
 
 function createAbsorbedError(event: ObservabilityEvent): AbsorbedError {
-  const error = event.error ?? { type: 'unknown', message: 'Operation failed (no error details)' };
+  const rawError = event.error;
+  const errorType = rawError?.type ?? (event.success === false ? 'failure' : 'unknown');
+  const errorMessage = rawError?.message
+    || rawError?.type
+    || `${event.operation ?? event.type} failed (no error details)`;
+
   return {
     observabilityLogId: event.observabilityLogId,
     operation: event.operation,
     entityId: event.entityId,
-    error: { type: error.type, message: error.message },
+    error: { type: errorType, message: errorMessage },
     durationMs: event.durationMs,
     causedBy: event.causedBy,
     tags: event.tags ? { ...event.tags } : undefined,
+    fingerprint: event.fingerprint,
   };
 }

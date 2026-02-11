@@ -263,6 +263,11 @@ export abstract class APIController extends AbstractLambdaHandler {
             // Legacy initialize method for backward compatibility
             await this.initialize(event, context);
 
+            // Track request payload size
+            if (event.body) {
+              requestSpan.metric('http.request_content_length', Buffer.byteLength(event.body, 'utf8'));
+            }
+
             // Execute before middleware
             await this.executeMiddlewarePipeline('before', request, response, ctx);
 
@@ -303,10 +308,11 @@ export abstract class APIController extends AbstractLambdaHandler {
               if (observabilityConfig?.enabled !== false) {
                 const responseAttrs = this.buildResponseAttributes(response, observabilityConfig);
                 if (responseAttrs) {
-                  // Status code as attribute (not metric - it's categorical data)
                   requestSpan.setData(responseAttrs);
                 }
               }
+              // Tag HTTP status code and response size for filtering
+              this.tagResponseMetrics(requestSpan, response);
               // Flush happens automatically in executeWithSpanAndFlush's finally block
               return this.handleResponse(controllerResponse);
             }
@@ -315,10 +321,11 @@ export abstract class APIController extends AbstractLambdaHandler {
             if (observabilityConfig?.enabled !== false) {
               const responseAttrs = this.buildResponseAttributes(response, observabilityConfig);
               if (responseAttrs) {
-                // Status code as attribute (not metric - it's categorical data)
                 requestSpan.setData(responseAttrs);
               }
             }
+            // Tag HTTP status code and response size for filtering
+            this.tagResponseMetrics(requestSpan, response);
             // Flush happens automatically in executeWithSpanAndFlush's finally block
             return response.build();
 
@@ -328,6 +335,12 @@ export abstract class APIController extends AbstractLambdaHandler {
 
             // Execute error middleware
             await this.executeMiddlewarePipeline('onError', request, response, ctx, errorObj);
+
+            // Tag HTTP status code and error category for filtering
+            const errorStatusCode = response.statusCode || 500;
+            requestSpan.tag('http.status_code', String(errorStatusCode));
+            requestSpan.tag('http.status_code_class', this.getStatusCodeClass(errorStatusCode));
+            requestSpan.tag('error_category', this.categorizeError(errorStatusCode, errorObj));
 
             // Flush happens automatically in executeWithSpanAndFlush's finally block
             // Note: withSpan will call span.end({ success: false, error }) automatically
@@ -347,7 +360,8 @@ export abstract class APIController extends AbstractLambdaHandler {
             'http.route': route?.functionName || '',
             'http.controller': this.constructor.name,
           },
-        }
+        },
+        context
       ).catch((err) => {
         // Handle error response after span ends
         return this.handleException(request, err instanceof Error ? err : new Error(String(err)), response);
@@ -501,6 +515,51 @@ export abstract class APIController extends AbstractLambdaHandler {
     }
 
     return attrs;
+  }
+
+  /**
+   * Tag the span with HTTP status code, status code class, response size,
+   * and error category (for 4xx/5xx responses).
+   */
+  protected tagResponseMetrics(span: SpanObserver, response: Response): void {
+    const statusCode = response.statusCode ?? 200;
+    span.tag('http.status_code', String(statusCode));
+    span.tag('http.status_code_class', this.getStatusCodeClass(statusCode));
+
+    if (response.body) {
+      span.metric('http.response_content_length', Buffer.byteLength(response.body, 'utf8'));
+    }
+
+    // Error categorization for non-success responses
+    if (statusCode >= 400) {
+      span.tag('error_category', this.categorizeError(statusCode));
+    }
+  }
+
+  /**
+   * Classify HTTP status code into a class string for DynamoDB-safe filtering.
+   */
+  protected getStatusCodeClass(statusCode: number): string {
+    if (statusCode < 200) return '1xx';
+    if (statusCode < 300) return '2xx';
+    if (statusCode < 400) return '3xx';
+    if (statusCode < 500) return '4xx';
+    return '5xx';
+  }
+
+  /**
+   * Classify an error into a broad category for filtering and triage.
+   * Categories: auth, validation, infrastructure, server, application.
+   */
+  protected categorizeError(statusCode: number, error?: Error): string {
+    if (statusCode === 401 || statusCode === 403) return 'auth';
+    if (statusCode === 429) return 'throttle';
+    if (statusCode >= 400 && statusCode < 500) return 'validation';
+    if (error?.message?.match(/timeout|ETIMEDOUT|ECONNREFUSED|ECONNRESET|ENOTFOUND|socket hang up/i)) {
+      return 'infrastructure';
+    }
+    if (statusCode >= 500) return 'server';
+    return 'application';
   }
 
   /**

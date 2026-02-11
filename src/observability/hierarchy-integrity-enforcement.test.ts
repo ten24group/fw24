@@ -25,6 +25,7 @@ describe('Hierarchy integrity enforcement', () => {
         maxAbsorbedCausedByLinksPerSpan: 50,
         maxAbsorbedEntityIdsPerSpan: 100,
         maxAbsorbedOperationKeysPerSpan: 50,
+        maxAbsorbedCheckpointsPerSpan: 100,
       },
     });
   });

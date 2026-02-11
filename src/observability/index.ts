@@ -68,6 +68,7 @@ export {
   type SamplingConfig,
   type TypeSpecificConfig,
   type IEventCapture,
+  type NoiseReductionPresetLevel,
   DefaultSamplingConfig,
 
   // Deprecated aliases
@@ -78,6 +79,10 @@ export { DECISION_BASE_PRIORITY, evaluateNoiseRules, getEffectivePriority } from
 export type { NoiseEvaluationResult } from './noise-reduction/priority';
 export { applyNoiseReduction, pickNoiseDecision, buildAndEvaluate } from './noise-reduction';
 export type { AbsorbedData, EmittedEvent, NoiseReductionResult, NoiseReductionStats, AbsorptionBounds } from './noise-reduction/types';
+
+// === SPAN COMPRESSION ===
+export { groupCheckpointsByOperation } from './span-compression';
+export type { GroupedCheckpoint, CompactCheckpointItem, AggregateStats } from './span-compression';
 
 // === CORE MANAGER ===
 export {
@@ -189,6 +194,7 @@ export {
   // Query (Database performance tracking)
   QueryObserver,
   type QueryContext,
+  type ConsumedCapacityResult,
 
   // Base utilities
   generateId,

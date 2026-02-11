@@ -15,6 +15,7 @@ import {
   TruncationConfig,
   DynamoDBConfig,
   NoiseReductionConfig,
+  NoiseReductionPresetLevel,
   NoiseRule,
   HardSignalConfig,
   TypeSpecificConfig,
@@ -97,11 +98,12 @@ export const CONFIG_DEFAULTS = {
     },
     presets: [ 'fw24.hotpaths', 'fw24.batch_processors' ],
     rules: [],
-    // Absorption bounds (prevent unbounded growth of _absorbed data)
+    // Absorption bounds (prevent unbounded growth of absorbed data)
     maxAbsorbedErrorsPerSpan: 20,
     maxAbsorbedCausedByLinksPerSpan: 50,
     maxAbsorbedEntityIdsPerSpan: 100,
     maxAbsorbedOperationKeysPerSpan: 50,
+    maxAbsorbedCheckpointsPerSpan: 100,
   } satisfies NoiseReductionConfig,
   // DynamoDB size management defaults
   truncation: {
@@ -201,6 +203,8 @@ export interface ObservabilityConfigInput {
     minDurationMs?: number;
     /** Skip spans with no events/errors. Default: true */
     skipEmpty?: boolean;
+    /** Tag spans slower than this (ms) with `_slow=true`. Disabled by default. */
+    slowTagThresholdMs?: number;
   };
 
   /**
@@ -210,6 +214,7 @@ export interface ObservabilityConfigInput {
 
   /**
    * Noise reduction configuration (emit/absorb/silent).
+   * Set `noiseReduction.preset` to `'recommended'` or `'aggressive'` for sensible defaults.
    */
   noiseReduction?: Partial<NoiseReductionConfig>;
 
@@ -482,11 +487,31 @@ function normalizeSpanConfig(input?: { minDurationMs?: number; skipEmpty?: boole
   };
 }
 
+/**
+ * Aggressive preset overrides — tighter absorption bounds and lower slow thresholds.
+ */
+const AGGRESSIVE_NOISE_OVERRIDES = {
+  maxAbsorbedErrorsPerSpan: 10,
+  maxAbsorbedCausedByLinksPerSpan: 25,
+  maxAbsorbedEntityIdsPerSpan: 50,
+  maxAbsorbedOperationKeysPerSpan: 25,
+  maxAbsorbedCheckpointsPerSpan: 50,
+  hardSignals: {
+    slowThresholdMs: 2000,
+  },
+} as const;
+
 function normalizeNoiseReduction(
   input?: DeepPartial<NoiseReductionConfig>,
   _globalMinLevel?: ObservabilityLevel,
 ): NoiseReductionConfig {
   const d = CONFIG_DEFAULTS.noiseReduction;
+
+  // Resolve preset level — explicit `enabled` overrides preset
+  const presetLevel = input?.preset as NoiseReductionPresetLevel | undefined;
+  const isEnabled = input?.enabled ?? (presetLevel === 'recommended' || presetLevel === 'aggressive' ? true : d.enabled);
+  const isAggressive = presetLevel === 'aggressive';
+
   const presets = Array.isArray(input?.presets)
     ? input.presets.filter((p): p is NoiseReductionConfig['presets'][number] => typeof p === 'string')
     : d.presets;
@@ -501,26 +526,35 @@ function normalizeNoiseReduction(
     : [...d.rules];
 
   // Normalize hardSignals to ensure slowThresholds has no undefined values
-  const hardSignals: HardSignalConfig | undefined = input?.hardSignals ? {
-    levels: input.hardSignals.levels,
-    includeWarn: input.hardSignals.includeWarn,
-    slowThresholdMs: input.hardSignals.slowThresholdMs,
-    slowThresholds: input.hardSignals.slowThresholds
+  const hardSignalInput = input?.hardSignals;
+  const aggressiveHS = isAggressive ? AGGRESSIVE_NOISE_OVERRIDES.hardSignals : undefined;
+  const hardSignals: HardSignalConfig | undefined = hardSignalInput ? {
+    levels: hardSignalInput.levels,
+    includeWarn: hardSignalInput.includeWarn,
+    slowThresholdMs: hardSignalInput.slowThresholdMs ?? aggressiveHS?.slowThresholdMs,
+    slowThresholds: hardSignalInput.slowThresholds
       ? Object.fromEntries(
-        Object.entries(input.hardSignals.slowThresholds).filter(([_, v]) => v !== undefined),
+        Object.entries(hardSignalInput.slowThresholds).filter(([_, v]) => v !== undefined),
       ) as Record<string, number>
       : undefined,
-  } : d.hardSignals;
+  } : {
+    ...d.hardSignals,
+    ...(aggressiveHS ? { slowThresholdMs: aggressiveHS.slowThresholdMs } : {}),
+  };
+
+  const aggressiveBounds = isAggressive ? AGGRESSIVE_NOISE_OVERRIDES : undefined;
 
   return {
-    enabled: input?.enabled ?? d.enabled,
+    enabled: isEnabled,
+    preset: presetLevel,
     hardSignals,
     presets,
     rules,
-    maxAbsorbedErrorsPerSpan: input?.maxAbsorbedErrorsPerSpan ?? d.maxAbsorbedErrorsPerSpan,
-    maxAbsorbedCausedByLinksPerSpan: input?.maxAbsorbedCausedByLinksPerSpan ?? d.maxAbsorbedCausedByLinksPerSpan,
-    maxAbsorbedEntityIdsPerSpan: input?.maxAbsorbedEntityIdsPerSpan ?? d.maxAbsorbedEntityIdsPerSpan,
-    maxAbsorbedOperationKeysPerSpan: input?.maxAbsorbedOperationKeysPerSpan ?? d.maxAbsorbedOperationKeysPerSpan,
+    maxAbsorbedErrorsPerSpan: input?.maxAbsorbedErrorsPerSpan ?? aggressiveBounds?.maxAbsorbedErrorsPerSpan ?? d.maxAbsorbedErrorsPerSpan,
+    maxAbsorbedCausedByLinksPerSpan: input?.maxAbsorbedCausedByLinksPerSpan ?? aggressiveBounds?.maxAbsorbedCausedByLinksPerSpan ?? d.maxAbsorbedCausedByLinksPerSpan,
+    maxAbsorbedEntityIdsPerSpan: input?.maxAbsorbedEntityIdsPerSpan ?? aggressiveBounds?.maxAbsorbedEntityIdsPerSpan ?? d.maxAbsorbedEntityIdsPerSpan,
+    maxAbsorbedOperationKeysPerSpan: input?.maxAbsorbedOperationKeysPerSpan ?? aggressiveBounds?.maxAbsorbedOperationKeysPerSpan ?? d.maxAbsorbedOperationKeysPerSpan,
+    maxAbsorbedCheckpointsPerSpan: input?.maxAbsorbedCheckpointsPerSpan ?? aggressiveBounds?.maxAbsorbedCheckpointsPerSpan ?? d.maxAbsorbedCheckpointsPerSpan,
   };
 }
 

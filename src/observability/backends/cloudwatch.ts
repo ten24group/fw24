@@ -95,7 +95,7 @@ export class CloudWatchBackend implements ObservabilityBackend {
     if (event.tags) context.tags = event.tags;
     if (event.data) context.data = event.data;
     if (event.error) context.error = event.error;
-    if (event._absorbed) context._absorbed = event._absorbed;
+    // absorbed data is inside event.data — no separate handling needed
 
     if (event.actor) {
       const { actorId, actorType, tenantId, sessionId, email, sourceIp, userAgent } = event.actor;

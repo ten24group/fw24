@@ -94,7 +94,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
             }
           },
         ],
-        // Only show essential columns for quick scanning
+        // Columns for quick scanning — essential fields visible by default
         columns: [
           { field: 'type' },
           { field: 'level' },
@@ -104,6 +104,7 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
           { field: 'status' },
           { field: 'timestampMs' },
           { field: 'durationMs' },
+          { field: 'fingerprint', defaultVisible: false },
           { field: 'correlationId', defaultVisible: false },
         ],
         // === FILTER SEGMENTS: Quick access to common views ===
@@ -143,6 +144,22 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
               { id: 'trace', label: 'Trace', icon: 'ApartmentOutlined', filters: { level: { eq: 'trace' } } },
             ],
           },
+          // === BY SIGNALS ===
+          {
+            id: 'signals-group',
+            label: 'Signals',
+            segments: [
+              { id: 'all-signals', label: 'All', filters: {}, default: true },
+              { id: 'cold-starts', label: 'Cold Starts', icon: 'ThunderboltOutlined', filters: { 'tags.cold_start': { eq: 'true' } } },
+              { id: 'slow-requests', label: 'Slow', icon: 'ClockCircleOutlined', filters: { 'tags._slow': { eq: 'true' } }, badgeStatus: 'warning' },
+              { id: 'has-errors', label: 'Failed', icon: 'CloseCircleOutlined', filters: { success: { eq: 'false' } }, badgeStatus: 'error' },
+              { id: 'status-4xx', label: '4xx', icon: 'WarningOutlined', filters: { 'tags.http.status_code_class': { eq: '4xx' } }, badgeStatus: 'warning' },
+              { id: 'status-5xx', label: '5xx', icon: 'CloseCircleOutlined', filters: { 'tags.http.status_code_class': { eq: '5xx' } }, badgeStatus: 'error' },
+              { id: 'retries', label: 'Retries', icon: 'ReloadOutlined', filters: { 'tags.sqs.has_retries': { eq: 'true' } }, badgeStatus: 'warning' },
+              { id: 'memory-pressure', label: 'Memory', icon: 'DashboardOutlined', filters: { 'tags._memory_pressure': { eq: 'true' } }, badgeStatus: 'warning' },
+              { id: 'timeout-risk', label: 'Timeout Risk', icon: 'FieldTimeOutlined', filters: { 'tags._timeout_risk': { eq: 'true' } }, badgeStatus: 'error' },
+            ],
+          },
         ],
         expandable: {
           mode: 'json',
@@ -151,6 +168,32 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
     },
     // === VIEW PAGE CONFIGURATION ===
     viewPageConfig: {
+      actions: [
+        {
+          id: 'view-trace',
+          label: 'View Full Trace',
+          icon: 'ApartmentOutlined',
+          tooltip: 'View all events in this trace',
+          url: '/list-observabilitylog?correlationId.eq=:correlationId',
+          visibility: { record: { correlationId: { exists: true } } },
+        },
+        {
+          id: 'view-parent',
+          label: 'Go to Parent',
+          icon: 'ArrowUpOutlined',
+          tooltip: 'Navigate to the parent span',
+          url: '/view-observabilitylog/:parentObservabilityLogId',
+          visibility: { record: { parentObservabilityLogId: { exists: true } } },
+        },
+        {
+          id: 'view-same-error',
+          label: 'Same Error Pattern',
+          icon: 'BugOutlined',
+          tooltip: 'View all occurrences of this error fingerprint',
+          url: '/list-observabilitylog?fingerprint.eq=:fingerprint',
+          visibility: { record: { fingerprint: { exists: true } } },
+        },
+      ],
       // Two-column layout for essential identification and operation details
       columnsConfig: {
         columns: [
@@ -179,125 +222,73 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
           },
         ],
       },
-      // Sections organized by logical grouping with proper tabs/accordions
+      // Two groups: Event Details (about this record) and Relations (navigation to related records).
+      // Within each group, tabs handle domain separation. Structured views come first,
+      // raw JSON fallbacks are always available as the last tabs.
       sectionsConfig: {
         sectionGroups: [
-          // === 1. OPERATION & TIMING (PRIMARY INFO) ===
+          // ══════════════════════════════════════════════════════════════════
+          // GROUP 1: EVENT DETAILS — Everything about this specific event
+          // ══════════════════════════════════════════════════════════════════
           {
-            id: 'operation-timing',
-            label: 'Operation & Timing',
-            icon: 'ThunderboltOutlined',
+            id: 'event-details',
+            label: 'Event Details',
+            icon: 'FileSearchOutlined',
             sortOrder: 1,
-            renderMode: 'tabs',
-            defaultCollapsed: true,
-            lazyLoad: false,
-            keepMounted: true,
-            sections: {
-              operationDetails: {
-                label: 'Operation',
-                icon: 'PlayCircleOutlined',
-                sortOrder: 1,
-                pageType: 'details',
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [
-                    'operation',
-                    'status',
-                    'success',
-                    'type',
-                    'subType',
-                  ],
-                },
-              },
-              entityInfo: {
-                label: 'Entity Information',
-                icon: 'InfoCircleOutlined',
-                sortOrder: 2,
-                pageType: 'details',
-                visibility: { record: { entityName: { exists: true } } },
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [ 'entityName', 'entityId' ],
-                },
-              },
-              timingDetails: {
-                label: 'Timing',
-                icon: 'ClockCircleOutlined',
-                sortOrder: 3,
-                pageType: 'details',
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [
-                    'timestampMs',
-                    'durationMs',
-                  ],
-                },
-              },
-              sourceDetails: {
-                label: 'Source',
-                icon: 'CodeOutlined',
-                sortOrder: 4,
-                pageType: 'details',
-                visibility: { record: { source: { exists: true } } },
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [
-                    'source',
-                    'level',
-                  ],
-                },
-              },
-              attributes: {
-                label: 'Attributes',
-                icon: 'TagsOutlined',
-                sortOrder: 4,
-                pageType: 'details',
-                visibility: { record: { attributes: { exists: true } } },
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [ 'attributes' ],
-                },
-              },
-            },
-          },
-          // === 2. ERROR (Error details) ===
-          {
-            id: 'error',
-            label: 'Error',
-            icon: 'ExclamationCircleOutlined',
-            sortOrder: 2,
             renderMode: 'tabs',
             defaultCollapsed: false,
             lazyLoad: false,
             keepMounted: true,
-            visibility: { record: { error: { exists: true } } },
             sections: {
+              // NOTE: No "Overview" tab here — the default entity view page already renders
+              // core fields (operation, status, type, subType, level, timing, etc.) via columnsConfig.
+
+              // --- Error: structured breakdown + raw ---
               error: {
                 label: 'Error',
                 icon: 'ExclamationCircleOutlined',
-                sortOrder: 5,
+                sortOrder: 1,
                 pageType: 'details',
+                visibility: { record: { error: { exists: true } } },
                 detailsPageConfig: {
                   useParentData: true,
-                  propertiesConfig: [ 'error' ],
+                  propertiesConfig: [
+                    {
+                      name: 'error.type',
+                      column: 'error.type',
+                      label: 'Error Type',
+                      fieldType: 'badge',
+                      helpText: 'The class/constructor name of the error',
+                    },
+                    {
+                      name: 'error.message',
+                      column: 'error.message',
+                      label: 'Message',
+                      fieldType: 'text',
+                      helpText: 'The error message',
+                    },
+                    {
+                      name: 'error.code',
+                      column: 'error.code',
+                      label: 'Error Code',
+                      fieldType: 'badge',
+                      helpText: 'Application or system error code (e.g., ECONNREFUSED, VALIDATION_FAILED)',
+                      visibility: { record: { 'error.code': { exists: true } } },
+                    },
+                    {
+                      name: 'error.stack',
+                      column: 'error.stack',
+                      label: 'Stack Trace',
+                      fieldType: 'code',
+                      helpText: 'Full stack trace from the error',
+                      visibility: { record: { 'error.stack': { exists: true } } },
+                    },
+                  ],
                 },
               },
-            },
-          },
-          // === 3. EVENT DATA (Core payloads) ===
-          {
-            id: 'event-data',
-            label: 'Event Data',
-            icon: 'FileTextOutlined',
-            sortOrder: 3,
-            renderMode: 'tabs',
-            defaultCollapsed: false,
-            lazyLoad: false,
-            keepMounted: true,
-            visibility: { record: { data: { exists: true } } },
-            sections: {
-              checkpoints: {
-                label: 'Checkpoints',
+              // --- Timeline: span checkpoints ---
+              timeline: {
+                label: 'Timeline',
                 icon: 'NodeIndexOutlined',
                 sortOrder: 2,
                 pageType: 'details',
@@ -308,7 +299,8 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                     {
                       name: 'data.checkpoints',
                       column: 'data.checkpoints',
-                      label: 'Checkpoints',
+                      label: 'Timeline & Checkpoints',
+                      helpText: 'Chronological timeline of events within this span. Includes manual checkpoints and absorbed child operations.',
                       fieldType: 'timeline',
                       timelineConfig: {
                         mode: 'left',
@@ -317,16 +309,292 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                         itemMapping: {
                           labelField: 'name',
                           timestampField: 'ts',
+                          typeField: '_type',
+                          descriptionField: '_description',
                         },
                       },
                     },
                   ],
                 },
               },
-              data: {
-                label: 'Event Payload',
-                icon: 'FileTextOutlined',
+              // --- Audit Data: structured view for audit.entity records ---
+              auditData: {
+                label: 'Audit Data',
+                icon: 'AuditOutlined',
                 sortOrder: 3,
+                pageType: 'details',
+                // Only show for audit-type records (audit.entity, audit.compliance, audit.access)
+                visibility: { record: { 'tags.audit': { eq: 'true' } } },
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [
+                    // Entity update: before / after / diff
+                    {
+                      name: 'data.before',
+                      column: 'data.before',
+                      label: 'Before (Old State)',
+                      fieldType: 'json',
+                      helpText: 'Entity state before the update',
+                      visibility: { record: { 'data.before': { exists: true } } },
+                    },
+                    {
+                      name: 'data.after',
+                      column: 'data.after',
+                      label: 'After (New State)',
+                      fieldType: 'json',
+                      helpText: 'Entity state after the update',
+                      visibility: { record: { 'data.after': { exists: true } } },
+                    },
+                    {
+                      name: 'data.diff',
+                      column: 'data.diff',
+                      label: 'Diff',
+                      fieldType: 'json',
+                      helpText: 'Changed fields with old/new values',
+                      visibility: { record: { 'data.diff': { exists: true } } },
+                    },
+                    // Entity create
+                    {
+                      name: 'data.created',
+                      column: 'data.created',
+                      label: 'Created Record',
+                      fieldType: 'json',
+                      helpText: 'Full data of the newly created entity',
+                      visibility: { record: { 'data.created': { exists: true } } },
+                    },
+                    // Entity delete
+                    {
+                      name: 'data.deleted',
+                      column: 'data.deleted',
+                      label: 'Deleted Record',
+                      fieldType: 'json',
+                      helpText: 'Full data of the entity that was deleted',
+                      visibility: { record: { 'data.deleted': { exists: true } } },
+                    },
+                    // Entity list query
+                    {
+                      name: 'data.query',
+                      column: 'data.query',
+                      label: 'Query Filters',
+                      fieldType: 'json',
+                      helpText: 'Filters used in the list/query operation',
+                      visibility: { record: { 'data.query': { exists: true } } },
+                    },
+                    {
+                      name: 'data.resultCount',
+                      column: 'data.resultCount',
+                      label: 'Result Count',
+                      fieldType: 'badge',
+                      helpText: 'Number of records returned by the query',
+                      visibility: { record: { 'data.resultCount': { exists: true } } },
+                    },
+                    // Raw fallback — full data for any shape
+                    'data',
+                  ],
+                },
+              },
+              // --- Noise Reduction: absorbed event summary ---
+              noiseReduction: {
+                label: 'Noise Reduction',
+                icon: 'CompressOutlined',
+                sortOrder: 4,
+
+                pageType: 'details',
+                visibility: { record: { 'data.absorbed': { exists: true } } },
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [
+                    {
+                      name: 'data.absorbed.count',
+                      column: 'data.absorbed.count',
+                      fieldType: 'badge',
+                      label: 'Absorbed Events',
+                      helpText: 'Total child events absorbed into this record. Per-operation breakdown is in the Timeline tab.',
+                    },
+                    {
+                      name: 'data.absorbed.silentCount',
+                      column: 'data.absorbed.silentCount',
+                      fieldType: 'badge',
+                      label: 'Silenced Events',
+                      helpText: 'Total child events silently dropped (counter only)',
+                    },
+                    {
+                      name: 'data.absorbed.errors',
+                      column: 'data.absorbed.errors',
+                      label: 'Absorbed Errors',
+                      helpText: 'Error details from absorbed child events',
+                      fieldType: 'json',
+                      visibility: { record: { 'data.absorbed.errors': { exists: true } } },
+                    },
+                    {
+                      name: 'data.absorbed.causedByLinks',
+                      column: 'data.absorbed.causedByLinks',
+                      label: 'Cross-Invocation Links',
+                      helpText: 'Correlation IDs from absorbed events linking to other invocations',
+                      fieldType: 'json',
+                      visibility: { record: { 'data.absorbed.causedByLinks': { exists: true } } },
+                    },
+                  ],
+                },
+              },
+              // --- Tags: signal badges + raw JSON ---
+              tags: {
+                label: 'Tags',
+                icon: 'TagOutlined',
+                sortOrder: 5,
+                pageType: 'details',
+                visibility: { record: { tags: { exists: true } } },
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [
+                    // Structured signal badges (each conditional — only render when present)
+                    {
+                      name: 'tags.http.status_code',
+                      column: 'tags.http.status_code',
+                      label: 'HTTP Status Code',
+                      fieldType: 'badge',
+                      visibility: { record: { 'tags.http.status_code': { exists: true } } },
+                    },
+                    {
+                      name: 'tags.http.status_code_class',
+                      column: 'tags.http.status_code_class',
+                      label: 'Status Class',
+                      fieldType: 'badge',
+                      visibility: { record: { 'tags.http.status_code_class': { exists: true } } },
+                    },
+                    {
+                      name: 'tags.error_category',
+                      column: 'tags.error_category',
+                      label: 'Error Category',
+                      fieldType: 'badge',
+                      visibility: { record: { 'tags.error_category': { exists: true } } },
+                    },
+                    {
+                      name: 'tags.cold_start',
+                      column: 'tags.cold_start',
+                      label: 'Cold Start',
+                      fieldType: 'badge',
+                      visibility: { record: { 'tags.cold_start': { exists: true } } },
+                    },
+                    {
+                      name: 'tags._slow',
+                      column: 'tags._slow',
+                      label: 'Slow',
+                      fieldType: 'badge',
+                      visibility: { record: { 'tags._slow': { exists: true } } },
+                    },
+                    {
+                      name: 'tags._memory_pressure',
+                      column: 'tags._memory_pressure',
+                      label: 'Memory Pressure',
+                      fieldType: 'badge',
+                      visibility: { record: { 'tags._memory_pressure': { exists: true } } },
+                    },
+                    {
+                      name: 'tags._timeout_risk',
+                      column: 'tags._timeout_risk',
+                      label: 'Timeout Risk',
+                      fieldType: 'badge',
+                      visibility: { record: { 'tags._timeout_risk': { exists: true } } },
+                    },
+                    {
+                      name: 'tags.sqs.has_retries',
+                      column: 'tags.sqs.has_retries',
+                      label: 'SQS Retries',
+                      fieldType: 'badge',
+                      visibility: { record: { 'tags.sqs.has_retries': { exists: true } } },
+                    },
+                    {
+                      name: 'tags.query_type',
+                      column: 'tags.query_type',
+                      label: 'Query Type',
+                      fieldType: 'badge',
+                      visibility: { record: { 'tags.query_type': { exists: true } } },
+                    },
+                    {
+                      name: 'tags.lambda.function_name',
+                      column: 'tags.lambda.function_name',
+                      label: 'Lambda Function',
+                      fieldType: 'text',
+                      visibility: { record: { 'tags.lambda.function_name': { exists: true } } },
+                    },
+                    // Raw fallback — full tags JSON always at the bottom
+                    'tags',
+                  ],
+                },
+              },
+              // --- Metrics: key values + raw JSON ---
+              metrics: {
+                label: 'Metrics',
+                icon: 'DashboardOutlined',
+                sortOrder: 6,
+                pageType: 'details',
+                visibility: { record: { metrics: { exists: true } } },
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [
+                    // Structured key metrics (each conditional)
+                    {
+                      name: 'metrics.duration',
+                      column: 'metrics.duration',
+                      label: 'Duration',
+                      fieldType: 'duration',
+                      durationUnit: 'ms',
+                      visibility: { record: { 'metrics.duration': { exists: true } } },
+                    },
+                    {
+                      name: 'metrics.span.depth',
+                      column: 'metrics.span.depth',
+                      label: 'Span Depth',
+                      fieldType: 'badge',
+                      visibility: { record: { 'metrics.span.depth': { exists: true } } },
+                    },
+                    {
+                      name: 'metrics.invocation_number',
+                      column: 'metrics.invocation_number',
+                      label: 'Invocation #',
+                      fieldType: 'badge',
+                      visibility: { record: { 'metrics.invocation_number': { exists: true } } },
+                    },
+                    {
+                      name: 'metrics.http.request_content_length',
+                      column: 'metrics.http.request_content_length',
+                      label: 'Request Size (bytes)',
+                      fieldType: 'number',
+                      visibility: { record: { 'metrics.http.request_content_length': { exists: true } } },
+                    },
+                    {
+                      name: 'metrics.http.response_content_length',
+                      column: 'metrics.http.response_content_length',
+                      label: 'Response Size (bytes)',
+                      fieldType: 'number',
+                      visibility: { record: { 'metrics.http.response_content_length': { exists: true } } },
+                    },
+                    {
+                      name: 'metrics.node.heap_used_mb',
+                      column: 'metrics.node.heap_used_mb',
+                      label: 'Heap Used (MB)',
+                      fieldType: 'number',
+                      visibility: { record: { 'metrics.node.heap_used_mb': { exists: true } } },
+                    },
+                    {
+                      name: 'metrics.lambda.remaining_time_ms',
+                      column: 'metrics.lambda.remaining_time_ms',
+                      label: 'Lambda Remaining Time',
+                      fieldType: 'duration',
+                      durationUnit: 'ms',
+                      visibility: { record: { 'metrics.lambda.remaining_time_ms': { exists: true } } },
+                    },
+                    // Raw fallback — full metrics JSON always at the bottom
+                    'metrics',
+                  ],
+                },
+              },
+              // --- Event Payload: raw data ---
+              payload: {
+                label: 'Payload',
+                icon: 'FileTextOutlined',
+                sortOrder: 7,
                 pageType: 'details',
                 visibility: { record: { data: { exists: true } } },
                 detailsPageConfig: {
@@ -334,38 +602,82 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                   propertiesConfig: [ 'data' ],
                 },
               },
-            },
-          },
-          // === 3b. ABSORBED DATA (Noise Reduction) ===
-          {
-            id: 'absorbed-data',
-            label: 'Absorbed Children',
-            icon: 'CompressOutlined',
-            sortOrder: 3.5,
-            renderMode: 'tabs',
-            defaultCollapsed: true,
-            lazyLoad: true,
-            keepMounted: false,
-            visibility: { record: { absorbed: { exists: true } } },
-            sections: {
-              absorbedSummary: {
-                label: 'Summary',
-                icon: 'BarChartOutlined',
-                sortOrder: 1,
+              // --- Actor: structured + raw ---
+              actor: {
+                label: 'Actor',
+                icon: 'UserOutlined',
+                sortOrder: 8,
+                pageType: 'details',
+                visibility: { record: { actor: { exists: true } } },
+                detailsPageConfig: {
+                  useParentData: true,
+                  propertiesConfig: [
+                    {
+                      name: 'actorType',
+                      column: 'actor.type',
+                      label: 'Actor Type',
+                      fieldType: 'badge',
+                      visibility: { record: { 'actor.type': { exists: true } } },
+                    },
+                    {
+                      name: 'actorId',
+                      column: 'actor.id',
+                      label: 'Actor ID',
+                      fieldType: 'text',
+                      visibility: { record: { 'actor.id': { exists: true } } },
+                    },
+                    {
+                      name: 'actorEmail',
+                      column: 'actor.email',
+                      label: 'Email',
+                      fieldType: 'text',
+                      visibility: { record: { 'actor.email': { exists: true } } },
+                    },
+                    {
+                      name: 'actorName',
+                      column: 'actor.name',
+                      label: 'Name',
+                      fieldType: 'text',
+                      visibility: { record: { 'actor.name': { exists: true } } },
+                    },
+                    {
+                      name: 'actorGroups',
+                      column: 'actor.groups',
+                      label: 'Groups',
+                      fieldType: 'json',
+                      visibility: { record: { 'actor.groups': { exists: true } } },
+                    },
+                    // Raw fallback — always shows full actor object
+                    'actor',
+                  ],
+                },
+              },
+              // --- Raw: all remaining fields, always visible ---
+              raw: {
+                label: 'Raw / Other',
+                icon: 'CodeOutlined',
+                sortOrder: 9,
                 pageType: 'details',
                 detailsPageConfig: {
                   useParentData: true,
-                  propertiesConfig: [ 'absorbed' ],
+                  propertiesConfig: [
+                    'attributes',
+                    'metadata',
+                    'context',
+                    'ttl',
+                  ],
                 },
               },
             },
           },
-          // === 4. HIERARCHY & TRACE RELATIONS ===
+          // ══════════════════════════════════════════════════════════════════
+          // GROUP 2: HIERARCHY & TRACE (span tree navigation)
+          // ══════════════════════════════════════════════════════════════════
           {
             id: 'hierarchy-relations',
             label: 'Hierarchy & Trace',
             icon: 'ApartmentOutlined',
-            sortOrder: 4,
+            sortOrder: 2,
             renderMode: 'tabs',
             defaultCollapsed: true,
             lazyLoad: true,
@@ -499,6 +811,22 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                   },
                 },
               },
+              sameErrorPattern: {
+                label: 'Same Error Pattern',
+                icon: 'BugOutlined',
+                sortOrder: 9.5,
+                pageType: 'list',
+                visibility: { record: { fingerprint: { exists: true } } },
+                entityConfigRef: {
+                  entityName: 'observabilityLog',
+                  pageType: 'list',
+                  overrideConfig: {
+                    defaultFilters: { fingerprint: { eq: ':fingerprint' } },
+                    hideSegments: [ 'hierarchy-group' ],
+                    description: 'All occurrences of this same error pattern across time',
+                  },
+                },
+              },
               relatedTraces: {
                 label: 'Related Traces',
                 icon: 'ClusterOutlined',
@@ -512,12 +840,14 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
               },
             },
           },
-          // === 5. RELATED LOGS (Entity & Source Analytics) ===
+          // ══════════════════════════════════════════════════════════════════
+          // GROUP 3: RELATED LOGS (Entity & Source analytics)
+          // ══════════════════════════════════════════════════════════════════
           {
             id: 'related-analytics',
             label: 'Related Logs',
             icon: 'FundOutlined',
-            sortOrder: 5,
+            sortOrder: 3,
             renderMode: 'tabs',
             defaultCollapsed: true,
             lazyLoad: false,
@@ -569,97 +899,6 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                     defaultFilters: { source: ':source' },
                     hideSegments: [ 'hierarchy-group' ],
                   },
-                },
-              },
-            },
-          },
-          // === 6. ADDITIONAL DATA (Tags, Metadata, Context) ===
-          {
-            id: 'additional-data',
-            label: 'Additional Data',
-            icon: 'FolderOpenOutlined',
-            sortOrder: 6,
-            renderMode: 'tabs',
-            defaultCollapsed: true,
-            lazyLoad: false,
-            keepMounted: true,
-            sections: {
-              metrics: {
-                label: 'Metrics',
-                icon: 'DashboardOutlined',
-                sortOrder: 1,
-                pageType: 'details',
-                visibility: { record: { metrics: { exists: true } } },
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [ 'metrics' ],
-                },
-              },
-              tags: {
-                label: 'Tags',
-                icon: 'TagOutlined',
-                sortOrder: 2,
-                pageType: 'details',
-                visibility: { record: { tags: { exists: true } } },
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [ 'tags' ],
-                },
-              },
-              metadata: {
-                label: 'Metadata',
-                icon: 'InfoCircleOutlined',
-                sortOrder: 3,
-                pageType: 'details',
-                visibility: { record: { metadata: { exists: true } } },
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [ 'metadata' ],
-                },
-              },
-              context: {
-                label: 'Context',
-                icon: 'EnvironmentOutlined',
-                sortOrder: 4,
-                pageType: 'details',
-                visibility: { record: { context: { exists: true } } },
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [ 'context' ],
-                },
-              },
-            },
-          },
-          // === 7. ACTOR & SYSTEM INFO ===
-          {
-            id: 'actor-system',
-            label: 'Actor & System',
-            icon: 'SettingOutlined',
-            sortOrder: 7,
-            renderMode: 'tabs',
-            defaultCollapsed: true,
-            lazyLoad: false,
-            keepMounted: true,
-            sections: {
-              actor: {
-                label: 'Actor',
-                icon: 'UserOutlined',
-                sortOrder: 1,
-                pageType: 'details',
-                visibility: { record: { actor: { exists: true } } },
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [ 'actor' ],
-                },
-              },
-              systemInfo: {
-                label: 'System Info',
-                icon: 'ClockCircleOutlined',
-                sortOrder: 2,
-                pageType: 'details',
-                detailsPageConfig: {
-                  useParentData: true,
-                  propertiesConfig: [ 'ttl' ],
                 },
               },
             },
@@ -890,6 +1129,11 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       type: 'string',
       label: 'Error Fingerprint',
       helpText: 'Deterministic hash for grouping same errors across invocations (16 hex chars from SHA-256)',
+      isLink: true,
+      linkConfig: {
+        routePattern: '/list-observabilitylog?fingerprint.eq=:fingerprint',
+        displayText: 'View Same Error Pattern',
+      },
     },
     // === ACTOR (stored as-is from existing Actor type) ===
     actor: {
@@ -898,13 +1142,8 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
       helpText: 'Information about who triggered this event',
     },
 
-    // === NOISE REDUCTION: ABSORBED DATA ===
-    absorbed: {
-      type: 'any',
-      label: 'Absorbed',
-      helpText: 'Structured data from child events absorbed by noise reduction (count, errors, per-operation stats)',
-      compressed: true, // Framework auto-compresses if > 10KB
-    },
+    // NOTE: Absorbed data (noise reduction summaries) lives inside `data.absorbed` — no separate attribute.
+    // The `data` field already has compression configured, so absorbed data is covered.
 
     // === CONTEXT ===
     context: {
@@ -914,12 +1153,28 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
     },
 
     // === TTL ===
-    // TTL for auto-cleanup (always provided by backend)
+    // Tiered retention: TTL varies by severity level.
+    //   error/critical -> 90 days, warn -> 60 days, info -> 30 days, debug/trace -> 7 days
     ttl: {
       type: 'number',
-      default: () => Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60), // 90 days
+      default: () => Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60), // 90 days fallback
+      watch: [ 'level' ],
+      set: (_: unknown, data: { level?: string }) => {
+        const SECONDS_PER_DAY = 24 * 60 * 60;
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        const retentionDays: Record<string, number> = {
+          critical: 90,
+          error: 90,
+          warn: 60,
+          info: 30,
+          debug: 7,
+          trace: 7,
+        };
+        const days = retentionDays[ data.level ?? '' ] ?? 90;
+        return nowSeconds + (days * SECONDS_PER_DAY);
+      },
       label: 'TTL',
-      helpText: 'Time-to-live for automatic cleanup (Unix timestamp)',
+      helpText: 'Tiered retention: error/critical 90d, warn 60d, info 30d, debug/trace 7d',
       fieldType: 'ttl',
       ttlUnit: 'seconds',
       ttlFormat: 'auto',

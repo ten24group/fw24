@@ -205,6 +205,21 @@ abstract class QueueController<TEvent extends QueueStreamEvent = SQSEvent> exten
           const startTime = Date.now();
           try {
             await this.initialize(event, context);
+
+            // SQS retry detection — tag when messages are being reprocessed
+            const receiveCounts = (event.Records as Array<{ attributes?: Record<string, string> }>).map(
+              (r) => parseInt(r.attributes?.ApproximateReceiveCount ?? '1', 10)
+            );
+            const maxReceiveCount = Math.max(...receiveCounts);
+            const retryCount = receiveCounts.filter((c) => c > 1).length;
+            if (retryCount > 0) {
+              queueSpan.tag('sqs.has_retries', 'true');
+              queueSpan.metrics({
+                'sqs.retry_count': retryCount,
+                'sqs.max_receive_count': maxReceiveCount,
+              });
+            }
+
             const result = await this.process(event, context, ctx);
             const duration = Date.now() - startTime;
 
@@ -258,7 +273,8 @@ abstract class QueueController<TEvent extends QueueStreamEvent = SQSEvent> exten
           metrics: {
             'sqs.batchSize': event.Records.length,
           },
-        }
+        },
+        context
       );
     });
   }

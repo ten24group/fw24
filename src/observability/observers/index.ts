@@ -32,7 +32,7 @@ export { MetricObserver, type MetricOptions } from './metric';
 export { LogObserver, type LogOptions } from './log';
 
 // Query Observer (Database performance tracking)
-export { QueryObserver, type QueryContext } from './query';
+export { QueryObserver, type QueryContext, type ConsumedCapacityResult } from './query';
 
 // Base utilities for building custom observers
 export {

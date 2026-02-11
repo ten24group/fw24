@@ -228,7 +228,7 @@ export interface CaptureControl {
  * This replaces the previous 5-decision model (keep/drop/fold/aggregate/downgrade).
  * The three decisions map cleanly to what happens with data:
  * - emit   = full record in DynamoDB (was: keep)
- * - absorb = structured info on parent's _absorbed field (was: fold + aggregate)
+ * - absorb = structured info in parent's data.absorbed (was: fold + aggregate)
  * - silent = counter only (was: drop)
  */
 export type NoiseDecision = 'emit' | 'absorb' | 'silent';
@@ -282,8 +282,22 @@ export interface HardSignalConfig {
  * 4. Rule with highest effective priority wins
  * 5. No matching rule → emit (safe default)
  */
+/**
+ * Convenience preset level for noise reduction.
+ * - `'off'`: disabled entirely (default)
+ * - `'recommended'`: enabled with sane FW24 defaults
+ * - `'aggressive'`: enabled with tighter thresholds and lower absorption bounds
+ */
+export type NoiseReductionPresetLevel = 'off' | 'recommended' | 'aggressive';
+
 export interface NoiseReductionConfig {
   enabled: boolean;
+
+  /**
+   * Convenience preset level. When set, auto-configures `enabled`, thresholds,
+   * and absorption bounds. Explicit field overrides still take precedence.
+   */
+  preset?: NoiseReductionPresetLevel;
 
   /** 
    * When true, attach noise reduction decision metadata (ruleId, reason, decision) 
@@ -304,20 +318,23 @@ export interface NoiseReductionConfig {
   rules: NoiseRule[];
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Absorption bounds (prevent unbounded growth of _absorbed data on parents)
+  // Absorption bounds (prevent unbounded growth of absorbed data on parents)
   // ─────────────────────────────────────────────────────────────────────────
 
-  /** Maximum error entries in _absorbed.errors per emitted event (default: 20) */
+  /** Maximum error entries in data.absorbed.errors per emitted event (default: 20) */
   maxAbsorbedErrorsPerSpan: number;
 
-  /** Maximum causedBy links in _absorbed.causedByLinks per emitted event (default: 50) */
+  /** Maximum causedBy links in data.absorbed.causedByLinks per emitted event (default: 50) */
   maxAbsorbedCausedByLinksPerSpan: number;
 
-  /** Maximum entity IDs in _absorbed.entityIds per emitted event (default: 100) */
+  /** Maximum entity IDs in data.absorbed.entityIds per emitted event (default: 100) */
   maxAbsorbedEntityIdsPerSpan: number;
 
-  /** Maximum distinct operation keys in _absorbed.byOperation per emitted event (default: 50) */
+  /** Maximum distinct operation keys in data.absorbed.byOperation per emitted event (default: 50) */
   maxAbsorbedOperationKeysPerSpan: number;
+
+  /** Maximum checkpoint entries converted to data.checkpoints per emitted event (default: 100) */
+  maxAbsorbedCheckpointsPerSpan: number;
 }
 
 /**
@@ -499,17 +516,6 @@ export interface ObservabilityEvent {
   fingerprint?: string;
 
   // === NOISE REDUCTION (set by noise reduction algorithm, not by callers) ===
-  /** 
-   * Structured data about events absorbed into this record by noise reduction.
-   * 
-   * This field is set by the noise reduction algorithm during flush().
-   * Application code should NEVER set this directly.
-   * 
-   * Present only on emitted events that had children absorbed or silenced into them.
-   * @see AbsorbedData for the structure definition
-   */
-  _absorbed?: import('./noise-reduction/types').AbsorbedData;
-
   // === CAPTURE CONTROL (optional) ===
   /** 
    * Capture control options. All capture behavior in one place.
@@ -1246,6 +1252,12 @@ export interface SpanConfig {
    * Default: true
    */
   skipEmpty: boolean;
+
+  /**
+   * Tag spans slower than this (ms) with `_slow=true` for easy filtering.
+   * Disabled by default (undefined = no slow tagging).
+   */
+  slowTagThresholdMs?: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1373,9 +1385,11 @@ export interface QueryPerformanceConfig {
   captureSlowQueryDetails: boolean;
 
   /**
-   * Track capacity consumption (RCU/WCU) if available.
-   * Requires enhanced ElectroDB response parsing.
-   * Default: false (not yet implemented)
+   * Track consumed capacity (RCU/WCU) from DynamoDB responses.
+   * When enabled, `QueryObserver.getCapacityGoOptions()` returns extra `.go()` params
+   * that request `ReturnConsumedCapacity: 'TOTAL'` and capture the result via an ElectroDB listener.
+   * Callers must spread these options into their `.go()` call for capacity to be captured.
+   * Default: false
    */
   trackCapacity: boolean;
 }

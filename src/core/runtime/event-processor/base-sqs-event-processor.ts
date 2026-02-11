@@ -103,8 +103,26 @@ abstract class BaseSQSEventProcessor<
       // Use the base class helper for span + flush pattern
       return this.executeWithSpanAndFlush(
         `${eventSource} ${processorName}`,
-        async (_span) => {
+        async (processorSpan) => {
           await this.initialize(event, context);
+
+          // SQS retry detection — tag when messages are being reprocessed
+          const rawRecords = (event as unknown as { Records?: Array<{ attributes?: Record<string, string> }> }).Records;
+          if (rawRecords && rawRecords.length > 0) {
+            const receiveCounts = rawRecords.map(
+              (r) => parseInt(r.attributes?.ApproximateReceiveCount ?? '1', 10)
+            );
+            const maxReceiveCount = Math.max(...receiveCounts);
+            const retryCount = receiveCounts.filter((c) => c > 1).length;
+            if (retryCount > 0) {
+              processorSpan.tag('sqs.has_retries', 'true');
+              processorSpan.metrics({
+                'sqs.retry_count': retryCount,
+                'sqs.max_receive_count': maxReceiveCount,
+              });
+            }
+          }
+
           await this.process(event, context);
         },
         {
@@ -122,7 +140,8 @@ abstract class BaseSQSEventProcessor<
           metrics: {
             'event.recordCount': event.Records?.length ?? 0,
           },
-        }
+        },
+        context
       );
     });
   }

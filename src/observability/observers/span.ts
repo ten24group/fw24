@@ -187,6 +187,8 @@ export class SpanObserver implements ISpanObserver {
   readonly parent?: ISpanNode;
   readonly captured: boolean;
   readonly parentLogId: string | undefined;
+  /** Nesting depth in the span hierarchy. Root = 0, direct child = 1, etc. */
+  readonly depth: number;
   private readonly correlationId: string | undefined;
 
   private readonly options: SpanOptions;
@@ -224,6 +226,10 @@ export class SpanObserver implements ISpanObserver {
     this.level = options.level ?? 'info';
     this.startTime = Date.now();
     this.parentLogId = parentLogIdVal;
+    // Compute span depth from parent chain (root = 0)
+    this.depth = parent && 'depth' in parent && typeof (parent as SpanObserver).depth === 'number'
+      ? (parent as SpanObserver).depth + 1
+      : 0;
 
     // Initialize from options
     if (options.tags) {
@@ -634,9 +640,10 @@ export class SpanObserver implements ISpanObserver {
       };
     }
 
-    // Build final metrics (duration always included)
+    // Build final metrics (duration and span.depth always included)
     const finalMetrics: Record<string, number> = {
       duration,
+      'span.depth': this.depth,
       ...this._metrics,
       ...options?.metrics,
     };

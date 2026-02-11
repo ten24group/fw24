@@ -128,7 +128,7 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
     }
 
     const entity = await QueryObserver.track(entityName, 'get', () =>
-        entityService.getRepository().get(identifiers).go({ attributes })
+        entityService.getRepository().get(identifiers).go({ attributes, ...QueryObserver.getCapacityGoOptions() })
     );
 
     // await eventDispatcher.dispatch({event: 'afterGet', context: arguments});
@@ -219,7 +219,8 @@ export async function getBatchEntity<S extends EntitySchema<any, any, any>>(opti
     const result = await QueryObserver.track(entityName, 'batchGet', () =>
         entityService.getRepository().get(identifiersBatch).go({
             attributes,
-            concurrent
+            concurrent,
+            ...QueryObserver.getCapacityGoOptions(),
         }),
         { itemCount: identifiersBatch.length }
     );
@@ -305,7 +306,7 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     // }
 
     const entity = await QueryObserver.track(entityName, 'create', () =>
-        entityService.getRepository().create(data).go()
+        entityService.getRepository().create(data).go({ ...QueryObserver.getCapacityGoOptions() })
     );
 
     // post events
@@ -395,7 +396,7 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
     // Use "all_old" to get the previous item state - allows us to detect create vs update
     // If oldData is empty/null, it was a CREATE. If it has data, it was an UPDATE.
     const entity = await QueryObserver.track(entityName, 'upsert', () =>
-        entityService.getRepository().upsert(data as any).go({ response: "all_old" })
+        entityService.getRepository().upsert(data as any).go({ response: "all_old", ...QueryObserver.getCapacityGoOptions() })
     );
 
     const wasCreated = !entity.data || Object.keys(entity.data).length === 0;
@@ -708,7 +709,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
         entities = await QueryObserver.track(entityName, 'list', () =>
-            indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination) }),
+            indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination), ...QueryObserver.getCapacityGoOptions() }),
             { filters, indexName: matchResult.indexName, pagination }
         );
     } else {
@@ -740,7 +741,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
         }
         // TODO: add attributes to scan query
         entities = await QueryObserver.track(entityName, 'scan', () =>
-            scanQuery.go(removeEmpty(pagination)),
+            scanQuery.go({ ...removeEmpty(pagination), ...QueryObserver.getCapacityGoOptions() }),
             { filters, pagination }
         );
     }
@@ -813,7 +814,7 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
         entities = await QueryObserver.track(entityName, 'query', () =>
-            indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination) }),
+            indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination), ...QueryObserver.getCapacityGoOptions() }),
             { filters, indexName: matchResult.indexName, pagination }
         );
     } else {
@@ -845,7 +846,7 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
         }
         // TODO: add attributes to scan query
         entities = await QueryObserver.track(entityName, 'scan', () =>
-            scanQuery.go(removeEmpty(pagination)),
+            scanQuery.go({ ...removeEmpty(pagination), ...QueryObserver.getCapacityGoOptions() }),
             { filters, pagination }
         );
     }
@@ -1114,7 +1115,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     }
 
     const entity = await QueryObserver.track(entityName, 'update', () =>
-        query.go()
+        query.go({ ...QueryObserver.getCapacityGoOptions() })
     );
 
     // // post events
@@ -1200,7 +1201,7 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
     }
 
     const entity = await QueryObserver.track(entityName, 'delete', () =>
-        entityService.getRepository().delete(identifiers).go()
+        entityService.getRepository().delete(identifiers).go({ ...QueryObserver.getCapacityGoOptions() })
     );
 
     // await eventDispatcher.dispatch({event: 'afterDelete', context: arguments});

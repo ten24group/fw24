@@ -280,7 +280,7 @@ export class DynamoDBObservabilityBackend implements ObservabilityBackend {
       context: event.context,
       error: event.error,
       fingerprint: event.fingerprint,
-      absorbed: event._absorbed,
+      // absorbed data lives inside event.data.absorbed — no separate field
       ttl: ttlSeconds,
     };
   }

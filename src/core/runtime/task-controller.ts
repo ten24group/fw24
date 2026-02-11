@@ -140,7 +140,8 @@ abstract class TaskController extends AbstractLambdaHandler {
             'task.name': taskName,
             'task.schedule': taskConfig.schedule || '',
           },
-        }
+        },
+        context
       );
     });
   }

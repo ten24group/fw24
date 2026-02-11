@@ -44,6 +44,7 @@ function makeConfig(overrides: Partial<NoiseReductionConfig> = {}): NoiseReducti
     maxAbsorbedCausedByLinksPerSpan: 50,
     maxAbsorbedEntityIdsPerSpan: 100,
     maxAbsorbedOperationKeysPerSpan: 50,
+    maxAbsorbedCheckpointsPerSpan: 100,
     ...overrides,
   };
 }

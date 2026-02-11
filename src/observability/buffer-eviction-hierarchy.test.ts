@@ -54,6 +54,7 @@ describe('Observability buffer eviction (bounded memory, no orphan parents)', ()
         maxAbsorbedCausedByLinksPerSpan: 50,
         maxAbsorbedEntityIdsPerSpan: 100,
         maxAbsorbedOperationKeysPerSpan: 50,
+        maxAbsorbedCheckpointsPerSpan: 100,
       },
     });
   });

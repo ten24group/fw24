@@ -14,6 +14,15 @@ export interface QueryContext {
 }
 
 /**
+ * Consumed capacity data captured from DynamoDB responses.
+ * Populated via ElectroDB `listeners` when `trackCapacity` is enabled.
+ */
+export interface ConsumedCapacityResult {
+  readonly rcu?: number;
+  readonly wcu?: number;
+}
+
+/**
  * QueryObserver
  * 
  * Specialized observer for database performance tracking.
@@ -66,6 +75,12 @@ export class QueryObserver {
       const isSlow = durationMs > threshold;
       const isScan = operation === 'scan';
 
+      // Capture consumed capacity (if tracking is enabled and listener was wired)
+      const capacity = this.consumeLastCapacity();
+      const capacityMetrics: Record<string, number> = {};
+      if (capacity?.rcu != null) capacityMetrics['dynamo.consumed_rcu'] = capacity.rcu;
+      if (capacity?.wcu != null) capacityMetrics['dynamo.consumed_wcu'] = capacity.wcu;
+
       // Emit event through proper capture system
       // The observability manager will apply noise reduction, sampling, etc.
       captureRecord('QueryObserver', {
@@ -78,7 +93,8 @@ export class QueryObserver {
         metrics: {
           durationMs,
           threshold,
-          ...(itemCount !== undefined && { itemCount })
+          ...(itemCount !== undefined && { itemCount }),
+          ...capacityMetrics,
         },
         data: {
           operation,
@@ -93,6 +109,7 @@ export class QueryObserver {
         tags: {
           entityName,
           operation,
+          query_type: this.classifyQueryType(operation),
           ...(context?.indexName && { indexName: context.indexName }),
           ...(isSlow && { slowQuery: 'true' }),
           ...(isScan && { scan: 'true' })
@@ -117,6 +134,7 @@ export class QueryObserver {
         tags: {
           entityName,
           operation,
+          query_type: this.classifyQueryType(operation),
           error: 'true',
           ...(context?.indexName && { indexName: context.indexName })
         },
@@ -166,12 +184,88 @@ export class QueryObserver {
   }
 
 
-  private static extractItemCount(result: any): number | undefined {
-    if (result && typeof result === 'object') {
-      if ('data' in result) {
-        return Array.isArray(result.data) ? result.data.length : (result.data ? 1 : 0);
-      }
+  /**
+   * Classify a DynamoDB operation into a high-level query type for filtering.
+   */
+  private static classifyQueryType(operation: QueryOperation): string {
+    switch (operation) {
+      case 'get': return 'point-read';
+      case 'batchGet': return 'batch-read';
+      case 'scan': return 'full-scan';
+      case 'query':
+      case 'list': return 'range-query';
+      case 'create':
+      case 'upsert':
+      case 'update':
+      case 'delete':
+      case 'batchDelete': return 'write';
+      default: return 'other';
+    }
+  }
+
+  private static extractItemCount(result: unknown): number | undefined {
+    if (result && typeof result === 'object' && 'data' in result) {
+      const data = (result as { data: unknown }).data;
+      return Array.isArray(data) ? data.length : (data ? 1 : 0);
     }
     return undefined;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CONSUMED CAPACITY TRACKING
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** Thread-local storage for consumed capacity captured by the ElectroDB listener. */
+  private static _lastConsumedCapacity: ConsumedCapacityResult | undefined;
+
+  /**
+   * Returns extra `.go()` options to merge into ElectroDB calls when consumed capacity
+   * tracking is enabled. The caller should spread these into their `.go()` call.
+   *
+   * Uses ElectroDB's `params` passthrough to request `ReturnConsumedCapacity: 'TOTAL'`
+   * and a `listeners` callback that captures the raw `ConsumedCapacity` from the
+   * DynamoDB response.
+   *
+   * @example
+   * ```typescript
+   * const entity = await QueryObserver.track(entityName, 'get', () =>
+   *   repo.get(id).go({ attributes, ...QueryObserver.getCapacityGoOptions() })
+   * );
+   * ```
+   */
+  static getCapacityGoOptions(): Record<string, unknown> {
+    const config = getCurrentObservabilityConfig()?.queryPerformance;
+    if (!config?.trackCapacity) return {};
+
+    // Reset before each call
+    this._lastConsumedCapacity = undefined;
+
+    return {
+      params: { ReturnConsumedCapacity: 'TOTAL' },
+      listeners: [
+        (event: { type: string; results: unknown }) => {
+          if (event.type === 'results') {
+            const raw = event.results as Record<string, unknown> | undefined;
+            const consumed = raw?.ConsumedCapacity as { CapacityUnits?: number; ReadCapacityUnits?: number; WriteCapacityUnits?: number } | undefined;
+            if (consumed) {
+              QueryObserver._lastConsumedCapacity = {
+                rcu: consumed.ReadCapacityUnits ?? consumed.CapacityUnits,
+                wcu: consumed.WriteCapacityUnits,
+              };
+            }
+          }
+        },
+      ],
+    };
+  }
+
+  /**
+   * Returns and clears the last captured consumed capacity.
+   * Call this after `.go()` completes to get the capacity metrics.
+   */
+  static consumeLastCapacity(): ConsumedCapacityResult | undefined {
+    const result = this._lastConsumedCapacity;
+    this._lastConsumedCapacity = undefined;
+    return result;
   }
 }

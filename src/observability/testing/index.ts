@@ -163,20 +163,21 @@ export class MockBackend implements ObservabilityBackend {
   // === Absorbed Data Helpers ===
 
   /**
-   * Get events that have absorbed data attached (i.e., events that absorbed children)
+   * Get events that have absorbed data attached (i.e., events that absorbed children).
+   * Absorbed data lives at event.data.absorbed.
    */
   getEventsWithAbsorbed(): ObservabilityEvent[] {
-    return this.events.filter(e => e._absorbed != null);
+    return this.events.filter(e => (e.data as any)?.absorbed != null);
   }
 
   /**
-   * Get the absorbed data for a specific event (by operation or filter)
+   * Get the absorbed data for a specific event (by operation or filter).
    * Returns undefined if the event has no absorbed data.
    */
   getAbsorbedData(filter: Partial<ObservabilityEvent>): AbsorbedData | undefined {
     const matching = this.getEventsMatching(filter);
     if (matching.length === 0) return undefined;
-    return matching[0]._absorbed as AbsorbedData | undefined;
+    return (matching[0].data as any)?.absorbed as AbsorbedData | undefined;
   }
 
   /**
@@ -190,10 +191,10 @@ export class MockBackend implements ObservabilityBackend {
         message ?? `Expected event matching ${JSON.stringify(filter)} but found none.`
       );
     }
-    const absorbed = matching[0]._absorbed as AbsorbedData | undefined;
+    const absorbed = (matching[0].data as any)?.absorbed as AbsorbedData | undefined;
     if (!absorbed) {
       throw new Error(
-        message ?? `Expected event matching ${JSON.stringify(filter)} to have absorbed data, but _absorbed is ${absorbed}.`
+        message ?? `Expected event matching ${JSON.stringify(filter)} to have absorbed data, but data.absorbed is ${absorbed}.`
       );
     }
     return absorbed;

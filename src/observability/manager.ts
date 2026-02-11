@@ -27,6 +27,7 @@ import { initializeCapturer, resetCapturer } from './observers/base';
 import { DIContainer } from '../di';
 import { NoProviderFoundError } from '../di/errors';
 import { applyNoiseReduction, type EmittedEvent } from './noise-reduction';
+import { groupCheckpointsByOperation } from './span-compression';
 import { buildTraceGraph } from './trace-graph';
 import { createObservabilityConfig, type ObservabilityConfigInput } from './config';
 import { setCurrentObservabilityConfig, runSpanFinalizer, setSpanLifecycleHooks } from './runtime-state';
@@ -75,9 +76,37 @@ function unpackEmittedEvents(emittedEvents: readonly EmittedEvent[]): Observabil
     // Create a shallow copy to avoid mutating the original event
     const event: ObservabilityEvent = { ...emitted.event };
 
-    // Set absorbed data if present
+    // Merge absorbed data into event.data (single location, no separate top-level field)
     if (emitted.absorbed) {
-      event._absorbed = emitted.absorbed;
+      const existingData = event.data ?? {};
+
+      // Convert absorbed checkpoints into GROUPED timeline entries (Elastic APM span compression pattern).
+      // Instead of N individual entries for "BaseEntityService.upsert", produces ONE composite entry
+      // with aggregate stats and a compact items array of per-item varying fields.
+      let checkpoints = (existingData.checkpoints as unknown[]) ?? [];
+      if (emitted.absorbed.checkpoints.length > 0) {
+        const groupedEntries = groupCheckpointsByOperation(emitted.absorbed.checkpoints);
+        checkpoints = [...checkpoints, ...groupedEntries];
+      }
+
+      // Store absorbed summary — stripped of byOperation, entityIds, and checkpoints
+      // since grouped checkpoint entries now carry that information.
+      const absorbedSummary: Record<string, unknown> = {
+        count: emitted.absorbed.count,
+        silentCount: emitted.absorbed.silentCount,
+      };
+      if (emitted.absorbed.errors.length > 0) {
+        absorbedSummary.errors = emitted.absorbed.errors;
+      }
+      if (emitted.absorbed.causedByLinks.length > 0) {
+        absorbedSummary.causedByLinks = emitted.absorbed.causedByLinks;
+      }
+
+      event.data = {
+        ...existingData,
+        checkpoints: checkpoints.length > 0 ? checkpoints : undefined,
+        absorbed: absorbedSummary,
+      };
     }
 
     // Attach noise reduction debug info if present
@@ -109,6 +138,8 @@ function unpackEmittedEvents(emittedEvents: readonly EmittedEvent[]): Observabil
 
   return result;
 }
+
+// Span compression (groupCheckpointsByOperation) extracted to ./span-compression.ts
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PRIVATE HELPER FUNCTIONS
@@ -229,6 +260,15 @@ function buildEvent(input: CaptureInput, context: ReturnType<typeof getCurrentCo
     }
   }
 
+  // Merge tags: context + input + slow auto-tag
+  let mergedTags = mergeTags({ ...ctx?.observability?.tags, ...input.tags }, true);
+
+  // Slow request auto-tagging: mark spans exceeding the configured threshold
+  const slowThreshold = config?.spans?.slowTagThresholdMs;
+  if (slowThreshold != null && input.durationMs != null && input.durationMs > slowThreshold) {
+    mergedTags = { ...(mergedTags ?? {}), _slow: 'true' };
+  }
+
   return {
     type: input.type,
     level: input.level,
@@ -242,7 +282,7 @@ function buildEvent(input: CaptureInput, context: ReturnType<typeof getCurrentCo
     relatedTraces: input.relatedTraces,
     actor: input.actor ?? ctx?.actor,
     source: input.source ?? ctx?.observability?.source ?? detectSource(),
-    tags: mergeTags({ ...ctx?.observability?.tags, ...input.tags }, true),
+    tags: mergedTags,
     entityName: input.entityName,
     entityId: input.entityId,
     operation,

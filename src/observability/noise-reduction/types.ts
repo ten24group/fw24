@@ -9,7 +9,7 @@
  * Key design principles:
  * - No tree mutation: decisions are recorded, the tree is never modified
  * - Parent resolution happens at collection time by walking the tree
- * - Single `_absorbed` field replaces scattered checkpoints, aggregates, and summaries
+ * - Absorbed data lives in `data.absorbed` (no separate top-level attribute)
  * - Strong typing: no `any`, no forced casts
  */
 
@@ -82,6 +82,8 @@ export interface AbsorbedError {
   readonly causedBy?: string;
   /** Tags from the absorbed event (for filtering/correlation) */
   readonly tags?: Readonly<Record<string, string>>;
+  /** Deterministic error fingerprint for cross-event correlation */
+  readonly fingerprint?: string;
 }
 
 /**
@@ -92,7 +94,7 @@ export interface AbsorbedError {
  * 
  * Design invariants:
  * - Arrays are bounded (configurable caps, enforced during absorption)
- * - All fields are optional (an event with no absorbed children has no _absorbed field)
+ * - All fields are optional (an event with no absorbed children has no data.absorbed)
  * - The structure is deterministic: same input always produces same output
  */
 export interface AbsorbedData {
@@ -108,6 +110,64 @@ export interface AbsorbedData {
   readonly causedByLinks: readonly string[];
   /** Entity IDs from absorbed children for traceability */
   readonly entityIds: readonly string[];
+  /**
+   * Timeline checkpoints synthesized from absorbed child events.
+   * Each absorbed event with an operation name becomes a checkpoint entry,
+   * giving the parent span a detailed timeline without creating separate records.
+   * Format matches SpanCheckpoint so the UI can render them alongside manual checkpoints.
+   */
+  readonly checkpoints: readonly AbsorbedCheckpoint[];
+}
+
+/**
+ * A checkpoint entry synthesized from an absorbed event.
+ * Stored in AbsorbedData.checkpoints during algorithm execution.
+ * 
+ * At persistence time (manager.ts), individual checkpoints are GROUPED by operation name
+ * into composite timeline entries (Elastic APM span compression pattern).
+ * 
+ * This type captures per-item fields only. Shared context (tags, source, level, type)
+ * is factored out into the group header to avoid N-way duplication.
+ */
+export interface AbsorbedCheckpoint {
+  /** Operation name (grouping key, e.g., "BaseEntityService.upsert") */
+  readonly name: string;
+  /** Timestamp in epoch milliseconds */
+  readonly ts: number;
+  /** Duration in milliseconds (if available) */
+  readonly durationMs?: number;
+  /** Whether the absorbed operation succeeded */
+  readonly success?: boolean;
+  /** Error info if the absorbed event had an error */
+  readonly error?: { readonly type: string; readonly message: string };
+
+  // === Per-item identity & state (varies per absorbed event) ===
+
+  /** Original observability log ID — for traceability and linking */
+  readonly observabilityLogId?: string;
+  /** Specific entity instance ID */
+  readonly entityId?: string;
+  /** Operation status (completed, failed, timeout, etc.) — varies per item */
+  readonly status?: string;
+  /** Cross-hop causedBy correlation ID — varies per item */
+  readonly causedBy?: string;
+  /** Numeric metrics from the absorbed event (queryTimeMs, resultCount, etc.) */
+  readonly metrics?: Readonly<Record<string, number>>;
+
+  // === Shared context (same across items in a group, extracted to group header at persistence) ===
+
+  /** Tags from the absorbed event */
+  readonly tags?: Readonly<Record<string, string>>;
+  /** Event type (span, log, metric, etc.) */
+  readonly type?: string;
+  /** More specific type classification (e.g., entity.create, entity.update) */
+  readonly subType?: string;
+  /** Severity level */
+  readonly level?: string;
+  /** Entity type being observed (e.g., "standing", "team") */
+  readonly entityName?: string;
+  /** Source identifier */
+  readonly source?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -229,12 +289,14 @@ export interface NoiseReductionResult {
  * These are derived from NoiseReductionConfig at algorithm entry.
  */
 export interface AbsorptionBounds {
-  /** Maximum error entries in _absorbed.errors per emitted event */
+  /** Maximum error entries in data.absorbed.errors per emitted event */
   readonly maxErrorsPerSpan: number;
-  /** Maximum causedBy links in _absorbed.causedByLinks per emitted event */
+  /** Maximum causedBy links in data.absorbed.causedByLinks per emitted event */
   readonly maxCausedByLinksPerSpan: number;
-  /** Maximum entity IDs in _absorbed.entityIds per emitted event */
+  /** Maximum entity IDs in data.absorbed.entityIds per emitted event */
   readonly maxEntityIdsPerSpan: number;
-  /** Maximum number of distinct operation keys in _absorbed.byOperation */
+  /** Maximum number of distinct operation keys in data.absorbed.byOperation */
   readonly maxOperationKeysPerSpan: number;
+  /** Maximum checkpoint entries in data.absorbed.checkpoints per emitted event */
+  readonly maxCheckpointsPerSpan: number;
 }

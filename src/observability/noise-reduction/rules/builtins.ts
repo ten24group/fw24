@@ -268,6 +268,52 @@ export function getBuiltinRules(presets: readonly string[]): readonly NoiseRule[
       decision: 'absorb',
       reason: 'Absorb successful entity write spans into parent',
     });
+
+    // ─────────────────────────────────────────────────────────────────────
+    // API CORS / Preflight Noise
+    // ─────────────────────────────────────────────────────────────────────
+
+    rules.push({
+      id: 'fw24.hotpaths.api.silent_options_cors',
+      priority: 95, // High priority — OPTIONS requests are pure infrastructure noise
+      match: {
+        type: 'span',
+        operation: '/^HTTP OPTIONS\\s/',
+      },
+      decision: 'silent',
+      reason: 'Silence CORS preflight OPTIONS requests',
+    });
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Favicon Noise
+    // ─────────────────────────────────────────────────────────────────────
+
+    rules.push({
+      id: 'fw24.hotpaths.api.silent_favicon',
+      priority: 95,
+      match: {
+        type: 'span',
+        operation: '/favicon\\.ico/',
+      },
+      decision: 'silent',
+      reason: 'Silence favicon.ico requests',
+    });
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Successful Write Query Absorption
+    // ─────────────────────────────────────────────────────────────────────
+
+    rules.push({
+      id: 'fw24.hotpaths.queries.absorb_write_success',
+      priority: 30, // Lower than error/scan/slow emit rules
+      match: {
+        type: 'database.query',
+        operation: '/\\.(create|upsert|update|delete|batchDelete|put|batchWrite)(?:\\(|$)/',
+        success: true,
+      },
+      decision: 'absorb',
+      reason: 'Absorb successful write queries into parent span (errors/slow preserved)',
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════
