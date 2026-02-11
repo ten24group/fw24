@@ -144,22 +144,6 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
               { id: 'trace', label: 'Trace', icon: 'ApartmentOutlined', filters: { level: { eq: 'trace' } } },
             ],
           },
-          // === BY SIGNALS ===
-          {
-            id: 'signals-group',
-            label: 'Signals',
-            segments: [
-              { id: 'all-signals', label: 'All', filters: {}, default: true },
-              { id: 'cold-starts', label: 'Cold Starts', icon: 'ThunderboltOutlined', filters: { 'tags.cold_start': { eq: 'true' } } },
-              { id: 'slow-requests', label: 'Slow', icon: 'ClockCircleOutlined', filters: { 'tags._slow': { eq: 'true' } }, badgeStatus: 'warning' },
-              { id: 'has-errors', label: 'Failed', icon: 'CloseCircleOutlined', filters: { success: { eq: 'false' } }, badgeStatus: 'error' },
-              { id: 'status-4xx', label: '4xx', icon: 'WarningOutlined', filters: { 'tags.http.status_code_class': { eq: '4xx' } }, badgeStatus: 'warning' },
-              { id: 'status-5xx', label: '5xx', icon: 'CloseCircleOutlined', filters: { 'tags.http.status_code_class': { eq: '5xx' } }, badgeStatus: 'error' },
-              { id: 'retries', label: 'Retries', icon: 'ReloadOutlined', filters: { 'tags.sqs.has_retries': { eq: 'true' } }, badgeStatus: 'warning' },
-              { id: 'memory-pressure', label: 'Memory', icon: 'DashboardOutlined', filters: { 'tags._memory_pressure': { eq: 'true' } }, badgeStatus: 'warning' },
-              { id: 'timeout-risk', label: 'Timeout Risk', icon: 'FieldTimeOutlined', filters: { 'tags._timeout_risk': { eq: 'true' } }, badgeStatus: 'error' },
-            ],
-          },
         ],
         expandable: {
           mode: 'json',
