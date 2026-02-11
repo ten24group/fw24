@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ModuleMetadataError = void 0;
+const errors_1 = require("../../errors");
+// Define custom error classes
+class ModuleMetadataError extends errors_1.FrameworkError {
+    constructor(moduleName, containerId) {
+        super(`Module ${moduleName} does not have any metadata, make sure it's decorated with @DIModule(). DIContainer[${containerId}]`);
+    }
+}
+exports.ModuleMetadataError = ModuleMetadataError;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiTW9kdWxlTWV0YWRhdGFFcnJvci5qcyIsInNvdXJjZVJvb3QiOiIiLCJzb3VyY2VzIjpbIi4uLy4uLy4uLy4uL3NyYy9kaS9lcnJvcnMvTW9kdWxlTWV0YWRhdGFFcnJvci50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOzs7QUFBQSx5Q0FBOEM7QUFFOUMsOEJBQThCO0FBQzlCLE1BQWEsbUJBQW9CLFNBQVEsdUJBQWM7SUFDbkQsWUFBWSxVQUFrQixFQUFFLFdBQW1CO1FBQy9DLEtBQUssQ0FBQyxVQUFVLFVBQVUsdUZBQXVGLFdBQVcsR0FBRyxDQUFDLENBQUM7SUFDckksQ0FBQztDQUNKO0FBSkQsa0RBSUMiLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBGcmFtZXdvcmtFcnJvciB9IGZyb20gJy4uLy4uL2Vycm9ycyc7XG5cbi8vIERlZmluZSBjdXN0b20gZXJyb3IgY2xhc3Nlc1xuZXhwb3J0IGNsYXNzIE1vZHVsZU1ldGFkYXRhRXJyb3IgZXh0ZW5kcyBGcmFtZXdvcmtFcnJvciB7XG4gICAgY29uc3RydWN0b3IobW9kdWxlTmFtZTogc3RyaW5nLCBjb250YWluZXJJZDogc3RyaW5nKSB7XG4gICAgICAgIHN1cGVyKGBNb2R1bGUgJHttb2R1bGVOYW1lfSBkb2VzIG5vdCBoYXZlIGFueSBtZXRhZGF0YSwgbWFrZSBzdXJlIGl0J3MgZGVjb3JhdGVkIHdpdGggQERJTW9kdWxlKCkuIERJQ29udGFpbmVyWyR7Y29udGFpbmVySWR9XWApO1xuICAgIH1cbn1cbiJdfQ==

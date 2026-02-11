@@ -1,0 +1,11 @@
+import type { DepIdentifier, InjectOptions } from './../interfaces/di';
+import { RegisterDIModuleMetadataOptions } from './metadata';
+import { type InjectableOptions } from './utils/tryRegisterInjectable';
+export declare function Injectable(options?: InjectableOptions): ClassDecorator;
+export declare function DIModule(options?: RegisterDIModuleMetadataOptions): ClassDecorator;
+export declare function Inject<T>(dependencyToken: DepIdentifier<T>, options?: InjectOptions<T>): PropertyDecorator & ParameterDecorator;
+export declare function InjectContainer(): PropertyDecorator & ParameterDecorator;
+export declare function InjectConfig(configPath: string, options?: InjectOptions<any>): PropertyDecorator & ParameterDecorator;
+export declare function InjectEntitySchema<T>(entityName: string, options?: Omit<InjectOptions<T>, 'isConfig' | 'forEntity' | 'type'>): PropertyDecorator & ParameterDecorator;
+export declare function InjectEntityService<T>(entityName: string, options?: Omit<InjectOptions<T>, 'isConfig' | 'forEntity' | 'type'>): PropertyDecorator & ParameterDecorator;
+export declare function OnInit(): MethodDecorator;
