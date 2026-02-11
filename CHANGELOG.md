@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.11](https://github.com/ten24group/fw24/compare/v1.1.0-beta.10...v1.1.0-beta.11) (2026-02-11)
+
+
+### Features
+
+* **observability:** enhance observability with SQS retry detection and HTTP metrics ([518356e](https://github.com/ten24group/fw24/commit/518356e014ec3bc735aaa40c7235176af0b5c0b6))
+
 ## [1.1.0-beta.10](https://github.com/ten24group/fw24/compare/v1.1.0-beta.9...v1.1.0-beta.10) (2026-02-04)
 
 ## [1.1.0-beta.9](https://github.com/ten24group/fw24/compare/v1.1.0-beta.8...v1.1.0-beta.9) (2026-02-02)
