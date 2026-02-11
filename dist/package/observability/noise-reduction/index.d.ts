@@ -1,78 +1,32 @@
 /**
- * Tree-based noise reduction for observability events.
+ * Noise Reduction Module (v2: three-decision model)
  *
- * This module provides intelligent noise reduction for observability data,
- * reducing log volume while preserving critical information.
+ * Intelligent noise reduction for observability events, reducing DynamoDB
+ * record count while preserving critical information through structured
+ * absorption into parent spans.
  *
- * ## Architecture
+ * ## Three-Decision Model
  *
- * The system uses a 4-phase tree-based approach:
- *
- * 1. **Build Tree**: Convert flat events to tree structure
- * 2. **Evaluate Decisions**: Apply noise rules to each node
- * 3. **Transform Tree**: Apply decisions (drop/fold/aggregate)
- * 4. **Flatten**: Convert back to flat array
- *
- * ## Benefits
- *
- * - **O(n) complexity**: Single pass per phase
- * - **Automatic reparenting**: No separate loops needed
- * - **Clear separation**: Each phase is independently testable
- * - **Type-safe**: Strong TypeScript types throughout
- *
- * @module noise-reduction
- */
-import type { ObservabilityEvent, NoiseReductionConfig, NoiseDecision } from '../types';
-import type { NoiseReductionStats } from './types';
-/**
- * Result of noise reduction processing.
- */
-export interface NoiseReductionResult {
-    /** Events after noise reduction */
-    events: ObservabilityEvent[];
-    /** Statistics about what was suppressed */
-    stats: NoiseReductionStats;
-}
-/**
- * Apply noise reduction to a batch of observability events.
- *
- * This is the main entry point for noise reduction. It processes events
- * through all four phases and returns the reduced output with statistics.
+ * | Decision  | DynamoDB Record? | Info Preserved?                          |
+ * |-----------|------------------|------------------------------------------|
+ * | `emit`    | Yes              | Full event                               |
+ * | `absorb`  | No               | Structured summary in parent `data.absorbed` |
+ * | `silent`  | No               | Counter on parent only                   |
  *
  * ## Algorithm
  *
- * 1. Handle span.start events separately (OTEL compatibility)
- * 2. Build tree from remaining events
- * 3. Evaluate noise rules for all nodes
- * 4. Transform tree (apply decisions)
- * 5. Flatten tree to output
- * 6. Handle span.start based on parent decisions
+ * 1. **Build**: Flat events → tree (parentObservabilityLogId linkage)
+ * 2. **Evaluate**: Post-order DFS assigns decisions (rules + hard signals)
+ * 3. **Collect**: Pre-order DFS builds output (resolved parents + absorbed data)
  *
- * ## Performance
+ * The tree is NEVER mutated. Parent IDs in output are resolved to the nearest
+ * EMITTED ancestor, ensuring correct hierarchy without reparenting.
  *
- * - Time: O(n) where n = number of events
- * - Space: O(n) for tree structure
- *
- * @param inputEvents - Events to process
- * @param cfg - Noise reduction configuration
- * @returns Reduced events with statistics
+ * @module noise-reduction
  */
-export declare function applyNoiseReduction(inputEvents: ReadonlyArray<ObservabilityEvent>, cfg: NoiseReductionConfig): NoiseReductionResult;
-/**
- * Evaluate noise decision for a single event (for testing/inspection).
- *
- * This is a convenience function that evaluates rules for a single event
- * without building a tree or applying transformations.
- *
- * @param event - Event to evaluate
- * @param cfg - Noise reduction configuration
- * @returns Decision with context
- */
-export declare function pickNoiseDecision(event: ObservabilityEvent, cfg: NoiseReductionConfig): {
-    decision: NoiseDecision;
-    ruleId: string;
-    reason: string;
-};
-export { evaluateNoiseRules, DECISION_BASE_PRIORITY, type NoiseEvaluationResult } from './priority';
+export { applyNoiseReduction, pickNoiseDecision, buildAndEvaluate } from './algorithm';
+export type { NoiseDecision, AbsorbedData, AbsorbedError, OperationStats, DurationStats, TreeNode, NodeDecision, EmittedEvent, NoiseReductionResult, NoiseReductionStats, NoiseDebugInfo, AbsorptionBounds, } from './types';
+export { evaluateNoiseRules, DECISION_BASE_PRIORITY, HARD_SIGNAL_PRIORITY, getEffectivePriority, type NoiseEvaluationResult, type RuleMatchFn, } from './priority';
 export { getBuiltinRules, clearBuiltinRulesCache } from './rules/builtins';
-export type { NoiseReductionStats } from './types';
+export { matchesRule } from './rules/matcher';
+export { isHardSignal } from './hard-signals';

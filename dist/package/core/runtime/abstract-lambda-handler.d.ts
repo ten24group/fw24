@@ -1,3 +1,4 @@
+import type { Context } from "aws-lambda";
 import { IValidator } from "../../validation";
 import { SpanObserver, SpanOptions } from "../../observability";
 export declare abstract class AbstractLambdaHandler {
@@ -76,7 +77,23 @@ export declare abstract class AbstractLambdaHandler {
      * }
      * ```
      */
-    protected executeWithSpanAndFlush<T>(spanName: string, handler: (span: SpanObserver) => Promise<T>, spanOptions?: SpanOptions): Promise<T>;
+    protected executeWithSpanAndFlush<T>(spanName: string, handler: (span: SpanObserver) => Promise<T>, spanOptions?: SpanOptions, lambdaContext?: Context): Promise<T>;
+    /**
+     * Enrich the root span with cold start tracking, runtime metrics, and Lambda context.
+     * Called automatically by executeWithSpanAndFlush for every handler invocation.
+     * Concrete handlers should pass `lambdaContext` for full enrichment.
+     */
+    protected enrichRootSpan(span: SpanObserver, lambdaContext?: Context): void;
+    /**
+     * Build Lambda runtime tags from the AWS Lambda context object.
+     * Call this from concrete handler types that have access to the Lambda context.
+     */
+    protected buildRuntimeTags(lambdaContext: Context): Record<string, string>;
+    /**
+     * Build Lambda runtime metrics from the AWS Lambda context object.
+     * Call this from concrete handler types that have access to the Lambda context.
+     */
+    protected buildRuntimeMetrics(lambdaContext: Context): Record<string, number>;
     /**
      * Creates a new instance of the controller and returns its LambdaHandler method.
      * @returns The LambdaHandler method of the controller.

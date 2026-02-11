@@ -10,6 +10,14 @@ export interface QueryContext {
     itemCount?: number;
 }
 /**
+ * Consumed capacity data captured from DynamoDB responses.
+ * Populated via ElectroDB `listeners` when `trackCapacity` is enabled.
+ */
+export interface ConsumedCapacityResult {
+    readonly rcu?: number;
+    readonly wcu?: number;
+}
+/**
  * QueryObserver
  *
  * Specialized observer for database performance tracking.
@@ -42,5 +50,32 @@ export declare class QueryObserver {
      */
     private static determineLevel;
     private static getSlowThreshold;
+    /**
+     * Classify a DynamoDB operation into a high-level query type for filtering.
+     */
+    private static classifyQueryType;
     private static extractItemCount;
+    /** Thread-local storage for consumed capacity captured by the ElectroDB listener. */
+    private static _lastConsumedCapacity;
+    /**
+     * Returns extra `.go()` options to merge into ElectroDB calls when consumed capacity
+     * tracking is enabled. The caller should spread these into their `.go()` call.
+     *
+     * Uses ElectroDB's `params` passthrough to request `ReturnConsumedCapacity: 'TOTAL'`
+     * and a `listeners` callback that captures the raw `ConsumedCapacity` from the
+     * DynamoDB response.
+     *
+     * @example
+     * ```typescript
+     * const entity = await QueryObserver.track(entityName, 'get', () =>
+     *   repo.get(id).go({ attributes, ...QueryObserver.getCapacityGoOptions() })
+     * );
+     * ```
+     */
+    static getCapacityGoOptions(): Record<string, unknown>;
+    /**
+     * Returns and clears the last captured consumed capacity.
+     * Call this after `.go()` completes to get the capacity metrics.
+     */
+    static consumeLastCapacity(): ConsumedCapacityResult | undefined;
 }

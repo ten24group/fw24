@@ -82,13 +82,11 @@ export declare const CONFIG_DEFAULTS: {
         };
         presets: ("fw24.hotpaths" | "fw24.batch_processors")[];
         rules: never[];
-        emitSummaries: false;
-        maxCheckpointsPerSpan: number;
-        maxAggregateKeysPerSpan: number;
-        maxAggregateExamplesPerKey: number;
-        maxAggregateErrorExamplesPerKey: number;
-        includeDebugMetadata: false;
-        includeExamples: false;
+        maxAbsorbedErrorsPerSpan: number;
+        maxAbsorbedCausedByLinksPerSpan: number;
+        maxAbsorbedEntityIdsPerSpan: number;
+        maxAbsorbedOperationKeysPerSpan: number;
+        maxAbsorbedCheckpointsPerSpan: number;
     };
     readonly truncation: {
         enabled: false;
@@ -161,13 +159,16 @@ export interface ObservabilityConfigInput {
         minDurationMs?: number;
         /** Skip spans with no events/errors. Default: true */
         skipEmpty?: boolean;
+        /** Tag spans slower than this (ms) with `_slow=true`. Disabled by default. */
+        slowTagThresholdMs?: number;
     };
     /**
      * Query performance tracking configuration
      */
     queryPerformance?: Partial<QueryPerformanceConfig>;
     /**
-     * Noise reduction configuration (merge/drop/aggregate).
+     * Noise reduction configuration (emit/absorb/silent).
+     * Set `noiseReduction.preset` to `'recommended'` or `'aggressive'` for sensible defaults.
      */
     noiseReduction?: Partial<NoiseReductionConfig>;
     /**

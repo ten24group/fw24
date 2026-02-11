@@ -1,49 +1,41 @@
 /**
- * Shared utility functions for noise reduction.
+ * Shared utility functions for noise reduction (v2).
  */
-import type { ObservabilityEvent, NoiseReductionConfig, SpanCheckpoint } from '../types';
-import type { NoiseReductionBounds, NoiseReductionStats } from './types';
-/**
- * Type guard for checking if a value is a record.
- */
-export declare function isRecord(value: unknown): value is Record<string, unknown>;
-/**
- * Type guard for checking if a value is a valid checkpoint.
- */
-export declare function isCheckpoint(value: unknown): value is SpanCheckpoint;
+import type { ObservabilityEvent } from '../types';
+import type { NoiseReductionStats, AbsorptionBounds } from './types';
+import type { NoiseReductionConfig } from '../types';
 /**
  * Convert a value to an array if it isn't already.
+ * Returns undefined if input is undefined (preserves optionality).
  */
 export declare function asArray<T>(v: T | T[] | undefined): T[] | undefined;
 /**
- * Increment a counter in a record.
+ * Increment a counter in a mutable record.
+ * Creates the key with value 0 + by if it doesn't exist.
  */
 export declare function incrementCounter(map: Record<string, number>, key: string | undefined, by?: number): void;
 /**
- * Estimate the size of heavy fields in an event.
- * Used for tracking bytes saved by noise reduction.
+ * Estimate the size of an event's payload fields in bytes.
+ * Used for approximate byte savings tracking.
  */
-export declare function estimateEventHeavyBytes(event: ObservabilityEvent): number;
+export declare function estimateEventBytes(event: ObservabilityEvent): number;
 /**
- * Get configuration bounds from noise reduction config.
+ * Create initial (mutable) noise reduction stats.
  */
-export declare function getBounds(cfg: NoiseReductionConfig): NoiseReductionBounds;
+export declare function createMutableStats(): {
+    emitted: number;
+    absorbed: number;
+    silenced: number;
+    totalInput: number;
+    suppressedRoots: number;
+    absorbedByOperation: Record<string, number>;
+    silencedByOperation: Record<string, number>;
+};
 /**
- * Ensure event.data exists and is a record.
+ * Freeze mutable stats into a readonly NoiseReductionStats.
  */
-export declare function ensureSpanData(span: ObservabilityEvent): Record<string, unknown>;
+export declare function freezeStats(stats: ReturnType<typeof createMutableStats>): NoiseReductionStats;
 /**
- * Append a checkpoint to a span, respecting configured limits.
- * Tracks truncation when limit is reached.
- *
- * @returns true if checkpoint was added, false if truncated
+ * Extract absorption bounds from noise reduction config.
  */
-export declare function appendCheckpointBounded(span: ObservabilityEvent, cfg: NoiseReductionConfig, checkpoint: SpanCheckpoint): boolean;
-/**
- * Create initial noise reduction stats.
- */
-export declare function createStats(): NoiseReductionStats;
-/**
- * Strip heavy fields from an event (downgrade operation).
- */
-export declare function stripHeavyFields(event: ObservabilityEvent): void;
+export declare function getAbsorptionBounds(cfg: NoiseReductionConfig): AbsorptionBounds;

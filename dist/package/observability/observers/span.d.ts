@@ -92,6 +92,8 @@ export declare class SpanObserver implements ISpanObserver {
     readonly parent?: ISpanNode;
     readonly captured: boolean;
     readonly parentLogId: string | undefined;
+    /** Nesting depth in the span hierarchy. Root = 0, direct child = 1, etc. */
+    readonly depth: number;
     private readonly correlationId;
     private readonly options;
     private readonly level;

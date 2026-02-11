@@ -159,6 +159,9 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                         }, {
                             readonly field: "durationMs";
                         }, {
+                            readonly field: "fingerprint";
+                            readonly defaultVisible: false;
+                        }, {
                             readonly field: "correlationId";
                             readonly defaultVisible: false;
                         }];
@@ -246,6 +249,94 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                     };
                                 };
                             }];
+                        }, {
+                            readonly id: "signals-group";
+                            readonly label: "Signals";
+                            readonly segments: [{
+                                readonly id: "all-signals";
+                                readonly label: "All";
+                                readonly filters: {};
+                                readonly default: true;
+                            }, {
+                                readonly id: "cold-starts";
+                                readonly label: "Cold Starts";
+                                readonly icon: "ThunderboltOutlined";
+                                readonly filters: {
+                                    readonly 'tags.cold_start': {
+                                        readonly eq: "true";
+                                    };
+                                };
+                            }, {
+                                readonly id: "slow-requests";
+                                readonly label: "Slow";
+                                readonly icon: "ClockCircleOutlined";
+                                readonly filters: {
+                                    readonly 'tags._slow': {
+                                        readonly eq: "true";
+                                    };
+                                };
+                                readonly badgeStatus: "warning";
+                            }, {
+                                readonly id: "has-errors";
+                                readonly label: "Failed";
+                                readonly icon: "CloseCircleOutlined";
+                                readonly filters: {
+                                    readonly success: {
+                                        readonly eq: "false";
+                                    };
+                                };
+                                readonly badgeStatus: "error";
+                            }, {
+                                readonly id: "status-4xx";
+                                readonly label: "4xx";
+                                readonly icon: "WarningOutlined";
+                                readonly filters: {
+                                    readonly 'tags.http.status_code_class': {
+                                        readonly eq: "4xx";
+                                    };
+                                };
+                                readonly badgeStatus: "warning";
+                            }, {
+                                readonly id: "status-5xx";
+                                readonly label: "5xx";
+                                readonly icon: "CloseCircleOutlined";
+                                readonly filters: {
+                                    readonly 'tags.http.status_code_class': {
+                                        readonly eq: "5xx";
+                                    };
+                                };
+                                readonly badgeStatus: "error";
+                            }, {
+                                readonly id: "retries";
+                                readonly label: "Retries";
+                                readonly icon: "ReloadOutlined";
+                                readonly filters: {
+                                    readonly 'tags.sqs.has_retries': {
+                                        readonly eq: "true";
+                                    };
+                                };
+                                readonly badgeStatus: "warning";
+                            }, {
+                                readonly id: "memory-pressure";
+                                readonly label: "Memory";
+                                readonly icon: "DashboardOutlined";
+                                readonly filters: {
+                                    readonly 'tags._memory_pressure': {
+                                        readonly eq: "true";
+                                    };
+                                };
+                                readonly badgeStatus: "warning";
+                            }, {
+                                readonly id: "timeout-risk";
+                                readonly label: "Timeout Risk";
+                                readonly icon: "FieldTimeOutlined";
+                                readonly filters: {
+                                    readonly 'tags._timeout_risk': {
+                                        readonly eq: "true";
+                                    };
+                                };
+                                readonly badgeStatus: "error";
+                            }];
                         }];
                         readonly expandable: {
                             readonly mode: "json";
@@ -253,6 +344,46 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                     };
                 };
                 readonly viewPageConfig: {
+                    readonly actions: [{
+                        readonly id: "view-trace";
+                        readonly label: "View Full Trace";
+                        readonly icon: "ApartmentOutlined";
+                        readonly tooltip: "View all events in this trace";
+                        readonly url: "/list-observabilitylog?correlationId.eq=:correlationId";
+                        readonly visibility: {
+                            readonly record: {
+                                readonly correlationId: {
+                                    readonly exists: true;
+                                };
+                            };
+                        };
+                    }, {
+                        readonly id: "view-parent";
+                        readonly label: "Go to Parent";
+                        readonly icon: "ArrowUpOutlined";
+                        readonly tooltip: "Navigate to the parent span";
+                        readonly url: "/view-observabilitylog/:parentObservabilityLogId";
+                        readonly visibility: {
+                            readonly record: {
+                                readonly parentObservabilityLogId: {
+                                    readonly exists: true;
+                                };
+                            };
+                        };
+                    }, {
+                        readonly id: "view-same-error";
+                        readonly label: "Same Error Pattern";
+                        readonly icon: "BugOutlined";
+                        readonly tooltip: "View all occurrences of this error fingerprint";
+                        readonly url: "/list-observabilitylog?fingerprint.eq=:fingerprint";
+                        readonly visibility: {
+                            readonly record: {
+                                readonly fingerprint: {
+                                    readonly exists: true;
+                                };
+                            };
+                        };
+                    }];
                     readonly columnsConfig: {
                         readonly columns: [{
                             readonly sortOrder: 1;
@@ -266,134 +397,72 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                     };
                     readonly sectionsConfig: {
                         readonly sectionGroups: [{
-                            readonly id: "operation-timing";
-                            readonly label: "Operation & Timing";
-                            readonly icon: "ThunderboltOutlined";
+                            readonly id: "event-details";
+                            readonly label: "Event Details";
+                            readonly icon: "FileSearchOutlined";
                             readonly sortOrder: 1;
-                            readonly renderMode: "tabs";
-                            readonly defaultCollapsed: true;
-                            readonly lazyLoad: false;
-                            readonly keepMounted: true;
-                            readonly sections: {
-                                readonly operationDetails: {
-                                    readonly label: "Operation";
-                                    readonly icon: "PlayCircleOutlined";
-                                    readonly sortOrder: 1;
-                                    readonly pageType: "details";
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["operation", "status", "success", "type", "subType"];
-                                    };
-                                };
-                                readonly entityInfo: {
-                                    readonly label: "Entity Information";
-                                    readonly icon: "InfoCircleOutlined";
-                                    readonly sortOrder: 2;
-                                    readonly pageType: "details";
-                                    readonly visibility: {
-                                        readonly record: {
-                                            readonly entityName: {
-                                                readonly exists: true;
-                                            };
-                                        };
-                                    };
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["entityName", "entityId"];
-                                    };
-                                };
-                                readonly timingDetails: {
-                                    readonly label: "Timing";
-                                    readonly icon: "ClockCircleOutlined";
-                                    readonly sortOrder: 3;
-                                    readonly pageType: "details";
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["timestampMs", "durationMs"];
-                                    };
-                                };
-                                readonly sourceDetails: {
-                                    readonly label: "Source";
-                                    readonly icon: "CodeOutlined";
-                                    readonly sortOrder: 4;
-                                    readonly pageType: "details";
-                                    readonly visibility: {
-                                        readonly record: {
-                                            readonly source: {
-                                                readonly exists: true;
-                                            };
-                                        };
-                                    };
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["source", "level"];
-                                    };
-                                };
-                                readonly attributes: {
-                                    readonly label: "Attributes";
-                                    readonly icon: "TagsOutlined";
-                                    readonly sortOrder: 4;
-                                    readonly pageType: "details";
-                                    readonly visibility: {
-                                        readonly record: {
-                                            readonly attributes: {
-                                                readonly exists: true;
-                                            };
-                                        };
-                                    };
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["attributes"];
-                                    };
-                                };
-                            };
-                        }, {
-                            readonly id: "error";
-                            readonly label: "Error";
-                            readonly icon: "ExclamationCircleOutlined";
-                            readonly sortOrder: 2;
                             readonly renderMode: "tabs";
                             readonly defaultCollapsed: false;
                             readonly lazyLoad: false;
                             readonly keepMounted: true;
-                            readonly visibility: {
-                                readonly record: {
-                                    readonly error: {
-                                        readonly exists: true;
-                                    };
-                                };
-                            };
                             readonly sections: {
                                 readonly error: {
                                     readonly label: "Error";
                                     readonly icon: "ExclamationCircleOutlined";
-                                    readonly sortOrder: 5;
+                                    readonly sortOrder: 1;
                                     readonly pageType: "details";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly error: {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
                                     readonly detailsPageConfig: {
                                         readonly useParentData: true;
-                                        readonly propertiesConfig: ["error"];
+                                        readonly propertiesConfig: [{
+                                            readonly name: "error.type";
+                                            readonly column: "error.type";
+                                            readonly label: "Error Type";
+                                            readonly fieldType: "badge";
+                                            readonly helpText: "The class/constructor name of the error";
+                                        }, {
+                                            readonly name: "error.message";
+                                            readonly column: "error.message";
+                                            readonly label: "Message";
+                                            readonly fieldType: "text";
+                                            readonly helpText: "The error message";
+                                        }, {
+                                            readonly name: "error.code";
+                                            readonly column: "error.code";
+                                            readonly label: "Error Code";
+                                            readonly fieldType: "badge";
+                                            readonly helpText: "Application or system error code (e.g., ECONNREFUSED, VALIDATION_FAILED)";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'error.code': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "error.stack";
+                                            readonly column: "error.stack";
+                                            readonly label: "Stack Trace";
+                                            readonly fieldType: "code";
+                                            readonly helpText: "Full stack trace from the error";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'error.stack': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }];
                                     };
                                 };
-                            };
-                        }, {
-                            readonly id: "event-data";
-                            readonly label: "Event Data";
-                            readonly icon: "FileTextOutlined";
-                            readonly sortOrder: 3;
-                            readonly renderMode: "tabs";
-                            readonly defaultCollapsed: false;
-                            readonly lazyLoad: false;
-                            readonly keepMounted: true;
-                            readonly visibility: {
-                                readonly record: {
-                                    readonly data: {
-                                        readonly exists: true;
-                                    };
-                                };
-                            };
-                            readonly sections: {
-                                readonly checkpoints: {
-                                    readonly label: "Checkpoints";
+                                readonly timeline: {
+                                    readonly label: "Timeline";
                                     readonly icon: "NodeIndexOutlined";
                                     readonly sortOrder: 2;
                                     readonly pageType: "details";
@@ -409,7 +478,8 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                         readonly propertiesConfig: [{
                                             readonly name: "data.checkpoints";
                                             readonly column: "data.checkpoints";
-                                            readonly label: "Checkpoints";
+                                            readonly label: "Timeline & Checkpoints";
+                                            readonly helpText: "Chronological timeline of events within this span. Includes manual checkpoints and absorbed child operations.";
                                             readonly fieldType: "timeline";
                                             readonly timelineConfig: {
                                                 readonly mode: "left";
@@ -418,15 +488,420 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                                 readonly itemMapping: {
                                                     readonly labelField: "name";
                                                     readonly timestampField: "ts";
+                                                    readonly typeField: "_type";
+                                                    readonly descriptionField: "_description";
                                                 };
                                             };
                                         }];
                                     };
                                 };
-                                readonly data: {
-                                    readonly label: "Event Payload";
-                                    readonly icon: "FileTextOutlined";
+                                readonly auditData: {
+                                    readonly label: "Audit Data";
+                                    readonly icon: "AuditOutlined";
                                     readonly sortOrder: 3;
+                                    readonly pageType: "details";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly 'tags.audit': {
+                                                readonly eq: "true";
+                                            };
+                                        };
+                                    };
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: [{
+                                            readonly name: "data.before";
+                                            readonly column: "data.before";
+                                            readonly label: "Before (Old State)";
+                                            readonly fieldType: "json";
+                                            readonly helpText: "Entity state before the update";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'data.before': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "data.after";
+                                            readonly column: "data.after";
+                                            readonly label: "After (New State)";
+                                            readonly fieldType: "json";
+                                            readonly helpText: "Entity state after the update";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'data.after': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "data.diff";
+                                            readonly column: "data.diff";
+                                            readonly label: "Diff";
+                                            readonly fieldType: "json";
+                                            readonly helpText: "Changed fields with old/new values";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'data.diff': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "data.created";
+                                            readonly column: "data.created";
+                                            readonly label: "Created Record";
+                                            readonly fieldType: "json";
+                                            readonly helpText: "Full data of the newly created entity";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'data.created': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "data.deleted";
+                                            readonly column: "data.deleted";
+                                            readonly label: "Deleted Record";
+                                            readonly fieldType: "json";
+                                            readonly helpText: "Full data of the entity that was deleted";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'data.deleted': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "data.query";
+                                            readonly column: "data.query";
+                                            readonly label: "Query Filters";
+                                            readonly fieldType: "json";
+                                            readonly helpText: "Filters used in the list/query operation";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'data.query': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "data.resultCount";
+                                            readonly column: "data.resultCount";
+                                            readonly label: "Result Count";
+                                            readonly fieldType: "badge";
+                                            readonly helpText: "Number of records returned by the query";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'data.resultCount': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, "data"];
+                                    };
+                                };
+                                readonly noiseReduction: {
+                                    readonly label: "Noise Reduction";
+                                    readonly icon: "CompressOutlined";
+                                    readonly sortOrder: 4;
+                                    readonly pageType: "details";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly 'data.absorbed': {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: [{
+                                            readonly name: "data.absorbed.count";
+                                            readonly column: "data.absorbed.count";
+                                            readonly fieldType: "badge";
+                                            readonly label: "Absorbed Events";
+                                            readonly helpText: "Total child events absorbed into this record. Per-operation breakdown is in the Timeline tab.";
+                                        }, {
+                                            readonly name: "data.absorbed.silentCount";
+                                            readonly column: "data.absorbed.silentCount";
+                                            readonly fieldType: "badge";
+                                            readonly label: "Silenced Events";
+                                            readonly helpText: "Total child events silently dropped (counter only)";
+                                        }, {
+                                            readonly name: "data.absorbed.errors";
+                                            readonly column: "data.absorbed.errors";
+                                            readonly label: "Absorbed Errors";
+                                            readonly helpText: "Error details from absorbed child events";
+                                            readonly fieldType: "json";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'data.absorbed.errors': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "data.absorbed.causedByLinks";
+                                            readonly column: "data.absorbed.causedByLinks";
+                                            readonly label: "Cross-Invocation Links";
+                                            readonly helpText: "Correlation IDs from absorbed events linking to other invocations";
+                                            readonly fieldType: "json";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'data.absorbed.causedByLinks': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }];
+                                    };
+                                };
+                                readonly tags: {
+                                    readonly label: "Tags";
+                                    readonly icon: "TagOutlined";
+                                    readonly sortOrder: 5;
+                                    readonly pageType: "details";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly tags: {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: [{
+                                            readonly name: "tags.http.status_code";
+                                            readonly column: "tags.http.status_code";
+                                            readonly label: "HTTP Status Code";
+                                            readonly fieldType: "badge";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'tags.http.status_code': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "tags.http.status_code_class";
+                                            readonly column: "tags.http.status_code_class";
+                                            readonly label: "Status Class";
+                                            readonly fieldType: "badge";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'tags.http.status_code_class': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "tags.error_category";
+                                            readonly column: "tags.error_category";
+                                            readonly label: "Error Category";
+                                            readonly fieldType: "badge";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'tags.error_category': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "tags.cold_start";
+                                            readonly column: "tags.cold_start";
+                                            readonly label: "Cold Start";
+                                            readonly fieldType: "badge";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'tags.cold_start': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "tags._slow";
+                                            readonly column: "tags._slow";
+                                            readonly label: "Slow";
+                                            readonly fieldType: "badge";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'tags._slow': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "tags._memory_pressure";
+                                            readonly column: "tags._memory_pressure";
+                                            readonly label: "Memory Pressure";
+                                            readonly fieldType: "badge";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'tags._memory_pressure': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "tags._timeout_risk";
+                                            readonly column: "tags._timeout_risk";
+                                            readonly label: "Timeout Risk";
+                                            readonly fieldType: "badge";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'tags._timeout_risk': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "tags.sqs.has_retries";
+                                            readonly column: "tags.sqs.has_retries";
+                                            readonly label: "SQS Retries";
+                                            readonly fieldType: "badge";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'tags.sqs.has_retries': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "tags.query_type";
+                                            readonly column: "tags.query_type";
+                                            readonly label: "Query Type";
+                                            readonly fieldType: "badge";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'tags.query_type': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "tags.lambda.function_name";
+                                            readonly column: "tags.lambda.function_name";
+                                            readonly label: "Lambda Function";
+                                            readonly fieldType: "text";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'tags.lambda.function_name': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, "tags"];
+                                    };
+                                };
+                                readonly metrics: {
+                                    readonly label: "Metrics";
+                                    readonly icon: "DashboardOutlined";
+                                    readonly sortOrder: 6;
+                                    readonly pageType: "details";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly metrics: {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: [{
+                                            readonly name: "metrics.duration";
+                                            readonly column: "metrics.duration";
+                                            readonly label: "Duration";
+                                            readonly fieldType: "duration";
+                                            readonly durationUnit: "ms";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'metrics.duration': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "metrics.span.depth";
+                                            readonly column: "metrics.span.depth";
+                                            readonly label: "Span Depth";
+                                            readonly fieldType: "badge";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'metrics.span.depth': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "metrics.invocation_number";
+                                            readonly column: "metrics.invocation_number";
+                                            readonly label: "Invocation #";
+                                            readonly fieldType: "badge";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'metrics.invocation_number': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "metrics.http.request_content_length";
+                                            readonly column: "metrics.http.request_content_length";
+                                            readonly label: "Request Size (bytes)";
+                                            readonly fieldType: "number";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'metrics.http.request_content_length': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "metrics.http.response_content_length";
+                                            readonly column: "metrics.http.response_content_length";
+                                            readonly label: "Response Size (bytes)";
+                                            readonly fieldType: "number";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'metrics.http.response_content_length': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "metrics.node.heap_used_mb";
+                                            readonly column: "metrics.node.heap_used_mb";
+                                            readonly label: "Heap Used (MB)";
+                                            readonly fieldType: "number";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'metrics.node.heap_used_mb': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "metrics.lambda.remaining_time_ms";
+                                            readonly column: "metrics.lambda.remaining_time_ms";
+                                            readonly label: "Lambda Remaining Time";
+                                            readonly fieldType: "duration";
+                                            readonly durationUnit: "ms";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'metrics.lambda.remaining_time_ms': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, "metrics"];
+                                    };
+                                };
+                                readonly payload: {
+                                    readonly label: "Payload";
+                                    readonly icon: "FileTextOutlined";
+                                    readonly sortOrder: 7;
                                     readonly pageType: "details";
                                     readonly visibility: {
                                         readonly record: {
@@ -440,12 +915,99 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                         readonly propertiesConfig: ["data"];
                                     };
                                 };
+                                readonly actor: {
+                                    readonly label: "Actor";
+                                    readonly icon: "UserOutlined";
+                                    readonly sortOrder: 8;
+                                    readonly pageType: "details";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly actor: {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: [{
+                                            readonly name: "actorType";
+                                            readonly column: "actor.type";
+                                            readonly label: "Actor Type";
+                                            readonly fieldType: "badge";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'actor.type': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "actorId";
+                                            readonly column: "actor.id";
+                                            readonly label: "Actor ID";
+                                            readonly fieldType: "text";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'actor.id': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "actorEmail";
+                                            readonly column: "actor.email";
+                                            readonly label: "Email";
+                                            readonly fieldType: "text";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'actor.email': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "actorName";
+                                            readonly column: "actor.name";
+                                            readonly label: "Name";
+                                            readonly fieldType: "text";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'actor.name': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, {
+                                            readonly name: "actorGroups";
+                                            readonly column: "actor.groups";
+                                            readonly label: "Groups";
+                                            readonly fieldType: "json";
+                                            readonly visibility: {
+                                                readonly record: {
+                                                    readonly 'actor.groups': {
+                                                        readonly exists: true;
+                                                    };
+                                                };
+                                            };
+                                        }, "actor"];
+                                    };
+                                };
+                                readonly raw: {
+                                    readonly label: "Raw / Other";
+                                    readonly icon: "CodeOutlined";
+                                    readonly sortOrder: 9;
+                                    readonly pageType: "details";
+                                    readonly detailsPageConfig: {
+                                        readonly useParentData: true;
+                                        readonly propertiesConfig: ["attributes", "metadata", "context", "ttl"];
+                                    };
+                                };
                             };
                         }, {
                             readonly id: "hierarchy-relations";
                             readonly label: "Hierarchy & Trace";
                             readonly icon: "ApartmentOutlined";
-                            readonly sortOrder: 4;
+                            readonly sortOrder: 2;
                             readonly renderMode: "tabs";
                             readonly defaultCollapsed: true;
                             readonly lazyLoad: true;
@@ -631,6 +1193,32 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                         };
                                     };
                                 };
+                                readonly sameErrorPattern: {
+                                    readonly label: "Same Error Pattern";
+                                    readonly icon: "BugOutlined";
+                                    readonly sortOrder: 9.5;
+                                    readonly pageType: "list";
+                                    readonly visibility: {
+                                        readonly record: {
+                                            readonly fingerprint: {
+                                                readonly exists: true;
+                                            };
+                                        };
+                                    };
+                                    readonly entityConfigRef: {
+                                        readonly entityName: "observabilityLog";
+                                        readonly pageType: "list";
+                                        readonly overrideConfig: {
+                                            readonly defaultFilters: {
+                                                readonly fingerprint: {
+                                                    readonly eq: ":fingerprint";
+                                                };
+                                            };
+                                            readonly hideSegments: ["hierarchy-group"];
+                                            readonly description: "All occurrences of this same error pattern across time";
+                                        };
+                                    };
+                                };
                                 readonly relatedTraces: {
                                     readonly label: "Related Traces";
                                     readonly icon: "ClusterOutlined";
@@ -653,7 +1241,7 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                             readonly id: "related-analytics";
                             readonly label: "Related Logs";
                             readonly icon: "FundOutlined";
-                            readonly sortOrder: 5;
+                            readonly sortOrder: 3;
                             readonly renderMode: "tabs";
                             readonly defaultCollapsed: true;
                             readonly lazyLoad: false;
@@ -727,123 +1315,6 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                             };
                                             readonly hideSegments: ["hierarchy-group"];
                                         };
-                                    };
-                                };
-                            };
-                        }, {
-                            readonly id: "additional-data";
-                            readonly label: "Additional Data";
-                            readonly icon: "FolderOpenOutlined";
-                            readonly sortOrder: 6;
-                            readonly renderMode: "tabs";
-                            readonly defaultCollapsed: true;
-                            readonly lazyLoad: false;
-                            readonly keepMounted: true;
-                            readonly sections: {
-                                readonly metrics: {
-                                    readonly label: "Metrics";
-                                    readonly icon: "DashboardOutlined";
-                                    readonly sortOrder: 1;
-                                    readonly pageType: "details";
-                                    readonly visibility: {
-                                        readonly record: {
-                                            readonly metrics: {
-                                                readonly exists: true;
-                                            };
-                                        };
-                                    };
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["metrics"];
-                                    };
-                                };
-                                readonly tags: {
-                                    readonly label: "Tags";
-                                    readonly icon: "TagOutlined";
-                                    readonly sortOrder: 2;
-                                    readonly pageType: "details";
-                                    readonly visibility: {
-                                        readonly record: {
-                                            readonly tags: {
-                                                readonly exists: true;
-                                            };
-                                        };
-                                    };
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["tags"];
-                                    };
-                                };
-                                readonly metadata: {
-                                    readonly label: "Metadata";
-                                    readonly icon: "InfoCircleOutlined";
-                                    readonly sortOrder: 3;
-                                    readonly pageType: "details";
-                                    readonly visibility: {
-                                        readonly record: {
-                                            readonly metadata: {
-                                                readonly exists: true;
-                                            };
-                                        };
-                                    };
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["metadata"];
-                                    };
-                                };
-                                readonly context: {
-                                    readonly label: "Context";
-                                    readonly icon: "EnvironmentOutlined";
-                                    readonly sortOrder: 4;
-                                    readonly pageType: "details";
-                                    readonly visibility: {
-                                        readonly record: {
-                                            readonly context: {
-                                                readonly exists: true;
-                                            };
-                                        };
-                                    };
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["context"];
-                                    };
-                                };
-                            };
-                        }, {
-                            readonly id: "actor-system";
-                            readonly label: "Actor & System";
-                            readonly icon: "SettingOutlined";
-                            readonly sortOrder: 7;
-                            readonly renderMode: "tabs";
-                            readonly defaultCollapsed: true;
-                            readonly lazyLoad: false;
-                            readonly keepMounted: true;
-                            readonly sections: {
-                                readonly actor: {
-                                    readonly label: "Actor";
-                                    readonly icon: "UserOutlined";
-                                    readonly sortOrder: 1;
-                                    readonly pageType: "details";
-                                    readonly visibility: {
-                                        readonly record: {
-                                            readonly actor: {
-                                                readonly exists: true;
-                                            };
-                                        };
-                                    };
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["actor"];
-                                    };
-                                };
-                                readonly systemInfo: {
-                                    readonly label: "System Info";
-                                    readonly icon: "ClockCircleOutlined";
-                                    readonly sortOrder: 2;
-                                    readonly pageType: "details";
-                                    readonly detailsPageConfig: {
-                                        readonly useParentData: true;
-                                        readonly propertiesConfig: ["ttl"];
                                     };
                                 };
                             };
@@ -1046,6 +1517,16 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                     readonly label: "Error";
                     readonly helpText: "Error details if the operation failed";
                 };
+                readonly fingerprint: {
+                    readonly type: "string";
+                    readonly label: "Error Fingerprint";
+                    readonly helpText: "Deterministic hash for grouping same errors across invocations (16 hex chars from SHA-256)";
+                    readonly isLink: true;
+                    readonly linkConfig: {
+                        readonly routePattern: "/list-observabilitylog?fingerprint.eq=:fingerprint";
+                        readonly displayText: "View Same Error Pattern";
+                    };
+                };
                 readonly actor: {
                     readonly type: "any";
                     readonly label: "Actor";
@@ -1059,8 +1540,12 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                 readonly ttl: {
                     readonly type: "number";
                     readonly default: () => number;
+                    readonly watch: readonly ["level"];
+                    readonly set: (_: unknown, data: {
+                        level?: string;
+                    }) => number;
                     readonly label: "TTL";
-                    readonly helpText: "Time-to-live for automatic cleanup (Unix timestamp)";
+                    readonly helpText: "Tiered retention: error/critical 90d, warn 60d, info 30d, debug/trace 7d";
                     readonly fieldType: "ttl";
                     readonly ttlUnit: "seconds";
                     readonly ttlFormat: "auto";
@@ -1166,6 +1651,17 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                     };
                     readonly sk: {
                         readonly field: "gsi8sk";
+                        readonly composite: readonly ["timestampMs"];
+                    };
+                };
+                readonly byFingerprint: {
+                    readonly index: "gsi9";
+                    readonly pk: {
+                        readonly field: "gsi9pk";
+                        readonly composite: readonly ["fingerprint"];
+                    };
+                    readonly sk: {
+                        readonly field: "gsi9sk";
                         readonly composite: readonly ["timestampMs"];
                     };
                 };

@@ -8,5 +8,5 @@ export { SpanObserver, withSpan, withSpanSync, wrapInSpan, type SpanOptions, typ
 export { AuditObserver, type EntityAuditOptions, type AuditRecordOptions, type ComplianceAuditOptions, type AccessAuditOptions, } from './audit';
 export { MetricObserver, type MetricOptions } from './metric';
 export { LogObserver, type LogOptions } from './log';
-export { QueryObserver, type QueryContext } from './query';
+export { QueryObserver, type QueryContext, type ConsumedCapacityResult } from './query';
 export { generateId, captureRecord, captureRecordAsync, buildCaptureInput, resolveCorrelationId, mergeTags, mapError, normalizeError, setCapturer, resetCapturer, initializeCapturer, } from './base';

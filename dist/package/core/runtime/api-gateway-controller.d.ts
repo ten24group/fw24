@@ -3,6 +3,7 @@ import { IControllerConfig } from "../../decorators";
 import { RouteMethods } from "../../decorators/method";
 import { createErrorHandler } from "../../errors/";
 import type { Request, Response, Route } from "../../interfaces";
+import { SpanObserver } from '../../observability';
 import { ControllerObservabilityConfig } from '../../observability/controller-config';
 import { HttpRequestValidations, InputValidationRule } from "../../validation";
 import { Actor, ExecutionContext } from '../types/execution-context';
@@ -103,6 +104,20 @@ export declare abstract class APIController extends AbstractLambdaHandler {
      * Only captures response body/headers if explicitly configured via `includes`.
      */
     protected buildResponseAttributes(response: Response, config?: ControllerObservabilityConfig): Record<string, unknown> | undefined;
+    /**
+     * Tag the span with HTTP status code, status code class, response size,
+     * and error category (for 4xx/5xx responses).
+     */
+    protected tagResponseMetrics(span: SpanObserver, response: Response): void;
+    /**
+     * Classify HTTP status code into a class string for DynamoDB-safe filtering.
+     */
+    protected getStatusCodeClass(statusCode: number): string;
+    /**
+     * Classify an error into a broad category for filtering and triage.
+     * Categories: auth, validation, infrastructure, server, application.
+     */
+    protected categorizeError(statusCode: number, error?: Error): string;
     /**
      * Finds the route that matches the HTTP method and resource.
      * @param requestData - The request data object.

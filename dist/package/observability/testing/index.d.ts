@@ -40,6 +40,7 @@
 import { Actor } from '../../core/types/execution-context';
 import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel } from '../types';
 import { ExecutionContextData } from '../context';
+import type { AbsorbedData } from '../noise-reduction/types';
 /**
  * Mock backend that captures all events for testing
  */
@@ -95,6 +96,25 @@ export declare class MockBackend implements ObservabilityBackend {
      * Get event count
      */
     get eventCount(): number;
+    /**
+     * Get events that have absorbed data attached (i.e., events that absorbed children).
+     * Absorbed data lives at event.data.absorbed.
+     */
+    getEventsWithAbsorbed(): ObservabilityEvent[];
+    /**
+     * Get the absorbed data for a specific event (by operation or filter).
+     * Returns undefined if the event has no absorbed data.
+     */
+    getAbsorbedData(filter: Partial<ObservabilityEvent>): AbsorbedData | undefined;
+    /**
+     * Assert that a captured event has absorbed children.
+     * @throws Error if no matching event or the event has no absorbed data.
+     */
+    assertHasAbsorbed(filter: Partial<ObservabilityEvent>, message?: string): AbsorbedData;
+    /**
+     * Assert that absorbed data contains a specific number of absorbed children.
+     */
+    assertAbsorbedCount(filter: Partial<ObservabilityEvent>, expectedCount: number, message?: string): void;
 }
 /**
  * Set up observability for testing

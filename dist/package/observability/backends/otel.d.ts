@@ -11,43 +11,17 @@
  * AWS recommends migrating to OpenTelemetry:
  * https://docs.aws.amazon.com/xray/latest/devguide/xray-instrumenting-your-app.html#xray-instrumenting-opentel
  *
- * ## AWS ADOT Lambda Layer
- *
- * AWS provides a managed Lambda layer that includes OpenTelemetry instrumentation:
- * - ARN: arn:aws:lambda:<region>:901920570463:layer:aws-otel-nodejs-<arch>-ver-1-30-2:1
- * - Automatically instruments AWS SDK, HTTP, and Lambda invocations
- * - Exports to X-Ray via OpenTelemetry Collector
- * - W3C Trace Context + X-Ray propagation
- *
  * ## Architecture
  *
- * The ADOT layer provides OpenTelemetry packages at runtime:
- * - @opentelemetry/api (for getting tracers and creating spans)
- * - @opentelemetry/sdk-trace-node (for tracer configuration)
- * - ADOT Collector running as Lambda extension
- *
- * We import these packages but mark them as external in bundling, so:
- * - Development: Can test locally with OTEL packages installed
- * - Production: Uses packages from ADOT layer (zero bundle size)
- *
- * ## Supported Event Types
- *
- * This backend handles the following events:
- * - span.* → OTEL Traces (spans with parent-child relationships)
- * - metric → OTEL Metrics (counters, gauges, histograms)
- * - log → OTEL Logs (structured log events)
- *
- * NOT handled (use DynamoDB backend for persistence):
- * - audit.* → Business records (not telemetry)
- * - decision.* → Business records (not telemetry)
- * - access.* → Business records (not telemetry)
- * - workflow.* → Long-running state (doesn't fit OTEL's ephemeral span model)
+ * Span lifecycle is handled via SpanLifecycleHook (direct calls from SpanObserver),
+ * NOT through the buffered capture() pipeline. This ensures:
+ * - OTEL spans are opened/closed in real time with correct parent context
+ * - No span.start events pollute the buffer or noise reduction pipeline
+ * - capture() only handles metrics and logs
  *
  * ## Setup in CDK/SAM
  *
  * ```typescript
- * import { Tracing } from 'aws-cdk-lib/aws-lambda';
- *
  * const fn = new NodejsFunction(this, 'MyFunction', {
  *   layers: [
  *     LayerVersion.fromLayerVersionArn(this, 'AdotLayer',
@@ -56,24 +30,18 @@
  *   ],
  *   environment: {
  *     AWS_LAMBDA_EXEC_WRAPPER: '/opt/otel-handler',
- *     OBSERVABILITY_BACKENDS: 'otel', // FW24 config
+ *     OBSERVABILITY_BACKENDS: 'otel',
  *   },
- *   tracing: Tracing.ACTIVE, // Enable X-Ray
+ *   tracing: Tracing.ACTIVE,
  *   bundling: {
- *     externalModules: [
- *       '@opentelemetry/*', // Provided by Lambda layer
- *     ],
+ *     externalModules: ['@opentelemetry/*'],
  *   },
  * });
  * ```
- *
- * References:
- * - https://aws-otel.github.io/docs/getting-started/lambda/lambda-js
- * - https://docs.aws.amazon.com/lambda/latest/dg/typescript-tracing.html
- * - https://opentelemetry.io/docs/languages/js/
  */
-import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel } from '../types';
-export declare class OTELObservabilityBackend implements ObservabilityBackend {
+import type { ObservabilityBackend, ObservabilityEvent, SpanLifecycleHook, SpanStartInfo, SpanEndInfo } from '../types';
+import { ObservabilityLevel } from '../types';
+export declare class OTELObservabilityBackend implements ObservabilityBackend, SpanLifecycleHook {
     readonly name = "otel";
     readonly minLevel?: ObservabilityLevel;
     private readonly serviceName;
@@ -89,28 +57,32 @@ export declare class OTELObservabilityBackend implements ObservabilityBackend {
     private isLogsAvailable;
     private invocationCount;
     private initializationPromise;
+    /**
+     * Lambda resource attributes - resolved once from standard AWS Lambda env vars.
+     * These are always available in Lambda runtime without custom configuration.
+     */
+    private readonly lambdaAttributes;
     constructor(serviceName: string, minLevel: ObservabilityLevel);
     private initializeOpenTelemetry;
     private ensureInitialized;
-    initializeInvocation(): void;
-    capture(event: ObservabilityEvent): Promise<void>;
-    private handleSpanEvent;
     /**
-     * Handle consolidated span (single record with all span data).
-     *
-     * In consolidated mode:
-     * 1. span.start was already sent (OTEL-only) to establish parent context
-     * 2. This 'span' event contains all data and signals completion
-     * 3. We find the existing OTEL span, update it, and end it
+     * Synchronous initialization check.
+     * Returns true if OTEL was already initialized (for lifecycle hook fast path).
      */
-    private handleConsolidatedSpan;
-    private handleSpanStart;
+    private get isInitialized();
+    initializeInvocation(): void;
+    onSpanStart(info: SpanStartInfo): void;
+    onSpanEnd(info: SpanEndInfo): void;
+    /**
+     * Fallback: create a span from end info alone (for late-init scenarios).
+     * Mirrors onSpanStart attributes as closely as possible from SpanEndInfo.
+     */
+    private createOneShotSpan;
+    private addCheckpointEvent;
+    capture(event: ObservabilityEvent): Promise<void>;
     private handleMetricEvent;
     private handleLogEvent;
     private extractLogMessage;
-    private isStringArray;
-    private isNumberArray;
-    private isBooleanArray;
     private static readonly MAX_ATTRIBUTE_SIZE;
     private toOtelAttributes;
     private safeJsonStringify;
