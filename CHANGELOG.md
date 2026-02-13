@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.13](https://github.com/ten24group/fw24/compare/v1.1.0-beta.12...v1.1.0-beta.13) (2026-02-13)
+
+
+### Features
+
+* **condition-system:** introduce unified condition system for UI components ([53e3caf](https://github.com/ten24group/fw24/commit/53e3caf1b61b6175b116979947cc0a7f1bdee1e7))
+
 ## [1.1.0-beta.12](https://github.com/ten24group/fw24/compare/v1.1.0-beta.10...v1.1.0-beta.12) (2026-02-11)
 
 
