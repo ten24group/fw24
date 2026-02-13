@@ -372,8 +372,6 @@ export const ObservabilityLogEntitySchema = createEntitySchema({
                       helpText: 'Number of records returned by the query',
                       visibility: { record: { 'data.resultCount': { exists: true } } },
                     },
-                    // Raw fallback — full data for any shape
-                    'data',
                   ],
                 },
               },
