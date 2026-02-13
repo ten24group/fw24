@@ -717,14 +717,27 @@ export interface BaseFieldMetadata {
      * This enables custom field rendering in forms, details pages, and table columns.
      * The renderer must be registered in the frontend before use.
      *
+     * Supports `ConditionalValue<string>` for runtime component swapping based on
+     * device, feature flags, A/B experiments, or any evaluation context data.
+     *
      * @example
-     * // Backend entity schema
+     * // Static renderer
      * address: {
      *   type: 'map',
-     *   fieldType: 'json',       // Built-in fallback
-     *   renderer: 'address-picker',  // Custom renderer
-     *   rendererConfig: {
-     *     country: 'US'
+     *   fieldType: 'json',
+     *   renderer: 'address-picker',
+     *   rendererConfig: { country: 'US' }
+     * }
+     *
+     * // Conditional renderer (A/B test or device adaptation)
+     * description: {
+     *   type: 'string',
+     *   renderer: {
+     *     rules: [
+     *       { when: { device: { isMobile: { eq: true } } }, value: 'simple-textarea' },
+     *       { when: { featureFlags: { richText: { eq: true } } }, value: 'rich-text-editor' },
+     *     ],
+     *     default: 'text-input',
      *   }
      * }
      *
@@ -735,7 +748,7 @@ export interface BaseFieldMetadata {
      *   component: GoogleAddressPicker
      * });
      */
-    renderer?: string;
+    renderer?: string | ConditionalValue<string>;
     /**
      * Configuration passed to the custom renderer.
      * Only used when `renderer` is specified.
@@ -1522,7 +1535,9 @@ export type TemplateRef = {
     readonly $ref: string;
 };
 /**
- * Evaluation rule for visibility conditions.
+ * Evaluation rule — a single comparison against a value.
+ * Used inside both Condition (UI control) and validation (server-side data integrity).
+ *
  * Aligned with ValidationRule<T> pattern from validation/types.ts
  *
  * @template T - The type of value being evaluated
@@ -1534,26 +1549,62 @@ export type EvaluationRule<T = any> = {
     readonly gte?: T | TemplateRef;
     readonly lt?: T | TemplateRef;
     readonly lte?: T | TemplateRef;
+    /** Inclusive range check: value >= min && value <= max */
+    readonly between?: readonly [T | TemplateRef, T | TemplateRef];
     readonly inList?: ReadonlyArray<T>;
     readonly notInList?: ReadonlyArray<T>;
-    readonly custom?: string;
-    readonly pattern?: string;
     readonly exists?: boolean;
-    readonly notExists?: boolean;
-    readonly isNull?: boolean;
-    readonly notNull?: boolean;
     readonly empty?: boolean;
-    readonly notEmpty?: boolean;
+    /** Regular expression pattern */
+    readonly pattern?: string;
+    /** Case-insensitive substring match */
+    readonly contains?: string;
+    readonly custom?: string;
 };
 /**
- * Inline visibility condition (full structure).
- * Similar to EntityValidationCondition pattern from validation/types.ts
+ * Inline condition — the primary workhorse of the condition system.
+ * Each field checks a category of runtime data. All fields present are implicitly ANDed.
+ *
+ * Inline field-level condition with categories for actor, device, tenant,
+ * featureFlags, and an extensible index signature for app-defined fields.
+ *
+ * @example
+ * // Admin who is on desktop
+ * { actor: { groups: { inList: ['admin'] } }, device: { isDesktop: { eq: true } } }
+ *
+ * @example
+ * // App-defined subscription check
+ * { subscription: { tier: { inList: ['pro', 'enterprise'] } } }
  */
-export type InlineVisibilityCondition = {
+export type InlineCondition = {
     readonly actor?: {
         readonly [path: string]: EvaluationRule;
     };
+    readonly featureFlags?: {
+        readonly [flag: string]: EvaluationRule<boolean | string>;
+    };
+    readonly device?: {
+        readonly isMobile?: EvaluationRule<boolean>;
+        readonly isTablet?: EvaluationRule<boolean>;
+        readonly isDesktop?: EvaluationRule<boolean>;
+        readonly viewport?: EvaluationRule<'xs' | 'sm' | 'md' | 'lg' | 'xl'>;
+    };
+    readonly tenant?: {
+        readonly [path: string]: EvaluationRule;
+    };
+    readonly context?: {
+        readonly pageType?: EvaluationRule<string>;
+        readonly modalDepth?: EvaluationRule<number>;
+        readonly entityName?: EvaluationRule<string>;
+        readonly [key: string]: EvaluationRule | undefined;
+    };
+    readonly queryParams?: {
+        readonly [key: string]: EvaluationRule;
+    };
     readonly record?: {
+        readonly [path: string]: EvaluationRule;
+    };
+    readonly formValues?: {
         readonly [path: string]: EvaluationRule;
     };
     readonly selectedRecords?: {
@@ -1568,79 +1619,75 @@ export type InlineVisibilityCondition = {
             readonly [path: string]: EvaluationRule;
         };
     };
-    readonly queryParams?: {
-        readonly [key: string]: EvaluationRule;
-    };
-    readonly context?: {
-        readonly pageType?: EvaluationRule<'list' | 'view' | 'edit' | 'create'>;
-        readonly modalDepth?: EvaluationRule<number>;
-        readonly entityName?: EvaluationRule<string>;
-        readonly [key: string]: EvaluationRule | undefined;
-    };
-    readonly formValues?: {
-        readonly [path: string]: EvaluationRule;
-    };
+    readonly [key: string]: any;
 };
 /**
- * Custom evaluator reference.
- * References a function registered in the frontend registry.
+ * Condition — a boolean expression used for visibility, enablement, expandability, etc.
+ * Single type used everywhere for boolean outcomes.
+ *
+ * The core boolean expression type for visibility, enablement, expandability, etc.
+ *
+ * @example
+ * // Inline — role check
+ * { actor: { groups: { inList: ['admin'] } } }
+ *
+ * @example
+ * // Logical composition
+ * { and: [
+ *   { actor: { groups: { inList: ['admin'] } } },
+ *   { selectedRecords: { length: { gt: 0 } } },
+ *   { not: { featureFlags: { maintenanceMode: { eq: true } } } }
+ * ] }
+ *
+ * @example
+ * // Named condition reference
+ * { ref: 'canEdit' }
+ *
+ * @example
+ * // Boolean literal
+ * false
  */
-export type CustomVisibilityCondition = {
+export type Condition = InlineCondition | {
     readonly custom: string;
-};
+} | {
+    readonly ref: string;
+} | {
+    readonly and: ReadonlyArray<Condition>;
+} | {
+    readonly or: ReadonlyArray<Condition>;
+} | {
+    readonly not: Condition;
+} | boolean;
 /**
- * Named conditions with scope.
- * References multiple named conditions registered in the frontend.
- */
-export type NamedVisibilityCondition = {
-    readonly conditions: ReadonlyArray<string>;
-    readonly scope?: 'all' | 'any' | 'none';
-};
-/**
- * Shortcut visibility config for common cases.
- * Provides simplified syntax for role-based and simple conditional visibility.
- */
-export type ShortcutVisibilityCondition = {
-    readonly requiredRoles?: ReadonlyArray<string>;
-    readonly excludedRoles?: ReadonlyArray<string>;
-    readonly showWhen?: Record<string, any>;
-    readonly hideWhen?: Record<string, any>;
-};
-/**
- * Visibility configuration for actions, buttons, and UI elements.
- * Controls visibility and enablement based on actor, record, context, and custom logic.
+ * A value that depends on conditions. For when the outcome isn't true/false
+ * but a resolved value — a component name, label, CSS class, etc.
  *
- * Serializable JSON configuration evaluated in the frontend.
- * Supports roles, permissions, custom evaluators, and complex conditions.
+ * Rules are evaluated top-to-bottom. First matching rule wins. If none match, `default` is returned.
+ *
+ * @template T - The type of value being resolved
  *
  * @example
- * // Role-based (shortcut)
- * visibility: {
- *   requiredRoles: ['admin', 'editor']
- * }
- *
- * @example
- * // Owner check (inline with template)
- * visibility: {
- *   record: {
- *     createdBy: { eq: { $ref: 'actor.actorId' } }
- *   }
- * }
- *
- * @example
- * // Custom logic (function reference)
- * visibility: {
- *   custom: 'canEditGame'
- * }
- *
- * @example
- * // Named conditions
- * visibility: {
- *   conditions: ['isAdmin', 'isOwner'],
- *   scope: 'any'
+ * // Conditional renderer based on device
+ * {
+ *   rules: [
+ *     { when: { device: { isMobile: { eq: true } } }, value: 'SimpleTextArea' },
+ *     { when: { featureFlags: { richText: { eq: true } } }, value: 'RichTextEditor' }
+ *   ],
+ *   default: 'TextInput'
  * }
  */
-export type VisibilityConfig = InlineVisibilityCondition | CustomVisibilityCondition | NamedVisibilityCondition | ShortcutVisibilityCondition;
+export type ConditionalValue<T> = {
+    readonly rules: ReadonlyArray<{
+        readonly when: Condition;
+        readonly value: T;
+    }>;
+    readonly default: T;
+};
+/**
+ * Type guard for ConditionalValue<T>.
+ * Checks structure (rules array with when/value items + default) rather than just property names.
+ */
+export declare function isConditionalValue<T>(value: unknown): value is ConditionalValue<T>;
 /**
  * Entity page action
  * Supports buttons, dropdowns with modals/navigation
@@ -1786,7 +1833,7 @@ export interface IEntityPageAction {
      * When undefined, action is visible and enabled by default.
      *
      * Supports:
-     * - Role-based access (requiredRoles, excludedRoles)
+     * - Role-based access via actor.groups
      * - Record-based conditions (owner checks, status checks)
      * - Context-based logic (page type, modal depth, query params)
      * - Custom evaluator functions (registered in frontend)
@@ -1794,7 +1841,7 @@ export interface IEntityPageAction {
      * @example
      * // Simple role check
      * visibility: {
-     *   requiredRoles: ['admin']
+     *   actor: { groups: { inList: ['admin'] } }
      * }
      *
      * @example
@@ -1818,7 +1865,27 @@ export interface IEntityPageAction {
      *   scope: 'any'
      * }
      */
-    visibility?: VisibilityConfig;
+    visibility?: Condition;
+    /**
+     * Enablement condition — when false, the action renders as disabled (greyed out).
+     *
+     * @example
+     * // Only enabled when record is not locked
+     * enablement: { record: { status: { neq: 'locked' } } }
+     *
+     * @example
+     * // Only enabled for admins OR record owners
+     * enablement: { or: [{ ref: 'isAdmin' }, { ref: 'isOwner' }] }
+     */
+    enablement?: Condition;
+    /**
+     * Message shown when action is disabled (as tooltip or helper text).
+     * Supports template syntax resolved against EvaluationContext.
+     *
+     * @example
+     * disabledMessage: 'Record is locked by {record.lockedBy}'
+     */
+    disabledMessage?: string | Template;
     /**
      * Link target attribute for external URLs.
      * Only applicable when url is set and action navigates to an external link.
@@ -2672,7 +2739,7 @@ export interface ITableExpandableConfig {
      *   actor: { role: { inList: ['admin'] } }
      * }
      */
-    rowExpandable?: VisibilityConfig;
+    rowExpandable?: Condition;
     /**
      * Default expand state. If true, rows are expanded by default.
      * Default: false
@@ -2732,7 +2799,7 @@ export interface IFilterSegment {
      *   actor: { role: { inList: ['admin', 'team-admin'] } }
      * }
      */
-    visibility?: VisibilityConfig;
+    visibility?: Condition;
     /**
      * Badge count to display on the segment.
      * Can be a static number or a placeholder.
@@ -2784,7 +2851,9 @@ export interface ITableColumnConfig {
     /** Field name (attribute name from entity schema) */
     field: string;
     /** Visibility configuration for role-based/conditional display */
-    visibility?: VisibilityConfig;
+    visibility?: Condition;
+    /** Custom renderer component name — supports conditional resolution */
+    renderer?: string | ConditionalValue<string>;
     /** Column width in pixels or CSS string (e.g., '150px', '20%') */
     width?: string | number;
     /** Pin column to left or right side of table */
@@ -2975,7 +3044,7 @@ export interface ISectionConfig {
      */
     readonly badge?: SectionBadgeConfig | ReadonlyArray<SectionBadgeConfig> | Array<SectionBadgeConfig>;
     /** Visibility conditions for this section */
-    readonly visibility?: VisibilityConfig;
+    readonly visibility?: Condition;
     /** Sort order for section display */
     readonly sortOrder?: number;
     /** The type of page to render in this section */
@@ -3041,7 +3110,7 @@ export interface ISectionGroup {
     /** Optional icon for the group card header */
     readonly icon?: string;
     /** Visibility conditions for this entire group */
-    readonly visibility?: VisibilityConfig;
+    readonly visibility?: Condition;
     /** Sort order for group display */
     readonly sortOrder?: number;
     /** How to render sections within this group: tabs or accordion */
@@ -3099,7 +3168,7 @@ export interface ISectionGroup {
  *       id: 'relations',
  *       label: 'Related Data',
  *       icon: 'LinkOutlined',
- *       visibility: { requiredRoles: ['admin'] },
+ *       visibility: { actor: { groups: { inList: ['admin'] } } },
  *       renderMode: 'accordion',
  *       sections: {
  *         players: { label: 'Players', pageType: 'list', ... },
@@ -3186,7 +3255,7 @@ export interface EntityListPageConfig {
         readonly bulkActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
         readonly rowSelection?: {
             enabled: boolean;
-            visibility?: VisibilityConfig;
+            visibility?: Condition;
         };
         /**
          * Column configuration with flexible syntax for improved developer experience.
@@ -3366,11 +3435,11 @@ export interface EntityViewPageConfig {
     readonly columnsConfig?: IEntityPageColumnConfig;
     readonly fields?: ReadonlyArray<{
         name: string;
-        visibility?: VisibilityConfig;
+        visibility?: Condition;
         helpText?: string;
     }> | Array<{
         name: string;
-        visibility?: VisibilityConfig;
+        visibility?: Condition;
         helpText?: string;
     }>;
     /**
@@ -3403,24 +3472,24 @@ export interface EntityEditPageConfig {
             text: string;
             action: 'submit' | 'reset' | 'cancel';
             url?: string;
-            visibility?: VisibilityConfig;
+            visibility?: Condition;
         }> | Array<{
             id?: string;
             text: string;
             action: 'submit' | 'reset' | 'cancel';
             url?: string;
-            visibility?: VisibilityConfig;
+            visibility?: Condition;
         }>;
         readonly fields?: ReadonlyArray<{
             name: string;
-            visibility?: VisibilityConfig;
-            enablement?: VisibilityConfig;
+            visibility?: Condition;
+            enablement?: Condition;
             helpText?: string;
             placeholder?: string;
         }> | Array<{
             name: string;
-            visibility?: VisibilityConfig;
-            enablement?: VisibilityConfig;
+            visibility?: Condition;
+            enablement?: Condition;
             helpText?: string;
             placeholder?: string;
         }>;
@@ -3453,22 +3522,22 @@ export interface EntityCreatePageConfig {
             text: string;
             action: 'submit' | 'reset' | 'cancel';
             url?: string;
-            visibility?: VisibilityConfig;
+            visibility?: Condition;
         }> | Array<{
             id?: string;
             text: string;
             action: 'submit' | 'reset' | 'cancel';
             url?: string;
-            visibility?: VisibilityConfig;
+            visibility?: Condition;
         }>;
         readonly fields?: ReadonlyArray<{
             name: string;
-            visibility?: VisibilityConfig;
+            visibility?: Condition;
             helpText?: string;
             placeholder?: string;
         }> | Array<{
             name: string;
-            visibility?: VisibilityConfig;
+            visibility?: Condition;
             helpText?: string;
             placeholder?: string;
         }>;

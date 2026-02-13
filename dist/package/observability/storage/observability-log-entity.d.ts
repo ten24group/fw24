@@ -476,7 +476,7 @@ export declare const ObservabilityLogEntitySchema: {
                                             };
                                         };
                                     };
-                                }, "data"];
+                                }];
                             };
                         };
                         readonly noiseReduction: {

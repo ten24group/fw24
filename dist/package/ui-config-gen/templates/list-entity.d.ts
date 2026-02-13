@@ -74,7 +74,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
         expandableConfig?: import("../../entity").ITableExpandableConfig | undefined;
         rowSelection?: {
             enabled: boolean;
-            visibility?: import("../../entity").VisibilityConfig;
+            visibility?: import("../../entity").Condition;
         } | undefined;
         bulkActions?: readonly IEntityPageAction[] | IEntityPageAction[] | undefined;
         apiConfig: {
@@ -111,7 +111,7 @@ export declare function makeViewEntityListConfig<S extends EntitySchema<string, 
     expandableConfig?: import("../../entity").ITableExpandableConfig | undefined;
     rowSelection?: {
         enabled: boolean;
-        visibility?: import("../../entity").VisibilityConfig;
+        visibility?: import("../../entity").Condition;
     } | undefined;
     bulkActions?: readonly IEntityPageAction[] | IEntityPageAction[] | undefined;
     apiConfig: {

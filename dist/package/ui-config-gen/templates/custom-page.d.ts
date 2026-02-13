@@ -33,7 +33,7 @@
  * @see {@link fw24/src/entity/base-entity.ts} for entity schema definitions
  * @see {@link ui24/src/pages/PostAuth/PostAuthPage.tsx} for page rendering
  */
-import type { FieldOptions, IConfirmModal, IEntityConfigReference, IEntityPageActionDrawerConfig, IFilterSegment, IModalApiConfig, INavigateToConfig, IRelationFieldConfig, IResponseDisplayConfig, ISectionsConfig, ITableExpandableConfig, ModalType, Template, VisibilityConfig } from "../../entity";
+import type { Condition, ConditionalValue, FieldOptions, IConfirmModal, IEntityConfigReference, IEntityPageActionDrawerConfig, IFilterSegment, IModalApiConfig, INavigateToConfig, IRelationFieldConfig, IResponseDisplayConfig, ISectionsConfig, ITableExpandableConfig, ModalType, Template } from "../../entity";
 import { IEntityPageColumnConfig } from "../../entity/base-entity";
 /**
  * Supported page types for dynamic page rendering.
@@ -146,11 +146,11 @@ export interface PropertyConfig {
     type?: ConfigPropertyType;
     id?: string;
     name: string;
-    label: string;
+    label: string | ConditionalValue<string>;
     column: string;
     fieldType: ConfigFieldType;
-    placeholder?: string;
-    helpText?: string;
+    placeholder?: string | ConditionalValue<string>;
+    helpText?: string | ConditionalValue<string>;
     hidden?: boolean;
     required?: boolean;
     validations?: string[];
@@ -167,8 +167,15 @@ export interface PropertyConfig {
     /**
      * Explicit renderer key (frontend ExtensionRegistry resolver key).
      * When present, UI uses this renderer before fieldType defaults.
+     *
+     * Supports ConditionalValue for runtime renderer swapping:
+     * @example
+     * renderer: {
+     *   rules: [{ when: { device: { isMobile: { eq: true } } }, value: 'SimpleTextArea' }],
+     *   default: 'RichTextEditor'
+     * }
      */
-    renderer?: string;
+    renderer?: string | ConditionalValue<string>;
     /**
      * Renderer-specific configuration blob.
      * Passed as-is to the renderer component.
@@ -186,7 +193,7 @@ export interface PropertyConfig {
      *
      * @example
      * // Role-based
-     * visibility: { requiredRoles: ['admin'] }
+     * visibility: { actor: { groups: { inList: ['admin'] } } }
      *
      * @example
      * // Conditional based on record
@@ -196,7 +203,28 @@ export interface PropertyConfig {
      * // Form field conditional
      * visibility: { formValues: { orderType: { eq: 'subscription' } } }
      */
-    visibility?: VisibilityConfig;
+    visibility?: Condition;
+    /**
+     * Enablement condition — when false, the field renders as disabled.
+     *
+     * @example
+     * enablement: { formValues: { deliveryMethod: { eq: 'shipping' } } }
+     */
+    enablement?: Condition;
+    /**
+     * Message shown when field is disabled (tooltip or helper text).
+     * Supports template syntax resolved against EvaluationContext.
+     *
+     * @example
+     * disabledMessage: 'Only available for {formValues.deliveryMethod} delivery'
+     */
+    disabledMessage?: string | Template;
+    /**
+     * CSS class name for the field wrapper. Supports conditional resolution.
+     * @example
+     * className: { rules: [{ when: { device: { isMobile: { eq: true } } }, value: 'compact-field' }], default: '' }
+     */
+    className?: string | ConditionalValue<string>;
     /**
      * Link configuration for navigable fields (e.g., clickable IDs)
      * Note: presence of linkConfig is sufficient - isLink is optional/deprecated
@@ -387,6 +415,8 @@ export interface DashboardWidgetConfig {
         range?: [string, string];
     };
     timezone?: string;
+    /** Visibility condition — when false, widget is not rendered */
+    visibility?: Condition;
 }
 /**
  * Form page configuration structure for create/edit forms.
@@ -428,6 +458,10 @@ export interface FormPageConfigStructure {
     formButtons: Array<string | {
         text: string;
         url: string;
+        /** Visibility condition — when false, button is not rendered */
+        visibility?: Condition;
+        /** Enablement condition — when false, button renders as disabled */
+        enablement?: Condition;
     }>;
     propertiesConfig: PropertiesConfig;
     submitSuccessRedirect?: string;
@@ -666,6 +700,8 @@ export interface WizardStepConfig {
         body?: Record<string, unknown>;
         responseKey?: string;
     };
+    /** Visibility condition — when false, step is skipped in the wizard */
+    visibility?: Condition;
 }
 /**
  * Wizard page configuration for multi-step forms.
@@ -914,7 +950,7 @@ export interface IPageAction {
      * @example
      * // Simple role check
      * visibility: {
-     *   requiredRoles: ['admin']
+     *   actor: { groups: { inList: ['admin'] } }
      * }
      *
      * @example
@@ -925,7 +961,7 @@ export interface IPageAction {
      *   }
      * }
      */
-    visibility?: VisibilityConfig;
+    visibility?: Condition;
 }
 /**
  * Base page configuration that all page types extend.
@@ -958,8 +994,8 @@ export interface BasePageConfig {
      * @example pageTitle: '{userName} Dashboard'
      * @example pageTitle: { composite: ['userName', 'role'], template: '{userName} ({role}) - Dashboard' }
      */
-    pageTitle: string | Template;
-    pageType: PageType;
+    pageTitle: string | Template | ConditionalValue<string>;
+    pageType: PageType | ConditionalValue<PageType>;
     routePattern?: string;
     /**
      * Breadcrumbs with template support.
@@ -972,6 +1008,7 @@ export interface BasePageConfig {
     breadcrumbs?: Array<{
         label: string | Template;
         url?: string;
+        visibility?: Condition;
     }>;
     pageHeaderActions?: Array<IPageAction>;
 }
@@ -1133,6 +1170,8 @@ export interface AccordionPageConfig extends BasePageConfig {
             formPageConfig?: FormPageConfigStructure;
             detailsPageConfig?: DetailsPageConfigStructure;
             dashboardPageConfig?: DashboardPageConfig['dashboardPageConfig'];
+            /** Visibility condition — when false, accordion panel is not rendered */
+            visibility?: Condition;
         }>;
     };
 }
@@ -1219,23 +1258,25 @@ export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageCon
  */
 export declare function makeCustomPageConfig(options: CustomPageOptions): {
     pageName: string | undefined;
-    pageTitle: Template;
+    pageTitle: ConditionalValue<string> | Template;
     pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
         url?: string;
+        visibility?: Condition;
     }[];
     pageHeaderActions: IPageAction[];
 } | {
     listPageConfig: ListPageConfigStructure;
     pageName: string | undefined;
-    pageTitle: Template;
+    pageTitle: ConditionalValue<string> | Template;
     pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
         url?: string;
+        visibility?: Condition;
     }[];
     pageHeaderActions: IPageAction[];
 } | {
@@ -1244,23 +1285,25 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     } | undefined;
     formPageConfig: FormPageConfigStructure;
     pageName: string | undefined;
-    pageTitle: Template;
+    pageTitle: ConditionalValue<string> | Template;
     pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
         url?: string;
+        visibility?: Condition;
     }[];
     pageHeaderActions: IPageAction[];
 } | {
     detailsPageConfig: DetailsPageConfigStructure;
     pageName: string | undefined;
-    pageTitle: Template;
+    pageTitle: ConditionalValue<string> | Template;
     pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
         url?: string;
+        visibility?: Condition;
     }[];
     pageHeaderActions: IPageAction[];
 } | {
@@ -1274,12 +1317,13 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         timezone?: string;
     };
     pageName: string | undefined;
-    pageTitle: Template;
+    pageTitle: ConditionalValue<string> | Template;
     pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
         url?: string;
+        visibility?: Condition;
     }[];
     pageHeaderActions: IPageAction[];
 } | {
@@ -1295,14 +1339,17 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         formPageConfig?: FormPageConfigStructure;
         detailsPageConfig?: DetailsPageConfigStructure;
         dashboardPageConfig?: DashboardPageConfig["dashboardPageConfig"];
+        /** Visibility condition — when false, accordion panel is not rendered */
+        visibility?: Condition;
     }>;
     pageName: string | undefined;
-    pageTitle: Template;
+    pageTitle: ConditionalValue<string> | Template;
     pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
         url?: string;
+        visibility?: Condition;
     }[];
     pageHeaderActions: IPageAction[];
 } | {
@@ -1323,12 +1370,13 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
         }>;
     };
     pageName: string | undefined;
-    pageTitle: Template;
+    pageTitle: ConditionalValue<string> | Template;
     pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
         url?: string;
+        visibility?: Condition;
     }[];
     pageHeaderActions: IPageAction[];
 };

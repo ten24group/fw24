@@ -512,7 +512,7 @@ export declare class ObservabilityLogService extends BaseEntityService<Observabi
                                                     };
                                                 };
                                             };
-                                        }, "data"];
+                                        }];
                                     };
                                 };
                                 readonly noiseReduction: {
