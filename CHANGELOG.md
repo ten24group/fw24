@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.16](https://github.com/ten24group/fw24/compare/v1.1.0-beta.15...v1.1.0-beta.16) (2026-02-16)
+
+
+### Features
+
+* **observability:** enhance span entity association with entityName and entityId ([3b26ef3](https://github.com/ten24group/fw24/commit/3b26ef3fb5ef8322ab38811c2faa74577e0fe6ae))
+
 ## [1.1.0-beta.15](https://github.com/ten24group/fw24/compare/v1.1.0-beta.14...v1.1.0-beta.15) (2026-02-16)
 
 
