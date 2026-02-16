@@ -40,6 +40,10 @@ export type ObservedEnrichment = {
   metrics?: Record<string, number>;
   /** Span debug data (not indexed). */
   data?: Record<string, unknown>;
+  /** Associate this span with a specific entity (filterable in admin UI). */
+  entityName?: string;
+  /** Entity instance ID (filterable in admin UI). */
+  entityId?: string;
   /** Convenience: add checkpoint(s) to the span timeline. */
   checkpoints?: Array<{
     name: string;
@@ -316,6 +320,9 @@ function applyObservedEnrichment(span: ISpanObserver, enrichment: ObservedEnrich
   }
   if (enrichment.data) {
     span.setData(enrichment.data);
+  }
+  if (enrichment.entityName && enrichment.entityId) {
+    span.setEntity(enrichment.entityName, enrichment.entityId);
   }
   if (enrichment.checkpoints) {
     for (const cp of enrichment.checkpoints) {

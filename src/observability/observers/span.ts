@@ -162,6 +162,7 @@ export interface ISpanObserver extends ISpanNode {
   metric(key: string, value: number): this;
   metrics(metrics: Record<string, number>): this;
   setData(data: Record<string, unknown>): this;
+  setEntity(entityName: string, entityId: string): this;
   checkpoint(name: string, options?: {
     metrics?: Record<string, number>;
     data?: Record<string, unknown>;
@@ -200,6 +201,10 @@ export class SpanObserver implements ISpanObserver {
   private _metrics: Record<string, number> = {};
   private _data: Record<string, unknown> = {};
   private _checkpoints: Checkpoint[] = [];
+
+  // Entity context (set dynamically via setEntity)
+  private _entityName?: string;
+  private _entityId?: string;
 
   // State tracking
   private _hasError = false;
@@ -302,6 +307,16 @@ export class SpanObserver implements ISpanObserver {
    */
   setData(data: Record<string, unknown>): this {
     Object.assign(this._data, data);
+    return this;
+  }
+
+  /**
+   * Associate this span with a specific entity for admin UI filtering.
+   * Sets the actual entityName/entityId fields on the observability record.
+   */
+  setEntity(entityName: string, entityId: string): this {
+    this._entityName = entityName;
+    this._entityId = entityId;
     return this;
   }
 
@@ -731,6 +746,9 @@ export class SpanObserver implements ISpanObserver {
         ...this.options.capture,
       },
       ...overrides,
+      // Dynamic entity context (setEntity) takes priority over static options
+      ...(this._entityName && { entityName: this._entityName }),
+      ...(this._entityId && { entityId: this._entityId }),
     });
 
     // NOTE: Span parent/child integrity is enforced at flush-time by analyzing the buffered graph.

@@ -270,6 +270,31 @@ export function getBuiltinRules(presets: readonly string[]): readonly NoiseRule[
     });
 
     // ─────────────────────────────────────────────────────────────────────
+    // Internal Service Layer Spans
+    // ─────────────────────────────────────────────────────────────────────
+    // Service-layer spans (operation: "service:ClassName.method") are
+    // implementation details. When successful, they add noise without value
+    // — the parent span already captures the outcome. Errors and slow
+    // operations are protected by hard-signal logic and always emitted.
+
+    rules.push({
+      id: 'fw24.hotpaths.service.absorb_routine_success',
+      priority: 5, // Very low: easy to override
+      match: {
+        type: 'span',
+        operation: '/^service:/',
+        success: true,
+        maxDurationMs: 5000,
+      },
+      except: [
+        { success: false },
+        { level: [ 'error', 'critical', 'warn' ] },
+      ],
+      decision: 'absorb',
+      reason: 'Absorb successful service-layer spans into parent (errors/slow preserved)',
+    });
+
+    // ─────────────────────────────────────────────────────────────────────
     // API CORS / Preflight Noise
     // ─────────────────────────────────────────────────────────────────────
 

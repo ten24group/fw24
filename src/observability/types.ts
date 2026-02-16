@@ -1540,6 +1540,8 @@ export type RecordOverrides = Partial<Pick<CaptureInput,
   | 'tags'
   | 'metadata'
   | 'parentObservabilityLogId'
+  | 'entityName'
+  | 'entityId'
 >>;
 
 /**
