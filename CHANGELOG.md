@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.14](https://github.com/ten24group/fw24/compare/v1.1.0-beta.13...v1.1.0-beta.14) (2026-02-16)
+
+
+### Features
+
+* **entity:** add target option for submitSuccessRedirectOptions to control link behavior ([d6ff2c3](https://github.com/ten24group/fw24/commit/d6ff2c3a6f1cda548e355dce59f8b0349c4a41e7))
+
 ## [1.1.0-beta.13](https://github.com/ten24group/fw24/compare/v1.1.0-beta.12...v1.1.0-beta.13) (2026-02-13)
 
 
