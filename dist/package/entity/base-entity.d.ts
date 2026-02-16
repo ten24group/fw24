@@ -904,6 +904,8 @@ export interface IEntityPageActionDrawerConfig {
     submitSuccessRedirectOptions?: {
         replace?: boolean;
         state?: unknown;
+        /** Open redirect URL in a new browser tab. Use '_blank' for external URLs (e.g. OAuth flows). */
+        target?: '_blank' | '_self';
     };
     /** OR: Navigate without API call */
     navigateTo?: INavigateToConfig | string;
@@ -1373,10 +1375,13 @@ export interface IEntityPageActionModalConfig {
     /**
      * Navigation options for submitSuccessRedirect (replace history, pass state, etc.)
      * Uses react-router-dom's NavigateOptions: { replace?: boolean; state?: unknown; }
+     * Use target: '_blank' to open external URLs (e.g. OAuth flows) in a new browser tab.
      */
     submitSuccessRedirectOptions?: {
         replace?: boolean;
         state?: unknown;
+        /** Open redirect URL in a new browser tab. Use '_blank' for external URLs (e.g. OAuth flows). */
+        target?: '_blank' | '_self';
     };
     /** OR: Navigate without API call (new pattern) */
     navigateTo?: INavigateToConfig | string;
