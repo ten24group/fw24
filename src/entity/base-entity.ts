@@ -7,7 +7,7 @@ import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
 import { EntitySearchService } from '../search/services';
 import { DepIdentifier, IFilterAutoGenerationConfig, ISegmentAutoGenerationConfig } from "../interfaces";
-import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig, AccordionPageConfig, WizardPageConfigStructure, CustomPageConfigStructure } from '../ui-config-gen/templates/custom-page';
+import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig, AccordionPageConfig, WizardPageConfigStructure, CustomPageConfigStructure, IFormattingRule, IHelpConfig, ITableEmptyStateConfig, IPaginationConfig } from '../ui-config-gen/templates/custom-page';
 
 /**
  * @fileoverview Entity Schema and Type-Safe Helper Functions
@@ -917,7 +917,7 @@ export interface IEntityActionSharedConfig {
   /** Make an API call */
   apiConfig?: IModalApiConfig;
   /** Redirect after successful API call (supports templates like ':fieldName') */
-  submitSuccessRedirect?: string;
+  submitSuccessRedirect?: string | ConditionalValue<string>;
   submitSuccessRedirectOptions?: IRedirectOptions;
   /** Navigate without API call */
   navigateTo?: INavigateToConfig | string;
@@ -1063,6 +1063,21 @@ export interface IEntityPageActionDrawerConfig extends IEntityActionSharedConfig
   // DRAWER-SPECIFIC BEHAVIOR
   // =========================================================================
 
+  /** EITHER: Make API call */
+  apiConfig?: IModalApiConfig;
+  /** Redirect URL after success. Supports ConditionalValue for condition-based routing. */
+  submitSuccessRedirect?: string | ConditionalValue<string>;
+  submitSuccessRedirectOptions?: IRedirectOptions;
+
+  /** OR: Navigate without API call */
+  navigateTo?: INavigateToConfig | string;
+
+  /** Display API response in a modal */
+  responseConfig?: IResponseDisplayConfig;
+
+  /** Dynamic config key for chaining operations */
+  dynamicConfigKey?: string;
+
   /**
    * Control drawer closing behavior on error
    * - true: Close drawer immediately on error
@@ -1147,8 +1162,8 @@ export interface IEntityConfigReference {
     /** Override breadcrumbs */
     breadcrumbs?: ReadonlyArray<{ label: string; url?: string }> | Array<{ label: string; url?: string }>;
 
-    /** Override form success redirect (for create pages) */
-    submitSuccessRedirect?: string;
+    /** Override form success redirect (for create pages). Supports ConditionalValue for condition-based routing. */
+    submitSuccessRedirect?: string | ConditionalValue<string>;
 
     /** Override form buttons (for create pages) */
     formButtons?: ReadonlyArray<{ text: string; action: string; url?: string }> | Array<{ text: string; action: string; url?: string }>;
@@ -1472,6 +1487,26 @@ export interface IRelationFieldConfig {
     };
 
     /**
+     * Hover preview (peek) configuration.
+     * When enabled, hovering over relation links shows a popover with key fields.
+     * 
+     * @example
+     * preview: { enabled: true, fields: ['name', 'email', 'status'] }
+     */
+    preview?: {
+      /** Enable hover preview. @default false */
+      enabled: boolean;
+      /** Fields to display in the popover. Defaults to auto-detected from entity config. */
+      fields?: string[];
+      /** Delay before showing popover (ms). @default 300 */
+      delay?: number;
+      /** Popover placement. @default 'right' */
+      placement?: 'right' | 'top' | 'auto';
+      /** Max width of popover (px). @default 400 */
+      maxWidth?: number;
+    };
+
+    /**
      * Control auto-detection of duplicated fields for this specific relation.
      * - undefined or true: Enable auto-detection (default)
      * - false: Disable auto-detection
@@ -1540,7 +1575,48 @@ export interface IEntityPageActionModalConfig extends IEntityActionSharedConfig 
   // =========================================================================
 
   modalType: ModalType;
-  modalPageConfig?: IConfirmModal | PageConfigStructure;
+  modalPageConfig?: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | DashboardPageConfig | AccordionPageConfig | WizardPageConfigStructure | CustomPageConfigStructure;
+
+  /** EITHER: Make API call (existing pattern) */
+  apiConfig?: IModalApiConfig;
+  /** Redirect URL after success. Supports ConditionalValue for condition-based routing. */
+  submitSuccessRedirect?: string | ConditionalValue<string>;
+  submitSuccessRedirectOptions?: IRedirectOptions;
+
+  /** OR: Navigate without API call (new pattern) */
+  navigateTo?: INavigateToConfig | string;  // String shorthand: "/list-game?status={status}"
+
+  /** OPTIONAL: Display API response in a modal (instead of just toast notification)
+   * Note: Only applies when apiConfig is present. Ignored for navigateTo.
+   */
+  responseConfig?: IResponseDisplayConfig;
+
+  /**
+   * Dynamic Configuration Extraction for Chaining/Wizard Flows
+   * If provided, OperationExecutor looks for next-step config in the API response.
+   * Useful for backend-driven wizards where each step is determined by the previous response.
+   * 
+   * @example
+   * // Backend entity action config
+   * dynamicConfigKey: 'nextStep'
+   * 
+   * // Backend API returns:
+   * {
+   *   success: true,
+   *   data: { userId: '123', email: 'user@example.com' },
+   *   nextStep: {
+   *     modalType: 'form',
+   *     modalPageConfig: {
+   *       title: 'Verify Email',
+   *       propertiesConfig: [...],
+   *       apiConfig: { apiUrl: '/verify-email', apiMethod: 'POST' }
+   *     }
+   *   }
+   * }
+   * 
+   * // Result: Response modal opens with form, pre-filled with user data
+   */
+  dynamicConfigKey?: string;
 
   /**
    * Control modal closing behavior on error
@@ -1734,11 +1810,11 @@ export type ConditionalValue<T> = {
  * Type guard for ConditionalValue<T>.
  * Checks structure (rules array with when/value items + default) rather than just property names.
  */
-export function isConditionalValue<T> ( value: unknown ): value is ConditionalValue<T> {
-  if ( !value || typeof value !== 'object' ) return false;
+export function isConditionalValue<T>(value: unknown): value is ConditionalValue<T> {
+  if (!value || typeof value !== 'object') return false;
   const obj = value as Record<string, any>;
-  if ( !Array.isArray( obj.rules ) || !( 'default' in obj ) ) return false;
-  if ( obj.rules.length > 0 ) {
+  if (!Array.isArray(obj.rules) || !('default' in obj)) return false;
+  if (obj.rules.length > 0) {
     const first = obj.rules[ 0 ];
     return first && typeof first === 'object' && 'when' in first && 'value' in first;
   }
@@ -2145,7 +2221,7 @@ export interface SelectFieldMetadata<E extends EntitySchema<any, any, any> = any
       pageTitle?: string;
       columnsConfig?: IEntityPageColumnConfig;
       breadcrumbs?: ReadonlyArray<{ label: string; url?: string }> | Array<{ label: string; url?: string }>;
-      submitSuccessRedirect?: string;
+      submitSuccessRedirect?: string | ConditionalValue<string>;
       formButtons?: ReadonlyArray<{ text: string; action: string; url?: string }> | Array<{ text: string; action: string; url?: string }>;
       hideFields?: ReadonlyArray<string> | Array<string>;
       showOnlyFields?: ReadonlyArray<string> | Array<string>;
@@ -3689,6 +3765,23 @@ export interface EntityListPageConfig {
      * pageSize: 20  // Show 20 records per page by default
      */
     readonly pageSize?: number;
+
+    /** Conditional row formatting rules (apply styles/classes to entire rows) */
+    readonly rowFormatting?: ReadonlyArray<IFormattingRule> | Array<IFormattingRule>;
+
+    /** Empty state configuration for when the table has no data or no results */
+    readonly emptyState?: ITableEmptyStateConfig;
+
+    /**
+     * Pagination configuration.
+     * Controls page size options, total display, quick jumper, and position.
+     * 
+     * Note: `pageSize` remains at the top level (not duplicated here).
+     * 
+     * @example
+     * pagination: { pageSizeOptions: [10, 25, 50], showQuickJumper: true }
+     */
+    readonly pagination?: IPaginationConfig;
   };
 }
 

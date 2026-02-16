@@ -1872,7 +1872,9 @@ export function formatEntityAttributeForFormOrDetail(
                     autoDetect: userRelationConfig?.displayConfig?.autoDetect,
                     autoDetectHints: userRelationConfig?.displayConfig?.autoDetectHints,
                     // Pass through any custom actions
-                    actions: userRelationConfig?.displayConfig?.actions
+                    actions: userRelationConfig?.displayConfig?.actions,
+                    // Pass through preview config for Related Record Peek (#103)
+                    ...(userRelationConfig?.displayConfig?.preview && { preview: userRelationConfig.displayConfig.preview })
                 }
             };
             if (globalUIConfigOptions?.duplicatedFieldDetection?.debug) {

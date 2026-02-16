@@ -249,6 +249,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
         ...(tableConfig?.expandable && { expandableConfig: tableConfig.expandable }),  // Include expandable config if provided
         ...(segments && segments.length > 0 && { segments }),  // Include segments if generated/provided
         fetchStrategy: tableConfig?.fetchStrategy || 'eager', // Default to 'eager' fetching
-        ...(tableConfig?.pageSize && { pageSize: tableConfig.pageSize })  // Include pageSize if provided
+        ...(tableConfig?.pageSize && { pageSize: tableConfig.pageSize }),  // Include pageSize if provided
+        ...(tableConfig?.pagination && { pagination: tableConfig.pagination })  // Include pagination config if provided
     };
 }

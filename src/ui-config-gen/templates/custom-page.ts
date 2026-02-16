@@ -431,6 +431,71 @@ export interface PropertyConfig {
 }
 
 /**
+ * Conditional formatting rule for cell or row styling.
+ * When the condition matches the row record, the style/className is applied.
+ */
+export interface IFormattingRule {
+    /** Condition evaluated against row data */
+    when: Condition;
+    /** Inline CSS styles to apply */
+    style?: Record<string, string>;
+    /** CSS class name to apply */
+    className?: string;
+    /** Badge configuration (for cell formatting) */
+    badge?: { status: string };
+    /** Icon configuration (for cell formatting) */
+    icon?: { name: string; color?: string };
+}
+
+/**
+ * Rich help configuration for contextual field descriptions.
+ * Supports tooltip, popover, and below-field placement.
+ */
+export interface IHelpConfig {
+    /** Description text displayed based on placement */
+    description?: string;
+    /** Short tooltip text shown on hover (for 'tooltip' placement) */
+    tooltip?: string;
+    /** URL to external documentation */
+    docsUrl?: string;
+    /** How to display the help: below field (default), as tooltip on label, or as popover */
+    placement?: 'below' | 'tooltip' | 'popover';
+}
+
+/**
+ * Empty state configuration for tables.
+ * Supports two variants: noData (zero records) and noResults (filters active, no matches).
+ */
+export interface ITableEmptyStateConfig {
+    /** Custom illustration URL */
+    image?: string;
+    noData?: {
+        title?: string;
+        description?: string;
+        action?: { label: string; url?: string };
+    };
+    noResults?: {
+        title?: string;
+        showClearFilters?: boolean;
+    };
+}
+
+/**
+ * Pagination display configuration for tables.
+ * Controls page size options, total display, quick jumper, and position.
+ */
+export interface IPaginationConfig {
+    /** Available page size options. @default [10, 20, 50, 100] */
+    pageSizeOptions?: number[];
+    /** Show total record count. @default true */
+    showTotal?: boolean;
+    /** Show quick jumper input (offset mode only). @default false */
+    showQuickJumper?: boolean;
+    /** Position of pagination controls. @default 'bottom' */
+    position?: 'top' | 'bottom' | 'both';
+}
+
+/**
  * Property reference (short syntax or full config).
  * 
  * Supports two formats:
@@ -548,7 +613,8 @@ export interface FormPageConfigStructure {
         enablement?: Condition;
     }>;
     propertiesConfig: PropertiesConfig;
-    submitSuccessRedirect?: string;
+    /** Redirect URL after success. Supports ConditionalValue for condition-based routing. */
+    submitSuccessRedirect?: string | ConditionalValue<string>;
     /**
      * Custom success message template.
      * @example successMessage: 'Record created successfully!'
@@ -678,7 +744,7 @@ export interface ListPageConfigStructure {
                 modalType: ModalType;
                 modalPageConfig: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure;
                 apiConfig?: IModalApiConfig;
-                submitSuccessRedirect?: string;
+                submitSuccessRedirect?: string | ConditionalValue<string>;
                 successMessage?: Template;
                 errorMessage?: Template;
             };
@@ -711,6 +777,15 @@ export interface ListPageConfigStructure {
      * ]
      */
     segments?: Array<IFilterSegment>;
+
+    /** Conditional row formatting rules (apply styles/classes to entire rows) */
+    rowFormatting?: Array<IFormattingRule>;
+
+    /** Empty state configuration for when the table has no data or no results */
+    emptyState?: ITableEmptyStateConfig;
+
+    /** Pagination configuration */
+    pagination?: IPaginationConfig;
 }
 
 /**
@@ -862,14 +937,14 @@ export interface WizardPageConfigStructure {
  * ```
  */
 export interface CustomPageConfigStructure {
-  /** Component key registered in ExtensionRegistry */
-  componentKey: string;
-  /** Props to pass to the custom component */
-  componentProps?: Record<string, unknown>;
-  /** Optional title for the modal/page */
-  title?: string;
-  /** Optional help text */
-  helpText?: string;
+    /** Component key registered in ExtensionRegistry */
+    componentKey: string;
+    /** Props to pass to the custom component */
+    componentProps?: Record<string, unknown>;
+    /** Optional title for the modal/page */
+    title?: string;
+    /** Optional help text */
+    helpText?: string;
 }
 
 /**
@@ -958,7 +1033,8 @@ export interface IPageAction {
 
         /** EITHER: Make API call (existing pattern) */
         apiConfig?: IModalApiConfig;
-        submitSuccessRedirect?: string;
+        /** Redirect URL after success. Supports ConditionalValue for condition-based routing. */
+        submitSuccessRedirect?: string | ConditionalValue<string>;
         /**
          * Navigation options for submitSuccessRedirect (replace history, pass state, etc.)
          * Uses react-router-dom's NavigateOptions: { replace?: boolean; state?: unknown; }
