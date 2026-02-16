@@ -895,6 +895,50 @@ export interface IRedirectOptions {
 }
 
 /**
+ * Union of all renderable page config structures.
+ * Used by modal, drawer, and response configs to specify what page type to render.
+ */
+export type PageConfigStructure =
+  | FormPageConfigStructure
+  | ListPageConfigStructure
+  | DetailsPageConfigStructure
+  | DashboardPageConfig
+  | AccordionPageConfig
+  | WizardPageConfigStructure
+  | CustomPageConfigStructure;
+
+/**
+ * Shared API/navigation config for action handlers (modals, drawers, etc.)
+ *
+ * Extracted to avoid duplicating these fields in every action config interface.
+ * Both IEntityPageActionModalConfig and IEntityPageActionDrawerConfig extend this.
+ */
+export interface IEntityActionSharedConfig {
+  /** Make an API call */
+  apiConfig?: IModalApiConfig;
+  /** Redirect after successful API call (supports templates like ':fieldName') */
+  submitSuccessRedirect?: string;
+  submitSuccessRedirectOptions?: IRedirectOptions;
+  /** Navigate without API call */
+  navigateTo?: INavigateToConfig | string;
+  /** Display API response in a modal */
+  responseConfig?: IResponseDisplayConfig;
+  /** Extract next-step config from API response (for chaining/wizard flows) */
+  dynamicConfigKey?: string;
+  /** Skip toast notifications */
+  skipSuccessToast?: boolean;
+  skipErrorToast?: boolean;
+  /** Pre-populate form fields from context (route params + record data) */
+  initialValues?: Record<string, any>;
+  /** Refresh parent component after success */
+  refreshParentOnSuccess?: boolean;
+  /** Custom success message template */
+  successMessage?: Template;
+  /** Custom error message template */
+  errorMessage?: Template;
+}
+
+/**
  * API method type - must match frontend IApiConfig
  */
 export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -984,7 +1028,7 @@ export interface INavigateToConfig {
  * 
  * @see {@link IEntityPageActionModalConfig} for the modal equivalent
  */
-export interface IEntityPageActionDrawerConfig {
+export interface IEntityPageActionDrawerConfig extends IEntityActionSharedConfig {
   // =========================================================================
   // DRAWER-SPECIFIC PRESENTATION PROPERTIES
   // =========================================================================
@@ -1007,32 +1051,17 @@ export interface IEntityPageActionDrawerConfig {
   destroyOnClose?: boolean;
 
   // =========================================================================
-  // SHARED PAGE CONFIG (SAME AS MODAL)
+  // DRAWER PAGE CONFIG
   // =========================================================================
 
-  /** Page type to render (same as modalType) */
+  /** Page type to render (same as modalType, except confirm) */
   drawerType?: Omit<ModalType, 'confirm'>;
-
-  /** Page configuration (same as modalPageConfig) */
-  drawerPageConfig?: FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | DashboardPageConfig | AccordionPageConfig | WizardPageConfigStructure | CustomPageConfigStructure;
+  /** Page configuration */
+  drawerPageConfig?: PageConfigStructure;
 
   // =========================================================================
-  // SHARED API/NAVIGATION CONFIG (SAME AS MODAL)
+  // DRAWER-SPECIFIC BEHAVIOR
   // =========================================================================
-
-  /** EITHER: Make API call */
-  apiConfig?: IModalApiConfig;
-  submitSuccessRedirect?: string;
-  submitSuccessRedirectOptions?: IRedirectOptions;
-
-  /** OR: Navigate without API call */
-  navigateTo?: INavigateToConfig | string;
-
-  /** Display API response in a modal */
-  responseConfig?: IResponseDisplayConfig;
-
-  /** Dynamic config key for chaining operations */
-  dynamicConfigKey?: string;
 
   /**
    * Control drawer closing behavior on error
@@ -1040,25 +1069,6 @@ export interface IEntityPageActionDrawerConfig {
    * - false (default): Keep drawer open so user can fix and retry
    */
   closeDrawerOnError?: boolean;
-
-  /** Skip toast notifications */
-  skipSuccessToast?: boolean;
-  skipErrorToast?: boolean;
-
-  /**
-   * Pre-populate form fields from context (route params + record data).
-   * Same as modalConfig.initialValues - see IEntityPageActionModalConfig for full documentation.
-   */
-  initialValues?: Record<string, any>;
-
-  /** Refresh parent component after success */
-  refreshParentOnSuccess?: boolean;
-
-  /** Custom success message template */
-  successMessage?: Template;
-
-  /** Custom error message template */
-  errorMessage?: Template;
 }
 
 /**
@@ -1524,49 +1534,13 @@ export interface IRelationFieldConfig {
   };
 }
 
-export interface IEntityPageActionModalConfig {
+export interface IEntityPageActionModalConfig extends IEntityActionSharedConfig {
+  // =========================================================================
+  // MODAL-SPECIFIC PROPERTIES
+  // =========================================================================
+
   modalType: ModalType;
-  modalPageConfig?: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | DashboardPageConfig | AccordionPageConfig | WizardPageConfigStructure | CustomPageConfigStructure;
-
-  /** EITHER: Make API call (existing pattern) */
-  apiConfig?: IModalApiConfig;
-  submitSuccessRedirect?: string;
-  submitSuccessRedirectOptions?: IRedirectOptions;
-
-  /** OR: Navigate without API call (new pattern) */
-  navigateTo?: INavigateToConfig | string;  // String shorthand: "/list-game?status={status}"
-
-  /** OPTIONAL: Display API response in a modal (instead of just toast notification)
-   * Note: Only applies when apiConfig is present. Ignored for navigateTo.
-   */
-  responseConfig?: IResponseDisplayConfig;
-
-  /**
-   * Dynamic Configuration Extraction for Chaining/Wizard Flows
-   * If provided, OperationExecutor looks for next-step config in the API response.
-   * Useful for backend-driven wizards where each step is determined by the previous response.
-   * 
-   * @example
-   * // Backend entity action config
-   * dynamicConfigKey: 'nextStep'
-   * 
-   * // Backend API returns:
-   * {
-   *   success: true,
-   *   data: { userId: '123', email: 'user@example.com' },
-   *   nextStep: {
-   *     modalType: 'form',
-   *     modalPageConfig: {
-   *       title: 'Verify Email',
-   *       propertiesConfig: [...],
-   *       apiConfig: { apiUrl: '/verify-email', apiMethod: 'POST' }
-   *     }
-   *   }
-   * }
-   * 
-   * // Result: Response modal opens with form, pre-filled with user data
-   */
-  dynamicConfigKey?: string;
+  modalPageConfig?: IConfirmModal | PageConfigStructure;
 
   /**
    * Control modal closing behavior on error
@@ -1576,116 +1550,12 @@ export interface IEntityPageActionModalConfig {
   closeModalOnError?: boolean;
 
   /**
-   * Skip showing success toast notification
-   * Useful when responseConfig.showModal is true (avoid duplicate notifications)
-   */
-  skipSuccessToast?: boolean;
-
-  /**
-   * Skip showing error toast notification
-   * Useful when you want custom error handling via callbacks
-   */
-  skipErrorToast?: boolean;
-
-  /**
-   * Pre-populate form fields from context (route params + record data).
-   * 
-   * Values are evaluated when the modal opens and merged with form field defaults.
-   * Merge priority (lowest to highest):
-   * 1. Field-level defaults (from entity schema)
-   * 2. initialValues (from action config) ← THIS
-   * 3. Query params (from URL navigation with inverseMapping)
-   * 4. Form defaultValues (from parent component)
-   * 
-   * Supports:
-   * - Static values: `{ isActive: true, priority: 1 }`
-   * - Template strings: `{ teamId: '{teamId}', sport: '{sport}' }`
-   * - Nested paths: `{ teamName: '{team.name}', teamId: '{team.teamId}' }`
-   * 
-   * @example
-   * // Static values
-   * initialValues: {
-   *   isActive: true,
-   *   status: 'pending'
-   * }
-   * 
-   * @example
-   * // Template strings (evaluated from routeParams)
-   * initialValues: {
-   *   teamId: '{teamId}',        // Gets routeParams.teamId
-   *   sport: '{sport}',          // Gets routeParams.sport
-   *   createdDate: '2024-01-01'  // Static
-   * }
-   * 
-   * @example
-   * // Nested paths (for complex record data)
-   * initialValues: {
-   *   teamId: '{team.teamId}',
-   *   teamName: '{team.name}',
-   *   sportId: '{team.sport.sportId}'
-   * }
-   * 
-   * Note: Template strings like '{teamId}' are evaluated at runtime from:
-   * - routeParams (URL parameters)
-   * - record (table row data when action is triggered from a table row)
-   */
-  initialValues?: Record<string, any>;
-
-  /**
-   * If true, parent component will be notified to refresh after successful operation.
-   * This triggers the onSuccessCallback with the API response data.
-   * 
-   * Use cases:
-   * - Refresh table after creating/updating a record
-   * - Refresh parent page data after a successful operation
-   * - Update UI state after modal action completes
-   * 
-   * Note: This works in combination with submitSuccessRedirect and responseConfig.
-   * All three can be used together.
-   * 
-   * @default false
-   * 
-   * @example
-   * {
-   *   modalConfig: {
-   *     modalType: 'form',
-   *     apiConfig: { apiUrl: '/api/teams', apiMethod: 'POST' },
-   *     refreshParentOnSuccess: true  // ✅ Table will refresh after creation
-   *   }
-   * }
-   */
-  refreshParentOnSuccess?: boolean;
-
-  /**
    * Modal title - can be static string or dynamic template.
-   * If string: used as-is or evaluated as template if contains {...}
-   * If object: evaluated from routeParams
-   * 
    * @example modalTitle: "Edit Team"
    * @example modalTitle: "Edit {teamName}"
    * @example modalTitle: { composite: ['teamName', 'city'], template: 'Edit {teamName} ({city})' }
    */
   modalTitle?: Template;
-
-  /**
-   * Success message - can be static string or dynamic template.
-   * Evaluated from API response data.
-   * If not provided, uses message from API response.
-   * 
-   * @example successMessage: 'Team created successfully!'
-   * @example successMessage: '{teamName} created successfully!'
-   */
-  successMessage?: Template;
-
-  /**
-   * Error message - can be static string or dynamic template.
-   * Evaluated from API error data.
-   * If not provided, uses error from API response.
-   * 
-   * @example errorMessage: 'Failed to create team'
-   * @example errorMessage: 'Failed to create {teamName}'
-   */
-  errorMessage?: Template;
 }
 
 /**
