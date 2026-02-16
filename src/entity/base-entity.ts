@@ -881,6 +881,20 @@ export interface BaseFieldMetadata {
 export type ModalType = "confirm" | "list" | "form" | "accordion" | "custom" | "details" | "dashboard" | "wizard";
 
 /**
+ * Navigation options for success redirects after form/modal submission.
+ * Shared by modal configs, drawer configs, and the ui24 OperationExecutor.
+ *
+ * - `replace` / `state` — react-router NavigateOptions for internal URLs
+ * - `target` — open external URLs in a new tab (e.g. OAuth flows)
+ */
+export interface IRedirectOptions {
+  replace?: boolean;
+  state?: unknown;
+  /** Open redirect URL in a new browser tab. Use '_blank' for external URLs (e.g. OAuth flows). */
+  target?: '_blank' | '_self';
+}
+
+/**
  * API method type - must match frontend IApiConfig
  */
 export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -1009,12 +1023,7 @@ export interface IEntityPageActionDrawerConfig {
   /** EITHER: Make API call */
   apiConfig?: IModalApiConfig;
   submitSuccessRedirect?: string;
-  submitSuccessRedirectOptions?: {
-    replace?: boolean;
-    state?: unknown;
-    /** Open redirect URL in a new browser tab. Use '_blank' for external URLs (e.g. OAuth flows). */
-    target?: '_blank' | '_self';
-  };
+  submitSuccessRedirectOptions?: IRedirectOptions;
 
   /** OR: Navigate without API call */
   navigateTo?: INavigateToConfig | string;
@@ -1522,17 +1531,7 @@ export interface IEntityPageActionModalConfig {
   /** EITHER: Make API call (existing pattern) */
   apiConfig?: IModalApiConfig;
   submitSuccessRedirect?: string;
-  /**
-   * Navigation options for submitSuccessRedirect (replace history, pass state, etc.)
-   * Uses react-router-dom's NavigateOptions: { replace?: boolean; state?: unknown; }
-   * Use target: '_blank' to open external URLs (e.g. OAuth flows) in a new browser tab.
-   */
-  submitSuccessRedirectOptions?: {
-    replace?: boolean;
-    state?: unknown;
-    /** Open redirect URL in a new browser tab. Use '_blank' for external URLs (e.g. OAuth flows). */
-    target?: '_blank' | '_self';
-  };
+  submitSuccessRedirectOptions?: IRedirectOptions;
 
   /** OR: Navigate without API call (new pattern) */
   navigateTo?: INavigateToConfig | string;  // String shorthand: "/list-game?status={status}"
