@@ -1339,7 +1339,7 @@ export declare const DefaultSamplingConfig: SamplingConfig;
  * }
  * ```
  */
-export type RecordOverrides = Partial<Pick<CaptureInput, 'capture' | 'correlationId' | 'causedBy' | 'relatedTraces' | 'actor' | 'source' | 'tags' | 'metadata' | 'parentObservabilityLogId'>>;
+export type RecordOverrides = Partial<Pick<CaptureInput, 'capture' | 'correlationId' | 'causedBy' | 'relatedTraces' | 'actor' | 'source' | 'tags' | 'metadata' | 'parentObservabilityLogId' | 'entityName' | 'entityId'>>;
 /**
  * Context overrides for withContext().
  *

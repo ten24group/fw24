@@ -77,6 +77,7 @@ export interface ISpanObserver extends ISpanNode {
     metric(key: string, value: number): this;
     metrics(metrics: Record<string, number>): this;
     setData(data: Record<string, unknown>): this;
+    setEntity(entityName: string, entityId: string): this;
     checkpoint(name: string, options?: {
         metrics?: Record<string, number>;
         data?: Record<string, unknown>;
@@ -102,6 +103,8 @@ export declare class SpanObserver implements ISpanObserver {
     private _metrics;
     private _data;
     private _checkpoints;
+    private _entityName?;
+    private _entityId?;
     private _hasError;
     ended: boolean;
     private constructor();
@@ -130,6 +133,11 @@ export declare class SpanObserver implements ISpanObserver {
      * Data is NOT indexed - use for debugging inspection only.
      */
     setData(data: Record<string, unknown>): this;
+    /**
+     * Associate this span with a specific entity for admin UI filtering.
+     * Sets the actual entityName/entityId fields on the observability record.
+     */
+    setEntity(entityName: string, entityId: string): this;
     /**
      * Add a checkpoint to the timeline.
      * Checkpoints are simple markers of what happened when.
