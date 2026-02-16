@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.15](https://github.com/ten24group/fw24/compare/v1.1.0-beta.14...v1.1.0-beta.15) (2026-02-16)
+
+
+### Features
+
+* **entity:** standardize submitSuccessRedirectOptions with IRedirectOptions interface ([0cf1615](https://github.com/ten24group/fw24/commit/0cf16158c702b280bae35faed6095e0b1a36db3d))
+
 ## [1.1.0-beta.14](https://github.com/ten24group/fw24/compare/v1.1.0-beta.13...v1.1.0-beta.14) (2026-02-16)
 
 
