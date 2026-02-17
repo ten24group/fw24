@@ -244,12 +244,19 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
         apiConfig,
         propertiesConfig: formattedProps,  // Row actions are merged into identifier field's actions
         entityName,  // Add entityName to config for evaluation system
-        ...(tableConfig?.bulkActions && { bulkActions: tableConfig.bulkActions }),  // Include bulkActions if provided
-        ...(tableConfig?.rowSelection && { rowSelection: tableConfig.rowSelection }),  // Include rowSelection if provided
-        ...(tableConfig?.expandable && { expandableConfig: tableConfig.expandable }),  // Include expandable config if provided
-        ...(segments && segments.length > 0 && { segments }),  // Include segments if generated/provided
-        fetchStrategy: tableConfig?.fetchStrategy || 'eager', // Default to 'eager' fetching
-        ...(tableConfig?.pageSize && { pageSize: tableConfig.pageSize }),  // Include pageSize if provided
-        ...(tableConfig?.pagination && { pagination: tableConfig.pagination })  // Include pagination config if provided
+        ...(tableConfig?.bulkActions && { bulkActions: tableConfig.bulkActions }),
+        ...(tableConfig?.rowSelection && { rowSelection: tableConfig.rowSelection }),
+        ...(tableConfig?.expandable && { expandableConfig: tableConfig.expandable }),
+        ...(segments && segments.length > 0 && { segments }),
+        fetchStrategy: tableConfig?.fetchStrategy || 'eager',
+        ...(tableConfig?.pageSize && { pageSize: tableConfig.pageSize }),
+        ...(tableConfig?.pagination && { pagination: tableConfig.pagination }),
+        ...(tableConfig?.rowFormatting && { rowFormatting: tableConfig.rowFormatting }),
+        ...(tableConfig?.emptyState && { emptyState: tableConfig.emptyState }),
+        ...(tableConfig?.density && { density: tableConfig.density }),
+        ...(tableConfig?.columnResizing != null && { columnResizing: tableConfig.columnResizing }),
+        ...(tableConfig?.contextMenu && { contextMenu: tableConfig.contextMenu }),
+        ...(tableConfig?.displayMode && { displayMode: tableConfig.displayMode }),
+        ...(tableConfig?.viewSwitcher && { viewSwitcher: tableConfig.viewSwitcher }),
     };
 }

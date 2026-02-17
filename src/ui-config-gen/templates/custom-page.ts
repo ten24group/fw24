@@ -334,6 +334,19 @@ export interface PropertyConfig {
      * Modal configuration for fields that open in modal
      */
     openInModal?: boolean;
+
+    /** When true, the field value is copyable to clipboard with one click */
+    copyable?: boolean;
+
+    /** Embedded content configuration (iframe or markdown) for fieldType 'embed' */
+    embedConfig?: {
+        type: 'iframe' | 'markdown';
+        height?: number;
+        sandbox?: string;
+    };
+
+    /** Field dependency — when the referenced field(s) change, this field's options are refetched */
+    dependsOn?: string | string[];
     // Support for list/map types from EntityAttribute
     items?: {
         type: ConfigFieldType;
@@ -1105,6 +1118,25 @@ export interface IPageAction {
          * @example errorMessage: 'Failed to create {entityName}'
          */
         errorMessage?: Template;
+
+        /**
+         * Config-driven notification control. Overrides successMessage/errorMessage when provided.
+         * Shape matches OperationConfig.notification on the frontend.
+         */
+        notification?: {
+            success?: { message?: Template; description?: Template; type?: 'message' | 'notification'; duration?: number; };
+            error?: { message?: Template; description?: Template; type?: 'message' | 'notification'; duration?: number; };
+            skip?: boolean | 'success' | 'error';
+        };
+
+        /**
+         * Action throttling — cooldown period after execution.
+         * @example throttle: { cooldownMs: 5000, showCountdown: true }
+         */
+        throttle?: {
+            cooldownMs?: number;
+            showCountdown?: boolean;
+        };
     };
 
     /** Custom modal width. Default: auto-detect from page type */
@@ -1158,6 +1190,16 @@ export interface IPageAction {
      * }
      */
     visibility?: Condition;
+
+    /**
+     * Clipboard copy action configuration (#60).
+     * When set, clicking the action copies record data to clipboard.
+     */
+    copyConfig?: {
+        format: 'json' | 'csv' | 'text';
+        fields?: string[];
+        template?: Template;
+    };
 }
 
 /**

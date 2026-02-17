@@ -873,6 +873,41 @@ export interface BaseFieldMetadata {
    * }
    */
   relationConfig?: IRelationFieldConfig;
+
+  /**
+   * When true, the field value can be copied to clipboard with a single click.
+   * Applies to both detail views and table cells.
+   * 
+   * @example
+   * email: { type: 'string', copyable: true }
+   */
+  copyable?: boolean;
+
+  /**
+   * Configuration for embedded content (iframe or markdown).
+   * Used when `fieldType: 'embed'`.
+   * 
+   * @example
+   * previewUrl: { type: 'string', fieldType: 'embed', embedConfig: { type: 'iframe', height: 400, sandbox: 'allow-scripts' } }
+   * notes: { type: 'string', fieldType: 'embed', embedConfig: { type: 'markdown', height: 300 } }
+   */
+  embedConfig?: {
+    type: 'iframe' | 'markdown';
+    height?: number;
+    sandbox?: string;
+  };
+
+  /**
+   * Field dependency for cascading option selects.
+   * When the specified field(s) change, this field's options are refetched with the dependency values as filters.
+   * 
+   * @example
+   * // Single dependency
+   * state: { type: 'string', fieldType: 'select', dependsOn: 'country', options: { apiUrl: '/api/states' } }
+   * // Multiple dependencies
+   * city: { type: 'string', fieldType: 'select', dependsOn: ['country', 'state'], options: { apiUrl: '/api/cities' } }
+   */
+  dependsOn?: string | string[];
 }
 
 /**
@@ -936,6 +971,52 @@ export interface IEntityActionSharedConfig {
   successMessage?: Template;
   /** Custom error message template */
   errorMessage?: Template;
+
+  /**
+   * Config-driven notification control. Overrides successMessage/errorMessage when provided.
+   * Matches OperationConfig.notification shape on the frontend.
+   * 
+   * @example
+   * // Custom success notification with description
+   * notification: {
+   *   success: { message: 'Saved!', description: '{entityName} updated successfully.', type: 'notification' },
+   *   error: { message: 'Failed', description: 'Could not save changes.', type: 'notification' }
+   * }
+   * @example
+   * // Skip all notifications
+   * notification: { skip: true }
+   */
+  notification?: {
+    success?: {
+      message?: Template;
+      description?: Template;
+      type?: 'message' | 'notification';
+      duration?: number;
+    };
+    error?: {
+      message?: Template;
+      description?: Template;
+      type?: 'message' | 'notification';
+      duration?: number;
+    };
+    /** Skip notifications: true = skip all, 'success' = skip success only, 'error' = skip error only */
+    skip?: boolean | 'success' | 'error';
+  };
+
+  /**
+   * Action throttling — cooldown period after execution.
+   * Prevents rapid repeated clicks and supports server-enforced cooldowns (429 Retry-After).
+   * 
+   * @example
+   * // 5-second cooldown with visible countdown
+   * throttle: { cooldownMs: 5000, showCountdown: true }
+   */
+  throttle?: {
+    /** Cooldown period in milliseconds after execution (button stays disabled) */
+    cooldownMs?: number;
+    /** Show a "Try again in Xs" countdown on the button */
+    showCountdown?: boolean;
+  };
 }
 
 /**
@@ -2055,6 +2136,24 @@ export interface IEntityPageAction {
    * }
    */
   target?: '_blank' | '_self' | '_parent' | '_top';
+
+  /**
+   * Clipboard copy action configuration (#60).
+   * When set, clicking the action copies record data to clipboard.
+   *
+   * @example
+   * // Copy record as JSON
+   * { label: 'Copy JSON', icon: 'copy', copyConfig: { format: 'json' } }
+   *
+   * @example
+   * // Copy specific fields as CSV
+   * { label: 'Export CSV', copyConfig: { format: 'csv', fields: ['name', 'email'] } }
+   */
+  readonly copyConfig?: {
+    readonly format: 'json' | 'csv' | 'text';
+    readonly fields?: ReadonlyArray<string>;
+    readonly template?: Template;
+  };
 }
 
 export interface IEntityPageColumn {
@@ -3586,6 +3685,16 @@ export interface EntityListPageConfig {
   readonly breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
 
   /**
+   * Loading skeleton configuration (#57).
+   * Controls how loading states are displayed before data is ready.
+   * @default { type: 'skeleton' }
+   */
+  readonly loading?: {
+    readonly type: 'skeleton' | 'spinner';
+    readonly rows?: number;
+  };
+
+  /**
    * @deprecated Use tableConfig.defaultSort instead
    * Default sort configuration (legacy - kept for backward compatibility)
    */
@@ -3782,7 +3891,144 @@ export interface EntityListPageConfig {
      * pagination: { pageSizeOptions: [10, 25, 50], showQuickJumper: true }
      */
     readonly pagination?: IPaginationConfig;
+
+    /**
+     * Table density (row padding) settings.
+     * Maps to Ant Design Table `size` prop on the frontend.
+     * 
+     * @example
+     * // Default density, user can cycle through options
+     * density: { default: 'default', allowToggle: true }
+     * 
+     * @example
+     * // Fixed compact density, persisted per entity
+     * density: { default: 'compact', allowToggle: true, persist: true }
+     */
+    readonly density?: {
+      default: 'default' | 'compact' | 'comfortable';
+      /** Allow user to toggle between densities via a toolbar button */
+      allowToggle?: boolean;
+      /** Persist user preference to localStorage (keyed by entityName) */
+      persist?: boolean;
+    };
+
+    /**
+     * Column resize settings.
+     * When enabled, column headers become resizable by dragging.
+     * 
+     * @example
+     * columnResizing: { enabled: true, persist: true, minWidth: 80 }
+     */
+    readonly columnResizing?: {
+      enabled: boolean;
+      /** Persist column widths to localStorage (keyed by entityName) */
+      persist?: boolean;
+      /** Minimum column width in pixels @default 60 */
+      minWidth?: number;
+    };
+
+    /**
+     * Pinned (frozen) columns configuration.
+     * Columns listed here stay fixed while the rest of the table scrolls horizontally.
+     * Maps to Ant Design Table `fixed: 'left' | 'right'` on individual columns.
+     * 
+     * @example
+     * pinnedColumns: { left: ['name', 'status'], right: ['actions'] }
+     */
+    readonly pinnedColumns?: {
+      /** Column keys pinned to the left edge */
+      left?: ReadonlyArray<string>;
+      /** Column keys pinned to the right edge */
+      right?: ReadonlyArray<string>;
+    };
+
+    /**
+     * Right-click context menu for table rows.
+     * Items follow the same shape as page actions (reuses action infrastructure).
+     * 
+     * @example
+     * contextMenu: {
+     *   items: [
+     *     { label: 'View Details', url: '/view-{entityName}/{entityId}', target: '_self' },
+     *     { label: 'Open in New Tab', url: '/view-{entityName}/{entityId}', target: '_blank' },
+     *     { label: 'Quick Edit', url: '/edit-{entityName}/{entityId}', openInModal: true }
+     *   ]
+     * }
+     */
+    readonly contextMenu?: {
+      items: ReadonlyArray<{
+        label: string | Template;
+        url?: string;
+        icon?: string;
+        target?: '_blank' | '_self';
+        openInModal?: boolean;
+        visibility?: Condition;
+        divider?: boolean;
+      }>;
+    };
+
+    /**
+     * Display mode toggle (table rows vs card grid).
+     * For basic table/card toggle. Use `viewSwitcher` for multi-view system.
+     * 
+     * @example
+     * displayMode: {
+     *   default: 'table',
+     *   allowToggle: true,
+     *   cardConfig: { titleField: 'name', descriptionField: 'description', imageField: 'avatar', columns: 3 }
+     * }
+     */
+    readonly displayMode?: {
+      default?: 'table' | 'card';
+      /** Allow user to toggle between table and card views */
+      allowToggle?: boolean;
+      /** Card view configuration */
+      cardConfig?: ICardGridConfig;
+      /** Persist user view preference to localStorage */
+      remember?: boolean;
+    };
+
+    /**
+     * Unified view switcher configuration.
+     * When provided, replaces the basic `displayMode` toggle with a multi-view toolbar.
+     * Currently supports: table, card-grid (kanban, calendar, map planned).
+     * 
+     * @example
+     * viewSwitcher: {
+     *   available: ['table', 'card-grid'],
+     *   default: 'table',
+     *   persistPreference: true,
+     *   cardConfig: { titleField: 'name', descriptionField: 'bio', columns: 3 }
+     * }
+     */
+    readonly viewSwitcher?: {
+      /** Available view types for this page */
+      available: ReadonlyArray<'table' | 'card-grid' | 'kanban' | 'calendar' | 'map'>;
+      /** Default view on first visit */
+      default: 'table' | 'card-grid' | 'kanban' | 'calendar' | 'map';
+      /** Persist user's view preference to localStorage */
+      persistPreference?: boolean;
+      /** Card grid configuration (required when 'card-grid' is in available) */
+      cardConfig?: ICardGridConfig;
+    };
   };
+}
+
+/**
+ * Card grid configuration for display mode and view switcher card views.
+ * Shape matches ui24's CardGridConfig interface.
+ */
+export interface ICardGridConfig {
+  /** Field to use as card title */
+  titleField: string;
+  /** Field to use as card description/subtitle */
+  descriptionField?: string;
+  /** Field to use as card image/avatar */
+  imageField?: string;
+  /** Number of card columns in the grid @default 3 */
+  columns?: number;
+  /** Additional fields to show as summary on the card */
+  summaryFields?: string[];
 }
 
 /**
@@ -3793,6 +4039,15 @@ export interface EntityViewPageConfig {
   readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
   readonly breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
   readonly columnsConfig?: IEntityPageColumnConfig;
+
+  /**
+   * Loading skeleton configuration (#57).
+   * @default { type: 'skeleton' }
+   */
+  readonly loading?: {
+    readonly type: 'skeleton' | 'spinner';
+    readonly rows?: number;
+  };
   readonly fields?: ReadonlyArray<{
     name: string;
     visibility?: Condition;
@@ -3866,6 +4121,15 @@ export interface EntityEditPageConfig {
 export interface EntityCreatePageConfig {
   readonly breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
   readonly columnsConfig?: IEntityPageColumnConfig;
+
+  /**
+   * Loading skeleton configuration (#57).
+   * @default { type: 'skeleton' }
+   */
+  readonly loading?: {
+    readonly type: 'skeleton' | 'spinner';
+    readonly rows?: number;
+  };
   readonly formConfig?: {
     readonly buttons?: ReadonlyArray<{
       id?: string;  // Identifier for override matching
