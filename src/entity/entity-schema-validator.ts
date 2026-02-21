@@ -93,7 +93,7 @@ export class EntitySchemaValidator {
           throw new Error(`Operation path must start with "/" for operation "${opName}"`);
         }
 
-        if (config.requiresId && config.path && !config.path.includes('{id}')) {
+        if ((config as any).requiresId && config.path && !config.path.includes('{id}')) {
           // This is more of a warning, but let's make it an error if they explicitly provided a path without {id}
           // Actually, our controller automatically prepends {id} if missing and requiresId is true.
           // So maybe just a warning? No, let's keep it flexible.
