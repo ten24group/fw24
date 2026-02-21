@@ -2469,10 +2469,32 @@ export function formatEntityAttributesForList(
                     });
                 }
 
+                // Build custom row actions from entity operations
+                const ops = entityService.getOperationsConfig();
+                const customOpsActions: Array<IEntityPageAction> = [];
+                Object.entries(ops).forEach(([ opName, config ]) => {
+                    if (config.enabled !== false && config.uiLocation === 'row' && !['get', 'list', 'create', 'update', 'delete'].includes(opName)) {
+                        customOpsActions.push({
+                            id: opName,
+                            label: config.label || pascalCase(opName),
+                            icon: config.icon,
+                            tooltip: config.tooltip,
+                            visibility: config.visibility,
+                            enablement: config.enablement,
+                            openInModal: config.openInModal,
+                            modalConfig: config.modalConfig,
+                            url: config.path ? `${config.path}` : `/${opName}`
+                        });
+                    }
+                });
+
                 // Merge custom row actions using identifier-based override
-                propConfig.actions = customRowActions
-                    ? mergeActions(defaultActions, customRowActions)
-                    : defaultActions;
+                // Priority: customRowActions (from tableConfig) > customOpsActions (from entityOperations) > defaultActions
+                const allCustomActions = customRowActions
+                    ? mergeActions(customOpsActions, customRowActions)
+                    : customOpsActions;
+
+                propConfig.actions = mergeActions(defaultActions, allCustomActions);
             }
 
             return propConfig;

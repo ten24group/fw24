@@ -146,7 +146,8 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			parameters,
 			// Custom property to store the operation name
 			entityOperation: opName,
-			// validations: config.validations // TODO: support dynamic validations
+			authorizer: config.authorizer,
+			validations: config.validations
 		};
 	}
 

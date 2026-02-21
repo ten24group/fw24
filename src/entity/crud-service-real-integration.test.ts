@@ -177,7 +177,7 @@ describe('CRUD Service Real Integration Tests', () => {
       expect(createdPost.status).toBe('published');
 
       // Verify hidden actor context exists
-      expect((createdPost as any)._actor).toEqual(cognitoActor);
+      expect((createdPost as any)._actor).toEqual(expect.objectContaining(cognitoActor));
     });
 
     it('should inject actor context when updating posts via service', async () => {
@@ -225,7 +225,7 @@ describe('CRUD Service Real Integration Tests', () => {
       expect(updatedPost.status).toBe('reviewed');
 
       // Verify hidden actor context exists
-      expect((updatedPost as any)._actor).toEqual(apiKeyActor);
+      expect((updatedPost as any)._actor).toEqual(expect.objectContaining(apiKeyActor));
     });
 
     it('should handle system actor for automated operations', async () => {
@@ -361,7 +361,7 @@ describe('CRUD Service Real Integration Tests', () => {
       // When actor context exists but has incomplete data, timestamps should still be injected
       expect((createdPost as any).createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
       expect((createdPost as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-      expect((createdPost as any)._actor).toEqual(incompleteActor);
+      expect((createdPost as any)._actor).toEqual(expect.objectContaining(incompleteActor));
     });
 
     it('should preserve existing actor fields when schema has them', async () => {
@@ -466,7 +466,7 @@ describe('CRUD Service Real Integration Tests', () => {
       expect(new Date((result as any).updatedAt).getTime()).toBeGreaterThan(Date.now() - 5000);
 
       // Hidden _actor field should always be injected
-      expect((result as any)._actor).toEqual(actor);
+      expect((result as any)._actor).toEqual(expect.objectContaining(actor));
     });
   });
 

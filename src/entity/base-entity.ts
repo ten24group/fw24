@@ -8,6 +8,7 @@ import { SearchIndexConfig } from '../search/types';
 import { EntitySearchService } from '../search/services';
 import { DepIdentifier, IFilterAutoGenerationConfig, ISegmentAutoGenerationConfig } from "../interfaces";
 import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig, AccordionPageConfig, WizardPageConfigStructure, CustomPageConfigStructure } from '../ui-config-gen/templates/custom-page';
+import type { HttpRequestValidations, InputValidationRule } from "../validation";
 
 /**
  * @fileoverview Entity Schema and Type-Safe Helper Functions
@@ -4314,6 +4315,31 @@ export interface EntityOperationConfig {
    * Description for documentation.
    */
   description?: string;
+
+  /**
+   * Authorizer configuration for this operation's API endpoint.
+   */
+  authorizer?: any;
+
+  /**
+   * Validations for this operation's API endpoint.
+   */
+  validations?: InputValidationRule | HttpRequestValidations;
+
+  /**
+   * Specifies where this operation should appear in the UI.
+   */
+  uiLocation?: 'header' | 'row' | 'bulk' | 'none';
+
+  /**
+   * Whether to open this operation in a modal.
+   */
+  openInModal?: boolean;
+
+  /**
+   * Modal configuration if openInModal is true.
+   */
+  modalConfig?: IEntityPageActionModalConfig;
 }
 
 /**

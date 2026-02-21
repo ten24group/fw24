@@ -124,8 +124,27 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     // Automatically generate audit log actions if observability is enabled
     const auditActions = generateAuditLogActions(entityName, entityNamePascalCase, hasObservability || false, excludeAuditActions || false, globalUIConfigOptions);
 
+    // Build custom header actions from entity operations
+    const ops = entityService.getOperationsConfig();
+    const customHeaderActions: IEntityPageAction[] = [];
+    Object.entries(ops).forEach(([ opName, config ]) => {
+        if (config.enabled !== false && config.uiLocation === 'header' && !['get', 'list', 'create', 'update', 'delete'].includes(opName)) {
+            customHeaderActions.push({
+                id: opName,
+                label: config.label || pascalCase(opName),
+                icon: config.icon,
+                tooltip: config.tooltip,
+                visibility: config.visibility,
+                enablement: config.enablement,
+                openInModal: config.openInModal,
+                modalConfig: config.modalConfig,
+                url: config.path ? `${config.path}` : `/${opName}`
+            });
+        }
+    });
+
     // Combine all actions
-    const pageHeaderActions = [ ...defaultActions, ...(actions || []), ...auditActions ];
+    const pageHeaderActions = [ ...defaultActions, ...(actions || []), ...customHeaderActions, ...auditActions ];
 
     return {
         // Use custom pageTitle if provided, otherwise default
