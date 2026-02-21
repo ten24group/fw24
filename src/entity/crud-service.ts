@@ -36,7 +36,7 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     entityName: string;
     entityService: EntityServiceTypeFromSchema<S>;
 
-    crudType?: keyof TDefaultEntityOperations;
+    crudType?: string;
     actor?: Actor; // Actor context: comprehensive actor information including authentication details
     tenant?: any; // todo: define tenant context
 
@@ -115,7 +115,7 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
 
     // // validate
     const validation = await validator.validateEntity({
-        operationName: crudType,
+        operationName: 'get',
         entityName,
         entityValidations: entityService.getEntityValidations(),
         overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
@@ -306,7 +306,7 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     // }
 
     const entity = await QueryObserver.track(entityName, 'create', () =>
-        entityService.getRepository().create(data).go({ ...QueryObserver.getCapacityGoOptions() })
+        entityService.getRepository().create(data).go({ ...QueryObserver.getCapacityGoOptions(), ...(options as any)?.goOptions })
     );
 
     // post events
@@ -396,7 +396,7 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
     // Use "all_old" to get the previous item state - allows us to detect create vs update
     // If oldData is empty/null, it was a CREATE. If it has data, it was an UPDATE.
     const entity = await QueryObserver.track(entityName, 'upsert', () =>
-        entityService.getRepository().upsert(data as any).go({ response: "all_old", ...QueryObserver.getCapacityGoOptions() })
+        entityService.getRepository().upsert(data as any).go({ response: "all_old", ...QueryObserver.getCapacityGoOptions(), ...(options as any)?.goOptions })
     );
 
     const wasCreated = !entity.data || Object.keys(entity.data).length === 0;
@@ -709,7 +709,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
         entities = await QueryObserver.track(entityName, 'list', () =>
-            indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination), ...QueryObserver.getCapacityGoOptions() }),
+            indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination), ...QueryObserver.getCapacityGoOptions(), ...(query as any).goOptions }),
             { filters, indexName: matchResult.indexName, pagination }
         );
     } else {
@@ -1114,6 +1114,10 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         query.remove(operators.remove as any);
     }
 
+    if (options.conditions) {
+        query.where((attr: any, op: any) => entityFilterCriteriaToExpression(options.conditions, attr, op));
+    }
+
     const entity = await QueryObserver.track(entityName, 'update', () =>
         query.go({ ...QueryObserver.getCapacityGoOptions() })
     );
@@ -1235,6 +1239,89 @@ export interface DeleteBatchEntityArgs<
  * @param options - The options for deleting the entities.
  * @returns The unprocessed items that couldn't be deleted.
  */
+/**
+ * Represents the arguments for batch creating-OR-updating entities.
+ * @template Sch - The entity schema type.
+ * @template OpsSchema - The input schemas for entity operations.
+ */
+export interface UpsertBatchEntityArgs<
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> extends BaseEntityCrudArgs<Sch> {
+    /**
+     * Array of entity data to create or update.
+     */
+    items: Array<OpsSchema[ 'upsert' ]>;
+    /**
+     * Optional number of concurrent batch operations (default: 1).
+     */
+    concurrent?: number;
+}
+
+/**
+ * Upserts multiple entities in a batch operation.
+ * @param options - The options for upserting the entities.
+ * @returns The results and any unprocessed items.
+ */
+export async function upsertBatchEntity<S extends EntitySchema<any, any, any>>(options: UpsertBatchEntityArgs<S>) {
+    const {
+        items,
+        entityName,
+        entityService,
+        concurrent = 1,
+
+        actor,
+        tenant,
+
+        crudType = 'upsert',
+        logger = createLogger('CRUD-service:upsertBatchEntity'),
+        validator = DefaultValidator,
+        authorizer = Authorizer.Default,
+        eventDispatcher = EventDispatcher.Default,
+    } = options;
+
+    logger.debug(`Called EntityCrud ~ upsertBatchEntity ~ entityName: ${entityName}:`, { count: items.length, concurrent });
+
+    // Validate each item in the batch
+    const validations = await Promise.all(items.map(async item =>
+        validator.validateEntity({
+            operationName: crudType,
+            entityName,
+            entityValidations: entityService.getEntityValidations(),
+            overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+            input: item,
+            actor: actor
+        })
+    ));
+
+    // Check for validation errors
+    const validationErrors = validations
+        .map((validation, index) => ({ validation, index }))
+        .filter(({ validation }) => !validation.pass);
+
+    if (validationErrors.length > 0) {
+        throw new EntityValidationError(validationErrors.flatMap(({ validation, index }) =>
+            (validation.errors || []).map(error => ({
+                ...error,
+                message: `Item ${index}: ${error.message}`
+            }))
+        ));
+    }
+
+    const bulkOptions: Partial<BulkOptions> = {
+        concurrency: concurrent
+    };
+
+    const electroResult = await QueryObserver.track(entityName, 'batchUpsert', () =>
+        entityService.getRepository().put(items as any).go(bulkOptions),
+        { itemCount: items.length }
+    );
+
+    logger.debug(`Completed EntityCrud ~ upsertBatchEntity ~ entityName: ${entityName} ~ count:`, items.length);
+
+    return electroResult;
+}
+
 export async function deleteBatchEntity<S extends EntitySchema<any, any, any>>(options: DeleteBatchEntityArgs<S>) {
     const {
         ids,

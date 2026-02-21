@@ -10,7 +10,13 @@ import { NotFoundError } from '../errors';
 // Mock the BaseEntityService
 class MockEntityService extends BaseEntityService<any> {
   constructor() {
-    super({} as EntitySchema<any, any, any>, {});
+    super({
+      model: {
+        entity: 'testEntity',
+        entityOperations: {}
+      },
+      attributes: {}
+    } as any, {});
   }
 
   getEntityName() {
@@ -271,6 +277,9 @@ describe('BaseEntityController', () => {
         body: { name: 'Updated Entity' }
       });
 
+      if (response.statusCode !== 200) {
+          // console.log('Error response body:', response.body);
+      }
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
       expect(body.testEntity).toBeDefined();

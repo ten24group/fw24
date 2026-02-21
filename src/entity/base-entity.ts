@@ -3943,7 +3943,7 @@ export interface EntitySchema<
   A extends string,
   F extends string,
   C extends string,
-  Opp extends TDefaultEntityOperations = TDefaultEntityOperations
+  Opp extends EntityOperationsConfig = TDefaultEntityOperations
 > extends Schema<A, F, C> {
   readonly model: Schema<A, F, C>[ 'model' ] & {
     readonly entityNamePlural: string;
@@ -3964,6 +3964,7 @@ export interface EntitySchema<
     readonly excludeAuditActions?: boolean, // default is false - disable automatic audit log actions for this entity
 
     readonly CRUDApiPath?: string, // default is ''
+    readonly softDelete?: boolean, // default is false
 
     /**
      * Entity metadata for UI rendering.
@@ -4243,23 +4244,90 @@ export interface EntitySchema<
 }
 
 /**
- * Default entity operations that are commonly used.
- * Use this as a base or define your own subset/superset.
+ * Configuration for an entity operation (action).
  */
-export const DefaultEntityOperations = {
-  get: "get",
-  list: "list",
-  query: "query",
-  create: "create",
-  upsert: "upsert",
-  update: "update",
-  delete: "delete",
-  duplicate: "duplicate",
-} as const;
+export interface EntityOperationConfig {
+  /**
+   * Whether this operation is enabled.
+   * @default true
+   */
+  enabled?: boolean;
+
+  /**
+   * HTTP method for this operation's API endpoint.
+   */
+  method?: ApiMethod;
+
+  /**
+   * Custom path for this operation's API endpoint.
+   * If not provided, defaults to the operation name.
+   */
+  path?: string;
+
+  /**
+   * Name of the handler method on the entity service.
+   * If not provided, defaults to the operation name.
+   */
+  handler?: string;
+
+  /**
+   * Whether this is a bulk operation (operates on multiple records).
+   */
+  isBulk?: boolean;
+
+  /**
+   * Whether this operation requires a record ID in the path.
+   */
+  requiresId?: boolean;
+
+  /**
+   * Human readable name for the operation.
+   */
+  label?: string;
+
+  /**
+   * Tooltip for the operation in the UI.
+   */
+  tooltip?: string;
+
+  /**
+   * Icon for the operation button.
+   */
+  icon?: string;
+
+  /**
+   * Visibility condition for the operation.
+   */
+  visibility?: Condition;
+
+  /**
+   * Enablement condition for the operation.
+   */
+  enablement?: Condition;
+
+  /**
+   * Summary for documentation.
+   */
+  summary?: string;
+
+  /**
+   * Description for documentation.
+   */
+  description?: string;
+}
+
+/**
+ * Map of operation configurations for an entity.
+ */
+export type EntityOperationsConfig = {
+  [ key: string ]: EntityOperationConfig | string;
+};
+
+import { DefaultEntityOperations } from "./constants";
+export { DefaultEntityOperations };
 
 /**
  * Type for the default entity operations.
- * Use this when you want all standard CRUD operations.
  */
 export type TDefaultEntityOperations = typeof DefaultEntityOperations;
 
@@ -4286,14 +4354,17 @@ export type TEntityOpsInputSchemas<
 > = {
     readonly [ opName in keyof Sch[ 'model' ][ 'entityOperations' ] ]
     : opName extends 'get' ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
-    : opName extends 'list' ? never // list operations typically don't take identifiers as input
-    : opName extends 'query' ? never // query operations use EntityQuery type
+    : opName extends 'list' ? EntityQuery<Sch>
+    : opName extends 'query' ? EntityQuery<Sch>
+    : opName extends 'search' ? any // Search query type
     : opName extends 'create' ? CreateEntityItemTypeFromSchema<Sch>
     : opName extends 'upsert' ? UpsertEntityItemTypeFromSchema<Sch>
     : opName extends 'update' ? UpdateEntityItemTypeFromSchema<Sch>
     : opName extends 'delete' ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
     : opName extends 'duplicate' ? EntityIdentifiersTypeFromSchema<Sch>
-    : {}
+    : opName extends 'batchDelete' ? { ids: Array<EntityIdentifiersTypeFromSchema<Sch>>, concurrent?: number }
+    : opName extends 'deleteByQuery' ? { filters: EntityFilterCriteria<Sch>, batchSize?: number, concurrent?: number, maxItems?: number }
+    : any
   }
 
 export type CreateElectroDBEntityOptions<S extends EntitySchema<any, any, any>> = {

@@ -1,7 +1,8 @@
 import type { EntityConfiguration } from "electrodb";
 import { DIContainer } from "../di";
 import type { EntityInputValidations, EntityValidations } from "../validation";
-import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
+import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema, EntityOperationConfig, EntityOperationsConfig } from "./base-entity";
+import { DefaultEntityOperations } from "./constants";
 import type { EntityFilterCriteria, EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 
 import { ExecutionContext, Actor } from "../core/types/execution-context";
@@ -14,13 +15,25 @@ import { BaseSearchService, EntitySearchService } from '../search/services';
 import { EntitySearchQuery, SearchResult } from '../search/types';
 import { Observed } from "../observability/decorators/observed";
 import { makeEntitySearchIndexName } from '../search/search-utils';
-import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug, compressIfNeeded, decompressItem, isCompressed } from "../utils";
+import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug, compressIfNeeded, decompressItem, isCompressed, merge } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
-import { UpdateEntityOperators, UpdateEntityResponse, CreateEntityResponse, GetEntityResponse, DeleteEntityResponse, UpsertEntityResponse, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
+import { Service } from "electrodb";
+import { ENTITY_OPERATION_KEY } from "./decorators";
+import { UpdateEntityOperators, UpdateEntityResponse, CreateEntityResponse, GetEntityResponse, DeleteEntityResponse, UpsertEntityResponse, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity, upsertBatchEntity } from "./crud-service";
 import { EntitySchemaValidator } from "./entity-schema-validator";
 import { DatabaseError, EntityValidationError } from './errors';
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 import { InternalServerError, ServerError } from "../errors";
+
+/**
+ * Context for an entity operation execution.
+ */
+export interface OperationContext<S extends EntitySchema<any, any, any>> {
+    operation: string;
+    config: EntityOperationConfig;
+    payload: any;
+    ctx?: ExecutionContext;
+}
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
@@ -68,7 +81,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     readonly logger = createLogger(`BaseEntityService:${this.constructor.name}`);
 
     protected entityRepository?: EntityRepositoryTypeFromSchema<S>;
+    protected entityServiceInstance?: Service;
     protected entityOpsDefaultIoSchema?: ReturnType<typeof this.makeOpsDefaultIOSchema<S>>;
+    private _resolvedOperationsConfig?: Record<string, EntityOperationConfig>;
 
     constructor(
         readonly schema: S,
@@ -350,6 +365,416 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
     public getEntitySchema(): S { return this.schema; }
 
+    /**
+     * Returns the merged operations configuration for this entity.
+     * Combines default framework operations with entity-specific overrides, custom actions,
+     * and decorated service methods.
+     */
+    public getOperationsConfig(): Record<string, EntityOperationConfig> {
+        if (this._resolvedOperationsConfig) return this._resolvedOperationsConfig;
+
+        const schema = this.getEntitySchema();
+        const entityOps = schema?.model?.entityOperations || {};
+        const resolved: Record<string, EntityOperationConfig> = {};
+
+        // 1. Start with OOB defaults
+        Object.entries(DefaultEntityOperations).forEach(([ key, def ]) => {
+            resolved[ key ] = { ...def };
+        });
+
+        // 2. Apply entity-specific overrides and custom operations from schema
+        Object.entries(entityOps).forEach(([ key, cfg ]) => {
+            if (typeof cfg === 'string') {
+                // Legacy string mapping - keep OOB default but maybe rename label?
+                // For now, just ensure it's enabled
+                if (resolved[ key ]) {
+                    resolved[ key ].enabled = true;
+                }
+            } else {
+                resolved[ key ] = merge([ resolved[ key ] || {}, cfg ])!;
+            }
+        });
+
+        // 3. Collect operations from decorators on the service class
+        const decoratedOps: Record<string, EntityOperationConfig> = Reflect.get(this.constructor, ENTITY_OPERATION_KEY) || {};
+        Object.entries(decoratedOps).forEach(([ key, cfg ]) => {
+            // Service decorators override schema definitions for the same operation name
+            resolved[ key ] = merge([ resolved[ key ] || {}, cfg ])!;
+        });
+
+        // 4. Verify handlers for enabled operations
+        Object.entries(resolved).forEach(([ opName, config ]) => {
+            if (config.enabled !== false) {
+                const handlerName = config.handler || opName;
+                const isStandard = [ 'get', 'list', 'query', 'search', 'create', 'update', 'upsert', 'delete', 'duplicate', 'batchDelete', 'deleteByQuery', 'batchUpsert' ].includes(opName);
+
+                if (!isStandard && typeof (this as any)[ handlerName ] !== 'function') {
+                    this.logger.error(`⚠️ Operation "${opName}" is enabled but handler "${handlerName}" is missing on service ${this.constructor.name}`);
+                }
+            }
+        });
+
+        this._resolvedOperationsConfig = resolved;
+        return resolved;
+    }
+
+    /**
+     * Gets configuration for a specific operation.
+     */
+    public getOperationConfig(opName: string): EntityOperationConfig | undefined {
+        return this.getOperationsConfig()[ opName ];
+    }
+
+    /**
+     * Executes an entity operation by name.
+     * This is the central entry point for all operations (CRUD + Custom).
+     * Provides unified hook execution and error handling.
+     *
+     * @param opName Name of the operation to execute
+     * @param payload Input data for the operation
+     * @param ctx Execution context
+     */
+    /**
+     * Creates a new entity.
+     * Note: Prefer calling executeOperation('create', payload) to ensure all hooks are executed.
+     *
+     * @param payload - The payload for creating the entity.
+     * @returns The created entity.
+     */
+    @Observed({
+        trace: { level: 'info' },
+        sourceType: 'service',
+        extract: {
+            start: ({ instance, args }) => ({
+                tags: {
+                    entityName: (instance as { getEntityName(): string }).getEntityName(),
+                    operation: String(args[ 0 ])
+                }
+            })
+        }
+    })
+    public async executeOperation(opName: string, payload: any, ctx?: ExecutionContext): Promise<any> {
+        const config = this.getOperationConfig(opName);
+        if (!config || config.enabled === false) {
+            throw new Error(`Operation "${opName}" is not enabled for entity "${this.getEntityName()}"`);
+        }
+
+        const opCtx: OperationContext<S> = { operation: opName, config, payload, ctx };
+
+        try {
+            // 1. BEFORE HOOKS
+            const modifiedPayload = await this.beforeOperation(opCtx);
+            opCtx.payload = modifiedPayload ?? opCtx.payload;
+
+            // 2. DISPATCH TO HANDLER
+            let result: any;
+            const handlerName = config.handler || opName;
+
+            // Check if it's a standard operation without a custom handler override in schema
+            const isStandard = [ 'get', 'list', 'query', 'search', 'create', 'update', 'upsert', 'delete', 'duplicate', 'batchDelete', 'deleteByQuery', 'batchUpsert' ].includes(opName);
+            const hasCustomHandler = config.handler && config.handler !== opName;
+
+            if (isStandard && !hasCustomHandler) {
+                // Use the dispatcher which knows how to call standard methods with multiple arguments
+                this.logger.debug(`Executing operation "${opName}" using default CRUD dispatcher`);
+                result = await this.dispatchDefaultOperation(opName, opCtx.payload, opCtx.ctx);
+            } else if (typeof (this as any)[ handlerName ] === 'function') {
+                // Use custom handler method
+                this.logger.debug(`Executing operation "${opName}" using service handler "${handlerName}"`);
+                result = await (this as any)[ handlerName ](opCtx.payload, opCtx.ctx);
+            } else {
+                // Fallback to default CRUD dispatcher for anything else
+                this.logger.debug(`Executing operation "${opName}" using fallback CRUD dispatcher`);
+                result = await this.dispatchDefaultOperation(opName, opCtx.payload, opCtx.ctx);
+            }
+
+            // 3. AFTER HOOKS
+            const modifiedResult = await this.afterOperation(opCtx, result);
+            return modifiedResult ?? result;
+
+        } catch (error: any) {
+            // 4. ON ERROR HOOK
+            await this.onOperationError(opCtx, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Executes multiple operations in a single DynamoDB transaction.
+     *
+     * @param operations Array of operations to execute
+     * @param ctx Execution context
+     * @example
+     * await service.transaction([
+     *   { op: 'create', payload: { ... } },
+     *   { op: 'update', payload: { id: '...', data: { ... } } }
+     * ]);
+     */
+    /**
+     * Prepares a transaction item for use in a multi-entity transaction.
+     * Executes "before" lifecycle hooks on the payload.
+     */
+    public async prepareTransactionItem(opName: string, payload: any, ctx?: ExecutionContext): Promise<any> {
+        const config = this.getOperationConfig(opName);
+        if (!config || config.enabled === false) {
+            throw new Error(`Operation "${opName}" is not enabled for entity "${this.getEntityName()}"`);
+        }
+
+        const opCtx: OperationContext<S> = { operation: opName, config, payload, ctx };
+        const modifiedPayload = await this.beforeOperation(opCtx);
+        const finalPayload = modifiedPayload ?? payload;
+
+        const repo = this.getRepository();
+        switch (opName) {
+            case 'create':
+            case 'upsert':
+                return (repo as any).put(finalPayload).transaction();
+            case 'update':
+                const pathParams = ctx?.request?.pathParameters || (ctx as any)?.params || {};
+                const identifiers = finalPayload.identifiers || this.extractEntityIdentifiers({ ...pathParams, ...finalPayload });
+                const data = finalPayload.data || finalPayload;
+                return (repo as any).patch(identifiers).set(data).transaction();
+            case 'delete':
+                const deleteIds = this.extractEntityIdentifiers(finalPayload);
+                return (repo as any).delete(deleteIds).transaction();
+            default:
+                throw new Error(`Operation "${opName}" is not supported in transactions.`);
+        }
+    }
+
+    /**
+     * Executes multiple operations in a single DynamoDB transaction.
+     *
+     * @param operations Array of operations to execute
+     * @param ctx Execution context
+     * @example
+     * await service.transaction([
+     *   { op: 'create', payload: { ... } },
+     *   { op: 'update', payload: { id: '...', data: { ... } }, service: otherService }
+     * ]);
+     */
+    public async executeTransaction(
+        operations: Array<{ op: string, payload: any, service?: BaseEntityService<any> }>,
+        ctx?: ExecutionContext
+    ) {
+        const items = await Promise.all(operations.map(async (opt) => {
+            const service = opt.service || this;
+            const txItem = await service.prepareTransactionItem(opt.op, opt.payload, ctx);
+            return txItem;
+        }));
+
+        // We use the current service's configurations for the transaction
+        const entities: Record<string, any> = {};
+        operations.forEach(opt => {
+            const service = opt.service || this;
+            entities[ service.getEntityName() ] = service.getRepository();
+        });
+
+        const transactionService = new Service(entities, this.entityConfigurations);
+
+        return await QueryObserver.track(this.getEntityName(), 'transaction', () =>
+            (transactionService.transaction as any).write(items).go({ ...QueryObserver.getCapacityGoOptions() })
+        );
+    }
+
+    /**
+     * Dispatches OOB operations to their default implementations if no custom handler is provided.
+     */
+    protected async dispatchDefaultOperation(opName: string, payload: any, ctx?: ExecutionContext): Promise<any> {
+        switch (opName) {
+            case 'get': return this.get(payload, ctx);
+            case 'list': return this.list(payload, ctx);
+            case 'query': return this.query(payload, ctx);
+            case 'search': return this.search(payload, ctx);
+            case 'create': return this.create(payload, ctx);
+            case 'update':
+                const pathParams = ctx?.request?.pathParameters || (ctx as any)?.params || {};
+                const updateIdentifiers = payload.identifiers || this.extractEntityIdentifiers({ ...pathParams, ...payload });
+                // Ensure updateData doesn't contain circular refs if it came from ctx
+                const updateData = payload.data || payload;
+                return this.update(updateIdentifiers as any, updateData, payload.operators, ctx);
+            case 'upsert': return this.upsert(payload);
+            case 'delete': return this.delete(payload, ctx);
+            case 'duplicate': return this.duplicate(payload, ctx);
+            case 'batchUpsert': return this.batchUpsert(payload.items, payload.options, ctx);
+            case 'batchDelete': return this.batchDelete(payload, ctx);
+            case 'deleteByQuery': return this.deleteByQuery(payload, ctx);
+            default:
+                throw new Error(`No handler found for operation "${opName}" and it is not a standard CRUD operation.`);
+        }
+    }
+
+    // =========================================================================
+    // LIFECYCLE HOOKS - OVERRIDE IN SUBCLASSES
+    // =========================================================================
+
+    /**
+     * Executed before any operation.
+     * Return a modified payload to change the input to the handler.
+     */
+    protected async beforeOperation(opCtx: OperationContext<S>): Promise<any | void> {
+        // Base implementation calls specific lifecycle hooks
+        const { operation, payload, ctx } = opCtx;
+
+        switch (operation) {
+            case 'create': return this.onBeforeCreate(payload, ctx);
+            case 'update': return this.onBeforeUpdate(payload, ctx);
+            case 'delete': return this.onBeforeDelete(payload, ctx);
+            case 'upsert': return this.onBeforeUpsert(payload, ctx);
+        }
+    }
+
+    /**
+     * Executed after any operation completes successfully.
+     * Return a modified result to change what is returned to the caller.
+     */
+    protected async afterOperation(opCtx: OperationContext<S>, result: any): Promise<any | void> {
+        // Base implementation calls specific lifecycle hooks
+        const { operation, ctx } = opCtx;
+
+        switch (operation) {
+            case 'create': await this.onAfterCreate(result, ctx); break;
+            case 'update': await this.onAfterUpdate(result, ctx); break;
+            case 'delete': await this.onAfterDelete(result, ctx); break;
+            case 'upsert': await this.onAfterUpsert(result, ctx); break;
+        }
+    }
+
+    /**
+     * Executed if an operation fails.
+     */
+    protected async onOperationError(opCtx: OperationContext<S>, error: Error): Promise<void> {
+        this.logger.error(`Operation "${opCtx.operation}" failed:`, error);
+    }
+
+    // Specific convenience hooks
+    protected async onBeforeCreate(payload: any, ctx?: ExecutionContext): Promise<any | void> {
+        let payloadCopy = { ...payload };
+
+        // 1. Inject actor context
+        payloadCopy = this.injectActorContext(payloadCopy, 'create', ctx);
+
+        // 2. Auto-slug generation
+        const schema = this.getEntitySchema();
+        const entitySlugAttribute = getAttributeNameBy(schema, 'slug') || '';
+        const entityNameAttribute = getAttributeNameBy(schema, 'name') || '';
+
+        if (entitySlugAttribute && !(entitySlugAttribute in payloadCopy)) {
+            if (entityNameAttribute && (entityNameAttribute in payloadCopy)) {
+                payloadCopy[ entitySlugAttribute ] = toSlug(payloadCopy[ entityNameAttribute ]) as any;
+            }
+        }
+
+        // 3. Uniqueness checks
+        const uniqueFields = this.getUniqueAttributes();
+        const skipCheckingAttributesUniqueness = false;
+        const maxAttemptsForCreatingUniqueAttributeValue = 5;
+
+        if (!skipCheckingAttributesUniqueness && uniqueFields.length) {
+            let uniquenessChecks = [];
+
+            for (const { name } of uniqueFields) {
+                if (name! in payloadCopy) {
+                    let value = payloadCopy[ name! ];
+                    uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
+                        payloadToUpdate: payloadCopy,
+                        attributeName: name!,
+                        attributeValue: value,
+                        maxAttemptsForCreatingUniqueAttributeValue,
+                    }));
+                }
+            }
+
+            const checkResults = await Promise.all(uniquenessChecks.map(check => check()));
+
+            if (checkResults.includes(false)) {
+                const uniqueFieldsPath = uniqueFields.map(field => field.name!) ?? [];
+
+                throw new EntityValidationError([ {
+                    message: "Unable to ensure uniqueness for one or more fields.",
+                    path: uniqueFieldsPath,
+                    expected: [ 'unique', uniqueFields ],
+                } ]);
+            }
+        }
+
+        // 4. Compression
+        payloadCopy = this.compressFields(payloadCopy);
+
+        return payloadCopy;
+    }
+
+    protected async onAfterCreate(_record: any, _ctx?: ExecutionContext): Promise<void> { }
+
+    protected async onBeforeUpdate(payload: any, ctx?: ExecutionContext): Promise<any | void> {
+        // Inject actor context
+        let enhancedData = this.injectActorContext(payload as any, 'update', ctx);
+
+        const uniqueFields = this.getUniqueAttributes();
+        const skipCheckingAttributesUniqueness = false;
+        const maxAttemptsForCreatingUniqueAttributeValue = 5;
+
+        if (!skipCheckingAttributesUniqueness && uniqueFields.length) {
+            let uniquenessChecks = [];
+
+            // We need identifiers for uniqueness check to ignore self
+            const identifiers = this.extractEntityIdentifiers(ctx?.request?.pathParameters || payload);
+
+            for (const { name, readOnly } of uniqueFields) {
+                if (readOnly) {
+                    delete enhancedData[ name as keyof typeof enhancedData ];
+                    continue;
+                }
+
+                if (name! in enhancedData) {
+                    let value = enhancedData[ name as keyof typeof enhancedData ];
+                    uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
+                        payloadToUpdate: enhancedData,
+                        attributeName: name!,
+                        attributeValue: value,
+                        maxAttemptsForCreatingUniqueAttributeValue,
+                        ignoredEntityIdentifiers: identifiers as any,
+                    }));
+                }
+            }
+
+            const checkResults = await Promise.all(uniquenessChecks.map(check => check()));
+
+            if (checkResults.includes(false)) {
+                const uniqueFieldsPath = uniqueFields.map(field => field.name!) ?? [];
+
+                throw new EntityValidationError([ {
+                    message: "Unable to ensure uniqueness for one or more fields.",
+                    path: uniqueFieldsPath,
+                    expected: [ 'unique', uniqueFields ],
+                } ]);
+            }
+        }
+
+        // Compress fields before writing
+        enhancedData = this.compressFields(enhancedData);
+
+        return enhancedData;
+    }
+
+    protected async onAfterUpdate(_record: any, _ctx?: ExecutionContext): Promise<void> { }
+
+    protected async onBeforeUpsert(payload: any, ctx?: ExecutionContext): Promise<any | void> {
+        // Inject actor context so DynamoDB images always have _actor for auditing/causedBy
+        // Treat upsert as an update for actor-field purposes (we always want _actor and updatedBy/updatedAt).
+        let payloadCopy = this.injectActorContext({ ...payload }, 'upsert', ctx);
+
+        // Compress fields before writing
+        payloadCopy = this.compressFields(payloadCopy);
+
+        return payloadCopy;
+    }
+
+    protected async onAfterUpsert(_record: any, _ctx?: ExecutionContext): Promise<void> { }
+
+    protected async onBeforeDelete(_identifiers: any, _ctx?: ExecutionContext): Promise<void> { }
+    protected async onAfterDelete(_record: any, _ctx?: ExecutionContext): Promise<void> { }
+
     public getRepository() {
         if (!this.entityRepository) {
             const { entity } = createElectroDBEntity({
@@ -360,6 +785,49 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         }
 
         return this.entityRepository!;
+    }
+
+    /**
+     * Returns an ElectroDB Service instance containing this entity.
+     * Useful for cross-entity transactions and more complex service-level operations.
+     */
+    public getServiceInstance() {
+        if (!this.entityServiceInstance) {
+            this.entityServiceInstance = new Service({
+                [ this.getEntityName() ]: this.getRepository()
+            }, this.entityConfigurations);
+        }
+        return this.entityServiceInstance;
+    }
+
+    /**
+     * Finds items that match the provided attributes using ElectroDB's find method.
+     * Find automatically selects the best index to use.
+     *
+     * @param attributes Map of attribute names to values to match
+     * @param options Go options
+     */
+    public async find(attributes: Partial<EntityRecordTypeFromSchema<S>>, options: any = {}) {
+        const repo = this.getRepository();
+        return await repo.find(attributes as any).go({
+            ...QueryObserver.getCapacityGoOptions(),
+            ...options
+        });
+    }
+
+    /**
+     * Matches items based on attributes using ElectroDB's match method.
+     * Similar to find but allows for more complex attribute matching.
+     *
+     * @param attributes Map of attribute names to values to match
+     * @param options Go options
+     */
+    public async match(attributes: Partial<EntityRecordTypeFromSchema<S>>, options: any = {}) {
+        const repo = this.getRepository();
+        return await repo.match(attributes as any).go({
+            ...QueryObserver.getCapacityGoOptions(),
+            ...options
+        });
     }
 
     /**
@@ -765,6 +1233,13 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         this.logger.debug(`called 'hydrateSingleRelation' relation: ${relatedAttributeName} for entity: ${this.getEntityName()}`, {
             options
         });
+
+        // 1. Give service a chance to handle hydration manually
+        const handled = await this.onHydrateRelation(relatedAttributeName, rootEntityRecords, options);
+        if (handled) {
+            this.logger.debug(`Relation "${relatedAttributeName}" was handled by custom hydration hook.`);
+            return;
+        }
 
         const { entityName: relatedEntityName, relationType, identifiers } = options;
 
@@ -1287,7 +1762,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param ctx - The execution context containing actor info
      * @returns Enhanced data with actor context
      */
-    protected injectActorContext<T extends Record<string, any>>(
+    public injectActorContext<T extends Record<string, any>>(
         data: T,
         operation: 'create' | 'update' | 'upsert' | 'delete',
         ctx?: ExecutionContext
@@ -1376,60 +1851,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             })
         }
     })
-    public async create(payload: CreateEntityItemTypeFromSchema<S>, ctx?: ExecutionContext): Promise<CreateEntityResponse<S>> {
-
-        let payloadCopy = { ...payload };
-
-        // Inject actor context
-        payloadCopy = this.injectActorContext(payloadCopy, 'create', ctx);
-
-        const schema = this.getEntitySchema();
-        const entitySlugAttribute = getAttributeNameBy(schema, 'slug') || '';
-        const entityNameAttribute = getAttributeNameBy(schema, 'name') || '';
-
-        if (entitySlugAttribute && !(entitySlugAttribute in payloadCopy)) {
-            if (entityNameAttribute && (entityNameAttribute in payloadCopy)) {
-                payloadCopy[ entitySlugAttribute as keyof typeof payloadCopy ] = toSlug(payloadCopy[ entityNameAttribute ]) as any;
-            }
-        }
-
-        const uniqueFields = this.getUniqueAttributes();
-        const skipCheckingAttributesUniqueness = false;
-        const maxAttemptsForCreatingUniqueAttributeValue = 5;
-
-        if (!skipCheckingAttributesUniqueness && uniqueFields.length) {
-            let uniquenessChecks = [];
-
-            for (const { name } of uniqueFields) {
-                if (name! in payloadCopy) {
-                    let value = payloadCopy[ name! ];
-                    uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
-                        payloadToUpdate: payloadCopy,
-                        attributeName: name!,
-                        attributeValue: value,
-                        maxAttemptsForCreatingUniqueAttributeValue,
-                    }));
-                }
-            }
-
-            const checkResults = await Promise.all(uniquenessChecks.map(check => check()));
-
-            if (checkResults.includes(false)) {
-                const uniqueFieldsPath = uniqueFields.map(field => field.name!) ?? [];
-
-                throw new EntityValidationError([ {
-                    message: "Unable to ensure uniqueness for one or more fields.",
-                    path: uniqueFieldsPath,
-                    expected: [ 'unique', uniqueFields ],
-                } ]);
-            }
-        }
-
-        // Compress fields before writing
-        payloadCopy = this.compressFields(payloadCopy);
+    public async create(payload: CreateEntityItemTypeFromSchema<S>, _ctx?: ExecutionContext): Promise<CreateEntityResponse<S>> {
 
         const entity = await createEntity<S>({
-            data: payloadCopy,
+            data: payload,
             entityName: this.getEntityName(),
             entityService: this,
         });
@@ -1453,6 +1878,13 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      *   - wasCreated: true if record was created, false if updated
      *   - oldData: previous data if it was an update (undefined for creates)
      */
+    /**
+     * Creates-OR-Updates an entity.
+     * Note: Prefer calling executeOperation('upsert', payload) to ensure all hooks are executed.
+     *
+     * @param payload - The payload for creating-OR-updating the entity.
+     * @returns Object containing data, wasCreated flag, and oldData if updated.
+     */
     @Observed({
         trace: { level: 'info' },
         sourceType: 'service',
@@ -1469,15 +1901,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     public async upsert(payload: UpsertEntityItemTypeFromSchema<S>): Promise<UpsertEntityResponse<S>> {
         this.logger.debug(`Called ~ upsert ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
 
-        // Inject actor context so DynamoDB images always have _actor for auditing/causedBy
-        // Treat upsert as an update for actor-field purposes (we always want _actor and updatedBy/updatedAt).
-        let payloadCopy = this.injectActorContext({ ...payload }, 'upsert');
-
-        // Compress fields before writing
-        payloadCopy = this.compressFields(payloadCopy);
-
         const result = await upsertEntity<S>({
-            data: payloadCopy,
+            data: payload,
             entityName: this.getEntityName(),
             entityService: this,
         });
@@ -1544,6 +1969,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * const entityId = { id: 123, name: 'example' };
      * const duplicatedEntity = await duplicate(entityId);
      */
+    /**
+     * Updates an entity in the database.
+     * Note: Prefer calling executeOperation('update', payload) to ensure all hooks are executed.
+     *
+     * @param identifiers - The identifiers of the entity to update.
+     * @param data - The updated data for the entity.
+     * @param operators - Optional update operators (e.g., remove).
+     * @returns The updated entity.
+     */
     @Observed({
         trace: { level: 'info' },
         sourceType: 'service',
@@ -1598,6 +2032,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     })
     public async list(query: EntityQuery<S> = {}, _ctx?: ExecutionContext) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
+
+        // Handle soft delete filtering
+        if (this.getEntitySchema().model.softDelete && !(query as any).includeDeleted) {
+            const deletedAtAttr = getAttributeNameBy(this.getEntitySchema(), 'deletedAt') || 'deletedAt';
+            query.filters = {
+                ...(query.filters || {}),
+                [ deletedAtAttr ]: { notExists: true }
+            } as any;
+        }
 
         if (!query.attributes) {
             query.attributes = this.getListingAttributeNames()
@@ -1690,6 +2133,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     public async query(query: EntityQuery<S>, _ctx?: ExecutionContext) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
+        // Handle soft delete filtering
+        if (this.getEntitySchema().model.softDelete && !(query as any).includeDeleted) {
+            const deletedAtAttr = getAttributeNameBy(this.getEntitySchema(), 'deletedAt') || 'deletedAt';
+            query.filters = {
+                ...(query.filters || {}),
+                [ deletedAtAttr ]: { notExists: true }
+            } as any;
+        }
+
         const { attributes } = query;
 
         let selectAttributes: EntitySelections<S> | undefined = attributes || this.getListingAttributeNames();
@@ -1762,55 +2214,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             })
         }
     })
-    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, ctx?: ExecutionContext): Promise<UpdateEntityResponse<S>> {
-
-        // Inject actor context
-        let enhancedData = this.injectActorContext(data as any, 'update', ctx);
-
-        const uniqueFields = this.getUniqueAttributes();
-        const skipCheckingAttributesUniqueness = false;
-        const maxAttemptsForCreatingUniqueAttributeValue = 5;
-
-        if (!skipCheckingAttributesUniqueness && uniqueFields.length) {
-            let uniquenessChecks = [];
-
-            for (const { name, readOnly } of uniqueFields) {
-                if (readOnly) {
-                    delete enhancedData[ name as keyof typeof enhancedData ];
-                    continue;
-                }
-
-                if (name! in enhancedData) {
-                    let value = enhancedData[ name as keyof typeof enhancedData ];
-                    uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
-                        payloadToUpdate: enhancedData,
-                        attributeName: name!,
-                        attributeValue: value,
-                        maxAttemptsForCreatingUniqueAttributeValue,
-                        ignoredEntityIdentifiers: identifiers,
-                    }));
-                }
-            }
-
-            const checkResults = await Promise.all(uniquenessChecks.map(check => check()));
-
-            if (checkResults.includes(false)) {
-                const uniqueFieldsPath = uniqueFields.map(field => field.name!) ?? [];
-
-                throw new EntityValidationError([ {
-                    message: "Unable to ensure uniqueness for one or more fields.",
-                    path: uniqueFieldsPath,
-                    expected: [ 'unique', uniqueFields ],
-                } ]);
-            }
-        }
-
-        // Compress fields before writing
-        enhancedData = this.compressFields(enhancedData);
+    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, _ctx?: ExecutionContext): Promise<UpdateEntityResponse<S>> {
 
         const updatedEntity = await updateEntity<S>({
             id: identifiers,
-            data: enhancedData,
+            data: data,
             operators: operators,
             entityName: this.getEntityName(),
             entityService: this,
@@ -1842,6 +2250,25 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     public async delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, ctx?: ExecutionContext): Promise<DeleteEntityResponse<S>> {
         try {
             this.logger.debug(`Called ~ delete ~ entityName: ${this.getEntityName()} ~ identifiers:`, identifiers);
+
+            if (this.getEntitySchema().model.softDelete) {
+                this.logger.debug(`Soft delete enabled for ${this.getEntityName()}. Updating deletedAt instead of physical delete.`);
+                const deletedAtAttr = getAttributeNameBy(this.getEntitySchema(), 'deletedAt') || 'deletedAt';
+                const deletedByAttr = getAttributeNameBy(this.getEntitySchema(), 'deletedBy') || 'deletedBy';
+
+                const updateData: any = {
+                    [deletedAtAttr]: new Date().toISOString()
+                };
+
+                const actor = ctx?.actor || getCurrentExecutionContext()?.actor;
+                if (actor?.actorId) {
+                    updateData[deletedByAttr] = actor.actorId;
+                }
+
+                // Call update directly to perform soft delete
+                const result = await this.update(identifiers as any, updateData, undefined, ctx);
+                return { data: result.data };
+            }
 
             const deletedEntity = await deleteEntity<S>({
                 id: identifiers,
@@ -1905,6 +2332,41 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             }
         }
     })
+    /**
+     * Upserts multiple entities in a batch operation.
+     * Note: Prefer calling executeOperation('batchUpsert', payload) to ensure all hooks are executed.
+     */
+    @Observed({
+        trace: { level: 'info' },
+        sourceType: 'service',
+        tags: { operation_category: 'write', batch: 'true' },
+        extract: {
+            start: ({ instance, args }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() },
+                metrics: { batchSize: (args[ 0 ] as any[])?.length }
+            })
+        }
+    })
+    public async batchUpsert(items: Array<UpsertEntityItemTypeFromSchema<S>>, options: { concurrent?: number } = {}, ctx?: ExecutionContext) {
+        // Pre-process items (hooks)
+        const processedItems = await Promise.all(items.map(item => this.onBeforeUpsert(item, ctx)));
+
+        const result = await upsertBatchEntity<S>({
+            items: processedItems,
+            entityName: this.getEntityName(),
+            entityService: this as any,
+            concurrent: options.concurrent,
+            actor: ctx?.actor
+        });
+
+        // Post-process results (hooks)
+        if (result.data) {
+            await Promise.all(result.data.map(record => this.onAfterUpsert(record, ctx)));
+        }
+
+        return result;
+    }
+
     public async batchDelete(options: {
         identifiers: Array<EntityIdentifiersTypeFromSchema<S>>,
         concurrent?: number

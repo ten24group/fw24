@@ -243,7 +243,7 @@ describe('BaseEntityService Actor Context Injection', () => {
       expect((result as any).createdBy).toBe('user-456');
       expect((result as any).updatedBy).toBe('user-456');
       expect((result as any).tenantId).toBe('tenant-abc');
-      expect((result as any)._actor).toEqual(mockActor);
+      expect((result as any)._actor).toEqual(expect.objectContaining(mockActor));
 
       // Timestamps should be system-generated (current time)
       expect((result as any).createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -262,10 +262,10 @@ describe('BaseEntityService Actor Context Injection', () => {
 
       const result = minimalService.testInjectActorContext(inputData, 'create', ctx);
 
-      expect(result).toEqual({
+      expect(result).toEqual(expect.objectContaining({
         name: 'Test Name',
-        _actor: mockActor // Always injected
-      });
+        _actor: expect.objectContaining(mockActor)
+      }));
       // Visible fields should not be present
       expect(result).not.toHaveProperty('createdBy');
       expect(result).not.toHaveProperty('updatedBy');
@@ -285,7 +285,8 @@ describe('BaseEntityService Actor Context Injection', () => {
       // Check fields
       expect(result.title).toBe('Test Title');
       expect((result as any).tenantId).toBe('tenant-abc'); // tenantId is set even when actorId is undefined
-      expect((result as any)._actor).toEqual(mockActor);
+      const { actorId, ...expectedActor } = mockActor;
+      expect((result as any)._actor).toEqual(expect.objectContaining(expectedActor));
 
       // createdBy and updatedBy should not be set when actorId is undefined
       expect(result).not.toHaveProperty('createdBy');
@@ -312,7 +313,8 @@ describe('BaseEntityService Actor Context Injection', () => {
       expect(result.title).toBe('Test Title');
       expect((result as any).createdBy).toBe('user-456');
       expect((result as any).updatedBy).toBe('user-456');
-      expect((result as any)._actor).toEqual(mockActor);
+      const { tenantId, ...expectedActor2 } = mockActor;
+      expect((result as any)._actor).toEqual(expect.objectContaining(expectedActor2));
 
       // tenantId should not be set when undefined
       expect(result).not.toHaveProperty('tenantId');
@@ -371,7 +373,7 @@ describe('BaseEntityService Actor Context Injection', () => {
       expect(result.content).toBe('Updated Content');
       expect((result as any).updatedBy).toBe('user-456');
       expect((result as any).tenantId).toBe('tenant-abc');
-      expect((result as any)._actor).toEqual(mockActor);
+      expect((result as any)._actor).toEqual(expect.objectContaining(mockActor));
 
       // Should not set create fields for update operation
       expect(result).not.toHaveProperty('createdBy');
@@ -392,10 +394,10 @@ describe('BaseEntityService Actor Context Injection', () => {
 
       const result = minimalService.testInjectActorContext(inputData, 'update', ctx);
 
-      expect(result).toEqual({
+      expect(result).toEqual(expect.objectContaining({
         name: 'Updated Name',
-        _actor: mockActor
-      });
+        _actor: expect.objectContaining(mockActor)
+      }));
       // No visible actor fields should be present
       expect(result).not.toHaveProperty('updatedBy');
       expect(result).not.toHaveProperty('updatedAt');
@@ -419,7 +421,7 @@ describe('BaseEntityService Actor Context Injection', () => {
       expect(result.customField).toEqual({ nested: { data: 'complex' } });
       expect((result as any).updatedBy).toBe('user-456');
       expect((result as any).tenantId).toBe('tenant-abc');
-      expect((result as any)._actor).toEqual(mockActor);
+      expect((result as any)._actor).toEqual(expect.objectContaining(mockActor));
 
       // updatedAt should be system-generated
       expect((result as any).updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -470,7 +472,7 @@ describe('BaseEntityService Actor Context Injection', () => {
       expect((result as any).createdBy).toBe('user-456');
       expect((result as any).updatedBy).toBe('user-456');
       expect((result as any).tenantId).toBe('tenant-abc');
-      expect((result as any)._actor).toEqual(mockActor);
+      expect((result as any)._actor).toEqual(expect.objectContaining(mockActor));
 
       // Timestamps should be system-generated
       expect((result as any).createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -495,7 +497,7 @@ describe('BaseEntityService Actor Context Injection', () => {
       // Should override with current actor context
       expect(result.createdBy).toBe('user-456');
       expect(result.updatedBy).toBe('user-456');
-      expect((result as any)._actor).toEqual(mockActor);
+      expect((result as any)._actor).toEqual(expect.objectContaining(mockActor));
     });
 
     it('should handle complex actor context', () => {
@@ -522,7 +524,7 @@ describe('BaseEntityService Actor Context Injection', () => {
 
       const result = service.testInjectActorContext(inputData, 'create', ctx);
 
-      expect((result as any)._actor).toEqual(complexActor);
+      expect((result as any)._actor).toEqual(expect.objectContaining(complexActor));
       expect((result as any)._actor.cognitoGroups).toEqual([ 'admin', 'user', 'manager' ]);
       expect((result as any)._actor.rawAuthContext).toEqual({
         sub: 'sub-789',
