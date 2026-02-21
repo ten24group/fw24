@@ -218,12 +218,11 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	async create(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const createdEntity = await this.getEntityService().executeOperation('create', req.body, ctx);
 
-		const result: any = {
+		const result: Record<string, any> = {
 			[ camelCase(this.getEntityName()) ]: createdEntity,
 			message: "Created successfully"
 		};
 		if (req.debugMode) {
-			// result.req = req;
 		}
 
 		return res.json(result);
@@ -272,7 +271,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		const signedUploadURL = await getSignedUrlForFileUpload(options);
 
-		const response: any = {
+		const response: Record<string, any> = {
 			fileName,
 			expiresIn,
 			contentType,
@@ -294,12 +293,11 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		const duplicateEntity = await service.executeOperation('duplicate', identifiers, ctx);
 
-		const result: any = {
+		const result: Record<string, any> = {
 			[ camelCase(this.getEntityName()) ]: duplicateEntity,
 		};
 
 		if (req.debugMode) {
-			// // result.req = req;
 			result.identifiers = identifiers;
 		}
 
@@ -323,12 +321,11 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			throw new NotFoundError(this.getEntityName(), undefined, req);
 		}
 
-		const result: any = {
+		const result: Record<string, any> = {
 			[ camelCase(this.getEntityName()) ]: entity,
 		};
 
 		if (req.debugMode) {
-			// result.req = req;
 			result.identifiers = identifiers;
 		}
 
@@ -406,13 +403,12 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		const { data: records, cursor: newCursor, query: parsedQuery } = await this.getEntityService().executeOperation('list', query, ctx);
 
-		const result: any = {
+		const result: Record<string, any> = {
 			cursor: newCursor,
 			items: records,
 		};
 
 		if (req.debugMode) {
-			// result.req = req;
 			result.criteria = {
 				pagination,
 				filters,
@@ -445,12 +441,11 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		this.logger.debug(`Update result for ${this.getEntityName()}:`, { updatedEntity });
 
-		const result: any = {
+		const result: Record<string, any> = {
 			[ camelCase(this.getEntityName()) ]: updatedEntity,
 			message: "Updated successfully"
 		};
 		if (req.debugMode) {
-			// result.req = req;
 			result.identifiers = identifiers;
 		}
 
@@ -474,13 +469,12 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		const deletedEntity = await this.getEntityService().executeOperation('delete', identifiers, ctx);
 
-		const result: any = {
+		const result: Record<string, any> = {
 			[ camelCase(this.getEntityName()) ]: deletedEntity,
 			message: "Deleted successfully"
 		};
 
 		if (req.debugMode) {
-			// result.req = req;
 		}
 
 		return res.json(result);
@@ -538,7 +532,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const identifiersCount = ids.length;
 		const deletedCount = identifiersCount - unprocessedCount;
 
-		const response: any = {
+		const response: Record<string, any> = {
 			deletedCount,
 			unprocessedCount: unprocessedCount,
 			message: `Successfully deleted ${deletedCount} ${this.getEntityName()} record(s)`
@@ -609,7 +603,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			maxItems
 		}, ctx);
 
-		const response: any = {
+		const response: Record<string, any> = {
 			...result,
 			message: `Successfully deleted ${result.deletedCount} ${this.getEntityName()} record(s)`
 		};
@@ -641,13 +635,12 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		const { data: records, cursor: newCursor, query: parsedQuery } = await this.getEntityService().executeOperation('query', query, ctx);
 
-		const result: any = {
+		const result: Record<string, any> = {
 			cursor: newCursor,
 			items: records,
 		};
 
 		if (req.debugMode) {
-			// result.req = req;
 			result.criteria = {
 				inputQuery,
 				parsedQuery

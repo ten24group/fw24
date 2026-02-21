@@ -1,8 +1,17 @@
 import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem, UpsertItem } from "electrodb";
 import { createSchema, Entity } from "electrodb";
 
-import type { EntityQuery, FilterOperatorsExtended, EntityFilterCriteria } from './query-types';
+import type { EntityQuery, FilterOperatorsExtended, EntityFilterCriteria, EntitySelections } from './query-types';
 import type { BaseEntityService } from "./base-service";
+import type { ExecutionContext } from '../core/types/execution-context';
+import type {
+  CreateEntityResponse,
+  UpdateEntityResponse,
+  UpsertEntityResponse,
+  DeleteEntityResponse,
+  UpdateEntityOperators
+} from './crud-service';
+import type { SearchResult } from '../search/types';
 import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
 import { EntitySearchService } from '../search/services';
@@ -4340,6 +4349,12 @@ export interface EntityOperationConfig {
    * Modal configuration if openInModal is true.
    */
   modalConfig?: IEntityPageActionModalConfig;
+
+  /**
+   * Operation guards that must pass for this operation to be executed.
+   * Can be a service method name or a function.
+   */
+  guards?: ReadonlyArray<string | ((payload: any, ctx?: ExecutionContext) => Promise<boolean> | boolean)>;
 }
 
 /**
@@ -4358,6 +4373,19 @@ export { DefaultEntityOperations };
 export type TDefaultEntityOperations = typeof DefaultEntityOperations;
 
 /**
+ * Options for getting an entity.
+ */
+export type EntityGetOptions<S extends EntitySchema<any, any, any, any>> = {
+  identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>,
+  attributes?: EntitySelections<S>
+}
+
+/**
+ * Type for an entity operation handler function.
+ */
+export type EntityOperationHandler<TInput = any, TOutput = any> = (payload: TInput, ctx?: ExecutionContext) => Promise<TOutput>;
+
+/**
  * Represents the input schemas for entity operations.
  * Provides type-safe mapping of operation names to their corresponding input types.
  * Extend this type for additional operations's input-schema types.
@@ -4368,28 +4396,69 @@ export type TDefaultEntityOperations = typeof DefaultEntityOperations;
  * ```ts
  * type UserOpsInputs = TEntityOpsInputSchemas<UserEntitySchema>;
  * // {
- * //   get: UserIdentifiers | UserIdentifiers[],
+ * //   get: EntityGetOptions<UserEntitySchema>,
  * //   create: CreateUserItem,
  * //   update: UpdateUserItem,
  * //   ...
  * // }
  * ```
  */
+/**
+ * Options for updating an entity via executeOperation.
+ */
+export type EntityUpdateOptions<S extends EntitySchema<any, any, any, any>> = {
+  identifiers?: EntityIdentifiersTypeFromSchema<S>,
+  data: UpdateEntityItemTypeFromSchema<S>,
+  operators?: UpdateEntityOperators<S>
+} | UpdateEntityItemTypeFromSchema<S>;
+
 export type TEntityOpsInputSchemas<
   Sch extends EntitySchema<any, any, any, any>,
 > = {
     readonly [ opName in keyof Sch[ 'model' ][ 'entityOperations' ] ]
-    : opName extends 'get' ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
+    : opName extends 'get' ? EntityGetOptions<Sch>
     : opName extends 'list' ? EntityQuery<Sch>
     : opName extends 'query' ? EntityQuery<Sch>
     : opName extends 'search' ? any // Search query type
     : opName extends 'create' ? CreateEntityItemTypeFromSchema<Sch>
     : opName extends 'upsert' ? UpsertEntityItemTypeFromSchema<Sch>
-    : opName extends 'update' ? UpdateEntityItemTypeFromSchema<Sch>
+    : opName extends 'update' ? EntityUpdateOptions<Sch>
     : opName extends 'delete' ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
     : opName extends 'duplicate' ? EntityIdentifiersTypeFromSchema<Sch>
     : opName extends 'batchDelete' ? { ids: Array<EntityIdentifiersTypeFromSchema<Sch>>, concurrent?: number }
     : opName extends 'deleteByQuery' ? { filters: EntityFilterCriteria<Sch>, batchSize?: number, concurrent?: number, maxItems?: number }
+    : opName extends 'batchUpsert' ? { items: Array<UpsertEntityItemTypeFromSchema<Sch>>, options?: any }
+    : opName extends 'export' ? { query?: EntityQuery<Sch>, format?: 'json' | 'csv' }
+    : opName extends 'import' ? { items: Array<CreateEntityItemTypeFromSchema<Sch>>, options?: { upsert?: boolean } }
+    : opName extends 'patch' ? { ids: Array<EntityIdentifiersTypeFromSchema<Sch>>, data: UpdateEntityItemTypeFromSchema<Sch> }
+    : opName extends 'restore' ? EntityIdentifiersTypeFromSchema<Sch>
+    : opName extends 'archive' ? EntityIdentifiersTypeFromSchema<Sch>
+    : any
+  }
+
+/**
+ * Represents the output types for entity operations.
+ */
+export type TEntityOpsOutputTypes<
+  Sch extends EntitySchema<any, any, any, any>,
+> = {
+    readonly [ opName in keyof Sch[ 'model' ][ 'entityOperations' ] ]
+    : opName extends 'get' ? EntityRecordTypeFromSchema<Sch> | undefined
+    : opName extends 'list' ? EntityRecordTypeFromSchema<Sch>[]
+    : opName extends 'query' ? EntityRecordTypeFromSchema<Sch>[]
+    : opName extends 'search' ? SearchResult<EntityRecordTypeFromSchema<Sch>>
+    : opName extends 'create' ? CreateEntityResponse<Sch>
+    : opName extends 'upsert' ? UpsertEntityResponse<Sch>
+    : opName extends 'update' ? UpdateEntityResponse<Sch>
+    : opName extends 'delete' ? DeleteEntityResponse<Sch>
+    : opName extends 'duplicate' ? EntityRecordTypeFromSchema<Sch>
+    : opName extends 'batchUpsert' ? Array<UpsertEntityResponse<Sch>>
+    : opName extends 'batchDelete' ? Array<DeleteEntityResponse<Sch>>
+    : opName extends 'export' ? { url?: string, data?: any[] }
+    : opName extends 'import' ? { count: number, results: Array<CreateEntityResponse<Sch> | UpsertEntityResponse<Sch>> }
+    : opName extends 'patch' ? Array<UpdateEntityResponse<Sch>>
+    : opName extends 'restore' ? UpdateEntityResponse<Sch>
+    : opName extends 'archive' ? UpdateEntityResponse<Sch>
     : any
   }
 

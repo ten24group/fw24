@@ -1,7 +1,7 @@
 import type { EntityConfiguration } from "electrodb";
 import { DIContainer } from "../di";
 import type { EntityInputValidations, EntityValidations } from "../validation";
-import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema, EntityOperationConfig, EntityOperationsConfig } from "./base-entity";
+import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema, EntityOperationConfig, EntityOperationsConfig, EntityGetOptions, EntityOperationHandler, TEntityOpsInputSchemas, TEntityOpsOutputTypes } from "./base-entity";
 import { DefaultEntityOperations } from "./constants";
 import type { EntityFilterCriteria, EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 
@@ -28,10 +28,13 @@ import { InternalServerError, ServerError } from "../errors";
 /**
  * Context for an entity operation execution.
  */
-export interface OperationContext<S extends EntitySchema<any, any, any>> {
-    operation: string;
+export interface OperationContext<
+    S extends EntitySchema<any, any, any, any>,
+    K extends keyof S[ 'model' ][ 'entityOperations' ] & string = any
+> {
+    operation: K;
     config: EntityOperationConfig;
-    payload: any;
+    payload: TEntityOpsInputSchemas<S>[ K ];
     ctx?: ExecutionContext;
 }
 
@@ -40,10 +43,6 @@ export type ExtractEntityIdentifiersContext = {
     forAccessPattern?: string
 }
 
-type GetOptions<S extends EntitySchema<any, any, any>> = {
-    identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>,
-    attributes?: EntitySelections<S>
-}
 
 export function hasAttribute(schema: EntitySchema<any, any, any>, attributeName: string) {
     return (attributeName in schema.attributes);
@@ -138,6 +137,54 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         }
 
         return searchConfig;
+    }
+
+    /**
+     * Exports entity data based on a query.
+     */
+    public async export(options: { query?: EntityQuery<S>, format?: 'json' | 'csv' }, _ctx?: ExecutionContext): Promise<{ url?: string, data?: any[] }> {
+        const results = await this.list(options.query || {}, _ctx);
+        // In a real scenario, this might upload to S3 and return a URL
+        return { data: results };
+    }
+
+    /**
+     * Imports multiple entity items.
+     */
+    public async import(options: { items: Array<CreateEntityItemTypeFromSchema<S>>, options?: { upsert?: boolean } }, _ctx?: ExecutionContext): Promise<{ count: number, results: Array<CreateEntityResponse<S> | UpsertEntityResponse<S>> }> {
+        const results = await this.batchUpsert(options.items, options.options, _ctx);
+        return { count: results.length, results: results as any };
+    }
+
+    /**
+     * Updates multiple entities with the same data.
+     */
+    public async patch(options: { ids: Array<EntityIdentifiersTypeFromSchema<S>>, data: UpdateEntityItemTypeFromSchema<S> }, _ctx?: ExecutionContext): Promise<Array<UpdateEntityResponse<S>>> {
+        return Promise.all(options.ids.map(id => this.update(id, options.data, undefined, _ctx)));
+    }
+
+    /**
+     * Restores a soft-deleted entity.
+     */
+    public async restore(identifiers: EntityIdentifiersTypeFromSchema<S>, _ctx?: ExecutionContext): Promise<UpdateEntityResponse<S>> {
+        if (!this.schema.model.softDelete) {
+            throw new Error(`Restore operation requires softDelete to be enabled in the schema model for entity "${this.getEntityName()}"`);
+        }
+        const deletedAtAttr = getAttributeNameBy(this.schema, 'deletedAt') || 'deletedAt';
+        const deletedByAttr = getAttributeNameBy(this.schema, 'deletedBy') || 'deletedBy';
+
+        return this.update(identifiers, {
+            [ deletedAtAttr ]: null,
+            [ deletedByAttr ]: null
+        } as any, undefined, _ctx);
+    }
+
+    /**
+     * Archives an entity by setting an archive attribute.
+     */
+    public async archive(identifiers: EntityIdentifiersTypeFromSchema<S>, _ctx?: ExecutionContext): Promise<UpdateEntityResponse<S>> {
+        const archiveAttr = getAttributeNameBy(this.schema, 'archive') || 'archivedAt';
+        return this.update(identifiers, { [ archiveAttr ]: new Date().toISOString() } as any, undefined, _ctx);
     }
 
     /**
@@ -453,7 +500,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             })
         }
     })
-    public async executeOperation(opName: string, payload: any, ctx?: ExecutionContext): Promise<any> {
+    public async executeOperation<K extends keyof S[ 'model' ][ 'entityOperations' ] & string>(
+        opName: K,
+        payload: TEntityOpsInputSchemas<S>[ K ],
+        ctx?: ExecutionContext
+    ): Promise<TEntityOpsOutputTypes<S>[ K ]> {
         const config = this.getOperationConfig(opName);
         if (!config || config.enabled === false) {
             throw new Error(`Operation "${opName}" is not enabled for entity "${this.getEntityName()}"`);
@@ -462,26 +513,32 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const opCtx: OperationContext<S> = { operation: opName, config, payload, ctx };
 
         try {
+            // 0. CHECK GUARDS
+            await this.checkOperationGuards(opCtx);
+
             // 1. BEFORE HOOKS
             const modifiedPayload = await this.beforeOperation(opCtx);
             opCtx.payload = modifiedPayload ?? opCtx.payload;
 
             // 2. DISPATCH TO HANDLER
-            let result: any;
+            let result: TEntityOpsOutputTypes<S>[ K ];
             const handlerName = config.handler || opName;
 
             // Check if it's a standard operation without a custom handler override in schema
-            const isStandard = [ 'get', 'list', 'query', 'search', 'create', 'update', 'upsert', 'delete', 'duplicate', 'batchDelete', 'deleteByQuery', 'batchUpsert' ].includes(opName);
+            const standardOps: string[] = [ 'get', 'list', 'query', 'search', 'create', 'update', 'upsert', 'delete', 'duplicate', 'batchDelete', 'deleteByQuery', 'batchUpsert' ];
+            const isStandard = standardOps.includes(opName);
             const hasCustomHandler = config.handler && config.handler !== opName;
+
+            const serviceHandler = (this as any)[ handlerName ];
 
             if (isStandard && !hasCustomHandler) {
                 // Use the dispatcher which knows how to call standard methods with multiple arguments
                 this.logger.debug(`Executing operation "${opName}" using default CRUD dispatcher`);
                 result = await this.dispatchDefaultOperation(opName, opCtx.payload, opCtx.ctx);
-            } else if (typeof (this as any)[ handlerName ] === 'function') {
+            } else if (typeof serviceHandler === 'function') {
                 // Use custom handler method
                 this.logger.debug(`Executing operation "${opName}" using service handler "${handlerName}"`);
-                result = await (this as any)[ handlerName ](opCtx.payload, opCtx.ctx);
+                result = await serviceHandler.call(this, opCtx.payload, opCtx.ctx);
             } else {
                 // Fallback to default CRUD dispatcher for anything else
                 this.logger.debug(`Executing operation "${opName}" using fallback CRUD dispatcher`);
@@ -514,15 +571,19 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * Prepares a transaction item for use in a multi-entity transaction.
      * Executes "before" lifecycle hooks on the payload.
      */
-    public async prepareTransactionItem(opName: string, payload: any, ctx?: ExecutionContext): Promise<any> {
+    public async prepareTransactionItem<K extends keyof S[ 'model' ][ 'entityOperations' ] & string>(
+        opName: K,
+        payload: TEntityOpsInputSchemas<S>[ K ],
+        ctx?: ExecutionContext
+    ): Promise<any> {
         const config = this.getOperationConfig(opName);
         if (!config || config.enabled === false) {
             throw new Error(`Operation "${opName}" is not enabled for entity "${this.getEntityName()}"`);
         }
 
-        const opCtx: OperationContext<S> = { operation: opName, config, payload, ctx };
+        const opCtx: OperationContext<S, K> = { operation: opName, config, payload, ctx };
         const modifiedPayload = await this.beforeOperation(opCtx);
-        const finalPayload = modifiedPayload ?? payload;
+        const finalPayload = (modifiedPayload ?? payload) as any;
 
         const repo = this.getRepository();
         switch (opName) {
@@ -554,7 +615,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * ]);
      */
     public async executeTransaction(
-        operations: Array<{ op: string, payload: any, service?: BaseEntityService<any> }>,
+        operations: Array<{ op: string, payload: any, service?: BaseEntityService<any, any, any, any, any> }>,
         ctx?: ExecutionContext
     ) {
         const items = await Promise.all(operations.map(async (opt) => {
@@ -580,33 +641,85 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     /**
      * Dispatches OOB operations to their default implementations if no custom handler is provided.
      */
-    protected async dispatchDefaultOperation(opName: string, payload: any, ctx?: ExecutionContext): Promise<any> {
+    protected async dispatchDefaultOperation<K extends keyof S[ 'model' ][ 'entityOperations' ] & string>(
+        opName: K,
+        payload: TEntityOpsInputSchemas<S>[ K ],
+        ctx?: ExecutionContext
+    ): Promise<TEntityOpsOutputTypes<S>[ K ]> {
+        const p = payload as any;
+        const pathParams = ctx?.request?.pathParameters || (ctx as any)?.params || {};
         switch (opName) {
-            case 'get': return this.get(payload, ctx);
-            case 'list': return this.list(payload, ctx);
-            case 'query': return this.query(payload, ctx);
-            case 'search': return this.search(payload, ctx);
-            case 'create': return this.create(payload, ctx);
+            case 'get':
+                const getOptions = (p.identifiers) ? p : { identifiers: this.extractEntityIdentifiers({ ...pathParams, ...p }) };
+                return this.get(getOptions, ctx) as any;
+            case 'list': return this.list(p, ctx) as any;
+            case 'query': return this.query(p, ctx) as any;
+            case 'search': return this.search(p, ctx) as any;
+            case 'create': return this.create(p, ctx) as any;
             case 'update':
-                const pathParams = ctx?.request?.pathParameters || (ctx as any)?.params || {};
-                const updateIdentifiers = payload.identifiers || this.extractEntityIdentifiers({ ...pathParams, ...payload });
-                // Ensure updateData doesn't contain circular refs if it came from ctx
-                const updateData = payload.data || payload;
-                return this.update(updateIdentifiers as any, updateData, payload.operators, ctx);
-            case 'upsert': return this.upsert(payload);
-            case 'delete': return this.delete(payload, ctx);
-            case 'duplicate': return this.duplicate(payload, ctx);
-            case 'batchUpsert': return this.batchUpsert(payload.items, payload.options, ctx);
-            case 'batchDelete': return this.batchDelete(payload, ctx);
-            case 'deleteByQuery': return this.deleteByQuery(payload, ctx);
+                const updateIdentifiers = p.identifiers || this.extractEntityIdentifiers({ ...pathParams, ...p });
+                const updateData = p.data || p;
+                return this.update(updateIdentifiers as any, updateData, p.operators, ctx) as any;
+            case 'upsert': return this.upsert(p, ctx) as any;
+            case 'delete':
+                const deleteIdentifiers = this.extractEntityIdentifiers({ ...pathParams, ...p });
+                return this.delete(deleteIdentifiers as any, ctx) as any;
+            case 'duplicate':
+                const duplicateIdentifiers = this.extractEntityIdentifiers({ ...pathParams, ...p });
+                return this.duplicate(duplicateIdentifiers as any, ctx) as any;
+            case 'batchUpsert': return this.batchUpsert(p.items, p.options, ctx) as any;
+            case 'batchDelete': return this.batchDelete(p, ctx) as any;
+            case 'deleteByQuery': return this.deleteByQuery(p, ctx) as any;
+            case 'export': return this.export(p, ctx) as any;
+            case 'import': return this.import(p, ctx) as any;
+            case 'patch': return this.patch(p, ctx) as any;
+            case 'restore':
+                const restoreIdentifiers = this.extractEntityIdentifiers({ ...pathParams, ...p });
+                return this.restore(restoreIdentifiers as any, ctx) as any;
+            case 'archive':
+                const archiveIdentifiers = this.extractEntityIdentifiers({ ...pathParams, ...p });
+                return this.archive(archiveIdentifiers as any, ctx) as any;
             default:
                 throw new Error(`No handler found for operation "${opName}" and it is not a standard CRUD operation.`);
         }
     }
 
     // =========================================================================
-    // LIFECYCLE HOOKS - OVERRIDE IN SUBCLASSES
+    // LIFECYCLE HOOKS & GUARDS - OVERRIDE IN SUBCLASSES
     // =========================================================================
+
+    /**
+     * Checks all guards defined for an operation.
+     * Throws an error if any guard fails.
+     */
+    protected async checkOperationGuards(opCtx: OperationContext<S>): Promise<void> {
+        const { config, payload, ctx, operation } = opCtx;
+        if (!config.guards || config.guards.length === 0) {
+            return;
+        }
+
+        for (const guard of config.guards) {
+            let passed = false;
+            let guardName = 'unknown';
+
+            if (typeof guard === 'string') {
+                guardName = guard;
+                const guardMethod = (this as any)[ guard ];
+                if (typeof guardMethod !== 'function') {
+                    throw new Error(`Guard method "${guard}" not found on service "${this.constructor.name}"`);
+                }
+                passed = await guardMethod.call(this, payload, ctx);
+            } else if (typeof guard === 'function') {
+                guardName = guard.name || 'anonymous function';
+                passed = await guard(payload, ctx);
+            }
+
+            if (!passed) {
+                this.logger.warn(`Operation "${operation}" blocked by guard "${guardName}"`);
+                throw new Error(`Access Denied: Operation "${operation}" blocked by guard`);
+            }
+        }
+    }
 
     /**
      * Executed before any operation.
@@ -1502,7 +1615,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             })
         }
     })
-    public async get(options: GetOptions<S>, _ctx?: ExecutionContext): Promise<EntityRecordTypeFromSchema<S> | undefined> {
+    public async get(options: EntityGetOptions<S>, _ctx?: ExecutionContext): Promise<EntityRecordTypeFromSchema<S> | undefined> {
         const { identifiers, attributes } = options;
 
 

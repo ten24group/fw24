@@ -15,4 +15,9 @@ export const DefaultEntityOperations = {
   batchUpsert: { enabled: false, method: 'POST', path: '/batch-upsert', handler: 'batchUpsert', isBulk: true, label: 'Batch Upsert' },
   batchDelete: { enabled: false, method: 'POST', path: '/batch-delete', handler: 'batchDelete', isBulk: true, label: 'Batch Delete' },
   deleteByQuery: { enabled: false, method: 'POST', path: '/delete-by-query', handler: 'deleteByQuery', isBulk: true, label: 'Delete By Query' },
+  export: { enabled: false, method: 'POST', path: '/export', handler: 'export', isBulk: true, label: 'Export', uiLocation: 'header', icon: 'DownloadOutlined' },
+  import: { enabled: false, method: 'POST', path: '/import', handler: 'import', isBulk: true, label: 'Import', uiLocation: 'header', icon: 'UploadOutlined' },
+  patch: { enabled: false, method: 'PATCH', path: '/batch-patch', handler: 'patch', isBulk: true, label: 'Batch Patch', uiLocation: 'bulk', icon: 'EditOutlined' },
+  restore: { enabled: false, method: 'POST', path: '/{id}/restore', handler: 'restore', requiresId: true, label: 'Restore', uiLocation: 'row', icon: 'UndoOutlined' },
+  archive: { enabled: false, method: 'POST', path: '/{id}/archive', handler: 'archive', requiresId: true, label: 'Archive', uiLocation: 'row', icon: 'FolderAddOutlined' },
 } as const;

@@ -162,7 +162,9 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     const ops = entityService.getOperationsConfig();
     const customHeaderActions: IEntityPageAction[] = [];
     Object.entries(ops).forEach(([ opName, config ]) => {
-        if (config.enabled !== false && config.uiLocation === 'header') {
+        if (config.enabled !== false && config.uiLocation === 'header' && !['get', 'list', 'create', 'update', 'delete'].includes(opName)) {
+            const isApiAction = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(config.method || '');
+
             customHeaderActions.push({
                 id: opName,
                 label: config.label || pascalCase(opName),
@@ -172,7 +174,11 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 enablement: config.enablement,
                 openInModal: config.openInModal,
                 modalConfig: config.modalConfig,
-                url: config.path || `/${opName}`
+                url: config.path ? (config.path.startsWith('/') ? config.path : `/${config.path}`) : `/${opName}`,
+                apiConfig: (!config.openInModal && isApiAction) ? {
+                    apiMethod: config.method as any,
+                    apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}${config.path || `/${opName}`}`
+                } : undefined
             });
         }
     });

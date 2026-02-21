@@ -2474,6 +2474,9 @@ export function formatEntityAttributesForList(
                 const customOpsActions: Array<IEntityPageAction> = [];
                 Object.entries(ops).forEach(([ opName, config ]) => {
                     if (config.enabled !== false && config.uiLocation === 'row' && !['get', 'list', 'create', 'update', 'delete'].includes(opName)) {
+                        const isApiAction = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(config.method || '');
+                        const path = config.path || `/${opName}`;
+
                         customOpsActions.push({
                             id: opName,
                             label: config.label || pascalCase(opName),
@@ -2483,7 +2486,12 @@ export function formatEntityAttributesForList(
                             enablement: config.enablement,
                             openInModal: config.openInModal,
                             modalConfig: config.modalConfig,
-                            url: config.path ? `${config.path}` : `/${opName}`
+                            url: path,
+                            template: path.includes('{') || path.includes(':') ? path : undefined,
+                            apiConfig: (!config.openInModal && isApiAction) ? {
+                                apiMethod: config.method as any,
+                                apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}${path}`
+                            } : undefined
                         });
                     }
                 });
