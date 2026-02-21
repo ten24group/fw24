@@ -9,6 +9,7 @@ export type Pagination = {
     pager?: 'raw' | 'cursor',
     order?: 'asc' | 'desc';
     cursor?: string,
+    offset?: number;
 }
 
 export type LogicalOperator = 'and' | 'or' | 'not';

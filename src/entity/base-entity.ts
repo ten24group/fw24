@@ -604,6 +604,24 @@ export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
    * attributes: () => ({ userId: true, name: true, email: true })
    */
   attributes?: HydrateOptionForEntity<E> | (() => HydrateOptionForEntity<E>);
+
+  /**
+   * Relational integrity configuration.
+   */
+  integrity?: {
+    /**
+     * Whether to verify that the related entity exists before create/update.
+     */
+    existsCheck?: boolean;
+
+    /**
+     * Action to take when the parent entity is deleted.
+     * - 'cascade': Delete all children.
+     * - 'restrict': Prevent deletion if children exist.
+     * - 'set-null': Set the foreign key to null in all children.
+     */
+    onDelete?: 'cascade' | 'restrict' | 'set-null';
+  };
 };
 
 /**
@@ -3977,6 +3995,18 @@ export interface EntitySchema<
     readonly softDelete?: boolean, // default is false
 
     /**
+     * Workflow / State Machine configuration.
+     */
+    readonly workflow?: {
+      /** The attribute that tracks the state. Default: 'status' */
+      stateAttribute?: string;
+      /** Map of valid transitions. key is current state, value is array of next possible states. */
+      transitions?: Record<string, string[]>;
+      /** Map of operations allowed in each state. */
+      allowOperations?: Record<string, string[]>;
+    };
+
+    /**
      * Entity metadata for UI rendering.
      * Used for relation fallbacks, default icons, descriptions, etc.
      */
@@ -4254,6 +4284,34 @@ export interface EntitySchema<
 }
 
 /**
+ * Interceptor for entity operations.
+ * Allows executing logic before/after any entity operation.
+ */
+export interface EntityInterceptor {
+  /**
+   * Executed before the operation handler.
+   * Return a modified payload to change the input to the handler.
+   */
+  before?: (opCtx: any) => Promise<any | void>;
+
+  /**
+   * Executed after the operation handler completes successfully.
+   * Return a modified result to change what is returned to the caller.
+   */
+  after?: (opCtx: any, result: any) => Promise<any | void>;
+
+  /**
+   * Executed if the operation fails.
+   */
+  onError?: (opCtx: any, error: Error) => Promise<void>;
+}
+
+/**
+     * List of interceptors for this entity.
+     */
+    readonly interceptors?: ReadonlyArray<DepIdentifier<EntityInterceptor> | EntityInterceptor>;
+
+    /**
  * Configuration for an entity operation (action).
  */
 export interface EntityOperationConfig {

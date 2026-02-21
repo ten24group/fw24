@@ -19,7 +19,7 @@ import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor,
 import { createElectroDBEntity } from "./base-entity";
 import { Service } from "electrodb";
 import { ENTITY_OPERATION_KEY } from "./decorators";
-import { UpdateEntityOperators, UpdateEntityResponse, CreateEntityResponse, GetEntityResponse, DeleteEntityResponse, UpsertEntityResponse, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity, upsertBatchEntity } from "./crud-service";
+import { UpdateEntityOperators, UpdateEntityResponse, CreateEntityResponse, GetEntityResponse, DeleteEntityResponse, UpsertEntityResponse, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity, upsertBatchEntity, findMatchingIndex } from "./crud-service";
 import { EntitySchemaValidator } from "./entity-schema-validator";
 import { DatabaseError, EntityValidationError } from './errors';
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
@@ -516,19 +516,31 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         }
 
         const opCtx: OperationContext<S> = { operation: opName, config, payload, ctx };
+        const interceptors = await this.getInterceptors();
 
         try {
-            // 0. CHECK GUARDS
+            // 0. INTERCEPTORS - BEFORE
+            for (const interceptor of interceptors) {
+                if (interceptor.before) {
+                    const modified = await interceptor.before(opCtx);
+                    opCtx.payload = modified ?? opCtx.payload;
+                }
+            }
+
+            // 1. CHECK GUARDS
             await this.checkOperationGuards(opCtx);
 
-            // 0.5. VALIDATE INPUT
+            // 2. CHECK WORKFLOW
+            await this.checkWorkflowOperationAllowed(opCtx);
+
+            // 3. VALIDATE INPUT
             await this.validateOperationInput(opCtx);
 
-            // 1. BEFORE HOOKS
+            // 4. BEFORE HOOKS (Lifecycle)
             const modifiedPayload = await this.beforeOperation(opCtx);
             opCtx.payload = modifiedPayload ?? opCtx.payload;
 
-            // 2. DISPATCH TO HANDLER
+            // 5. DISPATCH TO HANDLER
             let result: TEntityOpsOutputTypes<S>[ K ];
             const handlerName = config.handler || opName;
 
@@ -553,12 +565,33 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 result = await this.dispatchDefaultOperation(opName, opCtx.payload, opCtx.ctx);
             }
 
-            // 3. AFTER HOOKS
+            // 6. AFTER HOOKS (Lifecycle)
             const modifiedResult = await this.afterOperation(opCtx, result);
-            return modifiedResult ?? result;
+            result = modifiedResult ?? result;
+
+            // 7. INTERCEPTORS - AFTER (in reverse order)
+            for (const interceptor of [ ...interceptors ].reverse()) {
+                if (interceptor.after) {
+                    const modified = await interceptor.after(opCtx, result);
+                    result = modified ?? result;
+                }
+            }
+
+            return result;
 
         } catch (error: any) {
-            // 4. ON ERROR HOOK
+            // 8. INTERCEPTORS - ON ERROR
+            for (const interceptor of interceptors) {
+                if (interceptor.onError) {
+                    try {
+                        await interceptor.onError(opCtx, error);
+                    } catch (interceptorError) {
+                        this.logger.error('Interceptor onError failed:', interceptorError);
+                    }
+                }
+            }
+
+            // 9. ON ERROR HOOK (Lifecycle)
             await this.onOperationError(opCtx, error);
             throw error;
         }
@@ -701,6 +734,64 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * Standard CRUD operations handle validation in the CRUD layer.
      * Custom operations are validated here.
      */
+    /**
+     * Checks if the operation is allowed based on the current workflow state of the record.
+     */
+    protected async checkWorkflowOperationAllowed(opCtx: OperationContext<S>): Promise<void> {
+        const workflow = this.schema.model.workflow;
+        if (!workflow || !workflow.allowOperations) return;
+
+        const config = opCtx.config;
+        if (config.requiresId) {
+            const stateAttr = workflow.stateAttribute || 'status';
+
+            // Extract identifiers to get the current record
+            let identifiers: any;
+            try {
+                identifiers = this.extractEntityIdentifiers(opCtx.payload);
+            } catch (e) {
+                // If we can't extract identifiers, we can't check the state
+                return;
+            }
+
+            const currentRecord = await this.get({ identifiers }, opCtx.ctx);
+            if (currentRecord) {
+                const currentState = currentRecord[ stateAttr ];
+                const allowedOps = workflow.allowOperations[ currentState ] || [];
+
+                // If the operation is not explicitly allowed in this state, block it
+                if (!allowedOps.includes(opCtx.operation)) {
+                    throw new Error(`Operation "${opCtx.operation}" is not allowed when entity "${this.getEntityName()}" is in state "${currentState}".`);
+                }
+            }
+        }
+    }
+
+    /**
+     * Validates that the workflow state transition is valid.
+     */
+    protected async validateWorkflowTransition(identifiers: any, payload: any, _ctx?: ExecutionContext): Promise<void> {
+        const workflow = this.schema.model.workflow;
+        if (!workflow || !workflow.transitions) return;
+
+        const stateAttr = workflow.stateAttribute || 'status';
+        const newState = payload[ stateAttr ];
+
+        // If state is not being changed, skip
+        if (newState === undefined) return;
+
+        const currentRecord = await this.get({ identifiers }, _ctx);
+        if (!currentRecord) return;
+
+        const currentState = currentRecord[ stateAttr ];
+        if (currentState === newState) return;
+
+        const allowedTransitions = workflow.transitions[ currentState ] || [];
+        if (!allowedTransitions.includes(newState)) {
+            throw new Error(`Invalid workflow transition from "${currentState}" to "${newState}" for entity "${this.getEntityName()}". Allowed states are: ${allowedTransitions.join(', ')}`);
+        }
+    }
+
     protected async validateOperationInput(opCtx: OperationContext<S>): Promise<void> {
         const { operation, payload, ctx } = opCtx;
 
@@ -765,6 +856,44 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * Executed before any operation.
      * Return a modified payload to change the input to the handler.
      */
+    /**
+     * Resolves all interceptors (global and per-entity) for this service.
+     */
+    protected async getInterceptors(): Promise<EntityInterceptor[]> {
+        const resolved: EntityInterceptor[] = [];
+
+        // 1. Resolve global interceptors from DI container
+        // We look for providers tagged with 'entity-interceptor'
+        try {
+            const globalProviders = this.diContainer.collectBestProvidersFor<EntityInterceptor>({
+                tags: [ 'entity-interceptor' ]
+            });
+            for (const provider of globalProviders) {
+                const interceptor = this.diContainer.resolve<EntityInterceptor>(provider._provider.provide);
+                resolved.push(interceptor);
+            }
+        } catch (e) {
+            this.logger.debug('No global interceptors found');
+        }
+
+        // 2. Resolve per-entity interceptors from schema
+        const entityInterceptors = this.schema.model.interceptors || [];
+        for (const interceptorDef of entityInterceptors) {
+            if (typeof interceptorDef === 'object' && !isClassConstructor(interceptorDef)) {
+                resolved.push(interceptorDef as EntityInterceptor);
+            } else {
+                try {
+                    const interceptor = this.diContainer.resolve<EntityInterceptor>(interceptorDef as any);
+                    resolved.push(interceptor);
+                } catch (e) {
+                    this.logger.error(`Failed to resolve interceptor: ${interceptorDef}`, e);
+                }
+            }
+        }
+
+        return resolved;
+    }
+
     protected async beforeOperation(opCtx: OperationContext<S>): Promise<any | void> {
         // Base implementation calls specific lifecycle hooks
         const { operation, payload, ctx } = opCtx;
@@ -803,6 +932,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     // Specific convenience hooks
     protected async onBeforeCreate(payload: any, ctx?: ExecutionContext): Promise<any | void> {
         let payloadCopy = { ...payload };
+
+        // 0. Relational integrity
+        await this.verifyRelationalExistence(payloadCopy, ctx);
 
         // 1. Inject actor context
         payloadCopy = this.injectActorContext(payloadCopy, 'create', ctx);
@@ -860,6 +992,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     protected async onAfterCreate(_record: any, _ctx?: ExecutionContext): Promise<void> { }
 
     protected async onBeforeUpdate(payload: any, ctx?: ExecutionContext): Promise<any | void> {
+        // 0. Workflow & Relational integrity
+        const identifiers = this.extractEntityIdentifiers(ctx?.request?.pathParameters || payload);
+        await this.validateWorkflowTransition(identifiers, payload, ctx);
+        await this.verifyRelationalExistence(payload, ctx);
+
         // Inject actor context
         let enhancedData = this.injectActorContext(payload as any, 'update', ctx);
 
@@ -925,8 +1062,14 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
     protected async onAfterUpsert(_record: any, _ctx?: ExecutionContext): Promise<void> { }
 
-    protected async onBeforeDelete(_identifiers: any, _ctx?: ExecutionContext): Promise<void> { }
-    protected async onAfterDelete(_record: any, _ctx?: ExecutionContext): Promise<void> { }
+    protected async onBeforeDelete(identifiers: any, ctx?: ExecutionContext): Promise<void> {
+        await this.handleRelationalIntegrityOnDelete(identifiers, 'before', ctx);
+    }
+    protected async onAfterDelete(record: any, ctx?: ExecutionContext): Promise<void> {
+        if (record) {
+            await this.handleRelationalIntegrityOnDelete(record, 'after', ctx);
+        }
+    }
 
     public getRepository() {
         if (!this.entityRepository) {
@@ -2266,6 +2409,69 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             }
         }
     })
+    /**
+     * Checks if a query can be executed efficiently in DynamoDB.
+     */
+    public canExecuteInDatabase(query: EntityQuery<S>): boolean {
+        const { filters, index } = query;
+
+        // If an index is explicitly specified, assume it can be used
+        if (index) return true;
+
+        // Use findMatchingIndex utility to check for GSI match
+        const match = findMatchingIndex(this.getEntitySchema(), filters, this.getEntityName(), this);
+        return !!match;
+    }
+
+    /**
+     * Determines if a query should be routed to the search engine.
+     */
+    protected shouldRouteToSearch(query: EntityQuery<S>): boolean {
+        if (!this.isSearchEnabled()) return false;
+
+        // 1. If user explicitly wants search engine (by providing keywords)
+        if (query.search && (!Array.isArray(query.search) || query.search.length > 0)) {
+            return true;
+        }
+
+        // 2. If it's a complex query that DynamoDB can't handle with indexes
+        if (!this.canExecuteInDatabase(query)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Handles smart routing for list/query operations.
+     */
+    protected async handleSmartRouting(query: EntityQuery<S>, _ctx?: ExecutionContext) {
+        this.logger.info(`Routing query to Search Engine for entity "${this.getEntityName()}"`);
+
+        // Convert cursor to offset if it's a number
+        let offset = query.pagination?.offset || 0;
+        if (query.pagination?.cursor && !isNaN(Number(query.pagination.cursor))) {
+            offset = Number(query.pagination.cursor);
+        }
+
+        // Map EntityQuery to EntitySearchQuery
+        const searchResult = await this.search({
+            query: query.search ? (Array.isArray(query.search) ? query.search.join(' ') : query.search) : '',
+            filters: query.filters,
+            sort: query.pagination?.order === 'desc' ? [{ field: 'timestampMs', order: 'desc' }] : undefined,
+            limit: query.pagination?.count || 25,
+            offset: offset,
+            select: query.attributes as any
+        }, _ctx);
+
+        // Unify response format
+        return {
+            data: searchResult.hits,
+            cursor: (searchResult.offset + searchResult.hits.length).toString(),
+            query
+        };
+    }
+
     public async list(query: EntityQuery<S> = {}, _ctx?: ExecutionContext) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
@@ -2284,8 +2490,24 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         // for listing API attributes would be an array
         if (Array.isArray(query.attributes)) {
-            const parsedOptions = parseEntityAttributePaths(query.attributes as string[]);
-            query.attributes = this.inferRelationshipsForEntitySelections(this.getEntitySchema(), parsedOptions);
+            const parsed = parseEntityAttributePaths(query.attributes as string[]);
+            query.attributes = this.inferRelationshipsForEntitySelections(this.getEntitySchema(), parsed);
+        }
+
+        // SMART ROUTING
+        if (this.shouldRouteToSearch(query)) {
+            const result = await this.handleSmartRouting(query, _ctx);
+
+            // Still need to serialize and hydrate search results
+            result.data = this.serializeRecords(result.data, query.attributes);
+            if (query.attributes && result.data.length > 0) {
+                const relationalAttributes = Object.entries(query.attributes)
+                    .filter(([ , options ]) => isObject(options));
+                if (relationalAttributes.length) {
+                    await this.hydrateRecords(relationalAttributes as any, result.data);
+                }
+            }
+            return result;
         }
 
         if (query.search) {
@@ -2294,7 +2516,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             }
 
             if (query.search.length > 0) {
-
                 if (isString(query.searchAttributes)) {
                     query.searchAttributes = query.searchAttributes.split(',').filter(s => !!s);
                 }
@@ -2303,7 +2524,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 }
 
                 const searchFilterGroup = makeFilterGroupForSearchKeywords(query.search, query.searchAttributes);
-
                 query.filters = addFilterGroupToEntityFilterCriteria<S>(searchFilterGroup as any, query.filters);
             }
         }
@@ -2367,7 +2587,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         }
     })
     public async query(query: EntityQuery<S>, _ctx?: ExecutionContext) {
-        this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
+        this.logger.debug(`Called ~ query ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
         // Handle soft delete filtering
         if (this.getEntitySchema().model.softDelete && !(query as any).includeDeleted) {
@@ -2389,6 +2609,23 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         } else {
             // ensure all the provided select attributes has required metadata all the way down to the leaf level
             selectAttributes = this.inferRelationshipsForEntitySelections(this.getEntitySchema(), selectAttributes);
+        }
+        query.attributes = selectAttributes;
+
+        // SMART ROUTING
+        if (this.shouldRouteToSearch(query)) {
+            const result = await this.handleSmartRouting(query, _ctx);
+
+            // Still need to serialize and hydrate search results
+            result.data = this.serializeRecords(result.data, selectAttributes);
+            if (selectAttributes && result.data.length > 0) {
+                const relationalAttributes = Object.entries(selectAttributes)
+                    .filter(([ , options ]) => isObject(options));
+                if (relationalAttributes.length) {
+                    await this.hydrateRecords(relationalAttributes as any, result.data);
+                }
+            }
+            return result;
         }
 
         if (query.search) {
@@ -2780,6 +3017,133 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         } catch (error: any) {
             this.logger.error(`Failed to delete by query for ${this.getEntityName()}:`, error);
             throw new DatabaseError(`Failed to delete by query for ${this.getEntityName()}: ${error.message}`);
+        }
+    }
+
+    /**
+     * Verifies that related entities exist for relations marked with existsCheck.
+     */
+    protected async verifyRelationalExistence(payload: any, _ctx?: ExecutionContext) {
+        const schema = this.getEntitySchema();
+        for (const [ attrName, attr ] of Object.entries(schema.attributes)) {
+            if (attr.relation && attr.relation.integrity?.existsCheck) {
+                const relation = attr.relation;
+                const relatedEntityName = relation.entityName;
+                const mappings = isArray(relation.identifiers) ? relation.identifiers : [ relation.identifiers! ];
+
+                const relatedIdentifiers: any = {};
+                let hasAllIdentifiers = true;
+                for (const { source, target } of mappings) {
+                    const val = getValueByPath(payload, source);
+                    if (val == null) {
+                        hasAllIdentifiers = false;
+                        break;
+                    }
+                    relatedIdentifiers[ target ] = val;
+                }
+
+                if (hasAllIdentifiers && !isEmpty(relatedIdentifiers)) {
+                    this.logger.debug(`Checking existence of related entity "${relatedEntityName}" with:`, relatedIdentifiers);
+                    const relatedService = this.getEntityServiceByEntityName(relatedEntityName);
+                    const exists = await relatedService.get({ identifiers: relatedIdentifiers }, _ctx);
+                    if (!exists) {
+                        throw new EntityValidationError([ {
+                            path: [ attrName ],
+                            message: `Related entity "${relatedEntityName}" does not exist.`,
+                            expected: relatedIdentifiers
+                        } ]);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Handles relational integrity on delete (restrict, cascade, set-null).
+     */
+    protected async handleRelationalIntegrityOnDelete(identifiers: any, phase: 'before' | 'after', _ctx?: ExecutionContext) {
+        const currentEntityName = this.getEntityName();
+        const schemaProviders = this.diContainer.collectBestProvidersFor({ type: 'schema' });
+
+        for (const provider of schemaProviders) {
+            const otherEntityName = provider._provider.forEntity as string;
+            // Note: We might want to handle self-referencing relations too
+
+            const otherSchema = this.diContainer.resolveEntitySchema<EntitySchema<any, any, any>>(otherEntityName);
+            for (const [ attrName, attr ] of Object.entries(otherSchema.attributes)) {
+                const relation = attr.relation;
+                if (relation && relation.entityName === currentEntityName && relation.integrity?.onDelete) {
+                    const strategy = relation.integrity.onDelete;
+
+                    if (phase === 'before' && strategy === 'restrict') {
+                        await this.enforceRestrictDelete(identifiers, otherEntityName, attrName, relation, _ctx);
+                    } else if (phase === 'after' && strategy === 'cascade') {
+                        await this.enforceCascadeDelete(identifiers, otherEntityName, attrName, relation, _ctx);
+                    } else if (phase === 'after' && strategy === 'set-null') {
+                        await this.enforceSetNullDelete(identifiers, otherEntityName, attrName, relation, _ctx);
+                    }
+                }
+            }
+        }
+    }
+
+    private async enforceRestrictDelete(parentIdentifiers: any, childEntityName: string, childAttrName: string, relation: any, _ctx?: ExecutionContext) {
+        const childService = this.getEntityServiceByEntityName(childEntityName);
+        const filters: any = {};
+        const mappings = isArray(relation.identifiers) ? relation.identifiers : [ relation.identifiers ];
+
+        for (const { source, target } of mappings) {
+            const val = getValueByPath(parentIdentifiers, target);
+            if (val != null) {
+                filters[ source ] = { eq: val };
+            }
+        }
+
+        if (!isEmpty(filters)) {
+            const children = await childService.list({ filters, pagination: { count: 1 } }, _ctx);
+            if (children.data.length > 0) {
+                throw new Error(`Cannot delete ${this.getEntityName()} because related ${childEntityName} records exist and onDelete is set to "restrict".`);
+            }
+        }
+    }
+
+    private async enforceCascadeDelete(parentIdentifiers: any, childEntityName: string, childAttrName: string, relation: any, _ctx?: ExecutionContext) {
+        const childService = this.getEntityServiceByEntityName(childEntityName);
+        const filters: any = {};
+        const mappings = isArray(relation.identifiers) ? relation.identifiers : [ relation.identifiers ];
+
+        for (const { source, target } of mappings) {
+            const val = getValueByPath(parentIdentifiers, target);
+            if (val != null) {
+                filters[ source ] = { eq: val };
+            }
+        }
+
+        if (!isEmpty(filters)) {
+            this.logger.info(`Cascading delete to ${childEntityName} for ${this.getEntityName()}:`, parentIdentifiers);
+            await childService.deleteByQuery({ filters }, _ctx);
+        }
+    }
+
+    private async enforceSetNullDelete(parentIdentifiers: any, childEntityName: string, childAttrName: string, relation: any, _ctx?: ExecutionContext) {
+        const childService = this.getEntityServiceByEntityName(childEntityName);
+        const filters: any = {};
+        const mappings = isArray(relation.identifiers) ? relation.identifiers : [ relation.identifiers ];
+
+        for (const { source, target } of mappings) {
+            const val = getValueByPath(parentIdentifiers, target);
+            if (val != null) {
+                filters[ source ] = { eq: val };
+            }
+        }
+
+        if (!isEmpty(filters)) {
+            this.logger.info(`Setting ${childAttrName} to null in ${childEntityName} for deleted ${this.getEntityName()}`);
+            const children = await childService.list({ filters }, _ctx);
+            const childIds = children.data.map((c: any) => childService.extractEntityIdentifiers(c));
+            if (childIds.length > 0) {
+                await childService.patch({ ids: childIds, data: { [ childAttrName ]: null } as any }, _ctx);
+            }
         }
     }
 
