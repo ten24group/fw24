@@ -644,6 +644,13 @@ export interface FW24AttributeExtensions {
   readonly isUnique?: boolean;
 
   /**
+   * Strategy for handling unique constraint collisions.
+   * - 'strict': (Default) Throw error if value is not unique.
+   * - 'enhance': Append suffix to make value unique (power feature).
+   */
+  readonly uniquenessStrategy?: 'strict' | 'enhance';
+
+  /**
    * Defines a relation with another entity.
    * Use the type-helper `createEntityRelation<EntitySchema>()` function for type-safe relation creation.
    * For circular dependencies, use `createEntityRelation<() => EntitySchema>()` with lazy loading.
@@ -655,6 +662,22 @@ export interface FW24AttributeExtensions {
    * Supports both readonly and mutable arrays for compatibility with 'as const' entity schemas.
    */
   readonly validations?: ReadonlyArray<any> | Array<any>;
+
+  /**
+   * Fine-grained Field Level Security (FLS) permissions.
+   */
+  readonly permissions?: {
+    /**
+     * Roles/groups that can read this attribute.
+     * If not provided, attribute is readable by anyone with entity access.
+     */
+    read?: string[] | Condition;
+    /**
+     * Roles/groups that can write/edit this attribute.
+     * If not provided, attribute is writable by anyone with entity access.
+     */
+    write?: string[] | Condition;
+  };
 
   /**
    * Enable compression for this attribute.
@@ -3995,6 +4018,35 @@ export interface EntitySchema<
     readonly softDelete?: boolean, // default is false
 
     /**
+     * Caching configuration.
+     */
+    readonly cache?: {
+      /** Whether caching is enabled for this entity. */
+      enabled: boolean;
+      /** TTL for cache in seconds. Default: 3600 */
+      ttl?: number;
+      /** Cache key prefix. Default: entity name */
+      prefix?: string;
+    };
+
+    /**
+     * List of interceptors for this entity.
+     */
+    readonly interceptors?: ReadonlyArray<DepIdentifier<EntityInterceptor> | EntityInterceptor>;
+
+    /**
+     * Schema versioning and evolution.
+     */
+    readonly versioning?: {
+      /** Current schema version. */
+      version: string;
+      /** Map of transformers to migrate old versions to current. */
+      transformers?: Record<string, (data: any) => any>;
+      /** Attribute that stores the version. Default: '__v' */
+      versionAttribute?: string;
+    };
+
+    /**
      * Workflow / State Machine configuration.
      */
     readonly workflow?: {
@@ -4307,11 +4359,6 @@ export interface EntityInterceptor {
 }
 
 /**
-     * List of interceptors for this entity.
-     */
-    readonly interceptors?: ReadonlyArray<DepIdentifier<EntityInterceptor> | EntityInterceptor>;
-
-    /**
  * Configuration for an entity operation (action).
  */
 export interface EntityOperationConfig {
@@ -4525,7 +4572,7 @@ export type TEntityOpsInputSchemas<
       : opName extends 'deleteByQuery' ? { filters: EntityFilterCriteria<Sch>, batchSize?: number, concurrent?: number, maxItems?: number }
       : opName extends 'batchUpsert' ? { items: Array<UpsertEntityItemTypeFromSchema<Sch>>, options?: any }
       : opName extends 'export' ? { query?: EntityQuery<Sch>, format?: 'json' | 'csv' }
-      : opName extends 'import' ? { items: Array<CreateEntityItemTypeFromSchema<Sch>>, options?: { upsert?: boolean } }
+      : opName extends 'import' ? { items?: Array<CreateEntityItemTypeFromSchema<Sch>>, s3Source?: { bucket: string, key: string }, options?: { upsert?: boolean } }
       : opName extends 'patch' ? { ids: Array<EntityIdentifiersTypeFromSchema<Sch>>, data: UpdateEntityItemTypeFromSchema<Sch> }
       : opName extends 'restore' ? EntityIdentifiersTypeFromSchema<Sch>
       : opName extends 'archive' ? EntityIdentifiersTypeFromSchema<Sch>

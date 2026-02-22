@@ -170,11 +170,14 @@ export type Validations<T> = {
     readonly 'lte'?: T,
     readonly 'inList'?: Array<T>,
     readonly 'notInList'?: Array<T>,
-    readonly 'custom'?: (inputValue: T, ctx?: any) => boolean | Promise<boolean>,
+    readonly 'custom'?: (inputValue: T, options: { input?: any, record?: any, actor?: Actor }) => boolean | Promise<boolean>,
+    readonly 'greaterThanField'?: string,
+    readonly 'lessThanField'?: string,
+    readonly 'requiredIf'?: { field: string, value: any } | Array<{ field: string, value: any }>,
 }
 
 export const Validation_Keys: Array<keyof Validations<any>> = [
-    'minLength', 'maxLength', 'required', 'pattern', 'datatype', 'unique', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'inList', 'notInList', 'custom'
+    'minLength', 'maxLength', 'required', 'pattern', 'datatype', 'unique', 'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'inList', 'notInList', 'custom', 'greaterThanField', 'lessThanField', 'requiredIf'
 ];
 
 /**

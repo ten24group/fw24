@@ -77,3 +77,36 @@ export function getValueByPath<T = any>(obj: Record<string, any>, path: string, 
         });
     }
 }
+/**
+ * Sanitizes a request object for safe inclusion in debug responses/logs.
+ * Removes potentially large or circular properties.
+ */
+export function sanitizeRequestForDebug(request: any): any {
+  if (!request || typeof request !== 'object') return request;
+
+  const sanitized: any = {};
+  const includeKeys = ['path', 'method', 'headers', 'queryStringParameters', 'pathParameters', 'body', 'actor'];
+
+  for (const key of includeKeys) {
+    if (key in request) {
+      sanitized[key] = request[key];
+    }
+  }
+
+  // Sanitize body if it's a string
+  if (typeof sanitized.body === 'string' && sanitized.body.length > 2000) {
+    sanitized.body = sanitized.body.substring(0, 2000) + '... (truncated)';
+  }
+
+  // Sanitize headers (remove sensitive info)
+  if (sanitized.headers) {
+    const sensitiveHeaders = ['authorization', 'cookie', 'x-api-key'];
+    const filteredHeaders = { ...sanitized.headers };
+    for (const h of sensitiveHeaders) {
+      if (h in filteredHeaders) filteredHeaders[h] = '[REDACTED]';
+    }
+    sanitized.headers = filteredHeaders;
+  }
+
+  return sanitized;
+}

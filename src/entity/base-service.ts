@@ -15,7 +15,7 @@ import { BaseSearchService, EntitySearchService } from '../search/services';
 import { EntitySearchQuery, SearchResult } from '../search/types';
 import { Observed } from "../observability/decorators/observed";
 import { makeEntitySearchIndexName } from '../search/search-utils';
-import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug, compressIfNeeded, decompressItem, isCompressed, merge } from "../utils";
+import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug, compressIfNeeded, decompressItem, isCompressed, merge, sanitizeRequestForDebug } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
 import { Service } from "electrodb";
 import { ENTITY_OPERATION_KEY } from "./decorators";
@@ -24,6 +24,9 @@ import { EntitySchemaValidator } from "./entity-schema-validator";
 import { DatabaseError, EntityValidationError } from './errors';
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 import { InternalServerError, ServerError } from "../errors";
+import { ConditionEvaluator } from "../core/condition-evaluator";
+import { ICacheProvider } from "../core/cache-provider";
+import { StorageProvider } from "../core/storage-provider";
 
 /**
  * Context for an entity operation execution.
@@ -140,20 +143,67 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
 
     /**
-     * Exports entity data based on a query.
+     * Returns the storage provider for file operations.
      */
-    public async export(options: { query?: EntityQuery<S>, format?: 'json' | 'csv' }, _ctx?: ExecutionContext): Promise<{ url?: string, data?: any[] }> {
+    protected getStorageProvider(): StorageProvider | undefined {
+        try {
+            return this.diContainer.resolve<StorageProvider>('StorageProvider');
+        } catch (e) {
+            return undefined;
+        }
+    }
+
+    /**
+     * Exports entity data based on a query.
+     * Uses a StorageProvider for scalable data I/O if available.
+     */
+    public async export(options: { query?: EntityQuery<S>, format?: 'json' | 'csv', bucket?: string }, _ctx?: ExecutionContext): Promise<{ url?: string, data?: any[] }> {
         const results = await this.list(options.query || {}, _ctx);
-        // In a real scenario, this might upload to S3 and return a URL
-        return { data: results };
+        const data = (results.data || []) as Record<string, any>[];
+        const format = options.format || 'json';
+        const storageProvider = this.getStorageProvider();
+
+        if (storageProvider) {
+            let content: string;
+            if (format === 'csv') {
+                const headers = Object.keys(data[ 0 ] || {});
+                const rows = data.map(record => headers.map(h => JSON.stringify(record[ h ])).join(','));
+                content = [ headers.join(','), ...rows ].join('\n');
+            } else {
+                content = JSON.stringify(data, null, 2);
+            }
+
+            const fileName = `exports/${this.getEntityName()}-${Date.now()}.${format}`;
+            await storageProvider.upload(fileName, content, options.bucket);
+            const url = await storageProvider.getSignedUrl(fileName, options.bucket);
+            return { url };
+        }
+
+        return { data };
     }
 
     /**
      * Imports multiple entity items.
+     * Supports S3 as a source for scalable data I/O via StorageProvider.
      */
-    public async import(options: { items: Array<CreateEntityItemTypeFromSchema<S>>, options?: { upsert?: boolean } }, _ctx?: ExecutionContext): Promise<{ count: number, results: Array<CreateEntityResponse<S> | UpsertEntityResponse<S>> }> {
-        const results = await this.batchUpsert(options.items, options.options, _ctx);
-        return { count: results.length, results: results as any };
+    public async import(options: { items?: Array<CreateEntityItemTypeFromSchema<S>>, s3Source?: { bucket: string, key: string }, options?: { upsert?: boolean } }, _ctx?: ExecutionContext): Promise<{ count: number, results: Array<CreateEntityResponse<S> | UpsertEntityResponse<S>> }> {
+        let items = options.items || [];
+        const storageProvider = this.getStorageProvider();
+
+        if (options.s3Source && storageProvider) {
+            const s3Response = await storageProvider.download(options.s3Source.key, options.s3Source.bucket);
+            const content = await s3Response.Body?.transformToString();
+            if (content) {
+                items = JSON.parse(content);
+            }
+        }
+
+        if (!items || items.length === 0) {
+            return { count: 0, results: [] };
+        }
+
+        const results = await this.batchUpsert(items, options.options, _ctx);
+        return { count: results.length, results: results as Array<CreateEntityResponse<S> | UpsertEntityResponse<S>> };
     }
 
     /**
@@ -466,6 +516,61 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             }
         });
 
+        // 5. Inject workflow-based visibility conditions (Auto-Pilot)
+        const workflow = schema.model.workflow;
+        if (workflow) {
+            const stateAttr = workflow.stateAttribute || 'status';
+
+            // From allowOperations
+            if (workflow.allowOperations) {
+                Object.entries(workflow.allowOperations).forEach(([ state, allowedOps ]) => {
+                    allowedOps.forEach(opName => {
+                        const op = resolved[ opName ];
+                        if (op && op.enabled !== false && !op.visibility) {
+                            // If this operation is only allowed in specific states, add visibility check
+                            // But wait, an operation might be allowed in multiple states.
+                            // We need to collect all allowed states for this operation.
+                        }
+                    });
+                });
+
+                // Better approach: for each enabled operation, if it's mentioned in allowOperations,
+                // add a combined OR condition for all states where it's allowed.
+                const opToStates = new Map<string, string[]>();
+                Object.entries(workflow.allowOperations).forEach(([ state, allowedOps ]) => {
+                    allowedOps.forEach(opName => {
+                        if (!opToStates.has(opName)) opToStates.set(opName, []);
+                        opToStates.get(opName)!.push(state);
+                    });
+                });
+
+                opToStates.forEach((states, opName) => {
+                    const op = resolved[ opName ];
+                    if (op && op.enabled !== false && !op.visibility) {
+                        if (states.length === 1) {
+                            op.visibility = { record: { [ stateAttr ]: { eq: states[ 0 ] } } };
+                        } else {
+                            op.visibility = {
+                                or: states.map(s => ({ record: { [ stateAttr ]: { eq: s } } }))
+                            } as any;
+                        }
+                    }
+                });
+            }
+
+            // From transitions (ensure transition-specific operations only show when valid)
+            if (workflow.transitions) {
+                Object.entries(workflow.transitions).forEach(([ fromState, toStates ]) => {
+                    toStates.forEach(toState => {
+                        const op = resolved[ toState ]; // Assuming operation name matches destination state
+                        if (op && op.enabled !== false && !op.visibility) {
+                            op.visibility = { record: { [ stateAttr ]: { eq: fromState } } };
+                        }
+                    });
+                });
+            }
+        }
+
         this._resolvedOperationsConfig = resolved;
         return resolved;
     }
@@ -687,39 +792,41 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         payload: TEntityOpsInputSchemas<S>[ K ],
         ctx?: ExecutionContext
     ): Promise<TEntityOpsOutputTypes<S>[ K ]> {
-        const p = payload as any;
         const pathParams = ctx?.request?.pathParameters || (ctx as any)?.params || {};
+
+        // Helper to extract identifiers from payload or path params
+        const getIds = (p: any) => this.extractEntityIdentifiers({ ...pathParams, ...p }) as EntityIdentifiersTypeFromSchema<S>;
+
         switch (opName) {
-            case 'get':
-                const getOptions = (p.identifiers) ? p : { identifiers: this.extractEntityIdentifiers({ ...pathParams, ...p }) };
-                return this.get(getOptions, ctx) as any;
-            case 'list': return this.list(p, ctx) as any;
-            case 'query': return this.query(p, ctx) as any;
-            case 'search': return this.search(p, ctx) as any;
-            case 'create': return this.create(p, ctx) as any;
-            case 'update':
-                const updateIdentifiers = p.identifiers || this.extractEntityIdentifiers({ ...pathParams, ...p });
-                const updateData = p.data || p;
-                return this.update(updateIdentifiers as any, updateData, p.operators, ctx) as any;
-            case 'upsert': return this.upsert(p, ctx) as any;
-            case 'delete':
-                const deleteIdentifiers = this.extractEntityIdentifiers({ ...pathParams, ...p });
-                return this.delete(deleteIdentifiers as any, ctx) as any;
-            case 'duplicate':
-                const duplicateIdentifiers = this.extractEntityIdentifiers({ ...pathParams, ...p });
-                return this.duplicate(duplicateIdentifiers as any, ctx) as any;
-            case 'batchUpsert': return this.batchUpsert(p.items, p.options, ctx) as any;
-            case 'batchDelete': return this.batchDelete(p, ctx) as any;
-            case 'deleteByQuery': return this.deleteByQuery(p, ctx) as any;
-            case 'export': return this.export(p, ctx) as any;
-            case 'import': return this.import(p, ctx) as any;
-            case 'patch': return this.patch(p, ctx) as any;
-            case 'restore':
-                const restoreIdentifiers = this.extractEntityIdentifiers({ ...pathParams, ...p });
-                return this.restore(restoreIdentifiers as any, ctx) as any;
-            case 'archive':
-                const archiveIdentifiers = this.extractEntityIdentifiers({ ...pathParams, ...p });
-                return this.archive(archiveIdentifiers as any, ctx) as any;
+            case 'get': {
+                const p = payload as EntityGetOptions<S>;
+                const options = p.identifiers ? p : { identifiers: getIds(p) };
+                return (await this.get(options, ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            }
+            case 'list': return (await this.list(payload as EntityQuery<S>, ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'query': return (await this.query(payload as EntityQuery<S>, ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'search': return (await this.search(payload as any, ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'create': return (await this.create(payload as CreateEntityItemTypeFromSchema<S>, ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'update': {
+                const p = payload as any;
+                const ids = p.identifiers || getIds(p);
+                const data = p.data || p;
+                return (await this.update(ids, data, p.operators, ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            }
+            case 'upsert': return (await this.upsert(payload as UpsertEntityItemTypeFromSchema<S>)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'delete': return (await this.delete(getIds(payload), ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'duplicate': return (await this.duplicate(getIds(payload), ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'batchUpsert': {
+                const p = payload as { items: any[], options: any };
+                return (await this.batchUpsert(p.items, p.options, ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            }
+            case 'batchDelete': return (await this.batchDelete(payload as any, ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'deleteByQuery': return (await this.deleteByQuery(payload as any, ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'export': return (await this.export(payload as any, ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'import': return (await this.import(payload as any, ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'patch': return (await this.patch(payload as any, ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'restore': return (await this.restore(getIds(payload), ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'archive': return (await this.archive(getIds(payload), ctx)) as TEntityOpsOutputTypes<S>[ K ];
             default:
                 throw new Error(`No handler found for operation "${opName}" and it is not a standard CRUD operation.`);
         }
@@ -926,12 +1033,28 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * Executed if an operation fails.
      */
     protected async onOperationError(opCtx: OperationContext<S>, error: Error): Promise<void> {
-        this.logger.error(`Operation "${opCtx.operation}" failed:`, error);
+        const { operation, ctx } = opCtx;
+        const sanitizedRequest = ctx?.request ? sanitizeRequestForDebug(ctx.request) : undefined;
+
+        this.logger.error(`Operation "${operation}" failed:`, {
+            error: error.message,
+            stack: error.stack,
+            request: sanitizedRequest
+        });
     }
 
     // Specific convenience hooks
     protected async onBeforeCreate(payload: any, ctx?: ExecutionContext): Promise<any | void> {
         let payloadCopy = { ...payload };
+
+        // Versioning
+        const versioning = this.schema.model.versioning;
+        if (versioning) {
+            payloadCopy[ versioning.versionAttribute || '__v' ] = versioning.version;
+        }
+
+        // FLS
+        await this.validateWriteFLS(payloadCopy, undefined, ctx);
 
         // 0. Relational integrity
         await this.verifyRelationalExistence(payloadCopy, ctx);
@@ -994,6 +1117,13 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     protected async onBeforeUpdate(payload: any, ctx?: ExecutionContext): Promise<any | void> {
         // 0. Workflow & Relational integrity
         const identifiers = this.extractEntityIdentifiers(ctx?.request?.pathParameters || payload);
+
+        // Fetch current record for FLS and Workflow checks
+        const currentRecord = await this.get({ identifiers }, ctx);
+
+        // FLS
+        await this.validateWriteFLS(payload, currentRecord, ctx);
+
         await this.validateWorkflowTransition(identifiers, payload, ctx);
         await this.verifyRelationalExistence(payload, ctx);
 
@@ -1006,9 +1136,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         if (!skipCheckingAttributesUniqueness && uniqueFields.length) {
             let uniquenessChecks = [];
-
-            // We need identifiers for uniqueness check to ignore self
-            const identifiers = this.extractEntityIdentifiers(ctx?.request?.pathParameters || payload);
 
             for (const { name, readOnly } of uniqueFields) {
                 if (readOnly) {
@@ -1047,12 +1174,29 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         return enhancedData;
     }
 
-    protected async onAfterUpdate(_record: any, _ctx?: ExecutionContext): Promise<void> { }
+    protected async onAfterUpdate(record: any, _ctx?: ExecutionContext): Promise<void> {
+        const cacheProvider = this.getCacheProvider();
+        if (cacheProvider && record) {
+            const identifiers = this.extractEntityIdentifiers(record);
+            await cacheProvider.delete(this.getCacheKey(identifiers));
+        }
+    }
 
     protected async onBeforeUpsert(payload: any, ctx?: ExecutionContext): Promise<any | void> {
+        let p = { ...payload };
+
+        // Versioning
+        const versioning = this.schema.model.versioning;
+        if (versioning) {
+            p[ versioning.versionAttribute || '__v' ] = versioning.version;
+        }
+
+        // FLS
+        await this.validateWriteFLS(p, undefined, ctx);
+
         // Inject actor context so DynamoDB images always have _actor for auditing/causedBy
         // Treat upsert as an update for actor-field purposes (we always want _actor and updatedBy/updatedAt).
-        let payloadCopy = this.injectActorContext({ ...payload }, 'upsert', ctx);
+        let payloadCopy = this.injectActorContext(p, 'upsert', ctx);
 
         // Compress fields before writing
         payloadCopy = this.compressFields(payloadCopy);
@@ -1060,7 +1204,13 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         return payloadCopy;
     }
 
-    protected async onAfterUpsert(_record: any, _ctx?: ExecutionContext): Promise<void> { }
+    protected async onAfterUpsert(record: any, _ctx?: ExecutionContext): Promise<void> {
+        const cacheProvider = this.getCacheProvider();
+        if (cacheProvider && record) {
+            const identifiers = this.extractEntityIdentifiers(record);
+            await cacheProvider.delete(this.getCacheKey(identifiers));
+        }
+    }
 
     protected async onBeforeDelete(identifiers: any, ctx?: ExecutionContext): Promise<void> {
         await this.handleRelationalIntegrityOnDelete(identifiers, 'before', ctx);
@@ -1068,6 +1218,12 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     protected async onAfterDelete(record: any, ctx?: ExecutionContext): Promise<void> {
         if (record) {
             await this.handleRelationalIntegrityOnDelete(record, 'after', ctx);
+
+            const cacheProvider = this.getCacheProvider();
+            if (cacheProvider) {
+                const identifiers = this.extractEntityIdentifiers(record);
+                await cacheProvider.delete(this.getCacheKey(identifiers));
+            }
         }
     }
 
@@ -1086,13 +1242,29 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     /**
      * Returns an ElectroDB Service instance containing this entity.
      * Useful for cross-entity transactions and more complex service-level operations.
+     * Attempts to resolve a shared service from DI, falling back to a single-entity instance.
      */
-    public getServiceInstance() {
-        if (!this.entityServiceInstance) {
-            this.entityServiceInstance = new Service({
-                [ this.getEntityName() ]: this.getRepository()
-            }, this.entityConfigurations);
+    public getServiceInstance(): Service {
+        if (this.entityServiceInstance) {
+            return this.entityServiceInstance;
         }
+
+        try {
+            // Attempt to resolve a shared service instance from DI
+            // This allows developers to group multiple entities into a single Service
+            const sharedService = this.diContainer.resolve<Service>('ElectroDBService');
+            if (sharedService && (sharedService.entities as any)[ this.getEntityName() ]) {
+                return sharedService;
+            }
+        } catch (e) {
+            // Fallback if not found in DI or incompatible
+        }
+
+        this.logger.debug(`Creating fallback ElectroDB Service instance for entity: ${this.getEntityName()}`);
+        this.entityServiceInstance = new Service({
+            [ this.getEntityName() ]: this.getRepository()
+        }, this.entityConfigurations);
+
         return this.entityServiceInstance;
     }
 
@@ -1884,6 +2056,17 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     public async get(options: EntityGetOptions<S>, _ctx?: ExecutionContext): Promise<EntityRecordTypeFromSchema<S> | undefined> {
         const { identifiers, attributes } = options;
 
+        const cacheProvider = this.getCacheProvider();
+        const cacheKey = cacheProvider ? this.getCacheKey(identifiers) : undefined;
+
+        if (cacheKey) {
+            const cached = await cacheProvider!.get(cacheKey);
+            if (cached) {
+                this.logger.debug(`Cache hit for ${this.getEntityName()}: ${cacheKey}`);
+                return cached;
+            }
+        }
+
 
         let formattedAttributes = attributes;
         if (!attributes) {
@@ -1919,6 +2102,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         this.logger.debug(`Retrieved entity: ${this.getEntityName()}`, JsonSerializer.stringify(entity));
 
         if (entity?.data) {
+            // Apply versioning transformations
+            entity.data = this.applyVersioning(entity.data);
+
             // Decompress fields after reading from DB
             entity.data = this.decompressFields(entity.data);
 
@@ -1929,6 +2115,13 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 if (relationalAttributes.length) {
                     await this.hydrateRecords(relationalAttributes as any, [ entity.data ]);
                 }
+            }
+
+            // Apply Field Level Security (FLS)
+            entity.data = await this.applyReadFLS(entity.data, _ctx);
+
+            if (cacheKey) {
+                await cacheProvider!.set(cacheKey, entity.data, this.schema.model.cache?.ttl);
             }
         }
 
@@ -2020,6 +2213,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                     await this.hydrateRecords(relationalAttributes as any, entity.data);
                 }
             }
+
+            // Apply Field Level Security (FLS)
+            entity.data = await Promise.all(entity.data.map(record => this.applyReadFLS(record, options as any)));
         }
 
         return {
@@ -2049,6 +2245,22 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         const { payloadToUpdate, attributeName, ignoredEntityIdentifiers, maxAttemptsForCreatingUniqueAttributeValue } = options;
         let { attributeValue } = options;
+
+        const attr = this.schema.attributes[ attributeName as keyof S[ 'attributes' ] ] as EntityAttribute;
+        const strategy = attr?.uniquenessStrategy || 'strict';
+
+        if (strategy === 'strict') {
+            const isUnique = await this.isUniqueAttributeValue(attributeName, attributeValue, ignoredEntityIdentifiers);
+            if (!isUnique) {
+                throw new EntityValidationError([ {
+                    path: [ attributeName ],
+                    message: `Value "${attributeValue}" is already in use and must be unique.`,
+                    expected: [ 'unique', true ],
+                    received: [ 'unique', false ]
+                } ]);
+            }
+            return true;
+        }
 
         let isUnique = false;
         let triesCount = 1;
@@ -2534,8 +2746,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             entityService: this,
         });
 
-        // Decompress all records
-        entities.data = entities.data.map(record => this.decompressFields(record));
+        // Apply versioning and decompression
+        entities.data = entities.data.map(record => {
+            const versioned = this.applyVersioning(record);
+            return this.decompressFields(versioned);
+        });
 
         entities.data = this.serializeRecords(entities.data, query.attributes);
 
@@ -2549,6 +2764,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             if (relationalAttributes.length) {
                 await this.hydrateRecords(relationalAttributes as any, entities.data);
             }
+        }
+
+        // Apply Field Level Security (FLS)
+        if (entities.data && entities.data.length > 0) {
+            entities.data = await Promise.all(entities.data.map(record => this.applyReadFLS(record, _ctx)));
         }
 
         return { ...entities, query };
@@ -2649,8 +2869,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             entityService: this,
         });
 
-        // Decompress all records
-        entities.data = entities.data.map(record => this.decompressFields(record));
+        // Apply versioning and decompression
+        entities.data = entities.data.map(record => {
+            const versioned = this.applyVersioning(record);
+            return this.decompressFields(versioned);
+        });
 
         entities.data = this.serializeRecords(entities.data, selectAttributes);
 
@@ -2664,6 +2887,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             if (relationalAttributes.length) {
                 await this.hydrateRecords(relationalAttributes as any, entities.data);
             }
+        }
+
+        // Apply Field Level Security (FLS)
+        if (entities.data && entities.data.length > 0) {
+            entities.data = await Promise.all(entities.data.map(record => this.applyReadFLS(record, _ctx)));
         }
 
         return { ...entities, query };
@@ -3354,6 +3582,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         // Decompress hits if present
         if (result?.hits && Array.isArray(result.hits)) {
             result.hits = result.hits.map(hit => this.decompressFields(hit));
+
+            // Apply Field Level Security (FLS)
+            result.hits = await Promise.all(result.hits.map(hit => this.applyReadFLS(hit, ctx)));
         }
 
         return result;
@@ -3386,6 +3617,103 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      */
     protected decompressFields<T extends Record<string, any>>(data: T): T {
         return decompressItem(data);
+    }
+
+    /**
+     * Returns the cache provider if available and caching is enabled for this entity.
+     */
+    protected getCacheProvider(): ICacheProvider | undefined {
+        const cacheConfig = this.schema.model.cache;
+        if (!cacheConfig?.enabled) return undefined;
+
+        try {
+            return this.diContainer.resolve<ICacheProvider>('CacheProvider');
+        } catch (e) {
+            return undefined;
+        }
+    }
+
+    protected getCacheKey(identifiers: any): string {
+        const cacheConfig = this.schema.model.cache;
+        const prefix = cacheConfig?.prefix || this.getEntityName();
+        return `${prefix}:${JSON.stringify(identifiers)}`;
+    }
+
+    /**
+     * Applies schema versioning transformations to the data.
+     */
+    protected applyVersioning(data: any): any {
+        const versioning = this.schema.model.versioning;
+        if (!versioning || !data) return data;
+
+        const versionAttr = versioning.versionAttribute || '__v';
+        const currentVersion = versioning.version;
+        const recordVersion = data[ versionAttr ] || '1';
+
+        if (recordVersion === currentVersion) return data;
+
+        let transformed = { ...data };
+        // Apply transformer for the current version found in record
+        const transformer = versioning.transformers?.[ recordVersion ];
+        if (transformer) {
+            transformed = transformer(transformed);
+        }
+
+        // Always update to current version after transformation
+        transformed[ versionAttr ] = currentVersion;
+        return transformed;
+    }
+
+    /**
+     * Filters out attributes that the current actor is not authorized to read.
+     */
+    protected async applyReadFLS(record: any, ctx?: ExecutionContext): Promise<any> {
+        if (!record) return record;
+        const actor = ctx?.actor || getCurrentExecutionContext()?.actor;
+        const schema = this.getEntitySchema();
+        const filtered = { ...record };
+        const evalCtx = { actor, record, context: { entityName: this.getEntityName() } };
+
+        for (const [ attrName, attr ] of Object.entries(schema.attributes)) {
+            if (attr.permissions?.read) {
+                const allowed = await this.checkPermission(attr.permissions.read, evalCtx);
+                if (!allowed) {
+                    delete filtered[ attrName ];
+                }
+            }
+        }
+        return filtered;
+    }
+
+    /**
+     * Checks if the current actor is authorized to write to the given attributes.
+     */
+    protected async validateWriteFLS(payload: any, record?: any, ctx?: ExecutionContext): Promise<void> {
+        const actor = ctx?.actor || getCurrentExecutionContext()?.actor;
+        const schema = this.getEntitySchema();
+        const data = payload.data || payload;
+        const evalCtx = { actor, record, input: data, context: { entityName: this.getEntityName() } };
+
+        for (const [ attrName, value ] of Object.entries(data)) {
+            const attr = schema.attributes[ attrName ];
+            if (attr?.permissions?.write) {
+                const allowed = await this.checkPermission(attr.permissions.write, evalCtx);
+                if (!allowed) {
+                    throw new Error(`Access Denied: You do not have permission to write to attribute "${attrName}"`);
+                }
+            }
+        }
+    }
+
+    private async checkPermission(perm: string[] | Condition, evalCtx: any): Promise<boolean> {
+        if (Array.isArray(perm)) {
+            if (!evalCtx.actor || !evalCtx.actor.groups) return false;
+            const res = perm.some(group => evalCtx.actor.groups!.includes(group));
+            return res;
+        }
+
+        const res = await ConditionEvaluator.evaluate(perm as Condition, evalCtx);
+        return res;
     }
 }
 

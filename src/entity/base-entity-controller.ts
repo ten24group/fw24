@@ -13,7 +13,7 @@ import { Delete, Get, Patch, Post } from '../decorators/method';
 import { NotFoundError } from '../errors';
 import { createErrorHandler } from '../errors/handlers';
 import { EntitySearchQuery, parseSearchQuery } from '../search';
-import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, isString, merge, resolveEnvValueFor, toSlug } from '../utils';
+import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, isString, merge, resolveEnvValueFor, toSlug, sanitizeRequestForDebug } from '../utils';
 import { safeParseInt } from '../utils/parse';
 import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
 import { EntityOperationConfig } from './base-entity';
@@ -223,6 +223,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			message: "Created successfully"
 		};
 		if (req.debugMode) {
+			result.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(result);
@@ -299,6 +300,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		if (req.debugMode) {
 			result.identifiers = identifiers;
+			result.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(result);
@@ -327,6 +329,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		if (req.debugMode) {
 			result.identifiers = identifiers;
+			result.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(result);
@@ -416,6 +419,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 				restOfQueryParamsWithoutFilters,
 				parsedQuery
 			};
+			result.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(result);
@@ -429,7 +433,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 */
 	@Patch('/{id}')
 	async update(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
-		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
+		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters) as EntityIdentifiersTypeFromSchema<Sch>;
 
 		const entity = await this.getEntityService().executeOperation('get', { identifiers }, ctx);
 
@@ -437,7 +441,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			throw new NotFoundError(this.getEntityName(), undefined, req);
 		}
 
-		const updatedEntity = await this.getEntityService().executeOperation('update', deepCopy(req.body), ctx);
+		const updatedEntity = await this.getEntityService().executeOperation('update', { identifiers, data: deepCopy(req.body) } as any, ctx);
 
 		this.logger.debug(`Update result for ${this.getEntityName()}:`, { updatedEntity });
 
@@ -447,6 +451,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		};
 		if (req.debugMode) {
 			result.identifiers = identifiers;
+			result.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(result);
@@ -475,6 +480,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		};
 
 		if (req.debugMode) {
+			result.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(result);
@@ -544,7 +550,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		}
 
 		if (req.debugMode) {
-			response.req = req;
+			response.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(response);
@@ -613,7 +619,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		}
 
 		if (req.debugMode) {
-			response.req = req;
+			response.request = sanitizeRequestForDebug(req);
 			response.filters = filters;
 		}
 
@@ -645,6 +651,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 				inputQuery,
 				parsedQuery
 			};
+			result.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(result);
@@ -667,7 +674,8 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		if (req.debugMode) {
 			Object.assign(response, {
 				inputQuery,
-				processingTimeMs: results.processingTimeMs
+				processingTimeMs: results.processingTimeMs,
+				request: sanitizeRequestForDebug(req)
 			});
 		}
 
