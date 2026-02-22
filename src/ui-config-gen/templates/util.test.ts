@@ -1918,4 +1918,71 @@ describe('UI Config Generation Utilities', () => {
       });
     });
   });
+
+  describe('formatEntityAttributesForList', () => {
+    let mockEntityService: any;
+
+    beforeEach(() => {
+        mockEntityService = {
+            getEntitySchema: jest.fn(() => ({
+                model: {
+                    entity: 'test',
+                    entityNamePlural: 'Tests',
+                    entityOperations: {
+                        customOp: {
+                            enabled: true,
+                            uiLocation: 'row',
+                            label: 'Custom Row Op'
+                        }
+                    }
+                }
+            })),
+            getOperationsConfig: jest.fn(() => ({
+                customOp: {
+                    enabled: true,
+                    uiLocation: 'row',
+                    label: 'Custom Row Op'
+                }
+            })),
+            hasEntityServiceByEntityName: jest.fn(() => false)
+        };
+    });
+
+    it('should include custom row operations in identifier field actions', () => {
+        const properties = [
+            { id: 'id', name: 'id', isListable: true, isIdentifier: true, type: 'string' }
+        ] as any[];
+
+        const result = formatEntityAttributesForList('test', properties, mockEntityService, {
+            excludeFromAdminUpdate: false,
+            excludeFromAdminDelete: false,
+            excludeFromAdminDetail: false
+        });
+
+        const idField = result.find(p => p.dataIndex === 'id');
+        expect(idField).toBeDefined();
+        expect(idField!.actions).toBeDefined();
+        expect(idField!.actions!.some(a => a.id === 'customOp')).toBe(true);
+        expect(idField!.actions!.find(a => a.id === 'customOp')!.label).toBe('Custom Row Op');
+    });
+
+    it('should respect exclusion flags for default row actions', () => {
+        const properties = [
+            { id: 'id', name: 'id', isListable: true, isIdentifier: true, type: 'string' }
+        ] as any[];
+
+        const result = formatEntityAttributesForList('test', properties, mockEntityService, {
+            excludeFromAdminUpdate: true,
+            excludeFromAdminDelete: true,
+            excludeFromAdminDetail: true
+        });
+
+        const idField = result.find(p => p.dataIndex === 'id');
+        expect(idField!.actions!.some(a => a.id === 'view')).toBe(false);
+        expect(idField!.actions!.some(a => a.id === 'edit')).toBe(false);
+        expect(idField!.actions!.some(a => a.id === 'delete')).toBe(false);
+        // But customOp should still be there
+        expect(idField!.actions!.some(a => a.id === 'customOp')).toBe(true);
+    });
+  });
 });

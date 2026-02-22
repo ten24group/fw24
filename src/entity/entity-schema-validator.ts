@@ -21,6 +21,7 @@ export class EntitySchemaValidator {
   ): void {
     this.validateElectroDBSchema(schema, entityConfigurations);
     this.validateModelDefinition(schema);
+    this.validateOperations(schema);
     this.validateRelations(schema);
     this.validateFieldMetadata(schema);
   }
@@ -69,6 +70,41 @@ export class EntitySchemaValidator {
 
     if (errors.length > 0) {
       throw new Error(`Model definition validation failed:\n${errors.join('\n')}`);
+    }
+  }
+
+  private validateOperations<S extends EntitySchema<any, any, any>>(
+    schema: S
+  ): void {
+    const errors: string[] = [];
+    const ops = schema.model.entityOperations;
+
+    if (!ops) return;
+
+    for (const [ opName, config ] of Object.entries(ops)) {
+      if (typeof config === 'string') continue;
+
+      try {
+        if (config.method && ![ 'GET', 'POST', 'PUT', 'DELETE', 'PATCH' ].includes(config.method)) {
+          throw new Error(`Invalid HTTP method "${config.method}" for operation "${opName}"`);
+        }
+
+        if (config.path && !config.path.startsWith('/')) {
+          throw new Error(`Operation path must start with "/" for operation "${opName}"`);
+        }
+
+        if ((config as any).requiresId && config.path && !config.path.includes('{id}')) {
+          // This is more of a warning, but let's make it an error if they explicitly provided a path without {id}
+          // Actually, our controller automatically prepends {id} if missing and requiresId is true.
+          // So maybe just a warning? No, let's keep it flexible.
+        }
+      } catch (error: any) {
+        errors.push(error.message);
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new Error(`Operations validation failed:\n${errors.join('\n')}`);
     }
   }
 

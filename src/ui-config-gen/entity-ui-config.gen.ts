@@ -178,8 +178,16 @@ export class EntityUIConfigGen {
             // Transform legacy config structure to new nested structure if needed
             entitySchema = this.transformLegacyConfig(entitySchema);
             const entityDefaultOpsSchema = service.getOpsDefaultIOSchema();
+            const ops = service.getOperationsConfig();
 
-            if (!entitySchema.model.excludeFromAdminCreate) {
+            // Derive exclusion flags from operation metadata if not explicitly set
+            const excludeCreate = entitySchema.model.excludeFromAdminCreate ?? (ops.create?.enabled === false);
+            const excludeUpdate = entitySchema.model.excludeFromAdminUpdate ?? (ops.update?.enabled === false);
+            const excludeDelete = entitySchema.model.excludeFromAdminDelete ?? (ops.delete?.enabled === false);
+            const excludeDetail = entitySchema.model.excludeFromAdminDetail ?? (ops.get?.enabled === false);
+            const excludeList = entitySchema.model.excludeFromAdminList ?? (ops.list?.enabled === false);
+
+            if (!excludeCreate) {
                 const createConfig = MakeCreateEntityConfig({
                     entityName,
                     entityNamePlural: entitySchema.model.entityNamePlural,
@@ -193,7 +201,7 @@ export class EntityUIConfigGen {
                 entityConfigs[ `create-${entityName.toLowerCase()}` ] = createConfig;
             }
 
-            if (!entitySchema.model.excludeFromAdminUpdate) {
+            if (!excludeUpdate) {
                 const updateConfig = MakeUpdateEntityConfig({
                     entityName,
                     entityNamePlural: entitySchema.model.entityNamePlural,
@@ -208,17 +216,17 @@ export class EntityUIConfigGen {
                 entityConfigs[ `edit-${entityName.toLowerCase()}` ] = updateConfig;
             }
 
-            if (!entitySchema.model.excludeFromAdminList) {
+            if (!excludeList) {
                 const listConfig = MakeListEntityConfig({
                     entityName,
                     entityNamePlural: entitySchema.model.entityNamePlural,
                     properties: entityDefaultOpsSchema.list.output,
                     CRUDApiPath: entitySchema.model.CRUDApiPath,
                     useSearch: Boolean(entitySchema.model.search?.enabled),
-                    excludeFromAdminCreate: entitySchema.model.excludeFromAdminCreate,
-                    excludeFromAdminUpdate: entitySchema.model.excludeFromAdminUpdate,
-                    excludeFromAdminDelete: entitySchema.model.excludeFromAdminDelete,
-                    excludeFromAdminDetail: entitySchema.model.excludeFromAdminDetail,
+                    excludeFromAdminCreate: excludeCreate,
+                    excludeFromAdminUpdate: excludeUpdate,
+                    excludeFromAdminDelete: excludeDelete,
+                    excludeFromAdminDetail: excludeDetail,
                     // Use new nested config if available, fallback to old
                     pageHeaderActions: entitySchema.model.listPageConfig?.actions || entitySchema.model.listPageActions,
                     breadcrumbs: entitySchema.model.listPageConfig?.breadcrumbs || entitySchema.model.listPageBreadcrumbs,
@@ -232,7 +240,7 @@ export class EntityUIConfigGen {
                 entityConfigs[ `list-${entityName.toLowerCase()}` ] = listConfig;
             }
 
-            if (!entitySchema.model.excludeFromAdminDetail) {
+            if (!excludeDetail) {
                 const viewConfig = MakeViewEntityConfig({
                     entityName,
                     entityNamePlural: entitySchema.model.entityNamePlural,
@@ -251,14 +259,14 @@ export class EntityUIConfigGen {
                 entityConfigs[ `view-${entityName.toLowerCase()}` ] = viewConfig;
             }
 
-            if (!entitySchema.model.excludeFromAdminMenu) {
+            if (!entitySchema.model.excludeFromAdminMenu && !excludeList) {
                 const menuConfig = MakeEntityMenuConfig({
                     entityName,
                     entityNamePlural: entitySchema.model.entityNamePlural,
                     icon: entitySchema.model.entityMenuIcon || 'appStore',
                     menuIndex: menuIndex++,
-                    excludeFromAdminList: entitySchema.model.excludeFromAdminList,
-                    excludeFromAdminCreate: entitySchema.model.excludeFromAdminCreate,
+                    excludeFromAdminList: excludeList,
+                    excludeFromAdminCreate: excludeCreate,
                     menuGroup: entitySchema.model.menuGroup,
                     menuOrder: entitySchema.model.menuOrder,
                 });

@@ -13,9 +13,10 @@ import { Delete, Get, Patch, Post } from '../decorators/method';
 import { NotFoundError } from '../errors';
 import { createErrorHandler } from '../errors/handlers';
 import { EntitySearchQuery, parseSearchQuery } from '../search';
-import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, isString, merge, resolveEnvValueFor, toSlug } from '../utils';
+import { camelCase, deepCopy, isEmptyObject, isJsonString, isObject, isString, merge, resolveEnvValueFor, toSlug, sanitizeRequestForDebug } from '../utils';
 import { safeParseInt } from '../utils/parse';
 import { parseUrlQueryStringParameters, queryStringParamsToFilterGroup } from './query';
+import { EntityOperationConfig } from './base-entity';
 
 type seconds = number;
 
@@ -59,6 +60,128 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 				logRequestDetails: errorHandlerOptions.logRequestDetails
 			});
 		}
+
+		// Dynamically configure routes based on entity metadata
+		this.initializeMetadataRoutes();
+	}
+
+	/**
+	 * Synchronizes controller routes with entity operation metadata.
+	 * Allows enabling/disabling OOB operations and registering custom ones.
+	 */
+	protected initializeMetadataRoutes() {
+		if (!this.entityService) return;
+
+		const ops = this.entityService.getOperationsConfig();
+		const currentRoutes = { ...(this as any).routes || {} };
+		const newRoutes: Record<string, any> = {};
+
+		// 1. Filter existing OOB routes based on enabled state
+		for (const [ routeKey, route ] of Object.entries(currentRoutes)) {
+			const opName = this.mapRouteToOperation(route as any);
+			if (opName && ops[ opName ] && ops[ opName ].enabled === false) {
+				this.logger.debug(`Disabling OOB route "${routeKey}" for operation "${opName}"`);
+				continue;
+			}
+			newRoutes[ routeKey ] = route;
+		}
+
+		// 2. Register custom operations that don't have explicit methods
+		for (const [ opName, config ] of Object.entries(ops)) {
+			if (config.enabled && !this.isStandardOperation(opName)) {
+				this.registerCustomOperationRoute(opName, config, newRoutes);
+			}
+		}
+
+		(this as any).routes = newRoutes;
+	}
+
+	private isStandardOperation(opName: string): boolean {
+		return [ 'get', 'list', 'query', 'search', 'create', 'update', 'delete', 'duplicate', 'upsert', 'batchDelete', 'deleteByQuery' ].includes(opName);
+	}
+
+	private mapRouteToOperation(route: { functionName: string }): string | undefined {
+		const mapping: Record<string, string> = {
+			'create': 'create',
+			'find': 'get',
+			'list': 'list',
+			'update': 'update',
+			'delete': 'delete',
+			'query': 'query',
+			'search': 'search',
+			'duplicate': 'duplicate',
+			'upsert': 'upsert',
+			'batchDelete': 'batchDelete',
+			'deleteByQuery': 'deleteByQuery'
+		};
+		return mapping[ route.functionName ];
+	}
+
+	private registerCustomOperationRoute(opName: string, config: EntityOperationConfig, routes: Record<string, any>) {
+		const method = config.method || 'POST';
+		let path = config.path || `/${opName}`;
+		if (config.requiresId && !path.includes('{id}')) {
+			path = `/{id}${path.startsWith('/') ? '' : '/'}${path}`;
+		}
+
+		const routeKey = `${method}|${path}`;
+		if (routes[ routeKey ]) {
+			this.logger.warn(`Custom operation "${opName}" conflicts with existing route "${routeKey}". Skipping.`);
+			return;
+		}
+
+		this.logger.debug(`Registering dynamic route for custom operation "${opName}": ${routeKey}`);
+
+		const parameters: string[] = [];
+		path.split('/').forEach((param) => {
+			if (param.startsWith('{') && param.endsWith('}')) {
+				parameters.push(param.slice(1, -1));
+			}
+		});
+
+		routes[ routeKey ] = {
+			path,
+			httpMethod: method,
+			functionName: 'handleDynamicOperation',
+			parameters,
+			// Custom property to store the operation name
+			entityOperation: opName,
+			authorizer: config.authorizer,
+			validations: config.validations
+		};
+	}
+
+	/**
+	 * Generic handler for dynamically registered custom operations.
+	 */
+	async handleDynamicOperation(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const requestContext = req as any;
+		// Try to get opName from the matched route metadata
+		let opName = requestContext.route?.entityOperation;
+
+		if (!opName) {
+			// Fallback: search for a route that matches the current request
+			const matchingRoute = this.findMatchingRoute(req);
+			opName = (matchingRoute as any)?.entityOperation;
+		}
+
+		if (!opName) {
+			// Second Fallback: derive from path
+			const pathParts = req.path.split('/');
+			opName = pathParts[ pathParts.length - 1 ];
+		}
+
+		this.logger.debug(`Handling dynamic operation "${opName}"`);
+
+		// Collect all inputs: body, path params, query params
+		const payload = {
+			...(req.body || {}),
+			...(req.pathParameters || {}),
+			...(req.queryStringParameters || {})
+		};
+
+		const result = await this.getEntityService().executeOperation(opName, payload, ctx);
+		return res.json(result);
 	}
 
 	protected getEntityName() {
@@ -93,14 +216,14 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 */
 	@Post('')
 	async create(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
-		const createdEntity = await this.getEntityService().create(req.body, ctx);
+		const createdEntity = await this.getEntityService().executeOperation('create', req.body, ctx);
 
-		const result: any = {
+		const result: Record<string, any> = {
 			[ camelCase(this.getEntityName()) ]: createdEntity,
 			message: "Created successfully"
 		};
 		if (req.debugMode) {
-			result.req = req;
+			result.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(result);
@@ -149,7 +272,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		const signedUploadURL = await getSignedUrlForFileUpload(options);
 
-		const response: any = {
+		const response: Record<string, any> = {
 			fileName,
 			expiresIn,
 			contentType,
@@ -169,15 +292,15 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		const identifiers = service.extractEntityIdentifiers(req.pathParameters) as EntityIdentifiersTypeFromSchema<Sch>;
 
-		const duplicateEntity = await service.duplicate(identifiers, ctx);
+		const duplicateEntity = await service.executeOperation('duplicate', identifiers, ctx);
 
-		const result: any = {
+		const result: Record<string, any> = {
 			[ camelCase(this.getEntityName()) ]: duplicateEntity,
 		};
 
 		if (req.debugMode) {
-			result.req = req;
 			result.identifiers = identifiers;
+			result.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(result);
@@ -194,19 +317,19 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
 		const attributes = req.queryStringParameters?.attributes?.split?.(',');
 
-		const entity = await this.getEntityService().get({ identifiers, attributes }, ctx);
+		const entity = await this.getEntityService().executeOperation('get', { identifiers, attributes }, ctx);
 
 		if (!entity) {
 			throw new NotFoundError(this.getEntityName(), undefined, req);
 		}
 
-		const result: any = {
+		const result: Record<string, any> = {
 			[ camelCase(this.getEntityName()) ]: entity,
 		};
 
 		if (req.debugMode) {
-			result.req = req;
 			result.identifiers = identifiers;
+			result.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(result);
@@ -281,15 +404,14 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			searchAttributes
 		};
 
-		const { data: records, cursor: newCursor, query: parsedQuery } = await this.getEntityService().list(query, ctx);
+		const { data: records, cursor: newCursor, query: parsedQuery } = await this.getEntityService().executeOperation('list', query, ctx);
 
-		const result: any = {
+		const result: Record<string, any> = {
 			cursor: newCursor,
 			items: records,
 		};
 
 		if (req.debugMode) {
-			result.req = req;
 			result.criteria = {
 				pagination,
 				filters,
@@ -297,6 +419,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 				restOfQueryParamsWithoutFilters,
 				parsedQuery
 			};
+			result.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(result);
@@ -310,23 +433,25 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	 */
 	@Patch('/{id}')
 	async update(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
-		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
+		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters) as EntityIdentifiersTypeFromSchema<Sch>;
 
-		const entity = await this.getEntityService().get({ identifiers }, ctx);
+		const entity = await this.getEntityService().executeOperation('get', { identifiers }, ctx);
 
 		if (!entity) {
 			throw new NotFoundError(this.getEntityName(), undefined, req);
 		}
 
-		const updatedEntity = await this.getEntityService().update(identifiers as any, req.body, undefined, ctx);
+		const updatedEntity = await this.getEntityService().executeOperation('update', { identifiers, data: deepCopy(req.body) } as any, ctx);
 
-		const result: any = {
+		this.logger.debug(`Update result for ${this.getEntityName()}:`, { updatedEntity });
+
+		const result: Record<string, any> = {
 			[ camelCase(this.getEntityName()) ]: updatedEntity,
 			message: "Updated successfully"
 		};
 		if (req.debugMode) {
-			result.req = req;
 			result.identifiers = identifiers;
+			result.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(result);
@@ -341,21 +466,21 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	@Delete('/{id}')
 	async delete(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const identifiers = this.getEntityService()?.extractEntityIdentifiers(req.pathParameters);
-		const entity = await this.getEntityService().get({ identifiers }, ctx);
+		const entity = await this.getEntityService().executeOperation('get', { identifiers }, ctx);
 
 		if (!entity) {
 			throw new NotFoundError(this.getEntityName(), undefined, req);
 		}
 
-		const deletedEntity = await this.getEntityService().delete(identifiers, ctx);
+		const deletedEntity = await this.getEntityService().executeOperation('delete', identifiers, ctx);
 
-		const result: any = {
+		const result: Record<string, any> = {
 			[ camelCase(this.getEntityName()) ]: deletedEntity,
 			message: "Deleted successfully"
 		};
 
 		if (req.debugMode) {
-			result.req = req;
+			result.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(result);
@@ -407,18 +532,13 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	async batchDelete(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const { ids = [], concurrent = 1 } = req.body || {};
 
-		const identifiers = ids.map((id: any) => this.getEntityService()?.extractEntityIdentifiers(id));
-
-		const result = await this.getEntityService().batchDelete({
-			identifiers,
-			concurrent
-		}, ctx);
+		const result = await this.getEntityService().executeOperation('batchDelete', { ids, concurrent }, ctx);
 
 		const unprocessedCount = (result as any)?.unprocessed?.length || 0;
+		const identifiersCount = ids.length;
+		const deletedCount = identifiersCount - unprocessedCount;
 
-		const deletedCount = identifiers.length - unprocessedCount;
-
-		const response: any = {
+		const response: Record<string, any> = {
 			deletedCount,
 			unprocessedCount: unprocessedCount,
 			message: `Successfully deleted ${deletedCount} ${this.getEntityName()} record(s)`
@@ -430,7 +550,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		}
 
 		if (req.debugMode) {
-			response.req = req;
+			response.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(response);
@@ -468,7 +588,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		const { dryRun = false } = req.queryStringParameters || {};
 
 		if (dryRun) {
-			const previewResult = await this.getEntityService().query({
+			const previewResult = await this.getEntityService().executeOperation('query', {
 				filters,
 				pagination: { count: 1000, limit: 1000, pages: 'all' }
 			},
@@ -482,14 +602,14 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			});
 		}
 
-		const result = await this.getEntityService().deleteByQuery({
+		const result = await this.getEntityService().executeOperation('deleteByQuery', {
 			filters,
 			batchSize,
 			concurrent,
 			maxItems
 		}, ctx);
 
-		const response: any = {
+		const response: Record<string, any> = {
 			...result,
 			message: `Successfully deleted ${result.deletedCount} ${this.getEntityName()} record(s)`
 		};
@@ -499,7 +619,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		}
 
 		if (req.debugMode) {
-			response.req = req;
+			response.request = sanitizeRequestForDebug(req);
 			response.filters = filters;
 		}
 
@@ -519,19 +639,19 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		const inputQuery = deepCopy(query);
 
-		const { data: records, cursor: newCursor, query: parsedQuery } = await this.getEntityService().query(query, ctx);
+		const { data: records, cursor: newCursor, query: parsedQuery } = await this.getEntityService().executeOperation('query', query, ctx);
 
-		const result: any = {
+		const result: Record<string, any> = {
 			cursor: newCursor,
 			items: records,
 		};
 
 		if (req.debugMode) {
-			result.req = req;
 			result.criteria = {
 				inputQuery,
 				parsedQuery
 			};
+			result.request = sanitizeRequestForDebug(req);
 		}
 
 		return res.json(result);
@@ -543,7 +663,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		const inputQuery = deepCopy(query) as EntitySearchQuery<Sch>;
 
-		const results = await this.getEntityService().search(query, ctx);
+		const results = await this.getEntityService().executeOperation('search', query, ctx);
 
 		const { hits, ...rest } = results;
 		const response = {
@@ -554,7 +674,8 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		if (req.debugMode) {
 			Object.assign(response, {
 				inputQuery,
-				processingTimeMs: results.processingTimeMs
+				processingTimeMs: results.processingTimeMs,
+				request: sanitizeRequestForDebug(req)
 			});
 		}
 

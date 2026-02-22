@@ -1,13 +1,23 @@
 import type { EntityConfiguration, Schema, EntityIdentifiers, CreateEntityItem, UpdateEntityItem, EntityItem, Attribute, ResponseItem, UpsertItem } from "electrodb";
 import { createSchema, Entity } from "electrodb";
 
-import type { EntityQuery, FilterOperatorsExtended, EntityFilterCriteria } from './query-types';
+import type { EntityQuery, FilterOperatorsExtended, EntityFilterCriteria, EntitySelections } from './query-types';
 import type { BaseEntityService } from "./base-service";
+import type { ExecutionContext } from '../core/types/execution-context';
+import type {
+  CreateEntityResponse,
+  UpdateEntityResponse,
+  UpsertEntityResponse,
+  DeleteEntityResponse,
+  UpdateEntityOperators
+} from './crud-service';
+import type { SearchResult } from '../search/types';
 import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
 import { EntitySearchService } from '../search/services';
 import { DepIdentifier, IFilterAutoGenerationConfig, ISegmentAutoGenerationConfig } from "../interfaces";
 import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig, AccordionPageConfig, WizardPageConfigStructure, CustomPageConfigStructure } from '../ui-config-gen/templates/custom-page';
+import type { HttpRequestValidations, InputValidationRule } from "../validation";
 
 /**
  * @fileoverview Entity Schema and Type-Safe Helper Functions
@@ -594,6 +604,24 @@ export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
    * attributes: () => ({ userId: true, name: true, email: true })
    */
   attributes?: HydrateOptionForEntity<E> | (() => HydrateOptionForEntity<E>);
+
+  /**
+   * Relational integrity configuration.
+   */
+  integrity?: {
+    /**
+     * Whether to verify that the related entity exists before create/update.
+     */
+    existsCheck?: boolean;
+
+    /**
+     * Action to take when the parent entity is deleted.
+     * - 'cascade': Delete all children.
+     * - 'restrict': Prevent deletion if children exist.
+     * - 'set-null': Set the foreign key to null in all children.
+     */
+    onDelete?: 'cascade' | 'restrict' | 'set-null';
+  };
 };
 
 /**
@@ -616,6 +644,13 @@ export interface FW24AttributeExtensions {
   readonly isUnique?: boolean;
 
   /**
+   * Strategy for handling unique constraint collisions.
+   * - 'strict': (Default) Throw error if value is not unique.
+   * - 'enhance': Append suffix to make value unique (power feature).
+   */
+  readonly uniquenessStrategy?: 'strict' | 'enhance';
+
+  /**
    * Defines a relation with another entity.
    * Use the type-helper `createEntityRelation<EntitySchema>()` function for type-safe relation creation.
    * For circular dependencies, use `createEntityRelation<() => EntitySchema>()` with lazy loading.
@@ -627,6 +662,22 @@ export interface FW24AttributeExtensions {
    * Supports both readonly and mutable arrays for compatibility with 'as const' entity schemas.
    */
   readonly validations?: ReadonlyArray<any> | Array<any>;
+
+  /**
+   * Fine-grained Field Level Security (FLS) permissions.
+   */
+  readonly permissions?: {
+    /**
+     * Roles/groups that can read this attribute.
+     * If not provided, attribute is readable by anyone with entity access.
+     */
+    read?: string[] | Condition;
+    /**
+     * Roles/groups that can write/edit this attribute.
+     * If not provided, attribute is writable by anyone with entity access.
+     */
+    write?: string[] | Condition;
+  };
 
   /**
    * Enable compression for this attribute.
@@ -3943,7 +3994,7 @@ export interface EntitySchema<
   A extends string,
   F extends string,
   C extends string,
-  Opp extends TDefaultEntityOperations = TDefaultEntityOperations
+  Opp extends EntityOperationsConfig = TDefaultEntityOperations
 > extends Schema<A, F, C> {
   readonly model: Schema<A, F, C>[ 'model' ] & {
     readonly entityNamePlural: string;
@@ -3964,6 +4015,48 @@ export interface EntitySchema<
     readonly excludeAuditActions?: boolean, // default is false - disable automatic audit log actions for this entity
 
     readonly CRUDApiPath?: string, // default is ''
+    readonly softDelete?: boolean, // default is false
+
+    /**
+     * Caching configuration.
+     */
+    readonly cache?: {
+      /** Whether caching is enabled for this entity. */
+      enabled: boolean;
+      /** TTL for cache in seconds. Default: 3600 */
+      ttl?: number;
+      /** Cache key prefix. Default: entity name */
+      prefix?: string;
+    };
+
+    /**
+     * List of interceptors for this entity.
+     */
+    readonly interceptors?: ReadonlyArray<DepIdentifier<EntityInterceptor> | EntityInterceptor>;
+
+    /**
+     * Schema versioning and evolution.
+     */
+    readonly versioning?: {
+      /** Current schema version. */
+      version: string;
+      /** Map of transformers to migrate old versions to current. */
+      transformers?: Record<string, (data: any) => any>;
+      /** Attribute that stores the version. Default: '__v' */
+      versionAttribute?: string;
+    };
+
+    /**
+     * Workflow / State Machine configuration.
+     */
+    readonly workflow?: {
+      /** The attribute that tracks the state. Default: 'status' */
+      stateAttribute?: string;
+      /** Map of valid transitions. key is current state, value is array of next possible states. */
+      transitions?: Record<string, string[]>;
+      /** Map of operations allowed in each state. */
+      allowOperations?: Record<string, string[]>;
+    };
 
     /**
      * Entity metadata for UI rendering.
@@ -4243,57 +4336,275 @@ export interface EntitySchema<
 }
 
 /**
- * Default entity operations that are commonly used.
- * Use this as a base or define your own subset/superset.
+ * Interceptor for entity operations.
+ * Allows executing logic before/after any entity operation.
  */
-export const DefaultEntityOperations = {
-  get: "get",
-  list: "list",
-  query: "query",
-  create: "create",
-  upsert: "upsert",
-  update: "update",
-  delete: "delete",
-  duplicate: "duplicate",
-} as const;
+export interface EntityInterceptor {
+  /**
+   * Executed before the operation handler.
+   * Return a modified payload to change the input to the handler.
+   */
+  before?: (opCtx: any) => Promise<any | void>;
+
+  /**
+   * Executed after the operation handler completes successfully.
+   * Return a modified result to change what is returned to the caller.
+   */
+  after?: (opCtx: any, result: any) => Promise<any | void>;
+
+  /**
+   * Executed if the operation fails.
+   */
+  onError?: (opCtx: any, error: Error) => Promise<void>;
+}
+
+/**
+ * Configuration for an entity operation (action).
+ */
+export interface EntityOperationConfig {
+  /**
+   * Whether this operation is enabled.
+   * @default true
+   */
+  enabled?: boolean;
+
+  /**
+   * HTTP method for this operation's API endpoint.
+   */
+  method?: ApiMethod;
+
+  /**
+   * Custom path for this operation's API endpoint.
+   * If not provided, defaults to the operation name.
+   */
+  path?: string;
+
+  /**
+   * Name of the handler method on the entity service.
+   * If not provided, defaults to the operation name.
+   */
+  handler?: string;
+
+  /**
+   * Whether this is a bulk operation (operates on multiple records).
+   */
+  isBulk?: boolean;
+
+  /**
+   * Whether this operation requires a record ID in the path.
+   */
+  requiresId?: boolean;
+
+  /**
+   * Human readable name for the operation.
+   */
+  label?: string;
+
+  /**
+   * Tooltip for the operation in the UI.
+   */
+  tooltip?: string;
+
+  /**
+   * Icon for the operation button.
+   */
+  icon?: string;
+
+  /**
+   * Visibility condition for the operation.
+   */
+  visibility?: Condition;
+
+  /**
+   * Enablement condition for the operation.
+   */
+  enablement?: Condition;
+
+  /**
+   * Summary for documentation.
+   */
+  summary?: string;
+
+  /**
+   * Description for documentation.
+   */
+  description?: string;
+
+  /**
+   * Authorizer configuration for this operation's API endpoint.
+   */
+  authorizer?: any;
+
+  /**
+   * Validations for this operation's API endpoint.
+   */
+  validations?: InputValidationRule | HttpRequestValidations;
+
+  /**
+   * Specifies where this operation should appear in the UI.
+   */
+  uiLocation?: 'header' | 'row' | 'bulk' | 'none';
+
+  /**
+   * Whether to open this operation in a modal.
+   */
+  openInModal?: boolean;
+
+  /**
+   * Modal configuration if openInModal is true.
+   */
+  modalConfig?: IEntityPageActionModalConfig;
+
+  /**
+   * Operation guards that must pass for this operation to be executed.
+   * Can be a service method name or a function.
+   */
+  guards?: ReadonlyArray<string | ((payload: any, ctx?: ExecutionContext) => Promise<boolean> | boolean)>;
+
+  /**
+   * Input schema configuration for this operation.
+   */
+  input?: EntityOperationIOConfig;
+
+  /**
+   * Output schema configuration for this operation.
+   */
+  output?: EntityOperationIOConfig;
+}
+
+/**
+ * Configuration for operation Input/Output schemas.
+ */
+export interface EntityOperationIOConfig {
+  /**
+   * Reference entity attributes by name.
+   */
+  attributes?: ReadonlyArray<string>;
+
+  /**
+   * Use pre-defined profiles.
+   * - 'creatable': all attributes with isCreatable !== false
+   * - 'editable': all attributes with isEditable !== false
+   * - 'visible': all attributes with isVisible !== false
+   * - 'listable': all attributes with isListable !== false
+   * - 'identifiers': only primary identifier attributes
+   */
+  profile?: 'creatable' | 'editable' | 'visible' | 'listable' | 'identifiers' | 'all';
+
+  /**
+   * Define extra fields not in the entity schema.
+   */
+  extra?: Record<string, EntityAttribute>;
+}
+
+/**
+ * Map of operation configurations for an entity.
+ */
+export type EntityOperationsConfig = {
+  [ key: string ]: EntityOperationConfig | string;
+};
+
+import { DefaultEntityOperations } from "./constants";
+export { DefaultEntityOperations };
 
 /**
  * Type for the default entity operations.
- * Use this when you want all standard CRUD operations.
  */
 export type TDefaultEntityOperations = typeof DefaultEntityOperations;
 
 /**
+ * Options for getting an entity.
+ */
+export type EntityGetOptions<S extends EntitySchema<any, any, any, any>> = {
+  identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>,
+  attributes?: EntitySelections<S>
+}
+
+/**
+ * Type for an entity operation handler function.
+ */
+export type EntityOperationHandler<TInput = any, TOutput = any> = (payload: TInput, ctx?: ExecutionContext) => Promise<TOutput>;
+
+/**
+ * Helper to infer TypeScript types from declarative I/O configuration.
+ */
+export type InferIOType<
+  S extends EntitySchema<any, any, any>,
+  IO extends EntityOperationIOConfig | undefined
+> = IO extends undefined ? any :
+  (IO extends { profile: 'creatable' } ? CreateEntityItemTypeFromSchema<S> :
+   IO extends { profile: 'editable' } ? UpdateEntityItemTypeFromSchema<S> :
+   IO extends { profile: 'identifiers' } ? EntityIdentifiersTypeFromSchema<S> :
+   IO extends { profile: 'all' } ? EntityRecordTypeFromSchema<S> :
+   {}) &
+  (IO extends { attributes: ReadonlyArray<infer A> } ? Pick<EntityRecordTypeFromSchema<S>, Extract<A, keyof EntityRecordTypeFromSchema<S>>> : {}) &
+  (IO extends { extra: Record<infer K, any> } ? { [P in K]: any } : {});
+
+/**
+ * Options for updating an entity via executeOperation.
+ */
+export type EntityUpdateOptions<S extends EntitySchema<any, any, any, any>> = {
+  identifiers?: EntityIdentifiersTypeFromSchema<S>,
+  data: UpdateEntityItemTypeFromSchema<S>,
+  operators?: UpdateEntityOperators<S>
+} | UpdateEntityItemTypeFromSchema<S>;
+
+/**
  * Represents the input schemas for entity operations.
  * Provides type-safe mapping of operation names to their corresponding input types.
- * Extend this type for additional operations's input-schema types.
- * 
- * @template Sch - The entity schema type.
- * 
- * @example
- * ```ts
- * type UserOpsInputs = TEntityOpsInputSchemas<UserEntitySchema>;
- * // {
- * //   get: UserIdentifiers | UserIdentifiers[],
- * //   create: CreateUserItem,
- * //   update: UpdateUserItem,
- * //   ...
- * // }
- * ```
  */
 export type TEntityOpsInputSchemas<
   Sch extends EntitySchema<any, any, any, any>,
 > = {
     readonly [ opName in keyof Sch[ 'model' ][ 'entityOperations' ] ]
-    : opName extends 'get' ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
-    : opName extends 'list' ? never // list operations typically don't take identifiers as input
-    : opName extends 'query' ? never // query operations use EntityQuery type
-    : opName extends 'create' ? CreateEntityItemTypeFromSchema<Sch>
-    : opName extends 'upsert' ? UpsertEntityItemTypeFromSchema<Sch>
-    : opName extends 'update' ? UpdateEntityItemTypeFromSchema<Sch>
-    : opName extends 'delete' ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
-    : opName extends 'duplicate' ? EntityIdentifiersTypeFromSchema<Sch>
-    : {}
+    : Sch[ 'model' ][ 'entityOperations' ][ opName ] extends { input: infer IO }
+      ? (IO extends EntityOperationIOConfig ? InferIOType<Sch, IO> : any)
+      : opName extends 'get' ? EntityGetOptions<Sch>
+      : opName extends 'list' ? EntityQuery<Sch>
+      : opName extends 'query' ? EntityQuery<Sch>
+      : opName extends 'search' ? any // Search query type
+      : opName extends 'create' ? CreateEntityItemTypeFromSchema<Sch>
+      : opName extends 'upsert' ? UpsertEntityItemTypeFromSchema<Sch>
+      : opName extends 'update' ? EntityUpdateOptions<Sch>
+      : opName extends 'delete' ? EntityIdentifiersTypeFromSchema<Sch> | Array<EntityIdentifiersTypeFromSchema<Sch>>
+      : opName extends 'duplicate' ? EntityIdentifiersTypeFromSchema<Sch>
+      : opName extends 'batchDelete' ? { ids: Array<EntityIdentifiersTypeFromSchema<Sch>>, concurrent?: number }
+      : opName extends 'deleteByQuery' ? { filters: EntityFilterCriteria<Sch>, batchSize?: number, concurrent?: number, maxItems?: number }
+      : opName extends 'batchUpsert' ? { items: Array<UpsertEntityItemTypeFromSchema<Sch>>, options?: any }
+      : opName extends 'export' ? { query?: EntityQuery<Sch>, format?: 'json' | 'csv' }
+      : opName extends 'import' ? { items?: Array<CreateEntityItemTypeFromSchema<Sch>>, s3Source?: { bucket: string, key: string }, options?: { upsert?: boolean } }
+      : opName extends 'patch' ? { ids: Array<EntityIdentifiersTypeFromSchema<Sch>>, data: UpdateEntityItemTypeFromSchema<Sch> }
+      : opName extends 'restore' ? EntityIdentifiersTypeFromSchema<Sch>
+      : opName extends 'archive' ? EntityIdentifiersTypeFromSchema<Sch>
+      : any
+  }
+
+/**
+ * Represents the output types for entity operations.
+ */
+export type TEntityOpsOutputTypes<
+  Sch extends EntitySchema<any, any, any, any>,
+> = {
+    readonly [ opName in keyof Sch[ 'model' ][ 'entityOperations' ] ]
+    : Sch[ 'model' ][ 'entityOperations' ][ opName ] extends { output: infer IO }
+      ? (IO extends EntityOperationIOConfig ? InferIOType<Sch, IO> : any)
+      : opName extends 'get' ? EntityRecordTypeFromSchema<Sch> | undefined
+      : opName extends 'list' ? EntityRecordTypeFromSchema<Sch>[]
+      : opName extends 'query' ? EntityRecordTypeFromSchema<Sch>[]
+      : opName extends 'search' ? SearchResult<EntityRecordTypeFromSchema<Sch>>
+      : opName extends 'create' ? CreateEntityResponse<Sch>
+      : opName extends 'upsert' ? UpsertEntityResponse<Sch>
+      : opName extends 'update' ? UpdateEntityResponse<Sch>
+      : opName extends 'delete' ? DeleteEntityResponse<Sch>
+      : opName extends 'duplicate' ? EntityRecordTypeFromSchema<Sch>
+      : opName extends 'batchUpsert' ? Array<UpsertEntityResponse<Sch>>
+      : opName extends 'batchDelete' ? Array<DeleteEntityResponse<Sch>>
+      : opName extends 'export' ? { url?: string, data?: any[] }
+      : opName extends 'import' ? { count: number, results: Array<CreateEntityResponse<Sch> | UpsertEntityResponse<Sch>> }
+      : opName extends 'patch' ? Array<UpdateEntityResponse<Sch>>
+      : opName extends 'restore' ? UpdateEntityResponse<Sch>
+      : opName extends 'archive' ? UpdateEntityResponse<Sch>
+      : any
   }
 
 export type CreateElectroDBEntityOptions<S extends EntitySchema<any, any, any>> = {
@@ -4355,8 +4666,8 @@ export function createEntitySchema<
   A extends string,
   F extends string,
   C extends string,
-  S extends EntitySchema<A, F, C, Ops>,
-  Ops extends TDefaultEntityOperations = TDefaultEntityOperations,
+  Ops extends EntityOperationsConfig,
+  S extends EntitySchema<A, F, C, Ops>
 >(schema: S): S {
   // Automatically inject _actor field into every schema for audit tracking
   const enhancedSchema = {

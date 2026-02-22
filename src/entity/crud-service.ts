@@ -4,7 +4,7 @@ import { EventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
 import { isEmptyObject, removeEmpty } from "../utils";
 import { DefaultValidator, type IValidator } from "../validation";
-import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
+import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas, EntityIdentifiersTypeFromSchema } from "./base-entity";
 import { EntityValidationError } from "./errors/validation-error";
 import { Actor } from "../core/types/execution-context";
 import { entityFilterCriteriaToExpression } from "./query";
@@ -32,11 +32,12 @@ import { MetricObserver, SpanObserver, QueryObserver } from "../observability/ob
  * 
  */
 
-export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
+export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>, K extends keyof S[ 'model' ][ 'entityOperations' ] = any> {
     entityName: string;
     entityService: EntityServiceTypeFromSchema<S>;
 
-    crudType?: keyof TDefaultEntityOperations;
+    operationName?: K;
+    crudType?: string;
     actor?: Actor; // Actor context: comprehensive actor information including authentication details
     tenant?: any; // todo: define tenant context
 
@@ -55,12 +56,13 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
  */
 export interface GetEntityArgs<
     Sch extends EntitySchema<any, any, any>,
+    K extends keyof Sch[ 'model' ][ 'entityOperations' ] = 'get',
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
-> extends BaseEntityCrudArgs<Sch> {
+> extends BaseEntityCrudArgs<Sch, K> {
     /**
      * The ID of the entity to retrieve.
      */
-    id: OpsSchema[ 'get' ];
+    id: OpsSchema[ K ];
     /**
      * Optional array of attributes to include in the retrieved entity.
      */
@@ -92,7 +94,8 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
         actor,
         tenant,
 
-        crudType = 'get',
+        operationName = 'get',
+        crudType,
         logger = createLogger('CRUD-service:getEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
@@ -115,7 +118,7 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
 
     // // validate
     const validation = await validator.validateEntity({
-        operationName: crudType,
+        operationName: (operationName || crudType || 'get') as any,
         entityName,
         entityValidations: entityService.getEntityValidations(),
         overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
@@ -240,12 +243,13 @@ export async function getBatchEntity<S extends EntitySchema<any, any, any>>(opti
  */
 export interface CreateEntityArgs<
     Sch extends EntitySchema<any, any, any>,
+    K extends keyof Sch[ 'model' ][ 'entityOperations' ] = 'create',
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
-> extends BaseEntityCrudArgs<Sch> {
+> extends BaseEntityCrudArgs<Sch, K> {
     /**
      * The data for creating the entity.
      */
-    data: OpsSchema[ 'create' ];
+    data: OpsSchema[ K ];
 }
 
 export type CreateEntityResponse<Sch extends EntitySchema<any, any, any>> = {
@@ -268,7 +272,8 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
         actor,
         tenant,
 
-        crudType = 'create',
+        operationName = 'create',
+        crudType,
         logger = createLogger('CRUD-service:createEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
@@ -287,7 +292,7 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
 
     // validate
     const validation = await validator.validateEntity({
-        operationName: crudType,
+        operationName: (operationName || crudType || 'create') as any,
         entityName,
         entityValidations: entityService.getEntityValidations(),
         overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
@@ -306,7 +311,7 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     // }
 
     const entity = await QueryObserver.track(entityName, 'create', () =>
-        entityService.getRepository().create(data).go({ ...QueryObserver.getCapacityGoOptions() })
+        entityService.getRepository().create(data).go({ ...QueryObserver.getCapacityGoOptions(), ...(options as any)?.goOptions })
     );
 
     // post events
@@ -326,12 +331,13 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
  */
 export interface UpsertEntityArgs<
     Sch extends EntitySchema<any, any, any>,
+    K extends keyof Sch[ 'model' ][ 'entityOperations' ] = 'upsert',
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
-> extends BaseEntityCrudArgs<Sch> {
+> extends BaseEntityCrudArgs<Sch, K> {
     /**
      * The data for creating the entity.
      */
-    data: OpsSchema[ 'upsert' ];
+    data: OpsSchema[ K ];
 }
 
 export type UpsertEntityResponse<Sch extends EntitySchema<any, any, any>> = {
@@ -356,7 +362,8 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
         actor,
         tenant,
 
-        crudType = 'upsert',
+        operationName = 'upsert',
+        crudType,
         logger = createLogger('CRUD-service:upsertEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
@@ -375,7 +382,7 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
 
     // validate
     const validation = await validator.validateEntity({
-        operationName: crudType,
+        operationName: (operationName || crudType || 'upsert') as any,
         entityName,
         entityValidations: entityService.getEntityValidations(),
         overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
@@ -396,7 +403,7 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
     // Use "all_old" to get the previous item state - allows us to detect create vs update
     // If oldData is empty/null, it was a CREATE. If it has data, it was an UPDATE.
     const entity = await QueryObserver.track(entityName, 'upsert', () =>
-        entityService.getRepository().upsert(data as any).go({ response: "all_old", ...QueryObserver.getCapacityGoOptions() })
+        entityService.getRepository().upsert(data as any).go({ response: "all_old", ...QueryObserver.getCapacityGoOptions(), ...(options as any)?.goOptions })
     );
 
     const wasCreated = !entity.data || Object.keys(entity.data).length === 0;
@@ -709,7 +716,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
         entities = await QueryObserver.track(entityName, 'list', () =>
-            indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination), ...QueryObserver.getCapacityGoOptions() }),
+            indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination), ...QueryObserver.getCapacityGoOptions(), ...(query as any).goOptions }),
             { filters, indexName: matchResult.indexName, pagination }
         );
     } else {
@@ -865,16 +872,17 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
  */
 export interface UpdateEntityArgs<
     Sch extends EntitySchema<any, any, any>,
+    K extends keyof Sch[ 'model' ][ 'entityOperations' ] = 'update',
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
-> extends BaseEntityCrudArgs<Sch> {
+> extends BaseEntityCrudArgs<Sch, K> {
     /**
      * The Identifiers of the entity to update.
      */
-    id: OpsSchema[ 'get' ];
+    id: EntityIdentifiersTypeFromSchema<Sch>; // Update always uses identifiers to find the record
     /**
      * The data to update the entity with.
      */
-    data: OpsSchema[ 'update' ];
+    data: OpsSchema[ K ];
     /**
      * Optional attributes for patch operation.
      */
@@ -998,7 +1006,8 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         entityService,
         actor,
         tenant,
-        crudType = 'update',
+        operationName = 'update',
+        crudType,
         logger = createLogger('CRUD-service:updateEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
@@ -1017,7 +1026,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
 
     // validate
     const validation = await validator.validateEntity({
-        operationName: crudType,
+        operationName: (operationName || crudType || 'update') as any,
         entityName,
         entityValidations: entityService.getEntityValidations(),
         overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
@@ -1114,6 +1123,10 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         query.remove(operators.remove as any);
     }
 
+    if (options.conditions) {
+        query.where((attr: any, op: any) => entityFilterCriteriaToExpression(options.conditions, attr, op));
+    }
+
     const entity = await QueryObserver.track(entityName, 'update', () =>
         query.go({ ...QueryObserver.getCapacityGoOptions() })
     );
@@ -1134,12 +1147,13 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
  */
 export interface DeleteEntityArgs<
     Sch extends EntitySchema<any, any, any>,
+    K extends keyof Sch[ 'model' ][ 'entityOperations' ] = 'delete',
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
-> extends BaseEntityCrudArgs<Sch> {
+> extends BaseEntityCrudArgs<Sch, K> {
     /**
      * The ID of the entity to be deleted.
      */
-    id: OpsSchema[ 'delete' ];
+    id: OpsSchema[ K ];
 }
 
 /**
@@ -1166,7 +1180,8 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
         actor,
         tenant,
 
-        crudType = 'delete',
+        operationName = 'delete',
+        crudType,
         logger = createLogger('CRUD-service:deleteEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
@@ -1188,7 +1203,7 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
 
     // validate
     const validation = await validator.validateEntity({
-        operationName: crudType,
+        operationName: (operationName || crudType || 'delete') as any,
         entityName,
         entityValidations: entityService.getEntityValidations(),
         overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
@@ -1218,12 +1233,13 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
  */
 export interface DeleteBatchEntityArgs<
     Sch extends EntitySchema<any, any, any>,
+    K extends keyof Sch[ 'model' ][ 'entityOperations' ] = 'batchDelete',
     OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
-> extends BaseEntityCrudArgs<Sch> {
+> extends BaseEntityCrudArgs<Sch, K> {
     /**
      * Array of entity IDs to delete.
      */
-    ids: Array<OpsSchema[ 'delete' ]>;
+    ids: Array<TEntityOpsInputSchemas<Sch>[ 'delete' ]>;
     /**
      * Optional number of concurrent batch operations (default: 1).
      */
@@ -1235,6 +1251,91 @@ export interface DeleteBatchEntityArgs<
  * @param options - The options for deleting the entities.
  * @returns The unprocessed items that couldn't be deleted.
  */
+/**
+ * Represents the arguments for batch creating-OR-updating entities.
+ * @template Sch - The entity schema type.
+ * @template OpsSchema - The input schemas for entity operations.
+ */
+export interface UpsertBatchEntityArgs<
+    Sch extends EntitySchema<any, any, any>,
+    K extends keyof Sch[ 'model' ][ 'entityOperations' ] = 'batchUpsert',
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> extends BaseEntityCrudArgs<Sch, K> {
+    /**
+     * Array of entity data to create or update.
+     */
+    items: Array<TEntityOpsInputSchemas<Sch>[ 'upsert' ]>;
+    /**
+     * Optional number of concurrent batch operations (default: 1).
+     */
+    concurrent?: number;
+}
+
+/**
+ * Upserts multiple entities in a batch operation.
+ * @param options - The options for upserting the entities.
+ * @returns The results and any unprocessed items.
+ */
+export async function upsertBatchEntity<S extends EntitySchema<any, any, any>>(options: UpsertBatchEntityArgs<S>) {
+    const {
+        items,
+        entityName,
+        entityService,
+        concurrent = 1,
+
+        actor,
+        tenant,
+
+        operationName = 'batchUpsert',
+        crudType,
+        logger = createLogger('CRUD-service:upsertBatchEntity'),
+        validator = DefaultValidator,
+        authorizer = Authorizer.Default,
+        eventDispatcher = EventDispatcher.Default,
+    } = options;
+
+    logger.debug(`Called EntityCrud ~ upsertBatchEntity ~ entityName: ${entityName}:`, { count: items.length, concurrent });
+
+    // Validate each item in the batch
+    const validations = await Promise.all(items.map(async item =>
+        validator.validateEntity({
+            operationName: (operationName || crudType || 'upsert') as any,
+            entityName,
+            entityValidations: entityService.getEntityValidations(),
+            overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+            input: item,
+            actor: actor
+        })
+    ));
+
+    // Check for validation errors
+    const validationErrors = validations
+        .map((validation, index) => ({ validation, index }))
+        .filter(({ validation }) => !validation.pass);
+
+    if (validationErrors.length > 0) {
+        throw new EntityValidationError(validationErrors.flatMap(({ validation, index }) =>
+            (validation.errors || []).map(error => ({
+                ...error,
+                message: `Item ${index}: ${error.message}`
+            }))
+        ));
+    }
+
+    const bulkOptions: Partial<BulkOptions> = {
+        concurrency: concurrent
+    };
+
+    const electroResult = await QueryObserver.track(entityName, 'batchUpsert', () =>
+        entityService.getRepository().put(items as any).go(bulkOptions),
+        { itemCount: items.length }
+    );
+
+    logger.debug(`Completed EntityCrud ~ upsertBatchEntity ~ entityName: ${entityName} ~ count:`, items.length);
+
+    return electroResult;
+}
+
 export async function deleteBatchEntity<S extends EntitySchema<any, any, any>>(options: DeleteBatchEntityArgs<S>) {
     const {
         ids,
@@ -1245,7 +1346,8 @@ export async function deleteBatchEntity<S extends EntitySchema<any, any, any>>(o
         actor,
         tenant,
 
-        crudType = 'delete',
+        operationName = 'batchDelete',
+        crudType,
         logger = createLogger('CRUD-service:deleteBatchEntity'),
         validator = DefaultValidator,
         authorizer = Authorizer.Default,
@@ -1260,7 +1362,7 @@ export async function deleteBatchEntity<S extends EntitySchema<any, any, any>>(o
     // Validate each item in the batch
     const validations = await Promise.all(identifiersBatch.map(async identifiers =>
         validator.validateEntity({
-            operationName: crudType,
+            operationName: (operationName || crudType || 'delete') as any,
             entityName,
             entityValidations: entityService.getEntityValidations(),
             overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),

@@ -26,6 +26,11 @@ export const uploadFile = async (fileName: string, contents: any, bucketName: st
     });
 };
 
+export const getSignedUrlForDownload = async (bucketName: string, fileName: string, expiresIn = 15 * 60) => {
+    const command = new GetObjectCommand({ Bucket: bucketName, Key: fileName });
+    return await getSignedUrlForCommand(command, { expiresIn });
+};
+
 export const deleteFile = async (fileName: string, bucketName: string) => {
     return SpanObserver.wrap('s3.delete', async () => {
         const deleteCommand = new DeleteObjectCommand({

@@ -614,7 +614,7 @@ describe('EntitySchemaValidator', () => {
           },
         });
 
-        expect(() => validator.validateSchema(schema, {})).toThrow(/Invalid options configuration/);
+        expect(() => validator.validateSchema(schema, {})).toThrow(/Options API config must specify apiUrl and responseKey/);
       });
 
       it('should validate option mapping', () => {

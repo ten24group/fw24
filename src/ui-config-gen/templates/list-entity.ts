@@ -158,10 +158,36 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     // Automatically generate audit log actions if observability is enabled
     const auditActions = generateListAuditActions(entityName, entityNamePlural, hasObservability || false, excludeAuditActions || false, globalUIConfigOptions);
 
-    // Combine: default + custom + audit
+    // Build custom header actions from entity operations
+    const ops = entityService.getOperationsConfig();
+    const customHeaderActions: IEntityPageAction[] = [];
+    Object.entries(ops).forEach(([ opName, config ]) => {
+        if (config.enabled !== false && config.uiLocation === 'header' && !['get', 'list', 'create', 'update', 'delete'].includes(opName)) {
+            const isApiAction = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(config.method || '');
+
+            customHeaderActions.push({
+                id: opName,
+                label: config.label || pascalCase(opName),
+                icon: config.icon,
+                tooltip: config.tooltip,
+                visibility: config.visibility,
+                enablement: config.enablement,
+                openInModal: config.openInModal,
+                modalConfig: config.modalConfig,
+                url: config.path ? (config.path.startsWith('/') ? config.path : `/${config.path}`) : `/${opName}`,
+                apiConfig: (!config.openInModal && isApiAction) ? {
+                    apiMethod: config.method as any,
+                    apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}${config.path || `/${opName}`}`
+                } : undefined
+            });
+        }
+    });
+
+    // Combine: default + custom (from options) + dynamic (from ops) + audit
     const pageHeaderActions = [
         ...defaultPageHeaderActions,
         ...(options.pageHeaderActions || []),
+        ...customHeaderActions,
         ...auditActions
     ];
 
@@ -240,12 +266,62 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     // 3. Auto-generate or pass through segments
     const segments = generateSegments(properties, entityService, globalUIConfigOptions, tableConfig?.segments);
 
+    // 4. Auto-generate bulk actions based on entity operations
+    const ops = entityService.getOperationsConfig();
+    const generatedBulkActions: IEntityPageAction[] = [ ...(tableConfig?.bulkActions || []) ];
+
+    if (ops.batchDelete?.enabled !== false && !generatedBulkActions.some(a => a.id === 'batch-delete')) {
+        generatedBulkActions.push({
+            id: 'batch-delete',
+            label: 'Delete Selected',
+            icon: 'DeleteOutlined',
+            openInModal: true,
+            modalConfig: {
+                modalType: 'confirm',
+                modalPageConfig: {
+                    title: `Delete Selected ${entityNamePascalCase}?`,
+                    content: `Are you sure you want to delete the selected ${entityNamePascalCase}? This action cannot be undone.`
+                },
+                apiConfig: {
+                    apiMethod: 'POST',
+                    apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}/batch-delete`,
+                },
+                refreshParentOnSuccess: true
+            }
+        });
+    }
+
+    // Add custom bulk actions from entity operations
+    Object.entries(ops).forEach(([ opName, config ]) => {
+        if (config.enabled !== false && config.uiLocation === 'bulk' && !generatedBulkActions.some(a => a.id === opName)) {
+            generatedBulkActions.push({
+                id: opName,
+                label: config.label || pascalCase(opName),
+                icon: config.icon,
+                tooltip: config.tooltip,
+                visibility: config.visibility,
+                enablement: config.enablement,
+                openInModal: config.openInModal,
+                modalConfig: config.modalConfig,
+                apiConfig: config.openInModal ? undefined : {
+                    apiMethod: config.method || 'POST',
+                    apiUrl: `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}${config.path || `/${opName}`}`
+                }
+            });
+        }
+    });
+
     return {
         apiConfig,
         propertiesConfig: formattedProps,  // Row actions are merged into identifier field's actions
         entityName,  // Add entityName to config for evaluation system
-        ...(tableConfig?.bulkActions && { bulkActions: tableConfig.bulkActions }),  // Include bulkActions if provided
-        ...(tableConfig?.rowSelection && { rowSelection: tableConfig.rowSelection }),  // Include rowSelection if provided
+        ...(generatedBulkActions.length > 0 && { bulkActions: generatedBulkActions }),
+        ...(tableConfig?.rowSelection && {
+            rowSelection: {
+                enabled: tableConfig.rowSelection.enabled ?? (generatedBulkActions.length > 0),
+                ...tableConfig.rowSelection
+            }
+        }),
         ...(tableConfig?.expandable && { expandableConfig: tableConfig.expandable }),  // Include expandable config if provided
         ...(segments && segments.length > 0 && { segments }),  // Include segments if generated/provided
         fetchStrategy: tableConfig?.fetchStrategy || 'eager', // Default to 'eager' fetching
