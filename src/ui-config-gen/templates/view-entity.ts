@@ -1,7 +1,6 @@
-import { Schema } from "electrodb";
-import { BaseEntityService, EntitySchema, TIOSchemaAttribute, TIOSchemaAttributesMap, EntityViewPageConfig, ISectionsConfig, ISectionConfig, IEntityConfigReference } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, EntityViewPageConfig, ISectionsConfig, IErrorHandlingConfig, IRetryConfig, IDataQualityConfig } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
-import { formatEntityAttributesForDetail, mergeFieldVisibility, processSectionsConfig } from "./util";
+import { formatEntityAttributesForDetail, mergeFieldVisibility, processSectionsConfig, groupPageHeaderActions } from "./util";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
 import { DefaultLogger } from "../../logging";
 import { IApplicationConfig } from "../../interfaces/config";
@@ -12,6 +11,8 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
     entityNamePlural: string;
     CRUDApiPath?: string;
     properties: TIOSchemaAttributesMap<S>;
+    excludeFromAdminUpdate?: boolean;
+    excludeFromAdminDelete?: boolean;
     actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
     /**
      * Breadcrumbs with template support
@@ -41,12 +42,25 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
      * Sections configuration for multi-section detail pages
      */
     sectionsConfig?: ISectionsConfig;
+    /**
+     * Loading skeleton configuration.
+     * @default { type: 'skeleton' }
+     */
+    loading?: EntityViewPageConfig['loading'];
+    /** Data quality / completeness indicator (#65) */
+    dataQuality?: IDataQualityConfig;
+    /** Error handling configuration (#58) */
+    errorHandling?: IErrorHandlingConfig;
+    /** Retry configuration (#58) */
+    retry?: IRetryConfig;
     /** Global UI config options */
     globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ];
     /** Whether observability is enabled (passed from UI config gen) */
     hasObservability?: boolean;
     /** Exclude audit actions for this entity */
     excludeAuditActions?: boolean;
+    /** Auto-group secondary actions into a "More" dropdown */
+    autoGroupActions?: boolean;
 }
 
 /**
@@ -98,34 +112,48 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     options: ViewEntityPageOptions<S>,
     entityService: BaseEntityService<S>
 ) => {
-    const { entityName, CRUDApiPath, actions, breadcrumbs, pageTitle, hasObservability, excludeAuditActions, globalUIConfigOptions } = options;
+    const { entityName, entityNamePlural, CRUDApiPath, actions, breadcrumbs, pageTitle, excludeFromAdminUpdate, excludeFromAdminDelete, hasObservability, excludeAuditActions, autoGroupActions, globalUIConfigOptions } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
     const entityNamePascalCase = pascalCase(entityName);
 
     const detailsPageConfig = makeViewEntityDetailConfig(options, entityService);
 
-    // Default back action
-    const defaultActions: IEntityPageAction[] = [
+    const primaryActions: IEntityPageAction[] = [
         {
-            label: "Back",
-            template: `Back`,
-            url: `/list-${entityNameLower}`,
-            icon: "arrow-left"
+            id: 'back',
+            label: 'Back',
+            url: '__back__',
+            icon: 'ArrowLeftOutlined',
+            hideInModal: true,
         },
         {
+            id: 'go-to-list',
+            label: `All ${entityNamePlural}`,
+            url: `/list-${entityNameLower}`,
+        },
+    ];
+
+    if (!excludeFromAdminUpdate) {
+        primaryActions.push({
+            id: 'edit',
             label: "Edit",
-            template: `Edit`, // Dynamic template showing record ID
+            template: `Edit`,
             url: `/edit-${entityNameLower}/:id`,
-            icon: "edit",
-        }
+            icon: "EditOutlined",
+        });
+    }
+
+    const secondaryActions: IEntityPageAction[] = [
+        ...(actions || []),
     ];
 
     // Automatically generate audit log actions if observability is enabled
     const auditActions = generateAuditLogActions(entityName, entityNamePascalCase, hasObservability || false, excludeAuditActions || false, globalUIConfigOptions);
+    secondaryActions.push(...auditActions);
 
-    // Combine all actions
-    const pageHeaderActions = [ ...defaultActions, ...(actions || []), ...auditActions ];
+    const shouldGroup = autoGroupActions ?? true;
+    const pageHeaderActions = groupPageHeaderActions(primaryActions, secondaryActions, shouldGroup);
 
     return {
         // Use custom pageTitle if provided, otherwise default
@@ -162,6 +190,24 @@ export function makeViewEntityDetailConfig<S extends EntitySchema<string, string
         },
         propertiesConfig: formattedProps,  // Properties with field visibility merged
         entityName,  // Add entityName to config for evaluation system
+    };
+
+    // Add loading config if provided
+    if (options.loading) {
+        detailsPageConfig.loading = options.loading;
+    }
+
+    // Add data quality config if provided
+    if (options.dataQuality) {
+        detailsPageConfig.dataQuality = options.dataQuality;
+    }
+
+    // Add error handling / retry configs if provided
+    if (options.errorHandling) {
+        detailsPageConfig.errorHandling = options.errorHandling;
+    }
+    if (options.retry) {
+        detailsPageConfig.retry = options.retry;
     }
 
     // Add columnsConfig if provided

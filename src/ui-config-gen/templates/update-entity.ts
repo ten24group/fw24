@@ -1,6 +1,6 @@
-import { BaseEntityService, EntityEditPageConfig, EntitySchema, TIOSchemaAttributesMap, ISectionsConfig } from "../../entity";
+import { BaseEntityService, EntityEditPageConfig, EntitySchema, TIOSchemaAttributesMap, ISectionsConfig, IErrorHandlingConfig, IRetryConfig } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
-import { formatEntityAttributesForUpdate, mergeButtons, mergeFieldVisibility, processSectionsConfig } from "./util";
+import { formatEntityAttributesForUpdate, mergeButtons, mergeFieldVisibility, processSectionsConfig, groupPageHeaderActions } from "./util";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
 import { DefaultLogger } from "../../logging";
 import { IApplicationConfig } from "../../interfaces/config";
@@ -10,6 +10,9 @@ export type UpdateEntityPageOptions<S extends EntitySchema<string, string, strin
     entityNamePlural: string,
     CRUDApiPath?: string,
     properties: TIOSchemaAttributesMap<S>,
+    excludeFromAdminDelete?: boolean,
+    excludeFromAdminCreate?: boolean,
+    excludeFromAdminDuplicate?: boolean,
     actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>,
     /**
      * Breadcrumbs with template support
@@ -47,9 +50,20 @@ export type UpdateEntityPageOptions<S extends EntitySchema<string, string, strin
      */
     sectionsConfig?: ISectionsConfig;
     /**
+     * Loading skeleton configuration.
+     * @default { type: 'skeleton' }
+     */
+    loading?: EntityEditPageConfig['loading'];
+    /** Error handling configuration (#58) */
+    errorHandling?: IErrorHandlingConfig;
+    /** Retry configuration (#58) */
+    retry?: IRetryConfig;
+    /**
      * Global UI config options (for passing global configuration like duplicatedFieldDetection)
      */
     globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
+    /** Auto-group secondary actions into a "More" dropdown */
+    autoGroupActions?: boolean;
 };
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
@@ -57,24 +71,36 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     entityService: BaseEntityService<S>
 ) => {
 
-    const{ entityName, actions, breadcrumbs, CRUDApiPath, pageTitle, successMessage } = options;
+    const{ entityName, entityNamePlural, actions, breadcrumbs, CRUDApiPath, pageTitle, successMessage, errorHandling, retry, excludeFromAdminDelete, excludeFromAdminCreate, excludeFromAdminDuplicate, autoGroupActions } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
     const entityNamePascalCase = pascalCase(entityName);
 
     const formPageConfig = makeUpdateEntityFormConfig(options, entityService);
 
-    // Default back action with templates
-    const defaultActions: IEntityPageAction[] = [
+    const primaryActions: IEntityPageAction[] = [
         {
-            label:  "Back",
-            template: `Back`,
-            url:    `/list-${entityNameLower}`
+            id: 'back',
+            label: 'Back',
+            url: '__back__',
+            icon: 'ArrowLeftOutlined',
+            hideInModal: true,
         },
         {
+            id: 'go-to-list',
+            label: `All ${entityNamePlural}`,
+            url: `/list-${entityNameLower}`,
+        },
+    ];
+
+    const secondaryActions: IEntityPageAction[] = [];
+
+    if (!excludeFromAdminDelete) {
+        secondaryActions.push({
+            id: 'delete',
             icon: 'delete',
             label: `Delete`,
-            template: `Delete`, // Dynamic label showing record ID
+            template: `Delete`,
             openInModal: true,
             modalConfig: {
                 modalType: 'confirm',
@@ -91,11 +117,15 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 errorMessage: `Failed to delete ${entityNamePascalCase}`,
                 submitSuccessRedirect: `/list-${entityNameLower}`
             }
-        },
-        {
+        });
+    }
+
+    if (!excludeFromAdminDuplicate && !excludeFromAdminCreate) {
+        secondaryActions.push({
+            id: 'duplicate',
             icon: 'copy',
             label: `Duplicate`,
-            template: `Duplicate`, // Dynamic label showing record ID
+            template: `Duplicate`,
             openInModal: true,
             modalConfig: {
                 modalType: 'confirm',
@@ -112,11 +142,14 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 errorMessage: `Failed to duplicate ${entityNamePascalCase}`,
                 submitSuccessRedirect: `/list-${entityNameLower}`
             }
-        }
-    ];
+        });
+    }
 
-    // Combine default actions with custom actions
-    const pageHeaderActions = [...defaultActions, ...(actions || [])];
+    // Add custom actions to secondary
+    secondaryActions.push(...(actions || []));
+
+    const shouldGroup = autoGroupActions ?? true;
+    const pageHeaderActions = groupPageHeaderActions(primaryActions, secondaryActions, shouldGroup);
 
 
     // Add cancel button to the merged form buttons
@@ -133,7 +166,9 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
             ...formPageConfig,
             formButtons: finalFormButtons,  // Use merged buttons with cancel added
             submitSuccessRedirect: `/list-${entityNameLower}`,
-            ...(successMessage && { successMessage })
+            ...(successMessage && { successMessage }),
+            ...(errorHandling && { errorHandling }),
+            ...(retry && { retry }),
         }
     };
 };
@@ -143,12 +178,12 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
     entityService: BaseEntityService<S>
 ){
 
-    const{ entityName, properties, CRUDApiPath, formConfig, sectionsConfig, globalUIConfigOptions } = options;
+    const{ entityName, properties, CRUDApiPath, formConfig, sectionsConfig, loading, globalUIConfigOptions } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
 
     // 1. Generate base properties from schema
-    let formattedProps = formatEntityAttributesForUpdate(Array.from(properties.values()), entityService);
+    let formattedProps = formatEntityAttributesForUpdate(Array.from(properties.values()), entityService, globalUIConfigOptions);
 
     // 2. Merge field-level visibility/enablement/helpText/placeholder from formConfig.fields
     if (formConfig?.fields) {
@@ -180,6 +215,10 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
         formButtons: finalButtons,  // Merged buttons
         propertiesConfig: formattedProps,  // Properties with field visibility merged
         entityName,  // Add entityName to config for evaluation system
+        ...(formConfig?.stickyActions != null && { stickyActions: formConfig.stickyActions }),
+        ...(formConfig?.reviewBeforeSave && { reviewBeforeSave: formConfig.reviewBeforeSave }),
+        ...(formConfig?.prefill && { prefill: formConfig.prefill }),
+        ...(loading && { loading }),
     };
 
     // Add columnsConfig if provided

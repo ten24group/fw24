@@ -1,4 +1,3 @@
-import { type } from 'os';
 import MakeCreateEntityConfig from './templates/create-entity';
 import MakeUpdateEntityConfig from './templates/update-entity';
 import MakeListEntityConfig from './templates/list-entity';
@@ -179,6 +178,11 @@ export class EntityUIConfigGen {
             entitySchema = this.transformLegacyConfig(entitySchema);
             const entityDefaultOpsSchema = service.getOpsDefaultIOSchema();
 
+            // Resolve autoGroupActions: entity-level override > global config > default (true)
+            const autoGroupActions = entitySchema.model.autoGroupActions
+                ?? globalUIConfigOptions?.autoGroupActions
+                ?? true;
+
             if (!entitySchema.model.excludeFromAdminCreate) {
                 const createConfig = MakeCreateEntityConfig({
                     entityName,
@@ -189,6 +193,14 @@ export class EntityUIConfigGen {
                     breadcrumbs: entitySchema.model.createPageConfig?.breadcrumbs || entitySchema.model.createPageBreadcrumbs,
                     columnsConfig: entitySchema.model.createPageConfig?.columnsConfig || entitySchema.model.createPageColumnsConfig,
                     formConfig: entitySchema.model.createPageConfig?.formConfig,
+                    sectionsConfig: entitySchema.model.createPageConfig?.sectionsConfig,
+                    loading: entitySchema.model.createPageConfig?.loading,
+                    pageTitle: entitySchema.model.createPageConfig?.pageTitle,
+                    successMessage: entitySchema.model.createPageConfig?.successMessage,
+                    errorHandling: entitySchema.model.createPageConfig?.errorHandling,
+                    retry: entitySchema.model.createPageConfig?.retry,
+                    globalUIConfigOptions,
+                    autoGroupActions,
                 }, service);
                 entityConfigs[ `create-${entityName.toLowerCase()}` ] = createConfig;
             }
@@ -199,11 +211,22 @@ export class EntityUIConfigGen {
                     entityNamePlural: entitySchema.model.entityNamePlural,
                     CRUDApiPath: entitySchema.model.CRUDApiPath,
                     properties: entityDefaultOpsSchema.update.input,
+                    excludeFromAdminDelete: entitySchema.model.excludeFromAdminDelete,
+                    excludeFromAdminCreate: entitySchema.model.excludeFromAdminCreate,
+                    excludeFromAdminDuplicate: entitySchema.model.excludeFromAdminDuplicate,
                     // Use new nested config if available, fallback to old
                     actions: entitySchema.model.editPageConfig?.actions || entitySchema.model.editPageActions,
                     breadcrumbs: entitySchema.model.editPageConfig?.breadcrumbs || entitySchema.model.editPageBreadcrumbs,
                     columnsConfig: entitySchema.model.editPageConfig?.columnsConfig || entitySchema.model.editPageColumnsConfig,
                     formConfig: entitySchema.model.editPageConfig?.formConfig,
+                    sectionsConfig: entitySchema.model.editPageConfig?.sectionsConfig,
+                    loading: entitySchema.model.editPageConfig?.loading,
+                    pageTitle: entitySchema.model.editPageConfig?.pageTitle,
+                    successMessage: entitySchema.model.editPageConfig?.successMessage,
+                    errorHandling: entitySchema.model.editPageConfig?.errorHandling,
+                    retry: entitySchema.model.editPageConfig?.retry,
+                    globalUIConfigOptions,
+                    autoGroupActions,
                 }, service);
                 entityConfigs[ `edit-${entityName.toLowerCase()}` ] = updateConfig;
             }
@@ -222,12 +245,18 @@ export class EntityUIConfigGen {
                     // Use new nested config if available, fallback to old
                     pageHeaderActions: entitySchema.model.listPageConfig?.actions || entitySchema.model.listPageActions,
                     breadcrumbs: entitySchema.model.listPageConfig?.breadcrumbs || entitySchema.model.listPageBreadcrumbs,
+                    pageTitle: entitySchema.model.listPageConfig?.pageTitle,
                     // Legacy sort fallback (tableConfig.defaultSort is handled directly in list-entity.ts)
                     defaultSort: entitySchema.model.listPageConfig?.defaultSort ?? entitySchema.model.listPageDefaultSort,
                     tableConfig: entitySchema.model.listPageConfig?.tableConfig,
+                    sectionsConfig: entitySchema.model.listPageConfig?.sectionsConfig,
+                    loading: entitySchema.model.listPageConfig?.loading,
+                    errorHandling: entitySchema.model.listPageConfig?.errorHandling,
+                    retry: entitySchema.model.listPageConfig?.retry,
                     globalUIConfigOptions,
                     hasObservability,
                     excludeAuditActions: entitySchema.model.excludeAuditActions,
+                    autoGroupActions,
                 }, service);
                 entityConfigs[ `list-${entityName.toLowerCase()}` ] = listConfig;
             }
@@ -238,15 +267,23 @@ export class EntityUIConfigGen {
                     entityNamePlural: entitySchema.model.entityNamePlural,
                     properties: entityDefaultOpsSchema.get.output,
                     CRUDApiPath: entitySchema.model.CRUDApiPath,
+                    excludeFromAdminUpdate: entitySchema.model.excludeFromAdminUpdate,
+                    excludeFromAdminDelete: entitySchema.model.excludeFromAdminDelete,
                     // Use new nested config if available, fallback to old
                     actions: entitySchema.model.viewPageConfig?.actions || entitySchema.model.viewPageActions,
                     breadcrumbs: entitySchema.model.viewPageConfig?.breadcrumbs || entitySchema.model.viewPageBreadcrumbs,
                     columnsConfig: entitySchema.model.viewPageConfig?.columnsConfig || entitySchema.model.viewPageColumnsConfig,
                     fields: entitySchema.model.viewPageConfig?.fields,
                     sectionsConfig: entitySchema.model.viewPageConfig?.sectionsConfig,
+                    loading: entitySchema.model.viewPageConfig?.loading,
+                    pageTitle: entitySchema.model.viewPageConfig?.pageTitle,
+                    dataQuality: entitySchema.model.viewPageConfig?.dataQuality,
+                    errorHandling: entitySchema.model.viewPageConfig?.errorHandling,
+                    retry: entitySchema.model.viewPageConfig?.retry,
                     globalUIConfigOptions,
                     hasObservability,
                     excludeAuditActions: entitySchema.model.excludeAuditActions,
+                    autoGroupActions,
                 }, service);
                 entityConfigs[ `view-${entityName.toLowerCase()}` ] = viewConfig;
             }

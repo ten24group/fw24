@@ -726,6 +726,17 @@ export interface BaseFieldMetadata {
   isSearchable?: boolean; // if the field is searchable
   isSortable?: boolean; // if the field is sortable
 
+  /**
+   * Permission shorthand (#102). Groups that can see/use this field.
+   * - Single group: `'admin'`
+   * - Multiple groups (any): `['admin', 'manager']`
+   *
+   * Expanded by ui24's `expandPermissions` pipeline step to:
+   *   `visibility: { actor: { groups: { inList: [...groups] } } }`
+   * Merged with any explicit `visibility` condition via AND.
+   */
+  permission?: string | string[];
+
   // Display configuration
   placeholder?: string;
   helpText?: string;
@@ -908,6 +919,172 @@ export interface BaseFieldMetadata {
    * city: { type: 'string', fieldType: 'select', dependsOn: ['country', 'state'], options: { apiUrl: '/api/cities' } }
    */
   dependsOn?: string | string[];
+
+  /** Display masking configuration for PII / sensitive data (#51) */
+  masking?: IMaskingConfig;
+
+  /** Derived / computed field configuration (#35) */
+  derived?: IDerivedFieldConfig;
+
+  /**
+   * Fallback display value shown when the field value is null or undefined.
+   * Overrides per-renderer defaults (e.g. '—') with a config-specified string.
+   * Resolved in the `transformValue` pipeline step before rendering.
+   *
+   * @example nullValue: 'N/A'
+   * @example nullValue: '(none)'
+   */
+  nullValue?: string;
+
+  /**
+   * Progressive disclosure tier for this field (#40).
+   * Fields with higher tiers are hidden until the user expands the form.
+   * - 'basic' (default): Always visible
+   * - 'advanced': Hidden until user clicks "Show advanced fields"
+   * - 'expert': Hidden until user clicks again
+   */
+  tier?: 'basic' | 'advanced' | 'expert';
+
+}
+
+/** Built-in masking patterns for common PII types (#51) */
+export type MaskingPattern = 'ssn' | 'email' | 'phone' | 'card' | 'custom';
+
+/** Display masking configuration for PII / sensitive data (#51) */
+export interface IMaskingConfig {
+  enabled: boolean;
+  pattern: MaskingPattern;
+  /** Custom regex + replacement for 'custom' pattern */
+  customPattern?: { match: string; replace: string };
+  /** Allow user to reveal the original value */
+  allowReveal?: boolean;
+  /** Condition that must pass for the reveal button to appear */
+  revealCondition?: Condition;
+  /** Auto-hide revealed value after N seconds */
+  revealDuration?: number;
+  /** Log reveal events for audit trail */
+  auditReveal?: boolean;
+}
+
+/** Derived / computed field configuration (#35) */
+export interface IDerivedFieldConfig {
+  /** Template string using existing Template system */
+  template?: Template;
+  /** Simple arithmetic expression (e.g. 'quantity * unitPrice') */
+  expression?: string;
+  /** Conditional value mapping */
+  conditions?: Array<{ when: Condition; value: unknown }>;
+  /** Fields to watch for recomputation (form mode) */
+  watchFields?: string[];
+}
+
+/** Configuration for error handling behavior on a page/component (#58) */
+export interface IErrorHandlingConfig {
+  /** Custom messages per HTTP status code */
+  messages?: Record<number, string | Template>;
+  /** Fallback mode: 'message' (default), 'reduced-view', or 'custom' */
+  fallback?: 'message' | 'reduced-view' | 'custom';
+  /** Extension registry key for custom fallback component */
+  fallbackKey?: string;
+  /**
+   * Seconds to wait before re-enabling the submit button after a failed form submission (#58).
+   * During the delay the button shows "Retry in Xs" (when `showCountdown` is true).
+   * @example 5  // "Retry in 5s", "4s", … then re-enables
+   */
+  retryDelay?: number;
+  /**
+   * Show "Retry in Xs" countdown on the submit button during the retry delay.
+   * @default true
+   */
+  showCountdown?: boolean;
+}
+
+/** Configuration for retry behavior (#58) */
+export interface IRetryConfig {
+  /** Show a retry button in error state @default true */
+  showRetryButton?: boolean;
+  /** Maximum number of automatic retries before showing error state */
+  maxRetries?: number;
+  /** Backoff strategy for automatic retries */
+  backoff?: 'exponential';
+}
+
+/** Data quality / completeness indicator configuration (#65) */
+export interface IDataQualityConfig {
+  enabled: boolean;
+  /** Infer required/optional fields from schema attributes @default true */
+  autoDetect?: boolean;
+  /** Explicit list of required fields for completeness calculation */
+  requiredFields?: string[];
+  /** Explicit list of optional fields that count towards completeness */
+  optionalFields?: string[];
+  /** Show completeness indicator in list/table view */
+  showInList?: boolean;
+  /** Show completeness indicator in detail view */
+  showInDetail?: boolean;
+  /** Show names of missing fields */
+  showMissing?: boolean;
+  /** Warn when completeness falls below this percentage (0-100) */
+  alertBelow?: number;
+}
+
+/** Deep linking configuration (#21) — syncs table state with URL */
+export interface IDeepLinkConfig {
+  enabled: boolean;
+  /** Which state slices to include in the URL @default all */
+  include?: Array<'filters' | 'sort' | 'page' | 'segment' | 'search'>;
+  /** Optional prefix for URL params to avoid collisions */
+  prefix?: string;
+}
+
+/** Serializable snapshot of table state (for saved views) */
+export interface TableViewState {
+  columns?: string[];
+  sort?: Array<{ field: string; order: string }>;
+  filters?: Record<string, unknown>;
+  pageSize?: number;
+  segment?: string;
+  search?: string;
+}
+
+/** A preset view defined in config */
+export interface PresetView {
+  id: string;
+  name: string;
+  state: TableViewState;
+  visibility?: Condition;
+}
+
+/** Saved views configuration (#19) */
+export interface IViewsConfig {
+  enabled: boolean;
+  presets?: PresetView[];
+  /** Allow user-created views in localStorage */
+  allowUserViews?: boolean;
+  /** Auto-remember last active view */
+  autoRemember?: boolean;
+}
+
+/** Review before save configuration (#36) */
+export interface IReviewBeforeSaveConfig {
+  enabled: boolean;
+  /** Only show review when condition passes */
+  condition?: Condition;
+  /** Which fields to show: specific list or only changed fields */
+  fields?: string[] | 'changed-only';
+  /** Fields that require explicit confirmation (highlighted in review) */
+  requireConfirmFor?: string[];
+  /** Review display format */
+  format?: 'modal' | 'drawer';
+}
+
+/** Pre-fill form fields from URL query parameters */
+export interface IPrefillConfig {
+  enabled: boolean;
+  /** Auto-detect field names from URL params @default true */
+  autoDetect?: boolean;
+  /** Lock (disable) pre-filled fields so the user cannot change them */
+  lockPrefilled?: boolean;
 }
 
 /**
@@ -2061,6 +2238,13 @@ export interface IEntityPageAction {
   drawerConfigRef?: IEntityConfigReference;
 
   /**
+   * Permission shorthand (#102). Auto-expanded by ui24 to:
+   *   visibility: { actor: { permissions: { [permission]: { eq: true } } } }
+   * Merged with any explicit `visibility` condition via AND.
+   */
+  permission?: string;
+
+  /**
    * Visibility configuration for this action.
    * Controls visibility and enablement based on actor roles, record state, context, and custom logic.
    * 
@@ -2329,6 +2513,38 @@ export interface SelectFieldMetadata<E extends EntitySchema<any, any, any> = any
 
   // NEW: Reference entity config instead of embedding (recommended - reduces JSON size)
   addNewOptionConfig?: IEntityConfigReference;
+
+  /**
+   * Quick-create UX enhancement for the select dropdown (#44).
+   *
+   * Works **alongside** `addNewOptionConfig` — does not replace it.
+   * When `enabled`, a contextual `+ Create "[term]"` button appears inside
+   * the dropdown whenever the user's search returns no results.  Clicking it
+   * opens the entity's full create form (from `addNewOptionConfig`) with the
+   * search term pre-filled via `prefillField`.
+   *
+   * The entity form owns all validation and submission — nothing is
+   * duplicated here.
+   *
+   * @example
+   * addNewOptionConfig: { entityName: 'team', pageType: 'create' },
+   * quickCreate: {
+   *   enabled: true,
+   *   prefillField: 'teamName',   // field pre-filled with the search term
+   *   openIn: 'drawer',           // open as a drawer (default: 'modal')
+   * }
+   */
+  quickCreate?: {
+    /** Show "+ Create '[term]'" when search returns no results.  @default false */
+    enabled?: boolean;
+    /**
+     * Entity field to pre-fill with the search term.
+     * Defaults to the label field from `options.optionMapping` when omitted.
+     */
+    prefillField?: string;
+    /** Container for the create form. @default 'modal' */
+    openIn?: 'modal' | 'drawer';
+  };
 }
 
 // Type guard for SelectFieldMetadata
@@ -3275,6 +3491,40 @@ export interface ITableColumnConfig {
    * - undefined: Defaults to true (visible)
    */
   defaultVisible?: boolean;
+  /**
+   * Conditional formatting rules for this column's cells.
+   * When a condition matches, the corresponding style/badge/icon is applied.
+   *
+   * @example
+   * formatting: [
+   *   { condition: { field: 'status', operator: 'eq', value: 'active' }, style: { color: 'green' }, badge: { status: 'success' } },
+   *   { condition: { field: 'status', operator: 'eq', value: 'inactive' }, style: { color: 'red' }, badge: { status: 'error' } }
+   * ]
+   */
+  formatting?: ReadonlyArray<IFormattingRule> | Array<IFormattingRule>;
+  /**
+   * Composite column configuration — renders multiple fields in a single column.
+   *
+   * @example
+   * // Stacked layout (default): each field on its own line
+   * { field: 'fullName', composite: { fields: ['firstName', 'lastName'], template: '{firstName} {lastName}' } }
+   *
+   * @example
+   * // Inline layout with template
+   * { field: 'address', composite: { fields: ['city', 'state', 'zip'], template: '{city}, {state} {zip}', layout: 'inline' } }
+   */
+  composite?: {
+    /** Fields to compose from the record */
+    fields: ReadonlyArray<string> | Array<string>;
+    /** Template string with {fieldName} placeholders */
+    template?: string;
+    /** Layout direction: 'stacked' (default) or 'inline' */
+    layout?: 'stacked' | 'inline';
+  };
+  /** Display masking configuration for PII / sensitive data (#51) */
+  masking?: IMaskingConfig;
+  /** Derived / computed field configuration (#35) */
+  derived?: IDerivedFieldConfig;
 }
 
 /**
@@ -3683,6 +3933,12 @@ export type SortConfig = FieldSortConfig | ReadonlyArray<FieldSortConfig> | Sort
 export interface EntityListPageConfig {
   readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
   readonly breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
+  /**
+   * Page title with template support.
+   * @example pageTitle: 'Team Listing'
+   * @example pageTitle: '{sport} Teams'
+   */
+  readonly pageTitle?: Template;
 
   /**
    * Loading skeleton configuration (#57).
@@ -4011,7 +4267,26 @@ export interface EntityListPageConfig {
       /** Card grid configuration (required when 'card-grid' is in available) */
       cardConfig?: ICardGridConfig;
     };
+
+    /** Error handling configuration (#58) */
+    readonly errorHandling?: IErrorHandlingConfig;
+    /** Retry configuration (#58) */
+    readonly retry?: IRetryConfig;
+
+    /** Deep linking configuration (#21) — sync table state with URL query string */
+    readonly deepLink?: IDeepLinkConfig;
+
+    /** Saved views configuration (#19) */
+    readonly views?: IViewsConfig;
+
+    /** Data quality / completeness indicator (#65) */
+    readonly dataQuality?: IDataQualityConfig;
   };
+
+  /** Error handling configuration for the entire list page (#58) */
+  readonly errorHandling?: IErrorHandlingConfig;
+  /** Retry configuration for the entire list page (#58) */
+  readonly retry?: IRetryConfig;
 }
 
 /**
@@ -4066,6 +4341,14 @@ export interface EntityViewPageConfig {
    * that display parts of the same record (e.g., metadata, large JSON fields).
    */
   readonly sectionsConfig?: ISectionsConfig;
+  /** Page title with template support */
+  readonly pageTitle?: Template;
+  /** Data quality / completeness indicator (#65) */
+  readonly dataQuality?: IDataQualityConfig;
+  /** Error handling configuration (#58) */
+  readonly errorHandling?: IErrorHandlingConfig;
+  /** Retry configuration (#58) */
+  readonly retry?: IRetryConfig;
 }
 
 /**
@@ -4076,6 +4359,14 @@ export interface EntityEditPageConfig {
   readonly actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
   readonly breadcrumbs?: ReadonlyArray<{ label: Template; url?: string }> | Array<{ label: Template; url?: string }>;
   readonly columnsConfig?: IEntityPageColumnConfig;
+  /**
+   * Loading skeleton configuration for the edit page.
+   * @default { type: 'skeleton' }
+   */
+  readonly loading?: {
+    readonly type: 'skeleton' | 'spinner';
+    readonly rows?: number;
+  };
   readonly formConfig?: {
     readonly buttons?: ReadonlyArray<{
       id?: string;  // Identifier for override matching
@@ -4103,6 +4394,15 @@ export interface EntityEditPageConfig {
       helpText?: string;
       placeholder?: string;
     }>;
+    /**
+     * Whether the form action buttons (Submit/Reset) stick to the bottom of the viewport.
+     * @default true (ui24 defaults to sticky when not specified)
+     */
+    readonly stickyActions?: boolean;
+    /** Review before save configuration (#36) */
+    readonly reviewBeforeSave?: IReviewBeforeSaveConfig;
+    /** Pre-fill form fields from URL query parameters */
+    readonly prefill?: IPrefillConfig;
   };
   /**
    * Additional sections to display below or alongside the main form.
@@ -4112,6 +4412,14 @@ export interface EntityEditPageConfig {
    * Use for features like live preview, help documentation, or related data.
    */
   readonly sectionsConfig?: ISectionsConfig;
+  /** Page title with template support */
+  readonly pageTitle?: Template;
+  /** Custom success message template for form submission */
+  readonly successMessage?: Template;
+  /** Error handling configuration (#58) */
+  readonly errorHandling?: IErrorHandlingConfig;
+  /** Retry configuration (#58) */
+  readonly retry?: IRetryConfig;
 }
 
 /**
@@ -4155,6 +4463,15 @@ export interface EntityCreatePageConfig {
       helpText?: string;
       placeholder?: string;
     }>;
+    /**
+     * Whether the form action buttons (Submit/Reset) stick to the bottom of the viewport.
+     * @default true (ui24 defaults to sticky when not specified)
+     */
+    readonly stickyActions?: boolean;
+    /** Review before save configuration (#36) */
+    readonly reviewBeforeSave?: IReviewBeforeSaveConfig;
+    /** Pre-fill form fields from URL query parameters */
+    readonly prefill?: IPrefillConfig;
   };
   /**
    * Additional sections to display below or alongside the create form.
@@ -4164,6 +4481,14 @@ export interface EntityCreatePageConfig {
    * Use for features like live preview or help documentation.
    */
   readonly sectionsConfig?: ISectionsConfig;
+  /** Page title with template support */
+  readonly pageTitle?: Template;
+  /** Custom success message template for form submission */
+  readonly successMessage?: Template;
+  /** Error handling configuration (#58) */
+  readonly errorHandling?: IErrorHandlingConfig;
+  /** Retry configuration (#58) */
+  readonly retry?: IRetryConfig;
 }
 
 export interface EntitySchema<
@@ -4189,6 +4514,13 @@ export interface EntitySchema<
     readonly excludeFromAdminDelete?: boolean, // default is false
     readonly excludeFromAdminDuplicate?: boolean, // default is false
     readonly excludeAuditActions?: boolean, // default is false - disable automatic audit log actions for this entity
+
+    /**
+     * Auto-group secondary page header actions (Delete, Duplicate, Audit Logs, etc.)
+     * into a "More" dropdown. Overrides the global `uiConfigGenOptions.autoGroupActions`.
+     * @default undefined (inherits global setting, which defaults to true)
+     */
+    readonly autoGroupActions?: boolean,
 
     readonly CRUDApiPath?: string, // default is ''
 

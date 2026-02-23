@@ -36,3 +36,4 @@ export type {
 export type {
     ViewEntityPageOptions,
 } from './templates/view-entity';
+

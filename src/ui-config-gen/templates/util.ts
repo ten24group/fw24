@@ -1736,6 +1736,30 @@ export function formatEntityAttributeForFormOrDetail(
                 DefaultLogger.warn(`formatEntityAttributeForFormOrDetail: Could not find related-entity-service for entity [${entityName}] in ${entityService.constructor.name}`);
             }
         }
+
+        // Pass quickCreate UX config through verbatim (#44).
+        // ui24 uses it to surface a contextual "+ Create '[term]'" button in the
+        // dropdown when the search returns no results.  The entity create form is
+        // resolved from addNewOptionConfig — nothing is duplicated here.
+        if (selectField.quickCreate) {
+            formatted[ 'quickCreate' ] = selectField.quickCreate;
+        }
+    }
+
+    // Resolve RelationEntityOptionConfig → FieldOptionsAPIConfig for select fields on form pages
+    if (isSelectFieldMetadata(thisProp) && thisProp.options
+        && typeof thisProp.options === 'object' && !Array.isArray(thisProp.options)
+        && 'entityName' in thisProp.options && thisProp.relation
+    ) {
+        const resolved = resolveRelationOptionConfig(
+            thisProp.options as RelationEntityOptionConfig,
+            thisProp as TIOSchemaAttribute & { relation: NonNullable<TIOSchemaAttribute[ 'relation' ]> },
+            entityService,
+            globalUIConfigOptions
+        );
+        if (resolved) {
+            formatted[ 'options' ] = resolved;
+        }
     }
 
     // Handle relation fields (DATA LAYER + UI LAYER)
@@ -2587,6 +2611,45 @@ export function mergeActions<T extends { id?: string }>(
 }
 
 /**
+ * Groups page header actions into primary (top-level buttons) and secondary (inside a "More" dropdown).
+ * When autoGroup is false, returns all actions as a flat array (no grouping).
+ * 
+ * Guarantees at least one visible top-level action: if primaryActions is empty,
+ * the first secondary action is promoted to top-level instead of being buried in "More".
+ */
+export function groupPageHeaderActions(
+    primaryActions: Array<IEntityPageAction>,
+    secondaryActions: Array<IEntityPageAction>,
+    autoGroup: boolean
+): Array<IEntityPageAction> {
+    if (!autoGroup || secondaryActions.length === 0) {
+        return [ ...primaryActions, ...secondaryActions ];
+    }
+
+    const topLevel = [ ...primaryActions ];
+    let remaining = secondaryActions;
+
+    // Promote first secondary action if nothing is visible at top level
+    if (topLevel.length === 0 && remaining.length > 0) {
+        topLevel.push(remaining[0]);
+        remaining = remaining.slice(1);
+    }
+
+    if (remaining.length === 0) {
+        return topLevel;
+    }
+
+    const moreDropdown: IEntityPageAction = {
+        id: 'more-actions',
+        label: 'More',
+        type: 'dropdown',
+        items: remaining,
+    };
+
+    return [ ...topLevel, moreDropdown ];
+}
+
+/**
  * Merges default filter segments with custom segments using ID-based override logic.
  * 
  * Follows the same pattern as mergeButtons/mergeActions: custom segments with matching IDs
@@ -2759,10 +2822,15 @@ function normalizeColumnOverrides(
         return {
             field: col.field,
             visibility: col.visibility,
+            renderer: col.renderer,
             width: col.width,
             fixed: col.fixed,
             groupTitle: col.groupTitle,
-            defaultVisible: col.defaultVisible !== false // Defaults to true
+            defaultVisible: col.defaultVisible !== false, // Defaults to true
+            ...(col.formatting && { formatting: col.formatting }),
+            ...(col.composite && { composite: col.composite }),
+            ...(col.masking && { masking: col.masking }),
+            ...(col.derived && { derived: col.derived }),
         };
     });
 }
@@ -2820,9 +2888,14 @@ export function mergeColumnVisibility<T extends { name: string; dataIndex?: stri
         return {
             ...prop,
             ...(override.visibility !== undefined && { visibility: override.visibility }),
+            ...(override.renderer !== undefined && { renderer: override.renderer }),
             ...(override.width !== undefined && { width: override.width }),
             ...(override.fixed !== undefined && { fixed: override.fixed }),
             ...(override.groupTitle !== undefined && { groupTitle: override.groupTitle }),
+            ...(override.formatting && { formatting: override.formatting }),
+            ...(override.composite && { composite: override.composite }),
+            ...(override.masking && { masking: override.masking }),
+            ...(override.derived && { derived: override.derived }),
             defaultVisible: override.defaultVisible !== false,  // Defaults to true
             _order: override._order
         };
@@ -2848,9 +2921,14 @@ export function mergeColumnVisibility<T extends { name: string; dataIndex?: stri
                 defaultVisible: override.defaultVisible,
                 fieldType: 'text',  // Default to text for custom columns
                 ...(override.visibility !== undefined && { visibility: override.visibility }),
+                ...(override.renderer !== undefined && { renderer: override.renderer }),
                 ...(override.width !== undefined && { width: override.width }),
                 ...(override.fixed !== undefined && { fixed: override.fixed }),
                 ...(override.groupTitle !== undefined && { groupTitle: override.groupTitle }),
+                ...(override.formatting && { formatting: override.formatting }),
+                ...(override.composite && { composite: override.composite }),
+                ...(override.masking && { masking: override.masking }),
+                ...(override.derived && { derived: override.derived }),
                 _order: override._order
             } as any);
         }

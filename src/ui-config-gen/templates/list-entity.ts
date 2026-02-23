@@ -1,8 +1,8 @@
-import { BaseEntityService, EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap, IFilterSegment } from "../../entity";
+import { BaseEntityService, EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap, ISectionsConfig, IErrorHandlingConfig, IRetryConfig } from "../../entity";
 import { IEntityPageAction, Template, SortConfig, FieldSortConfig, SortOrder, TableSortConfig, SearchSortConfig, DatabaseSortConfig, DualSortConfig } from "../../entity/base-entity";
 import type { IApplicationConfig } from "../../interfaces/config";
 import { pascalCase } from "../../utils";
-import { formatEntityAttributesForList, generateSegments, mergeColumnVisibility } from "./util";
+import { formatEntityAttributesForList, generateSegments, mergeColumnVisibility, processSectionsConfig, groupPageHeaderActions } from "./util";
 
 export type ListEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string,
@@ -54,6 +54,22 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
     hasObservability?: boolean;
     /** Exclude audit actions for this entity */
     excludeAuditActions?: boolean;
+    /**
+     * Sections configuration for multi-section list pages with tabs/accordions
+     */
+    sectionsConfig?: ISectionsConfig;
+    /**
+     * Loading skeleton configuration.
+     * Controls how loading states are displayed before data is ready.
+     * @default { type: 'skeleton' }
+     */
+    loading?: EntityListPageConfig['loading'];
+    /** Error handling configuration for the list page (#58) */
+    errorHandling?: IErrorHandlingConfig;
+    /** Retry configuration for the list page (#58) */
+    retry?: IRetryConfig;
+    /** Auto-group secondary actions into a "More" dropdown */
+    autoGroupActions?: boolean;
 }
 
 /**
@@ -139,31 +155,32 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     entityService: BaseEntityService<S>
 ) => {
 
-    const { entityName, entityNamePlural, properties, breadcrumbs, pageTitle, hasObservability, excludeAuditActions, globalUIConfigOptions } = options;
+    const { entityName, entityNamePlural, properties, breadcrumbs, pageTitle, errorHandling, retry, hasObservability, excludeAuditActions, autoGroupActions, globalUIConfigOptions } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
 
     const listPageConfig = makeViewEntityListConfig(options, entityService);
 
-    // Build default page header actions with templates
-    const defaultPageHeaderActions: IEntityPageAction[] = [];
+    const primaryActions: IEntityPageAction[] = [];
     if (!options.excludeFromAdminCreate) {
-        defaultPageHeaderActions.push({
-            label: "Create",
-            template: `Create`, // Template showing entity name
-            url: `/create-${entityNameLower}`
+        primaryActions.push({
+            id: 'create',
+            label: `Create ${entityNamePascalCase}`,
+            url: `/create-${entityNameLower}`,
+            icon: 'PlusOutlined',
         });
     }
 
+    const secondaryActions: IEntityPageAction[] = [
+        ...(options.pageHeaderActions || []),
+    ];
+
     // Automatically generate audit log actions if observability is enabled
     const auditActions = generateListAuditActions(entityName, entityNamePlural, hasObservability || false, excludeAuditActions || false, globalUIConfigOptions);
+    secondaryActions.push(...auditActions);
 
-    // Combine: default + custom + audit
-    const pageHeaderActions = [
-        ...defaultPageHeaderActions,
-        ...(options.pageHeaderActions || []),
-        ...auditActions
-    ];
+    const shouldGroup = autoGroupActions ?? true;
+    const pageHeaderActions = groupPageHeaderActions(primaryActions, secondaryActions, shouldGroup);
 
     return {
         // Use custom pageTitle if provided, otherwise default
@@ -172,7 +189,9 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         routePattern: `list-${entityNameLower}`,
         breadcrumbs: breadcrumbs || [],
         pageHeaderActions,
-        listPageConfig
+        listPageConfig,
+        ...(errorHandling && { errorHandling }),
+        ...(retry && { retry }),
     } as const;
 };
 
@@ -181,7 +200,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     entityService: BaseEntityService<S>
 ) {
 
-    const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch, tableConfig, globalUIConfigOptions } = options;
+    const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch, tableConfig, sectionsConfig, globalUIConfigOptions, loading } = options;
     const entityNameLower = entityName.toLowerCase();
 
     const baseApiUrl = `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`;
@@ -258,5 +277,18 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
         ...(tableConfig?.contextMenu && { contextMenu: tableConfig.contextMenu }),
         ...(tableConfig?.displayMode && { displayMode: tableConfig.displayMode }),
         ...(tableConfig?.viewSwitcher && { viewSwitcher: tableConfig.viewSwitcher }),
+        ...(tableConfig?.pinnedColumns && { pinnedColumns: tableConfig.pinnedColumns }),
+        ...(tableConfig?.errorHandling && { errorHandling: tableConfig.errorHandling }),
+        ...(tableConfig?.retry && { retry: tableConfig.retry }),
+        ...(tableConfig?.deepLink && { deepLink: tableConfig.deepLink }),
+        ...(tableConfig?.views && { views: tableConfig.views }),
+        ...(tableConfig?.dataQuality && { dataQuality: tableConfig.dataQuality }),
+        ...(loading && { loading }),
+        ...(sectionsConfig && { sectionsConfig: processSectionsConfig(
+            sectionsConfig,
+            Array.from(properties.values()),
+            entityService,
+            globalUIConfigOptions
+        )}),
     };
 }

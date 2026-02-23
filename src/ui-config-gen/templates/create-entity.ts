@@ -1,4 +1,4 @@
-import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, IEntityPageColumnConfig, Template, EntityEditPageConfig, ISectionsConfig } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, IEntityPageColumnConfig, Template, EntityEditPageConfig, EntityCreatePageConfig, ISectionsConfig, IErrorHandlingConfig, IRetryConfig } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
 import { formatEntityAttributesForCreate, mergeButtons, mergeFieldVisibility, processSectionsConfig } from "./util";
 import { IApplicationConfig } from "../../interfaces/config";
@@ -43,9 +43,20 @@ export type CreateEntityPageOptions<S extends EntitySchema<string, string, strin
      */
     sectionsConfig?: ISectionsConfig;
     /**
+     * Loading skeleton configuration.
+     * @default { type: 'skeleton' }
+     */
+    loading?: EntityCreatePageConfig['loading'];
+    /** Error handling configuration (#58) */
+    errorHandling?: IErrorHandlingConfig;
+    /** Retry configuration (#58) */
+    retry?: IRetryConfig;
+    /**
      * Global UI config options (for passing global configuration like duplicatedFieldDetection)
      */
     globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
+    /** Auto-group secondary actions into a "More" dropdown */
+    autoGroupActions?: boolean;
 }
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
@@ -53,7 +64,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     entityService: BaseEntityService<S>
 ) => {
 
-    const{ entityName, breadcrumbs, pageTitle, successMessage } = options;
+    const{ entityName, entityNamePlural, breadcrumbs, pageTitle, successMessage, errorHandling, retry } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
 
@@ -70,16 +81,25 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         routePattern: `create-${entityNameLower}`,
         pageHeaderActions: [
             {
-                label:  "Back",
-                template: `Back`,
-                url:    `/list-${entityNameLower}`
+                id: 'back',
+                label: 'Back',
+                url: '__back__',
+                icon: 'ArrowLeftOutlined',
+                hideInModal: true,
+            },
+            {
+                id: 'go-to-list',
+                label: `All ${entityNamePlural}`,
+                url: `/list-${entityNameLower}`,
             }
         ], 
         formPageConfig: {
             ...formPageConfig,
             formButtons: finalFormButtons,  // Use merged buttons with cancel added
             submitSuccessRedirect: `/list-${entityNameLower}`,
-            ...(successMessage && { successMessage })
+            ...(successMessage && { successMessage }),
+            ...(errorHandling && { errorHandling }),
+            ...(retry && { retry }),
         }
     };
 };
@@ -89,12 +109,12 @@ export function makeCreateEntityFormConfig<S extends EntitySchema<string, string
     entityService: BaseEntityService<S>
 ){
 
-    const{ entityName, properties, CRUDApiPath, columnsConfig, formConfig, sectionsConfig, globalUIConfigOptions } = options;
+    const{ entityName, properties, CRUDApiPath, columnsConfig, formConfig, sectionsConfig, loading, globalUIConfigOptions } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
 
     // 1. Generate base properties from schema
-    let formattedProps = formatEntityAttributesForCreate(Array.from(properties.values()), entityService);
+    let formattedProps = formatEntityAttributesForCreate(Array.from(properties.values()), entityService, globalUIConfigOptions);
 
     // 2. Merge field-level visibility/helpText/placeholder from formConfig.fields
     if (formConfig?.fields) {
@@ -121,7 +141,11 @@ export function makeCreateEntityFormConfig<S extends EntitySchema<string, string
         formButtons: finalButtons,  // Merged buttons
         propertiesConfig: formattedProps,  // Properties with field visibility merged
         entityName,  // Add entityName to config for evaluation system
-        ...(columnsConfig && { columnsConfig })
+        ...(columnsConfig && { columnsConfig }),
+        ...(formConfig?.stickyActions != null && { stickyActions: formConfig.stickyActions }),
+        ...(formConfig?.reviewBeforeSave && { reviewBeforeSave: formConfig.reviewBeforeSave }),
+        ...(formConfig?.prefill && { prefill: formConfig.prefill }),
+        ...(loading && { loading }),
     };
 
     // Add sectionsConfig if provided - process to expand shorthand propertiesConfig
