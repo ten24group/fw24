@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.17](https://github.com/ten24group/fw24/compare/v1.1.0-beta.16...v1.1.0-beta.17) (2026-02-23)
+
+
+### Features
+
+* **entity:** enhance entity configuration with pagination and conditional redirect support ([26edea2](https://github.com/ten24group/fw24/commit/26edea26b4bd3d47b6d0cddca40b0a18d95014b8))
+* **entity:** expand entity configuration with new field options and action controls ([b3cfa72](https://github.com/ten24group/fw24/commit/b3cfa72b6c065520790d02b212d266be3e2cd56c))
+* **entity:** introduce attribute presets, enhance entity schema configuration, new page types ([5d1bee6](https://github.com/ten24group/fw24/commit/5d1bee6e4813f43bcfe1addd8db2e8e0ab6ad54c))
+* **entity:** unify action configuration for modals and drawers ([c138874](https://github.com/ten24group/fw24/commit/c138874ebb0660d48c5e1aab1cd9488c7e42220b))
+
 ## [1.1.0-beta.16](https://github.com/ten24group/fw24/compare/v1.1.0-beta.15...v1.1.0-beta.16) (2026-02-16)
 
 
