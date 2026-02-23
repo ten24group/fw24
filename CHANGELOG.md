@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.19](https://github.com/ten24group/fw24/compare/v1.1.0-beta.18...v1.1.0-beta.19) (2026-02-23)
+
+
+### Features
+
+* **entity:** enhance ListPageConfigStructure with independent data fetching options ([674f247](https://github.com/ten24group/fw24/commit/674f247ab741a86a55a23e3f795213c6276f72ef))
+
 ## [1.1.0-beta.18](https://github.com/ten24group/fw24/compare/v1.1.0-beta.17...v1.1.0-beta.18) (2026-02-23)
 
 
