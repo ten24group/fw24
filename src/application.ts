@@ -9,7 +9,11 @@ import { ILogger, LogDuration, createLogger } from "./logging";
 import { DynamoDBConstruct, LayerConstruct } from "./constructs";
 import { Timer } from "./utils";
 import { randomUUID } from 'node:crypto';
-import { join as pathJoin } from 'node:path';
+import { join as pathJoin, resolve } from 'node:path';
+import { ISimulatorConfig } from "./testing/simulator/interfaces";
+import { SimulatorCoordinator } from "./testing/simulator/coordinator";
+import { Helper } from "./core/helper";
+import { HMRWatcher } from "./testing/simulator/hmr-watcher";
 
 export class Application {
     readonly logger: ILogger;
@@ -381,6 +385,79 @@ export class Application {
         }
 
         this.logger.info(`✅ Observability CloudWatch: ${logGroupName}`);
+    }
+
+    /**
+     * Start the local simulator for development.
+     */
+    public async simulate(config: ISimulatorConfig = {}) {
+        this.logger.info("Starting FW24 Simulator...");
+
+        const coordinator = new SimulatorCoordinator(config);
+
+        const discover = async () => {
+            this.logger.info("Discovering resources...");
+            // 1. Discover Controllers
+            const controllersDirectory = "./src/controllers";
+            const apiRoutes: any[] = [];
+
+            await Helper.registerHandlers(controllersDirectory, async (desc) => {
+                const { handlerClass, filePath, fileName } = desc;
+                const instance = new (handlerClass as any)();
+                const controllerName = instance.controllerName;
+                const routes = instance.routes || {};
+
+                for (const [ routeKey, route ] of Object.entries(routes) as [ string, any ][]) {
+                    const [ method, path ] = routeKey.split('|');
+                    apiRoutes.push({
+                        method,
+                        path: `/${controllerName}${path}`,
+                        handlerPath: resolve(filePath, fileName),
+                        handlerClassName: handlerClass.name,
+                        controllerName,
+                        env: this.fw24.resolveEnvVariables(instance.controllerConfig?.env)
+                    });
+                }
+            });
+
+            coordinator.setApiRoutes(apiRoutes);
+
+            // 2. Discover Queues
+            const queuesDirectory = "./src/queues";
+            const sqsSubs: any[] = [];
+            await Helper.registerHandlers(queuesDirectory, async (desc) => {
+                const { handlerClass, filePath, fileName } = desc;
+                const instance = new (handlerClass as any)();
+                const queueName = instance.queueName;
+
+                sqsSubs.push({
+                    queueName,
+                    handlerPath: resolve(filePath, fileName),
+                    handlerClassName: handlerClass.name,
+                    env: this.fw24.resolveEnvVariables(instance.queueConfig?.env)
+                });
+            });
+
+            coordinator.setSqsSubscriptions(sqsSubs);
+        }
+
+        await discover();
+
+        // 3. Start Simulator
+        await coordinator.start();
+
+        // 4. Setup HMR
+        if (config.hotReload !== false) {
+            const watcher = new HMRWatcher('./src', async () => {
+                this.logger.info("Change detected, reloading...");
+                await discover();
+            });
+            watcher.start();
+        }
+
+        this.logger.info("Simulator started successfully!");
+
+        return coordinator;
     }
 
 }
