@@ -393,6 +393,14 @@ export declare function mergeActions<T extends {
     id?: string;
 }>(defaults: Array<T>, customs?: ReadonlyArray<T> | Array<T>): Array<T>;
 /**
+ * Groups page header actions into primary (top-level buttons) and secondary (inside a "More" dropdown).
+ * When autoGroup is false, returns all actions as a flat array (no grouping).
+ *
+ * Guarantees at least one visible top-level action: if primaryActions is empty,
+ * the first secondary action is promoted to top-level instead of being buried in "More".
+ */
+export declare function groupPageHeaderActions(primaryActions: Array<IEntityPageAction>, secondaryActions: Array<IEntityPageAction>, autoGroup: boolean): Array<IEntityPageAction>;
+/**
  * Merges default filter segments with custom segments using ID-based override logic.
  *
  * Follows the same pattern as mergeButtons/mergeActions: custom segments with matching IDs

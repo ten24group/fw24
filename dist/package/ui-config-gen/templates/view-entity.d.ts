@@ -1,4 +1,4 @@
-import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, EntityViewPageConfig, ISectionsConfig } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, EntityViewPageConfig, ISectionsConfig, IErrorHandlingConfig, IRetryConfig, IDataQualityConfig } from "../../entity";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
 import { IApplicationConfig } from "../../interfaces/config";
 export type ViewEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
@@ -6,6 +6,8 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
     entityNamePlural: string;
     CRUDApiPath?: string;
     properties: TIOSchemaAttributesMap<S>;
+    excludeFromAdminUpdate?: boolean;
+    excludeFromAdminDelete?: boolean;
     actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
     /**
      * Breadcrumbs with template support
@@ -41,12 +43,25 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
      * Sections configuration for multi-section detail pages
      */
     sectionsConfig?: ISectionsConfig;
+    /**
+     * Loading skeleton configuration.
+     * @default { type: 'skeleton' }
+     */
+    loading?: EntityViewPageConfig['loading'];
+    /** Data quality / completeness indicator (#65) */
+    dataQuality?: IDataQualityConfig;
+    /** Error handling configuration (#58) */
+    errorHandling?: IErrorHandlingConfig;
+    /** Retry configuration (#58) */
+    retry?: IRetryConfig;
     /** Global UI config options */
     globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
     /** Whether observability is enabled (passed from UI config gen) */
     hasObservability?: boolean;
     /** Exclude audit actions for this entity */
     excludeAuditActions?: boolean;
+    /** Auto-group secondary actions into a "More" dropdown */
+    autoGroupActions?: boolean;
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ViewEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     readonly pageTitle: Template;

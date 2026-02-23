@@ -272,6 +272,13 @@ export interface IApplicationConfig {
          * @default true
          */
         autoGenerateAuditActions?: boolean;
+        /**
+         * Auto-group secondary page header actions (Delete, Duplicate, Audit Logs, etc.)
+         * into a "More" dropdown to reduce UI clutter.
+         * Override per-entity via `model.autoGroupActions`.
+         * @default true
+         */
+        autoGroupActions?: boolean;
     };
     defaultAuthorizationType?: any;
     defaultAdminGroups?: string[];

@@ -1,4 +1,4 @@
-import { BaseEntityService, EntityEditPageConfig, EntitySchema, TIOSchemaAttributesMap, ISectionsConfig } from "../../entity";
+import { BaseEntityService, EntityEditPageConfig, EntitySchema, TIOSchemaAttributesMap, ISectionsConfig, IErrorHandlingConfig, IRetryConfig } from "../../entity";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
 import { IApplicationConfig } from "../../interfaces/config";
 export type UpdateEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
@@ -6,6 +6,9 @@ export type UpdateEntityPageOptions<S extends EntitySchema<string, string, strin
     entityNamePlural: string;
     CRUDApiPath?: string;
     properties: TIOSchemaAttributesMap<S>;
+    excludeFromAdminDelete?: boolean;
+    excludeFromAdminCreate?: boolean;
+    excludeFromAdminDuplicate?: boolean;
     actions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
     /**
      * Breadcrumbs with template support
@@ -49,9 +52,20 @@ export type UpdateEntityPageOptions<S extends EntitySchema<string, string, strin
      */
     sectionsConfig?: ISectionsConfig;
     /**
+     * Loading skeleton configuration.
+     * @default { type: 'skeleton' }
+     */
+    loading?: EntityEditPageConfig['loading'];
+    /** Error handling configuration (#58) */
+    errorHandling?: IErrorHandlingConfig;
+    /** Retry configuration (#58) */
+    retry?: IRetryConfig;
+    /**
      * Global UI config options (for passing global configuration like duplicatedFieldDetection)
      */
     globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
+    /** Auto-group secondary actions into a "More" dropdown */
+    autoGroupActions?: boolean;
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: UpdateEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     pageTitle: Template;

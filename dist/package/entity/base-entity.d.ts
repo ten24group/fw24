@@ -6,7 +6,7 @@ import type { OmitNever, Paths, Writable } from "../utils/types";
 import { SearchIndexConfig } from '../search/types';
 import { EntitySearchService } from '../search/services';
 import { DepIdentifier, IFilterAutoGenerationConfig, ISegmentAutoGenerationConfig } from "../interfaces";
-import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig, AccordionPageConfig, WizardPageConfigStructure, CustomPageConfigStructure } from '../ui-config-gen/templates/custom-page';
+import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig, AccordionPageConfig, WizardPageConfigStructure, CustomPageConfigStructure, IFormattingRule, ITableEmptyStateConfig, IPaginationConfig } from '../ui-config-gen/templates/custom-page';
 /**
  * @fileoverview Entity Schema and Type-Safe Helper Functions
  *
@@ -658,6 +658,16 @@ export interface BaseFieldMetadata {
     isFilterable?: boolean;
     isSearchable?: boolean;
     isSortable?: boolean;
+    /**
+     * Permission shorthand (#102). Groups that can see/use this field.
+     * - Single group: `'admin'`
+     * - Multiple groups (any): `['admin', 'manager']`
+     *
+     * Expanded by ui24's `expandPermissions` pipeline step to:
+     *   `visibility: { actor: { groups: { inList: [...groups] } } }`
+     * Merged with any explicit `visibility` condition via AND.
+     */
+    permission?: string | string[];
     placeholder?: string;
     helpText?: string;
     tooltip?: string;
@@ -795,6 +805,196 @@ export interface BaseFieldMetadata {
      * }
      */
     relationConfig?: IRelationFieldConfig;
+    /**
+     * When true, the field value can be copied to clipboard with a single click.
+     * Applies to both detail views and table cells.
+     *
+     * @example
+     * email: { type: 'string', copyable: true }
+     */
+    copyable?: boolean;
+    /**
+     * Configuration for embedded content (iframe or markdown).
+     * Used when `fieldType: 'embed'`.
+     *
+     * @example
+     * previewUrl: { type: 'string', fieldType: 'embed', embedConfig: { type: 'iframe', height: 400, sandbox: 'allow-scripts' } }
+     * notes: { type: 'string', fieldType: 'embed', embedConfig: { type: 'markdown', height: 300 } }
+     */
+    embedConfig?: {
+        type: 'iframe' | 'markdown';
+        height?: number;
+        sandbox?: string;
+    };
+    /**
+     * Field dependency for cascading option selects.
+     * When the specified field(s) change, this field's options are refetched with the dependency values as filters.
+     *
+     * @example
+     * // Single dependency
+     * state: { type: 'string', fieldType: 'select', dependsOn: 'country', options: { apiUrl: '/api/states' } }
+     * // Multiple dependencies
+     * city: { type: 'string', fieldType: 'select', dependsOn: ['country', 'state'], options: { apiUrl: '/api/cities' } }
+     */
+    dependsOn?: string | string[];
+    /** Display masking configuration for PII / sensitive data (#51) */
+    masking?: IMaskingConfig;
+    /** Derived / computed field configuration (#35) */
+    derived?: IDerivedFieldConfig;
+    /**
+     * Fallback display value shown when the field value is null or undefined.
+     * Overrides per-renderer defaults (e.g. '—') with a config-specified string.
+     * Resolved in the `transformValue` pipeline step before rendering.
+     *
+     * @example nullValue: 'N/A'
+     * @example nullValue: '(none)'
+     */
+    nullValue?: string;
+    /**
+     * Progressive disclosure tier for this field (#40).
+     * Fields with higher tiers are hidden until the user expands the form.
+     * - 'basic' (default): Always visible
+     * - 'advanced': Hidden until user clicks "Show advanced fields"
+     * - 'expert': Hidden until user clicks again
+     */
+    tier?: 'basic' | 'advanced' | 'expert';
+}
+/** Built-in masking patterns for common PII types (#51) */
+export type MaskingPattern = 'ssn' | 'email' | 'phone' | 'card' | 'custom';
+/** Display masking configuration for PII / sensitive data (#51) */
+export interface IMaskingConfig {
+    enabled: boolean;
+    pattern: MaskingPattern;
+    /** Custom regex + replacement for 'custom' pattern */
+    customPattern?: {
+        match: string;
+        replace: string;
+    };
+    /** Allow user to reveal the original value */
+    allowReveal?: boolean;
+    /** Condition that must pass for the reveal button to appear */
+    revealCondition?: Condition;
+    /** Auto-hide revealed value after N seconds */
+    revealDuration?: number;
+    /** Log reveal events for audit trail */
+    auditReveal?: boolean;
+}
+/** Derived / computed field configuration (#35) */
+export interface IDerivedFieldConfig {
+    /** Template string using existing Template system */
+    template?: Template;
+    /** Simple arithmetic expression (e.g. 'quantity * unitPrice') */
+    expression?: string;
+    /** Conditional value mapping */
+    conditions?: Array<{
+        when: Condition;
+        value: unknown;
+    }>;
+    /** Fields to watch for recomputation (form mode) */
+    watchFields?: string[];
+}
+/** Configuration for error handling behavior on a page/component (#58) */
+export interface IErrorHandlingConfig {
+    /** Custom messages per HTTP status code */
+    messages?: Record<number, string | Template>;
+    /** Fallback mode: 'message' (default), 'reduced-view', or 'custom' */
+    fallback?: 'message' | 'reduced-view' | 'custom';
+    /** Extension registry key for custom fallback component */
+    fallbackKey?: string;
+    /**
+     * Seconds to wait before re-enabling the submit button after a failed form submission (#58).
+     * During the delay the button shows "Retry in Xs" (when `showCountdown` is true).
+     * @example 5  // "Retry in 5s", "4s", … then re-enables
+     */
+    retryDelay?: number;
+    /**
+     * Show "Retry in Xs" countdown on the submit button during the retry delay.
+     * @default true
+     */
+    showCountdown?: boolean;
+}
+/** Configuration for retry behavior (#58) */
+export interface IRetryConfig {
+    /** Show a retry button in error state @default true */
+    showRetryButton?: boolean;
+    /** Maximum number of automatic retries before showing error state */
+    maxRetries?: number;
+    /** Backoff strategy for automatic retries */
+    backoff?: 'exponential';
+}
+/** Data quality / completeness indicator configuration (#65) */
+export interface IDataQualityConfig {
+    enabled: boolean;
+    /** Infer required/optional fields from schema attributes @default true */
+    autoDetect?: boolean;
+    /** Explicit list of required fields for completeness calculation */
+    requiredFields?: string[];
+    /** Explicit list of optional fields that count towards completeness */
+    optionalFields?: string[];
+    /** Show completeness indicator in list/table view */
+    showInList?: boolean;
+    /** Show completeness indicator in detail view */
+    showInDetail?: boolean;
+    /** Show names of missing fields */
+    showMissing?: boolean;
+    /** Warn when completeness falls below this percentage (0-100) */
+    alertBelow?: number;
+}
+/** Deep linking configuration (#21) — syncs table state with URL */
+export interface IDeepLinkConfig {
+    enabled: boolean;
+    /** Which state slices to include in the URL @default all */
+    include?: Array<'filters' | 'sort' | 'page' | 'segment' | 'search'>;
+    /** Optional prefix for URL params to avoid collisions */
+    prefix?: string;
+}
+/** Serializable snapshot of table state (for saved views) */
+export interface TableViewState {
+    columns?: string[];
+    sort?: Array<{
+        field: string;
+        order: string;
+    }>;
+    filters?: Record<string, unknown>;
+    pageSize?: number;
+    segment?: string;
+    search?: string;
+}
+/** A preset view defined in config */
+export interface PresetView {
+    id: string;
+    name: string;
+    state: TableViewState;
+    visibility?: Condition;
+}
+/** Saved views configuration (#19) */
+export interface IViewsConfig {
+    enabled: boolean;
+    presets?: PresetView[];
+    /** Allow user-created views in localStorage */
+    allowUserViews?: boolean;
+    /** Auto-remember last active view */
+    autoRemember?: boolean;
+}
+/** Review before save configuration (#36) */
+export interface IReviewBeforeSaveConfig {
+    enabled: boolean;
+    /** Only show review when condition passes */
+    condition?: Condition;
+    /** Which fields to show: specific list or only changed fields */
+    fields?: string[] | 'changed-only';
+    /** Fields that require explicit confirmation (highlighted in review) */
+    requireConfirmFor?: string[];
+    /** Review display format */
+    format?: 'modal' | 'drawer';
+}
+/** Pre-fill form fields from URL query parameters */
+export interface IPrefillConfig {
+    enabled: boolean;
+    /** Auto-detect field names from URL params @default true */
+    autoDetect?: boolean;
+    /** Lock (disable) pre-filled fields so the user cannot change them */
+    lockPrefilled?: boolean;
 }
 /**
  * Modal type for actions
@@ -812,6 +1012,85 @@ export interface IRedirectOptions {
     state?: unknown;
     /** Open redirect URL in a new browser tab. Use '_blank' for external URLs (e.g. OAuth flows). */
     target?: '_blank' | '_self';
+}
+/**
+ * Union of all renderable page config structures.
+ * Used by modal, drawer, and response configs to specify what page type to render.
+ */
+export type PageConfigStructure = FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | DashboardPageConfig | AccordionPageConfig | WizardPageConfigStructure | CustomPageConfigStructure;
+/**
+ * Shared API/navigation config for action handlers (modals, drawers, etc.)
+ *
+ * Extracted to avoid duplicating these fields in every action config interface.
+ * Both IEntityPageActionModalConfig and IEntityPageActionDrawerConfig extend this.
+ */
+export interface IEntityActionSharedConfig {
+    /** Make an API call */
+    apiConfig?: IModalApiConfig;
+    /** Redirect after successful API call (supports templates like ':fieldName') */
+    submitSuccessRedirect?: string | ConditionalValue<string>;
+    submitSuccessRedirectOptions?: IRedirectOptions;
+    /** Navigate without API call */
+    navigateTo?: INavigateToConfig | string;
+    /** Display API response in a modal */
+    responseConfig?: IResponseDisplayConfig;
+    /** Extract next-step config from API response (for chaining/wizard flows) */
+    dynamicConfigKey?: string;
+    /** Skip toast notifications */
+    skipSuccessToast?: boolean;
+    skipErrorToast?: boolean;
+    /** Pre-populate form fields from context (route params + record data) */
+    initialValues?: Record<string, any>;
+    /** Refresh parent component after success */
+    refreshParentOnSuccess?: boolean;
+    /** Custom success message template */
+    successMessage?: Template;
+    /** Custom error message template */
+    errorMessage?: Template;
+    /**
+     * Config-driven notification control. Overrides successMessage/errorMessage when provided.
+     * Matches OperationConfig.notification shape on the frontend.
+     *
+     * @example
+     * // Custom success notification with description
+     * notification: {
+     *   success: { message: 'Saved!', description: '{entityName} updated successfully.', type: 'notification' },
+     *   error: { message: 'Failed', description: 'Could not save changes.', type: 'notification' }
+     * }
+     * @example
+     * // Skip all notifications
+     * notification: { skip: true }
+     */
+    notification?: {
+        success?: {
+            message?: Template;
+            description?: Template;
+            type?: 'message' | 'notification';
+            duration?: number;
+        };
+        error?: {
+            message?: Template;
+            description?: Template;
+            type?: 'message' | 'notification';
+            duration?: number;
+        };
+        /** Skip notifications: true = skip all, 'success' = skip success only, 'error' = skip error only */
+        skip?: boolean | 'success' | 'error';
+    };
+    /**
+     * Action throttling — cooldown period after execution.
+     * Prevents rapid repeated clicks and supports server-enforced cooldowns (429 Retry-After).
+     *
+     * @example
+     * // 5-second cooldown with visible countdown
+     * throttle: { cooldownMs: 5000, showCountdown: true }
+     */
+    throttle?: {
+        /** Cooldown period in milliseconds after execution (button stays disabled) */
+        cooldownMs?: number;
+        /** Show a "Try again in Xs" countdown on the button */
+        showCountdown?: boolean;
+    };
 }
 /**
  * API method type - must match frontend IApiConfig
@@ -890,7 +1169,7 @@ export interface INavigateToConfig {
  *
  * @see {@link IEntityPageActionModalConfig} for the modal equivalent
  */
-export interface IEntityPageActionDrawerConfig {
+export interface IEntityPageActionDrawerConfig extends IEntityActionSharedConfig {
     /** Drawer title (supports templates like 'Edit {teamName}') */
     title?: Template;
     /** Drawer placement (drawer-specific, modals don't have this) */
@@ -907,13 +1186,14 @@ export interface IEntityPageActionDrawerConfig {
     maskClosable?: boolean;
     /** Destroy content on close */
     destroyOnClose?: boolean;
-    /** Page type to render (same as modalType) */
+    /** Page type to render (same as modalType, except confirm) */
     drawerType?: Omit<ModalType, 'confirm'>;
-    /** Page configuration (same as modalPageConfig) */
-    drawerPageConfig?: FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | DashboardPageConfig | AccordionPageConfig | WizardPageConfigStructure | CustomPageConfigStructure;
+    /** Page configuration */
+    drawerPageConfig?: PageConfigStructure;
     /** EITHER: Make API call */
     apiConfig?: IModalApiConfig;
-    submitSuccessRedirect?: string;
+    /** Redirect URL after success. Supports ConditionalValue for condition-based routing. */
+    submitSuccessRedirect?: string | ConditionalValue<string>;
     submitSuccessRedirectOptions?: IRedirectOptions;
     /** OR: Navigate without API call */
     navigateTo?: INavigateToConfig | string;
@@ -927,20 +1207,6 @@ export interface IEntityPageActionDrawerConfig {
      * - false (default): Keep drawer open so user can fix and retry
      */
     closeDrawerOnError?: boolean;
-    /** Skip toast notifications */
-    skipSuccessToast?: boolean;
-    skipErrorToast?: boolean;
-    /**
-     * Pre-populate form fields from context (route params + record data).
-     * Same as modalConfig.initialValues - see IEntityPageActionModalConfig for full documentation.
-     */
-    initialValues?: Record<string, any>;
-    /** Refresh parent component after success */
-    refreshParentOnSuccess?: boolean;
-    /** Custom success message template */
-    successMessage?: Template;
-    /** Custom error message template */
-    errorMessage?: Template;
 }
 /**
  * Configuration for displaying API response in a modal
@@ -1013,8 +1279,8 @@ export interface IEntityConfigReference {
             label: string;
             url?: string;
         }>;
-        /** Override form success redirect (for create pages) */
-        submitSuccessRedirect?: string;
+        /** Override form success redirect (for create pages). Supports ConditionalValue for condition-based routing. */
+        submitSuccessRedirect?: string | ConditionalValue<string>;
         /** Override form buttons (for create pages) */
         formButtons?: ReadonlyArray<{
             text: string;
@@ -1333,6 +1599,25 @@ export interface IRelationFieldConfig {
             }>;
         };
         /**
+         * Hover preview (peek) configuration.
+         * When enabled, hovering over relation links shows a popover with key fields.
+         *
+         * @example
+         * preview: { enabled: true, fields: ['name', 'email', 'status'] }
+         */
+        preview?: {
+            /** Enable hover preview. @default false */
+            enabled: boolean;
+            /** Fields to display in the popover. Defaults to auto-detected from entity config. */
+            fields?: string[];
+            /** Delay before showing popover (ms). @default 300 */
+            delay?: number;
+            /** Popover placement. @default 'right' */
+            placement?: 'right' | 'top' | 'auto';
+            /** Max width of popover (px). @default 400 */
+            maxWidth?: number;
+        };
+        /**
          * Control auto-detection of duplicated fields for this specific relation.
          * - undefined or true: Enable auto-detection (default)
          * - false: Disable auto-detection
@@ -1374,12 +1659,13 @@ export interface IRelationFieldConfig {
         };
     };
 }
-export interface IEntityPageActionModalConfig {
+export interface IEntityPageActionModalConfig extends IEntityActionSharedConfig {
     modalType: ModalType;
     modalPageConfig?: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure | DashboardPageConfig | AccordionPageConfig | WizardPageConfigStructure | CustomPageConfigStructure;
     /** EITHER: Make API call (existing pattern) */
     apiConfig?: IModalApiConfig;
-    submitSuccessRedirect?: string;
+    /** Redirect URL after success. Supports ConditionalValue for condition-based routing. */
+    submitSuccessRedirect?: string | ConditionalValue<string>;
     submitSuccessRedirectOptions?: IRedirectOptions;
     /** OR: Navigate without API call (new pattern) */
     navigateTo?: INavigateToConfig | string;
@@ -1420,110 +1706,12 @@ export interface IEntityPageActionModalConfig {
      */
     closeModalOnError?: boolean;
     /**
-     * Skip showing success toast notification
-     * Useful when responseConfig.showModal is true (avoid duplicate notifications)
-     */
-    skipSuccessToast?: boolean;
-    /**
-     * Skip showing error toast notification
-     * Useful when you want custom error handling via callbacks
-     */
-    skipErrorToast?: boolean;
-    /**
-     * Pre-populate form fields from context (route params + record data).
-     *
-     * Values are evaluated when the modal opens and merged with form field defaults.
-     * Merge priority (lowest to highest):
-     * 1. Field-level defaults (from entity schema)
-     * 2. initialValues (from action config) ← THIS
-     * 3. Query params (from URL navigation with inverseMapping)
-     * 4. Form defaultValues (from parent component)
-     *
-     * Supports:
-     * - Static values: `{ isActive: true, priority: 1 }`
-     * - Template strings: `{ teamId: '{teamId}', sport: '{sport}' }`
-     * - Nested paths: `{ teamName: '{team.name}', teamId: '{team.teamId}' }`
-     *
-     * @example
-     * // Static values
-     * initialValues: {
-     *   isActive: true,
-     *   status: 'pending'
-     * }
-     *
-     * @example
-     * // Template strings (evaluated from routeParams)
-     * initialValues: {
-     *   teamId: '{teamId}',        // Gets routeParams.teamId
-     *   sport: '{sport}',          // Gets routeParams.sport
-     *   createdDate: '2024-01-01'  // Static
-     * }
-     *
-     * @example
-     * // Nested paths (for complex record data)
-     * initialValues: {
-     *   teamId: '{team.teamId}',
-     *   teamName: '{team.name}',
-     *   sportId: '{team.sport.sportId}'
-     * }
-     *
-     * Note: Template strings like '{teamId}' are evaluated at runtime from:
-     * - routeParams (URL parameters)
-     * - record (table row data when action is triggered from a table row)
-     */
-    initialValues?: Record<string, any>;
-    /**
-     * If true, parent component will be notified to refresh after successful operation.
-     * This triggers the onSuccessCallback with the API response data.
-     *
-     * Use cases:
-     * - Refresh table after creating/updating a record
-     * - Refresh parent page data after a successful operation
-     * - Update UI state after modal action completes
-     *
-     * Note: This works in combination with submitSuccessRedirect and responseConfig.
-     * All three can be used together.
-     *
-     * @default false
-     *
-     * @example
-     * {
-     *   modalConfig: {
-     *     modalType: 'form',
-     *     apiConfig: { apiUrl: '/api/teams', apiMethod: 'POST' },
-     *     refreshParentOnSuccess: true  // ✅ Table will refresh after creation
-     *   }
-     * }
-     */
-    refreshParentOnSuccess?: boolean;
-    /**
      * Modal title - can be static string or dynamic template.
-     * If string: used as-is or evaluated as template if contains {...}
-     * If object: evaluated from routeParams
-     *
      * @example modalTitle: "Edit Team"
      * @example modalTitle: "Edit {teamName}"
      * @example modalTitle: { composite: ['teamName', 'city'], template: 'Edit {teamName} ({city})' }
      */
     modalTitle?: Template;
-    /**
-     * Success message - can be static string or dynamic template.
-     * Evaluated from API response data.
-     * If not provided, uses message from API response.
-     *
-     * @example successMessage: 'Team created successfully!'
-     * @example successMessage: '{teamName} created successfully!'
-     */
-    successMessage?: Template;
-    /**
-     * Error message - can be static string or dynamic template.
-     * Evaluated from API error data.
-     * If not provided, uses error from API response.
-     *
-     * @example errorMessage: 'Failed to create team'
-     * @example errorMessage: 'Failed to create {teamName}'
-     */
-    errorMessage?: Template;
 }
 /**
  * Template reference for dynamic value resolution in visibility conditions.
@@ -1830,6 +2018,12 @@ export interface IEntityPageAction {
      */
     drawerConfigRef?: IEntityConfigReference;
     /**
+     * Permission shorthand (#102). Auto-expanded by ui24 to:
+     *   visibility: { actor: { permissions: { [permission]: { eq: true } } } }
+     * Merged with any explicit `visibility` condition via AND.
+     */
+    permission?: string;
+    /**
      * Visibility configuration for this action.
      * Controls visibility and enablement based on actor roles, record state, context, and custom logic.
      *
@@ -1902,6 +2096,23 @@ export interface IEntityPageAction {
      * }
      */
     target?: '_blank' | '_self' | '_parent' | '_top';
+    /**
+     * Clipboard copy action configuration (#60).
+     * When set, clicking the action copies record data to clipboard.
+     *
+     * @example
+     * // Copy record as JSON
+     * { label: 'Copy JSON', icon: 'copy', copyConfig: { format: 'json' } }
+     *
+     * @example
+     * // Copy specific fields as CSV
+     * { label: 'Export CSV', copyConfig: { format: 'csv', fields: ['name', 'email'] } }
+     */
+    readonly copyConfig?: {
+        readonly format: 'json' | 'csv' | 'text';
+        readonly fields?: ReadonlyArray<string>;
+        readonly template?: Template;
+    };
 }
 export interface IEntityPageColumn {
     readonly sortOrder: number;
@@ -2058,7 +2269,7 @@ export interface SelectFieldMetadata<E extends EntitySchema<any, any, any> = any
                 label: string;
                 url?: string;
             }>;
-            submitSuccessRedirect?: string;
+            submitSuccessRedirect?: string | ConditionalValue<string>;
             formButtons?: ReadonlyArray<{
                 text: string;
                 action: string;
@@ -2073,6 +2284,37 @@ export interface SelectFieldMetadata<E extends EntitySchema<any, any, any> = any
         };
     };
     addNewOptionConfig?: IEntityConfigReference;
+    /**
+     * Quick-create UX enhancement for the select dropdown (#44).
+     *
+     * Works **alongside** `addNewOptionConfig` — does not replace it.
+     * When `enabled`, a contextual `+ Create "[term]"` button appears inside
+     * the dropdown whenever the user's search returns no results.  Clicking it
+     * opens the entity's full create form (from `addNewOptionConfig`) with the
+     * search term pre-filled via `prefillField`.
+     *
+     * The entity form owns all validation and submission — nothing is
+     * duplicated here.
+     *
+     * @example
+     * addNewOptionConfig: { entityName: 'team', pageType: 'create' },
+     * quickCreate: {
+     *   enabled: true,
+     *   prefillField: 'teamName',   // field pre-filled with the search term
+     *   openIn: 'drawer',           // open as a drawer (default: 'modal')
+     * }
+     */
+    quickCreate?: {
+        /** Show "+ Create '[term]'" when search returns no results.  @default false */
+        enabled?: boolean;
+        /**
+         * Entity field to pre-fill with the search term.
+         * Defaults to the label field from `options.optionMapping` when omitted.
+         */
+        prefillField?: string;
+        /** Container for the create form. @default 'modal' */
+        openIn?: 'modal' | 'drawer';
+    };
 }
 export declare function isSelectFieldMetadata(obj: any): obj is SelectFieldMetadata;
 export declare function isImageFieldMetadata(obj: any): obj is ImageFieldMetadata;
@@ -2870,6 +3112,40 @@ export interface ITableColumnConfig {
      * - undefined: Defaults to true (visible)
      */
     defaultVisible?: boolean;
+    /**
+     * Conditional formatting rules for this column's cells.
+     * When a condition matches, the corresponding style/badge/icon is applied.
+     *
+     * @example
+     * formatting: [
+     *   { condition: { field: 'status', operator: 'eq', value: 'active' }, style: { color: 'green' }, badge: { status: 'success' } },
+     *   { condition: { field: 'status', operator: 'eq', value: 'inactive' }, style: { color: 'red' }, badge: { status: 'error' } }
+     * ]
+     */
+    formatting?: ReadonlyArray<IFormattingRule> | Array<IFormattingRule>;
+    /**
+     * Composite column configuration — renders multiple fields in a single column.
+     *
+     * @example
+     * // Stacked layout (default): each field on its own line
+     * { field: 'fullName', composite: { fields: ['firstName', 'lastName'], template: '{firstName} {lastName}' } }
+     *
+     * @example
+     * // Inline layout with template
+     * { field: 'address', composite: { fields: ['city', 'state', 'zip'], template: '{city}, {state} {zip}', layout: 'inline' } }
+     */
+    composite?: {
+        /** Fields to compose from the record */
+        fields: ReadonlyArray<string> | Array<string>;
+        /** Template string with {fieldName} placeholders */
+        template?: string;
+        /** Layout direction: 'stacked' (default) or 'inline' */
+        layout?: 'stacked' | 'inline';
+    };
+    /** Display masking configuration for PII / sensitive data (#51) */
+    masking?: IMaskingConfig;
+    /** Derived / computed field configuration (#35) */
+    derived?: IDerivedFieldConfig;
 }
 /**
  * Column configuration with flexible syntax.
@@ -3244,6 +3520,21 @@ export interface EntityListPageConfig {
         url?: string;
     }>;
     /**
+     * Page title with template support.
+     * @example pageTitle: 'Team Listing'
+     * @example pageTitle: '{sport} Teams'
+     */
+    readonly pageTitle?: Template;
+    /**
+     * Loading skeleton configuration (#57).
+     * Controls how loading states are displayed before data is ready.
+     * @default { type: 'skeleton' }
+     */
+    readonly loading?: {
+        readonly type: 'skeleton' | 'spinner';
+        readonly rows?: number;
+    };
+    /**
      * @deprecated Use tableConfig.defaultSort instead
      * Default sort configuration (legacy - kept for backward compatibility)
      */
@@ -3420,7 +3711,165 @@ export interface EntityListPageConfig {
          * pageSize: 20  // Show 20 records per page by default
          */
         readonly pageSize?: number;
+        /** Conditional row formatting rules (apply styles/classes to entire rows) */
+        readonly rowFormatting?: ReadonlyArray<IFormattingRule> | Array<IFormattingRule>;
+        /** Empty state configuration for when the table has no data or no results */
+        readonly emptyState?: ITableEmptyStateConfig;
+        /**
+         * Pagination configuration.
+         * Controls page size options, total display, quick jumper, and position.
+         *
+         * Note: `pageSize` remains at the top level (not duplicated here).
+         *
+         * @example
+         * pagination: { pageSizeOptions: [10, 25, 50], showQuickJumper: true }
+         */
+        readonly pagination?: IPaginationConfig;
+        /**
+         * Table density (row padding) settings.
+         * Maps to Ant Design Table `size` prop on the frontend.
+         *
+         * @example
+         * // Default density, user can cycle through options
+         * density: { default: 'default', allowToggle: true }
+         *
+         * @example
+         * // Fixed compact density, persisted per entity
+         * density: { default: 'compact', allowToggle: true, persist: true }
+         */
+        readonly density?: {
+            default: 'default' | 'compact' | 'comfortable';
+            /** Allow user to toggle between densities via a toolbar button */
+            allowToggle?: boolean;
+            /** Persist user preference to localStorage (keyed by entityName) */
+            persist?: boolean;
+        };
+        /**
+         * Column resize settings.
+         * When enabled, column headers become resizable by dragging.
+         *
+         * @example
+         * columnResizing: { enabled: true, persist: true, minWidth: 80 }
+         */
+        readonly columnResizing?: {
+            enabled: boolean;
+            /** Persist column widths to localStorage (keyed by entityName) */
+            persist?: boolean;
+            /** Minimum column width in pixels @default 60 */
+            minWidth?: number;
+        };
+        /**
+         * Pinned (frozen) columns configuration.
+         * Columns listed here stay fixed while the rest of the table scrolls horizontally.
+         * Maps to Ant Design Table `fixed: 'left' | 'right'` on individual columns.
+         *
+         * @example
+         * pinnedColumns: { left: ['name', 'status'], right: ['actions'] }
+         */
+        readonly pinnedColumns?: {
+            /** Column keys pinned to the left edge */
+            left?: ReadonlyArray<string>;
+            /** Column keys pinned to the right edge */
+            right?: ReadonlyArray<string>;
+        };
+        /**
+         * Right-click context menu for table rows.
+         * Items follow the same shape as page actions (reuses action infrastructure).
+         *
+         * @example
+         * contextMenu: {
+         *   items: [
+         *     { label: 'View Details', url: '/view-{entityName}/{entityId}', target: '_self' },
+         *     { label: 'Open in New Tab', url: '/view-{entityName}/{entityId}', target: '_blank' },
+         *     { label: 'Quick Edit', url: '/edit-{entityName}/{entityId}', openInModal: true }
+         *   ]
+         * }
+         */
+        readonly contextMenu?: {
+            items: ReadonlyArray<{
+                label: string | Template;
+                url?: string;
+                icon?: string;
+                target?: '_blank' | '_self';
+                openInModal?: boolean;
+                visibility?: Condition;
+                divider?: boolean;
+            }>;
+        };
+        /**
+         * Display mode toggle (table rows vs card grid).
+         * For basic table/card toggle. Use `viewSwitcher` for multi-view system.
+         *
+         * @example
+         * displayMode: {
+         *   default: 'table',
+         *   allowToggle: true,
+         *   cardConfig: { titleField: 'name', descriptionField: 'description', imageField: 'avatar', columns: 3 }
+         * }
+         */
+        readonly displayMode?: {
+            default?: 'table' | 'card';
+            /** Allow user to toggle between table and card views */
+            allowToggle?: boolean;
+            /** Card view configuration */
+            cardConfig?: ICardGridConfig;
+            /** Persist user view preference to localStorage */
+            remember?: boolean;
+        };
+        /**
+         * Unified view switcher configuration.
+         * When provided, replaces the basic `displayMode` toggle with a multi-view toolbar.
+         * Currently supports: table, card-grid (kanban, calendar, map planned).
+         *
+         * @example
+         * viewSwitcher: {
+         *   available: ['table', 'card-grid'],
+         *   default: 'table',
+         *   persistPreference: true,
+         *   cardConfig: { titleField: 'name', descriptionField: 'bio', columns: 3 }
+         * }
+         */
+        readonly viewSwitcher?: {
+            /** Available view types for this page */
+            available: ReadonlyArray<'table' | 'card-grid' | 'kanban' | 'calendar' | 'map'>;
+            /** Default view on first visit */
+            default: 'table' | 'card-grid' | 'kanban' | 'calendar' | 'map';
+            /** Persist user's view preference to localStorage */
+            persistPreference?: boolean;
+            /** Card grid configuration (required when 'card-grid' is in available) */
+            cardConfig?: ICardGridConfig;
+        };
+        /** Error handling configuration (#58) */
+        readonly errorHandling?: IErrorHandlingConfig;
+        /** Retry configuration (#58) */
+        readonly retry?: IRetryConfig;
+        /** Deep linking configuration (#21) — sync table state with URL query string */
+        readonly deepLink?: IDeepLinkConfig;
+        /** Saved views configuration (#19) */
+        readonly views?: IViewsConfig;
+        /** Data quality / completeness indicator (#65) */
+        readonly dataQuality?: IDataQualityConfig;
     };
+    /** Error handling configuration for the entire list page (#58) */
+    readonly errorHandling?: IErrorHandlingConfig;
+    /** Retry configuration for the entire list page (#58) */
+    readonly retry?: IRetryConfig;
+}
+/**
+ * Card grid configuration for display mode and view switcher card views.
+ * Shape matches ui24's CardGridConfig interface.
+ */
+export interface ICardGridConfig {
+    /** Field to use as card title */
+    titleField: string;
+    /** Field to use as card description/subtitle */
+    descriptionField?: string;
+    /** Field to use as card image/avatar */
+    imageField?: string;
+    /** Number of card columns in the grid @default 3 */
+    columns?: number;
+    /** Additional fields to show as summary on the card */
+    summaryFields?: string[];
 }
 /**
  * View page nested configuration (RECOMMENDED)
@@ -3436,6 +3885,14 @@ export interface EntityViewPageConfig {
         url?: string;
     }>;
     readonly columnsConfig?: IEntityPageColumnConfig;
+    /**
+     * Loading skeleton configuration (#57).
+     * @default { type: 'skeleton' }
+     */
+    readonly loading?: {
+        readonly type: 'skeleton' | 'spinner';
+        readonly rows?: number;
+    };
     readonly fields?: ReadonlyArray<{
         name: string;
         visibility?: Condition;
@@ -3454,6 +3911,14 @@ export interface EntityViewPageConfig {
      * that display parts of the same record (e.g., metadata, large JSON fields).
      */
     readonly sectionsConfig?: ISectionsConfig;
+    /** Page title with template support */
+    readonly pageTitle?: Template;
+    /** Data quality / completeness indicator (#65) */
+    readonly dataQuality?: IDataQualityConfig;
+    /** Error handling configuration (#58) */
+    readonly errorHandling?: IErrorHandlingConfig;
+    /** Retry configuration (#58) */
+    readonly retry?: IRetryConfig;
 }
 /**
  * Edit page nested configuration (RECOMMENDED)
@@ -3469,6 +3934,14 @@ export interface EntityEditPageConfig {
         url?: string;
     }>;
     readonly columnsConfig?: IEntityPageColumnConfig;
+    /**
+     * Loading skeleton configuration for the edit page.
+     * @default { type: 'skeleton' }
+     */
+    readonly loading?: {
+        readonly type: 'skeleton' | 'spinner';
+        readonly rows?: number;
+    };
     readonly formConfig?: {
         readonly buttons?: ReadonlyArray<{
             id?: string;
@@ -3496,6 +3969,15 @@ export interface EntityEditPageConfig {
             helpText?: string;
             placeholder?: string;
         }>;
+        /**
+         * Whether the form action buttons (Submit/Reset) stick to the bottom of the viewport.
+         * @default true (ui24 defaults to sticky when not specified)
+         */
+        readonly stickyActions?: boolean;
+        /** Review before save configuration (#36) */
+        readonly reviewBeforeSave?: IReviewBeforeSaveConfig;
+        /** Pre-fill form fields from URL query parameters */
+        readonly prefill?: IPrefillConfig;
     };
     /**
      * Additional sections to display below or alongside the main form.
@@ -3505,6 +3987,14 @@ export interface EntityEditPageConfig {
      * Use for features like live preview, help documentation, or related data.
      */
     readonly sectionsConfig?: ISectionsConfig;
+    /** Page title with template support */
+    readonly pageTitle?: Template;
+    /** Custom success message template for form submission */
+    readonly successMessage?: Template;
+    /** Error handling configuration (#58) */
+    readonly errorHandling?: IErrorHandlingConfig;
+    /** Retry configuration (#58) */
+    readonly retry?: IRetryConfig;
 }
 /**
  * Create page nested configuration (RECOMMENDED)
@@ -3519,6 +4009,14 @@ export interface EntityCreatePageConfig {
         url?: string;
     }>;
     readonly columnsConfig?: IEntityPageColumnConfig;
+    /**
+     * Loading skeleton configuration (#57).
+     * @default { type: 'skeleton' }
+     */
+    readonly loading?: {
+        readonly type: 'skeleton' | 'spinner';
+        readonly rows?: number;
+    };
     readonly formConfig?: {
         readonly buttons?: ReadonlyArray<{
             id?: string;
@@ -3544,6 +4042,15 @@ export interface EntityCreatePageConfig {
             helpText?: string;
             placeholder?: string;
         }>;
+        /**
+         * Whether the form action buttons (Submit/Reset) stick to the bottom of the viewport.
+         * @default true (ui24 defaults to sticky when not specified)
+         */
+        readonly stickyActions?: boolean;
+        /** Review before save configuration (#36) */
+        readonly reviewBeforeSave?: IReviewBeforeSaveConfig;
+        /** Pre-fill form fields from URL query parameters */
+        readonly prefill?: IPrefillConfig;
     };
     /**
      * Additional sections to display below or alongside the create form.
@@ -3553,6 +4060,14 @@ export interface EntityCreatePageConfig {
      * Use for features like live preview or help documentation.
      */
     readonly sectionsConfig?: ISectionsConfig;
+    /** Page title with template support */
+    readonly pageTitle?: Template;
+    /** Custom success message template for form submission */
+    readonly successMessage?: Template;
+    /** Error handling configuration (#58) */
+    readonly errorHandling?: IErrorHandlingConfig;
+    /** Retry configuration (#58) */
+    readonly retry?: IRetryConfig;
 }
 export interface EntitySchema<A extends string, F extends string, C extends string, Opp extends TDefaultEntityOperations = TDefaultEntityOperations> extends Schema<A, F, C> {
     readonly model: Schema<A, F, C>['model'] & {
@@ -3571,6 +4086,12 @@ export interface EntitySchema<A extends string, F extends string, C extends stri
         readonly excludeFromAdminDelete?: boolean;
         readonly excludeFromAdminDuplicate?: boolean;
         readonly excludeAuditActions?: boolean;
+        /**
+         * Auto-group secondary page header actions (Delete, Duplicate, Audit Logs, etc.)
+         * into a "More" dropdown. Overrides the global `uiConfigGenOptions.autoGroupActions`.
+         * @default undefined (inherits global setting, which defaults to true)
+         */
+        readonly autoGroupActions?: boolean;
         readonly CRUDApiPath?: string;
         /**
          * Entity metadata for UI rendering.

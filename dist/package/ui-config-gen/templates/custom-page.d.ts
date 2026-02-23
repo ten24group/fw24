@@ -45,7 +45,7 @@ import { IEntityPageColumnConfig } from "../../entity/base-entity";
  * const formPage: PageType = 'form';  // Renders create/edit form
  * ```
  */
-export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion" | "menu";
+export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion" | "menu" | "kanban" | "tree" | "calendar" | "map";
 /**
  * Field rendering types for UI components.
  * These types correspond to specific form field components in the frontend.
@@ -258,6 +258,56 @@ export interface PropertyConfig {
      * Modal configuration for fields that open in modal
      */
     openInModal?: boolean;
+    /** When true, the field value is copyable to clipboard with one click */
+    copyable?: boolean;
+    /** Embedded content configuration (iframe or markdown) for fieldType 'embed' */
+    embedConfig?: {
+        type: 'iframe' | 'markdown';
+        height?: number;
+        sandbox?: string;
+    };
+    /** Field dependency — when the referenced field(s) change, this field's options are refetched */
+    dependsOn?: string | string[];
+    /**
+     * Fallback display value shown when the field value is null or undefined.
+     * Applied in the rendering pipeline before the renderer receives the value.
+     * @example nullValue: 'N/A'
+     * @example nullValue: '(none)'
+     */
+    nullValue?: string;
+    /**
+     * Progressive disclosure tier for this field (#40).
+     * Fields with higher tiers are hidden until the user expands the form.
+     */
+    tier?: 'basic' | 'advanced' | 'expert';
+    /**
+     * Derived / computed field configuration (#35).
+     * The value is computed at render time from sibling field values.
+     * Works in form (live update), detail view, and table column contexts.
+     *
+     * @example Template-based full name:
+     *   derived: { template: '{firstName} {lastName}' }
+     *
+     * @example Arithmetic expression:
+     *   derived: { expression: 'quantity * unitPrice' }
+     *
+     * @example Condition-based label:
+     *   derived: {
+     *     conditions: [
+     *       { when: { record: { status: { eq: 'active' } } }, value: '✓ Active' },
+     *       { when: { record: { status: { eq: 'suspended' } } }, value: '⚠ Suspended' },
+     *     ]
+     *   }
+     */
+    derived?: {
+        template?: string;
+        expression?: string;
+        conditions?: Array<{
+            when: unknown;
+            value: unknown;
+        }>;
+        watchFields?: string[];
+    };
     items?: {
         type: ConfigFieldType;
         properties?: Array<PropertyConfig>;
@@ -345,6 +395,235 @@ export interface PropertyConfig {
         /** Timestamp format (default: 'MMM D, h:mm:ss A') */
         timestampFormat?: string;
     };
+    /** Minimum allowed value. Used by number, currency, percentage, slider, range, progress. */
+    min?: number;
+    /** Maximum allowed value. Used by number, currency, percentage, slider, range, progress. */
+    max?: number;
+    /** Increment step. Used by slider, range. */
+    step?: number;
+    /** Labeled marks on slider track. Used by slider. */
+    marks?: Record<number, string>;
+    /** Vertical orientation. Used by slider. */
+    vertical?: boolean;
+    /** Currency symbol (e.g. '$', '€'). Used by currency. */
+    currencySymbol?: string;
+    /** Decimal precision. Used by currency, number. */
+    precision?: number;
+    /** Total number of stars. Used by rating (default: 5). */
+    count?: number;
+    /** Allow half-star selection. Used by rating. */
+    allowHalf?: boolean;
+    /** Allow user to add a new option inline (opens a modal). Used by select, multi-select, tags. */
+    addNewOption?: boolean;
+    /**
+     * Config for the modal add-new-option behaviour.
+     * Used by select, multi-select, tags when addNewOption is true.
+     */
+    addNewOptionConfig?: Record<string, unknown>;
+    /**
+     * Quick-create UX enhancement for select dropdowns (#44).
+     * Works alongside `addNewOptionConfig`.  When `enabled`, a contextual
+     * `+ Create "[term]"` button appears in the dropdown when the search
+     * returns no results, opening the entity's full create form pre-filled
+     * with the search term via `prefillField`.
+     *
+     * @example
+     * addNewOptionConfig: { entityName: 'team', pageType: 'create' },
+     * quickCreate: {
+     *   enabled: true,
+     *   prefillField: 'teamName',
+     *   openIn: 'drawer',
+     * }
+     */
+    quickCreate?: {
+        /** Show contextual "+ Create '[term]'" when search returns no results. @default false */
+        enabled?: boolean;
+        /** Entity field to pre-fill with the search term. */
+        prefillField?: string;
+        /** Container for the create form: 'modal' (default) or 'drawer'. */
+        openIn?: 'modal' | 'drawer';
+    };
+    /**
+     * Permission shorthand (#102). Groups that can see/interact with this field.
+     * Expanded at runtime by ui24's `expandPermissions` pipeline step to a
+     * visibility condition — ANDed with any explicit `visibility` config.
+     *
+     * - Single group:  `permission: 'admin'`
+     * - Multiple (any): `permission: ['admin', 'manager']`
+     */
+    permission?: string | string[];
+}
+/**
+ * Shared base for all TypedPropertyConfig variants.
+ * Omits every fieldType-specific prop so each variant can re-declare only the
+ * ones that apply to its fieldType, giving per-variant narrowed types.
+ *
+ * Every key in this Omit list MUST exist on PropertyConfig — phantom keys are
+ * silently ignored by TypeScript but make the code misleading and wrong.
+ */
+type PropertyBase = Omit<PropertyConfig, 'fieldType' | 'min' | 'max' | 'step' | 'marks' | 'vertical' | 'currencySymbol' | 'precision' | 'count' | 'allowHalf' | 'durationUnit' | 'durationFormat' | 'ttlUnit' | 'ttlFormat' | 'ttlAutoRefresh' | 'codeLanguage' | 'height' | 'darkTheme' | 'lineNumbers' | 'validateJson' | 'timelineConfig' | 'options' | 'dependsOn' | 'addNewOption' | 'addNewOptionConfig' | 'quickCreate'>;
+/**
+ * Type-safe discriminated union for `PropertyConfig` (#7).
+ *
+ * Use this instead of `PropertyConfig` when authoring custom page configs to get
+ * TypeScript narrowing and IDE autocomplete on fieldType-specific properties.
+ *
+ * `TypedPropertyConfig` is assignable to `PropertyConfig` — the two types are
+ * fully compatible at the value level.
+ *
+ * @example
+ * ```ts
+ * const statusField: TypedPropertyConfig = {
+ *   name: 'status', label: 'Status', column: 'status',
+ *   fieldType: 'select',    // ← TypeScript narrows to SelectFieldConfig
+ *   options: { apiUrl: '/api/status', ... },   // ← only shown for select types
+ *   dependsOn: 'teamId',                       // ← ditto
+ * };
+ * ```
+ */
+export type TypedPropertyConfig = (PropertyBase & {
+    fieldType: 'text' | 'textarea' | 'password' | 'email' | 'url' | 'phone' | 'hidden' | 'link' | 'longtext' | 'custom';
+}) | (PropertyBase & {
+    fieldType: 'number' | 'percentage';
+    min?: number;
+    max?: number;
+}) | (PropertyBase & {
+    fieldType: 'currency';
+    currencySymbol?: string;
+    precision?: number;
+    min?: number;
+}) | (PropertyBase & {
+    fieldType: 'slider' | 'range';
+    min?: number;
+    max?: number;
+    step?: number;
+    marks?: Record<number, string>;
+    vertical?: boolean;
+}) | (PropertyBase & {
+    fieldType: 'rating';
+    count?: number;
+    allowHalf?: boolean;
+}) | (PropertyBase & {
+    fieldType: 'duration';
+    durationUnit?: 'ms' | 'seconds' | 'minutes' | 'hours' | 'days';
+    durationFormat?: 'auto' | 'long' | 'short' | 'compact';
+}) | (PropertyBase & {
+    fieldType: 'ttl';
+    ttlUnit?: 'ms' | 'seconds' | 'minutes' | 'hours';
+    ttlFormat?: 'auto' | 'long' | 'short' | 'compact';
+    ttlAutoRefresh?: number;
+}) | (PropertyBase & {
+    fieldType: 'date' | 'datetime' | 'time';
+}) | (PropertyBase & {
+    fieldType: 'boolean' | 'switch' | 'toggle' | 'checkbox';
+}) | (PropertyBase & {
+    fieldType: 'select' | 'multi-select' | 'autocomplete' | 'radio' | 'tags' | 'icon';
+    options?: FieldOptions<any>;
+    dependsOn?: string | string[];
+    addNewOption?: boolean;
+    addNewOptionConfig?: any;
+    quickCreate?: any;
+}) | (PropertyBase & {
+    fieldType: 'json' | 'rich-text' | 'wysiwyg' | 'markdown';
+    height?: number;
+}) | (PropertyBase & {
+    fieldType: 'code';
+    codeLanguage?: 'json' | 'html' | 'javascript' | 'handlebars' | 'text';
+    height?: number;
+    darkTheme?: boolean;
+    lineNumbers?: boolean;
+    validateJson?: boolean;
+}) | (PropertyBase & {
+    fieldType: 'badge' | 'tag' | 'color' | 'progress' | 'avatar';
+}) | (PropertyBase & {
+    fieldType: 'file' | 'image' | 'video' | 'audio' | 'qrcode';
+}) | (PropertyBase & {
+    fieldType: 'timeline';
+    timelineConfig?: PropertyConfig['timelineConfig'];
+});
+/**
+ * Factory for typed property configs. Preserves the narrow discriminated type
+ * while remaining assignable to `PropertyConfig` at usage sites.
+ *
+ * @example
+ * ```ts
+ * makeCustomPageConfig({
+ *   properties: [
+ *     defineProperty({ name: 'status', label: 'Status', column: 'status', fieldType: 'select', options: {...} }),
+ *     defineProperty({ name: 'name', label: 'Name', column: 'name', fieldType: 'text' }),
+ *   ]
+ * });
+ * ```
+ */
+export declare function defineProperty<T extends TypedPropertyConfig>(config: T): T;
+/**
+ * Conditional formatting rule for cell or row styling.
+ * When the condition matches the row record, the style/className is applied.
+ */
+export interface IFormattingRule {
+    /** Condition evaluated against row data */
+    when: Condition;
+    /** Inline CSS styles to apply */
+    style?: Record<string, string>;
+    /** CSS class name to apply */
+    className?: string;
+    /** Badge configuration (for cell formatting) */
+    badge?: {
+        status: string;
+    };
+    /** Icon configuration (for cell formatting) */
+    icon?: {
+        name: string;
+        color?: string;
+    };
+}
+/**
+ * Rich help configuration for contextual field descriptions.
+ * Supports tooltip, popover, and below-field placement.
+ */
+export interface IHelpConfig {
+    /** Description text displayed based on placement */
+    description?: string;
+    /** Short tooltip text shown on hover (for 'tooltip' placement) */
+    tooltip?: string;
+    /** URL to external documentation */
+    docsUrl?: string;
+    /** How to display the help: below field (default), as tooltip on label, or as popover */
+    placement?: 'below' | 'tooltip' | 'popover';
+}
+/**
+ * Empty state configuration for tables.
+ * Supports two variants: noData (zero records) and noResults (filters active, no matches).
+ */
+export interface ITableEmptyStateConfig {
+    /** Custom illustration URL */
+    image?: string;
+    noData?: {
+        title?: string;
+        description?: string;
+        action?: {
+            label: string;
+            url?: string;
+        };
+    };
+    noResults?: {
+        title?: string;
+        showClearFilters?: boolean;
+    };
+}
+/**
+ * Pagination display configuration for tables.
+ * Controls page size options, total display, quick jumper, and position.
+ */
+export interface IPaginationConfig {
+    /** Available page size options. @default [10, 20, 50, 100] */
+    pageSizeOptions?: number[];
+    /** Show total record count. @default true */
+    showTotal?: boolean;
+    /** Show quick jumper input (offset mode only). @default false */
+    showQuickJumper?: boolean;
+    /** Position of pagination controls. @default 'bottom' */
+    position?: 'top' | 'bottom' | 'both';
 }
 /**
  * Property reference (short syntax or full config).
@@ -464,7 +743,8 @@ export interface FormPageConfigStructure {
         enablement?: Condition;
     }>;
     propertiesConfig: PropertiesConfig;
-    submitSuccessRedirect?: string;
+    /** Redirect URL after success. Supports ConditionalValue for condition-based routing. */
+    submitSuccessRedirect?: string | ConditionalValue<string>;
     /**
      * Custom success message template.
      * @example successMessage: 'Record created successfully!'
@@ -477,6 +757,101 @@ export interface FormPageConfigStructure {
      */
     errorMessage?: Template;
     columnsConfig?: IEntityPageColumnConfig;
+    /**
+     * Static default values for form fields.
+     * Supports ConditionalValue<T> for condition-based defaults (#33).
+     *
+     * @example
+     * defaultValues: { status: 'active', type: { rules: [{ when: { actor: { groups: { inList: ['admin'] } } }, value: 'admin' }], default: 'user' } }
+     */
+    defaultValues?: Record<string, unknown>;
+    /**
+     * Pre-fill form fields from URL query parameters (#43).
+     * When enabled, URL params with matching field names are applied as default values.
+     *
+     * @example prefill: { enabled: true, lockPrefilled: true }
+     */
+    prefill?: {
+        enabled: boolean;
+        /** When true, prefilled fields are read-only (prevents overwrite) */
+        lockPrefilled?: boolean;
+        /** When false, only explicit `fields` mappings are applied; URL params not auto-detected */
+        autoDetect?: boolean;
+    };
+    /**
+     * Progressive disclosure for form fields (#40).
+     * Fields with `tier: 'advanced'` or `tier: 'expert'` are hidden until revealed.
+     *
+     * @example
+     * disclosure: { enabled: true, defaultTier: 'basic', expandLabel: 'Show advanced fields' }
+     */
+    disclosure?: {
+        enabled: boolean;
+        defaultTier?: 'basic' | 'advanced' | 'expert';
+        expandLabel?: string;
+        collapseLabel?: string;
+    };
+    /**
+     * Record templates — pre-fill form from a selectable config-defined template (#42).
+     *
+     * @example
+     * templates: {
+     *   label: 'Start from a template',
+     *   style: 'select',
+     *   items: [
+     *     { id: 'draft', label: 'Draft', values: { status: 'draft', visibility: 'private' } },
+     *     { id: 'published', label: 'Published', values: { status: 'active', visibility: 'public' } }
+     *   ]
+     * }
+     */
+    templates?: {
+        label?: string;
+        style?: 'buttons' | 'select';
+        /** When false, template values are merged into existing values instead of replacing them */
+        replaceValues?: boolean;
+        items: Array<{
+            id: string;
+            label: string;
+            icon?: string;
+            values: Record<string, unknown>;
+        }>;
+    };
+    /**
+     * Map backend response fields back to form fields after successful submission (#92).
+     * Keys are form field names; values are dot-notation paths into the API response.
+     *
+     * @example
+     * onSuccess: { updateFields: { generatedSlug: 'data.slug', assignedId: 'data.id' } }
+     */
+    onSuccess?: {
+        updateFields?: Record<string, string>;
+    };
+    /**
+     * Fetch the form's field schema from a server API instead of using static `propertiesConfig` (#100).
+     * Useful for user-configurable or entity-type-dependent forms.
+     *
+     * @example
+     * schemaApiConfig: { apiUrl: '/api/form-schema/:type', apiMethod: 'GET', responseKey: 'fields', mergeStrategy: 'replace' }
+     */
+    schemaApiConfig?: {
+        apiUrl: string;
+        apiMethod?: 'GET' | 'POST';
+        responseKey?: string;
+        /** How to combine server fields with static propertiesConfig */
+        mergeStrategy?: 'replace' | 'append' | 'prepend';
+    };
+    /**
+     * Inline contextual alert banners shown above the form (#16).
+     * Each alert is independently condition-evaluated.
+     */
+    alerts?: Array<{
+        type: 'info' | 'warning' | 'error' | 'success';
+        message: string;
+        description?: string;
+        closable?: boolean;
+        visibility?: Condition;
+        placement?: 'top' | 'bottom';
+    }>;
 }
 /**
  * List page configuration structure for table-based list views.
@@ -595,7 +970,7 @@ export interface ListPageConfigStructure {
                 modalType: ModalType;
                 modalPageConfig: IConfirmModal | FormPageConfigStructure | ListPageConfigStructure | DetailsPageConfigStructure;
                 apiConfig?: IModalApiConfig;
-                submitSuccessRedirect?: string;
+                submitSuccessRedirect?: string | ConditionalValue<string>;
                 successMessage?: Template;
                 errorMessage?: Template;
             };
@@ -625,6 +1000,12 @@ export interface ListPageConfigStructure {
      * ]
      */
     segments?: Array<IFilterSegment>;
+    /** Conditional row formatting rules (apply styles/classes to entire rows) */
+    rowFormatting?: Array<IFormattingRule>;
+    /** Empty state configuration for when the table has no data or no results */
+    emptyState?: ITableEmptyStateConfig;
+    /** Pagination configuration */
+    pagination?: IPaginationConfig;
 }
 /**
  * Details page configuration structure for read-only detail views.
@@ -668,6 +1049,58 @@ export interface DetailsPageConfigStructure {
     columnsConfig?: IEntityPageColumnConfig;
     propertiesConfig: PropertiesConfig;
     sectionsConfig?: ISectionsConfig;
+    /**
+     * Inline contextual alert banners shown above the detail view (#16).
+     * Each alert is independently condition-evaluated.
+     */
+    alerts?: Array<{
+        type: 'info' | 'warning' | 'error' | 'success';
+        message: string;
+        description?: string;
+        closable?: boolean;
+        visibility?: Condition;
+        placement?: 'top' | 'bottom';
+    }>;
+    /**
+     * Related entity lists displayed as tabs below the main detail card (#91).
+     * Each tab embeds a full TablePage with filters resolved from the parent record.
+     *
+     * @example
+     * relatedTabs: [
+     *   { key: 'orders', label: 'Orders', pageConfigKey: 'list-order', defaultFilters: { customerId: ':customerId' } },
+     *   { key: 'invoices', label: 'Invoices', pageConfigKey: 'list-invoice', defaultFilters: { customerId: ':customerId' } }
+     * ]
+     */
+    relatedTabs?: Array<{
+        key: string;
+        label: string;
+        /** Key used to look up a page config from the global config registry */
+        pageConfigKey: string;
+        /**
+         * Default filters applied to the embedded table.
+         * Supports `:param` placeholders resolved from the parent record.
+         */
+        defaultFilters?: Record<string, string>;
+        /** Condition evaluated against the parent record — hides the tab when false */
+        visibility?: Condition;
+    }>;
+    /**
+     * Fetch additional data from secondary API endpoints and merge it into the record (#90).
+     * All sources are fetched in parallel once the primary record loads.
+     *
+     * @example
+     * dataSources: [
+     *   { apiConfig: { apiUrl: '/api/stats/:id', apiMethod: 'GET' }, key: 'stats' },
+     *   { apiConfig: { apiUrl: '/api/activity/:id', apiMethod: 'GET' }, responseKey: 'items', key: 'activity' }
+     * ]
+     */
+    dataSources?: Array<{
+        apiConfig: IModalApiConfig;
+        /** When provided, merged data is stored under this key on the record */
+        key?: string;
+        /** Extract this key from the API response before merging */
+        responseKey?: string;
+    }>;
 }
 /**
  * Wizard step configuration for multi-step forms.
@@ -860,7 +1293,8 @@ export interface IPageAction {
         modalPageConfig?: ModalPageConfig;
         /** EITHER: Make API call (existing pattern) */
         apiConfig?: IModalApiConfig;
-        submitSuccessRedirect?: string;
+        /** Redirect URL after success. Supports ConditionalValue for condition-based routing. */
+        submitSuccessRedirect?: string | ConditionalValue<string>;
         /**
          * Navigation options for submitSuccessRedirect (replace history, pass state, etc.)
          * Uses react-router-dom's NavigateOptions: { replace?: boolean; state?: unknown; }
@@ -921,6 +1355,33 @@ export interface IPageAction {
          * @example errorMessage: 'Failed to create {entityName}'
          */
         errorMessage?: Template;
+        /**
+         * Config-driven notification control. Overrides successMessage/errorMessage when provided.
+         * Shape matches OperationConfig.notification on the frontend.
+         */
+        notification?: {
+            success?: {
+                message?: Template;
+                description?: Template;
+                type?: 'message' | 'notification';
+                duration?: number;
+            };
+            error?: {
+                message?: Template;
+                description?: Template;
+                type?: 'message' | 'notification';
+                duration?: number;
+            };
+            skip?: boolean | 'success' | 'error';
+        };
+        /**
+         * Action throttling — cooldown period after execution.
+         * @example throttle: { cooldownMs: 5000, showCountdown: true }
+         */
+        throttle?: {
+            cooldownMs?: number;
+            showCountdown?: boolean;
+        };
     };
     /** Custom modal width. Default: auto-detect from page type */
     modalWidth?: number | string;
@@ -962,6 +1423,15 @@ export interface IPageAction {
      * }
      */
     visibility?: Condition;
+    /**
+     * Clipboard copy action configuration (#60).
+     * When set, clicking the action copies record data to clipboard.
+     */
+    copyConfig?: {
+        format: 'json' | 'csv' | 'text';
+        fields?: string[];
+        template?: Template;
+    };
 }
 /**
  * Base page configuration that all page types extend.
@@ -1229,10 +1699,278 @@ export interface MenuPageConfig extends BasePageConfig {
     };
 }
 /**
+ * An action button that appears in the "⋯" menu on each Kanban card.
+ *
+ * @example
+ * cardActions: [
+ *   { label: 'View', icon: 'eye', action: 'navigate', url: '/detail-task/:id' },
+ *   { label: 'Archive', icon: 'archive', action: 'api',
+ *     apiConfig: { apiUrl: '/api/task/:id/archive', apiMethod: 'POST' },
+ *     visibility: { record: { status: { neq: 'archived' } } } }
+ * ]
+ */
+export interface IKanbanCardAction {
+    label: string;
+    icon?: string;
+    /** 'navigate' → open a URL; 'api' → call an endpoint immediately */
+    action: 'navigate' | 'api';
+    /** URL for navigate actions. Supports `:id` / `:idField` placeholders. */
+    url?: string;
+    /** API config for api actions. URL supports `:id` / `:idField` placeholders. */
+    apiConfig?: IModalApiConfig;
+    /** Optional confirm prompt before executing the action */
+    confirmMessage?: string;
+    /** Condition evaluated per-card to show/hide this action */
+    visibility?: Condition;
+}
+/**
+ * Kanban board page configuration (#46).
+ * Groups records by a field into swimlane columns; supports drag-to-reorder and drag-to-move.
+ *
+ * @example
+ * const kanbanTasks: KanbanPageConfigStructure = {
+ *   apiConfig: { apiMethod: 'GET', apiUrl: '/api/task', responseKey: 'data' },
+ *   groupField: 'status',
+ *   idField: 'taskId',
+ *   titleField: 'title',
+ *   descriptionField: 'assignee',
+ *   columns: [
+ *     { key: 'todo', label: 'To Do', color: '#e6f4ff' },
+ *     { key: 'in_progress', label: 'In Progress', color: '#fff7e6' },
+ *     { key: 'done', label: 'Done', color: '#f6ffed' },
+ *   ],
+ *   onMoveApiConfig: { apiUrl: '/api/task/:id/status', apiMethod: 'PATCH' },
+ *   onClickNavigateTo: '/detail-task/:id',
+ *   cardActions: [
+ *     { label: 'Edit', action: 'navigate', url: '/edit-task/:id' },
+ *     { label: 'Delete', action: 'api',
+ *       apiConfig: { apiUrl: '/api/task/:id', apiMethod: 'DELETE' },
+ *       confirmMessage: 'Delete this task?' }
+ *   ],
+ *   onAddNavigateTo: '/create-task',
+ * }
+ */
+export interface KanbanPageConfigStructure {
+    /** API config for fetching all records */
+    apiConfig: IModalApiConfig;
+    /** Field on the record that determines the column it belongs to */
+    groupField: string;
+    /** Field used as the record's unique identifier */
+    idField: string;
+    /** Field displayed as the card title */
+    titleField: string;
+    /** Optional field for card body / sub-title */
+    descriptionField?: string;
+    /** Column definitions — order and labels */
+    columns: Array<{
+        key: string;
+        label: string;
+        /** Optional hex/CSS accent color for the column header */
+        color?: string;
+    }>;
+    /**
+     * API called when a card is moved to a different column.
+     * Payload: `{ id, [groupField]: newColumnKey }`. URL supports `:id` placeholder.
+     */
+    onMoveApiConfig?: IModalApiConfig;
+    /** Navigate here on card body click. Supports `:id` / `:idField` placeholders. */
+    onClickNavigateTo?: string;
+    /**
+     * Per-card action buttons shown in a "⋯" dropdown menu.
+     * Use for Edit, Archive, Delete etc.
+     */
+    cardActions?: IKanbanCardAction[];
+    /**
+     * Navigate here when "Add card" button is clicked in a column.
+     * The column key is appended as `?[groupField]=<colKey>` so the create form can pre-fill it.
+     */
+    onAddNavigateTo?: string;
+    entityName?: string;
+}
+export interface KanbanPageConfig extends BasePageConfig {
+    pageType: "kanban";
+    kanbanPageConfig: KanbanPageConfigStructure;
+}
+/**
+ * An action in the per-node "⋯" dropdown in tree views.
+ *
+ * @example
+ * nodeActions: [
+ *   { label: 'Edit', icon: 'edit', action: 'navigate', url: '/edit-category/:id' },
+ *   { label: 'Add child', icon: 'plus', action: 'navigate', url: '/create-category?parentId=:id' },
+ *   { label: 'Delete', icon: 'delete', action: 'api',
+ *     apiConfig: { apiUrl: '/api/category/:id', apiMethod: 'DELETE' },
+ *     confirmMessage: 'Delete this category?' }
+ * ]
+ */
+export interface ITreeNodeAction {
+    label: string;
+    icon?: string;
+    action: 'navigate' | 'api';
+    /** URL for navigate actions. Supports `:id` / `:idField` placeholders. */
+    url?: string;
+    apiConfig?: IModalApiConfig;
+    confirmMessage?: string;
+    visibility?: Condition;
+}
+/**
+ * Hierarchical tree view page configuration (#47).
+ * Fetches flat records and builds a parent-child tree.
+ *
+ * @example
+ * const categoryTree: TreePageConfigStructure = {
+ *   apiConfig: { apiMethod: 'GET', apiUrl: '/api/category', responseKey: 'data' },
+ *   idField: 'categoryId',
+ *   labelField: 'name',
+ *   parentField: 'parentId',
+ *   onClickNavigateTo: '/detail-category/:categoryId',
+ *   nodeActions: [
+ *     { label: 'Edit', action: 'navigate', url: '/edit-category/:categoryId' },
+ *     { label: 'Add child', action: 'navigate', url: '/create-category?parentId=:categoryId' },
+ *     { label: 'Delete', action: 'api',
+ *       apiConfig: { apiUrl: '/api/category/:categoryId', apiMethod: 'DELETE' },
+ *       confirmMessage: 'Delete this category?' }
+ *   ]
+ * }
+ */
+export interface TreePageConfigStructure {
+    apiConfig: IModalApiConfig;
+    idField: string;
+    labelField: string;
+    parentField: string;
+    onClickNavigateTo?: string;
+    selectable?: boolean;
+    showSearch?: boolean;
+    defaultExpandAll?: boolean;
+    /** Per-node action buttons shown in a "⋯" dropdown */
+    nodeActions?: ITreeNodeAction[];
+    entityName?: string;
+}
+export interface TreePageConfig extends BasePageConfig {
+    pageType: "tree";
+    treePageConfig: TreePageConfigStructure;
+}
+/**
+ * Calendar / event view page configuration (#45).
+ * Renders events from an API on an antd Calendar.
+ *
+ * @example
+ * const eventCalendar: CalendarPageConfigStructure = {
+ *   apiConfig: { apiMethod: 'GET', apiUrl: '/api/event', responseKey: 'data' },
+ *   dateField: 'eventDate',
+ *   titleField: 'title',
+ *   statusField: 'type',
+ *   statusMap: { meeting: 'processing', deadline: 'error', reminder: 'warning' },
+ *   idField: 'eventId',
+ *   onEventClickNavigateTo: '/detail-event/:eventId',
+ *   onCreateNavigateTo: '/create-event',
+ * }
+ */
+export interface CalendarPageConfigStructure {
+    apiConfig: IModalApiConfig;
+    /** Field containing the event date (ISO string or YYYY-MM-DD) */
+    dateField: string;
+    /** Field used as the event badge title on the calendar cell */
+    titleField: string;
+    /** Field used as the event unique identifier */
+    idField?: string;
+    /** Optional field for event type/status — drives badge colour via statusMap */
+    statusField?: string;
+    /** Maps status values → antd Badge statuses */
+    statusMap?: Record<string, 'success' | 'warning' | 'error' | 'default' | 'processing'>;
+    /**
+     * Navigate here when an event badge is clicked.
+     * Supports `:id` / `:idField` placeholders.
+     */
+    onEventClickNavigateTo?: string;
+    /**
+     * Navigate here when an **empty** date cell is clicked (create new event).
+     * The date is appended as `?date=YYYY-MM-DD` so the create form can pre-fill it.
+     * Takes priority over showing the event list modal when a date has events.
+     */
+    onCreateNavigateTo?: string;
+    /**
+     * Navigate here when a date cell is clicked regardless of whether it has events.
+     * When both `onCreateNavigateTo` and `onDateClickNavigateTo` are set,
+     * `onDateClickNavigateTo` takes priority for all dates.
+     * Supports `:date` (YYYY-MM-DD) placeholder.
+     */
+    onDateClickNavigateTo?: string;
+    defaultMode?: 'month' | 'year';
+    entityName?: string;
+}
+export interface CalendarPageConfig extends BasePageConfig {
+    pageType: "calendar";
+    calendarPageConfig: CalendarPageConfigStructure;
+}
+/**
+ * An action button that appears in a marker popup on the map.
+ *
+ * @example
+ * popupActions: [
+ *   { label: 'View details', url: '/detail-location/:id' },
+ *   { label: 'Edit', url: '/edit-location/:id' }
+ * ]
+ */
+export interface IMapPopupAction {
+    label: string;
+    icon?: string;
+    /** URL to navigate to. Supports `:id` / `:idField` placeholders. */
+    url: string;
+}
+/**
+ * Geo / map view page configuration (#48).
+ * Renders records with lat/lng fields as markers on a Leaflet map.
+ * Requires `react-leaflet` and `leaflet` to be installed.
+ *
+ * @example
+ * const storeMap: MapPageConfigStructure = {
+ *   apiConfig: { apiMethod: 'GET', apiUrl: '/api/store', responseKey: 'data' },
+ *   latField: 'latitude',
+ *   lngField: 'longitude',
+ *   titleField: 'storeName',
+ *   descriptionField: 'address',
+ *   idField: 'storeId',
+ *   onMarkerClickNavigateTo: '/detail-store/:storeId',
+ *   popupActions: [
+ *     { label: 'View store', url: '/detail-store/:storeId' },
+ *     { label: 'Edit', url: '/edit-store/:storeId' }
+ *   ],
+ *   defaultCenter: [37.7749, -122.4194],
+ *   defaultZoom: 12,
+ * }
+ */
+export interface MapPageConfigStructure {
+    apiConfig: IModalApiConfig;
+    latField: string;
+    lngField: string;
+    titleField: string;
+    descriptionField?: string;
+    /** Field used as the unique identifier for `:id` substitution */
+    idField?: string;
+    /**
+     * Navigate here when a marker is clicked.
+     * Supports `:id` / `:idField` placeholders.
+     * When set, the entire marker is clickable and navigates to this URL.
+     */
+    onMarkerClickNavigateTo?: string;
+    /** Action links rendered inside the marker popup */
+    popupActions?: IMapPopupAction[];
+    /** Initial map center as [lat, lng] (default: [51.505, -0.09]) */
+    defaultCenter?: [number, number];
+    defaultZoom?: number;
+    mapHeight?: number;
+    entityName?: string;
+}
+export interface MapPageConfig extends BasePageConfig {
+    pageType: "map";
+    mapPageConfig: MapPageConfigStructure;
+}
+/**
  * Union type for all custom page configuration options.
  * Used as the input type for makeCustomPageConfig function.
  */
-export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageConfig | DashboardPageConfig | AccordionPageConfig | MenuPageConfig;
+export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageConfig | DashboardPageConfig | AccordionPageConfig | MenuPageConfig | KanbanPageConfig | TreePageConfig | CalendarPageConfig | MapPageConfig;
 /**
  * Factory function for creating custom page configurations.
  * Takes a page-specific configuration and returns a normalized page config structure.
@@ -1259,7 +1997,7 @@ export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageCon
 export declare function makeCustomPageConfig(options: CustomPageOptions): {
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
+    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1271,7 +2009,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     listPageConfig: ListPageConfigStructure;
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
+    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1286,7 +2024,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     formPageConfig: FormPageConfigStructure;
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
+    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1298,7 +2036,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     detailsPageConfig: DetailsPageConfigStructure;
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
+    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1318,7 +2056,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     };
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
+    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1344,7 +2082,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     }>;
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
+    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1371,7 +2109,55 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     };
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "list" | "dashboard" | "details" | "accordion" | "form" | "menu";
+    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    routePattern: string | undefined;
+    breadcrumbs: {
+        label: string | Template;
+        url?: string;
+        visibility?: Condition;
+    }[];
+    pageHeaderActions: IPageAction[];
+} | {
+    kanbanPageConfig: KanbanPageConfigStructure;
+    pageName: string | undefined;
+    pageTitle: ConditionalValue<string> | Template;
+    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    routePattern: string | undefined;
+    breadcrumbs: {
+        label: string | Template;
+        url?: string;
+        visibility?: Condition;
+    }[];
+    pageHeaderActions: IPageAction[];
+} | {
+    treePageConfig: TreePageConfigStructure;
+    pageName: string | undefined;
+    pageTitle: ConditionalValue<string> | Template;
+    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    routePattern: string | undefined;
+    breadcrumbs: {
+        label: string | Template;
+        url?: string;
+        visibility?: Condition;
+    }[];
+    pageHeaderActions: IPageAction[];
+} | {
+    calendarPageConfig: CalendarPageConfigStructure;
+    pageName: string | undefined;
+    pageTitle: ConditionalValue<string> | Template;
+    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    routePattern: string | undefined;
+    breadcrumbs: {
+        label: string | Template;
+        url?: string;
+        visibility?: Condition;
+    }[];
+    pageHeaderActions: IPageAction[];
+} | {
+    mapPageConfig: MapPageConfigStructure;
+    pageName: string | undefined;
+    pageTitle: ConditionalValue<string> | Template;
+    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -1380,3 +2166,4 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     }[];
     pageHeaderActions: IPageAction[];
 };
+export {};

@@ -1,4 +1,4 @@
-import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, IEntityPageColumnConfig, Template, EntityEditPageConfig, ISectionsConfig } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, IEntityPageColumnConfig, Template, EntityEditPageConfig, EntityCreatePageConfig, ISectionsConfig, IErrorHandlingConfig, IRetryConfig } from "../../entity";
 import { IApplicationConfig } from "../../interfaces/config";
 export type CreateEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string;
@@ -46,9 +46,20 @@ export type CreateEntityPageOptions<S extends EntitySchema<string, string, strin
      */
     sectionsConfig?: ISectionsConfig;
     /**
+     * Loading skeleton configuration.
+     * @default { type: 'skeleton' }
+     */
+    loading?: EntityCreatePageConfig['loading'];
+    /** Error handling configuration (#58) */
+    errorHandling?: IErrorHandlingConfig;
+    /** Retry configuration (#58) */
+    retry?: IRetryConfig;
+    /**
      * Global UI config options (for passing global configuration like duplicatedFieldDetection)
      */
     globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
+    /** Auto-group secondary actions into a "More" dropdown */
+    autoGroupActions?: boolean;
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: CreateEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     pageTitle: Template;
@@ -58,11 +69,19 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
         url?: string;
     }[];
     routePattern: string;
-    pageHeaderActions: {
+    pageHeaderActions: ({
+        id: string;
         label: string;
-        template: string;
         url: string;
-    }[];
+        icon: string;
+        hideInModal: boolean;
+    } | {
+        id: string;
+        label: string;
+        url: string;
+        icon?: undefined;
+        hideInModal?: undefined;
+    })[];
     formPageConfig: any;
 };
 export default _default;
