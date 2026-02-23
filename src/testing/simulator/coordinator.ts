@@ -3,9 +3,12 @@ import { ISimulatorConfig } from './interfaces';
 import { LambdaRunner } from './lambda-runner';
 import { ApiGatewayEmulator, ApiRoute } from './emulators/api-gateway';
 import { SqsBridge } from './bridges/sqs-bridge';
+import { SnsBridge } from './bridges/sns-bridge';
+import { EventBridgeBridge } from './bridges/eventbridge-bridge';
 import { createLogger } from '../../logging';
 import { CDKParser } from './cdk-parser';
 import { SidecarManager } from './sidecar-manager';
+import { AwsMockEmulator } from './emulators/aws-mock';
 
 export class SimulatorCoordinator {
     private readonly logger = createLogger(SimulatorCoordinator.name);
@@ -13,7 +16,10 @@ export class SimulatorCoordinator {
     private readonly lambdaRunner: LambdaRunner;
     private readonly sidecarManager: SidecarManager;
     private readonly apiGatewayEmulator: ApiGatewayEmulator;
+    private readonly awsMockEmulator: AwsMockEmulator;
     private readonly sqsBridge: SqsBridge;
+    private readonly snsBridge: SnsBridge;
+    private readonly eventBridgeBridge: EventBridgeBridge;
 
     constructor(config: ISimulatorConfig = {}) {
         this.lambdaRunner = new LambdaRunner();
@@ -22,9 +28,15 @@ export class SimulatorCoordinator {
 
         this.apiGatewayEmulator = new ApiGatewayEmulator(this.lambdaRunner, { port: config.port });
         this.sqsBridge = new SqsBridge(this.lambdaRunner, `http://localhost:9324`);
+        this.snsBridge = new SnsBridge(this.lambdaRunner);
+        this.eventBridgeBridge = new EventBridgeBridge(this.lambdaRunner);
+        this.awsMockEmulator = new AwsMockEmulator(this.snsBridge, { port: config.snsPort });
 
         this.simulator.addEmulator(this.apiGatewayEmulator);
+        this.simulator.addEmulator(this.awsMockEmulator);
         this.simulator.addBridge(this.sqsBridge);
+        this.simulator.addBridge(this.snsBridge);
+        this.simulator.addBridge(this.eventBridgeBridge);
     }
 
     async syncWithCDK(cdkOutDir: string = 'cdk.out') {
@@ -44,6 +56,7 @@ export class SimulatorCoordinator {
                     AWS_ENDPOINT_URL_SQS: `http://localhost:9324`,
                     AWS_ENDPOINT_URL_S3: `http://localhost:9000`,
                     AWS_ENDPOINT_URL_SNS: `http://localhost:4566`,
+                    AWS_ENDPOINT_URL_SES: `http://localhost:4566`,
                     AWS_REGION: l.environment.AWS_REGION || 'us-east-1',
                     AWS_ACCESS_KEY_ID: 'local',
                     AWS_SECRET_ACCESS_KEY: 'local',
@@ -53,6 +66,11 @@ export class SimulatorCoordinator {
 
         this.apiGatewayEmulator.setLambdaConfigs(lambdaConfigs);
         this.sqsBridge.setLambdaConfigs(lambdaConfigs);
+        this.snsBridge.setLambdaConfigs(lambdaConfigs);
+        this.eventBridgeBridge.setLambdaConfigs(lambdaConfigs);
+
+        this.snsBridge.setSubscriptions(blueprint.subscriptions);
+        this.eventBridgeBridge.setRules(blueprint.events);
 
         const routes: ApiRoute[] = blueprint.routes.map(r => ({
             method: r.method,
@@ -69,6 +87,9 @@ export class SimulatorCoordinator {
         }
         if (blueprint.resources.some(r => r.type === 'AWS::SQS::Queue')) {
             await this.sidecarManager.startSQS();
+        }
+        if (blueprint.resources.some(r => r.type === 'AWS::S3::Bucket')) {
+            await this.sidecarManager.startS3();
         }
 
         // Initialize resource schema

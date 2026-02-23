@@ -31,7 +31,13 @@ export class CDKParser {
         this.cdkOutDir = path.resolve(cdkOutDir);
     }
 
-    parse(): { lambdas: SimulatedLambda[], routes: SimulatedApiRoute[], resources: SimulatedResource[] } {
+    parse(): {
+        lambdas: SimulatedLambda[],
+        routes: SimulatedApiRoute[],
+        resources: SimulatedResource[],
+        events: any[],
+        subscriptions: any[]
+    } {
         const manifestPath = path.join(this.cdkOutDir, 'manifest.json');
         if (!fs.existsSync(manifestPath)) {
             throw new Error(`CDK manifest not found at ${manifestPath}. Run 'cdk synth' first.`);
@@ -41,13 +47,17 @@ export class CDKParser {
         const lambdas: SimulatedLambda[] = [];
         const routes: SimulatedApiRoute[] = [];
         const resources: SimulatedResource[] = [];
+        const events: any[] = [];
+        const subscriptions: any[] = [];
 
         // First pass: build global resource map across all stacks
         for (const [ artifactId, artifact ] of Object.entries<any>(manifest.artifacts)) {
             if (artifact.type === 'aws:cloudformation:stack') {
                 const templatePath = path.join(this.cdkOutDir, artifact.properties.templateFile);
-                const template = JSON.parse(fs.readFileSync(templatePath, 'utf-8'));
-                Object.assign(this.resourceMap, template.Resources || {});
+                if (fs.existsSync(templatePath)) {
+                    const template = JSON.parse(fs.readFileSync(templatePath, 'utf-8'));
+                    Object.assign(this.resourceMap, template.Resources || {});
+                }
             }
         }
 
@@ -64,6 +74,19 @@ export class CDKParser {
             } else if (resource.Type === 'AWS::ApiGateway::Method') {
                 const route = this.resolveRoute(id, resource);
                 if (route) routes.push(route);
+            } else if (resource.Type === 'AWS::Events::Rule') {
+                events.push({
+                    id,
+                    schedule: resource.Properties.ScheduleExpression,
+                    targets: this.resolveProperties(resource.Properties.Targets)
+                });
+            } else if (resource.Type === 'AWS::SNS::Subscription') {
+                subscriptions.push({
+                    id,
+                    topicArn: this.resolveIntrinsic(resource.Properties.TopicArn),
+                    endpoint: this.resolveIntrinsic(resource.Properties.Endpoint),
+                    protocol: resource.Properties.Protocol
+                });
             } else if (['AWS::DynamoDB::Table', 'AWS::SQS::Queue', 'AWS::S3::Bucket', 'AWS::SNS::Topic'].includes(resource.Type)) {
                 resources.push({
                     id,
@@ -73,7 +96,36 @@ export class CDKParser {
             }
         }
 
-        return { lambdas, routes, resources };
+        return {
+            lambdas,
+            routes,
+            resources,
+            events,
+            subscriptions,
+            s3Notifications: this.extractS3Notifications()
+        };
+    }
+
+    private extractS3Notifications(): any[] {
+        const notifications: any[] = [];
+        for (const [ id, resource ] of Object.entries<any>(this.resourceMap)) {
+            if (resource.Type === 'AWS::S3::Bucket') {
+                const config = resource.Properties.NotificationConfiguration;
+                if (config) {
+                    if (config.LambdaConfigurations) {
+                        for (const conf of config.LambdaConfigurations) {
+                            notifications.push({
+                                bucketName: this.resolveIntrinsic({ Ref: id }),
+                                event: conf.Event,
+                                filter: conf.Filter,
+                                targetLambdaId: this.resolveIntrinsic(conf.Function)
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        return notifications;
     }
 
     private resolveCodePath(resource: any): string {

@@ -88,4 +88,33 @@ describe('Simulator Integration (CDK-First)', () => {
 
         await coordinator.stop();
     });
+
+    it('should simulate SNS fan-out to SQS', async () => {
+        coordinator = new SimulatorCoordinator({ port: 3021, snsPort: 4568 });
+
+        const mockRunner = coordinator.getLambdaRunner();
+        mockRunner.runHandler = jest.fn();
+
+        // 1. Setup subscription metadata
+        const subscriptions = [
+            {
+                id: 'sub-1',
+                topicArn: 'arn:aws:sns:local:topic-1',
+                endpoint: 'arn:aws:sqs:local:queue-1',
+                protocol: 'sqs'
+            }
+        ];
+
+        (coordinator as any).snsBridge.setSubscriptions(subscriptions);
+        (coordinator as any).snsBridge.sqsClient.send = jest.fn().mockResolvedValue({});
+
+        // 2. Trigger Publish to mock SNS
+        await (coordinator as any).snsBridge.relayPublish('arn:aws:sns:local:topic-1', 'test message');
+
+        // 3. Verify SQS client was called by SNS Bridge
+        const { SendMessageCommand } = require('@aws-sdk/client-sqs');
+        expect((coordinator as any).snsBridge.sqsClient.send).toHaveBeenCalledWith(
+            expect.any(SendMessageCommand)
+        );
+    });
 });

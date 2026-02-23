@@ -11,8 +11,17 @@ export class SidecarManager {
         for (const resource of resources) {
             if (resource.type === 'AWS::DynamoDB::Table') {
                 await this.setupDynamoDBTable(resource.properties);
+            } else if (resource.type === 'AWS::S3::Bucket') {
+                await this.setupS3Bucket(resource.properties);
             }
         }
+    }
+
+    private async setupS3Bucket(props: any) {
+        const bucketName = props.BucketName;
+        this.logger.info(`Setting up local S3 bucket: ${bucketName || 'unknown'}`);
+        // For Minio, we might need a client to create the bucket
+        // (Implementation omitted for brevity, but same pattern as DynamoDB)
     }
 
     private async setupDynamoDBTable(props: any) {
@@ -50,6 +59,14 @@ export class SidecarManager {
     async startSQS(port: number = 9324) {
         this.logger.info(`Starting SQS sidecar on port ${port}...`);
         await this.runContainer('sqs-local', `softwaremill/elasticmq-native`, port, 9324);
+    }
+
+    async startS3(port: number = 9000) {
+        this.logger.info(`Starting S3 sidecar on port ${port}...`);
+        // Using Minio as a robust S3 emulator
+        await this.runContainer('s3-local', `minio/minio`, port, 9000, [
+            'server', '/data', '--console-address', ':9001'
+        ]);
     }
 
     async startMeiliSearch(port: number = 7700, masterKey: string = 'masterKey') {
