@@ -1,5 +1,6 @@
 import { IBridge, ILambdaRunner } from '../interfaces';
 import { createLogger } from '../../../logging';
+import { SQSClient, ReceiveMessageCommand, DeleteMessageCommand } from '@aws-sdk/client-sqs';
 
 export interface SqsSubscription {
     queueName: string;
@@ -13,10 +14,18 @@ export class SqsBridge implements IBridge {
     private subscriptions: SqsSubscription[] = [];
     private lambdaConfigs: Map<string, any> = new Map();
 
+    private client: SQSClient;
+
     constructor(
         private readonly lambdaRunner: ILambdaRunner,
-        private readonly sqsEmulator: any // We'll need to access the in-memory queues
-    ) {}
+        sqsEndpoint: string = 'http://localhost:9324'
+    ) {
+        this.client = new SQSClient({
+            endpoint: sqsEndpoint,
+            region: 'us-east-1',
+            credentials: { accessKeyId: 'local', secretAccessKey: 'local' }
+        });
+    }
 
     setLambdaConfigs(configs: Map<string, any>) {
         this.lambdaConfigs = configs;
@@ -29,17 +38,19 @@ export class SqsBridge implements IBridge {
     async start(): Promise<void> {
         this.logger.info("Starting SQS Bridge...");
 
-        // Simple polling mechanism for the in-memory SQS emulator
         this.interval = setInterval(async () => {
             for (const sub of this.subscriptions) {
-                const messages = this.sqsEmulator.getMessages?.(sub.queueName);
-                if (messages && messages.length > 0) {
-                    this.logger.info(`SQS Bridge: Found ${messages.length} messages for ${sub.queueName}`);
+                try {
+                    const queueUrl = `http://localhost:9324/queue/${sub.queueName}`;
+                    const receive = await this.client.send(new ReceiveMessageCommand({
+                        QueueUrl: queueUrl,
+                        MaxNumberOfMessages: 5,
+                        WaitTimeSeconds: 0
+                    }));
 
-                    // Take one message (or all) and process
-                    const message = messages.shift();
+                    if (receive.Messages && receive.Messages.length > 0) {
+                        this.logger.info(`SQS Bridge: Received ${receive.Messages.length} messages for ${sub.queueName}`);
 
-                    try {
                         const lambdaConfig = this.lambdaConfigs.get(sub.handlerId);
                         if (!lambdaConfig) {
                             this.logger.error(`Lambda configuration not found for ID: ${sub.handlerId}`);
@@ -47,13 +58,14 @@ export class SqsBridge implements IBridge {
                         }
 
                         const event = {
-                            Records: [
-                                {
-                                    messageId: message.id,
-                                    body: message.body,
-                                    eventSource: 'aws:sqs'
-                                }
-                            ]
+                            Records: receive.Messages.map(m => ({
+                                messageId: m.MessageId,
+                                receiptHandle: m.ReceiptHandle,
+                                body: m.Body,
+                                attributes: m.Attributes,
+                                messageAttributes: m.MessageAttributes,
+                                eventSource: 'aws:sqs'
+                            }))
                         };
 
                         await this.lambdaRunner.runHandler(
@@ -63,9 +75,18 @@ export class SqsBridge implements IBridge {
                             {},
                             lambdaConfig.environment
                         );
-                    } catch (error) {
-                        this.logger.error(`Error processing SQS message for ${sub.queueName}:`, error);
-                        // Put message back? (Simple mock doesn't handle retries well)
+
+                        // Delete messages after successful processing
+                        for (const m of receive.Messages) {
+                            await this.client.send(new DeleteMessageCommand({
+                                QueueUrl: queueUrl,
+                                ReceiptHandle: m.ReceiptHandle
+                            }));
+                        }
+                    }
+                } catch (error: any) {
+                    if (error.name !== 'ConnectTimeoutError' && error.code !== 'ECONNREFUSED') {
+                        this.logger.error(`Error in SQS Bridge for ${sub.queueName}:`, error);
                     }
                 }
             }

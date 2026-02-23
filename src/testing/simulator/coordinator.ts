@@ -2,7 +2,7 @@ import { Simulator } from './index';
 import { ISimulatorConfig } from './interfaces';
 import { LambdaRunner } from './lambda-runner';
 import { ApiGatewayEmulator, ApiRoute } from './emulators/api-gateway';
-import { SqsBridge, SqsSubscription } from './bridges/sqs-bridge';
+import { SqsBridge } from './bridges/sqs-bridge';
 import { createLogger } from '../../logging';
 import { CDKParser } from './cdk-parser';
 import { SidecarManager } from './sidecar-manager';
@@ -21,26 +21,25 @@ export class SimulatorCoordinator {
         this.simulator = new Simulator(config);
 
         this.apiGatewayEmulator = new ApiGatewayEmulator(this.lambdaRunner, { port: config.port });
-        // SQS bridge will now point to local sidecar endpoint
-        this.sqsBridge = new SqsBridge(this.lambdaRunner, null);
+        this.sqsBridge = new SqsBridge(this.lambdaRunner, `http://localhost:9324`);
 
         this.simulator.addEmulator(this.apiGatewayEmulator);
         this.simulator.addBridge(this.sqsBridge);
     }
 
     async syncWithCDK(cdkOutDir: string = 'cdk.out') {
+        this.logger.info(`Syncing simulator with CDK blueprint from ${cdkOutDir}...`);
         const parser = new CDKParser(cdkOutDir);
         const blueprint = parser.parse();
 
         const lambdaConfigs = new Map<string, any>();
         blueprint.lambdas.forEach(l => {
             lambdaConfigs.set(l.id, {
-                entry: l.codePath, // This is the bundled code path
-                handlerClassName: l.handler.split('.').pop(), // e.g. index.handler -> handler
+                entry: l.codePath,
+                handlerClassName: l.handler.split('.').pop(),
                 environment: {
                     ...l.environment,
-                    // Automatically point to local sidecars
-                    AWS_ENDPOINT_URL: `http://localhost:4566`, // General fallback
+                    AWS_ENDPOINT_URL: `http://localhost:4566`,
                     AWS_ENDPOINT_URL_DYNAMODB: `http://localhost:8000`,
                     AWS_ENDPOINT_URL_SQS: `http://localhost:9324`,
                     AWS_ENDPOINT_URL_S3: `http://localhost:9000`,
@@ -52,18 +51,19 @@ export class SimulatorCoordinator {
             });
         });
 
-        this.setLambdaConfigs(lambdaConfigs);
+        this.apiGatewayEmulator.setLambdaConfigs(lambdaConfigs);
+        this.sqsBridge.setLambdaConfigs(lambdaConfigs);
 
         const routes: ApiRoute[] = blueprint.routes.map(r => ({
             method: r.method,
             path: r.path,
             handlerId: r.lambdaId,
-            controllerName: '' // Parser might need to extract this if needed
+            controllerName: ''
         }));
 
-        this.setApiRoutes(routes);
+        this.apiGatewayEmulator.setRoutes(routes);
 
-        // Start sidecars based on resources found
+        // Start sidecars
         if (blueprint.resources.some(r => r.type === 'AWS::DynamoDB::Table')) {
             await this.sidecarManager.startDynamoDB();
         }
@@ -71,13 +71,8 @@ export class SimulatorCoordinator {
             await this.sidecarManager.startSQS();
         }
 
-        // Initialize resource schema (create tables, etc.)
+        // Initialize resource schema
         await this.sidecarManager.initResources(blueprint.resources);
-    }
-
-    setLambdaConfigs(configs: Map<string, any>) {
-        this.apiGatewayEmulator.setLambdaConfigs(configs);
-        this.sqsBridge.setLambdaConfigs(configs);
     }
 
     async start() {
@@ -86,14 +81,7 @@ export class SimulatorCoordinator {
 
     async stop() {
         await this.simulator.stop();
-    }
-
-    setApiRoutes(routes: ApiRoute[]) {
-        this.apiGatewayEmulator.setRoutes(routes);
-    }
-
-    setSqsSubscriptions(subs: SqsSubscription[]) {
-        this.sqsBridge.setSubscriptions(subs);
+        await this.sidecarManager.stopAll();
     }
 
     getLambdaRunner() {

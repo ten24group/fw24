@@ -103,7 +103,6 @@ export class SchedulerConstruct implements FW24Construct {
 
         const task = new LambdaFunction(this.mainStack, taskName + "-task", {
             entry: taskInfo.filePath + "/" + taskInfo.fileName,
-            handlerClassName: taskInfo.handlerClass.name,
             environmentVariables: this.fw24.resolveEnvVariables(taskConfigEnv),
             allowSendEmail: true,
             functionTimeout: taskConfig.functionTimeout || this.fw24.getConfig().functionTimeout,

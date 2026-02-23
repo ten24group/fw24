@@ -391,28 +391,32 @@ export class Application {
      * Start the local simulator for development.
      */
     public async simulate(config: ISimulatorConfig = {}) {
-        this.logger.info("Starting FW24 Simulator...");
-        process.env.SIMULATION_MODE = 'true';
+        this.logger.info("Starting High-Fidelity High-Fidelity Simulator (fw24 dev)...");
 
         const coordinator = new SimulatorCoordinator(config);
 
-        const discover = async () => {
-            this.logger.info("Triggering CDK Synth for discovery...");
+        const sync = async () => {
+            this.logger.info("Syncing with CDK blueprint...");
 
             try {
                 // 1. Run CDK Synth
                 const { spawnSync } = require('node:child_process');
-                spawnSync('npx', ['cdk', 'synth'], { stdio: 'inherit' });
+                const result = spawnSync('npx', ['cdk', 'synth'], { stdio: 'inherit' });
+
+                if (result.status !== 0) {
+                    this.logger.error("CDK Synth failed. Please check your CDK code.");
+                    return;
+                }
 
                 // 2. Sync Coordinator with CDK blueprint
                 await coordinator.syncWithCDK();
 
             } catch (error) {
-                this.logger.error("Error during CDK resource discovery:", error);
+                this.logger.error("Error during CDK synchronization:", error);
             }
         }
 
-        await discover();
+        await sync();
 
         // 3. Start Simulator
         await coordinator.start();
@@ -420,13 +424,13 @@ export class Application {
         // 4. Setup HMR
         if (config.hotReload !== false) {
             const watcher = new HMRWatcher('./src', async () => {
-                this.logger.info("Change detected, reloading...");
-                await discover();
+                this.logger.info("Change detected, re-synthesizing...");
+                await sync();
             });
             watcher.start();
         }
 
-        this.logger.info("Simulator started successfully!");
+        this.logger.info("Simulator is ready!");
 
         return coordinator;
     }

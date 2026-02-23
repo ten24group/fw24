@@ -1,5 +1,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { resolve } from 'node:path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 async function run() {
     if (!parentPort) return;
@@ -8,10 +10,21 @@ async function run() {
         const { handlerPath, handlerClassName, event, context } = workerData;
 
         // Resolve the absolute path to the handler
-        const absoluteHandlerPath = resolve(handlerPath);
+        let absoluteHandlerPath = resolve(handlerPath);
+
+        // If it's a directory, look for index.js
+        if (fs.existsSync(absoluteHandlerPath) && fs.lstatSync(absoluteHandlerPath).isDirectory()) {
+            absoluteHandlerPath = path.join(absoluteHandlerPath, 'index.js');
+        }
+
+        if (!fs.existsSync(absoluteHandlerPath)) {
+            throw new Error(`Handler file not found: ${absoluteHandlerPath}`);
+        }
 
         // Clear require cache for this module to support HMR
-        delete require.cache[require.resolve(absoluteHandlerPath)];
+        try {
+            delete require.cache[require.resolve(absoluteHandlerPath)];
+        } catch (e) {}
 
         // Dynamic import the module
         const module = require(absoluteHandlerPath);

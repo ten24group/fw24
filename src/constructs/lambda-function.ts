@@ -76,11 +76,6 @@ export interface LambdaFunctionProps {
   functionProps?: Omit<NodejsFunctionProps, 'layers'> & {
     readonly layers?: Array<ILayerVersion | string>;
   }
-
-  /**
-   * Optional name of the class that handles the request.
-   */
-  handlerClassName?: string;
 }
 
 /**
@@ -556,21 +551,6 @@ export class LambdaFunction extends Construct {
         key: `${topicName}_topicArn`,
         value: topicInstance.topicArn
       })
-    });
-
-    // Register with simulator if in simulation mode
-    const resolvedEnv: Record<string, string> = {};
-    const fnEnv = (fn as any).environment || {};
-    for (const [ key, config ] of Object.entries(fnEnv)) {
-      resolvedEnv[ key ] = (config as any).value;
-    }
-
-    fw24.registerSimulatedLambda(id, {
-      entry: props.entry,
-      handlerClassName: props.handlerClassName || 'handler',
-      environment: resolvedEnv,
-      // We can also store policies if needed for IAM simulation
-      policies: props.policies
     });
 
     return fn;
