@@ -10,7 +10,7 @@ export class HMRWatcher {
             persistent: true
         });
 
-        watcher.on('change', (path) => {
+        watcher.on('change', (path: string) => {
             console.log(`File ${path} has been changed`);
             this.onChange();
         });

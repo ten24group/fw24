@@ -49,7 +49,7 @@ export class ApiGatewayEmulator implements IEmulator {
         const { match } = require('path-to-regexp');
 
         // Dynamic routing middleware
-        app.use(async (req, res) => {
+        app.use(async (req: express.Request, res: express.Response): Promise<any> => {
             // Find matching route
             let matchingRoute: ApiRoute | undefined;
             let params: any = {};
@@ -145,26 +145,36 @@ export class ApiGatewayEmulator implements IEmulator {
             return { authorized: true };
         }
 
-        const authHeader = req.headers.authorization;
+        const authHeader = req.headers.authorization || (req.headers['Authorization'] as string);
 
         if (authorizer.type === 'COGNITO_USER_POOLS' || authorizer.type === 'JWT' || authorizer.type === 'CUSTOM') {
             if (!authHeader) {
                 return { authorized: false, message: "Missing Authorization header" };
             }
 
-            // Simple JWT simulation - in a real world we'd verify the signature if possible
-            // For simulator, we can accept any "fake" JWT and extract claims
             try {
                 let claims: any = {};
                 if (authHeader.startsWith('Bearer ')) {
                     const token = authHeader.substring(7);
                     const parts = token.split('.');
                     if (parts.length === 3) {
-                        claims = JSON.parse(Buffer.from(parts[ 1 ], 'base64').toString());
+                        try {
+                            claims = JSON.parse(Buffer.from(parts[ 1 ], 'base64').toString());
+                        } catch (e) {
+                            claims = { sub: token, email: `${token}@example.com` };
+                        }
                     } else {
-                        // Accept "fake" non-jwt tokens for ease of testing
-                        claims = { sub: 'mock-user', email: 'mock@example.com' };
+                        claims = { sub: token, email: `${token}@example.com` };
                     }
+                } else {
+                    // Treat direct token as sub
+                    claims = { sub: authHeader, email: `${authHeader}@example.com` };
+                }
+
+                // Simulating Cognito Groups from header if present for easier testing
+                const groupsHeader = req.headers['x-simulated-groups'];
+                if (groupsHeader) {
+                    claims['cognito:groups'] = (groupsHeader as string).split(',');
                 }
 
                 // Check groups if required
@@ -172,6 +182,7 @@ export class ApiGatewayEmulator implements IEmulator {
                     const userGroups = claims[ 'cognito:groups' ] || [];
                     const hasGroup = authorizer.groups.some(g => userGroups.includes(g));
                     if (!hasGroup) {
+                        this.logger.warn(`Auth Failed: User ${claims.sub} not in required groups: ${authorizer.groups}`);
                         return { authorized: false, statusCode: 403, message: "Insufficient permissions (group membership required)" };
                     }
                 }
@@ -183,15 +194,22 @@ export class ApiGatewayEmulator implements IEmulator {
         }
 
         if (authorizer.type === 'AWS_IAM') {
-            if (!authHeader || !authHeader.includes('AWS4-HMAC-SHA256')) {
-                return { authorized: false, message: "Missing or invalid AWS SigV4 Authorization header" };
+            // Check for SigV4 headers
+            const hasSigV4 = authHeader?.includes('AWS4-HMAC-SHA256') || req.headers['x-amz-date'];
+
+            if (!hasSigV4) {
+                return { authorized: false, message: "Missing or invalid AWS SigV4 Authorization headers" };
             }
+
             // For simulator, we assume valid signature and extract mock IAM info
+            // Allow overriding via headers for testing
+            const userArn = (req.headers['x-simulated-iam-arn'] as string) || 'arn:aws:iam::123456789012:user/mock-user';
+
             return {
                 authorized: true, context: {
                     iam: {
-                        userArn: 'arn:aws:iam::123456789012:user/mock-user',
-                        userId: 'AIDAXXXXXXXXXXXXXXXXX'
+                        userArn,
+                        userId: userArn.split('/').pop()
                     }
                 }
             };

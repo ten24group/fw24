@@ -10,10 +10,20 @@ export class LambdaRunner implements ILambdaRunner {
         handlerPath: string,
         handlerClassName: string,
         event: any,
-        context: any,
+        context: any = {},
         env: Record<string, string> = {}
     ): Promise<any> {
         return new Promise((res, reject) => {
+            const requestId = `req-${Date.now()}`;
+            const fullContext = {
+                awsRequestId: requestId,
+                functionName: handlerClassName,
+                invokedFunctionArn: `arn:aws:lambda:us-east-1:123456789012:function:${handlerClassName}`,
+                memoryLimitInMB: '128',
+                getRemainingTimeInMillis: () => 30000,
+                ...context
+            };
+
             this.logger.debug(`Invoking handler ${handlerClassName} in ${handlerPath}`);
 
             // Path to the worker script
@@ -28,7 +38,7 @@ export class LambdaRunner implements ILambdaRunner {
                         handlerPath,
                         handlerClassName,
                         event,
-                        context
+                        context: fullContext
                     },
                     env: {
                         ...process.env,

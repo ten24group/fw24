@@ -397,33 +397,18 @@ export class Application {
         const coordinator = new SimulatorCoordinator(config);
 
         const discover = async () => {
-            this.logger.info("Discovering resources...");
+            this.logger.info("Triggering CDK Synth for discovery...");
 
             try {
-                // Clear previous construction state
-                this.processedConstructs.clear();
+                // 1. Run CDK Synth
+                const { spawnSync } = require('node:child_process');
+                spawnSync('npx', ['cdk', 'synth'], { stdio: 'inherit' });
 
-                // Clear previous simulation state in Fw24
-                this.fw24.getSimulatedLambdas().clear();
-                this.fw24.setEnvironmentVariable('SIMULATED_API_ROUTES', []);
-                this.fw24.setEnvironmentVariable('SIMULATED_QUEUES', []);
+                // 2. Sync Coordinator with CDK blueprint
+                await coordinator.syncWithCDK();
 
-                // 1. Process Modules
-                this.processModules();
-
-                // 2. Build Constructs (this will populate simulated metadata in Fw24)
-                await this.constructAllResources();
-
-                // 3. Collect Metadata
-                const lambdaConfigs = this.fw24.getSimulatedLambdas();
-                const apiRoutes = this.fw24.getEnvironmentVariable('SIMULATED_API_ROUTES') || [];
-                const sqsSubs = this.fw24.getEnvironmentVariable('SIMULATED_QUEUES') || [];
-
-                coordinator.setLambdaConfigs(lambdaConfigs);
-                coordinator.setApiRoutes(apiRoutes);
-                coordinator.setSqsSubscriptions(sqsSubs);
             } catch (error) {
-                this.logger.error("Error during resource discovery:", error);
+                this.logger.error("Error during CDK resource discovery:", error);
             }
         }
 

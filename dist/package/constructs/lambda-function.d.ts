@@ -58,6 +58,10 @@ export interface LambdaFunctionProps {
     functionProps?: Omit<NodejsFunctionProps, 'layers'> & {
         readonly layers?: Array<ILayerVersion | string>;
     };
+    /**
+     * Optional name of the class that handles the request.
+     */
+    handlerClassName?: string;
 }
 /**
  * Represents a resource access entry - either a simple string name or an object with name and access permissions.

@@ -38,6 +38,7 @@ export declare class Fw24 {
     private readonly globalLambdaEntryPackages;
     private readonly systemUIConfigs;
     private readonly systemControllers;
+    private readonly simulatedLambdas;
     private constructor();
     static getInstance(): Fw24;
     setApp(app: App): void;
@@ -204,4 +205,6 @@ export declare class Fw24 {
     getSystemUIConfig(name: string): SystemUIPageDefinition | undefined;
     getSystemUIConfigs(): SystemUIPageDefinition[];
     hasSystemUIConfigs(): boolean;
+    registerSimulatedLambda(id: string, config: any): void;
+    getSimulatedLambdas(): Map<string, any>;
 }
