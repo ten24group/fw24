@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.18](https://github.com/ten24group/fw24/compare/v1.1.0-beta.17...v1.1.0-beta.18) (2026-02-23)
+
+
+### Features
+
+* **entity:** enhance custom page configuration with new properties and types ([4e894a7](https://github.com/ten24group/fw24/commit/4e894a7c2bfb45a097a3a34a0bceea6a59a11b48))
+
 ## [1.1.0-beta.17](https://github.com/ten24group/fw24/compare/v1.1.0-beta.16...v1.1.0-beta.17) (2026-02-23)
 
 
