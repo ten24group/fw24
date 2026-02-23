@@ -1,4 +1,4 @@
-import chokidar from 'chokidar';
+const chokidar = require('chokidar');
 import { resolve } from 'node:path';
 
 export class HMRWatcher {

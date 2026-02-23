@@ -3,9 +3,7 @@ import { createLogger } from '../../../logging';
 
 export interface SqsSubscription {
     queueName: string;
-    handlerPath: string;
-    handlerClassName: string;
-    env?: Record<string, string>;
+    handlerId: string;
 }
 
 export class SqsBridge implements IBridge {
@@ -13,11 +11,16 @@ export class SqsBridge implements IBridge {
     private readonly logger = createLogger(SqsBridge.name);
     private interval?: NodeJS.Timeout;
     private subscriptions: SqsSubscription[] = [];
+    private lambdaConfigs: Map<string, any> = new Map();
 
     constructor(
         private readonly lambdaRunner: ILambdaRunner,
         private readonly sqsEmulator: any // We'll need to access the in-memory queues
     ) {}
+
+    setLambdaConfigs(configs: Map<string, any>) {
+        this.lambdaConfigs = configs;
+    }
 
     setSubscriptions(subs: SqsSubscription[]) {
         this.subscriptions = subs;
@@ -37,6 +40,12 @@ export class SqsBridge implements IBridge {
                     const message = messages.shift();
 
                     try {
+                        const lambdaConfig = this.lambdaConfigs.get(sub.handlerId);
+                        if (!lambdaConfig) {
+                            this.logger.error(`Lambda configuration not found for ID: ${sub.handlerId}`);
+                            continue;
+                        }
+
                         const event = {
                             Records: [
                                 {
@@ -48,11 +57,11 @@ export class SqsBridge implements IBridge {
                         };
 
                         await this.lambdaRunner.runHandler(
-                            sub.handlerPath,
-                            sub.handlerClassName,
+                            lambdaConfig.entry,
+                            lambdaConfig.handlerClassName,
                             event,
                             {},
-                            sub.env
+                            lambdaConfig.environment
                         );
                     } catch (error) {
                         this.logger.error(`Error processing SQS message for ${sub.queueName}:`, error);

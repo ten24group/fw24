@@ -217,6 +217,7 @@ export class QueueConstruct implements FW24Construct {
         // Create lambda function separately using LambdaFunction construct
         const queueFunction = new LambdaFunction(this.mainStack, `${queueName}-queue-lambda`, {
             entry: queueInfo.filePath + "/" + queueInfo.fileName,
+            handlerClassName: queueInfo.handlerClass.name,
             environmentVariables: this.fw24.resolveEnvVariables(queueConfig.env),
             resourceAccess: queueConfig?.resourceAccess,
             functionTimeout: queueConfig?.functionTimeout || this.fw24.getConfig().functionTimeout,

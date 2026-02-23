@@ -392,53 +392,39 @@ export class Application {
      */
     public async simulate(config: ISimulatorConfig = {}) {
         this.logger.info("Starting FW24 Simulator...");
+        process.env.SIMULATION_MODE = 'true';
 
         const coordinator = new SimulatorCoordinator(config);
 
         const discover = async () => {
             this.logger.info("Discovering resources...");
-            // 1. Discover Controllers
-            const controllersDirectory = "./src/controllers";
-            const apiRoutes: any[] = [];
 
-            await Helper.registerHandlers(controllersDirectory, async (desc) => {
-                const { handlerClass, filePath, fileName } = desc;
-                const instance = new (handlerClass as any)();
-                const controllerName = instance.controllerName;
-                const routes = instance.routes || {};
+            try {
+                // Clear previous construction state
+                this.processedConstructs.clear();
 
-                for (const [ routeKey, route ] of Object.entries(routes) as [ string, any ][]) {
-                    const [ method, path ] = routeKey.split('|');
-                    apiRoutes.push({
-                        method,
-                        path: `/${controllerName}${path}`,
-                        handlerPath: resolve(filePath, fileName),
-                        handlerClassName: handlerClass.name,
-                        controllerName,
-                        env: this.fw24.resolveEnvVariables(instance.controllerConfig?.env)
-                    });
-                }
-            });
+                // Clear previous simulation state in Fw24
+                this.fw24.getSimulatedLambdas().clear();
+                this.fw24.setEnvironmentVariable('SIMULATED_API_ROUTES', []);
+                this.fw24.setEnvironmentVariable('SIMULATED_QUEUES', []);
 
-            coordinator.setApiRoutes(apiRoutes);
+                // 1. Process Modules
+                this.processModules();
 
-            // 2. Discover Queues
-            const queuesDirectory = "./src/queues";
-            const sqsSubs: any[] = [];
-            await Helper.registerHandlers(queuesDirectory, async (desc) => {
-                const { handlerClass, filePath, fileName } = desc;
-                const instance = new (handlerClass as any)();
-                const queueName = instance.queueName;
+                // 2. Build Constructs (this will populate simulated metadata in Fw24)
+                await this.constructAllResources();
 
-                sqsSubs.push({
-                    queueName,
-                    handlerPath: resolve(filePath, fileName),
-                    handlerClassName: handlerClass.name,
-                    env: this.fw24.resolveEnvVariables(instance.queueConfig?.env)
-                });
-            });
+                // 3. Collect Metadata
+                const lambdaConfigs = this.fw24.getSimulatedLambdas();
+                const apiRoutes = this.fw24.getEnvironmentVariable('SIMULATED_API_ROUTES') || [];
+                const sqsSubs = this.fw24.getEnvironmentVariable('SIMULATED_QUEUES') || [];
 
-            coordinator.setSqsSubscriptions(sqsSubs);
+                coordinator.setLambdaConfigs(lambdaConfigs);
+                coordinator.setApiRoutes(apiRoutes);
+                coordinator.setSqsSubscriptions(sqsSubs);
+            } catch (error) {
+                this.logger.error("Error during resource discovery:", error);
+            }
         }
 
         await discover();

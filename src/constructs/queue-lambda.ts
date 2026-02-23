@@ -351,6 +351,16 @@ export class QueueLambda extends Construct {
     if (props.lambdaFunctionProps) {
       const queueFunction = new LambdaFunction(scope, `${id}-lambda`, { ...props.lambdaFunctionProps }) as NodejsFunction;
       QueueLambda.attachQueueToLambda(queueFunction, queue, props.queueProps, props.queueName, props.sqsEventSourceProps);
+
+      // Store subscription for simulator
+      const fw24 = Fw24.getInstance();
+      const simulatedQueues = fw24.getEnvironmentVariable('SIMULATED_QUEUES') || [];
+      simulatedQueues.push({
+        queueName: props.queueName,
+        handlerId: `${id}-lambda`,
+        subscriptions: props.subscriptions
+      });
+      fw24.setEnvironmentVariable('SIMULATED_QUEUES', simulatedQueues);
     }
 
     return queue;

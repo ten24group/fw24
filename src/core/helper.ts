@@ -175,7 +175,15 @@ export class Helper {
             
             // Dynamically import the controller file
             const fullPath = join(handlerDirectory, handlerPath);
-            const module = await import(fullPath);
+
+            // If in simulation mode, clear cache to support HMR
+            if (process.env.SIMULATION_MODE === 'true') {
+                try {
+                    delete require.cache[require.resolve(fullPath)];
+                } catch (e) {}
+            }
+
+            const module = await import(process.env.SIMULATION_MODE === 'true' ? `file://${fullPath}?update=${Date.now()}` : fullPath);
             
             // Calculate module hash
             const fileBuffer = readFileSync(fullPath);

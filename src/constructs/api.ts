@@ -488,7 +488,7 @@ export class APIConstruct implements FW24Construct {
         if (controllerTarget === 'function' || controllerTarget === undefined) {
             controllerConfig.logRetentionDays = controllerConfig.logRetentionDays || this.apiConstructConfig.logRetentionDays;
             controllerConfig.logRemovalPolicy = controllerConfig.logRemovalPolicy || this.apiConstructConfig.logRemovalPolicy;
-            const controllerLambda = this.createLambdaFunction(controllerName, filePath, fileName, controllerConfig, controllerStackName);
+            const controllerLambda = this.createLambdaFunction(controllerName, filePath, fileName, controllerConfig, controllerStackName, handlerClass.name);
             this.fw24.setConstructOutput(this, controllerName, controllerLambda, OutputType.FUNCTION);
 
             controllerIntegration = new LambdaIntegration(controllerLambda, {
@@ -581,6 +581,24 @@ export class APIConstruct implements FW24Construct {
 
         // output the api endpoint
         this.outputApiEndpoint(controllerName, controllerResource, this.getStageName(), controllerStackName);
+
+        // Store routing metadata for simulator
+        const simulatedApi = this.fw24.getEnvironmentVariable('SIMULATED_API_ROUTES') || [];
+        for (const route of Object.values(controllerInfo.routes ?? {})) {
+            const { routeAuthorizerType, routeAuthorizerName, routeAuthorizerGroups } = this.extractRouteAuthorizer(route, defaultAuthorizerType, defaultAuthorizerName, defaultAuthorizerGroups, defaultRequireRouteInGroupConfig);
+            simulatedApi.push({
+                controllerName,
+                httpMethod: route.httpMethod,
+                path: `/${controllerName}${route.path}`,
+                handlerId: controllerName + "-controller", // This matches the ID used in LambdaFunction
+                authorizer: {
+                    type: routeAuthorizerType,
+                    name: routeAuthorizerName,
+                    groups: routeAuthorizerGroups
+                }
+            });
+        }
+        this.fw24.setEnvironmentVariable('SIMULATED_API_ROUTES', simulatedApi);
     }
 
     private readonly getStageName = () => {
@@ -714,7 +732,7 @@ export class APIConstruct implements FW24Construct {
         return controllerResource;
     }
 
-    private readonly createLambdaFunction = (controllerName: string, filePath: string, fileName: string, controllerConfig: IControllerConfig, controllerStackName: string): NodejsFunction => {
+    private readonly createLambdaFunction = (controllerName: string, filePath: string, fileName: string, controllerConfig: IControllerConfig, controllerStackName: string, handlerClassName?: string): NodejsFunction => {
         const functionProps = merge([
             this.apiConstructConfig.functionProps ?? {},
             controllerConfig?.functionProps ?? {}
@@ -729,6 +747,7 @@ export class APIConstruct implements FW24Construct {
 
         return new LambdaFunction(this.fw24.getStack(controllerStackName), controllerName + "-controller", {
             entry: filePath + "/" + fileName,
+            handlerClassName,
             environmentVariables: envVariables,
             policies: controllerConfig?.policies,
             resourceAccess: controllerConfig?.resourceAccess,

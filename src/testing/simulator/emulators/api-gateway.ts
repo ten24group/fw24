@@ -6,10 +6,13 @@ import { createLogger } from '../../../logging';
 export interface ApiRoute {
     method: string;
     path: string;
-    handlerPath: string;
-    handlerClassName: string;
+    handlerId: string;
     controllerName: string;
-    env?: Record<string, string>;
+    authorizer?: {
+        type: string;
+        name?: string;
+        groups?: string[];
+    };
 }
 
 export class ApiGatewayEmulator implements IEmulator {
@@ -19,8 +22,14 @@ export class ApiGatewayEmulator implements IEmulator {
     private readonly port: number;
     private routes: ApiRoute[] = [];
 
+    private lambdaConfigs: Map<string, any> = new Map();
+
     constructor(private readonly lambdaRunner: ILambdaRunner, options: { port?: number } = {}) {
         this.port = options.port || 3000;
+    }
+
+    setLambdaConfigs(configs: Map<string, any>) {
+        this.lambdaConfigs = configs;
     }
 
     setRoutes(routes: ApiRoute[]) {
@@ -28,6 +37,11 @@ export class ApiGatewayEmulator implements IEmulator {
     }
 
     async start(): Promise<void> {
+        if (this.server) {
+            this.logger.info("Restarting API Gateway Emulator...");
+            await this.stop();
+        }
+
         const app = express();
         app.use(express.json());
         app.use(express.raw({ type: '*/*' }));
@@ -56,15 +70,26 @@ export class ApiGatewayEmulator implements IEmulator {
 
             if (matchingRoute) {
                 try {
-                    const event = this.mapRequestToApiGatewayEvent(req, matchingRoute, params);
+                    // Auth Check
+                    const authorizerContext = await this.authorizeRequest(req, matchingRoute);
+                    if (!authorizerContext.authorized) {
+                        return res.status(authorizerContext.statusCode || 401).json({ message: authorizerContext.message || "Unauthorized" });
+                    }
+
+                    const lambdaConfig = this.lambdaConfigs.get(matchingRoute.handlerId);
+                    if (!lambdaConfig) {
+                        throw new Error(`Lambda configuration not found for ID: ${matchingRoute.handlerId}`);
+                    }
+
+                    const event = this.mapRequestToApiGatewayEvent(req, matchingRoute, params, authorizerContext.context);
                     const context = {}; // Mock context
 
                     const result = await this.lambdaRunner.runHandler(
-                        matchingRoute.handlerPath,
-                        matchingRoute.handlerClassName,
+                        lambdaConfig.entry,
+                        lambdaConfig.handlerClassName,
                         event,
                         context,
-                        matchingRoute.env
+                        lambdaConfig.environment
                     );
 
                     res.status(result.statusCode || 200);
@@ -89,7 +114,7 @@ export class ApiGatewayEmulator implements IEmulator {
         });
     }
 
-    private mapRequestToApiGatewayEvent(req: express.Request, route: ApiRoute, pathParameters: any) {
+    private mapRequestToApiGatewayEvent(req: express.Request, route: ApiRoute, pathParameters: any, authorizerContext?: any) {
         return {
             httpMethod: req.method,
             path: req.path,
@@ -102,13 +127,79 @@ export class ApiGatewayEmulator implements IEmulator {
                 httpMethod: req.method,
                 path: req.path,
                 resourcePath: route.path,
+                authorizer: authorizerContext,
                 identity: {
-                    sourceIp: req.ip
+                    sourceIp: req.ip,
+                    userArn: authorizerContext?.iam?.userArn,
+                    apiKey: req.headers[ 'x-api-key' ]
                 },
                 stage: 'local'
             }
         };
     }
+
+    private async authorizeRequest(req: express.Request, route: ApiRoute): Promise<{ authorized: boolean, statusCode?: number, message?: string, context?: any }> {
+        const { authorizer } = route;
+
+        if (!authorizer || authorizer.type === 'NONE') {
+            return { authorized: true };
+        }
+
+        const authHeader = req.headers.authorization;
+
+        if (authorizer.type === 'COGNITO_USER_POOLS' || authorizer.type === 'JWT' || authorizer.type === 'CUSTOM') {
+            if (!authHeader) {
+                return { authorized: false, message: "Missing Authorization header" };
+            }
+
+            // Simple JWT simulation - in a real world we'd verify the signature if possible
+            // For simulator, we can accept any "fake" JWT and extract claims
+            try {
+                let claims: any = {};
+                if (authHeader.startsWith('Bearer ')) {
+                    const token = authHeader.substring(7);
+                    const parts = token.split('.');
+                    if (parts.length === 3) {
+                        claims = JSON.parse(Buffer.from(parts[ 1 ], 'base64').toString());
+                    } else {
+                        // Accept "fake" non-jwt tokens for ease of testing
+                        claims = { sub: 'mock-user', email: 'mock@example.com' };
+                    }
+                }
+
+                // Check groups if required
+                if (authorizer.groups && authorizer.groups.length > 0) {
+                    const userGroups = claims[ 'cognito:groups' ] || [];
+                    const hasGroup = authorizer.groups.some(g => userGroups.includes(g));
+                    if (!hasGroup) {
+                        return { authorized: false, statusCode: 403, message: "Insufficient permissions (group membership required)" };
+                    }
+                }
+
+                return { authorized: true, context: { claims } };
+            } catch (e) {
+                return { authorized: false, message: "Invalid token" };
+            }
+        }
+
+        if (authorizer.type === 'AWS_IAM') {
+            if (!authHeader || !authHeader.includes('AWS4-HMAC-SHA256')) {
+                return { authorized: false, message: "Missing or invalid AWS SigV4 Authorization header" };
+            }
+            // For simulator, we assume valid signature and extract mock IAM info
+            return {
+                authorized: true, context: {
+                    iam: {
+                        userArn: 'arn:aws:iam::123456789012:user/mock-user',
+                        userId: 'AIDAXXXXXXXXXXXXXXXXX'
+                    }
+                }
+            };
+        }
+
+        return { authorized: true };
+    }
+
 
     async stop(): Promise<void> {
         return new Promise((resolve) => {

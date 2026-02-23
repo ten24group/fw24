@@ -51,6 +51,8 @@ export class Fw24 {
     private readonly systemUIConfigs: Map<string, SystemUIPageDefinition> = new Map();
     private readonly systemControllers: Map<string, SystemControllerDefinition> = new Map();
 
+    private readonly simulatedLambdas = new Map<string, any>();
+
     private constructor() { } // Empty constructor as App is set via setApp()
 
     static getInstance(): Fw24 {
@@ -752,5 +754,13 @@ export class Fw24 {
     }
     public hasSystemUIConfigs(): boolean {
         return this.systemUIConfigs.size > 0;
+    }
+
+    public registerSimulatedLambda(id: string, config: any) {
+        this.simulatedLambdas.set(id, config);
+    }
+
+    public getSimulatedLambdas() {
+        return this.simulatedLambdas;
     }
 }

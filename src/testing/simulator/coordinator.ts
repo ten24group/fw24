@@ -35,6 +35,11 @@ export class SimulatorCoordinator {
         this.simulator.addBridge(this.sqsBridge);
     }
 
+    setLambdaConfigs(configs: Map<string, any>) {
+        this.apiGatewayEmulator.setLambdaConfigs(configs);
+        this.sqsBridge.setLambdaConfigs(configs);
+    }
+
     async start() {
         await this.simulator.start();
     }
