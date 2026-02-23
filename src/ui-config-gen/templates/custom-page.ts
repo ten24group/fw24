@@ -35,7 +35,7 @@
  */
 
 import type { Condition, ConditionalValue, FieldOptions, IConfirmModal, IEntityConfigReference, IEntityPageActionDrawerConfig, IFilterSegment, IModalApiConfig, INavigateToConfig, IRelationFieldConfig, IResponseDisplayConfig, ISectionsConfig, ITableExpandableConfig, ModalType, Template } from "../../entity";
-import { IEntityPageColumnConfig } from "../../entity/base-entity";
+import { IEntityPageColumnConfig, type IDeepLinkConfig, type IDataQualityConfig, type IErrorHandlingConfig, type IRetryConfig, type IReviewBeforeSaveConfig } from "../../entity/base-entity";
 
 /**
  * Supported page types for dynamic page rendering.
@@ -48,17 +48,17 @@ import { IEntityPageColumnConfig } from "../../entity/base-entity";
  * ```
  */
 export type PageType =
-  | "list"
-  | "form"
-  | "details"
-  | "custom"
-  | "dashboard"
-  | "accordion"
-  | "menu"
-  | "kanban"
-  | "tree"
-  | "calendar"
-  | "map";
+    | "list"
+    | "form"
+    | "details"
+    | "custom"
+    | "dashboard"
+    | "accordion"
+    | "menu"
+    | "kanban"
+    | "tree"
+    | "calendar"
+    | "map";
 
 /**
  * Field rendering types for UI components.
@@ -546,12 +546,12 @@ export interface PropertyConfig {
      * }
      */
     quickCreate?: {
-      /** Show contextual "+ Create '[term]'" when search returns no results. @default false */
-      enabled?: boolean;
-      /** Entity field to pre-fill with the search term. */
-      prefillField?: string;
-      /** Container for the create form: 'modal' (default) or 'drawer'. */
-      openIn?: 'modal' | 'drawer';
+        /** Show contextual "+ Create '[term]'" when search returns no results. @default false */
+        enabled?: boolean;
+        /** Entity field to pre-fill with the search term. */
+        prefillField?: string;
+        /** Container for the create form: 'modal' (default) or 'drawer'. */
+        openIn?: 'modal' | 'drawer';
     };
 
     /**
@@ -628,7 +628,7 @@ export type TypedPropertyConfig =
     | (PropertyBase & { fieldType: 'code'; codeLanguage?: 'json' | 'html' | 'javascript' | 'handlebars' | 'text'; height?: number; darkTheme?: boolean; lineNumbers?: boolean; validateJson?: boolean; })
     | (PropertyBase & { fieldType: 'badge' | 'tag' | 'color' | 'progress' | 'avatar'; })
     | (PropertyBase & { fieldType: 'file' | 'image' | 'video' | 'audio' | 'qrcode'; })
-    | (PropertyBase & { fieldType: 'timeline'; timelineConfig?: PropertyConfig['timelineConfig']; });
+    | (PropertyBase & { fieldType: 'timeline'; timelineConfig?: PropertyConfig[ 'timelineConfig' ]; });
 
 /**
  * Factory for typed property configs. Preserves the narrow discriminated type
@@ -947,6 +947,12 @@ export interface FormPageConfigStructure {
         visibility?: Condition;
         placement?: 'top' | 'bottom';
     }>;
+
+    /** Sticky form action buttons at viewport bottom (#41) */
+    stickyActions?: boolean;
+
+    /** Review changes before save — shows diff modal (#36) */
+    reviewBeforeSave?: IReviewBeforeSaveConfig;
 }
 
 /**
@@ -1106,6 +1112,126 @@ export interface ListPageConfigStructure {
 
     /** Pagination configuration */
     pagination?: IPaginationConfig;
+
+    /** Deep linking — sync table state with URL query string (#21) */
+    deepLink?: IDeepLinkConfig;
+
+    /** Data quality / completeness indicator (#65) */
+    dataQuality?: IDataQualityConfig;
+
+    /** Error handling for table operations (#58) */
+    errorHandling?: IErrorHandlingConfig;
+
+    /** Retry configuration for failed loads (#58) */
+    retry?: IRetryConfig;
+
+    /** Default filter values applied on initial load */
+    defaultFilters?: Record<string, unknown>;
+
+    /** Table summary row — aggregation per-column (#27) */
+    summary?: {
+        label?: string;
+        columns: Array<{
+            dataIndex: string;
+            aggregation: 'sum' | 'avg' | 'min' | 'max' | 'count';
+            prefix?: string;
+            suffix?: string;
+            precision?: number;
+        }>;
+    };
+
+    /** Virtual scroll for large datasets (#29) */
+    virtualScroll?: { enabled: boolean; height?: number };
+
+    /** Row selection with multi-page persistence (#30) */
+    selection?: {
+        enabled?: boolean;
+        type?: 'checkbox' | 'radio';
+        persistAcrossPages?: boolean;
+    };
+
+    /** DnD row reordering (#62) */
+    rowDrag?: {
+        enabled: boolean;
+        onOrderChange?: IModalApiConfig;
+        orderField?: string;
+    };
+
+    /** Table/Card view display mode toggle (#32) */
+    displayMode?: {
+        default?: 'table' | 'card';
+        cardConfig?: {
+            columns?: number;
+            titleField?: string;
+            descriptionField?: string;
+            imageField?: string;
+            summaryFields?: string[];
+        };
+    };
+
+    /**
+     * Unified View Switcher (#119) — configures alternative layout views.
+     * All views share the same data source, filters, and actions.
+     * Switching views does not refetch data — it just re-renders.
+     */
+    viewSwitcher?: {
+        /** Available view types for this page */
+        available: Array<'table' | 'card-grid' | 'kanban' | 'calendar' | 'map' | 'tree'>;
+        /** Default view on first visit */
+        default: 'table' | 'card-grid' | 'kanban' | 'calendar' | 'map' | 'tree';
+        /** Persist user's view preference to localStorage */
+        persistPreference?: boolean;
+        /** Card grid configuration */
+        cardConfig?: {
+            columns?: number;
+            titleField: string;
+            descriptionField?: string;
+            imageField?: string;
+            summaryFields?: string[];
+        };
+        /** Kanban board configuration (#46) */
+        kanbanConfig?: {
+            groupByField: string;
+            columns: Array<{ value: string; label: string; color?: string; wipLimit?: number }>;
+            card: { titleField: string; descriptionField?: string; summaryFields?: string[] };
+            allowDrag?: boolean;
+            moveApiConfig?: IModalApiConfig;
+            onClickNavigateTo?: string;
+            idField?: string;
+        };
+        /** Calendar view configuration (#45) */
+        calendarConfig?: {
+            startDateField: string;
+            endDateField?: string;
+            titleField: string;
+            defaultMode?: 'month' | 'year';
+            colorField?: string;
+            colorMapping?: Record<string, string>;
+            onEventClickNavigateTo?: string;
+            idField?: string;
+        };
+        /** Tree view configuration (#47) */
+        treeConfig?: {
+            parentField: string;
+            labelField: string;
+            defaultExpandDepth?: number;
+            onNodeClickNavigateTo?: string;
+            idField?: string;
+        };
+        /** Map view configuration (#48) */
+        mapConfig?: {
+            latField: string;
+            lngField: string;
+            titleField: string;
+            summaryFields?: string[];
+            cluster?: boolean;
+            onMarkerClickNavigateTo?: string;
+            idField?: string;
+            defaultCenter?: [ number, number ];
+            defaultZoom?: number;
+            mapHeight?: number;
+        };
+    };
 }
 
 /**
@@ -1561,6 +1687,16 @@ export interface IPageAction {
         format: 'json' | 'csv' | 'text';
         fields?: string[];
         template?: Template;
+    };
+
+    /**
+     * Record cloning — navigate to create page pre-filled with current record's data (#43).
+     * System fields (IDs, timestamps, DynamoDB keys) are auto-excluded.
+     */
+    cloneConfig?: {
+        createUrl: string;
+        excludeFields?: string[];
+        includeFields?: string[];
     };
 }
 
@@ -2105,7 +2241,7 @@ export interface MapPageConfigStructure {
     /** Action links rendered inside the marker popup */
     popupActions?: IMapPopupAction[];
     /** Initial map center as [lat, lng] (default: [51.505, -0.09]) */
-    defaultCenter?: [number, number];
+    defaultCenter?: [ number, number ];
     defaultZoom?: number;
     mapHeight?: number;
     entityName?: string;
