@@ -1061,8 +1061,13 @@ export interface ListPageConfigStructure {
     };
     /**
      * Unified View Switcher (#119) — configures alternative layout views.
-     * All views share the same data source, filters, and actions.
-     * Switching views does not refetch data — it just re-renders.
+     *
+     * Each layout supports dual data mode:
+     * - Shared mode (default): uses parent table's paginated data
+     * - Independent mode: layout fetches its own data when `apiConfig` is provided
+     *   (e.g., kanban per-column, calendar date-range, tree/map full-dataset)
+     *
+     * Priority: apiConfig > data > shared parent records.
      */
     viewSwitcher?: {
         /** Available view types for this page */
@@ -1071,15 +1076,34 @@ export interface ListPageConfigStructure {
         default: 'table' | 'card-grid' | 'kanban' | 'calendar' | 'map' | 'tree';
         /** Persist user's view preference to localStorage */
         persistPreference?: boolean;
-        /** Card grid configuration */
+        /** Card grid configuration — enriched with tags, status badges, cover images, actions */
         cardConfig?: {
             columns?: number;
             titleField: string;
             descriptionField?: string;
             imageField?: string;
+            avatarField?: string;
+            coverImageField?: string;
             summaryFields?: string[];
+            tagFields?: Array<{
+                field: string;
+                colorMapping?: Record<string, string>;
+            }>;
+            dateField?: string;
+            statusField?: string;
+            statusMapping?: Record<string, {
+                color: string;
+                label?: string;
+            }>;
+            actions?: Array<{
+                label: string;
+                url: string;
+                icon?: string;
+            }>;
+            layout?: 'vertical' | 'horizontal';
+            showDivider?: boolean;
         };
-        /** Kanban board configuration (#46) */
+        /** Kanban board configuration (#46) — supports per-column independent data loading */
         kanbanConfig?: {
             groupByField: string;
             columns: Array<{
@@ -1092,13 +1116,35 @@ export interface ListPageConfigStructure {
                 titleField: string;
                 descriptionField?: string;
                 summaryFields?: string[];
+                tagFields?: Array<{
+                    field: string;
+                    colorMapping?: Record<string, string>;
+                }>;
+                avatarField?: string;
+                dateField?: string;
+                statusField?: string;
+                statusMapping?: Record<string, {
+                    color: string;
+                    label?: string;
+                }>;
+                actions?: Array<{
+                    label: string;
+                    url: string;
+                    icon?: string;
+                }>;
             };
             allowDrag?: boolean;
             moveApiConfig?: IModalApiConfig;
             onClickNavigateTo?: string;
             idField?: string;
+            /** When provided, each column fetches its own data independently */
+            apiConfig?: IModalApiConfig;
+            /** Items per column page (default: 20, only used with apiConfig) */
+            columnPageSize?: number;
+            /** Static inline data */
+            data?: Array<Record<string, unknown>>;
         };
-        /** Calendar view configuration (#45) */
+        /** Calendar view configuration (#45) — supports date-range-filtered independent fetching */
         calendarConfig?: {
             startDateField: string;
             endDateField?: string;
@@ -1108,16 +1154,28 @@ export interface ListPageConfigStructure {
             colorMapping?: Record<string, string>;
             onEventClickNavigateTo?: string;
             idField?: string;
+            /** When provided, fetches events filtered by the current date range */
+            apiConfig?: IModalApiConfig;
+            /** Max events to fetch (default: 5000, only used with apiConfig) */
+            maxEvents?: number;
+            /** Static inline data */
+            data?: Array<Record<string, unknown>>;
         };
-        /** Tree view configuration (#47) */
+        /** Tree view configuration (#47) — supports full-dataset independent fetching */
         treeConfig?: {
             parentField: string;
             labelField: string;
             defaultExpandDepth?: number;
             onNodeClickNavigateTo?: string;
             idField?: string;
+            /** When provided, fetches the full dataset independently */
+            apiConfig?: IModalApiConfig;
+            /** Max records to fetch (default: 5000, only used with apiConfig) */
+            maxRecords?: number;
+            /** Static inline data */
+            data?: Array<Record<string, unknown>>;
         };
-        /** Map view configuration (#48) */
+        /** Map view configuration (#48) — supports full-dataset independent fetching */
         mapConfig?: {
             latField: string;
             lngField: string;
@@ -1129,6 +1187,12 @@ export interface ListPageConfigStructure {
             defaultCenter?: [number, number];
             defaultZoom?: number;
             mapHeight?: number;
+            /** When provided, fetches the full dataset independently */
+            apiConfig?: IModalApiConfig;
+            /** Max records to fetch (default: 5000, only used with apiConfig) */
+            maxRecords?: number;
+            /** Static inline data */
+            data?: Array<Record<string, unknown>>;
         };
     };
 }
