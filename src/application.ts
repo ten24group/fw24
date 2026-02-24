@@ -395,6 +395,13 @@ export class Application {
 
         const coordinator = new SimulatorCoordinator(config);
 
+        // Pass global environment variables to simulator
+        const globalEnv: Record<string, string> = {};
+        this.fw24.getGlobalEnvironmentVariables().forEach(key => {
+            globalEnv[ key ] = this.fw24.getEnvironmentVariable(key);
+        });
+        coordinator.setGlobalEnv(globalEnv);
+
         const sync = async () => {
             this.logger.info("Syncing with CDK blueprint...");
 

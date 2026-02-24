@@ -1,16 +1,17 @@
 {
-  "name": "example-hello-world",
+  "name": "example-complete-app",
   "version": "1.0.0",
-  "description": "FW24 Hello World Example",
+  "description": "FW24 Complete Showcase App",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "ts-node src/index.ts",
+    "dev": "SIMULATE=true ts-node src/index.ts",
     "synth": "cdk synth"
   },
   "dependencies": {
     "@ten24group/fw24": "file:../..",
     "aws-cdk-lib": "^2.202.0",
     "constructs": "^10.4.2",
+    "electrodb": "^3.4.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }

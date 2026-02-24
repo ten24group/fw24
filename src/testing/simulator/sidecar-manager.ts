@@ -86,7 +86,6 @@ export class SidecarManager {
 
     async startS3(port: number = 9000) {
         this.logger.info(`Starting S3 sidecar on port ${port}...`);
-        // Using Minio as a robust S3 emulator
         await this.runContainer(`${this.prefix}-s3`, `minio/minio`, port, 9000, [
             'server', '/data', '--console-address', ':9001'
         ]);
@@ -97,6 +96,16 @@ export class SidecarManager {
         await this.runContainer(`${this.prefix}-meilisearch`, `getmeili/meilisearch`, port, 7700, [
             `-e`, `MEILI_MASTER_KEY=${masterKey}`
         ]);
+    }
+
+    async startCognito(port: number = 9229) {
+        this.logger.info(`Starting Cognito sidecar on port ${port}...`);
+        await this.runContainer(`${this.prefix}-cognito`, `jagregory/cognito-local`, port, 9229);
+    }
+
+    async startSNS(port: number = 9911) {
+        this.logger.info(`Starting SNS sidecar on port ${port}...`);
+        await this.runContainer(`${this.prefix}-sns`, `s12v/sns-sqs-emulator`, port, 9911);
     }
 
     private async isDockerAvailable(): Promise<boolean> {

@@ -20,6 +20,7 @@ export class SimulatorCoordinator {
     private readonly sqsBridge: SqsBridge;
     private readonly snsBridge: SnsBridge;
     private readonly eventBridgeBridge: EventBridgeBridge;
+    private globalEnv: Record<string, string> = {};
 
     constructor(config: ISimulatorConfig = {}) {
         this.lambdaRunner = new LambdaRunner();
@@ -39,6 +40,10 @@ export class SimulatorCoordinator {
         this.simulator.addBridge(this.eventBridgeBridge);
     }
 
+    setGlobalEnv(env: Record<string, string>) {
+        this.globalEnv = env;
+    }
+
     async syncWithCDK(cdkOutDir: string = 'cdk.out') {
         this.logger.info(`Syncing simulator with CDK blueprint from ${cdkOutDir}...`);
         const parser = new CDKParser(cdkOutDir);
@@ -50,6 +55,7 @@ export class SimulatorCoordinator {
                 entry: l.codePath,
                 handlerClassName: l.handler.split('.').pop(),
                 environment: {
+                    ...this.globalEnv,
                     ...l.environment,
                     AWS_ENDPOINT_URL: `http://localhost:4566`,
                     AWS_ENDPOINT_URL_DYNAMODB: `http://localhost:8000`,
@@ -57,9 +63,12 @@ export class SimulatorCoordinator {
                     AWS_ENDPOINT_URL_S3: `http://localhost:9000`,
                     AWS_ENDPOINT_URL_SNS: `http://localhost:4566`,
                     AWS_ENDPOINT_URL_SES: `http://localhost:4566`,
+                    AWS_ENDPOINT_URL_COGNITO: `http://localhost:9229`,
                     AWS_REGION: l.environment.AWS_REGION || 'us-east-1',
                     AWS_ACCESS_KEY_ID: 'local',
                     AWS_SECRET_ACCESS_KEY: 'local',
+                    MEILI_HOST: 'http://localhost:7700',
+                    MEILI_MASTER_KEY: l.environment.MEILI_MASTER_KEY || 'masterKey'
                 }
             });
         });
@@ -71,12 +80,17 @@ export class SimulatorCoordinator {
 
         this.snsBridge.setSubscriptions(blueprint.subscriptions);
         this.eventBridgeBridge.setRules(blueprint.events);
+        this.sqsBridge.setSubscriptions(blueprint.sqsSubscriptions.map(s => ({
+            queueName: s.queueName,
+            handlerId: s.lambdaId
+        })));
 
         const routes: ApiRoute[] = blueprint.routes.map(r => ({
             method: r.method,
             path: r.path,
             handlerId: r.lambdaId,
-            controllerName: ''
+            controllerName: '',
+            authorizer: r.authorizer
         }));
 
         this.apiGatewayEmulator.setRoutes(routes);
@@ -90,6 +104,12 @@ export class SimulatorCoordinator {
         }
         if (blueprint.resources.some(r => r.type === 'AWS::S3::Bucket')) {
             await this.sidecarManager.startS3();
+        }
+        if (blueprint.resources.some(r => r.type === 'AWS::Cognito::UserPool')) {
+            await this.sidecarManager.startCognito();
+        }
+        if (blueprint.lambdas.some(l => l.environment.MEILI_HOST)) {
+            await this.sidecarManager.startMeiliSearch();
         }
 
         // Initialize resource schema

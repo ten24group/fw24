@@ -14,12 +14,21 @@ export interface SimulatedApiRoute {
     method: string;
     path: string;
     lambdaId: string;
+    authorizer?: {
+        type: string;
+        groups?: string[];
+    };
 }
 
 export interface SimulatedResource {
     id: string;
     type: string;
     properties: any;
+}
+
+export interface SimulatedSqsSubscription {
+    queueName: string;
+    lambdaId: string;
 }
 
 export class CDKParser {
@@ -37,6 +46,7 @@ export class CDKParser {
         resources: SimulatedResource[],
         events: any[],
         subscriptions: any[],
+        sqsSubscriptions: SimulatedSqsSubscription[],
         s3Notifications: any[]
     } {
         const manifestPath = path.join(this.cdkOutDir, 'manifest.json');
@@ -50,6 +60,7 @@ export class CDKParser {
         const resources: SimulatedResource[] = [];
         const events: any[] = [];
         const subscriptions: any[] = [];
+        const sqsSubscriptions: SimulatedSqsSubscription[] = [];
 
         // First pass: build global resource map across all stacks
         for (const [ artifactId, artifact ] of Object.entries<any>(manifest.artifacts)) {
@@ -88,6 +99,14 @@ export class CDKParser {
                     endpoint: this.resolveIntrinsic(resource.Properties.Endpoint),
                     protocol: resource.Properties.Protocol
                 });
+            } else if (resource.Type === 'AWS::Lambda::EventSourceMapping') {
+                const sourceArn = this.resolveIntrinsic(resource.Properties.EventSourceArn);
+                if (sourceArn.includes(':sqs:')) {
+                    sqsSubscriptions.push({
+                        queueName: sourceArn.split(':').pop(),
+                        lambdaId: this.resolveIntrinsic(resource.Properties.FunctionName)
+                    });
+                }
             } else if (['AWS::DynamoDB::Table', 'AWS::SQS::Queue', 'AWS::S3::Bucket', 'AWS::SNS::Topic'].includes(resource.Type)) {
                 resources.push({
                     id,
@@ -103,6 +122,7 @@ export class CDKParser {
             resources,
             events,
             subscriptions,
+            sqsSubscriptions,
             s3Notifications: this.extractS3Notifications()
         };
     }
@@ -181,7 +201,12 @@ export class CDKParser {
 
         if (val['Fn::GetAtt']) {
             const [ ref, attr ] = val['Fn::GetAtt'];
-            if (attr === 'Arn') return `arn:aws:local:::${ref}`;
+            if (attr === 'Arn') {
+                 const target = this.resourceMap[ ref ];
+                 const name = target?.Properties?.TableName || target?.Properties?.QueueName || target?.Properties?.BucketName || ref;
+                 const service = target?.Type?.split('::')[1]?.toLowerCase() || 'service';
+                 return `arn:aws:${service}:local:123456789012:${name}`;
+            }
             return ref;
         }
 
@@ -227,10 +252,17 @@ export class CDKParser {
             }
         }
 
+        // Extract Authorization
+        const authorizer: any = {};
+        if (props.AuthorizationType && props.AuthorizationType !== 'NONE') {
+            authorizer.type = props.AuthorizationType;
+        }
+
         return {
             method: props.HttpMethod,
             path: routePath || '/',
-            lambdaId
+            lambdaId,
+            authorizer: authorizer.type ? authorizer : undefined
         };
     }
 }

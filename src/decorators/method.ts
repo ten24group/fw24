@@ -21,6 +21,14 @@ function createRouteDecorator(method: string) {
        */
       target?: string;
       /**
+       * Specifies the authorizer for the route.
+       */
+      authorizer?: {
+        name?: string;
+        type?: string;
+        groups?: string[] | string;
+      } | string;
+      /**
        * Observability config override for this method.
        * Takes precedence over controller-level config.
        */
@@ -84,6 +92,7 @@ function createRouteDecorator(method: string) {
         parameters: parameters,
         validations: options?.validations,
         target: options?.target,
+        authorizer: options?.authorizer,
         observability: options?.observability
       };
 
