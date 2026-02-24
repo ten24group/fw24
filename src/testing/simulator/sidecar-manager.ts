@@ -2,10 +2,18 @@ import { spawn, ChildProcess } from 'node:child_process';
 import { createLogger } from '../../logging';
 import { SimulatedResource } from './cdk-parser';
 import { DynamoDBClient, CreateTableCommand } from '@aws-sdk/client-dynamodb';
+import { S3Client, CreateBucketCommand } from '@aws-sdk/client-s3';
+import { Fw24 } from '../../core/fw24';
 
 export class SidecarManager {
     private readonly logger = createLogger(SidecarManager.name);
     private containers: string[] = [];
+    private readonly prefix: string;
+
+    constructor() {
+        const appName = Fw24.getInstance().appName || 'fw24';
+        this.prefix = appName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    }
 
     async initResources(resources: SimulatedResource[]) {
         for (const resource of resources) {
@@ -20,8 +28,23 @@ export class SidecarManager {
     private async setupS3Bucket(props: any) {
         const bucketName = props.BucketName;
         this.logger.info(`Setting up local S3 bucket: ${bucketName || 'unknown'}`);
-        // For Minio, we might need a client to create the bucket
-        // (Implementation omitted for brevity, but same pattern as DynamoDB)
+
+        const client = new S3Client({
+            endpoint: 'http://localhost:9000',
+            region: 'us-east-1',
+            credentials: { accessKeyId: 'local', secretAccessKey: 'local' },
+            forcePathStyle: true
+        });
+
+        try {
+            await client.send(new CreateBucketCommand({
+                Bucket: bucketName
+            }));
+        } catch (error: any) {
+            if (error.name !== 'BucketAlreadyOwnedByYou' && error.name !== 'BucketAlreadyExists') {
+                this.logger.error(`Failed to create bucket ${bucketName}:`, error);
+            }
+        }
     }
 
     private async setupDynamoDBTable(props: any) {
@@ -53,25 +76,25 @@ export class SidecarManager {
 
     async startDynamoDB(port: number = 8000) {
         this.logger.info(`Starting DynamoDB sidecar on port ${port}...`);
-        await this.runContainer('dynamodb-local', `amazon/dynamodb-local`, port, 8000);
+        await this.runContainer(`${this.prefix}-dynamodb`, `amazon/dynamodb-local`, port, 8000);
     }
 
     async startSQS(port: number = 9324) {
         this.logger.info(`Starting SQS sidecar on port ${port}...`);
-        await this.runContainer('sqs-local', `softwaremill/elasticmq-native`, port, 9324);
+        await this.runContainer(`${this.prefix}-sqs`, `softwaremill/elasticmq-native`, port, 9324);
     }
 
     async startS3(port: number = 9000) {
         this.logger.info(`Starting S3 sidecar on port ${port}...`);
         // Using Minio as a robust S3 emulator
-        await this.runContainer('s3-local', `minio/minio`, port, 9000, [
+        await this.runContainer(`${this.prefix}-s3`, `minio/minio`, port, 9000, [
             'server', '/data', '--console-address', ':9001'
         ]);
     }
 
     async startMeiliSearch(port: number = 7700, masterKey: string = 'masterKey') {
         this.logger.info(`Starting MeiliSearch sidecar on port ${port}...`);
-        await this.runContainer('meilisearch-local', `getmeili/meilisearch`, port, 7700, [
+        await this.runContainer(`${this.prefix}-meilisearch`, `getmeili/meilisearch`, port, 7700, [
             `-e`, `MEILI_MASTER_KEY=${masterKey}`
         ]);
     }

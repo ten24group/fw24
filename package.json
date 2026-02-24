@@ -44,7 +44,6 @@
         "jest": "^30.0.2",
         "standard-version": "^9.5.0",
         "ts-jest": "^29.4.0",
-        "ts-node": "^10.9.2",
         "typescript": "^5.8.3",
         "typescript-eslint": "^8.56.0"
     },
@@ -73,6 +72,7 @@
         "express": "^5.2.1",
         "meilisearch": "^0.51.0",
         "node-cron": "^4.2.1",
+        "ts-node": "^10.9.2",
         "path-to-regexp": "^8.2.0",
         "qs": "^6.14.0",
         "source-map-support": "^0.5.21",

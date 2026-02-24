@@ -391,7 +391,7 @@ export class Application {
      * Start the local simulator for development.
      */
     public async simulate(config: ISimulatorConfig = {}) {
-        this.logger.info("Starting High-Fidelity High-Fidelity Simulator (fw24 dev)...");
+        this.logger.info("Starting High-Fidelity Simulator (fw24 dev)...");
 
         const coordinator = new SimulatorCoordinator(config);
 
