@@ -401,18 +401,25 @@ export class Application {
             try {
                 // 1. Run CDK Synth
                 const { spawnSync } = require('node:child_process');
-                const result = spawnSync('npx', ['cdk', 'synth'], { stdio: 'inherit' });
+                this.logger.info("Running 'cdk synth' to generate blueprint...");
+                const result = spawnSync('npx', ['cdk', 'synth'], {
+                    stdio: 'inherit',
+                    shell: true
+                });
 
                 if (result.status !== 0) {
-                    this.logger.error("CDK Synth failed. Please check your CDK code.");
+                    this.logger.error("❌ CDK Synth failed. Simulator cannot start/sync without a valid blueprint.");
+                    this.logger.error("Please fix the errors in your CDK/Infrastructure code and the simulator will retry on the next save.");
                     return;
                 }
 
                 // 2. Sync Coordinator with CDK blueprint
                 await coordinator.syncWithCDK();
+                this.logger.info("✅ Simulator synced with latest CDK blueprint.");
 
-            } catch (error) {
-                this.logger.error("Error during CDK synchronization:", error);
+            } catch (error: any) {
+                this.logger.error("❌ Error during CDK synchronization:", error.message);
+                this.logger.debug(error.stack);
             }
         }
 

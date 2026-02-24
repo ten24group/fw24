@@ -39,6 +39,7 @@ export class AwsMockEmulator implements IEmulator {
                 default:
                     res.status(200).send(`<ErrorResponse><Error><Code>UnknownAction</Code><Message>Action ${action} mocked</Message></Error></ErrorResponse>`);
             }
+            return;
         });
 
         return new Promise((resolve) => {

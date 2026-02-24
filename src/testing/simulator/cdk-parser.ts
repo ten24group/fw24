@@ -36,11 +36,12 @@ export class CDKParser {
         routes: SimulatedApiRoute[],
         resources: SimulatedResource[],
         events: any[],
-        subscriptions: any[]
+        subscriptions: any[],
+        s3Notifications: any[]
     } {
         const manifestPath = path.join(this.cdkOutDir, 'manifest.json');
         if (!fs.existsSync(manifestPath)) {
-            throw new Error(`CDK manifest not found at ${manifestPath}. Run 'cdk synth' first.`);
+            throw new Error(`CDK manifest not found at ${manifestPath}. This usually means 'cdk synth' failed or was not run in the project root.`);
         }
 
         const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
@@ -190,7 +191,7 @@ export class CDKParser {
                 // TODO: handle mapping
                 template = template[0];
             }
-            return template.replace(/\${([^}]+)}/g, (match: string, p1: string) => {
+            return template.replace(/\${([^}]+)}/g, (_match: string, p1: string) => {
                 return this.resolveIntrinsic({ Ref: p1 });
             });
         }
@@ -198,7 +199,7 @@ export class CDKParser {
         return JSON.stringify(val);
     }
 
-    private resolveRoute(methodId: string, methodResource: any): SimulatedApiRoute | null {
+    private resolveRoute(_methodId: string, methodResource: any): SimulatedApiRoute | null {
         const props = methodResource.Properties;
         const uri = props.Integration?.Uri;
         let lambdaId = '';
@@ -212,13 +213,13 @@ export class CDKParser {
             }
         }
 
-        let path = '';
+        let routePath = '';
         let currentResourceId = props.ResourceId?.Ref;
         while (currentResourceId) {
             const res = this.resourceMap[ currentResourceId ];
             if (res && res.Properties) {
                 if (res.Properties.PathPart) {
-                    path = '/' + res.Properties.PathPart + path;
+                    routePath = '/' + res.Properties.PathPart + routePath;
                 }
                 currentResourceId = res.Properties.ParentId?.Ref;
             } else {
@@ -228,7 +229,7 @@ export class CDKParser {
 
         return {
             method: props.HttpMethod,
-            path: path || '/',
+            path: routePath || '/',
             lambdaId
         };
     }

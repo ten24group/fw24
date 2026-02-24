@@ -99,7 +99,20 @@ export class SidecarManager {
         ]);
     }
 
+    private async isDockerAvailable(): Promise<boolean> {
+        return new Promise((resolve) => {
+            const process = spawn('docker', ['info'], { stdio: 'ignore' });
+            process.on('close', (code) => resolve(code === 0));
+            process.on('error', () => resolve(false));
+        });
+    }
+
     private async runContainer(name: string, image: string, hostPort: number, containerPort: number, extraArgs: string[] = []) {
+        if (!(await this.isDockerAvailable())) {
+            this.logger.error(`Docker is not available. Cannot start sidecar: ${name}`);
+            throw new Error(`Docker is not available. Please make sure Docker Desktop or Docker Engine is running.`);
+        }
+
         // Stop and remove if exists
         try {
             spawn('docker', ['rm', '-f', name], { stdio: 'ignore' });
