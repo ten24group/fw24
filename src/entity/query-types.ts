@@ -1,4 +1,5 @@
 import { ExclusiveUnion, ValueOf, isArray, isArrayOfType, isBoolean, isEmpty, isObject, isString } from "../utils";
+import { GeoBoundingBoxFilter, GeoPoint, GeoRadiusFilter, GeoSort } from "../utils/geo-utils";
 import { EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, } from "./base-entity";
 
 
@@ -628,7 +629,16 @@ export type EntityQuery<E extends EntitySchema<any, any, any>> = {
      * Specifies the index to use for the query.
      * If not provided, the system will automatically find a matching index based on the filters.
      */
-    index?: IndexSpecification
+    index?: IndexSpecification,
+
+    /** Configuration for filtering results by geographic radius. */
+    geoRadiusFilter?: GeoRadiusFilter;
+
+    /** Configuration for filtering results by geographic bounding box. */
+    geoBoundingBoxFilter?: GeoBoundingBoxFilter;
+
+    /** Configuration for sorting results by geographic proximity. */
+    geoSort?: GeoSort;
 }
 
 /**

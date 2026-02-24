@@ -20,4 +20,9 @@ export const DefaultEntityOperations = {
   patch: { enabled: false, method: 'PATCH', path: '/batch-patch', handler: 'patch', isBulk: true, label: 'Batch Patch', uiLocation: 'bulk', icon: 'EditOutlined' },
   restore: { enabled: false, method: 'POST', path: '/{id}/restore', handler: 'restore', requiresId: true, label: 'Restore', uiLocation: 'row', icon: 'UndoOutlined' },
   archive: { enabled: false, method: 'POST', path: '/{id}/archive', handler: 'archive', requiresId: true, label: 'Archive', uiLocation: 'row', icon: 'FolderAddOutlined' },
+  geoSearch: { enabled: false, method: 'POST', path: '/geo-search', handler: 'geoSearch', label: 'Geo Search', icon: 'EnvironmentOutlined' },
+  getAncestors: { enabled: false, method: 'GET', path: '/{id}/ancestors', handler: 'getAncestors', requiresId: true, label: 'View Ancestors' },
+  getDescendants: { enabled: false, method: 'GET', path: '/{id}/descendants', handler: 'getDescendants', requiresId: true, label: 'View Descendants' },
+  attach: { enabled: false, method: 'POST', path: '/{id}/attach', handler: 'attach', requiresId: true, label: 'Attach Relation' },
+  detach: { enabled: false, method: 'POST', path: '/{id}/detach', handler: 'detach', requiresId: true, label: 'Detach Relation' },
 } as const;

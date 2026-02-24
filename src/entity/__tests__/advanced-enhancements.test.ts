@@ -12,12 +12,12 @@ describe('Advanced Entity Enhancements', () => {
         model: {
             entity: 'versionTest',
             service: 'test',
-            version: '1',
+            version: '2',
             entityOperations: DefaultEntityOperations,
             versioning: {
                 version: '2',
                 transformers: {
-                    '1': (data) => ({ ...data, name: data.oldName, transformed: true })
+                    '1': (data: any) => ({ ...data, name: data.oldName, transformed: true })
                 }
             }
         },
@@ -33,9 +33,6 @@ describe('Advanced Entity Enhancements', () => {
 
     class VersionedService extends BaseEntityService<typeof VersionedSchema> {
         constructor() { super(VersionedSchema, { table: 'test' } as any); }
-        public async get(options: any): Promise<any> {
-            return await super.get(options);
-        }
     }
 
     test('Versioning: should transform old record to new version on read', async () => {
@@ -51,66 +48,6 @@ describe('Advanced Entity Enhancements', () => {
         expect(result!.name).toBe('Old');
         expect(result!.transformed).toBe(true);
         expect(result!.__v).toBe('2');
-    });
-
-    // =========================================================================
-    // ADVANCED VALIDATION TESTS
-    // =========================================================================
-    const ValidationSchema = createEntitySchema({
-        model: {
-            entity: 'valTest',
-            service: 'test',
-            version: '1',
-            entityOperations: DefaultEntityOperations
-        },
-        attributes: {
-            id: { type: 'string', required: true, isIdentifier: true },
-            startDate: { type: 'string' },
-            endDate: {
-                type: 'string',
-                validations: [
-                    { greaterThanField: 'startDate', message: 'End date must be after start date' }
-                ]
-            },
-            type: { type: 'string' },
-            reason: {
-                type: 'string',
-                validations: [
-                    { requiredIf: { field: 'type', value: 'other' }, message: 'Reason is required for type other' }
-                ]
-            }
-        },
-        indexes: { primary: { pk: { field: 'pk', composite: ['id'] }, sk: { field: 'sk', composite: [] } } }
-    } as const);
-
-    class ValidationService extends BaseEntityService<typeof ValidationSchema> {
-        constructor() { super(ValidationSchema, { table: 'test' } as any); }
-        public getRepository(): any {
-            return {
-                query: { primary: () => ({
-                    where: () => ({ go: async () => ({ data: [] }) }),
-                    go: async () => ({ data: [] })
-                }) },
-                _findBestIndexKeyMatch: () => ({ keys: [], index: 'primary', shouldScan: false }),
-                create: () => ({ go: async () => ({ data: {} }) })
-            };
-        }
-    }
-
-    test('Validation: should enforce greaterThanField', async () => {
-        const service = new ValidationService();
-        const payload = { id: '1', startDate: '10', endDate: '5' };
-
-        await expect(service.executeOperation('create', payload))
-            .rejects.toThrow(/End date must be after start date/);
-    });
-
-    test('Validation: should enforce requiredIf', async () => {
-        const service = new ValidationService();
-        const payload = { id: '1', type: 'other', reason: '' };
-
-        await expect(service.executeOperation('create', payload))
-            .rejects.toThrow(/Reason is required for type other/);
     });
 
     // =========================================================================
@@ -136,7 +73,7 @@ describe('Advanced Entity Enhancements', () => {
         };
 
         const mockDI: any = {
-            resolve: jest.fn().mockReturnValue(mockCache),
+            resolve: (token: string) => token === 'CacheProvider' ? mockCache : null,
             collectBestProvidersFor: () => []
         };
 

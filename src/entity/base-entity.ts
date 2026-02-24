@@ -18,6 +18,7 @@ import { EntitySearchService } from '../search/services';
 import { DepIdentifier, IFilterAutoGenerationConfig, ISegmentAutoGenerationConfig } from "../interfaces";
 import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig, AccordionPageConfig, WizardPageConfigStructure, CustomPageConfigStructure } from '../ui-config-gen/templates/custom-page';
 import type { HttpRequestValidations, InputValidationRule } from "../validation";
+import { GeoPoint } from "../utils/geo-utils";
 
 /**
  * @fileoverview Entity Schema and Type-Safe Helper Functions
@@ -499,6 +500,98 @@ export function createEntityRelation<T extends EntitySchema<any, any, any, any> 
 }
 
 /**
+ * Creates a many-to-many entity relation.
+ */
+export function createManyToManyRelation<T extends EntitySchema<any, any, any, any> | (() => EntitySchema<any, any, any, any>)>(
+  relation: Omit<Relation<ResolveEntitySchema<T>>, 'type'>
+): Relation<ResolveEntitySchema<T>> {
+  return { ...relation, type: 'many-to-many' } as Relation<ResolveEntitySchema<T>>;
+}
+
+/**
+ * Helper to create a standard bridge entity schema for many-to-many relationships.
+ */
+export function createManyToManyBridgeSchema(
+  sourceEntity: string,
+  targetEntity: string,
+  options: {
+    entityName?: string;
+    serviceName?: string;
+    extraAttributes?: Record<string, EntityAttribute>;
+  } = {}
+) {
+  const entityName = options.entityName || `${pascalCase(sourceEntity)}${pascalCase(targetEntity)}`;
+  const sourceIdField = `${sourceEntity}Id`;
+  const targetIdField = `${targetEntity}Id`;
+
+  return createEntitySchema({
+    model: {
+      entity: entityName,
+      entityNamePlural: `${entityName}s`,
+      service: options.serviceName || sourceEntity,
+      version: '1',
+      entityOperations: DefaultEntityOperations,
+    },
+    attributes: {
+      [ sourceIdField ]: { type: 'string', required: true, isIdentifier: true },
+      [ targetIdField ]: { type: 'string', required: true, isIdentifier: true },
+      ...(options.extraAttributes || {})
+    },
+    indexes: {
+      primary: {
+        pk: { field: 'pk', composite: [ sourceIdField ] },
+        sk: { field: 'sk', composite: [ targetIdField ] }
+      },
+      reverse: {
+        index: 'gsi1',
+        pk: { field: 'gsi1pk', composite: [ targetIdField ] },
+        sk: { field: 'gsi1sk', composite: [ sourceIdField ] }
+      }
+    }
+  } as any);
+}
+
+/**
+ * Helper to create a standard tree ancestry entity schema.
+ */
+export function createTreeAncestrySchema(
+  entityName: string,
+  options: {
+    serviceName?: string;
+  } = {}
+) {
+  const ancestryEntityName = `${pascalCase(entityName)}Ancestry`;
+
+  return createEntitySchema({
+    model: {
+      entity: ancestryEntityName,
+      entityNamePlural: `${ancestryEntityName}s`,
+      service: options.serviceName || entityName,
+      version: '1',
+      entityOperations: DefaultEntityOperations,
+    },
+    attributes: {
+      ancestorId: { type: 'string', required: true, isIdentifier: true },
+      descendantId: { type: 'string', required: true, isIdentifier: true },
+      depth: { type: 'number', required: true }
+    },
+    indexes: {
+      primary: {
+        pk: { field: 'pk', composite: [ 'ancestorId' ] },
+        sk: { field: 'sk', composite: [ 'descendantId' ] }
+      },
+      reverse: {
+        index: 'gsi1',
+        pk: { field: 'gsi1pk', composite: [ 'descendantId' ] },
+        sk: { field: 'gsi1sk', composite: [ 'ancestorId' ] }
+      }
+    }
+  } as any);
+}
+
+import { pascalCase } from "../utils";
+
+/**
  * Utility type to extract the related entity schema from a Relation type.
  * 
  * @template Rel - The relation type
@@ -559,9 +652,9 @@ export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
 
   /**
    * The type of the relation.
-   * Possible values: 'one-to-many' or 'many-to-one'
+   * Possible values: 'one-to-many', 'many-to-one', or 'many-to-many'
    */
-  type: 'one-to-many' | 'many-to-one'; // 'one-to-one' | 'many-to-many';
+  type: 'one-to-many' | 'many-to-one' | 'many-to-many';
 
   /**
    * Identifiers to load the related entity.
@@ -604,6 +697,12 @@ export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
    * attributes: () => ({ userId: true, name: true, email: true })
    */
   attributes?: HydrateOptionForEntity<E> | (() => HydrateOptionForEntity<E>);
+
+  /**
+   * For many-to-many relations, the name of the bridge/link entity.
+   * If not provided, convention is SourceEntity + TargetEntity.
+   */
+  bridgeEntityName?: string;
 
   /**
    * Relational integrity configuration.
@@ -658,12 +757,6 @@ export interface FW24AttributeExtensions {
   readonly relation?: Relation<any>;
 
   /**
-   * Validations for the attribute.
-   * Supports both readonly and mutable arrays for compatibility with 'as const' entity schemas.
-   */
-  readonly validations?: ReadonlyArray<any> | Array<any>;
-
-  /**
    * Fine-grained Field Level Security (FLS) permissions.
    */
   readonly permissions?: {
@@ -678,6 +771,31 @@ export interface FW24AttributeExtensions {
      */
     write?: string[] | Condition;
   };
+
+  /**
+   * Configuration for geographic data.
+   * If true, the attribute is treated as a GeoPoint (lat, lng).
+   * Framework will automatically manage geohashing for DynamoDB-native spatial queries.
+   */
+  readonly geo?: boolean;
+
+  /**
+   * Configuration for hierarchical data.
+   * - 'path': Uses materialized path enumeration (e.g., "root/parent/child"). Best for breadcrumbs.
+   * - 'ancestry': Uses a separate ancestry relationship entity. Best for deep graph traversal.
+   */
+  readonly hierarchy?: 'path' | 'ancestry';
+
+  /**
+   * Dependencies for denormalized data.
+   * Specifies which other entities/attributes should be updated when this attribute changes.
+   */
+  readonly dependencies?: Array<{
+    entityName: string;
+    attributeName: string;
+    /** Map source attributes to target attributes in the dependent entity */
+    mapping?: Record<string, string>;
+  }>;
 
   /**
    * Enable compression for this attribute.
@@ -720,7 +838,7 @@ export interface FW24AttributeExtensions {
  * 
  * This is the complete attribute type used in entity schemas, providing:
  * - Database configuration (from ElectroDB's Attribute)
- * - Data layer configuration (from FW24AttributeExtensions: relations, validations)
+ * - Data layer configuration (from FW24AttributeExtensions: relations)
  * - UI layer configuration (from FieldMetadata: visibility, filtering, rendering)
  * 
  * @example
@@ -4047,6 +4165,22 @@ export interface EntitySchema<
     };
 
     /**
+     * Tree/Hierarchy configuration for the entity.
+     */
+    readonly tree?: {
+      /** Strategy for hierarchy management */
+      strategy: 'path' | 'ancestry' | 'both';
+      /** Attribute storing the parent ID. Default: 'parentId' */
+      parentAttribute?: string;
+      /** Attribute storing the materialized path. Only for 'path' strategy. Default: 'path' */
+      pathAttribute?: string;
+      /** Separator for path string. Default: '/' */
+      pathSeparator?: string;
+      /** Depth attribute for 'ancestry' strategy. Default: 'depth' */
+      depthAttribute?: string;
+    };
+
+    /**
      * Workflow / State Machine configuration.
      */
     readonly workflow?: {
@@ -4576,6 +4710,11 @@ export type TEntityOpsInputSchemas<
       : opName extends 'patch' ? { ids: Array<EntityIdentifiersTypeFromSchema<Sch>>, data: UpdateEntityItemTypeFromSchema<Sch> }
       : opName extends 'restore' ? EntityIdentifiersTypeFromSchema<Sch>
       : opName extends 'archive' ? EntityIdentifiersTypeFromSchema<Sch>
+      : opName extends 'geoSearch' ? { attribute: string, center: GeoPoint, radiusInMeters: number, filters?: EntityFilterCriteria<Sch>, attributes?: EntitySelections<Sch>, limit?: number }
+      : opName extends 'getAncestors' ? EntityIdentifiersTypeFromSchema<Sch>
+      : opName extends 'getDescendants' ? EntityIdentifiersTypeFromSchema<Sch>
+      : opName extends 'attach' ? { relation: string, id: any, targetId: any, data?: any }
+      : opName extends 'detach' ? { relation: string, id: any, targetId: any }
       : any
   }
 
@@ -4604,6 +4743,11 @@ export type TEntityOpsOutputTypes<
       : opName extends 'patch' ? Array<UpdateEntityResponse<Sch>>
       : opName extends 'restore' ? UpdateEntityResponse<Sch>
       : opName extends 'archive' ? UpdateEntityResponse<Sch>
+      : opName extends 'geoSearch' ? EntityRecordTypeFromSchema<Sch>[]
+      : opName extends 'getAncestors' ? EntityRecordTypeFromSchema<Sch>[]
+      : opName extends 'getDescendants' ? EntityRecordTypeFromSchema<Sch>[]
+      : opName extends 'attach' ? void
+      : opName extends 'detach' ? void
       : any
   }
 
@@ -4669,28 +4813,61 @@ export function createEntitySchema<
   Ops extends EntityOperationsConfig,
   S extends EntitySchema<A, F, C, Ops>
 >(schema: S): S {
-  // Automatically inject _actor field into every schema for audit tracking
-  const enhancedSchema = {
-    ...schema,
-    attributes: {
-      ...schema.attributes,
-      _actor: {
-        type: 'any',
+  // Automatically inject framework fields into every schema
+  const enhancedAttributes: any = { ...schema.attributes };
+
+  // 1. Inject _actor field for audit tracking
+  enhancedAttributes._actor = {
+    type: 'any',
+    required: false,
+    hidden: true,
+    readOnly: false,
+    isVisible: false,
+    isListable: false,
+    isCreatable: false,
+    isEditable: false,
+    isFilterable: false,
+    isSearchable: false,
+    isSortable: false,
+    name: "Actor Context",
+    description: "Internal field storing complete actor context for audit purposes"
+  };
+
+  // 2. Inject __geohash if geo attributes exist
+  const hasGeo = Object.values(schema.attributes).some((a: any) => a.geo);
+  if (hasGeo) {
+    enhancedAttributes.__geohash = {
+      type: 'string',
+      required: false,
+      hidden: true,
+      isVisible: false,
+      isListable: false,
+      isFilterable: true,
+      isSearchable: false,
+      name: "Geohash",
+    };
+  }
+
+  // 3. Inject path field if tree strategy is 'path'
+  if (schema.model.tree?.strategy === 'path' || schema.model.tree?.strategy === 'both') {
+    const pathAttr = schema.model.tree.pathAttribute || '__path';
+    if (!enhancedAttributes[ pathAttr ]) {
+      enhancedAttributes[ pathAttr ] = {
+        type: 'string',
         required: false,
-        hidden: true,  // Hidden from ElectroDB operations
-        readOnly: false,
-        // UI metadata - mark as not visible in any UI
+        hidden: true,
         isVisible: false,
         isListable: false,
-        isCreatable: false,
-        isEditable: false,
-        isFilterable: false,
+        isFilterable: true,
         isSearchable: false,
-        isSortable: false,
-        name: "Actor Context",
-        description: "Internal field storing complete actor context for audit purposes"
-      }
+        name: "Materialized Path",
+      };
     }
+  }
+
+  const enhancedSchema = {
+    ...schema,
+    attributes: enhancedAttributes
   } as S;
 
   return createSchema(enhancedSchema);
