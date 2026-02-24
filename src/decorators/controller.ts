@@ -1,7 +1,8 @@
 import type { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import type { AuthorizerTypeMetadata } from "./authorizer";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
-import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor } from "./decorator-utils";
+import type { ControllerObservabilityConfig } from "../observability/controller-config";
+import { resolveAndExportHandler, setupDIModuleForController } from "./decorator-utils";
 
 /**
  * Represents the configuration options for a controller.
@@ -52,6 +53,26 @@ export type IControllerConfig = CommonLambdaHandlerOptions & {
 	 * @default false
 	 */
 	requireApiKey?: boolean;
+
+	/**
+	 * Observability configuration for request/response data capture.
+	 * By default, only basic HTTP info is captured. Use `includes` to capture
+	 * request body/headers/query and response body/headers.
+	 *
+	 * @example
+	 * ```typescript
+	 * @Controller('payments', {
+	 *   observability: {
+	 *     includes: {
+	 *       request: { body: true },
+	 *       response: { body: ['id', 'status'] }
+	 *     },
+	 *     dataProtection: { enabled: true }
+	 *   }
+	 * })
+	 * ```
+	 */
+	observability?: ControllerObservabilityConfig;
 }
 
 /**
@@ -65,8 +86,7 @@ export function Controller(controllerName: string, controllerConfig: IController
 
 
 	return function <T extends { new(...args: any[]): {} }>(target: T) {
-		tryImportingEntryPackagesFor();
-
+		// Entry packages are auto-loaded by fw24 layer - no need to call here
 		// Default autoExportLambdaHandler to true if undefined
 		controllerConfig.autoExportLambdaHandler = controllerConfig.autoExportLambdaHandler ?? true;
 

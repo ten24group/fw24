@@ -1,4 +1,4 @@
-import { Middleware, MiddlewareAsync, ProviderOptions } from "../interfaces/di";
+import { DIMiddleware, DIMiddlewareAsync, ProviderOptions } from "../interfaces/di";
 import { DIContainer } from "./container";
 import {
     getModuleMetadata,
@@ -13,10 +13,10 @@ describe('Utility Functions - Complex Scenarios', () => {
     beforeEach(() => {
         DIContainer.DIMetadataStore.clearMetadata();
     });
-   
+
     describe('registerConstructorDependency', () => {
         it('should handle multiple dependencies for the same parameter', () => {
-            class TestClass {}
+            class TestClass { }
             const depToken1 = 'Dep1';
             const depToken2 = 'Dep2';
 
@@ -26,11 +26,11 @@ describe('Utility Functions - Complex Scenarios', () => {
             const dependencies = getConstructorDependenciesMetadata(TestClass);
 
             expect(dependencies.length).toBe(1);
-            expect(dependencies[0].token.toString()).toBe('fw24.di.token:Dep2');
+            expect(dependencies[ 0 ].token.toString()).toBe('fw24.di.token:Dep2');
         });
 
         it('should merge options for the same dependency', () => {
-            class TestClass {}
+            class TestClass { }
             const depToken = 'Dep';
 
             registerConstructorDependency(TestClass, 0, depToken, { isOptional: true });
@@ -38,14 +38,14 @@ describe('Utility Functions - Complex Scenarios', () => {
 
             const dependencies = getConstructorDependenciesMetadata(TestClass);
 
-            expect(dependencies[0].isOptional).toBe(true);
-            expect(dependencies[1].defaultValue).toBe('default');
+            expect(dependencies[ 0 ].isOptional).toBe(true);
+            expect(dependencies[ 1 ].defaultValue).toBe('default');
         });
     });
 
     describe('registerPropertyDependency', () => {
         it('should handle dependencies for multiple properties', () => {
-            class TestClass {}
+            class TestClass { }
             const depToken1 = 'Dep1';
             const depToken2 = 'Dep2';
 
@@ -55,12 +55,12 @@ describe('Utility Functions - Complex Scenarios', () => {
             const dependencies = getPropertyDependenciesMetadata(TestClass);
 
             expect(dependencies.length).toBe(2);
-            expect(dependencies[0].propertyKey).toBe('property1');
-            expect(dependencies[1].propertyKey).toBe('property2');
+            expect(dependencies[ 0 ].propertyKey).toBe('property1');
+            expect(dependencies[ 1 ].propertyKey).toBe('property2');
         });
 
         it('should handle symbol property keys', () => {
-            class TestClass {}
+            class TestClass { }
             const symbolKey = Symbol('propertyKey');
             const depToken = 'Dep';
 
@@ -68,13 +68,13 @@ describe('Utility Functions - Complex Scenarios', () => {
 
             const dependencies = getPropertyDependenciesMetadata(TestClass);
 
-            expect(dependencies[0].propertyKey).toBe(symbolKey);
+            expect(dependencies[ 0 ].propertyKey).toBe(symbolKey);
         });
     });
 
     describe('getModuleMetadata', () => {
         it('should return undefined for targets without metadata', () => {
-            class NoMetadataClass {}
+            class NoMetadataClass { }
 
             const result = getModuleMetadata(NoMetadataClass);
 

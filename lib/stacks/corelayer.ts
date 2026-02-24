@@ -11,7 +11,7 @@ export class CoreLayerStack extends Stack {
         const coreLayer = new LayerVersion( this, 'Fw24CoreLayer', {
             layerVersionName: 'Fw24CoreLayer',
             compatibleRuntimes: [
-                Runtime.NODEJS_18_X
+                Runtime.NODEJS_22_X
             ],
             code: Code.fromAsset( './dist/layer' ),
             compatibleArchitectures: [

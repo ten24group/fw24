@@ -1,12 +1,15 @@
-import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas, EntityTypeFromSchema } from "./base-entity";
-import type { EntityQuery } from "./query-types";
+import type { BulkOptions } from "electrodb";
 import { Authorizer } from "../authorize";
 import { defaultEventDispatcher, EventDispatcher, IEventDispatcher } from "../event";
 import { ILogger, createLogger } from "../logging";
 import { isEmptyObject, removeEmpty } from "../utils";
 import { DefaultValidator, type IValidator } from "../validation";
-import { entityFilterCriteriaToExpression } from "./query";
+import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
 import { EntityValidationError } from "./errors/validation-error";
+import { Actor } from "../core/types/execution-context";
+import { entityFilterCriteriaToExpression } from "./query";
+import type { EntityQuery } from "./query-types";
+import { MetricObserver, SpanObserver, QueryObserver } from "../observability/observers";
 import { createEntityEventDispatcher } from "./entity-events";
 
 /**
@@ -35,7 +38,7 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>> {
     entityService: EntityServiceTypeFromSchema<S>;
 
     crudType?: keyof TDefaultEntityOperations;
-    actor?: any; // todo: define actor context: [ User+Tenant OR System on behalf of some User+Tenant] trying to perform the operation
+    actor?: Actor; // Actor context: comprehensive actor information including authentication details
     tenant?: any; // todo: define tenant context
 
     logger?: ILogger;
@@ -66,11 +69,20 @@ export interface GetEntityArgs<
 }
 
 /**
+ * Response type for get entity operation.
+ * Provides a typed wrapper for the electrodb get response.
+ * @template Sch - The entity schema type.
+ */
+export type GetEntityResponse<Sch extends EntitySchema<any, any, any>> = {
+    data?: EntityResponseItemTypeFromSchema<Sch>
+}
+
+/**
  * Retrieves an entity based on the provided options.
  * @param options - The options for retrieving the entity.
  * @returns The retrieved entity.
  */
-export async function getEntity<S extends EntitySchema<any, any, any>>(options: GetEntityArgs<S>) {
+export async function getEntity<S extends EntitySchema<any, any, any>>(options: GetEntityArgs<S>): Promise<GetEntityResponse<S>> {
 
     const {
         id,
@@ -141,8 +153,9 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
         throw new EntityValidationError(validationResult.errors);
     }
 
-    const entity = await entityService.getRepository().get(identifiers).go({ attributes });
-
+    const entity = await QueryObserver.track(entityName, 'get', () =>
+        entityService.getRepository().get(identifiers).go({ attributes, ...QueryObserver.getCapacityGoOptions() })
+    );
 
     await opDispatcher.dispatch({
         phase: 'post',
@@ -151,7 +164,7 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
 
     logger.debug(`Completed EntityCrud ~ getEntity ~ entityName: ${entityName} ~ id:`, id);
 
-    return entity;
+    return entity as GetEntityResponse<S>;
 }
 
 /**
@@ -260,10 +273,14 @@ export async function getBatchEntity<S extends EntitySchema<any, any, any>>(opti
     }
 
     // Perform batch get operation with concurrency control
-    const result = await entityService.getRepository().get(identifiersBatch).go({
-        attributes,
-        concurrent
-    });
+    const result = await QueryObserver.track(entityName, 'batchGet', () =>
+        entityService.getRepository().get(identifiersBatch).go({
+            attributes,
+            concurrent,
+            ...QueryObserver.getCapacityGoOptions(),
+        }),
+        { itemCount: identifiersBatch.length }
+    );
 
     await opDispatcher.dispatch({
         phase: 'post',
@@ -335,6 +352,10 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
         data: { data },
     });
 
+    if (!data) {
+        throw new Error("No data provided for create operation");
+    }
+
     const entityValidations = entityService.getEntityValidations();
     const overriddenErrorMessages = await entityService.getOverriddenEntityValidationErrorMessages();
 
@@ -343,10 +364,6 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
         subPhase: 'validate',
         data: { data, entityValidations, overriddenErrorMessages },
     });
-
-    if (!data) {
-        throw new Error("No data provided for create operation");
-    }
 
     // validate
     const validationResult = await validator.validateEntity({
@@ -358,10 +375,6 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
         actor: actor,
     });
 
-    if (!validationResult.pass) {
-        throw new EntityValidationError(validationResult.errors);
-    }
-
     await opDispatcher.dispatch({
         phase: 'post',
         subPhase: 'validate',
@@ -369,13 +382,19 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
         data: { data, entityValidations, overriddenErrorMessages, validationResult },
     });
 
+    if (!validationResult.pass) {
+        throw new EntityValidationError(validationResult.errors);
+    }
+
     // authorize the actor 
     // const authorization = await authorizer.authorize({ entityName, crudType, data, actor, tenant });
     // if(!authorization.pass){
     //     throw new Error("Authorization failed for create: " + { cause: authorization });
     // }
 
-    const entity = await entityService.getRepository().create(data).go();
+    const entity = await QueryObserver.track(entityName, 'create', () =>
+        entityService.getRepository().create(data).go({ ...QueryObserver.getCapacityGoOptions() })
+    );
 
     await opDispatcher.dispatch({
         phase: 'post',
@@ -406,13 +425,15 @@ export interface UpsertEntityArgs<
 
 export type UpsertEntityResponse<Sch extends EntitySchema<any, any, any>> = {
     data?: EntityResponseItemTypeFromSchema<Sch>
+    wasCreated?: boolean  // true if record was created, false if already existed
+    oldData?: EntityResponseItemTypeFromSchema<Sch>  // previous data if it was an update (undefined for creates)
 }
 
 /**
  * Creates an entity using the provided options.
  * 
  * @param options - The options for creating-OR-updating the entity.
- * @returns The created entity.
+ * @returns The created entity with wasCreated flag indicating if it was a new record.
  * @throws Error if no data is provided for upsert operation, validation fails, or authorization fails.
  */
 export async function upsertEntity<S extends EntitySchema<any, any, any>>(options: UpsertEntityArgs<S>): Promise<UpsertEntityResponse<S>> {
@@ -446,6 +467,10 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
         data: { data },
     });
 
+    if (!data) {
+        throw new Error("No data provided for upsert operation");
+    }
+
     const entityValidations = entityService.getEntityValidations();
     const overriddenErrorMessages = await entityService.getOverriddenEntityValidationErrorMessages();
 
@@ -454,10 +479,6 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
         subPhase: 'validate',
         data: { data, entityValidations, overriddenErrorMessages },
     });
-
-    if (!data) {
-        throw new Error("No data provided for upsert operation");
-    }
 
     // validate
     const validationResult = await validator.validateEntity({
@@ -469,10 +490,6 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
         actor: actor,
     });
 
-    if (!validationResult.pass) {
-        throw new EntityValidationError(validationResult.errors);
-    }
-
     await opDispatcher.dispatch({
         phase: 'post',
         subPhase: 'validate',
@@ -480,13 +497,24 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
         data: { data, entityValidations, overriddenErrorMessages, validationResult },
     });
 
+    if (!validationResult.pass) {
+        throw new EntityValidationError(validationResult.errors);
+    }
+
     // authorize the actor 
     // const authorization = await authorizer.authorize({ entityName, crudType, data, actor, tenant });
     // if(!authorization.pass){
     //     throw new Error("Authorization failed for upsert: " + { cause: authorization });
     // }
 
-    const entity = await entityService.getRepository().upsert(data as any).go();
+    // Use "all_old" to get the previous item state - allows us to detect create vs update
+    // If oldData is empty/null, it was a CREATE. If it has data, it was an UPDATE.
+    const entity = await QueryObserver.track(entityName, 'upsert', () =>
+        entityService.getRepository().upsert(data as any).go({ response: "all_old", ...QueryObserver.getCapacityGoOptions() })
+    );
+
+    const wasCreated = !entity.data || Object.keys(entity.data).length === 0;
+    const oldData = wasCreated ? undefined : entity.data;
 
     await opDispatcher.dispatch({
         phase: 'post',
@@ -494,9 +522,15 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
     });
 
     // return entity;
-    logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data, entity.data);
+    logger.debug(`Completed EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ wasCreated: ${wasCreated}`);
 
-    return entity as UpsertEntityResponse<S>;
+    // Note: with "all_old", entity.data contains the OLD data, we need to return the NEW data
+    // Since we don't have the new data from DynamoDB, we return the input data as the new data
+    return {
+        data: data as any,  // The new data we just upserted
+        wasCreated,
+        oldData
+    } as UpsertEntityResponse<S>;
 }
 
 /**
@@ -505,6 +539,145 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
  */
 export interface ListEntityArgs<Sch extends EntitySchema<any, any, any>> extends BaseEntityCrudArgs<Sch> {
     query: EntityQuery<Sch>
+}
+
+/**
+ * Operators that should NOT be used for index matching.
+ * These operators look for records where the attribute doesn't exist or is empty,
+ * but those records won't be in a sparse GSI where that attribute is the PK.
+ */
+const INDEX_EXCLUDED_OPERATORS = new Set([
+    'notExists', 'exists', 'isNull', 'notNull', 'empty', 'notEmpty'
+]);
+
+/**
+ * Convert FilterGroup format to simple object format for index matching.
+ * FilterGroup: { and: [{ attribute: 'foo', eq: 'bar' }] }
+ * Simple: { foo: { eq: 'bar' } }
+ *
+ * Only extracts filters from the 'and' array as those are the ones
+ * that can be used for GSI partition key matching.
+ *
+ * Excludes existence/null filters (notExists, isNull, empty, etc.) from index
+ * matching since records with missing attributes won't be in sparse GSIs.
+ *
+ * @param filters - The filters in FilterGroup or simple format
+ * @returns Filters in simple object format { attr: { op: val } }
+ */
+export function filterGroupToSimpleFormat(filters: Record<string, any>): Record<string, any> {
+    // Already in simple format or empty
+    if (!filters || !('and' in filters)) {
+        return filters || {};
+    }
+
+    const simple: Record<string, any> = {};
+
+    // Extract from 'and' array - these are AND conditions that could match GSI PK
+    for (const item of filters.and || []) {
+        if (item.attribute) {
+            const operators: Record<string, any> = {};
+            for (const [ key, value ] of Object.entries(item)) {
+                // Skip the 'attribute' key and exclude existence/null operators from index matching
+                // Records with missing attributes won't be in sparse GSIs
+                if (key !== 'attribute' && !INDEX_EXCLUDED_OPERATORS.has(key)) {
+                    operators[ key ] = value;
+                }
+            }
+            if (Object.keys(operators).length > 0) {
+                simple[ item.attribute ] = operators;
+            }
+        }
+    }
+
+    return simple;
+}
+
+/**
+ * Error thrown when invalid filter operators are used in index.filters.
+ */
+export class InvalidIndexFilterError extends Error {
+    constructor(
+        public readonly attributeName: string,
+        public readonly invalidOperators: string[],
+        public readonly indexName?: string
+    ) {
+        const indexContext = indexName ? ` for index "${indexName}"` : '';
+        super(
+            `Invalid filter operator(s) [${invalidOperators.join(', ')}] for attribute "${attributeName}"${indexContext}. ` +
+            `GSI composite key attributes only support equality matches. ` +
+            `Use { ${attributeName}: { eq: value } } or { ${attributeName}: value } for composite keys. ` +
+            `For range/other conditions, use top-level 'filters' instead of 'index.filters'.`
+        );
+        this.name = 'InvalidIndexFilterError';
+    }
+}
+
+/**
+ * Extracts and validates composite key values from index.filters for ElectroDB access pattern queries.
+ *
+ * DynamoDB GSI composite keys have specific constraints:
+ * - Partition Key (PK): MUST be an equality match
+ * - Sort Key (SK): Can use range operators, but those go in top-level `filters`
+ *
+ * This function:
+ * 1. Validates that only equality operators are used
+ * 2. Converts FW24 filter syntax to ElectroDB format
+ * 3. THROWS if invalid operators are detected (fail fast, not silently)
+ *
+ * @param filters - Filters from index.filters (only equality allowed)
+ * @param indexName - Name of the index (for error messages)
+ * @returns Composite key values in ElectroDB format
+ * @throws InvalidIndexFilterError if non-equality operators are used
+ *
+ * @example
+ * // Valid inputs
+ * { teamId: { eq: 'team-123' } }  →  { teamId: 'team-123' }
+ * { teamId: 'team-123' }         →  { teamId: 'team-123' }
+ *
+ * // Invalid - will THROW
+ * { createdAt: { gt: '2024-01-01' } }  // InvalidIndexFilterError
+ */
+export function extractIndexFilterValues(
+    filters: Record<string, any> | undefined,
+    indexName?: string
+): Record<string, any> {
+    if (!filters) return {};
+
+    const result: Record<string, any> = {};
+
+    for (const [ key, value ] of Object.entries(filters)) {
+        if (value === null || value === undefined) {
+            continue;
+        }
+
+        // Direct value (shorthand for equality)
+        if (typeof value !== 'object') {
+            result[ key ] = value;
+            continue;
+        }
+
+        // Handle filter operator objects
+        const operators = Object.keys(value);
+
+        if (operators.length === 0) {
+            continue;
+        }
+
+        // Only 'eq' is valid for composite key attributes
+        if (value.eq !== undefined) {
+            // Check for mixed operators (eq + others) - that's a mistake
+            const otherOps = operators.filter(op => op !== 'eq');
+            if (otherOps.length > 0) {
+                throw new InvalidIndexFilterError(key, otherOps, indexName);
+            }
+            result[ key ] = value.eq;
+        } else {
+            // Non-equality operators - throw immediately
+            throw new InvalidIndexFilterError(key, operators, indexName);
+        }
+    }
+
+    return result;
 }
 
 /**
@@ -524,19 +697,23 @@ export function findMatchingIndex(
     const logger = createLogger('CRUD-service:findMatchingIndex');
     if (!filters) filters = {};
 
+    // Convert FilterGroup format to simple format for index matching
+    const simpleFilters = filterGroupToSimpleFormat(filters);
+    logger.debug(`Converted filters for index matching:`, { original: filters, simple: simpleFilters });
+
     // First try ElectroDB's index matching
     const repository = entityService.getRepository();
-    const { keys, index, shouldScan } = (repository as any)._findBestIndexKeyMatch(filters);
+    const { keys, index, shouldScan } = (repository as any)._findBestIndexKeyMatch(simpleFilters);
 
-    logger.debug(`Found ElectroDB index: ${index} with ${keys.length} attribute matches for entity: ${entityName} with filters and scan: ${shouldScan} - `, keys, filters);
+    logger.debug(`Found ElectroDB index: ${index} with ${keys.length} attribute matches for entity: ${entityName} with filters and scan: ${shouldScan} - `, keys, simpleFilters);
 
     // If we found a matching index, use it
     if (!shouldScan) {
         const indexFilters: Record<string, any> = {};
 
-        // Add matched keys to indexFilters
+        // Add matched keys to indexFilters (use simpleFilters which has the right format)
         keys.forEach((key: { name: string; type: string }) => {
-            const filterValue = filters![ key.name ];
+            const filterValue = simpleFilters[ key.name ];
             if (filterValue) {
                 // Handle both { eq: value } and direct value formats
                 indexFilters[ key.name ] = filterValue.eq !== undefined ? filterValue.eq : filterValue;
@@ -562,17 +739,28 @@ export function findMatchingIndex(
         return { indexName: schemaIndexName, indexFilters };
     }
 
-    // If no index match found, check for template match
+    // If no index match found, check for template match or "all records" index
     const indexes = schema.indexes;
     for (const [ indexName, indexDef ] of Object.entries(indexes)) {
-        if (indexDef.pk.template &&
-            typeof indexDef.pk.template === 'string' &&
-            indexDef.pk.template.toLowerCase() === entityName.toLowerCase()) {
-            logger.debug(`Using template matching index: ${indexName} for entity: ${entityName}`);
-            return {
-                indexName,
-                indexFilters: {}
-            };
+        if (indexDef.pk.template && typeof indexDef.pk.template === 'string') {
+            // Entity-specific template match
+            if (indexDef.pk.template.toLowerCase() === entityName.toLowerCase()) {
+                logger.debug(`Using template matching index: ${indexName} for entity: ${entityName}`);
+                return {
+                    indexName,
+                    indexFilters: {}
+                };
+            }
+
+            // "All records" index pattern - constant PK with empty composite
+            // Useful for sorted listings without filters (e.g., ALL_EVENTS, ALL_LOGS)
+            if (indexDef.pk.composite && indexDef.pk.composite.length === 0) {
+                logger.debug(`Using "all records" index: ${indexName} with constant PK template: ${indexDef.pk.template}`);
+                return {
+                    indexName,
+                    indexFilters: {}
+                };
+            }
         }
     }
 
@@ -632,7 +820,7 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
     // Check if we have a filter that matches an index
     const schema = entityService.getEntitySchema();
     const matchResult = specifiedIndex
-        ? { indexName: specifiedIndex.name, indexFilters: specifiedIndex.filters || {} }
+        ? { indexName: specifiedIndex.name, indexFilters: extractIndexFilterValues(specifiedIndex.filters, specifiedIndex.name) }
         : findMatchingIndex(schema, filters, entityName, entityService);
 
     logger.debug(`Match result:`, matchResult);
@@ -646,16 +834,42 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
         if (filters && !isEmptyObject(filters)) {
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
-        entities = await indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination) });
+        entities = await QueryObserver.track(entityName, 'list', () =>
+            indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination), ...QueryObserver.getCapacityGoOptions() }),
+            { filters, indexName: matchResult.indexName, pagination }
+        );
     } else {
         // Use match for full scan
         logger.warn(`WARNING: No matching index found for entity: ${entityName}, using match for full scan`, filters);
+
+        // Track full scan - CRITICAL: expensive performance/cost issue
+        MetricObserver.increment(`entity.full_scan`, 1, {
+            tags: { entityName, operation: 'list' },
+            level: 'warn',
+        });
+
+        // Add checkpoint for visibility
+        SpanObserver.getCurrentSpan()?.checkpoint?.('database.full_scan', {
+            tags: {
+                'db.entity_name': entityName,
+                'db.operation': 'list',
+                'db.warning': 'no_index_found',
+            },
+            metrics: {
+                'db.full_scan': 1,
+            },
+            data: { fullScanFilters: filters || {} },
+        });
+
         const scanQuery = repository.scan;
         if (filters && !isEmptyObject(filters)) {
             scanQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
         // TODO: add attributes to scan query
-        entities = await scanQuery.go(removeEmpty(pagination));
+        entities = await QueryObserver.track(entityName, 'scan', () =>
+            scanQuery.go({ ...removeEmpty(pagination), ...QueryObserver.getCapacityGoOptions() }),
+            { filters, pagination }
+        );
     }
 
     await opDispatcher.dispatch({
@@ -725,7 +939,7 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
     // Check if we have a filter that matches an index
     const schema = entityService.getEntitySchema();
     const matchResult = specifiedIndex
-        ? { indexName: specifiedIndex.name, indexFilters: specifiedIndex.filters || {} }
+        ? { indexName: specifiedIndex.name, indexFilters: extractIndexFilterValues(specifiedIndex.filters, specifiedIndex.name) }
         : findMatchingIndex(schema, filters, entityName, entityService);
 
     // Use the appropriate index if available
@@ -738,16 +952,42 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
         if (filters && !isEmptyObject(filters)) {
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
-        entities = await indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination) });
+        entities = await QueryObserver.track(entityName, 'query', () =>
+            indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination), ...QueryObserver.getCapacityGoOptions() }),
+            { filters, indexName: matchResult.indexName, pagination }
+        );
     } else {
         // Use match for full scan
         logger.warn(`WARNING: No matching index found for entity: ${entityName}, using match for full scan`, filters);
+
+        // Track full scan - CRITICAL: expensive performance/cost issue
+        MetricObserver.increment(`entity.full_scan`, 1, {
+            tags: { entityName, operation: 'query' },
+            level: 'warn',
+        });
+
+        // Add checkpoint for visibility
+        SpanObserver.getCurrentSpan()?.checkpoint?.('database.full_scan', {
+            tags: {
+                'db.entity_name': entityName,
+                'db.operation': 'query',
+                'db.warning': 'no_index_found',
+            },
+            metrics: {
+                'db.full_scan': 1,
+            },
+            data: { fullScanFilters: filters || {} },
+        });
+
         const scanQuery = repository.scan;
         if (filters && !isEmptyObject(filters)) {
             scanQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
         // TODO: add attributes to scan query
-        entities = await scanQuery.go(removeEmpty(pagination));
+        entities = await QueryObserver.track(entityName, 'scan', () =>
+            scanQuery.go({ ...removeEmpty(pagination), ...QueryObserver.getCapacityGoOptions() }),
+            { filters, pagination }
+        );
     }
 
     await opDispatcher.dispatch({
@@ -796,6 +1036,15 @@ export interface UpdateEntityOperators {
     remove?: string[];
 }
 
+/**
+ * Response type for update entity operation.
+ * Provides a typed wrapper for the electrodb update response.
+ * @template Sch - The entity schema type.
+ */
+export type UpdateEntityResponse<Sch extends EntitySchema<any, any, any>> = {
+    data?: EntityResponseItemTypeFromSchema<Sch>
+}
+
 interface PrepareCompositeAttributesArgs<S extends EntitySchema<any, any, any>> {
     entityName: string;
     entityService: EntityServiceTypeFromSchema<S>;
@@ -809,7 +1058,6 @@ async function prepareCompositeAttributesForUpdate<S extends EntitySchema<any, a
     args: PrepareCompositeAttributesArgs<S>
 ): Promise<Record<string, any>> {
     const {
-        entityName,
         entityService,
         identifiers,
         data,
@@ -825,18 +1073,16 @@ async function prepareCompositeAttributesForUpdate<S extends EntitySchema<any, a
         return {}; // No composite attributes needed
     }
 
+    // only include what's not already in data or identifiers
     requiredCompositeAttributes.forEach(attr => {
-        if (dataAsRecord.hasOwnProperty(attr)) {
-            compositeKeyValues[ attr ] = dataAsRecord[ attr ];
-        } else if (identifiers.hasOwnProperty(attr)) {
-            compositeKeyValues[ attr ] = identifiers[ attr ];
-        } else {
+        if (!dataAsRecord.hasOwnProperty(attr) && !identifiers.hasOwnProperty(attr)) {
             attributesToFetch.add(attr);
         }
     });
 
     if (attributesToFetch.size > 0) {
-        logger.debug(`[${entityName}] Need to fetch attributes for composite keys:`, Array.from(attributesToFetch));
+        logger.debug(`Need to fetch attributes for composite keys:`, Array.from(attributesToFetch));
+
         try {
             const existingRecordContainer = await entityService.getRepository()
                 .get(identifiers)
@@ -844,53 +1090,36 @@ async function prepareCompositeAttributesForUpdate<S extends EntitySchema<any, a
 
             const existingRecordData = existingRecordContainer.data as Record<string, any> | undefined;
 
-            if (existingRecordData) {
+            if (!existingRecordData) {
+
+                logger.warn(`No existing record found for composite keys:`, Array.from(attributesToFetch));
+
+            } else {
+
                 attributesToFetch.forEach(attr => {
                     if (existingRecordData.hasOwnProperty(attr)) {
                         compositeKeyValues[ attr ] = existingRecordData[ attr ];
                     } else {
-                        logger.warn(`[${entityName}] Composite key attribute "${attr}" (ID: ${JSON.stringify(identifiers)}) was not found in payload, identifiers, or existing record.`);
+                        // Attribute not found - just log debug, don't warn (could be optional sparse index attribute)
+                        logger.debug(`Composite key attribute "${attr}" (ID: ${JSON.stringify(identifiers)}) not found in existing record (may be optional).`);
                     }
                 });
-            } else {
-                logger.warn(`[${entityName}] Entity (ID: ${JSON.stringify(identifiers)}) not found while fetching for composite keys. If creating a new item, all composite attributes must be in 'id' or 'data'.`);
-                // For an update, if the item doesn't exist, ElectroDB patch might create it.
-                // We must ensure all *required* composite attributes are present if it's a create-via-patch.
-                const missingForPotentialCreate: string[] = [];
-                attributesToFetch.forEach(attr => {
-                    // If it was supposed to be fetched but wasn't found, and isn't already in compositeKeyValues
-                    if (!compositeKeyValues.hasOwnProperty(attr)) {
-                        missingForPotentialCreate.push(attr);
-                    }
-                });
-                if (missingForPotentialCreate.length > 0) {
-                    const message = `[${entityName}] CRITICAL: Cannot reliably form composite keys for potential new item (ID: ${JSON.stringify(identifiers)}). Missing attributes that could not be fetched: ${missingForPotentialCreate.join(', ')}. Ensure these are in 'id' or 'data' if this update might create the item.`;
-                    logger.error(message);
-                    throw new EntityValidationError(missingForPotentialCreate.map(attr => ({
-                        property: attr,
-                        message: `Required composite key attribute "${attr}" is missing for potential new item and could not be fetched.`,
-                        constraints: {}
-                    })));
-                }
+
             }
         } catch (error) {
-            logger.error(`[${entityName}] Error fetching attributes for composite keys (ID: ${JSON.stringify(identifiers)}):`, error);
+            logger.error(`Error fetching attributes for composite keys (ID: ${JSON.stringify(identifiers)}):`, error);
+
+            // Track database error metric
+            MetricObserver.increment(`entity.composite_key.fetch_error`, 1, {
+                tags: { entityName: args.entityName },
+                level: 'error',
+            });
+
             throw error;
         }
     }
 
-    // Final check for any remaining missing composite attributes
-    const finalMissingComposites = Array.from(requiredCompositeAttributes).filter(attr => !compositeKeyValues.hasOwnProperty(attr));
-    if (finalMissingComposites.length > 0) {
-        const errorMessage = `[${entityName}] Cannot proceed with update (ID: ${JSON.stringify(identifiers)}). The following required composite key attributes are still missing: ${finalMissingComposites.join(', ')}.`;
-        logger.error(errorMessage);
-        throw new EntityValidationError(finalMissingComposites.map(attr => ({
-            property: attr,
-            message: `Required composite key attribute "${attr}" is missing and could not be resolved.`,
-            constraints: {}
-        })));
-    }
-    logger.debug(`[${entityName}] Prepared composite key values:`, compositeKeyValues);
+    logger.debug(`Prepared composite key values:`, compositeKeyValues);
     return compositeKeyValues;
 }
 
@@ -899,10 +1128,10 @@ async function prepareCompositeAttributesForUpdate<S extends EntitySchema<any, a
  * 
  * @template S - The entity schema type.
  * @param {UpdateEntityArgs<S>} options - The options for updating the entity.
- * @returns {Promise<Entity>} - A promise that resolves to the updated entity.
+ * @returns {Promise<UpdateEntityResponse<S>>} - A promise that resolves to the updated entity.
  * @throws {Error} - If no data is provided for the update operation, or if validation or authorization fails.
  */
-export async function updateEntity<S extends EntitySchema<any, any, any>>(options: UpdateEntityArgs<S>) {
+export async function updateEntity<S extends EntitySchema<any, any, any>>(options: UpdateEntityArgs<S>): Promise<UpdateEntityResponse<S>> {
     const {
         id,
         data,
@@ -970,7 +1199,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     }
 
     // authorize the actor 
-    // const authorization = await authorizer.authorize({ entityName, crudType, identifiers: singleEntityIdentifiers, data, actor, tenant });
+    // const authorization = await authorizer.authorize({ entityName, crudType, identifiers, data, actor, tenant });
     // if(!authorization.pass){
     //     throw new Error("Authorization failed for update: " + { cause: authorization });
     // }
@@ -1005,15 +1234,30 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
 
     if (allReferencedCompositeAttributes.size > 0) {
         if (compositeKeyData && typeof compositeKeyData === 'object') {
-            logger.info(`[${entityName}] Using provided compositeKeyData for update.`, compositeKeyData);
+
+            logger.debug(`Using provided compositeKeyData for update.`, compositeKeyData);
+
             finalCompositeKeyValuesForElectroDB = compositeKeyData;
-            // Optional: Validate if provided compositeKeyData covers all allReferencedCompositeAttributes
-            const missingFromProvided = Array.from(allReferencedCompositeAttributes).filter(attr => !finalCompositeKeyValuesForElectroDB.hasOwnProperty(attr));
+
+            // Check if provided compositeKeyData covers all allReferencedCompositeAttributes
+            const missingFromProvided = Array.from(allReferencedCompositeAttributes).filter(attr => {
+                return (
+                    !data.hasOwnProperty(attr)
+                    &&
+                    !identifiers.hasOwnProperty(attr)
+                    &&
+                    !finalCompositeKeyValuesForElectroDB.hasOwnProperty(attr)
+                );
+            });
+
             if (missingFromProvided.length > 0) {
-                logger.warn(`[${entityName}] Provided compositeKeyData is missing some required composite attributes: ${missingFromProvided.join(', ')}. Update may fail if these are needed by ElectroDB.`);
+                logger.warn(`Provided compositeKeyData is missing some required composite attributes: ${missingFromProvided.join(', ')}. Update may fail if these are needed by ElectroDB.`);
             }
+
         } else {
-            logger.info(`[${entityName}] No compositeKeyData provided, preparing composite attributes internally. Required:`, Array.from(allReferencedCompositeAttributes));
+
+            logger.debug(`No compositeKeyData provided, preparing composite attributes internally. Required:`, Array.from(allReferencedCompositeAttributes));
+
             finalCompositeKeyValuesForElectroDB = await prepareCompositeAttributesForUpdate({
                 entityName,
                 entityService,
@@ -1023,15 +1267,17 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
                 logger,
             });
         }
+
     } else {
-        logger.info(`[${entityName}] No composite attributes defined in schema or needed for this update.`);
+        logger.debug(`No composite attributes defined in schema or needed for this update.`);
     }
     // --- End Composite Key Handling ---
 
+    // Use ElectroDB for all fields including _actor (now in schema)
     const query = entityService.getRepository().patch(identifiers).set(data);
 
     if (Object.keys(finalCompositeKeyValuesForElectroDB).length > 0) {
-        logger.info(`[${entityName}] Using composite values for ElectroDB patch:`, finalCompositeKeyValuesForElectroDB);
+        logger.debug(`Using composite values for ElectroDB patch:`, finalCompositeKeyValuesForElectroDB);
         query.composite(finalCompositeKeyValuesForElectroDB);
     }
 
@@ -1045,7 +1291,9 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         query.remove(operators.remove as any);
     }
 
-    const entity = await query.go();
+    const entity = await QueryObserver.track(entityName, 'update', () =>
+        query.go({ ...QueryObserver.getCapacityGoOptions() })
+    );
 
     await opDispatcher.dispatch({
         phase: 'post',
@@ -1055,7 +1303,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     // return entity;
     logger.debug(`Completed EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, data, entity.data);
 
-    return entity;
+    return entity as UpdateEntityResponse<S>;
 }
 
 /**
@@ -1074,11 +1322,20 @@ export interface DeleteEntityArgs<
 }
 
 /**
+ * Response type for delete entity operation.
+ * Provides a typed wrapper for the electrodb delete response.
+ * @template Sch - The entity schema type.
+ */
+export type DeleteEntityResponse<Sch extends EntitySchema<any, any, any>> = {
+    data?: EntityResponseItemTypeFromSchema<Sch>
+}
+
+/**
  * Deletes an entity based on the provided options.
  * @param options - The options for deleting the entity.
  * @returns The deleted entity.
  */
-export async function deleteEntity<S extends EntitySchema<any, any, any>>(options: DeleteEntityArgs<S>) {
+export async function deleteEntity<S extends EntitySchema<any, any, any>>(options: DeleteEntityArgs<S>): Promise<DeleteEntityResponse<S>> {
 
     const {
         id,
@@ -1148,7 +1405,9 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
         throw new EntityValidationError(validationResult.errors);
     }
 
-    const entity = await entityService.getRepository().delete(identifiers).go();
+    const entity = await QueryObserver.track(entityName, 'delete', () =>
+        entityService.getRepository().delete(identifiers).go({ ...QueryObserver.getCapacityGoOptions() })
+    );
 
     await opDispatcher.dispatch({
         phase: 'post',
@@ -1157,7 +1416,96 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
 
     logger.debug(`Completed EntityCrud ~ deleteEntity ~ entityName: ${entityName} ~ id:`, id);
 
-    return entity;
+    return entity as DeleteEntityResponse<S>;
+}
+
+/**
+ * Represents the arguments for batch deleting entities.
+ * @template Sch - The entity schema type.
+ * @template OpsSchema - The input schemas for entity operations.
+ */
+export interface DeleteBatchEntityArgs<
+    Sch extends EntitySchema<any, any, any>,
+    OpsSchema extends TEntityOpsInputSchemas<Sch> = TEntityOpsInputSchemas<Sch>,
+> extends BaseEntityCrudArgs<Sch> {
+    /**
+     * Array of entity IDs to delete.
+     */
+    ids: Array<OpsSchema[ 'delete' ]>;
+    /**
+     * Optional number of concurrent batch operations (default: 1).
+     */
+    concurrent?: number;
+}
+
+/**
+ * Deletes multiple entities in a batch operation.
+ * @param options - The options for deleting the entities.
+ * @returns The unprocessed items that couldn't be deleted.
+ */
+export async function deleteBatchEntity<S extends EntitySchema<any, any, any>>(options: DeleteBatchEntityArgs<S>) {
+    const {
+        ids,
+        entityName,
+        entityService,
+        concurrent = 1,
+
+        actor,
+        tenant,
+
+        crudType = 'delete',
+        logger = createLogger('CRUD-service:deleteBatchEntity'),
+        validator = DefaultValidator,
+        authorizer = Authorizer.Default,
+        eventDispatcher = defaultEventDispatcher,
+    } = options;
+
+    logger.debug(`Called EntityCrud ~ deleteBatchEntity ~ entityName: ${entityName}:`, { ids, concurrent });
+
+    // Extract identifiers for all items in the batch
+    const identifiersBatch = ids.map(id => entityService.extractEntityIdentifiers(id));
+
+    // Validate each item in the batch
+    const validations = await Promise.all(identifiersBatch.map(async identifiers =>
+        validator.validateEntity({
+            operationName: crudType,
+            entityName,
+            entityValidations: entityService.getEntityValidations(),
+            overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
+            input: identifiers,
+            actor: actor
+        })
+    ));
+
+    // Check for validation errors
+    const validationErrors = validations
+        .map((validation, index) => ({ validation, index }))
+        .filter(({ validation }) => !validation.pass);
+
+    if (validationErrors.length > 0) {
+        throw new EntityValidationError(validationErrors.flatMap(({ validation, index }) =>
+            (validation.errors || []).map(error => ({
+                ...error,
+                message: `Item ${index}: ${error.message}`
+            }))
+        ));
+    }
+
+    // Perform batch delete operation with concurrency control
+    // Per ElectroDB docs: http://electrodb.dev/en/mutations/batch-delete/
+    // Note: ElectroDB types use 'concurrency' while docs show 'concurrent'
+    const bulkOptions: Partial<BulkOptions> = {
+        concurrency: concurrent
+    };
+
+    const electroResult = await QueryObserver.track(entityName, 'batchDelete', () =>
+        entityService.getRepository().delete(identifiersBatch).go(bulkOptions),
+        { itemCount: identifiersBatch.length }
+    );
+
+    logger.debug(`Completed EntityCrud ~ deleteBatchEntity ~ entityName: ${entityName} ~ ids:`, ids);
+
+    return electroResult;
 }
 
 /**

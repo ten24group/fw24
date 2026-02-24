@@ -1,21 +1,23 @@
+import { App, CfnOutput, NestedStack, Stack } from 'aws-cdk-lib';
 import { IAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2';
 import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
+import { Vpc } from 'aws-cdk-lib/aws-ec2';
 import { Effect, PolicyStatement, type PolicyStatementProps, type Role } from 'aws-cdk-lib/aws-iam';
+import { HostedZone, IHostedZone } from 'aws-cdk-lib/aws-route53';
 import type { ITopic } from 'aws-cdk-lib/aws-sns';
+import { Topic } from 'aws-cdk-lib/aws-sns';
 import { IQueue, Queue } from 'aws-cdk-lib/aws-sqs';
+import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 import { DIContainer } from '../di';
 import { type ILambdaEnvConfig } from '../interfaces';
-import { IApplicationConfig } from '../interfaces/config';
+import { IApplicationConfig, SystemControllerDefinition, SystemUIPageDefinition } from '../interfaces/config';
 import { FW24Construct, OutputType } from '../interfaces/construct';
 import { type IDIContainer } from '../interfaces/di';
 import { createLogger } from '../logging';
+import { ensureNoSpecialChars, ensureValidEnvKey } from '../utils/keys';
 import { Helper } from './helper';
 import { type IFw24Module } from './runtime/module';
-import { ensureNoSpecialChars, ensureValidEnvKey } from '../utils/keys';
-import { App, CfnOutput, Fn, NestedStack, Stack } from 'aws-cdk-lib';
-import { StringParameter } from 'aws-cdk-lib/aws-ssm';
-import { Vpc } from 'aws-cdk-lib/aws-ec2';
-import { IHostedZone, HostedZone } from 'aws-cdk-lib/aws-route53';
+import type { TImportedPolicy, TPolicyStatementOrProps, IFunctionResourceAccess } from '../constructs/lambda-function';
 
 export class Fw24 {
     readonly logger = createLogger(Fw24.name);
@@ -28,23 +30,28 @@ export class Fw24 {
     private stacks: Record<string, Stack> = {};
     private apis: { [ apiConstructName: string ]: { [ name: string ]: any } } = {};
     private environmentVariables: Record<string, any> = {};
-    private globalEnvironmentVariables: string[] = [];
-    private policyStatements = new Map<string, PolicyStatementProps | PolicyStatement>();
+    private readonly globalEnvironmentVariables: string[] = [];
+    private readonly globalPolicies: Set<TPolicyStatementOrProps | TImportedPolicy> = new Set();
+    private globalResourceAccess: IFunctionResourceAccess = {};
+    private readonly policyStatements = new Map<string, PolicyStatementProps | PolicyStatement>();
     private defaultAuthorizer: IAuthorizer | undefined;
     private cognitoAuthorizers: { [ key: string ]: IAuthorizer } = {};
     private jwtAuthorizer: IAuthorizer | undefined;
     private dynamoTables: { [ key: string ]: TableV2 } = {};
     private static instance: Fw24;
 
-    private queues = new Map<string, IQueue>();
-    private topics = new Map<string, ITopic>();
-    private modules = new Map<string, IFw24Module>();
-    private constructs = new Map<string, FW24Construct>();
+    private readonly queues = new Map<string, IQueue>();
+    private readonly topics = new Map<string, ITopic>();
+    private readonly modules = new Map<string, IFw24Module>();
+    private readonly constructs = new Map<string, FW24Construct>();
 
     private readonly globalLambdaLayerNames = new Set<string>();
-    private readonly globalLambdaEntryPackages = new Set<string>();
+    private readonly globalLambdaEntryPackages = new Map<string, number>(); // package -> priority
 
-    private constructor() {} // Empty constructor as App is set via setApp()
+    private readonly systemUIConfigs: Map<string, SystemUIPageDefinition> = new Map();
+    private readonly systemControllers: Map<string, SystemControllerDefinition> = new Map();
+
+    private constructor() { } // Empty constructor as App is set via setApp()
 
     static getInstance(): Fw24 {
         if (!Fw24.instance) {
@@ -79,11 +86,18 @@ export class Fw24 {
     }
 
     getLambdaEntryPackages(): string[] {
-        return this.config.lambdaEntryPackages || Array.from(this.globalLambdaEntryPackages);
+        if (this.config.lambdaEntryPackages) {
+            return this.config.lambdaEntryPackages;
+        }
+
+        // Sort entry packages by priority (lower number = loaded first)
+        return Array.from(this.globalLambdaEntryPackages.entries())
+            .sort((a, b) => a[ 1 ] - b[ 1 ])  // Sort by priority
+            .map(([ packageName ]) => packageName);
     }
 
-    addGlobalLambdaEntryPackage(packageName: string) {
-        this.globalLambdaEntryPackages.add(packageName);
+    addGlobalLambdaEntryPackage(packageName: string, priority: number = 999) {
+        this.globalLambdaEntryPackages.set(packageName, priority);
     }
 
     hasGlobalLambdaEntryPackage(packageName: string) {
@@ -110,11 +124,12 @@ export class Fw24 {
         this.globalLambdaLayerNames.delete(layerName);
     }
 
-    addStack(name: string, stack: any): Fw24 {
+    addStack(name: string, stack: any): this {
         this.logger.debug("addStack:", { name });
         this.stacks[ name ] = stack;
         return this;
     }
+
 
     /**
      * Get a stack by name. If the stack does not exist, create it.
@@ -124,7 +139,7 @@ export class Fw24 {
      * @returns The stack.
      */
     getStack(name?: string, parentStackName?: string): any {
-        let stackName: string = name ? name : this.getDefaultStackName();
+        let stackName: string = name || this.getDefaultStackName();
         // don't allow nested stacks if multiStack is true, multistack is used for creating independent stacks
         if (this.config.multiStack && parentStackName) {
             throw new Error('Nested stacks are not allowed when multiStack is true. Please use multiStack: false or remove the parentStackName parameter.');
@@ -180,7 +195,7 @@ export class Fw24 {
         ) || false;
     }
 
-    addAPI(apiConstructName: string, name: string, api: any, isImported: boolean = false): Fw24 {
+    addAPI(apiConstructName: string, name: string, api: any, isImported: boolean = false): this {
         // Initialize the apiConstructName object if it doesn't exist
         if (!this.apis[ apiConstructName ]) {
             this.apis[ apiConstructName ] = {};
@@ -192,7 +207,7 @@ export class Fw24 {
 
     getAPI(apiConstructName: string, name: string): any {
         // Check if API exists for the given name and stack
-        if (!this.apis[ apiConstructName ] || !this.apis[ apiConstructName ][ name ]) {
+        if (!this.apis[ apiConstructName ]?.[ name ]) {
             this.logger.debug(`API not found: construct name ${apiConstructName} and name ${name}`);
             return undefined;
         }
@@ -256,7 +271,7 @@ export class Fw24 {
     }
 
     getCognitoAuthorizer(name?: string): IAuthorizer | undefined {
-        this.logger.info("getCognitoAuthorizer: ", { name });
+        this.logger.debug("getCognitoAuthorizer: ", { name });
         // If no name is provided and no default authorizer is set, throw an error
         if (name === undefined && this.defaultAuthorizer === undefined) {
             throw new Error('No Authorizer exists for cognito user pools. For policy based authentication, use AWS_IAM authoriser.');
@@ -388,9 +403,132 @@ export class Fw24 {
         return this.globalEnvironmentVariables;
     }
 
+    /**
+     * Add a policy statement that should be attached to ALL Lambda functions in the application.
+     * This is useful for cross-cutting concerns like observability, logging, or shared resources.
+     *
+     * @example
+     * // Add an imported policy by name
+     * fw24.addGlobalPolicy('my-policy-name');
+     * fw24.addGlobalPolicy('my-policy-name', 'my-prefix');
+     * fw24.addGlobalPolicy({ name: 'my-policy-name', prefix: 'my-prefix', isOptional: true });
+     *
+     * // Add a direct policy statement
+     * fw24.addGlobalPolicy(new PolicyStatement({
+     *   effect: Effect.ALLOW,
+     *   actions: ['s3:GetObject'],
+     *   resources: ['*']
+     * }));
+     *
+     * // Add policy statement props
+     * fw24.addGlobalPolicy({
+     *   effect: Effect.ALLOW,
+     *   actions: ['s3:GetObject'],
+     *   resources: ['*']
+     * });
+     *
+     * @param policy The policy to add - can be a name string, TImportedPolicy, PolicyStatement, or PolicyStatementProps
+     * @param prefix The prefix for imported policy name (optional, only used when policy is a string)
+     * @param isOptional Whether the policy is optional (optional, only used when policy is a string)
+     */
+    addGlobalPolicy(policy: string | TPolicyStatementOrProps | TImportedPolicy, prefix: string = '', isOptional: boolean = false) {
+        if (typeof policy === 'string') {
+            // Treat as imported policy name for backward compatibility
+            this.logger.debug("addGlobalPolicy (imported):", { name: policy, prefix, isOptional });
+            this.globalPolicies.add({ name: policy, prefix, isOptional });
+        } else {
+            // Direct policy statement or PolicyStatementProps or TImportedPolicy
+            this.logger.debug("addGlobalPolicy (direct):", { policy });
+            this.globalPolicies.add(policy);
+        }
+    }
+
+    /**
+     * Get all global policies that should be attached to ALL Lambda functions.
+     * @returns Set of policies (can be TPolicyStatementOrProps or TImportedPolicy)
+     */
+    getGlobalPolicies(): Set<TPolicyStatementOrProps | TImportedPolicy> {
+        return this.globalPolicies;
+    }
+
+    /**
+     * Set global resource access that should be applied to ALL Lambda functions.
+     * This replaces any existing global resource access configuration.
+     *
+     * @example
+     * fw24.setGlobalResourceAccess({
+     *   tables: ['users-table', { name: 'orders-table', access: ['read'] }],
+     *   buckets: ['assets-bucket'],
+     *   queues: ['notifications-queue'],
+     *   topics: ['events-topic']
+     * });
+     *
+     * @param resourceAccess The resource access configuration
+     */
+    setGlobalResourceAccess(resourceAccess: IFunctionResourceAccess) {
+        this.logger.debug("setGlobalResourceAccess:", resourceAccess);
+        this.globalResourceAccess = resourceAccess;
+    }
+
+    /**
+     * Add to global resource access configuration.
+     * This merges with existing global resource access configuration.
+     *
+     * @example
+     * fw24.addGlobalResourceAccess({
+     *   tables: ['users-table'],
+     *   buckets: ['assets-bucket']
+     * });
+     *
+     * @param resourceAccess The resource access to add
+     */
+    addGlobalResourceAccess(resourceAccess: Partial<IFunctionResourceAccess>) {
+        this.logger.debug("addGlobalResourceAccess:", resourceAccess);
+
+        if (resourceAccess.tables) {
+            this.globalResourceAccess.tables = [
+                ...(this.globalResourceAccess.tables || []),
+                ...resourceAccess.tables
+            ];
+        }
+
+        if (resourceAccess.buckets) {
+            this.globalResourceAccess.buckets = [
+                ...(this.globalResourceAccess.buckets || []),
+                ...resourceAccess.buckets
+            ];
+        }
+
+        if (resourceAccess.queues) {
+            this.globalResourceAccess.queues = [
+                ...(this.globalResourceAccess.queues || []),
+                ...resourceAccess.queues
+            ];
+        }
+
+        if (resourceAccess.topics) {
+            this.globalResourceAccess.topics = [
+                ...(this.globalResourceAccess.topics || []),
+                ...resourceAccess.topics
+            ];
+        }
+    }
+
+    /**
+     * Get global resource access configuration.
+     * @returns The global resource access configuration
+     */
+    getGlobalResourceAccess(): IFunctionResourceAccess {
+        return this.globalResourceAccess;
+    }
+
     setPolicy(policyName: string, value: PolicyStatementProps | PolicyStatement, prefix: string = '') {
         this.logger.debug("setPolicy:", prefix, policyName, value);
-        this.policyStatements.set(ensureValidEnvKey(policyName, prefix), value);
+        const policyKey = ensureValidEnvKey(policyName, prefix);
+        if (this.policyStatements.has(policyKey)) {
+            this.logger.warn(`Policy ${policyName} already exists in fw24 scope. Overwriting with new policy.`);
+        }
+        this.policyStatements.set(policyKey, value);
     }
 
     getPolicy(policyName: string, prefix: string = ''): PolicyStatementProps | PolicyStatement | undefined {
@@ -471,6 +609,34 @@ export class Fw24 {
         return this.dynamoTables[ ensureNoSpecialChars(name) ];
     }
 
+    /**
+     * Gets a queue reference by name, following the framework's pattern for existing resource references.
+     * @param queueName The name of the queue
+     * @param scope Optional scope for stack resolution
+     * @param constructId Optional construct ID for unique naming
+     * @returns Queue instance referenced by ARN
+     */
+    getQueueByName(queueName: string, scope?: any, constructId?: string): IQueue {
+        const queueUrl = this.getEnvironmentVariable(queueName + '_queueName', 'queue', scope);
+        const queueArn = this.getArn('sqs', queueUrl);
+        const uniqueId = constructId ? `${constructId}-${queueName}-queue` : `${queueName}-queue`;
+        return Queue.fromQueueArn(scope ?? this.getStack(), uniqueId, queueArn);
+    }
+
+    /**
+     * Gets a topic reference by name, following the framework's pattern for existing resource references.
+     * @param topicName The name of the topic
+     * @param scope Optional scope for stack resolution
+     * @param constructId Optional construct ID for unique naming
+     * @returns Topic instance referenced by ARN
+     */
+    getTopicByName(topicName: string, scope?: any, constructId?: string): ITopic {
+        const topicArnValue = this.getEnvironmentVariable(topicName, 'topicName');
+        const topicArn = this.getArn('sns', topicArnValue);
+        const uniqueId = constructId ? `${constructId}-${topicName}-topic` : `${topicName}-topic`;
+        return Topic.fromTopicArn(scope ?? this.getStack(), uniqueId, topicArn);
+    }
+
     addRouteToRolePolicy(route: string, groups: string[], requireRouteInGroupConfig: boolean = false) {
         if (!groups || groups.length === 0) {
             groups = this.getEnvironmentVariable('Groups', 'cognito');
@@ -482,7 +648,7 @@ export class Fw24 {
         let routeAddedToGroupPolicy = false;
         for (const groupName of groups) {
             // if requireRouteInGroupConfig is true, check if the route is in the group config
-            if (requireRouteInGroupConfig && (!this.getEnvironmentVariable('Routes', 'cognito_' + groupName) || !this.getEnvironmentVariable('Routes', 'cognito_' + groupName).includes(route))) {
+            if (requireRouteInGroupConfig && (!this.getEnvironmentVariable('Routes', 'cognito_' + groupName)?.includes(route))) {
                 continue;
             }
             // get role
@@ -517,8 +683,8 @@ export class Fw24 {
     public getConstructOutput<T>(type: OutputType, name: string): T | undefined {
         // Look through all constructs to find the output
         for (const construct of this.constructs.values()) {
-            if (construct.output?.[type]?.[name]) {
-                return construct.output[type][name] as T;
+            if (construct.output?.[ type ]?.[ name ]) {
+                return construct.output[ type ][ name ] as T;
             }
         }
         return undefined;
@@ -556,4 +722,35 @@ export class Fw24 {
         return this.jwtAuthorizer;
     }
 
+    public registerSystemController(controller: SystemControllerDefinition) {
+        this.systemControllers.set(controller.path, controller);
+    }
+    public hasSystemController(path: string): boolean {
+        return this.systemControllers.has(path);
+    }
+    public getSystemController(path: string): SystemControllerDefinition | undefined {
+        return this.systemControllers.get(path);
+    }
+    public hasSystemControllers(): boolean {
+        return this.systemControllers.size > 0;
+    }
+    public getSystemControllers(): SystemControllerDefinition[] {
+        return Array.from(this.systemControllers.values());
+    }
+
+    public async registerSystemUIConfig(name: string, config: SystemUIPageDefinition) {
+        this.systemUIConfigs.set(name, config);
+    }
+    public hasSystemUIConfig(name: string): boolean {
+        return this.systemUIConfigs.has(name);
+    }
+    public getSystemUIConfig(name: string): SystemUIPageDefinition | undefined {
+        return this.systemUIConfigs.get(name);
+    }
+    public getSystemUIConfigs(): SystemUIPageDefinition[] {
+        return Array.from(this.systemUIConfigs.values());
+    }
+    public hasSystemUIConfigs(): boolean {
+        return this.systemUIConfigs.size > 0;
+    }
 }

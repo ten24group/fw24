@@ -1,0 +1,88 @@
+name: Develop Branch Release
+
+on:
+  push:
+    branches:
+      - develop
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Check and update package.json
+        id: check_package
+        run: |
+          MAIN=$(node -p "require('./package.json').main")
+          TYPES=$(node -p "require('./package.json').types")
+
+          if [ "$MAIN" = "src/index.tsx" ] || [ "$TYPES" = "src/index.tsx" ]; then
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+
+            # Update package.json
+            node -e "
+              const fs = require('fs');
+              const pkg = require('./package.json');
+              pkg.main = 'dist/index.js';
+              pkg.types = 'dist/index.d.ts';
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+
+            echo "Updated package.json main and types"
+          else
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+            echo "package.json already configured correctly"
+          fi
+
+      - name: Delete existing dist folder
+        run: |
+          if [ -d "dist" ]; then
+            rm -rf dist
+            echo "Deleted existing dist folder"
+          else
+            echo "No dist folder to delete"
+          fi
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
+
+      - name: Commit build changes
+        run: |
+          git add dist/
+
+          if [ "${{ steps.check_package.outputs.needs_update }}" = "true" ]; then
+            git add package.json
+            git commit -m "chore: update build config and dist [skip ci]"
+            echo "Committed package.json and dist folder"
+          else
+            git commit -m "chore: update dist [skip ci]"
+            echo "Committed dist folder"
+          fi
+
+      - name: Release beta version
+        run: npm run release:BE:github
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,61 +1,17 @@
-export enum AuditLoggerType {
-    CONSOLE = 'console',
-    CLOUDWATCH = 'cloudwatch',
-    DYNAMODB = 'dynamodb',
-    CUSTOM = 'custom',
-    DUMMY = 'dummy'
-}
+/**
+ * Audit interfaces - ONLY for DynamoDB stream entity auditing.
+ *
+ * Controllers and other components should use the observability system directly.
+ */
 
 /**
- * Environment variable keys used for audit configuration
+ * Environment variable keys for entity audit filtering.
  */
-export interface AuditEnvKeys {
-    ENABLED: 'AUDIT_ENABLED';
-    TYPE: 'AUDIT_TYPE';
-    LOG_GROUP_NAME: 'AUDIT_LOG_GROUP_NAME';
-    REGION: 'AUDIT_REGION';
-    AUDIT_TABLE_NAME: 'AUDIT_TABLE_NAME';
-}
-
-/**
- * Constant containing the actual environment variable keys
- */
-export const AUDIT_ENV_KEYS: AuditEnvKeys = {
-    ENABLED: 'AUDIT_ENABLED',
-    TYPE: 'AUDIT_TYPE',
-    LOG_GROUP_NAME: 'AUDIT_LOG_GROUP_NAME',
-    REGION: 'AUDIT_REGION',
-    AUDIT_TABLE_NAME: 'AUDIT_TABLE_NAME'
+export const AUDIT_ENV_KEYS = {
+    /** Entity names to audit (comma-separated) */
+    ALLOWED_ENTITY_NAMES: 'AUDIT_ALLOWED_ENTITY_NAMES',
+    /** Entity names to exclude from audit (comma-separated) */
+    EXCLUDED_ENTITY_NAMES: 'AUDIT_EXCLUDED_ENTITY_NAMES',
+    /** Actor staleness threshold in milliseconds (default: 5000ms) */
+    ACTOR_STALENESS_THRESHOLD_MS: 'AUDIT_ACTOR_STALENESS_THRESHOLD_MS'
 } as const;
-
-
-export interface AuditLoggerConfig {
-    type: AuditLoggerType;
-    enabled?: boolean;
-    logGroupName?: string;
-    region?: string;
-}
-
-export interface AuditOptions {
-    /**
-     * Whether audit logging is enabled for this specific operation.
-     * If not provided, the auditor's configuration will be used.
-     */
-    enabled?: boolean;
-    auditEntry?: AuditEntry;
-}
-
-export interface AuditEntry {
-    timestamp?: string;
-    entityName?: string;
-    eventType?: string;
-    data?: any;
-    entity?: any;
-    actor?: any;
-    tenant?: any;
-    identifiers?: any;
-}
-
-export interface IAuditLogger {
-    audit(options: AuditOptions): Promise<void>;
-} 

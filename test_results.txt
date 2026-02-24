@@ -1,0 +1,6 @@
+● Validation Error:
+
+  Preset ts-jest not found relative to rootDir /app.
+
+  Configuration Documentation:
+  https://jestjs.io/docs/configuration

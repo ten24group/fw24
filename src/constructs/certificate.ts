@@ -17,7 +17,7 @@ export interface ICertificateConstructConfig extends IConstructConfig {
 export class CertificateConstruct implements FW24Construct {
     readonly logger = createLogger(CertificateConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
-    
+
     name: string = CertificateConstruct.name;
     dependencies: string[] = [];
     output!: FW24ConstructOutput;
@@ -25,21 +25,19 @@ export class CertificateConstruct implements FW24Construct {
     mainStack!: Stack;
 
     constructor(private certificateConstructConfig: ICertificateConstructConfig) {
-        Helper.hydrateConfig(certificateConstructConfig,'ACM');
+        Helper.hydrateConfig(certificateConstructConfig, 'ACM');
     }
 
     public async construct() {
         this.mainStack = this.fw24.getStack(this.certificateConstructConfig.stackName, this.certificateConstructConfig.parentStackName);
 
-        let certificate: any;
-        if (this.certificateConstructConfig.certificateArn){
-            certificate = Certificate.fromCertificateArn(this.mainStack, this.fw24.appName + this.certificateConstructConfig.domainName + '-certificate', this.certificateConstructConfig.certificateArn);
-        } else if(!this.certificateConstructConfig.certificateArn){
-            certificate = new Certificate(this.mainStack, this.fw24.appName + this.certificateConstructConfig.domainName + '-certificate', {
+        const certificate: ICertificate = this.certificateConstructConfig.certificateArn
+            ? Certificate.fromCertificateArn(this.mainStack, this.fw24.appName + this.certificateConstructConfig.domainName + '-certificate', this.certificateConstructConfig.certificateArn)
+            : new Certificate(this.mainStack, this.fw24.appName + this.certificateConstructConfig.domainName + '-certificate', {
                 domainName: this.certificateConstructConfig.domainName,
                 validation: CertificateValidation.fromDns(),
             });
-        } 
+
         this.fw24.setConstructOutput(this, this.certificateConstructConfig.domainName, certificate, OutputType.CERTIFICATE, 'certificateArn');
 
     }

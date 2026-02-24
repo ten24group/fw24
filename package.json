@@ -1,7 +1,7 @@
 {
     "name": "@ten24group/fw24",
     "description": "A modern, serverless, framework to launch software products quickly and scale seamlessly",
-    "version": "1.0.0",
+    "version": "1.1.0-beta.17",
     "main": "./dist/package/fw24.js",
     "types": "./dist/package/fw24.d.ts",
     "repository": {
@@ -24,52 +24,60 @@
     "scripts": {
         "watch": "tsc -w",
         "build": "tsc",
+        "test": "jest",
         "release": "npm run build && standard-version && git push --follow-tags && npm publish",
-        "release:BE": "npm run build && standard-version --prerelease beta && git push --follow-tags && npm publish --tag bleeding-edge",
+        "release:BE:github": "npm run build && standard-version --prerelease beta && git push --follow-tags",
+        "release:BE": "npm run release:BE:github && npm publish --tag bleeding-edge",
         "layer:build": "esbuild --bundle --platform=node --sourcemap ./src/layer/fw24.ts --outdir=dist/layer/nodejs/node_modules",
         "layer:release": "npm run layer:build && cdk deploy"
     },
     "devDependencies": {
         "@aws-cdk/aws-cognito-identitypool-alpha": "^2.132.0-alpha.0",
-        "@smithy/types": "^3.7.2",
-        "@types/aws-lambda": "^8.10.146",
-        "@types/jest": "^29.5.14",
-        "@types/node": "^20.17.9",
-        "@types/qs": "^6.9.17",
+        "@types/aws-lambda": "^8.10.150",
+        "@types/fast-redact": "^3.0.4",
+        "@types/jest": "^30.0.0",
+        "@types/node": "^24.0.3",
+        "@types/qs": "^6.14.0",
         "@types/uuid": "^10.0.0",
-        "aws-cdk-lib": "^2.181.0",
-        "electrodb": "*",
-        "jest": "^29.7.0",
+        "aws-cdk-lib": "^2.202.0",
+        "electrodb": "^3.4.3",
+        "jest": "^30.0.2",
         "standard-version": "^9.5.0",
-        "ts-jest": "^29.2.5",
+        "ts-jest": "^29.4.0",
         "ts-node": "^10.9.2",
-        "typescript": "^5.7.2"
+        "typescript": "^5.8.3",
+        "typescript-eslint": "^8.56.0"
     },
     "dependencies": {
-        "@aws-cdk/aws-amplify-alpha": "^2.131.0-alpha.0",
-        "@aws-sdk/client-cloudwatch-logs": "^3.767.0",
-        "@aws-sdk/client-cognito-identity": "^3.699.0",
-        "@aws-sdk/client-cognito-identity-provider": "^3.708.0",
-        "@aws-sdk/client-s3": "^3.705.0",
-        "@aws-sdk/client-sesv2": "^3.708.0",
-        "@aws-sdk/client-sns": "^3.699.0",
-        "@aws-sdk/client-sqs": "^3.699.0",
-        "@aws-sdk/s3-request-presigner": "^3.705.0",
-        "@smithy/smithy-client": "^3.5.0",
-        "aws-jwt-verify": "^4.0.1",
+        "@aws-cdk/aws-amplify-alpha": "^2.202.0-alpha.0",
+        "@aws-lambda-powertools/logger": "^2.29.0",
+        "@aws-lambda-powertools/metrics": "^2.29.0",
+        "@aws-sdk/client-cloudwatch-logs": "^3.832.0",
+        "@aws-sdk/client-cognito-identity": "^3.830.0",
+        "@aws-sdk/client-cognito-identity-provider": "^3.830.0",
+        "@aws-sdk/client-s3": "^3.832.0",
+        "@aws-sdk/client-sesv2": "^3.830.0",
+        "@aws-sdk/client-sns": "^3.830.0",
+        "@aws-sdk/client-sqs": "^3.831.0",
+        "@aws-sdk/s3-request-presigner": "^3.832.0",
+        "@hackylabs/deep-redact": "^3.0.4",
+        "@types/cookie": "^0.6.0",
         "constructs": "^10.4.2",
-        "esbuild": "^0.24.0",
-        "qs": "^6.13.1",
+        "cookie": "^1.0.2",
+        "esbuild": "^0.25.5",
+        "meilisearch": "^0.51.0",
+        "path-to-regexp": "^8.2.0",
+        "qs": "^6.14.0",
         "source-map-support": "^0.5.21",
-        "tslog": "^4.9.3"
+        "tslog": "^4.9.3",
+        "uuid": "^13.0.0"
     },
     "peerDependencies": {
-        "electrodb": "^3.0.1",
-        "aws-cdk-lib": "^2.181.0"
+        "aws-cdk-lib": "^2.202.0",
+        "electrodb": "^3.4.3"
     },
-    "overrides": {
-        "@smithy/core": "^3.0.0",
-        "@smithy/smithy-client": "^3.5.0",
-        "@smithy/types": "^3.7.2"
+    "optionalDependencies": {
+        "@opentelemetry/api": "^1.9.0",
+        "@opentelemetry/api-logs": "^0.208.0"
     }
 }

@@ -1,12 +1,11 @@
-import { SecretValue, CfnOutput, Stack } from "aws-cdk-lib";
+import { App, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha';
+import { CfnOutput, SecretValue, Stack } from "aws-cdk-lib";
 import { BuildSpec } from "aws-cdk-lib/aws-codebuild";
-import { App, Branch, CustomRule, GitHubSourceCodeProvider } from '@aws-cdk/aws-amplify-alpha';
-
 import { Fw24 } from "../core/fw24";
-import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { Helper } from "../core/helper";
-import { createLogger } from "../logging";
+import { FW24Construct, FW24ConstructOutput } from "../interfaces/construct";
 import { IConstructConfig } from "../interfaces/construct-config";
+import { createLogger } from "../logging";
 import { VpcConstruct } from "./vpc";
 
 /**
@@ -17,31 +16,31 @@ export interface ISiteConstructConfig extends IConstructConfig {
      * The name of the application.
      */
     appName: string;
-    
+
     /**
      * The owner of the GitHub repository.
      */
     githubOwner: string;
-    
+
     /**
      * The name of the GitHub repository.
      */
     githubRepo: string;
-    
+
     /**
      * The branch of the GitHub repository.
      */
     githubBranch: string;
-    
+
     /**
      * The name of the secret key.
      */
     secretKeyName: string;
-    
+
     /**
      * The build specification for the site.
      */
-    buildSpec: any; // BuildSpec.fromObject
+    buildSpec: BuildSpec | Record<string, any>;
 
     /**
      * The domain for the site.
@@ -61,25 +60,25 @@ export interface ISiteConstructConfig extends IConstructConfig {
     mapRootDomain?: boolean;
 }
 
-export class SiteConstruct implements FW24Construct{
+export class SiteConstruct implements FW24Construct {
     readonly logger = createLogger(SiteConstruct.name);
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = SiteConstruct.name;
-    dependencies: string[] = [VpcConstruct.name];
+    dependencies: string[] = [ VpcConstruct.name ];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;
 
     // default constructor to initialize the stack configuration
-    constructor(private siteConstructConfig: ISiteConstructConfig){
+    constructor(private siteConstructConfig: ISiteConstructConfig) {
         // hydrate the config object with environment variables ex: AMPLIFY_GITHUB_OWNER
         Helper.hydrateConfig(siteConstructConfig, 'AMPLIFY');
         // hydrate the config object with environment variables ex: AMPLIFY_ADMIN_GITHUB_REPO
         Helper.hydrateConfig(siteConstructConfig, `AMPLIFY_${this.siteConstructConfig.appName.toUpperCase()}`);
     }
     // construct method to create the stack
-    public async construct(){
+    public async construct() {
         this.logger.debug(' construct for:', this.siteConstructConfig.appName);
         const fw24 = Fw24.getInstance();
         // get the main stack from the framework
@@ -89,7 +88,7 @@ export class SiteConstruct implements FW24Construct{
         // create the amplify app
         const amplifyApp = new App(this.mainStack, `${stackPrefix}-amplify`, {
             appName: `${this.siteConstructConfig.appName}`,
-            buildSpec: BuildSpec.fromObject(this.siteConstructConfig.buildSpec),
+            buildSpec: this.siteConstructConfig.buildSpec instanceof BuildSpec ? this.siteConstructConfig.buildSpec : BuildSpec.fromObject(this.siteConstructConfig.buildSpec),
             sourceCodeProvider: new GitHubSourceCodeProvider({
                 owner: this.siteConstructConfig.githubOwner,
                 repository: this.siteConstructConfig.githubRepo,
@@ -102,7 +101,7 @@ export class SiteConstruct implements FW24Construct{
         // add the branch
         const branch = amplifyApp.addBranch(this.siteConstructConfig.githubBranch);
         // add the domain
-        if(this.siteConstructConfig.domain){
+        if (this.siteConstructConfig.domain) {
             const siteDomain = amplifyApp.addDomain(this.siteConstructConfig.domain);
             if (this.siteConstructConfig.mapRootDomain === true) {
                 siteDomain.mapRoot(branch);

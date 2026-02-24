@@ -2,11 +2,9 @@ import type { QueueProps } from "aws-cdk-lib/aws-sqs";
 import type { IQueueSubscriptions } from "../constructs/queue-lambda";
 import type { CommonLambdaHandlerOptions } from "./decorator-utils";
 import type { ILambdaEnvConfig } from "../interfaces";
-import { resolveAndExportHandler, setupDIModuleForController, tryImportingEntryPackagesFor } from "./decorator-utils";
+import type { SpanMetadata } from "../observability/controller-config";
+import { resolveAndExportHandler, setupDIModuleForController } from "./decorator-utils";
 
-/**
- * Configuration options for the queue.
- */
 /**
  * Represents the configuration options for a queue.
  */
@@ -65,6 +63,32 @@ export type IQueueConfig = CommonLambdaHandlerOptions & {
 	 * The subscriptions for the queue.
 	 */
 	subscriptions?: IQueueSubscriptions;
+
+	/**
+	 * Skip automatic registration by QueueConstruct.
+	 * When true, this queue will not be automatically created during QueueConstruct's construct phase.
+	 * Use this when another construct (e.g., DynamoDBConstruct) will manually create and register the queue.
+	 *
+	 * @default false
+	 */
+	manualRegistration?: boolean;
+
+	/**
+	 * Observability configuration for the queue handler.
+	 * Allows specifying custom tags, source, and attributes for spans.
+	 *
+	 * @example
+	 * ```typescript
+	 * @Queue('my-queue', {
+	 *   observability: {
+	 *     source: 'domain:queue:priority',
+	 *     tags: { domain: 'sports', priority: 'high' },
+	 *     attributes: { 'queue.category': 'data-sync' }
+	 *   }
+	 * })
+	 * ```
+	 */
+	observability?: SpanMetadata;
 }
 
 /**
@@ -75,11 +99,8 @@ export type IQueueConfig = CommonLambdaHandlerOptions & {
  */
 export function Queue(queueName: string, queueConfig: IQueueConfig = {}) {
 	return function <T extends { new(...args: any[]): {} }>(target: T) {
-		tryImportingEntryPackagesFor(queueName);
-
 		// Default autoExportLambdaHandler to true if undefined
 		queueConfig.autoExportLambdaHandler = queueConfig.autoExportLambdaHandler ?? true;
-
 
 		// Create an extended class that includes additional setup
 		class ExtendedTarget extends target {

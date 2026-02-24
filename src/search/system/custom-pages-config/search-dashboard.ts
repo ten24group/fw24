@@ -1,0 +1,150 @@
+import { DashboardPageConfig } from "../../../ui-config-gen";
+
+export const searchDashboardPage: DashboardPageConfig = {
+  pageTitle: "Search Dashboard",
+  pageType: "dashboard",
+  routePattern: "/system/search",
+  breadcrumbs: [
+    { label: "Home", url: "/" },
+    { label: "System", url: "/system" },
+    { label: "Search Dashboard" }
+  ],
+  dashboardPageConfig: {
+    widgets: [
+      {
+        type: 'description',
+        title: 'Engine Health',
+        colSpan: 4,
+        dataConfig: {
+          apiUrl: '/system/search/is-healthy',
+          apiMethod: 'GET'
+        },
+        options: {
+          bordered: true,
+          size: 'small',
+          items: [
+            { key: 'isHealthy', label: 'Is Healthy' }
+          ]
+        }
+      },
+
+      {
+        type: 'description',
+        title: 'Engine Version',
+        colSpan: 4,
+        dataConfig: {
+          apiUrl: '/system/search/version',
+          apiMethod: 'GET'
+        },
+        options: {
+          bordered: true,
+          size: 'small',
+          items: [
+            { key: 'pkgVersion', label: 'Version' },
+            { key: 'commitSha', label: 'Commit SHA' },
+            { key: 'commitDate', label: 'Commit Date' },
+          ]
+        }
+      },
+
+      {
+        type: 'description',
+        title: 'Database Statistics',
+        colSpan: 4,
+        dataConfig: {
+          apiUrl: '/system/search/stats?includeIndexes=false',
+          apiMethod: 'GET'
+        },
+        options: {
+          bordered: true,
+          size: 'small',
+          items: [
+            { key: 'databaseSize', label: 'Database Size' },
+            { key: 'usedDatabaseSize', label: 'Used Database Size' },
+            { key: 'lastUpdate', label: 'Last Update' },
+          ]
+        }
+      },
+
+      // add a description widget to show queue info
+      {
+        type: 'description',
+        title: 'Queue Info',
+        colSpan: 4,
+        dataConfig: {
+          apiUrl: '/system/search/queue-info',
+          apiMethod: 'GET',
+          responseKey: 'info'
+        },
+        options: {
+          bordered: true,
+          size: 'small',
+          items: [
+            { key: 'messageCount', label: 'Message Count' },
+            { key: 'delaySeconds', label: 'Delay Seconds' },
+            { key: 'messageCountDelayed', label: 'Message Count Delayed' },
+            { key: 'messageCountNotVisible', label: 'Message Count Not Visible' },
+          ]
+        }
+      },
+
+      {
+        type: 'actions',
+        title: 'Search Management',
+        colSpan: 4,
+        options: {
+          actions: [
+            { label: 'Search Indices', url: '/system/search/indices' },
+            { label: 'Searchable Entities', url: '/system/search/entities' },
+            { label: 'View Tasks', url: '/system/search/tasks' },
+            { label: 'View Batches', url: '/system/search/batches' },
+            { label: 'View API Keys', url: '/system/search/api-keys' },
+          ]
+        }
+      },
+
+      {
+        type: 'actions',
+        title: 'Advanced Operations',
+        colSpan: 4,
+        options: {
+          actions: [
+            { label: 'Experimental Features', url: '/system/search/experimental-features' },
+            {
+              label: 'Create Dump',
+              openInModal: true,
+              modalConfig: {
+                modalType: "confirm",
+                modalPageConfig: {
+                  title: "Create Database Dump",
+                  content: "This will create a full database dump. This operation may take some time."
+                },
+                apiConfig: {
+                  apiMethod: "POST",
+                  apiUrl: "/system/search/dumps"
+                },
+                submitSuccessRedirect: "/system/search/tasks/:taskUid"
+              }
+            },
+            {
+              label: 'Create Snapshot',
+              openInModal: true,
+              modalConfig: {
+                modalType: "confirm",
+                modalPageConfig: {
+                  title: "Create Database Snapshot",
+                  content: "This will create a database snapshot. This operation may take some time. Note: Snapshot functionality requires Meilisearch to be configured with snapshot support."
+                },
+                apiConfig: {
+                  apiMethod: "POST",
+                  apiUrl: "/system/search/snapshots"
+                },
+                submitSuccessRedirect: "/system/search/tasks/:taskUid",
+              }
+            }
+          ]
+        }
+      },
+    ]
+  }
+};

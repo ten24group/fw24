@@ -33,6 +33,11 @@ export function setupDIModule<T>(
 
 		resolvingContainer = providedBy;
 
+	} else if (typeof providedBy === 'object' && providedBy !== null && 'containerId' in providedBy && 'register' in providedBy) {
+
+		// Duck-type check for DIContainer from different module graph (bundled vs layer)
+		resolvingContainer = providedBy as IDIContainer;
+
 	} else if (typeof providedBy === 'function') {
 
 		resolvingContainer = tryGetModuleDIContainer(providedBy);

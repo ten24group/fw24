@@ -1,0 +1,38 @@
+import { meiliSearchApiKeyDetailPage } from './meili-search-api-key-detail';
+import { meiliSearchApiKeysPage } from './meili-search-api-keys';
+import { meiliSearchBatchDetailPage } from './meili-search-batch-detail';
+import { meiliSearchBatchesPage } from './meili-search-batches';
+import { meiliSearchCreateApiKeyPage } from './meili-search-create-api-key';
+import { meiliSearchEditApiKeyPage } from './meili-search-edit-api-key';
+import { meiliSearchExperimentalFeaturesPage } from './meili-experimental-features';
+import { meiliSearchTaskDetailPage } from './meili-search-task-detail';
+import { meiliSearchTasksPage } from './meili-search-tasks';
+import { searchDashboardPage } from './search-dashboard';
+import { searchEntitiesConfig } from './search-entities';
+import { searchIndexDetailsConfig } from './search-index-details';
+import { searchIndexSettingsFormConfig } from './search-index-settings-edit';
+import { searchIndexSettingsDetailsConfig } from './search-index-settings-details';
+import { searchIndicesConfig } from './search-indices';
+import { searchRecordDetailConfig } from './search-record-detail';
+import { searchRecordsConfig } from './search-records';
+
+
+export const SearchCustomPageConfigs = {
+  meiliSearchApiKeyDetailPage,
+  meiliSearchApiKeysPage,
+  meiliSearchBatchDetailPage,
+  meiliSearchBatchesPage,
+  meiliSearchCreateApiKeyPage,
+  meiliSearchEditApiKeyPage,
+  meiliSearchExperimentalFeaturesPage,
+  meiliSearchTaskDetailPage,
+  meiliSearchTasksPage,
+  searchDashboardPage,
+  searchEntitiesConfig,
+  searchIndexDetailsConfig,
+  searchIndexSettingsConfig: searchIndexSettingsFormConfig,
+  searchIndexSettingsDetailsConfig,
+  searchIndicesConfig,
+  searchRecordDetailConfig,
+  searchRecordsConfig,
+} as const;

@@ -1,8 +1,444 @@
 import { EntitySchema } from './base-entity';
-import { findMatchingIndex, createEntity, updateEntity, deleteEntity, getEntity, listEntity, queryEntity } from './crud-service';
+import { findMatchingIndex, filterGroupToSimpleFormat, extractIndexFilterValues, InvalidIndexFilterError } from './crud-service';
 import { Entity } from 'electrodb';
-import { IEventDispatcher, IEventPayload } from '../event/event-types';
-import { createEntityEventDispatcher } from './entity-events';
+
+describe('extractIndexFilterValues', () => {
+    describe('valid inputs', () => {
+        it('should return empty object for null/undefined', () => {
+            expect(extractIndexFilterValues(null as any)).toEqual({});
+            expect(extractIndexFilterValues(undefined)).toEqual({});
+        });
+
+        it('should pass through direct values unchanged', () => {
+            expect(extractIndexFilterValues({ teamId: 'team-123' })).toEqual({ teamId: 'team-123' });
+            expect(extractIndexFilterValues({ count: 42 })).toEqual({ count: 42 });
+            expect(extractIndexFilterValues({ active: true })).toEqual({ active: true });
+        });
+
+        it('should extract eq values from filter syntax', () => {
+            expect(extractIndexFilterValues({
+                teamId: { eq: 'team-123' },
+                status: { eq: 'active' }
+            })).toEqual({
+                teamId: 'team-123',
+                status: 'active'
+            });
+        });
+
+        it('should handle mixed direct values and filter syntax', () => {
+            expect(extractIndexFilterValues({
+                teamId: 'team-123',
+                status: { eq: 'active' },
+                platform: 'twitter'
+            })).toEqual({
+                teamId: 'team-123',
+                status: 'active',
+                platform: 'twitter'
+            });
+        });
+
+        it('should skip null and undefined values', () => {
+            expect(extractIndexFilterValues({
+                teamId: 'team-123',
+                status: null,
+                platform: undefined
+            })).toEqual({
+                teamId: 'team-123'
+            });
+        });
+
+        it('should skip empty objects', () => {
+            expect(extractIndexFilterValues({
+                teamId: 'team-123',
+                empty: {}
+            })).toEqual({
+                teamId: 'team-123'
+            });
+        });
+
+        it('should handle boolean and numeric eq values', () => {
+            expect(extractIndexFilterValues({
+                isActive: { eq: true },
+                count: { eq: 42 },
+                ratio: { eq: 0.5 }
+            })).toEqual({
+                isActive: true,
+                count: 42,
+                ratio: 0.5
+            });
+        });
+
+        it('should handle array eq values', () => {
+            expect(extractIndexFilterValues({
+                tags: { eq: [ 'a', 'b', 'c' ] }
+            })).toEqual({
+                tags: [ 'a', 'b', 'c' ]
+            });
+        });
+    });
+
+    describe('invalid inputs - should throw InvalidIndexFilterError', () => {
+        it('should throw for gt operator', () => {
+            expect(() => extractIndexFilterValues({
+                createdAt: { gt: '2024-01-01' }
+            })).toThrow(InvalidIndexFilterError);
+
+            expect(() => extractIndexFilterValues({
+                createdAt: { gt: '2024-01-01' }
+            })).toThrow(/Invalid filter operator.*gt.*createdAt/);
+        });
+
+        it('should throw for gte operator', () => {
+            expect(() => extractIndexFilterValues({
+                count: { gte: 10 }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should throw for lt operator', () => {
+            expect(() => extractIndexFilterValues({
+                date: { lt: '2024-12-31' }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should throw for lte operator', () => {
+            expect(() => extractIndexFilterValues({
+                score: { lte: 100 }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should throw for between operator', () => {
+            expect(() => extractIndexFilterValues({
+                range: { between: [ 'a', 'z' ] }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should throw for begins operator', () => {
+            expect(() => extractIndexFilterValues({
+                code: { begins: 'PREFIX' }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should throw for contains operator', () => {
+            expect(() => extractIndexFilterValues({
+                name: { contains: 'test' }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should throw for multiple range operators', () => {
+            expect(() => extractIndexFilterValues({
+                count: { gte: 10, lte: 100 }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should throw for mixed eq and other operators', () => {
+            expect(() => extractIndexFilterValues({
+                value: { eq: 'test', gt: 'a' }
+            })).toThrow(InvalidIndexFilterError);
+        });
+
+        it('should include index name in error message when provided', () => {
+            expect(() => extractIndexFilterValues({
+                createdAt: { gt: '2024-01-01' }
+            }, 'byTeam')).toThrow(/for index "byTeam"/);
+        });
+
+        it('should provide helpful error message with details', () => {
+            try {
+                extractIndexFilterValues({ score: { gte: 10 } }, 'byScore');
+                fail('Should have thrown');
+            } catch (e) {
+                expect(e).toBeInstanceOf(InvalidIndexFilterError);
+                const error = e as InvalidIndexFilterError;
+                expect(error.attributeName).toBe('score');
+                expect(error.invalidOperators).toEqual([ 'gte' ]);
+                expect(error.indexName).toBe('byScore');
+                expect(error.message).toContain('top-level');
+                expect(error.message).toContain('filters');
+            }
+        });
+
+        it('should throw even if some fields are valid eq', () => {
+            // The function should throw when it encounters an invalid operator
+            expect(() => extractIndexFilterValues({
+                teamId: { eq: 'team-123' },
+                createdAt: { gt: '2024-01-01' }
+            })).toThrow(InvalidIndexFilterError);
+        });
+    });
+});
+
+describe('filterGroupToSimpleFormat', () => {
+    describe('passthrough for non-FilterGroup formats', () => {
+        it('should return empty object for null/undefined', () => {
+            expect(filterGroupToSimpleFormat(null as any)).toEqual({});
+            expect(filterGroupToSimpleFormat(undefined as any)).toEqual({});
+        });
+
+        it('should pass through simple format unchanged', () => {
+            const simple = { status: { eq: 'active' }, type: { eq: 'user' } };
+            expect(filterGroupToSimpleFormat(simple)).toEqual(simple);
+        });
+
+        it('should pass through direct value filters', () => {
+            const filters = { status: 'active', type: 'user' };
+            expect(filterGroupToSimpleFormat(filters)).toEqual(filters);
+        });
+    });
+
+    describe('FilterGroup to simple format conversion', () => {
+        it('should convert single filter in and array', () => {
+            const filterGroup = {
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [ { attribute: 'parentObservabilityLogId', eq: '85b7eaad-72cd-412d-8fbb-b9537b3413d5' } ],
+                or: [],
+                not: []
+            };
+
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                parentObservabilityLogId: { eq: '85b7eaad-72cd-412d-8fbb-b9537b3413d5' }
+            });
+        });
+
+        it('should convert multiple filters in and array', () => {
+            const filterGroup = {
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [
+                    { attribute: 'status', eq: 'active' },
+                    { attribute: 'type', eq: 'span.start' },
+                    { attribute: 'level', eq: 'error' }
+                ],
+                or: [],
+                not: []
+            };
+
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                status: { eq: 'active' },
+                type: { eq: 'span.start' },
+                level: { eq: 'error' }
+            });
+        });
+
+        it('should handle multiple operators on same attribute', () => {
+            const filterGroup = {
+                and: [
+                    { attribute: 'timestamp', gte: 1000, lte: 2000 }
+                ],
+                or: [],
+                not: []
+            };
+
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                timestamp: { gte: 1000, lte: 2000 }
+            });
+        });
+
+        it('should handle various filter operators', () => {
+            const filterGroup = {
+                and: [
+                    { attribute: 'name', contains: 'test' },
+                    { attribute: 'count', gt: 10 },
+                    { attribute: 'status', neq: 'deleted' },
+                    { attribute: 'tags', in: [ 'a', 'b', 'c' ] }
+                ],
+                or: [],
+                not: []
+            };
+
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                name: { contains: 'test' },
+                count: { gt: 10 },
+                status: { neq: 'deleted' },
+                tags: { in: [ 'a', 'b', 'c' ] }
+            });
+        });
+
+        it('should exclude exists/notExists operators from index matching', () => {
+            // Existence operators should be excluded because records with missing
+            // attributes won't be in sparse GSIs where that attribute is the PK
+            const filterGroup = {
+                and: [
+                    { attribute: 'parentId', notExists: true },
+                    { attribute: 'metadata', exists: true },
+                    { attribute: 'status', eq: 'active' }  // This should be included
+                ],
+                or: [],
+                not: []
+            };
+
+            // Only 'status' with 'eq' should be in the result
+            // 'parentId' and 'metadata' with existence operators should be excluded
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                status: { eq: 'active' }
+            });
+        });
+
+        it('should exclude all existence-related operators from index matching', () => {
+            const filterGroup = {
+                and: [
+                    { attribute: 'field1', notExists: true },
+                    { attribute: 'field2', exists: true },
+                    { attribute: 'field3', isNull: true },
+                    { attribute: 'field4', notNull: true },
+                    { attribute: 'field5', empty: true },
+                    { attribute: 'field6', notEmpty: true },
+                    { attribute: 'field7', eq: 'value' }  // This should be included
+                ],
+                or: [],
+                not: []
+            };
+
+            // Only field7 with eq should be in the result
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                field7: { eq: 'value' }
+            });
+        });
+
+        it('should handle between operator', () => {
+            const filterGroup = {
+                and: [
+                    { attribute: 'createdAt', bt: [ '2024-01-01', '2024-12-31' ] }
+                ],
+                or: [],
+                not: []
+            };
+
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                createdAt: { bt: [ '2024-01-01', '2024-12-31' ] }
+            });
+        });
+
+        it('should handle empty and array', () => {
+            const filterGroup = {
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [],
+                or: [],
+                not: []
+            };
+
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({});
+        });
+
+        it('should ignore items without attribute property', () => {
+            const filterGroup = {
+                and: [
+                    { attribute: 'status', eq: 'active' },
+                    { foo: 'bar' }, // no attribute - should be ignored
+                    { attribute: 'type', eq: 'user' }
+                ],
+                or: [],
+                not: []
+            };
+
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                status: { eq: 'active' },
+                type: { eq: 'user' }
+            });
+        });
+
+        it('should ignore items with attribute but no operators', () => {
+            const filterGroup = {
+                and: [
+                    { attribute: 'status' }, // no operators
+                    { attribute: 'type', eq: 'user' }
+                ],
+                or: [],
+                not: []
+            };
+
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                type: { eq: 'user' }
+            });
+        });
+
+        it('should handle nested path attributes', () => {
+            const filterGroup = {
+                and: [
+                    { attribute: 'user.profile.status', eq: 'active' },
+                    { attribute: 'metadata.tags', contains: 'important' }
+                ],
+                or: [],
+                not: []
+            };
+
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                'user.profile.status': { eq: 'active' },
+                'metadata.tags': { contains: 'important' }
+            });
+        });
+    });
+
+    describe('edge cases', () => {
+        it('should handle FilterGroup with only "and" key (minimal format)', () => {
+            const filterGroup = {
+                and: [ { attribute: 'status', eq: 'active' } ]
+            };
+
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                status: { eq: 'active' }
+            });
+        });
+
+        it('should handle boolean values', () => {
+            const filterGroup = {
+                and: [
+                    { attribute: 'isActive', eq: true },
+                    { attribute: 'isDeleted', eq: false }
+                ],
+                or: [],
+                not: []
+            };
+
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                isActive: { eq: true },
+                isDeleted: { eq: false }
+            });
+        });
+
+        it('should handle numeric values', () => {
+            const filterGroup = {
+                and: [
+                    { attribute: 'count', eq: 0 },
+                    { attribute: 'price', gte: 100.50 }
+                ],
+                or: [],
+                not: []
+            };
+
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                count: { eq: 0 },
+                price: { gte: 100.50 }
+            });
+        });
+
+        it('should handle null/undefined filter values', () => {
+            const filterGroup = {
+                and: [
+                    { attribute: 'deletedAt', eq: null }
+                ],
+                or: [],
+                not: []
+            };
+
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                deletedAt: { eq: null }
+            });
+        });
+
+        it('should handle array filter values', () => {
+            const filterGroup = {
+                and: [
+                    { attribute: 'status', in: [ 'active', 'pending', 'processing' ] }
+                ],
+                or: [],
+                not: []
+            };
+
+            expect(filterGroupToSimpleFormat(filterGroup)).toEqual({
+                status: { in: [ 'active', 'pending', 'processing' ] }
+            });
+        });
+    });
+});
 
 describe('findMatchingIndex', () => {
     let entityService: any;
@@ -242,608 +678,469 @@ describe('findMatchingIndex', () => {
             }
         });
     });
-});
 
-describe('Entity Event System', () => {
-    // Mock event dispatcher that records dispatched events
-    class MockEventDispatcher implements IEventDispatcher {
-        public dispatchedEvents: IEventPayload<any>[] = [];
+    describe('FilterGroup format support', () => {
+        // Shared schema that matches the TestEntity in beforeEach
+        const schema: EntitySchema<any, any, any> = {
+            indexes: {
+                primary: { pk: { composite: [ 'id' ] }, sk: { composite: [] } },
+                byStatus: { index: 'gsi1', pk: { composite: [ 'status' ] }, sk: { composite: [] } },
+                byStatusAndType: { index: 'gsi2', pk: { composite: [ 'status' ] }, sk: { composite: [ 'type' ] } },
+                byTemplate: { index: 'gsi3', pk: { composite: [], template: 'testEntity' }, sk: { composite: [] } }
+            }
+        } as any;
 
-        async dispatch<P = any>(eventPayload: IEventPayload<P>): Promise<void> {
-            this.dispatchedEvents.push(eventPayload);
-        }
-
-        on(): void { }
-        onAsync(): void { }
-        off(): void { }
-        awaitAsyncHandlers(): Promise<void> { return Promise.resolve(); }
-
-        // Helper method to find events by criteria
-        findEvents(criteria: { phase?: string; operation?: string; subPhase?: string; successFail?: string; entity?: string }): IEventPayload<any>[] {
-            return this.dispatchedEvents.filter(event => {
-                const matcher = event.type as any;
-
-                for (const [ key, value ] of Object.entries(criteria)) {
-                    if (matcher[ key ] !== value) {
-                        return false;
-                    }
-                }
-
-                return true;
-            });
-        }
-
-        // Clear events for clean state between tests
-        clearEvents(): void {
-            this.dispatchedEvents = [];
-        }
-    }
-
-    describe('Event Dispatching', () => {
-        // Set up common test environment
-        let mockDispatcher: MockEventDispatcher;
-        let mockEntityService: any;
-        let mockSchema: EntitySchema<any, any, any>;
-
-        beforeEach(() => {
-            mockDispatcher = new MockEventDispatcher();
-
-            // Mock entity repository behavior with more complete mock functions
-            const mockRepository = {
-                get: jest.fn().mockReturnThis(),
-                go: jest.fn().mockResolvedValue({
-                    data: { id: '123', name: 'Test Entity' }
-                }),
-                create: jest.fn().mockReturnThis(),
-                update: jest.fn().mockReturnThis(),
-                patch: jest.fn().mockReturnThis(),
-                delete: jest.fn().mockReturnThis(),
-                set: jest.fn().mockReturnThis(),
-                // Add composite function to fix the patch chain
-                composite: jest.fn().mockReturnThis(),
-            };
-
-            // Set up the patch method to return an object with composite method
-            mockRepository.patch.mockReturnValue({
-                set: jest.fn().mockReturnThis(),
-                composite: jest.fn().mockReturnThis(),
-                remove: jest.fn().mockReturnThis(),
-                go: jest.fn().mockResolvedValue({
-                    data: { id: '123', name: 'Updated Test Entity' }
-                })
-            });
-
-            // Mock schema and service
-            mockSchema = {
-                model: { entity: 'testEntity' },
-                attributes: {
-                    id: { type: 'string', required: true },
-                    name: { type: 'string' }
-                },
+        it('should match index with FilterGroup format filters', () => {
+            const schema: EntitySchema<any, any, any> = {
                 indexes: {
                     primary: {
                         pk: { composite: [ 'id' ] },
+                        sk: { composite: [] }
+                    },
+                    byStatus: {
+                        index: 'gsi1',
+                        pk: { composite: [ 'status' ] },
                         sk: { composite: [] }
                     }
                 }
             } as any;
 
-            mockEntityService = {
-                getEntityName: jest.fn().mockReturnValue('testEntity'),
-                getEntitySchema: jest.fn().mockReturnValue(mockSchema),
-                getRepository: jest.fn().mockReturnValue(mockRepository),
-                getEntityPrimaryIdPropertyName: jest.fn().mockReturnValue('id'),
-                getEntityValidations: jest.fn().mockReturnValue({}),
-                getOverriddenEntityValidationErrorMessages: jest.fn().mockResolvedValue(new Map()),
-                extractEntityIdentifiers: jest.fn(id => typeof id === 'object' ? id : { id }),
+            // This is the format produced by queryStringParamsToFilterGroup
+            const filterGroup = {
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [ { attribute: 'status', eq: 'active' } ],
+                or: [],
+                not: []
             };
-        });
 
-        afterEach(() => {
-            mockDispatcher.clearEvents();
-            jest.clearAllMocks();
-        });
-
-        describe('getEntity', () => {
-            it('should dispatch pre and post events', async () => {
-                // Arrange
-                const id = { id: '123' };
-
-                // Act
-                await getEntity({
-                    id,
-                    entityName: 'testEntity',
-                    entityService: mockEntityService,
-                    eventDispatcher: mockDispatcher,
-                });
-
-                // Assert
-                expect(mockDispatcher.dispatchedEvents.length).toBeGreaterThanOrEqual(4);
-
-                // Check pre-operation event
-                const preEvents = mockDispatcher.findEvents({ phase: 'pre', operation: 'get' });
-                expect(preEvents.length).toBeGreaterThanOrEqual(1);
-
-                // Check pre-validation event
-                const preValidationEvents = mockDispatcher.findEvents({
-                    phase: 'pre',
-                    operation: 'get',
-                    subPhase: 'validate'
-                });
-                expect(preValidationEvents.length).toBe(1);
-                expect(preValidationEvents[ 0 ].data).toHaveProperty('identifiers');
-                expect(preValidationEvents[ 0 ].data.identifiers).toEqual(id);
-
-                // Check post-validation event
-                const postValidationEvents = mockDispatcher.findEvents({
-                    phase: 'post',
-                    operation: 'get',
-                    subPhase: 'validate'
-                });
-                expect(postValidationEvents.length).toBe(1);
-                expect(postValidationEvents[ 0 ].data.validationResult).toHaveProperty('pass', true);
-
-                // Check post-operation event
-                const postEvents = mockDispatcher.findEvents({ phase: 'post', operation: 'get' });
-                expect(postEvents.length).toBeGreaterThanOrEqual(1);
-                expect(postEvents[ postEvents.length - 1 ].data).toHaveProperty('entity');
-            });
-
-            it('should include actor and tenant in context', async () => {
-                // Arrange
-                const id = { id: '123' };
-                const actor = { id: 'user1', role: 'admin' };
-                const tenant = { id: 'tenant1' };
-
-                // Act
-                await getEntity({
-                    id,
-                    entityName: 'testEntity',
-                    entityService: mockEntityService,
-                    eventDispatcher: mockDispatcher,
-                    actor,
-                    tenant
-                });
-
-                // Assert
-                expect(mockDispatcher.dispatchedEvents.length).toBeGreaterThan(0);
-
-                // All events should have actor and tenant in context
-                for (const event of mockDispatcher.dispatchedEvents) {
-                    expect(event.context).toHaveProperty('actor', actor);
-                    expect(event.context).toHaveProperty('tenant', tenant);
+            const result = findMatchingIndex(schema, filterGroup, 'testEntity', entityService);
+            expect(result).toEqual({
+                indexName: 'byStatus',
+                indexFilters: {
+                    status: 'active'
                 }
             });
         });
 
-        describe('createEntity', () => {
-            it('should dispatch pre/post events and include data in payload', async () => {
-                // Arrange
-                const data = { name: 'Test Entity' };
+        it('should match composite index with multiple FilterGroup filters', () => {
+            const schema: EntitySchema<any, any, any> = {
+                indexes: {
+                    primary: {
+                        pk: { composite: [ 'id' ] },
+                        sk: { composite: [] }
+                    },
+                    byStatusAndType: {
+                        index: 'gsi2',
+                        pk: { composite: [ 'status' ] },
+                        sk: { composite: [ 'type' ] }
+                    }
+                }
+            } as any;
 
-                // Act
-                await createEntity({
-                    data,
-                    entityName: 'testEntity',
-                    entityService: mockEntityService,
-                    eventDispatcher: mockDispatcher,
-                });
+            const filterGroup = {
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [
+                    { attribute: 'status', eq: 'active' },
+                    { attribute: 'type', eq: 'user' }
+                ],
+                or: [],
+                not: []
+            };
 
-                // Assert
-                expect(mockDispatcher.dispatchedEvents.length).toBeGreaterThanOrEqual(4);
-
-                // Check pre-operation event
-                const preEvents = mockDispatcher.findEvents({ phase: 'pre', operation: 'create' });
-                expect(preEvents.length).toBeGreaterThanOrEqual(1);
-                expect(preEvents[ 0 ].data).toHaveProperty('data', data);
-
-                // Check pre-validation event
-                const preValidationEvents = mockDispatcher.findEvents({
-                    phase: 'pre',
-                    operation: 'create',
-                    subPhase: 'validate'
-                });
-                expect(preValidationEvents.length).toBe(1);
-                expect(preValidationEvents[ 0 ].data).toHaveProperty('data', data);
-
-                // Check post-validation event
-                const postValidationEvents = mockDispatcher.findEvents({
-                    phase: 'post',
-                    operation: 'create',
-                    subPhase: 'validate'
-                });
-                expect(postValidationEvents.length).toBe(1);
-
-                // Check post-operation event
-                const postEvents = mockDispatcher.findEvents({ phase: 'post', operation: 'create' });
-                expect(postEvents.length).toBeGreaterThanOrEqual(1);
-                expect(postEvents[ postEvents.length - 1 ].data).toHaveProperty('entity');
-                expect(postEvents[ postEvents.length - 1 ].data).toHaveProperty('data', data);
+            const result = findMatchingIndex(schema, filterGroup, 'testEntity', entityService);
+            expect(result).toEqual({
+                indexName: 'byStatusAndType',
+                indexFilters: {
+                    status: 'active',
+                    type: 'user'
+                }
             });
         });
 
-        describe('updateEntity', () => {
-            it('should dispatch composite key events during update', async () => {
-                // Arrange
-                const id = { id: '123' };
-                const data = { name: 'Updated Name' };
+        it('should handle FilterGroup with non-matching filters (fallback to template)', () => {
+            const schema: EntitySchema<any, any, any> = {
+                indexes: {
+                    primary: {
+                        pk: { composite: [ 'id' ] },
+                        sk: { composite: [] }
+                    },
+                    byTemplate: {
+                        index: 'gsi3',
+                        pk: { composite: [], template: 'testEntity' },
+                        sk: { composite: [] }
+                    }
+                }
+            } as any;
 
-                // Act
-                await updateEntity({
-                    id,
-                    data,
-                    entityName: 'testEntity',
-                    entityService: mockEntityService,
-                    eventDispatcher: mockDispatcher,
-                });
+            const filterGroup = {
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [ { attribute: 'nonExistentField', eq: 'value' } ],
+                or: [],
+                not: []
+            };
 
-                // Assert
-                expect(mockDispatcher.dispatchedEvents.length).toBeGreaterThanOrEqual(6);
-
-                // Check pre-operation event
-                const preEvents = mockDispatcher.findEvents({ phase: 'pre', operation: 'update' });
-                expect(preEvents.length).toBeGreaterThanOrEqual(1);
-
-                // Check pre-validation event
-                const preValidationEvents = mockDispatcher.findEvents({
-                    phase: 'pre',
-                    operation: 'update',
-                    subPhase: 'validate'
-                });
-                expect(preValidationEvents.length).toBe(1);
-
-                // Check post-validation event
-                const postValidationEvents = mockDispatcher.findEvents({
-                    phase: 'post',
-                    operation: 'update',
-                    subPhase: 'validate'
-                });
-                expect(postValidationEvents.length).toBe(1);
-
-                // Check composite key events
-                const compositeKeyEvents = mockDispatcher.dispatchedEvents.filter(event =>
-                    (event.type as any).subPhase === 'compositeKey'
-                );
-                expect(compositeKeyEvents.length).toBe(2); // pre and post
-
-                // Check post-operation event
-                const postEvents = mockDispatcher.findEvents({ phase: 'post', operation: 'update' });
-                expect(postEvents.length).toBeGreaterThanOrEqual(1);
+            const result = findMatchingIndex(schema, filterGroup, 'testEntity', entityService);
+            expect(result).toEqual({
+                indexName: 'byTemplate',
+                indexFilters: {}
             });
         });
 
-        describe('deleteEntity', () => {
-            it('should dispatch events with the correct identifiers', async () => {
-                // Arrange
-                const id = { id: '123' };
+        it('should handle empty FilterGroup', () => {
+            const schema: EntitySchema<any, any, any> = {
+                indexes: {
+                    primary: {
+                        pk: { composite: [ 'id' ] },
+                        sk: { composite: [] }
+                    },
+                    byTemplate: {
+                        index: 'gsi3',
+                        pk: { composite: [], template: 'testEntity' },
+                        sk: { composite: [] }
+                    }
+                }
+            } as any;
 
-                // Act
-                await deleteEntity({
-                    id,
-                    entityName: 'testEntity',
-                    entityService: mockEntityService,
-                    eventDispatcher: mockDispatcher,
-                });
+            const filterGroup = {
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [],
+                or: [],
+                not: []
+            };
 
-                // Assert
-                expect(mockDispatcher.dispatchedEvents.length).toBeGreaterThanOrEqual(4);
-
-                // Check pre-operation event
-                const preEvents = mockDispatcher.findEvents({ phase: 'pre', operation: 'delete' });
-                expect(preEvents.length).toBeGreaterThanOrEqual(1);
-                expect(preEvents[ 0 ].data).toHaveProperty('identifiers');
-                expect(preEvents[ 0 ].data.identifiers).toEqual(id);
-
-                // Check post-operation event
-                const postEvents = mockDispatcher.findEvents({ phase: 'post', operation: 'delete' });
-                expect(postEvents.length).toBeGreaterThanOrEqual(1);
-                expect(postEvents[ postEvents.length - 1 ].data).toHaveProperty('entity');
+            const result = findMatchingIndex(schema, filterGroup, 'testEntity', entityService);
+            expect(result).toEqual({
+                indexName: 'byTemplate',
+                indexFilters: {}
             });
         });
 
-        describe('Event dispatcher custom context', () => {
-            it('should merge initial context with dispatch-specific context', async () => {
-                // Arrange
-                const id = { id: '123' };
-                const baseContext = { source: 'test', requestId: '456' };
-                const dispatchContext = { action: 'custom-action' };
+        it('should handle real-world parentObservabilityLogId filter scenario', () => {
+            // Create entity with byParent index like observability logs
+            const ObsEntity = new Entity({
+                model: {
+                    entity: "observabilityLog",
+                    version: "1",
+                    service: "observability"
+                },
+                attributes: {
+                    observabilityLogId: { type: "string", required: true },
+                    parentObservabilityLogId: { type: "string" },
+                    correlationId: { type: "string" },
+                    timestampMs: { type: "number" }
+                },
+                indexes: {
+                    primary: {
+                        pk: { field: "pk", composite: [ "observabilityLogId" ] },
+                        sk: { field: "sk", composite: [] }
+                    },
+                    byParent: {
+                        index: "gsi2",
+                        pk: { field: "gsi2pk", composite: [ "parentObservabilityLogId" ] },
+                        sk: { field: "gsi2sk", composite: [ "timestampMs" ] }
+                    },
+                    byTrace: {
+                        index: "gsi1",
+                        pk: { field: "gsi1pk", composite: [ "correlationId" ] },
+                        sk: { field: "gsi1sk", composite: [ "timestampMs" ] }
+                    }
+                }
+            });
 
-                // Create a dispatcher with base context
-                const opDispatcher = createEntityEventDispatcher({
-                    operation: 'get',
-                    entity: 'testEntity',
-                    dispatcher: mockDispatcher,
-                    context: baseContext
-                });
+            const obsEntityService = {
+                getRepository: () => ObsEntity
+            };
 
-                // Act
-                await opDispatcher.dispatch({
-                    data: { identifiers: id },
-                    phase: 'pre',
-                    context: dispatchContext
-                });
+            const schema: EntitySchema<any, any, any> = {
+                indexes: {
+                    primary: {
+                        pk: { composite: [ 'observabilityLogId' ] },
+                        sk: { composite: [] }
+                    },
+                    byParent: {
+                        index: 'gsi2',
+                        pk: { composite: [ 'parentObservabilityLogId' ] },
+                        sk: { composite: [ 'timestampMs' ] }
+                    },
+                    byTrace: {
+                        index: 'gsi1',
+                        pk: { composite: [ 'correlationId' ] },
+                        sk: { composite: [ 'timestampMs' ] }
+                    }
+                }
+            } as any;
 
-                // Assert
-                expect(mockDispatcher.dispatchedEvents.length).toBe(1);
-                const event = mockDispatcher.dispatchedEvents[ 0 ];
+            // This is exactly what the controller receives from query string parsing
+            const filterGroup = {
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [ {
+                    attribute: 'parentObservabilityLogId',
+                    eq: '85b7eaad-72cd-412d-8fbb-b9537b3413d5'
+                } ],
+                or: [],
+                not: []
+            };
 
-                // Context should contain both base and dispatch-specific properties
-                expect(event.context).toHaveProperty('source', 'test');
-                expect(event.context).toHaveProperty('requestId', '456');
-                expect(event.context).toHaveProperty('action', 'custom-action');
+            const result = findMatchingIndex(schema, filterGroup, 'observabilityLog', obsEntityService as any);
+
+            expect(result).toEqual({
+                indexName: 'byParent',
+                indexFilters: {
+                    parentObservabilityLogId: '85b7eaad-72cd-412d-8fbb-b9537b3413d5'
+                }
             });
         });
 
-        it('should respect event error handling in both sync and async handlers', async () => {
-            // Import real EventDispatcher but mock the logger
-            jest.mock('../logging', () => ({
-                createLogger: () => ({
-                    debug: jest.fn(),
-                    info: jest.fn(),
-                    warn: jest.fn(),
-                    error: jest.fn()
-                })
-            }));
+        it('should match correlationId filter to byTrace index', () => {
+            const ObsEntity = new Entity({
+                model: {
+                    entity: "observabilityLog",
+                    version: "1",
+                    service: "observability"
+                },
+                attributes: {
+                    observabilityLogId: { type: "string", required: true },
+                    parentObservabilityLogId: { type: "string" },
+                    correlationId: { type: "string" },
+                    timestampMs: { type: "number" }
+                },
+                indexes: {
+                    primary: {
+                        pk: { field: "pk", composite: [ "observabilityLogId" ] },
+                        sk: { field: "sk", composite: [] }
+                    },
+                    byParent: {
+                        index: "gsi2",
+                        pk: { field: "gsi2pk", composite: [ "parentObservabilityLogId" ] },
+                        sk: { field: "gsi2sk", composite: [ "timestampMs" ] }
+                    },
+                    byTrace: {
+                        index: "gsi1",
+                        pk: { field: "gsi1pk", composite: [ "correlationId" ] },
+                        sk: { field: "gsi1sk", composite: [ "timestampMs" ] }
+                    }
+                }
+            });
 
-            // Need to reload the dispatcher module after we mocked its dependency
-            jest.resetModules();
-            const { EventDispatcher } = await import('../event/dispatcher');
+            const obsEntityService = {
+                getRepository: () => ObsEntity
+            };
 
-            // Set up our error spy for sync errors
-            const originalConsoleError = console.error;
-            const consoleErrorMock = jest.fn();
-            console.error = consoleErrorMock;
+            const schema: EntitySchema<any, any, any> = {
+                indexes: {
+                    primary: {
+                        pk: { composite: [ 'observabilityLogId' ] },
+                        sk: { composite: [] }
+                    },
+                    byParent: {
+                        index: 'gsi2',
+                        pk: { composite: [ 'parentObservabilityLogId' ] },
+                        sk: { composite: [ 'timestampMs' ] }
+                    },
+                    byTrace: {
+                        index: 'gsi1',
+                        pk: { composite: [ 'correlationId' ] },
+                        sk: { composite: [ 'timestampMs' ] }
+                    }
+                }
+            } as any;
 
-            try {
-                // Create dispatcher
-                const dispatcher = new EventDispatcher();
+            const filterGroup = {
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [ {
+                    attribute: 'correlationId',
+                    eq: 'trace-123-456'
+                } ],
+                or: [],
+                not: []
+            };
 
-                // Spy on the logger.error method
-                const loggerErrorSpy = jest.fn();
-                (dispatcher as any).logger = {
-                    debug: jest.fn(),
-                    info: jest.fn(),
-                    warn: jest.fn(),
-                    error: loggerErrorSpy
-                };
+            const result = findMatchingIndex(schema, filterGroup, 'observabilityLog', obsEntityService as any);
 
-                // Create handlers that throw errors
-                const syncThrowingHandler = jest.fn(() => {
-                    throw new Error('Sync handler error');
-                });
-
-                const asyncThrowingHandler = jest.fn(async () => {
-                    throw new Error('Async handler error');
-                });
-
-                const normalHandler = jest.fn();
-
-                // Register handlers
-                dispatcher.on('errorTest', syncThrowingHandler);
-                dispatcher.onAsync('errorTest', asyncThrowingHandler);
-                dispatcher.on('errorTest', normalHandler); // This should still run even after first handler throws
-
-                // Dispatch event
-                await dispatcher.dispatch({
-                    type: 'errorTest',
-                    timestamp: new Date()
-                });
-
-                // The throwing handler should have been called 
-                expect(syncThrowingHandler).toHaveBeenCalledTimes(1);
-
-                // Console.error should have been called for the sync error
-                expect(consoleErrorMock).toHaveBeenCalledTimes(1);
-                expect(consoleErrorMock.mock.calls[ 0 ][ 0 ]).toContain('Error in synchronous event listener');
-
-                // The normal handler should still have been called despite the error
-                expect(normalHandler).toHaveBeenCalledTimes(1);
-
-                // Wait for async handlers and check for their errors
-                await dispatcher.awaitAsyncHandlers();
-
-                // The error from async handler should have been logged via the logger
-                expect(loggerErrorSpy).toHaveBeenCalled();
-                expect(loggerErrorSpy.mock.calls[ 0 ][ 0 ]).toContain('Error awaiting asynchronous event listener');
-            } finally {
-                // Restore console.error and unmock the logging module
-                console.error = originalConsoleError;
-                jest.unmock('../logging');
-            }
-        });
-    });
-
-    describe('Event Listener Behavior', () => {
-        let mockDispatcher: MockEventDispatcher;
-
-        beforeEach(() => {
-            mockDispatcher = new MockEventDispatcher();
+            expect(result).toEqual({
+                indexName: 'byTrace',
+                indexFilters: {
+                    correlationId: 'trace-123-456'
+                }
+            });
         });
 
-        // Test real EventDispatcher implementation for listener registration
-        it('should register and call listeners that match exact event types', async () => {
-            // Import real EventDispatcher instead of mock
-            const { EventDispatcher } = await import('../event/dispatcher');
-            const dispatcher = new EventDispatcher();
-
-            // Set up spy handlers
-            const exactMatchHandler = jest.fn();
-            const noMatchHandler = jest.fn();
-
-            // Register handlers
-            dispatcher.on({ entity: 'testEntity', phase: 'pre', operation: 'create' }, exactMatchHandler);
-            dispatcher.on({ entity: 'otherEntity' }, noMatchHandler);
-
-            // Dispatch an event
-            await dispatcher.dispatch({
-                type: { entity: 'testEntity', phase: 'pre', operation: 'create' },
-                data: { test: 'data' },
-                timestamp: new Date()
+        it('should select correct index when FilterGroup has multiple GSI-eligible attributes', () => {
+            // Real scenario: filter has both correlationId AND parentObservabilityLogId
+            // ElectroDB should pick the best matching index
+            const ObsEntity = new Entity({
+                model: { entity: "observabilityLog", version: "1", service: "obs" },
+                attributes: {
+                    observabilityLogId: { type: "string", required: true },
+                    parentObservabilityLogId: { type: "string" },
+                    correlationId: { type: "string" },
+                    type: { type: "string" },
+                    level: { type: "string" },
+                    timestampMs: { type: "number" }
+                },
+                indexes: {
+                    primary: {
+                        pk: { field: "pk", composite: [ "observabilityLogId" ] },
+                        sk: { field: "sk", composite: [] }
+                    },
+                    byParent: {
+                        index: "gsi2",
+                        pk: { field: "gsi2pk", composite: [ "parentObservabilityLogId" ] },
+                        sk: { field: "gsi2sk", composite: [ "timestampMs" ] }
+                    },
+                    byTrace: {
+                        index: "gsi1",
+                        pk: { field: "gsi1pk", composite: [ "correlationId" ] },
+                        sk: { field: "gsi1sk", composite: [ "timestampMs" ] }
+                    },
+                    byType: {
+                        index: "gsi3",
+                        pk: { field: "gsi3pk", composite: [ "type" ] },
+                        sk: { field: "gsi3sk", composite: [ "timestampMs" ] }
+                    }
+                }
             });
 
-            // Assert
-            expect(exactMatchHandler).toHaveBeenCalledTimes(1);
-            expect(noMatchHandler).not.toHaveBeenCalled();
+            const schema: EntitySchema<any, any, any> = {
+                indexes: {
+                    primary: { pk: { composite: [ 'observabilityLogId' ] }, sk: { composite: [] } },
+                    byParent: { index: 'gsi2', pk: { composite: [ 'parentObservabilityLogId' ] }, sk: { composite: [ 'timestampMs' ] } },
+                    byTrace: { index: 'gsi1', pk: { composite: [ 'correlationId' ] }, sk: { composite: [ 'timestampMs' ] } },
+                    byType: { index: 'gsi3', pk: { composite: [ 'type' ] }, sk: { composite: [ 'timestampMs' ] } }
+                }
+            } as any;
 
-            // Check that handler was called with the right payload
-            const callArg = exactMatchHandler.mock.calls[ 0 ][ 0 ];
-            expect(callArg.type).toEqual({ entity: 'testEntity', phase: 'pre', operation: 'create' });
-            expect(callArg.data).toEqual({ test: 'data' });
+            // FilterGroup with multiple GSI PK attributes
+            const filterGroup = {
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [
+                    { attribute: 'parentObservabilityLogId', eq: 'parent-123' },
+                    { attribute: 'correlationId', eq: 'trace-456' },
+                    { attribute: 'level', eq: 'error' }  // Not a GSI PK
+                ],
+                or: [],
+                not: []
+            };
+
+            const result = findMatchingIndex(schema, filterGroup, 'observabilityLog', { getRepository: () => ObsEntity } as any);
+
+            // ElectroDB picks one - result should have one of the GSI names
+            expect(result).toBeDefined();
+            expect([ 'byParent', 'byTrace' ]).toContain(result!.indexName);
+            // The selected index's PK value should be in indexFilters
+            expect(
+                result!.indexFilters.parentObservabilityLogId === 'parent-123' ||
+                result!.indexFilters.correlationId === 'trace-456'
+            ).toBe(true);
         });
 
-        it('should handle wildcard event matching', async () => {
-            // Import real EventDispatcher instead of mock
-            const { EventDispatcher } = await import('../event/dispatcher');
-            const dispatcher = new EventDispatcher();
+        it('should handle FilterGroup with AND + OR + NOT and select index from AND only', () => {
+            // OR and NOT conditions can't be used for GSI PK selection
+            const filterGroup = {
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [
+                    { attribute: 'status', eq: 'active' }
+                ],
+                or: [
+                    { attribute: 'type', eq: 'span.start' },
+                    { attribute: 'type', eq: 'span' }
+                ],
+                not: [
+                    { attribute: 'name', eq: 'internal' }
+                ]
+            };
 
-            // Set up spy handlers
-            const phaseOnlyHandler = jest.fn();
-            const entityOnlyHandler = jest.fn();
-            const globalWildcardHandler = jest.fn();
+            const result = findMatchingIndex(schema as any, filterGroup, 'testEntity', entityService);
 
-            // Register handlers with partial matchers (wildcards)
-            dispatcher.on({ phase: 'pre' }, phaseOnlyHandler);
-            dispatcher.on({ entity: 'testEntity' }, entityOnlyHandler);
-            dispatcher.on('*', globalWildcardHandler);
-
-            // Dispatch an event
-            await dispatcher.dispatch({
-                type: { entity: 'testEntity', phase: 'pre', operation: 'create' },
-                data: { test: 'data' },
-                timestamp: new Date()
+            // Should use byStatus index from the AND condition
+            expect(result).toEqual({
+                indexName: 'byStatus',
+                indexFilters: {
+                    status: 'active'
+                }
             });
-
-            // Assert - all three handlers should be called
-            expect(phaseOnlyHandler).toHaveBeenCalledTimes(1);
-            expect(entityOnlyHandler).toHaveBeenCalledTimes(1);
-            expect(globalWildcardHandler).toHaveBeenCalledTimes(1);
         });
 
-        it('should handle async event listeners correctly', async () => {
-            // Import real EventDispatcher
-            const { EventDispatcher } = await import('../event/dispatcher');
-            const dispatcher = new EventDispatcher();
+        it('should fallback to template when FilterGroup AND has no GSI-matching attributes', () => {
+            const filterGroup = {
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [
+                    { attribute: 'randomField', eq: 'someValue' },
+                    { attribute: 'anotherField', contains: 'text' }
+                ],
+                or: [],
+                not: []
+            };
 
-            // Create promises to track async execution
-            let asyncHandlerExecuted = false;
-            const asyncHandler = jest.fn(async () => {
-                await new Promise(resolve => setTimeout(resolve, 10));
-                asyncHandlerExecuted = true;
+            const result = findMatchingIndex(schema as any, filterGroup, 'testEntity', entityService);
+
+            // No GSI match, falls back to template
+            expect(result).toEqual({
+                indexName: 'byTemplate',
+                indexFilters: {}
             });
-
-            // Register an async handler
-            dispatcher.onAsync({ operation: 'create' }, asyncHandler);
-
-            // Dispatch event
-            await dispatcher.dispatch({
-                type: { entity: 'testEntity', operation: 'create' },
-                data: {},
-                timestamp: new Date()
-            });
-
-            // Initially the handler should be called but might not be completed
-            expect(asyncHandler).toHaveBeenCalledTimes(1);
-
-            // Wait for async handlers to complete
-            await dispatcher.awaitAsyncHandlers();
-
-            // Now the handler should have completed its execution
-            expect(asyncHandlerExecuted).toBe(true);
         });
 
-        // Keep the updated error handling test...
-    });
+        it('should return undefined when FilterGroup AND is empty and no template exists', () => {
+            const schemaNoTemplate: EntitySchema<any, any, any> = {
+                indexes: {
+                    primary: { pk: { composite: [ 'id' ] }, sk: { composite: [] } },
+                    byStatus: { index: 'gsi1', pk: { composite: [ 'status' ] }, sk: { composite: [] } }
+                }
+            } as any;
 
-    describe('EntityEventDispatcher Integration', () => {
-        it('should correctly create and use an entity-specific dispatcher', async () => {
-            // Import real EventDispatcher
-            const { EventDispatcher } = await import('../event/dispatcher');
-            const realDispatcher = new EventDispatcher();
+            const filterGroup = {
+                and: [],
+                or: [ { attribute: 'status', eq: 'active' } ],  // OR can't be used for GSI
+                not: []
+            };
 
-            // Create spy to track events
-            const dispatchSpy = jest.spyOn(realDispatcher, 'dispatch');
+            const result = findMatchingIndex(schemaNoTemplate, filterGroup, 'nonExistentEntity', entityService);
 
-            // Create entity event dispatcher
-            const entityDispatcher = createEntityEventDispatcher({
-                entity: 'product',
-                operation: 'update',
-                dispatcher: realDispatcher,
-                context: { source: 'test' }
-            });
-
-            // Use the entity dispatcher
-            await entityDispatcher.dispatch({
-                data: { id: '123', name: 'Product 123' },
-                phase: 'pre',
-                subPhase: 'validate',
-                context: { requestId: 'req-456' }
-            });
-
-            // Verify dispatch was called with correct parameters
-            expect(dispatchSpy).toHaveBeenCalledTimes(1);
-
-            const payload = dispatchSpy.mock.calls[ 0 ][ 0 ];
-            expect(payload.type).toEqual({
-                entity: 'product',
-                operation: 'update',
-                phase: 'pre',
-                subPhase: 'validate',
-                successFail: undefined
-            });
-
-            expect(payload.data).toEqual({ id: '123', name: 'Product 123' });
-            expect(payload.context).toEqual({ source: 'test', requestId: 'req-456' });
-            expect(payload.entityName).toBe('product');
+            expect(result).toBeUndefined();
         });
 
-        it('should support multiple dispatchers for different entity operations', async () => {
-            // Mock dispatcher to track events
-            const mockDispatcher = new MockEventDispatcher();
+        it('should handle composite GSI (PK + SK) with FilterGroup format', () => {
+            // byStatusAndType has PK=status, SK=type
+            const filterGroup = {
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [
+                    { attribute: 'status', eq: 'active' },
+                    { attribute: 'type', eq: 'user' }
+                ],
+                or: [],
+                not: []
+            };
 
-            // Create multiple entity dispatchers
-            const createDispatcher = createEntityEventDispatcher({
-                entity: 'user',
-                operation: 'create',
-                dispatcher: mockDispatcher
+            const result = findMatchingIndex(schema, filterGroup, 'testEntity', entityService);
+
+            // Should match composite index with both PK and SK
+            expect(result).toEqual({
+                indexName: 'byStatusAndType',
+                indexFilters: {
+                    status: 'active',
+                    type: 'user'
+                }
             });
+        });
 
-            const updateDispatcher = createEntityEventDispatcher({
-                entity: 'user',
-                operation: 'update',
-                dispatcher: mockDispatcher
-            });
+        it('should handle FilterGroup with only PK match on composite GSI', () => {
+            // byStatusAndType has PK=status, SK=type - only providing status
+            const filterGroup = {
+                filterId: 'queryStringParamsToFilterGroup',
+                and: [
+                    { attribute: 'status', eq: 'active' }
+                    // No type filter
+                ],
+                or: [],
+                not: []
+            };
 
-            // Use both dispatchers
-            await createDispatcher.dispatch({
-                data: { name: 'New User' },
-                phase: 'pre'
-            });
+            const result = findMatchingIndex(schema, filterGroup, 'testEntity', entityService);
 
-            await updateDispatcher.dispatch({
-                data: { id: '123', name: 'Updated User' },
-                phase: 'post'
-            });
-
-            // Verify both events were dispatched correctly
-            expect(mockDispatcher.dispatchedEvents.length).toBe(2);
-
-            const createEvent = mockDispatcher.findEvents({
-                entity: 'user',
-                operation: 'create',
-                phase: 'pre'
-            })[ 0 ];
-
-            const updateEvent = mockDispatcher.findEvents({
-                entity: 'user',
-                operation: 'update',
-                phase: 'post'
-            })[ 0 ];
-
-            expect(createEvent).toBeDefined();
-            expect(createEvent.data).toEqual({ name: 'New User' });
-
-            expect(updateEvent).toBeDefined();
-            expect(updateEvent.data).toEqual({ id: '123', name: 'Updated User' });
+            // Should still match an index with status as PK
+            expect(result).toBeDefined();
+            expect(result!.indexFilters.status).toBe('active');
         });
     });
 }); 

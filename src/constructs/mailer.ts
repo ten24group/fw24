@@ -12,6 +12,14 @@ import { QueueLambda } from "./queue-lambda";
 import { createLogger, LogDuration } from "../logging";
 import { IConstructConfig } from "../interfaces/construct-config";
 import { VpcConstruct } from "./vpc";
+import { LayerConstruct } from "./layer";
+
+interface ISESTemplateConfig {
+    subjectPart: string;
+    templateName: string;
+    htmlPart: string;
+    textPart?: string;
+}
 
 /**
  * Represents the configuration for the Mailer construct.
@@ -36,6 +44,21 @@ export interface IMailerConstructConfig extends IConstructConfig {
      * The properties for the queue.
      */
     queueProps?: QueueProps;
+
+    /**
+     * Track successful email sends (in addition to failures).
+     * Enable for compliance, audit trails, or debugging.
+     *
+     * @default false
+     * @example
+     * ```ts
+     * const mailerConfig: IMailerConstructConfig = {
+     *   domain: 'example.com',
+     *   trackEmailSuccess: true  // Enable for compliance/audit
+     * };
+     * ```
+     */
+    trackEmailSuccess?: boolean;
 }
 
 /**
@@ -46,7 +69,7 @@ export class MailerConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = MailerConstruct.name;
-    dependencies: string[] = [VpcConstruct.name];
+    dependencies: string[] = [ VpcConstruct.name, LayerConstruct.name ];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;
@@ -85,7 +108,7 @@ export class MailerConstruct implements FW24Construct {
         this.mainStack = this.fw24.getStack(this.mailerConstructConfig.stackName, this.mailerConstructConfig.parentStackName);
 
         // create identity
-        if(this.mailerConstructConfig.domain !== undefined && this.mailerConstructConfig.domain !== "") {
+        if (this.mailerConstructConfig.domain !== undefined && this.mailerConstructConfig.domain !== "") {
             const identity = new EmailIdentity(this.mainStack, `${this.fw24.appName}-ses-identity`, {
                 identity: Identity.domain(this.mailerConstructConfig.domain),
             });
@@ -110,10 +133,14 @@ export class MailerConstruct implements FW24Construct {
                             "SES:SendBulkTemplatedEmail",
                             "SES:TestRenderEmailTemplate",
                         ],
-                        resources: ["*"],
+                        resources: [ "*" ],
                         effect: Effect.ALLOW,
                     },
                 ],
+                environmentVariables: {
+                    // Pass observability config as environment variable
+                    TRACK_EMAIL_SUCCESS: this.mailerConstructConfig.trackEmailSuccess ? 'true' : 'false',
+                },
             },
             sqsEventSourceProps: {
                 batchSize: 5,
@@ -161,12 +188,12 @@ export class MailerConstruct implements FW24Construct {
                 // read the template file
                 const templateHTMLContent = readFileSync(join(templateDirectory, templatePath), "utf8");
                 // get the template name
-                const templateName = templatePath.split(".")[0];
+                const templateName = templatePath.split(".")[ 0 ];
                 // get the subject from the template by finding content from <title> tag
                 const titleMatch = templateHTMLContent.match(/<title>(.*?)<\/title>/);
-                const subject = titleMatch ? titleMatch[1] : "";
+                const subject = titleMatch ? titleMatch[ 1 ] : "";
 
-                const template: any = {
+                const template: ISESTemplateConfig = {
                     subjectPart: subject,
                     templateName: templateName,
                     htmlPart: templateHTMLContent,
@@ -178,7 +205,7 @@ export class MailerConstruct implements FW24Construct {
                     // read the text template file
                     const textTemplateContent = readFileSync(join(templateDirectory, textTemplatePath), "utf8");
                     // add the text part to the template
-                    template["textPart"] = textTemplateContent;
+                    template[ "textPart" ] = textTemplateContent;
                 }
 
                 this.logger.debug("registerTemplates: textTemplatePath: ", textTemplatePath);
