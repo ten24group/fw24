@@ -1,8 +1,18 @@
 import { SNSClient, PublishCommand, PublishBatchCommand, PublishBatchRequestEntry, MessageAttributeValue } from '@aws-sdk/client-sns';
 import { ExecutionContextData } from '../core/runtime/execution-context';
-import { getSnsTraceAttributes } from './util';
+import { getSnsTraceAttributes, getClientConfig } from './util';
 
-const snsClient = new SNSClient({});
+/**
+ * Lazily-created SNS client.
+ * Respects AWS_ENDPOINT_URL_SNS for local development/simulation.
+ */
+let snsClient: SNSClient | null = null;
+
+function getSnsClient(): SNSClient {
+    if (snsClient) return snsClient;
+    snsClient = new SNSClient(getClientConfig('SNS'));
+    return snsClient;
+}
 
 /**
  * Common message properties for FIFO topics and attributes
@@ -54,7 +64,7 @@ export const sendTopicMessage = async (
         ...(options?.messageDeduplicationId ? { MessageDeduplicationId: options.messageDeduplicationId } : {}),
     });
 
-    const result = await snsClient.send(snsCommand);
+    const result = await getSnsClient().send(snsCommand);
     return result;
 };
 
@@ -108,6 +118,6 @@ export const sendTopicMessageBatch = async (
         PublishBatchRequestEntries: entries,
     });
 
-    const result = await snsClient.send(command);
+    const result = await getSnsClient().send(command);
     return result;
 };

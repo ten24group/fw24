@@ -3,12 +3,28 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Command } from "@smithy/smithy-client";
 import { MetadataBearer, RequestPresigningArguments } from "@smithy/types";
 import { SpanObserver } from '../observability/observers/span';
+import { getClientConfig } from './util';
 
 
-export const defaultS3Client = new S3Client({
-    requestChecksumCalculation: "WHEN_REQUIRED",
-    responseChecksumValidation: "WHEN_REQUIRED"
-});
+/**
+ * Lazily-created S3 client.
+ * Respects AWS_ENDPOINT_URL_S3 for local development/simulation.
+ */
+let s3Client: S3Client | null = null;
+
+function getS3Client(): S3Client {
+    if (s3Client) return s3Client;
+
+    s3Client = new S3Client({
+        ...getClientConfig('S3'),
+        requestChecksumCalculation: "WHEN_REQUIRED",
+        responseChecksumValidation: "WHEN_REQUIRED"
+    });
+
+    return s3Client;
+}
+
+export const defaultS3Client = getS3Client();
 
 export const uploadFile = async (fileName: string, contents: any, bucketName: string) => {
     return SpanObserver.wrap('s3.upload', async () => {
@@ -18,7 +34,7 @@ export const uploadFile = async (fileName: string, contents: any, bucketName: st
             Body: contents,
         });
 
-        return defaultS3Client.send(uploadCommand);
+        return getS3Client().send(uploadCommand);
     }, {
         level: 'debug',
         data: { bucket: bucketName, key: fileName },
@@ -33,7 +49,7 @@ export const deleteFile = async (fileName: string, bucketName: string) => {
             Key: fileName,
         });
 
-        return defaultS3Client.send(deleteCommand);
+        return getS3Client().send(deleteCommand);
     }, {
         level: 'debug',
         data: { bucket: bucketName, key: fileName },
@@ -48,7 +64,7 @@ export const getFile = async (fileName: string, bucketName: string) => {
             Key: fileName,
         });
 
-        return defaultS3Client.send(getCommand);
+        return getS3Client().send(getCommand);
     }, {
         level: 'debug',
         data: { bucket: bucketName, key: fileName },
@@ -63,7 +79,7 @@ export const getFileMetadata = async (fileName: string, bucketName: string) => {
             Key: fileName,
         });
 
-        return defaultS3Client.send(headCommand);
+        return getS3Client().send(headCommand);
     }, {
         level: 'debug',
         data: { bucket: bucketName, key: fileName },
@@ -74,7 +90,7 @@ export const getFileMetadata = async (fileName: string, bucketName: string) => {
 export const getSignedUrlForCommand = async <InputTypesUnion extends object, InputType extends InputTypesUnion, OutputType extends MetadataBearer = MetadataBearer>(
     command: Command<InputType, OutputType, any, InputTypesUnion, MetadataBearer>,
     options: RequestPresigningArguments = { expiresIn: 15 * 60 },
-    client: S3Client = defaultS3Client,
+    client: S3Client = getS3Client(),
 ) => {
     return await getSignedUrl(client, command as any, options);
 };

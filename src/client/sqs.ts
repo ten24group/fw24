@@ -1,6 +1,6 @@
 import { GetQueueAttributesCommand, SQSClient, SendMessageCommand, SendMessageCommandInput, MessageAttributeValue, SendMessageBatchCommand, SendMessageBatchRequestEntry } from '@aws-sdk/client-sqs';
 import { ExecutionContextData } from '../core/runtime/execution-context';
-import { getSqsTraceAttributes } from './util';
+import { getSqsTraceAttributes, getClientConfig } from './util';
 
 /**
  * Lazily-created SQS client.
@@ -13,16 +13,10 @@ import { getSqsTraceAttributes } from './util';
  * This avoids FW24-specific endpoint/credential logic here and keeps behavior predictable.
  */
 let sqsClient: SQSClient | null = null;
-let sqsClientEndpoint: string | undefined = undefined;
 
 function getSqsClient(): SQSClient {
-    // For local integration tests, explicitly wire the endpoint.
-    // Relying on implicit AWS SDK env resolution is not consistent across SDK versions.
-    const endpoint = process.env.AWS_ENDPOINT_URL_SQS?.trim() || undefined;
-    if (sqsClient && sqsClientEndpoint === endpoint) return sqsClient;
-    sqsClientEndpoint = endpoint;
-    sqsClient = endpoint ? new SQSClient({ endpoint }) : new SQSClient({});
-
+    if (sqsClient) return sqsClient;
+    sqsClient = new SQSClient(getClientConfig('SQS'));
     return sqsClient;
 }
 

@@ -131,15 +131,23 @@ export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3
 
 		packageNamesArray.forEach((entryPackageName: string) => {
 			try {
-				DefaultLogger.debug("Loading entry package", { entryPackageName });
+				// Translate /opt/nodejs/node_modules/ paths for local simulator
+				if (entryPackageName.startsWith('/opt/nodejs/node_modules/')) {
+					const localPackageName = entryPackageName.replace('/opt/nodejs/node_modules/', '').replace('/index.js', '');
+					DefaultLogger.debug(`Simulator: translating ${entryPackageName} to ${localPackageName}`);
+					entryPackageName = localPackageName;
+				}
+
+				DefaultLogger.info(`Loading entry package: ${entryPackageName}`);
 				const entry = require(entryPackageName);
 				// Call the default export if available
 				if (entry.default && typeof entry.default === 'function') {
 					entry.default();
 				}
-				DefaultLogger.debug(`Successfully loaded entry package: ${entryPackageName}`);
-			} catch (error) {
-				DefaultLogger.warn(`Failed to load entry package: ${entryPackageName}`, error);
+				DefaultLogger.info(`Successfully loaded entry package: ${entryPackageName}`);
+			} catch (error: any) {
+				DefaultLogger.error(`Failed to load entry package: ${entryPackageName}. Error: ${error.message}`);
+				DefaultLogger.debug(error.stack);
 			}
 		});
 	} catch (e) {

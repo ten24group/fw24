@@ -70,7 +70,13 @@ import { BaseSearchEngine } from '../search';
 
 export class DIContainer implements IDIContainer {
 
-    static readonly DIMetadataStore = new MetadataManager({ namespace: 'fw24:di' });
+    static get DIMetadataStore(): MetadataManager {
+        const globalKey = '__fw24_di_metadata_store__';
+        if (!(global as any)[globalKey]) {
+            (global as any)[globalKey] = new MetadataManager({ namespace: 'fw24:di' });
+        }
+        return (global as any)[globalKey];
+    }
 
     public readonly containerId: string;
     private readonly logger: ILogger;

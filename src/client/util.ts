@@ -16,6 +16,32 @@ export const Environment = {
 };
 
 /**
+ * Configure AWS SDK client options for local simulation if needed.
+ * This is used to ensure compatibility with local sidecars (e.g. Minio needing forcePathStyle).
+ */
+export function getClientConfig(service: 'S3' | 'DynamoDB' | 'SQS' | 'SNS' | 'SES' | 'Cognito'): any {
+    const config: any = {};
+
+    // Check for service-specific endpoint overrides (standard AWS SDK env vars)
+    const endpoint = process.env[`AWS_ENDPOINT_URL_${service.toUpperCase()}`] || process.env.AWS_ENDPOINT_URL;
+    if (endpoint) {
+        config.endpoint = endpoint;
+
+        // S3-specific local compatibility
+        if (service === 'S3') {
+            config.forcePathStyle = true;
+        }
+
+        // For local simulation, disable SSL if endpoint is http
+        if (endpoint.startsWith('http://')) {
+            config.tls = false;
+        }
+    }
+
+    return config;
+}
+
+/**
  * Get SQS trace attributes from execution context.
  * Automatically sets causedBy to current correlationId for cross-invocation tracing.
  * 

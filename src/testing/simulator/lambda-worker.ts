@@ -26,6 +26,14 @@ async function run() {
             delete require.cache[require.resolve(absoluteHandlerPath)];
         } catch (e) {}
 
+        // Explicitly load entry packages for simulator fidelity
+        try {
+            const { tryImportingEntryPackagesFor } = require('@ten24group/fw24');
+            tryImportingEntryPackagesFor('simulator-worker');
+        } catch (e) {
+            // If framework not found in NODE_PATH, skip
+        }
+
         // Dynamic import the module
         const module = require(absoluteHandlerPath);
 
@@ -55,8 +63,17 @@ async function run() {
             throw new Error(`Handler not found in ${handlerPath}. Tried auto-exported 'handler' and class '${handlerClassName}'`);
         }
 
+        // Reconstruct context functions
+        const fullContext = {
+            ...context,
+            getRemainingTimeInMillis: () => context.remainingTimeMs || 30000
+        };
+
         // Run the handler
-        const result = await handler(event, context);
+        if (event && event.body) {
+            console.log(`[Worker] Event body type: ${typeof event.body}, value: ${event.body}`);
+        }
+        const result = await handler(event, fullContext);
 
         // Send the result back
         parentPort.postMessage({ type: 'success', result });

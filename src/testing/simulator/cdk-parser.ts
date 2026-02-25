@@ -189,7 +189,7 @@ export class CDKParser {
             if (this.resourceMap[ ref ]) {
                 const target = this.resourceMap[ ref ];
                 // Return physical name if possible
-                return target.Properties?.TableName || target.Properties?.QueueName || target.Properties?.BucketName || ref;
+                return target.Properties?.TableName || target.Properties?.QueueName || target.Properties?.BucketName || target.Properties?.UserPoolName || ref;
             }
             return ref;
         }
@@ -201,24 +201,36 @@ export class CDKParser {
 
         if (val['Fn::GetAtt']) {
             const [ ref, attr ] = val['Fn::GetAtt'];
+            const target = this.resourceMap[ ref ];
             if (attr === 'Arn') {
-                 const target = this.resourceMap[ ref ];
-                 const name = target?.Properties?.TableName || target?.Properties?.QueueName || target?.Properties?.BucketName || ref;
+                 const name = target?.Properties?.TableName || target?.Properties?.QueueName || target?.Properties?.BucketName || target?.Properties?.UserPoolName || ref;
                  const service = target?.Type?.split('::')[1]?.toLowerCase() || 'service';
                  return `arn:aws:${service}:local:123456789012:${name}`;
+            }
+            if (target?.Properties?.[attr]) {
+                return this.resolveIntrinsic(target.Properties[attr]);
             }
             return ref;
         }
 
         if (val['Fn::Sub']) {
             let template = val['Fn::Sub'];
+            let mapping: any = {};
             if (Array.isArray(template)) {
-                // TODO: handle mapping
+                mapping = template[1] || {};
                 template = template[0];
             }
             return template.replace(/\${([^}]+)}/g, (_match: string, p1: string) => {
+                if (mapping[p1]) return this.resolveIntrinsic(mapping[p1]);
                 return this.resolveIntrinsic({ Ref: p1 });
             });
+        }
+
+        if (val['Fn::ImportValue']) {
+            // In a local simulation across stacks, we've merged all resources into resourceMap.
+            // If the export name matches a logical ID or a physical name we can find, resolve it.
+            // However, often Fn::ImportValue uses the ExportName from CfnOutput.
+            return val['Fn::ImportValue'];
         }
 
         return JSON.stringify(val);
@@ -232,37 +244,51 @@ export class CDKParser {
         if (uri) {
             // Usually Fn::Join or Ref to the Lambda function
             const uriStr = JSON.stringify(uri);
-            const match = uriStr.match(/"Ref":"([^"]+)"/);
-            if (match) {
-                lambdaId = match[ 1 ];
+            // Search for all Refs and GetAtts and pick one that is a Lambda function in our resource map
+            const matches = uriStr.matchAll(/"(?:Ref|Fn::GetAtt)":\[?"([^"\]]+)"/g);
+            for (const match of matches) {
+                const id = match[1];
+                if (this.resourceMap[id]?.Type === 'AWS::Lambda::Function') {
+                    lambdaId = id;
+                    break;
+                }
             }
         }
 
         let routePath = '';
-        let currentResourceId = props.ResourceId?.Ref;
+        let currentResourceId = props.ResourceId?.Ref || props.ResourceId;
         while (currentResourceId) {
-            const res = this.resourceMap[ currentResourceId ];
+            const resourceId = typeof currentResourceId === 'object' ? currentResourceId.Ref : currentResourceId;
+            const res = this.resourceMap[ resourceId ];
             if (res && res.Properties) {
                 if (res.Properties.PathPart) {
                     routePath = '/' + res.Properties.PathPart + routePath;
                 }
-                currentResourceId = res.Properties.ParentId?.Ref;
+                currentResourceId = res.Properties.ParentId?.Ref || res.Properties.ParentId;
             } else {
                 break;
             }
         }
 
         // Extract Authorization
-        const authorizer: any = {};
-        if (props.AuthorizationType && props.AuthorizationType !== 'NONE') {
-            authorizer.type = props.AuthorizationType;
+        const authorizer: any = {
+            type: props.AuthorizationType || 'NONE'
+        };
+
+        if (props.AuthorizerId) {
+            const authId = typeof props.AuthorizerId === 'object' ? props.AuthorizerId.Ref : props.AuthorizerId;
+            const authRes = this.resourceMap[ authId ];
+            if (authRes) {
+                authorizer.name = authRes.Properties.Name;
+                authorizer.type = authRes.Properties.Type;
+            }
         }
 
         return {
             method: props.HttpMethod,
             path: routePath || '/',
             lambdaId,
-            authorizer: authorizer.type ? authorizer : undefined
+            authorizer: authorizer.type !== 'NONE' ? authorizer : undefined
         };
     }
 }

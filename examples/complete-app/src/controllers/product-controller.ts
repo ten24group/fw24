@@ -43,8 +43,9 @@ export class ProductController extends APIController {
 
     @Post('/', { authorizer: 'AWS_IAM' })
     async createProduct(event: any) {
-        const body = JSON.parse(event.body || '{}');
-        const result = await this.productService.create(body);
+        // In APIController, the body is already parsed if it's application/json
+        const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+        const result = await this.productService.create(body || {});
         return {
             statusCode: 201,
             body: JSON.stringify(result.data)

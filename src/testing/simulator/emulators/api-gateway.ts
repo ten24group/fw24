@@ -84,6 +84,9 @@ export class ApiGatewayEmulator implements IEmulator {
                     const event = this.mapRequestToApiGatewayEvent(req, matchingRoute, params, authorizerContext.context);
                     const context = {}; // Mock context
 
+                    this.logger.info(`Mapped Event Body: ${event.body}`);
+
+                    const start = Date.now();
                     const result = await this.lambdaRunner.runHandler(
                         lambdaConfig.entry,
                         lambdaConfig.handlerClassName,
@@ -91,14 +94,19 @@ export class ApiGatewayEmulator implements IEmulator {
                         context,
                         lambdaConfig.environment
                     );
+                    const duration = Date.now() - start;
 
-                    res.status(result.statusCode || 200);
+                    const status = result.statusCode || 200;
+                    this.logger.info(`[${status}] ${req.method.padEnd(6)} ${req.path} (${duration}ms)`);
+
+                    res.status(status);
                     if (result.headers) {
                         Object.entries(result.headers).forEach(([ k, v ]) => res.setHeader(k, v as string));
                     }
                     res.send(result.body);
                 } catch (error: any) {
-                    this.logger.error(`Error handling ${req.method} ${req.path}:`, error);
+                    this.logger.error(`[500] ${req.method.padEnd(6)} ${req.path} - Error: ${error.message}`);
+                    this.logger.debug(error.stack);
                     res.status(500).json({ message: error.message });
                 }
             } else {
@@ -115,6 +123,13 @@ export class ApiGatewayEmulator implements IEmulator {
     }
 
     private mapRequestToApiGatewayEvent(req: express.Request, route: ApiRoute, pathParameters: any, authorizerContext?: any) {
+        let body = req.body;
+        if (body && typeof body === 'object' && !Buffer.isBuffer(body)) {
+            body = JSON.stringify(body);
+        } else if (Buffer.isBuffer(body)) {
+            body = body.toString('utf-8');
+        }
+
         return {
             httpMethod: req.method,
             path: req.path,
@@ -122,7 +137,7 @@ export class ApiGatewayEmulator implements IEmulator {
             headers: req.headers,
             queryStringParameters: Object.keys(req.query).length > 0 ? req.query : null,
             pathParameters: Object.keys(pathParameters).length > 0 ? pathParameters : null,
-            body: req.body ? (typeof req.body === 'string' ? req.body : JSON.stringify(req.body)) : null,
+            body: body || null,
             requestContext: {
                 httpMethod: req.method,
                 path: req.path,

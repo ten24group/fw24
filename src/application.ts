@@ -391,6 +391,12 @@ export class Application {
      * Start the local simulator for development.
      */
     public async simulate(config: ISimulatorConfig = {}) {
+        // Prevent recursive simulate calls if we are currently synthesizing a blueprint
+        if (process.env.FW24_SIMULATOR_SYNCING === 'true' || process.env.CDK_OUTDIR || process.env.CDK_CONTEXT_JSON) {
+            this.logger.info("Inside CDK sync process, skipping simulator startup.");
+            return;
+        }
+
         this.logger.info("Starting High-Fidelity Simulator (fw24 dev)...");
 
         const coordinator = new SimulatorCoordinator(config);
@@ -400,18 +406,38 @@ export class Application {
         this.fw24.getGlobalEnvironmentVariables().forEach(key => {
             globalEnv[ key ] = this.fw24.getEnvironmentVariable(key);
         });
+
+        // Also include standard environment variables from config
+        if (this.fw24.getConfig().environmentVariables) {
+            Object.assign(globalEnv, this.fw24.getConfig().environmentVariables);
+        }
+
         coordinator.setGlobalEnv(globalEnv);
 
         const sync = async () => {
+            // Prevent recursive sync calls if simulate() is called during synth
+            if (process.env.FW24_SIMULATOR_SYNCING === 'true') {
+                return;
+            }
+
             this.logger.info("Syncing with CDK blueprint...");
 
             try {
                 // 1. Run CDK Synth
                 const { spawnSync } = require('node:child_process');
                 this.logger.info("Running 'cdk synth' to generate blueprint...");
+
+                // Unset SIMULATE and set sentinel to avoid recursion
+                const env = {
+                    ...process.env,
+                    SIMULATE: 'false',
+                    FW24_SIMULATOR_SYNCING: 'true'
+                };
+
                 const result = spawnSync('npx', ['cdk', 'synth'], {
                     stdio: 'inherit',
-                    shell: true
+                    shell: true,
+                    env
                 });
 
                 if (result.status !== 0) {

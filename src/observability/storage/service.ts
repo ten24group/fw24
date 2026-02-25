@@ -17,6 +17,7 @@ import { ObservabilityLogEntitySchema, ObservabilityLogSchema } from './observab
 import { CreateEntityItemTypeFromSchema, EntityRecordTypeFromSchema } from '../../entity/base-entity';
 import { resolveEnvValueFor } from '../../utils/env';
 import { IDIContainer } from '../../interfaces';
+import { getClientConfig } from '../../client/util';
 
 export type ObservabilityLogCreateItem = CreateEntityItemTypeFromSchema<ObservabilityLogSchema>;
 export type LogRecord = EntityRecordTypeFromSchema<ObservabilityLogSchema>;
@@ -69,7 +70,7 @@ export class ObservabilityLogService extends BaseEntityService<ObservabilityLogS
     @InjectContainer()
     readonly container: IDIContainer
   ) {
-    const client = new DynamoDBClient({});
+    const client = new DynamoDBClient(getClientConfig('DynamoDB'));
     const docClient = DynamoDBDocumentClient.from(client, {
       marshallOptions: { removeUndefinedValues: true, convertEmptyValues: true },
     });

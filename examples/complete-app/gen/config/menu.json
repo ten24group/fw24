@@ -1,0 +1,20 @@
+[
+  {
+    "label": "Products",
+    "icon": "appStore",
+    "key": 1,
+    "children": [
+      {
+        "label": "Product List",
+        "key": "1-list",
+        "url": "/list-product"
+      },
+      {
+        "label": "Add New Product",
+        "key": "1-create",
+        "url": "/create-product"
+      }
+    ],
+    "order": 0
+  }
+]

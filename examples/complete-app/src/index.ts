@@ -7,6 +7,7 @@ import {
     QueueConstruct,
     AuthConstruct,
     LambdaFunction,
+    LayerConstruct,
     registerEntitySchema
 } from '@ten24group/fw24';
 import { AttributeType } from 'aws-cdk-lib/aws-dynamodb';
@@ -30,6 +31,15 @@ registerEntitySchema({
     useValue: ProductEntity,
     providedIn: 'ROOT'
 });
+
+// 0. DI Layer
+app.use(new LayerConstruct([
+    {
+        mode: 'BUILD_AND_PACKAGE',
+        sourcePath: __dirname + '/di.ts',
+        isEntryPackage: true
+    }
+]));
 
 // 1. Auth (Cognito)
 app.use(new AuthConstruct({

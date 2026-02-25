@@ -66,7 +66,7 @@ export class SimulatorCoordinator {
                     AWS_ENDPOINT_URL_COGNITO: `http://localhost:9229`,
                     AWS_REGION: l.environment.AWS_REGION || 'us-east-1',
                     AWS_ACCESS_KEY_ID: 'local',
-                    AWS_SECRET_ACCESS_KEY: 'local',
+                    AWS_SECRET_ACCESS_KEY: 'localpassword',
                     MEILI_HOST: 'http://localhost:7700',
                     MEILI_MASTER_KEY: l.environment.MEILI_MASTER_KEY || 'masterKey'
                 }
@@ -94,6 +94,13 @@ export class SimulatorCoordinator {
         }));
 
         this.apiGatewayEmulator.setRoutes(routes);
+
+        this.logger.info(`Parsed ${routes.length} routes from blueprint.`);
+        if (routes.length > 0) {
+            routes.forEach(r => {
+                this.logger.info(`  → ${r.method.padEnd(6)} ${r.path}`);
+            });
+        }
 
         // Start sidecars
         if (blueprint.resources.some(r => r.type === 'AWS::DynamoDB::Table')) {

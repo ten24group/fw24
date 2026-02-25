@@ -1,6 +1,12 @@
-import { DIContainer, DI_TOKENS } from '@ten24group/fw24';
+import { DIContainer, DI_TOKENS, LayerEntry } from '@ten24group/fw24';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+
+@LayerEntry({
+    layerName: 'di-layer',
+    isEntryPackage: true
+})
+export class DiLayer {}
 
 const container = DIContainer.ROOT;
 
@@ -14,7 +20,9 @@ container.register({
         return {
             // The framework injects this when using resourceAccess: { tables: ['store-table'] }
             table: process.env.STORE_TABLE_TABLE,
-            client: DynamoDBDocumentClient.from(client)
+            client: DynamoDBDocumentClient.from(client, {
+                marshallOptions: { removeUndefinedValues: true }
+            })
         };
     }
 });

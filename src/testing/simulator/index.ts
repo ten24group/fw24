@@ -21,7 +21,22 @@ export class Simulator implements ISimulator {
             await bridge.start();
         }
 
-        this.logger.info("FW24 Simulator is ready!");
+        this.logger.info("----------------------------------------------------------------");
+        this.logger.info("🚀 FW24 Simulator is READY!");
+        this.logger.info("----------------------------------------------------------------");
+
+        for (const emulator of this.emulators) {
+            this.logger.info(`  • ${emulator.name.padEnd(20)}: ${emulator.getEndpoint()}`);
+        }
+        this.logger.info("----------------------------------------------------------------");
+        this.logger.info("  Active Sidecars:");
+        // We can't easily get sidecar endpoints from here without passing SidecarManager
+        // But we can assume defaults if they were started
+        this.logger.info("  • DynamoDB            : http://localhost:8000");
+        this.logger.info("  • SQS                 : http://localhost:9324");
+        this.logger.info("  • S3 (Minio)          : http://localhost:9000");
+        this.logger.info("  • Cognito             : http://localhost:9229");
+        this.logger.info("----------------------------------------------------------------");
     }
 
     async stop(): Promise<void> {
