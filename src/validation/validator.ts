@@ -493,6 +493,13 @@ export class Validator implements IValidator {
         res.customMessage = customMessage ?? res.customMessage;
         res.customMessageId = customMessageId ?? res.customMessageId;
 
+        if (res.errors && (res.customMessage || res.customMessageId)) {
+            res.errors.forEach(err => {
+                err.customMessage = res.customMessage ?? err.customMessage;
+                err.customMessageId = res.customMessageId ?? err.customMessageId;
+            });
+        }
+
         return res;
     }
 

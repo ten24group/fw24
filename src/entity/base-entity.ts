@@ -592,6 +592,17 @@ export function createTreeAncestrySchema(
 import { pascalCase } from "../utils";
 
 /**
+ * Helper to create a standard Geo index definition.
+ */
+export function createGeoIndex(options: { indexName?: string } = {}) {
+  return {
+    index: options.indexName || 'gsi1',
+    pk: { field: 'gsi1pk', composite: [ '__geohash' ] },
+    sk: { field: 'gsi1sk', composite: [] }
+  };
+}
+
+/**
  * Utility type to extract the related entity schema from a Relation type.
  * 
  * @template Rel - The relation type
@@ -755,6 +766,12 @@ export interface FW24AttributeExtensions {
    * For circular dependencies, use `createEntityRelation<() => EntitySchema>()` with lazy loading.
    */
   readonly relation?: Relation<any>;
+
+  /**
+   * Validations for the attribute.
+   * Supports both readonly and mutable arrays for compatibility with 'as const' entity schemas.
+   */
+  readonly validations?: ReadonlyArray<any> | Array<any>;
 
   /**
    * Fine-grained Field Level Security (FLS) permissions.

@@ -150,18 +150,21 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * Retrieves ancestors of an entity in a tree structure.
      */
     public async getAncestors(identifiers: EntityIdentifiersTypeFromSchema<S>, ctx?: ExecutionContext): Promise<EntityRecordTypeFromSchema<S>[]> {
-        const primaryIdName = this.getEntityPrimaryIdPropertyName()!;
+        const primaryIdName = this.getEntityPrimaryIdPropertyName();
+        if (!primaryIdName) return [];
         const ancestryEntityName = `${pascalCase(this.getEntityName())}Ancestry`;
 
         if (this.hasEntityServiceByEntityName(ancestryEntityName)) {
             const ancestryService = this.getEntityServiceByEntityName(ancestryEntityName);
-            const recordId = (identifiers as any)[ primaryIdName ] || (identifiers as any).id;
+            const recordId = (identifiers as Record<string, any>)[ primaryIdName ] || (identifiers as Record<string, any>).id;
 
-            const ancestorsQueryResult = await ancestryService.list({ filters: { descendantId: { eq: recordId }, depth: { gt: 0 } } as any }, ctx);
+            const ancestorsQueryResult = await ancestryService.list({
+                filters: { descendantId: { eq: recordId }, depth: { gt: 0 } } as EntityFilterCriteria<any>
+            }, ctx);
             if (!ancestorsQueryResult.data || ancestorsQueryResult.data.length === 0) return [];
 
             const result = await this.batchGet({
-                identifiers: ancestorsQueryResult.data.map((a: any) => ({ [ primaryIdName ]: a.ancestorId } as any))
+                identifiers: (ancestorsQueryResult.data as Record<string, any>[]).map(a => ({ [ primaryIdName ]: a.ancestorId } as EntityIdentifiersTypeFromSchema<S>))
             });
             return result.data as EntityRecordTypeFromSchema<S>[];
         }
@@ -172,7 +175,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const treeConfig = this.schema.model.tree;
         const pathAttr = treeConfig?.pathAttribute || '__path';
         const separator = treeConfig?.pathSeparator || '/';
-        const path = record[ pathAttr as keyof typeof record ] as string;
+        const path = (record as Record<string, any>)[ pathAttr ] as string;
         if (!path) return [];
 
         const ancestorIds = path.split(separator).filter(id => !!id);
@@ -188,18 +191,21 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * Retrieves descendants of an entity in a tree structure.
      */
     public async getDescendants(identifiers: EntityIdentifiersTypeFromSchema<S>, ctx?: ExecutionContext): Promise<EntityRecordTypeFromSchema<S>[]> {
-        const primaryIdName = this.getEntityPrimaryIdPropertyName()!;
+        const primaryIdName = this.getEntityPrimaryIdPropertyName();
+        if (!primaryIdName) return [];
         const ancestryEntityName = `${pascalCase(this.getEntityName())}Ancestry`;
 
         if (this.hasEntityServiceByEntityName(ancestryEntityName)) {
             const ancestryService = this.getEntityServiceByEntityName(ancestryEntityName);
-            const recordId = (identifiers as any)[ primaryIdName ] || (identifiers as any).id;
+            const recordId = (identifiers as Record<string, any>)[ primaryIdName ] || (identifiers as Record<string, any>).id;
 
-            const descendantsQueryResult = await ancestryService.list({ filters: { ancestorId: { eq: recordId }, depth: { gt: 0 } } as any }, ctx);
+            const descendantsQueryResult = await ancestryService.list({
+                filters: { ancestorId: { eq: recordId }, depth: { gt: 0 } } as EntityFilterCriteria<any>
+            }, ctx);
             if (!descendantsQueryResult.data || descendantsQueryResult.data.length === 0) return [];
 
             const result = await this.batchGet({
-                identifiers: descendantsQueryResult.data.map((a: any) => ({ [ primaryIdName ]: a.descendantId } as any))
+                identifiers: (descendantsQueryResult.data as Record<string, any>[]).map(a => ({ [ primaryIdName ]: a.descendantId } as EntityIdentifiersTypeFromSchema<S>))
             });
             return result.data as EntityRecordTypeFromSchema<S>[];
         }
@@ -207,17 +213,18 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const record = await this.get({ identifiers }, ctx);
         if (!record) return [];
 
+        const recordAsRecord = record as Record<string, any>;
         const treeConfig = this.schema.model.tree;
         const pathAttr = treeConfig?.pathAttribute || '__path';
         const separator = treeConfig?.pathSeparator || '/';
-        const recordId = record[ primaryIdName as keyof typeof record ];
-        const recordPath = record[ pathAttr as keyof typeof record ] || '';
+        const recordId = recordAsRecord[ primaryIdName ];
+        const recordPath = recordAsRecord[ pathAttr ] || '';
         const fullPath = `${recordPath}${recordPath ? separator : ''}${recordId}${separator}`;
 
         const result = await this.list({
             filters: {
                 [ pathAttr ]: { begins: fullPath }
-            } as any
+            } as EntityFilterCriteria<any>
         }, ctx);
 
         return result.data as EntityRecordTypeFromSchema<S>[];
@@ -229,7 +236,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     public async attach(payload: { relation: string, id: any, targetId: any, data?: any }, ctx?: ExecutionContext): Promise<void> {
         const { relation: relationName, id, targetId, data } = payload;
         const schema = this.getEntitySchema();
-        const attr = schema.attributes[ relationName as any ] as EntityAttribute;
+        const attr = schema.attributes[ relationName as keyof S[ 'attributes' ] ] as EntityAttribute;
 
         if (!attr || !attr.relation || attr.relation.type !== 'many-to-many') {
             throw new Error(`Relation "${relationName}" is not a many-to-many relation for entity "${this.getEntityName()}".`);
@@ -244,9 +251,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         }
 
         const bridgePayload = {
-            ...data,
-            ...this.extractEntityIdentifiers(id),
-            ...bridgeService.extractEntityIdentifiers(targetId)
+            ...(data || {}),
+            ...(this.extractEntityIdentifiers(id) as Record<string, any>),
+            ...(bridgeService.extractEntityIdentifiers(targetId) as Record<string, any>)
         };
 
         await bridgeService.executeOperation('upsert', bridgePayload, ctx);
@@ -258,7 +265,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     public async detach(payload: { relation: string, id: any, targetId: any }, ctx?: ExecutionContext): Promise<void> {
         const { relation: relationName, id, targetId } = payload;
         const schema = this.getEntitySchema();
-        const attr = schema.attributes[ relationName as any ] as EntityAttribute;
+        const attr = schema.attributes[ relationName as keyof S[ 'attributes' ] ] as EntityAttribute;
 
         if (!attr || !attr.relation || attr.relation.type !== 'many-to-many') {
             throw new Error(`Relation "${relationName}" is not a many-to-many relation for entity "${this.getEntityName()}".`);
@@ -273,8 +280,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         }
 
         const bridgeIdentifiers = {
-            ...this.extractEntityIdentifiers(id),
-            ...bridgeService.extractEntityIdentifiers(targetId)
+            ...(this.extractEntityIdentifiers(id) as Record<string, any>),
+            ...(bridgeService.extractEntityIdentifiers(targetId) as Record<string, any>)
         };
 
         await bridgeService.executeOperation('delete', bridgeIdentifiers, ctx);
@@ -284,7 +291,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const { attribute, center, radiusInMeters, filters, attributes, limit = 50 } = payload;
 
         // Calculate precision based on radius
-        // 5000km: 1, 1250km: 2, 156km: 3, 39km: 4, 4.9km: 5, 1.2km: 6, 152m: 7, 38m: 8
         let precision = 12;
         if (radiusInMeters > 5000000) precision = 1;
         else if (radiusInMeters > 1250000) precision = 2;
@@ -298,30 +304,39 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const centerHash = GeoHash.encode(center.lat, center.lng, precision);
         const neighbors = GeoHash.neighbors(centerHash);
 
+        const primaryIdName = this.getEntityPrimaryIdPropertyName();
+        if (!primaryIdName) throw new Error("Entity has no primary identifier");
+
         // Perform parallel queries for each neighbor
-        const queries = neighbors.map(hash => this.list({
-            filters: {
-                ...filters,
-                __geohash: { begins: hash }
-            } as any,
-            attributes,
-            pagination: { count: limit }
-        }, ctx));
+        const queries = neighbors.map(async (hash) => {
+            try {
+                return await this.list({
+                    filters: {
+                        ...(filters || {}),
+                        __geohash: { begins: hash }
+                    } as EntityFilterCriteria<any>,
+                    attributes,
+                    pagination: { count: limit }
+                }, ctx);
+            } catch (err) {
+                this.logger.error(`GeoSearch query failed for hash ${hash}:`, err);
+                return { data: [] };
+            }
+        });
 
         const results = await Promise.all(queries);
-        let allHits = results.flatMap(r => r.data as EntityRecordTypeFromSchema<S>[]);
+        let allHits = results.flatMap(r => (r.data || []) as EntityRecordTypeFromSchema<S>[]);
 
         // Deduplicate and filter by actual distance
-        const seen = new Set<string>();
-        const primaryId = this.getEntityPrimaryIdPropertyName()!;
+        const seen = new Set<any>();
 
         allHits = allHits.filter(hit => {
-            const id = hit[primaryId as keyof typeof hit];
+            const id = (hit as Record<string, any>)[ primaryIdName ];
             if (seen.has(id)) return false;
             seen.add(id);
 
-            const hitPoint = hit[attribute as keyof typeof hit] as GeoPoint;
-            if (!hitPoint) return false;
+            const hitPoint = (hit as Record<string, any>)[ attribute ] as GeoPoint;
+            if (!hitPoint || hitPoint.lat === undefined || hitPoint.lng === undefined) return false;
 
             const distance = GeoHash.calculateDistance(center, hitPoint);
             return distance <= radiusInMeters;
@@ -329,9 +344,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         // Sort by distance
         allHits.sort((a, b) => {
-            const da = GeoHash.calculateDistance(center, a[attribute as keyof typeof a] as GeoPoint);
-            const db = GeoHash.calculateDistance(center, b[attribute as keyof typeof b] as GeoPoint);
-            return da - db;
+            const pa = (a as Record<string, any>)[ attribute ] as GeoPoint;
+            const pb = (b as Record<string, any>)[ attribute ] as GeoPoint;
+            return GeoHash.calculateDistance(center, pa) - GeoHash.calculateDistance(center, pb);
         });
 
         return allHits.slice(0, limit);
@@ -421,7 +436,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         return this.update(identifiers, {
             [ deletedAtAttr ]: null,
             [ deletedByAttr ]: null
-        } as any, undefined, _ctx);
+        } as UpdateEntityItemTypeFromSchema<S>, undefined, _ctx);
     }
 
     /**
@@ -429,7 +444,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      */
     public async archive(identifiers: EntityIdentifiersTypeFromSchema<S>, _ctx?: ExecutionContext): Promise<UpdateEntityResponse<S>> {
         const archiveAttr = getAttributeNameBy(this.schema, 'archive') || 'archivedAt';
-        return this.update(identifiers, { [ archiveAttr ]: new Date().toISOString() } as any, undefined, _ctx);
+        return this.update(identifiers, { [ archiveAttr ]: new Date().toISOString() } as UpdateEntityItemTypeFromSchema<S>, undefined, _ctx);
     }
 
     /**
@@ -558,7 +573,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         if (!transformed[ 'id' ]) {
             // make sure there's an id attribute
             const primaryIdName = this.getEntityPrimaryIdPropertyName();
-            transformed[ 'id' ] = entity[ primaryIdName as any ];
+            if (primaryIdName) {
+                transformed[ 'id' ] = (entity as Record<string, any>)[ primaryIdName ];
+            }
         }
 
         return transformed;
@@ -931,21 +948,22 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         const opCtx: OperationContext<S, K> = { operation: opName, config, payload, ctx };
         const modifiedPayload = await this.beforeOperation(opCtx);
-        const finalPayload = (modifiedPayload ?? payload) as any;
+        const finalPayload = (modifiedPayload ?? payload);
 
-        const repo = this.getRepository();
+        const repo = this.getRepository() as any;
         switch (opName) {
             case 'create':
             case 'upsert':
-                return (repo as any).put(finalPayload).transaction();
+                return repo.put(finalPayload).transaction();
             case 'update':
-                const pathParams = ctx?.request?.pathParameters || (ctx as any)?.params || {};
-                const identifiers = finalPayload.identifiers || this.extractEntityIdentifiers({ ...pathParams, ...finalPayload });
-                const data = finalPayload.data || finalPayload;
-                return (repo as any).patch(identifiers).set(data).transaction();
+                const pathParams = ctx?.request?.pathParameters || (ctx as Record<string, any>)?.params || {};
+                const updatePayload = finalPayload as Record<string, any>;
+                const identifiers = updatePayload.identifiers || this.extractEntityIdentifiers({ ...pathParams, ...updatePayload });
+                const data = updatePayload.data || updatePayload;
+                return repo.patch(identifiers).set(data).transaction();
             case 'delete':
-                const deleteIds = this.extractEntityIdentifiers(finalPayload);
-                return (repo as any).delete(deleteIds).transaction();
+                const deleteIds = this.extractEntityIdentifiers(finalPayload as Record<string, any>);
+                return repo.delete(deleteIds).transaction();
             default:
                 throw new Error(`Operation "${opName}" is not supported in transactions.`);
         }
@@ -962,13 +980,13 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      *   { op: 'update', payload: { id: '...', data: { ... } }, service: otherService }
      * ]);
      */
-    public async executeTransaction(
-        operations: Array<{ op: string, payload: any, service?: BaseEntityService<any, any, any, any, any> }>,
+    public async executeTransaction<K extends keyof S[ 'model' ][ 'entityOperations' ] & string>(
+        operations: Array<{ op: K, payload: TEntityOpsInputSchemas<S>[ K ], service?: BaseEntityService<any> }>,
         ctx?: ExecutionContext
     ) {
         const items = await Promise.all(operations.map(async (opt) => {
             const service = opt.service || this;
-            const txItem = await service.prepareTransactionItem(opt.op, opt.payload, ctx);
+            const txItem = await service.prepareTransactionItem(opt.op as any, opt.payload, ctx);
             return txItem;
         }));
 
@@ -1246,22 +1264,20 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
 
     // Specific convenience hooks
-    protected async onBeforeCreate(payload: any, ctx?: ExecutionContext): Promise<any | void> {
-        let payloadCopy = { ...payload };
+    protected async onBeforeCreate(payload: CreateEntityItemTypeFromSchema<S>, ctx?: ExecutionContext): Promise<CreateEntityItemTypeFromSchema<S> | void> {
+        let payloadCopy = { ...payload } as Record<string, any>;
 
         // Geospatial
         const schema = this.getEntitySchema();
         for (const [ attrName, attr ] of Object.entries(schema.attributes)) {
-            if ((attr as any).geo && payloadCopy[ attrName ]) {
+            const fwAttr = attr as EntityAttribute;
+            if (fwAttr.geo && payloadCopy[ attrName ]) {
                 const point = payloadCopy[ attrName ] as GeoPoint;
                 if (point.lat !== undefined && point.lng !== undefined) {
                     payloadCopy.__geohash = GeoHash.encode(point.lat, point.lng);
                 }
             }
         }
-
-        // 0. Workflow & Relational integrity
-        const identifiers = this.extractEntityIdentifiers(ctx?.request?.pathParameters || payload);
 
         // Hierarchy - Path Enumeration
         if (schema.model.tree?.strategy === 'path' || schema.model.tree?.strategy === 'both') {
@@ -1271,39 +1287,13 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             const separator = treeConfig.pathSeparator || '/';
 
             if (payloadCopy[ parentAttr ]) {
-                const parent = await this.get({ identifiers: { [ this.getEntityPrimaryIdPropertyName()! ]: payloadCopy[ parentAttr ] } as any }, ctx);
-                if (parent) {
-                    payloadCopy[ pathAttr ] = `${parent[ pathAttr ] || ''}${parent[ pathAttr ] ? separator : ''}${payloadCopy[ parentAttr ]}`;
-                }
-            }
-        }
-
-        // Hierarchy - Ancestry Entity
-        if (schema.model.tree?.strategy === 'ancestry' || schema.model.tree?.strategy === 'both') {
-            const treeConfig = schema.model.tree;
-            const parentAttr = treeConfig.parentAttribute || 'parentId';
-            const ancestryEntityName = `${pascalCase(this.getEntityName())}Ancestry`;
-
-            if (payloadCopy[ parentAttr ] && this.hasEntityServiceByEntityName(ancestryEntityName)) {
-                const ancestryService = this.getEntityServiceByEntityName(ancestryEntityName);
-                const parentId = payloadCopy[ parentAttr ];
-                const primaryIdName = this.getEntityPrimaryIdPropertyName()!;
-                const recordId = payloadCopy[ primaryIdName ] || payloadCopy.id;
-
-                if (recordId) {
-                    // 1. Link to parent
-                    await ancestryService.executeOperation('upsert', { ancestorId: parentId, descendantId: recordId, depth: 1 }, ctx);
-
-                    // 2. Link to parent's ancestors
-                    const parentAncestors = await ancestryService.list({ filters: { descendantId: { eq: parentId } } as any }, ctx);
-                    if (parentAncestors.data) {
-                        for (const a of parentAncestors.data) {
-                            await ancestryService.executeOperation('upsert', { ancestorId: a.ancestorId, descendantId: recordId, depth: (a.depth || 0) + 1 }, ctx);
-                        }
+                const primaryIdName = this.getEntityPrimaryIdPropertyName();
+                if (primaryIdName) {
+                    const parent = await this.get({ identifiers: { [ primaryIdName ]: payloadCopy[ parentAttr ] } as EntityIdentifiersTypeFromSchema<any> }, ctx);
+                    if (parent) {
+                        const parentPath = (parent as Record<string, any>)[ pathAttr ] as string || '';
+                        payloadCopy[ pathAttr ] = `${parentPath}${parentPath ? separator : ''}${payloadCopy[ parentAttr ]}`;
                     }
-
-                    // 3. Self link
-                    await ancestryService.executeOperation('upsert', { ancestorId: recordId, descendantId: recordId, depth: 0 }, ctx);
                 }
             }
         }
@@ -1329,7 +1319,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         if (entitySlugAttribute && !(entitySlugAttribute in payloadCopy)) {
             if (entityNameAttribute && (entityNameAttribute in payloadCopy)) {
-                payloadCopy[ entitySlugAttribute ] = toSlug(payloadCopy[ entityNameAttribute ]) as any;
+                payloadCopy[ entitySlugAttribute ] = toSlug(payloadCopy[ entityNameAttribute ]);
             }
         }
 
@@ -1372,33 +1362,82 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         return payloadCopy;
     }
 
-    protected async onAfterCreate(_record: any, _ctx?: ExecutionContext): Promise<void> { }
-
-    protected async onBeforeUpdate(payload: any, ctx?: ExecutionContext): Promise<any | void> {
+    protected async onAfterCreate(record: EntityRecordTypeFromSchema<S>, ctx?: ExecutionContext): Promise<void> {
+        if (!record) return;
+        const recordAsRecord = record as Record<string, any>;
         const schema = this.getEntitySchema();
-        const data = payload.data || payload;
+
+        // Hierarchy - Ancestry Entity (Closure Table)
+        if (schema.model.tree?.strategy === 'ancestry' || schema.model.tree?.strategy === 'both') {
+            const treeConfig = schema.model.tree;
+            const parentAttr = treeConfig.parentAttribute || 'parentId';
+            const ancestryEntityName = `${pascalCase(this.getEntityName())}Ancestry`;
+
+            if (recordAsRecord[ parentAttr ] && this.hasEntityServiceByEntityName(ancestryEntityName)) {
+                const ancestryService = this.getEntityServiceByEntityName(ancestryEntityName);
+                const parentId = recordAsRecord[ parentAttr ];
+                const primaryIdName = this.getEntityPrimaryIdPropertyName();
+                const recordId = primaryIdName ? recordAsRecord[ primaryIdName ] : recordAsRecord.id;
+
+                if (recordId) {
+                    const ancestryOps = [];
+                    // 1. Link to parent
+                    ancestryOps.push({ op: 'upsert', payload: { ancestorId: parentId, descendantId: recordId, depth: 1 }, service: ancestryService });
+
+                    // 2. Link to parent's ancestors
+                    const parentAncestors = await ancestryService.list({
+                        filters: { descendantId: { eq: parentId } } as EntityFilterCriteria<any>
+                    }, ctx);
+                    if (parentAncestors.data) {
+                        for (const a of parentAncestors.data as Record<string, any>[]) {
+                            ancestryOps.push({ op: 'upsert', payload: { ancestorId: a.ancestorId, descendantId: recordId, depth: (a.depth || 0) + 1 }, service: ancestryService });
+                        }
+                    }
+
+                    // 3. Self link
+                    ancestryOps.push({ op: 'upsert', payload: { ancestorId: recordId, descendantId: recordId, depth: 0 }, service: ancestryService });
+
+                    // Execute all as a transaction
+                    await this.executeTransaction(ancestryOps as any, ctx);
+                }
+            }
+        }
+    }
+
+    protected async onBeforeUpdate(payload: EntityUpdateOptions<S>, ctx?: ExecutionContext): Promise<UpdateEntityItemTypeFromSchema<S> | void> {
+        const schema = this.getEntitySchema();
+        const data = (payload as any).data || payload;
+        const dataAsRecord = data as Record<string, any>;
+
+        // 0. Extract identifiers
+        const identifiers = this.extractEntityIdentifiers(ctx?.request?.pathParameters || payload) as Record<string, any>;
 
         // Geospatial
         for (const [ attrName, attr ] of Object.entries(schema.attributes)) {
-            if ((attr as any).geo && data[ attrName ]) {
-                const point = data[ attrName ] as GeoPoint;
+            const fwAttr = attr as EntityAttribute;
+            if (fwAttr.geo && dataAsRecord[ attrName ]) {
+                const point = dataAsRecord[ attrName ] as GeoPoint;
                 if (point.lat !== undefined && point.lng !== undefined) {
-                    data.__geohash = GeoHash.encode(point.lat, point.lng);
+                    dataAsRecord.__geohash = GeoHash.encode(point.lat, point.lng);
                 }
             }
         }
 
-        // Hierarchy
+        // Hierarchy - Path Enumeration
         if (schema.model.tree?.strategy === 'path' || schema.model.tree?.strategy === 'both') {
             const treeConfig = schema.model.tree;
             const parentAttr = treeConfig.parentAttribute || 'parentId';
             const pathAttr = treeConfig.pathAttribute || '__path';
             const separator = treeConfig.pathSeparator || '/';
 
-            if (data[ parentAttr ]) {
-                const parent = await this.get({ identifiers: { [ this.getEntityPrimaryIdPropertyName()! ]: data[ parentAttr ] } as any }, ctx);
-                if (parent) {
-                    data[ pathAttr ] = `${parent[ pathAttr ] || ''}${parent[ pathAttr ] ? separator : ''}${data[ parentAttr ]}`;
+            if (dataAsRecord[ parentAttr ]) {
+                const primaryIdName = this.getEntityPrimaryIdPropertyName();
+                if (primaryIdName) {
+                    const parent = await this.get({ identifiers: { [ primaryIdName ]: dataAsRecord[ parentAttr ] } as EntityIdentifiersTypeFromSchema<any> }, ctx);
+                    if (parent) {
+                        const parentPath = (parent as Record<string, any>)[ pathAttr ] as string || '';
+                        dataAsRecord[ pathAttr ] = `${parentPath}${parentPath ? separator : ''}${dataAsRecord[ parentAttr ]}`;
+                    }
                 }
             }
         }
@@ -1409,33 +1448,42 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             const parentAttr = treeConfig.parentAttribute || 'parentId';
             const ancestryEntityName = `${pascalCase(this.getEntityName())}Ancestry`;
 
-            if (data[ parentAttr ] !== undefined && this.hasEntityServiceByEntityName(ancestryEntityName)) {
+            if (dataAsRecord[ parentAttr ] !== undefined && this.hasEntityServiceByEntityName(ancestryEntityName)) {
                 const ancestryService = this.getEntityServiceByEntityName(ancestryEntityName);
-                const primaryIdName = this.getEntityPrimaryIdPropertyName()!;
-                const recordId = identifiers[ primaryIdName ] || data[ primaryIdName ];
+                const primaryIdName = this.getEntityPrimaryIdPropertyName();
+                const recordId = primaryIdName ? identifiers[ primaryIdName ] || dataAsRecord[ primaryIdName ] : identifiers.id;
 
                 if (recordId) {
-                    // Delete old ancestry where this is a descendant
-                    await ancestryService.executeOperation('deleteByQuery', { filters: { descendantId: { eq: recordId } } } as any, ctx);
+                    // We need to delete old ancestry and create new.
+                    // deleteByQuery is not transactional, so we handle it as best we can.
+                    await ancestryService.executeOperation('deleteByQuery', {
+                        filters: { descendantId: { eq: recordId } } as EntityFilterCriteria<any>
+                    }, ctx);
 
+                    const ancestryOps = [];
                     // Re-create new ancestry
-                    if (data[ parentAttr ]) {
-                        const parentId = data[ parentAttr ];
-                        await ancestryService.executeOperation('upsert', { ancestorId: parentId, descendantId: recordId, depth: 1 }, ctx);
-                        const parentAncestors = await ancestryService.list({ filters: { descendantId: { eq: parentId } } as any }, ctx);
+                    if (dataAsRecord[ parentAttr ]) {
+                        const parentId = dataAsRecord[ parentAttr ];
+                        ancestryOps.push({ op: 'upsert', payload: { ancestorId: parentId, descendantId: recordId, depth: 1 }, service: ancestryService });
+
+                        const parentAncestors = await ancestryService.list({
+                            filters: { descendantId: { eq: parentId } } as EntityFilterCriteria<any>
+                        }, ctx);
                         if (parentAncestors.data) {
-                            for (const a of parentAncestors.data) {
-                                await ancestryService.executeOperation('upsert', { ancestorId: a.ancestorId, descendantId: recordId, depth: (a.depth || 0) + 1 }, ctx);
+                            for (const a of parentAncestors.data as Record<string, any>[]) {
+                                ancestryOps.push({ op: 'upsert', payload: { ancestorId: a.ancestorId, descendantId: recordId, depth: (a.depth || 0) + 1 }, service: ancestryService });
                             }
                         }
                     }
-                    await ancestryService.executeOperation('upsert', { ancestorId: recordId, descendantId: recordId, depth: 0 }, ctx);
+                    ancestryOps.push({ op: 'upsert', payload: { ancestorId: recordId, descendantId: recordId, depth: 0 }, service: ancestryService });
+
+                    await this.executeTransaction(ancestryOps as any, ctx);
                 }
             }
         }
 
         // Fetch current record for FLS and Workflow checks
-        const currentRecord = await this.get({ identifiers }, ctx);
+        const currentRecord = await this.get({ identifiers: identifiers as EntityIdentifiersTypeFromSchema<S> }, ctx);
 
         // FLS
         await this.validateWriteFLS(payload, currentRecord, ctx);
@@ -1444,7 +1492,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         await this.verifyRelationalExistence(payload, ctx);
 
         // Inject actor context
-        let enhancedData = this.injectActorContext(data as any, 'update', ctx);
+        let enhancedData = this.injectActorContext(dataAsRecord as UpdateEntityItemTypeFromSchema<S>, 'update', ctx);
 
         const uniqueFields = this.getUniqueAttributes();
         const skipCheckingAttributesUniqueness = false;
@@ -1466,7 +1514,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                         attributeName: name!,
                         attributeValue: value,
                         maxAttemptsForCreatingUniqueAttributeValue,
-                        ignoredEntityIdentifiers: identifiers as any,
+                        ignoredEntityIdentifiers: identifiers,
                     }));
                 }
             }
@@ -1490,7 +1538,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         return enhancedData;
     }
 
-    protected async onAfterUpdate(record: any, ctx?: ExecutionContext): Promise<void> {
+    protected async onAfterUpdate(record: EntityRecordTypeFromSchema<S>, ctx?: ExecutionContext): Promise<void> {
+        const recordAsRecord = record as Record<string, any>;
         const cacheProvider = this.getCacheProvider();
         if (cacheProvider && record) {
             const identifiers = this.extractEntityIdentifiers(record);
@@ -1503,7 +1552,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const schema = this.getEntitySchema();
         for (const [ attrName, attr ] of Object.entries(schema.attributes)) {
             const fwAttr = attr as EntityAttribute;
-            if (fwAttr.dependencies && record[ attrName ] !== undefined) {
+            if (fwAttr.dependencies && recordAsRecord[ attrName ] !== undefined) {
                 for (const dep of fwAttr.dependencies) {
                     const depService = this.getEntityServiceByEntityName(dep.entityName);
                     if (!depService) {
@@ -1512,23 +1561,25 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                     }
 
                     // Build filters to find dependent records
-                    const filters: any = {};
+                    const filters: Record<string, any> = {};
                     if (dep.mapping) {
                         for (const [ source, target ] of Object.entries(dep.mapping)) {
-                            filters[ target ] = { eq: record[ source ] };
+                            filters[ target ] = { eq: recordAsRecord[ source ] };
                         }
                     } else {
                         // Fallback: match by primary identifier
-                        const primaryId = this.getEntityPrimaryIdPropertyName()!;
-                        filters[ primaryId ] = { eq: record[ primaryId ] };
+                        const primaryId = this.getEntityPrimaryIdPropertyName();
+                        if (primaryId) {
+                            filters[ primaryId ] = { eq: recordAsRecord[ primaryId ] };
+                        }
                     }
 
                     // Find and update dependent records
-                    const queryResult = await depService.list({ filters });
+                    const queryResult = await depService.list({ filters: filters as EntityFilterCriteria<any> });
                     if (queryResult.data && queryResult.data.length > 0) {
-                        const updatePromises = queryResult.data.map((depRecord: any) => {
+                        const updatePromises = queryResult.data.map((depRecord: Record<string, any>) => {
                             const depIds = depService.extractEntityIdentifiers(depRecord);
-                            const updateData = { [ dep.attributeName ]: record[ attrName ] };
+                            const updateData = { [ dep.attributeName ]: recordAsRecord[ attrName ] };
                             return depService.executeOperation('update', { identifiers: depIds, data: updateData }, ctx);
                         });
                         await Promise.all(updatePromises);
@@ -1571,35 +1622,44 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     protected async onBeforeDelete(identifiers: any, ctx?: ExecutionContext): Promise<void> {
         await this.handleRelationalIntegrityOnDelete(identifiers, 'before', ctx);
     }
-    protected async onAfterDelete(record: any, ctx?: ExecutionContext): Promise<void> {
+    protected async onAfterDelete(record: EntityRecordTypeFromSchema<S>, ctx?: ExecutionContext): Promise<void> {
         if (record) {
+            const recordAsRecord = record as Record<string, any>;
             await this.handleRelationalIntegrityOnDelete(record, 'after', ctx);
 
             // 1. Clean up Hierarchy (Ancestry records)
             const ancestryEntityName = `${pascalCase(this.getEntityName())}Ancestry`;
             if (this.hasEntityServiceByEntityName(ancestryEntityName)) {
                 const ancestryService = this.getEntityServiceByEntityName(ancestryEntityName);
-                const primaryIdName = this.getEntityPrimaryIdPropertyName()!;
-                const recordId = record[ primaryIdName as keyof typeof record ];
+                const primaryIdName = this.getEntityPrimaryIdPropertyName();
+                const recordId = primaryIdName ? recordAsRecord[ primaryIdName ] : recordAsRecord.id;
+
                 if (recordId) {
                     this.logger.info(`Cleaning up ancestry records for ${this.getEntityName()}: ${recordId}`);
-                    await ancestryService.executeOperation('deleteByQuery', { filters: { ancestorId: { eq: recordId } } } as any, ctx);
-                    await ancestryService.executeOperation('deleteByQuery', { filters: { descendantId: { eq: recordId } } } as any, ctx);
+                    await ancestryService.executeOperation('deleteByQuery', {
+                        filters: { ancestorId: { eq: recordId } } as EntityFilterCriteria<any>
+                    }, ctx);
+                    await ancestryService.executeOperation('deleteByQuery', {
+                        filters: { descendantId: { eq: recordId } } as EntityFilterCriteria<any>
+                    }, ctx);
                 }
             }
 
             // 2. Clean up Many-to-Many bridge records
             const schema = this.getEntitySchema();
             for (const [ , attr ] of Object.entries(schema.attributes)) {
-                if (attr.relation?.type === 'many-to-many') {
-                    const relation = attr.relation;
+                const fwAttr = attr as EntityAttribute;
+                if (fwAttr.relation?.type === 'many-to-many') {
+                    const relation = fwAttr.relation;
                     const bridgeEntityName = relation.bridgeEntityName || `${pascalCase(this.getEntityName())}${pascalCase(relation.entityName)}`;
                     if (this.hasEntityServiceByEntityName(bridgeEntityName)) {
                         const bridgeService = this.getEntityServiceByEntityName(bridgeEntityName);
                         const filters = this.extractEntityIdentifiers(record);
                         if (!isEmptyObjectDeep(filters)) {
                             this.logger.info(`Cleaning up many-to-many bridge records in ${bridgeEntityName} for ${this.getEntityName()}`);
-                            await bridgeService.executeOperation('deleteByQuery', { filters: filters as any }, ctx);
+                            await bridgeService.executeOperation('deleteByQuery', {
+                                filters: filters as EntityFilterCriteria<any>
+                            }, ctx);
                         }
                     }
                 }
@@ -1714,6 +1774,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             // ElectroDB enum constraint
             if (Array.isArray(attr.type)) {
                 rules.push({ inList: [ ...attr.type ] });
+            }
+
+            // Attribute-level validations from schema
+            if (attr.validations) {
+                rules.push(...(attr.validations as any[]));
             }
 
             if (rules.length > 0) {
@@ -2760,33 +2825,34 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const currentTimestamp = new Date().toISOString();
 
         // Inject visible actor fields if defined in schema and not read-only
+        const dataAsRecord = enhancedData as Record<string, any>;
         if (operation === 'create') {
             if (hasAttribute(schema, 'createdBy') && !isAttributeReadOnly(schema, 'createdBy') && actor.actorId) {
-                (enhancedData as any).createdBy = actor.actorId;
+                dataAsRecord.createdBy = actor.actorId;
             }
             if (hasAttribute(schema, 'createdAt') && !isAttributeReadOnly(schema, 'createdAt')) {
-                (enhancedData as any).createdAt = currentTimestamp;
+                dataAsRecord.createdAt = currentTimestamp;
             }
         }
 
         // For delete operations, we still want to track who performed the deletion
         if (operation === 'delete') {
             if (hasAttribute(schema, 'deletedBy') && !isAttributeReadOnly(schema, 'deletedBy') && actor.actorId) {
-                (enhancedData as any).deletedBy = actor.actorId;
+                dataAsRecord.deletedBy = actor.actorId;
             }
             if (hasAttribute(schema, 'deletedAt') && !isAttributeReadOnly(schema, 'deletedAt')) {
-                (enhancedData as any).deletedAt = currentTimestamp;
+                dataAsRecord.deletedAt = currentTimestamp;
             }
         } else {
             // Always update these fields on create/update (if not read-only)
             if (hasAttribute(schema, 'updatedBy') && !isAttributeReadOnly(schema, 'updatedBy') && actor.actorId) {
-                (enhancedData as any).updatedBy = actor.actorId;
+                dataAsRecord.updatedBy = actor.actorId;
             }
             if (hasAttribute(schema, 'updatedAt') && !isAttributeReadOnly(schema, 'updatedAt')) {
-                (enhancedData as any).updatedAt = currentTimestamp;
+                dataAsRecord.updatedAt = currentTimestamp;
             }
             if (hasAttribute(schema, 'tenantId') && !isAttributeReadOnly(schema, 'tenantId') && actor.tenantId) {
-                (enhancedData as any).tenantId = actor.tenantId;
+                dataAsRecord.tenantId = actor.tenantId;
             }
         }
 
@@ -2803,7 +2869,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             Object.entries(actorWithTimestamp).filter(([ _, value ]) => value !== undefined)
         );
 
-        (enhancedData as any)._actor = cleanActor;
+        dataAsRecord._actor = cleanActor;
 
         return enhancedData;
     }
@@ -4101,7 +4167,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     /**
      * Cleans up all many-to-many bridge records across the system that point to this record.
      */
-    private async cleanupAllManyToManyRelations(record: any, ctx?: ExecutionContext) {
+    private async cleanupAllManyToManyRelations(record: EntityRecordTypeFromSchema<S>, ctx?: ExecutionContext) {
         const currentEntityName = this.getEntityName();
         const schemaProviders = this.diContainer.collectBestProvidersFor({ type: 'schema' });
 
@@ -4111,15 +4177,18 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
             const otherSchema = this.diContainer.resolveEntitySchema<EntitySchema<any, any, any>>(otherEntityName);
             for (const [ , attr ] of Object.entries(otherSchema.attributes)) {
-                if (attr.relation?.type === 'many-to-many' && attr.relation.entityName === currentEntityName) {
-                    const relation = attr.relation;
+                const fwAttr = attr as EntityAttribute;
+                if (fwAttr.relation?.type === 'many-to-many' && fwAttr.relation.entityName === currentEntityName) {
+                    const relation = fwAttr.relation;
                     const bridgeEntityName = relation.bridgeEntityName || `${pascalCase(otherEntityName)}${pascalCase(currentEntityName)}`;
                     if (this.hasEntityServiceByEntityName(bridgeEntityName)) {
                         const bridgeService = this.getEntityServiceByEntityName(bridgeEntityName);
                         const filters = bridgeService.extractEntityIdentifiers(record);
                         if (!isEmptyObjectDeep(filters)) {
                             this.logger.info(`Cleaning up cross-entity bridge records in ${bridgeEntityName} for ${this.getEntityName()}`);
-                            await bridgeService.executeOperation('deleteByQuery', { filters: filters as any }, ctx);
+                            await bridgeService.executeOperation('deleteByQuery', {
+                                filters: filters as EntityFilterCriteria<any>
+                            }, ctx);
                         }
                     }
                 }
@@ -4136,7 +4205,7 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
     properties?: TIOSchemaAttribute[]
 } {
 
-    const { name, required, relation, default: defaultValue, get: _getter, set: _setter, watch, ...restMeta } = att;
+    const { name, validations, required, relation, default: defaultValue, get: _getter, set: _setter, watch, ...restMeta } = att;
 
     const { entityName: relatedEntityName, ...restRelation } = relation || {};
 
@@ -4191,7 +4260,7 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         name: name || toHumanReadableName(attId),
         relation: relationMeta as any,
         defaultValue,
-        validations: required ? [ 'required' ] : [],
+        validations: validations || (required ? [ 'required' ] : []),
         isVisible: !('isVisible' in att) ? true : att.isVisible,
         isEditable: !('isEditable' in att) ? true : att.isEditable,
         isListable: !('isListable' in att) ? true : att.isListable,

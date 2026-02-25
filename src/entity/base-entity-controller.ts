@@ -539,7 +539,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		const result = await this.getEntityService().executeOperation('batchDelete', { ids, concurrent }, ctx);
 
-		const unprocessedCount = (result as any)?.unprocessed?.length || 0;
+		const unprocessedCount = (result as Record<string, any>)?.unprocessed?.length || 0;
 		const identifiersCount = ids.length;
 		const deletedCount = identifiersCount - unprocessedCount;
 
@@ -550,7 +550,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		};
 
 		if (unprocessedCount > 0) {
-			response.unprocessed = (result as any)?.unprocessed || [];
+			response.unprocessed = (result as Record<string, any>)?.unprocessed || [];
 			response.message += `, ${unprocessedCount} failed`;
 		}
 
