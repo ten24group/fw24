@@ -151,24 +151,37 @@ reason: {
 
 ---
 
-## Dependency Tracking (Denormalization)
+## Dependency Tracking (Denormalization - Subscription Model)
 
-Automatically propagate data changes from one entity to another to keep denormalized views in sync.
+FW24 uses a **Subscription Model** to propagate data changes from one entity to another. This decouples the source entity from its consumers, allowing you to add new denormalized fields without modifying the source entity's schema.
+
+### Configuration
+
+Declare the dependency on the **Dependent** attribute using the `denormalize` property.
 
 ```typescript
-// In Team Schema
-name: {
+// In Player Schema (the Dependent)
+teamName: {
   type: 'string',
-  dependencies: [
-    {
-      entityName: 'player',
-      attributeName: 'teamName',
-      mapping: { teamId: 'teamId' }
-    }
-  ]
+  denormalize: {
+    sourceEntity: 'team',
+    sourceAttribute: 'name',
+    /**
+     * How to find records in THIS entity to update.
+     * player.teamId === team.teamId
+     */
+    matchBy: { teamId: 'teamId' },
+    mode: 'async' // 'sync' or 'async' (default: 'async')
+  }
 }
 ```
-When a team's name is updated, all associated players will have their `teamName` attribute updated automatically.
+
+When a `Team`'s `name` is updated, FW24 automatically identifies all `Player` records with a matching `teamId` and updates their `teamName` attribute.
+
+### Key Benefits
+- **Decoupling**: The `Team` schema doesn't need to know about `Player`, `Coach`, or `Fan` entities that might be denormalizing its name.
+- **Maintainability**: Add or remove denormalized fields by simply updating the schema of the interested entity.
+- **Reliability**: Future support for DynamoDB Streams will allow these updates to happen reliably in the background.
 
 ---
 

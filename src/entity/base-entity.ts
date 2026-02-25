@@ -813,15 +813,24 @@ export interface FW24AttributeExtensions {
   readonly hierarchy?: 'path' | 'ancestry';
 
   /**
-   * Dependencies for denormalized data.
-   * Specifies which other entities/attributes should be updated when this attribute changes.
+   * Configuration for denormalized data (Subscription Model).
+   * Declares that this attribute's value is derived from another entity.
+   * When the source attribute changes, the framework will automatically update this attribute.
    */
-  readonly dependencies?: Array<{
-    entityName: string;
-    attributeName: string;
-    /** Map source attributes to target attributes in the dependent entity */
-    mapping?: Record<string, string>;
-  }>;
+  readonly denormalize?: {
+    /** The entity to watch for changes */
+    readonly sourceEntity: string;
+    /** The attribute in the source entity to copy from */
+    readonly sourceAttribute: string;
+    /**
+     * How to find records in THIS entity to update when the source changes.
+     * Maps attributes from the source entity to attributes in THIS entity.
+     * @example { teamId: 'teamId' } - if Team name changes, update all Players where player.teamId === team.teamId.
+     */
+    readonly matchBy: Record<string, string>;
+    /** Update mode: 'sync' (blocking) or 'async' (event-driven). Default: 'async' */
+    readonly mode?: 'sync' | 'async';
+  };
 
   /**
    * Enable compression for this attribute.

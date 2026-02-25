@@ -248,23 +248,14 @@ describe("Entity Overhaul & Advanced Features", () => {
         });
     });
 
-    describe("Dependency Tracking", () => {
-        test('should propagate updates', async () => {
+    describe("Dependency Tracking (Subscription)", () => {
+        test('should propagate updates via DependencyManager', async () => {
+            const { EntityDependencyManager } = require('../dependency-manager');
             const SourceSchema = createEntitySchema({
                 model: { entity: 'source', service: 'test', version: '1', entityOperations: DefaultEntityOperations },
                 attributes: {
                     id: { type: 'string', required: true, isIdentifier: true },
-                    name: { type: 'string', dependencies: [{ entityName: 'target', attributeName: 'sourceName', mapping: { id: 'sourceId' } }] }
-                },
-                indexes: { primary: { pk: { field: 'pk', composite: ['id'] }, sk: { field: 'sk', composite: [] } } }
-            } as const);
-
-            const TargetSchema = createEntitySchema({
-                model: { entity: 'target', service: 'test', version: '1', entityOperations: DefaultEntityOperations },
-                attributes: {
-                    id: { type: 'string', required: true, isIdentifier: true },
-                    sourceId: { type: 'string' },
-                    sourceName: { type: 'string' }
+                    name: { type: 'string' }
                 },
                 indexes: { primary: { pk: { field: 'pk', composite: ['id'] }, sk: { field: 'sk', composite: [] } } }
             } as const);
@@ -272,20 +263,12 @@ describe("Entity Overhaul & Advanced Features", () => {
             class SourceService extends BaseEntityService<typeof SourceSchema> {
                 constructor() { super(SourceSchema, { table: 'test' } as any); }
             }
-            class TargetService extends BaseEntityService<typeof TargetSchema> {
-                constructor() { super(TargetSchema, { table: 'test' } as any); }
-            }
 
             const sourceService = new SourceService();
-            const targetService = new TargetService();
-            jest.spyOn(sourceService, 'getEntityServiceByEntityName').mockReturnValue(targetService as any);
-            jest.spyOn(targetService, 'list').mockResolvedValue({ data: [{ id: 't1', sourceId: 's1' }] } as any);
-            const targetUpdateSpy = jest.spyOn(targetService, 'executeOperation').mockResolvedValue({} as any);
+            const propagateSpy = jest.spyOn(EntityDependencyManager, 'propagateChanges').mockResolvedValue(undefined);
 
             await (sourceService as any).onAfterUpdate({ id: 's1', name: 'New Name' });
-            expect(targetUpdateSpy).toHaveBeenCalledWith('update', expect.objectContaining({
-                data: { sourceName: 'New Name' }
-            }), undefined);
+            expect(propagateSpy).toHaveBeenCalledWith('source', expect.objectContaining({ id: 's1', name: 'New Name' }), expect.arrayContaining(['name']), undefined);
         });
     });
 });

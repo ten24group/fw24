@@ -115,6 +115,58 @@ describe('Advanced Entity Enhancements', () => {
     });
 
     // =========================================================================
+    // DENORMALIZATION (SUBSCRIPTION MODEL) TESTS
+    // =========================================================================
+    const TeamSchema = createEntitySchema({
+        model: { entity: 'team', service: 'test', version: '1', entityOperations: DefaultEntityOperations },
+        attributes: {
+            teamId: { type: 'string', required: true, isIdentifier: true },
+            name: { type: 'string' }
+        },
+        indexes: { primary: { pk: { field: 'pk', composite: ['teamId'] }, sk: { field: 'sk', composite: [] } } }
+    } as const);
+
+    const PlayerSchema = createEntitySchema({
+        model: { entity: 'player', service: 'test', version: '1', entityOperations: DefaultEntityOperations },
+        attributes: {
+            playerId: { type: 'string', required: true, isIdentifier: true },
+            teamId: { type: 'string' },
+            teamName: {
+                type: 'string',
+                denormalize: {
+                    sourceEntity: 'team',
+                    sourceAttribute: 'name',
+                    matchBy: { teamId: 'teamId' }
+                }
+            }
+        },
+        indexes: { primary: { pk: { field: 'pk', composite: ['playerId'] }, sk: { field: 'sk', composite: [] } } }
+    } as const);
+
+    test('Denormalization: should propagate changes to subscribers', async () => {
+        const { EntityDependencyManager } = require('../dependency-manager');
+        const teamService = new (class extends BaseEntityService<any> {
+            constructor() { super(TeamSchema, { table: 'test' } as any); }
+        })();
+
+        // Mock repository for update
+        const mockRepo = {
+            patch: () => ({ set: () => ({ go: async () => ({ data: { teamId: 't1', name: 'New Name' } }) }) }),
+            query: { primary: () => ({ where: () => ({ go: async () => ({ data: [] }) }), go: async () => ({ data: [] }) }) },
+            _findBestIndexKeyMatch: () => ({ keys: [], index: 'primary', shouldScan: false }),
+            get: () => ({ go: async () => ({ data: { teamId: 't1', name: 'Old Name' } }) })
+        };
+        jest.spyOn(teamService, 'getRepository').mockReturnValue(mockRepo as any);
+
+        // Mock DependencyManager propagateChanges
+        const propagateSpy = jest.spyOn(EntityDependencyManager, 'propagateChanges').mockResolvedValue(undefined);
+
+        await teamService.executeOperation('update', { teamId: 't1', name: 'New Name' });
+
+        expect(propagateSpy).toHaveBeenCalledWith('team', expect.anything(), expect.arrayContaining(['name']), undefined);
+    });
+
+    // =========================================================================
     // CACHING TESTS
     // =========================================================================
     test('Caching: should use cache if enabled', async () => {

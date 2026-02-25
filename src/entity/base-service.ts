@@ -17,6 +17,7 @@ import { Observed } from "../observability/decorators/observed";
 import { makeEntitySearchIndexName } from '../search/search-utils';
 import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug, compressIfNeeded, decompressItem, isCompressed, merge, sanitizeRequestForDebug } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
+import { EntityDependencyManager } from "./dependency-manager";
 import { Service } from "electrodb";
 import { ENTITY_OPERATION_KEY } from "./decorators";
 import { UpdateEntityOperators, UpdateEntityResponse, CreateEntityResponse, GetEntityResponse, DeleteEntityResponse, UpsertEntityResponse, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity, upsertBatchEntity, findMatchingIndex } from "./crud-service";
@@ -1233,12 +1234,13 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     protected async afterOperation(opCtx: OperationContext<S>, result: any): Promise<any | void> {
         // Base implementation calls specific lifecycle hooks
         const { operation, ctx } = opCtx;
+        const record = result?.data ?? result;
 
         switch (operation) {
-            case 'create': await this.onAfterCreate(result, ctx); break;
-            case 'update': await this.onAfterUpdate(result, ctx); break;
-            case 'delete': await this.onAfterDelete(result, ctx); break;
-            case 'upsert': await this.onAfterUpsert(result, ctx); break;
+            case 'create': await this.onAfterCreate(record, ctx); break;
+            case 'update': await this.onAfterUpdate(record, ctx); break;
+            case 'delete': await this.onAfterDelete(record, ctx); break;
+            case 'upsert': await this.onAfterUpsert(record, ctx); break;
         }
     }
 
@@ -1531,7 +1533,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
 
     protected async onAfterUpdate(record: EntityRecordTypeFromSchema<S>, ctx?: ExecutionContext): Promise<void> {
-        const recordAsRecord = record as Record<string, any>;
         const cacheProvider = this.getCacheProvider();
         if (cacheProvider && record) {
             const identifiers = this.extractEntityIdentifiers(record);
@@ -1540,45 +1541,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         if (!record) return;
 
-        // Dependency Tracking (Denormalization)
-        const schema = this.getEntitySchema();
-        for (const [ attrName, attr ] of Object.entries(schema.attributes)) {
-            const fwAttr = attr as EntityAttribute;
-            if (fwAttr.dependencies && recordAsRecord[ attrName ] !== undefined) {
-                for (const dep of fwAttr.dependencies) {
-                    const depService = this.getEntityServiceByEntityName(dep.entityName);
-                    if (!depService) {
-                        this.logger.warn(`Dependent entity service "${dep.entityName}" not found.`);
-                        continue;
-                    }
-
-                    // Build filters to find dependent records
-                    const filters: Record<string, any> = {};
-                    if (dep.mapping) {
-                        for (const [ source, target ] of Object.entries(dep.mapping)) {
-                            filters[ target ] = { eq: recordAsRecord[ source ] };
-                        }
-                    } else {
-                        // Fallback: match by primary identifier
-                        const primaryId = this.getEntityPrimaryIdPropertyName();
-                        if (primaryId) {
-                            filters[ primaryId ] = { eq: recordAsRecord[ primaryId ] };
-                        }
-                    }
-
-                    // Find and update dependent records
-                    const queryResult = await depService.list({ filters: filters as EntityFilterCriteria<any> });
-                    if (queryResult.data && queryResult.data.length > 0) {
-                        const updatePromises = queryResult.data.map((depRecord: Record<string, any>) => {
-                            const depIds = depService.extractEntityIdentifiers(depRecord);
-                            const updateData = { [ dep.attributeName ]: recordAsRecord[ attrName ] };
-                            return depService.executeOperation('update', { identifiers: depIds, data: updateData }, ctx);
-                        });
-                        await Promise.all(updatePromises);
-                    }
-                }
-            }
-        }
+        // Propagate changes to subscribers via DependencyManager (Subscription Model)
+        // This decouples the source entity from its dependents.
+        await EntityDependencyManager.propagateChanges(this.getEntityName(), record, Object.keys(record), ctx);
     }
 
     protected async onBeforeUpsert(payload: any, ctx?: ExecutionContext): Promise<any | void> {
