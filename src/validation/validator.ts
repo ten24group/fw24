@@ -281,14 +281,16 @@ export class Validator implements IValidator {
 
         for (const ruleResult of results) {
             result.pass = result.pass && ruleResult.pass;
-            if (ruleResult.errors) {
-                result.errors!.push(...ruleResult.errors);
-            }
-            if (ruleResult.customMessage || ruleResult.customMessageId) {
-                result.errors!.push({
-                    customMessage: ruleResult.customMessage,
-                    customMessageId: ruleResult.customMessageId,
-                })
+            if (!ruleResult.pass) {
+                if (ruleResult.errors?.length) {
+                    result.errors!.push(...ruleResult.errors);
+                }
+                if (ruleResult.customMessage || ruleResult.customMessageId) {
+                    result.errors!.push({
+                        customMessage: ruleResult.customMessage,
+                        customMessageId: ruleResult.customMessageId,
+                    })
+                }
             }
         }
 

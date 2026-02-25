@@ -127,7 +127,7 @@ export const GeoHash = {
 
         const lastCh = geohash.charAt(geohash.length - 1);
         const type = (geohash.length % 2) ? 'odd' : 'even';
-        const base = geohash.substring(0, geohash.length - 1);
+        let base = geohash.substring(0, geohash.length - 1);
 
         const neighbors: any = {
             n: { even: 'p0r21436x8zb9dcf5h7kjnmqesgutwvy', odd: 'bc0fg45km89npqrstuvwxyz2367dejh' },

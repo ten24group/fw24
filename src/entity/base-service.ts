@@ -181,7 +181,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const ancestorIds = path.split(separator).filter(id => !!id);
 
         const result = await this.batchGet({
-            identifiers: ancestorIds.map(id => ({ [ primaryIdName ]: id } as any))
+            identifiers: ancestorIds.map(id => ({ [ primaryIdName ]: id } as EntityIdentifiersTypeFromSchema<S>))
         });
 
         return result.data as EntityRecordTypeFromSchema<S>[];
@@ -635,7 +635,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         // Handle EntityGetOptions wrapper
         if ('identifiers' in input && !isArray(input.identifiers)) {
-            input = (input as any).identifiers;
+            input = (input as EntityGetOptions<S>).identifiers;
         }
 
         const isBatchInput = isArray(input);
@@ -726,10 +726,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         // 4. Verify handlers for enabled operations
         Object.entries(resolved).forEach(([ opName, config ]) => {
             if (config.enabled !== false) {
-                const handlerName = config.handler || opName;
+                const handlerName = (config.handler || opName) as keyof this;
                 const isStandard = [ 'get', 'list', 'query', 'search', 'create', 'update', 'upsert', 'delete', 'duplicate', 'batchDelete', 'deleteByQuery', 'batchUpsert' ].includes(opName);
 
-                if (!isStandard && typeof (this as any)[ handlerName ] !== 'function') {
+                if (!isStandard && typeof this[ handlerName ] !== 'function') {
                     this.logger.error(`⚠️ Operation "${opName}" is enabled but handler "${handlerName}" is missing on service ${this.constructor.name}`);
                 }
             }
@@ -771,7 +771,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                         } else {
                             op.visibility = {
                                 or: states.map(s => ({ record: { [ stateAttr ]: { eq: s } } }))
-                            } as any;
+                            } as Condition;
                         }
                     }
                 });
@@ -809,13 +809,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param opName Name of the operation to execute
      * @param payload Input data for the operation
      * @param ctx Execution context
-     */
-    /**
-     * Creates a new entity.
-     * Note: Prefer calling executeOperation('create', payload) to ensure all hooks are executed.
-     *
-     * @param payload - The payload for creating the entity.
-     * @returns The created entity.
      */
     @Observed({
         trace: { level: 'info' },
@@ -866,14 +859,14 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
             // 5. DISPATCH TO HANDLER
             let result: TEntityOpsOutputTypes<S>[ K ];
-            const handlerName = config.handler || opName;
+            const handlerName = (config.handler || opName) as keyof this;
 
             // Check if it's a standard operation without a custom handler override in schema
             const standardOps: string[] = [ 'get', 'list', 'query', 'search', 'create', 'update', 'upsert', 'delete', 'duplicate', 'batchDelete', 'deleteByQuery', 'batchUpsert' ];
             const isStandard = standardOps.includes(opName);
             const hasCustomHandler = config.handler && config.handler !== opName;
 
-            const serviceHandler = (this as any)[ handlerName ];
+            const serviceHandler = this[ handlerName ];
 
             if (isStandard && !hasCustomHandler) {
                 // Use the dispatcher which knows how to call standard methods with multiple arguments
@@ -950,20 +943,20 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const modifiedPayload = await this.beforeOperation(opCtx);
         const finalPayload = (modifiedPayload ?? payload);
 
-        const repo = this.getRepository() as any;
+        const repo = this.getRepository();
         switch (opName) {
             case 'create':
             case 'upsert':
-                return repo.put(finalPayload).transaction();
+                return (repo as any).put(finalPayload).transaction();
             case 'update':
                 const pathParams = ctx?.request?.pathParameters || (ctx as Record<string, any>)?.params || {};
                 const updatePayload = finalPayload as Record<string, any>;
-                const identifiers = updatePayload.identifiers || this.extractEntityIdentifiers({ ...pathParams, ...updatePayload });
+                const identifiers = updatePayload.identifiers || (this.extractEntityIdentifiers({ ...pathParams, ...updatePayload }) as Record<string, any>);
                 const data = updatePayload.data || updatePayload;
-                return repo.patch(identifiers).set(data).transaction();
+                return (repo as any).patch(identifiers).set(data).transaction();
             case 'delete':
-                const deleteIds = this.extractEntityIdentifiers(finalPayload as Record<string, any>);
-                return repo.delete(deleteIds).transaction();
+                const deleteIds = (this.extractEntityIdentifiers(finalPayload as Record<string, any>) as Record<string, any>);
+                return (repo as any).delete(deleteIds).transaction();
             default:
                 throw new Error(`Operation "${opName}" is not supported in transactions.`);
         }
@@ -981,7 +974,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * ]);
      */
     public async executeTransaction<K extends keyof S[ 'model' ][ 'entityOperations' ] & string>(
-        operations: Array<{ op: K, payload: TEntityOpsInputSchemas<S>[ K ], service?: BaseEntityService<any> }>,
+        operations: Array<{ op: K, payload: any, service?: BaseEntityService<any> }>,
         ctx?: ExecutionContext
     ) {
         const items = await Promise.all(operations.map(async (opt) => {
@@ -1000,7 +993,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const transactionService = new Service(entities, this.entityConfigurations);
 
         return await QueryObserver.track(this.getEntityName(), 'transaction', () =>
-            (transactionService.transaction as any).write(items).go({ ...QueryObserver.getCapacityGoOptions() })
+            transactionService.transaction.write(items).go({ ...QueryObserver.getCapacityGoOptions() })
         );
     }
 
@@ -1012,7 +1005,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         payload: TEntityOpsInputSchemas<S>[ K ],
         ctx?: ExecutionContext
     ): Promise<TEntityOpsOutputTypes<S>[ K ]> {
-        const pathParams = ctx?.request?.pathParameters || (ctx as any)?.params || {};
+        const pathParams = ctx?.request?.pathParameters || (ctx as Record<string, any>)?.params || {};
 
         // Helper to extract identifiers from payload or path params
         const getIds = (p: any) => this.extractEntityIdentifiers({ ...pathParams, ...p }) as EntityIdentifiersTypeFromSchema<S>;
@@ -1025,10 +1018,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             }
             case 'list': return (await this.list(payload as EntityQuery<S>, ctx)) as TEntityOpsOutputTypes<S>[ K ];
             case 'query': return (await this.query(payload as EntityQuery<S>, ctx)) as TEntityOpsOutputTypes<S>[ K ];
-            case 'search': return (await this.search(payload as any, ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'search': return (await this.search(payload as EntitySearchQuery<S>, ctx)) as TEntityOpsOutputTypes<S>[ K ];
             case 'create': return (await this.create(payload as CreateEntityItemTypeFromSchema<S>, ctx)) as TEntityOpsOutputTypes<S>[ K ];
             case 'update': {
-                const p = payload as any;
+                const p = payload as Record<string, any>;
                 const ids = p.identifiers || getIds(p);
                 const data = p.data || p;
                 return (await this.update(ids, data, p.operators, ctx)) as TEntityOpsOutputTypes<S>[ K ];
@@ -1037,14 +1030,14 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             case 'delete': return (await this.delete(getIds(payload), ctx)) as TEntityOpsOutputTypes<S>[ K ];
             case 'duplicate': return (await this.duplicate(getIds(payload), ctx)) as TEntityOpsOutputTypes<S>[ K ];
             case 'batchUpsert': {
-                const p = payload as { items: any[], options: any };
+                const p = payload as TEntityOpsInputSchemas<S>['batchUpsert'];
                 return (await this.batchUpsert(p.items, p.options, ctx)) as TEntityOpsOutputTypes<S>[ K ];
             }
-            case 'batchDelete': return (await this.batchDelete(payload as any, ctx)) as TEntityOpsOutputTypes<S>[ K ];
-            case 'deleteByQuery': return (await this.deleteByQuery(payload as any, ctx)) as TEntityOpsOutputTypes<S>[ K ];
-            case 'export': return (await this.export(payload as any, ctx)) as TEntityOpsOutputTypes<S>[ K ];
-            case 'import': return (await this.import(payload as any, ctx)) as TEntityOpsOutputTypes<S>[ K ];
-            case 'patch': return (await this.patch(payload as any, ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'batchDelete': return (await this.batchDelete(payload as TEntityOpsInputSchemas<S>['batchDelete'], ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'deleteByQuery': return (await this.deleteByQuery(payload as TEntityOpsInputSchemas<S>['deleteByQuery'], ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'export': return (await this.export(payload as TEntityOpsInputSchemas<S>['export'], ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'import': return (await this.import(payload as TEntityOpsInputSchemas<S>['import'], ctx)) as TEntityOpsOutputTypes<S>[ K ];
+            case 'patch': return (await this.patch(payload as TEntityOpsInputSchemas<S>['patch'], ctx)) as TEntityOpsOutputTypes<S>[ K ];
             case 'restore': return (await this.restore(getIds(payload), ctx)) as TEntityOpsOutputTypes<S>[ K ];
             case 'archive': return (await this.archive(getIds(payload), ctx)) as TEntityOpsOutputTypes<S>[ K ];
             default:
@@ -1135,9 +1128,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const validation = await DefaultValidator.validateEntity({
             operationName: operation,
             entityName: this.getEntityName(),
-            entityValidations: this.getEntityValidations() as any,
+            entityValidations: this.getEntityValidations() as EntityValidations<S>,
             overriddenErrorMessages: await this.getOverriddenEntityValidationErrorMessages(),
-            input: payload,
+            input: payload as Record<string, any>,
             actor: ctx?.actor
         });
 
@@ -1162,11 +1155,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
             if (typeof guard === 'string') {
                 guardName = guard;
-                const guardMethod = (this as any)[ guard ];
+                const guardMethod = this[ guard as keyof this ];
                 if (typeof guardMethod !== 'function') {
                     throw new Error(`Guard method "${guard}" not found on service "${this.constructor.name}"`);
                 }
-                passed = await guardMethod.call(this, payload, ctx);
+                passed = await (guardMethod as Function).call(this, payload, ctx);
             } else if (typeof guard === 'function') {
                 guardName = guard.name || 'anonymous function';
                 passed = await guard(payload, ctx);
@@ -1210,7 +1203,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 resolved.push(interceptorDef as EntityInterceptor);
             } else {
                 try {
-                    const interceptor = this.diContainer.resolve<EntityInterceptor>(interceptorDef as any);
+                    const interceptor = this.diContainer.resolve<EntityInterceptor>(interceptorDef as DepIdentifier<EntityInterceptor>);
                     resolved.push(interceptor);
                 } catch (e) {
                     this.logger.error(`Failed to resolve interceptor: ${interceptorDef}`, e);
@@ -1265,7 +1258,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
     // Specific convenience hooks
     protected async onBeforeCreate(payload: CreateEntityItemTypeFromSchema<S>, ctx?: ExecutionContext): Promise<CreateEntityItemTypeFromSchema<S> | void> {
-        let payloadCopy = { ...payload } as Record<string, any>;
+        let payloadCopy = { ...payload };
 
         // Geospatial
         const schema = this.getEntitySchema();
@@ -1364,7 +1357,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
     protected async onAfterCreate(record: EntityRecordTypeFromSchema<S>, ctx?: ExecutionContext): Promise<void> {
         if (!record) return;
-        const recordAsRecord = record as Record<string, any>;
         const schema = this.getEntitySchema();
 
         // Hierarchy - Ancestry Entity (Closure Table)
@@ -1373,11 +1365,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             const parentAttr = treeConfig.parentAttribute || 'parentId';
             const ancestryEntityName = `${pascalCase(this.getEntityName())}Ancestry`;
 
-            if (recordAsRecord[ parentAttr ] && this.hasEntityServiceByEntityName(ancestryEntityName)) {
+            if (record[ parentAttr ] && this.hasEntityServiceByEntityName(ancestryEntityName)) {
                 const ancestryService = this.getEntityServiceByEntityName(ancestryEntityName);
-                const parentId = recordAsRecord[ parentAttr ];
+                const parentId = record[ parentAttr ];
                 const primaryIdName = this.getEntityPrimaryIdPropertyName();
-                const recordId = primaryIdName ? recordAsRecord[ primaryIdName ] : recordAsRecord.id;
+                const recordId = primaryIdName ? record[ primaryIdName ] : record.id;
 
                 if (recordId) {
                     const ancestryOps = [];
@@ -1398,7 +1390,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                     ancestryOps.push({ op: 'upsert', payload: { ancestorId: recordId, descendantId: recordId, depth: 0 }, service: ancestryService });
 
                     // Execute all as a transaction
-                    await this.executeTransaction(ancestryOps as any, ctx);
+                    await this.executeTransaction(ancestryOps as Array<{ op: any, payload: any, service?: BaseEntityService<any> }>, ctx);
                 }
             }
         }
@@ -1407,7 +1399,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     protected async onBeforeUpdate(payload: EntityUpdateOptions<S>, ctx?: ExecutionContext): Promise<UpdateEntityItemTypeFromSchema<S> | void> {
         const schema = this.getEntitySchema();
         const data = (payload as any).data || payload;
-        const dataAsRecord = data as Record<string, any>;
+        const dataAsRecord = data as UpdateEntityItemTypeFromSchema<S>;
 
         // 0. Extract identifiers
         const identifiers = this.extractEntityIdentifiers(ctx?.request?.pathParameters || payload) as Record<string, any>;
@@ -1477,7 +1469,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                     }
                     ancestryOps.push({ op: 'upsert', payload: { ancestorId: recordId, descendantId: recordId, depth: 0 }, service: ancestryService });
 
-                    await this.executeTransaction(ancestryOps as any, ctx);
+                    await this.executeTransaction(ancestryOps as Array<{ op: any, payload: any, service?: BaseEntityService<any> }>, ctx);
                 }
             }
         }
@@ -1624,7 +1616,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
     protected async onAfterDelete(record: EntityRecordTypeFromSchema<S>, ctx?: ExecutionContext): Promise<void> {
         if (record) {
-            const recordAsRecord = record as Record<string, any>;
             await this.handleRelationalIntegrityOnDelete(record, 'after', ctx);
 
             // 1. Clean up Hierarchy (Ancestry records)
@@ -1632,7 +1623,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             if (this.hasEntityServiceByEntityName(ancestryEntityName)) {
                 const ancestryService = this.getEntityServiceByEntityName(ancestryEntityName);
                 const primaryIdName = this.getEntityPrimaryIdPropertyName();
-                const recordId = primaryIdName ? recordAsRecord[ primaryIdName ] : recordAsRecord.id;
+                const recordId = primaryIdName ? record[ primaryIdName ] : record.id;
 
                 if (recordId) {
                     this.logger.info(`Cleaning up ancestry records for ${this.getEntityName()}: ${recordId}`);
@@ -1701,7 +1692,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             // Attempt to resolve a shared service instance from DI
             // This allows developers to group multiple entities into a single Service
             const sharedService = this.diContainer.resolve<Service>('ElectroDBService');
-            if (sharedService && (sharedService.entities as any)[ this.getEntityName() ]) {
+            if (sharedService && (sharedService.entities as Record<string, any>)[ this.getEntityName() ]) {
                 return sharedService;
             }
         } catch (e) {
@@ -1725,7 +1716,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      */
     public async find(attributes: Partial<EntityRecordTypeFromSchema<S>>, options: any = {}) {
         const repo = this.getRepository();
-        return await repo.find(attributes as any).go({
+        return await repo.find(attributes as Record<string, any>).go({
             ...QueryObserver.getCapacityGoOptions(),
             ...options
         });
@@ -1740,7 +1731,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      */
     public async match(attributes: Partial<EntityRecordTypeFromSchema<S>>, options: any = {}) {
         const repo = this.getRepository();
-        return await repo.match(attributes as any).go({
+        return await repo.match(attributes as Record<string, any>).go({
             ...QueryObserver.getCapacityGoOptions(),
             ...options
         });
@@ -1778,7 +1769,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
             // Attribute-level validations from schema
             if (attr.validations) {
-                rules.push(...(attr.validations as any[]));
+                rules.push(...(attr.validations as ValidationRule<any>[]));
             }
 
             if (rules.length > 0) {
@@ -1805,14 +1796,14 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
             // 3. Merge explicit operation-level validations
             if (typeof opConfig !== 'string' && opConfig.validations) {
-                const explicitValidations = opConfig.validations as any;
+                const explicitValidations = opConfig.validations as InputValidationRule;
                 // Handle InputValidationRule format (prop -> rule)
                 for (const [ propName, rule ] of Object.entries(explicitValidations)) {
                     if (propName === 'body' || propName === 'query' || propName === 'param' || propName === 'header') {
                         // This is HttpRequestValidations, skip for now or handle specifically
                         continue;
                     }
-                    const ruleWithOp = { ...(rule as any), operations: [ opName ] };
+                    const ruleWithOp = { ...(rule as ValidationRule<any>), operations: [ opName ] };
                     inputValidations[ propName ] = [ ...(inputValidations[ propName ] || []), ruleWithOp ];
                 }
             }
@@ -1876,7 +1867,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             io.attributes.forEach(attrName => {
                 const attr = schema.attributes[ attrName ];
                 if (attr) {
-                    attributesMap.set(attrName as any, entityAttributeToIOSchemaAttribute(attrName, attr));
+                    attributesMap.set(attrName as keyof S['attributes'], entityAttributeToIOSchemaAttribute(attrName, attr));
                 }
             });
         }
@@ -1884,7 +1875,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         // 3. Apply extra fields if specified
         if (io.extra) {
             for (const [ name, attr ] of Object.entries(io.extra)) {
-                attributesMap.set(name as any, entityAttributeToIOSchemaAttribute(name, attr));
+                attributesMap.set(name as keyof S['attributes'], entityAttributeToIOSchemaAttribute(name, attr));
             }
         }
 
@@ -1911,12 +1902,13 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             const formattedAtt = entityAttributeToIOSchemaAttribute(attName, att);
             if (formattedAtt.hidden) continue;
 
-            profiles.all.set(attName as any, formattedAtt);
-            if (formattedAtt.isCreatable !== false) profiles.creatable.set(attName as any, formattedAtt);
-            if (formattedAtt.isEditable !== false) profiles.editable.set(attName as any, formattedAtt);
-            if (formattedAtt.isVisible !== false) profiles.visible.set(attName as any, formattedAtt);
-            if (formattedAtt.isListable !== false) profiles.listable.set(attName as any, formattedAtt);
-            if (formattedAtt.isIdentifier) profiles.identifiers.set(attName as any, formattedAtt);
+            const key = attName as keyof S['attributes'];
+            profiles.all.set(key, formattedAtt);
+            if (formattedAtt.isCreatable !== false) profiles.creatable.set(key, formattedAtt);
+            if (formattedAtt.isEditable !== false) profiles.editable.set(key, formattedAtt);
+            if (formattedAtt.isVisible !== false) profiles.visible.set(key, formattedAtt);
+            if (formattedAtt.isListable !== false) profiles.listable.set(key, formattedAtt);
+            if (formattedAtt.isIdentifier) profiles.identifiers.set(key, formattedAtt);
         }
 
         const accessPatterns = makeEntityAccessPatternsSchema(schema);
@@ -2257,7 +2249,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         // Get relation's metadata
         const currentEntitySchema = this.getEntitySchema();
-        const relationAttributeMetadata = currentEntitySchema.attributes[ relatedAttributeName as any ] as EntityAttribute;
+        const relationAttributeMetadata = currentEntitySchema.attributes[ relatedAttributeName as keyof S['attributes'] & string ] as EntityAttribute;
 
         if (!relationAttributeMetadata || !relationAttributeMetadata?.relation) {
             const message = `No metadata found for relationship: ${relatedAttributeName}`
@@ -2527,7 +2519,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         this.logger.debug(`Formatted attributes for entity: ${this.getEntityName()}`, formattedAttributes);
 
-        const requiredSelectAttributes = Object.entries(formattedAttributes as any).reduce((acc, [ attName, options ]) => {
+        const requiredSelectAttributes = Object.entries(formattedAttributes as Record<string, any>).reduce((acc, [ attName, options ]) => {
             acc.push(attName);
             if (isObject(options) && options.identifiers) {
                 const identifiers: Array<RelationIdentifier<any>> = Array.isArray(options.identifiers) ? options.identifiers : [ options.identifiers ];
@@ -2556,11 +2548,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             entity.data = this.decompressFields(entity.data);
 
             if (!!formattedAttributes) {
-                const relationalAttributes = Object.entries(formattedAttributes)?.map(([ attributeName, options ]) => [ attributeName, options ])
-                    .filter(([ , options ]) => isObject(options));
+                const relationalAttributes = Object.entries(formattedAttributes as Record<string, any>)?.map(([ attributeName, options ]) => [ attributeName, options ])
+                    .filter(([ , options ]) => isObject(options)) as [string, HydrateOptionForRelation<any>][];
 
                 if (relationalAttributes.length) {
-                    await this.hydrateRecords(relationalAttributes as any, [ entity.data ]);
+                    await this.hydrateRecords(relationalAttributes, [ entity.data ]);
                 }
             }
 
@@ -2626,7 +2618,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         this.logger.debug(`Formatted attributes for batch get on entity: ${this.getEntityName()}`, formattedAttributes);
 
-        const requiredSelectAttributes = Object.entries(formattedAttributes as any).reduce((acc, [ attName, options ]) => {
+        const requiredSelectAttributes = Object.entries(formattedAttributes as Record<string, any>).reduce((acc, [ attName, options ]) => {
             acc.push(attName);
             if (isObject(options) && options.identifiers) {
                 const identifiers: Array<RelationIdentifier<any>> = Array.isArray(options.identifiers) ? options.identifiers : [ options.identifiers ];
@@ -2642,7 +2634,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             ids: identifiers,
             attributes: uniqueSelectionAttributes,
             entityName: this.getEntityName(),
-            entityService: this as any,
+            entityService: this as unknown as BaseEntityService<S>,
             concurrent
         });
 
@@ -2657,12 +2649,12 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                     .filter(([ , options ]) => isObject(options));
 
                 if (relationalAttributes.length) {
-                    await this.hydrateRecords(relationalAttributes as any, entity.data);
+                    await this.hydrateRecords(relationalAttributes as [string, HydrateOptionForRelation<any>][], entity.data);
                 }
             }
 
             // Apply Field Level Security (FLS)
-            entity.data = await Promise.all(entity.data.map(record => this.applyReadFLS(record, options as any)));
+            entity.data = await Promise.all(entity.data.map(record => this.applyReadFLS(record, ctx)));
         }
 
         return {
@@ -2763,7 +2755,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         // Use the query method to leverage index selection logic with minimal attribute projection
         const result = await this.query({
             filters,
-            attributes: attributesToProject as any,
+            attributes: attributesToProject as EntitySelections<S>,
             pagination: { count: 1 } // We only need to know if any records exist
         });
 
@@ -2907,18 +2899,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
     /**
      * Creates-OR-Updates an entity.
-     * NOTE: 
-     *   - This method does not check for uniqueness of the attributes, neither create the slug automatically.
-     *   - It's the responsibility of the caller to ensure the read ony attributes are not provided if the record is being upsert.
-     * 
-     * @param payload - The payload for creating-OR-updating the entity.
-     * @returns Object containing:
-     *   - data: The upserted entity data
-     *   - wasCreated: true if record was created, false if updated
-     *   - oldData: previous data if it was an update (undefined for creates)
-     */
-    /**
-     * Creates-OR-Updates an entity.
      * Note: Prefer calling executeOperation('upsert', payload) to ensure all hooks are executed.
      *
      * @param payload - The payload for creating-OR-updating the entity.
@@ -2973,7 +2953,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             throw new Error(`No ${this.getEntityName()} record found for identifiers: ${identifiers}`);
         }
 
-        let duplicateEventData: CreateEntityItemTypeFromSchema<S> = {} as any;
+        let duplicateEventData: Record<string, any> = {};
         const primaryIdPropName = this.getEntityPrimaryIdPropertyName() as string;
 
         const schema = this.getEntitySchema();
@@ -3003,19 +2983,6 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * 
      * @param id - The identifiers of the entity to duplicate.
      * @returns A promise that resolves to the duplicated entity.
-     * 
-     * @example
-     * const entityId = { id: 123, name: 'example' };
-     * const duplicatedEntity = await duplicate(entityId);
-     */
-    /**
-     * Updates an entity in the database.
-     * Note: Prefer calling executeOperation('update', payload) to ensure all hooks are executed.
-     *
-     * @param identifiers - The identifiers of the entity to update.
-     * @param data - The updated data for the entity.
-     * @param operators - Optional update operators (e.g., remove).
-     * @returns The updated entity.
      */
     @Observed({
         trace: { level: 'info' },
@@ -3121,7 +3088,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             sort: query.pagination?.order === 'desc' ? [{ field: 'timestampMs', order: 'desc' }] : undefined,
             limit: query.pagination?.count || 25,
             offset: offset,
-            select: query.attributes as any
+            select: query.attributes as (keyof S['attributes'] & string)[]
         }, _ctx);
 
         // Unify response format
@@ -3136,12 +3103,12 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
         // Handle soft delete filtering
-        if (this.getEntitySchema().model.softDelete && !(query as any).includeDeleted) {
+        if (this.getEntitySchema().model.softDelete && !(query as Record<string, any>).includeDeleted) {
             const deletedAtAttr = getAttributeNameBy(this.getEntitySchema(), 'deletedAt') || 'deletedAt';
             query.filters = {
                 ...(query.filters || {}),
                 [ deletedAtAttr ]: { notExists: true }
-            } as any;
+            } as EntityFilterCriteria<S>;
         }
 
         if (!query.attributes) {
@@ -3161,10 +3128,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             // Still need to serialize and hydrate search results
             result.data = this.serializeRecords(result.data, query.attributes);
             if (query.attributes && result.data.length > 0) {
-                const relationalAttributes = Object.entries(query.attributes)
-                    .filter(([ , options ]) => isObject(options));
+                const relationalAttributes = Object.entries(query.attributes as Record<string, any>)
+                    .filter(([ , options ]) => isObject(options)) as [string, HydrateOptionForRelation<any>][];
                 if (relationalAttributes.length) {
-                    await this.hydrateRecords(relationalAttributes as any, result.data);
+                    await this.hydrateRecords(relationalAttributes, result.data);
                 }
             }
             return result;
@@ -3184,7 +3151,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 }
 
                 const searchFilterGroup = makeFilterGroupForSearchKeywords(query.search, query.searchAttributes);
-                query.filters = addFilterGroupToEntityFilterCriteria<S>(searchFilterGroup as any, query.filters);
+                query.filters = addFilterGroupToEntityFilterCriteria<S>(searchFilterGroup as Record<string, any>, query.filters);
             }
         }
 
@@ -3203,14 +3170,14 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         entities.data = this.serializeRecords(entities.data, query.attributes);
 
         if (query.attributes && entities.data) {
-            const relationalAttributes = Object.entries(query.attributes)?.map(([ attributeName, options ]) => {
+            const relationalAttributes = Object.entries(query.attributes as Record<string, any>)?.map(([ attributeName, options ]) => {
                 return [ attributeName, options ];
             })
                 // only attributes in hydrate options that have relation metadata attached to them needs to be hydrated
-                .filter(([ , options ]) => isObject(options));
+                .filter(([ , options ]) => isObject(options)) as [string, HydrateOptionForRelation<any>][];
 
             if (relationalAttributes.length) {
-                await this.hydrateRecords(relationalAttributes as any, entities.data);
+                await this.hydrateRecords(relationalAttributes, entities.data);
             }
         }
 
@@ -3258,12 +3225,12 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         this.logger.debug(`Called ~ query ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
         // Handle soft delete filtering
-        if (this.getEntitySchema().model.softDelete && !(query as any).includeDeleted) {
+        if (this.getEntitySchema().model.softDelete && !(query as Record<string, any>).includeDeleted) {
             const deletedAtAttr = getAttributeNameBy(this.getEntitySchema(), 'deletedAt') || 'deletedAt';
             query.filters = {
                 ...(query.filters || {}),
                 [ deletedAtAttr ]: { notExists: true }
-            } as any;
+            } as EntityFilterCriteria<S>;
         }
 
         const { attributes } = query;
@@ -3287,10 +3254,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             // Still need to serialize and hydrate search results
             result.data = this.serializeRecords(result.data, selectAttributes);
             if (selectAttributes && result.data.length > 0) {
-                const relationalAttributes = Object.entries(selectAttributes)
-                    .filter(([ , options ]) => isObject(options));
+                const relationalAttributes = Object.entries(selectAttributes as Record<string, any>)
+                    .filter(([ , options ]) => isObject(options)) as [string, HydrateOptionForRelation<any>][];
                 if (relationalAttributes.length) {
-                    await this.hydrateRecords(relationalAttributes as any, result.data);
+                    await this.hydrateRecords(relationalAttributes, result.data);
                 }
             }
             return result;
@@ -3307,7 +3274,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
                 const searchFilterGroup = makeFilterGroupForSearchKeywords(query.search, query.searchAttributes);
 
-                query.filters = addFilterGroupToEntityFilterCriteria<S>(searchFilterGroup as any, query.filters);
+                query.filters = addFilterGroupToEntityFilterCriteria<S>(searchFilterGroup as Record<string, any>, query.filters);
             }
         }
 
@@ -3326,14 +3293,14 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         entities.data = this.serializeRecords(entities.data, selectAttributes);
 
         if (selectAttributes && entities.data) {
-            const relationalAttributes = Object.entries(selectAttributes)?.map(([ attributeName, options ]) => {
+            const relationalAttributes = Object.entries(selectAttributes as Record<string, any>)?.map(([ attributeName, options ]) => {
                 return [ attributeName, options ];
             })
                 // only attributes in hydrate options that have relation metadata attached to them needs to be hydrated
-                .filter(([ , options ]) => isObject(options));
+                .filter(([ , options ]) => isObject(options)) as [string, HydrateOptionForRelation<any>][];
 
             if (relationalAttributes.length) {
-                await this.hydrateRecords(relationalAttributes as any, entities.data);
+                await this.hydrateRecords(relationalAttributes, entities.data);
             }
         }
 
@@ -3415,7 +3382,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 }
 
                 // Call update directly to perform soft delete
-                const result = await this.update(identifiers as any, updateData, undefined, ctx);
+                const result = await this.update(identifiers as EntityIdentifiersTypeFromSchema<S>, updateData, undefined, ctx);
                 return { data: result.data };
             }
 
@@ -3492,7 +3459,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         extract: {
             start: ({ instance, args }) => ({
                 tags: { entityName: (instance as { getEntityName(): string }).getEntityName() },
-                metrics: { batchSize: (args[ 0 ] as any[])?.length }
+                metrics: { batchSize: (args[ 0 ] as unknown[])?.length }
             })
         }
     })
@@ -3501,9 +3468,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const processedItems = await Promise.all(items.map(item => this.onBeforeUpsert(item, ctx)));
 
         const result = await upsertBatchEntity<S>({
-            items: processedItems,
+            items: processedItems as UpsertEntityItemTypeFromSchema<S>[],
             entityName: this.getEntityName(),
-            entityService: this as any,
+            entityService: this as unknown as BaseEntityService<S>,
             concurrent: options.concurrent,
             actor: ctx?.actor
         });
@@ -3537,7 +3504,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             });
 
             // ElectroDB batch delete returns { unprocessed: Array }
-            const unprocessedCount = (result as any)?.unprocessed?.length || 0;
+        const unprocessedCount = (result as Record<string, any>)?.unprocessed?.length || 0;
             const dataCount = result.data?.length;
             this.logger.debug(`Completed ~ batchDelete ~ entityName: ${this.getEntityName()} ~ processed: ${identifiers.length}, dataCount: ${dataCount}, unprocessed: ${unprocessedCount}`);
 
@@ -3653,7 +3620,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
                 // Extract identifiers from the fetched items
                 const identifiers = itemsToDelete.map(item =>
-                    this.extractEntityIdentifiers(item as any)
+                    this.extractEntityIdentifiers(item as Record<string, any>)
                 ) as Array<EntityIdentifiersTypeFromSchema<S>>;
 
                 // Batch delete the items
@@ -3662,7 +3629,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                     concurrent
                 }, ctx);
 
-                const unprocessedCount = (deleteResult as any)?.unprocessed?.length || 0;
+                const unprocessedCount = (deleteResult as Record<string, any>)?.unprocessed?.length || 0;
                 const dataCount = deleteResult.data?.length;
                 const batchDeletedCount = identifiers.length - unprocessedCount;
                 deletedCount += batchDeletedCount;
@@ -3816,9 +3783,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         if (!isEmpty(filters)) {
             this.logger.info(`Setting ${childAttrName} to null in ${childEntityName} for deleted ${this.getEntityName()}`);
             const children = await childService.list({ filters }, _ctx);
-            const childIds = children.data.map((c: any) => childService.extractEntityIdentifiers(c));
+            const childIds = children.data.map((c: Record<string, any>) => childService.extractEntityIdentifiers(c));
             if (childIds.length > 0) {
-                await childService.patch({ ids: childIds, data: { [ childAttrName ]: null } as any }, _ctx);
+                await childService.patch({ ids: childIds as EntityIdentifiersTypeFromSchema<any>[], data: { [ childAttrName ]: null } as UpdateEntityItemTypeFromSchema<any> }, _ctx);
             }
         }
     }
@@ -3979,7 +3946,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             // Recurse to expand child's relationships
             meta.attributes = this.inferRelationshipsForEntitySelections(
                 relatedEntitySchema,
-                (pathSelectionAttributes || relationSelectionAttributes || relatedEntityDefaultSelectionAttributes) as any,
+                (pathSelectionAttributes || relationSelectionAttributes || relatedEntityDefaultSelectionAttributes) as ParsedEntityAttributePaths,
                 nextEntityName,
                 visitedPaths,
                 maxDepth - 1
@@ -4023,7 +3990,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const searchService = this.getSearchService();
         if (!query.select) {
             // * Note: we expect an array of attribute names
-            query.select = this.getListingAttributeNames() as any;
+            query.select = this.getListingAttributeNames() as (keyof S['attributes'] & string)[];
         }
         const result = await searchService.search(query, undefined, ctx);
 
@@ -4211,7 +4178,7 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
 
     const relationMeta = relatedEntityName ? { ...restRelation, entityName: relatedEntityName } : undefined;
 
-    const { items, type, properties, addNewOption, addNewOptionConfig, fieldType: explicitFieldType, options, ...restRestMeta } = restMeta as any;
+    const { items, type, properties, addNewOption, addNewOptionConfig, fieldType: explicitFieldType, options, ...restRestMeta } = restMeta as Record<string, any>;
 
     // Infer fieldType from type if not explicitly provided
     let inferredFieldType: string | undefined = explicitFieldType;
@@ -4253,12 +4220,12 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         inferredFieldType = 'map-location';
     }
 
-    const formatted: any = {
+    const formatted: Record<string, any> = {
         ...restRestMeta,
         type,
         id: attId,
         name: name || toHumanReadableName(attId),
-        relation: relationMeta as any,
+        relation: relationMeta,
         defaultValue,
         validations: validations || (required ? [ 'required' ] : []),
         isVisible: !('isVisible' in att) ? true : att.isVisible,

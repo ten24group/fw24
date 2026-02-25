@@ -20,7 +20,6 @@
  * - **dashboard**: Dashboard pages with widgets and metrics
  * - **accordion**: Accordion-based pages with nested sections
  * - **menu**: Navigation menu pages
- * - **map**: Geographic map views for geospatial data
  * 
  * ## Key Features
  * 
@@ -48,7 +47,7 @@ import { IEntityPageColumnConfig } from "../../entity/base-entity";
  * const formPage: PageType = 'form';  // Renders create/edit form
  * ```
  */
-export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion" | "menu" | "map";
+export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "accordion" | "menu";
 
 /**
  * Field rendering types for UI components.
@@ -1351,33 +1350,10 @@ export interface MenuPageConfig extends BasePageConfig {
 }
 
 /**
- * Map page configuration for geographic views.
- */
-export interface MapPageConfig extends BasePageConfig {
-    pageType: "map";
-    mapPageConfig: {
-        /** API configuration for fetching map markers */
-        apiConfig: IModalApiConfig;
-        /** Attribute name for latitude (defaults to 'lat') */
-        latAttribute?: string;
-        /** Attribute name for longitude (defaults to 'lng') */
-        lngAttribute?: string;
-        /** Attribute name for marker title */
-        titleAttribute?: string;
-        /** Attribute name for marker description */
-        descriptionAttribute?: string;
-        /** Initial zoom level */
-        zoom?: number;
-        /** Initial center point */
-        center?: { lat: number; lng: number };
-    };
-}
-
-/**
  * Union type for all custom page configuration options.
  * Used as the input type for makeCustomPageConfig function.
  */
-export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageConfig | DashboardPageConfig | AccordionPageConfig | MenuPageConfig | MapPageConfig;
+export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageConfig | DashboardPageConfig | AccordionPageConfig | MenuPageConfig;
 
 /**
  * Factory function for creating custom page configurations.
@@ -1443,11 +1419,6 @@ export function makeCustomPageConfig(options: CustomPageOptions) {
             return {
                 ...baseConfig,
                 menuPageConfig: options.menuPageConfig
-            };
-        case "map":
-            return {
-                ...baseConfig,
-                mapPageConfig: (options as MapPageConfig).mapPageConfig
             };
         default:
             return baseConfig;

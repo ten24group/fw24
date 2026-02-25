@@ -51,6 +51,70 @@ describe('Advanced Entity Enhancements', () => {
     });
 
     // =========================================================================
+    // ADVANCED VALIDATION TESTS
+    // =========================================================================
+    const ValidationSchema = createEntitySchema({
+        model: {
+            entity: 'valTest',
+            service: 'test',
+            version: '1',
+            entityOperations: DefaultEntityOperations
+        },
+        attributes: {
+            id: { type: 'string', required: true, isIdentifier: true },
+            startDate: { type: 'string' },
+            endDate: {
+                type: 'string',
+                validations: [
+                    { greaterThanField: 'startDate', message: 'End date must be after start date' }
+                ]
+            },
+            type: { type: 'string' },
+            reason: {
+                type: 'string',
+                validations: [
+                    { requiredIf: { field: 'type', value: 'other' }, message: 'Reason is required for type other' }
+                ]
+            }
+        },
+        indexes: { primary: { pk: { field: 'pk', composite: ['id'] }, sk: { field: 'sk', composite: [] } } }
+    } as const);
+
+    class ValidationService extends BaseEntityService<typeof ValidationSchema> {
+        constructor() { super(ValidationSchema, { table: 'test' } as any); }
+        public getRepository(): any {
+            return {
+                query: { primary: () => ({
+                    where: () => ({ go: async () => ({ data: [] }) }),
+                    go: async () => ({ data: [] })
+                }) },
+                _findBestIndexKeyMatch: () => ({ keys: [], index: 'primary', shouldScan: false }),
+                create: () => ({ go: async () => ({ data: {} }) }),
+                scan: {
+                    where: jest.fn().mockReturnThis(),
+                    go: jest.fn().mockResolvedValue({ data: [] })
+                }
+            };
+        }
+    }
+
+    test('Validation: should enforce greaterThanField', async () => {
+        const service = new ValidationService();
+        const payload = { id: '1', startDate: '10', endDate: '5', type: 'normal' };
+
+        await expect(service.executeOperation('create', payload))
+            .rejects.toThrow(/End date must be after start date/);
+    });
+
+    test('Validation: should enforce requiredIf', async () => {
+        const service = new ValidationService();
+        const payload = { id: '1', type: 'other', reason: '', startDate: '1', endDate: '10' };
+
+        await expect(service.executeOperation('create', payload))
+            .rejects.toThrow(/Reason is required for type other/);
+    });
+
+    // =========================================================================
     // CACHING TESTS
     // =========================================================================
     test('Caching: should use cache if enabled', async () => {

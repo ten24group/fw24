@@ -639,6 +639,9 @@ export type EntityQuery<E extends EntitySchema<any, any, any>> = {
 
     /** Configuration for sorting results by geographic proximity. */
     geoSort?: GeoSort;
+
+    /** ElectroDB-specific go() options */
+    goOptions?: any;
 }
 
 /**

@@ -593,12 +593,21 @@ import { pascalCase } from "../utils";
 
 /**
  * Helper to create a standard Geo index definition.
+ * Moves geohash to Sort Key to support efficient prefix (proximity) queries.
  */
-export function createGeoIndex(options: { indexName?: string } = {}) {
+export function createGeoIndex(options: {
+  index?: string,
+  pk?: { field: string, template?: string },
+  sk?: { field: string }
+} = {}) {
   return {
-    index: options.indexName || 'gsi1',
-    pk: { field: 'gsi1pk', composite: [ '__geohash' ] },
-    sk: { field: 'gsi1sk', composite: [] }
+    index: options.index || 'gsi1',
+    pk: {
+      field: options.pk?.field || 'gsi1pk',
+      composite: [],
+      template: options.pk?.template || 'SPATIAL_INDEX'
+    },
+    sk: { field: options.sk?.field || 'gsi1sk', composite: [ '__geohash' ] }
   };
 }
 
@@ -4988,7 +4997,11 @@ export type UpsertEntityItem<E extends Entity<any, any, any, any>> =
  * const team: TeamRecord = { teamId: '123', teamName: 'Lakers', ... };
  * ```
  */
-export type EntityRecordTypeFromSchema<Sch extends EntitySchema<any, any, any>> = EntityItem<EntityTypeFromSchema<Sch>>;
+export type EntityRecordTypeFromSchema<Sch extends EntitySchema<any, any, any>> = EntityItem<EntityTypeFromSchema<Sch>> & {
+  _actor?: any;
+  __geohash?: string;
+  __path?: string;
+};
 
 /**
  * Utility type to infer the entity service type from an entity schema.
@@ -5017,7 +5030,9 @@ export type EntityServiceTypeFromSchema<TSchema extends EntitySchema<any, any, a
  * await teamService.get(ids);
  * ```
  */
-export type EntityIdentifiersTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<EntityIdentifiers<EntityTypeFromSchema<TSchema>>>;
+export type EntityIdentifiersTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<EntityIdentifiers<EntityTypeFromSchema<TSchema>>> & {
+  [ key: string ]: any;
+};
 
 /**
  * Utility type to infer the create entity item type from an entity schema.
@@ -5035,7 +5050,12 @@ export type EntityIdentifiersTypeFromSchema<TSchema extends EntitySchema<any, an
  * await teamService.create(newTeam);
  * ```
  */
-export type CreateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<CreateEntityItem<EntityTypeFromSchema<TSchema>>>;
+export type CreateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<CreateEntityItem<EntityTypeFromSchema<TSchema>>> & {
+  _actor?: any;
+  __geohash?: string;
+  __path?: string;
+  [ key: string ]: any;
+};
 
 /**
  * Utility type to infer the upsert entity item type from an entity schema.
@@ -5054,7 +5074,12 @@ export type CreateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any
  * await teamService.upsert(teamData);
  * ```
  */
-export type UpsertEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<UpsertEntityItem<EntityTypeFromSchema<TSchema>>>;
+export type UpsertEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<UpsertEntityItem<EntityTypeFromSchema<TSchema>>> & {
+  _actor?: any;
+  __geohash?: string;
+  __path?: string;
+  [ key: string ]: any;
+};
 
 /**
  * Utility type to infer the update entity item type from an entity schema.
@@ -5071,4 +5096,9 @@ export type UpsertEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any
  * await teamService.update({ teamId: '123' }, updates);
  * ```
  */
-export type UpdateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<UpdateEntityItem<EntityTypeFromSchema<TSchema>>>;
+export type UpdateEntityItemTypeFromSchema<TSchema extends EntitySchema<any, any, any>> = Writable<UpdateEntityItem<EntityTypeFromSchema<TSchema>>> & {
+  _actor?: any;
+  __geohash?: string;
+  __path?: string;
+  [ key: string ]: any;
+};

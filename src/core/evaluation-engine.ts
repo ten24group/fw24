@@ -105,18 +105,21 @@ export class EvaluationEngine {
 
     // Cross-field logic
     if (rule.greaterThanField) {
-      const otherVal = getValueByPath(context.input || context.record, rule.greaterThanField);
+      const targetObj = context.input || context.record;
+      const otherVal = this.safeGetValue(targetObj, rule.greaterThanField);
       if (!(Number(value) > Number(otherVal))) return { pass: false, expected: ['greaterThanField', rule.greaterThanField], received: value };
     }
     if (rule.lessThanField) {
-      const otherVal = getValueByPath(context.input || context.record, rule.lessThanField);
+      const targetObj = context.input || context.record;
+      const otherVal = this.safeGetValue(targetObj, rule.lessThanField);
       if (!(Number(value) < Number(otherVal))) return { pass: false, expected: ['lessThanField', rule.lessThanField], received: value };
     }
     if (rule.requiredIf) {
       const criteria = Array.isArray(rule.requiredIf) ? rule.requiredIf : [rule.requiredIf];
       let matches = true;
+      const targetObj = context.input || context.record;
       for (const c of criteria) {
-        const fVal = getValueByPath(context.input || context.record, c.field);
+        const fVal = this.safeGetValue(targetObj, c.field);
         if (fVal !== c.value) {
           matches = false;
           break;
@@ -143,12 +146,16 @@ export class EvaluationEngine {
 
   private static resolveValue(refOrVal: any, context: any): any {
     if (refOrVal && typeof refOrVal === 'object' && '$ref' in refOrVal) {
-      try {
-        return getValueByPath(context, refOrVal.$ref);
-      } catch (e) {
-        return undefined;
-      }
+      return this.safeGetValue(context, refOrVal.$ref);
     }
     return refOrVal;
+  }
+
+  private static safeGetValue(obj: any, path: string): any {
+    try {
+      return getValueByPath(obj, path);
+    } catch (e) {
+      return undefined;
+    }
   }
 }
