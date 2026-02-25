@@ -4,14 +4,14 @@ The FW24 Simulator provides a high-fidelity local development environment that t
 
 ## Philosophy: CDK-First
 
-The simulator follows a **"CDK-First"** approach:
-1.  **Blueprints**: It reads `cdk.out` (after running `cdk synth`) to discover Lambdas, API routes, DynamoDB tables, SQS queues, and S3 buckets.
-2.  **Parity**: It executes the exact same bundled code that would be deployed to AWS, ensuring that what you see locally is what you get in production.
-3.  **Redirection**: It automatically redirects AWS SDK calls to local sidecar containers (DynamoDB Local, Minio, etc.) without any code changes.
+The simulator follows a "CDK-First" approach:
+1. **Blueprints**: It reads `cdk.out` to discover Lambdas, API routes, DynamoDB tables, SQS queues, and SNS topics.
+2. **Parity**: It executes the exact same bundled code that would be deployed to AWS.
+3. **Redirection**: It automatically redirects AWS SDK calls to local sidecar containers (DynamoDB Local, Minio, etc.) based on the blueprint.
 
 ## Quick Start
 
-To start the simulator, call the `simulate()` method on your `Application` instance. It is recommended to gate this behind an environment variable like `SIMULATE=true`.
+To start the simulator, call the `simulate()` method on your `Application` instance:
 
 ```typescript
 import { Application } from '@ten24group/fw24';
@@ -23,7 +23,7 @@ const app = new Application({
 
 // ... register constructs and modules ...
 
-if (process.env.SIMULATE === 'true') {
+if (process.env.NODE_ENV === 'development') {
   app.simulate({
     port: 3000,
     hotReload: true
@@ -33,40 +33,31 @@ if (process.env.SIMULATE === 'true') {
 }
 ```
 
-Then run your app with the simulate flag:
-```bash
-SIMULATE=true npx ts-node src/index.ts
-```
-
 ## Features
 
-### 🏢 Unified Local Gateway
-All your API Gateways are hosted on a single local port (default: 3000).
-- **Automatic Routing**: Maps HTTP paths and methods to the correct Lambda handlers.
-- **Path Parameters**: Full support for parameterized routes like `/users/{userId}`.
-- **Auth Simulation**:
-    - **Cognito**: Simulates JWT claims from the `Authorization` header.
-    - **IAM**: Detects SigV4-like headers and provides a mock IAM user context.
+### Unified Local Gateway
+All your API Gateways are hosted on a single local port. The simulator automatically handles:
+- Path parameter resolution (e.g., `/users/{id}`).
+- Cognito JWT claim simulation via the `Authorization` header.
+- IAM SigV4 header detection for protected routes.
 
-### 🧪 Best-in-Class Sidecars
-The simulator orchestrates industry-standard local emulators using Docker:
-- **DynamoDB**: Official `amazon/dynamodb-local`. Tables are auto-created based on your schema.
-- **S3**: `minio/minio` (High fidelity S3 API). Buckets are auto-provisioned.
-- **SQS**: `softwaremill/elasticmq-native`. Queues are auto-created.
-- **Cognito**: `jagregory/cognito-local`.
+### Isolated Lambda Execution
+Each Lambda invocation runs in a dedicated Node.js `worker_thread`. This provides:
+- **Clean State**: Each request starts with a fresh environment (optional cache clearing).
+- **Fast Feedback**: Code changes are reflected instantly via Hot Module Replacement (HMR).
+- **Debugger Support**: Local execution allows you to attach your IDE's debugger to the simulator process.
+
+### Autonomous Sidecars
+The simulator manages Docker-based emulators for persistent services:
+- **DynamoDB**: Uses `amazon/dynamodb-local`. Tables are automatically created based on your CDK schema.
+- **S3**: Uses Minio. Buckets are auto-provisioned.
+- **SQS**: Uses ElasticMQ.
 - **MeiliSearch**: For smart query routing simulation.
 
-### 🛡️ Isolated Lambda Execution
-Each Lambda invocation runs in a dedicated Node.js `worker_thread`.
-- **Environment Fidelity**: Each worker is injected with the exact environment variables parsed from the CDK template.
-- **Deep Sanitization**: Complex DI-injected objects are safely passed between threads.
-- **HMR Support**: Code changes trigger an automatic `cdk synth`, and the simulator hot-swaps the underlying bundles instantly.
-- **Node Paths**: Lambda layers are automatically resolved and added to the local `NODE_PATH`.
-
-### 🌉 Event Bridges
-- **SNS**: Simulates fan-out to local SQS or Lambda targets.
+### Event Bridging
+- **SNS**: Simulates fan-out to local SQS or Lambda targets based on subscriptions.
 - **EventBridge**: Emulates scheduled tasks (cron) using `node-cron`.
-- **SES**: Captures outgoing emails and logs them to the console for inspection.
+- **SES**: Captures outgoing emails and logs them to the console.
 
 ## Configuration Options
 
@@ -74,17 +65,10 @@ Each Lambda invocation runs in a dedicated Node.js `worker_thread`.
 | --- | --- | --- | --- |
 | `port` | `number` | `3000` | The port for the API Gateway emulator. |
 | `hotReload` | `boolean` | `true` | Enables automatic re-synthesis on source changes. |
+| `persistent` | `boolean` | `false` | (Future) Whether to preserve data in sidecars across restarts. |
 | `snsPort` | `number` | `4566` | Port for the mock SNS/SES endpoint. |
 
 ## Requirements
 - **Docker**: Must be running to host sidecar containers.
 - **CDK**: The `aws-cdk` CLI must be installed to support `cdk synth`.
-- **ts-node**: Required for executing your application entry point.
-
-## Showcase Application
-Check out `examples/complete-app` for a full demonstration of:
-- **ElectroDB Entities** with CRUD.
-- **DI-driven Services** and Controllers.
-- **S3 File Management** via Minio.
-- **Background SQS Jobs**.
-- **Scheduled Tasks**.
+- **ts-node**: Required for executing TypeScript handlers locally.

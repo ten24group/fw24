@@ -5,6 +5,8 @@ import { FW24Construct } from "./interfaces/construct";
 import { IFw24Module } from "./core/runtime/module";
 import { EntityUIConfigGen } from "./ui-config-gen/entity-ui-config.gen";
 import { ILogger } from "./logging";
+import { ISimulatorConfig } from "./testing/simulator/interfaces";
+import { SimulatorCoordinator } from "./testing/simulator/coordinator";
 export declare class Application {
     readonly logger: ILogger;
     mainStack: Stack;
@@ -46,4 +48,8 @@ export declare class Application {
      * Setup CloudWatch infrastructure for observability.
      */
     private setupObservabilityCloudWatch;
+    /**
+     * Start the local simulator for development.
+     */
+    simulate(config?: ISimulatorConfig): Promise<SimulatorCoordinator | undefined>;
 }

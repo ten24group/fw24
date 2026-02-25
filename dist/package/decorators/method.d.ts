@@ -15,6 +15,14 @@ export declare const Get: (route: string, options?: {
      */
     target?: string;
     /**
+     * Specifies the authorizer for the route.
+     */
+    authorizer?: {
+        name?: string;
+        type?: string;
+        groups?: string[] | string;
+    } | string;
+    /**
      * Observability config override for this method.
      * Takes precedence over controller-level config.
      */
@@ -32,6 +40,14 @@ export declare const Post: (route: string, options?: {
      * @default ""
      */
     target?: string;
+    /**
+     * Specifies the authorizer for the route.
+     */
+    authorizer?: {
+        name?: string;
+        type?: string;
+        groups?: string[] | string;
+    } | string;
     /**
      * Observability config override for this method.
      * Takes precedence over controller-level config.
@@ -53,6 +69,14 @@ export declare const Put: (route: string, options?: {
      */
     target?: string;
     /**
+     * Specifies the authorizer for the route.
+     */
+    authorizer?: {
+        name?: string;
+        type?: string;
+        groups?: string[] | string;
+    } | string;
+    /**
      * Observability config override for this method.
      * Takes precedence over controller-level config.
      */
@@ -72,6 +96,14 @@ export declare const Delete: (route: string, options?: {
      * @default ""
      */
     target?: string;
+    /**
+     * Specifies the authorizer for the route.
+     */
+    authorizer?: {
+        name?: string;
+        type?: string;
+        groups?: string[] | string;
+    } | string;
     /**
      * Observability config override for this method.
      * Takes precedence over controller-level config.
@@ -93,6 +125,14 @@ export declare const Patch: (route: string, options?: {
      */
     target?: string;
     /**
+     * Specifies the authorizer for the route.
+     */
+    authorizer?: {
+        name?: string;
+        type?: string;
+        groups?: string[] | string;
+    } | string;
+    /**
      * Observability config override for this method.
      * Takes precedence over controller-level config.
      */
@@ -112,6 +152,14 @@ export declare const Options: (route: string, options?: {
      * @default ""
      */
     target?: string;
+    /**
+     * Specifies the authorizer for the route.
+     */
+    authorizer?: {
+        name?: string;
+        type?: string;
+        groups?: string[] | string;
+    } | string;
     /**
      * Observability config override for this method.
      * Takes precedence over controller-level config.

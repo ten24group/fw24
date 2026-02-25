@@ -8,6 +8,11 @@ export declare const Environment: {
     bucketName: (bucketName: string) => any;
 };
 /**
+ * Configure AWS SDK client options for local simulation if needed.
+ * This is used to ensure compatibility with local sidecars (e.g. Minio needing forcePathStyle).
+ */
+export declare function getClientConfig(service: 'S3' | 'DynamoDB' | 'SQS' | 'SNS' | 'SES' | 'Cognito'): any;
+/**
  * Get SQS trace attributes from execution context.
  * Automatically sets causedBy to current correlationId for cross-invocation tracing.
  *

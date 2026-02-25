@@ -4,7 +4,7 @@ import { BaseProviderOptions, ClassConstructor, ConfigProviderOptions, DepIdenti
 import { BaseSearchEngine } from '../search';
 export declare class DIContainer implements IDIContainer {
     private parentContainer?;
-    static readonly DIMetadataStore: MetadataManager;
+    static get DIMetadataStore(): MetadataManager;
     readonly containerId: string;
     private readonly logger;
     private readonly middlewares;
