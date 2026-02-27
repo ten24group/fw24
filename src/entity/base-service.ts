@@ -218,17 +218,19 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         const treeConfig = this.schema.model.tree;
         const pathAttr = treeConfig?.pathAttribute || '__path';
         const separator = treeConfig?.pathSeparator || '/';
-        const recordId = recordAsRecord[ primaryIdName ];
         const recordPath = recordAsRecord[ pathAttr ] || '';
-        const fullPath = `${recordPath}${recordPath ? separator : ''}${recordId}${separator}`;
+
+        if (!recordPath) return [];
 
         const result = await this.list({
             filters: {
-                [ pathAttr ]: { begins: fullPath }
+                [ pathAttr ]: { begins: recordPath }
             } as EntityFilterCriteria<any>
         }, ctx);
 
-        return result.data as EntityRecordTypeFromSchema<S>[];
+        // Filter out the record itself
+        const recordId = recordAsRecord[ primaryIdName ];
+        return (result.data || []).filter((d: any) => d[ primaryIdName ] !== recordId) as EntityRecordTypeFromSchema<S>[];
     }
 
     /**
@@ -251,10 +253,15 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             throw new Error(`Bridge entity service "${bridgeEntityName}" not found for relation "${relationName}".`);
         }
 
+        const targetService = this.getEntityServiceByEntityName(relation.entityName);
+        if (!targetService) {
+            throw new Error(`Target entity service "${relation.entityName}" not found for relation "${relationName}".`);
+        }
+
         const bridgePayload = {
             ...(data || {}),
             ...(this.extractEntityIdentifiers(id) as Record<string, any>),
-            ...(bridgeService.extractEntityIdentifiers(targetId) as Record<string, any>)
+            ...(targetService.extractEntityIdentifiers(targetId) as Record<string, any>)
         };
 
         await bridgeService.executeOperation('upsert', bridgePayload, ctx);
@@ -280,12 +287,88 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             throw new Error(`Bridge entity service "${bridgeEntityName}" not found for relation "${relationName}".`);
         }
 
+        const targetService = this.getEntityServiceByEntityName(relation.entityName);
+        if (!targetService) {
+            throw new Error(`Target entity service "${relation.entityName}" not found for relation "${relationName}".`);
+        }
+
         const bridgeIdentifiers = {
             ...(this.extractEntityIdentifiers(id) as Record<string, any>),
-            ...(bridgeService.extractEntityIdentifiers(targetId) as Record<string, any>)
+            ...(targetService.extractEntityIdentifiers(targetId) as Record<string, any>)
         };
 
         await bridgeService.executeOperation('delete', bridgeIdentifiers, ctx);
+    }
+
+    /**
+     * Moves an entity to a new parent in a tree structure.
+     * Handles updating materialized paths for all descendants if using 'path' strategy.
+     */
+    public async move(payload: { id: any, newParentId: any }, ctx?: ExecutionContext): Promise<void> {
+        const primaryIdName = this.getEntityPrimaryIdPropertyName();
+        if (!primaryIdName) throw new Error("Entity has no primary identifier");
+
+        const identifiers = this.extractEntityIdentifiers(payload.id) as EntityIdentifiersTypeFromSchema<S>;
+        const record = await this.get({ identifiers }, ctx);
+        if (!record) throw new Error("Record not found");
+
+        const schema = this.getEntitySchema();
+        const treeConfig = schema.model.tree;
+        if (!treeConfig) throw new Error("Entity is not configured as a tree");
+
+        const parentAttr = treeConfig.parentAttribute || 'parentId';
+
+        // 1. Update the record's parent
+        // This will trigger onBeforeUpdate which handles the path and ancestry updates for the record itself
+        await this.executeOperation('update', {
+            identifiers,
+            data: { [parentAttr]: payload.newParentId } as any
+        }, ctx);
+
+        // 2. For 'path' strategy, we also need to update all descendants
+        if (treeConfig.strategy === 'path' || treeConfig.strategy === 'both') {
+            const pathAttr = treeConfig.pathAttribute || '__path';
+
+            // Re-fetch record to get its new auto-calculated path
+            const updatedRecord = await this.get({ identifiers }, ctx);
+            if (!updatedRecord) return;
+
+            const newPath = (updatedRecord as any)[pathAttr] || '';
+            const oldPath = (record as any)[pathAttr] || '';
+
+            if (oldPath === newPath) return;
+
+            // Find all descendants using the old path as prefix
+            const descendants = await this.list({
+                filters: { [pathAttr]: { begins: oldPath } } as any
+            }, ctx);
+
+            const recordId = (record as any)[primaryIdName];
+            if (descendants.data && descendants.data.length > 0) {
+                const updates = (descendants.data as any[])
+                    .filter(d => d[primaryIdName] !== recordId) // Skip the moved record itself
+                    .map(d => {
+                        const dPath = d[pathAttr] as string;
+                        // Replace only the leading portion of the path
+                        const dNewPath = (oldPath && dPath.startsWith(oldPath))
+                            ? newPath + dPath.substring(oldPath.length)
+                            : dPath;
+                        return {
+                            op: 'update',
+                            payload: {
+                                identifiers: this.extractEntityIdentifiers(d),
+                                data: { [pathAttr]: dNewPath }
+                            }
+                        };
+                    });
+
+                if (updates.length > 0) {
+                    // Execute updates in a transaction (DynamoDB limit 100)
+                    // For very large trees, this should be a background task, but for foundation this is fine
+                    await this.executeTransaction(updates as any, ctx);
+                }
+            }
+        }
     }
 
     public async geoSearch(payload: { attribute: string, center: GeoPoint, radiusInMeters: number, filters?: EntityFilterCriteria<S>, attributes?: EntitySelections<S>, limit?: number }, ctx?: ExecutionContext): Promise<EntityRecordTypeFromSchema<S>[]> {
@@ -634,9 +717,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             throw new Error('Input is required and must be an object containing entity-identifiers or an array of objects containing entity-identifiers');
         }
 
-        // Handle EntityGetOptions wrapper
-        if ('identifiers' in input && !isArray(input.identifiers)) {
-            input = (input as EntityGetOptions<S>).identifiers;
+        // Handle EntityGetOptions or EntityUpdateOptions wrapper
+        if (input && typeof input === 'object' && 'identifiers' in input && !isArray(input.identifiers)) {
+            input = (input as any).identifiers;
         }
 
         const isBatchInput = isArray(input);
@@ -1281,15 +1364,22 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             const pathAttr = treeConfig.pathAttribute || '__path';
             const separator = treeConfig.pathSeparator || '/';
 
+            const primaryIdName = this.getEntityPrimaryIdPropertyName();
+            const recordId = payloadCopy[ primaryIdName! ];
+
             if (payloadCopy[ parentAttr ]) {
-                const primaryIdName = this.getEntityPrimaryIdPropertyName();
                 if (primaryIdName) {
                     const parent = await this.get({ identifiers: { [ primaryIdName ]: payloadCopy[ parentAttr ] } as EntityIdentifiersTypeFromSchema<any> }, ctx);
                     if (parent) {
                         const parentPath = (parent as Record<string, any>)[ pathAttr ] as string || '';
-                        payloadCopy[ pathAttr ] = `${parentPath}${parentPath ? separator : ''}${payloadCopy[ parentAttr ]}`;
+                        const ensureTrailing = (p: string) => (p && !p.endsWith(separator)) ? p + separator : p;
+                        // Path includes the node's own ID with a trailing separator
+                        payloadCopy[ pathAttr ] = `${ensureTrailing(parentPath)}${recordId}${separator}`;
                     }
                 }
+            } else if (recordId) {
+                // Root node
+                payloadCopy[ pathAttr ] = `${recordId}${separator}`;
             }
         }
 
@@ -1424,15 +1514,21 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             const pathAttr = treeConfig.pathAttribute || '__path';
             const separator = treeConfig.pathSeparator || '/';
 
+            const primaryIdName = this.getEntityPrimaryIdPropertyName();
+            const recordId = identifiers[ primaryIdName! ] || dataAsRecord[ primaryIdName! ];
+
             if (dataAsRecord[ parentAttr ]) {
-                const primaryIdName = this.getEntityPrimaryIdPropertyName();
                 if (primaryIdName) {
                     const parent = await this.get({ identifiers: { [ primaryIdName ]: dataAsRecord[ parentAttr ] } as EntityIdentifiersTypeFromSchema<any> }, ctx);
                     if (parent) {
                         const parentPath = (parent as Record<string, any>)[ pathAttr ] as string || '';
-                        dataAsRecord[ pathAttr ] = `${parentPath}${parentPath ? separator : ''}${dataAsRecord[ parentAttr ]}`;
+                        const ensureTrailing = (p: string) => (p && !p.endsWith(separator)) ? p + separator : p;
+                        dataAsRecord[ pathAttr ] = `${ensureTrailing(parentPath)}${recordId}${separator}`;
                     }
                 }
+            } else if (dataAsRecord[ parentAttr ] === null && recordId) {
+                // Move to root
+                dataAsRecord[ pathAttr ] = `${recordId}${separator}`;
             }
         }
 

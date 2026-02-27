@@ -25,4 +25,5 @@ export const DefaultEntityOperations = {
   getDescendants: { enabled: false, method: 'GET', path: '/{id}/descendants', handler: 'getDescendants', requiresId: true, label: 'View Descendants' },
   attach: { enabled: false, method: 'POST', path: '/{id}/attach', handler: 'attach', requiresId: true, label: 'Attach Relation' },
   detach: { enabled: false, method: 'POST', path: '/{id}/detach', handler: 'detach', requiresId: true, label: 'Detach Relation' },
+  move: { enabled: false, method: 'POST', path: '/{id}/move', handler: 'move', requiresId: true, label: 'Move Branch' },
 } as const;

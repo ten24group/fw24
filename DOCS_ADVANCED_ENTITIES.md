@@ -55,6 +55,14 @@ export const CategorySchema = createEntitySchema({
 ### Service Methods
 - `getAncestors(ids)`: Returns all parents up to the root.
 - `getDescendants(ids)`: Returns all children and their children.
+- `move({ id, newParentId })`: Moves a record (and its entire sub-tree) to a new parent.
+
+#### The `move` Operation
+Moving a branch in a tree is notoriously difficult in DynamoDB. FW24 handles this automatically:
+1. It updates the `parentId` of the target record.
+2. If using `path` strategy, it performs a prefix query to find all descendants.
+3. It recalculates the `__path` for every descendant based on the new parent's path.
+4. It executes the updates in a single transaction to ensure consistency.
 
 ---
 
@@ -86,13 +94,23 @@ export const UserGroupSchema = createManyToManyBridgeSchema('user', 'group');
 
 ### Service Methods
 - `attach({ relation, id, targetId, data })`: Creates a link in the bridge table.
+  - `relation`: The attribute name defining the M:N relationship.
+  - `id`: The identifiers of the source entity.
+  - `targetId`: The identifiers of the target entity.
+  - `data`: (Optional) Extra attributes to store on the bridge record (e.g., `assignedAt`, `role`).
 - `detach({ relation, id, targetId })`: Removes a link.
 
 ---
 
 ## Geospatial Search
 
-FW24 provides native spatial indexing and proximity search using geohashes.
+FW24 provides native spatial indexing and proximity search using geohashes. Unlike standard DynamoDB scans, FW24 uses **Sort Key Prefixing** to query only the relevant "tiles" of the earth, making it extremely efficient even with millions of records.
+
+### How it Works
+1. **Precision Scaling**: When you perform a `geoSearch`, FW24 calculates the required geohash precision based on your radius.
+2. **Neighbor Querying**: It queries the target geohash and its 8 neighbors to handle edge cases where a point is near the boundary of a geohash tile.
+3. **SK Filtering**: The `__geohash` is stored in the **Sort Key**. FW24 uses the `begins_with` operator to find all points in a specific tile in a single efficient query.
+4. **Distance Re-ranking**: Results from DynamoDB are deduplicated and then re-ranked in memory by their exact Haversine distance before being returned.
 
 ### Configuration
 

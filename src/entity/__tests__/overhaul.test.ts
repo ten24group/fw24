@@ -187,11 +187,11 @@ describe("Entity Overhaul & Advanced Features", () => {
 
         test('should maintain path and traverse', async () => {
             const service = new TreeService();
-            const parent = { id: 'p1', __path: '' };
+            const parent = { id: 'p1', __path: 'p1/' };
             const child = { id: 'c1', parentId: 'p1' };
             jest.spyOn(service, 'get').mockImplementation(async (opts: any) => {
                 if (opts.identifiers.id === 'p1') return parent as any;
-                if (opts.identifiers.id === 'c1') return { ...child, __path: 'p1' } as any;
+                if (opts.identifiers.id === 'c1') return { ...child, __path: 'p1/c1/' } as any;
                 return null;
             });
             const mockRepo: any = {
@@ -203,7 +203,7 @@ describe("Entity Overhaul & Advanced Features", () => {
             jest.spyOn(service, 'isUniqueAttributeValue').mockResolvedValue(true);
 
             const createdChild = await service.executeOperation('create', child);
-            expect((createdChild as any).data.__path).toBe('p1');
+            expect((createdChild as any).data.__path).toBe('p1/c1/');
 
             jest.spyOn(service, 'batchGet').mockResolvedValue({ data: [parent] } as any);
             const ancestors = await service.getAncestors({ id: 'c1' });

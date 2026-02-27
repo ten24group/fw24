@@ -4750,6 +4750,7 @@ export type TEntityOpsInputSchemas<
       : opName extends 'getDescendants' ? EntityIdentifiersTypeFromSchema<Sch>
       : opName extends 'attach' ? { relation: string, id: any, targetId: any, data?: any }
       : opName extends 'detach' ? { relation: string, id: any, targetId: any }
+      : opName extends 'move' ? { id: any, newParentId: any }
       : any
   }
 
@@ -4783,6 +4784,7 @@ export type TEntityOpsOutputTypes<
       : opName extends 'getDescendants' ? EntityRecordTypeFromSchema<Sch>[]
       : opName extends 'attach' ? void
       : opName extends 'detach' ? void
+      : opName extends 'move' ? void
       : any
   }
 
