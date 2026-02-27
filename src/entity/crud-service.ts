@@ -46,6 +46,7 @@ export interface BaseEntityCrudArgs<S extends EntitySchema<any, any, any>, K ext
     authorizer?: Authorizer.IAuthorizer;        // todo: define authorizer signature
     eventDispatcher?: EventDispatcher.IEventDispatcher;  // todo define event dispatcher signature
 
+    goOptions?: any;
     // telemetry
 }
 
@@ -118,7 +119,7 @@ export async function getEntity<S extends EntitySchema<any, any, any>>(options: 
 
     // // validate
     const validation = await validator.validateEntity({
-        operationName: (operationName || crudType || 'get') as any,
+        operationName: (operationName || crudType || 'get') as keyof S['model']['entityOperations'],
         entityName,
         entityValidations: entityService.getEntityValidations(),
         overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
@@ -292,7 +293,7 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
 
     // validate
     const validation = await validator.validateEntity({
-        operationName: (operationName || crudType || 'create') as any,
+        operationName: (operationName || crudType || 'create') as keyof S['model']['entityOperations'],
         entityName,
         entityValidations: entityService.getEntityValidations(),
         overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
@@ -311,7 +312,7 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     // }
 
     const entity = await QueryObserver.track(entityName, 'create', () =>
-        entityService.getRepository().create(data).go({ ...QueryObserver.getCapacityGoOptions(), ...(options as any)?.goOptions })
+        entityService.getRepository().create(data).go({ ...QueryObserver.getCapacityGoOptions(), ...options.goOptions })
     );
 
     // post events
@@ -382,7 +383,7 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
 
     // validate
     const validation = await validator.validateEntity({
-        operationName: (operationName || crudType || 'upsert') as any,
+        operationName: (operationName || crudType || 'upsert') as keyof S['model']['entityOperations'],
         entityName,
         entityValidations: entityService.getEntityValidations(),
         overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
@@ -403,7 +404,7 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
     // Use "all_old" to get the previous item state - allows us to detect create vs update
     // If oldData is empty/null, it was a CREATE. If it has data, it was an UPDATE.
     const entity = await QueryObserver.track(entityName, 'upsert', () =>
-        entityService.getRepository().upsert(data as any).go({ response: "all_old", ...QueryObserver.getCapacityGoOptions(), ...(options as any)?.goOptions })
+        entityService.getRepository().upsert(data as UpsertEntityItemTypeFromSchema<S>).go({ response: "all_old", ...QueryObserver.getCapacityGoOptions(), ...options.goOptions })
     );
 
     const wasCreated = !entity.data || Object.keys(entity.data).length === 0;
@@ -594,7 +595,8 @@ export function findMatchingIndex(
 
     // First try ElectroDB's index matching
     const repository = entityService.getRepository();
-    const { keys, index, shouldScan } = (repository as any)._findBestIndexKeyMatch(simpleFilters);
+    // @ts-ignore - access to internal ElectroDB method for index matching
+    const { keys, index, shouldScan } = repository._findBestIndexKeyMatch(simpleFilters);
 
     logger.debug(`Found ElectroDB index: ${index} with ${keys.length} attribute matches for entity: ${entityName} with filters and scan: ${shouldScan} - `, keys, simpleFilters);
 
@@ -716,7 +718,12 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
         entities = await QueryObserver.track(entityName, 'list', () =>
-            indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination), ...QueryObserver.getCapacityGoOptions(), ...(query as any).goOptions }),
+            indexQuery.go({
+                attributes: (Array.isArray(attributes) ? attributes : Object.keys(attributes)) as any,
+                ...removeEmpty(pagination),
+                ...QueryObserver.getCapacityGoOptions(),
+                ...query.goOptions
+            }),
             { filters, indexName: matchResult.indexName, pagination }
         );
     } else {
@@ -821,7 +828,11 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
             indexQuery.where((attr: any, op: any) => entityFilterCriteriaToExpression(filters, attr, op));
         }
         entities = await QueryObserver.track(entityName, 'query', () =>
-            indexQuery.go({ attributes: attributes as any, ...removeEmpty(pagination), ...QueryObserver.getCapacityGoOptions() }),
+            indexQuery.go({
+                attributes: (Array.isArray(attributes) ? attributes : Object.keys(attributes)) as any,
+                ...removeEmpty(pagination),
+                ...QueryObserver.getCapacityGoOptions()
+            }),
             { filters, indexName: matchResult.indexName, pagination }
         );
     } else {
@@ -1026,7 +1037,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
 
     // validate
     const validation = await validator.validateEntity({
-        operationName: (operationName || crudType || 'update') as any,
+        operationName: (operationName || crudType || 'update') as keyof S['model']['entityOperations'],
         entityName,
         entityValidations: entityService.getEntityValidations(),
         overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
@@ -1120,7 +1131,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     }
 
     if (operators?.remove) {
-        query.remove(operators.remove as any);
+        query.remove(operators.remove as (keyof S['attributes'] & string)[]);
     }
 
     if (options.conditions) {
@@ -1203,7 +1214,7 @@ export async function deleteEntity<S extends EntitySchema<any, any, any>>(option
 
     // validate
     const validation = await validator.validateEntity({
-        operationName: (operationName || crudType || 'delete') as any,
+        operationName: (operationName || crudType || 'delete') as keyof S['model']['entityOperations'],
         entityName,
         entityValidations: entityService.getEntityValidations(),
         overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
@@ -1299,7 +1310,7 @@ export async function upsertBatchEntity<S extends EntitySchema<any, any, any>>(o
     // Validate each item in the batch
     const validations = await Promise.all(items.map(async item =>
         validator.validateEntity({
-            operationName: (operationName || crudType || 'upsert') as any,
+            operationName: (operationName || crudType || 'upsert') as keyof S['model']['entityOperations'],
             entityName,
             entityValidations: entityService.getEntityValidations(),
             overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
@@ -1327,7 +1338,7 @@ export async function upsertBatchEntity<S extends EntitySchema<any, any, any>>(o
     };
 
     const electroResult = await QueryObserver.track(entityName, 'batchUpsert', () =>
-        entityService.getRepository().put(items as any).go(bulkOptions),
+        entityService.getRepository().put(items as UpsertEntityItemTypeFromSchema<S>[]).go(bulkOptions),
         { itemCount: items.length }
     );
 
@@ -1362,7 +1373,7 @@ export async function deleteBatchEntity<S extends EntitySchema<any, any, any>>(o
     // Validate each item in the batch
     const validations = await Promise.all(identifiersBatch.map(async identifiers =>
         validator.validateEntity({
-            operationName: (operationName || crudType || 'delete') as any,
+            operationName: (operationName || crudType || 'delete') as keyof S['model']['entityOperations'],
             entityName,
             entityValidations: entityService.getEntityValidations(),
             overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),

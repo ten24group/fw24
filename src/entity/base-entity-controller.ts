@@ -97,7 +97,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	}
 
 	private isStandardOperation(opName: string): boolean {
-		return [ 'get', 'list', 'query', 'search', 'create', 'update', 'delete', 'duplicate', 'upsert', 'batchDelete', 'deleteByQuery' ].includes(opName);
+		return [ 'get', 'list', 'query', 'search', 'create', 'update', 'delete', 'duplicate', 'upsert', 'batchDelete', 'deleteByQuery', 'geoSearch', 'getAncestors', 'getDescendants', 'attach', 'detach' ].includes(opName);
 	}
 
 	private mapRouteToOperation(route: { functionName: string }): string | undefined {
@@ -112,7 +112,12 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			'duplicate': 'duplicate',
 			'upsert': 'upsert',
 			'batchDelete': 'batchDelete',
-			'deleteByQuery': 'deleteByQuery'
+			'deleteByQuery': 'deleteByQuery',
+			'geoSearch': 'geoSearch',
+			'getAncestors': 'getAncestors',
+			'getDescendants': 'getDescendants',
+			'attach': 'attach',
+			'detach': 'detach'
 		};
 		return mapping[ route.functionName ];
 	}
@@ -534,7 +539,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 		const result = await this.getEntityService().executeOperation('batchDelete', { ids, concurrent }, ctx);
 
-		const unprocessedCount = (result as any)?.unprocessed?.length || 0;
+		const unprocessedCount = (result as Record<string, any>)?.unprocessed?.length || 0;
 		const identifiersCount = ids.length;
 		const deletedCount = identifiersCount - unprocessedCount;
 
@@ -545,7 +550,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		};
 
 		if (unprocessedCount > 0) {
-			response.unprocessed = (result as any)?.unprocessed || [];
+			response.unprocessed = (result as Record<string, any>)?.unprocessed || [];
 			response.message += `, ${unprocessedCount} failed`;
 		}
 
@@ -686,6 +691,42 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 	async searchGet(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
 		const query = parseSearchQuery(req.queryStringParameters || {});
 		return await this.search({ ...req, body: query }, res, ctx);
+	}
+
+	@Post('/geo-search')
+	async geoSearch(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const result = await this.getEntityService().executeOperation('geoSearch', req.body, ctx);
+		return res.json(result);
+	}
+
+	@Get('/{id}/ancestors')
+	async getAncestors(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const identifiers = this.getEntityService().extractEntityIdentifiers(req.pathParameters);
+		const result = await this.getEntityService().executeOperation('getAncestors', identifiers, ctx);
+		return res.json(result);
+	}
+
+	@Get('/{id}/descendants')
+	async getDescendants(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const identifiers = this.getEntityService().extractEntityIdentifiers(req.pathParameters);
+		const result = await this.getEntityService().executeOperation('getDescendants', identifiers, ctx);
+		return res.json(result);
+	}
+
+	@Post('/{id}/attach')
+	async attach(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const identifiers = this.getEntityService().extractEntityIdentifiers(req.pathParameters);
+		const payload = { ...req.body, id: identifiers };
+		const result = await this.getEntityService().executeOperation('attach', payload, ctx);
+		return res.json(result);
+	}
+
+	@Post('/{id}/detach')
+	async detach(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const identifiers = this.getEntityService().extractEntityIdentifiers(req.pathParameters);
+		const payload = { ...req.body, id: identifiers };
+		const result = await this.getEntityService().executeOperation('detach', payload, ctx);
+		return res.json(result);
 	}
 
 }

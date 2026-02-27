@@ -15,7 +15,10 @@ export class EntityValidationError extends BadRequestError {
             errors: validationErrors,
             ...additionalDetails
         };
-        super('Validation failed', details, request);
+        const message = validationErrors.length > 0 && validationErrors[0].message
+            ? `Validation failed: ${validationErrors[0].message}`
+            : 'Validation failed';
+        super(message, details, request);
         this.name = 'EntityValidationError';
     }
 

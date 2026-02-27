@@ -12,12 +12,12 @@ describe('Advanced Entity Enhancements', () => {
         model: {
             entity: 'versionTest',
             service: 'test',
-            version: '1',
+            version: '2',
             entityOperations: DefaultEntityOperations,
             versioning: {
                 version: '2',
                 transformers: {
-                    '1': (data) => ({ ...data, name: data.oldName, transformed: true })
+                    '1': (data: any) => ({ ...data, name: data.oldName, transformed: true })
                 }
             }
         },
@@ -33,9 +33,6 @@ describe('Advanced Entity Enhancements', () => {
 
     class VersionedService extends BaseEntityService<typeof VersionedSchema> {
         constructor() { super(VersionedSchema, { table: 'test' } as any); }
-        public async get(options: any): Promise<any> {
-            return await super.get(options);
-        }
     }
 
     test('Versioning: should transform old record to new version on read', async () => {
@@ -92,14 +89,18 @@ describe('Advanced Entity Enhancements', () => {
                     go: async () => ({ data: [] })
                 }) },
                 _findBestIndexKeyMatch: () => ({ keys: [], index: 'primary', shouldScan: false }),
-                create: () => ({ go: async () => ({ data: {} }) })
+                create: () => ({ go: async () => ({ data: {} }) }),
+                scan: {
+                    where: jest.fn().mockReturnThis(),
+                    go: jest.fn().mockResolvedValue({ data: [] })
+                }
             };
         }
     }
 
     test('Validation: should enforce greaterThanField', async () => {
         const service = new ValidationService();
-        const payload = { id: '1', startDate: '10', endDate: '5' };
+        const payload = { id: '1', startDate: '10', endDate: '5', type: 'normal' };
 
         await expect(service.executeOperation('create', payload))
             .rejects.toThrow(/End date must be after start date/);
@@ -107,10 +108,62 @@ describe('Advanced Entity Enhancements', () => {
 
     test('Validation: should enforce requiredIf', async () => {
         const service = new ValidationService();
-        const payload = { id: '1', type: 'other', reason: '' };
+        const payload = { id: '1', type: 'other', reason: '', startDate: '1', endDate: '10' };
 
         await expect(service.executeOperation('create', payload))
             .rejects.toThrow(/Reason is required for type other/);
+    });
+
+    // =========================================================================
+    // DENORMALIZATION (SUBSCRIPTION MODEL) TESTS
+    // =========================================================================
+    const TeamSchema = createEntitySchema({
+        model: { entity: 'team', service: 'test', version: '1', entityOperations: DefaultEntityOperations },
+        attributes: {
+            teamId: { type: 'string', required: true, isIdentifier: true },
+            name: { type: 'string' }
+        },
+        indexes: { primary: { pk: { field: 'pk', composite: ['teamId'] }, sk: { field: 'sk', composite: [] } } }
+    } as const);
+
+    const PlayerSchema = createEntitySchema({
+        model: { entity: 'player', service: 'test', version: '1', entityOperations: DefaultEntityOperations },
+        attributes: {
+            playerId: { type: 'string', required: true, isIdentifier: true },
+            teamId: { type: 'string' },
+            teamName: {
+                type: 'string',
+                denormalize: {
+                    sourceEntity: 'team',
+                    sourceAttribute: 'name',
+                    matchBy: { teamId: 'teamId' }
+                }
+            }
+        },
+        indexes: { primary: { pk: { field: 'pk', composite: ['playerId'] }, sk: { field: 'sk', composite: [] } } }
+    } as const);
+
+    test('Denormalization: should propagate changes to subscribers', async () => {
+        const { EntityDependencyManager } = require('../dependency-manager');
+        const teamService = new (class extends BaseEntityService<any> {
+            constructor() { super(TeamSchema, { table: 'test' } as any); }
+        })();
+
+        // Mock repository for update
+        const mockRepo = {
+            patch: () => ({ set: () => ({ go: async () => ({ data: { teamId: 't1', name: 'New Name' } }) }) }),
+            query: { primary: () => ({ where: () => ({ go: async () => ({ data: [] }) }), go: async () => ({ data: [] }) }) },
+            _findBestIndexKeyMatch: () => ({ keys: [], index: 'primary', shouldScan: false }),
+            get: () => ({ go: async () => ({ data: { teamId: 't1', name: 'Old Name' } }) })
+        };
+        jest.spyOn(teamService, 'getRepository').mockReturnValue(mockRepo as any);
+
+        // Mock DependencyManager propagateChanges
+        const propagateSpy = jest.spyOn(EntityDependencyManager, 'propagateChanges').mockResolvedValue(undefined);
+
+        await teamService.executeOperation('update', { teamId: 't1', name: 'New Name' });
+
+        expect(propagateSpy).toHaveBeenCalledWith('team', expect.anything(), expect.arrayContaining(['name']), undefined);
     });
 
     // =========================================================================
@@ -136,7 +189,7 @@ describe('Advanced Entity Enhancements', () => {
         };
 
         const mockDI: any = {
-            resolve: jest.fn().mockReturnValue(mockCache),
+            resolve: (token: string) => token === 'CacheProvider' ? mockCache : null,
             collectBestProvidersFor: () => []
         };
 

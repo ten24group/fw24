@@ -10,7 +10,14 @@ const logger = createLogger('ValidatorUtils');
 export function isValidationRule<T extends unknown>( rule: any): rule is ValidationRule<T> {
     const res = typeof rule === 'object' 
         && rule !== null
-        && Object.keys(rule).every(key => Validation_Keys.includes(key as any) || 'operations' === key );
+        && Object.keys(rule).every(key =>
+            Validation_Keys.includes(key as any)
+            || 'operations' === key
+            || 'message' === key
+            || 'messageId' === key
+            || 'validator' === key
+            || 'conditions' === key
+        );
 
     return res;
 }

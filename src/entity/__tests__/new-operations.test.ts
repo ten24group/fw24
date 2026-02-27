@@ -39,8 +39,8 @@ describe('New OOB Operations', () => {
         }
 
         // Mock list to return some data for export
-        public async list(query: any = {}): Promise<any[]> {
-            return [{ id: '1', name: 'Test 1' }, { id: '2', name: 'Test 2' }];
+        public async list(query: any = {}): Promise<any> {
+            return { data: [{ id: '1', name: 'Test 1' }, { id: '2', name: 'Test 2' }], query };
         }
 
         // Mock batchUpsert for import
