@@ -2,7 +2,7 @@ import { App, Stack } from 'aws-cdk-lib';
 import { IAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2';
 import { TableV2 } from 'aws-cdk-lib/aws-dynamodb';
 import { Vpc } from 'aws-cdk-lib/aws-ec2';
-import { PolicyStatement, type PolicyStatementProps } from 'aws-cdk-lib/aws-iam';
+import { PolicyStatement, type PolicyStatementProps, type Role } from 'aws-cdk-lib/aws-iam';
 import { IHostedZone } from 'aws-cdk-lib/aws-route53';
 import type { ITopic } from 'aws-cdk-lib/aws-sns';
 import { IQueue } from 'aws-cdk-lib/aws-sqs';
@@ -38,6 +38,8 @@ export declare class Fw24 {
     private readonly globalLambdaEntryPackages;
     private readonly systemUIConfigs;
     private readonly systemControllers;
+    /** Roles that use a policy collector instead of inline policies (to avoid IAM 10240-byte limit). */
+    private readonly rolePolicyCollectors;
     private constructor();
     static getInstance(): Fw24;
     setApp(app: App): void;
@@ -188,6 +190,12 @@ export declare class Fw24 {
     getTopicByName(topicName: string, scope?: any, constructId?: string): ITopic;
     addRouteToRolePolicy(route: string, groups: string[], requireRouteInGroupConfig?: boolean): void;
     getRoutePolicyStatement(route: string): PolicyStatement;
+    /**
+     * Register a policy collector for a role. Statements added via addRouteToRolePolicy for this role
+     * will be pushed to the collector instead of role.addToPolicy(), so the CognitoAuthRole can
+     * later create ManagedPolicies (each under 6144 bytes) and avoid the 10240-byte inline policy limit.
+     */
+    registerRolePolicyCollector(role: Role, collector: PolicyStatement[]): void;
     getConstructOutput<T>(type: OutputType, name: string): T | undefined;
     addConstruct(construct: FW24Construct): void;
     getVpc(vpcName: string): Vpc;
