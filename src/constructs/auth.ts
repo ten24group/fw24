@@ -379,13 +379,14 @@ export class AuthConstruct implements FW24Construct {
             this.fw24.setEnvironmentVariable('authGroups', groupNames.join(','), `userpool_${userPoolName}`);
             //this.fw24.set('AutoUserSignupGroups', this.authConfig.groups.filter(group => group.autoUserSignup).map(group => group.name).toString(), userPoolName);
             for (const group of this.authConstructConfig.groups) {
-                // create a role for the group
+                // create a role for the group (use getRole() so policy collector is keyed by the IAM Role)
                 const policyFilePaths = group.policyFilePaths;
-                const role = new CognitoAuthRole(this.mainStack, `${userPoolName}-${group.name}-CognitoAuthRole`, {
+                const cognitoAuthRole = new CognitoAuthRole(this.mainStack, `${userPoolName}-${group.name}-CognitoAuthRole`, {
                     identityPool: identityPool,
                     policyFilePaths: policyFilePaths,
                     policies: group.policies,
-                }) as Role;
+                });
+                const role = cognitoAuthRole.getRole();
 
                 this.fw24.setEnvironmentVariable('Role', role, `cognito_${group.name}`);
                 this.fw24.setEnvironmentVariable('Routes', group.routes, `cognito_${group.name}`);
@@ -439,11 +440,12 @@ export class AuthConstruct implements FW24Construct {
 
         // IAM role for authenticated users if no groups are defined
         const policyFilePaths = this.authConstructConfig.policyFilePaths;
-        const authenticatedRole = new CognitoAuthRole(this.mainStack, `${userPoolName}-CognitoAuthRole`, {
+        const authenticatedCognitoRole = new CognitoAuthRole(this.mainStack, `${userPoolName}-CognitoAuthRole`, {
             identityPool: identityPool,
             policyFilePaths: policyFilePaths,
             policies: this.authConstructConfig.policies,
-        }) as Role;
+        });
+        const authenticatedRole = authenticatedCognitoRole.getRole();
 
         // if no groups are defined all policies are added to the default authenticated role
         this.fw24.setEnvironmentVariable('Role', authenticatedRole, `cognito_default`);

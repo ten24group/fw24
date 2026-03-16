@@ -51,6 +51,9 @@ export class Fw24 {
     private readonly systemUIConfigs: Map<string, SystemUIPageDefinition> = new Map();
     private readonly systemControllers: Map<string, SystemControllerDefinition> = new Map();
 
+    /** Roles that use a policy collector instead of inline policies (to avoid IAM 10240-byte limit). */
+    private readonly rolePolicyCollectors = new Map<Role, PolicyStatement[]>();
+
     private constructor() { } // Empty constructor as App is set via setApp()
 
     static getInstance(): Fw24 {
@@ -659,7 +662,12 @@ export class Fw24 {
                 return;
             }
             // add role policy statement to allow route access for group
-            role.addToPolicy(this.getRoutePolicyStatement(route));
+            const collector = this.rolePolicyCollectors.get(role);
+            if (collector) {
+                collector.push(this.getRoutePolicyStatement(route));
+            } else {
+                role.addToPolicy(this.getRoutePolicyStatement(route));
+            }
             routeAddedToGroupPolicy = true;
         }
         if (!routeAddedToGroupPolicy) {
@@ -678,6 +686,15 @@ export class Fw24 {
         this.logger.debug("RoutePolicyStatement:", { route });
 
         return statement;
+    }
+
+    /**
+     * Register a policy collector for a role. Statements added via addRouteToRolePolicy for this role
+     * will be pushed to the collector instead of role.addToPolicy(), so the CognitoAuthRole can
+     * later create ManagedPolicies (each under 6144 bytes) and avoid the 10240-byte inline policy limit.
+     */
+    registerRolePolicyCollector(role: Role, collector: PolicyStatement[]): void {
+        this.rolePolicyCollectors.set(role, collector);
     }
 
     public getConstructOutput<T>(type: OutputType, name: string): T | undefined {
