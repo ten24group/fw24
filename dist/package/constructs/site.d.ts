@@ -45,6 +45,12 @@ export interface ISiteConstructConfig extends IConstructConfig {
      * @default false
      */
     mapRootDomain?: boolean;
+    /**
+     * Environment variables for the Amplify app.
+     * These are encrypted and available during build time.
+     * Values can be plain strings or CDK tokens (e.g. SecretValue references).
+     */
+    environmentVariables?: Record<string, string>;
 }
 export declare class SiteConstruct implements FW24Construct {
     private siteConstructConfig;
