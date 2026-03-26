@@ -58,6 +58,13 @@ export interface ISiteConstructConfig extends IConstructConfig {
      * @default false
      */
     mapRootDomain?: boolean;
+
+    /**
+     * Environment variables for the Amplify app.
+     * These are encrypted and available during build time.
+     * Values can be plain strings or CDK tokens (e.g. SecretValue references).
+     */
+    environmentVariables?: Record<string, string>;
 }
 
 export class SiteConstruct implements FW24Construct {
@@ -96,7 +103,12 @@ export class SiteConstruct implements FW24Construct {
                 oauthToken: SecretValue.secretsManager(this.siteConstructConfig.secretKeyName),
             })
         });
-        // add the custom rules
+        if (this.siteConstructConfig.environmentVariables) {
+            for (const [key, value] of Object.entries(this.siteConstructConfig.environmentVariables)) {
+                amplifyApp.addEnvironment(key, value);
+            }
+        }
+
         amplifyApp.addCustomRule(CustomRule.SINGLE_PAGE_APPLICATION_REDIRECT);
         // add the branch
         const branch = amplifyApp.addBranch(this.siteConstructConfig.githubBranch);
