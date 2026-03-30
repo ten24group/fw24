@@ -455,16 +455,10 @@ export declare function mergeFieldVisibility<T extends {
     name: string;
 }>(baseProperties: Array<T>, fieldOverrides?: ReadonlyArray<{
     readonly name: string;
-    readonly visibility?: any;
-    readonly enablement?: any;
-    readonly helpText?: string;
-    readonly placeholder?: string;
+    readonly [key: string]: unknown;
 }> | Array<{
     name: string;
-    visibility?: any;
-    enablement?: any;
-    helpText?: string;
-    placeholder?: string;
+    [key: string]: unknown;
 }>): Array<T>;
 /**
  * Merges column visibility configuration with base properties.
