@@ -34,7 +34,7 @@
  * @see {@link ui24/src/pages/PostAuth/PostAuthPage.tsx} for page rendering
  */
 
-import type { Condition, ConditionalValue, FieldOptions, IConfirmModal, IEntityConfigReference, IEntityPageActionDrawerConfig, IFilterSegment, IModalApiConfig, INavigateToConfig, IRelationFieldConfig, IResponseDisplayConfig, ISectionsConfig, ITableExpandableConfig, ModalType, Template } from "../../entity";
+import type { Condition, ConditionalValue, FieldOptions, IConfirmModal, IEntityConfigReference, IEntityPageActionDrawerConfig, IFilterSegment, IModalApiConfig, INavigateToConfig, InlineTableFieldMetadata, IRelationFieldConfig, IResponseDisplayConfig, ISectionsConfig, ITableExpandableConfig, ModalType, Template } from "../../entity";
 import { IEntityPageColumnConfig, type IDeepLinkConfig, type IDataQualityConfig, type IErrorHandlingConfig, type IRetryConfig, type IReviewBeforeSaveConfig } from "../../entity/base-entity";
 
 /**
@@ -166,6 +166,9 @@ export type ConfigFieldType =
 
     // Timeline & events
     | "timeline"
+
+    // Inline table (renders array-of-objects as a compact read-only table)
+    | "inline-table"
 
     // Special
     | "custom";
@@ -492,6 +495,33 @@ export interface PropertyConfig {
         /** Timestamp format (default: 'MMM D, h:mm:ss A') */
         timestampFormat?: string;
     };
+
+    // === Inline table field configuration ===
+    /**
+     * Configuration for inline-table field type.
+     * Renders an array-of-objects as a compact, read-only Ant Design table
+     * embedded directly into a detail view or table cell.
+     *
+     * @example
+     * ```ts
+     * {
+     *   name: 'startXI',
+     *   label: 'Starting XI',
+     *   fieldType: 'inline-table',
+     *   inlineTableConfig: {
+     *     columns: [
+     *       { key: 'playerName', label: 'Player' },
+     *       { key: 'number',     label: '#', width: 60 },
+     *       { key: 'position',   label: 'Pos', width: 80 },
+     *     ],
+     *     size: 'small',
+     *     showHeader: true,
+     *     bordered: true,
+     *   }
+     * }
+     * ```
+     */
+    inlineTableConfig?: InlineTableFieldMetadata[ 'inlineTableConfig' ];
 
     // =========================================================================
     // NUMBER / SLIDER / RATING field-type-specific props

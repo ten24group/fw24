@@ -710,7 +710,8 @@ export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldM
   | BadgeFieldMetadata | TagFieldMetadata | ProgressFieldMetadata | AvatarFieldMetadata | IconFieldMetadata
   | LinkFieldMetadata | QRCodeFieldMetadata
   | HiddenFieldMetadata | CustomFieldMetadata
-  | RatingFieldMetadata | EditorFieldMetadata | CodeEditorFieldMetadata;
+  | RatingFieldMetadata | EditorFieldMetadata | CodeEditorFieldMetadata
+  | InlineTableFieldMetadata;
 
 /**
  * UI Metadata for entity attributes.
@@ -2882,6 +2883,31 @@ interface CodeEditorFieldMetadata extends BaseFieldMetadata {
   validateJson?: boolean;
 }
 
+export interface InlineTableFieldMetadata extends BaseFieldMetadata {
+  fieldType?: 'inline-table';
+  inlineTableConfig?: {
+    /** Column definitions — which object keys to show and how */
+    columns: Array<{
+      /** Object key to extract the cell value from */
+      key: string;
+      /** Column header label (falls back to `key` when omitted) */
+      label?: string;
+      /** Fixed column width in pixels */
+      width?: number;
+      /** Horizontal alignment (default: 'left') */
+      align?: 'left' | 'center' | 'right';
+    }>;
+    /** Ant Design table size. Default: 'small' */
+    size?: 'small' | 'middle' | 'large';
+    /** Whether to show column headers. Default: true */
+    showHeader?: boolean;
+    /** Whether to show cell borders. Default: true */
+    bordered?: boolean;
+    /** Maximum visible rows before scroll kicks in (default: unlimited) */
+    maxRows?: number;
+  };
+}
+
 export type FieldOptions<E extends EntitySchema<any, any, any> = any> =
   | ReadonlyArray<FieldOption>
   | Array<FieldOption>
@@ -4307,6 +4333,24 @@ export interface ICardGridConfig {
 }
 
 /**
+ * Field-level override for view/edit page configs.
+ * Allows overriding any field's display properties (fieldType, label,
+ * helpText, visibility, etc.) and passing field-type-specific configs
+ * like `inlineTableConfig` or `timelineConfig`.
+ */
+export interface EntityFieldOverride {
+  name: string;
+  visibility?: Condition;
+  enablement?: Condition;
+  helpText?: string;
+  placeholder?: string;
+  label?: string;
+  fieldType?: string;
+  /** Pass-through for any field-type-specific config (e.g. inlineTableConfig, timelineConfig) */
+  [ key: string ]: unknown;
+}
+
+/**
  * View page nested configuration (RECOMMENDED)
  * Replaces: viewPageActions, viewPageBreadcrumbs, viewPageColumnsConfig
  */
@@ -4323,15 +4367,7 @@ export interface EntityViewPageConfig {
     readonly type: 'skeleton' | 'spinner';
     readonly rows?: number;
   };
-  readonly fields?: ReadonlyArray<{
-    name: string;
-    visibility?: Condition;
-    helpText?: string;
-  }> | Array<{
-    name: string;
-    visibility?: Condition;
-    helpText?: string;
-  }>;
+  readonly fields?: ReadonlyArray<EntityFieldOverride> | Array<EntityFieldOverride>;
   /**
    * Additional sections to display below or alongside the main detail view.
    * Enables multi-section detail pages with tabs or accordion UI.

@@ -2708,23 +2708,16 @@ export function mergeFieldVisibility<T extends { name: string }>(
     baseProperties: Array<T>,
     fieldOverrides: ReadonlyArray<{
         readonly name: string;
-        readonly visibility?: any;
-        readonly enablement?: any;
-        readonly helpText?: string;
-        readonly placeholder?: string;
+        readonly [key: string]: unknown;
     }> | Array<{
         name: string;
-        visibility?: any;
-        enablement?: any;
-        helpText?: string;
-        placeholder?: string;
+        [key: string]: unknown;
     }> = []
 ): Array<T> {
     const overrideMap = new Map(
         [ ...fieldOverrides ].map(f => [ f.name, f ])
     );
 
-    // Validation: Warn if field override references non-existent field
     fieldOverrides.forEach(override => {
         if (!baseProperties.some(p => p.name === override.name)) {
             DefaultLogger.warn(`Field override "${override.name}" not found in schema properties. This override will be ignored.`);
@@ -2736,12 +2729,17 @@ export function mergeFieldVisibility<T extends { name: string }>(
 
         if (!override) return prop;
 
+        const { name: _name, ...overrideProps } = override;
+        const definedOverrides: Record<string, unknown> = {};
+        for (const [ key, value ] of Object.entries(overrideProps)) {
+            if (value !== undefined) {
+                definedOverrides[ key ] = value;
+            }
+        }
+
         return {
             ...prop,
-            ...(override.visibility !== undefined && { visibility: override.visibility }),
-            ...(override.enablement !== undefined && { enablement: override.enablement }),
-            ...(override.helpText !== undefined && { helpText: override.helpText }),
-            ...(override.placeholder !== undefined && { placeholder: override.placeholder })
+            ...definedOverrides,
         };
     });
 }
