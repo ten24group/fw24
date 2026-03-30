@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.26](https://github.com/ten24group/fw24/compare/v1.1.0-beta.25...v1.1.0-beta.26) (2026-03-30)
+
+
+### Features
+
+* **entity:** add InlineTableFieldMetadata and enhance EntityFieldOverride ([af355e5](https://github.com/ten24group/fw24/commit/af355e53009f859c66f41c8a5b8c0a8c054c5e3f))
+
 ## [1.1.0-beta.25](https://github.com/ten24group/fw24/compare/v1.1.0-beta.24...v1.1.0-beta.25) (2026-03-26)
 
 ## [1.1.0-beta.20](https://github.com/ten24group/fw24/compare/v1.1.0-beta.19...v1.1.0-beta.20) (2026-03-14)
