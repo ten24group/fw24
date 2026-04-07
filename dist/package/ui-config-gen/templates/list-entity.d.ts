@@ -1,4 +1,4 @@
-import { BaseEntityService, EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap, ISectionsConfig, IErrorHandlingConfig, IRetryConfig } from "../../entity";
+import { BaseEntityService, EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap, ISectionsConfig, IErrorHandlingConfig, IRetryConfig, DisplayOverridesUIConfig } from "../../entity";
 import { IEntityPageAction, Template, SortConfig, FieldSortConfig, SortOrder } from "../../entity/base-entity";
 import type { IApplicationConfig } from "../../interfaces/config";
 export type ListEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
@@ -73,6 +73,8 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
     retry?: IRetryConfig;
     /** Auto-group secondary actions into a "More" dropdown */
     autoGroupActions?: boolean;
+    /** Display overrides UI metadata (merged from model + listPageConfig in ui-config gen). */
+    displayOverrides?: DisplayOverridesUIConfig;
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     readonly retry?: IRetryConfig | undefined;
@@ -86,6 +88,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
     }[];
     readonly pageHeaderActions: IEntityPageAction[];
     readonly listPageConfig: {
+        displayOverrides?: DisplayOverridesUIConfig | undefined;
         sectionsConfig?: any;
         loading?: {
             readonly type: "skeleton" | "spinner";
@@ -173,6 +176,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
 };
 export default _default;
 export declare function makeViewEntityListConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ListEntityPageOptions<S>, entityService: BaseEntityService<S>): {
+    displayOverrides?: DisplayOverridesUIConfig | undefined;
     sectionsConfig?: any;
     loading?: {
         readonly type: "skeleton" | "spinner";

@@ -1,3 +1,4 @@
+export * from './display-override-types';
 export * from './base-entity';
 export * from './crud-service';
 export * from './base-service';
