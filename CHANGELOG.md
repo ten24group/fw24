@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.28](https://github.com/ten24group/fw24/compare/v1.1.0-beta.27...v1.1.0-beta.28) (2026-04-07)
+
+
+### Features
+
+* **entity:** implement display override resolution and utility functions ([54b9fe1](https://github.com/ten24group/fw24/commit/54b9fe1bf3950b19a41053bafcb01379c583f116))
+
 ## [1.1.0-beta.27](https://github.com/ten24group/fw24/compare/v1.1.0-beta.26...v1.1.0-beta.27) (2026-04-07)
 
 
