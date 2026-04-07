@@ -485,6 +485,15 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      * Called automatically after reading from DB.
      */
     protected decompressFields<T extends Record<string, any>>(data: T): T;
+    /**
+     * **Opt-in** — CRUD payloads are unchanged. Merged value for `fieldPath` (stored column + override map).
+     * Uses `model.displayOverrides.storageAttribute` on **this** schema. For another entity’s row, use
+     * `readStoredValueAtPath` + `resolveWithDisplayOverrides`.
+     * Return type is `unknown` (JSON); narrow or assert for your DTO (e.g. string URL fields are strings at runtime).
+     */
+    resolveFieldWithDisplayOverrides(record: Record<string, unknown>, fieldPath: string, options?: {
+        channel?: string;
+    }): unknown;
 }
 export declare function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAttribute): Partial<EntityAttribute> & {
     id: string;

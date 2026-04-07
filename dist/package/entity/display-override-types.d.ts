@@ -1,5 +1,5 @@
 /**
- * Display overrides — optional per-entity metadata for admin presentation maps stored separately from canonical fields.
+ * Display overrides — optional per-entity metadata for maps stored separately from canonical fields (any client: UI or API).
  * `model.displayOverrides` tells UI config gen and ui24 where the map lives and which paths are overridable.
  */
 /** One entry in the override map (stored JSON). */
@@ -30,14 +30,14 @@ export interface DisplayOverrideFieldConfig {
      * Optional channel subset for this field (must be contained in `displayOverrides.channels` when that is set).
      */
     channels?: string[];
-    /** Admin-facing label for this override (e.g. “Public bio”). */
+    /** Label for this override target (e.g. “Public bio”). */
     label?: string;
     /**
      * Hint for frontend chrome when an override is active.
      * @default 'tag'
      */
     chrome?: 'tag' | 'badge' | 'outline' | 'none';
-    /** Short hint shown in admin tools / tooltips. */
+    /** Short hint for tooltips / help. */
     helpText?: string;
 }
 /**
@@ -60,18 +60,11 @@ export interface DisplayOverridesUIConfig {
      */
     fields?: DisplayOverrideFieldConfig[];
     /**
-     * Auto-discover override paths from generated page properties.
-     * Explicit `fields[]` still works and overrides per-path metadata.
+     * Auto-discover override paths from generated page properties (every leaf in config except storage map, relations, identifiers).
+     * Explicit `fields[]` still merges and overrides per-path metadata.
      */
     auto?: boolean;
-    /**
-     * Practical auto mode:
-     * - `editableVisible`: visible, editable, non-identifier, non-relation leaf fields
-     * - `allNonRelation`: all non-relation leaf fields
-     * @default 'editableVisible'
-     */
-    autoMode?: 'editableVisible' | 'allNonRelation';
-    /** Exclude specific dot-paths from auto mode. */
+    /** Exclude specific dot-paths from auto-discovery. */
     excludePaths?: string[];
     /** Default chrome for auto-discovered fields. */
     defaultChrome?: 'tag' | 'badge' | 'outline' | 'none';
