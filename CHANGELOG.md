@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.27](https://github.com/ten24group/fw24/compare/v1.1.0-beta.26...v1.1.0-beta.27) (2026-04-07)
+
+
+### Features
+
+* **entity:** implement display overrides for entity configurations ([63d70ab](https://github.com/ten24group/fw24/commit/63d70ab227ae3b83388acb1bfbf84d475206565a))
+
 ## [1.1.0-beta.26](https://github.com/ten24group/fw24/compare/v1.1.0-beta.25...v1.1.0-beta.26) (2026-03-30)
 
 
