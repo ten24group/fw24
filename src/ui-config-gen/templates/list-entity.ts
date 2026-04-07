@@ -296,7 +296,8 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
                 sectionsConfig,
                 Array.from(properties.values()),
                 entityService,
-                globalUIConfigOptions
+                globalUIConfigOptions,
+                displayOverrides
             )
         }),
         ...(displayOverrides && { displayOverrides }),

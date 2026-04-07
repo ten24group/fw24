@@ -18,6 +18,8 @@ import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor,
 import { createElectroDBEntity } from "./base-entity";
 import { UpdateEntityOperators, UpdateEntityResponse, CreateEntityResponse, GetEntityResponse, DeleteEntityResponse, UpsertEntityResponse, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
 import { EntitySchemaValidator } from "./entity-schema-validator";
+import { readStoredValueAtPath, resolveWithDisplayOverrides } from "./display-override-resolve";
+import type { DisplayOverrideStorage } from "./display-override-types";
 import { DatabaseError, EntityValidationError } from './errors';
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 import { InternalServerError, ServerError } from "../errors";
@@ -2324,6 +2326,29 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      */
     protected decompressFields<T extends Record<string, any>>(data: T): T {
         return decompressItem(data);
+    }
+
+    /**
+     * **Opt-in** — CRUD payloads are unchanged. Merged value for `fieldPath` (stored column + override map).
+     * Uses `model.displayOverrides.storageAttribute` on **this** schema. For another entity’s row, use
+     * `readStoredValueAtPath` + `resolveWithDisplayOverrides`.
+     * Return type is `unknown` (JSON); narrow or assert for your DTO (e.g. string URL fields are strings at runtime).
+     */
+    public resolveFieldWithDisplayOverrides(
+        record: Record<string, unknown>,
+        fieldPath: string,
+        options?: { channel?: string }
+    ): unknown {
+        const ui = this.schema.model.displayOverrides;
+        const overrideMap: DisplayOverrideStorage | undefined = ui?.storageAttribute
+            ? (record[ ui.storageAttribute ] as DisplayOverrideStorage | undefined)
+            : undefined;
+        return resolveWithDisplayOverrides({
+            storedValue: readStoredValueAtPath(record, fieldPath),
+            overrideMap,
+            fieldPath,
+            channel: options?.channel,
+        }).resolvedValue;
     }
 }
 

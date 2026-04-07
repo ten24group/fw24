@@ -14,7 +14,7 @@ function segmentKey(row: UiField): string {
 
 /**
  * Merges `displayOverrides.fields[]` onto formatted `propertiesConfig` rows by dot path,
- * so admin/runtime consumers get `displayOverride: { path, label, chrome, ... }` per field.
+ * so consumers get `displayOverride: { path, label, chrome, ... }` per field row.
  */
 export function mergeDisplayOverrideFieldConfigIntoProperties<T extends UiField>(
   propertiesConfig: T[],
@@ -24,20 +24,15 @@ export function mergeDisplayOverrideFieldConfigIntoProperties<T extends UiField>
 
   const byPath = new Map<string, DisplayOverrideFieldConfig>();
   const includeAuto = ui.auto === true || (ui.auto === undefined && !(ui.fields?.length));
-  const preset = ui.autoMode ?? 'editableVisible';
   const excludeAutoPaths = new Set((ui.excludePaths ?? []).map((p) => p.trim()).filter(Boolean));
   const defaultChrome = ui.defaultChrome;
 
+  /** Every leaf field in this page's propertiesConfig, except storage map, relations, and identifiers. Use `excludePaths` to opt out. */
   const isEligibleAutoField = (row: UiField, fullPath: string): boolean => {
     if (!fullPath || excludeAutoPaths.has(fullPath)) return false;
     if (fullPath === ui.storageAttribute || fullPath.startsWith(`${ui.storageAttribute}.`)) return false;
     if (Boolean(row.relation)) return false;
     if (row.isIdentifier === true) return false;
-    if (preset === 'allNonRelation') return true;
-    const isReadOnly = row.readOnly === true || row.isEditable === false;
-    if (isReadOnly) return false;
-    const isHidden = row.isVisible === false || row.hidden === true;
-    if (isHidden) return false;
     return true;
   };
 
@@ -112,8 +107,7 @@ export function mergeDisplayOverrideFieldConfigIntoProperties<T extends UiField>
 
 /**
  * Form pages: if the override storage attribute is present and the entity did not set
- * `hidden` / `isVisible`, default it hidden so admins rely on detail override UX unless
- * the schema opts in (explicit metadata wins).
+ * `hidden` / `isVisible`, default it hidden so raw JSON is not shown as a normal field unless opted in.
  */
 export function applyDisplayOverrideStorageFieldFormDefaults<T extends UiField>(
   propertiesConfig: T[],

@@ -14,6 +14,8 @@ import {
 import type { RelationEntityOptionConfig, FieldOptionsAPIConfig, IEntityPageAction, Template, FieldOption, IFilterSegmentGroup, ITableColumns, ITableColumn, ITableColumnConfig } from '../../entity/base-entity';
 import { FrameworkError } from "../../errors";
 import type { IApplicationConfig, IDuplicatedFieldDetectionConfig, ISegmentAutoGenerationConfig } from '../../interfaces/config';
+import type { DisplayOverridesUIConfig } from '../../entity/display-override-types';
+import { mergeDisplayOverrideFieldConfigIntoProperties, applyDisplayOverrideStorageFieldFormDefaults } from './merge-display-override-ui-fields';
 import { DefaultLogger } from "../../logging";
 import { pascalCase, toHumanReadableName } from "../../utils";
 
@@ -2217,7 +2219,9 @@ export function processSectionsConfig(
     sectionsConfig: any,
     allProperties: TIOSchemaAttribute[],
     entityService: BaseEntityService<any>,
-    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]
+    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ],
+    /** When set, nested detail/form field rows receive the same displayOverride merge as root pages. */
+    displayOverrides?: DisplayOverridesUIConfig
 ): any {
     if (!sectionsConfig) return sectionsConfig;
 
@@ -2226,7 +2230,7 @@ export function processSectionsConfig(
     // Process sections in single group format (backward compatible)
     if (processed.sections) {
         processed.sections = Object.entries(processed.sections).reduce((acc, [ key, section ]: [ string, any ]) => {
-            acc[ key ] = processSectionConfig(section, allProperties, entityService, globalUIConfigOptions);
+            acc[ key ] = processSectionConfig(section, allProperties, entityService, globalUIConfigOptions, displayOverrides);
             return acc;
         }, {} as Record<string, any>);
     }
@@ -2239,7 +2243,7 @@ export function processSectionsConfig(
             return {
                 ...group,
                 sections: Object.entries(group.sections).reduce((acc, [ key, section ]: [ string, any ]) => {
-                    acc[ key ] = processSectionConfig(section, allProperties, entityService, globalUIConfigOptions);
+                    acc[ key ] = processSectionConfig(section, allProperties, entityService, globalUIConfigOptions, displayOverrides);
                     return acc;
                 }, {} as Record<string, any>)
             };
@@ -2264,22 +2268,27 @@ function processSectionConfig(
     section: any,
     allProperties: TIOSchemaAttribute[],
     entityService: BaseEntityService<any>,
-    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ]
+    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ],
+    displayOverrides?: DisplayOverridesUIConfig
 ): any {
     const processed = { ...section };
 
     // Process detailsPageConfig with propertiesConfig
     if (processed.pageType === 'details' && processed.detailsPageConfig?.propertiesConfig) {
         const config = processed.detailsPageConfig;
+        let propertiesConfig = expandPropertyReferences(
+            config.propertiesConfig,
+            allProperties,
+            'detail',
+            entityService,
+            globalUIConfigOptions
+        );
+        if (displayOverrides) {
+            propertiesConfig = mergeDisplayOverrideFieldConfigIntoProperties(propertiesConfig, displayOverrides);
+        }
         processed.detailsPageConfig = {
             ...config,
-            propertiesConfig: expandPropertyReferences(
-                config.propertiesConfig,
-                allProperties,
-                'detail',
-                entityService,
-                globalUIConfigOptions
-            )
+            propertiesConfig,
         };
     }
 
@@ -2287,15 +2296,20 @@ function processSectionConfig(
     if (processed.pageType === 'form' && processed.formPageConfig?.propertiesConfig) {
         const config = processed.formPageConfig;
         // Forms in sections are typically 'create' forms
+        let propertiesConfig = expandPropertyReferences(
+            config.propertiesConfig,
+            allProperties,
+            'create',
+            entityService,
+            globalUIConfigOptions
+        );
+        if (displayOverrides) {
+            propertiesConfig = mergeDisplayOverrideFieldConfigIntoProperties(propertiesConfig, displayOverrides);
+            propertiesConfig = applyDisplayOverrideStorageFieldFormDefaults(propertiesConfig, displayOverrides);
+        }
         processed.formPageConfig = {
             ...config,
-            propertiesConfig: expandPropertyReferences(
-                config.propertiesConfig,
-                allProperties,
-                'create',
-                entityService,
-                globalUIConfigOptions
-            )
+            propertiesConfig,
         };
     }
 
@@ -2631,7 +2645,7 @@ export function groupPageHeaderActions(
 
     // Promote first secondary action if nothing is visible at top level
     if (topLevel.length === 0 && remaining.length > 0) {
-        topLevel.push(remaining[0]);
+        topLevel.push(remaining[ 0 ]);
         remaining = remaining.slice(1);
     }
 
@@ -2708,10 +2722,10 @@ export function mergeFieldVisibility<T extends { name: string }>(
     baseProperties: Array<T>,
     fieldOverrides: ReadonlyArray<{
         readonly name: string;
-        readonly [key: string]: unknown;
+        readonly [ key: string ]: unknown;
     }> | Array<{
         name: string;
-        [key: string]: unknown;
+        [ key: string ]: unknown;
     }> = []
 ): Array<T> {
     const overrideMap = new Map(

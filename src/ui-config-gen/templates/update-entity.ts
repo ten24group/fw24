@@ -184,7 +184,7 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
     entityService: BaseEntityService<S>
 ) {
 
-    const { entityName, properties, CRUDApiPath, formConfig, sectionsConfig, loading, globalUIConfigOptions } = options;
+    const { entityName, properties, CRUDApiPath, formConfig, sectionsConfig, loading, globalUIConfigOptions, displayOverrides } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
 
@@ -243,7 +243,8 @@ export function makeUpdateEntityFormConfig<S extends EntitySchema<string, string
             sectionsConfig,
             Array.from(properties.values()),
             entityService,
-            globalUIConfigOptions
+            globalUIConfigOptions,
+            displayOverrides
         );
     }
 

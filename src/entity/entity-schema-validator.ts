@@ -103,12 +103,6 @@ export class EntitySchemaValidator {
       if (ui.auto !== undefined && typeof ui.auto !== 'boolean') {
         errors.push('displayOverrides.auto must be a boolean when provided');
       }
-      if (
-        ui.autoMode !== undefined &&
-        ![ 'editableVisible', 'allNonRelation' ].includes(ui.autoMode)
-      ) {
-        errors.push('displayOverrides.autoMode must be one of: editableVisible, allNonRelation');
-      }
       if (ui.excludePaths !== undefined) {
         if (!Array.isArray(ui.excludePaths) || !ui.excludePaths.every((p: unknown) => typeof p === 'string')) {
           errors.push('displayOverrides.excludePaths must be string[] when provided');

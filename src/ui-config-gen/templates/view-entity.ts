@@ -228,7 +228,8 @@ export function makeViewEntityDetailConfig<S extends EntitySchema<string, string
             options.sectionsConfig,
             Array.from(properties.values()),
             entityService,
-            globalUIConfigOptions
+            globalUIConfigOptions,
+            options.displayOverrides
         );
     }
 
