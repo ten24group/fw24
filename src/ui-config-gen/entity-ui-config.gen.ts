@@ -199,6 +199,7 @@ export class EntityUIConfigGen {
                     successMessage: entitySchema.model.createPageConfig?.successMessage,
                     errorHandling: entitySchema.model.createPageConfig?.errorHandling,
                     retry: entitySchema.model.createPageConfig?.retry,
+                    displayOverrides: entitySchema.model.createPageConfig?.displayOverrides ?? entitySchema.model.displayOverrides,
                     globalUIConfigOptions,
                     autoGroupActions,
                 }, service);
@@ -225,6 +226,7 @@ export class EntityUIConfigGen {
                     successMessage: entitySchema.model.editPageConfig?.successMessage,
                     errorHandling: entitySchema.model.editPageConfig?.errorHandling,
                     retry: entitySchema.model.editPageConfig?.retry,
+                    displayOverrides: entitySchema.model.editPageConfig?.displayOverrides ?? entitySchema.model.displayOverrides,
                     globalUIConfigOptions,
                     autoGroupActions,
                 }, service);
@@ -253,6 +255,7 @@ export class EntityUIConfigGen {
                     loading: entitySchema.model.listPageConfig?.loading,
                     errorHandling: entitySchema.model.listPageConfig?.errorHandling,
                     retry: entitySchema.model.listPageConfig?.retry,
+                    displayOverrides: entitySchema.model.listPageConfig?.displayOverrides ?? entitySchema.model.displayOverrides,
                     globalUIConfigOptions,
                     hasObservability,
                     excludeAuditActions: entitySchema.model.excludeAuditActions,
@@ -280,6 +283,7 @@ export class EntityUIConfigGen {
                     dataQuality: entitySchema.model.viewPageConfig?.dataQuality,
                     errorHandling: entitySchema.model.viewPageConfig?.errorHandling,
                     retry: entitySchema.model.viewPageConfig?.retry,
+                    displayOverrides: entitySchema.model.viewPageConfig?.displayOverrides ?? entitySchema.model.displayOverrides,
                     globalUIConfigOptions,
                     hasObservability,
                     excludeAuditActions: entitySchema.model.excludeAuditActions,

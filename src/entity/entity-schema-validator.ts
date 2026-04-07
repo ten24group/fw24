@@ -21,6 +21,7 @@ export class EntitySchemaValidator {
   ): void {
     this.validateElectroDBSchema(schema, entityConfigurations);
     this.validateModelDefinition(schema);
+    this.validateDisplayOverrides(schema);
     this.validateRelations(schema);
     this.validateFieldMetadata(schema);
   }
@@ -70,6 +71,205 @@ export class EntitySchemaValidator {
     if (errors.length > 0) {
       throw new Error(`Model definition validation failed:\n${errors.join('\n')}`);
     }
+  }
+
+  private validateDisplayOverrides<S extends EntitySchema<any, any, any>>(schema: S): void {
+    const ui = schema.model.displayOverrides;
+    if (ui === undefined) return;
+
+    const errors: string[] = [];
+    if (!ui || typeof ui !== 'object') {
+      errors.push('displayOverrides must be an object');
+    } else {
+      if (typeof ui.storageAttribute !== 'string' || !ui.storageAttribute.trim()) {
+        errors.push('displayOverrides.storageAttribute must be a non-empty string');
+      } else if (!(ui.storageAttribute in schema.attributes)) {
+        errors.push(`displayOverrides.storageAttribute "${ui.storageAttribute}" must name an existing attribute`);
+      }
+      if (ui.label !== undefined && typeof ui.label !== 'string') {
+        errors.push('displayOverrides.label must be a string when provided');
+      }
+      if (ui.channels !== undefined) {
+        if (!Array.isArray(ui.channels) || !ui.channels.every(c => typeof c === 'string')) {
+          errors.push('displayOverrides.channels must be an array of strings when provided');
+        }
+      }
+      if (ui.allowListItemPaths !== undefined && typeof ui.allowListItemPaths !== 'boolean') {
+        errors.push('displayOverrides.allowListItemPaths must be a boolean when provided');
+      }
+      if (ui.fields !== undefined && !Array.isArray(ui.fields)) {
+        errors.push('displayOverrides.fields must be an array when provided');
+      }
+      if (ui.auto !== undefined && typeof ui.auto !== 'boolean') {
+        errors.push('displayOverrides.auto must be a boolean when provided');
+      }
+      if (
+        ui.autoMode !== undefined &&
+        ![ 'editableVisible', 'allNonRelation' ].includes(ui.autoMode)
+      ) {
+        errors.push('displayOverrides.autoMode must be one of: editableVisible, allNonRelation');
+      }
+      if (ui.excludePaths !== undefined) {
+        if (!Array.isArray(ui.excludePaths) || !ui.excludePaths.every((p: unknown) => typeof p === 'string')) {
+          errors.push('displayOverrides.excludePaths must be string[] when provided');
+        }
+      }
+      if (ui.defaultChrome !== undefined && ![ 'tag', 'badge', 'outline', 'none' ].includes(ui.defaultChrome)) {
+        errors.push('displayOverrides.defaultChrome must be one of: tag, badge, outline, none');
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new Error(`Display overrides UI validation failed:\n${errors.join('\n')}`);
+    }
+
+    this.validateDisplayOverrideFieldPaths(schema, ui);
+  }
+
+  private validateDisplayOverrideFieldPaths<S extends EntitySchema<any, any, any>>(
+    schema: S,
+    ui: NonNullable<S[ 'model' ][ 'displayOverrides' ]>
+  ): void {
+    const fields = ui.fields;
+    if (!fields?.length) return;
+
+    const errors: string[] = [];
+    const seen = new Set<string>();
+    const primary = schema.indexes?.primary as unknown as {
+      pk?: { composite?: readonly string[] };
+      sk?: { composite?: readonly string[] };
+    } | undefined;
+    const primaryKeyAttrs = new Set<string>();
+    if (primary?.pk?.composite) {
+      for (const a of primary.pk.composite) primaryKeyAttrs.add(String(a));
+    }
+    if (primary?.sk?.composite) {
+      for (const a of primary.sk.composite) primaryKeyAttrs.add(String(a));
+    }
+
+    const allowListIndex = ui.allowListItemPaths === true;
+    const storage = ui.storageAttribute;
+    const autoExcludePaths = ui.excludePaths ?? [];
+
+    for (const entry of fields) {
+      if (!entry || typeof entry.path !== 'string' || !entry.path.trim()) {
+        errors.push('displayOverrides.fields[]: each entry must have a non-empty path');
+        continue;
+      }
+      const path = entry.path.trim();
+      if (seen.has(path)) {
+        errors.push(`duplicate displayOverride path "${path}"`);
+      }
+      seen.add(path);
+      if (path === storage || path.startsWith(`${storage}.`)) {
+        errors.push(`path "${path}" must not target the override storage attribute`);
+      }
+
+      try {
+        this.assertValidDisplayOverridePath(schema, path, allowListIndex, primaryKeyAttrs);
+      } catch (e: any) {
+        errors.push(e.message);
+      }
+
+      if (entry.channels !== undefined) {
+        if (!Array.isArray(entry.channels) || !entry.channels.every(c => typeof c === 'string')) {
+          errors.push(`displayOverrides.fields channels for "${path}" must be string[]`);
+        } else if (ui.channels?.length) {
+          const ok = new Set(ui.channels);
+          for (const c of entry.channels) {
+            if (!ok.has(c)) {
+              errors.push(`field "${path}" channel "${c}" is not listed in displayOverrides.channels`);
+            }
+          }
+        }
+      }
+      if (entry.chrome !== undefined && ![ 'tag', 'badge', 'outline', 'none' ].includes(entry.chrome)) {
+        errors.push(`invalid chrome on displayOverride path "${path}"`);
+      }
+    }
+
+    for (const pathRaw of autoExcludePaths) {
+      if (typeof pathRaw !== 'string' || !pathRaw.trim()) continue;
+      const path = pathRaw.trim();
+      if (path === storage || path.startsWith(`${storage}.`)) {
+        errors.push(`auto exclude path "${path}" must not target the override storage attribute`);
+        continue;
+      }
+      try {
+        this.assertValidDisplayOverridePath(schema, path, allowListIndex, primaryKeyAttrs);
+      } catch (e: any) {
+        errors.push(`displayOverrides.excludePaths invalid path "${path}": ${e.message}`);
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new Error(`Display overrides UI validation failed:\n${errors.join('\n')}`);
+    }
+  }
+
+  private assertValidDisplayOverridePath<S extends EntitySchema<any, any, any>>(
+    schema: S,
+    path: string,
+    allowListIndex: boolean,
+    primaryKeyAttrs: Set<string>
+  ): void {
+    const parts = path.split('.').filter(p => p.length > 0);
+    if (parts.length === 0) {
+      throw new Error(`invalid empty displayOverride path`);
+    }
+
+    const walk = (attrs: Record<string, any>, start: number): void => {
+      if (start >= parts.length) {
+        throw new Error(`invalid path "${path}"`);
+      }
+
+      const part = parts[ start ];
+      if (/^\d+$/.test(part)) {
+        throw new Error(`path "${path}" is invalid at "${part}" — unexpected list index`);
+      }
+
+      const attr = attrs[ part ];
+      if (!attr) {
+        throw new Error(`path "${path}" — unknown attribute "${part}"`);
+      }
+
+      if (start === parts.length - 1) {
+        if (attr.relation) {
+          throw new Error(`path "${path}" must not target a relation field`);
+        }
+        if (parts.length === 1 && primaryKeyAttrs.has(part)) {
+          throw new Error(`path "${path}" must not target a primary index key attribute`);
+        }
+        return;
+      }
+
+      if (attr.type === 'map' && attr.properties) {
+        walk(attr.properties as Record<string, any>, start + 1);
+        return;
+      }
+
+      if (attr.type === 'list') {
+        if (!allowListIndex) {
+          throw new Error(`path "${path}" traverses a list but allowListItemPaths is not true`);
+        }
+        if (start + 1 >= parts.length) {
+          throw new Error(`path "${path}" — expected index after list attribute "${part}"`);
+        }
+        const idx = parts[ start + 1 ];
+        if (!/^\d+$/.test(idx)) {
+          throw new Error(`path "${path}" — expected numeric index after "${part}"`);
+        }
+        if (attr.items?.type === 'map' && attr.items.properties) {
+          walk(attr.items.properties as Record<string, any>, start + 2);
+          return;
+        }
+        throw new Error(`path "${path}" — list "${part}" must have map items to traverse`);
+      }
+
+      throw new Error(`path "${path}" — cannot traverse into "${part}"`);
+    };
+
+    walk(schema.attributes as Record<string, any>, 0);
   }
 
   private validateRelations<S extends EntitySchema<any, any, any>>(

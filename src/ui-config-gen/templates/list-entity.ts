@@ -1,8 +1,9 @@
-import { BaseEntityService, EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap, ISectionsConfig, IErrorHandlingConfig, IRetryConfig } from "../../entity";
+import { BaseEntityService, EntityListPageConfig, EntitySchema, TIOSchemaAttributesMap, ISectionsConfig, IErrorHandlingConfig, IRetryConfig, DisplayOverridesUIConfig } from "../../entity";
 import { IEntityPageAction, Template, SortConfig, FieldSortConfig, SortOrder, TableSortConfig, SearchSortConfig, DatabaseSortConfig, DualSortConfig } from "../../entity/base-entity";
 import type { IApplicationConfig } from "../../interfaces/config";
 import { pascalCase } from "../../utils";
 import { formatEntityAttributesForList, generateSegments, mergeColumnVisibility, processSectionsConfig, groupPageHeaderActions } from "./util";
+import { mergeDisplayOverrideFieldConfigIntoProperties } from "./merge-display-override-ui-fields";
 
 export type ListEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
     entityName: string,
@@ -63,13 +64,15 @@ export type ListEntityPageOptions<S extends EntitySchema<string, string, string>
      * Controls how loading states are displayed before data is ready.
      * @default { type: 'skeleton' }
      */
-    loading?: EntityListPageConfig['loading'];
+    loading?: EntityListPageConfig[ 'loading' ];
     /** Error handling configuration for the list page (#58) */
     errorHandling?: IErrorHandlingConfig;
     /** Retry configuration for the list page (#58) */
     retry?: IRetryConfig;
     /** Auto-group secondary actions into a "More" dropdown */
     autoGroupActions?: boolean;
+    /** Display overrides UI metadata (merged from model + listPageConfig in ui-config gen). */
+    displayOverrides?: DisplayOverridesUIConfig;
 }
 
 /**
@@ -200,7 +203,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     entityService: BaseEntityService<S>
 ) {
 
-    const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch, tableConfig, sectionsConfig, globalUIConfigOptions, loading } = options;
+    const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch, tableConfig, sectionsConfig, globalUIConfigOptions, loading, displayOverrides } = options;
     const entityNameLower = entityName.toLowerCase();
 
     const baseApiUrl = `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`;
@@ -256,6 +259,10 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
         formattedProps = mergeColumnVisibility(formattedProps, tableConfig.columns);
     }
 
+    if (displayOverrides) {
+        formattedProps = mergeDisplayOverrideFieldConfigIntoProperties(formattedProps, displayOverrides);
+    }
+
     // 3. Auto-generate or pass through segments
     const segments = generateSegments(properties, entityService, globalUIConfigOptions, tableConfig?.segments);
 
@@ -284,11 +291,14 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
         ...(tableConfig?.views && { views: tableConfig.views }),
         ...(tableConfig?.dataQuality && { dataQuality: tableConfig.dataQuality }),
         ...(loading && { loading }),
-        ...(sectionsConfig && { sectionsConfig: processSectionsConfig(
-            sectionsConfig,
-            Array.from(properties.values()),
-            entityService,
-            globalUIConfigOptions
-        )}),
+        ...(sectionsConfig && {
+            sectionsConfig: processSectionsConfig(
+                sectionsConfig,
+                Array.from(properties.values()),
+                entityService,
+                globalUIConfigOptions
+            )
+        }),
+        ...(displayOverrides && { displayOverrides }),
     };
 }

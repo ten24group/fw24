@@ -8,6 +8,7 @@ import { SearchIndexConfig } from '../search/types';
 import { EntitySearchService } from '../search/services';
 import { DepIdentifier, IFilterAutoGenerationConfig, ISegmentAutoGenerationConfig } from "../interfaces";
 import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig, AccordionPageConfig, WizardPageConfigStructure, CustomPageConfigStructure, IFormattingRule, IHelpConfig, ITableEmptyStateConfig, IPaginationConfig } from '../ui-config-gen/templates/custom-page';
+import type { DisplayOverridesUIConfig } from './display-override-types';
 
 /**
  * @fileoverview Entity Schema and Type-Safe Helper Functions
@@ -4313,6 +4314,8 @@ export interface EntityListPageConfig {
   readonly errorHandling?: IErrorHandlingConfig;
   /** Retry configuration for the entire list page (#58) */
   readonly retry?: IRetryConfig;
+  /** Optional display-overrides UI metadata for ui24 (canonical + overlay map). */
+  readonly displayOverrides?: DisplayOverridesUIConfig;
 }
 
 /**
@@ -4385,6 +4388,8 @@ export interface EntityViewPageConfig {
   readonly errorHandling?: IErrorHandlingConfig;
   /** Retry configuration (#58) */
   readonly retry?: IRetryConfig;
+  /** Optional display-overrides UI metadata for ui24 (canonical + overlay map). */
+  readonly displayOverrides?: DisplayOverridesUIConfig;
 }
 
 /**
@@ -4456,6 +4461,8 @@ export interface EntityEditPageConfig {
   readonly errorHandling?: IErrorHandlingConfig;
   /** Retry configuration (#58) */
   readonly retry?: IRetryConfig;
+  /** Optional display-overrides UI metadata for ui24 (canonical + overlay map). */
+  readonly displayOverrides?: DisplayOverridesUIConfig;
 }
 
 /**
@@ -4525,6 +4532,8 @@ export interface EntityCreatePageConfig {
   readonly errorHandling?: IErrorHandlingConfig;
   /** Retry configuration (#58) */
   readonly retry?: IRetryConfig;
+  /** Optional display-overrides UI metadata for ui24 (canonical + overlay map). */
+  readonly displayOverrides?: DisplayOverridesUIConfig;
 }
 
 export interface EntitySchema<
@@ -4613,6 +4622,12 @@ export interface EntitySchema<
        */
       tableUI?: IEntityTableUIConfig;
     };
+
+    /**
+     * Optional display-overrides UI wiring: where the override map lives and which paths are overridable.
+     * Emitted into generated list/view/create/edit UI configs for ui24.
+     */
+    readonly displayOverrides?: DisplayOverridesUIConfig;
 
     // Menu configuration
     readonly menuGroup?: string; // Group this entity belongs to in the menu
