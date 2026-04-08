@@ -2339,16 +2339,42 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         fieldPath: string,
         options?: { channel?: string }
     ): unknown {
-        const ui = this.schema.model.displayOverrides;
-        const overrideMap: DisplayOverrideStorage | undefined = ui?.storageAttribute
-            ? (record[ ui.storageAttribute ] as DisplayOverrideStorage | undefined)
-            : undefined;
+        const overrideMap = this.getDisplayOverrideMap(record);
         return resolveWithDisplayOverrides({
             storedValue: readStoredValueAtPath(record, fieldPath),
             overrideMap,
             fieldPath,
             channel: options?.channel,
         }).resolvedValue;
+    }
+
+    /**
+     * **Opt-in** — CRUD payloads are unchanged. Resolves multiple fields from a row using
+     * this entity schema's `model.displayOverrides.storageAttribute`.
+     */
+    public resolveFieldsWithDisplayOverrides<T extends Record<string, unknown>, K extends keyof T & string>(
+        record: T,
+        fields: readonly K[],
+        options?: { channel?: string }
+    ): Pick<T, K> {
+        const overrideMap = this.getDisplayOverrideMap(record);
+        const resolved = {} as Pick<T, K>;
+        for (const fieldPath of fields) {
+            resolved[ fieldPath ] = resolveWithDisplayOverrides({
+                storedValue: readStoredValueAtPath(record, fieldPath),
+                overrideMap,
+                fieldPath,
+                channel: options?.channel,
+            }).resolvedValue as T[K];
+        }
+        return resolved;
+    }
+
+    private getDisplayOverrideMap(record: Record<string, unknown>): DisplayOverrideStorage | undefined {
+        const ui = this.schema.model.displayOverrides;
+        return ui?.storageAttribute
+            ? (record[ ui.storageAttribute ] as DisplayOverrideStorage | undefined)
+            : undefined;
     }
 }
 

@@ -54,3 +54,4 @@ describe('readStoredValueAtPath', () => {
     expect(readStoredValueAtPath(r, 'a.missing')).toBeUndefined();
   });
 });
+

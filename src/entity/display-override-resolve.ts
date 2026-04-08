@@ -38,6 +38,7 @@ export interface ResolveWithDisplayOverridesResult {
   entry?: DisplayOverrideEntry | null;
 }
 
+
 export function resolveWithDisplayOverrides(
   params: ResolveWithDisplayOverridesParams
 ): ResolveWithDisplayOverridesResult {
@@ -67,6 +68,7 @@ export function resolveWithDisplayOverrides(
 
   return { resolvedValue: storedValue, valueFromOverride: false };
 }
+
 
 /**
  * Read a value from a record by dot-path without throwing (`a.b.c`).
