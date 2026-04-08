@@ -494,6 +494,14 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
     resolveFieldWithDisplayOverrides(record: Record<string, unknown>, fieldPath: string, options?: {
         channel?: string;
     }): unknown;
+    /**
+     * **Opt-in** — CRUD payloads are unchanged. Resolves multiple fields from a row using
+     * this entity schema's `model.displayOverrides.storageAttribute`.
+     */
+    resolveFieldsWithDisplayOverrides<T extends Record<string, unknown>, K extends keyof T & string>(record: T, fields: readonly K[], options?: {
+        channel?: string;
+    }): Pick<T, K>;
+    private getDisplayOverrideMap;
 }
 export declare function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAttribute): Partial<EntityAttribute> & {
     id: string;
