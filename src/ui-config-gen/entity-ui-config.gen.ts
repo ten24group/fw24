@@ -224,6 +224,8 @@ export class EntityUIConfigGen {
                     loading: entitySchema.model.editPageConfig?.loading,
                     pageTitle: entitySchema.model.editPageConfig?.pageTitle,
                     successMessage: entitySchema.model.editPageConfig?.successMessage,
+                    submitSuccessRedirect: entitySchema.model.editPageConfig?.submitSuccessRedirect,
+                    cancelRedirectUrl: entitySchema.model.editPageConfig?.cancelRedirectUrl,
                     errorHandling: entitySchema.model.editPageConfig?.errorHandling,
                     retry: entitySchema.model.editPageConfig?.retry,
                     displayOverrides: entitySchema.model.editPageConfig?.displayOverrides ?? entitySchema.model.displayOverrides,

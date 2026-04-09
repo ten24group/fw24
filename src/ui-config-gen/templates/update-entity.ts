@@ -70,6 +70,16 @@ export type UpdateEntityPageOptions<S extends EntitySchema<string, string, strin
     autoGroupActions?: boolean;
     /** Display overrides UI metadata (merged from model + editPageConfig in ui-config gen). */
     displayOverrides?: DisplayOverridesUIConfig;
+    /**
+     * After successful PATCH, navigate here instead of the default `/view-{entity}/:id`.
+     * @example "/list-post" to send users back to the listing
+     */
+    submitSuccessRedirect?: string;
+    /**
+     * Cancel button URL instead of the default `/view-{entity}/:id`.
+     * @example "/list-post"
+     */
+    cancelRedirectUrl?: string;
 };
 
 export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
@@ -77,8 +87,29 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     entityService: BaseEntityService<S>
 ) => {
 
-    const { entityName, entityNamePlural, actions, breadcrumbs, CRUDApiPath, pageTitle, successMessage, errorHandling, retry, excludeFromAdminDelete, excludeFromAdminCreate, excludeFromAdminDuplicate, autoGroupActions } = options;
+    const {
+        entityName,
+        entityNamePlural,
+        actions,
+        breadcrumbs,
+        CRUDApiPath,
+        pageTitle,
+        successMessage,
+        errorHandling,
+        retry,
+        excludeFromAdminDelete,
+        excludeFromAdminCreate,
+        excludeFromAdminDuplicate,
+        autoGroupActions,
+        submitSuccessRedirect: submitSuccessRedirectOverride,
+        cancelRedirectUrl: cancelRedirectUrlOverride,
+    } = options;
     const entityNameLower = entityName.toLowerCase();
+    const defaultListPath = `/list-${entityNameLower}`;
+    /** Default after save / cancel on edit form: return to the entity detail page (same record). */
+    const defaultDetailPath = `/view-${entityNameLower}/:id`;
+    const effectiveSubmitSuccessRedirect = submitSuccessRedirectOverride ?? defaultDetailPath;
+    const effectiveCancelUrl = cancelRedirectUrlOverride ?? defaultDetailPath;
     const entityNameCamel = camelCase(entityName);
     const entityNamePascalCase = pascalCase(entityName);
 
@@ -121,7 +152,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 },
                 successMessage: `${entityNamePascalCase} deleted successfully`,
                 errorMessage: `Failed to delete ${entityNamePascalCase}`,
-                submitSuccessRedirect: `/list-${entityNameLower}`
+                submitSuccessRedirect: defaultListPath
             }
         });
     }
@@ -146,7 +177,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 },
                 successMessage: `${entityNamePascalCase} duplicated successfully`,
                 errorMessage: `Failed to duplicate ${entityNamePascalCase}`,
-                submitSuccessRedirect: `/list-${entityNameLower}`
+                submitSuccessRedirect: defaultListPath
             }
         });
     }
@@ -159,7 +190,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 
 
     // Add cancel button to the merged form buttons
-    const cancelButton = { id: 'cancel', text: 'Cancel', action: 'cancel' as const, url: `/list-${entityNameLower}` };
+    const cancelButton = { id: 'cancel', text: 'Cancel', action: 'cancel' as const, url: effectiveCancelUrl };
     const finalFormButtons = [ ...formPageConfig.formButtons, cancelButton ];
 
     return {
@@ -171,7 +202,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
         formPageConfig: {
             ...formPageConfig,
             formButtons: finalFormButtons,  // Use merged buttons with cancel added
-            submitSuccessRedirect: `/list-${entityNameLower}`,
+            submitSuccessRedirect: effectiveSubmitSuccessRedirect,
             ...(successMessage && { successMessage }),
             ...(errorHandling && { errorHandling }),
             ...(retry && { retry }),
