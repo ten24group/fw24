@@ -68,6 +68,16 @@ export type UpdateEntityPageOptions<S extends EntitySchema<string, string, strin
     autoGroupActions?: boolean;
     /** Display overrides UI metadata (merged from model + editPageConfig in ui-config gen). */
     displayOverrides?: DisplayOverridesUIConfig;
+    /**
+     * After successful PATCH, navigate here instead of the default `/view-{entity}/:id`.
+     * @example "/list-post" to send users back to the listing
+     */
+    submitSuccessRedirect?: string;
+    /**
+     * Cancel button URL instead of the default `/view-{entity}/:id`.
+     * @example "/list-post"
+     */
+    cancelRedirectUrl?: string;
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: UpdateEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     pageTitle: Template;

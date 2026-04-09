@@ -4029,6 +4029,14 @@ export interface EntityEditPageConfig {
     readonly pageTitle?: Template;
     /** Custom success message template for form submission */
     readonly successMessage?: Template;
+    /**
+     * After a successful PATCH, navigate here instead of the default `/view-{entity}/:id`.
+     */
+    readonly submitSuccessRedirect?: string;
+    /**
+     * Cancel button navigates here instead of the default `/view-{entity}/:id`.
+     */
+    readonly cancelRedirectUrl?: string;
     /** Error handling configuration (#58) */
     readonly errorHandling?: IErrorHandlingConfig;
     /** Retry configuration (#58) */
