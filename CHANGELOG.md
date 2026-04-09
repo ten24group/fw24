@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.30](https://github.com/ten24group/fw24/compare/v1.1.0-beta.29...v1.1.0-beta.30) (2026-04-09)
+
+
+### Features
+
+* **entity:** add submit success and cancel redirect options to entity edit configuration ([f96d768](https://github.com/ten24group/fw24/commit/f96d7685779cb8889e171da2a613cfcb4f647bd9))
+
 ## [1.1.0-beta.29](https://github.com/ten24group/fw24/compare/v1.1.0-beta.28...v1.1.0-beta.29) (2026-04-08)
 
 
