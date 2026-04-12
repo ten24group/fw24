@@ -1,6 +1,7 @@
 export * from './display-override-types';
 export * from './display-override-resolve';
 export * from './base-entity';
+export * from './mutation-utils';
 export * from './crud-service';
 export * from './base-service';
 export * from './base-entity-controller';

@@ -87,6 +87,7 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 	/**
 	 * Creates a new entity.
+	 * Top-level `null` in the body omits optional attributes on the new item (not stored as null).
 	 * @param {Request} req - The request object.
 	 * @param {Response} res - The response object.
 	 * @returns {Promise<Response>} A promise that resolves with the response.
@@ -304,6 +305,8 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 
 	/**
 	 * Updates an entity by ID.
+	 * Request body uses JSON Merge Patch semantics for top-level keys: `null` clears an optional attribute
+	 * (DynamoDB REMOVE), rather than storing null (ElectroDB rejects null for most scalar types).
 	 * @param {Request} req - The request object.
 	 * @param {Response} res - The response object.
 	 * @returns {Promise<Response>} A promise that resolves with the response.

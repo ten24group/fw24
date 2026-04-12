@@ -1364,8 +1364,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
     /**
      * Creates a new entity.
-     * 
-     * @param payload - The payload for creating the entity.
+     *
+     * @param payload - Top-level JSON `null` values are stripped before persistence: optional fields are left unset
+     *   (see `createEntity` / `partitionTopLevelJsonNulls` in `mutation-utils`), not passed as null to ElectroDB.
      * @returns The created entity.
      */
     @Observed({
@@ -1405,6 +1406,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             for (const { name } of uniqueFields) {
                 if (name! in payloadCopy) {
                     let value = payloadCopy[ name! ];
+                    // Skip when optional unique field is cleared (null) — createEntity will omit it; no uniqueness query for null.
+                    if (value === null || value === undefined) {
+                        continue;
+                    }
                     uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
                         payloadToUpdate: payloadCopy,
                         attributeName: name!,
@@ -1448,7 +1453,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * NOTE: 
      *   - This method does not check for uniqueness of the attributes, neither create the slug automatically.
      *   - It's the responsibility of the caller to ensure the read ony attributes are not provided if the record is being upsert.
-     * 
+     *   - Top-level JSON `null` values are stripped from the payload before upsert (same as create; use PATCH to clear attrs on existing rows).
+     *
      * @param payload - The payload for creating-OR-updating the entity.
      * @returns Object containing:
      *   - data: The upserted entity data
@@ -1750,8 +1756,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * Updates an entity in the database.
      *
      * @param identifiers - The identifiers of the entity to update.
-     * @param data - The updated data for the entity.
-     * @param remove - Optional array of attributes to remove from the entity.
+     * @param data - Patch payload. Top-level JSON `null` values are treated as merge-patch “clear”:
+     *   they become DynamoDB attribute removals (see `updateEntity` / `partitionTopLevelJsonNulls` in `mutation-utils`),
+     *   not literal nulls passed to ElectroDB `set()`.
+     * @param operators - Optional ElectroDB patch operators; `operators.remove` merges with JSON `null` keys.
      * @returns The updated entity.
      */
     @Observed({
@@ -1784,6 +1792,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
                 if (name! in enhancedData) {
                     let value = enhancedData[ name as keyof typeof enhancedData ];
+                    // Skip when clearing optional unique field — updateEntity maps null → remove; no eq-null uniqueness check.
+                    if (value === null || value === undefined) {
+                        continue;
+                    }
                     uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
                         payloadToUpdate: enhancedData,
                         attributeName: name!,
@@ -2365,7 +2377,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 overrideMap,
                 fieldPath,
                 channel: options?.channel,
-            }).resolvedValue as T[K];
+            }).resolvedValue as T[ K ];
         }
         return resolved;
     }
