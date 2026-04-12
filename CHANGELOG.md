@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.31](https://github.com/ten24group/fw24/compare/v1.1.0-beta.30...v1.1.0-beta.31) (2026-04-12)
+
+
+### Features
+
+* **entity:** merge-patch null semantics and mutation wire helpers ([37447e4](https://github.com/ten24group/fw24/commit/37447e4ae5958365a286b4d82079a5fdb05dde39))
+
 ## [1.1.0-beta.30](https://github.com/ten24group/fw24/compare/v1.1.0-beta.29...v1.1.0-beta.30) (2026-04-09)
 
 
