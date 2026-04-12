@@ -286,7 +286,8 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
     /**
      * Creates a new entity.
      *
-     * @param payload - The payload for creating the entity.
+     * @param payload - Top-level JSON `null` values are stripped before persistence: optional fields are left unset
+     *   (see `createEntity` / `partitionTopLevelJsonNulls` in `mutation-utils`), not passed as null to ElectroDB.
      * @returns The created entity.
      */
     create(payload: CreateEntityItemTypeFromSchema<S>, ctx?: ExecutionContext): Promise<CreateEntityResponse<S>>;
@@ -295,6 +296,7 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      * NOTE:
      *   - This method does not check for uniqueness of the attributes, neither create the slug automatically.
      *   - It's the responsibility of the caller to ensure the read ony attributes are not provided if the record is being upsert.
+     *   - Top-level JSON `null` values are stripped from the payload before upsert (same as create; use PATCH to clear attrs on existing rows).
      *
      * @param payload - The payload for creating-OR-updating the entity.
      * @returns Object containing:
@@ -364,8 +366,10 @@ export declare abstract class BaseEntityService<S extends EntitySchema<any, any,
      * Updates an entity in the database.
      *
      * @param identifiers - The identifiers of the entity to update.
-     * @param data - The updated data for the entity.
-     * @param remove - Optional array of attributes to remove from the entity.
+     * @param data - Patch payload. Top-level JSON `null` values are treated as merge-patch “clear”:
+     *   they become DynamoDB attribute removals (see `updateEntity` / `partitionTopLevelJsonNulls` in `mutation-utils`),
+     *   not literal nulls passed to ElectroDB `set()`.
+     * @param operators - Optional ElectroDB patch operators; `operators.remove` merges with JSON `null` keys.
      * @returns The updated entity.
      */
     update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, ctx?: ExecutionContext): Promise<UpdateEntityResponse<S>>;

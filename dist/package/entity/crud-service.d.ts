@@ -263,6 +263,10 @@ export interface UpdateEntityArgs<Sch extends EntitySchema<any, any, any>, OpsSc
     compositeKeyData?: Record<string, any>;
 }
 export interface UpdateEntityOperators {
+    /**
+     * Attribute names to remove via ElectroDB `patch().remove()`.
+     * Combined with top-level JSON `null` values on the update payload (merge-patch clear).
+     */
     remove?: string[];
 }
 /**
