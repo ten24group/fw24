@@ -1,7 +1,7 @@
 import type { EntityConfiguration } from "electrodb";
 import { DIContainer } from "../di";
 import type { EntityInputValidations, EntityValidations } from "../validation";
-import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
+import type { BulkDeleteExecutionResult, BulkDeleteRelationPolicyOverrides, CreateEntityItemTypeFromSchema, DeleteImpactBlocker, DeleteImpactResult, DeleteImpactTarget, DeletePlanRequest, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationDeleteImpact, RelationDeletePolicy, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
 import type { EntityFilterCriteria, EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 
 import { ExecutionContext, Actor } from "../core/types/execution-context";
@@ -2097,6 +2097,312 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             this.logger.error(`Failed to delete by query for ${this.getEntityName()}:`, error);
             throw new DatabaseError(`Failed to delete by query for ${this.getEntityName()}: ${error.message}`);
         }
+    }
+
+    protected async resolveDeleteImpact(
+        impact: DeleteImpactResult,
+        _request: DeletePlanRequest,
+        _ctx?: ExecutionContext
+    ): Promise<DeleteImpactResult> {
+        return impact;
+    }
+
+    private getRelationDeleteAttributes() {
+        return Object.entries(this.getEntitySchema().attributes)
+            .map(([ attributeName, attribute ]) => ({ attributeName, attribute }))
+            .filter(({ attribute }) => Boolean(attribute.relation?.delete));
+    }
+
+    private resolveRelationIdentifiers(relation: NonNullable<EntityAttribute[ 'relation' ]>): RelationIdentifier[] {
+        const identifiers = typeof relation.identifiers === 'function'
+            ? relation.identifiers()
+            : relation.identifiers;
+        return Array.isArray(identifiers) ? identifiers : [ identifiers ];
+    }
+
+    private resolveDeletePolicy(
+        attributeName: string,
+        relation: NonNullable<EntityAttribute[ 'relation' ]>,
+        overrides?: BulkDeleteRelationPolicyOverrides
+    ): RelationDeletePolicy {
+        const config = relation.delete;
+        const override = overrides?.[ attributeName ];
+        return config?.overridable && override ? override : config?.policy ?? 'ignore';
+    }
+
+    private async resolveDeleteTargets(
+        request: DeletePlanRequest,
+        ctx?: ExecutionContext
+    ): Promise<DeleteImpactTarget[]> {
+        if (request.ids?.length) {
+            const extractedIdentifiers = this.extractEntityIdentifiers(request.ids as Array<Record<string, string>>);
+            const identifiers = (Array.isArray(extractedIdentifiers) ? extractedIdentifiers : [ extractedIdentifiers ]) as Array<EntityIdentifiersTypeFromSchema<S>>;
+            const records = await this.get({ identifiers }, ctx);
+            const recordList = Array.isArray(records) ? records : (records ? [ records ] : []);
+            const byIdentifier = new Map<string, Record<string, unknown>>();
+
+            for (const record of recordList) {
+                const id = this.extractEntityIdentifiers(record as Record<string, string>);
+                byIdentifier.set(JsonSerializer.stringify(id), record as Record<string, unknown>);
+            }
+
+            return identifiers.map(identifier => ({
+                identifiers: identifier as Record<string, unknown>,
+                preview: byIdentifier.get(JsonSerializer.stringify(identifier)) ?? identifier as Record<string, unknown>
+            }));
+        }
+
+        if (!request.filters || isEmptyObjectDeep(request.filters)) {
+            throw new Error('Delete impact requires either ids or non-empty filters.');
+        }
+
+        const maxItems = request.maxItems ?? 1000;
+        const pageSize = Math.min(request.batchSize ?? 100, maxItems);
+        const targets: DeleteImpactTarget[] = [];
+        let cursor: string | null = null;
+
+        do {
+            const page = await this.query({
+                filters: request.filters as EntityFilterCriteria<S>,
+                pagination: {
+                    count: pageSize,
+                    cursor: cursor || undefined,
+                    order: 'asc',
+                    pager: 'cursor'
+                }
+            }, ctx);
+
+            for (const record of page.data || []) {
+                targets.push({
+                    identifiers: this.extractEntityIdentifiers(record as Record<string, string>) as Record<string, unknown>,
+                    preview: record as Record<string, unknown>,
+                });
+                if (targets.length >= maxItems) break;
+            }
+
+            cursor = targets.length >= maxItems ? null : (page.cursor || null);
+        } while (cursor);
+
+        return targets;
+    }
+
+    private async resolveRelationDeleteImpact(
+        attributeName: string,
+        attribute: EntityAttribute,
+        directTargets: DeleteImpactTarget[],
+        request: DeletePlanRequest,
+        ctx?: ExecutionContext
+    ): Promise<RelationDeleteImpact> {
+        const relation = attribute.relation!;
+        const deleteConfig = relation.delete!;
+        const policy = this.resolveDeletePolicy(attributeName, relation, request.relationPolicyOverrides);
+        const label = deleteConfig.label ?? attribute.name ?? attributeName;
+        const warnings = deleteConfig.warning ? [ deleteConfig.warning ] : [];
+        const identifiers = this.resolveRelationIdentifiers(relation);
+        const relatedService = this.getEntityServiceByEntityName(relation.entityName);
+        const items: RelationDeleteImpact[ 'items' ] = [];
+        let truncated = false;
+
+        if (policy !== 'ignore' && policy !== 'custom' && relatedService) {
+            if (relation.type === 'one-to-many') {
+                const maxItems = deleteConfig.maxItems ?? 10000;
+
+                for (const parent of directTargets) {
+                    const filters: Record<string, unknown> = {};
+                    for (const mapping of identifiers) {
+                        const value = getValueByPath(parent.preview, mapping.source);
+                        if (value !== undefined && value !== null) {
+                            filters[ String(mapping.target) ] = { eq: value };
+                        }
+                    }
+
+                    if (Object.keys(filters).length === 0) continue;
+
+                    let cursor: string | null = null;
+                    let count = 0;
+                    do {
+                        const page = await relatedService.query({
+                            filters: filters as EntityFilterCriteria<any>,
+                            ...(deleteConfig.previewAttributes ? { attributes: deleteConfig.previewAttributes as string[] } : {}),
+                            pagination: {
+                                count: Math.min(500, maxItems - count),
+                                cursor: cursor || undefined,
+                                order: 'asc',
+                                pager: 'cursor'
+                            }
+                        }, ctx);
+
+                        for (const row of page.data || []) {
+                            if (count >= maxItems) {
+                                truncated = true;
+                                break;
+                            }
+                            items.push({
+                                parentIdentifiers: parent.identifiers,
+                                identifiers: relatedService.extractEntityIdentifiers(row as Record<string, string>) as Record<string, unknown>,
+                                preview: row as Record<string, unknown>,
+                            });
+                            count++;
+                        }
+
+                        cursor = count >= maxItems ? null : (page.cursor || null);
+                    } while (cursor);
+                }
+            } else if (relation.type === 'many-to-one') {
+                for (const source of directTargets) {
+                    const targetIdentifiers: Record<string, unknown> = {};
+                    for (const mapping of identifiers) {
+                        let value: unknown;
+                        try {
+                            value = getValueByPath(source.preview, mapping.source);
+                        } catch {
+                            value = undefined;
+                        }
+                        if (value !== undefined && value !== null) {
+                            targetIdentifiers[ String(mapping.target) ] = value;
+                        }
+                    }
+
+                    if (Object.keys(targetIdentifiers).length === 0) continue;
+
+                    let preview = targetIdentifiers;
+                    try {
+                        const related = await relatedService.get({ identifiers: targetIdentifiers }, ctx);
+                        if (related && !Array.isArray(related)) {
+                            preview = related as Record<string, unknown>;
+                        }
+                    } catch (error) {
+                        this.logger.warn(`Could not load related record for delete impact relation ${attributeName}`, { error, targetIdentifiers });
+                    }
+
+                    items.push({
+                        parentIdentifiers: source.identifiers,
+                        identifiers: targetIdentifiers,
+                        preview,
+                    });
+                }
+            }
+        }
+
+        if (policy === 'orphan' && items.length > 0) {
+            warnings.push(`${items.length} related ${label} record(s) will be left in place.`);
+        }
+
+        return {
+            relationAttribute: attributeName,
+            relation,
+            targetEntityName: relation.entityName,
+            label,
+            policy,
+            overridable: deleteConfig.overridable === true,
+            items,
+            ...(warnings.length > 0 ? { warnings } : {}),
+            ...(truncated ? { truncated } : {}),
+        };
+    }
+
+    public async getDeleteImpact(request: DeletePlanRequest, ctx?: ExecutionContext): Promise<DeleteImpactResult> {
+        const direct = await this.resolveDeleteTargets(request, ctx);
+        const relations: RelationDeleteImpact[] = [];
+        const blockers: DeleteImpactBlocker[] = [];
+
+        for (const { attributeName, attribute } of this.getRelationDeleteAttributes()) {
+            const impact = await this.resolveRelationDeleteImpact(attributeName, attribute, direct, request, ctx);
+            relations.push(impact);
+
+            if (impact.policy === 'restrict' && impact.items.length > 0) {
+                blockers.push({
+                    code: 'relation-restrict',
+                    message: `Cannot delete because ${impact.items.length} related ${impact.label} record(s) exist.`,
+                    relationAttribute: attributeName,
+                });
+            }
+        }
+
+        const totals = relations.reduce((acc, relation) => {
+            if (relation.policy === 'cascade' || relation.policy === 'setNull') acc.cascaded += relation.items.length;
+            else if (relation.policy === 'orphan') acc.orphaned += relation.items.length;
+            else if (relation.policy === 'restrict') acc.blocked += relation.items.length;
+            else acc.ignored += relation.items.length;
+            return acc;
+        }, {
+            direct: direct.length,
+            cascaded: 0,
+            orphaned: 0,
+            blocked: 0,
+            ignored: 0,
+        });
+
+        return this.resolveDeleteImpact({
+            dryRun: true,
+            entityName: this.getEntityName(),
+            direct,
+            relations,
+            blockers,
+            warnings: [],
+            totals,
+        }, request, ctx);
+    }
+
+    public async executeDeletePlan(request: DeletePlanRequest, ctx?: ExecutionContext): Promise<BulkDeleteExecutionResult> {
+        const impact = await this.getDeleteImpact(request, ctx);
+        if (impact.blockers.length > 0) {
+            throw new DatabaseError(`Delete is blocked by ${impact.blockers.length} issue(s). Run dry-run for details.`);
+        }
+
+        let cascadedCount = 0;
+        let orphanedCount = 0;
+        let ignoredCount = 0;
+        const unprocessed: Array<Record<string, unknown>> = [];
+        const concurrent = request.concurrent ?? 1;
+
+        for (const relationImpact of impact.relations) {
+            const relatedService = this.getEntityServiceByEntityName(relationImpact.targetEntityName);
+            if (relationImpact.items.length === 0) continue;
+
+            if (relationImpact.policy === 'cascade') {
+                const result = await relatedService.batchDelete({
+                    identifiers: relationImpact.items.map(item => item.identifiers),
+                    concurrent,
+                }, ctx);
+                const relationUnprocessed = (result as { unprocessed?: Array<Record<string, unknown>> })?.unprocessed ?? [];
+                cascadedCount += relationImpact.items.length - relationUnprocessed.length;
+                unprocessed.push(...relationUnprocessed);
+            } else if (relationImpact.policy === 'setNull') {
+                const relationIdentifiers = this.resolveRelationIdentifiers(relationImpact.relation);
+                for (const item of relationImpact.items) {
+                    const patch = relationIdentifiers.reduce((acc, mapping) => {
+                        acc[ String(mapping.target) ] = null;
+                        return acc;
+                    }, {} as Record<string, null>);
+                    await relatedService.update(item.identifiers, patch, undefined, ctx);
+                    cascadedCount++;
+                }
+            } else if (relationImpact.policy === 'orphan') {
+                orphanedCount += relationImpact.items.length;
+            } else {
+                ignoredCount += relationImpact.items.length;
+            }
+        }
+
+        const result = await this.batchDelete({
+            identifiers: impact.direct.map(item => item.identifiers) as Array<EntityIdentifiersTypeFromSchema<S>>,
+            concurrent,
+        }, ctx);
+
+        const directUnprocessed = (result as { unprocessed?: Array<Record<string, unknown>> })?.unprocessed ?? [];
+        unprocessed.push(...directUnprocessed);
+
+        return {
+            entityName: this.getEntityName(),
+            deletedCount: impact.direct.length - directUnprocessed.length,
+            failedCount: directUnprocessed.length,
+            cascadedCount,
+            orphanedCount,
+            ignoredCount,
+            totalProcessed: impact.direct.length,
+            unprocessed,
+        };
     }
 
     /**

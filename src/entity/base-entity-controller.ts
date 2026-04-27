@@ -1,5 +1,5 @@
 import type { Request, Response } from '../interfaces';
-import type { EntityIdentifiersTypeFromSchema, EntitySchema } from './base-entity';
+import type { DeletePlanRequest, EntityIdentifiersTypeFromSchema, EntitySchema } from './base-entity';
 import type { BaseEntityService } from './base-service';
 import type { EntityFilterCriteria } from './query-types';
 
@@ -504,6 +504,59 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 		if (req.debugMode) {
 			response.req = req;
 			response.filters = filters;
+		}
+
+		return res.json(response);
+	}
+
+	/**
+	 * Builds a dry-run delete impact plan using relation metadata declared on the entity schema.
+	 *
+	 * This is intentionally opt-in like the existing bulk delete routes:
+	 * add `@Post('/delete-impact')` in the concrete controller only after applying app-specific
+	 * auth/audit requirements.
+	 */
+	// @Post('/delete-impact')
+	async getDeleteImpact(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const request = (req.body || {}) as DeletePlanRequest;
+		const impact = await this.getEntityService().getDeleteImpact(request, ctx);
+
+		const response: any = {
+			...impact,
+			message: `Dry-run delete impact for ${this.getEntityName()}`
+		};
+
+		if (req.debugMode) {
+			response.req = req;
+			response.request = request;
+		}
+
+		return res.json(response);
+	}
+
+	/**
+	 * Executes a delete plan after relation impact has been reviewed.
+	 *
+	 * This uses the same request shape as getDeleteImpact so UI can do:
+	 * dry-run -> adjust relationPolicyOverrides -> execute.
+	 */
+	// @Post('/execute-delete-plan')
+	async executeDeletePlan(req: Request, res: Response, ctx?: ExecutionContext): Promise<Response> {
+		const request = (req.body || {}) as DeletePlanRequest;
+		const result = await this.getEntityService().executeDeletePlan(request, ctx);
+
+		const response: any = {
+			...result,
+			message: `Successfully deleted ${result.deletedCount} ${this.getEntityName()} record(s)`
+		};
+
+		if (result.failedCount > 0) {
+			response.message += `, ${result.failedCount} failed`;
+		}
+
+		if (req.debugMode) {
+			response.req = req;
+			response.request = request;
 		}
 
 		return res.json(response);

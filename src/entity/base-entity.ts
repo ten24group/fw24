@@ -500,6 +500,116 @@ export function createEntityRelation<T extends EntitySchema<any, any, any, any> 
  * ```
  */
 export type RelToRelatedEntity<Rel> = Rel extends Relation<infer E> ? E : never;
+
+export type RelationDeletePolicy =
+  | 'cascade'
+  | 'setNull'
+  | 'restrict'
+  | 'orphan'
+  | 'ignore'
+  | 'custom';
+
+export interface RelationDeleteConfig {
+  /**
+   * Default behavior when the source record is deleted.
+   *
+   * - cascade: delete related target records.
+   * - setNull: set the target FK to null (only for one-to-many relations).
+   * - restrict: block deletion if related records exist.
+   * - orphan: keep related records and surface an orphan warning.
+   * - ignore: do not inspect or mutate this relation.
+   * - custom: relation is handled by service override hooks.
+   */
+  policy: RelationDeletePolicy;
+  /** Whether admin UI may override `policy` for this relation at execution time. */
+  overridable?: boolean;
+  /** Human-readable label for impact previews; defaults to the relation attribute name. */
+  label?: string;
+  /** Optional warning shown in dry-run impact. */
+  warning?: string;
+  /** Attributes to include when fetching related records for preview. */
+  previewAttributes?: ReadonlyArray<string> | Array<string>;
+  /** Maximum related records to include per source record. */
+  maxItems?: number;
+}
+
+export interface BulkDeleteIdentifierValues {
+  readonly [ attributeName: string ]: unknown;
+}
+
+export interface BulkDeletePreviewValues {
+  readonly [ attributeName: string ]: unknown;
+}
+
+export interface DeleteImpactTarget {
+  identifiers: BulkDeleteIdentifierValues;
+  preview: BulkDeletePreviewValues;
+}
+
+export interface BulkDeleteRelationPolicyOverrides {
+  readonly [ relationAttribute: string ]: RelationDeletePolicy | undefined;
+}
+
+export interface RelationDeleteImpact {
+  relationAttribute: string;
+  relation: Relation<any>;
+  targetEntityName: string;
+  label: string;
+  policy: RelationDeletePolicy;
+  overridable: boolean;
+  items: Array<{
+    parentIdentifiers: BulkDeleteIdentifierValues;
+    identifiers: BulkDeleteIdentifierValues;
+    preview: BulkDeletePreviewValues;
+  }>;
+  warnings?: string[];
+  truncated?: boolean;
+}
+
+export interface DeleteImpactBlocker {
+  code: string;
+  message: string;
+  identifiers?: BulkDeleteIdentifierValues;
+  relationAttribute?: string;
+  context?: BulkDeletePreviewValues;
+}
+
+export interface DeleteImpactResult {
+  dryRun: true;
+  entityName: string;
+  direct: DeleteImpactTarget[];
+  relations: RelationDeleteImpact[];
+  blockers: DeleteImpactBlocker[];
+  warnings: string[];
+  totals: {
+    direct: number;
+    cascaded: number;
+    orphaned: number;
+    blocked: number;
+    ignored: number;
+  };
+}
+
+export interface DeletePlanRequest {
+  ids?: Array<BulkDeleteIdentifierValues>;
+  filters?: EntityFilterCriteria<EntitySchema<any, any, any>>;
+  relationPolicyOverrides?: BulkDeleteRelationPolicyOverrides;
+  maxItems?: number;
+  batchSize?: number;
+  concurrent?: number;
+}
+
+export interface BulkDeleteExecutionResult {
+  entityName: string;
+  deletedCount: number;
+  failedCount: number;
+  cascadedCount: number;
+  orphanedCount: number;
+  ignoredCount: number;
+  totalProcessed: number;
+  unprocessed: Array<BulkDeleteIdentifierValues>;
+}
+
 /**
  * Represents a relation between entities (DATA LAYER ONLY).
  * Supports lazy-loaded entity schemas to avoid circular dependency issues.
@@ -595,6 +705,15 @@ export type Relation<E extends EntitySchema<any, any, any, any> = any> = {
    * attributes: () => ({ userId: true, name: true, email: true })
    */
   attributes?: HydrateOptionForEntity<E> | (() => HydrateOptionForEntity<E>);
+
+  /**
+   * Delete-time behavior for this existing data relation.
+   *
+   * This deliberately lives on `Relation` instead of a parallel top-level relation
+   * registry so delete impact, hydration, filtering, and UI relation metadata all
+   * use the same source/target identifier mapping.
+   */
+  delete?: RelationDeleteConfig;
 };
 
 /**
@@ -2082,6 +2201,25 @@ export function isConditionalValue<T>(value: unknown): value is ConditionalValue
 }
 
 
+export interface IBulkDeleteActionConfig {
+  readonly entityName?: string;
+  readonly entityLabel?: string;
+  readonly entityNamePlural?: string;
+  readonly apiBaseUrl?: string;
+  readonly impactApiUrl?: string;
+  readonly executeApiUrl?: string;
+  readonly identifierFields?: ReadonlyArray<string> | Array<string>;
+  readonly allowSelectionDelete?: boolean;
+  readonly allowQueryDelete?: boolean;
+  readonly maxItems?: number;
+  readonly batchSize?: number;
+  readonly concurrent?: number;
+  readonly revalidateBeforeExecute?: boolean;
+  readonly responseConfig?: IResponseDisplayConfig;
+  readonly dynamicConfigKey?: string;
+  readonly invalidateRelated?: ReadonlyArray<string> | Array<string>;
+}
+
 /**
  * Entity page action
  * Supports buttons, dropdowns with modals/navigation
@@ -2340,6 +2478,8 @@ export interface IEntityPageAction {
     readonly fields?: ReadonlyArray<string>;
     readonly template?: Template;
   };
+
+  readonly bulkDeleteConfig?: IBulkDeleteActionConfig;
 }
 
 export interface IEntityPageColumn {
@@ -3990,6 +4130,7 @@ export interface EntityListPageConfig {
   readonly tableConfig?: {
     readonly rowActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
     readonly bulkActions?: ReadonlyArray<IEntityPageAction> | Array<IEntityPageAction>;
+    readonly bulkDelete?: boolean | IBulkDeleteActionConfig;
     readonly rowSelection?: {
       enabled: boolean;
       visibility?: Condition;

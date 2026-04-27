@@ -144,6 +144,43 @@ function generateListAuditActions(
     return auditActions;
 }
 
+function makeBulkDeleteAction(
+    entityName: string,
+    entityNamePlural: string,
+    baseApiUrl: string,
+    primaryIdAttribute: string | undefined,
+    config: NonNullable<EntityListPageConfig[ 'tableConfig' ]>[ 'bulkDelete' ]
+): IEntityPageAction | undefined {
+    if (!config) return undefined;
+
+    const userConfig = typeof config === 'object' ? config : {};
+    const effectiveApiBaseUrl = userConfig.apiBaseUrl ?? baseApiUrl;
+    return {
+        id: 'bulk-delete',
+        label: `Delete ${entityNamePlural}`,
+        icon: 'DeleteOutlined',
+        tooltip: `Delete selected or filtered ${entityNamePlural}`,
+        bulkDeleteConfig: {
+            entityName,
+            entityLabel: userConfig.entityLabel,
+            entityNamePlural: userConfig.entityNamePlural ?? entityNamePlural,
+            apiBaseUrl: effectiveApiBaseUrl,
+            impactApiUrl: userConfig.impactApiUrl ?? `${effectiveApiBaseUrl}/delete-impact`,
+            executeApiUrl: userConfig.executeApiUrl ?? `${effectiveApiBaseUrl}/execute-delete-plan`,
+            identifierFields: userConfig.identifierFields ?? [ primaryIdAttribute ?? `${entityName}Id`, 'id' ],
+            allowSelectionDelete: userConfig.allowSelectionDelete ?? true,
+            allowQueryDelete: userConfig.allowQueryDelete ?? true,
+            ...(userConfig.maxItems !== undefined && { maxItems: userConfig.maxItems }),
+            ...(userConfig.batchSize !== undefined && { batchSize: userConfig.batchSize }),
+            ...(userConfig.concurrent !== undefined && { concurrent: userConfig.concurrent }),
+            revalidateBeforeExecute: userConfig.revalidateBeforeExecute ?? true,
+            responseConfig: userConfig.responseConfig,
+            dynamicConfigKey: userConfig.dynamicConfigKey,
+            invalidateRelated: userConfig.invalidateRelated,
+        }
+    };
+}
+
 /**
  * @deprecated Extract just the order direction from legacy SortConfig
  */
@@ -203,7 +240,7 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     entityService: BaseEntityService<S>
 ) {
 
-    const { entityName, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch, tableConfig, sectionsConfig, globalUIConfigOptions, loading, displayOverrides } = options;
+    const { entityName, entityNamePlural, properties, excludeFromAdminUpdate, excludeFromAdminDelete, excludeFromAdminDetail, CRUDApiPath, useSearch, tableConfig, sectionsConfig, globalUIConfigOptions, loading, displayOverrides } = options;
     const entityNameLower = entityName.toLowerCase();
 
     const baseApiUrl = `${CRUDApiPath ? CRUDApiPath : ''}/${entityNameLower}`;
@@ -266,12 +303,24 @@ export function makeViewEntityListConfig<S extends EntitySchema<string, string, 
     // 3. Auto-generate or pass through segments
     const segments = generateSegments(properties, entityService, globalUIConfigOptions, tableConfig?.segments);
 
+    const bulkDeleteAction = makeBulkDeleteAction(
+        entityName,
+        entityNamePlural,
+        baseApiUrl,
+        entityService.getEntityPrimaryIdPropertyName(),
+        tableConfig?.bulkDelete
+    );
+    const bulkActions = [
+        ...(tableConfig?.bulkActions ? [ ...tableConfig.bulkActions ] : []),
+        ...(bulkDeleteAction ? [ bulkDeleteAction ] : [])
+    ];
+
     return {
         apiConfig,
         propertiesConfig: formattedProps,  // Row actions are merged into identifier field's actions
         entityName,  // Add entityName to config for evaluation system
-        ...(tableConfig?.bulkActions && { bulkActions: tableConfig.bulkActions }),
-        ...(tableConfig?.rowSelection && { rowSelection: tableConfig.rowSelection }),
+        ...(bulkActions.length > 0 && { bulkActions }),
+        ...((tableConfig?.rowSelection || bulkDeleteAction) && { rowSelection: tableConfig?.rowSelection ?? { enabled: true } }),
         ...(tableConfig?.expandable && { expandableConfig: tableConfig.expandable }),
         ...(segments && segments.length > 0 && { segments }),
         fetchStrategy: tableConfig?.fetchStrategy || 'eager',
