@@ -1,4 +1,5 @@
 import { Logger, ILogObj, ISettingsParam } from "tslog";
+import { logtrailTransport } from "./logtrail";
 
 export interface ILogger extends Logger<ILogObj> {
 }
@@ -39,7 +40,7 @@ export const createLogger = (_options: string | Function | ISettingsParam<ILogOb
 
     const logger = new Logger({
         stylePrettyLogs: false,
-        maskValuesOfKeys: [ 'password', 'confirmPassword', 'secret', 'token', 'apiKey', 'accessToken', 'refreshToken', 'clientSecret', 'clientId', 'clientToken', 'clientCode', 'clientKey', 'clientSecret', 'clientId', 'clientToken', 'clientCode', 'clientKey' ],
+        maskValuesOfKeys: [ 'password', 'confirmPassword', 'secret', 'token', 'apiKey', 'accessToken', 'refreshToken', 'clientSecret', 'clientId', 'clientToken', 'clientCode', 'clientKey' ],
         maskValuesOfKeysCaseInsensitive: true,
         maskValuesRegEx: [
             /password\s*:\s*([^\s]+)/gi,
@@ -63,8 +64,10 @@ export const createLogger = (_options: string | Function | ISettingsParam<ILogOb
         ..._options,
         // ensure min log level is always there
         minLevel: _options.minLevel ?? logLevel,
-        
+
     });
+
+    logger.attachTransport(logtrailTransport);
 
     return logger;
 }
@@ -74,3 +77,10 @@ export const DefaultLogger: ILogger = createLogger('[*]');
 export {
     LogDuration
 } from '../decorators/log-duration';
+
+export {
+    logtrailTransport,
+    resolveLogtrailVectorIngest,
+    setLogtrailVectorIngest,
+    type LogtrailVectorIngestConfig,
+} from './logtrail';
