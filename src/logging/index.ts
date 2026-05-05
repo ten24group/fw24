@@ -82,5 +82,6 @@ export {
     logtrailTransport,
     resolveLogtrailVectorIngest,
     setLogtrailVectorIngest,
+    shipLogtrailVectorJson,
     type LogtrailVectorIngestConfig,
 } from './logtrail';

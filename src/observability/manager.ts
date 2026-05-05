@@ -9,6 +9,7 @@ import { createLogger } from '../logging';
 import {
   CaptureControl,
   CaptureInput,
+  type ObservabilityBackendName,
   ObservabilityBackend,
   ObservabilityConfig,
   ObservabilityError,
@@ -86,7 +87,7 @@ function unpackEmittedEvents(emittedEvents: readonly EmittedEvent[]): Observabil
       let checkpoints = (existingData.checkpoints as unknown[]) ?? [];
       if (emitted.absorbed.checkpoints.length > 0) {
         const groupedEntries = groupCheckpointsByOperation(emitted.absorbed.checkpoints);
-        checkpoints = [...checkpoints, ...groupedEntries];
+        checkpoints = [ ...checkpoints, ...groupedEntries ];
       }
 
       // Store absorbed summary — stripped of byOperation, entityIds, and checkpoints
@@ -336,7 +337,8 @@ function getBackendsForType(type: string): ObservabilityBackend[] {
   const typeConfig = config?.types?.[ typeCategory ];
 
   if (typeConfig?.backends && typeConfig.backends.length > 0) {
-    return backends.filter((b) => typeConfig.backends!.includes(b.name as 'cloudwatch' | 'dynamodb' | 'otel'));
+    return backends.filter((b) =>
+      typeConfig.backends!.includes(b.name as ObservabilityBackendName));
   }
 
   return backends;
@@ -351,7 +353,7 @@ function shouldBackendCaptureType(
 ): boolean {
   // Per-event backend filter (used for OTEL span tracking in consolidated mode)
   if (event.capture?.backends && event.capture.backends.length > 0) {
-    if (!event.capture.backends.includes(backend.name as 'cloudwatch' | 'dynamodb' | 'otel')) {
+    if (!event.capture.backends.includes(backend.name as ObservabilityBackendName)) {
       return false;
     }
   }
@@ -1109,6 +1111,7 @@ function initializeBackendsFromConfig(cfg: ObservabilityConfig): void {
       );
       backends.push(backend);
       backendConfigs.set(backend.name, backendCfg);
+      backend.configureFromBackendEntry?.(backendCfg);
       logger.debug(`Initialized backend: ${backend.name}`);
     } catch (error) {
       if (error instanceof NoProviderFoundError) {
@@ -1582,8 +1585,8 @@ export class ObservabilityManager {
           const summaryByLevel: Record<string, number> = {};
           let errorCount = 0;
           for (const e of maybeDropEmptyLeafSpans) {
-            summaryByType[e.type] = (summaryByType[e.type] || 0) + 1;
-            summaryByLevel[e.level] = (summaryByLevel[e.level] || 0) + 1;
+            summaryByType[ e.type ] = (summaryByType[ e.type ] || 0) + 1;
+            summaryByLevel[ e.level ] = (summaryByLevel[ e.level ] || 0) + 1;
             if (e.level === 'error' || e.level === 'critical') errorCount++;
           }
           rootSpan.data = {
@@ -1624,11 +1627,11 @@ export class ObservabilityManager {
           }
 
           // Track captured event breakdowns
-          capturedByType[event.type] = (capturedByType[event.type] || 0) + 1;
+          capturedByType[ event.type ] = (capturedByType[ event.type ] || 0) + 1;
           if (event.operation) {
-            capturedByOperation[event.operation] = (capturedByOperation[event.operation] || 0) + 1;
+            capturedByOperation[ event.operation ] = (capturedByOperation[ event.operation ] || 0) + 1;
           }
-          capturedByLevel[event.level] = (capturedByLevel[event.level] || 0) + 1;
+          capturedByLevel[ event.level ] = (capturedByLevel[ event.level ] || 0) + 1;
           obsState.summary.captured++;
 
           // Passed both filtering and sampling - emit
