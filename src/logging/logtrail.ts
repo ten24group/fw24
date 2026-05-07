@@ -75,6 +75,35 @@ function resolvedHost(cfg: LogtrailVectorIngestConfig): string {
     return h ?? "unknown";
 }
 
+/**
+ * Fire-and-forget POST of one Vector JSON object (`service`, `level`, `host`, `message`).
+ * Used by tslog transport and observability Logtrail backend.
+ */
+export function shipLogtrailVectorJson(payload: {
+    level: string;
+    message: string;
+    /** Overrides Loki `service` label when ingest is configured */
+    service?: string;
+}): void {
+    const cfg = resolveLogtrailVectorIngest();
+    if (!cfg) return;
+    const msg = payload.message.trim();
+    if (!msg) return;
+
+    const service = payload.service?.trim() ? payload.service.trim() : cfg.service;
+    const body = JSON.stringify({
+        service,
+        host: resolvedHost(cfg),
+        level: payload.level,
+        message: msg,
+    });
+
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (cfg.xApiKey) headers[ "x-api-key" ] = cfg.xApiKey;
+
+    void fetch(cfg.ingestHttpUrl, { method: "POST", headers, body }).catch(() => { });
+}
+
 function serializeLogPayload(logObj: ILogObj & ILogObjMeta): string {
     try {
         const seen = new WeakSet<object>();
@@ -104,21 +133,9 @@ function levelFromTslog(logObj: ILogObj & ILogObjMeta): string {
 
 /** Fire-and-forget POST to Vector. Attach with logger.attachTransport(...) */
 export function logtrailTransport(logObj: ILogObj & ILogObjMeta): void {
-    const cfg = resolveLogtrailVectorIngest();
-    if (!cfg) return;
-
     const message = serializeLogPayload(logObj);
-    if (message === "") return;
-
-    const body = JSON.stringify({
-        service: cfg.service,
-        host: resolvedHost(cfg),
+    shipLogtrailVectorJson({
         level: levelFromTslog(logObj),
         message,
     });
-
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (cfg.xApiKey) headers[ "x-api-key" ] = cfg.xApiKey;
-
-    void fetch(cfg.ingestHttpUrl, { method: "POST", headers, body }).catch(() => { });
 }

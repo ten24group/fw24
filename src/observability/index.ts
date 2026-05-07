@@ -62,6 +62,7 @@ export {
   type ObservabilityConfig,
   type ObservabilityBackend,
   type ObservabilityBackendConfig,
+  type ObservabilityBackendName,
   type DataProtectionConfig,
   type TruncationConfig,
   type DynamoDBConfig,
@@ -216,6 +217,7 @@ export {
 export { CloudWatchBackend } from './backends/cloudwatch';
 export { DynamoDBObservabilityBackend } from './backends/dynamodb';
 export { OTELObservabilityBackend } from './backends/otel';
+export { LogtrailObservabilityBackend } from './backends/logtrail';
 
 // === UTILITIES ===
 export { clearRedactorCache, DEFAULT_BLACKLISTED_KEYS, DEFAULT_PROTECTED_FIELDS, extendBlacklist, redactSensitiveData, shouldRedactKey } from './utils/data-protection';
