@@ -1,7 +1,8 @@
 name: Develop Branch Release
 
 # Requires repo secret DEVELOP_RELEASE_TOKEN (PAT with contents write; account must be allowed to push develop).
-# Checkout uses that token so `npm run release:BE:github` can push develop and tags.
+# Checkout uses that token for git push. If the next beta tag already exists remotely, CI bumps to
+# the next free prerelease and runs standard-version --release-as (existing tags are not deleted).
 # Release commits include [skip ci] via .versionrc.json so the automation push does not re-trigger this job.
 on:
   push:
@@ -84,5 +85,12 @@ jobs:
             echo "Committed dist folder"
           fi
 
+      - name: Next beta version (skip if tag already exists)
+        id: next_rel
+        run: echo "version=$(node scripts/ci/next-free-beta-version.cjs)" >> "$GITHUB_OUTPUT"
+
+      # CI uses --release-as (not --prerelease) when combined with a pinned version. One build above is enough.
       - name: Release beta (version, changelog, tag, push)
-        run: npm run release:BE:github
+        run: |
+          npm run release:BE:version:as -- --release-as "${{ steps.next_rel.outputs.version }}"
+          git push origin develop --follow-tags
