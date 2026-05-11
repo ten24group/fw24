@@ -1,8 +1,8 @@
 name: Develop Branch Release
 
-# Org ruleset "Protected Branch" requires PRs for develop/main; repo admins cannot change it.
-# We push commits + tags to ci/automation/develop-release, open a PR, merge into develop.
-# Skip re-entry when this workflow's merge lands on develop (pusher is github-actions[bot]).
+# Requires repo secret DEVELOP_RELEASE_TOKEN (PAT with contents write; account must be allowed to push develop).
+# Checkout uses that token so `npm run release:BE:github` can push develop and tags.
+# Release commits include [skip ci] via .versionrc.json so the automation push does not re-trigger this job.
 on:
   push:
     branches:
@@ -13,23 +13,19 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.event.pusher.name != 'github-actions[bot]'
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.DEVELOP_RELEASE_TOKEN }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
@@ -47,8 +43,6 @@ jobs:
 
           if [ "$MAIN" = "src/index.tsx" ] || [ "$TYPES" = "src/index.tsx" ]; then
             echo "needs_update=true" >> $GITHUB_OUTPUT
-
-            # Update package.json
             node -e "
               const fs = require('fs');
               const pkg = require('./package.json');
@@ -56,7 +50,6 @@ jobs:
               pkg.types = 'dist/index.d.ts';
               fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
             "
-
             echo "Updated package.json main and types"
           else
             echo "needs_update=false" >> $GITHUB_OUTPUT
@@ -91,73 +84,5 @@ jobs:
             echo "Committed dist folder"
           fi
 
-      # If v<next> already exists (failed CI that pushed only the tag, or a manual/org release), do not
-      # delete it — bump until we find a beta prerelease with no existing tag, then pin with --release-as
-      # (do not combine with --prerelease beta; that flag overrides explicit versions).
-      - name: Resolve next free beta prerelease version
-        id: next_rel
-        run: |
-          node <<'NODE'
-          const { execSync } = require('child_process');
-          const fs = require('fs');
-          const semver = require('semver');
-
-          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          function tagExists(tagName) {
-            const ref = `refs/tags/${tagName}`;
-            try {
-              execSync(`git rev-parse -q --verify "${ref}"`, { stdio: 'ignore' });
-              return true;
-            } catch (_) {}
-            try {
-              const out = execSync(`git ls-remote origin "${ref}"`, { encoding: 'utf8' });
-              return out.trim().length > 0;
-            } catch {
-              return false;
-            }
-          }
-
-          let candidate = semver.inc(pkg.version, 'prerelease', 'beta');
-          if (!candidate) {
-            throw new Error(`cannot bump prerelease from ${pkg.version}`);
-          }
-          const maxSteps = 500;
-          let steps = 0;
-          while (tagExists(`v${candidate}`)) {
-            if (++steps > maxSteps) {
-              throw new Error(`exceeded ${maxSteps} steps resolving next tag`);
-            }
-            const next = semver.inc(candidate, 'prerelease', 'beta');
-            if (!next || semver.eq(next, candidate)) {
-              throw new Error(`stuck resolving prerelease after ${candidate}`);
-            }
-            candidate = next;
-          }
-
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${candidate}\n`);
-          console.log('Using release version:', candidate);
-          NODE
-
-      # release:BE:github pushes develop directly (blocked by org ruleset).
-      - name: Version bump and tag (local only)
-        run: npm run release:BE:version:as -- --release-as "${{ steps.next_rel.outputs.version }}"
-
-      - name: Push automation branch and tags, merge PR to develop
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          BOT_BRANCH=ci/automation/develop-release
-          git push origin "HEAD:refs/heads/${BOT_BRANCH}" --force --follow-tags
-
-          EXISTING=$(gh pr list --repo "${{ github.repository }}" --head "${BOT_BRANCH}" --base develop --state open --json number --jq '.[0].number // empty')
-          if [ -n "${EXISTING}" ]; then
-            PRNUM="${EXISTING}"
-          else
-            gh pr create --repo "${{ github.repository }}" --base develop --head "${BOT_BRANCH}" \
-              --title "chore(ci): automated develop release sync" \
-              --body "Automated dist, changelog, and beta tag from [.github/workflows/develop-release.yml](.github/workflows/develop-release.yml). Merged by Actions to satisfy org branch rules."
-            PRNUM=$(gh pr list --repo "${{ github.repository }}" --head "${BOT_BRANCH}" --base develop --state open --json number --jq '.[0].number')
-          fi
-
-          gh pr merge --repo "${{ github.repository }}" "${PRNUM}" --merge
+      - name: Release beta (version, changelog, tag, push)
+        run: npm run release:BE:github
