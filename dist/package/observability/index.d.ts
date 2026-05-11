@@ -15,7 +15,7 @@
  * });
  * ```
  */
-export { type BaseEventType, type ObservabilityEventType, type ObservabilityLevelString, ObservabilityLevel, type CaptureInput, type ObservabilityEvent, type ObservabilityError, type CaptureControl, type GroupSamplingConfig, type RecordOverrides, type ContextOverrides, type DecoratorBaseOptions, type DecoratorCaptureControl, type CaptureSerializeOptions, type SourceType, type ObservabilityConfig, type ObservabilityBackend, type ObservabilityBackendConfig, type DataProtectionConfig, type TruncationConfig, type DynamoDBConfig, type SamplingConfig, type TypeSpecificConfig, type IEventCapture, type NoiseReductionPresetLevel, DefaultSamplingConfig, } from './types';
+export { type BaseEventType, type ObservabilityEventType, type ObservabilityLevelString, ObservabilityLevel, type CaptureInput, type ObservabilityEvent, type ObservabilityError, type CaptureControl, type GroupSamplingConfig, type RecordOverrides, type ContextOverrides, type DecoratorBaseOptions, type DecoratorCaptureControl, type CaptureSerializeOptions, type SourceType, type ObservabilityConfig, type ObservabilityBackend, type ObservabilityBackendConfig, type ObservabilityBackendName, type DataProtectionConfig, type TruncationConfig, type DynamoDBConfig, type SamplingConfig, type TypeSpecificConfig, type IEventCapture, type NoiseReductionPresetLevel, DefaultSamplingConfig, } from './types';
 export { DECISION_BASE_PRIORITY, evaluateNoiseRules, getEffectivePriority } from './noise-reduction/priority';
 export type { NoiseEvaluationResult } from './noise-reduction/priority';
 export { applyNoiseReduction, pickNoiseDecision, buildAndEvaluate } from './noise-reduction';
@@ -30,6 +30,7 @@ export { SpanObserver, type SpanOptions, type SpanEndOptions, type ISpanObserver
 export { CloudWatchBackend } from './backends/cloudwatch';
 export { DynamoDBObservabilityBackend } from './backends/dynamodb';
 export { OTELObservabilityBackend } from './backends/otel';
+export { LogtrailObservabilityBackend } from './backends/logtrail';
 export { clearRedactorCache, DEFAULT_BLACKLISTED_KEYS, DEFAULT_PROTECTED_FIELDS, extendBlacklist, redactSensitiveData, shouldRedactKey } from './utils/data-protection';
 export { computeErrorFingerprint, normalizeErrorMessage, normalizeStackTrace } from './utils/error-fingerprint';
 export { generateSpanId, generateTraceId } from './utils/id-generator';

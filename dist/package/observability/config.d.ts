@@ -8,7 +8,7 @@ import type { DeepPartial } from '../utils/types';
 /**
  * Valid backend types
  */
-export declare const VALID_BACKENDS: readonly ["cloudwatch", "dynamodb", "otel"];
+export declare const VALID_BACKENDS: readonly ["cloudwatch", "dynamodb", "otel", "logtrail"];
 export type ValidBackend = typeof VALID_BACKENDS[number];
 /**
  * Centralized configuration defaults
