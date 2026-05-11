@@ -91,9 +91,56 @@ jobs:
             echo "Committed dist folder"
           fi
 
-      # Use release:BE:version:bump only — release:BE:github also runs git push to develop (blocked by org ruleset).
+      # If v<next> already exists (failed CI that pushed only the tag, or a manual/org release), do not
+      # delete it — bump until we find a beta prerelease with no existing tag, then pin with --release-as
+      # (do not combine with --prerelease beta; that flag overrides explicit versions).
+      - name: Resolve next free beta prerelease version
+        id: next_rel
+        run: |
+          node <<'NODE'
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+          const semver = require('semver');
+
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          function tagExists(tagName) {
+            const ref = `refs/tags/${tagName}`;
+            try {
+              execSync(`git rev-parse -q --verify "${ref}"`, { stdio: 'ignore' });
+              return true;
+            } catch (_) {}
+            try {
+              const out = execSync(`git ls-remote origin "${ref}"`, { encoding: 'utf8' });
+              return out.trim().length > 0;
+            } catch {
+              return false;
+            }
+          }
+
+          let candidate = semver.inc(pkg.version, 'prerelease', 'beta');
+          if (!candidate) {
+            throw new Error(`cannot bump prerelease from ${pkg.version}`);
+          }
+          const maxSteps = 500;
+          let steps = 0;
+          while (tagExists(`v${candidate}`)) {
+            if (++steps > maxSteps) {
+              throw new Error(`exceeded ${maxSteps} steps resolving next tag`);
+            }
+            const next = semver.inc(candidate, 'prerelease', 'beta');
+            if (!next || semver.eq(next, candidate)) {
+              throw new Error(`stuck resolving prerelease after ${candidate}`);
+            }
+            candidate = next;
+          }
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${candidate}\n`);
+          console.log('Using release version:', candidate);
+          NODE
+
+      # release:BE:github pushes develop directly (blocked by org ruleset).
       - name: Version bump and tag (local only)
-        run: npm run release:BE:version:bump
+        run: npm run release:BE:version:as -- --release-as "${{ steps.next_rel.outputs.version }}"
 
       - name: Push automation branch and tags, merge PR to develop
         env:
