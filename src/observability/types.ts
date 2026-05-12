@@ -31,6 +31,15 @@ export enum ObservabilityLevel {
 export type ObservabilityLevelString = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'critical';
 
 /**
+ * Persistence / export backends configured under {@link ObservabilityConfig.backends}.
+ */
+export type ObservabilityBackendName =
+  | 'cloudwatch'
+  | 'dynamodb'
+  | 'otel'
+  | 'logtrail';
+
+/**
  * Base event types supported by the framework
  */
 export type BaseEventType =
@@ -215,7 +224,7 @@ export interface CaptureControl {
    * Used internally for OTEL span tracking in consolidated mode.
    * @internal
    */
-  backends?: ('cloudwatch' | 'dynamodb' | 'otel')[];
+  backends?: ObservabilityBackendName[];
 }
 
 /**
@@ -572,7 +581,7 @@ export interface CaptureInput {
  */
 export interface ObservabilityBackend {
   /** Unique backend name */
-  name: string;
+  name: ObservabilityBackendName | string;
   /** Minimum level to capture (optional filtering) */
   minLevel?: ObservabilityLevel;
   /** Capture an event */
@@ -581,6 +590,11 @@ export interface ObservabilityBackend {
   flush?(): Promise<void>;
   /** Initialize for new invocation (called on each Lambda invocation) */
   initializeInvocation?(): void;
+  /**
+   * Called once after DI resolution with this backend's entry from `observability.backends`.
+   * Optional hooks for backends that read per-entry options (e.g. Logtrail `service` label override).
+   */
+  configureFromBackendEntry?(entry: ObservabilityBackendConfig): void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -690,6 +704,14 @@ export interface OTELBackendOptions {
 }
 
 /**
+ * Logtrail (Vector HTTP JSON ingest) backend — URL/credentials via `LOGTRAIL_*` env (see `@ten24group/fw24` logging Logtrail helpers).
+ */
+export interface LogtrailBackendOptions {
+  /** Overrides the Loki `service` label; default is `LOGTRAIL_SERVICE` when ingest is enabled */
+  service?: string;
+}
+
+/**
  * Per-type backend filtering
  * Allows control over which event types this backend receives
  */
@@ -708,13 +730,14 @@ export interface BackendTypeFilter {
 export type ObservabilityBackendConfig =
   | { type: 'cloudwatch'; enabled: boolean; minLevel?: ObservabilityLevel; config?: CloudWatchBackendOptions; types?: { span?: BackendTypeFilter; metric?: BackendTypeFilter; audit?: BackendTypeFilter; log?: BackendTypeFilter } }
   | { type: 'dynamodb'; enabled: boolean; minLevel?: ObservabilityLevel; config?: DynamoDBBackendOptions; types?: { span?: BackendTypeFilter; metric?: BackendTypeFilter; audit?: BackendTypeFilter; log?: BackendTypeFilter } }
-  | { type: 'otel'; enabled: boolean; minLevel?: ObservabilityLevel; config?: OTELBackendOptions; types?: { span?: BackendTypeFilter; metric?: BackendTypeFilter; audit?: BackendTypeFilter; log?: BackendTypeFilter } };
+  | { type: 'otel'; enabled: boolean; minLevel?: ObservabilityLevel; config?: OTELBackendOptions; types?: { span?: BackendTypeFilter; metric?: BackendTypeFilter; audit?: BackendTypeFilter; log?: BackendTypeFilter } }
+  | { type: 'logtrail'; enabled: boolean; minLevel?: ObservabilityLevel; config?: LogtrailBackendOptions; types?: { span?: BackendTypeFilter; metric?: BackendTypeFilter; audit?: BackendTypeFilter; log?: BackendTypeFilter } };
 
 /**
  * Type-specific configuration
  */
 export interface TypeSpecificConfig {
-  backends?: ('cloudwatch' | 'dynamodb' | 'otel')[];
+  backends?: ObservabilityBackendName[];
   minLevel?: ObservabilityLevel;
   sampling?: {
     enabled: boolean;

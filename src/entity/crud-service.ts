@@ -6,6 +6,11 @@ import { isEmptyObject, removeEmpty } from "../utils";
 import { DefaultValidator, type IValidator } from "../validation";
 import type { EntityResponseItemTypeFromSchema, EntitySchema, EntityServiceTypeFromSchema, TDefaultEntityOperations, TEntityOpsInputSchemas } from "./base-entity";
 import { EntityValidationError } from "./errors/validation-error";
+import {
+    isPlainEntityPayload,
+    isSchemaAttributeName,
+    partitionTopLevelJsonNulls,
+} from "./mutation-utils";
 import { Actor } from "../core/types/execution-context";
 import { entityFilterCriteriaToExpression } from "./query";
 import type { EntityQuery } from "./query-types";
@@ -278,8 +283,14 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
 
     logger.debug(`Called EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data);
 
-    if (!data) {
+    if (!isPlainEntityPayload(data)) {
         throw new Error("No data provided for create operation");
+    }
+
+    const { setPayload, nullRemovalKeys } = partitionTopLevelJsonNulls(data);
+
+    if (nullRemovalKeys.length > 0) {
+        logger.debug(`createEntity: omitted top-level null keys (optional attrs not set on new item):`, nullRemovalKeys);
     }
 
     // pre events
@@ -291,7 +302,7 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
         entityName,
         entityValidations: entityService.getEntityValidations(),
         overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
-        input: data,
+        input: setPayload,
         actor: actor,
     });
 
@@ -300,20 +311,23 @@ export async function createEntity<S extends EntitySchema<any, any, any>>(option
     }
 
     // authorize the actor 
-    // const authorization = await authorizer.authorize({ entityName, crudType, data, actor, tenant });
+    // const authorization = await authorizer.authorize({ entityName, crudType, data: setPayloadForStore, actor, tenant });
     // if(!authorization.pass){
     //     throw new Error("Authorization failed for create: " + { cause: authorization });
     // }
 
+    const repository = entityService.getRepository();
+    type CreateRecordInput = Parameters<typeof repository.create>[ 0 ];
+
     const entity = await QueryObserver.track(entityName, 'create', () =>
-        entityService.getRepository().create(data).go({ ...QueryObserver.getCapacityGoOptions() })
+        repository.create(setPayload as CreateRecordInput).go({ ...QueryObserver.getCapacityGoOptions() })
     );
 
     // post events
     // await eventDispatcher?.dispatch({ event: 'afterCreate', context: {...arguments, entity} });
 
     // return entity;
-    logger.debug(`Completed EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, data, entity.data);
+    logger.debug(`Completed EntityCrudService<E ~ create ~ entityName: ${entityName} ~ data:`, setPayload, entity.data);
 
     return entity as CreateEntityResponse<S>;
 }
@@ -366,8 +380,14 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
 
     logger.debug(`Called EntityCrudService<E ~ upsert ~ entityName: ${entityName} ~ data:`, data);
 
-    if (!data) {
+    if (!isPlainEntityPayload(data)) {
         throw new Error("No data provided for upsert operation");
+    }
+
+    const { setPayload, nullRemovalKeys } = partitionTopLevelJsonNulls(data);
+
+    if (nullRemovalKeys.length > 0) {
+        logger.debug(`upsertEntity: omitted top-level null keys from upsert payload:`, nullRemovalKeys);
     }
 
     // pre events
@@ -379,7 +399,7 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
         entityName,
         entityValidations: entityService.getEntityValidations(),
         overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
-        input: data,
+        input: setPayload,
         actor: actor,
     });
 
@@ -388,15 +408,18 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
     }
 
     // authorize the actor 
-    // const authorization = await authorizer.authorize({ entityName, crudType, data, actor, tenant });
+    // const authorization = await authorizer.authorize({ entityName, crudType, data: setPayload, actor, tenant });
     // if(!authorization.pass){
     //     throw new Error("Authorization failed for upsert: " + { cause: authorization });
     // }
 
+    const repository = entityService.getRepository();
+    type UpsertRecordInput = Parameters<typeof repository.upsert>[ 0 ];
+
     // Use "all_old" to get the previous item state - allows us to detect create vs update
     // If oldData is empty/null, it was a CREATE. If it has data, it was an UPDATE.
     const entity = await QueryObserver.track(entityName, 'upsert', () =>
-        entityService.getRepository().upsert(data as any).go({ response: "all_old", ...QueryObserver.getCapacityGoOptions() })
+        repository.upsert(setPayload as UpsertRecordInput).go({ response: "all_old", ...QueryObserver.getCapacityGoOptions() })
     );
 
     const wasCreated = !entity.data || Object.keys(entity.data).length === 0;
@@ -410,8 +433,9 @@ export async function upsertEntity<S extends EntitySchema<any, any, any>>(option
 
     // Note: with "all_old", entity.data contains the OLD data, we need to return the NEW data
     // Since we don't have the new data from DynamoDB, we return the input data as the new data
+    // Echo persisted fields: ElectroDB upsert.go({ response: "all_old" }) does not return the new item image.
     return {
-        data: data as any,  // The new data we just upserted
+        data: setPayload,
         wasCreated,
         oldData
     } as UpsertEntityResponse<S>;
@@ -891,6 +915,10 @@ export interface UpdateEntityArgs<
 }
 
 export interface UpdateEntityOperators {
+    /**
+     * Attribute names to remove via ElectroDB `patch().remove()`.
+     * Combined with top-level JSON `null` values on the update payload (merge-patch clear).
+     */
     remove?: string[];
 }
 
@@ -1008,20 +1036,52 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
 
     logger.debug(`Called EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, { data, providedCompositeKeyData: compositeKeyData });
 
-    if (!data) {
+    if (!isPlainEntityPayload(data)) {
         throw new Error("No data provided for update operation");
+    }
+
+    const { setPayload, nullRemovalKeys } = partitionTopLevelJsonNulls(data);
+
+    const identifiers = entityService.extractEntityIdentifiers(id);
+    const identifierKeysFromRoute = new Set(Object.keys(identifiers as Record<string, unknown>));
+
+    const schema = entityService.getEntitySchema();
+
+    const explicitRemovals = operators?.remove ?? [];
+    const allRemovalKeys = [ ...new Set([ ...nullRemovalKeys, ...explicitRemovals ]) ];
+
+    for (const key of allRemovalKeys) {
+        if (identifierKeysFromRoute.has(key)) {
+            throw new EntityValidationError([ {
+                message: `Cannot remove identifier attribute "${key}"`,
+                path: [ key ],
+            } ]);
+        }
+        if (!isSchemaAttributeName(schema, key)) {
+            throw new EntityValidationError([ {
+                message: `Cannot remove unknown attribute "${key}"`,
+                path: [ key ],
+            } ]);
+        }
+        const attrDef = schema.attributes[ key ];
+        if (attrDef.required === true) {
+            throw new EntityValidationError([ {
+                message: `Cannot clear required attribute "${key}"`,
+                path: [ key ],
+            } ]);
+        }
     }
 
     // pre events
     // await eventDispatcher?.dispatch({ event: 'beforeUpdate', context: arguments });
 
-    // validate
+    // Validate only attributes being set (merge-patch nulls are handled via patch.remove above)
     const validation = await validator.validateEntity({
         operationName: crudType,
         entityName,
         entityValidations: entityService.getEntityValidations(),
         overriddenErrorMessages: await entityService.getOverriddenEntityValidationErrorMessages(),
-        input: data,
+        input: setPayload,
         actor: actor
     });
 
@@ -1029,16 +1089,13 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
         throw new EntityValidationError(validation.errors);
     }
 
-    const identifiers = entityService.extractEntityIdentifiers(id);
-
     // authorize the actor 
-    // const authorization = await authorizer.authorize({ entityName, crudType, identifiers, data, actor, tenant });
+    // const authorization = await authorizer.authorize({ entityName, crudType, identifiers, data: setPayload, actor, tenant });
     // if(!authorization.pass){
     //     throw new Error("Authorization failed for update: " + { cause: authorization });
     // }
 
     // --- Composite Key Handling ---
-    const schema = entityService.getEntitySchema();
     const allReferencedCompositeAttributes = new Set<string>();
 
     if (schema.indexes) {
@@ -1069,7 +1126,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
             // Check if provided compositeKeyData covers all allReferencedCompositeAttributes
             const missingFromProvided = Array.from(allReferencedCompositeAttributes).filter(attr => {
                 return (
-                    !data.hasOwnProperty(attr)
+                    !Object.prototype.hasOwnProperty.call(setPayload, attr)
                     &&
                     !identifiers.hasOwnProperty(attr)
                     &&
@@ -1089,7 +1146,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
                 entityName,
                 entityService,
                 identifiers: identifiers,
-                data: data as Record<string, any>,
+                data: setPayload,
                 requiredCompositeAttributes: allReferencedCompositeAttributes,
                 logger,
             });
@@ -1103,15 +1160,19 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
 
 
     // Use ElectroDB for all fields including _actor (now in schema)
-    const query = entityService.getRepository().patch(identifiers).set(data);
+    const repository = entityService.getRepository();
+    const patchBuilder = repository.patch(identifiers);
+    type PatchSetPayload = Parameters<typeof patchBuilder.set>[ 0 ];
+    type PatchRemovePayload = Parameters<typeof patchBuilder.remove>[ 0 ];
+    const query = patchBuilder.set(setPayload as PatchSetPayload);
 
     if (Object.keys(finalCompositeKeyValuesForElectroDB).length > 0) {
         logger.debug(`Using composite values for ElectroDB patch:`, finalCompositeKeyValuesForElectroDB);
         query.composite(finalCompositeKeyValuesForElectroDB);
     }
 
-    if (operators?.remove) {
-        query.remove(operators.remove as any);
+    if (allRemovalKeys.length > 0) {
+        query.remove(allRemovalKeys as PatchRemovePayload);
     }
 
     const entity = await QueryObserver.track(entityName, 'update', () =>
@@ -1122,7 +1183,7 @@ export async function updateEntity<S extends EntitySchema<any, any, any>>(option
     // await eventDispatcher?.dispatch({ event: 'afterUpdate', context: {...arguments, entity} });
 
     // return entity;
-    logger.debug(`Completed EntityCrudService<E ~ update ~ entityName: ${entityName} ~ data:`, data, entity.data);
+    logger.debug(`Completed EntityCrudService<E ~ update ~ entityName: ${entityName} ~ setPayload:`, setPayload, `removed:`, allRemovalKeys, entity.data);
 
     return entity as UpdateEntityResponse<S>;
 }

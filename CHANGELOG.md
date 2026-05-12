@@ -2,18 +2,50 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-## [1.1.0-beta.23](https://github.com/ten24group/fw24/compare/v1.1.0-beta.21...v1.1.0-beta.23) (2026-03-24)
+## [1.1.0-beta.31](https://github.com/ten24group/fw24/compare/v1.1.0-beta.30...v1.1.0-beta.31) (2026-04-12)
 
 
 ### Features
 
+* **entity:** merge-patch null semantics and mutation wire helpers ([37447e4](https://github.com/ten24group/fw24/commit/37447e4ae5958365a286b4d82079a5fdb05dde39))
 * **utils:** move IAM managed policy chunking to utils ([6a5ad82](https://github.com/ten24group/fw24/commit/6a5ad829c7ed6f4b618cb7e70acec1a210541696))
 
-## [1.1.0-beta.21](https://github.com/ten24group/fw24/compare/v1.1.0-beta.20...v1.1.0-beta.21) (2026-03-20)
+## [1.1.0-beta.30](https://github.com/ten24group/fw24/compare/v1.1.0-beta.29...v1.1.0-beta.30) (2026-04-09)
 
-### Bug Fixes
 
-* **iam:** avoid inline IAM policy size limit by chunking managed policies ([9a2ecad](https://github.com/ten24group/fw24/commit/9a2ecadada774a3fb240b05ef74a18fc7fe21c02))
+### Features
+
+* **entity:** add submit success and cancel redirect options to entity edit configuration ([f96d768](https://github.com/ten24group/fw24/commit/f96d7685779cb8889e171da2a613cfcb4f647bd9))
+
+## [1.1.0-beta.29](https://github.com/ten24group/fw24/compare/v1.1.0-beta.28...v1.1.0-beta.29) (2026-04-08)
+
+
+### Features
+
+* **entity:** enhance display override resolution with new utility methods ([d435b7d](https://github.com/ten24group/fw24/commit/d435b7d51a8316e461f4e4faeecfc314f3c30ba9))
+
+## [1.1.0-beta.28](https://github.com/ten24group/fw24/compare/v1.1.0-beta.27...v1.1.0-beta.28) (2026-04-07)
+
+
+### Features
+
+* **entity:** implement display override resolution and utility functions ([54b9fe1](https://github.com/ten24group/fw24/commit/54b9fe1bf3950b19a41053bafcb01379c583f116))
+
+## [1.1.0-beta.27](https://github.com/ten24group/fw24/compare/v1.1.0-beta.26...v1.1.0-beta.27) (2026-04-07)
+
+
+### Features
+
+* **entity:** implement display overrides for entity configurations ([63d70ab](https://github.com/ten24group/fw24/commit/63d70ab227ae3b83388acb1bfbf84d475206565a))
+
+## [1.1.0-beta.26](https://github.com/ten24group/fw24/compare/v1.1.0-beta.25...v1.1.0-beta.26) (2026-03-30)
+
+
+### Features
+
+* **entity:** add InlineTableFieldMetadata and enhance EntityFieldOverride ([af355e5](https://github.com/ten24group/fw24/commit/af355e53009f859c66f41c8a5b8c0a8c054c5e3f))
+
+## [1.1.0-beta.25](https://github.com/ten24group/fw24/compare/v1.1.0-beta.24...v1.1.0-beta.25) (2026-03-26)
 
 ## [1.1.0-beta.20](https://github.com/ten24group/fw24/compare/v1.1.0-beta.19...v1.1.0-beta.20) (2026-03-14)
 

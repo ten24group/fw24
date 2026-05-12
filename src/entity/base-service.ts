@@ -18,6 +18,8 @@ import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor,
 import { createElectroDBEntity } from "./base-entity";
 import { UpdateEntityOperators, UpdateEntityResponse, CreateEntityResponse, GetEntityResponse, DeleteEntityResponse, UpsertEntityResponse, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
 import { EntitySchemaValidator } from "./entity-schema-validator";
+import { readStoredValueAtPath, resolveWithDisplayOverrides } from "./display-override-resolve";
+import type { DisplayOverrideStorage } from "./display-override-types";
 import { DatabaseError, EntityValidationError } from './errors';
 import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
 import { InternalServerError, ServerError } from "../errors";
@@ -1362,8 +1364,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
     /**
      * Creates a new entity.
-     * 
-     * @param payload - The payload for creating the entity.
+     *
+     * @param payload - Top-level JSON `null` values are stripped before persistence: optional fields are left unset
+     *   (see `createEntity` / `partitionTopLevelJsonNulls` in `mutation-utils`), not passed as null to ElectroDB.
      * @returns The created entity.
      */
     @Observed({
@@ -1403,6 +1406,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             for (const { name } of uniqueFields) {
                 if (name! in payloadCopy) {
                     let value = payloadCopy[ name! ];
+                    // Skip when optional unique field is cleared (null) — createEntity will omit it; no uniqueness query for null.
+                    if (value === null || value === undefined) {
+                        continue;
+                    }
                     uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
                         payloadToUpdate: payloadCopy,
                         attributeName: name!,
@@ -1446,7 +1453,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * NOTE: 
      *   - This method does not check for uniqueness of the attributes, neither create the slug automatically.
      *   - It's the responsibility of the caller to ensure the read ony attributes are not provided if the record is being upsert.
-     * 
+     *   - Top-level JSON `null` values are stripped from the payload before upsert (same as create; use PATCH to clear attrs on existing rows).
+     *
      * @param payload - The payload for creating-OR-updating the entity.
      * @returns Object containing:
      *   - data: The upserted entity data
@@ -1748,8 +1756,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * Updates an entity in the database.
      *
      * @param identifiers - The identifiers of the entity to update.
-     * @param data - The updated data for the entity.
-     * @param remove - Optional array of attributes to remove from the entity.
+     * @param data - Patch payload. Top-level JSON `null` values are treated as merge-patch “clear”:
+     *   they become DynamoDB attribute removals (see `updateEntity` / `partitionTopLevelJsonNulls` in `mutation-utils`),
+     *   not literal nulls passed to ElectroDB `set()`.
+     * @param operators - Optional ElectroDB patch operators; `operators.remove` merges with JSON `null` keys.
      * @returns The updated entity.
      */
     @Observed({
@@ -1782,6 +1792,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
                 if (name! in enhancedData) {
                     let value = enhancedData[ name as keyof typeof enhancedData ];
+                    // Skip when clearing optional unique field — updateEntity maps null → remove; no eq-null uniqueness check.
+                    if (value === null || value === undefined) {
+                        continue;
+                    }
                     uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
                         payloadToUpdate: enhancedData,
                         attributeName: name!,
@@ -2324,6 +2338,55 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      */
     protected decompressFields<T extends Record<string, any>>(data: T): T {
         return decompressItem(data);
+    }
+
+    /**
+     * **Opt-in** — CRUD payloads are unchanged. Merged value for `fieldPath` (stored column + override map).
+     * Uses `model.displayOverrides.storageAttribute` on **this** schema. For another entity’s row, use
+     * `readStoredValueAtPath` + `resolveWithDisplayOverrides`.
+     * Return type is `unknown` (JSON); narrow or assert for your DTO (e.g. string URL fields are strings at runtime).
+     */
+    public resolveFieldWithDisplayOverrides(
+        record: Record<string, unknown>,
+        fieldPath: string,
+        options?: { channel?: string }
+    ): unknown {
+        const overrideMap = this.getDisplayOverrideMap(record);
+        return resolveWithDisplayOverrides({
+            storedValue: readStoredValueAtPath(record, fieldPath),
+            overrideMap,
+            fieldPath,
+            channel: options?.channel,
+        }).resolvedValue;
+    }
+
+    /**
+     * **Opt-in** — CRUD payloads are unchanged. Resolves multiple fields from a row using
+     * this entity schema's `model.displayOverrides.storageAttribute`.
+     */
+    public resolveFieldsWithDisplayOverrides<T extends Record<string, unknown>, K extends keyof T & string>(
+        record: T,
+        fields: readonly K[],
+        options?: { channel?: string }
+    ): Pick<T, K> {
+        const overrideMap = this.getDisplayOverrideMap(record);
+        const resolved = {} as Pick<T, K>;
+        for (const fieldPath of fields) {
+            resolved[ fieldPath ] = resolveWithDisplayOverrides({
+                storedValue: readStoredValueAtPath(record, fieldPath),
+                overrideMap,
+                fieldPath,
+                channel: options?.channel,
+            }).resolvedValue as T[ K ];
+        }
+        return resolved;
+    }
+
+    private getDisplayOverrideMap(record: Record<string, unknown>): DisplayOverrideStorage | undefined {
+        const ui = this.schema.model.displayOverrides;
+        return ui?.storageAttribute
+            ? (record[ ui.storageAttribute ] as DisplayOverrideStorage | undefined)
+            : undefined;
     }
 }
 

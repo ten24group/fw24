@@ -1,6 +1,7 @@
-import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, EntityViewPageConfig, ISectionsConfig, IErrorHandlingConfig, IRetryConfig, IDataQualityConfig } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, EntityViewPageConfig, ISectionsConfig, IErrorHandlingConfig, IRetryConfig, IDataQualityConfig, DisplayOverridesUIConfig } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
 import { formatEntityAttributesForDetail, mergeFieldVisibility, processSectionsConfig, groupPageHeaderActions } from "./util";
+import { mergeDisplayOverrideFieldConfigIntoProperties } from "./merge-display-override-ui-fields";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
 import { DefaultLogger } from "../../logging";
 import { IApplicationConfig } from "../../interfaces/config";
@@ -46,7 +47,7 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
      * Loading skeleton configuration.
      * @default { type: 'skeleton' }
      */
-    loading?: EntityViewPageConfig['loading'];
+    loading?: EntityViewPageConfig[ 'loading' ];
     /** Data quality / completeness indicator (#65) */
     dataQuality?: IDataQualityConfig;
     /** Error handling configuration (#58) */
@@ -61,6 +62,8 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
     excludeAuditActions?: boolean;
     /** Auto-group secondary actions into a "More" dropdown */
     autoGroupActions?: boolean;
+    /** Display overrides UI metadata (merged from model + viewPageConfig in ui-config gen). */
+    displayOverrides?: DisplayOverridesUIConfig;
 }
 
 /**
@@ -182,6 +185,10 @@ export function makeViewEntityDetailConfig<S extends EntitySchema<string, string
         formattedProps = mergeFieldVisibility(formattedProps, fields);
     }
 
+    if (options.displayOverrides) {
+        formattedProps = mergeDisplayOverrideFieldConfigIntoProperties(formattedProps, options.displayOverrides);
+    }
+
     const detailsPageConfig: any = {
         detailApiConfig: {
             apiMethod: `GET`,
@@ -221,8 +228,13 @@ export function makeViewEntityDetailConfig<S extends EntitySchema<string, string
             options.sectionsConfig,
             Array.from(properties.values()),
             entityService,
-            globalUIConfigOptions
+            globalUIConfigOptions,
+            options.displayOverrides
         );
+    }
+
+    if (options.displayOverrides) {
+        detailsPageConfig.displayOverrides = options.displayOverrides;
     }
 
     return detailsPageConfig;

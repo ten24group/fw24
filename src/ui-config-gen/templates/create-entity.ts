@@ -1,6 +1,10 @@
-import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, IEntityPageColumnConfig, Template, EntityEditPageConfig, EntityCreatePageConfig, ISectionsConfig, IErrorHandlingConfig, IRetryConfig } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, IEntityPageColumnConfig, Template, EntityEditPageConfig, EntityCreatePageConfig, ISectionsConfig, IErrorHandlingConfig, IRetryConfig, DisplayOverridesUIConfig } from "../../entity";
 import { camelCase, pascalCase } from "../../utils";
 import { formatEntityAttributesForCreate, mergeButtons, mergeFieldVisibility, processSectionsConfig } from "./util";
+import {
+    applyDisplayOverrideStorageFieldFormDefaults,
+    mergeDisplayOverrideFieldConfigIntoProperties,
+} from "./merge-display-override-ui-fields";
 import { IApplicationConfig } from "../../interfaces/config";
 
 export type CreateEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
@@ -37,7 +41,7 @@ export type CreateEntityPageOptions<S extends EntitySchema<string, string, strin
     /**
      * Form configuration including custom buttons and field-level visibility
      */
-    formConfig?: EntityEditPageConfig['formConfig'];
+    formConfig?: EntityEditPageConfig[ 'formConfig' ];
     /**
      * Sections configuration for multi-section create pages with tabs/accordions
      */
@@ -46,7 +50,7 @@ export type CreateEntityPageOptions<S extends EntitySchema<string, string, strin
      * Loading skeleton configuration.
      * @default { type: 'skeleton' }
      */
-    loading?: EntityCreatePageConfig['loading'];
+    loading?: EntityCreatePageConfig[ 'loading' ];
     /** Error handling configuration (#58) */
     errorHandling?: IErrorHandlingConfig;
     /** Retry configuration (#58) */
@@ -54,17 +58,19 @@ export type CreateEntityPageOptions<S extends EntitySchema<string, string, strin
     /**
      * Global UI config options (for passing global configuration like duplicatedFieldDetection)
      */
-    globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'];
+    globalUIConfigOptions?: IApplicationConfig[ 'uiConfigGenOptions' ];
     /** Auto-group secondary actions into a "More" dropdown */
     autoGroupActions?: boolean;
+    /** Display overrides UI metadata (merged from model + createPageConfig in ui-config gen). */
+    displayOverrides?: DisplayOverridesUIConfig;
 }
 
-export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string> >(
+export default <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
     options: CreateEntityPageOptions<S>,
     entityService: BaseEntityService<S>
 ) => {
 
-    const{ entityName, entityNamePlural, breadcrumbs, pageTitle, successMessage, errorHandling, retry } = options;
+    const { entityName, entityNamePlural, breadcrumbs, pageTitle, successMessage, errorHandling, retry } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNamePascalCase = pascalCase(entityName);
 
@@ -72,11 +78,11 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
 
     // Add cancel button to the merged form buttons
     const cancelButton = { id: 'cancel', text: 'Cancel', action: 'cancel' as const, url: `/list-${entityNameLower}` };
-    const finalFormButtons = [...formPageConfig.formButtons, cancelButton];
+    const finalFormButtons = [ ...formPageConfig.formButtons, cancelButton ];
 
     return {
         pageTitle: pageTitle || `Create ${entityNamePascalCase}`,
-        pageType:   'form',
+        pageType: 'form',
         breadcrumbs: breadcrumbs || [],
         routePattern: `create-${entityNameLower}`,
         pageHeaderActions: [
@@ -92,7 +98,7 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
                 label: `All ${entityNamePlural}`,
                 url: `/list-${entityNameLower}`,
             }
-        ], 
+        ],
         formPageConfig: {
             ...formPageConfig,
             formButtons: finalFormButtons,  // Use merged buttons with cancel added
@@ -104,12 +110,12 @@ export default <S extends EntitySchema<string, string, string> = EntitySchema<st
     };
 };
 
-export function makeCreateEntityFormConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> (
+export function makeCreateEntityFormConfig<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(
     options: CreateEntityPageOptions<S>,
     entityService: BaseEntityService<S>
-){
+) {
 
-    const{ entityName, properties, CRUDApiPath, columnsConfig, formConfig, sectionsConfig, loading, globalUIConfigOptions } = options;
+    const { entityName, properties, CRUDApiPath, columnsConfig, formConfig, sectionsConfig, loading, globalUIConfigOptions, displayOverrides } = options;
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = camelCase(entityName);
 
@@ -119,6 +125,11 @@ export function makeCreateEntityFormConfig<S extends EntitySchema<string, string
     // 2. Merge field-level visibility/helpText/placeholder from formConfig.fields
     if (formConfig?.fields) {
         formattedProps = mergeFieldVisibility(formattedProps, formConfig.fields);
+    }
+
+    if (options.displayOverrides) {
+        formattedProps = mergeDisplayOverrideFieldConfigIntoProperties(formattedProps, options.displayOverrides);
+        formattedProps = applyDisplayOverrideStorageFieldFormDefaults(formattedProps, options.displayOverrides);
     }
 
     // 3. Build default form buttons with IDs
@@ -154,7 +165,8 @@ export function makeCreateEntityFormConfig<S extends EntitySchema<string, string
             sectionsConfig,
             Array.from(properties.values()),
             entityService,
-            globalUIConfigOptions
+            globalUIConfigOptions,
+            displayOverrides
         );
     }
 

@@ -38,7 +38,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * Valid backend types
  */
-export const VALID_BACKENDS = [ 'cloudwatch', 'dynamodb', 'otel' ] as const;
+export const VALID_BACKENDS = [ 'cloudwatch', 'dynamodb', 'otel', 'logtrail' ] as const;
 export type ValidBackend = typeof VALID_BACKENDS[ number ];
 
 /**
@@ -387,9 +387,9 @@ function normalizeTypeSpecificConfig(input?: DeepPartial<TypeSpecificConfig>): T
     sampling = { enabled: samplingIn.enabled, rate: samplingIn.rate };
   }
 
-  type BackendName = 'cloudwatch' | 'dynamodb' | 'otel';
+  type BackendName = 'cloudwatch' | 'dynamodb' | 'otel' | 'logtrail';
   const isValidBackend = (v: unknown): v is BackendName =>
-    v === 'cloudwatch' || v === 'dynamodb' || v === 'otel';
+    v === 'cloudwatch' || v === 'dynamodb' || v === 'otel' || v === 'logtrail';
 
   const backends = Array.isArray(input.backends)
     ? input.backends.filter(isValidBackend)
@@ -513,7 +513,7 @@ function normalizeNoiseReduction(
   const isAggressive = presetLevel === 'aggressive';
 
   const presets = Array.isArray(input?.presets)
-    ? input.presets.filter((p): p is NoiseReductionConfig['presets'][number] => typeof p === 'string')
+    ? input.presets.filter((p): p is NoiseReductionConfig[ 'presets' ][ number ] => typeof p === 'string')
     : d.presets;
 
   const rules: NoiseRule[] = Array.isArray(input?.rules)
@@ -523,7 +523,7 @@ function normalizeNoiseReduction(
         && typeof r.decision === 'string'
         && isRecord(r.match);
     }) as NoiseRule[])
-    : [...d.rules];
+    : [ ...d.rules ];
 
   // Normalize hardSignals to ensure slowThresholds has no undefined values
   const hardSignalInput = input?.hardSignals;
@@ -534,7 +534,7 @@ function normalizeNoiseReduction(
     slowThresholdMs: hardSignalInput.slowThresholdMs ?? aggressiveHS?.slowThresholdMs,
     slowThresholds: hardSignalInput.slowThresholds
       ? Object.fromEntries(
-        Object.entries(hardSignalInput.slowThresholds).filter(([_, v]) => v !== undefined),
+        Object.entries(hardSignalInput.slowThresholds).filter(([ _, v ]) => v !== undefined),
       ) as Record<string, number>
       : undefined,
   } : {
@@ -642,6 +642,18 @@ function normalizeBackends(
           config: b.config,
           types: b.types,
         };
+      case 'logtrail':
+        return {
+          type: 'logtrail',
+          enabled: b.enabled ?? true,
+          minLevel: b.minLevel,
+          config: b.config,
+          types: b.types,
+        };
+      default: {
+        const t = (b as { type?: unknown }).type;
+        throw new Error(`Invalid observability backend type: ${String(t)}`);
+      }
     }
   });
 }
