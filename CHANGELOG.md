@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file. See [standa
 ### Features
 
 * **entity:** merge-patch null semantics and mutation wire helpers ([37447e4](https://github.com/ten24group/fw24/commit/37447e4ae5958365a286b4d82079a5fdb05dde39))
+* **utils:** move IAM managed policy chunking to utils ([6a5ad82](https://github.com/ten24group/fw24/commit/6a5ad829c7ed6f4b618cb7e70acec1a210541696))
 
 ## [1.1.0-beta.30](https://github.com/ten24group/fw24/compare/v1.1.0-beta.29...v1.1.0-beta.30) (2026-04-09)
 

@@ -4,26 +4,33 @@ import { ManagedPolicy, PolicyStatement, PolicyStatementProps, Role, FederatedPr
 import { readFileSync } from "fs";
 import type { CfnIdentityPool } from "aws-cdk-lib/aws-cognito";
 import { Fw24 } from "../core/fw24";
-
-/** AWS IAM managed policy document max size (bytes). We chunk below this to stay safe. */
-const MANAGED_POLICY_MAX_BYTES = 6144;
-/** Approximate bytes per execute-api statement in serialized policy; used to chunk. */
-const BYTES_PER_STATEMENT_ESTIMATE = 120;
+import {
+    IAM_MANAGED_POLICY_DOCUMENT_MAX_BYTES,
+    packPolicyStatementsIntoManagedPolicyChunks,
+} from "../utils/iam-policy-chunking";
 
 export interface ICognitoAuthRoleProps {
     identityPool: CfnIdentityPool;
     policyFilePaths?: string[];
     policies?: Array<PolicyStatementProps | PolicyStatement>;
+    /**
+     * Max IAM managed policy document size (bytes) before splitting into another managed policy.
+     * Defaults to {@link IAM_MANAGED_POLICY_DOCUMENT_MAX_BYTES} (6144).
+     */
+    managedPolicyMaxDocumentBytes?: number;
 }
 
 export class CognitoAuthRole extends Construct {
     private readonly role: Role;
     private readonly policyCollector: PolicyStatement[] = [];
     private managedPoliciesCreated = false;
+    private readonly managedPolicyMaxDocumentBytes: number;
 
     constructor(scope: Construct, id: string, props: ICognitoAuthRoleProps) {
         super(scope, id);
-        const { identityPool, policyFilePaths, policies } = props;
+        const { identityPool, policyFilePaths, policies, managedPolicyMaxDocumentBytes } = props;
+        this.managedPolicyMaxDocumentBytes =
+            managedPolicyMaxDocumentBytes ?? IAM_MANAGED_POLICY_DOCUMENT_MAX_BYTES;
 
         this.role = new Role(this, "CognitoAuthRole", {
             assumedBy: new FederatedPrincipal("cognito-identity.amazonaws.com", {
@@ -68,8 +75,8 @@ export class CognitoAuthRole extends Construct {
     }
 
     /**
-     * Build ManagedPolicies from the collected statements so each policy stays under the
-     * 6144-byte limit, avoiding the 10240-byte inline policy limit on the role.
+     * Build ManagedPolicies from the collected statements: greedy-pack each document to use
+     * nearly the full IAM size limit so fewer managed policies attach to the role.
      */
     private createManagedPolicies(): void {
         if (this.managedPoliciesCreated) return;
@@ -78,15 +85,17 @@ export class CognitoAuthRole extends Construct {
         const statements = this.policyCollector;
         if (statements.length === 0) return;
 
-        const statementsPerChunk = Math.max(1, Math.floor((MANAGED_POLICY_MAX_BYTES - 80) / BYTES_PER_STATEMENT_ESTIMATE));
-        for (let i = 0; i < statements.length; i += statementsPerChunk) {
-            const chunk = statements.slice(i, i + statementsPerChunk);
-            new ManagedPolicy(this, `CognitoAuthManagedPolicy${i / statementsPerChunk}`, {
-                description: `Cognito auth role policies (chunk ${i / statementsPerChunk + 1})`,
+        const chunks = packPolicyStatementsIntoManagedPolicyChunks(
+            statements,
+            this.managedPolicyMaxDocumentBytes,
+        );
+        chunks.forEach((chunk, i) => {
+            new ManagedPolicy(this, `CognitoAuthManagedPolicy${i}`, {
+                description: `Cognito auth role policies (chunk ${i + 1})`,
                 statements: chunk,
                 roles: [ this.role ],
             });
-        }
+        });
     }
 
     /** Expose the IAM Role so Auth can register it and addRouteToRolePolicy can resolve the collector. */
