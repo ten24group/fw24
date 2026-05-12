@@ -78,6 +78,14 @@ jobs:
 
           if [ "${{ steps.check_package.outputs.needs_update }}" = "true" ]; then
             git add package.json
+          fi
+
+          if git diff --staged --quiet; then
+            echo "No build output changes to commit; continuing to version step"
+            exit 0
+          fi
+
+          if [ "${{ steps.check_package.outputs.needs_update }}" = "true" ]; then
             git commit -m "chore: update build config and dist [skip ci]"
             echo "Committed package.json and dist folder"
           else
