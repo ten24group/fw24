@@ -1,6 +1,7 @@
 import { BaseEntityService, FieldMetadata, TIOSchemaAttribute, IRelationFieldConfig, TIOSchemaAttributesMap, EntitySchema, IFilterSegment } from "../../entity";
 import type { RelationEntityOptionConfig, FieldOptionsAPIConfig, IEntityPageAction, Template, IFilterSegmentGroup, ITableColumns } from '../../entity/base-entity';
 import type { IApplicationConfig } from '../../interfaces/config';
+import type { DisplayOverridesUIConfig } from '../../entity/display-override-types';
 /**
  * Generate smart fallback configuration for relation display when only ID is available.
  * Uses entity metadata (icon, entityNamePlural) to create user-friendly fallback text.
@@ -221,7 +222,9 @@ export declare function expandPropertyReferences(fieldReferences: ReadonlyArray<
  * @param globalUIConfigOptions - Optional global UI configuration options
  * @returns Processed sections config with expanded properties
  */
-export declare function processSectionsConfig(sectionsConfig: any, allProperties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions']): any;
+export declare function processSectionsConfig(sectionsConfig: any, allProperties: TIOSchemaAttribute[], entityService: BaseEntityService<any>, globalUIConfigOptions?: IApplicationConfig['uiConfigGenOptions'], 
+/** When set, nested detail/form field rows receive the same displayOverride merge as root pages. */
+displayOverrides?: DisplayOverridesUIConfig): any;
 /**
  * Formats entity attributes for create form pages.
  *
@@ -455,16 +458,10 @@ export declare function mergeFieldVisibility<T extends {
     name: string;
 }>(baseProperties: Array<T>, fieldOverrides?: ReadonlyArray<{
     readonly name: string;
-    readonly visibility?: any;
-    readonly enablement?: any;
-    readonly helpText?: string;
-    readonly placeholder?: string;
+    readonly [key: string]: unknown;
 }> | Array<{
     name: string;
-    visibility?: any;
-    enablement?: any;
-    helpText?: string;
-    placeholder?: string;
+    [key: string]: unknown;
 }>): Array<T>;
 /**
  * Merges column visibility configuration with base properties.

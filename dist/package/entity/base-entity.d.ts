@@ -7,6 +7,7 @@ import { SearchIndexConfig } from '../search/types';
 import { EntitySearchService } from '../search/services';
 import { DepIdentifier, IFilterAutoGenerationConfig, ISegmentAutoGenerationConfig } from "../interfaces";
 import type { FormPageConfigStructure, ListPageConfigStructure, DetailsPageConfigStructure, DashboardPageConfig, AccordionPageConfig, WizardPageConfigStructure, CustomPageConfigStructure, IFormattingRule, ITableEmptyStateConfig, IPaginationConfig } from '../ui-config-gen/templates/custom-page';
+import type { DisplayOverridesUIConfig } from './display-override-types';
 /**
  * @fileoverview Entity Schema and Type-Safe Helper Functions
  *
@@ -645,7 +646,7 @@ export type EntityAttribute = Attribute & FW24AttributeExtensions & FieldMetadat
  *
  * The appropriate metadata type is determined by the `fieldType` property.
  */
-export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldMetadata | TimeFieldMetadata | DateTimeFieldMetadata | DurationFieldMetadata | TTLFieldMetadata | BooleanFieldMetadata | SelectFieldMetadata | RadioFieldMetadata | CheckboxFieldMetadata | FileFieldMetadata | RangeFieldMetadata | SliderFieldMetadata | ColorFieldMetadata | ImageFieldMetadata | VideoFieldMetadata | AudioFieldMetadata | BadgeFieldMetadata | TagFieldMetadata | ProgressFieldMetadata | AvatarFieldMetadata | IconFieldMetadata | LinkFieldMetadata | QRCodeFieldMetadata | HiddenFieldMetadata | CustomFieldMetadata | RatingFieldMetadata | EditorFieldMetadata | CodeEditorFieldMetadata;
+export type FieldMetadata = TextFieldMetadata | NumberFieldMetadata | DateFieldMetadata | TimeFieldMetadata | DateTimeFieldMetadata | DurationFieldMetadata | TTLFieldMetadata | BooleanFieldMetadata | SelectFieldMetadata | RadioFieldMetadata | CheckboxFieldMetadata | FileFieldMetadata | RangeFieldMetadata | SliderFieldMetadata | ColorFieldMetadata | ImageFieldMetadata | VideoFieldMetadata | AudioFieldMetadata | BadgeFieldMetadata | TagFieldMetadata | ProgressFieldMetadata | AvatarFieldMetadata | IconFieldMetadata | LinkFieldMetadata | QRCodeFieldMetadata | HiddenFieldMetadata | CustomFieldMetadata | RatingFieldMetadata | EditorFieldMetadata | CodeEditorFieldMetadata | InlineTableFieldMetadata;
 /**
  * UI Metadata for entity attributes.
  * Controls how fields are displayed, filtered, and interacted with in the UI.
@@ -2554,6 +2555,30 @@ interface CodeEditorFieldMetadata extends BaseFieldMetadata {
     /** Enable JSON validation for json language (default: true) */
     validateJson?: boolean;
 }
+export interface InlineTableFieldMetadata extends BaseFieldMetadata {
+    fieldType?: 'inline-table';
+    inlineTableConfig?: {
+        /** Column definitions — which object keys to show and how */
+        columns: Array<{
+            /** Object key to extract the cell value from */
+            key: string;
+            /** Column header label (falls back to `key` when omitted) */
+            label?: string;
+            /** Fixed column width in pixels */
+            width?: number;
+            /** Horizontal alignment (default: 'left') */
+            align?: 'left' | 'center' | 'right';
+        }>;
+        /** Ant Design table size. Default: 'small' */
+        size?: 'small' | 'middle' | 'large';
+        /** Whether to show column headers. Default: true */
+        showHeader?: boolean;
+        /** Whether to show cell borders. Default: true */
+        bordered?: boolean;
+        /** Maximum visible rows before scroll kicks in (default: unlimited) */
+        maxRows?: number;
+    };
+}
 export type FieldOptions<E extends EntitySchema<any, any, any> = any> = ReadonlyArray<FieldOption> | Array<FieldOption> | FieldOptionsAPIConfig<E> | RelationEntityOptionConfig<E>;
 export type FieldOption = {
     value: string;
@@ -3854,6 +3879,8 @@ export interface EntityListPageConfig {
     readonly errorHandling?: IErrorHandlingConfig;
     /** Retry configuration for the entire list page (#58) */
     readonly retry?: IRetryConfig;
+    /** Optional display-overrides UI metadata for ui24 (canonical + overlay map). */
+    readonly displayOverrides?: DisplayOverridesUIConfig;
 }
 /**
  * Card grid configuration for display mode and view switcher card views.
@@ -3870,6 +3897,23 @@ export interface ICardGridConfig {
     columns?: number;
     /** Additional fields to show as summary on the card */
     summaryFields?: string[];
+}
+/**
+ * Field-level override for view/edit page configs.
+ * Allows overriding any field's display properties (fieldType, label,
+ * helpText, visibility, etc.) and passing field-type-specific configs
+ * like `inlineTableConfig` or `timelineConfig`.
+ */
+export interface EntityFieldOverride {
+    name: string;
+    visibility?: Condition;
+    enablement?: Condition;
+    helpText?: string;
+    placeholder?: string;
+    label?: string;
+    fieldType?: string;
+    /** Pass-through for any field-type-specific config (e.g. inlineTableConfig, timelineConfig) */
+    [key: string]: unknown;
 }
 /**
  * View page nested configuration (RECOMMENDED)
@@ -3893,15 +3937,7 @@ export interface EntityViewPageConfig {
         readonly type: 'skeleton' | 'spinner';
         readonly rows?: number;
     };
-    readonly fields?: ReadonlyArray<{
-        name: string;
-        visibility?: Condition;
-        helpText?: string;
-    }> | Array<{
-        name: string;
-        visibility?: Condition;
-        helpText?: string;
-    }>;
+    readonly fields?: ReadonlyArray<EntityFieldOverride> | Array<EntityFieldOverride>;
     /**
      * Additional sections to display below or alongside the main detail view.
      * Enables multi-section detail pages with tabs or accordion UI.
@@ -3919,6 +3955,8 @@ export interface EntityViewPageConfig {
     readonly errorHandling?: IErrorHandlingConfig;
     /** Retry configuration (#58) */
     readonly retry?: IRetryConfig;
+    /** Optional display-overrides UI metadata for ui24 (canonical + overlay map). */
+    readonly displayOverrides?: DisplayOverridesUIConfig;
 }
 /**
  * Edit page nested configuration (RECOMMENDED)
@@ -3991,10 +4029,20 @@ export interface EntityEditPageConfig {
     readonly pageTitle?: Template;
     /** Custom success message template for form submission */
     readonly successMessage?: Template;
+    /**
+     * After a successful PATCH, navigate here instead of the default `/view-{entity}/:id`.
+     */
+    readonly submitSuccessRedirect?: string;
+    /**
+     * Cancel button navigates here instead of the default `/view-{entity}/:id`.
+     */
+    readonly cancelRedirectUrl?: string;
     /** Error handling configuration (#58) */
     readonly errorHandling?: IErrorHandlingConfig;
     /** Retry configuration (#58) */
     readonly retry?: IRetryConfig;
+    /** Optional display-overrides UI metadata for ui24 (canonical + overlay map). */
+    readonly displayOverrides?: DisplayOverridesUIConfig;
 }
 /**
  * Create page nested configuration (RECOMMENDED)
@@ -4068,6 +4116,8 @@ export interface EntityCreatePageConfig {
     readonly errorHandling?: IErrorHandlingConfig;
     /** Retry configuration (#58) */
     readonly retry?: IRetryConfig;
+    /** Optional display-overrides UI metadata for ui24 (canonical + overlay map). */
+    readonly displayOverrides?: DisplayOverridesUIConfig;
 }
 export interface EntitySchema<A extends string, F extends string, C extends string, Opp extends TDefaultEntityOperations = TDefaultEntityOperations> extends Schema<A, F, C> {
     readonly model: Schema<A, F, C>['model'] & {
@@ -4144,6 +4194,11 @@ export interface EntitySchema<A extends string, F extends string, C extends stri
              */
             tableUI?: IEntityTableUIConfig;
         };
+        /**
+         * Optional display-overrides UI wiring: where the override map lives and which paths are overridable.
+         * Emitted into generated list/view/create/edit UI configs for ui24.
+         */
+        readonly displayOverrides?: DisplayOverridesUIConfig;
         readonly menuGroup?: string;
         readonly menuOrder?: number;
         /**

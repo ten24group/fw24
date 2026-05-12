@@ -1,4 +1,4 @@
-import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, EntityViewPageConfig, ISectionsConfig, IErrorHandlingConfig, IRetryConfig, IDataQualityConfig } from "../../entity";
+import { BaseEntityService, EntitySchema, TIOSchemaAttributesMap, EntityViewPageConfig, ISectionsConfig, IErrorHandlingConfig, IRetryConfig, IDataQualityConfig, DisplayOverridesUIConfig } from "../../entity";
 import { IEntityPageAction, IEntityPageColumnConfig, Template } from "../../entity/base-entity";
 import { IApplicationConfig } from "../../interfaces/config";
 export type ViewEntityPageOptions<S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>> = {
@@ -62,6 +62,8 @@ export type ViewEntityPageOptions<S extends EntitySchema<string, string, string>
     excludeAuditActions?: boolean;
     /** Auto-group secondary actions into a "More" dropdown */
     autoGroupActions?: boolean;
+    /** Display overrides UI metadata (merged from model + viewPageConfig in ui-config gen). */
+    displayOverrides?: DisplayOverridesUIConfig;
 };
 declare const _default: <S extends EntitySchema<string, string, string> = EntitySchema<string, string, string>>(options: ViewEntityPageOptions<S>, entityService: BaseEntityService<S>) => {
     readonly pageTitle: Template;

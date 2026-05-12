@@ -33,7 +33,7 @@
  * @see {@link fw24/src/entity/base-entity.ts} for entity schema definitions
  * @see {@link ui24/src/pages/PostAuth/PostAuthPage.tsx} for page rendering
  */
-import type { Condition, ConditionalValue, FieldOptions, IConfirmModal, IEntityConfigReference, IEntityPageActionDrawerConfig, IFilterSegment, IModalApiConfig, INavigateToConfig, IRelationFieldConfig, IResponseDisplayConfig, ISectionsConfig, ITableExpandableConfig, ModalType, Template } from "../../entity";
+import type { Condition, ConditionalValue, FieldOptions, IConfirmModal, IEntityConfigReference, IEntityPageActionDrawerConfig, IFilterSegment, IModalApiConfig, INavigateToConfig, InlineTableFieldMetadata, IRelationFieldConfig, IResponseDisplayConfig, ISectionsConfig, ITableExpandableConfig, ModalType, Template } from "../../entity";
 import { IEntityPageColumnConfig, type IDeepLinkConfig, type IDataQualityConfig, type IErrorHandlingConfig, type IRetryConfig, type IReviewBeforeSaveConfig } from "../../entity/base-entity";
 /**
  * Supported page types for dynamic page rendering.
@@ -87,7 +87,7 @@ export type PageType = "list" | "form" | "details" | "custom" | "dashboard" | "a
  *
  * @see {@link ConfigPropertyType} for structural types
  */
-export type ConfigFieldType = "text" | "textarea" | "password" | "email" | "url" | "phone" | "hidden" | "number" | "currency" | "percentage" | "range" | "slider" | "rating" | "date" | "time" | "datetime" | "duration" | "ttl" | "boolean" | "switch" | "toggle" | "checkbox" | "select" | "multi-select" | "autocomplete" | "radio" | "badge" | "tag" | "tags" | "progress" | "avatar" | "color" | "icon" | "json" | "code" | "markdown" | "rich-text" | "wysiwyg" | "link" | "file" | "image" | "video" | "audio" | "qrcode" | "timeline" | "custom";
+export type ConfigFieldType = "text" | "textarea" | "password" | "email" | "url" | "phone" | "hidden" | "number" | "currency" | "percentage" | "range" | "slider" | "rating" | "date" | "time" | "datetime" | "duration" | "ttl" | "boolean" | "switch" | "toggle" | "checkbox" | "select" | "multi-select" | "autocomplete" | "radio" | "badge" | "tag" | "tags" | "progress" | "avatar" | "color" | "icon" | "json" | "code" | "markdown" | "rich-text" | "wysiwyg" | "link" | "file" | "image" | "video" | "audio" | "qrcode" | "timeline" | "inline-table" | "custom";
 /**
  * Data structure types for nested/complex properties.
  * These types represent the shape of data, not how it's rendered.
@@ -395,6 +395,31 @@ export interface PropertyConfig {
         /** Timestamp format (default: 'MMM D, h:mm:ss A') */
         timestampFormat?: string;
     };
+    /**
+     * Configuration for inline-table field type.
+     * Renders an array-of-objects as a compact, read-only Ant Design table
+     * embedded directly into a detail view or table cell.
+     *
+     * @example
+     * ```ts
+     * {
+     *   name: 'startXI',
+     *   label: 'Starting XI',
+     *   fieldType: 'inline-table',
+     *   inlineTableConfig: {
+     *     columns: [
+     *       { key: 'playerName', label: 'Player' },
+     *       { key: 'number',     label: '#', width: 60 },
+     *       { key: 'position',   label: 'Pos', width: 80 },
+     *     ],
+     *     size: 'small',
+     *     showHeader: true,
+     *     bordered: true,
+     *   }
+     * }
+     * ```
+     */
+    inlineTableConfig?: InlineTableFieldMetadata['inlineTableConfig'];
     /** Minimum allowed value. Used by number, currency, percentage, slider, range, progress. */
     min?: number;
     /** Maximum allowed value. Used by number, currency, percentage, slider, range, progress. */

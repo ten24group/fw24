@@ -7,6 +7,9 @@ export declare class EntitySchemaValidator {
     validateSchema<S extends EntitySchema<any, any, any>>(schema: S, entityConfigurations: EntityConfiguration): void;
     private validateElectroDBSchema;
     private validateModelDefinition;
+    private validateDisplayOverrides;
+    private validateDisplayOverrideFieldPaths;
+    private assertValidDisplayOverridePath;
     private validateRelations;
     private validateFieldMetadata;
     private validateSelectFieldMetadata;

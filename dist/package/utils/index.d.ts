@@ -11,7 +11,6 @@ export * from './metadata';
 export * from './keys';
 export * from './env';
 export * from './compression';
-export * from './iam-policy-chunking';
 export declare class ValueByPathError extends FrameworkError {
     constructor(message: string, details?: Record<string, any>);
 }
