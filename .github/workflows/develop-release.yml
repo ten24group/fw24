@@ -1,15 +1,19 @@
 name: Develop Branch Release
 
-# Requires secret DEVELOP_RELEASE_TOKEN (fine-grained or classic PAT) with at least:
-#   contents: write, pull_requests: write (merge), metadata read
-# Checkout uses that token. If branch rules block direct pushes to `develop`, this workflow pushes the
-# new tag, pushes `HEAD` to `ci/develop-release-<run>-<version>`, opens a PR into `develop`, and merges it.
-# Pushes whose merge commit message contains `ci/develop-release` are skipped so the merge does not
-# start another release cycle.
+# Runs when `develop` moves. Never pushes to `develop`.
+#
+# Flow: branch off `develop` → build → commit dist (if any) → standard-version (version/changelog/tag) →
+#       push tag + push `ci/release-<run_id>` → open PR into `develop`.
+#
+# Secret DEVELOP_RELEASE_TOKEN: fine-grained PAT with Contents + Pull requests (write) on this repo
+# (and Metadata read). No merge permission required unless you merge the PR yourself in the UI.
+#
+# Skips the next run when the push to `develop` is the merge of one of these PRs (avoids a release loop).
 on:
   push:
     branches:
       - develop
+  workflow_dispatch:
 
 concurrency:
   group: develop-release-${{ github.repository }}
@@ -20,7 +24,12 @@ permissions:
 
 jobs:
   build-and-release:
-    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, 'ci/develop-release') }}
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event.head_commit == null ||
+        !contains(github.event.head_commit.message, 'ci/release-')
+      }}
     runs-on: ubuntu-latest
 
     steps:
@@ -38,6 +47,11 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Branch off develop for release work
+        run: |
+          set -euo pipefail
+          git checkout -B "ci/release-${{ github.run_id }}"
 
       - name: Check and update package.json
         id: check_package
@@ -100,7 +114,6 @@ jobs:
         id: next_rel
         run: echo "version=$(node scripts/ci/next-free-beta-version.cjs)" >> "$GITHUB_OUTPUT"
 
-      # CI uses --release-as (not --prerelease) when combined with a pinned version. One build above is enough.
       - name: Release beta (standard-version + tag)
         id: rel
         run: |
@@ -110,37 +123,29 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
 
-      - name: Push release to develop (direct push, else tag + PR merge)
+      - name: Push tag and open PR to develop
         env:
           GH_TOKEN: ${{ secrets.DEVELOP_RELEASE_TOKEN }}
         run: |
           set -euo pipefail
           VERSION="${{ steps.rel.outputs.version }}"
           TAG="${{ steps.rel.outputs.tag }}"
-          BRANCH="ci/develop-release-${{ github.run_id }}-${VERSION}"
+          BRANCH="ci/release-${{ github.run_id }}"
           BODY_FILE="${RUNNER_TEMP}/develop-release-pr-body.md"
-
-          if git push origin develop --follow-tags; then
-            echo "Pushed develop and release tags."
-            exit 0
-          fi
-
-          echo "Direct push to develop was rejected (e.g. rulesets); using tag + PR merge path." >&2
 
           git push origin "refs/tags/${TAG}"
           git push origin "HEAD:refs/heads/${BRANCH}"
 
           printf '%s\n' \
-            "Automated **develop** release (workflow [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}))." \
+            "Automated release from \`develop\` (workflow [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}))." \
             "" \
-            "- Tag **\`${TAG}\`** is already on the remote." \
-            "- This PR exists because **repository rules** require a PR to update \`develop\` (direct \`git push origin develop\` is rejected)." \
-            "- The merge commit message includes \`ci/develop-release\`, so the next **Develop Branch Release** run is skipped (no release loop)." \
+            "- **Tag** \`${TAG}\` has been pushed." \
+            "- This branch contains the version bump (\`${VERSION}\`), changelog, and any \`dist\` updates." \
+            "- **Merge this PR** to update \`develop\` (nothing pushes to \`develop\` from Actions)." \
+            "" \
+            "The merge commit message includes \`ci/release-\`, so merging does **not** re-trigger this workflow." \
             > "${BODY_FILE}"
 
-          PR_NUM="$(gh pr create --repo "${{ github.repository }}" --base develop --head "${BRANCH}" \
+          gh pr create --repo "${{ github.repository }}" --base develop --head "${BRANCH}" \
             --title "chore(release): ${VERSION}" \
-            --body-file "${BODY_FILE}" \
-            --json number --jq .number)"
-
-          gh pr merge "${PR_NUM}" --repo "${{ github.repository }}" --merge --delete-branch
+            --body-file "${BODY_FILE}"
