@@ -701,7 +701,11 @@ export async function listEntity<S extends EntitySchema<any, any, any>>(options:
     const {
         filters = {},
         attributes = [],
-        pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined },
+        // Default to traversing all pages so service-level callers receive the
+        // complete result set. DynamoDB caps a single page at 1MB, so a bounded
+        // default would silently truncate larger results. Callers that want a
+        // bounded result should pass an explicit `count`/`limit`.
+        pagination = { order: 'asc', pager: 'cursor', cursor: null, pages: 'all' },
         index: specifiedIndex
     } = query;
 
@@ -807,7 +811,11 @@ export async function queryEntity<S extends EntitySchema<any, any, any>>(options
     const {
         filters = {},
         attributes = [],
-        pagination = { order: 'asc', pager: 'cursor', cursor: null, count: 25, pages: undefined, limit: undefined },
+        // Default to traversing all pages so service-level callers receive the
+        // complete result set. DynamoDB caps a single page at 1MB, so a bounded
+        // default would silently truncate larger results. Callers that want a
+        // bounded result should pass an explicit `count`/`limit`.
+        pagination = { order: 'asc', pager: 'cursor', cursor: null, pages: 'all' },
         index: specifiedIndex
     } = query;
 
