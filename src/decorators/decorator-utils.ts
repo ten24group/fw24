@@ -82,32 +82,71 @@ export type CommonLambdaHandlerOptions = {
 	module?: RegisterDIModuleMetadataOptions
 }
 
+// Track if entry packages have been loaded (prevent duplicate loading)
+let entryPackagesLoaded = false;
+
+/**
+ * Global lock key for cross-instance coordination.
+ * Shared across ALL fw24 instances (bundled + layer) via Node.js global object.
+ */
+const GLOBAL_LOCK_KEY = '__fw24_entry_packages_loading__';
+const GLOBAL_LOADED_KEY = '__fw24_entry_packages_loaded__';
+
+/**
+ * Loads entry packages specified in ENTRY_PACKAGES environment variable.
+ * Called automatically by fw24 layer on import, and by decorators for backward compatibility.
+ * Safe to call multiple times - only loads once.
+ * 
+ * Uses global locking to prevent race conditions when multiple fw24 instances
+ * (bundled in Lambda + layer) try to load entry packages simultaneously.
+ */
 export function tryImportingEntryPackagesFor(controllerName = getCallingModule(3)?.path) {
+	// Check if another fw24 instance is currently loading
+	if ((global as any)[ GLOBAL_LOCK_KEY ]) {
+		DefaultLogger.debug("Entry packages currently loading by another fw24 instance, skipping", { controllerName });
+		return;
+	}
+
+	// Check if already loaded (global check across all instances)
+	if ((global as any)[ GLOBAL_LOADED_KEY ] || entryPackagesLoaded) {
+		DefaultLogger.debug("Entry packages already loaded, skipping", { controllerName });
+		return;
+	}
+
+	// Acquire global lock and mark as loaded
+	(global as any)[ GLOBAL_LOCK_KEY ] = true;
+	(global as any)[ GLOBAL_LOADED_KEY ] = true;
+	entryPackagesLoaded = true;
 
 	try {
-		DefaultLogger.debug("trying to import entry-packages for", { controllerName });
+		DefaultLogger.debug("Loading entry packages", { controllerName });
 		const entryPackageNames = resolveEnvValueFor({ key: ENV_KEYS.ENTRY_PACKAGES });
 
-		DefaultLogger.debug("Entry-package-names", { entryPackageNames });
 		if (!entryPackageNames) {
+			DefaultLogger.debug("No ENTRY_PACKAGES environment variable found");
 			return;
 		}
 
-		const packageNamesArray = entryPackageNames.split(',').map(pkg => pkg.trim()); // Split and trim package names
+		const packageNamesArray = entryPackageNames.split(',').map((pkg: string) => pkg.trim()).filter(Boolean);
 
-		packageNamesArray.forEach((entryPackageName) => {
+		packageNamesArray.forEach((entryPackageName: string) => {
 			try {
-				DefaultLogger.debug("trying to import entry", { entryPackageName });
+				DefaultLogger.debug("Loading entry package", { entryPackageName });
 				const entry = require(entryPackageName);
-				// call the default export if available
-				entry.default && typeof entry.default === 'function' && entry.default();
-				DefaultLogger.debug(`Controller[${controllerName}]: successfully imported entry-package: ${entryPackageName}`);
+				// Call the default export if available
+				if (entry.default && typeof entry.default === 'function') {
+					entry.default();
+				}
+				DefaultLogger.debug(`Successfully loaded entry package: ${entryPackageName}`);
 			} catch (error) {
-				DefaultLogger.error(`Controller[${controllerName}]: failed to import entry-package: ${entryPackageName}`, error);
+				DefaultLogger.warn(`Failed to load entry package: ${entryPackageName}`, error);
 			}
 		});
 	} catch (e) {
-		DefaultLogger.error(`Controller[${controllerName}]: Error importing entry packages in controller.ts`, e);
+		DefaultLogger.error(`Error loading entry packages`, e);
+	} finally {
+		// Always release the lock, even if loading fails
+		(global as any)[ GLOBAL_LOCK_KEY ] = false;
 	}
 }
 
@@ -166,10 +205,10 @@ export function exportHandler(handler: any, handlerName: string = 'handler', cal
 		if (!callingModule.exports.hasOwnProperty(handlerName)) {
 			callingModule.exports[ handlerName ] = handler;
 		} else {
-			DefaultLogger.warn(`exportHandler: Handler '${handlerName}' already exists in calling module: ${callingModule.filename}`);
+			DefaultLogger.debug(`exportHandler: Handler '${handlerName}' already exists in calling module: ${callingModule.filename}`);
 		}
 	} else {
-		DefaultLogger.warn('exportHandler: Could not find calling module');
+		DefaultLogger.debug('exportHandler: Could not find calling module');
 	}
 }
 
@@ -211,7 +250,7 @@ export function findConstructor(target: any, methodToDecorate: any): any {
 	// Approach 1: Direct access
 	if (target && target.constructor) {
 		return target.constructor;
-	} 
+	}
 	// Approach 2: From prototype
 	else if (target && Object.getPrototypeOf(target) && Object.getPrototypeOf(target).constructor) {
 		return Object.getPrototypeOf(target).constructor;
@@ -224,7 +263,7 @@ export function findConstructor(target: any, methodToDecorate: any): any {
 	else if (target && typeof target === 'function') {
 		return target;
 	}
-	
+
 	return undefined;
 }
 
@@ -238,6 +277,6 @@ export function findConstructor(target: any, methodToDecorate: any): any {
 export function getRoutesKey(constructor: any): symbol {
 	// Use a combination of constructor name and a unique identifier to ensure
 	// each class gets its own unique symbol, even when inheritance is involved
-	const uniqueId = constructor.toString().split('\n')[0].trim();
+	const uniqueId = constructor.toString().split('\n')[ 0 ].trim();
 	return Symbol.for(`routes_${uniqueId}`);
 }

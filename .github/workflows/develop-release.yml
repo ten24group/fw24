@@ -1,0 +1,151 @@
+name: Develop Branch Release
+
+# Runs when `develop` moves. Never pushes to `develop`.
+#
+# Flow: branch off `develop` → build → commit dist (if any) → standard-version (version/changelog/tag) →
+#       push tag + push `ci/release-<run_id>` → open PR into `develop`.
+#
+# Secret DEVELOP_RELEASE_TOKEN: fine-grained PAT with Contents + Pull requests (write) on this repo
+# (and Metadata read). No merge permission required unless you merge the PR yourself in the UI.
+#
+# Skips the next run when the push to `develop` is the merge of one of these PRs (avoids a release loop).
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+concurrency:
+  group: develop-release-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-release:
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event.head_commit == null ||
+        !contains(github.event.head_commit.message, 'ci/release-')
+      }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.DEVELOP_RELEASE_TOKEN }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Branch off develop for release work
+        run: |
+          set -euo pipefail
+          git checkout -B "ci/release-${{ github.run_id }}"
+
+      - name: Check and update package.json
+        id: check_package
+        run: |
+          MAIN=$(node -p "require('./package.json').main")
+          TYPES=$(node -p "require('./package.json').types")
+
+          if [ "$MAIN" = "src/index.tsx" ] || [ "$TYPES" = "src/index.tsx" ]; then
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+            node -e "
+              const fs = require('fs');
+              const pkg = require('./package.json');
+              pkg.main = 'dist/index.js';
+              pkg.types = 'dist/index.d.ts';
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+            echo "Updated package.json main and types"
+          else
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+            echo "package.json already configured correctly"
+          fi
+
+      - name: Delete existing dist folder
+        run: |
+          if [ -d "dist" ]; then
+            rm -rf dist
+            echo "Deleted existing dist folder"
+          else
+            echo "No dist folder to delete"
+          fi
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
+
+      - name: Commit build changes
+        run: |
+          git add dist/
+
+          if [ "${{ steps.check_package.outputs.needs_update }}" = "true" ]; then
+            git add package.json
+          fi
+
+          if git diff --staged --quiet; then
+            echo "No build output changes to commit; continuing to version step"
+            exit 0
+          fi
+
+          if [ "${{ steps.check_package.outputs.needs_update }}" = "true" ]; then
+            git commit -m "chore: update build config and dist [skip ci]"
+            echo "Committed package.json and dist folder"
+          else
+            git commit -m "chore: update dist [skip ci]"
+            echo "Committed dist folder"
+          fi
+
+      - name: Next beta version (skip if tag already exists)
+        id: next_rel
+        run: echo "version=$(node scripts/ci/next-free-beta-version.cjs)" >> "$GITHUB_OUTPUT"
+
+      - name: Release beta (standard-version + tag)
+        id: rel
+        run: |
+          set -euo pipefail
+          npm run release:BE:version:as -- --release-as "${{ steps.next_rel.outputs.version }}"
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Push tag and open PR to develop
+        env:
+          GH_TOKEN: ${{ secrets.DEVELOP_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.rel.outputs.version }}"
+          TAG="${{ steps.rel.outputs.tag }}"
+          BRANCH="ci/release-${{ github.run_id }}"
+          BODY_FILE="${RUNNER_TEMP}/develop-release-pr-body.md"
+
+          git push origin "refs/tags/${TAG}"
+          git push origin "HEAD:refs/heads/${BRANCH}"
+
+          printf '%s\n' \
+            "Automated release from \`develop\` (workflow [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}))." \
+            "" \
+            "- **Tag** \`${TAG}\` has been pushed." \
+            "- This branch contains the version bump (\`${VERSION}\`), changelog, and any \`dist\` updates." \
+            "- **Merge this PR** to update \`develop\` (nothing pushes to \`develop\` from Actions)." \
+            "" \
+            "The merge commit message includes \`ci/release-\`, so merging does **not** re-trigger this workflow." \
+            > "${BODY_FILE}"
+
+          gh pr create --repo "${{ github.repository }}" --base develop --head "${BRANCH}" \
+            --title "chore(release): ${VERSION}" \
+            --body-file "${BODY_FILE}"

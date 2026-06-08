@@ -2,7 +2,7 @@ import { Helper } from "../core/helper";
 import { Fw24 } from "../core/fw24";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
 import { LogDuration, createLogger } from "../logging";
-import { Vpc, VpcProps, Subnet, SecurityGroup, SecurityGroupProps, SubnetType, IPeer, Port, InterfaceVpcEndpointAwsService } from 'aws-cdk-lib/aws-ec2';
+import { Vpc, VpcProps, Subnet, SecurityGroup, SecurityGroupProps, SubnetType, IPeer, Port, InterfaceVpcEndpointAwsService, GatewayVpcEndpointAwsService } from 'aws-cdk-lib/aws-ec2';
 import { CfnOutput, Stack } from "aws-cdk-lib";
 import { IConstructConfig } from "../interfaces/construct-config";
 
@@ -107,7 +107,7 @@ export class VpcConstruct implements FW24Construct {
         // Add S3 Gateway endpoint (required for ECR)
         if(this.vpcConstructConfig.enableS3Endpoint){
             vpc.addGatewayEndpoint('S3', {
-                service: InterfaceVpcEndpointAwsService.S3,
+                service: GatewayVpcEndpointAwsService.S3,
                 subnets: [{
                     subnetType: SubnetType.PRIVATE_WITH_EGRESS
                 }]

@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.InvalidDependencyCriteriaError = void 0;
+const errors_1 = require("../../errors");
+class InvalidDependencyCriteriaError extends errors_1.FrameworkError {
+    constructor(criteria) {
+        super(`Invalid dependency criteria ${JSON.stringify(criteria)}`);
+    }
+}
+exports.InvalidDependencyCriteriaError = InvalidDependencyCriteriaError;
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiSW52YWxpZERlcGVuZGVuY3lDcml0ZXJpYUVycm9yLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiLi4vLi4vLi4vLi4vc3JjL2RpL2Vycm9ycy9JbnZhbGlkRGVwZW5kZW5jeUNyaXRlcmlhRXJyb3IudHMiXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6Ijs7O0FBQUEseUNBQThDO0FBRTlDLE1BQWEsOEJBQStCLFNBQVEsdUJBQWM7SUFDOUQsWUFBWSxRQUFhO1FBQ3JCLEtBQUssQ0FBQywrQkFBK0IsSUFBSSxDQUFDLFNBQVMsQ0FBQyxRQUFRLENBQUMsRUFBRSxDQUFDLENBQUM7SUFDckUsQ0FBQztDQUNKO0FBSkQsd0VBSUMiLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBGcmFtZXdvcmtFcnJvciB9IGZyb20gJy4uLy4uL2Vycm9ycyc7XG5cbmV4cG9ydCBjbGFzcyBJbnZhbGlkRGVwZW5kZW5jeUNyaXRlcmlhRXJyb3IgZXh0ZW5kcyBGcmFtZXdvcmtFcnJvciB7XG4gICAgY29uc3RydWN0b3IoY3JpdGVyaWE6IGFueSkge1xuICAgICAgICBzdXBlcihgSW52YWxpZCBkZXBlbmRlbmN5IGNyaXRlcmlhICR7SlNPTi5zdHJpbmdpZnkoY3JpdGVyaWEpfWApO1xuICAgIH1cbn1cbiJdfQ==

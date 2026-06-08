@@ -14,8 +14,8 @@ import {
     FactoryProviderOptions,
     IDIContainer,
     InternalProviderOptions,
-    Middleware,
-    MiddlewareAsync,
+    DIMiddleware,
+    DIMiddlewareAsync,
     PriorityCriteria,
     ProviderOptions,
     Token
@@ -65,6 +65,8 @@ import {
     NothingToExportError,
     ProviderConfigurationError
 } from './errors';
+import { BaseSearchEngine } from '../search';
+
 
 export class DIContainer implements IDIContainer {
 
@@ -72,8 +74,8 @@ export class DIContainer implements IDIContainer {
 
     public readonly containerId: string;
     private readonly logger: ILogger;
-    private readonly middlewares: Middleware<any>[] = [];
-    private readonly asyncMiddlewares: MiddlewareAsync<any>[] = [];
+    private readonly middlewares: DIMiddleware<any>[] = [];
+    private readonly asyncMiddlewares: DIMiddlewareAsync<any>[] = [];
 
     private _resolving = new Map<string, any>();
     protected get resolving(): Map<string, any> {
@@ -160,13 +162,29 @@ export class DIContainer implements IDIContainer {
         return this._proxies
     }
 
+    /**
+     * Global ROOT container shared across ALL fw24 instances (bundled + layer).
+     * Stored in global object to ensure singleton behavior even when multiple
+     * fw24 module graphs exist (e.g., bundled in Lambda + layer).
+     */
     private static _rootInstance: DIContainer;
     static get ROOT(): IDIContainer {
+        // Check global first for cross-instance sharing
+        const globalRoot = (global as any).__fw24_di_root_container__;
+        if (globalRoot) {
+            return globalRoot;
+        }
+
+        // Create if doesn't exist
         if (!this._rootInstance) {
             this._rootInstance = new DIContainer();
+            // Store in global for cross-instance access
+            (global as any).__fw24_di_root_container__ = this._rootInstance;
         }
         return this._rootInstance;
     }
+
+    private searchEngine?: BaseSearchEngine;
 
     constructor(private parentContainer?: DIContainer, identifier: string = 'ROOT') {
         // to ensure destructuring works correctly
@@ -196,7 +214,7 @@ export class DIContainer implements IDIContainer {
         // make sure to remove old proxy from the importing module if exists
         if (parentContainer.hasChildContainerById(proxyContainerId)) {
 
-            this.logger.warn(`Found old proxy container: [${proxyContainerId}] in parent: [${parentContainer.containerId}]; replacing it`);
+            this.logger.debug(`Found old proxy container: [${proxyContainerId}] in parent: [${parentContainer.containerId}]; replacing it`);
 
             const oldProxyContainer = parentContainer.getChildContainerById(proxyContainerId);
 
@@ -651,7 +669,27 @@ export class DIContainer implements IDIContainer {
 
         // Filter and sort providers based on criteria and conflict resolution strategies
         const bestProvidersArray = Array.from(bestProviders.values());
-        return filterAndSortProviders(bestProvidersArray, criteria);
+        const filteredAndSorted = filterAndSortProviders(bestProvidersArray, criteria);
+
+        // Deduplicate providers by composite key (provide, type, forEntity)
+        // Keep only the highest priority provider for each unique combination
+        const uniqueProviders = new Map<string, InternalProviderOptions<T>>();
+
+        for (const provider of filteredAndSorted) {
+            // Create a composite key from provide token, type, and forEntity
+            const provideToken = this.createToken(provider._provider.provide);
+            const type = provider._provider.type || 'default';
+            const forEntity = provider._provider.forEntity || '';
+            const compositeKey = `${provideToken}::${type}::${forEntity}`;
+
+            if (!uniqueProviders.has(compositeKey)) {
+                uniqueProviders.set(compositeKey, provider);
+            }
+            // Note: Since filteredAndSorted is already sorted by priority (highest first),
+            // the first provider we encounter for each composite key is the best one
+        }
+
+        return Array.from(uniqueProviders.values());
     }
 
     resolve<T, Async extends boolean = false>(
@@ -681,7 +719,6 @@ export class DIContainer implements IDIContainer {
         });
 
         if (bestProviders.length === 0) {
-            this.logProviders(true);
             throw new NoProviderFoundError(token, this, criteria);
         }
         const options = bestProviders[ 0 ];
@@ -898,7 +935,7 @@ export class DIContainer implements IDIContainer {
             const theInitMethod = instance[ initMethod as keyof typeof instance ] as Function;
             if (typeof theInitMethod === 'function') {
                 try {
-                    theInitMethod();
+                    theInitMethod.call(instance);  // Bind 'this' context to the instance
                 } catch (error: any) {
                     throw new InitializationMethodError(instance.constructor.name, error.message, this.containerId);
                 }
@@ -1050,7 +1087,7 @@ export class DIContainer implements IDIContainer {
         }
     }
 
-    useMiddleware({ middleware, order = 1 }: PartialBy<Middleware<any>, 'order'>) {
+    useMiddleware({ middleware, order = 1 }: PartialBy<DIMiddleware<any>, 'order'>) {
         this.middlewares.push({ middleware, order });
         this.middlewares.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     }
@@ -1087,7 +1124,7 @@ export class DIContainer implements IDIContainer {
         return instance;
     }
 
-    useMiddlewareAsync({ middleware, order = 1 }: PartialBy<MiddlewareAsync<any>, 'order'>) {
+    useMiddlewareAsync({ middleware, order = 1 }: PartialBy<DIMiddlewareAsync<any>, 'order'>) {
         this.asyncMiddlewares.push({ middleware, order });
         this.asyncMiddlewares.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     }
@@ -1108,7 +1145,7 @@ export class DIContainer implements IDIContainer {
             const theInitMethod = instance[ initMethod as keyof typeof instance ] as Function;
             if (typeof theInitMethod === 'function') {
                 try {
-                    await theInitMethod();
+                    await theInitMethod.call(instance);  // Bind 'this' context to the instance
                 } catch (error: any) {
                     throw new InitializationMethodError(instance.constructor.name, error.message, this.containerId);
                 }
@@ -1165,7 +1202,7 @@ export class DIContainer implements IDIContainer {
                     provide: (ip._provider.provide as any).name ? (ip._provider.provide as any).name : ip._provider.provide
                 }
             };
-            this.logger.debug(`Provider: [${ip._container.containerId}] - ${ip._provider._token}:`, { options: filtered });
+            this.logger.debug(`Provider: [${ip._container.containerId}] - ${ip._provider._token}:`);
         }
     }
 
@@ -1174,5 +1211,22 @@ export class DIContainer implements IDIContainer {
             this.logger.debug(`Cache: [${this.containerId}] - ${token}:`, instance);
         }
         this.parent?.logCache();
+    }
+
+    public setSearchEngine(engine: BaseSearchEngine) {
+        this.searchEngine = engine;
+    }
+
+    public resolveSearchEngine(): BaseSearchEngine {
+        if (!this.searchEngine) {
+
+            if (this.parent) {
+                return this.parent.resolveSearchEngine();
+            }
+
+            throw new Error('Search engine not configured. Please call setSearchEngine() first.');
+        }
+
+        return this.searchEngine;
     }
 }

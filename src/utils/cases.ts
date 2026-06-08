@@ -11,11 +11,11 @@ export function toHumanReadableName(input: string) {
 }
 
 export function camelCase(input: string) {
-    // https://stackoverflow.com/a/2970667
-    return input.replace(/(?:^\w|[A-Z]|\b\w|\s+)/g, function(match, index) {
-      if (+match === 0) return ""; // or if (/\s+/.test(match)) for white spaces
-      return index === 0 ? match.toLowerCase() : match.toUpperCase();
-    });
+    // Remove hyphens, underscores, and spaces, then camelCase
+    // Handles: 'team-stats' → 'teamStats', 'user_name' → 'userName', 'first name' → 'firstName'
+    return input
+        .replace(/[-_\s]+(.)?/g, (_, c) => c ? c.toUpperCase() : '') // Remove separators and uppercase following char
+        .replace(/^[A-Z]/, c => c.toLowerCase()); // Ensure first char is lowercase
 }
 
 export function pascalCase(input: string) {
@@ -26,7 +26,8 @@ export function pascalCase(input: string) {
 export function toSlug(str: string): string {
     if(!str) return '';
     
-    return str.toString().normalize('NFD').replace(/[\u0300-\u036f]/g, "") //remove diacritics
+    return str.toString().normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, "") //remove diacritics
             .toLowerCase()
             .replace(/\s+/g, '-') //spaces to dashes
             .replace(/&/g, '-and-') //ampersand to and

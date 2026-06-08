@@ -38,6 +38,6 @@ export class JsonSerializer {
 }
 
 
-export const deepCopy = (obj: any) => {
+export const deepCopy = <T = any>(obj: T): T => {
   return structuredClone(obj);
 }

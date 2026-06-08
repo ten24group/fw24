@@ -4,13 +4,25 @@ import type { EntityInputValidations, EntityValidations } from "../validation";
 import type { CreateEntityItemTypeFromSchema, EntityAttribute, EntityIdentifiersTypeFromSchema, EntityRecordTypeFromSchema, EntityTypeFromSchema as EntityRepositoryTypeFromSchema, EntitySchema, HydrateOptionForEntity, HydrateOptionForRelation, HydrateOptionsMapForEntity, RelationIdentifier, SpecialAttributeType, TDefaultEntityOperations, UpdateEntityItemTypeFromSchema, UpsertEntityItemTypeFromSchema } from "./base-entity";
 import type { EntityFilterCriteria, EntityQuery, EntitySelections, ParsedEntityAttributePaths } from "./query-types";
 
+import { ExecutionContext, Actor } from "../core/types/execution-context";
+import {
+    getCurrentExecutionContext,
+} from "../core/runtime/execution-context";
+import { DepIdentifier, IDIContainer } from "../interfaces";
 import { createLogger } from "../logging";
-import { JsonSerializer, getValueByPath, isArray, isBoolean, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug } from "../utils";
+import { BaseSearchService, EntitySearchService } from '../search/services';
+import { EntitySearchQuery, SearchResult } from '../search/types';
+import { Observed } from "../observability/decorators/observed";
+import { makeEntitySearchIndexName } from '../search/search-utils';
+import { JsonSerializer, getValueByPath, isArray, isBoolean, isClassConstructor, isEmpty, isEmptyObjectDeep, isFunction, isObject, isString, pascalCase, pickKeys, toHumanReadableName, toSlug, compressIfNeeded, decompressItem, isCompressed } from "../utils";
 import { createElectroDBEntity } from "./base-entity";
-import { createEntity, deleteEntity, getEntity, getBatchEntity, listEntity, queryEntity, updateEntity, UpdateEntityOperators, upsertEntity } from "./crud-service";
-import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
-import { IDIContainer } from "../interfaces";
+import { UpdateEntityOperators, UpdateEntityResponse, CreateEntityResponse, GetEntityResponse, DeleteEntityResponse, UpsertEntityResponse, createEntity, deleteEntity, deleteBatchEntity, getBatchEntity, getEntity, listEntity, queryEntity, updateEntity, upsertEntity } from "./crud-service";
+import { EntitySchemaValidator } from "./entity-schema-validator";
+import { readStoredValueAtPath, resolveWithDisplayOverrides } from "./display-override-resolve";
+import type { DisplayOverrideStorage } from "./display-override-types";
 import { DatabaseError, EntityValidationError } from './errors';
+import { addFilterGroupToEntityFilterCriteria, makeFilterGroupForSearchKeywords, parseEntityAttributePaths } from "./query";
+import { InternalServerError, ServerError } from "../errors";
 
 export type ExtractEntityIdentifiersContext = {
     // tenantId: string, 
@@ -24,6 +36,11 @@ type GetOptions<S extends EntitySchema<any, any, any>> = {
 
 export function hasAttribute(schema: EntitySchema<any, any, any>, attributeName: string) {
     return (attributeName in schema.attributes);
+}
+
+export function isAttributeReadOnly(schema: EntitySchema<any, any, any>, attributeName: string): boolean {
+    const attribute = schema.attributes[ attributeName ];
+    return !!(attribute && attribute.readOnly === true);
 }
 
 export function hasAttributeBy(schema: EntitySchema<any, any, any>, spec: SpecialAttributeType) {
@@ -56,11 +73,192 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     protected entityOpsDefaultIoSchema?: ReturnType<typeof this.makeOpsDefaultIOSchema<S>>;
 
     constructor(
-        protected readonly schema: S,
+        readonly schema: S,
         protected readonly entityConfigurations: EntityConfiguration,
         protected readonly diContainer: IDIContainer = DIContainer.ROOT,
-    ) {
-        return this;
+    ) { }
+
+    protected getTableName(): string {
+        if (!this.entityConfigurations.table) {
+            throw new InternalServerError(`Table name is required for entity: ${this.getEntityName()}`);
+        }
+        return this.entityConfigurations.table;
+    }
+
+
+    public getEntitySearchConfig(_ctx?: ExecutionContext<any>) {
+
+        const schema = this.getEntitySchema();
+
+        const searchConfig = schema.model.search || {
+            enabled: true,
+            indexConfig: {}
+        };
+
+        searchConfig.serviceClass = searchConfig.serviceClass || EntitySearchService;
+
+        if (!searchConfig.indexConfig) {
+            searchConfig.indexConfig = {};
+        }
+
+        searchConfig.indexConfig.indexName = searchConfig.indexConfig.indexName || makeEntitySearchIndexName({
+            entityName: schema.model.entity,
+            tableName: this.getTableName(),
+        });
+
+        searchConfig.indexConfig.primaryKey = searchConfig.indexConfig.primaryKey || this.getEntityPrimaryIdPropertyName();
+
+        const entitySearchableAttributes = this.getSearchableAttributeNames();
+        const entityFilterableAttributes = this.getFilterableAttributeNames();
+
+        searchConfig.indexConfig.settings = {
+            ...(searchConfig.indexConfig.settings || {}),
+            searchableAttributes: [
+                ...(searchConfig.indexConfig.settings?.searchableAttributes || entitySearchableAttributes),
+            ],
+            filterableAttributes: [
+                ...(searchConfig.indexConfig.settings?.filterableAttributes || entityFilterableAttributes),
+            ],
+            sortableAttributes: [
+                ...(searchConfig.indexConfig.settings?.sortableAttributes || entityFilterableAttributes),
+            ],
+        }
+
+        return searchConfig;
+    }
+
+    /**
+     * Checks if search is enabled for the entity.
+     * @returns True if search is enabled, false otherwise.
+     */
+    public isSearchEnabled() {
+        const searchConfig = this.getEntitySearchConfig();
+        return Boolean(searchConfig?.enabled);
+    }
+
+    /**
+     * Gets the search service for the entity.
+     * @returns The search service.
+     */
+    public getSearchService(): EntitySearchService<S> {
+        try {
+            const searchConfig = this.getEntitySearchConfig();
+
+            // Skip search logic if search is not enabled
+            if (!searchConfig?.enabled) {
+                throw new Error(`Search is not enabled for entity ${this.getEntityName()}.`);
+            }
+
+            // Validate search configuration if present
+            if (searchConfig) {
+                this.validateSearchConfig(searchConfig);
+            }
+
+            const searchServiceTokenOrClass = searchConfig?.serviceClass;
+
+            // Case 1: DI Container has the service
+            if (searchServiceTokenOrClass && this.diContainer.has(searchServiceTokenOrClass as DepIdentifier<EntitySearchService<any>>)) {
+                try {
+                    return this.diContainer.resolve<EntitySearchService<S>>(searchServiceTokenOrClass as DepIdentifier<EntitySearchService<S>>);
+                } catch (err: any) {
+                    this.logger.error('Failed to resolve search service from container:', err);
+                    throw new Error(`Failed to resolve search service for entity ${this.getEntityName()}: ${err.message}`);
+                }
+            }
+
+            // Case 2: Service instance provided
+            if (searchServiceTokenOrClass instanceof BaseSearchService) {
+                return searchServiceTokenOrClass;
+            }
+
+            // Case 3: Service class provided
+            if (
+                isClassConstructor(searchServiceTokenOrClass) &&
+                (
+                    searchServiceTokenOrClass === EntitySearchService
+                    ||
+                    searchServiceTokenOrClass.prototype instanceof EntitySearchService
+                )
+            ) {
+                try {
+                    // TODO: add support to configure this without needing to use the DI
+                    const searchEngine = this.diContainer.resolveSearchEngine();
+                    if (!searchEngine) {
+                        throw new Error('Search engine not found in container');
+                    }
+                    return new (searchServiceTokenOrClass as typeof EntitySearchService)(
+                        this,
+                        searchEngine,
+                    );
+                } catch (err: any) {
+                    this.logger.error('Failed to instantiate search service:', err);
+                    throw new Error(`Failed to create search service instance for entity ${this.getEntityName()}: ${err.message}`);
+                }
+            }
+
+            throw new Error(`No valid search-service-configuration found for entity: ${this.getEntityName()}`);
+        } catch (err: any) {
+            this.logger.error('Error in getSearchService:', err);
+            throw new Error(`Search service initialization failed for entity ${this.getEntityName()}: ${err.message}`);
+        }
+    }
+
+    private validateSearchConfig(searchConfig: EntitySchema<any, any, any>[ 'model' ][ 'search' ]) {
+
+        if (!searchConfig) {
+            throw new Error('Search configuration is required');
+        }
+
+        if (!searchConfig.indexConfig) {
+            throw new Error('Search configuration must include a config object');
+        }
+
+        const { indexConfig: config } = searchConfig;
+
+        if (!config.indexName) {
+            throw new Error('Search configuration must specify an indexName');
+        }
+
+        // Validate searchable attributes if specified
+        if (config.settings?.searchableAttributes) {
+            const invalidAttributes = config.settings.searchableAttributes.filter(
+                (attr: string) => !hasAttribute(this.getEntitySchema(), attr)
+            );
+            if (invalidAttributes.length > 0) {
+                throw new Error(`Invalid searchable attributes: ${invalidAttributes.join(', ')}`);
+            }
+        }
+
+        // Validate filterable attributes if specified
+        if (config.settings?.filterableAttributes) {
+            const invalidAttributes = config.settings.filterableAttributes.filter(
+                (attr: string) => !hasAttribute(this.getEntitySchema(), attr)
+            );
+            if (invalidAttributes.length > 0) {
+                throw new Error(`Invalid filterable attributes: ${invalidAttributes.join(', ')}`);
+            }
+        }
+    }
+
+    public async transformDocumentForIndexing(entity: EntityRecordTypeFromSchema<S>): Promise<Record<string, any>> {
+        const searchService = this.getSearchService();
+        const transformed = await searchService.transformDocumentForIndexing(entity);
+
+        if (!transformed[ 'id' ]) {
+            // make sure there's an id attribute
+            const primaryIdName = this.getEntityPrimaryIdPropertyName();
+            transformed[ 'id' ] = entity[ primaryIdName as any ];
+        }
+
+        return transformed;
+    }
+
+    public validateEntitySchema() {
+        const validator = new EntitySchemaValidator(this.diContainer);
+        validator.validateSchema(
+            this.getEntitySchema(),
+            this.entityConfigurations
+        );
     }
 
     getEntityServiceByEntityName<T extends EntitySchema<any, any, any>>(relatedEntityName: string) {
@@ -242,11 +440,11 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 continue;
             }
 
-            if (formattedAtt.isVisible) {
+            if (formattedAtt.isVisible || formattedAtt.isIdentifier) {
                 outputSchemaAttributes.detail.set(attName, { ...formattedAtt });
             }
 
-            if (formattedAtt.isListable) {
+            if (formattedAtt.isListable || formattedAtt.isIdentifier) {
                 outputSchemaAttributes.list.set(attName, { ...formattedAtt });
             }
 
@@ -354,7 +552,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
 
     /**
-     * Returns the default attribute names to be used for keyword search. Defaults to all string attributes which are not hidden and are not identifiers.
+     * Returns the default attribute names to be used for keyword search.
+     * Includes string fields and enum fields with string values.
+     * Excludes identifiers, hidden fields, date/datetime fields, relations, and select fields by default.
+     * 
      * @returns {Array<string>} attribute names to be used for keyword search
     */
     public getSearchableAttributeNames(): Array<string> {
@@ -363,10 +564,48 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         for (const attName in schema.attributes) {
             const att = schema.attributes[ attName ];
-            if (!att.hidden && !att.isIdentifier && att.type === 'string'
-                &&
-                (!('isSearchable' in att) || att.isSearchable)
-            ) {
+
+            // Skip if hidden, identifier, or explicitly not searchable
+            if (att.hidden || att.isIdentifier || att.isSearchable === false) {
+                continue;
+            }
+
+            const attrType = att.type;
+            const fieldType = att.fieldType;
+
+            // Exclude date/datetime fields (they're for filtering, not text search)
+            if (fieldType === 'date' || fieldType === 'datetime') {
+                continue;
+            }
+
+            // Exclude date-like field names (createdAt, publishedDate, etc.)
+            const lowerName = attName.toLowerCase();
+            if (attrType === 'string' && (lowerName.includes('date') || lowerName.includes('time'))) {
+                continue;
+            }
+
+            // Exclude relation fields (they're IDs, not searchable text)
+            if ('relation' in att && att.relation) {
+                continue;
+            }
+
+            // Exclude select/radio/checkbox fields with options (they're for filtering, not full-text search)
+            if ((fieldType === 'select' || fieldType === 'radio' || fieldType === 'checkbox' || fieldType === 'multi-select') &&
+                'options' in att && att.options) {
+                continue;
+            }
+
+            // Include searchable text-based field types
+            const isSearchableType = (
+                // String fields (primary searchable type)
+                (typeof attrType === 'string' && attrType === 'string') ||
+
+                // Enum fields can be searched by their string values
+                (Array.isArray(attrType) && attrType.length > 0 && attrType.every(v => typeof v === 'string'))
+            );
+
+            // Include if searchable by default (isSearchable not explicitly set) or explicitly enabled
+            if (isSearchableType && (!('isSearchable' in att) || att.isSearchable)) {
                 attributeNames.push(attName);
             }
         }
@@ -404,9 +643,12 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
 
     /**
-     * Returns the default attribute names that can be used for filtering the records. Defaults to all string attributes which are not hidden.
+     * Returns the default attribute names that can be used for filtering the records.
+     * Includes all filterable field types: string, number, boolean, enums, dates, and relations.
      * 
-     * @returns {Array<string>} attribute names to be used for keyword search
+     * This matches the comprehensive filtering support in the UI filter generation.
+     * 
+     * @returns {Array<string>} attribute names to be used for filtering
     */
     public getFilterableAttributeNames(): Array<string> {
         const attributeNames = [];
@@ -414,11 +656,53 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         for (const attName in schema.attributes) {
             const att = schema.attributes[ attName ];
-            if (
-                !att.hidden && [ 'string', 'number' ].includes(att.type as string)
-                &&
-                (!('isFilterable' in att) || att.isFilterable)
-            ) {
+
+            // Skip if explicitly marked as not filterable or hidden
+            if (att.hidden || att.isFilterable === false) {
+                continue;
+            }
+
+            const attrType = att.type;
+            const fieldType = att.fieldType;
+            let isFilterableType = false;
+
+            // Check basic scalar types
+            if (attrType === 'string' || attrType === 'number' || attrType === 'boolean') {
+                isFilterableType = true;
+            }
+
+            // Check for enum types (array of values)
+            if (!isFilterableType && Array.isArray(attrType)) {
+                isFilterableType = true;
+            }
+
+            // Check for date/datetime fields
+            if (!isFilterableType && (fieldType === 'date' || fieldType === 'datetime')) {
+                isFilterableType = true;
+            }
+
+            // Check for date-like field names
+            if (!isFilterableType && attrType === 'string') {
+                const lowerName = attName.toLowerCase();
+                if (lowerName.includes('date') || lowerName.includes('time')) {
+                    isFilterableType = true;
+                }
+            }
+
+            // Check for relation fields
+            if (!isFilterableType && 'relation' in att && att.relation) {
+                isFilterableType = true;
+            }
+
+            // Check for select/radio/checkbox fields with options
+            if (!isFilterableType &&
+                (fieldType === 'select' || fieldType === 'radio' || fieldType === 'checkbox' || fieldType === 'multi-select') &&
+                'options' in att && att.options) {
+                isFilterableType = true;
+            }
+
+            // Include if filterable by default (isFilterable not explicitly set) or explicitly enabled
+            if (isFilterableType && (!('isFilterable' in att) || att.isFilterable)) {
                 attributeNames.push(attName);
             }
         }
@@ -440,11 +724,36 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         return pickKeys<T>(record, ...keys);
     }
 
-    public serializeRecords<T extends Record<string, any>>(record: Array<T>, attributes = this.getDefaultSerializationAttributeNames()): Array<Partial<T>> {
+    public serializeRecords<T extends Record<string, any>>(record: Array<T> | null, attributes = this.getDefaultSerializationAttributeNames()): Array<Partial<T>> {
+        if (!record || !Array.isArray(record)) {
+            return [];
+        }
         return record.map(record => this.serializeRecord<T>(record, attributes));
     }
 
-    private async hydrateRecords(
+    @Observed({
+        trace: { level: 'debug' },
+        sourceType: 'service',
+        tags: { operation_category: 'read', hydration: 'true' },
+        extract: {
+            start: ({ instance, args }) => {
+                const [ relations, rootRecords ] = args as [ unknown[] | undefined, unknown[] | undefined ];
+                const relationCount = Array.isArray(relations) ? relations.length : 0;
+                const recordCount = Array.isArray(rootRecords) ? rootRecords.length : 0;
+
+                return {
+                    tags: {
+                        entityName: (instance as { getEntityName(): string }).getEntityName(),
+                    },
+                    metrics: {
+                        relationCount,
+                        recordCount,
+                    }
+                };
+            }
+        }
+    })
+    async hydrateRecords(
         relations: Array<[ relatedAttributeName: string, options: HydrateOptionForRelation<any> ]>,
         rootEntityRecords: Array<{ [ x: string ]: any; }>
     ) {
@@ -707,7 +1016,20 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @returns A promise that resolves to the retrieved entity data.
      */
 
-    public async get(options: GetOptions<S>) {
+    @Observed({
+        trace: { level: 'debug' },
+        sourceType: 'service',
+        tags: { operation_category: 'read' },
+        extract: {
+            start: ({ instance }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() }
+            }),
+            finish: ({ result }) => ({
+                tags: { found: !!result }
+            })
+        }
+    })
+    public async get(options: GetOptions<S>, _ctx?: ExecutionContext): Promise<EntityRecordTypeFromSchema<S> | undefined> {
         const { identifiers, attributes } = options;
 
 
@@ -744,16 +1066,21 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         this.logger.debug(`Retrieved entity: ${this.getEntityName()}`, JsonSerializer.stringify(entity));
 
-        if (!!formattedAttributes && entity?.data) {
-            const relationalAttributes = Object.entries(formattedAttributes)?.map(([ attributeName, options ]) => [ attributeName, options ])
-                .filter(([ , options ]) => isObject(options));
+        if (entity?.data) {
+            // Decompress fields after reading from DB
+            entity.data = this.decompressFields(entity.data);
 
-            if (relationalAttributes.length) {
-                await this.hydrateRecords(relationalAttributes as any, [ entity.data ]);
+            if (!!formattedAttributes) {
+                const relationalAttributes = Object.entries(formattedAttributes)?.map(([ attributeName, options ]) => [ attributeName, options ])
+                    .filter(([ , options ]) => isObject(options));
+
+                if (relationalAttributes.length) {
+                    await this.hydrateRecords(relationalAttributes as any, [ entity.data ]);
+                }
             }
         }
 
-        return entity?.data;
+        return entity?.data as EntityRecordTypeFromSchema<S> | undefined;
     }
 
     /**
@@ -765,6 +1092,29 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param options.concurrent - Optional number of concurrent batch operations to perform (default: 1).
      * @returns A promise that resolves to an object containing the retrieved entities and any unprocessed items.
      */
+    @Observed({
+        trace: { level: 'debug' },
+        sourceType: 'service',
+        tags: { operation_category: 'read', batch: 'true' },
+        extract: {
+            start: ({ instance, args }) => {
+                const [ options ] = args as [ { identifiers?: unknown[]; concurrent?: number } ];
+                const batchSize = Array.isArray(options?.identifiers) ? options.identifiers.length : 0;
+                const concurrent = typeof options?.concurrent === 'number' ? options.concurrent : 1;
+
+                return {
+                    tags: { entityName: (instance as { getEntityName(): string }).getEntityName() },
+                    metrics: { batchSize, concurrent }
+                };
+            },
+            finish: ({ result }) => {
+                const r = result as { data?: unknown[]; unprocessed?: unknown[] } | undefined;
+                const retrievedCount = Array.isArray(r?.data) ? r!.data.length : 0;
+                const unprocessedCount = Array.isArray(r?.unprocessed) ? r!.unprocessed.length : 0;
+                return { metrics: { retrievedCount, unprocessedCount } };
+            }
+        }
+    })
     public async batchGet<S extends EntitySchema<any, any, any>>(options: {
         identifiers: Array<EntityIdentifiersTypeFromSchema<S>>,
         attributes?: EntitySelections<S>,
@@ -806,12 +1156,17 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         this.logger.debug(`Retrieved batch entities: ${this.getEntityName()}`, JsonSerializer.stringify(entity));
 
-        if (!!formattedAttributes && entity?.data) {
-            const relationalAttributes = Object.entries(formattedAttributes)?.map(([ attributeName, options ]) => [ attributeName, options ])
-                .filter(([ , options ]) => isObject(options));
+        if (entity?.data) {
+            // Decompress all records
+            entity.data = entity.data.map(record => this.decompressFields(record));
 
-            if (relationalAttributes.length) {
-                await this.hydrateRecords(relationalAttributes as any, entity.data);
+            if (!!formattedAttributes) {
+                const relationalAttributes = Object.entries(formattedAttributes)?.map(([ attributeName, options ]) => [ attributeName, options ])
+                    .filter(([ , options ]) => isObject(options));
+
+                if (relationalAttributes.length) {
+                    await this.hydrateRecords(relationalAttributes as any, entity.data);
+                }
             }
         }
 
@@ -879,12 +1234,12 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         // Create filters for the query using the correct structure
         const filters = {
-            [attributeName]: { eq: attributeValue }
+            [ attributeName ]: { eq: attributeValue }
         } as EntityFilterCriteria<S>;
 
         // Determine which attributes to project - only the attribute being checked and ignored entity identifiers
-        const attributesToProject: string[] = [attributeName];
-        
+        const attributesToProject: string[] = [ attributeName ];
+
         // Add ignored entity identifier fields to the projection
         if (ignoredEntityIdentifiers && !isEmptyObjectDeep(ignoredEntityIdentifiers)) {
             Object.keys(ignoredEntityIdentifiers).forEach(key => {
@@ -905,8 +1260,8 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
         let entities = result.data || [];
         if (ignoredEntityIdentifiers && !isEmptyObjectDeep(ignoredEntityIdentifiers)) {
             entities = entities.filter(entity => {
-                return !Object.entries(ignoredEntityIdentifiers).every(([key, value]) => 
-                    entity[key] === value
+                return !Object.entries(ignoredEntityIdentifiers).every(([ key, value ]) =>
+                    entity[ key ] === value
                 );
             });
         }
@@ -928,14 +1283,108 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
     }
 
     /**
+     * Automatically injects actor context into entity data
+     * @param data - The entity data to enhance
+     * @param operation - The operation type (create/update)
+     * @param ctx - The execution context containing actor info
+     * @returns Enhanced data with actor context
+     */
+    protected injectActorContext<T extends Record<string, any>>(
+        data: T,
+        operation: 'create' | 'update' | 'upsert' | 'delete',
+        ctx?: ExecutionContext
+    ): T {
+
+        // Prefer explicit ctx.actor, otherwise fall back to framework execution-context (AsyncLocalStorage).
+        // This is important for background handlers (queues/tasks) where ctx may not be threaded through.
+        const effectiveActor = ctx?.actor ?? getCurrentExecutionContext()?.actor;
+        if (!effectiveActor) {
+            this.logger.debug('BaseEntityService: No actor context found, skipping injection');
+            return data;
+        }
+
+        const schema = this.getEntitySchema();
+        const enhancedData = { ...data };
+        const actor = effectiveActor;
+
+        // IMPORTANT: We do NOT persist/propagate parentObservabilityLogId across hops.
+        // parentObservabilityLogId is strict hierarchy within a single invocation's persisted slice.
+
+        // Get current timestamp for database operation
+        const currentTimestamp = new Date().toISOString();
+
+        // Inject visible actor fields if defined in schema and not read-only
+        if (operation === 'create') {
+            if (hasAttribute(schema, 'createdBy') && !isAttributeReadOnly(schema, 'createdBy') && actor.actorId) {
+                (enhancedData as any).createdBy = actor.actorId;
+            }
+            if (hasAttribute(schema, 'createdAt') && !isAttributeReadOnly(schema, 'createdAt')) {
+                (enhancedData as any).createdAt = currentTimestamp;
+            }
+        }
+
+        // For delete operations, we still want to track who performed the deletion
+        if (operation === 'delete') {
+            if (hasAttribute(schema, 'deletedBy') && !isAttributeReadOnly(schema, 'deletedBy') && actor.actorId) {
+                (enhancedData as any).deletedBy = actor.actorId;
+            }
+            if (hasAttribute(schema, 'deletedAt') && !isAttributeReadOnly(schema, 'deletedAt')) {
+                (enhancedData as any).deletedAt = currentTimestamp;
+            }
+        } else {
+            // Always update these fields on create/update (if not read-only)
+            if (hasAttribute(schema, 'updatedBy') && !isAttributeReadOnly(schema, 'updatedBy') && actor.actorId) {
+                (enhancedData as any).updatedBy = actor.actorId;
+            }
+            if (hasAttribute(schema, 'updatedAt') && !isAttributeReadOnly(schema, 'updatedAt')) {
+                (enhancedData as any).updatedAt = currentTimestamp;
+            }
+            if (hasAttribute(schema, 'tenantId') && !isAttributeReadOnly(schema, 'tenantId') && actor.tenantId) {
+                (enhancedData as any).tenantId = actor.tenantId;
+            }
+        }
+
+        // Always inject complete actor context for audit trail
+        // This field is hidden from API responses by default
+        // Inject actorTimestamp for staleness detection in audit logs
+        const actorWithTimestamp = {
+            ...actor,
+            actorTimestamp: Date.now(), // Milliseconds since epoch for easy comparison
+        };
+
+        // Clean actor object by removing undefined values (DynamoDB doesn't allow them)
+        const cleanActor = Object.fromEntries(
+            Object.entries(actorWithTimestamp).filter(([ _, value ]) => value !== undefined)
+        );
+
+        (enhancedData as any)._actor = cleanActor;
+
+        return enhancedData;
+    }
+
+    /**
      * Creates a new entity.
-     * 
-     * @param payload - The payload for creating the entity.
+     *
+     * @param payload - Top-level JSON `null` values are stripped before persistence: optional fields are left unset
+     *   (see `createEntity` / `partitionTopLevelJsonNulls` in `mutation-utils`), not passed as null to ElectroDB.
      * @returns The created entity.
      */
-    public async create(payload: CreateEntityItemTypeFromSchema<S>) {
+    @Observed({
+        trace: { level: 'info' },
+        sourceType: 'service',
+        tags: { operation_category: 'write' },
+        extract: {
+            start: ({ instance }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() }
+            })
+        }
+    })
+    public async create(payload: CreateEntityItemTypeFromSchema<S>, ctx?: ExecutionContext): Promise<CreateEntityResponse<S>> {
 
-        const payloadCopy = { ...payload }
+        let payloadCopy = { ...payload };
+
+        // Inject actor context
+        payloadCopy = this.injectActorContext(payloadCopy, 'create', ctx);
 
         const schema = this.getEntitySchema();
         const entitySlugAttribute = getAttributeNameBy(schema, 'slug') || '';
@@ -957,6 +1406,10 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             for (const { name } of uniqueFields) {
                 if (name! in payloadCopy) {
                     let value = payloadCopy[ name! ];
+                    // Skip when optional unique field is cleared (null) — createEntity will omit it; no uniqueness query for null.
+                    if (value === null || value === undefined) {
+                        continue;
+                    }
                     uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
                         payloadToUpdate: payloadCopy,
                         attributeName: name!,
@@ -979,13 +1432,20 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             }
         }
 
+        // Compress fields before writing
+        payloadCopy = this.compressFields(payloadCopy);
+
         const entity = await createEntity<S>({
             data: payloadCopy,
             entityName: this.getEntityName(),
             entityService: this,
         });
 
-        return entity;
+        // Decompress fields after reading
+        return {
+            ...entity,
+            data: entity.data ? this.decompressFields(entity.data) : entity.data
+        };
     }
 
     /**
@@ -993,20 +1453,49 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * NOTE: 
      *   - This method does not check for uniqueness of the attributes, neither create the slug automatically.
      *   - It's the responsibility of the caller to ensure the read ony attributes are not provided if the record is being upsert.
-     * 
+     *   - Top-level JSON `null` values are stripped from the payload before upsert (same as create; use PATCH to clear attrs on existing rows).
+     *
      * @param payload - The payload for creating-OR-updating the entity.
-     * @returns The created-OR-updated entity.
+     * @returns Object containing:
+     *   - data: The upserted entity data
+     *   - wasCreated: true if record was created, false if updated
+     *   - oldData: previous data if it was an update (undefined for creates)
      */
-    public async upsert(payload: UpsertEntityItemTypeFromSchema<S>) {
+    @Observed({
+        trace: { level: 'info' },
+        sourceType: 'service',
+        tags: { operation_category: 'write' },
+        extract: {
+            start: ({ instance }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() }
+            }),
+            finish: ({ result }) => ({
+                tags: { wasCreated: !!(result as { wasCreated?: boolean } | undefined)?.wasCreated }
+            })
+        }
+    })
+    public async upsert(payload: UpsertEntityItemTypeFromSchema<S>): Promise<UpsertEntityResponse<S>> {
         this.logger.debug(`Called ~ upsert ~ entityName: ${this.getEntityName()} ~ payload:`, payload);
 
-        const entity = await upsertEntity<S>({
-            data: payload,
+        // Inject actor context so DynamoDB images always have _actor for auditing/causedBy
+        // Treat upsert as an update for actor-field purposes (we always want _actor and updatedBy/updatedAt).
+        let payloadCopy = this.injectActorContext({ ...payload }, 'upsert');
+
+        // Compress fields before writing
+        payloadCopy = this.compressFields(payloadCopy);
+
+        const result = await upsertEntity<S>({
+            data: payloadCopy,
             entityName: this.getEntityName(),
             entityService: this,
         });
 
-        return entity;
+        // Decompress result fields
+        return {
+            ...result,
+            data: result.data ? this.decompressFields(result.data) : result.data,
+            oldData: result.oldData ? this.decompressFields(result.oldData) : undefined
+        };
     }
 
     /**
@@ -1021,7 +1510,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * const duplicateData = await makeDuplicateEntityDataByIdentifiers(identifiers);
      * console.log(duplicateData); // { name: 'John Doe', age: 30, ... }
      */
-    protected async makeDuplicateEntityData(identifiers: EntityIdentifiersTypeFromSchema<S>) {
+    protected async makeDuplicateEntityData(identifiers: EntityIdentifiersTypeFromSchema<S>): Promise<CreateEntityItemTypeFromSchema<S>> {
         const entity = await this.get({ identifiers }) as EntityRecordTypeFromSchema<S>;
 
         if (!entity) {
@@ -1063,9 +1552,19 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * const entityId = { id: 123, name: 'example' };
      * const duplicatedEntity = await duplicate(entityId);
      */
-    public async duplicate(id: EntityIdentifiersTypeFromSchema<S>) {
+    @Observed({
+        trace: { level: 'info' },
+        sourceType: 'service',
+        tags: { operation_category: 'write' },
+        extract: {
+            start: ({ instance }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() }
+            })
+        }
+    })
+    public async duplicate(id: EntityIdentifiersTypeFromSchema<S>, ctx?: ExecutionContext): Promise<CreateEntityResponse<S>> {
         const duplicateEventData = await this.makeDuplicateEntityData(id);
-        return await this.create(duplicateEventData);
+        return await this.create(duplicateEventData, ctx);
     }
 
     // TODO: should be part of some config
@@ -1080,7 +1579,32 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param query - The query object containing filters, search keywords, and attributes.
      * @returns A Promise that resolves to an object containing the list of entities and the original query.
      */
-    public async list(query: EntityQuery<S> = {}) {
+    @Observed({
+        trace: { level: 'debug' },
+        sourceType: 'service',
+        tags: { operation_category: 'read' },
+        extract: {
+            start: ({ instance, args }) => {
+                const [ query ] = args as [ { filters?: Record<string, unknown> } | undefined ];
+                const hasFilters = !!query?.filters && Object.keys(query.filters).length > 0;
+                return {
+                    tags: {
+                        entityName: (instance as { getEntityName(): string }).getEntityName(),
+                        hasFilters,
+                    }
+                };
+            },
+            finish: ({ result }) => {
+                const r = result as { data?: unknown[]; cursor?: unknown } | undefined;
+                const resultCount = Array.isArray(r?.data) ? r!.data.length : 0;
+                return {
+                    tags: { hasCursor: !!r?.cursor },
+                    metrics: { resultCount }
+                };
+            }
+        }
+    })
+    public async list(query: EntityQuery<S> = {}, _ctx?: ExecutionContext) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
         if (!query.attributes) {
@@ -1119,6 +1643,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             entityService: this,
         });
 
+        // Decompress all records
+        entities.data = entities.data.map(record => this.decompressFields(record));
+
         entities.data = this.serializeRecords(entities.data, query.attributes);
 
         if (query.attributes && entities.data) {
@@ -1146,7 +1673,29 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param query - The entity query to execute.
      * @returns A promise that resolves to the result of the query.
      */
-    public async query(query: EntityQuery<S>) {
+    @Observed({
+        trace: { level: 'debug' },
+        sourceType: 'service',
+        tags: { operation_category: 'read' },
+        extract: {
+            start: ({ instance, args }) => {
+                const [ query ] = args as [ { filters?: Record<string, unknown> } | undefined ];
+                const hasFilters = !!query?.filters && Object.keys(query.filters).length > 0;
+                return {
+                    tags: {
+                        entityName: (instance as { getEntityName(): string }).getEntityName(),
+                        hasFilters,
+                    }
+                };
+            },
+            finish: ({ result }) => {
+                const r = result as { data?: unknown[] } | undefined;
+                const resultCount = Array.isArray(r?.data) ? r!.data.length : 0;
+                return { metrics: { resultCount } };
+            }
+        }
+    })
+    public async query(query: EntityQuery<S>, _ctx?: ExecutionContext) {
         this.logger.debug(`Called ~ list ~ entityName: ${this.getEntityName()} ~ query:`, query);
 
         const { attributes } = query;
@@ -1183,6 +1732,9 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             entityService: this,
         });
 
+        // Decompress all records
+        entities.data = entities.data.map(record => this.decompressFields(record));
+
         entities.data = this.serializeRecords(entities.data, selectAttributes);
 
         if (selectAttributes && entities.data) {
@@ -1204,11 +1756,26 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * Updates an entity in the database.
      *
      * @param identifiers - The identifiers of the entity to update.
-     * @param data - The updated data for the entity.
-     * @param remove - Optional array of attributes to remove from the entity.
+     * @param data - Patch payload. Top-level JSON `null` values are treated as merge-patch “clear”:
+     *   they become DynamoDB attribute removals (see `updateEntity` / `partitionTopLevelJsonNulls` in `mutation-utils`),
+     *   not literal nulls passed to ElectroDB `set()`.
+     * @param operators - Optional ElectroDB patch operators; `operators.remove` merges with JSON `null` keys.
      * @returns The updated entity.
      */
-    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators) {
+    @Observed({
+        trace: { level: 'info' },
+        sourceType: 'service',
+        tags: { operation_category: 'write' },
+        extract: {
+            start: ({ instance }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() }
+            })
+        }
+    })
+    public async update(identifiers: EntityIdentifiersTypeFromSchema<S>, data: UpdateEntityItemTypeFromSchema<S>, operators?: UpdateEntityOperators, ctx?: ExecutionContext): Promise<UpdateEntityResponse<S>> {
+
+        // Inject actor context
+        let enhancedData = this.injectActorContext(data as any, 'update', ctx);
 
         const uniqueFields = this.getUniqueAttributes();
         const skipCheckingAttributesUniqueness = false;
@@ -1219,14 +1786,18 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
             for (const { name, readOnly } of uniqueFields) {
                 if (readOnly) {
-                    delete data[ name as keyof typeof data ];
+                    delete enhancedData[ name as keyof typeof enhancedData ];
                     continue;
                 }
 
-                if (name! in data) {
-                    let value = data[ name as keyof typeof data ];
+                if (name! in enhancedData) {
+                    let value = enhancedData[ name as keyof typeof enhancedData ];
+                    // Skip when clearing optional unique field — updateEntity maps null → remove; no eq-null uniqueness check.
+                    if (value === null || value === undefined) {
+                        continue;
+                    }
                     uniquenessChecks.push(() => this.checkUniquenessAndUpdate({
-                        payloadToUpdate: data,
+                        payloadToUpdate: enhancedData,
                         attributeName: name!,
                         attributeValue: value,
                         maxAttemptsForCreatingUniqueAttributeValue,
@@ -1248,15 +1819,22 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
             }
         }
 
+        // Compress fields before writing
+        enhancedData = this.compressFields(enhancedData);
+
         const updatedEntity = await updateEntity<S>({
             id: identifiers,
-            data: data,
+            data: enhancedData,
             operators: operators,
             entityName: this.getEntityName(),
             entityService: this,
         });
 
-        return updatedEntity;
+        // Decompress fields after reading
+        return {
+            ...updatedEntity,
+            data: updatedEntity.data ? this.decompressFields(updatedEntity.data) : updatedEntity.data
+        };
     }
 
     /**
@@ -1265,7 +1843,17 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param identifiers - The identifiers of the entity to be deleted.
      * @returns A promise that resolves to the deleted entity.
      */
-    public async delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>) {
+    @Observed({
+        trace: { level: 'warn' },
+        sourceType: 'service',
+        tags: { operation_category: 'delete' },
+        extract: {
+            start: ({ instance }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() }
+            })
+        }
+    })
+    public async delete(identifiers: EntityIdentifiersTypeFromSchema<S> | Array<EntityIdentifiersTypeFromSchema<S>>, ctx?: ExecutionContext): Promise<DeleteEntityResponse<S>> {
         try {
             this.logger.debug(`Called ~ delete ~ entityName: ${this.getEntityName()} ~ identifiers:`, identifiers);
 
@@ -1273,11 +1861,241 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                 id: identifiers,
                 entityName: this.getEntityName(),
                 entityService: this,
+                actor: ctx?.actor,
+                tenant: ctx?.actor?.tenantId,
             });
 
             return deletedEntity;
         } catch (error: any) {
             throw new DatabaseError(`Failed to delete ${this.getEntityName()}: ${error.message}`);
+        }
+    }
+
+    /**
+     * Deletes multiple entities in a batch operation.
+     * 
+     * @param options - The options for batch deleting entities.
+     * @param options.identifiers - Array of entity identifiers to delete.
+     * @param options.concurrent - Optional number of concurrent batch operations to perform (default: 1).
+     * @param ctx - Optional execution context containing actor information.
+     * @returns A promise that resolves to an object containing any unprocessed items.
+     * 
+     * @example
+     * ```typescript
+     * // Delete multiple entities
+     * const result = await service.batchDelete({
+     *   identifiers: [
+     *     { id: 'item1' },
+     *     { id: 'item2' },
+     *     { id: 'item3' }
+     *   ],
+     *   concurrent: 2
+     * });
+     * 
+     * if (result.unprocessed.length > 0) {
+     *   console.log('Some items were not deleted:', result.unprocessed);
+     * }
+     * ```
+     */
+    @Observed({
+        trace: { level: 'warn' }, // Batch deletes are critical
+        sourceType: 'service',
+        tags: { operation_category: 'delete', batch: 'true' },
+        extract: {
+            start: ({ instance, args }) => {
+                const [ options ] = args as [ { identifiers?: unknown[]; concurrent?: number } ];
+                const batchSize = Array.isArray(options?.identifiers) ? options.identifiers.length : 0;
+                const concurrent = typeof options?.concurrent === 'number' ? options.concurrent : 1;
+                return {
+                    tags: { entityName: (instance as { getEntityName(): string }).getEntityName() },
+                    metrics: { batchSize, concurrent }
+                };
+            },
+            finish: ({ result }) => {
+                const r = result as { data?: unknown[]; unprocessed?: unknown[] } | undefined;
+                const deletedCount = Array.isArray(r?.data) ? r!.data.length : 0;
+                const unprocessedCount = Array.isArray(r?.unprocessed) ? r!.unprocessed.length : 0;
+                return { metrics: { deletedCount, unprocessedCount } };
+            }
+        }
+    })
+    public async batchDelete(options: {
+        identifiers: Array<EntityIdentifiersTypeFromSchema<S>>,
+        concurrent?: number
+    }, ctx?: ExecutionContext) {
+        try {
+            const { identifiers, concurrent = 1 } = options;
+
+            this.logger.debug(`Called ~ batchDelete ~ entityName: ${this.getEntityName()} ~ count: ${identifiers.length}`, {
+                concurrent
+            });
+
+            const result = await deleteBatchEntity<S>({
+                ids: identifiers,
+                entityName: this.getEntityName(),
+                entityService: this,
+                actor: ctx?.actor,
+                tenant: ctx?.actor?.tenantId,
+                concurrent
+            });
+
+            // ElectroDB batch delete returns { unprocessed: Array }
+            const unprocessedCount = (result as any)?.unprocessed?.length || 0;
+            const dataCount = result.data?.length;
+            this.logger.debug(`Completed ~ batchDelete ~ entityName: ${this.getEntityName()} ~ processed: ${identifiers.length}, dataCount: ${dataCount}, unprocessed: ${unprocessedCount}`);
+
+            return result;
+        } catch (error: any) {
+            throw new DatabaseError(`Failed to batch delete ${this.getEntityName()}: ${error.message}`);
+        }
+    }
+
+    /**
+     * Deletes entities based on a query filter.
+     * This method queries for entities matching the filter and then batch deletes them.
+     * 
+     * @param options - The options for deleting by query.
+     * @param options.filters - The filter criteria to match entities for deletion.
+     * @param options.batchSize - The number of items to delete in each batch (default: 25).
+     * @param options.concurrent - Number of concurrent batch operations (default: 1).
+     * @param options.maxItems - Optional maximum number of items to delete (safety limit).
+     * @param ctx - Optional execution context containing actor information.
+     * @returns A promise that resolves to an object with deletion statistics.
+     * 
+     * @example
+     * ```typescript
+     * // Delete all inactive users
+     * const result = await userService.deleteByQuery({
+     *   filters: {
+     *     status: { eq: 'inactive' },
+     *     lastLoginAt: { lt: '2023-01-01' }
+     *   },
+     *   batchSize: 50,
+     *   maxItems: 1000
+     * });
+     * 
+     * console.log(`Deleted ${result.deletedCount} items, ${result.failedCount} failed`);
+     * ```
+     */
+    @Observed({
+        trace: { level: 'warn' }, // Bulk deletes are dangerous
+        sourceType: 'service',
+        tags: { operation_category: 'delete', batch: 'true', bulk: 'true' },
+        extract: {
+            start: ({ instance, args }) => {
+                const [ options ] = args as [ { filters?: Record<string, unknown>; batchSize?: number; maxItems?: number } | undefined ];
+                const maxItems = options?.maxItems;
+                const batchSize = typeof options?.batchSize === 'number' ? options.batchSize : 25;
+                return ({
+                    tags: {
+                        entityName: (instance as { getEntityName(): string }).getEntityName(),
+                        hasFilters: (() => {
+                            return !!options?.filters && Object.keys(options.filters).length > 0;
+                        })(),
+                    },
+                    metrics: {
+                        batchSize,
+                        ...(typeof maxItems === 'number' ? { maxItems } : {}),
+                    }
+                });
+            },
+            finish: ({ result }) => ({
+                metrics: {
+                    deletedCount: (result as { deletedCount?: number } | undefined)?.deletedCount || 0,
+                    failedCount: (result as { failedCount?: number } | undefined)?.failedCount || 0,
+                    totalProcessed: (result as { totalProcessed?: number } | undefined)?.totalProcessed || 0,
+                }
+            })
+        }
+    })
+    public async deleteByQuery(options: {
+        filters: EntityFilterCriteria<S>,
+        batchSize?: number,
+        concurrent?: number,
+        maxItems?: number
+    }, ctx?: ExecutionContext) {
+        try {
+            const { filters, batchSize = 25, concurrent = 1, maxItems } = options;
+
+            this.logger.info(`Called ~ deleteByQuery ~ entityName: ${this.getEntityName()}`, {
+                filters,
+                batchSize,
+                maxItems
+            });
+
+            // Safety check: require filters to prevent accidental deletion of all records
+            if (!filters || isEmptyObjectDeep(filters)) {
+                throw new Error('deleteByQuery requires filters to prevent accidental deletion of all records. Use scan with explicit confirmation if you need to delete all records.');
+            }
+
+            let deletedCount = 0;
+            let failedCount = 0;
+            let cursor: string | null = null;
+            let totalProcessed = 0;
+
+            // Query and delete in batches
+            do {
+                // Fetch a batch of items to delete
+                const queryResult = await this.query({
+                    filters,
+                    pagination: {
+                        count: batchSize,
+                        cursor: cursor || undefined,
+                        order: 'asc',
+                        pager: 'cursor'
+                    }
+                }, ctx);
+
+                const itemsToDelete = queryResult.data;
+
+                if (!itemsToDelete || itemsToDelete.length === 0) {
+                    break;
+                }
+
+                this.logger.debug(`Deleting batch of ${itemsToDelete.length} items`);
+
+                // Extract identifiers from the fetched items
+                const identifiers = itemsToDelete.map(item =>
+                    this.extractEntityIdentifiers(item as any)
+                ) as Array<EntityIdentifiersTypeFromSchema<S>>;
+
+                // Batch delete the items
+                const deleteResult = await this.batchDelete({
+                    identifiers,
+                    concurrent
+                }, ctx);
+
+                const unprocessedCount = (deleteResult as any)?.unprocessed?.length || 0;
+                const dataCount = deleteResult.data?.length;
+                const batchDeletedCount = identifiers.length - unprocessedCount;
+                deletedCount += batchDeletedCount;
+                failedCount += unprocessedCount;
+                totalProcessed += itemsToDelete.length;
+
+                this.logger.debug(`Batch result: ${batchDeletedCount} deleted, ${unprocessedCount} failed`);
+
+                // Check if we've hit the max items limit
+                if (maxItems && totalProcessed >= maxItems) {
+                    this.logger.warn(`Reached maxItems limit of ${maxItems}, stopping deletion`);
+                    break;
+                }
+
+                // Update cursor for next iteration
+                cursor = queryResult.cursor || null;
+
+            } while (cursor);
+
+            this.logger.info(`Completed ~ deleteByQuery ~ entityName: ${this.getEntityName()} ~ deleted: ${deletedCount}, failed: ${failedCount}`);
+
+            return {
+                deletedCount,
+                failedCount,
+                totalProcessed
+            };
+
+        } catch (error: any) {
+            this.logger.error(`Failed to delete by query for ${this.getEntityName()}:`, error);
+            throw new DatabaseError(`Failed to delete by query for ${this.getEntityName()}: ${error.message}`);
         }
     }
 
@@ -1289,35 +2107,54 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
      * @param options.batchSize - The number of items to process in each batch. Defaults to 100.
      * @returns A promise that resolves when the index rebuild is complete.
      */
+    @Observed({
+        trace: { level: 'warn' }, // Index rebuilds are critical operations
+        sourceType: 'service',
+        tags: { operation_category: 'maintenance', batch: 'true' },
+        extract: {
+            start: ({ instance, args }) => ({
+                tags: { entityName: (instance as { getEntityName(): string }).getEntityName() },
+                metrics: {
+                    batchSize: (() => {
+                        const [ options ] = args as [ { batchSize?: number } | undefined ];
+                        return typeof options?.batchSize === 'number' ? options.batchSize : 100;
+                    })()
+                }
+            }),
+            finish: () => ({
+                tags: { completed: true }
+            })
+        }
+    })
     public async rebuildIndex(options: { batchSize?: number } = {}): Promise<void> {
         try {
             const { batchSize = 100 } = options;
             const entityName = this.getEntityName();
             const repository = this.getRepository();
-            
+
             this.logger.info(`Starting index rebuild for entity: ${entityName}`);
-            
+
             // Get all records from the primary index
             const allRecords = await repository.scan.go();
-            
+
             if (!allRecords.data || allRecords.data.length === 0) {
                 this.logger.info(`No records found for entity: ${entityName}`);
                 return;
             }
-            
+
             this.logger.info(`Found ${allRecords.data.length} records to process for entity: ${entityName}`);
-            
+
             // Process records in batches
             const totalRecords = allRecords.data.length;
             const totalBatches = Math.ceil(totalRecords / batchSize);
-            
+
             for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
                 const start = batchIndex * batchSize;
                 const end = Math.min(start + batchSize, totalRecords);
                 const batch = allRecords.data.slice(start, end);
-                
+
                 this.logger.info(`Processing batch ${batchIndex + 1}/${totalBatches} (${start + 1}-${end} of ${totalRecords} records)`);
-                
+
                 // Rebuild all indexes by upserting each record to the primary index
                 for (const record of batch) {
                     try {
@@ -1328,7 +2165,7 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
                     }
                 }
             }
-            
+
             this.logger.info(`Completed index rebuild for entity: ${entityName}`);
         } catch (error) {
             this.logger.error(`Failed to rebuild index for entity: ${this.getEntityName()}`, error);
@@ -1432,7 +2269,128 @@ export abstract class BaseEntityService<S extends EntitySchema<any, any, any>> {
 
         return inferred;
     }
+
+    @Observed({
+        trace: { level: 'debug' },
+        sourceType: 'service',
+        tags: { operation_category: 'read', search: 'true' },
+        extract: {
+            start: ({ instance, args }) => {
+                const [ query ] = args as [ { q?: unknown; filter?: Record<string, unknown> } | undefined ];
+                const hasQuery = !!query?.q;
+                const hasFilters = !!query?.filter && Object.keys(query.filter).length > 0;
+                return {
+                    tags: {
+                        entityName: (instance as { getEntityName(): string }).getEntityName(),
+                        hasQuery,
+                        hasFilters,
+                    }
+                };
+            },
+            finish: ({ result }) => {
+                const r = result as { hits?: unknown[]; estimatedTotalHits?: number } | undefined;
+                const hitCount = Array.isArray(r?.hits) ? r!.hits.length : 0;
+                const totalHits = typeof r?.estimatedTotalHits === 'number' ? r.estimatedTotalHits : 0;
+                return { metrics: { hitCount, totalHits } };
+            }
+        }
+    })
+    public async search(query: EntitySearchQuery<S>, ctx?: ExecutionContext) {
+        const searchService = this.getSearchService();
+        if (!query.select) {
+            // * Note: we expect an array of attribute names
+            query.select = this.getListingAttributeNames() as any;
+        }
+        const result = await searchService.search(query, undefined, ctx);
+
+        // Decompress hits if present
+        if (result?.hits && Array.isArray(result.hits)) {
+            result.hits = result.hits.map(hit => this.decompressFields(hit));
+        }
+
+        return result;
+    }
+
+    /**
+     * Compress fields marked with `compressed: true` in schema.
+     * Called automatically before writing to DB.
+     */
+    protected compressFields<T extends Record<string, any>>(data: T): T {
+        const attributes = this.getEntitySchema().attributes;
+        const result = { ...data } as Record<string, any>;
+
+        for (const [ fieldName, attribute ] of Object.entries(attributes)) {
+            if (!attribute.compressed || !(fieldName in result)) continue;
+
+            const threshold = typeof attribute.compressed === 'object'
+                ? attribute.compressed.threshold
+                : 10 * 1024; // Default 10KB
+
+            result[ fieldName ] = compressIfNeeded(result[ fieldName ], threshold);
+        }
+
+        return result as T;
+    }
+
+    /**
+     * Decompress fields that have compressed data.
+     * Called automatically after reading from DB.
+     */
+    protected decompressFields<T extends Record<string, any>>(data: T): T {
+        return decompressItem(data);
+    }
+
+    /**
+     * **Opt-in** — CRUD payloads are unchanged. Merged value for `fieldPath` (stored column + override map).
+     * Uses `model.displayOverrides.storageAttribute` on **this** schema. For another entity’s row, use
+     * `readStoredValueAtPath` + `resolveWithDisplayOverrides`.
+     * Return type is `unknown` (JSON); narrow or assert for your DTO (e.g. string URL fields are strings at runtime).
+     */
+    public resolveFieldWithDisplayOverrides(
+        record: Record<string, unknown>,
+        fieldPath: string,
+        options?: { channel?: string }
+    ): unknown {
+        const overrideMap = this.getDisplayOverrideMap(record);
+        return resolveWithDisplayOverrides({
+            storedValue: readStoredValueAtPath(record, fieldPath),
+            overrideMap,
+            fieldPath,
+            channel: options?.channel,
+        }).resolvedValue;
+    }
+
+    /**
+     * **Opt-in** — CRUD payloads are unchanged. Resolves multiple fields from a row using
+     * this entity schema's `model.displayOverrides.storageAttribute`.
+     */
+    public resolveFieldsWithDisplayOverrides<T extends Record<string, unknown>, K extends keyof T & string>(
+        record: T,
+        fields: readonly K[],
+        options?: { channel?: string }
+    ): Pick<T, K> {
+        const overrideMap = this.getDisplayOverrideMap(record);
+        const resolved = {} as Pick<T, K>;
+        for (const fieldPath of fields) {
+            resolved[ fieldPath ] = resolveWithDisplayOverrides({
+                storedValue: readStoredValueAtPath(record, fieldPath),
+                overrideMap,
+                fieldPath,
+                channel: options?.channel,
+            }).resolvedValue as T[ K ];
+        }
+        return resolved;
+    }
+
+    private getDisplayOverrideMap(record: Record<string, unknown>): DisplayOverrideStorage | undefined {
+        const ui = this.schema.model.displayOverrides;
+        return ui?.storageAttribute
+            ? (record[ ui.storageAttribute ] as DisplayOverrideStorage | undefined)
+            : undefined;
+    }
 }
+
+const entityAttributeLogger = createLogger('entityAttributeToIOSchemaAttribute');
 
 export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAttribute): Partial<EntityAttribute> & {
     id: string,
@@ -1446,7 +2404,42 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
 
     const relationMeta = relatedEntityName ? { ...restRelation, entityName: relatedEntityName } : undefined;
 
-    const { items, type, properties, addNewOption, ...restRestMeta } = restMeta as any;
+    const { items, type, properties, addNewOption, addNewOptionConfig, fieldType: explicitFieldType, options, ...restRestMeta } = restMeta as any;
+
+    // Infer fieldType from type if not explicitly provided
+    let inferredFieldType: string | undefined = explicitFieldType;
+    if (!inferredFieldType && type) {
+        if (type === 'boolean') {
+            inferredFieldType = 'boolean';
+        } else if (type === 'number') {
+            inferredFieldType = 'number';
+        } else if (Array.isArray(type)) {
+            // Enum type like ['active', 'inactive']
+            inferredFieldType = 'select';
+        } else if (type === 'string' && options && Array.isArray(options) && options.length > 0) {
+            // String with options is a select
+            inferredFieldType = 'select';
+        } else if (type === 'any') {
+            inferredFieldType = 'json';
+        } else if (type === 'map') {
+            inferredFieldType = 'map';
+        } else if (type === 'list') {
+            inferredFieldType = 'list';
+        }
+        // For date fields, check attribute name as hint
+        else if (type === 'string') {
+            const lowerAttId = attId.toLowerCase();
+            // Only infer datetime for fields that are ACTUALLY dates, not just contain "date" in the name
+            // Exclude: calendarDate (YYYY-MM-DD format), updatedBy/createdBy (user IDs), etc.
+            if ((lowerAttId.endsWith('at') && (lowerAttId.includes('date') || lowerAttId.includes('time'))) ||
+                lowerAttId === 'createdat' || lowerAttId === 'updatedat' || lowerAttId === 'deletedat' ||
+                lowerAttId === 'scheduledat' || lowerAttId === 'publishedat' || lowerAttId === 'expiresat') {
+                inferredFieldType = 'datetime';
+            }
+        }
+
+        entityAttributeLogger.debug(`inferredFieldType: ${inferredFieldType} for entity attribute "${attId}" with type "${typeof type === 'object' ? JSON.stringify(type) : type}"`);
+    }
 
     const formatted: any = {
         ...restRestMeta,
@@ -1464,6 +2457,23 @@ export function entityAttributeToIOSchemaAttribute(attId: string, att: EntityAtt
         isSearchable: !('isSearchable' in att) ? true : att.isSearchable,
     }
 
+    // Add inferred or explicit fieldType
+    if (inferredFieldType) {
+        formatted.fieldType = inferredFieldType;
+    } else if (!explicitFieldType && type && type !== 'string') {
+        // Log warning for non-string types we couldn't infer
+        entityAttributeLogger.warn(`⚠️ Could not infer fieldType for attribute "${attId}" with type "${typeof type === 'object' ? JSON.stringify(type) : type}". Consider adding explicit fieldType.`);
+    }
+
+    // Add options back if they exist
+    if (options) {
+        formatted.options = options;
+    }
+
+    // Pass through both old and new addNewOption formats
+    if (addNewOptionConfig) {
+        formatted[ 'addNewOptionConfig' ] = addNewOptionConfig;
+    }
     if (addNewOption) {
         formatted[ 'addNewOption' ] = addNewOption;
     }

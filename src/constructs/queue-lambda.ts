@@ -14,7 +14,7 @@ import { Helper } from "../core";
 /**
  * Represents the properties for a QueueLambdaFunction.
  */
-interface QueueLambdaFunctionProps {
+export interface QueueLambdaFunctionProps {
   /**
    * The name of the queue.
    */
@@ -47,6 +47,7 @@ interface QueueLambdaFunctionProps {
 
   /**
    * The properties for the SQS event source.
+   * Supports both Duration (maxBatchingWindow) and number (maxBatchingWindowSeconds).
    */
   sqsEventSourceProps?: {
     /**
@@ -55,9 +56,15 @@ interface QueueLambdaFunctionProps {
     batchSize?: number;
 
     /**
-     * The maximum amount of time to wait before triggering a batch of messages.
+     * The maximum amount of time to wait before triggering a batch of messages (CDK Duration object).
      */
     maxBatchingWindow?: Duration;
+
+    /**
+     * The maximum amount of time to wait before triggering a batch of messages (in seconds).
+     * This is a convenience property that will be converted to Duration internally.
+     */
+    maxBatchingWindowSeconds?: number;
 
     /**
      * Whether to report failures for individual batch items.
@@ -86,14 +93,14 @@ export interface IQueueSubscriptions {
    */
   topics: Array<{
     name: string;
-    filters: string[]; 
+    filters: string[];
   }> | string[];
 }
 
 /**
  * Default properties for the QueueLambdaFunction.
  */
-const QueueLambdaFunctionPropDefaults : QueueLambdaFunctionProps = {
+const QueueLambdaFunctionPropDefaults: QueueLambdaFunctionProps = {
   queueName: "",
   queueProps: {
     visibilityTimeout: Duration.seconds(30),
@@ -122,7 +129,7 @@ const QueueLambdaFunctionPropDefaults : QueueLambdaFunctionProps = {
  *     encryption: QueueEncryption.KMS,
  *   },
  *   lambdaFunctionProps: {
- *     runtime: Runtime.NODEJS_14_X,
+ *     runtime: Runtime.NODEJS_22_X,
  *     entry: '/path/to/lambda_function',
  *   },
  *   sqsEventSourceProps: {
@@ -137,97 +144,216 @@ const QueueLambdaFunctionPropDefaults : QueueLambdaFunctionProps = {
  * ```
  */
 export class QueueLambda extends Construct {
-  readonly logger ?: ILogger;
+  readonly logger?: ILogger;
+
+  /**
+   * Default SQS event source configuration values
+   */
+  private static readonly DEFAULTS = {
+    BATCH_SIZE: 10,
+    MAX_BATCHING_WINDOW_SECONDS: 5,
+    REPORT_BATCH_ITEM_FAILURES: true,
+  } as const;
+
+  /**
+   * Normalizes SQS event source props with defaults and type conversions.
+   * Handles conversion of maxBatchingWindowSeconds to Duration.
+   * FIFO queues return empty object (they don't support event source props).
+   * 
+   * @param props - Event source props (can have maxBatchingWindowSeconds)
+   * @param isFifoQueue - Whether the queue is FIFO
+   * @returns Normalized SqsEventSourceProps for CDK
+   */
+  static normalizeSqsEventSourceProps(
+    props: QueueLambdaFunctionProps[ 'sqsEventSourceProps' ],
+    isFifoQueue: boolean
+  ): SqsEventSourceProps {
+    // FIFO queues don't support event source configuration
+    if (isFifoQueue) {
+      return {};
+    }
+
+    return {
+      batchSize: props?.batchSize ?? QueueLambda.DEFAULTS.BATCH_SIZE,
+      maxBatchingWindow: props?.maxBatchingWindow ??
+        (props?.maxBatchingWindowSeconds
+          ? Duration.seconds(props.maxBatchingWindowSeconds)
+          : Duration.seconds(QueueLambda.DEFAULTS.MAX_BATCHING_WINDOW_SECONDS)),
+      reportBatchItemFailures: props?.reportBatchItemFailures ?? QueueLambda.DEFAULTS.REPORT_BATCH_ITEM_FAILURES,
+    };
+  }
+
+  /**
+   * Creates an SQS Queue with proper DLQ setup, timeout configuration, and SNS subscriptions.
+   * This is a static helper for creating queues independently (useful for two-phase construction).
+   * 
+   * @param scope - CDK construct scope
+   * @param id - Construct ID
+   * @param props - Queue configuration props
+   * @param subscriptions - Optional SNS topic subscriptions
+   * @returns CDK Queue instance
+   * 
+   * @example
+   * ```typescript
+   * // Create queue with subscriptions in one call
+   * const queue = QueueLambda.createQueue(stack, 'my-queue', {
+   *   queueName: 'myQueue',
+   *   queueProps: { fifo: true }
+   * }, {
+   *   topics: ['myTopic']
+   * });
+   * ```
+   */
+  static createQueue(
+    scope: Construct,
+    id: string,
+    props: Pick<QueueLambdaFunctionProps, 'queueName' | 'queueProps' | 'visibilityTimeoutSeconds' | 'receiveMessageWaitTimeSeconds' | 'retentionPeriodDays' | 'maxReceiveCount'>,
+    subscriptions?: IQueueSubscriptions
+  ): Queue {
+    const fw24 = Fw24.getInstance();
+    const mergedProps = { ...QueueLambdaFunctionPropDefaults, ...props };
+
+    // Setup dead letter queue (DLQ) configuration
+    type DLQProps = Pick<QueueProps, 'deadLetterQueue'>;
+    let dlqProps: DLQProps = {};
+
+    // Check if DLQ already exists
+    const existingDLQ: Queue | undefined =
+      fw24.getEnvironmentVariable(mergedProps.queueName, 'dlq') ||
+      fw24.getEnvironmentVariable(mergedProps.queueName + '_dlq', 'queue');
+
+    if (existingDLQ) {
+      // Use existing DLQ
+      dlqProps = {
+        deadLetterQueue: {
+          maxReceiveCount: mergedProps.maxReceiveCount ?? 3,
+          queue: existingDLQ,
+        }
+      };
+    } else if (!mergedProps.queueName.endsWith("dlq")) {
+      // Queue itself is not a DLQ, so create or use default DLQ
+      const isFifoQueue = Helper.isFifoQueueProps(mergedProps.queueProps ?? {}) || mergedProps.queueName.endsWith('.fifo');
+      let defaultDLQ: Queue | undefined = isFifoQueue
+        ? fw24.getEnvironmentVariable('dlq_default_fifo')
+        : fw24.getEnvironmentVariable('dlq_default');
+
+      if (!defaultDLQ) {
+        const dlqName: string = isFifoQueue ? 'default-dlq-fifo' : 'default-dlq';
+        const envKey: string = isFifoQueue ? 'dlq_default_fifo' : 'dlq_default';
+
+        // Create ONE shared default DLQ (original intent from commit aef55ce)
+        // Use the QueueLambda instance (scope) as parent so each QueueLambda has its DLQ as child
+        // This prevents collisions while still allowing reuse within the same QueueLambda instance
+        defaultDLQ = new Queue(scope, dlqName, {
+          fifo: isFifoQueue
+        });
+
+        // Store for reuse by other queues created in the same construct/scope
+        fw24.setEnvironmentVariable(envKey, defaultDLQ);
+      }
+
+      // Assign default DLQ
+      dlqProps = {
+        deadLetterQueue: {
+          maxReceiveCount: mergedProps.maxReceiveCount ?? 3,
+          queue: defaultDLQ,
+        }
+      };
+    }
+
+    // set the timeouts
+    const timeoutProps: Record<string, Duration> = {};
+    if (mergedProps.visibilityTimeoutSeconds) {
+      timeoutProps.visibilityTimeout = Duration.seconds(mergedProps.visibilityTimeoutSeconds);
+    }
+    if (mergedProps.receiveMessageWaitTimeSeconds) {
+      timeoutProps.receiveMessageWaitTime = Duration.seconds(mergedProps.receiveMessageWaitTimeSeconds);
+    }
+    if (mergedProps.retentionPeriodDays) {
+      timeoutProps.retentionPeriod = Duration.days(mergedProps.retentionPeriodDays);
+    }
+
+    // set the default dlq with option to override
+    const finalQueueProps = {
+      ...dlqProps,
+      ...mergedProps.queueProps,
+      ...timeoutProps,
+    };
+
+    const queue = new Queue(scope, id, finalQueueProps);
+
+    // Subscribe to SNS topics if configured
+    if (subscriptions?.topics) {
+      subscriptions.topics.forEach((topic) => {
+        const topicName = typeof topic === 'string' ? topic : topic.name;
+        const topicArn = fw24.getArn('sns', fw24.getEnvironmentVariable(topicName, 'topicName'));
+        const topicInstance = Topic.fromTopicArn(scope, `${mergedProps.queueName}-${topicName}-topic`, topicArn);
+        topicInstance.addSubscription(new SqsSubscription(queue));
+      });
+    }
+
+    return queue;
+  }
+
+  /**
+   * Attaches an SQS Queue as an event source to a Lambda function with proper event source configuration.
+   * Handles FIFO queue detection, event source props normalization, and attachment.
+   * 
+   * @param lambda - The Lambda function to attach the queue to
+   * @param queue - The SQS Queue to attach
+   * @param queueProps - Queue properties for FIFO detection
+   * @param queueName - Name of the queue
+   * @param sqsEventSourceProps - Optional SQS event source configuration
+   * 
+   * @example
+   * ```typescript
+   * const lambda = new LambdaFunction(...);
+   * const queue = QueueLambda.createQueue(...);
+   * QueueLambda.attachQueueToLambda(lambda, queue, queueProps, 'myQueue', {
+   *   batchSize: 20,
+   *   maxBatchingWindowSeconds: 10
+   * });
+   * ```
+   */
+  static attachQueueToLambda(
+    lambda: NodejsFunction,
+    queue: Queue,
+    queueProps: QueueProps | undefined,
+    queueName: string,
+    sqsEventSourceProps?: QueueLambdaFunctionProps[ 'sqsEventSourceProps' ]
+  ): void {
+    const isQueueFifo = Helper.isFifoQueueProps({
+      ...(queueProps || {}),
+      queueName: queueName
+    });
+
+    const eventSourceProps = QueueLambda.normalizeSqsEventSourceProps(sqsEventSourceProps, isQueueFifo);
+    lambda.addEventSource(new SqsEventSource(queue, eventSourceProps));
+  }
 
   constructor(scope: Construct, id: string, queueLambdaProps: QueueLambdaFunctionProps) {
     super(scope, id);
     this.logger = createLogger(`${QueueLambda.name}-${id}`);
 
-    const fw24 = Fw24.getInstance();
-    
-    let props = { ...QueueLambdaFunctionPropDefaults, ...queueLambdaProps };
-    
-    // dlq props
-    let dlqProps = {};
-    //check if dlq already exists
-    const existingDLQ : Queue = fw24.getEnvironmentVariable(props.queueName, 'dlq') || fw24.getEnvironmentVariable(props.queueName+'_dlq', 'queue')
-    //if it does, assign it to the queue
-    if( existingDLQ ) {
-      dlqProps = {
-        deadLetterQueue: {
-          maxReceiveCount: props.maxReceiveCount ?? 3,
-          queue: existingDLQ,
-        }
-      }
-    } else if( !props.queueName.endsWith("dlq") ) { //if queue itself is a dlq don't assign default dlq
-      //set default dlq
-      const isFifoQueue = props.queueProps?.fifo || props.queueName.endsWith('.fifo') || props.queueProps?.contentBasedDeduplication;
-      let defaultDLQ = isFifoQueue ? fw24.getEnvironmentVariable('dlq_default_fifo') : fw24.getEnvironmentVariable('dlq_default');
+    const props = { ...QueueLambdaFunctionPropDefaults, ...queueLambdaProps };
 
-      if(!defaultDLQ ){
-        const dlqName = isFifoQueue ? 'default-dlq-fifo' : 'default-dlq';
-        //create default dlq
-        defaultDLQ = new Queue(this, dlqName, {
-          fifo: isFifoQueue
-        });
-        fw24.getEnvironmentVariable(dlqName.replace('default-', '_'), defaultDLQ);
-      }
-      //assign default dlq
-      dlqProps = {
-        deadLetterQueue: {
-          maxReceiveCount: props.maxReceiveCount ?? 3,
-          queue: defaultDLQ,
-        }
-      }
-    }
+    // Create queue with subscriptions using static helper (ensures consistency)
+    const queue = QueueLambda.createQueue(this, id, {
+      queueName: props.queueName,
+      queueProps: props.queueProps,
+      visibilityTimeoutSeconds: props.visibilityTimeoutSeconds,
+      receiveMessageWaitTimeSeconds: props.receiveMessageWaitTimeSeconds,
+      retentionPeriodDays: props.retentionPeriodDays,
+      maxReceiveCount: props.maxReceiveCount,
+    }, props.subscriptions);
 
-    // set the timeouts
-    let timeoutProps: any = {};
-    if(props.visibilityTimeoutSeconds) Object.assign(timeoutProps, { visibilityTimeout : Duration.seconds(props.visibilityTimeoutSeconds)});
-    if(props.receiveMessageWaitTimeSeconds) Object.assign(timeoutProps, { receiveMessageWaitTime : Duration.seconds(props.receiveMessageWaitTimeSeconds)});
-    if(props.retentionPeriodDays) Object.assign(timeoutProps, { messageRetentionPeriod : Duration.days(props.retentionPeriodDays)});   
-
-    // set the default dlq with option to override
-    props.queueProps = {
-      ...dlqProps,
-      ...props.queueProps,
-      ...timeoutProps,
-    }
-
-    const queue = new Queue(this, id, {
-      ...props.queueProps,
-    }) as Queue;
-
-    if(props.lambdaFunctionProps){
+    // Attach lambda if configured
+    if (props.lambdaFunctionProps) {
       const queueFunction = new LambdaFunction(scope, `${id}-lambda`, { ...props.lambdaFunctionProps }) as NodejsFunction;
-      
-      const isFifoQueue = Helper.isFifoQueueProps({ 
-        ...(props.queueProps || {}), 
-        queueName: props.queueName 
-      });
-      
-      const eventSourceProps: SqsEventSourceProps =  isFifoQueue ? {} : {
-        batchSize: props.sqsEventSourceProps?.batchSize ?? 1,
-        maxBatchingWindow: props.sqsEventSourceProps?.maxBatchingWindow ?? Duration.seconds(5),
-        reportBatchItemFailures: props.sqsEventSourceProps?.reportBatchItemFailures ?? true,
-      };
-      
-      // add event source to lambda function
-      queueFunction.addEventSource(new SqsEventSource(queue, eventSourceProps));
+      QueueLambda.attachQueueToLambda(queueFunction, queue, props.queueProps, props.queueName, props.sqsEventSourceProps);
     }
 
-    // subscribe the queue to SNS topic
-    props?.subscriptions?.topics?.forEach( ( topic: any) => {
-      const topicName = typeof topic === 'string' ? topic : topic.name;
-      const filters = typeof topic === 'string' ? [] : topic.filters;
-
-      const topicArn = fw24.getArn('sns', fw24.getEnvironmentVariable(topicName, 'topicName'));
-      const topicInstance = Topic.fromTopicArn(this, topicName+id+'-topic', topicArn);
-      // TODO: add ability to filter messages
-      topicInstance.addSubscription(new SqsSubscription(queue));
-    });
-    
     return queue;
   }
-  
+
 }

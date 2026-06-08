@@ -1,0 +1,42 @@
+import { Request, RequestDataType } from '../../interfaces/request';
+import { APIGatewayEvent, Context } from "aws-lambda";
+type RecordWithOptionalValues = Record<string, any>;
+type RequestContextDataType = RequestDataType & {
+    body: any;
+    query: Record<string, any>;
+    path: Record<string, any>;
+    headers: Record<string, any>;
+};
+export declare class RequestContext<T extends RequestContextDataType> implements Request<T> {
+    private readonly _logger;
+    body: T['body'];
+    context: Context;
+    debugMode: boolean;
+    event: APIGatewayEvent;
+    headers: RecordWithOptionalValues;
+    httpMethod: string;
+    isBase64Encoded: boolean;
+    path: string;
+    pathParameters: T['path'];
+    queryStringParameters: T['query'];
+    requestContext: any;
+    resource: any;
+    stageVariables: any;
+    requestId: string;
+    constructor(event: APIGatewayEvent, context: Context);
+    private parseQueryStringParameters;
+    private parseHeaders;
+    private checkDebugMode;
+    private parseBody;
+    getParam(key: string): any;
+    hasParam(key: string): boolean;
+    getPathParam(key: string): any;
+    hasPathParam(key: string): boolean;
+    getQueryParam(key: string): any;
+    hasQueryParam(key: string): boolean;
+    getHeader(key: string): any;
+    hasHeader(key: string): boolean;
+    getBodyParam(key: string): any;
+    hasBodyParam(key: string): boolean;
+}
+export {};

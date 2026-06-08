@@ -7,10 +7,13 @@ export * from './merge';
 export * from './parse';
 export * from './serialize';
 export * from './types';
+export * from './timer';
 
 export * from './metadata';
 export * from './keys';
 export * from './env';
+export * from './compression';
+export * from './iam-policy-chunking';
 
 export class ValueByPathError extends FrameworkError {
     constructor(message: string, details?: Record<string, any>) {

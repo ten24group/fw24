@@ -1,0 +1,176 @@
+/**
+ * Testing utilities for observability
+ *
+ * Provides helpers for testing code that uses the observability system.
+ *
+ * Usage:
+ * ```typescript
+ * import {
+ *   MockBackend,
+ *   setupTestObservability,
+ *   assertEventCaptured,
+ *   createTestContext
+ * } from '@ten24group/fw24/observability/testing';
+ *
+ * describe('MyService', () => {
+ *   let mockBackend: MockBackend;
+ *
+ *   beforeEach(() => {
+ *     mockBackend = setupTestObservability();
+ *   });
+ *
+ *   afterEach(() => {
+ *     mockBackend.reset();
+ *   });
+ *
+ *   it('should audit user creation', async () => {
+ *     await createTestContext(async () => {
+ *       await service.createUser({ name: 'Test' });
+ *
+ *       assertEventCaptured(mockBackend, {
+ *         type: 'audit.entity',
+ *         subType: 'create',
+ *         entityName: 'User',
+ *       });
+ *     });
+ *   });
+ * });
+ * ```
+ */
+import { Actor } from '../../core/types/execution-context';
+import { ObservabilityBackend, ObservabilityEvent, ObservabilityLevel } from '../types';
+import { ExecutionContextData } from '../context';
+import type { AbsorbedData } from '../noise-reduction/types';
+/**
+ * Mock backend that captures all events for testing
+ */
+export declare class MockBackend implements ObservabilityBackend {
+    readonly name = "mock";
+    readonly minLevel?: ObservabilityLevel;
+    private events;
+    private flushCount;
+    private invocationCount;
+    constructor(options?: {
+        minLevel?: ObservabilityLevel;
+    });
+    capture(event: ObservabilityEvent): Promise<void>;
+    flush(): Promise<void>;
+    initializeInvocation(): void;
+    /**
+     * Get all captured events
+     */
+    getEvents(): ObservabilityEvent[];
+    /**
+     * Get events matching a filter
+     */
+    getEventsMatching(filter: Partial<ObservabilityEvent>): ObservabilityEvent[];
+    /**
+     * Get events by type
+     */
+    getEventsByType(type: string): ObservabilityEvent[];
+    /**
+     * Get events by level
+     */
+    getEventsByLevel(level: string): ObservabilityEvent[];
+    /**
+     * Get the last captured event
+     */
+    getLastEvent(): ObservabilityEvent | undefined;
+    /**
+     * Check if any event matches the filter
+     */
+    hasEvent(filter: Partial<ObservabilityEvent>): boolean;
+    /**
+     * Get number of flush calls
+     */
+    getFlushCount(): number;
+    /**
+     * Get number of invocation initializations
+     */
+    getInvocationCount(): number;
+    /**
+     * Clear all captured events and counters
+     */
+    reset(): void;
+    /**
+     * Get event count
+     */
+    get eventCount(): number;
+    /**
+     * Get events that have absorbed data attached (i.e., events that absorbed children).
+     * Absorbed data lives at event.data.absorbed.
+     */
+    getEventsWithAbsorbed(): ObservabilityEvent[];
+    /**
+     * Get the absorbed data for a specific event (by operation or filter).
+     * Returns undefined if the event has no absorbed data.
+     */
+    getAbsorbedData(filter: Partial<ObservabilityEvent>): AbsorbedData | undefined;
+    /**
+     * Assert that a captured event has absorbed children.
+     * @throws Error if no matching event or the event has no absorbed data.
+     */
+    assertHasAbsorbed(filter: Partial<ObservabilityEvent>, message?: string): AbsorbedData;
+    /**
+     * Assert that absorbed data contains a specific number of absorbed children.
+     */
+    assertAbsorbedCount(filter: Partial<ObservabilityEvent>, expectedCount: number, message?: string): void;
+}
+/**
+ * Set up observability for testing
+ *
+ * @returns MockBackend instance for assertions
+ */
+export declare function setupTestObservability(options?: {
+    minLevel?: ObservabilityLevel;
+    enabled?: boolean;
+    /** Skip empty spans (default: false for testing) */
+    skipEmptySpans?: boolean;
+    /** Minimum span duration to capture in ms (default: 0 for testing to capture all spans) */
+    minSpanDurationMs?: number;
+}): MockBackend;
+/**
+ * Clean up test observability (call in afterEach)
+ */
+export declare function cleanupTestObservability(): void;
+/**
+ * Create a test execution context and run a function within it
+ */
+export declare function createTestContext<T>(fn: () => Promise<T>, options?: {
+    correlationId?: string;
+    causedBy?: string;
+    actor?: Actor;
+    tags?: Record<string, string>;
+}): Promise<T>;
+/**
+ * Create a test execution context and run a sync function within it
+ */
+export declare function createTestContextSync<T>(fn: () => T, options?: {
+    correlationId?: string;
+    causedBy?: string;
+    actor?: Actor;
+    tags?: Record<string, string>;
+}): T;
+/**
+ * Assert that an event was captured matching the filter
+ * @throws Error if no matching event found
+ */
+export declare function assertEventCaptured(backend: MockBackend, filter: Partial<ObservabilityEvent>, message?: string): void;
+/**
+ * Assert that no event was captured matching the filter
+ * @throws Error if a matching event was found
+ */
+export declare function assertNoEventCaptured(backend: MockBackend, filter: Partial<ObservabilityEvent>, message?: string): void;
+/**
+ * Assert the number of captured events
+ */
+export declare function assertEventCount(backend: MockBackend, count: number, filter?: Partial<ObservabilityEvent>): void;
+/**
+ * Create a mock actor for testing
+ * Actor interface requires requestId and timestamp, we provide defaults for convenience
+ */
+export declare function createTestActor(overrides?: Partial<Actor>): Actor;
+/**
+ * Create a test execution context object
+ */
+export declare function createTestExecutionContext(overrides?: Partial<ExecutionContextData>): ExecutionContextData;
