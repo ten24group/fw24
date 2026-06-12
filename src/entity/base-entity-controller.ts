@@ -269,7 +269,11 @@ export class BaseEntityController<Sch extends EntitySchema<any, any, any>> exten
 			cursor: cursor ?? null,
 			count: safeParseInt(count, 12).value,
 			limit: safeParseInt(limit, 250).value,
-			pages: pages === 'all' ? 'all' as const : safeParseInt(pages, 1).value,
+			// Default to 'all' pages so a result spanning multiple DynamoDB pages
+			// isn't silently truncated. The `count` default above still bounds the
+			// response size, so this only matters once a caller raises/removes `count`.
+			// An explicit numeric `pages` is still honoured.
+			pages: (pages == null || pages === 'all') ? 'all' as const : safeParseInt(pages, 1).value,
 		}
 
 		this.logger.debug(`parsed pagination`, pagination);
