@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.39](https://github.com/ten24group/fw24/compare/v1.1.0-beta.31...v1.1.0-beta.39) (2026-06-12)
+
+
+### Features
+
+* **logging:** integrate Logtrail transport for enhanced logging capabilities ([efe3fef](https://github.com/ten24group/fw24/commit/efe3feff373d33693250cce703c985ee6ccd96af))
+* **observability:** add Logtrail backend for observability events ([e309aa5](https://github.com/ten24group/fw24/commit/e309aa56a187eb26795ffd6d3f53711e3c1b6964))
+
+
+### Bug Fixes
+
+* **entity:** default list/query pagination to all pages ([3325434](https://github.com/ten24group/fw24/commit/3325434fb5230f9fb7f21b9dd914ba7c8ccbddae))
+* sync dist with tsc and harden develop-release empty commit ([7e1c892](https://github.com/ten24group/fw24/commit/7e1c89229319d470859899413d30246b5848572a))
+
+## [1.1.0-beta.23](https://github.com/ten24group/fw24/compare/v1.1.0-beta.21...v1.1.0-beta.23) (2026-03-24)
+
+
+### Features
+
+* **utils:** move IAM managed policy chunking to utils ([6a5ad82](https://github.com/ten24group/fw24/commit/6a5ad829c7ed6f4b618cb7e70acec1a210541696))
+
+## [1.1.0-beta.21](https://github.com/ten24group/fw24/compare/v1.1.0-beta.20...v1.1.0-beta.21) (2026-03-24)
+
 ## [1.1.0-beta.38](https://github.com/ten24group/fw24/compare/v1.1.0-beta.31...v1.1.0-beta.38) (2026-05-12)
 
 
