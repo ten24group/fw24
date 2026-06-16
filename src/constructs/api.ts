@@ -76,7 +76,10 @@ import { AuthConstruct } from "./auth";
 import {
     buildNestedControllerRootExportName,
     compareControllerRegistrationOrder,
+    getNestedControllerRootPath,
     getNestedControllerRootResourceEnvKey,
+    listDeployedNestedControllerRootOwners,
+    listDeployedNestedControllerRoutes,
     planNestedControllerRootImports,
     type NestedControllerRootImportPlan,
 } from "./nested-controller-root-resources";
@@ -242,6 +245,8 @@ export class APIConstruct implements FW24Construct {
     private readonly nestedControllerRootsImportedFromExport = new Set<string>();
     private readonly nestedControllerRootImportPlans = new Map<string, NestedControllerRootImportPlan>();
     private readonly nestedControllerRootOwnerStacks = new Map<string, string>();
+    private deployedNestedControllerRoutes = new Set<string>();
+    private deployedNestedControllerRootOwners = new Map<string, string>();
 
     // default constructor to initialize the stack configuration
     constructor(private readonly apiConstructConfig: IAPIConstructConfig) {
@@ -384,7 +389,8 @@ export class APIConstruct implements FW24Construct {
             compareControllerRegistrationOrder(
                 left.descriptor,
                 right.descriptor,
-                this.nestedControllerRootImportPlans
+                this.nestedControllerRootImportPlans,
+                this.deployedNestedControllerRoutes
             )
         );
 
@@ -402,10 +408,36 @@ export class APIConstruct implements FW24Construct {
 
     private async setupNestedControllerRootResources(descriptors: HandlerDescriptor[]): Promise<void> {
         const importPlans = await planNestedControllerRootImports(descriptors, this.mainStack.stackName);
+        this.deployedNestedControllerRoutes = await listDeployedNestedControllerRoutes(this.mainStack.stackName);
+        this.deployedNestedControllerRootOwners = await listDeployedNestedControllerRootOwners(this.mainStack.stackName);
+
+        for (const route of this.deployedNestedControllerRoutes) {
+            const rootPath = getNestedControllerRootPath(route);
+            if (!rootPath || this.deployedNestedControllerRootOwners.has(rootPath)) {
+                continue;
+            }
+            const deployedOnRoot = [ ...this.deployedNestedControllerRoutes ].filter(
+                (deployedRoute) => getNestedControllerRootPath(deployedRoute) === rootPath
+            );
+            if (deployedOnRoot.length === 1) {
+                this.deployedNestedControllerRootOwners.set(rootPath, deployedOnRoot[ 0 ]);
+            }
+        }
 
         this.nestedControllerRootImportPlans.clear();
         this.nestedControllerRootsImportedFromExport.clear();
         this.nestedControllerRootOwnerStacks.clear();
+
+        if (this.deployedNestedControllerRoutes.size > 0) {
+            this.logger.debug(
+                `Nested controller stacks already deployed on ${this.mainStack.stackName}: ${[ ...this.deployedNestedControllerRoutes ].join(', ')}`
+            );
+        }
+        if (this.deployedNestedControllerRootOwners.size > 0) {
+            this.logger.debug(
+                `Deployed nested controller root owners: ${[ ...this.deployedNestedControllerRootOwners.entries() ].map(([ root, route ]) => `/${root} -> ${route}`).join(', ')}`
+            );
+        }
 
         for (const plan of importPlans) {
             this.nestedControllerRootImportPlans.set(plan.rootPath, plan);
@@ -723,7 +755,24 @@ export class APIConstruct implements FW24Construct {
         return this.apiConstructConfig.cors || [];
     }
 
-    private shouldImportNestedControllerRoot(
+    private shouldClaimNestedControllerRootFromExport(rootPath: string, controllerStackName: string): boolean {
+        if (!this.nestedControllerRootsImportedFromExport.has(rootPath)) {
+            return false;
+        }
+        if (this.nestedControllerRootOwnerStacks.has(rootPath)) {
+            return false;
+        }
+        if (this.deployedNestedControllerRootOwners.get(rootPath) === controllerStackName) {
+            return false;
+        }
+        return true;
+    }
+
+    private preservesDeployedNestedControllerRootResource(controllerStackName: string, rootPath: string): boolean {
+        return this.deployedNestedControllerRootOwners.get(rootPath) === controllerStackName;
+    }
+
+    private shouldImportNestedControllerRootFromSiblingOutput(
         rootPath: string,
         controllerStackName: string,
         parentResource: IResource
@@ -735,15 +784,10 @@ export class APIConstruct implements FW24Construct {
             return false;
         }
         const ownerStack = this.nestedControllerRootOwnerStacks.get(rootPath);
-        if (ownerStack === controllerStackName) {
+        if (ownerStack === undefined || ownerStack === controllerStackName) {
             return false;
         }
-        return ownerStack !== undefined;
-    }
-
-    private isSingleNestedControllerRootImport(rootPath: string): boolean {
-        const plan = this.nestedControllerRootImportPlans.get(rootPath);
-        return plan?.strategy === 'import-from-export' && plan.controllerCount === 1;
+        return true;
     }
 
     private readonly getOrCreateControllerResource = (controllerName: string, controllerStackName: string): IResource => {
@@ -755,7 +799,7 @@ export class APIConstruct implements FW24Construct {
             let childResource = controllerResource.getResource(pathPart) as IResource;
             // if it's a nested controller, the root resource may not be created in another stack
             const isNestedController = pathParts.length > 1;
-            if (!childResource && isNestedController && pathPart === pathParts[ 0 ]) {
+            if (!childResource && isNestedController && pathPart === pathParts[ 0 ] && !this.preservesDeployedNestedControllerRootResource(controllerStackName, pathPart)) {
                 this.logger.debug(`Getting controller resource for ${pathPart} from fw24 output`);
                 let controllerResourceId = this.fw24.getEnvironmentVariable(
                     getNestedControllerRootResourceEnvKey(pathPart),
@@ -763,11 +807,17 @@ export class APIConstruct implements FW24Construct {
                     currentStack
                 );
 
-                if (!controllerResourceId && this.shouldImportNestedControllerRoot(pathPart, controllerStackName, controllerResource)) {
-                    if (this.isSingleNestedControllerRootImport(pathPart)) {
-                        const exportName = buildNestedControllerRootExportName(this.mainStack.stackName, pathPart);
-                        controllerResourceId = Fn.importValue(exportName);
-                    }
+                if (!controllerResourceId && this.shouldClaimNestedControllerRootFromExport(pathPart, controllerStackName)) {
+                    const exportName = buildNestedControllerRootExportName(this.mainStack.stackName, pathPart);
+                    controllerResourceId = Fn.importValue(exportName);
+                }
+
+                if (!controllerResourceId && this.shouldImportNestedControllerRootFromSiblingOutput(pathPart, controllerStackName, controllerResource)) {
+                    controllerResourceId = this.fw24.getEnvironmentVariable(
+                        getNestedControllerRootResourceEnvKey(pathPart),
+                        'resource',
+                        currentStack
+                    );
                 }
 
                 if (controllerResourceId) {
@@ -777,6 +827,11 @@ export class APIConstruct implements FW24Construct {
                         restApi: restAPI.api,
                         path: '/' + pathPart
                     });
+                    if (isNestedController && pathPart === pathParts[ 0 ] && !this.nestedControllerRootOwnerStacks.has(pathPart)) {
+                        this.nestedControllerRootOwnerStacks.set(pathPart, controllerStackName);
+                        this.logger.debug(`Setting output for imported controller resource ${controllerStackName} path ${pathPart}`);
+                        this.fw24.setConstructOutput(this, `restAPI_controller_${pathPart}`, childResource, OutputType.RESOURCE, 'resourceId');
+                    }
                 }
             }
             if (!childResource) {

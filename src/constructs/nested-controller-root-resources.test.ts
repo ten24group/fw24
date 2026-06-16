@@ -7,6 +7,9 @@ import {
     getNestedControllerRootResourceEnvKey,
     groupNestedControllerDescriptorsByRoot,
     hasAwsCredentialsForExportLookup,
+    listDeployedNestedControllerRoutes,
+    nestedControllerRoutesFromStackResourceSummaries,
+    nestedStackTemplateOwnsApiGatewayPathPart,
     planNestedControllerRootImports,
 } from './nested-controller-root-resources';
 
@@ -250,6 +253,34 @@ describe('nested-controller-root-resources', () => {
             ]);
         });
 
+        it('registers already-deployed controllers before new siblings on a shared root', () => {
+            const importPlans = new Map([
+                [
+                    'internal',
+                    {
+                        rootPath: 'internal',
+                        exportName: buildNestedControllerRootExportName(mainStackName, 'internal'),
+                        controllerCount: 3,
+                        strategy: 'import-from-export' as const,
+                    },
+                ],
+            ]);
+            const notifications = makeDescriptor('internal/notifications.ts', 'notifications');
+            const team = makeDescriptor('internal/z-team.ts', 'team');
+            const users = makeDescriptor('internal/z-user.ts', 'users');
+            const deployed = new Set([ 'internal/team' ]);
+
+            const sorted = [ notifications, users, team ].sort((left, right) =>
+                compareControllerRegistrationOrder(left, right, importPlans, deployed)
+            );
+
+            expect(sorted.map((descriptor) => descriptor.fileName)).toEqual([
+                'internal/z-team.ts',
+                'internal/z-user.ts',
+                'internal/notifications.ts',
+            ]);
+        });
+
         it('keeps ascending registration order for greenfield shared roots', () => {
             const importPlans = new Map([
                 [
@@ -273,6 +304,77 @@ describe('nested-controller-root-resources', () => {
                 'internal/notifications.ts',
                 'internal/z-team.ts',
             ]);
+        });
+    });
+
+    describe('nestedStackTemplateOwnsApiGatewayPathPart', () => {
+        it('detects when a nested stack created the shared root resource', () => {
+            const ownsRoot = nestedStackTemplateOwnsApiGatewayPathPart({
+                Resources: {
+                    internalResource: {
+                        Type: 'AWS::ApiGateway::Resource',
+                        Properties: {
+                            ParentId: { Ref: 'referencetoapiRootResourceId' },
+                            PathPart: 'internal',
+                        },
+                    },
+                    teamResource: {
+                        Type: 'AWS::ApiGateway::Resource',
+                        Properties: {
+                            ParentId: { Ref: 'internalResource' },
+                            PathPart: 'team',
+                        },
+                    },
+                },
+            }, 'internal');
+
+            expect(ownsRoot).toBe(true);
+        });
+
+        it('returns false when the nested stack only has a leaf resource', () => {
+            const ownsRoot = nestedStackTemplateOwnsApiGatewayPathPart({
+                Resources: {
+                    notificationsResource: {
+                        Type: 'AWS::ApiGateway::Resource',
+                        Properties: {
+                            ParentId: { 'Fn::ImportValue': 'main-stack-internal-resource' },
+                            PathPart: 'notifications',
+                        },
+                    },
+                },
+            }, 'internal');
+
+            expect(ownsRoot).toBe(false);
+        });
+    });
+
+    describe('listDeployedNestedControllerRoutes', () => {
+        it('returns routes from an injectable stack-resources lookup', async () => {
+            const routes = await listDeployedNestedControllerRoutes('test-main', async () => [
+                'internal/team',
+                'internal/notifications',
+            ]);
+
+            expect([ ...routes ]).toEqual([ 'internal/team', 'internal/notifications' ]);
+        });
+
+        it('parses internal nested stacks from CloudFormation list-stack-resources', () => {
+            const routes = nestedControllerRoutesFromStackResourceSummaries([
+                {
+                    LogicalResourceId: 'internalteamNestedStackinternalteamNestedStackResource92887E63',
+                    ResourceType: 'AWS::CloudFormation::Stack',
+                },
+                {
+                    LogicalResourceId: 'internalnotificationsNestedStackinternalnotificationsNestedStackResource5F591F57',
+                    ResourceType: 'AWS::CloudFormation::Stack',
+                },
+                {
+                    LogicalResourceId: 'SomeOtherNestedStack',
+                    ResourceType: 'AWS::CloudFormation::Stack',
+                },
+            ]);
+
+            expect(routes).toEqual([ 'internal/team', 'internal/notifications' ]);
         });
     });
 });

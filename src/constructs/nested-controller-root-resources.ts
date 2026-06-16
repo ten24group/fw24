@@ -1,4 +1,4 @@
-import { CloudFormationClient, ListExportsCommand } from '@aws-sdk/client-cloudformation';
+import { CloudFormationClient, GetTemplateCommand, ListExportsCommand, ListStackResourcesCommand } from '@aws-sdk/client-cloudformation';
 import type HandlerDescriptor from '../interfaces/handler-descriptor';
 import { OutputType } from '../interfaces/construct';
 import { createLogger } from '../logging';
@@ -132,17 +132,171 @@ export async function cloudFormationExportExists(exportName: string): Promise<bo
     }
 }
 
+export function nestedControllerRoutesFromStackResourceSummaries(
+    summaries: Array<{ LogicalResourceId?: string; ResourceType?: string }>
+): string[] {
+    const routes: string[] = [];
+
+    for (const resource of summaries) {
+        if (resource.ResourceType !== 'AWS::CloudFormation::Stack') {
+            continue;
+        }
+        const logicalId = resource.LogicalResourceId ?? '';
+        const route = nestedControllerRouteFromNestedStackLogicalId(logicalId);
+        if (route) {
+            routes.push(route);
+        }
+    }
+
+    return routes;
+}
+
+export function nestedControllerRouteFromNestedStackLogicalId(logicalId: string): string | undefined {
+    const match = logicalId.match(/^([a-z][a-z0-9-]*?)NestedStack/i);
+    if (!match) {
+        return undefined;
+    }
+
+    const compactStackKey = match[ 1 ];
+    if (compactStackKey.startsWith('internal')) {
+        return `internal/${compactStackKey.slice('internal'.length)}`;
+    }
+    if (compactStackKey.startsWith('admin')) {
+        return `admin/${compactStackKey.slice('admin'.length)}`;
+    }
+
+    return undefined;
+}
+
+export function nestedStackTemplateOwnsApiGatewayPathPart(templateBody: unknown, pathPart: string): boolean {
+    const resources = (templateBody as {
+        Resources?: Record<string, { Type?: string; Properties?: { PathPart?: string; ParentId?: unknown } }>;
+    }).Resources ?? {};
+
+    for (const resource of Object.values(resources)) {
+        if (resource.Type !== 'AWS::ApiGateway::Resource') {
+            continue;
+        }
+        if (resource.Properties?.PathPart !== pathPart) {
+            continue;
+        }
+        const parentId = resource.Properties.ParentId;
+        if (parentId && typeof parentId === 'object' && 'Ref' in parentId) {
+            const ref = String((parentId as { Ref: string }).Ref);
+            if (ref.includes('RootResourceId')) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+export async function listDeployedNestedControllerRootOwners(
+    mainStackName: string,
+    listOwners: (mainStackName: string) => Promise<Map<string, string>> = cloudFormationNestedControllerRootOwners
+): Promise<Map<string, string>> {
+    return listOwners(mainStackName);
+}
+
+export async function cloudFormationNestedControllerRootOwners(mainStackName: string): Promise<Map<string, string>> {
+    const owners = new Map<string, string>();
+
+    if (!hasAwsCredentialsForExportLookup()) {
+        return owners;
+    }
+
+    try {
+        const client = new CloudFormationClient({});
+        const response = await client.send(new ListStackResourcesCommand({ StackName: mainStackName }));
+
+        for (const resource of response.StackResourceSummaries ?? []) {
+            if (resource.ResourceType !== 'AWS::CloudFormation::Stack') {
+                continue;
+            }
+            const route = nestedControllerRouteFromNestedStackLogicalId(resource.LogicalResourceId ?? '');
+            if (!route) {
+                continue;
+            }
+            const rootPath = getNestedControllerRootPath(route);
+            if (!rootPath || owners.has(rootPath)) {
+                continue;
+            }
+
+            const nestedStackId = resource.PhysicalResourceId;
+            if (!nestedStackId) {
+                continue;
+            }
+
+            const template = await client.send(new GetTemplateCommand({ StackName: nestedStackId }));
+            const templateBody = typeof template.TemplateBody === 'string'
+                ? JSON.parse(template.TemplateBody)
+                : template.TemplateBody;
+
+            if (nestedStackTemplateOwnsApiGatewayPathPart(templateBody, rootPath)) {
+                owners.set(rootPath, route);
+            }
+        }
+    } catch (error) {
+        logger.warn(
+            `Could not resolve deployed nested controller root owners on ${mainStackName}: ${
+                error instanceof Error ? error.message : String(error)
+            }`
+        );
+    }
+
+    return owners;
+}
+
+export async function listDeployedNestedControllerRoutes(
+    mainStackName: string,
+    listStackResources: (mainStackName: string) => Promise<string[]> = cloudFormationNestedControllerRoutes
+): Promise<Set<string>> {
+    const routes = await listStackResources(mainStackName);
+    return new Set(routes);
+}
+
+export async function cloudFormationNestedControllerRoutes(mainStackName: string): Promise<string[]> {
+    if (!hasAwsCredentialsForExportLookup()) {
+        return [];
+    }
+
+    try {
+        const client = new CloudFormationClient({});
+        const response = await client.send(new ListStackResourcesCommand({ StackName: mainStackName }));
+        return nestedControllerRoutesFromStackResourceSummaries(response.StackResourceSummaries ?? []);
+    } catch (error) {
+        logger.warn(
+            `Could not list nested controller stacks on ${mainStackName}; registration order will ignore brownfield deploy state: ${
+                error instanceof Error ? error.message : String(error)
+            }`
+        );
+        return [];
+    }
+}
+
 export function compareControllerRegistrationOrder(
     left: HandlerDescriptor,
     right: HandlerDescriptor,
-    importPlansByRoot: Map<string, NestedControllerRootImportPlan>
+    importPlansByRoot: Map<string, NestedControllerRootImportPlan>,
+    deployedNestedControllerRoutes: Set<string> = new Set()
 ): number {
-    const leftRoot = getNestedControllerRootPath(getControllerRouteName(left));
-    const rightRoot = getNestedControllerRootPath(getControllerRouteName(right));
+    const leftRoute = getControllerRouteName(left);
+    const rightRoute = getControllerRouteName(right);
+    const leftRoot = getNestedControllerRootPath(leftRoute);
+    const rightRoot = getNestedControllerRootPath(rightRoute);
 
     if (leftRoot && leftRoot === rightRoot) {
         const plan = importPlansByRoot.get(leftRoot);
         if (plan?.strategy === 'import-from-export') {
+            const leftDeployed = deployedNestedControllerRoutes.has(leftRoute);
+            const rightDeployed = deployedNestedControllerRoutes.has(rightRoute);
+            if (leftDeployed && !rightDeployed) {
+                return -1;
+            }
+            if (rightDeployed && !leftDeployed) {
+                return 1;
+            }
             return right.fileName.localeCompare(left.fileName);
         }
     }
