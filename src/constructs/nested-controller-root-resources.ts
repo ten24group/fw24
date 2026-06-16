@@ -55,6 +55,49 @@ export function hasAwsCredentialsForExportLookup(): boolean {
     );
 }
 
+export type NestedControllerRootImportStrategy = 'import-from-export' | 'create-on-register';
+
+export interface NestedControllerRootImportPlan {
+    rootPath: string;
+    exportName: string;
+    controllerCount: number;
+    strategy: NestedControllerRootImportStrategy;
+}
+
+export async function planNestedControllerRootImports(
+    descriptors: HandlerDescriptor[],
+    mainStackName: string,
+    exportExists: (exportName: string) => Promise<boolean> = cloudFormationExportExists
+): Promise<NestedControllerRootImportPlan[]> {
+    const nestedControllersByRoot = groupNestedControllerDescriptorsByRoot(descriptors);
+    const plans: NestedControllerRootImportPlan[] = [];
+
+    for (const [ rootPath, controllers ] of nestedControllersByRoot) {
+        const exportName = buildNestedControllerRootExportName(mainStackName, rootPath);
+        const controllerCount = controllers.length;
+
+        if (controllerCount < 2) {
+            plans.push({
+                rootPath,
+                exportName,
+                controllerCount,
+                strategy: 'create-on-register',
+            });
+            continue;
+        }
+
+        const shouldImport = await exportExists(exportName);
+        plans.push({
+            rootPath,
+            exportName,
+            controllerCount,
+            strategy: shouldImport ? 'import-from-export' : 'create-on-register',
+        });
+    }
+
+    return plans;
+}
+
 export async function cloudFormationExportExists(exportName: string): Promise<boolean> {
     if (!hasAwsCredentialsForExportLookup()) {
         return false;

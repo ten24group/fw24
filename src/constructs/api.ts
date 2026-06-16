@@ -75,9 +75,8 @@ import { isArray, isString } from "../utils";
 import { AuthConstruct } from "./auth";
 import {
     buildNestedControllerRootExportName,
-    cloudFormationExportExists,
     getNestedControllerRootResourceEnvKey,
-    groupNestedControllerDescriptorsByRoot,
+    planNestedControllerRootImports,
 } from "./nested-controller-root-resources";
 import { CertificateConstruct } from "./certificate";
 import { DynamoDBConstruct } from "./dynamodb";
@@ -394,27 +393,24 @@ export class APIConstruct implements FW24Construct {
     }
 
     private async setupNestedControllerRootResources(descriptors: HandlerDescriptor[]): Promise<void> {
-        const nestedControllersByRoot = groupNestedControllerDescriptorsByRoot(descriptors);
+        const importPlans = await planNestedControllerRootImports(descriptors, this.mainStack.stackName);
 
-        for (const [ rootPath, controllers ] of nestedControllersByRoot) {
-            if (controllers.length < 2) {
+        for (const plan of importPlans) {
+            if (plan.strategy !== 'import-from-export') {
+                if (plan.controllerCount >= 2) {
+                    this.logger.debug(
+                        `Nested controller root /${plan.rootPath} has no CloudFormation export yet; first registrant will create it`
+                    );
+                }
                 continue;
             }
 
-            const exportName = buildNestedControllerRootExportName(this.mainStack.stackName, rootPath);
-            const exportExists = await cloudFormationExportExists(exportName);
-
-            if (!exportExists) {
-                this.logger.debug(
-                    `Nested controller root /${rootPath} has no CloudFormation export yet; first registrant will create it`
-                );
-                continue;
-            }
-
-            const envKey = getNestedControllerRootResourceEnvKey(rootPath);
-            this.logger.info(`Importing nested controller root /${rootPath} from CloudFormation export ${exportName}`);
-            this.fw24.setEnvironmentVariable(envKey, Fn.importValue(exportName), 'resource');
-            this.nestedControllerRootsImportedFromExport.add(rootPath);
+            const envKey = getNestedControllerRootResourceEnvKey(plan.rootPath);
+            this.logger.info(
+                `Importing nested controller root /${plan.rootPath} from CloudFormation export ${plan.exportName}`
+            );
+            this.fw24.setEnvironmentVariable(envKey, Fn.importValue(plan.exportName), 'resource');
+            this.nestedControllerRootsImportedFromExport.add(plan.rootPath);
         }
     }
 

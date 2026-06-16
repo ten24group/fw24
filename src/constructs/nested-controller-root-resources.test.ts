@@ -6,6 +6,7 @@ import {
     getNestedControllerRootResourceEnvKey,
     groupNestedControllerDescriptorsByRoot,
     hasAwsCredentialsForExportLookup,
+    planNestedControllerRootImports,
 } from './nested-controller-root-resources';
 
 function makeDescriptor(fileName: string, controllerName: string): HandlerDescriptor {
@@ -101,6 +102,109 @@ describe('nested-controller-root-resources', () => {
         it('returns true when CDK account context is set', () => {
             process.env.CDK_DEFAULT_ACCOUNT = '123456789012';
             expect(hasAwsCredentialsForExportLookup()).toBe(true);
+        });
+    });
+
+    describe('planNestedControllerRootImports', () => {
+        const mainStackName = 'test-app-main-stack';
+        const exportExists = jest.fn<Promise<boolean>, [string]>();
+
+        beforeEach(() => {
+            exportExists.mockReset();
+        });
+
+        it('plans create-on-register for a single nested controller folder', async () => {
+            const descriptors = [
+                makeDescriptor('webhooks/hook.ts', 'hook'),
+            ];
+
+            const plans = await planNestedControllerRootImports(descriptors, mainStackName, exportExists);
+
+            expect(plans).toEqual([
+                {
+                    rootPath: 'webhooks',
+                    exportName: buildNestedControllerRootExportName(mainStackName, 'webhooks'),
+                    controllerCount: 1,
+                    strategy: 'create-on-register',
+                },
+            ]);
+            expect(exportExists).not.toHaveBeenCalled();
+        });
+
+        it('plans import-from-export when a shared root already has a CloudFormation export', async () => {
+            exportExists.mockResolvedValue(true);
+            const descriptors = [
+                makeDescriptor('internal/notifications.ts', 'notifications'),
+                makeDescriptor('internal/verify-access.ts', 'verify-access'),
+            ];
+
+            const plans = await planNestedControllerRootImports(descriptors, mainStackName, exportExists);
+
+            expect(plans).toEqual([
+                {
+                    rootPath: 'internal',
+                    exportName: buildNestedControllerRootExportName(mainStackName, 'internal'),
+                    controllerCount: 2,
+                    strategy: 'import-from-export',
+                },
+            ]);
+            expect(exportExists).toHaveBeenCalledWith(
+                buildNestedControllerRootExportName(mainStackName, 'internal')
+            );
+        });
+
+        it('plans create-on-register for greenfield folders with multiple controllers and no export', async () => {
+            exportExists.mockResolvedValue(false);
+            const descriptors = [
+                makeDescriptor('internal/notifications.ts', 'notifications'),
+                makeDescriptor('internal/verify-access.ts', 'verify-access'),
+            ];
+
+            const plans = await planNestedControllerRootImports(descriptors, mainStackName, exportExists);
+
+            expect(plans[ 0 ]?.strategy).toBe('create-on-register');
+            expect(plans[ 0 ]?.controllerCount).toBe(2);
+        });
+
+        it('does not plan imports for top-level controllers', async () => {
+            const descriptors = [
+                makeDescriptor('health.ts', 'health'),
+                makeDescriptor('status.ts', 'status'),
+            ];
+
+            const plans = await planNestedControllerRootImports(descriptors, mainStackName, exportExists);
+
+            expect(plans).toEqual([]);
+            expect(exportExists).not.toHaveBeenCalled();
+        });
+
+        it('plans each shared root independently', async () => {
+            exportExists.mockImplementation(async (exportName) =>
+                exportName === buildNestedControllerRootExportName(mainStackName, 'internal')
+            );
+            const descriptors = [
+                makeDescriptor('internal/notifications.ts', 'notifications'),
+                makeDescriptor('internal/verify-access.ts', 'verify-access'),
+                makeDescriptor('admin/user.ts', 'user'),
+                makeDescriptor('admin/team.ts', 'team'),
+            ];
+
+            const plans = await planNestedControllerRootImports(descriptors, mainStackName, exportExists);
+
+            expect(plans).toEqual([
+                {
+                    rootPath: 'internal',
+                    exportName: buildNestedControllerRootExportName(mainStackName, 'internal'),
+                    controllerCount: 2,
+                    strategy: 'import-from-export',
+                },
+                {
+                    rootPath: 'admin',
+                    exportName: buildNestedControllerRootExportName(mainStackName, 'admin'),
+                    controllerCount: 2,
+                    strategy: 'create-on-register',
+                },
+            ]);
         });
     });
 });
