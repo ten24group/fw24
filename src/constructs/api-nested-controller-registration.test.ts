@@ -1,6 +1,6 @@
-import { App, Fn, NestedStack, Stack } from 'aws-cdk-lib';
 import { APIConstruct } from './api';
 import { Fw24 } from '../core/fw24';
+import { App, Stack } from 'aws-cdk-lib';
 import HandlerDescriptor from '../interfaces/handler-descriptor';
 import * as nestedRootResources from './nested-controller-root-resources';
 
@@ -42,7 +42,7 @@ describe('APIConstruct.setupNestedControllerRootResources', () => {
         jest.restoreAllMocks();
     });
 
-    it('pre-binds Fn::ImportValue for shared roots when import planning selects import-from-export', async () => {
+    it('marks shared roots for per-stack import without pre-binding a global Fn::ImportValue', async () => {
         const planSpy = jest.spyOn(nestedRootResources, 'planNestedControllerRootImports').mockResolvedValue([
             {
                 rootPath: 'internal',
@@ -67,20 +67,18 @@ describe('APIConstruct.setupNestedControllerRootResources', () => {
         await (apiConstruct as any).setupNestedControllerRootResources(descriptors);
 
         const fw24 = Fw24.getInstance();
-        const nestedStack = fw24.getStack('internal/notifications', 'main');
         const resourceId = fw24.getEnvironmentVariable(
             nestedRootResources.getNestedControllerRootResourceEnvKey('internal'),
             'resource',
-            nestedStack
+            fw24.getStack('internal/notifications', 'main')
         );
 
         expect(planSpy).toHaveBeenCalledWith(descriptors, 'test-app-main-stack');
-        expect(resourceId).toBeDefined();
-        expect(typeof resourceId).toBe('string');
+        expect(resourceId).toBeUndefined();
         expect((apiConstruct as any).nestedControllerRootsImportedFromExport.has('internal')).toBe(true);
     });
 
-    it('does not pre-bind imports when planning selects create-on-register', async () => {
+    it('does not mark roots for import when planning selects create-on-register', async () => {
         jest.spyOn(nestedRootResources, 'planNestedControllerRootImports').mockResolvedValue([
             {
                 rootPath: 'internal',
@@ -102,30 +100,35 @@ describe('APIConstruct.setupNestedControllerRootResources', () => {
             makeDescriptor('internal/verify-access.ts', 'verify-access'),
         ]);
 
-        const fw24 = Fw24.getInstance();
-        const resourceId = fw24.getEnvironmentVariable(
-            nestedRootResources.getNestedControllerRootResourceEnvKey('internal'),
-            'resource',
-            fw24.getStack('internal/notifications', 'main')
-        );
-
-        expect(resourceId).toBeUndefined();
         expect((apiConstruct as any).nestedControllerRootsImportedFromExport.size).toBe(0);
     });
 });
 
 describe('APIConstruct controller registration ordering', () => {
-    it('sorts nested controller descriptors by fileName before registration', () => {
+    it('registers owner stacks before siblings when importing an existing shared root', () => {
+        const importPlans = new Map([
+            [
+                'internal',
+                {
+                    rootPath: 'internal',
+                    exportName: 'test-app-main-stack-resourceRESTAPI-CONTROLLER-INTERNALresourceId',
+                    controllerCount: 2,
+                    strategy: 'import-from-export' as const,
+                },
+            ],
+        ]);
         const descriptors = [
             makeDescriptor('internal/verify-access.ts', 'verify-access'),
             makeDescriptor('internal/notifications.ts', 'notifications'),
         ];
 
-        const sorted = [ ...descriptors ].sort((left, right) => left.fileName.localeCompare(right.fileName));
+        const sorted = [ ...descriptors ].sort((left, right) =>
+            nestedRootResources.compareControllerRegistrationOrder(left, right, importPlans)
+        );
 
         expect(sorted.map((descriptor) => descriptor.fileName)).toEqual([
-            'internal/notifications.ts',
             'internal/verify-access.ts',
+            'internal/notifications.ts',
         ]);
     });
 });

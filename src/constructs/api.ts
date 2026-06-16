@@ -75,8 +75,10 @@ import { isArray, isString } from "../utils";
 import { AuthConstruct } from "./auth";
 import {
     buildNestedControllerRootExportName,
+    compareControllerRegistrationOrder,
     getNestedControllerRootResourceEnvKey,
     planNestedControllerRootImports,
+    type NestedControllerRootImportPlan,
 } from "./nested-controller-root-resources";
 import { CertificateConstruct } from "./certificate";
 import { DynamoDBConstruct } from "./dynamodb";
@@ -238,6 +240,8 @@ export class APIConstruct implements FW24Construct {
     private methods: Method[] = [];
     private readonly controllerStacks = new Map<string, { methods: Method[], resources: IResource[], controllersHash: string[] }>();
     private readonly nestedControllerRootsImportedFromExport = new Set<string>();
+    private readonly nestedControllerRootImportPlans = new Map<string, NestedControllerRootImportPlan>();
+    private readonly nestedControllerRootOwnerStacks = new Map<string, string>();
 
     // default constructor to initialize the stack configuration
     constructor(private readonly apiConstructConfig: IAPIConstructConfig) {
@@ -377,7 +381,11 @@ export class APIConstruct implements FW24Construct {
         await this.setupNestedControllerRootResources(controllerDescriptors);
 
         const sortedRegistrations = [ ...controllerRegistrations ].sort((left, right) =>
-            left.descriptor.fileName.localeCompare(right.descriptor.fileName)
+            compareControllerRegistrationOrder(
+                left.descriptor,
+                right.descriptor,
+                this.nestedControllerRootImportPlans
+            )
         );
 
         for (const { descriptor, ownerModule } of sortedRegistrations) {
@@ -395,7 +403,13 @@ export class APIConstruct implements FW24Construct {
     private async setupNestedControllerRootResources(descriptors: HandlerDescriptor[]): Promise<void> {
         const importPlans = await planNestedControllerRootImports(descriptors, this.mainStack.stackName);
 
+        this.nestedControllerRootImportPlans.clear();
+        this.nestedControllerRootsImportedFromExport.clear();
+        this.nestedControllerRootOwnerStacks.clear();
+
         for (const plan of importPlans) {
+            this.nestedControllerRootImportPlans.set(plan.rootPath, plan);
+
             if (plan.strategy !== 'import-from-export') {
                 if (plan.controllerCount >= 2) {
                     this.logger.debug(
@@ -405,11 +419,9 @@ export class APIConstruct implements FW24Construct {
                 continue;
             }
 
-            const envKey = getNestedControllerRootResourceEnvKey(plan.rootPath);
             this.logger.info(
-                `Importing nested controller root /${plan.rootPath} from CloudFormation export ${plan.exportName}`
+                `Nested controller root /${plan.rootPath} will import CloudFormation export ${plan.exportName}`
             );
-            this.fw24.setEnvironmentVariable(envKey, Fn.importValue(plan.exportName), 'resource');
             this.nestedControllerRootsImportedFromExport.add(plan.rootPath);
         }
     }
@@ -711,6 +723,29 @@ export class APIConstruct implements FW24Construct {
         return this.apiConstructConfig.cors || [];
     }
 
+    private shouldImportNestedControllerRoot(
+        rootPath: string,
+        controllerStackName: string,
+        parentResource: IResource
+    ): boolean {
+        if (!this.nestedControllerRootsImportedFromExport.has(rootPath)) {
+            return false;
+        }
+        if (parentResource.getResource(rootPath)) {
+            return false;
+        }
+        const ownerStack = this.nestedControllerRootOwnerStacks.get(rootPath);
+        if (ownerStack === controllerStackName) {
+            return false;
+        }
+        return ownerStack !== undefined;
+    }
+
+    private isSingleNestedControllerRootImport(rootPath: string): boolean {
+        const plan = this.nestedControllerRootImportPlans.get(rootPath);
+        return plan?.strategy === 'import-from-export' && plan.controllerCount === 1;
+    }
+
     private readonly getOrCreateControllerResource = (controllerName: string, controllerStackName: string): IResource => {
         let restAPI = this.getAPI(controllerStackName);
         let controllerResource: IResource = restAPI.api.root;
@@ -728,9 +763,11 @@ export class APIConstruct implements FW24Construct {
                     currentStack
                 );
 
-                if (!controllerResourceId && this.nestedControllerRootsImportedFromExport.has(pathPart)) {
-                    const exportName = buildNestedControllerRootExportName(this.mainStack.stackName, pathPart);
-                    controllerResourceId = Fn.importValue(exportName);
+                if (!controllerResourceId && this.shouldImportNestedControllerRoot(pathPart, controllerStackName, controllerResource)) {
+                    if (this.isSingleNestedControllerRootImport(pathPart)) {
+                        const exportName = buildNestedControllerRootExportName(this.mainStack.stackName, pathPart);
+                        controllerResourceId = Fn.importValue(exportName);
+                    }
                 }
 
                 if (controllerResourceId) {
@@ -750,9 +787,12 @@ export class APIConstruct implements FW24Construct {
                     const corsPreflightMethod = childResource.addCorsPreflight(this.getCorsPreflightOptions());
                     this.methods.push(corsPreflightMethod);
                 }
-                if (isNestedController && pathPart === pathParts[ 0 ] && !this.nestedControllerRootsImportedFromExport.has(pathPart)) {
-                    this.logger.debug(`Setting output for contorller resource ${controllerStackName} path ${pathPart}`);
-                    this.fw24.setConstructOutput(this, `restAPI_controller_${pathPart}`, childResource, OutputType.RESOURCE, 'resourceId');
+                if (isNestedController && pathPart === pathParts[ 0 ]) {
+                    if (!this.nestedControllerRootOwnerStacks.has(pathPart)) {
+                        this.nestedControllerRootOwnerStacks.set(pathPart, controllerStackName);
+                        this.logger.debug(`Setting output for controller resource ${controllerStackName} path ${pathPart}`);
+                        this.fw24.setConstructOutput(this, `restAPI_controller_${pathPart}`, childResource, OutputType.RESOURCE, 'resourceId');
+                    }
                 }
             }
             controllerResource = childResource;

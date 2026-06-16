@@ -1,4 +1,4 @@
-import { App, Fn, NestedStack, Stack } from 'aws-cdk-lib';
+import { App, NestedStack, Stack } from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 import { MockIntegration, PassthroughBehavior, RestApi } from 'aws-cdk-lib/aws-apigateway';
 import { APIConstruct } from './api';
@@ -80,17 +80,20 @@ describe('APIConstruct nested controller root resources', () => {
         addMinimalMethod(apiConstruct.api);
 
         const fw24 = Fw24.getInstance();
-        const exportName = buildNestedControllerRootExportName(mainStack.stackName, 'internal');
-        fw24.setEnvironmentVariable(
-            'restAPI_controller_internal_resourceId',
-            Fn.importValue(exportName),
-            'resource'
-        );
-        (apiConstruct as any).nestedControllerRootsImportedFromExport.add('internal');
-
+        const ownerStackName = 'internal/z-team';
         const controllerStackName = 'internal/notifications';
+        fw24.getStack(ownerStackName, 'main');
         fw24.getStack(controllerStackName, 'main');
 
+        (apiConstruct as any).nestedControllerRootsImportedFromExport.add('internal');
+        (apiConstruct as any).nestedControllerRootImportPlans.set('internal', {
+            rootPath: 'internal',
+            exportName: buildNestedControllerRootExportName(mainStack.stackName, 'internal'),
+            controllerCount: 2,
+            strategy: 'import-from-export',
+        });
+
+        (apiConstruct as any).getOrCreateControllerResource('internal/team', ownerStackName);
         (apiConstruct as any).getOrCreateControllerResource('internal/notifications', controllerStackName);
 
         const nestedStack = fw24.getStack(controllerStackName) as NestedStack;
@@ -98,6 +101,49 @@ describe('APIConstruct nested controller root resources', () => {
 
         template.resourceCountIs('AWS::ApiGateway::Resource', 1);
         template.hasResourceProperties('AWS::ApiGateway::Resource', {
+            PathPart: 'notifications',
+        });
+    });
+
+    it('keeps the owner stack on addResource when importing an existing shared root', async () => {
+        const apiConstruct = new APIConstruct({
+            controllerParentStackName: 'main',
+            skipControllers: true,
+            cors: true,
+        });
+
+        await apiConstruct.construct();
+        addMinimalMethod(apiConstruct.api);
+
+        const fw24 = Fw24.getInstance();
+        const ownerStackName = 'internal/z-team';
+        const controllerStackName = 'internal/notifications';
+        fw24.getStack(ownerStackName, 'main');
+        fw24.getStack(controllerStackName, 'main');
+
+        (apiConstruct as any).nestedControllerRootsImportedFromExport.add('internal');
+        (apiConstruct as any).nestedControllerRootImportPlans.set('internal', {
+            rootPath: 'internal',
+            exportName: buildNestedControllerRootExportName(mainStack.stackName, 'internal'),
+            controllerCount: 2,
+            strategy: 'import-from-export',
+        });
+        (apiConstruct as any).getOrCreateControllerResource('internal/team', ownerStackName);
+        (apiConstruct as any).getOrCreateControllerResource('internal/notifications', controllerStackName);
+
+        const ownerStack = fw24.getStack(ownerStackName) as NestedStack;
+        const ownerTemplate = Template.fromStack(ownerStack);
+        ownerTemplate.hasResourceProperties('AWS::ApiGateway::Resource', {
+            PathPart: 'internal',
+        });
+        ownerTemplate.hasResourceProperties('AWS::ApiGateway::Resource', {
+            PathPart: 'team',
+        });
+
+        const siblingStack = fw24.getStack(controllerStackName) as NestedStack;
+        const siblingTemplate = Template.fromStack(siblingStack);
+        siblingTemplate.resourceCountIs('AWS::ApiGateway::Resource', 1);
+        siblingTemplate.hasResourceProperties('AWS::ApiGateway::Resource', {
             PathPart: 'notifications',
         });
     });

@@ -1,7 +1,10 @@
 import { CloudFormationClient, ListExportsCommand } from '@aws-sdk/client-cloudformation';
 import type HandlerDescriptor from '../interfaces/handler-descriptor';
 import { OutputType } from '../interfaces/construct';
+import { createLogger } from '../logging';
 import { ensureValidEnvKey } from '../utils/keys';
+
+const logger = createLogger('nested-controller-root-resources');
 
 export function getControllerRouteName(desc: HandlerDescriptor): string {
     const { handlerClass, fileName } = desc;
@@ -77,11 +80,12 @@ export async function planNestedControllerRootImports(
         const controllerCount = controllers.length;
 
         if (controllerCount < 2) {
+            const shouldImport = await exportExists(exportName);
             plans.push({
                 rootPath,
                 exportName,
                 controllerCount,
-                strategy: 'create-on-register',
+                strategy: shouldImport ? 'import-from-export' : 'create-on-register',
             });
             continue;
         }
@@ -118,7 +122,30 @@ export async function cloudFormationExportExists(exportName: string): Promise<bo
         } while (nextToken);
 
         return false;
-    } catch {
+    } catch (error) {
+        logger.warn(
+            `Could not list CloudFormation exports; nested controller root import planning will assume greenfield: ${
+                error instanceof Error ? error.message : String(error)
+            }`
+        );
         return false;
     }
+}
+
+export function compareControllerRegistrationOrder(
+    left: HandlerDescriptor,
+    right: HandlerDescriptor,
+    importPlansByRoot: Map<string, NestedControllerRootImportPlan>
+): number {
+    const leftRoot = getNestedControllerRootPath(getControllerRouteName(left));
+    const rightRoot = getNestedControllerRootPath(getControllerRouteName(right));
+
+    if (leftRoot && leftRoot === rightRoot) {
+        const plan = importPlansByRoot.get(leftRoot);
+        if (plan?.strategy === 'import-from-export') {
+            return right.fileName.localeCompare(left.fileName);
+        }
+    }
+
+    return left.fileName.localeCompare(right.fileName);
 }

@@ -1,6 +1,7 @@
 import HandlerDescriptor from '../interfaces/handler-descriptor';
 import {
     buildNestedControllerRootExportName,
+    compareControllerRegistrationOrder,
     getControllerRouteName,
     getNestedControllerRootPath,
     getNestedControllerRootResourceEnvKey,
@@ -24,6 +25,8 @@ function makeDescriptor(fileName: string, controllerName: string): HandlerDescri
 }
 
 describe('nested-controller-root-resources', () => {
+    const mainStackName = 'test-app-main-stack';
+
     describe('getControllerRouteName', () => {
         it('prefixes folder path for nested controller files', () => {
             const desc = makeDescriptor('internal/notifications.ts', 'notifications');
@@ -106,7 +109,6 @@ describe('nested-controller-root-resources', () => {
     });
 
     describe('planNestedControllerRootImports', () => {
-        const mainStackName = 'test-app-main-stack';
         const exportExists = jest.fn<Promise<boolean>, [string]>();
 
         beforeEach(() => {
@@ -128,7 +130,21 @@ describe('nested-controller-root-resources', () => {
                     strategy: 'create-on-register',
                 },
             ]);
-            expect(exportExists).not.toHaveBeenCalled();
+            expect(exportExists).toHaveBeenCalledWith(
+                buildNestedControllerRootExportName(mainStackName, 'webhooks')
+            );
+        });
+
+        it('plans import-from-export for a single controller when the shared root export already exists', async () => {
+            exportExists.mockResolvedValue(true);
+            const descriptors = [
+                makeDescriptor('internal/notifications.ts', 'notifications'),
+            ];
+
+            const plans = await planNestedControllerRootImports(descriptors, mainStackName, exportExists);
+
+            expect(plans[ 0 ]?.strategy).toBe('import-from-export');
+            expect(plans[ 0 ]?.controllerCount).toBe(1);
         });
 
         it('plans import-from-export when a shared root already has a CloudFormation export', async () => {
@@ -204,6 +220,58 @@ describe('nested-controller-root-resources', () => {
                     controllerCount: 2,
                     strategy: 'create-on-register',
                 },
+            ]);
+        });
+    });
+
+    describe('compareControllerRegistrationOrder', () => {
+        it('registers owner stacks before siblings when importing an existing shared root', () => {
+            const importPlans = new Map([
+                [
+                    'internal',
+                    {
+                        rootPath: 'internal',
+                        exportName: buildNestedControllerRootExportName(mainStackName, 'internal'),
+                        controllerCount: 2,
+                        strategy: 'import-from-export' as const,
+                    },
+                ],
+            ]);
+            const notifications = makeDescriptor('internal/notifications.ts', 'notifications');
+            const team = makeDescriptor('internal/z-team.ts', 'team');
+
+            const sorted = [ notifications, team ].sort((left, right) =>
+                compareControllerRegistrationOrder(left, right, importPlans)
+            );
+
+            expect(sorted.map((descriptor) => descriptor.fileName)).toEqual([
+                'internal/z-team.ts',
+                'internal/notifications.ts',
+            ]);
+        });
+
+        it('keeps ascending registration order for greenfield shared roots', () => {
+            const importPlans = new Map([
+                [
+                    'internal',
+                    {
+                        rootPath: 'internal',
+                        exportName: buildNestedControllerRootExportName(mainStackName, 'internal'),
+                        controllerCount: 2,
+                        strategy: 'create-on-register' as const,
+                    },
+                ],
+            ]);
+            const notifications = makeDescriptor('internal/notifications.ts', 'notifications');
+            const team = makeDescriptor('internal/z-team.ts', 'team');
+
+            const sorted = [ team, notifications ].sort((left, right) =>
+                compareControllerRegistrationOrder(left, right, importPlans)
+            );
+
+            expect(sorted.map((descriptor) => descriptor.fileName)).toEqual([
+                'internal/notifications.ts',
+                'internal/z-team.ts',
             ]);
         });
     });
