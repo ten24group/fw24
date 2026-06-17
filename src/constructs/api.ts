@@ -247,6 +247,8 @@ export class APIConstruct implements FW24Construct {
     private readonly nestedControllerRootOwnerStacks = new Map<string, string>();
     private deployedNestedControllerRoutes = new Set<string>();
     private deployedNestedControllerRootOwners = new Map<string, string>();
+    private apiDeploymentFinalized = false;
+    private readonly deferredUsagePlanSetups: Array<{ planConfig?: IUsagePlanConfig; createKey: boolean }> = [];
 
     // default constructor to initialize the stack configuration
     constructor(private readonly apiConstructConfig: IAPIConstructConfig) {
@@ -280,6 +282,9 @@ export class APIConstruct implements FW24Construct {
         if (this.fw24.useMultiStackSetup()) {
             paramsApi.deploy = false;
             delete paramsApi.deployOptions;
+        } else if (this.defersRestApiAutoDeployment()) {
+            paramsApi.deploy = false;
+            delete paramsApi.deployOptions;
         }
         this.logger.debug("Creating API Gateway... ");
         // get the main stack from the framework
@@ -305,8 +310,8 @@ export class APIConstruct implements FW24Construct {
             });
         }
 
-        // Set up usage plans if configured
-        if (this.apiConstructConfig.usagePlans?.length) {
+        // Usage plans bind to the API stage; defer until after the single deployment for nested-controller apps
+        if (!this.defersRestApiAutoDeployment() && this.apiConstructConfig.usagePlans?.length) {
             for (const planConfig of this.apiConstructConfig.usagePlans) {
                 this.setupUsagePlan(planConfig);
             }
@@ -326,8 +331,30 @@ export class APIConstruct implements FW24Construct {
         this.logger.info(`API-gateway construct: ${this.name} has imported APIs: ${this.fw24.hasImportedAPI(this.name)}`);
         if (this.fw24.hasImportedAPI(this.name) && this.fw24.useMultiStackSetup()) {
             await this.createDeployments();
-        } else if (this.fw24.hasImportedAPI(this.name)) {
+        } else if (this.fw24.hasImportedAPI(this.name) || (this.defersRestApiAutoDeployment() && this.controllerStacks.size > 0)) {
             await this.createSingleDeployment();
+        }
+
+        this.flushDeferredUsagePlans();
+    }
+
+    private defersRestApiAutoDeployment(): boolean {
+        return !!this.apiConstructConfig.controllerParentStackName && !this.fw24.useMultiStackSetup();
+    }
+
+    private flushDeferredUsagePlans(): void {
+        if (!this.defersRestApiAutoDeployment()) {
+            return;
+        }
+
+        for (const { planConfig, createKey } of this.deferredUsagePlanSetups) {
+            this.setupUsagePlan(planConfig, createKey);
+        }
+
+        if (this.apiConstructConfig.usagePlans?.length) {
+            for (const planConfig of this.apiConstructConfig.usagePlans) {
+                this.setupUsagePlan(planConfig);
+            }
         }
     }
 
@@ -705,6 +732,7 @@ export class APIConstruct implements FW24Construct {
     // Single deployment is needed to avoid simultation deployment which causes error on API Gateway
     private async createSingleDeployment() {
         const stageName = this.getStageName();
+        const deployOptions = this.apiConstructConfig.apiOptions?.deployOptions;
         if (this.apiConstructConfig.forceDeployment) {
             this.controllerStacks.forEach(c => c.controllersHash.push(randomUUID()));
         }
@@ -714,9 +742,16 @@ export class APIConstruct implements FW24Construct {
         const deployment = new Deployment(this.fw24.getStack(this.name), deploymentName, {
             api: this.api,
             stageName: stageName,
+            description: deployOptions?.description,
         });
 
-        for (const [ _controllerStackName, { methods, resources } ] of this.controllerStacks.entries()) {
+        for (const [ controllerStackName, { methods, resources } ] of this.controllerStacks.entries()) {
+            const controllerStack = this.fw24.getStack(controllerStackName);
+            if (controllerStack !== this.mainStack) {
+                this.logger.debug(`Adding nested stack dependency ${controllerStackName} to deployment`);
+                deployment.node.addDependency(controllerStack);
+            }
+
             for (const method of methods) {
                 this.logger.debug(`Adding method dependency ${method.httpMethod} ${method.resource.path} to deployment`);
                 deployment.node.addDependency(method)
@@ -727,6 +762,8 @@ export class APIConstruct implements FW24Construct {
                 deployment.node.addDependency(resource);
             }
         }
+
+        this.apiDeploymentFinalized = true;
     }
 
     private getCorsPreflightOptions(): CorsOptions {
@@ -1101,6 +1138,12 @@ export class APIConstruct implements FW24Construct {
     }
 
     private setupUsagePlan(planConfig?: IUsagePlanConfig, createKey: boolean = false): { plan: UsagePlan; name: string } {
+        if (this.defersRestApiAutoDeployment() && !this.apiDeploymentFinalized) {
+            this.deferredUsagePlanSetups.push({ planConfig, createKey });
+            const deferredPlanName = planConfig?.name || `${this.fw24.appName}-default-usage-plan`;
+            return { plan: undefined as unknown as UsagePlan, name: deferredPlanName };
+        }
+
         // If no plan config is provided and we need a key, use the first configured plan or create a default one
         if (!planConfig && createKey) {
             // Try to use the first configured plan that has API keys
