@@ -10,6 +10,7 @@ import { QueueLambda } from "./queue-lambda";
 import { ILambdaEnvConfig } from "../interfaces/lambda-env";
 import { LogDuration, createLogger } from "../logging";
 import { DynamoDBConstruct } from "./dynamodb";
+import { MailerConstruct } from "./mailer";
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
 import { IConstructConfig } from "../interfaces/construct-config";
 import { LayerConstruct } from "./layer";
@@ -73,7 +74,7 @@ export class QueueConstruct implements FW24Construct {
     readonly fw24: Fw24 = Fw24.getInstance();
 
     name: string = QueueConstruct.name;
-    dependencies: string[] = [ DynamoDBConstruct.name, VpcConstruct.name, LayerConstruct.name ];
+    dependencies: string[] = [ DynamoDBConstruct.name, VpcConstruct.name, LayerConstruct.name, MailerConstruct.name ];
     output!: FW24ConstructOutput;
 
     mainStack!: Stack;
@@ -219,6 +220,7 @@ export class QueueConstruct implements FW24Construct {
             entry: queueInfo.filePath + "/" + queueInfo.fileName,
             environmentVariables: this.fw24.resolveEnvVariables(queueConfig.env),
             resourceAccess: queueConfig?.resourceAccess,
+            allowSendEmail: queueConfig?.allowSendEmail !== false,
             functionTimeout: queueConfig?.functionTimeout || this.fw24.getConfig().functionTimeout,
             policies: queueConfig?.policies,
             functionProps: merge([
