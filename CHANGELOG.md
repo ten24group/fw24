@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.40](https://github.com/ten24group/fw24/compare/v1.1.0-beta.39...v1.1.0-beta.40) (2026-06-30)
+
+
+### Bug Fixes
+
+* **queue:** wire EMAIL_QUEUE_URL on queue workers by default ([d0ac9eb](https://github.com/ten24group/fw24/commit/d0ac9eb19e4b333eb70153615fe6d5ec764b9558))
+
 ## [1.1.0-beta.39](https://github.com/ten24group/fw24/compare/v1.1.0-beta.31...v1.1.0-beta.39) (2026-06-12)
 
 

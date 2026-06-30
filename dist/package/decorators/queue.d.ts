@@ -61,6 +61,12 @@ export type IQueueConfig = CommonLambdaHandlerOptions & {
      */
     manualRegistration?: boolean;
     /**
+     * When true (default) and the app uses MailerConstruct, the queue worker gets EMAIL_QUEUE_URL
+     * and permission to enqueue mail jobs (same as API controllers and scheduled tasks).
+     * Set false only when the handler must not send email.
+     */
+    allowSendEmail?: boolean;
+    /**
      * Observability configuration for the queue handler.
      * Allows specifying custom tags, source, and attributes for spans.
      *
