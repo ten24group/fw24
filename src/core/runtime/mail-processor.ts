@@ -3,6 +3,7 @@ import type { SQSBatchItemFailure, SQSBatchResponse, SQSEvent, Context } from 'a
 import { QueueController, QueueProcessResult, QueueExecutionContext } from './sqs-controller';
 import { extractFromSqs, runWithExecutionContext, createExecutionContext } from './execution-context';
 import { SpanObserver } from '../../observability';
+import { FW24_UA_APP_ID } from '../../client/user-agent';
 
 /**
  * Email message structure sent via SQS
@@ -46,7 +47,7 @@ export class MailProcessor extends QueueController {
         super();
         // Initialize SES client once per Lambda container
         // Reused across warm starts for better performance
-        this.sesClient = new SESv2Client();
+        this.sesClient = new SESv2Client({ userAgentAppId: FW24_UA_APP_ID });
     }
 
     protected async initialize(_event: SQSEvent, _context: Context): Promise<void> {
