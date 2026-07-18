@@ -4,6 +4,7 @@ export * from './bucket';
 export * from './dynamodb';
 export * from './layer';
 export * from './di-layer';
+export * from './log-forwarder';
 export * from './fargate';
 export * from './ec2';
 export * from './mailer';
