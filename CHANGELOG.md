@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.41](https://github.com/ten24group/fw24/compare/v1.1.0-beta.40...v1.1.0-beta.41) (2026-07-18)
+
+
+### Features
+
+* **constructs:** LogForwarderConstruct — out-of-band Lambda log shipping to Vector/Logtrail ([0b43b05](https://github.com/ten24group/fw24/commit/0b43b05e2fefae1ccc1ad5327365553f5d184832))
+
 ## [1.1.0-beta.40](https://github.com/ten24group/fw24/compare/v1.1.0-beta.39...v1.1.0-beta.40) (2026-06-30)
 
 
