@@ -3,5 +3,8 @@ interface CloudWatchLogsEvent {
         data: string;
     };
 }
-export declare const handler: (event: CloudWatchLogsEvent) => Promise<void>;
+interface LambdaContextLike {
+    invokedFunctionArn?: string;
+}
+export declare const handler: (event: CloudWatchLogsEvent, context?: LambdaContextLike) => Promise<void>;
 export {};
