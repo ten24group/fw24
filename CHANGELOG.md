@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.42](https://github.com/ten24group/fw24/compare/v1.1.0-beta.41...v1.1.0-beta.42) (2026-07-18)
+
+
+### Features
+
+* **log-forwarder:** infer service + env from fw24 config (APP_NAME / APP_ENVIRONMENT) ([b7f16d5](https://github.com/ten24group/fw24/commit/b7f16d5e8fdd4d85ef96c51ddb12b4993ca96e62))
+* **log-forwarder:** tag records with AWS account + region to distinguish same-named deploys ([6f842fc](https://github.com/ten24group/fw24/commit/6f842fc2c7bd1af8c75d41fd8db965326ea7a54d))
+
 ## [1.1.0-beta.41](https://github.com/ten24group/fw24/compare/v1.1.0-beta.40...v1.1.0-beta.41) (2026-07-18)
 
 
