@@ -95,10 +95,10 @@ describe('log-forwarder handler runtime', () => {
 		);
 		// The drop line is gone → 3 shipped, not 4.
 		expect(recs).toHaveLength(3);
-		const benign = recs.find((r) => r.message.includes('ECONNRESET'));
+		const benign = recs.find((r) => r.message.includes('ECONNRESET'))!;
 		expect(benign.level).toBe('warn');
 		expect(benign.reclassified).toBe('benign');
-		const downgraded = recs.find((r) => r.message.includes('deprecation'));
+		const downgraded = recs.find((r) => r.message.includes('deprecation'))!;
 		expect(downgraded.level).toBe('debug');
 		expect(downgraded.reclassified).toBe('noise');
 		expect(recs.some((r) => r.message.includes('healthz'))).toBe(false);

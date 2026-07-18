@@ -36,12 +36,16 @@ export interface LogForwarderNoiseRules {
 export interface LogForwarderConstructConfig extends IConstructConfig {
 	/** Vector/Logtrail HTTP JSON ingest URL. Defaults to `FORWARDER_INGEST_URL` at deploy time. */
 	ingestHttpUrl?: string;
-	/** Base `service` label for shipped logs (env is folded in). Defaults to `FORWARDER_SERVICE`. */
+	/**
+	 * Base `service` label for shipped logs (env is folded in). Usually omit — defaults to the fw24
+	 * app name (`APP_NAME`); override with this option or `FORWARDER_SERVICE`.
+	 */
 	service?: string;
 	/**
 	 * Stage/owner label (e.g. `develop`, `prod`, `sandbox-nitin`) — folded into the `service` label
 	 * (`myservice-develop`) and emitted as `env` so develop/prod/per-developer logs are distinguishable
-	 * in Logtrail. Defaults to `FORWARDER_ENV` at deploy time.
+	 * in Logtrail. Usually omit — defaults to the fw24 environment (`APP_ENVIRONMENT`); override with
+	 * this option or `FORWARDER_ENV`.
 	 */
 	env?: string;
 	/** Optional `x-api-key` when the ingest front requires it. Defaults to `FORWARDER_INGEST_X_API_KEY`. */
@@ -211,9 +215,12 @@ export class LogForwarderConstruct implements FW24Construct {
 			removalPolicy: RemovalPolicy.DESTROY,
 		});
 
+		// service/env default to what fw24 already knows (hydrated from APP_NAME / APP_ENVIRONMENT), so a
+		// backend usually doesn't pass them. Precedence: explicit option > FORWARDER_* env > fw24 config.
+		const cfg = this.fw24.getConfig();
 		const ingestHttpUrl = o.ingestHttpUrl ?? process.env.FORWARDER_INGEST_URL?.trim() ?? '';
-		const service = o.service ?? process.env.FORWARDER_SERVICE?.trim() ?? '';
-		const env = o.env ?? process.env.FORWARDER_ENV?.trim() ?? '';
+		const service = o.service ?? (process.env.FORWARDER_SERVICE?.trim() || this.fw24.appName || '');
+		const env = o.env ?? (process.env.FORWARDER_ENV?.trim() || cfg.environment || '');
 		const xApiKey = o.xApiKey ?? process.env.FORWARDER_INGEST_X_API_KEY?.trim();
 
 		if (!ingestHttpUrl) {
