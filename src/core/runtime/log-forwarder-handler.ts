@@ -14,6 +14,10 @@
  * Steps 2–4 are app-owned rule lists (env-injected by the construct), complementary to any global
  * severity/noise handling a shared Vector ingest may also apply.
  *
+ * Every record also carries `account` + `region` (from the forwarder's own ARN) so deployments that
+ * share app + env names — e.g. multiple developers each running `plusfan-trials` (APP_ENVIRONMENT=local)
+ * in their OWN account — stay distinguishable instead of colliding under one `service` label.
+ *
  * ENV NAMESPACE: this function reads ONLY `FORWARDER_*` env vars — deliberately NOT the `LOGTRAIL_*`
  * keys used by fw24's in-process log transport. That guarantees the forwarder can never collide with,
  * or accidentally activate, fw24's in-process Logtrail machinery.
@@ -35,6 +39,18 @@ const ENV = process.env.FORWARDER_ENV?.trim() || 'unknown';
 // distinct at a glance. `env` is also emitted as a structured field for querying.
 const SERVICE = ENV && ENV !== 'unknown' ? `${BASE_SERVICE}-${ENV}` : BASE_SERVICE;
 const X_API_KEY = process.env.FORWARDER_INGEST_X_API_KEY?.trim();
+
+// AWS account + region disambiguate deployments that share app + env names — e.g. several developers
+// each deploying the SAME app (`plusfan-trials`, APP_ENVIRONMENT=local) to their OWN account. Without
+// this, all their logs would collide under one `service` label. Region is set by the Lambda runtime;
+// account is parsed from the invoked function ARN on the first invocation and cached.
+const REGION = process.env.AWS_REGION?.trim() || '';
+let RESOLVED_ACCOUNT = '';
+function accountFromArn(arn: string | undefined): string {
+	// arn:aws:lambda:<region>:<ACCOUNT>:function:<name>
+	const parts = (arn || '').split(':');
+	return parts.length > 4 ? parts[4] : '';
+}
 // The fw24 Logtrail/Vector ingest decodes a JSON array into individual events and REJECTS NDJSON (400),
 // so `json-array` is the default. Override to `ndjson` only for an ingest configured with newline framing.
 const BATCH_FORMAT = (process.env.FORWARDER_BATCH_FORMAT?.trim() || 'json-array') as 'ndjson' | 'json-array';
@@ -250,6 +266,8 @@ function toVectorRecord(
 	return {
 		service: SERVICE,
 		env: ENV,
+		...(RESOLVED_ACCOUNT ? { account: RESOLVED_ACCOUNT } : {}),
+		...(REGION ? { region: REGION } : {}),
 		host: shortHost(logGroup, logStream),
 		...(logger ? { logger } : {}),
 		...(requestId ? { requestId } : {}),
@@ -360,7 +378,15 @@ function emitDroppedMetric(records: number): void {
 	);
 }
 
-export const handler = async (event: CloudWatchLogsEvent): Promise<void> => {
+interface LambdaContextLike {
+	invokedFunctionArn?: string;
+}
+
+export const handler = async (event: CloudWatchLogsEvent, context?: LambdaContextLike): Promise<void> => {
+	// Resolve the account from this forwarder's own ARN once (same for every invocation).
+	if (!RESOLVED_ACCOUNT && context?.invokedFunctionArn) {
+		RESOLVED_ACCOUNT = accountFromArn(context.invokedFunctionArn);
+	}
 	if (!INGEST_URL) {
 		return; // not configured yet — no-op (safe to deploy before wiring the ingest URL)
 	}

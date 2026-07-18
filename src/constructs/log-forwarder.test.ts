@@ -113,6 +113,24 @@ describe('LogForwarderConstruct', () => {
 		Template.fromStack(stack).resourceCountIs('AWS::Logs::SubscriptionFilter', 1); // MainFn only
 	});
 
+	it('infers service + env from fw24 config when not passed', async () => {
+		(Fw24 as any).instance = undefined;
+		const app = new App();
+		const stack = new Stack(app, 'TestStack', { env: { account: '123456789012', region: 'us-east-1' } });
+		const fw24 = Fw24.getInstance();
+		fw24.setApp(app);
+		fw24.setConfig({ name: 'plusfan-trials-backend', region: 'us-east-1', account: '123456789012', environment: 'develop' } as any);
+		fw24.addStack('main', stack);
+		dummyFn(stack, 'AlphaFn');
+
+		// No service/env passed — they should come from fw24's config (APP_NAME / APP_ENVIRONMENT).
+		await new LogForwarderConstruct({ stackName: 'main', ingestHttpUrl: 'http://infer/' }).construct();
+
+		const env = forwarderEnv(Template.fromStack(stack), 'http://infer/');
+		expect(env.FORWARDER_SERVICE).toBe('plusfan-trials-backend');
+		expect(env.FORWARDER_ENV).toBe('develop');
+	});
+
 	it('merges custom rules on top of defaults by default', async () => {
 		const { stack } = makeStack();
 		dummyFn(stack, 'AlphaFn');
