@@ -7,6 +7,7 @@
 
 import { ExecutionContextData, ParsedTraceContext } from './types';
 import { parseSnsSqsEnvelope } from '../sns-sqs-envelope';
+import { TRACE_ID_HEADER, getTraceId } from '../trace-context';
 
 // ============================================================================
 // Constants
@@ -366,6 +367,13 @@ export function createHttpHeaders(ctx: ExecutionContextData): Record<string, str
   // Use a stable fallback parent-id derived from correlationId.
   const parentId = toW3CParentId(ctx.correlationId);
   headers[ 'traceparent' ] = `00-${traceId}-${parentId}-${sampledFlag}`;
+
+  // Propagate the request-scoped trace id for cross-service correlation.
+  // No-op when no trace context is active.
+  const requestTraceId = getTraceId();
+  if (requestTraceId) {
+    headers[ TRACE_ID_HEADER ] = requestTraceId;
+  }
 
   return headers;
 }

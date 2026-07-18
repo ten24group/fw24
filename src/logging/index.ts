@@ -1,5 +1,8 @@
 import { Logger, ILogObj, ISettingsParam } from "tslog";
 import { logtrailTransport } from "./logtrail";
+// Import the concrete leaf module (not the barrel) to keep this cycle-free:
+// trace-context imports only Node builtins.
+import { getTraceId } from "../core/runtime/trace-context";
 
 export interface ILogger extends Logger<ILogObj> {
 }
@@ -69,7 +72,49 @@ export const createLogger = (_options: string | Function | ISettingsParam<ILogOb
 
     logger.attachTransport(logtrailTransport);
 
+    attachTraceIdToMeta(logger);
+
     return logger;
+}
+
+/**
+ * Enrich every log line's structured `_meta` with the current request-scoped
+ * `traceId` (when a trace context is active). This runs *before* tslog emits the
+ * JSON log to the console, so downstream forwarders that lift `_meta` ship
+ * `traceId` as a first-class field alongside the existing `requestId`.
+ *
+ * Backward-compatible: a complete no-op when no trace context is established
+ * (logs simply carry no `traceId`). The existing `requestId` — surfaced by the
+ * forwarder from the AWS Lambda log prefix — is untouched.
+ *
+ * Mechanism: tslog reads `settings.overwrite.addMeta` fresh on every `log()`
+ * call. We delegate to the logger's own default meta builder and then stamp the
+ * ambient `traceId` onto the produced `_meta`.
+ */
+function attachTraceIdToMeta(logger: Logger<ILogObj>): void {
+    const anyLogger = logger as unknown as {
+        _addMetaToLogObj: (logObj: ILogObj, logLevelId: number, logLevelName: string) => any;
+    };
+    if (typeof anyLogger._addMetaToLogObj !== 'function') {
+        // Defensive: tslog internals changed — skip enrichment rather than break logging.
+        return;
+    }
+
+    const metaProperty = (logger.settings as { metaProperty?: string }).metaProperty || '_meta';
+    const baseAddMeta = anyLogger._addMetaToLogObj.bind(logger);
+
+    logger.settings.overwrite = {
+        ...logger.settings.overwrite,
+        addMeta: (logObj: ILogObj, logLevelId: number, logLevelName: string) => {
+            const withMeta = baseAddMeta(logObj, logLevelId, logLevelName);
+            const traceId = getTraceId();
+            const meta = withMeta?.[ metaProperty ];
+            if (traceId && meta && typeof meta === 'object') {
+                meta.traceId = traceId;
+            }
+            return withMeta;
+        },
+    };
 }
 
 export const DefaultLogger: ILogger = createLogger('[*]');
