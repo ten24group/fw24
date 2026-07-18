@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.43](https://github.com/ten24group/fw24/compare/v1.1.0-beta.42...v1.1.0-beta.43) (2026-07-18)
+
+
+### Bug Fixes
+
+* **log-forwarder:** make each subscription filter depend on the invoke permission ([fddfa6c](https://github.com/ten24group/fw24/commit/fddfa6c6a09e9ad42016b54777dcbd3112c73ae9))
+
 ## [1.1.0-beta.42](https://github.com/ten24group/fw24/compare/v1.1.0-beta.41...v1.1.0-beta.42) (2026-07-18)
 
 
